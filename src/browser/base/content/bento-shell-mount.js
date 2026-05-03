@@ -23,6 +23,10 @@
     }
     const frame = document.getElementById('bento-shell-frame');
     if (!frame) return;
+    // setAttribute('src') works even before the <browser>'s webNavigation
+    // is initialized; the loadURI/fixupAndLoadURIString APIs throw in that
+    // window. Stay with setAttribute — the chrome process passes the URL
+    // to the extension content process when ready.
     frame.setAttribute(
       'src',
       'moz-extension://' + policy.mozExtensionHostname + '/dist/index.html'

@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index d58fcdf998..f9521a9b52 100644
+index d58fcdf998..086a1e0fa4 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -3,6 +3,16 @@
+@@ -3,6 +3,18 @@
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
  <hbox flex="1" id="browser">
@@ -10,12 +10,14 @@ index d58fcdf998..f9521a9b52 100644
 +        style="width: 240px; min-width: 240px; background-color: #282A33;">
 +    <browser id="bento-shell-frame"
 +             type="content"
++             remote="true"
++             remoteType="extension"
++             primary="false"
 +             flex="1"
 +             disablehistory="true"
-+             disablefullscreen="true"
-+             messagemanagergroup="browsers"/>
++             disablefullscreen="true"/>
 +  </vbox>
-+  <script src="chrome://browser/content/bento-shell-mount.js"/>
++  <script src="chrome://browser/content/bento-shell-mount.js"></script>
    <box context="sidebar-context-menu" id="sidebar-main" hidden="true">
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
