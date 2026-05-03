@@ -1,0 +1,4 @@
+{
+  "extensions/**/*.{ts,tsx,js,jsx,mjs}": ["eslint --fix", "prettier --write"],
+  "*.{json,md,yaml,yml,css}": ["prettier --write"]
+}

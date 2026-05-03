@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Bento Browser — a Firefox-based browser built with @bento-browser/surfer (fork of @zen-browser/surfer).",
+  "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
   },
@@ -14,10 +15,22 @@
     "package": "surfer package",
     "lc": "surfer license-check",
     "build:full": "bash scripts/build-bento.sh",
-    "brand:regen": "bash scripts/regen-branding.sh"
+    "brand:regen": "bash scripts/regen-branding.sh",
+    "shell:dev": "pnpm --filter @bento/shell dev",
+    "shell:build": "pnpm --filter @bento/shell build",
+    "shell:ladle": "pnpm --filter @bento/shell ladle:serve",
+    "tools:build": "pnpm --filter @bento/tools build",
+    "ext:build": "pnpm --filter @bento/shell build && pnpm --filter @bento/tools build"
   },
   "devDependencies": {
-    "@bento-browser/surfer": "github:Bento-Browser/surfer#71437c678a1c97aa95801c533638ebccdd673cb0"
+    "@bento-browser/surfer": "github:Bento-Browser/surfer#71437c678a1c97aa95801c533638ebccdd673cb0",
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.3.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^15.2.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0"
   },
   "license": "MPL-2.0"
 }

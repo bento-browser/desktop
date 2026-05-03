@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tale-ui": {
+      "command": "node",
+      "args": ["/Users/admin/Projects/tale-ui/core/tools/mcp-server.mjs"]
+    }
+  }
+}

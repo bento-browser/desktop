@@ -1,0 +1,11 @@
+packages:
+  - extensions/bento-shell
+  - extensions/bento-tools
+
+# git-hosted Surfer needs to run its prepare/build scripts (tsc → dist/).
+# pnpm 10 requires explicit opt-in for build scripts on git deps.
+onlyBuiltDependencies:
+  - '@bento-browser/surfer'
+  - '@resvg/resvg-js'
+  - sharp
+  - esbuild

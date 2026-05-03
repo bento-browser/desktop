@@ -1,0 +1,35 @@
+{
+  "name": "@bento/shell",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bento Browser UI shell — privileged built-in extension. Vertical tabs, workspaces, panel layouts, command palette.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "eslint src",
+    "ladle:serve": "ladle serve",
+    "ladle:build": "ladle build"
+  },
+  "dependencies": {
+    "@tale-ui/core": "link:../../../tale-ui/core/packages/css",
+    "@tale-ui/react": "link:../../../tale-ui/core/packages/react",
+    "@tale-ui/react-styles": "link:../../../tale-ui/core/packages/styles",
+    "@tale-ui/utils": "link:../../../tale-ui/core/packages/utils",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-aria-components": "^1.16.0",
+    "zustand": "^5.0.0",
+    "@tanstack/react-virtual": "^3.10.0"
+  },
+  "devDependencies": {
+    "@ladle/react": "^4.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}
