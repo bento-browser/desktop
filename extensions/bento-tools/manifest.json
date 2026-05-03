@@ -4,7 +4,7 @@
   "short_name": "bento-tools",
   "version": "0.0.0",
   "description": "Bento Browser background tools — tab/keyboard/persistence logic.",
-  "applications": {
+  "browser_specific_settings": {
     "gecko": {
       "id": "bento-tools@bento.app",
       "strict_min_version": "150.0"

@@ -8,8 +8,8 @@ importers:
   .:
     devDependencies:
       '@bento-browser/surfer':
-        specifier: github:Bento-Browser/surfer#4079b9afa3a0bbc7bb7c2c4e9e85696581afdadc
-        version: https://codeload.github.com/Bento-Browser/surfer/tar.gz/4079b9afa3a0bbc7bb7c2c4e9e85696581afdadc
+        specifier: github:Bento-Browser/surfer#358ca0418217c59fb659acd05ce7996682105147
+        version: https://codeload.github.com/Bento-Browser/surfer/tar.gz/358ca0418217c59fb659acd05ce7996682105147
       '@eslint/js':
         specifier: ^9.0.0
         version: 9.39.4
@@ -248,10 +248,10 @@ packages:
       }
     engines: { node: '>=6.9.0' }
 
-  '@bento-browser/surfer@https://codeload.github.com/Bento-Browser/surfer/tar.gz/4079b9afa3a0bbc7bb7c2c4e9e85696581afdadc':
+  '@bento-browser/surfer@https://codeload.github.com/Bento-Browser/surfer/tar.gz/358ca0418217c59fb659acd05ce7996682105147':
     resolution:
       {
-        tarball: https://codeload.github.com/Bento-Browser/surfer/tar.gz/4079b9afa3a0bbc7bb7c2c4e9e85696581afdadc,
+        tarball: https://codeload.github.com/Bento-Browser/surfer/tar.gz/358ca0418217c59fb659acd05ce7996682105147,
       }
     version: 1.14.6-bento.1
     hasBin: true
@@ -6090,7 +6090,7 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@bento-browser/surfer@https://codeload.github.com/Bento-Browser/surfer/tar.gz/4079b9afa3a0bbc7bb7c2c4e9e85696581afdadc':
+  '@bento-browser/surfer@https://codeload.github.com/Bento-Browser/surfer/tar.gz/358ca0418217c59fb659acd05ce7996682105147':
     dependencies:
       '@resvg/resvg-js': 1.4.0
       async-icns: 1.0.2
