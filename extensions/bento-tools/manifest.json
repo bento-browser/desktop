@@ -13,8 +13,5 @@
   "background": {
     "scripts": ["dist/background.js"],
     "persistent": false
-  },
-  "externally_connectable": {
-    "ids": ["bento-shell@bento.app"]
   }
 }
