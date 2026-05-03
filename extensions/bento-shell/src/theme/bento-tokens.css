@@ -1,0 +1,44 @@
+/*
+ * Bento token layer — extends @tale-ui/core CSS custom properties with
+ * Bento-specific ones. All tokens derive from Tale UI scales (§3.2) so
+ * the design system stays unified.
+ *
+ * Every Bento composite component should source its values from these
+ * vars (or directly from --tale-* if no Bento-specific layer exists yet).
+ */
+@layer bento.tokens {
+  :root {
+    /* Workspace accent — set <html data-workspace-color="..."> at runtime
+       to swap the entire UI's accent palette per active workspace. */
+    --bento-workspace-accent: var(--tale-color-accent-9);
+    --bento-workspace-accent-soft: var(--tale-color-accent-3);
+
+    /* Vertical tab strip dimensions */
+    --bento-tab-row-height: 28px;
+    --bento-tab-strip-width: 240px;
+    --bento-tab-strip-width-collapsed: 48px;
+
+    /* Bento Spaces panel layout */
+    --bento-panel-min-width: 240px;
+    --bento-panel-handle-width: 4px;
+    --bento-panel-handle-hover-width: 8px;
+
+    /* Brand */
+    --bento-brand-bg: #282a33; /* matches surfer.json backgroundColor */
+  }
+
+  /* Per-workspace accent presets. Add more as the user creates workspaces.
+     Set <html data-workspace-color="blue"> from the active workspace. */
+  [data-workspace-color='blue'] {
+    --bento-workspace-accent: var(--tale-color-blue-9);
+    --bento-workspace-accent-soft: var(--tale-color-blue-3);
+  }
+  [data-workspace-color='emerald'] {
+    --bento-workspace-accent: var(--tale-color-emerald-9);
+    --bento-workspace-accent-soft: var(--tale-color-emerald-3);
+  }
+  [data-workspace-color='amber'] {
+    --bento-workspace-accent: var(--tale-color-amber-9);
+    --bento-workspace-accent-soft: var(--tale-color-amber-3);
+  }
+}

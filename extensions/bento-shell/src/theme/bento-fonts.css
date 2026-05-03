@@ -1,0 +1,18 @@
+/*
+ * Local @font-face declarations for the chrome-mounted shell.
+ *
+ * Tale UI's @tale-ui/core/index.css imports Google Fonts via @import url(...)
+ * — that won't work in a Firefox privileged chrome context (strict CSP, no
+ * network for chrome resources). We import only the token files we need
+ * from @tale-ui/core/src/tokens/*.css (in main.tsx) and bundle WOFF2 fonts
+ * locally here.
+ *
+ * M0: relies on the system stack to keep the build small. M1+ will bundle
+ * Inter (body) and JetBrains Mono (mono) WOFF2 files into ./fonts/ and
+ * declare them here.
+ */
+@layer bento.fonts {
+  /* TODO(M1): replace system stack with bundled Inter + JetBrains Mono.
+   * @font-face { font-family: 'Inter'; src: url('./fonts/Inter.woff2'); ... }
+   */
+}

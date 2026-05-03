@@ -22,5 +22,8 @@ Thumbs.db
 .vscode/
 *.swp
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Plans
 # plans/
