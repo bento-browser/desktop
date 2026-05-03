@@ -28,6 +28,12 @@ export default defineConfig(({ mode }) => ({
     exclude: ['@tale-ui/react', '@tale-ui/react-styles', '@tale-ui/utils'],
   },
 
+  // Relative-path emission (./) so the bundle works when index.html is loaded
+  // at moz-extension://<uuid>/dist/index.html. Without this, Vite emits
+  // /assets/shell.js which resolves to moz-extension://<uuid>/assets/shell.js
+  // (missing the dist/ prefix the extension uses).
+  base: './',
+
   build: {
     outDir: 'dist',
     emptyOutDir: true,

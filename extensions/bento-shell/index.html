@@ -5,20 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bento Shell</title>
 
-    <!-- Persist color-mode preference across reloads (Tale UI consumer requirement). -->
-    <script>
-      (function () {
-        try {
-          var mode =
-            localStorage.getItem('color-mode') ||
-            (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-          document.documentElement.setAttribute('data-color-mode', mode);
-          document.documentElement.setAttribute('data-theme', mode);
-        } catch (_) {
-          /* localStorage may not be available in all chrome contexts */
-        }
-      })();
-    </script>
+    <!-- Persist color-mode preference across reloads (Tale UI consumer
+         requirement, see CLAUDE.md § "UI Components" step 7). External
+         file because extension page CSP blocks inline <script>. -->
+    <script src="./boot.js"></script>
 
     <!-- Critical CSS skeleton (§6.3) — keeps cold start under 80ms by drawing
          the empty shell shape before React hydrates. Replace with the real

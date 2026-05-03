@@ -12,6 +12,7 @@
 
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import globals from 'globals';
 
 const noBarrels = {
   paths: [
@@ -59,6 +60,15 @@ export default tseslint.config(
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
+
+  // Browser-context files (extension public/, react sources, etc.) get
+  // browser globals so ESLint stops complaining about localStorage/document.
+  {
+    files: ['extensions/**/*.{ts,tsx,js,jsx,mjs}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.webextensions },
+    },
+  },
 
   // Bundle discipline — applies to all extension source
   {
