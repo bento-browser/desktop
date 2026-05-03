@@ -65,3 +65,10 @@ pref("network.allow-experiments", false);
 pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.upgradeDialog.enabled", false);
 pref("browser.preferences.moreFromMozilla", false);
+
+// --- Bento UI shell mount -------------------------------------------------
+// Fixed UUID mapping so the bento-shell extension's moz-extension:// URL is
+// stable across installs and profiles. browser-box.inc.xhtml references
+// moz-extension://<this-uuid>/dist/index.html as the shell mount source.
+// If you change this UUID, also update the chrome-layout patch.
+pref("extensions.webextensions.uuids", '{"bento-shell@bento.app":"24ed8e7c-1e08-4981-afae-88ffef2b0a3e"}');

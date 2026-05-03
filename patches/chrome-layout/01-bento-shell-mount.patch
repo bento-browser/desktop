@@ -1,15 +1,20 @@
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index d58fcdf998..6f36e3e7e1 100644
+index d58fcdf998..dfae793a79 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -3,6 +3,11 @@
+@@ -3,6 +3,16 @@
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
  <hbox flex="1" id="browser">
 +  <vbox id="bento-shell-host"
-+        style="width: 240px; min-width: 240px; background-color: #282A33; color: #ffffff; padding: 16px;">
-+    <label value="Bento Shell" style="color: #ffffff; font-weight: 600; font-size: 1.1em;"/>
-+    <label value="M0 placeholder — React mount lands in M1" style="color: #cccccc; margin-top: 8px;"/>
++        style="width: 240px; min-width: 240px; background-color: #282A33;">
++    <browser id="bento-shell-frame"
++             type="content"
++             remote="false"
++             flex="1"
++             disablehistory="true"
++             disablefullscreen="true"
++             src="moz-extension://24ed8e7c-1e08-4981-afae-88ffef2b0a3e/dist/index.html"/>
 +  </vbox>
    <box context="sidebar-context-menu" id="sidebar-main" hidden="true">
      <html:sidebar-main flex="1">
