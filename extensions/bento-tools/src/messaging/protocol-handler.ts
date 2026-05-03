@@ -1,17 +1,32 @@
 // Routes incoming Action messages from bento-shell to the appropriate
-// tools-side handler. M0 stub: only handles ping. M1+ adds tab/workspace/
-// panel actions per §4.2 of the plan.
+// tools-side handler. Each Action either fires a side effect (close tab,
+// switch tab) or asks tools to broadcast state (snapshot).
 
 import type { Action, Event } from '@shared/protocol';
+import type { TabRegistry } from '../tabs/TabRegistry';
 
-export function handle(action: Action, send: (event: Event) => void): void {
+export interface HandlerContext {
+  tabs: TabRegistry;
+  send: (event: Event) => void;
+}
+
+export function handle(action: Action, ctx: HandlerContext): void {
   switch (action.type) {
     case 'ping':
-      send({ type: 'pong', ts: Date.now() });
+      ctx.send({ type: 'pong', ts: Date.now() });
       return;
     case 'tabs/requestSnapshot':
-      // M1: send a tabs/snapshot. Stub for now so shell knows we received it.
-      console.log('[bento-tools] tabs/requestSnapshot received (stub)');
+      ctx.send({ type: 'tabs/snapshot', tabs: ctx.tabs.snapshot() });
+      return;
+    case 'tab/activate':
+      browser.tabs.update(action.id, { active: true }).catch((err) => {
+        console.warn('[bento-tools] tab/activate failed:', action.id, err);
+      });
+      return;
+    case 'tab/close':
+      browser.tabs.remove(action.id).catch((err) => {
+        console.warn('[bento-tools] tab/close failed:', action.id, err);
+      });
       return;
     default: {
       const _exhaustive: never = action;

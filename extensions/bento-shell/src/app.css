@@ -1,0 +1,26 @@
+/* Top-level shell layout. Sits on top of the chrome <browser>'s body. */
+@layer bento.app {
+  html,
+  body,
+  #root,
+  .bento-shell-app {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .bento-shell-app {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bento-brand-bg);
+    color: var(--neutral-90);
+    overflow: hidden;
+  }
+
+  .bento-shell-app__header {
+    padding-block: var(--space-xs);
+    padding-inline: var(--space-s);
+    border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  }
+}

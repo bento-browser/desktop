@@ -1,0 +1,56 @@
+/* Layer-2 component: TabRow. Built only on Tale UI primitives + tokens.
+ * Per §6.4: content-visibility lets the browser skip layout for off-screen
+ * rows once virtualization is in place. */
+@layer bento.components {
+  .bento-tab-row {
+    height: var(--bento-tab-row-height);
+    padding-block: var(--space-2xs);
+    padding-inline: var(--space-xs);
+    border-radius: var(--radius-s);
+    color: var(--neutral-90);
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    /* Skip layout/paint when scrolled off-screen */
+    content-visibility: auto;
+    contain-intrinsic-size: var(--bento-tab-row-height);
+  }
+
+  .bento-tab-row:hover {
+    background-color: color-mix(in srgb, var(--bento-workspace-accent-soft) 50%, transparent);
+  }
+
+  .bento-tab-row--active {
+    background-color: var(--bento-workspace-accent-soft);
+  }
+
+  .bento-tab-row__favicon {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-2xs);
+    flex-shrink: 0;
+  }
+
+  .bento-tab-row__favicon--placeholder {
+    background-color: var(--neutral-30);
+  }
+
+  .bento-tab-row .tale-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .bento-tab-row__close {
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+
+  .bento-tab-row:hover .bento-tab-row__close,
+  .bento-tab-row--active .bento-tab-row__close {
+    opacity: 1;
+  }
+}

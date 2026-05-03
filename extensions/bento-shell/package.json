@@ -15,14 +15,15 @@
   },
   "dependencies": {
     "@tale-ui/core": "link:../../../tale-ui/core/packages/css",
-    "@tale-ui/react": "link:../../../tale-ui/core/packages/react",
+    "@tale-ui/react": "link:../../../tale-ui/core/packages/react/build",
     "@tale-ui/react-styles": "link:../../../tale-ui/core/packages/styles",
     "@tale-ui/utils": "link:../../../tale-ui/core/packages/utils",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-aria-components": "^1.16.0",
     "zustand": "^5.0.0",
-    "@tanstack/react-virtual": "^3.10.0"
+    "@tanstack/react-virtual": "^3.10.0",
+    "lucide-react": "^0.460.0"
   },
   "devDependencies": {
     "@ladle/react": "^4.1.0",

@@ -1,0 +1,30 @@
+/* Layer-2 component: TabList. Virtualized vertical tab strip per §6.4. */
+@layer bento.components {
+  .bento-tab-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-block: var(--space-xs);
+    padding-inline: var(--space-2xs);
+    contain: strict;
+  }
+
+  .bento-tab-list__viewport {
+    position: relative;
+    width: 100%;
+  }
+
+  .bento-tab-list__row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+  }
+
+  .bento-tab-list--empty {
+    flex: 1;
+    justify-content: center;
+    padding-block: var(--space-l);
+  }
+}
