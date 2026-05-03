@@ -23,7 +23,7 @@
     "ext:build": "pnpm --filter @bento/shell build && pnpm --filter @bento/tools build"
   },
   "devDependencies": {
-    "@bento-browser/surfer": "github:Bento-Browser/surfer#71437c678a1c97aa95801c533638ebccdd673cb0",
+    "@bento-browser/surfer": "github:Bento-Browser/surfer#9d175f1d1eef77866511725369098054f7099fc6",
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.3.0",
