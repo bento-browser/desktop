@@ -2,7 +2,7 @@
 
 Bento Browser's build is driven by a fork of [zen-browser/surfer](https://github.com/zen-browser/surfer),
 hosted at [Bento-Browser/surfer](https://github.com/Bento-Browser/surfer) on
-the `bento-fork` branch.
+`main`.
 
 ## Why the fork exists
 
@@ -42,7 +42,7 @@ cd /Users/admin/Projects/surfer
 # edit src/...
 npm run build              # tsc -> dist/
 git commit -am "..."
-git push origin bento-fork
+git push origin main
 git rev-parse HEAD         # copy SHA
 
 cd /Users/admin/Projects/bento-browser
@@ -55,13 +55,13 @@ npm install                # re-clones at new SHA, rebuilds dist/
 ```sh
 cd /Users/admin/Projects/surfer
 git fetch upstream
-git checkout bento-fork
+git checkout main
 git rebase upstream/main
 # Resolve conflicts. The Bento patch touches:
 #   - src/utils/config.ts
 #   - src/commands/patches/branding-patch.ts
 npm run build
-git push --force-with-lease origin bento-fork
+git push --force-with-lease origin main
 # Then bump the SHA in bento-browser/package.json as above.
 ```
 

@@ -9,8 +9,61 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-license:
-    name: Lint & license check
+  static-checks:
+    name: JSON, shell, prefs sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Validate JSON syntax
+        run: |
+          set -e
+          for f in surfer.json package.json config/firefox-versions.json tsconfig.json .surfer/dynamicConfig.brand.json; do
+            echo "checking $f"
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
+          done
+
+      - name: Validate surfer.json brand schema
+        # Catches the class of breakage we hit when scaffolding: missing
+        # release.displayVersion, urls/installer fields renamed, etc.
+        run: |
+          node -e "
+            const c = JSON.parse(require('fs').readFileSync('surfer.json','utf8'));
+            const required = ['name','vendor','appId','binaryName','version','brands'];
+            for (const k of required) if (!(k in c)) throw new Error('surfer.json missing: ' + k);
+            for (const [name, b] of Object.entries(c.brands)) {
+              for (const k of ['backgroundColor','brandShorterName','brandShortName','brandFullName','release']) {
+                if (!(k in b)) throw new Error('brand ' + name + ' missing: ' + k);
+              }
+              if (!b.release.displayVersion) throw new Error('brand ' + name + ' missing release.displayVersion');
+            }
+            console.log('surfer.json brand schema OK');
+          "
+
+      - name: Shell script syntax (bash -n)
+        run: |
+          set -e
+          for f in scripts/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./scripts
+
+      - name: Verify prefs/bento.js parses as JS
+        # Default-pref files are evaluated by Firefox at startup. Catch syntax
+        # errors before they become runtime failures inside the browser.
+        run: node --check prefs/bento.js
+
+  surfer-smoke:
+    name: Surfer config loads
+    needs: static-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +72,16 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Surfer reads our config
+        # `surfer --version` parses surfer.json end-to-end and exits non-zero
+        # if any required field is missing. Our cheapest end-to-end check.
+        run: npx surfer --version
       - name: Surfer license check
         run: npm run lc
 
   build:
     name: Build (${{ matrix.os }})
-    needs: lint-and-license
+    needs: surfer-smoke
     strategy:
       fail-fast: false
       matrix:
