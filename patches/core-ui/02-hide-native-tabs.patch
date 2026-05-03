@@ -1,0 +1,14 @@
+diff --git a/browser/themes/shared/browser-shared.css b/browser/themes/shared/browser-shared.css
+index 57b8dc0eda..04c9290d50 100644
+--- a/browser/themes/shared/browser-shared.css
++++ b/browser/themes/shared/browser-shared.css
+@@ -1508,3 +1508,9 @@ popupnotificationcontent {
+ #bookmarksToolbarFolderMenu {
+   --menuitem-icon: url("chrome://browser/skin/places/bookmarksToolbar.svg");
+ }
++
++/* Bento: hide the native horizontal tab strip; vertical tabs ship via the
++ * bento-shell extension mounted in browser-box.inc.xhtml. */
++#TabsToolbar {
++  visibility: collapse !important;
++}
