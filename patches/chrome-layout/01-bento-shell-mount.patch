@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index d58fcdf998..dfae793a79 100644
+index d58fcdf998..7156bf69ee 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -3,6 +3,16 @@
+@@ -3,6 +3,37 @@
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
  <hbox flex="1" id="browser">
@@ -10,12 +10,33 @@ index d58fcdf998..dfae793a79 100644
 +        style="width: 240px; min-width: 240px; background-color: #282A33;">
 +    <browser id="bento-shell-frame"
 +             type="content"
-+             remote="false"
 +             flex="1"
 +             disablehistory="true"
 +             disablefullscreen="true"
-+             src="moz-extension://24ed8e7c-1e08-4981-afae-88ffef2b0a3e/dist/index.html"/>
++             messagemanagergroup="browsers"/>
 +  </vbox>
++  <script type="application/javascript"><![CDATA[
++    // Resolve the bento-shell extension's per-profile UUID and set the
++    // bento-shell-frame <browser> src dynamically. extensions.webextensions.uuids
++    // is not honored for built-in addons, so the UUID is unknown at build time.
++    (function() {
++      function setBentoShellSrc() {
++        const policy = WebExtensionPolicy.getByID("bento-shell@bento.app");
++        if (!policy) {
++          // Extension hasn't loaded yet; try again on the next tick.
++          setTimeout(setBentoShellSrc, 50);
++          return;
++        }
++        const frame = document.getElementById("bento-shell-frame");
++        if (!frame) return;
++        frame.setAttribute(
++          "src",
++          "moz-extension://" + policy.mozExtensionHostname + "/dist/index.html"
++        );
++      }
++      setBentoShellSrc();
++    })();
++  ]]></script>
    <box context="sidebar-context-menu" id="sidebar-main" hidden="true">
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
