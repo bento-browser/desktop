@@ -12,6 +12,6 @@
   },
   "background": {
     "scripts": ["dist/assets/background.js"],
-    "persistent": false
+    "persistent": true
   }
 }
