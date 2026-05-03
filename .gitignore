@@ -27,3 +27,6 @@ Thumbs.db
 
 # Plans
 # plans/
+
+# TS-compiled outputs of shared sources (we only want sources tracked)
+extensions/_shared/*.js

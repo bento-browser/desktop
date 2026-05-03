@@ -65,7 +65,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 6. **Charts (separate package):** Install `@tale-ui/charts` and `recharts` separately. Import chart styles via `import '@tale-ui/charts/styles';`. Charts use the same compound parts pattern: `BarChart.Root`, `BarChart.Bar`, etc.
 
-8. **A2UI protocol support (optional):** If this project uses AI agents that render UI via the [A2UI protocol](https://a2ui.org/), install `@tale-ui/a2ui`. It maps A2UI agent messages to Tale UI components. See `node_modules/@tale-ui/a2ui/README.md` or the [integration guide](https://github.com/Tale-UI/core/blob/main/docs/a2ui-integration.md). Quick setup:
+7. **A2UI protocol support (optional):** If this project uses AI agents that render UI via the [A2UI protocol](https://a2ui.org/), install `@tale-ui/a2ui`. It maps A2UI agent messages to Tale UI components. See `node_modules/@tale-ui/a2ui/README.md` or the [integration guide](https://github.com/Tale-UI/core/blob/main/docs/a2ui-integration.md). Quick setup:
 
    ```tsx
    import { A2UIProvider, A2UISurface } from '@tale-ui/a2ui/renderer';
@@ -73,26 +73,27 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
    <A2UIProvider catalog={taleUICatalog} onAction={handleAction}>
      <A2UISurface surfaceId="main" />
-   </A2UIProvider>
+   </A2UIProvider>;
    ```
 
    Common catalog types include `TextInput`, `TextAreaInput`, `NumberInput`, `SliderInput`, `SearchInput`, and `Progress` in addition to shared layout/content types like `Column`, `Text`, and `Button`.
 
-7. **Dark mode must persist between refreshes.** Every new app must:
+8. **Dark mode must persist between refreshes.** Every new app must:
 
    a. Add `class="tale-ui"` and `data-color-mode` to `<html>`:
 
    ```html
-   <html class="tale-ui" data-color-mode="light">
+   <html class="tale-ui" data-color-mode="light"></html>
    ```
 
    b. Include this inline script in `<head>` before any CSS or JS to avoid a flash of wrong theme:
 
    ```html
    <script>
-     (function() {
-       var mode = localStorage.getItem('color-mode')
-         || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+     (function () {
+       var mode =
+         localStorage.getItem('color-mode') ||
+         (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
        document.documentElement.setAttribute('data-color-mode', mode);
      })();
    </script>
@@ -103,7 +104,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
    ```tsx
    import { ColorModeToggle } from '@tale-ui/react/color-mode-toggle';
 
-   <ColorModeToggle />
+   <ColorModeToggle />;
    ```
 
 9. **Theming with category tokens.** Override component families in one place by setting category tokens on `:root`. These tokens are defined in `@tale-ui/react-styles` and default to the same semantic token values they replace — so changing them shifts the entire family simultaneously:
@@ -132,14 +133,14 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
    **Available category token families:**
 
-   | Family | Tokens | Components |
-   |---|---|---|
-   | `--field-*` | `--field-min-height`, `--field-padding-block`, `--field-padding-inline`, `--field-border-color`, `--field-radius`, `--field-bg`, `--field-color`, `--field-font-family`, `--field-font-size`, `--field-focus-border`, `--field-focus-glow`, `--field-placeholder-color`, `--field-label-color`, `--field-label-font-size`, `--field-label-font-weight`, `--field-description-color`, `--field-error-color` | Input, Select, Combobox, Autocomplete, SearchField, TextField, DateField, TimeField, PaymentInput + labels/descriptions/errors |
-   | `--popup-*` | `--popup-bg`, `--popup-border-color`, `--popup-radius`, `--popup-shadow` | Select, Combobox, Autocomplete, Menu, ContextMenu, Popover popups |
-   | `--item-*` | `--item-padding-block`, `--item-padding-inline`, `--item-gap`, `--item-radius`, `--item-color`, `--item-font-size`, `--item-focus-bg`, `--item-focus-color` | All dropdown/menu items |
-   | `--group-label-*` | `--group-label-color`, `--group-label-font-size` | Section headers in dropdowns/menus |
-   | `--modal-*` | `--modal-title-color`, `--modal-title-font-size`, `--modal-description-color`, `--modal-description-font-size`, `--modal-backdrop-bg`, `--modal-actions-gap` | AlertDialog, Dialog, Drawer |
-   | `--progress-*` | `--progress-track-height`, `--progress-track-bg`, `--progress-indicator-bg`, `--progress-radius` | ProgressBar, Meter |
+   | Family            | Tokens                                                                                                                                                                                                                                                                                                                                                                                                     | Components                                                                                                                     |
+   | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+   | `--field-*`       | `--field-min-height`, `--field-padding-block`, `--field-padding-inline`, `--field-border-color`, `--field-radius`, `--field-bg`, `--field-color`, `--field-font-family`, `--field-font-size`, `--field-focus-border`, `--field-focus-glow`, `--field-placeholder-color`, `--field-label-color`, `--field-label-font-size`, `--field-label-font-weight`, `--field-description-color`, `--field-error-color` | Input, Select, Combobox, Autocomplete, SearchField, TextField, DateField, TimeField, PaymentInput + labels/descriptions/errors |
+   | `--popup-*`       | `--popup-bg`, `--popup-border-color`, `--popup-radius`, `--popup-shadow`                                                                                                                                                                                                                                                                                                                                   | Select, Combobox, Autocomplete, Menu, ContextMenu, Popover popups                                                              |
+   | `--item-*`        | `--item-padding-block`, `--item-padding-inline`, `--item-gap`, `--item-radius`, `--item-color`, `--item-font-size`, `--item-focus-bg`, `--item-focus-color`                                                                                                                                                                                                                                                | All dropdown/menu items                                                                                                        |
+   | `--group-label-*` | `--group-label-color`, `--group-label-font-size`                                                                                                                                                                                                                                                                                                                                                           | Section headers in dropdowns/menus                                                                                             |
+   | `--modal-*`       | `--modal-title-color`, `--modal-title-font-size`, `--modal-description-color`, `--modal-description-font-size`, `--modal-backdrop-bg`, `--modal-actions-gap`                                                                                                                                                                                                                                               | AlertDialog, Dialog, Drawer                                                                                                    |
+   | `--progress-*`    | `--progress-track-height`, `--progress-track-bg`, `--progress-indicator-bg`, `--progress-radius`                                                                                                                                                                                                                                                                                                           | ProgressBar, Meter                                                                                                             |
 
 > **Bento note**: the snippet above is mirrored from [tale-ui's canonical source](/Users/admin/Projects/tale-ui/core/docs/consumer-claude-md-snippet.md). When tale-ui updates that file, re-sync this section. The Bento-specific layered design-system rules below build on top of these base rules — they don't replace them.
 
@@ -148,7 +149,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 - **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from `@tale-ui/react/*` and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
 - **Per-component imports only**: `import { Button } from '@tale-ui/react/button'`. Never `from '@tale-ui/react'` (the barrel). Same rule for `@tale-ui/react-styles` and `lucide-react`.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
-- **Perf budgets** (CI fails on regression): shell JS < 80 KB gz, shell CSS < 20 KB gz, tools < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
+- **Perf budgets** (CI fails on regression): shell JS < 120 KB gz (raised from 80 KB after Hello-Bento measured 73.7 KB; React 19 + react-aria-components baseline is ~70 KB), shell CSS < 20 KB gz, tools < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
 
 ## 🔔 Tale UI: development → release migration (DO BEFORE FIRST PUBLIC RELEASE)

@@ -10,7 +10,8 @@
   "scripts": {
     "download": "surfer download",
     "bootstrap": "surfer bootstrap",
-    "build": "surfer build",
+    "import": "surfer import",
+    "build": "surfer import && surfer build",
     "build:ui": "surfer build --ui",
     "package": "surfer package",
     "lc": "surfer license-check",
@@ -23,7 +24,7 @@
     "ext:build": "pnpm --filter @bento/shell build && pnpm --filter @bento/tools build"
   },
   "devDependencies": {
-    "@bento-browser/surfer": "github:Bento-Browser/surfer#9d175f1d1eef77866511725369098054f7099fc6",
+    "@bento-browser/surfer": "github:Bento-Browser/surfer#4079b9afa3a0bbc7bb7c2c4e9e85696581afdadc",
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.3.0",

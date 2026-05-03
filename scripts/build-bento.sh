@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Bento Browser — full pipeline wrapper.
-# Runs the four Surfer phases in order: download → bootstrap → build → package.
+# Runs the five Surfer phases in order:
+#   download → bootstrap → import (patches + extensions-copy) → build → package.
 
 set -euo pipefail
 
@@ -11,16 +12,19 @@ step() {
   printf '\n\033[1;34m==>\033[0m %s\n' "$1"
 }
 
-step "1/4 Fetching Firefox source (surfer download)"
+step "1/5 Fetching Firefox source (surfer download)"
 npx surfer download
 
-step "2/4 Bootstrapping Mozilla build environment (surfer bootstrap)"
+step "2/5 Bootstrapping Mozilla build environment (surfer bootstrap)"
 npx surfer bootstrap
 
-step "3/4 Building Bento Browser (surfer build)"
+step "3/5 Applying branding patches, extensions-copy, and git patches (surfer import)"
+npx surfer import
+
+step "4/5 Building Bento Browser (surfer build)"
 npx surfer build
 
-step "4/4 Packaging artifacts (surfer package)"
+step "5/5 Packaging artifacts (surfer package)"
 npx surfer package
 
 step "Done. Artifacts in dist/."
