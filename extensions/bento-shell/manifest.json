@@ -9,5 +9,9 @@
       "id": "bento-shell@bento.app",
       "strict_min_version": "150.0"
     }
+  },
+  "background": {
+    "scripts": ["dist/assets/background.js"],
+    "persistent": false
   }
 }

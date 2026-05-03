@@ -35,12 +35,19 @@ export default defineConfig(({ mode }) => ({
     cssCodeSplit: false,
     sourcemap: mode !== 'production',
     rollupOptions: {
-      input: { shell: resolve(__dirname, 'index.html') },
+      input: {
+        shell: resolve(__dirname, 'index.html'),
+        background: resolve(__dirname, 'src/background.ts'),
+      },
       output: {
         entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name].js',
         assetFileNames: 'assets/[name][extname]',
         format: 'es',
+        // Background runs in a privileged WebExtension context, not as an
+        // ES module — emit it as IIFE-flavored ESM that doesn't import
+        // anything else (no top-level await, no dynamic imports).
+        inlineDynamicImports: false,
       },
     },
   },

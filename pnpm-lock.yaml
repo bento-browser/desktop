@@ -86,6 +86,9 @@ importers:
       '@types/firefox-webext-browser':
         specifier: ^120.0.0
         version: 120.0.5
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
