@@ -4,6 +4,7 @@
   "short_name": "bento-shell",
   "version": "0.0.0",
   "description": "Bento Browser UI shell — privileged built-in extension.",
+  "hidden": true,
   "browser_specific_settings": {
     "gecko": {
       "id": "bento-shell@bento.app",
