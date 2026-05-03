@@ -2,7 +2,10 @@
 
 A Firefox-based browser with major UI customisations, built as a true fork that
 tracks upstream Firefox releases. Build orchestration is handled by
-[`@zen-browser/surfer`](https://github.com/zen-browser/surfer).
+[`@bento-browser/surfer`](https://github.com/Bento-Browser/surfer) — a fork of
+[`@zen-browser/surfer`](https://github.com/zen-browser/surfer) that templates
+the brand-specific URLs and installer fields. See
+[docs/maintaining-surfer.md](docs/maintaining-surfer.md) for fork maintenance.
 
 See the full project plan at [plans/bento-browser-plan.md](plans/bento-browser-plan.md).
 
@@ -41,6 +44,9 @@ npm run build:ui       # UI-only rebuild (faster iteration)
 npm run package        # produce platform installers
 npm run lc             # Surfer license check
 npm run build:full     # download → bootstrap → build → package
+npm run brand:regen    # regenerate engine/branding from surfer.json + configs/branding/
+                       # (run after editing brand colors, names, URLs, or assets;
+                       #  see docs/maintaining-surfer.md)
 ```
 
 ## Layout
