@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index d58fcdf998..7156bf69ee 100644
+index d58fcdf998..f9521a9b52 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -3,6 +3,37 @@
+@@ -3,6 +3,16 @@
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
  <hbox flex="1" id="browser">
@@ -15,28 +15,19 @@ index d58fcdf998..7156bf69ee 100644
 +             disablefullscreen="true"
 +             messagemanagergroup="browsers"/>
 +  </vbox>
-+  <script type="application/javascript"><![CDATA[
-+    // Resolve the bento-shell extension's per-profile UUID and set the
-+    // bento-shell-frame <browser> src dynamically. extensions.webextensions.uuids
-+    // is not honored for built-in addons, so the UUID is unknown at build time.
-+    (function() {
-+      function setBentoShellSrc() {
-+        const policy = WebExtensionPolicy.getByID("bento-shell@bento.app");
-+        if (!policy) {
-+          // Extension hasn't loaded yet; try again on the next tick.
-+          setTimeout(setBentoShellSrc, 50);
-+          return;
-+        }
-+        const frame = document.getElementById("bento-shell-frame");
-+        if (!frame) return;
-+        frame.setAttribute(
-+          "src",
-+          "moz-extension://" + policy.mozExtensionHostname + "/dist/index.html"
-+        );
-+      }
-+      setBentoShellSrc();
-+    })();
-+  ]]></script>
++  <script src="chrome://browser/content/bento-shell-mount.js"/>
    <box context="sidebar-context-menu" id="sidebar-main" hidden="true">
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
+diff --git a/browser/base/jar.mn b/browser/base/jar.mn
+index 7eaca95f7e..947cb8549a 100644
+--- a/browser/base/jar.mn
++++ b/browser/base/jar.mn
+@@ -53,6 +53,7 @@ browser.jar:
+         content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
+         content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
+         content/browser/browser-init.js                     (content/browser-init.js)
++        content/browser/bento-shell-mount.js                (content/bento-shell-mount.js)
+         content/browser/browser-main.js                     (content/browser-main.js)
+         content/browser/browser-menubar.js                  (content/browser-menubar.js)
+         content/browser/browser-pageActions.js              (content/browser-pageActions.js)
