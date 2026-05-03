@@ -17,7 +17,7 @@
     "brand:regen": "bash scripts/regen-branding.sh"
   },
   "devDependencies": {
-    "@bento-browser/surfer": "github:Bento-Browser/surfer#b95b759df2890d74d99dc84a10661cb96e3abba5"
+    "@bento-browser/surfer": "github:Bento-Browser/surfer#71437c678a1c97aa95801c533638ebccdd673cb0"
   },
   "license": "MPL-2.0"
 }

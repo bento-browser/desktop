@@ -83,6 +83,35 @@ When a new hardcoded string surfaces in upstream branding code:
 5. `npm run brand:regen && npm run build:ui` to verify the value lands in
    `engine/browser/branding/bento/`.
 
+## How extensions get bundled (the `extensions-copy` step)
+
+Upstream Surfer only copies `<repo>/src/` into the engine — it has no concept
+of an `<repo>/extensions/` folder. The Bento fork adds a patch step that runs
+between `importFolders` and `importGitPatch` in
+[src/commands/patches/command.ts](https://github.com/Bento-Browser/surfer/blob/main/src/commands/patches/command.ts):
+
+1. Scans `<repo>/extensions/` for top-level folders.
+2. Skips folders whose names start with `_` (e.g. `_shared` shared TS sources).
+3. Skips folders without a `manifest.json`.
+4. Reads each remaining folder's `manifest.json` `applications.gecko.id`
+   (or `browser_specific_settings.gecko.id`); skips with a warning if absent.
+5. Wipes `engine/browser/extensions/<name>/`, copies the folder in,
+   generates `moz.build` mirroring the addon-mozbuild format
+   (`FINAL_TARGET_FILES.features["<gecko-id>"]...`).
+6. Appends `DIRS += [...]` to `engine/browser/extensions/moz.build` after
+   discarding any prior changes (so the line is rewritten on every build).
+
+For a folder under `extensions/` to ship as a built-in extension, it must:
+
+- Have a top-level `manifest.json` with `applications.gecko.id` (or the MV3
+  equivalent `browser_specific_settings.gecko.id`).
+- Have its built artifacts present at copy time — Surfer copies whatever is
+  on disk, so run the extension's own build (`pnpm --filter @bento/shell build`)
+  before `surfer build` if the extension is JS-bundled.
+
+See [src/commands/patches/extensions-copy.ts](https://github.com/Bento-Browser/surfer/blob/main/src/commands/patches/extensions-copy.ts)
+in the fork.
+
 ## `brand:regen` — when and why
 
 Surfer skips the branding apply step when *all three* of these are true:
