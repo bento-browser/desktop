@@ -1,27 +1,9 @@
-// Binds the OS prefers-color-scheme to <html data-theme="..."> so Tale UI's
-// color-mode CSS picks it up automatically. Tale UI keys off both
-// data-color-mode (set by the inline boot script in index.html for
-// flash-of-wrong-theme prevention) and data-theme (set here for OS changes
-// after boot).
-import { useEffect } from 'react';
-
+// The Bento sidebar pins to dark mode regardless of OS prefs (matches the
+// brand). data-color-mode + data-theme are set in boot.js before any CSS
+// loads, and we don't want to flip them at runtime. This hook is kept as
+// a no-op so callers don't have to refactor — it'll grow real behavior
+// (per-workspace data-workspace-color binding) when workspaces land in
+// M1-PR-3.
 export function useFirefoxTheme(): void {
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const mode = mql.matches ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', mode);
-      // Only update color-mode if the user hasn't explicitly chosen — the
-      // ColorModeToggle persists its choice to localStorage.
-      if (!localStorage.getItem('color-mode')) {
-        document.documentElement.setAttribute('data-color-mode', mode);
-      }
-    };
-
-    apply();
-    mql.addEventListener('change', apply);
-    return () => mql.removeEventListener('change', apply);
-  }, []);
+  // intentionally empty
 }

@@ -13,11 +13,13 @@ import '../src/theme/bento-tokens.css';
 import '../src/theme/bento-fonts.css';
 import '../src/app.css';
 
-export const Provider: GlobalProvider = ({ children, globalState }) => {
-  // Sync Ladle's color-mode toggle with Tale UI's data-color-mode attribute.
+export const Provider: GlobalProvider = ({ children }) => {
+  // The Bento sidebar pins to dark mode (matches brand bg). Ignore Ladle's
+  // theme toggle so stories show what the real shell shows. M3+ may add
+  // a separate light-theme variant if Bento ever gains a light sidebar.
   if (typeof document !== 'undefined') {
-    document.documentElement.setAttribute('data-color-mode', globalState.theme);
-    document.documentElement.setAttribute('data-theme', globalState.theme);
+    document.documentElement.setAttribute('data-color-mode', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
     document.documentElement.classList.add('tale-ui');
   }
   return (
