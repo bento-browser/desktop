@@ -33,16 +33,17 @@ const FAVICON_URLS: Record<number, string | undefined> = {
 };
 
 export function makeTab(overrides: Partial<TabSnapshot> & { id: number }): TabSnapshot {
+  const { id, ...rest } = overrides;
   return {
-    id: overrides.id,
+    id,
     windowId: 1,
-    index: overrides.id,
-    title: SAMPLE_TITLES[overrides.id % SAMPLE_TITLES.length] ?? `Tab ${overrides.id}`,
-    favIconUrl: FAVICON_URLS[overrides.id % SAMPLE_TITLES.length],
+    index: id,
+    title: SAMPLE_TITLES[id % SAMPLE_TITLES.length] ?? `Tab ${id}`,
+    favIconUrl: FAVICON_URLS[id % SAMPLE_TITLES.length],
     active: false,
     pinned: false,
     audible: false,
-    ...overrides,
+    ...rest,
   };
 }
 
