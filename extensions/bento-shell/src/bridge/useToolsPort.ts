@@ -4,9 +4,14 @@
 // the exported `dispatch` function (§4.2 mirror pattern).
 
 import type { Action, Event } from '@shared/protocol';
-import { SHELL_TOOLS_PORT } from '@shared/protocol';
 import { useSyncExternalStore } from 'react';
 import { useTabsStore } from '../state/tabs';
+
+// Document context can't reliably runtime.connect to bento-tools when loaded
+// inside a chrome <browser> mount (cross-process extension restrictions).
+// Instead we connect to bento-shell's own background page which has the
+// reliable cross-extension port and relays events both ways.
+const DOCUMENT_PORT_NAME = 'shell-document';
 
 interface PortState {
   port: browser.runtime.Port | null;
@@ -22,19 +27,20 @@ function notify() {
 
 function ensureConnection(): void {
   if (state.port) return;
+  console.log('[bento-shell document] ensureConnection — browser:', typeof browser);
   if (typeof browser === 'undefined' || !browser.runtime?.connect) {
-    // Standalone Vite dev server: leave port null. M1+ bridge/ mock layer
-    // can swap a fake port in here for local UI iteration.
+    console.warn('[bento-shell document] no browser.runtime.connect — skipping');
     return;
   }
 
-  const port = browser.runtime.connect('bento-tools@bento.app', {
-    name: SHELL_TOOLS_PORT,
-  });
+  console.log('[bento-shell document] connecting to own background…');
+  const port = browser.runtime.connect({ name: DOCUMENT_PORT_NAME });
   state.port = port;
+  console.log('[bento-shell document] port created');
 
   port.onMessage.addListener((message: object) => {
     const event = message as Event;
+    console.log('[bento-shell document] event:', event.type, event);
     switch (event.type) {
       case 'tools/booted':
         state.ready = true;
