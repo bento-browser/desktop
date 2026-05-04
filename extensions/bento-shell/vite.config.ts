@@ -41,19 +41,16 @@ export default defineConfig(({ mode }) => ({
     cssCodeSplit: false,
     sourcemap: mode !== 'production',
     rollupOptions: {
-      input: {
-        shell: resolve(__dirname, 'index.html'),
-        background: resolve(__dirname, 'src/background.ts'),
-      },
+      // background.ts is built separately by esbuild as IIFE — see
+      // package.json `build:background` script. Vite emits ES modules
+      // (correct for the index.html entry that loads via type=module)
+      // but MV2 background.scripts requires classic-script format.
+      input: { shell: resolve(__dirname, 'index.html') },
       output: {
         entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name].js',
         assetFileNames: 'assets/[name][extname]',
         format: 'es',
-        // Background runs in a privileged WebExtension context, not as an
-        // ES module — emit it as IIFE-flavored ESM that doesn't import
-        // anything else (no top-level await, no dynamic imports).
-        inlineDynamicImports: false,
       },
     },
   },
