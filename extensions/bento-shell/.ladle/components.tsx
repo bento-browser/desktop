@@ -2,6 +2,7 @@
 // so components render exactly as they would in the real shell.
 import type { GlobalProvider } from '@ladle/react';
 
+import '@tale-ui/core';
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/text';
@@ -11,7 +12,8 @@ import '@tale-ui/react-styles/icon';
 
 import '../src/theme/bento-tokens.css';
 import '../src/theme/bento-fonts.css';
-import '../src/app.css';
+// Intentionally not importing src/app.css — its html/body/#root rules
+// override Ladle's layout. Stories use SidebarFrame to constrain width.
 
 export const Provider: GlobalProvider = ({ children }) => {
   // The Bento sidebar pins to dark mode (matches brand bg). Ignore Ladle's

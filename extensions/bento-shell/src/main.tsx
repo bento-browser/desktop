@@ -3,6 +3,12 @@
 import { StrictMode } from 'react';
 import { hydrateRoot, createRoot } from 'react-dom/client';
 
+// @tale-ui/core defines the design token system + data-color-mode rules.
+// Without this loaded, tokens like --neutral-90 don't have values and
+// dark-mode selectors don't apply. Per-component @tale-ui/react-styles
+// imports use these tokens but don't define them.
+import '@tale-ui/core';
+
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/text';
