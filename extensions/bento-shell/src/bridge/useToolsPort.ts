@@ -43,6 +43,11 @@ function ensureConnection(): void {
       case 'tools/booted':
         state.ready = true;
         notify();
+        // The cached snapshot relayed by bento-shell background may be from
+        // a moment when tools' TabRegistry hadn't yet captured all startup
+        // tabs. Ask for a fresh one — applySnapshot replaces, not merges,
+        // so this can only fix things, never lose tabs.
+        dispatch({ type: 'tabs/requestSnapshot' });
         return;
       case 'tabs/snapshot':
         useTabsStore.getState().applySnapshot(event.tabs);

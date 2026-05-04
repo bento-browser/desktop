@@ -27,16 +27,22 @@ export class TabRegistry {
   #listeners = new Set<Listener>();
 
   async init(): Promise<void> {
-    const all = await browser.tabs.query({});
-    for (const t of all) {
-      const snap = toSnapshot(t);
-      if (snap.id !== -1) this.#tabs.set(snap.id, snap);
-    }
+    // Register listeners FIRST so we don't miss tabs created during the
+    // initial query's await. Firefox can emit onCreated for startup tabs
+    // in that window — without listeners up first those events are lost.
     browser.tabs.onCreated.addListener(this.#onCreated);
     browser.tabs.onUpdated.addListener(this.#onUpdated);
     browser.tabs.onRemoved.addListener(this.#onRemoved);
     browser.tabs.onActivated.addListener(this.#onActivated);
     browser.tabs.onMoved.addListener(this.#onMoved);
+
+    const all = await browser.tabs.query({});
+    for (const t of all) {
+      const snap = toSnapshot(t);
+      if (snap.id === -1) continue;
+      // Set only if a concurrent onCreated didn't already insert it.
+      if (!this.#tabs.has(snap.id)) this.#tabs.set(snap.id, snap);
+    }
   }
 
   snapshot(): TabSnapshot[] {
