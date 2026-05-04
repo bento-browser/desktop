@@ -10,8 +10,8 @@
   "scripts": {
     "download": "surfer download",
     "bootstrap": "surfer bootstrap",
-    "import": "surfer import",
-    "build": "pnpm run ext:build && surfer import && surfer build",
+    "import": "surfer import && bash scripts/append-prefs.sh",
+    "build": "pnpm run ext:build && pnpm run import && surfer build",
     "build:ui": "surfer build --ui",
     "package": "surfer package",
     "lc": "surfer license-check",

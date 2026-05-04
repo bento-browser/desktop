@@ -45,18 +45,8 @@ echo "branding cache cleared for brand '$BRAND'. Running 'surfer import' to rege
 # branding folder from configs/branding/<brand>/ and surfer.json.
 npx surfer import
 
-# Append Bento default prefs to firefox-branding.js so they ship as branding
-# defaults. Firefox loads this file automatically; appending avoids needing a
-# separate pref file with its own moz.build entry.
-PREFS_SRC="prefs/bento.js"
-PREFS_DEST="$ENGINE_BRAND_DIR/pref/firefox-branding.js"
-if [ -f "$PREFS_SRC" ] && [ -f "$PREFS_DEST" ]; then
-  {
-    echo ""
-    echo "// === Bento defaults (appended from prefs/bento.js by regen-branding.sh) ==="
-    cat "$PREFS_SRC"
-  } >> "$PREFS_DEST"
-  echo "appended $PREFS_SRC -> $PREFS_DEST"
-fi
+# Append Bento defaults via the shared script (also runs after every
+# `npm run import` / `npm run build` so prefs survive subsequent imports).
+bash "$REPO_ROOT/scripts/append-prefs.sh"
 
 echo "branding regenerated."
