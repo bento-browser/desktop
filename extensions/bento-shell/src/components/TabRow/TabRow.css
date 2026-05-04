@@ -1,8 +1,12 @@
-/* Layer-2 component: TabRow. Built only on Tale UI primitives + tokens.
- * Per §6.4: content-visibility lets the browser skip layout for off-screen
- * rows once virtualization is in place. */
+/* Layer-2 component: TabRow. 3-column grid (favicon | title | close) gives
+ * the title row exactly the available middle space and ellipsis-truncates
+ * cleanly without needing flex min-width-0 gymnastics on Tale UI's Row. */
 @layer bento.components {
   .bento-tab-row {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-xs);
     height: var(--bento-tab-row-height);
     padding-block: var(--space-2xs);
     padding-inline: var(--space-xs);
@@ -11,7 +15,7 @@
     cursor: pointer;
     user-select: none;
     overflow: hidden;
-    /* Skip layout/paint when scrolled off-screen */
+    /* Skip layout/paint when scrolled off-screen (§6.4). */
     content-visibility: auto;
     contain-intrinsic-size: var(--bento-tab-row-height);
   }
@@ -28,15 +32,13 @@
     width: 16px;
     height: 16px;
     border-radius: var(--radius-2xs);
-    flex-shrink: 0;
   }
 
   .bento-tab-row__favicon--placeholder {
     background-color: var(--neutral-30);
   }
 
-  .bento-tab-row .tale-text {
-    flex: 1;
+  .bento-tab-row > .tale-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -44,7 +46,6 @@
   }
 
   .bento-tab-row__close {
-    flex-shrink: 0;
     opacity: 0;
     transition: opacity 0.1s ease;
   }

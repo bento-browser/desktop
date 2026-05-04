@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
@@ -21,9 +20,7 @@ function TabRowImpl({ id, active, onActivate, onClose }: TabRowProps) {
   if (!tab) return null;
 
   return (
-    <Row
-      gap="xs"
-      align="center"
+    <div
       className={`bento-tab-row${active ? ' bento-tab-row--active' : ''}`}
       onClick={() => onActivate(id)}
     >
@@ -44,7 +41,7 @@ function TabRowImpl({ id, active, onActivate, onClose }: TabRowProps) {
       >
         <Icon icon={X} />
       </IconButton>
-    </Row>
+    </div>
   );
 }
 
