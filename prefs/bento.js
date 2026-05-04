@@ -67,8 +67,12 @@ pref("browser.startup.upgradeDialog.enabled", false);
 pref("browser.preferences.moreFromMozilla", false);
 
 // --- Bento UI shell mount -------------------------------------------------
-// Fixed UUID mapping so the bento-shell extension's moz-extension:// URL is
-// stable across installs and profiles. browser-box.inc.xhtml references
-// moz-extension://<this-uuid>/dist/index.html as the shell mount source.
-// If you change this UUID, also update the chrome-layout patch.
-pref("extensions.webextensions.uuids", '{"bento-shell@bento.app":"24ed8e7c-1e08-4981-afae-88ffef2b0a3e"}');
+// (extensions.webextensions.uuids isn't honored for built-in addons —
+// the chrome resolver script reads the assigned UUID at runtime instead.)
+
+// --- Developer iteration --------------------------------------------------
+// Bypass HTTP cache whenever DevTools/Browser Toolbox is open so reloads
+// of the chrome-mounted shell pick up fresh dist/ files without needing
+// reloadWithFlags. End users never have DevTools open, so this has zero
+// production effect.
+pref("devtools.cache.disabled", true);
