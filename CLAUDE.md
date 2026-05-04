@@ -167,10 +167,48 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 ## Dev loop
 
-- **Fastest UI iteration**: `pnpm --filter @bento/shell dev` → `http://localhost:5179`. The shell's `bridge/` layer mocks `browser.*` APIs in this context, so 95% of UI work happens here without touching Firefox.
-- **Component lab**: `pnpm --filter @bento/shell ladle:serve`.
-- **Real-browser smoke test (slow — minutes)**: `pnpm --filter @bento/shell build && npm run build`, then launch the binary.
-- **Don't run `surfer build` on every change** — use the Vite dev server. Only do a full Bento build when chrome integration genuinely matters.
+Pick the fastest loop for what you're changing.
+
+### A. Pure component design (visual states, props, styling)
+
+```sh
+pnpm --filter @bento/shell ladle:serve   # http://localhost:5180
+```
+
+Stories live next to components: `src/components/<Name>/<Name>.stories.tsx`. Edit → instant HMR. Use `src/state/__fixtures__/tabs.ts` (or write a similar fixture file) to seed Zustand with fake data — no real `browser.*` API.
+
+### B. Standalone shell preview (full React app, no Firefox)
+
+```sh
+pnpm --filter @bento/shell dev   # http://localhost:5179
+```
+
+The `bridge/` layer should mock `browser.*` here (M1+ work — not built yet). Until then, this only renders the empty/connecting state.
+
+### C. Real Bento iteration (when chrome integration / `browser.tabs.*` / messaging matters)
+
+Launch once with `--jsdebugger` so the Browser Toolbox is open (the dev prefs `devtools.cache.disabled` and `devtools.debugger.prompt-connection` rely on this — set in `prefs/bento.js`):
+
+```sh
+engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento \
+  --new-instance --jsdebugger --profile $(mktemp -d)
+```
+
+Then iterate by what you changed:
+
+| Changed                                                     | Build command                                                                                    | Reload                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && npx surfer import`                                          | Browser Toolbox console: `document.getElementById('bento-shell-frame').reload()` |
+| `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                               |
+| `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && npx surfer import`                                          | Quit + relaunch                                                                  |
+| `patches/`, `src/browser/`, `prefs/bento.js`, `surfer.json` | `npm run build` (~15 s — mach build is mostly cached)                                            | Quit + relaunch                                                                  |
+| Surfer fork itself                                          | Push to `Bento-Browser/surfer`, bump SHA in `package.json`, `pnpm install`, then `npm run build` | Quit + relaunch                                                                  |
+
+`npm run build` already chains: `ext:build` → `surfer import` (which also runs `scripts/append-prefs.sh` to keep `prefs/bento.js` in `engine/browser/app/profile/firefox.js` so dev prefs survive) → `surfer build`.
+
+`npm run brand:regen` is for when **branding** assets change (`surfer.json` brand fields, `configs/branding/<brand>/**`). It wipes the engine branding dir and re-imports — slower than `surfer import` alone.
+
+**Don't run `npm run build` on every UI change** — the table above's `pnpm --filter ... build && npx surfer import + frame.reload()` loop is ~3 seconds. Reserve full builds for chrome / engine changes.
 
 ## Repo crosswalk
 
