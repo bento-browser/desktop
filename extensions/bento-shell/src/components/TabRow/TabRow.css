@@ -21,17 +21,21 @@
   }
 
   .bento-tab-row:hover {
-    background-color: color-mix(in srgb, var(--bento-workspace-accent-soft) 50%, transparent);
+    background-color: color-mix(in srgb, var(--neutral-90) 8%, transparent);
   }
 
   .bento-tab-row--active {
-    background-color: var(--bento-workspace-accent-soft);
+    background-color: color-mix(in srgb, var(--neutral-90) 16%, transparent);
+  }
+
+  .bento-tab-row--active .tale-text {
+    color: var(--neutral-5);
   }
 
   .bento-tab-row__favicon {
     width: 16px;
     height: 16px;
-    border-radius: var(--radius-2xs);
+    border-radius: var(--radius-xs);
   }
 
   .bento-tab-row__favicon--placeholder {
