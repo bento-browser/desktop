@@ -76,3 +76,9 @@ pref("browser.preferences.moreFromMozilla", false);
 // reloadWithFlags. End users never have DevTools open, so this has zero
 // production effect.
 pref("devtools.cache.disabled", true);
+
+// Skip the Browser Toolbox 'Incoming Connection' prompt on every --jsdebugger
+// launch. Same dev-only zero-impact-for-end-users tradeoff. Note that
+// disabling this prompt only matters when chrome.debugger.remote-enabled
+// is on (which --jsdebugger turns on temporarily for the session).
+pref("devtools.debugger.prompt-connection", false);
