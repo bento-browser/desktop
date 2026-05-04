@@ -3,8 +3,15 @@
 import type { GlobalProvider } from '@ladle/react';
 
 import '@tale-ui/react-styles/button';
+import '@tale-ui/react-styles/icon-button';
+import '@tale-ui/react-styles/text';
+import '@tale-ui/react-styles/column';
+import '@tale-ui/react-styles/row';
+import '@tale-ui/react-styles/icon';
+
 import '../src/theme/bento-tokens.css';
 import '../src/theme/bento-fonts.css';
+import '../src/app.css';
 
 export const Provider: GlobalProvider = ({ children, globalState }) => {
   // Sync Ladle's color-mode toggle with Tale UI's data-color-mode attribute.
@@ -13,5 +20,16 @@ export const Provider: GlobalProvider = ({ children, globalState }) => {
     document.documentElement.setAttribute('data-theme', globalState.theme);
     document.documentElement.classList.add('tale-ui');
   }
-  return <>{children}</>;
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: 'var(--bento-brand-bg)',
+        color: 'var(--neutral-90)',
+        padding: '1rem',
+      }}
+    >
+      {children}
+    </div>
+  );
 };
