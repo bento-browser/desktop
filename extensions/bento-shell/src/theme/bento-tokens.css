@@ -16,7 +16,7 @@
     --bento-workspace-accent-soft: var(--color-20);
 
     /* Vertical tab strip dimensions */
-    --bento-tab-row-height: 28px;
+    --bento-tab-row-height: 3.2rem;
     --bento-tab-strip-width: 240px;
     --bento-tab-strip-width-collapsed: 48px;
 
@@ -25,8 +25,30 @@
     --bento-panel-handle-width: 4px;
     --bento-panel-handle-hover-width: 8px;
 
-    /* Brand */
-    --bento-brand-bg: #282a33; /* matches surfer.json backgroundColor */
+    /* Brand. light-dark() picks based on color-scheme (set in index.html);
+       useFirefoxTheme() keeps data-color-mode in sync so Tale UI tokens
+       flip together. The dark value mirrors surfer.json's backgroundColor;
+       light is a slate-tinted off-white that pairs with Tale UI's neutral-
+       cool ramp. */
+    --bento-brand-bg: light-dark(#f7f8fa, #282a33);
+
+    /* Component dimensions */
+    --bento-favicon-size: 1.6rem;
+
+    /* Surfaces — translucent overlays used for hover/active states on top
+       of the brand background. Tinting --neutral-90 keeps the overlay
+       neutral-tone-aware when Tale UI's palette flips. */
+    --bento-surface-hover: color-mix(in srgb, var(--neutral-90) 8%, transparent);
+    --bento-surface-active: color-mix(in srgb, var(--neutral-90) 16%, transparent);
+
+    /* Borders. Hairline width is a CSS convention; consumers write
+       `1px solid var(--bento-border-color-subtle)`. */
+    --bento-border-color-subtle: color-mix(in srgb, currentColor 10%, transparent);
+
+    /* Motion */
+    --bento-duration-fast: 100ms;
+    --bento-duration-base: 200ms;
+    --bento-easing-standard: ease;
   }
 
   /* Per-workspace accent presets. Add more as the user creates workspaces.

@@ -4,6 +4,7 @@
 // deltas to this store.
 
 import { create } from 'zustand';
+import { useShallow } from 'zustand/shallow';
 import type { TabDelta, TabSnapshot } from '@shared/protocol';
 
 interface TabsState {
@@ -85,4 +86,24 @@ export const useTabsStore = create<TabsState>((set) => ({
 /** Selector hook: subscribes only to the tab with this id, not the whole map. */
 export function useTab(id: number): TabSnapshot | undefined {
   return useTabsStore((s) => s.byId[id]);
+}
+
+/** Returns ordered tab ids belonging to the given workspace (or unassigned).
+ * Unassigned tabs surface in every workspace so they're never invisibly
+ * hidden — covers the brief post-create assignment window and pre-workspace
+ * tabs from a first boot. useShallow keeps the array reference stable between
+ * renders so TabList only re-renders when the filtered set actually changes. */
+export function useWorkspaceTabIds(workspaceId: string | null): number[] {
+  return useTabsStore(
+    useShallow((s) => {
+      if (!workspaceId) return s.orderedIds;
+      const out: number[] = [];
+      for (const id of s.orderedIds) {
+        const tab = s.byId[id];
+        if (!tab) continue;
+        if (!tab.workspaceId || tab.workspaceId === workspaceId) out.push(id);
+      }
+      return out;
+    }),
+  );
 }

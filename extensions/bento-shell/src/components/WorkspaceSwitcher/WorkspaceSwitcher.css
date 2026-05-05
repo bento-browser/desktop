@@ -1,0 +1,51 @@
+/* Layer-2 component: WorkspaceSwitcher.
+ *
+ * The avatar uses the per-workspace accent set on its own element via
+ * data-workspace-color="..." (see bento-tokens.css). Because Tale UI's
+ * --bento-workspace-accent-* tokens cascade from the element they're
+ * declared on, this lets each menu row tint its own avatar with that
+ * workspace's color while the active workspace's color also propagates
+ * to <html data-workspace-color> for the broader UI accent. */
+
+/* Avatar accent override — Tale UI's .tale-avatar { background-color }
+ * rule is UNLAYERED, so a @layer-wrapped rule loses regardless of
+ * specificity (CSS spec: any unlayered rule outranks any layered rule).
+ * Keep this rule outside @layer so it can override Tale UI's default. */
+.tale-avatar.bento-workspace-switcher__avatar {
+  background-color: var(--bento-workspace-accent-soft);
+  color: var(--bento-workspace-accent);
+}
+
+@layer bento.components {
+  .bento-workspace-switcher__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding-block: var(--space-2xs);
+    padding-inline: var(--space-xs);
+    border: 0;
+    background-color: transparent;
+    color: var(--neutral-90-fg);
+    border-radius: var(--radius-s);
+    cursor: pointer;
+    transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
+  }
+
+  .bento-workspace-switcher__trigger:hover {
+    background-color: var(--bento-surface-hover);
+  }
+
+  .bento-workspace-switcher__chevron {
+    margin-left: auto;
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+
+  .bento-workspace-switcher__item-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

@@ -21,6 +21,13 @@
   .bento-shell-app__header {
     padding-block: var(--space-xs);
     padding-inline: var(--space-s);
-    border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+    border-bottom: 1px solid var(--bento-border-color-subtle);
+  }
+
+  .bento-shell-app__footer {
+    padding-block: var(--space-2xs);
+    padding-inline: var(--space-2xs);
+    border-top: 1px solid var(--bento-border-color-subtle);
+    justify-content: flex-end;
   }
 }

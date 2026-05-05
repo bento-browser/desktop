@@ -8,6 +8,8 @@
 import type { Action, Event } from '@shared/protocol';
 import { useSyncExternalStore } from 'react';
 import { useTabsStore } from '../state/tabs';
+import { useWorkspacesStore } from '../state/workspaces';
+import { useSettingsStore } from '../state/settings';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -42,18 +44,34 @@ function ensureConnection(): void {
     switch (event.type) {
       case 'tools/booted':
         state.ready = true;
+        // Marks paired with bento.boot in main.tsx. Idempotent — performance
+        // marks dedupe internally if the bus replays this event.
+        performance.mark('bento.toolsReady');
+        performance.measure('bento.bootToToolsReady', 'bento.boot', 'bento.toolsReady');
         notify();
         // The cached snapshot relayed by bento-shell background may be from
         // a moment when tools' TabRegistry hadn't yet captured all startup
         // tabs. Ask for a fresh one — applySnapshot replaces, not merges,
         // so this can only fix things, never lose tabs.
         dispatch({ type: 'tabs/requestSnapshot' });
+        dispatch({ type: 'workspaces/requestSnapshot' });
+        dispatch({ type: 'settings/requestSnapshot' });
         return;
       case 'tabs/snapshot':
         useTabsStore.getState().applySnapshot(event.tabs);
         return;
       case 'tabs/changed':
         useTabsStore.getState().applyDeltas(event.deltas);
+        return;
+      case 'workspaces/snapshot':
+        useWorkspacesStore.getState().applySnapshot(event.workspaces, event.activeId);
+        return;
+      case 'workspaces/changed':
+        useWorkspacesStore.getState().applyDeltas(event.deltas);
+        return;
+      case 'settings/snapshot':
+      case 'settings/changed':
+        useSettingsStore.getState().apply(event.settings);
         return;
       case 'pong':
         return;

@@ -8,34 +8,82 @@
 //    extension page (cross-process restrictions silently swallow the
 //    connection), but BroadcastChannel works across all same-origin contexts
 //    regardless of process boundaries.
+//
+// Reconnect logic: built-in addons load alphabetically, so bento-shell starts
+// before bento-tools. On a fresh profile the first connect attempt fires
+// before tools' onConnectExternal listener exists — the port disconnects
+// immediately. Persistent profiles avoid this because the addon system
+// hot-loads both quickly. We retry with backoff so fresh profiles work too.
 
 import type { Action, Event } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
 const CHANNEL_NAME = 'bento-shell-bus';
+const RECONNECT_BASE_MS = 200;
+const RECONNECT_MAX_MS = 5000;
 
 console.log('[bento-shell] boot (background)', new Date().toISOString());
 
-const toolsPort = browser.runtime.connect('bento-tools@bento.app', {
-  name: SHELL_TOOLS_PORT,
-});
-
 const channel = new BroadcastChannel(CHANNEL_NAME);
 
+let toolsPort: browser.runtime.Port | null = null;
+let reconnectDelay = RECONNECT_BASE_MS;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let firstMessageReceived = false;
+
 let lastBooted: Event | null = null;
-let lastSnapshot: Event | null = null;
+let lastTabsSnapshot: Event | null = null;
+let lastWorkspacesSnapshot: Event | null = null;
 
-toolsPort.onMessage.addListener((message: object) => {
-  const event = message as Event;
-  console.log('[bento-shell] tools said:', event.type);
-  if (event.type === 'tools/booted') lastBooted = event;
-  if (event.type === 'tabs/snapshot') lastSnapshot = event;
-  // Broadcast to all document contexts at moz-extension://<uuid>/.
-  channel.postMessage({ kind: 'event', event });
-});
+function scheduleReconnect(): void {
+  if (reconnectTimer) return;
+  console.log('[bento-shell] reconnecting to tools in', reconnectDelay, 'ms');
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectTools();
+  }, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+}
 
-toolsPort.onDisconnect.addListener(() => {
-  console.log('[bento-shell] tools port disconnected');
+function connectTools(): void {
+  console.log('[bento-shell] connecting to bento-tools…');
+  const port = browser.runtime.connect('bento-tools@bento.app', {
+    name: SHELL_TOOLS_PORT,
+  });
+  toolsPort = port;
+  firstMessageReceived = false;
+
+  port.onMessage.addListener((message: object) => {
+    const event = message as Event;
+    if (!firstMessageReceived) {
+      firstMessageReceived = true;
+      reconnectDelay = RECONNECT_BASE_MS; // reset backoff on healthy port
+    }
+    console.log('[bento-shell] tools said:', event.type);
+    if (event.type === 'tools/booted') lastBooted = event;
+    if (event.type === 'tabs/snapshot') lastTabsSnapshot = event;
+    if (event.type === 'workspaces/snapshot') lastWorkspacesSnapshot = event;
+    channel.postMessage({ kind: 'event', event });
+  });
+
+  port.onDisconnect.addListener(() => {
+    console.log(
+      '[bento-shell] tools port disconnected (firstMessageReceived=',
+      firstMessageReceived,
+      ')',
+    );
+    if (toolsPort === port) toolsPort = null;
+    // Always retry. On fresh profiles tools may not be listening yet; on
+    // long-running sessions it may have been reloaded via dev-reload.
+    scheduleReconnect();
+  });
+}
+
+connectTools();
+
+// Dev reload: Alt+Shift+R rebuilds extension state from disk.
+browser.commands.onCommand.addListener((command) => {
+  if (command === 'dev-reload') browser.runtime.reload();
 });
 
 // Document → background → tools (Actions) and document hello-replay.
@@ -44,6 +92,10 @@ channel.addEventListener('message', (msg) => {
   if (!data || typeof data !== 'object') return;
 
   if (data.kind === 'action') {
+    if (!toolsPort) {
+      console.warn('[bento-shell] action dropped — tools port not connected:', data.action?.type);
+      return;
+    }
     try {
       toolsPort.postMessage(data.action as Action);
     } catch (err) {
@@ -57,7 +109,9 @@ channel.addEventListener('message', (msg) => {
     // have to wait for the next delta from tools.
     console.log('[bento-shell] document hello — replaying state');
     if (lastBooted) channel.postMessage({ kind: 'event', event: lastBooted });
-    if (lastSnapshot) channel.postMessage({ kind: 'event', event: lastSnapshot });
+    if (lastTabsSnapshot) channel.postMessage({ kind: 'event', event: lastTabsSnapshot });
+    if (lastWorkspacesSnapshot)
+      channel.postMessage({ kind: 'event', event: lastWorkspacesSnapshot });
     return;
   }
 });

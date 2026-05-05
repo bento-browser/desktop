@@ -70,6 +70,16 @@ pref("browser.preferences.moreFromMozilla", false);
 // (extensions.webextensions.uuids isn't honored for built-in addons —
 // the chrome resolver script reads the assigned UUID at runtime instead.)
 
+// --- Bento M2 prefs -------------------------------------------------------
+// Documented here for visibility on the Privacy Dashboard and as the source
+// of truth for default behavior. The bento-tools extension can't read prefs
+// directly without an experiment API, so these values are mirrored as
+// constants in the relevant TS modules (SleepPolicy.ts, etc.) for now.
+pref("bento.workspace.default", "personal");
+pref("bento.panels.minWidth", 240);
+pref("bento.tabs.sleep.afterMinutes", 30);
+pref("bento.commandPalette.enabled", true);
+
 // --- Developer iteration --------------------------------------------------
 // Bypass HTTP cache whenever DevTools/Browser Toolbox is open so reloads
 // of the chrome-mounted shell pick up fresh dist/ files without needing

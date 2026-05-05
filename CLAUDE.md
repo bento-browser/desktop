@@ -149,8 +149,10 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 - **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from `@tale-ui/react/*` and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
 - **Per-component imports only**: `import { Button } from '@tale-ui/react/button'`. Never `from '@tale-ui/react'` (the barrel). Same rule for `@tale-ui/react-styles` and `lucide-react`.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
-- **Perf budgets** (CI fails on regression): shell JS < 120 KB gz (raised from 80 KB after Hello-Bento measured 73.7 KB; React 19 + react-aria-components baseline is ~70 KB), shell CSS < 20 KB gz, tools < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
+- **Perf budgets** (CI fails on regression via [.size-limit.json](.size-limit.json)): shell cold-start JS < 125 KB gz (raised from 80 KB → 120 KB → 125 KB as Hello-Bento, react-aria-components, and the bus + Tale UI Text shared chunks established the realistic floor), settings cold-start JS < 100 KB gz, privacy cold-start JS < 80 KB gz, shell CSS < 24 KB gz (raised from 20 KB after `_primitives.css` plus 8 component stylesheets settled the floor), tools < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
+- **No raw design values in component CSS**: components reference Tale UI tokens (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, etc.) or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a needed value doesn't exist as a token, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired `--neutral-N-fg` token, not a raw neutral.
+- **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
 
 ## 🔔 Tale UI: development → release migration (DO BEFORE FIRST PUBLIC RELEASE)
 
@@ -196,19 +198,25 @@ engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento \
 
 Then iterate by what you changed:
 
-| Changed                                                     | Build command                                                                                    | Reload                                                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && npx surfer import`                                          | Browser Toolbox console: `document.getElementById('bento-shell-frame').reload()` |
-| `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                               |
-| `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && npx surfer import`                                          | Quit + relaunch                                                                  |
-| `patches/`, `src/browser/`, `prefs/bento.js`, `surfer.json` | `npm run build` (~15 s — mach build is mostly cached)                                            | Quit + relaunch                                                                  |
-| Surfer fork itself                                          | Push to `Bento-Browser/surfer`, bump SHA in `package.json`, `pnpm install`, then `npm run build` | Quit + relaunch                                                                  |
+| Changed                                                     | Build command                                                                                    | Reload                                                                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && npx surfer import`                                          | Press **Alt+Shift+R** in Bento (triggers `browser.runtime.reload()` via the dev-reload command) |
+| `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                                              |
+| `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && npx surfer import`                                          | Quit + relaunch                                                                                 |
+| `patches/`, `src/browser/`, `prefs/bento.js`, `surfer.json` | `npm run build` (~15 s — mach build is mostly cached)                                            | Quit + relaunch                                                                                 |
+| Surfer fork itself                                          | Push to `Bento-Browser/surfer`, bump SHA in `package.json`, `pnpm install`, then `npm run build` | Quit + relaunch                                                                                 |
+
+> **How the reload works**: `surfer import` symlinks the built extension dist into the compiled app bundle — files are live on disk immediately. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
+
+<!-- -->
+
+> **Manifest changes that need a version bump**: Firefox caches built-in addon metadata (commands, permissions list, name/description) keyed by `version`. A quit+relaunch alone WON'T re-read a changed manifest if the version stayed the same — the cached entry in the profile's `extensions.json` wins. Bump the addon's `manifest.json` version (e.g. `0.1.0` → `0.1.1`) whenever you add/remove/rename a command or change a permission. Code-only changes don't need a bump (background.js / dist/ are read fresh from disk).
 
 `npm run build` already chains: `ext:build` → `surfer import` (which also runs `scripts/append-prefs.sh` to keep `prefs/bento.js` in `engine/browser/app/profile/firefox.js` so dev prefs survive) → `surfer build`.
 
 `npm run brand:regen` is for when **branding** assets change (`surfer.json` brand fields, `configs/branding/<brand>/**`). It wipes the engine branding dir and re-imports — slower than `surfer import` alone.
 
-**Don't run `npm run build` on every UI change** — the table above's `pnpm --filter ... build && npx surfer import + frame.reload()` loop is ~3 seconds. Reserve full builds for chrome / engine changes.
+**Don't run `npm run build` on every UI change** — the table above's build+import loop is ~3 seconds. Reserve full builds for chrome / engine changes.
 
 ## Repo crosswalk
 

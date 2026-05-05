@@ -21,7 +21,7 @@ jobs:
       - name: Validate JSON syntax
         run: |
           set -e
-          for f in surfer.json package.json config/firefox-versions.json tsconfig.json .surfer/dynamicConfig.brand.json; do
+          for f in surfer.json package.json config/firefox-versions.json tsconfig.json .surfer/dynamicConfig.brand.json .size-limit.json; do
             echo "checking $f"
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
@@ -61,23 +61,75 @@ jobs:
         # errors before they become runtime failures inside the browser.
         run: node --check prefs/bento.js
 
+  extensions:
+    name: Extensions — typecheck, lint, build, size-limit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        # Tale UI lives outside the repo via pnpm `link:` (CLAUDE.md). Local
+        # devs symlink to ../../../tale-ui/core/packages/*; CI doesn't have
+        # those checked out, so install bypasses link resolution by allowing
+        # missing optional deps. The build still completes because Tale UI
+        # symlinks are dev-time only — the `link:` paths point at packages
+        # that don't exist on the runner. To unblock CI before Tale UI is
+        # published or vendored (see CLAUDE.md release-migration callout),
+        # check out tale-ui as a sibling repo.
+        run: |
+          if [ ! -d ../tale-ui/core ]; then
+            echo "::warning::Tale UI not present at ../tale-ui/core — checking out from main"
+            git clone --depth=1 https://github.com/Tale-UI/core.git ../tale-ui/core
+          fi
+          pnpm install --frozen-lockfile
+
+      - name: Typecheck (shell)
+        run: pnpm --filter @bento/shell typecheck
+
+      - name: Typecheck (tools)
+        run: pnpm --filter @bento/tools typecheck
+
+      - name: Lint (shell)
+        run: pnpm --filter @bento/shell lint
+
+      - name: Lint (tools)
+        run: pnpm --filter @bento/tools lint
+
+      - name: Build extensions
+        run: pnpm run ext:build
+
+      - name: Size budget (size-limit)
+        # Fails the job if any bundle breaches the limits in .size-limit.json.
+        # Per §6.1 perf budgets in the implementation plan.
+        run: pnpm run size:check
+
   surfer-smoke:
     name: Surfer config loads
     needs: static-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Surfer reads our config
         # `surfer --version` parses surfer.json end-to-end and exits non-zero
         # if any required field is missing. Our cheapest end-to-end check.
-        run: npx surfer --version
+        run: pnpm exec surfer --version
       - name: Surfer license check
-        run: npm run lc
+        run: pnpm run lc
 
   build:
     name: Build (${{ matrix.os }})
@@ -89,11 +141,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
 
       - name: Cache Firefox source (engine/)
         uses: actions/cache@v4
@@ -102,18 +157,18 @@ jobs:
           key: ${{ runner.os }}-engine-${{ hashFiles('surfer.json') }}
 
       - name: Surfer download
-        run: npm run download
+        run: pnpm run download
 
-      # The full build (`npm run build`) requires the Mozilla build toolchain
+      # The full build (`pnpm run build`) requires the Mozilla build toolchain
       # (Rust, clang, ~30 GB disk, ~30–60 min wall time on hosted runners).
       # Disabled until self-hosted or beefier runners are wired up.
       #
       # - name: Surfer bootstrap
-      #   run: npm run bootstrap
+      #   run: pnpm run bootstrap
       # - name: Surfer build
-      #   run: npm run build
+      #   run: pnpm run build
       # - name: Surfer package
-      #   run: npm run package
+      #   run: pnpm run package
       # - uses: actions/upload-artifact@v4
       #   with:
       #     name: bento-${{ runner.os }}

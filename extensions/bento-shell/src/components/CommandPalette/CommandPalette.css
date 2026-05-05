@@ -1,0 +1,34 @@
+/* Layer-2 component: CommandPalette. Sized constraints + scrollable listbox.
+ * Tale UI's Dialog.Popup centers itself; we just constrain width and shape
+ * the inner listbox so long command lists don't overflow the viewport. */
+@layer bento.components {
+  .bento-command-palette__popup {
+    width: min(60rem, 90vw);
+    max-height: min(48rem, 80vh);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-2xs);
+    gap: var(--space-2xs);
+  }
+
+  .bento-command-palette__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .bento-command-palette__input {
+    /* SearchField primitive provides field padding; we just want the
+       input to fill the available width inside the popup. */
+    width: 100%;
+  }
+
+  .bento-command-palette__listbox {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

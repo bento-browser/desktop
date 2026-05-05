@@ -1,11 +1,13 @@
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index d58fcdf998..4b9dce5e22 100644
+index d58fcdf998..a1b1b1b100 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -3,6 +3,25 @@
+@@ -2,7 +2,34 @@
+ # License, v. 2.0. If a copy of the MPL was not distributed with this
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
- 
- <hbox flex="1" id="browser">
+
+-<hbox flex="1" id="browser">
++<hbox flex="1" id="browser" style="position: relative;">
 +  <vbox id="bento-shell-host"
 +        persist="width"
 +        width="240"
@@ -24,6 +26,14 @@ index d58fcdf998..4b9dce5e22 100644
 +            resizebefore="sibling"
 +            resizeafter="none"
 +            style="width: 4px; cursor: col-resize; background-color: transparent;"/>
++  <vbox id="bento-palette-host" hidden="true"
++        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background-color: transparent; pointer-events: auto; display: none; opacity: 0; transition: opacity 0.18s ease;">
++    <browser id="bento-palette-frame"
++             type="content" remote="true" remoteType="extension"
++             primary="false" flex="1"
++             transparent="transparent"
++             style="background-color: transparent; -moz-appearance: none;"/>
++  </vbox>
 +  <script src="chrome://browser/content/bento-shell-mount.js"></script>
    <box context="sidebar-context-menu" id="sidebar-main" hidden="true">
      <html:sidebar-main flex="1">

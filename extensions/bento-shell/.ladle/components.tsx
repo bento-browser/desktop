@@ -30,7 +30,6 @@ export const Provider: GlobalProvider = ({ children }) => {
         minHeight: '100vh',
         backgroundColor: 'var(--bento-brand-bg)',
         color: 'var(--neutral-90)',
-        padding: '1rem',
       }}
     >
       {children}

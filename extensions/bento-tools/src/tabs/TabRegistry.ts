@@ -2,10 +2,15 @@
 // keeps an internal Map<id, TabSnapshot>, and emits batched delta arrays via
 // requestAnimationFrame (§6.5) so opening 50 tabs at once becomes one
 // broadcast instead of fifty round-trips.
+//
+// Per-tab workspace assignment is persisted via browser.sessions.setTabValue
+// (rides Firefox session restore, see §4.3) and hydrated on init.
 
 import type { TabDelta, TabSnapshot } from '@shared/protocol';
 
 type Listener = (deltas: TabDelta[]) => void;
+
+const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
 
 function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
   return {
@@ -18,6 +23,15 @@ function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
     pinned: t.pinned,
     audible: t.audible ?? false,
   };
+}
+
+async function readWorkspaceId(tabId: number): Promise<string | undefined> {
+  try {
+    const value = await browser.sessions.getTabValue(tabId, WORKSPACE_SESSION_KEY);
+    return typeof value === 'string' ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export class TabRegistry {
@@ -37,12 +51,36 @@ export class TabRegistry {
     browser.tabs.onMoved.addListener(this.#onMoved);
 
     const all = await browser.tabs.query({});
-    for (const t of all) {
-      const snap = toSnapshot(t);
+    // Hydrate session-stored workspace assignments in parallel.
+    const hydrated = await Promise.all(
+      all.map(async (t) => {
+        const snap = toSnapshot(t);
+        if (snap.id === -1) return snap;
+        snap.workspaceId = await readWorkspaceId(snap.id);
+        return snap;
+      }),
+    );
+    for (const snap of hydrated) {
       if (snap.id === -1) continue;
       // Set only if a concurrent onCreated didn't already insert it.
       if (!this.#tabs.has(snap.id)) this.#tabs.set(snap.id, snap);
     }
+  }
+
+  /** Assign (or reassign) a tab to a workspace. Persists via sessions API and
+   * emits an `updated` delta so the shell mirror picks it up. */
+  async assignWorkspace(id: number, workspaceId: string): Promise<void> {
+    const tab = this.#tabs.get(id);
+    if (!tab) return;
+    if (tab.workspaceId === workspaceId) return;
+    try {
+      await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
+    } catch (err) {
+      console.warn('[bento-tools] sessions.setTabValue failed:', id, err);
+      return;
+    }
+    tab.workspaceId = workspaceId;
+    this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
   }
 
   snapshot(): TabSnapshot[] {

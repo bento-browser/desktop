@@ -4,7 +4,7 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-block: var(--space-xs);
+    /* padding-block: var(--space-xs); */
     padding-inline: var(--space-2xs);
     contain: strict;
   }

@@ -25,6 +25,9 @@ Thumbs.db
 # TypeScript incremental build cache
 *.tsbuildinfo
 
+# Dev profile (persisted across `npm run dev` launches)
+.bento-dev-profile/
+
 # Plans
 # plans/
 

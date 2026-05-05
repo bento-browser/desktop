@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="tale-ui" data-color-mode="dark" data-theme="dark">
+<html lang="en" class="tale-ui">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,16 +10,19 @@
          file because extension page CSP blocks inline <script>. -->
     <script src="./boot.js"></script>
 
-    <!-- Critical CSS skeleton (§6.3) — keeps cold start under 80ms by drawing
-         the empty shell shape before React hydrates. Real layout takes over
-         once @bento-shell-app/app.css loads. -->
+    <!-- Critical CSS (§6.3) — paints the sidebar's brand-shaped shell before
+         any external CSS or JS loads. Hardcoded values match the Bento brand
+         (#282a33 mirrors --bento-brand-bg, kept in sync manually). The
+         skeleton DOM below uses these classes so first paint shows the
+         right silhouette; React hides #bento-skeleton on first commit. -->
     <style>
       :root {
         color-scheme: light dark;
       }
       html,
       body,
-      #root {
+      #root,
+      #bento-skeleton {
         margin: 0;
         padding: 0;
         height: 100%;
@@ -32,9 +35,91 @@
           Roboto,
           sans-serif;
       }
+      #bento-skeleton {
+        position: absolute;
+        inset: 0;
+        background-color: light-dark(#f7f8fa, #282a33);
+        display: flex;
+        flex-direction: column;
+      }
+      #bento-skeleton[hidden] {
+        display: none;
+      }
+      .bento-skeleton__header {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        padding: 0.8rem 1.2rem;
+        height: 3.2rem;
+        box-sizing: border-box;
+      }
+      .bento-skeleton__avatar {
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 0.4rem;
+        background-color: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08));
+        flex-shrink: 0;
+      }
+      .bento-skeleton__bar {
+        height: 0.9rem;
+        border-radius: 0.3rem;
+        background-color: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.06));
+      }
+      .bento-skeleton__bar--label {
+        width: 6rem;
+      }
+      .bento-skeleton__rows {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding: 0.8rem;
+      }
+      .bento-skeleton__row {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        height: 2rem;
+      }
+      .bento-skeleton__row .bento-skeleton__avatar {
+        width: 1rem;
+        height: 1rem;
+      }
+      .bento-skeleton__row .bento-skeleton__bar {
+        flex: 1;
+        max-width: 16rem;
+      }
     </style>
   </head>
   <body>
+    <!-- Static skeleton — visible from first paint until React's first
+         commit hides it. Decorative only (sits beside #root, not inside).
+         Removing it via React effect rather than DOM mutation avoids
+         layout thrashing during the hydration commit. -->
+    <div id="bento-skeleton" aria-hidden="true">
+      <div class="bento-skeleton__header">
+        <div class="bento-skeleton__avatar"></div>
+        <div class="bento-skeleton__bar bento-skeleton__bar--label"></div>
+      </div>
+      <div class="bento-skeleton__rows">
+        <div class="bento-skeleton__row">
+          <div class="bento-skeleton__avatar"></div>
+          <div class="bento-skeleton__bar"></div>
+        </div>
+        <div class="bento-skeleton__row">
+          <div class="bento-skeleton__avatar"></div>
+          <div class="bento-skeleton__bar"></div>
+        </div>
+        <div class="bento-skeleton__row">
+          <div class="bento-skeleton__avatar"></div>
+          <div class="bento-skeleton__bar"></div>
+        </div>
+        <div class="bento-skeleton__row">
+          <div class="bento-skeleton__avatar"></div>
+          <div class="bento-skeleton__bar"></div>
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

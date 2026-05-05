@@ -15,5 +15,17 @@
     "scripts": ["dist/assets/background.js"],
     "persistent": true
   },
-  "web_accessible_resources": ["dist/index.html", "dist/assets/*"]
+  "web_accessible_resources": [
+    "dist/index.html",
+    "dist/privacy.html",
+    "dist/settings.html",
+    "dist/palette.html",
+    "dist/assets/*"
+  ],
+  "commands": {
+    "dev-reload": {
+      "suggested_key": { "default": "Alt+Shift+R" },
+      "description": "Dev: reload bento-shell extension"
+    }
+  }
 }

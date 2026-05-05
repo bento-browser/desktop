@@ -1,9 +1,18 @@
 /* eslint-env browser */
-// Bento sidebar pins to dark mode (matches the brand background). The shell
-// document doesn't follow OS prefers-color-scheme — that's a separate axis
-// from the main browser's content theme. M2+ may add per-workspace theming
-// via data-workspace-color, but the base mode stays dark.
+// Initial color-mode set BEFORE any CSS loads — eliminates flash of wrong
+// theme. Source order: explicit user choice in localStorage > OS preference.
+// useFirefoxTheme hook subscribes to subsequent OS-pref changes at runtime.
+//
+// External file (not inline) because the chrome-mounted extension page's
+// CSP forbids inline <script>.
 (function () {
-  document.documentElement.setAttribute('data-color-mode', 'dark');
-  document.documentElement.setAttribute('data-theme', 'dark');
+  var stored = localStorage.getItem('color-mode');
+  var mode =
+    stored === 'light' || stored === 'dark'
+      ? stored
+      : matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+  document.documentElement.setAttribute('data-color-mode', mode);
+  document.documentElement.setAttribute('data-theme', mode);
 })();

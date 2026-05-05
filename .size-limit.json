@@ -1,0 +1,65 @@
+[
+  {
+    "name": "bento-shell · shell cold-start JS (gz)",
+    "path": [
+      "extensions/bento-shell/dist/assets/*.js",
+      "!extensions/bento-shell/dist/assets/privacy.js",
+      "!extensions/bento-shell/dist/assets/settings.js",
+      "!extensions/bento-shell/dist/assets/palette.js",
+      "!extensions/bento-shell/dist/assets/background.js"
+    ],
+    "limit": "135 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · palette cold-start JS (gz)",
+    "path": [
+      "extensions/bento-shell/dist/assets/*.js",
+      "!extensions/bento-shell/dist/assets/shell.js",
+      "!extensions/bento-shell/dist/assets/privacy.js",
+      "!extensions/bento-shell/dist/assets/settings.js",
+      "!extensions/bento-shell/dist/assets/background.js"
+    ],
+    "limit": "140 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · settings cold-start JS (gz)",
+    "path": [
+      "extensions/bento-shell/dist/assets/*.js",
+      "!extensions/bento-shell/dist/assets/shell.js",
+      "!extensions/bento-shell/dist/assets/privacy.js",
+      "!extensions/bento-shell/dist/assets/palette.js",
+      "!extensions/bento-shell/dist/assets/background.js"
+    ],
+    "limit": "140 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · privacy cold-start JS (gz)",
+    "path": [
+      "extensions/bento-shell/dist/assets/privacy.js",
+      "extensions/bento-shell/dist/assets/useFirefoxTheme.js"
+    ],
+    "limit": "80 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · style.css (gz)",
+    "path": "extensions/bento-shell/dist/assets/style.css",
+    "limit": "24 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · background.js (gz)",
+    "path": "extensions/bento-shell/dist/assets/background.js",
+    "limit": "5 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-tools · background.js (gz)",
+    "path": "extensions/bento-tools/dist/background.js",
+    "limit": "30 KB",
+    "gzip": true
+  }
+]

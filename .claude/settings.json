@@ -8,13 +8,15 @@
       "WebFetch(domain:docs.zen-browser.app)",
       "Bash(jq *)",
       "mcp__tale-ui__list_components",
-      "mcp__tale-ui__get_component"
+      "mcp__tale-ui__get_component",
+      "mcp__tale-ui__plan_ui"
     ],
     "additionalDirectories": [
       "/Users/admin/Projects/surfer/src/utils",
       "/Users/admin/Projects/surfer/src/commands/patches",
       "/Users/admin/Projects/surfer",
-      "/Users/admin/Projects/bento-browser/.claude"
+      "/Users/admin/Projects/bento-browser/.claude",
+      "/Users/admin/Projects/tale-ui/core/packages/styles"
     ]
   },
   "hooks": {

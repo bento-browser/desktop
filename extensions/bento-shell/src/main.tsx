@@ -1,7 +1,12 @@
-// Shell entry point. Uses hydrateRoot so the SSR-style skeleton in
-// index.html stays visible until React takes over (§6.3 cold-start).
-import { StrictMode } from 'react';
-import { hydrateRoot, createRoot } from 'react-dom/client';
+// Shell entry point. The static skeleton in index.html is visible from first
+// paint until React's first commit hides it (§6.3 cold-start).
+import { StrictMode, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+
+// Boot mark — pairs with bento.firstCommit and bento.toolsReady so the perf
+// harness (PR-5) can measure cold-start latency without needing chrome-side
+// hooks. performance.mark is on globalThis in all Firefox processes.
+performance.mark('bento.boot');
 
 // @tale-ui/core defines the design token system + data-color-mode rules.
 // Without this loaded, tokens like --neutral-90 don't have values and
@@ -9,12 +14,24 @@ import { hydrateRoot, createRoot } from 'react-dom/client';
 // imports use these tokens but don't define them.
 import '@tale-ui/core';
 
+// Tale UI shared primitives — provides the dropdown popup background,
+// dropdown item layout, separator, etc. Per-component CSS files (menu, select,
+// combobox, …) are additive and assume this is already loaded. Tale UI only
+// auto-loads it via the full @tale-ui/react-styles index, which we skip for
+// bundle-size reasons (§6.2).
+import '@tale-ui/react-styles/_primitives';
+
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/icon';
+import '@tale-ui/react-styles/menu';
+import '@tale-ui/react-styles/avatar';
+import '@tale-ui/react-styles/dialog';
+import '@tale-ui/react-styles/autocomplete';
+import '@tale-ui/react-styles/search-field';
 
 import './theme/bento-tokens.css';
 import './theme/bento-fonts.css';
@@ -29,6 +46,13 @@ initToolsPort();
 
 function Shell() {
   useFirefoxTheme();
+  // Hide the static skeleton + record the first-commit perf mark on the
+  // initial paint. Runs once thanks to the empty dep array.
+  useEffect(() => {
+    performance.mark('bento.firstCommit');
+    performance.measure('bento.bootToFirstCommit', 'bento.boot', 'bento.firstCommit');
+    document.getElementById('bento-skeleton')?.setAttribute('hidden', '');
+  }, []);
   return <App />;
 }
 
@@ -37,16 +61,8 @@ if (!container) {
   throw new Error('bento-shell: #root not found in chrome document');
 }
 
-const tree = (
+createRoot(container).render(
   <StrictMode>
     <Shell />
-  </StrictMode>
+  </StrictMode>,
 );
-
-// hydrateRoot when the static skeleton already populated #root, otherwise
-// createRoot for a clean mount (e.g. during Vite dev server).
-if (container.firstChild) {
-  hydrateRoot(container, tree);
-} else {
-  createRoot(container).render(tree);
-}
