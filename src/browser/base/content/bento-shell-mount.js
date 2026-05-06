@@ -1244,9 +1244,9 @@
 
   function navigatePanels(delta) {
     const host = document.getElementById('bento-side-panel-host');
-    if (!host) return;
+    if (!host) return false;
     const panels = getOrderedPanels();
-    if (panels.length === 0) return;
+    if (panels.length === 0) return false;
 
     // Index advances from the user's CURRENT selection — not from
     // wherever the strip happens to be scrolled to. Decoupling these
@@ -1256,7 +1256,7 @@
     // selected, (c) manual scroll (mouse wheel) doesn't change the
     // selection.
     const nextIdx = Math.max(0, Math.min(panels.length - 1, currentActiveIdx + delta));
-    if (nextIdx === currentActiveIdx) return;
+    if (nextIdx === currentActiveIdx) return false;
 
     const targetPanel = panels[nextIdx];
     const stripLeft = host.getBoundingClientRect().left;
@@ -1267,6 +1267,7 @@
       behavior: 'smooth',
     });
     setActiveByIndex(nextIdx);
+    return true;
   }
 
   window.addEventListener('keydown', (e) => {
@@ -1673,6 +1674,62 @@
     return bar;
   }
 
+  // SHIFT + wheel should feel like panel cycling, not like pixel-wise
+  // horizontal strip scrolling. Trackpads emit many tiny wheel events;
+  // mouse wheels emit fewer, larger line/page events. Normalize both and
+  // advance one panel per threshold crossed, reusing navigatePanels so
+  // the active marker, focus ring, and edge behavior match arrow keys.
+  // A short gesture lock also captures momentum tail events whose
+  // shiftKey can drop before the wheel burst has fully ended.
+  const PANEL_WHEEL_STEP_PX = 32;
+  const PANEL_WHEEL_GESTURE_LOCK_MS = 220;
+  let panelWheelRemainder = 0;
+  let panelWheelGestureUntil = 0;
+
+  function normalizeWheelDeltaPx(e) {
+    const linePx = SCROLL_LINE_PX;
+    const pagePx = Math.max(linePx, window.innerWidth || 800);
+    const unit =
+      e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? linePx
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? pagePx
+          : 1;
+    const dominantDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    return dominantDelta * unit;
+  }
+
+  function onPanelStripWheel(e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!shouldHandlePanelArrowKey(e.target)) return;
+    const isPanelWheelGesture = e.shiftKey || Date.now() < panelWheelGestureUntil;
+    if (!isPanelWheelGesture) return;
+
+    const delta = normalizeWheelDeltaPx(e);
+    if (!delta) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    panelWheelGestureUntil = Date.now() + PANEL_WHEEL_GESTURE_LOCK_MS;
+    panelWheelRemainder += delta;
+
+    let steps = 0;
+    while (Math.abs(panelWheelRemainder) >= PANEL_WHEEL_STEP_PX) {
+      steps += panelWheelRemainder > 0 ? 1 : -1;
+      panelWheelRemainder +=
+        panelWheelRemainder > 0 ? -PANEL_WHEEL_STEP_PX : PANEL_WHEEL_STEP_PX;
+    }
+
+    if (steps === 0) return;
+    const direction = steps > 0 ? 1 : -1;
+    for (let i = 0; i < Math.abs(steps); i++) {
+      if (!navigatePanels(direction)) {
+        panelWheelRemainder = 0;
+        break;
+      }
+    }
+  }
+
   function setupPanelNavigator() {
     const host = document.getElementById('bento-side-panel-host');
     if (!host) return;
@@ -1722,6 +1779,7 @@
     // override the user's selection. The custom scrollbar's thumb
     // position DOES update on scroll though.
     host.addEventListener('scroll', updateStripScrollbar, { passive: true });
+    host.addEventListener('wheel', onPanelStripWheel, { capture: true, passive: false });
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(updateStripScrollbar);
       ro.observe(host);
