@@ -38,11 +38,18 @@ import './theme/bento-fonts.css';
 import './app.css';
 import { App } from './App';
 import { useFirefoxTheme } from './theme/useFirefoxTheme';
-import { initToolsPort } from './bridge/useToolsPort';
+import { initToolsPort, enableSidePanelTitleBridge } from './bridge/useToolsPort';
 
 // Establish the tools port immediately so the initial tab snapshot is
 // already on the wire by the time React's first commit lands.
 initToolsPort();
+
+// The sidebar owns the chrome side-panel reveal/hide signal. Opt this
+// entry into translating panel/show + panel/hide bus events into the
+// chrome `BENTO_SIDE_PANEL:...` document.title IPC. Other shell entries
+// (confirm, palette, settings) deliberately don't enable this — they'd
+// stomp on their own title-IPC close signals if they did.
+enableSidePanelTitleBridge();
 
 function Shell() {
   useFirefoxTheme();

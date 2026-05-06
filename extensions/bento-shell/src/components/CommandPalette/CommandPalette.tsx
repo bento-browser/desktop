@@ -38,6 +38,10 @@ import PlusIcon from 'lucide-react/dist/esm/icons/plus';
 import LayersIcon from 'lucide-react/dist/esm/icons/layers';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
 import XIcon from 'lucide-react/dist/esm/icons/x';
+import RotateIcon from 'lucide-react/dist/esm/icons/rotate-cw';
+import PinIcon from 'lucide-react/dist/esm/icons/pin';
+import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
+import PanelRightCloseIcon from 'lucide-react/dist/esm/icons/panel-right-close';
 
 import { useTabsStore } from '../../state/tabs';
 import { useWorkspacesStore } from '../../state/workspaces';
@@ -65,11 +69,11 @@ interface Command {
 }
 
 function settingsUrl(): string {
-  return `${location.origin}/dist/settings.html`;
+  return 'about:bento-settings';
 }
 
 function privacyUrl(): string {
-  return `${location.origin}/dist/privacy.html`;
+  return 'about:bento-privacy';
 }
 
 function useCommands(closePalette: () => void): Command[] {
@@ -148,7 +152,21 @@ function useCommands(closePalette: () => void): Command[] {
     }
 
     // Actions
+    cmds.push({
+      id: 'action:new-tab',
+      label: 'New tab',
+      section: 'Actions',
+      icon: PlusIcon,
+      run: () => {
+        // tab/create (no URL) sidesteps AboutNewTabRedirector startup-race
+        // noise by using browser.tabs.create({active: true}) — Firefox
+        // resolves the user's configured new-tab page on its own.
+        dispatch({ type: 'tab/create' });
+        closePalette();
+      },
+    });
     if (activeTabId !== null) {
+      const activeTab = tabs.find((t) => t!.id === activeTabId);
       cmds.push({
         id: 'action:close-tab',
         label: 'Close current tab',
@@ -159,14 +177,44 @@ function useCommands(closePalette: () => void): Command[] {
           closePalette();
         },
       });
+      cmds.push({
+        id: 'action:reload-tab',
+        label: 'Reload current tab',
+        section: 'Actions',
+        icon: RotateIcon,
+        run: () => {
+          dispatch({ type: 'tab/reload', id: activeTabId });
+          closePalette();
+        },
+      });
+      cmds.push({
+        id: 'action:toggle-pin',
+        label: activeTab?.pinned ? 'Unpin current tab' : 'Pin current tab',
+        section: 'Actions',
+        icon: PinIcon,
+        run: () => {
+          dispatch({ type: 'tab/togglePin', id: activeTabId });
+          closePalette();
+        },
+      });
+      cmds.push({
+        id: 'action:open-in-side-panel',
+        label: 'Add current tab to side panels',
+        section: 'Actions',
+        icon: PanelRightOpenIcon,
+        run: () => {
+          dispatch({ type: 'panel/add', id: activeTabId });
+          closePalette();
+        },
+      });
     }
     cmds.push({
-      id: 'action:new-tab',
-      label: 'New tab',
+      id: 'action:close-side-panels',
+      label: 'Close all side panels',
       section: 'Actions',
-      icon: PlusIcon,
+      icon: PanelRightCloseIcon,
       run: () => {
-        dispatch({ type: 'tab/openUrl', url: 'about:newtab' });
+        dispatch({ type: 'panels/clear' });
         closePalette();
       },
     });

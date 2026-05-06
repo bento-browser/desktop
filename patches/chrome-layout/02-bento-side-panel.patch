@@ -1,0 +1,21 @@
+diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
+index a1b1b1b100..b2c2c2c200 100644
+--- a/browser/base/content/browser-box.inc.xhtml
++++ b/browser/base/content/browser-box.inc.xhtml
+@@ -55,6 +55,16 @@
+   <tabbox id="tabbrowser-tabbox" flex="1" tabcontainer="tabbrowser-tabs">
+     <tabpanels id="tabbrowser-tabpanels" flex="1" selectedIndex="0"/>
+   </tabbox>
++  <splitter id="bento-side-panel-splitter"
++            class="chromeclass-extrachrome"
++            resizebefore="none"
++            resizeafter="sibling"
++            hidden="true"
++            style="width: 4px; cursor: col-resize; background-color: transparent;"/>
++  <vbox id="bento-side-panel-host" persist="width" width="480" hidden="true"
++        style="min-width: 240px; max-width: 1200px;">
++    <browser id="bento-side-panel-frame" type="content" remote="true" flex="1" disablefullscreen="true"/>
++  </vbox>
+   <splitter id="ai-window-splitter" class="chromeclass-extrachrome sidebar-splitter" resizebefore="none" resizeafter="sibling" collapsed="true"/>
+   <vbox id="ai-window-box" collapsed="true" class="chromeclass-extrachrome ai-window-right-sidebar">
+     <stack class="ai-window-browser-stack" flex="1">

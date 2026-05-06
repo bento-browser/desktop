@@ -10,15 +10,57 @@
 /* Avatar accent override — Tale UI's .tale-avatar { background-color }
  * rule is UNLAYERED, so a @layer-wrapped rule loses regardless of
  * specificity (CSS spec: any unlayered rule outranks any layered rule).
- * Keep this rule outside @layer so it can override Tale UI's default. */
+ * Keep these rules outside @layer so they can override Tale UI's defaults.
+ *
+ * Pair: --bento-workspace-accent (--{hue}-60) for the saturated bg,
+ * --bento-workspace-accent-fg (--{hue}-5) for the lightest tint of the
+ * same hue as foreground. Mirrors Tale UI's --color-60 / --color-60-fg
+ * convention so contrast stays legible across every workspace color.
+ *
+ * The fallback (initial / icon) text needs its own selector — Tale UI
+ * sets `color: var(--neutral-70)` directly on `.tale-avatar__fallback`,
+ * which beats inherited color from our wrapper rule. Compound selector
+ * (3 classes) is more specific than Tale UI's `.tale-avatar__fallback`
+ * (1 class) so we win on specificity. */
 .tale-avatar.bento-workspace-switcher__avatar {
-  background-color: var(--bento-workspace-accent-soft);
-  color: var(--bento-workspace-accent);
+  background-color: var(--bento-workspace-accent);
+  color: var(--bento-workspace-accent-fg);
+}
+.tale-avatar.bento-workspace-switcher__avatar .tale-avatar__fallback {
+  color: var(--bento-workspace-accent-fg);
+}
+
+/* Cap the menu popup so it sits exactly under the trigger's outer width.
+ * Tale UI's .tale-menu__popup defaults to `min-width: 16rem;
+ * max-width: 32rem; width: max-content` — a long "Delete <very long
+ * name>" item pushes it up to 320px regardless of the sidebar.
+ *
+ * react-aria anchors the popover at trigger-left (placement="bottom
+ * start"), and the trigger sits inside .bento-shell-app__header which
+ * has `padding-inline: var(--space-s)`. So popover-left = sidebar-left
+ *   + space-s. To make the right margin match, cap the width at
+ * `100vw - 2 * --space-s`: popover-right = sidebar-right - space-s.
+ * Symmetric.
+ *
+ * Targets the popup (not the popover wrapper, which is unstyled) and
+ * is unlayered because Tale UI's defaults are unlayered too — layered
+ * rules lose to unlayered regardless of specificity. min-width:0
+ * unlocks the 16rem floor for narrow sidebars (persist=width allows
+ * down to 200px). */
+.bento-workspace-switcher__popover .tale-menu__popup {
+  min-width: 0;
+  max-width: calc(100vw - 2 * var(--space-s));
 }
 
 @layer bento.components {
   .bento-workspace-switcher__trigger {
-    display: inline-flex;
+    /* display:flex (not inline-flex) + width:100% + min-width:0 so the
+       trigger fills the sidebar header's available width and the active-
+       workspace name inside truncates instead of pushing the chevron and
+       trigger past the sidebar's right edge. */
+    display: flex;
+    width: 100%;
+    min-width: 0;
     align-items: center;
     gap: var(--space-2xs);
     padding-block: var(--space-2xs);
@@ -35,10 +77,30 @@
     background-color: var(--bento-surface-hover);
   }
 
+  /* Active-workspace name in the trigger — truncate with ellipsis once
+     the available width runs out. flex:1 lets the chevron stay anchored
+     to the right edge while the name takes whatever space remains. */
+  .bento-workspace-switcher__trigger-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: start;
+  }
+
   .bento-workspace-switcher__chevron {
-    margin-left: auto;
     opacity: 0.5;
     flex-shrink: 0;
+  }
+
+  /* Each Menu.Item is a flex row (Tale UI default). min-width:0 stops the
+     row from refusing to shrink below its intrinsic content width, which
+     is what lets the inner __item-name truncate via text-overflow once
+     the popup itself is capped (see the unlayered .tale-menu__popup rule
+     above). */
+  .bento-workspace-switcher__popover .tale-menu__item {
+    min-width: 0;
   }
 
   .bento-workspace-switcher__item-name {
@@ -47,5 +109,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Destructive menu item — Tale UI's --red-* family signals "danger" so
+     the row reads as different from the neutral New/Switch options without
+     screaming. Color the text + icon directly; the AlertDialog handles the
+     actual confirmation friction. */
+  .bento-workspace-switcher__delete-item {
+    color: var(--red-60);
+  }
+  .bento-workspace-switcher__delete-item .tale-text {
+    color: inherit;
   }
 }

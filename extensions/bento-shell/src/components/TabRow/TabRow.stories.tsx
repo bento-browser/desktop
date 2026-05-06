@@ -29,7 +29,7 @@ export const Inactive = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabRow id={1} active={false} onActivate={noop} onClose={noop} />
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -40,7 +40,7 @@ export const Active = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabRow id={1} active={true} onActivate={noop} onClose={noop} />
+      <TabRow id={1} active={true} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -51,7 +51,7 @@ export const LongTitle = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabRow id={4} active={false} onActivate={noop} onClose={noop} />
+      <TabRow id={4} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -62,7 +62,7 @@ export const NoFavicon = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabRow id={3} active={false} onActivate={noop} onClose={noop} />
+      <TabRow id={3} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -73,7 +73,7 @@ export const ActiveWithLongTitle = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabRow id={4} active={true} onActivate={noop} onClose={noop} />
+      <TabRow id={4} active={true} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -85,8 +85,8 @@ export const StateMatrix = () => {
   return (
     <SidebarFrame>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <TabRow id={1} active={false} onActivate={noop} onClose={noop} />
-        <TabRow id={1} active={true} onActivate={noop} onClose={noop} />
+        <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+        <TabRow id={1} active={true} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
       </div>
     </SidebarFrame>
   );

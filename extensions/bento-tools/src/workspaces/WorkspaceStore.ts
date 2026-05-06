@@ -79,6 +79,13 @@ export class WorkspaceStore {
     };
     this.#workspaces.set(w.id, w);
     this.#enqueue({ kind: 'created', workspace: w });
+    // Newly created workspaces auto-activate so the user immediately lands
+    // in the workspace they just made (matches the user's "I created this
+    // for a reason" intent). The orchestration listener in background.ts
+    // reacts to the `activated` delta to ensure the workspace has at least
+    // one tab (creating a newtab if empty).
+    this.#activeId = w.id;
+    this.#enqueue({ kind: 'activated', id: w.id });
     this.#schedulePersist();
     return w;
   }
@@ -96,6 +103,29 @@ export class WorkspaceStore {
     if (!w || w.color === color) return;
     w.color = color;
     this.#enqueue({ kind: 'updated', id, changes: { color } });
+    this.#schedulePersist();
+  }
+
+  /** Atomic multi-field update for the workspace edit dialog. Computes the
+   * actual diff against the existing workspace and emits a single delta
+   * containing only the fields that changed (so listeners can rely on
+   * `changes` keys to know what to re-render). No-op if nothing changed. */
+  update(id: string, changes: Partial<Pick<Workspace, 'name' | 'color' | 'icon'>>): void {
+    const w = this.#workspaces.get(id);
+    if (!w) return;
+    const diff: Partial<Pick<Workspace, 'name' | 'color' | 'icon'>> = {};
+    if ('name' in changes && changes.name !== undefined && changes.name !== w.name) {
+      diff.name = changes.name;
+    }
+    if ('color' in changes && changes.color !== w.color) {
+      diff.color = changes.color;
+    }
+    if ('icon' in changes && changes.icon !== w.icon) {
+      diff.icon = changes.icon;
+    }
+    if (Object.keys(diff).length === 0) return;
+    Object.assign(w, diff);
+    this.#enqueue({ kind: 'updated', id, changes: diff });
     this.#schedulePersist();
   }
 

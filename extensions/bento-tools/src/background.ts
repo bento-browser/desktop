@@ -9,6 +9,7 @@ import { TabRegistry } from './tabs/TabRegistry';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
+import { PanelStore } from './panels/PanelStore';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { Action, Event } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
@@ -18,6 +19,7 @@ console.log('[bento-tools] boot', new Date().toISOString());
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
+const panels = new PanelStore();
 
 // Set of currently-connected shell document ports. Tools can broadcast
 // events to all of them — needed for tools-initiated UI events like
@@ -34,6 +36,31 @@ function broadcastEvent(event: Event): void {
   }
 }
 
+// Resolve a workspace's panel tabIds to {tabId, url} entries and broadcast
+// to all connected shells. Each shell forwards the snapshot to chrome via
+// title-IPC; chrome reconciles its panel strip. Only the ACTIVE workspace's
+// panels render — emitting for an inactive workspace is wasted work.
+async function emitPanelsSync(workspaceId: string): Promise<void> {
+  if (workspaces.getActiveId() !== workspaceId) return;
+  const tabIds = panels.getPanels(workspaceId);
+  const resolved = await Promise.all(
+    tabIds.map((id) =>
+      browser.tabs
+        .get(id)
+        .then((tab) => ({
+          tabId: id,
+          url: tab.url ?? '',
+          favIconUrl: tab.favIconUrl ?? '',
+        }))
+        .catch(() => null),
+    ),
+  );
+  const valid = resolved.filter(
+    (p): p is { tabId: number; url: string; favIconUrl: string } => p !== null,
+  );
+  broadcastEvent({ type: 'panels/sync', panels: valid });
+}
+
 const keys = new KeyRegistry({ workspaces, broadcastEvent });
 const sleep = new SleepPolicy(tabs, settings);
 // Sleep depends on TabRegistry + SettingsStore being populated for its first
@@ -43,21 +70,162 @@ Promise.all([
   tabs.init().catch((err) => console.error('[bento-tools] TabRegistry init failed:', err)),
   workspaces.init().catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
   settings.init().catch((err) => console.error('[bento-tools] SettingsStore init failed:', err)),
-]).then(() => sleep.init());
+  panels.init().catch((err) => console.error('[bento-tools] PanelStore init failed:', err)),
+]).then(() => {
+  sleep.init();
+  // Backfill: any tab that hydrated WITHOUT a workspaceId (fresh profile,
+  // tabs from a pre-workspaces session, or tabs Firefox restored before
+  // bento-tools attached its session listener) gets assigned to the active
+  // workspace. The runtime onCreated path handles future tabs via the
+  // tabs.onDeltas listener below; this catches the boot-time gap that
+  // listener can't see (hydrated tabs are inserted directly into the map,
+  // they never emit a `created` delta).
+  const wsId = workspaces.getActiveId();
+  if (!wsId) return;
+  for (const tab of tabs.snapshot()) {
+    if (tab.workspaceId) continue;
+    void tabs.assignWorkspace(tab.id, wsId);
+  }
+});
 keys.init();
 
-// Auto-assign newly created tabs to the currently active workspace. Existing
-// tabs without an assignment (e.g. first-boot upgrade from a pre-workspaces
-// session) are NOT retroactively assigned here — that would clobber a future
-// "leave unassigned" semantic if we ever add it. The shell can backfill on
-// demand via tab/assignWorkspace.
+// Tab delta orchestrator. Two responsibilities:
+//   1. Auto-assign newly created tabs to the currently active workspace.
+//      Existing tabs without an assignment (first-boot upgrade from a pre-
+//      workspaces session) are NOT retroactively assigned here — that
+//      would clobber a future "leave unassigned" semantic if we ever
+//      add it. The shell can backfill on demand via tab/assignWorkspace.
+//   2. When a tab is closed, remove it from any workspace's panels list
+//      so closing a tab from the sidebar doesn't leave a stale panel
+//      pinned to a tab that no longer exists. Re-emit panels/sync if
+//      the affected workspace is active.
 tabs.onDeltas((deltas) => {
   for (const d of deltas) {
-    if (d.kind !== 'created') continue;
-    if (d.tab.workspaceId) continue;
-    const wsId = workspaces.getActiveId();
-    if (!wsId) continue;
-    void tabs.assignWorkspace(d.tab.id, wsId);
+    if (d.kind === 'created') {
+      if (!d.tab.workspaceId) {
+        const wsId = workspaces.getActiveId();
+        if (wsId) void tabs.assignWorkspace(d.tab.id, wsId);
+      }
+      // URL-marker check moved to a dedicated browser.tabs.onCreated
+      // listener (below). TabRegistry's TabSnapshot intentionally
+      // omits `url` per §6.5 of the perf budget ("no url until
+      // tooltip-needed"), so we can't see the marker URL from this
+      // delta. The native WebExtension Tab object includes url, so
+      // the separate listener has direct access.
+      continue;
+    }
+    if (d.kind === 'removed') {
+      const affected = panels.findWorkspacesContainingTab(d.id);
+      if (affected.length === 0) continue;
+      for (const wsId of affected) panels.remove(wsId, d.id);
+      const activeId = workspaces.getActiveId();
+      if (activeId && affected.includes(activeId)) {
+        void emitPanelsSync(activeId);
+      }
+      continue;
+    }
+  }
+});
+
+// "Add panel" trailer button (bento-shell-mount.js) creates the tab at
+//   about:blank?bento_add_as_panel=1&ts=<ms>
+// — the URL is the marker. Chrome → bento-tools IPC has no direct
+// channel, so the URL doubles as the signal. We see the marker here,
+// redirect the panel browser to about:newtab, and add the tab to the
+// active workspace's panel list. The active flag pulls Firefox focus
+// into the new tab — chrome's reconciler then scrolls + focuses the
+// matching panel browser.
+//
+// Listen on BOTH onCreated and onUpdated: the WebExtension API can fire
+// onCreated before the URL is committed (the tab object's url is empty
+// or about:blank initially), then onUpdated when the URL lands. We'd
+// miss the marker if we only watched onCreated. handledTabs dedupes so
+// we don't run the redirect twice if the URL is already there at
+// onCreated time.
+const handledAddPanelMarker = new Set<number>();
+
+function maybeHandleAddPanelMarker(tabId: number, url: string, source: string): void {
+  if (handledAddPanelMarker.has(tabId)) return;
+  if (!url.includes('bento_add_as_panel=1')) return;
+  handledAddPanelMarker.add(tabId);
+  console.log('[bento-tools] add-as-panel marker hit via', source, '— tabId:', tabId);
+  // Chrome (bento-shell-mount.js) owns the redirect of the underlying
+  // tab away from the marker URL — its loadURI bypasses any
+  // WebExtension API restrictions on about:newtab. The panel <browser>
+  // substitutes about:newtab in createPanelElement when it sees the
+  // marker URL, so the panel renders the new-tab page regardless of
+  // chrome's redirect timing. Our only job here is to add the tab to
+  // the active workspace's panel list and broadcast.
+  const wsId = workspaces.getActiveId();
+  if (!wsId) {
+    console.warn('[bento-tools] add-as-panel: no active workspace, dropping');
+    return;
+  }
+  if (panels.add(wsId, tabId)) {
+    console.log('[bento-tools] add-as-panel: panels.add OK, emitting sync');
+    void emitPanelsSync(wsId);
+  } else {
+    console.warn('[bento-tools] add-as-panel: panels.add returned false');
+  }
+}
+
+browser.tabs.onCreated.addListener((tab) => {
+  console.log('[bento-tools] tabs.onCreated:', tab.id, 'url=', tab.url);
+  if (typeof tab.id !== 'number') return;
+  maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated');
+});
+
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url) {
+    console.log('[bento-tools] tabs.onUpdated url change:', tabId, '→', changeInfo.url);
+    maybeHandleAddPanelMarker(tabId, changeInfo.url, 'onUpdated');
+  }
+});
+
+browser.tabs.onRemoved.addListener((tabId) => {
+  handledAddPanelMarker.delete(tabId);
+});
+
+// Workspace activation orchestrator. Two responsibilities the WorkspaceStore
+// can't shoulder alone (it has no access to TabRegistry or browser.tabs):
+//   1. Tabs always belong to a workspace, and the active workspace must
+//      always have a focused tab. If the activated workspace has no tabs,
+//      open a fresh newtab (which the tabs.onDeltas listener above will
+//      auto-assign to the now-active workspace). If it has tabs, move the
+//      Firefox tab focus into one of them so the content area matches what
+//      the sidebar shows.
+//   2. Side panels are per-workspace. Re-broadcast panels/sync on every
+//      activation so chrome reconciles its panel strip to the new active
+//      workspace's panels (could be empty, could be many — chrome handles
+//      both via the same reconciler).
+// Removed-workspace cleanup keeps the panel store from leaking entries.
+workspaces.onDeltas((deltas) => {
+  for (const d of deltas) {
+    if (d.kind === 'removed') {
+      panels.removeWorkspace(d.id);
+      continue;
+    }
+    if (d.kind !== 'activated') continue;
+    const wsId = d.id;
+
+    // (1) Ensure the workspace has a tab and that tab is focused.
+    const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId);
+    if (wsTabs.length === 0) {
+      browser.tabs
+        .create({ active: true })
+        .catch((err) => console.warn('[bento-tools] newtab for empty workspace failed:', err));
+    } else if (!wsTabs.some((t) => t.active)) {
+      // No tab from this workspace is currently focused — focus the
+      // first one. Picking by index keeps the choice deterministic; a
+      // future "last active per workspace" tracker can refine this.
+      const target = wsTabs[0]!;
+      browser.tabs
+        .update(target.id, { active: true })
+        .catch((err) => console.warn('[bento-tools] activate workspace tab failed:', err));
+    }
+
+    // (2) Sync panels for the now-active workspace.
+    void emitPanelsSync(wsId);
   }
 });
 
@@ -82,6 +250,10 @@ browser.runtime.onConnectExternal.addListener((port) => {
   const wsSnap = workspaces.snapshot();
   send({ type: 'workspaces/snapshot', workspaces: wsSnap.workspaces, activeId: wsSnap.activeId });
   send({ type: 'settings/snapshot', settings: settings.snapshot() });
+  // Replay panels for the active workspace so a freshly mounted shell
+  // (cold boot, dev reload, second window) reconciles chrome's panel
+  // strip to the current state. Empty array → chrome hides the strip.
+  if (wsSnap.activeId) void emitPanelsSync(wsSnap.activeId);
 
   const unsubTabs = tabs.onDeltas((deltas) => {
     send({ type: 'tabs/changed', deltas });
@@ -94,7 +266,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onMessage.addListener((message: object) => {
-    handle(message as Action, { tabs, workspaces, settings, send });
+    handle(message as Action, { tabs, workspaces, settings, panels, send, emitPanelsSync });
   });
 
   port.onDisconnect.addListener(() => {

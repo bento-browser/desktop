@@ -1,0 +1,15 @@
+/* Edit-workspace dialog form layout. Tale UI Dialog popups have their
+ * own padding; this just spaces the form sections. */
+@layer bento.components {
+  .bento-edit-workspace__form {
+    padding-block: var(--space-s);
+  }
+
+  /* Tale UI ColorSwatchPicker default layout is fine; this class is here
+     so future per-shell tweaks (gap, wrap, max-width) have a hook. */
+  .bento-edit-workspace__picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+  }
+}

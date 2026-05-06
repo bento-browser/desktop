@@ -101,7 +101,7 @@ export class TabRegistry {
 
   #onUpdated = (
     id: number,
-    changeInfo: browser.tabs._OnUpdatedChangeInfo,
+    _changeInfo: browser.tabs._OnUpdatedChangeInfo,
     tab: browser.tabs.Tab,
   ) => {
     const existing = this.#tabs.get(id);
@@ -112,11 +112,18 @@ export class TabRegistry {
       this.#enqueue({ kind: 'created', tab: snap });
       return;
     }
+    // Reconcile against the live `tab` snapshot rather than `changeInfo` —
+    // Firefox's session-restore path fires onUpdated with only `status` /
+    // `url` set even when title and favIconUrl have transitioned (e.g.
+    // "Restore Session" placeholder → real page title). Reading the full
+    // tab object catches every property that may have shifted alongside
+    // the change Firefox chose to surface in changeInfo.
     const changes: Partial<TabSnapshot> = {};
-    if (changeInfo.title !== undefined) changes.title = changeInfo.title;
-    if (changeInfo.favIconUrl !== undefined) changes.favIconUrl = changeInfo.favIconUrl;
-    if (changeInfo.audible !== undefined) changes.audible = changeInfo.audible;
-    if (changeInfo.pinned !== undefined) changes.pinned = changeInfo.pinned;
+    const liveTitle = tab.title ?? '';
+    if (liveTitle !== existing.title) changes.title = liveTitle;
+    if (tab.favIconUrl !== existing.favIconUrl) changes.favIconUrl = tab.favIconUrl;
+    if ((tab.audible ?? false) !== existing.audible) changes.audible = tab.audible ?? false;
+    if (tab.pinned !== existing.pinned) changes.pinned = tab.pinned;
     if (Object.keys(changes).length === 0) return;
     Object.assign(existing, changes);
     this.#enqueue({ kind: 'updated', id, changes });

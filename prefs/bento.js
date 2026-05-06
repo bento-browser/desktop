@@ -80,6 +80,15 @@ pref("bento.panels.minWidth", 240);
 pref("bento.tabs.sleep.afterMinutes", 30);
 pref("bento.commandPalette.enabled", true);
 
+// --- Update-check defaults ------------------------------------------------
+// Firefox's BrowserGlue.sys.mjs reads `app.update.checkInstallTime.days`
+// unconditionally during background-update scheduling. Vanilla Firefox ships
+// it via firefox.js; Bento's branding/prefs pipeline doesn't carry that one
+// through, so the read throws NS_ERROR_UNEXPECTED at every startup. Set the
+// Firefox default explicitly to silence the noise. (Bento doesn't currently
+// ship auto-updates, but the BrowserGlue path runs anyway.)
+pref("app.update.checkInstallTime.days", 63);
+
 // --- Developer iteration --------------------------------------------------
 // Bypass HTTP cache whenever DevTools/Browser Toolbox is open so reloads
 // of the chrome-mounted shell pick up fresh dist/ files without needing

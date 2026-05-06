@@ -1,10 +1,13 @@
-/* Layer-2 component: TabRow. 3-column grid (favicon | title | close) gives
- * the title row exactly the available middle space and ellipsis-truncates
- * cleanly without needing flex min-width-0 gymnastics on Tale UI's Row. */
+/* Layer-2 component: TabRow. 2-column grid (favicon | title) so the title
+ * always uses the full available space. Hover actions are absolutely
+ * positioned over the title's right edge — they appear on hover/active
+ * but never reserve grid space (which would force the title to truncate
+ * earlier even when buttons are invisible). */
 @layer bento.components {
   .bento-tab-row {
     display: grid;
-    grid-template-columns: 1rem minmax(0, 1fr) auto;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    position: relative;
     align-items: center;
     gap: var(--space-xs);
     box-sizing: border-box;
@@ -16,10 +19,25 @@
     cursor: pointer;
     user-select: none;
     overflow: hidden;
-    transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
+    transition:
+      background-color var(--bento-duration-fast) var(--bento-easing-standard),
+      opacity var(--bento-duration-base) var(--bento-easing-standard),
+      transform var(--bento-duration-base) var(--bento-easing-standard);
     /* Skip layout/paint when scrolled off-screen (§6.4). */
     content-visibility: auto;
     contain-intrinsic-size: var(--bento-tab-row-height);
+  }
+
+  /* Removal animation. TabList keeps the row mounted for ~220ms after the
+     tab is dropped from the store; during that window the row fades to 0
+     opacity and slides slightly to the right. The virtualizer doesn't
+     shrink the row's slot in this window — siblings only shift up after
+     the timer fires and the row truly unmounts. pointer-events:none stops
+     stray clicks during the fade. */
+  .bento-tab-row--removing {
+    opacity: 0;
+    transform: translateX(8px);
+    pointer-events: none;
   }
 
   .bento-tab-row:hover {
@@ -28,6 +46,10 @@
 
   .bento-tab-row--active {
     background-color: var(--bento-surface-active);
+  }
+
+  .bento-tab-row--active:hover {
+    background-color: var(--bento-surface-active-hover);
   }
 
   .bento-tab-row--active .tale-text {
@@ -58,13 +80,47 @@
     transition: color var(--bento-duration-fast) var(--bento-easing-standard);
   }
 
-  .bento-tab-row__close {
+  .bento-tab-row__actions {
+    position: absolute;
+    right: var(--space-3xs);
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3xs);
     opacity: 0;
     transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
+    /* Gradient backstop matching the row's effective hover bg color
+       (composited brand-bg + surface-hover) so the title text fades
+       smoothly into the same color the row is painted with — looks
+       like the title dissolves rather than being covered by a tinted
+       gradient swatch. */
+    padding-left: var(--space-s);
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--bento-surface-hover-solid) var(--space-xs)
+    );
   }
 
-  .bento-tab-row:hover .bento-tab-row__close,
-  .bento-tab-row--active .bento-tab-row__close {
+  .bento-tab-row--active .bento-tab-row__actions {
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--bento-surface-active-solid) var(--space-xs)
+    );
+  }
+
+  .bento-tab-row--active:hover .bento-tab-row__actions {
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--bento-surface-active-hover-solid) var(--space-xs)
+    );
+  }
+
+  .bento-tab-row:hover .bento-tab-row__actions,
+  .bento-tab-row--active .bento-tab-row__actions {
     opacity: 1;
   }
 }

@@ -37,7 +37,7 @@ export const Empty = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -48,7 +48,7 @@ export const FewTabs = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -61,7 +61,7 @@ export const TwentyTabs = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -74,7 +74,7 @@ export const VirtualizationStress = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -87,7 +87,7 @@ export const HugeStress = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -100,7 +100,7 @@ export const NarrowSidebar = () => {
   }, []);
   return (
     <SidebarFrame width={200}>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };
@@ -113,7 +113,7 @@ export const WideSidebar = () => {
   }, []);
   return (
     <SidebarFrame width={500}>
-      <TabList onActivate={noop} onClose={noop} />
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
     </SidebarFrame>
   );
 };

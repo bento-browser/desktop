@@ -74,15 +74,43 @@ export type Action =
   | { type: 'tab/close'; id: number }
   | { type: 'tab/assignWorkspace'; id: number; workspaceId: string }
   | { type: 'tab/openUrl'; url: string; active?: boolean }
+  /** Open a new tab at the user's configured new-tab page (about:newtab,
+   * about:home, or whatever the pref points at). Uses
+   * browser.tabs.create({active: true}) — no explicit URL — which avoids
+   * the AboutNewTabRedirector startup-race noise that hits when chrome
+   * tries to resolve about:newtab before activity-stream is ready. */
+  | { type: 'tab/create'; active?: boolean }
+  | { type: 'tab/reload'; id: number; bypassCache?: boolean }
+  | { type: 'tab/togglePin'; id: number }
   | { type: 'workspaces/requestSnapshot' }
   | { type: 'workspace/create'; name: string; color?: string; icon?: string }
   | { type: 'workspace/rename'; id: string; name: string }
   | { type: 'workspace/recolor'; id: string; color?: string }
-  | { type: 'workspace/delete'; id: string }
+  /** Atomic update for the editable workspace fields (name + color + icon).
+   * The edit-workspace dialog dispatches a single `workspace/update` so the
+   * sidebar mirror sees one delta instead of three flickering ones, and a
+   * future history/undo stack records one logical change. */
+  | {
+      type: 'workspace/update';
+      id: string;
+      changes: Partial<Pick<Workspace, 'name' | 'color' | 'icon'>>;
+    }
+  | { type: 'workspace/delete'; id: string; closeTabs?: boolean }
   | { type: 'workspace/activate'; id: string }
   | { type: 'settings/requestSnapshot' }
   | { type: 'settings/update'; changes: Partial<BentoSettings> }
-  | { type: 'settings/reset' };
+  | { type: 'settings/reset' }
+  /** Add an existing tab to the active workspace's side panels. Appends
+   * to the panel strip (rightmost slot). No-op if already a panel.
+   * Multi-panel: each workspace can have arbitrary N panels, scrolled
+   * horizontally if they overflow. */
+  | { type: 'panel/add'; id: number }
+  /** Remove a tab from the active workspace's panels. Tab itself
+   * stays open in the sidebar list — only the panel binding goes away. */
+  | { type: 'panel/remove'; id: number }
+  /** Remove ALL panels from the active workspace (e.g., footer "close
+   * side panel" button). */
+  | { type: 'panels/clear' };
 
 export type Event =
   | { type: 'pong'; ts: number }
@@ -92,6 +120,21 @@ export type Event =
   | { type: 'workspaces/snapshot'; workspaces: Workspace[]; activeId: string | null }
   | { type: 'workspaces/changed'; deltas: WorkspaceDelta[] }
   | { type: 'settings/snapshot'; settings: BentoSettings }
-  | { type: 'settings/changed'; settings: BentoSettings };
+  | { type: 'settings/changed'; settings: BentoSettings }
+  /** Snapshot of the active workspace's panels. Sidebar receives this and
+   * forwards to chrome via title-IPC (BENTO_PANELS:<ts>:<base64-json>);
+   * chrome reconciles its panel strip — adds new <browser> hosts for new
+   * panels, removes hosts for gone panels, navigates existing hosts whose
+   * URL changed. Sent on:
+   *   - workspace activation (active panel set may differ)
+   *   - panel/add (and the new tab is in the active workspace)
+   *   - panel/remove / panels/clear
+   *   - tab removal (if removed tab was a panel in the active workspace)
+   * Title-IPC is the only chrome-bound channel bento-tools has; chrome
+   * has no extension-API access. */
+  | {
+      type: 'panels/sync';
+      panels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
+    };
 
 export type WireMessage = Action | Event;

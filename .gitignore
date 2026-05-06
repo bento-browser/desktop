@@ -33,3 +33,7 @@ Thumbs.db
 
 # TS-compiled outputs of shared sources (we only want sources tracked)
 extensions/_shared/*.js
+
+# Auto-generated chrome design-token stylesheet — regenerated from Tale UI
+# source on every `pnpm run import`. See docs/chrome-tokens.md.
+src/browser/base/content/bento-chrome-tokens.css

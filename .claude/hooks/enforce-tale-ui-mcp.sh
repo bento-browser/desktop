@@ -64,15 +64,21 @@ if [[ $is_ui -eq 0 ]]; then
 fi
 
 # Has any mcp__tale-ui__* tool been called in this session?
+# We intentionally use plain `grep` (not `grep -q`) and read the result into
+# a variable: `grep -q` exits early on first match, which delivers SIGPIPE
+# to `jq`. With `set -o pipefail` enabled, that turns the pipeline's exit
+# status non-zero — and `if` then sees the check as failure even though a
+# match WAS found. Reading all of grep's output into a variable lets jq
+# finish naturally, regardless of how many matches the transcript holds.
 mcp_called=0
 if [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" ]]; then
-  if jq -rc '
+  matches=$(jq -rc '
         select(.message.content? // [] | any(.type == "tool_use"))
         | .message.content[]
         | select(.type == "tool_use")
         | .name
-      ' "$TRANSCRIPT_PATH" 2>/dev/null \
-     | grep -qE '^mcp__tale-ui__'; then
+      ' "$TRANSCRIPT_PATH" 2>/dev/null | grep -E '^mcp__tale-ui__' || true)
+  if [[ -n "$matches" ]]; then
     mcp_called=1
   fi
 fi

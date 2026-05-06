@@ -16,9 +16,17 @@ const CHANNEL_NAME = 'bento-shell-bus';
 interface BusState {
   channel: BroadcastChannel | null;
   ready: boolean;
+  /** Whether this shell entry should translate panel/show + panel/hide
+   * events into the chrome-script `BENTO_SIDE_PANEL:...` document.title
+   * IPC. The sidebar opts in via enableSidePanelTitleBridge(); other
+   * entries (confirm, palette, settings, privacy) MUST NOT — they share
+   * this bus to receive store snapshots, but they don't own the chrome
+   * side panel and writing the title would clobber their own title-IPC
+   * close signals (e.g. the confirm overlay's BENTO_CLOSE_CONFIRM_<ts>). */
+  sidePanelTitleBridge: boolean;
 }
 
-const state: BusState = { channel: null, ready: false };
+const state: BusState = { channel: null, ready: false, sidePanelTitleBridge: false };
 const subscribers = new Set<() => void>();
 
 function notify() {
@@ -73,6 +81,21 @@ function ensureConnection(): void {
       case 'settings/changed':
         useSettingsStore.getState().apply(event.settings);
         return;
+      case 'panels/sync':
+        // Forward to chrome via title-IPC. Format expected by bento-shell-
+        // mount.js: BENTO_PANELS:<ts>:<base64-of-json>. Base64 because
+        // panel URLs can contain colons / commas / equals signs that
+        // would interfere with simpler delimiters. Gated on the bridge
+        // flag — only the sidebar opts in. Without this, secondary shell
+        // entries like confirm.html would also write to document.title
+        // here and stomp on their own close-signal titles.
+        if (state.sidePanelTitleBridge) {
+          const json = JSON.stringify(event.panels);
+          // btoa needs latin1; encodeURIComponent first to handle multibyte.
+          const b64 = btoa(unescape(encodeURIComponent(json)));
+          document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
+        }
+        return;
       case 'pong':
         return;
       default:
@@ -97,6 +120,15 @@ function getReady(): boolean {
 /** Initialize the bus (call once at shell mount). Safe to call multiple times. */
 export function initToolsPort(): void {
   ensureConnection();
+}
+
+/** Opt this entry into translating panel/show + panel/hide events into
+ * the chrome `BENTO_SIDE_PANEL:...` document.title IPC. Called only by
+ * the sidebar (src/main.tsx) — the sidebar is the canonical owner of
+ * the chrome side-panel reveal/hide signal. Other entries (confirm,
+ * palette, settings, privacy) intentionally do NOT call this. */
+export function enableSidePanelTitleBridge(): void {
+  state.sidePanelTitleBridge = true;
 }
 
 /** React hook returning the current ready flag; re-renders on connect. */

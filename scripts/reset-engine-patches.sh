@@ -41,24 +41,50 @@ fi
 
 cd "$ENGINE_DIR"
 
-# Only revert files that are actually modified — git checkout on an
-# unmodified path is a no-op but git complains if the path doesn't exist.
+# Tracked + modified → git checkout. Untracked (created by new-file patches)
+# → rm. Both classes block re-applying patches: modified content rejects
+# context, existing files reject "new file mode".
 revert_count=0
+remove_count=0
 to_revert_list="$(mktemp)"
-trap 'rm -f "$patch_files_list" "$to_revert_list"' EXIT
+to_remove_list="$(mktemp)"
+trap 'rm -f "$patch_files_list" "$to_revert_list" "$to_remove_list"' EXIT
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
-  if [ -e "$f" ] && ! git diff --quiet -- "$f" 2>/dev/null; then
-    echo "$f" >> "$to_revert_list"
-    revert_count=$((revert_count + 1))
+  [ -e "$f" ] || continue
+  if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+    if ! git diff --quiet -- "$f" 2>/dev/null; then
+      echo "$f" >> "$to_revert_list"
+      revert_count=$((revert_count + 1))
+    fi
+  else
+    echo "$f" >> "$to_remove_list"
+    remove_count=$((remove_count + 1))
   fi
 done < "$patch_files_list"
 
-if [ "$revert_count" -eq 0 ]; then
-  echo "reset-engine-patches: no modified patched files to revert"
+if [ "$revert_count" -eq 0 ] && [ "$remove_count" -eq 0 ]; then
+  echo "reset-engine-patches: nothing to do"
   exit 0
 fi
 
-echo "reset-engine-patches: reverting $revert_count file(s) to pristine"
-xargs git checkout -- < "$to_revert_list"
+if [ "$revert_count" -gt 0 ]; then
+  echo "reset-engine-patches: reverting $revert_count tracked file(s) to pristine"
+  xargs git checkout -- < "$to_revert_list"
+fi
+
+if [ "$remove_count" -gt 0 ]; then
+  echo "reset-engine-patches: removing $remove_count untracked file(s) added by patches"
+  xargs rm -f < "$to_remove_list"
+  # Prune empty parent dirs so subsequent patches that re-add the directory
+  # tree don't trip over a stale empty shell. rmdir fails on non-empty,
+  # which is what we want.
+  while IFS= read -r f; do
+    d="$(dirname "$f")"
+    while [ "$d" != "." ] && [ "$d" != "/" ]; do
+      rmdir "$d" 2>/dev/null || break
+      d="$(dirname "$d")"
+    done
+  done < "$to_remove_list"
+fi

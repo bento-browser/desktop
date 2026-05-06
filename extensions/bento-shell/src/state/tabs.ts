@@ -88,11 +88,14 @@ export function useTab(id: number): TabSnapshot | undefined {
   return useTabsStore((s) => s.byId[id]);
 }
 
-/** Returns ordered tab ids belonging to the given workspace (or unassigned).
- * Unassigned tabs surface in every workspace so they're never invisibly
- * hidden — covers the brief post-create assignment window and pre-workspace
- * tabs from a first boot. useShallow keeps the array reference stable between
- * renders so TabList only re-renders when the filtered set actually changes. */
+/** Returns ordered tab ids belonging to the given workspace. Tabs without a
+ * workspaceId are NOT surfaced anywhere — bento-tools backfills boot-time
+ * orphans on init and auto-assigns runtime-created tabs immediately, so the
+ * only window where a tab is orphaned is the few ms between onCreated and
+ * assignWorkspace's session.set resolving. Hiding orphans here keeps stray
+ * tabs from bleeding across workspaces if a future bug ever leaves one
+ * unassigned. useShallow keeps the array reference stable between renders so
+ * TabList only re-renders when the filtered set actually changes. */
 export function useWorkspaceTabIds(workspaceId: string | null): number[] {
   return useTabsStore(
     useShallow((s) => {
@@ -101,7 +104,7 @@ export function useWorkspaceTabIds(workspaceId: string | null): number[] {
       for (const id of s.orderedIds) {
         const tab = s.byId[id];
         if (!tab) continue;
-        if (!tab.workspaceId || tab.workspaceId === workspaceId) out.push(id);
+        if (tab.workspaceId === workspaceId) out.push(id);
       }
       return out;
     }),

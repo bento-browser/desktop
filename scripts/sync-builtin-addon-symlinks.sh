@@ -64,3 +64,41 @@ sync_addon() {
 
 sync_addon bento-shell
 sync_addon bento-tools
+
+# Bento chrome content files (registered in patches/chrome-layout/01-bento-
+# shell-mount.patch's jar.mn entry). The first full mach build creates the
+# install-time symlinks under chrome/browser/content/browser/; new chrome
+# files added between full builds (like bento-chrome-tokens.css after we
+# wired up the Tale UI token bridge) won't appear in the deployed app
+# until either a full rebuild OR we symlink them ourselves. Same approach
+# the addon-dist sync above uses.
+APP_CHROME_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/chrome/browser/content/browser"
+SRC_CHROME_ROOT="engine/browser/base/content"
+
+sync_chrome_file() {
+  local filename="$1"
+  local source="$REPO_ROOT/$SRC_CHROME_ROOT/$filename"
+  local target="$APP_CHROME_ROOT/$filename"
+
+  if [ ! -e "$source" ]; then
+    echo "sync-symlinks: chrome source $source missing — skipping $filename"
+    return
+  fi
+  if [ ! -d "$APP_CHROME_ROOT" ]; then
+    echo "sync-symlinks: $APP_CHROME_ROOT missing — skipping chrome files"
+    return
+  fi
+  if [ -L "$target" ]; then
+    local current
+    current="$(readlink "$target")"
+    if [ "$current" = "$source" ]; then
+      echo "sync-symlinks: chrome/$filename already linked"
+      return
+    fi
+  fi
+  rm -f "$target"
+  ln -s "$source" "$target"
+  echo "sync-symlinks: chrome/$filename linked -> $source"
+}
+
+sync_chrome_file bento-chrome-tokens.css

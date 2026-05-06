@@ -6,6 +6,7 @@ import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
+import PanelRightClose from 'lucide-react/dist/esm/icons/panel-right-close';
 
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
@@ -57,6 +58,8 @@ export function App() {
 
   const onActivate = (id: number) => dispatch({ type: 'tab/activate', id });
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
+  const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
+  const closeSidePanel = () => dispatch({ type: 'panels/clear' });
 
   return (
     <Column gap="xs" className="bento-shell-app">
@@ -68,8 +71,16 @@ export function App() {
           </Text>
         )}
       </Row>
-      <TabList onActivate={onActivate} onClose={onClose} />
+      <TabList onActivate={onActivate} onClose={onClose} onOpenInSidePanel={onOpenInSidePanel} />
       <Row gap="2xs" align="center" className="bento-shell-app__footer">
+        <IconButton
+          variant="ghost"
+          size="sm"
+          aria-label="Close side panel"
+          onPress={closeSidePanel}
+        >
+          <Icon icon={PanelRightClose} />
+        </IconButton>
         <IconButton
           variant="ghost"
           size="sm"

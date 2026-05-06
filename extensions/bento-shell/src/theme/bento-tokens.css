@@ -10,9 +10,50 @@
  */
 @layer bento.tokens {
   :root {
+    /* Bento uses the COOL neutral family across the whole UI (slate tint,
+       matches the brand). Tale UI defaults --neutral-default-N to the WARM
+       family (beige). Re-point the defaults to cool here so every Tale UI
+       --neutral-N consumer (and our --bento-* tokens that derive from
+       --neutral-N) inherits the cool flavor automatically. The
+       --neutral-default-N indirection is exactly what Tale UI provides
+       for this kind of brand-tinted theme override — see
+       packages/css/src/tokens/_neutrals.css. */
+    --neutral-default-5: var(--neutral-cool-5);
+    --neutral-default-10: var(--neutral-cool-10);
+    --neutral-default-12: var(--neutral-cool-12);
+    --neutral-default-14: var(--neutral-cool-14);
+    --neutral-default-16: var(--neutral-cool-16);
+    --neutral-default-18: var(--neutral-cool-18);
+    --neutral-default-20: var(--neutral-cool-20);
+    --neutral-default-22: var(--neutral-cool-22);
+    --neutral-default-24: var(--neutral-cool-24);
+    --neutral-default-26: var(--neutral-cool-26);
+    --neutral-default-28: var(--neutral-cool-28);
+    --neutral-default-30: var(--neutral-cool-30);
+    --neutral-default-40: var(--neutral-cool-40);
+    --neutral-default-50: var(--neutral-cool-50);
+    --neutral-default-60: var(--neutral-cool-60);
+    --neutral-default-70: var(--neutral-cool-70);
+    --neutral-default-80: var(--neutral-cool-80);
+    --neutral-default-82: var(--neutral-cool-82);
+    --neutral-default-84: var(--neutral-cool-84);
+    --neutral-default-86: var(--neutral-cool-86);
+    --neutral-default-88: var(--neutral-cool-88);
+    --neutral-default-90: var(--neutral-cool-90);
+    --neutral-default-92: var(--neutral-cool-92);
+    --neutral-default-94: var(--neutral-cool-94);
+    --neutral-default-96: var(--neutral-cool-96);
+    --neutral-default-98: var(--neutral-cool-98);
+    --neutral-default-100: var(--neutral-cool-100);
+
     /* Workspace accent — set <html data-workspace-color="..."> at runtime
-       to swap the entire UI's accent palette per active workspace. */
+       to swap the entire UI's accent palette per active workspace.
+       --accent / --accent-fg follow Tale UI's --color-60 / --color-60-fg
+       contrast pair: the accent tints surfaces (avatar bg, focus ring,
+       etc.) and -fg renders legible text on top. -soft stays as a
+       lower-saturation variant for hover states / subtle tints. */
     --bento-workspace-accent: var(--color-60);
+    --bento-workspace-accent-fg: var(--color-5);
     --bento-workspace-accent-soft: var(--color-20);
 
     /* Vertical tab strip dimensions */
@@ -22,15 +63,16 @@
 
     /* Bento Spaces panel layout */
     --bento-panel-min-width: 240px;
+    --bento-main-panel-min-width: 320px;
     --bento-panel-handle-width: 4px;
     --bento-panel-handle-hover-width: 8px;
 
-    /* Brand. light-dark() picks based on color-scheme (set in index.html);
-       useFirefoxTheme() keeps data-color-mode in sync so Tale UI tokens
-       flip together. The dark value mirrors surfer.json's backgroundColor;
-       light is a slate-tinted off-white that pairs with Tale UI's neutral-
-       cool ramp. */
-    --bento-brand-bg: light-dark(#f7f8fa, #282a33);
+    /* Brand background. --neutral-5 auto-flips with data-color-mode via
+       Tale UI's color-modes mechanism: in light mode it resolves to the
+       lightest neutral (cool-5 via our default-family override above), in
+       dark mode to the darkest (color-mix of cool-100 with black). One
+       token, no manual data-color-mode selectors needed here. */
+    --bento-brand-bg: var(--neutral-14);
 
     /* Component dimensions */
     --bento-favicon-size: 1.6rem;
@@ -41,6 +83,34 @@
     --bento-surface-hover: color-mix(in srgb, var(--neutral-90) 8%, transparent);
     --bento-surface-active: color-mix(in srgb, var(--neutral-90) 16%, transparent);
 
+    /* Solid composites of the surface overlays painted over --bento-brand-bg.
+       Use these where you need an OPAQUE color that visually matches the
+       hover/active surface on a brand-bg row — e.g. a gradient backstop
+       behind a TabRow's hover actions, where overlapping the translucent
+       --bento-surface-hover would double-stack and read darker. */
+    --bento-surface-hover-solid: color-mix(
+      in srgb,
+      var(--bento-brand-bg) 92%,
+      var(--neutral-90) 8%
+    );
+    --bento-surface-active-solid: color-mix(
+      in srgb,
+      var(--bento-brand-bg) 84%,
+      var(--neutral-90) 16%
+    );
+
+    /* Active + hovered surface — the row gets BOTH active class and :hover
+       pseudo. We want this to read as a slightly stronger version of
+       active (24% = active 16% + hover 8%), giving the user feedback that
+       the active row is interactive without making it noisy. The matching
+       solid composite lets gradient backstops blend perfectly. */
+    --bento-surface-active-hover: color-mix(in srgb, var(--neutral-90) 24%, transparent);
+    --bento-surface-active-hover-solid: color-mix(
+      in srgb,
+      var(--bento-brand-bg) 76%,
+      var(--neutral-90) 24%
+    );
+
     /* Borders. Hairline width is a CSS convention; consumers write
        `1px solid var(--bento-border-color-subtle)`. */
     --bento-border-color-subtle: color-mix(in srgb, currentColor 10%, transparent);
@@ -48,21 +118,97 @@
     /* Motion */
     --bento-duration-fast: 100ms;
     --bento-duration-base: 200ms;
+    --bento-duration-slow: 350ms;
     --bento-easing-standard: ease;
+
+    /* Chrome panel components (header, navigator, scrollbar, etc.).
+       Defined here so future themes can re-skin the entire panel
+       chrome by overriding these tokens — the chrome-tokens generator
+       (scripts/generate-chrome-tokens.mjs) bundles this file into
+       bento-chrome-tokens.css so they're available in browser.xhtml
+       too. */
+
+    /* SVG icon sizes inside chrome controls. */
+    --bento-icon-size-xs: 14px;
+    --bento-icon-size-sm: 16px;
+    --bento-icon-size-md: 20px;
+
+    /* Compact icon-button (24×24) used in the panel header and the
+       favicon navigator. Matches Tale UI's IconButton size="sm". */
+    --bento-control-size-sm: 24px;
+
+    /* Panel header strip (back/fwd/url-input/star). Sized so a 24px
+       button + vertical padding fits cleanly. */
+    --bento-panel-header-height: 32px;
+
+    /* Custom always-on horizontal scrollbar between the strip and the
+       navigator. */
+    --bento-scrollbar-thickness: 8px;
+    --bento-scrollbar-radius: 4px;
+    --bento-scrollbar-thumb-min-width: 30px;
+
+    /* Add-panel trailer ("+ Add panel" button at the end of the
+       strip). Narrow enough not to dominate; wide enough to fit the
+       icon + label. */
+    --bento-add-panel-trailer-width: 96px;
+
+    /* Focus / cycle indicator ring width (inset box-shadow on the
+       active panel). */
+    --bento-focus-ring-width: 2px;
+
+    /* Hairline border (CSS convention). Used for panel-header
+       bottom-border, dashed Add-panel outline, etc. */
+    --bento-border-hairline: 1px;
   }
 
-  /* Per-workspace accent presets. Add more as the user creates workspaces.
-     Set <html data-workspace-color="blue"> from the active workspace. */
+  /* Per-workspace accent presets. Each picker swatch in the workspace edit
+     dialog needs a matching block here. Set <html data-workspace-color="X">
+     from the active workspace. Order should match WORKSPACE_COLORS in
+     WorkspaceSwitcher.tsx so the color picker swatches read left-to-right
+     in the same order as the values. */
+  /* 'blue' is a legacy workspace-color name that pre-dates the Tale UI
+     audit — Tale UI's color tokens don't include a --blue scale (the
+     blue-family scales it ships are sky / indigo / cyan). Keep the name
+     as the rotation default since it's persisted in profiles, and map
+     it to --indigo-60 which is the closest visual match. */
   [data-workspace-color='blue'] {
-    --bento-workspace-accent: var(--blue-60);
-    --bento-workspace-accent-soft: var(--blue-20);
+    --bento-workspace-accent: var(--indigo-60);
+    --bento-workspace-accent-fg: var(--indigo-5);
+    --bento-workspace-accent-soft: var(--indigo-20);
   }
   [data-workspace-color='emerald'] {
     --bento-workspace-accent: var(--emerald-60);
+    --bento-workspace-accent-fg: var(--emerald-5);
     --bento-workspace-accent-soft: var(--emerald-20);
   }
   [data-workspace-color='amber'] {
     --bento-workspace-accent: var(--amber-60);
+    --bento-workspace-accent-fg: var(--amber-5);
     --bento-workspace-accent-soft: var(--amber-20);
+  }
+  [data-workspace-color='red'] {
+    --bento-workspace-accent: var(--red-60);
+    --bento-workspace-accent-fg: var(--red-5);
+    --bento-workspace-accent-soft: var(--red-20);
+  }
+  [data-workspace-color='violet'] {
+    --bento-workspace-accent: var(--violet-60);
+    --bento-workspace-accent-fg: var(--violet-5);
+    --bento-workspace-accent-soft: var(--violet-20);
+  }
+  [data-workspace-color='pink'] {
+    --bento-workspace-accent: var(--pink-60);
+    --bento-workspace-accent-fg: var(--pink-5);
+    --bento-workspace-accent-soft: var(--pink-20);
+  }
+  [data-workspace-color='cyan'] {
+    --bento-workspace-accent: var(--cyan-60);
+    --bento-workspace-accent-fg: var(--cyan-5);
+    --bento-workspace-accent-soft: var(--cyan-20);
+  }
+  [data-workspace-color='neutral'] {
+    --bento-workspace-accent: var(--neutral-60);
+    --bento-workspace-accent-fg: var(--neutral-5);
+    --bento-workspace-accent-soft: var(--neutral-20);
   }
 }

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" class="tale-ui">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bento Edit Workspace</title>
+
+    <script src="./boot.js"></script>
+
+    <!-- Transparent background — the chrome <browser> hosting this page
+         covers the entire browser window; the Dialog backdrop draws its
+         own scrim. Without transparent here, the page background would
+         obscure browser content beneath. -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background-color: transparent;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/edit-workspace/main.tsx"></script>
+  </body>
+</html>

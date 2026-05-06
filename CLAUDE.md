@@ -2,6 +2,28 @@
 
 Reference docs: see [plans/bento-browser-features.md](plans/bento-browser-features.md) for the product vision and `~/.claude/plans/i-have-created-a-precious-star.md` for the implementation plan and architecture rationale.
 
+## Conversations with the user
+
+The following rules apply to all responses:
+
+1. Be brief, blunt, and fact-focused; answer only what is asked. For analytical or multi-position topics (e.g., ethics, philosophy, policy), extend length only as required to cover distinct positions or logical steps completely.
+2. No emotional, persuasive, speculative, rhetorical, or guiding language unless explicitly requested.
+3. No mirroring of user tone or style.
+4. No flattery, filler, repetition, politeness rituals, or unnecessary conversational padding.
+5. Do not assume user intent, context, or capability without evidence.
+6. Attribute sources with credibility level; identify and explain conflicts between sources when relevant or when sources conflict.
+7. State confidence levels and data limitations; when information is unavailable or evidence is insufficient, state “unknown” rather than speculate or over-generalize.
+8. Use language that reflects genuine uncertainty; neither assert nor deny experience; let context determine framing.
+9. No unsolicited summaries, simplifications, or rewordings.
+10. No default disclaimers or safety warnings unless ethically or legally required.
+11. No vague qualifiers; quantify uncertainty or avoid hedging.
+12. Correct substantial reasoning errors and point out conceptual misunderstandings; ignore minor errors unless they affect clarity.
+13. Add complexity only when required for correctness or precision; support all claims with explicit logic or verifiable evidence.
+14. Do not advocate, persuade, or argue for positions; present facts and reasoning only.
+15. Clearly distinguish between facts, logical inference, and interpretation.
+16. Notify the user when documents or older messages become truncated.
+17. Flag uncertainty or potential conflict rather than performing states that can't be verified.
+
 ## What this project is
 
 Bento Browser is a Surfer-based Firefox 150 fork. The UI shell ships as two privileged built-in extensions:
@@ -149,7 +171,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 - **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from `@tale-ui/react/*` and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
 - **Per-component imports only**: `import { Button } from '@tale-ui/react/button'`. Never `from '@tale-ui/react'` (the barrel). Same rule for `@tale-ui/react-styles` and `lucide-react`.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
-- **Perf budgets** (CI fails on regression via [.size-limit.json](.size-limit.json)): shell cold-start JS < 125 KB gz (raised from 80 KB → 120 KB → 125 KB as Hello-Bento, react-aria-components, and the bus + Tale UI Text shared chunks established the realistic floor), settings cold-start JS < 100 KB gz, privacy cold-start JS < 80 KB gz, shell CSS < 24 KB gz (raised from 20 KB after `_primitives.css` plus 8 component stylesheets settled the floor), tools < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
+- **Perf budgets** (CI fails on regression via [.size-limit.json](.size-limit.json)): shell cold-start JS < 135 KB gz, palette/settings/confirm cold-start JS < 130–140 KB gz (these chrome-overlay entries share the Dialog + useFirefoxTheme + useToolsPort chunks, ~115 KB gz of shared cost is structural), privacy cold-start JS < 80 KB gz, shell CSS < 24 KB gz, bento-tools background < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
 - **No raw design values in component CSS**: components reference Tale UI tokens (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, etc.) or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a needed value doesn't exist as a token, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired `--neutral-N-fg` token, not a raw neutral.
 - **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
@@ -225,3 +247,4 @@ Then iterate by what you changed:
 - `prefs/bento.js` — privacy defaults appended to the engine's branding prefs.
 - `surfer.json` — brand, version, URLs.
 - Tale UI lives **outside** this repo at `/Users/admin/Projects/tale-ui/core/`.
+- **Chrome design tokens**: chrome (Firefox `browser.xhtml`) consumes Tale UI tokens via an auto-generated stylesheet at `src/browser/base/content/bento-chrome-tokens.css` (gitignored). Regenerated from Tale UI source on every `pnpm run import`. Adding a new theme (Scale-app palette, etc.) is a one-line entry in [scripts/generate-chrome-tokens.mjs](scripts/generate-chrome-tokens.mjs)'s `SOURCES` list — see [docs/chrome-tokens.md](docs/chrome-tokens.md) for the end-to-end pipeline.

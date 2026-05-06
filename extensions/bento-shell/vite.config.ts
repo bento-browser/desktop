@@ -69,6 +69,8 @@ export default defineConfig(({ mode }) => ({
         privacy: resolve(__dirname, 'privacy.html'),
         settings: resolve(__dirname, 'settings.html'),
         palette: resolve(__dirname, 'palette.html'),
+        confirm: resolve(__dirname, 'confirm.html'),
+        'edit-workspace': resolve(__dirname, 'edit-workspace.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

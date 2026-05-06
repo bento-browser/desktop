@@ -6,9 +6,11 @@
       "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/settings.js",
       "!extensions/bento-shell/dist/assets/palette.js",
+      "!extensions/bento-shell/dist/assets/confirm.js",
+      "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "135 KB",
+    "limit": "145 KB",
     "gzip": true
   },
   {
@@ -18,9 +20,11 @@
       "!extensions/bento-shell/dist/assets/shell.js",
       "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/settings.js",
+      "!extensions/bento-shell/dist/assets/confirm.js",
+      "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "140 KB",
+    "limit": "145 KB",
     "gzip": true
   },
   {
@@ -30,9 +34,39 @@
       "!extensions/bento-shell/dist/assets/shell.js",
       "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/palette.js",
+      "!extensions/bento-shell/dist/assets/confirm.js",
+      "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "140 KB",
+    "limit": "145 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · confirm cold-start JS (gz)",
+    "path": [
+      "extensions/bento-shell/dist/assets/*.js",
+      "!extensions/bento-shell/dist/assets/shell.js",
+      "!extensions/bento-shell/dist/assets/privacy.js",
+      "!extensions/bento-shell/dist/assets/settings.js",
+      "!extensions/bento-shell/dist/assets/palette.js",
+      "!extensions/bento-shell/dist/assets/edit-workspace.js",
+      "!extensions/bento-shell/dist/assets/background.js"
+    ],
+    "limit": "135 KB",
+    "gzip": true
+  },
+  {
+    "name": "bento-shell · edit-workspace cold-start JS (gz)",
+    "path": [
+      "extensions/bento-shell/dist/assets/*.js",
+      "!extensions/bento-shell/dist/assets/shell.js",
+      "!extensions/bento-shell/dist/assets/privacy.js",
+      "!extensions/bento-shell/dist/assets/settings.js",
+      "!extensions/bento-shell/dist/assets/palette.js",
+      "!extensions/bento-shell/dist/assets/confirm.js",
+      "!extensions/bento-shell/dist/assets/background.js"
+    ],
+    "limit": "155 KB",
     "gzip": true
   },
   {
