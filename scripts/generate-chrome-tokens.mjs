@@ -37,14 +37,48 @@
  *     corners would be twice as round as the rest of the UI.
  */
 
-import { readFileSync, writeFileSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const TALE_UI_CSS = resolve(REPO_ROOT, '..', 'tale-ui', 'core', 'packages', 'css', 'src');
 const OUT_PATH = resolve(REPO_ROOT, 'src/browser/base/content/bento-chrome-tokens.css');
+
+// Resolve Tale UI's CSS source dir. Two scenarios:
+//   1. Dev (.pnpmfile.cjs rewrites @tale-ui/core to a `link:` of the local
+//      sibling checkout): node_modules/@tale-ui/core/ is a symlink to
+//      ../tale-ui/core/packages/css/. src/ is right there inside it.
+//   2. Release (BENTO_RELEASE=1, npm install): node_modules/@tale-ui/core/
+//      is a real install of the published package. The src/ directory
+//      ships in the npm tarball (Tale UI's package.json points main /
+//      style at src/index.css so the source files are part of "files").
+// Both layouts have node_modules/@tale-ui/core/src/. We walk node_modules
+// directly rather than using require.resolve('@tale-ui/core/package.json')
+// because Node's exports gating blocks deep manifest imports unless the
+// package explicitly lists "./package.json" in exports — Tale UI doesn't.
+function findTaleUiCss() {
+  const candidates = [
+    // Workspace root, where pnpm with node-linker=hoisted places it.
+    resolve(REPO_ROOT, 'node_modules', '@tale-ui', 'core', 'src'),
+    // Per-workspace fallback (older pnpm layouts, or when the root install
+    // hoists differently).
+    resolve(REPO_ROOT, 'extensions', 'bento-shell', 'node_modules', '@tale-ui', 'core', 'src'),
+    // Last-resort sibling checkout — pre-pnpm-install state, or scripts
+    // run before any install.
+    resolve(REPO_ROOT, '..', 'tale-ui', 'core', 'packages', 'css', 'src'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error(
+    'generate-chrome-tokens: could not locate Tale UI CSS source. Looked at:\n  ' +
+      candidates.join('\n  ') +
+      '\nRun `pnpm install` first.',
+  );
+}
+
+const TALE_UI_CSS = findTaleUiCss();
 
 // Order matters: tokens before themes so the variables exist when
 // theme overrides reference them. Mirrors Tale UI's index.css order
