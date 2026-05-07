@@ -51,6 +51,10 @@ esac
 # Firefox engine version (an object with product/version/candidate);
 # Bento's product version lives at brands.bento.release.displayVersion.
 VERSION="$(node -p "require('./surfer.json').brands.bento.release.displayVersion")"
+if [ -z "$VERSION" ]; then
+  echo "build-release: missing brands.bento.release.displayVersion in surfer.json" >&2
+  exit 1
+fi
 
 OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
@@ -94,6 +98,13 @@ BENTO_RELEASE=1 pnpm run import
 BENTO_RELEASE=1 npx surfer build
 
 step "3/4 Packaging installer (surfer package)"
+case "$PLATFORM" in
+  macos)
+    # Remove stale macOS packages before packaging so the collected artifact
+    # always comes from this build's configured Bento release version.
+    find engine/obj-*/dist -maxdepth 2 -name 'bento-*.dmg' -delete 2>/dev/null || true
+    ;;
+esac
 npx surfer package
 
 step "4/4 Collecting artifacts into $OUT_DIR"
@@ -104,11 +115,18 @@ case "$PLATFORM" in
   macos)
     # Apple Silicon (aarch64) and Intel (x86_64) both end up under obj-*/dist.
     # mach package on macOS produces a .dmg directly.
-    DMG="$(find engine/obj-*/dist -maxdepth 2 -name '*.dmg' | head -n1)"
-    if [ -z "$DMG" ]; then
-      echo "build-release: no .dmg found under engine/obj-*/dist" >&2
+    DMG_LIST="$(find engine/obj-*/dist -maxdepth 2 -name "bento-$VERSION.*.dmg" | sort)"
+    DMG_COUNT="$(printf '%s\n' "$DMG_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
+    if [ "$DMG_COUNT" = "0" ]; then
+      echo "build-release: no bento-$VERSION .dmg found under engine/obj-*/dist" >&2
       exit 1
     fi
+    if [ "$DMG_COUNT" != "1" ]; then
+      echo "build-release: expected one bento-$VERSION .dmg, found $DMG_COUNT:" >&2
+      printf '%s\n' "$DMG_LIST" >&2
+      exit 1
+    fi
+    DMG="$DMG_LIST"
     OUT="$OUT_DIR/Bento-$VERSION-macos.dmg"
     cp "$DMG" "$OUT"
     echo "build-release: produced $OUT"
