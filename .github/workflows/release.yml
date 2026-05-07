@@ -55,20 +55,25 @@ jobs:
 
       # Cache mach build artifacts so an incremental release that only
       # changes Bento extensions doesn't re-link the entire engine. The
-      # extensions live OUTSIDE engine/obj-* so they're rebuilt fresh
-      # every run.
+      # key is keyed on the surfer SHA + patches (the things that affect
+      # native compile output) and intentionally NOT on github.sha, so
+      # commits that only touch extensions/, scripts/, or branding/ hit
+      # the cache and skip the multi-hour relink step.
       - name: Cache engine/obj-*
         uses: actions/cache@v4
         with:
           path: engine/obj-*
-          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**') }}-
+          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json') }}
 
-      # The build-release.sh script does dependency install in release
-      # mode (BENTO_RELEASE=1, --no-frozen-lockfile). We don't pre-install
-      # to avoid the dev-mode install pulling local Tale UI link paths
-      # that don't exist on the runner.
+      # Install dependencies in release mode so the @tale-ui/* deps
+      # resolve from npm (not local link). build-release.sh re-runs this
+      # internally for safety, but we install up front because the
+      # `surfer download` / `surfer bootstrap` steps below need surfer
+      # itself on disk before they can invoke it.
+      - name: Install dependencies (release mode)
+        env:
+          BENTO_RELEASE: '1'
+        run: pnpm install --no-frozen-lockfile
 
       - name: Surfer download (Firefox source)
         run: pnpm run download

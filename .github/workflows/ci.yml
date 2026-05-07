@@ -75,20 +75,17 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        # Tale UI lives outside the repo via pnpm `link:` (CLAUDE.md). Local
-        # devs symlink to ../../../tale-ui/core/packages/*; CI doesn't have
-        # those checked out, so install bypasses link resolution by allowing
-        # missing optional deps. The build still completes because Tale UI
-        # symlinks are dev-time only — the `link:` paths point at packages
-        # that don't exist on the runner. To unblock CI before Tale UI is
-        # published or vendored (see CLAUDE.md release-migration callout),
-        # check out tale-ui as a sibling repo.
-        run: |
-          if [ ! -d ../tale-ui/core ]; then
-            echo "::warning::Tale UI not present at ../tale-ui/core — checking out from main"
-            git clone --depth=1 https://github.com/Tale-UI/core.git ../tale-ui/core
-          fi
-          pnpm install --frozen-lockfile
+        # BENTO_RELEASE=1 short-circuits the .pnpmfile.cjs readPackage hook
+        # so @tale-ui/* resolve from npm at the pinned versions in
+        # package.json. Without it the hook would rewrite them to
+        # `link:/Users/admin/Projects/tale-ui/core/packages/*` (the local
+        # dev path) which doesn't exist on the runner. --no-frozen-lockfile
+        # is needed because the committed lockfile records the link:
+        # paths from dev — CI is allowed to update its in-memory copy, the
+        # change is discarded with the runner.
+        env:
+          BENTO_RELEASE: '1'
+        run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck (shell)
         run: pnpm --filter @bento/shell typecheck
@@ -123,7 +120,11 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        # See `extensions` job above for why BENTO_RELEASE + --no-frozen-lockfile.
+        env:
+          BENTO_RELEASE: '1'
+        run: pnpm install --no-frozen-lockfile
       - name: Surfer reads our config
         # `surfer --version` parses surfer.json end-to-end and exits non-zero
         # if any required field is missing. Our cheapest end-to-end check.
@@ -148,7 +149,11 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        # See `extensions` job above for why BENTO_RELEASE + --no-frozen-lockfile.
+        env:
+          BENTO_RELEASE: '1'
+        run: pnpm install --no-frozen-lockfile
 
       - name: Cache Firefox source (engine/)
         uses: actions/cache@v4
