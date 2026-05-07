@@ -20,7 +20,7 @@
       "brandShortName": "Bento",
       "brandFullName": "Bento Browser",
       "release": {
-        "displayVersion": "0.0.0",
+        "displayVersion": "0.0.1",
         "github": {
           "repo": "Bento-Browser/desktop"
         }
@@ -52,9 +52,7 @@
     }
   },
   "license": {
-    "ignoredFiles": [
-      ".*\\.json"
-    ],
+    "ignoredFiles": [".*\\.json"],
     "licenseType": "MPL-2.0"
   },
   "updateHostname": "updates.bentobrowser.app"
