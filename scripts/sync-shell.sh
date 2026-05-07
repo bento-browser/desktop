@@ -10,7 +10,11 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-OBJ_DIR="$(ls -d "$REPO/engine/obj-"* 2>/dev/null | head -1)"
+# Use `find -maxdepth 1` instead of `ls -d` so non-alphanumeric paths
+# don't bite (ShellCheck SC2012). `engine/obj-*` is a single
+# platform-suffixed dir in practice (obj-aarch64-apple-darwin25.4.0
+# locally) — head -n1 picks the first match.
+OBJ_DIR="$(find "$REPO/engine" -maxdepth 1 -name 'obj-*' -type d 2>/dev/null | head -n1)"
 if [ -z "$OBJ_DIR" ]; then
   echo "error: no engine/obj-* directory found — run \`npm run build\` first." >&2
   exit 1
