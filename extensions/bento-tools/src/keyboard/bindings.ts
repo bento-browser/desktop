@@ -33,13 +33,5 @@ export function handleCommand(command: string, ctx: BindingContext): void {
       return;
     }
   }
-  if (command === 'open-bento-settings') {
-    browser.tabs.create({ url: 'about:bento-settings', active: true });
-    return;
-  }
-  if (command === 'open-bento-privacy') {
-    browser.tabs.create({ url: 'about:bento-privacy', active: true });
-    return;
-  }
   console.warn('[bento-tools] unknown command:', command);
 }

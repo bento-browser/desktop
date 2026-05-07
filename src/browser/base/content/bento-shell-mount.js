@@ -266,6 +266,11 @@
         width: var(--bento-icon-size-sm);
         height: var(--bento-icon-size-sm);
         display: block;
+        /* Make the favicon image pointer-transparent so pointerdown is
+           always reported with the button as the target — keeps the
+           drag-handler's setPointerCapture(btn) coherent regardless of
+           whether the user pressed on the favicon or the button padding. */
+        pointer-events: none;
       }
       .bento-panel-nav__icon--placeholder::before {
         content: '';
@@ -273,6 +278,61 @@
         inset: var(--space-3xs);
         border-radius: 50%;
         background-color: var(--neutral-30);
+      }
+      /* Drag-to-reorder states. Side-panel buttons (those with a tabId)
+         show grab cursor on idle. While a drag is active the source
+         button dims + scales down, the body cursor switches to grabbing
+         (set on the list element so it covers the whole strip), and a
+         drop indicator marks the prospective insertion point. */
+      .bento-panel-nav__icon[data-bento-nav-draggable] {
+        cursor: grab;
+      }
+      .bento-panel-nav__list--dragging {
+        cursor: grabbing;
+      }
+      .bento-panel-nav__list--dragging .bento-panel-nav__icon[data-bento-nav-draggable] {
+        cursor: grabbing;
+      }
+      .bento-panel-nav__icon--dragging {
+        opacity: 0.45;
+        transform: scale(0.92);
+        transition:
+          opacity var(--bento-duration-fast) var(--bento-easing-standard),
+          transform var(--bento-duration-fast) var(--bento-easing-standard);
+      }
+      .bento-panel-nav__icon--dragging:hover {
+        background-color: transparent;
+        border-color: transparent;
+        transform: scale(0.92);
+      }
+      /* Insertion indicator. Absolutely positioned overlay over the list
+         (NOT a flex child) so painting it never reflows siblings — that
+         would shift their bounding rects, which would feed back into the
+         next pointermove's slot calculation and oscillate. Top/bottom
+         pinned to span the full nav row height; X is set imperatively
+         per pointermove. */
+      .bento-panel-nav__list {
+        position: relative;
+      }
+      .bento-panel-nav__drop-indicator {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: var(--bento-focus-ring-width);
+        background-color: var(--color-60);
+        border-radius: var(--bento-focus-ring-width);
+        pointer-events: none;
+        z-index: 1;
+        animation: bento-nav-drop-fade-in var(--bento-duration-fast)
+          var(--bento-easing-standard);
+      }
+      @keyframes bento-nav-drop-fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
       }
       .bento-panel-nav-menu {
         position: fixed;
@@ -327,6 +387,19 @@
         flex: 0 0 auto;
         min-width: var(--bento-panel-min-width);
         background-color: var(--neutral-5);
+      }
+      /* FLIP reorder animation. The reorder path keeps every panel's
+         DOM position fixed (so chrome <browser> docShells don't detach
+         and reload) and re-shuffles via the CSS order property. After
+         the order changes we capture each panel's geometry before/after,
+         set an instant transform back to its old position, then
+         transition to 0 — classic FLIP. The class is removed once the
+         transition completes so it doesn't interfere with subsequent
+         layout work. */
+      #bento-side-panel-host > .bento-panel--reordering {
+        transition: transform var(--bento-duration-base) var(--bento-easing-standard);
+        will-change: transform;
+        z-index: 1;
       }
       #bento-side-panel-host > .bento-panel--removing {
         overflow: hidden;
@@ -1300,10 +1373,42 @@
   }
 
   function shouldHandlePanelArrowKey(target) {
-    if (!target) return true;
-    const tag = target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
-    if (target.isContentEditable) return false;
+    // Bail when arrow keys belong to a text widget or chrome navigation
+    // surface that has its own meaning for ←/→. Without these guards the
+    // panel cycler steals letter-by-letter cursor movement in the
+    // Firefox URL bar / search bar / panel header URL input, and menu
+    // navigation in <menupopup>/<menubar>.
+    //
+    // We check both the event target AND document.activeElement because
+    // some chrome widgets dispatch keydown on a wrapper while the focused
+    // sub-element (the actual editable) is reported by activeElement.
+    const candidates = [target, document.activeElement];
+    for (const node of candidates) {
+      if (!node) continue;
+      // browser.xhtml is XHTML (XML mode), so tagName preserves case for
+      // HTML-namespace elements created via createElementNS(HTML_NS, …) —
+      // the panel header URL input reports tagName 'input' (lowercase),
+      // not 'INPUT'. localName is consistently lowercase across both
+      // XUL and HTML namespaces, so use that.
+      const tag = node.localName;
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return false;
+      if (node.isContentEditable) return false;
+      // closest() walks up the flattened tree; bail on any chrome
+      // editable / navigable container. #urlbar and #searchbar cover the
+      // Firefox awesomebar + search field; <menupopup>/<menubar>/<menu>
+      // own arrow-key navigation; [role=…] catches custom widgets that
+      // self-identify as text/list nav surfaces.
+      if (typeof node.closest === 'function') {
+        if (
+          node.closest(
+            '#urlbar, #searchbar, menupopup, menubar, menu, menulist,' +
+              ' [role="textbox"], [role="searchbox"], [role="combobox"],' +
+              ' [role="menu"], [role="menubar"], [role="listbox"]',
+          )
+        )
+          return false;
+      }
+    }
     return true;
   }
 
@@ -1662,7 +1767,18 @@
     } else {
       btn.classList.add('bento-panel-nav__icon--placeholder');
     }
-    btn.addEventListener('click', onClick);
+    btn.addEventListener('click', (e) => {
+      // Drag end synthesises a click on pointerup at the same target —
+      // suppress it when a drag actually happened so we don't also
+      // scroll-into-view + activate the panel under the released cursor.
+      if (btn._bentoSuppressClick) {
+        btn._bentoSuppressClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      onClick(e);
+    });
     if (Number.isFinite(tabId)) {
       btn.addEventListener('mousedown', (e) => {
         if (e.button !== 1) return;
@@ -1679,8 +1795,172 @@
         e.stopPropagation();
         showPanelNavContextMenu(tabId, e.clientX, e.clientY);
       });
+      setupNavDrag(btn, tabId);
     }
     return btn;
+  }
+
+  // ─── Navigator drag-to-reorder ───────────────────────────────────────
+  // Side-panel favicon buttons can be dragged horizontally to reorder the
+  // panel strip. The user said: "panels should reorder as soon as I let
+  // go of the button for performance reasons" — so during the drag we
+  // only paint visual state (source dim + drop indicator), and the actual
+  // panel/reorder action fires once on pointerup. The reorder snaps in
+  // when chrome receives the next panels/sync from tools.
+  //
+  // Pointer events + setPointerCapture so the drag survives the cursor
+  // crossing into a panel's remote=true content browser (same constraint
+  // splitter dragging already deals with).
+  const NAV_DRAG_THRESHOLD_PX = 4;
+
+  function setupNavDrag(btn, tabId) {
+    btn.dataset.bentoNavDraggable = '1';
+
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
+    let pointerId = null;
+    let indicator = null;
+
+    function getList() {
+      return document.querySelector('.bento-panel-nav__list');
+    }
+    // Side-panel buttons in DOM order, excluding the main panel (always
+    // index 0) and the drop indicator overlay.
+    function getSidePanelButtons(list) {
+      const out = [];
+      for (let i = 1; i < list.children.length; i++) {
+        const child = list.children[i];
+        if (child === indicator) continue;
+        if (child.classList && child.classList.contains('bento-panel-nav__icon')) {
+          out.push(child);
+        }
+      }
+      return out;
+    }
+    // targetSlot = number of non-source siblings whose midpoint X is to
+    // the left of the cursor. Maps to splice index in the new ordering.
+    function computeTargetSlot(list, clientX) {
+      const siblings = getSidePanelButtons(list).filter((el) => el !== btn);
+      let slot = 0;
+      for (const sib of siblings) {
+        const r = sib.getBoundingClientRect();
+        if (clientX > r.left + r.width / 2) slot++;
+        else break;
+      }
+      return slot;
+    }
+    // Position the indicator at the visual gap for `slot`. Computed in
+    // list-local coords (offsetLeft chain) so horizontal scroll inside
+    // the list is naturally accounted for. Indicator is absolutely
+    // positioned so its presence doesn't reflow the strip.
+    function placeIndicator(list, slot) {
+      if (!indicator) {
+        indicator = document.createElementNS(HTML_NS, 'div');
+        indicator.className = 'bento-panel-nav__drop-indicator';
+        list.appendChild(indicator);
+      } else if (indicator.parentNode !== list) {
+        list.appendChild(indicator);
+      }
+      const siblings = getSidePanelButtons(list).filter((el) => el !== btn);
+      const listRect = list.getBoundingClientRect();
+      let x;
+      if (siblings.length === 0) {
+        // Only the source panel exists — indicator at its current spot.
+        const r = btn.getBoundingClientRect();
+        x = r.left - listRect.left + list.scrollLeft;
+      } else if (slot >= siblings.length) {
+        const r = siblings[siblings.length - 1].getBoundingClientRect();
+        x = r.right - listRect.left + list.scrollLeft;
+      } else {
+        const r = siblings[slot].getBoundingClientRect();
+        x = r.left - listRect.left + list.scrollLeft;
+      }
+      // Center the 2px bar on the gap.
+      const indicatorWidth = indicator.offsetWidth || 2;
+      indicator.style.left = (x - indicatorWidth / 2) + 'px';
+    }
+    function clearIndicator() {
+      if (indicator && indicator.parentNode) indicator.parentNode.removeChild(indicator);
+      indicator = null;
+    }
+
+    function startDrag(list) {
+      if (dragging) return;
+      dragging = true;
+      btn.classList.add('bento-panel-nav__icon--dragging');
+      list.classList.add('bento-panel-nav__list--dragging');
+      // Suppress the synthesised click on release so the drop doesn't
+      // also scroll-and-activate the (unchanged) panel.
+      btn._bentoSuppressClick = true;
+      // Drag pre-empts the right-click menu / cycle marker for this btn.
+      hidePanelNavContextMenu();
+    }
+    function endDrag(commit, finalClientX) {
+      const list = getList();
+      if (dragging && commit && list) {
+        const slot = computeTargetSlot(list, finalClientX);
+        const panels = getOrderedPanels();
+        const currentIds = panels
+          .map((p) => Number(p.dataset.bentoPanelTabId))
+          .filter((n) => Number.isFinite(n));
+        const filtered = currentIds.filter((id) => id !== tabId);
+        const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
+        filtered.splice(clampedSlot, 0, tabId);
+        const changed =
+          filtered.length !== currentIds.length ||
+          filtered.some((id, i) => currentIds[i] !== id);
+        if (changed) dispatchShellAction({ type: 'panel/reorder', tabIds: filtered });
+      }
+      if (list) list.classList.remove('bento-panel-nav__list--dragging');
+      btn.classList.remove('bento-panel-nav__icon--dragging');
+      clearIndicator();
+      dragging = false;
+      pointerId = null;
+    }
+
+    btn.addEventListener('pointerdown', (e) => {
+      // Left button only; right-click / middle-click already have other
+      // handlers (context menu / close).
+      if (e.button !== 0) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      try {
+        btn.setPointerCapture(e.pointerId);
+      } catch {
+        /* setPointerCapture can throw on some pointer types — drag will
+           still work, just won't survive cursor crossing remote content. */
+      }
+    });
+
+    btn.addEventListener('pointermove', (e) => {
+      if (pointerId === null || e.pointerId !== pointerId) return;
+      if (!dragging) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (dx * dx + dy * dy < NAV_DRAG_THRESHOLD_PX * NAV_DRAG_THRESHOLD_PX) return;
+        const list = getList();
+        if (!list) return;
+        startDrag(list);
+      }
+      const list = getList();
+      if (!list) return;
+      placeIndicator(list, computeTargetSlot(list, e.clientX));
+    });
+
+    function release(e, commit) {
+      if (pointerId === null || e.pointerId !== pointerId) return;
+      try {
+        btn.releasePointerCapture(e.pointerId);
+      } catch {
+        /* best-effort */
+      }
+      endDrag(commit, e.clientX);
+    }
+    btn.addEventListener('pointerup', (e) => release(e, true));
+    btn.addEventListener('pointercancel', (e) => release(e, false));
+    btn.addEventListener('lostpointercapture', (e) => release(e, dragging));
   }
 
   function refreshPanelNavMain() {
@@ -2090,11 +2370,108 @@
   function isTrailer(node) {
     return !!(node && node.classList && node.classList.contains('bento-panel-add-trailer'));
   }
+  // Pure-reorder path: rearrange the strip via CSS `order` instead of
+  // DOM mutation, then FLIP-animate the slide. Each item gets an even
+  // order index based on its desired visual slot (main=0, panel-i=2*(i+1),
+  // trailer=2*(N+1)); each splitter gets an odd index between two items.
+  // Splitters are interchangeable — we just enumerate them in DOM order
+  // and assign odd indices 1, 3, 5, …
+  function reorderPanelsInPlace(host, main, panels) {
+    // 1. Capture pre-reorder geometry of every panel container.
+    const panelEls = new Map();
+    for (const child of host.children) {
+      if (child.dataset && child.dataset.bentoPanelTabId) {
+        panelEls.set(Number(child.dataset.bentoPanelTabId), child);
+      }
+    }
+    const oldRects = new Map();
+    for (const [id, el] of panelEls) oldRects.set(id, el.getBoundingClientRect());
+
+    // 2. Apply new orders.
+    if (main) main.style.order = '0';
+    for (let i = 0; i < panels.length; i++) {
+      const el = panelEls.get(panels[i].tabId);
+      if (el) el.style.order = String(2 * (i + 1));
+    }
+    // Splitters (one between each adjacent pair, plus a trailing one
+    // before the trailer when N>0) get odd orders. Walk DOM splitters
+    // in document order — they're identity-free, so any consistent
+    // assignment that yields one between each item pair is correct.
+    let splitterIdx = 0;
+    for (const child of host.children) {
+      if (!isSplitter(child)) continue;
+      child.style.order = String(2 * splitterIdx + 1);
+      splitterIdx++;
+    }
+    // Trailer last.
+    for (const child of host.children) {
+      if (isTrailer(child)) child.style.order = String(2 * (panels.length + 1));
+    }
+
+    // 3. FLIP — instant transform back to old position, then transition
+    // to translate(0). Force a synchronous reflow between the two so
+    // the browser registers the start state before applying the
+    // transition. Cleanup (remove class + transform) on transitionend.
+    requestAnimationFrame(() => {
+      for (const [id, el] of panelEls) {
+        const oldR = oldRects.get(id);
+        if (!oldR) continue;
+        const newR = el.getBoundingClientRect();
+        const dx = oldR.left - newR.left;
+        if (Math.abs(dx) < 1) continue;
+        el.style.transform = `translateX(${dx}px)`;
+        el.classList.remove('bento-panel--reordering');
+      }
+      // Force layout flush so the transform takes effect before we add
+      // the transition-bearing class on the next frame.
+      void host.offsetWidth;
+      requestAnimationFrame(() => {
+        const cleanup = (e) => {
+          if (e.propertyName !== 'transform') return;
+          const t = e.target;
+          t.classList.remove('bento-panel--reordering');
+          t.removeEventListener('transitionend', cleanup);
+        };
+        for (const el of panelEls.values()) {
+          if (!el.style.transform) continue;
+          el.classList.add('bento-panel--reordering');
+          el.style.transform = '';
+          el.addEventListener('transitionend', cleanup);
+        }
+      });
+    });
+  }
+
   function reconcilePanels(panels) {
     const host = document.getElementById('bento-side-panel-host');
     const main = document.getElementById('tabbrowser-tabbox');
     if (!host) {
       console.warn('[bento-shell-mount] reconcilePanels: bento-side-panel-host missing');
+      return;
+    }
+
+    // Pure-reorder fast path: same panel set as before, just shuffled.
+    // Re-attach a chrome <browser> by host.insertBefore would detach +
+    // reattach its docShell, which reloads the panel. Avoid by leaving
+    // the DOM untouched and reshuffling via CSS `order` (the host is
+    // flex-direction: row). FLIP-animates the slide so the user sees
+    // the new arrangement settle in place.
+    const existingPanelIds = new Set();
+    for (const child of host.children) {
+      if (child.dataset && child.dataset.bentoPanelTabId) {
+        existingPanelIds.add(Number(child.dataset.bentoPanelTabId));
+      }
+    }
+    const desiredIdSet = new Set(panels.map((p) => p.tabId));
+    const sameSet =
+      existingPanelIds.size === desiredIdSet.size &&
+      [...existingPanelIds].every((id) => desiredIdSet.has(id));
+    if (sameSet && existingPanelIds.size > 0) {
+      reorderPanelsInPlace(host, main, panels);
+      // Navigator favicon strip mirrors panel order; refresh it so the
+      // new visual order shows immediately. Splitters / trailer keep
+      // their CSS-order identity from reorderPanelsInPlace.
+      refreshPanelNav(panels);
       return;
     }
 
@@ -2109,6 +2486,16 @@
     // overflow off-screen.
     if (main && panels.length === 0 && main.style.width) {
       unsetMainSize(main);
+    }
+
+    // Slow path runs when the panel set itself changed (add/remove/
+    // workspace switch). Reset any explicit `order` styles left over
+    // from a previous fast-path reorder so the DOM walk below — which
+    // appends new elements at the end — gives correct visual ordering
+    // again. Without this, a new panel (no `order` set, defaults to 0)
+    // would jump to the front of a previously-reordered strip.
+    for (const child of host.children) {
+      if (child.style && child.style.order) child.style.order = '';
     }
 
     // Index existing panels by tabId. Splitters and the trailer are

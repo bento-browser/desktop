@@ -31,7 +31,10 @@ function update<K extends keyof import('@shared/protocol').BentoSettings>(
 }
 
 function openPrivacyDashboard() {
-  browser.tabs.create({ url: 'about:bento-privacy', active: true });
+  // Same origin (moz-extension://<uuid>/dist/privacy.html). Resolving
+  // relative to the current page works because Settings + Privacy live
+  // under the same dist/ directory.
+  window.open('./privacy.html', '_blank');
 }
 
 export function Settings() {

@@ -16,6 +16,7 @@
     "package": "surfer package",
     "lc": "surfer license-check",
     "build:full": "bash scripts/build-bento.sh",
+    "build:release": "bash scripts/build-release.sh",
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && mkdir -p .bento-dev-profile && rm -rf .bento-dev-profile/startupCache && MOZ_PURGE_CACHES=1 engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento --new-instance --jsdebugger --profile .bento-dev-profile",
     "dev:fresh": "pnpm run ext:build && pnpm run import && engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento --new-instance --jsdebugger --profile $(mktemp -d)",

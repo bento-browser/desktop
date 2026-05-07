@@ -7,6 +7,7 @@ import { Icon } from '@tale-ui/react/icon';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
 import PanelRightClose from 'lucide-react/dist/esm/icons/panel-right-close';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
 
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
@@ -26,6 +27,17 @@ function openSettings() {
   // prefs). Resolving the URL via location.origin keeps it relative to
   // bento-shell's UUID without needing to ask tools.
   const url = `${location.origin}/dist/settings.html`;
+  dispatch({ type: 'tab/openUrl', url });
+}
+
+function openPrivacy() {
+  // Same pattern as openSettings — open the privacy dashboard at its
+  // native moz-extension URL. The about:bento-privacy alias is broken
+  // for content pages (Firefox uses the about: URL for relative-URL
+  // resolution AND pins origin to about:, which kills the BroadcastChannel
+  // bus), so the working entry point is the moz-extension URL through
+  // the sidebar.
+  const url = `${location.origin}/dist/privacy.html`;
   dispatch({ type: 'tab/openUrl', url });
 }
 
@@ -88,6 +100,9 @@ export function App() {
           onPress={openCommandPalette}
         >
           <Icon icon={Command} />
+        </IconButton>
+        <IconButton variant="ghost" size="sm" aria-label="Privacy" onPress={openPrivacy}>
+          <Icon icon={ShieldCheck} />
         </IconButton>
         <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
           <Icon icon={Settings} />

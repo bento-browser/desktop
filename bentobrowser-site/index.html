@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bento Browser — workspaces, panels, privacy</title>
+    <meta
+      name="description"
+      content="Bento is a Firefox-based browser organised around workspaces and side-by-side panels. Privacy-leaning defaults. Open source. Developer preview available for macOS and Windows."
+    />
+
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="128x128" href="./assets/logo-128.png" />
+
+    <!-- Open Graph / social cards -->
+    <meta property="og:title" content="Bento Browser" />
+    <meta
+      property="og:description"
+      content="Workspaces, panels, privacy. A Firefox-based browser built for focus."
+    />
+    <meta property="og:image" content="./assets/logo-512.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://bentobrowser.app/" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <img class="hero__logo" src="./assets/logo-512.png" alt="Bento Browser logo" width="120" height="120" />
+        <h1 class="hero__title">Bento Browser</h1>
+        <p class="hero__tagline">
+          Workspaces. Panels. Privacy.<br />
+          A Firefox-based browser, built for focus.
+        </p>
+        <div class="hero__downloads">
+          <a class="btn btn--primary" href="https://github.com/Bento-Browser/desktop/releases/latest" data-platform="macos">
+            <span class="btn__os">macOS</span>
+            <span class="btn__hint">Apple Silicon</span>
+          </a>
+          <a class="btn btn--primary" href="https://github.com/Bento-Browser/desktop/releases/latest" data-platform="windows">
+            <span class="btn__os">Windows</span>
+            <span class="btn__hint">x86_64</span>
+          </a>
+        </div>
+        <p class="hero__preview-note">
+          <strong>Developer preview.</strong> Builds are unsigned for now —
+          on macOS, right-click the .dmg and choose
+          <em>Open</em> the first time to bypass Gatekeeper. Code-signing
+          and notarization land in a future release.
+        </p>
+      </section>
+
+      <!-- Features -->
+      <section class="features">
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">⊞</div>
+          <h2 class="feature__title">Workspaces</h2>
+          <p class="feature__body">
+            Group tabs by project, role, or mood. Switch with
+            <kbd>⌘1</kbd>–<kbd>⌘9</kbd>; each workspace remembers its tabs,
+            its accent color, and the panels it had open.
+          </p>
+        </article>
+
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">▥</div>
+          <h2 class="feature__title">Bento Spaces</h2>
+          <p class="feature__body">
+            Open any tab as a side-by-side panel. Resize with a drag, reorder
+            with another. The whole grid scrolls horizontally when you run
+            out of width.
+          </p>
+        </article>
+
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">⌘</div>
+          <h2 class="feature__title">Command palette</h2>
+          <p class="feature__body">
+            <kbd>⌘K</kbd> opens a fuzzy search across tabs, workspaces,
+            commands, and history. Get anywhere in the browser without
+            leaving the keyboard.
+          </p>
+        </article>
+
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">⛨</div>
+          <h2 class="feature__title">Privacy by default</h2>
+          <p class="feature__body">
+            Telemetry, sponsored content, and Mozilla service promos are
+            off out of the box. Tracking protection ships at
+            <em>strict</em>. Live toggles in the in-app Privacy dashboard.
+          </p>
+        </article>
+      </section>
+
+      <!-- About / what is this -->
+      <section class="about">
+        <h2 class="about__title">What is Bento, really?</h2>
+        <p class="about__body">
+          Bento is a fork of Firefox 150 — same engine, same web
+          compatibility, same extension API. The chrome (UI shell) is
+          rebuilt around workspaces and panels because the way browsers
+          arrange tabs hasn't kept up with the way people actually work.
+          It's open source under MPL-2.0; the source is on GitHub.
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer__inner">
+        <div>
+          <a href="https://github.com/Bento-Browser/desktop">GitHub</a>
+          <span class="footer__sep">·</span>
+          <a href="https://github.com/Bento-Browser/desktop/blob/main/LICENSE">MPL-2.0</a>
+          <span class="footer__sep">·</span>
+          <a href="https://github.com/Bento-Browser/desktop/issues">Issues</a>
+        </div>
+        <div class="footer__small">
+          Built on
+          <a href="https://github.com/zen-browser/surfer">Surfer</a> and
+          <a href="https://www.mozilla.org/firefox/">Firefox</a>.
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

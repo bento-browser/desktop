@@ -110,7 +110,56 @@ export type Action =
   | { type: 'panel/remove'; id: number }
   /** Remove ALL panels from the active workspace (e.g., footer "close
    * side panel" button). */
-  | { type: 'panels/clear' };
+  | { type: 'panels/clear' }
+  /** Replace the active workspace's panel ordering with `tabIds`. Must be
+   * a permutation of the current panel set — the handler validates and
+   * drops the reorder if it isn't (no add/remove via this channel). Sent
+   * by chrome after a navigator drag-and-drop completes (drop-on-release,
+   * not live during the drag). */
+  | { type: 'panel/reorder'; tabIds: number[] }
+  /** Ask tools to read the current privacy settings via browser.privacy.*
+   * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard
+   * mount; tools doesn't push privacy/changed deltas (settings rarely
+   * change without user action — the dashboard re-requests after any
+   * write it dispatches). */
+  | { type: 'privacy/requestSnapshot' }
+  /** Update one privacy field. Tools writes via browser.privacy.* then
+   * replies with a fresh privacy/snapshot. Per-field instead of a bulk
+   * patch so the protocol stays readable and the handler doesn't have to
+   * partial-update around invalid combinations. */
+  | { type: 'privacy/setTrackingProtection'; mode: 'always' | 'never' | 'private_browsing' }
+  | { type: 'privacy/setResistFingerprinting'; enabled: boolean }
+  | { type: 'privacy/setNetworkPrediction'; enabled: boolean }
+  | { type: 'privacy/setPeerConnection'; enabled: boolean }
+  /** Clear browsing data per Firefox's browsingData API. `since` is a
+   * Unix timestamp (ms) — pass 0 to clear everything. `dataTypes` mirror
+   * browser.browsingData.DataTypeSet keys (cookies, history, cache,
+   * passwords, etc.). */
+  | {
+      type: 'browsingData/clear';
+      since: number;
+      dataTypes: {
+        cache?: boolean;
+        cookies?: boolean;
+        downloads?: boolean;
+        formData?: boolean;
+        history?: boolean;
+        indexedDB?: boolean;
+        localStorage?: boolean;
+        passwords?: boolean;
+        pluginData?: boolean;
+        serviceWorkers?: boolean;
+      };
+    };
+
+/** Snapshot of user-controllable privacy settings — read from
+ * browser.privacy.* and refreshed after every privacy/set* action. */
+export interface PrivacySettings {
+  trackingProtectionMode: 'always' | 'never' | 'private_browsing';
+  resistFingerprinting: boolean;
+  networkPrediction: boolean;
+  peerConnection: boolean;
+}
 
 export type Event =
   | { type: 'pong'; ts: number }
@@ -135,6 +184,11 @@ export type Event =
   | {
       type: 'panels/sync';
       panels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
-    };
+    }
+  | { type: 'privacy/snapshot'; privacy: PrivacySettings }
+  /** Reply to browsingData/clear — `ok` is true if the API call resolved
+   * cleanly. The dashboard surfaces the result so the user sees positive
+   * confirmation instead of guessing whether the click did anything. */
+  | { type: 'browsingData/cleared'; ok: boolean; error?: string };
 
 export type WireMessage = Action | Event;

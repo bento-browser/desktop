@@ -61,6 +61,14 @@ pref("app.normandy.api_url", "");
 pref("messaging-system.rsexperimentloader.enabled", false);
 pref("network.allow-experiments", false);
 
+// --- Tracking protection -------------------------------------------------
+// Bento ships Firefox Enhanced Tracking Protection at "strict" by default
+// (vs "standard" in vanilla Firefox). Strict blocks more cross-site
+// trackers and fingerprinters; the user can soften it from the Privacy
+// Dashboard or Firefox's about:preferences#privacy. Bento Tools mirrors
+// this via browser.privacy.websites.trackingProtectionMode = "always".
+pref("browser.contentblocking.category", "strict");
+
 // --- First-run / onboarding noise ----------------------------------------
 pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.upgradeDialog.enabled", false);

@@ -1,0 +1,137 @@
+name: Release
+
+# Tag-driven release. Tag the repo with `v0.1.0` (matching surfer.json's
+# version) and the workflow builds Bento for macOS + Windows in parallel,
+# then attaches the artifacts to a draft GitHub Release. The Release stays
+# in draft until you publish it manually — final review of the artifacts +
+# notes before users see them.
+#
+# workflow_dispatch is also wired so the workflow can be triggered manually
+# from the Actions tab without tagging — useful for smoke-testing the
+# pipeline end-to-end before a real release. Manual runs upload artifacts
+# to the workflow run only (no Release is created).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed for softprops/action-gh-release to create the draft
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 = Apple Silicon (aarch64) — matches the Bento dev target.
+        # windows-latest = Windows Server 2022 x86_64.
+        # Linux builds aren't part of the M1 release surface but the
+        # build-release.sh script handles them locally if needed.
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180 # Firefox builds run 30–60 min on hosted runners; pad for cold caches.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Cache Firefox source between runs so the 6 GB+ download isn't
+      # repeated for every release. Cache key includes surfer.json hash so
+      # a Firefox version bump invalidates the cache.
+      - name: Cache engine/
+        uses: actions/cache@v4
+        with:
+          path: engine
+          key: ${{ runner.os }}-engine-${{ hashFiles('surfer.json', 'patches/**') }}
+
+      # Cache mach build artifacts so an incremental release that only
+      # changes Bento extensions doesn't re-link the entire engine. The
+      # extensions live OUTSIDE engine/obj-* so they're rebuilt fresh
+      # every run.
+      - name: Cache engine/obj-*
+        uses: actions/cache@v4
+        with:
+          path: engine/obj-*
+          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**') }}-
+
+      # The build-release.sh script does dependency install in release
+      # mode (BENTO_RELEASE=1, --no-frozen-lockfile). We don't pre-install
+      # to avoid the dev-mode install pulling local Tale UI link paths
+      # that don't exist on the runner.
+
+      - name: Surfer download (Firefox source)
+        run: pnpm run download
+
+      - name: Surfer bootstrap (Mozilla build toolchain)
+        run: pnpm run bootstrap
+
+      - name: Build release artifact
+        env:
+          BENTO_RELEASE: '1'
+        # build-release.sh handles platform detection, runs the full
+        # ext:build → import → surfer build → surfer package chain, and
+        # drops a versioned installer into release-out/.
+        # Bash on Windows runners is git-bash which handles the script
+        # syntax fine.
+        run: bash scripts/build-release.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bento-${{ runner.os }}
+          path: release-out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Draft GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only create a Release on tag pushes. Manual workflow_dispatch runs
+    # leave the artifacts on the workflow run page for inspection.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bento-macOS
+          path: release-out/
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bento-Windows
+          path: release-out/
+
+      - name: List collected artifacts
+        run: ls -la release-out/
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Draft: stays unpublished until you flip the toggle in the UI.
+          # Lets you review artifacts + write release notes before users
+          # see anything.
+          draft: true
+          # Prerelease until we sign + notarize. The release-out/ artifacts
+          # are unsigned during the developer-preview phase; macOS users
+          # need to right-click → Open the .dmg to bypass Gatekeeper.
+          # Document this in the release body when publishing.
+          prerelease: true
+          files: release-out/*
+          # Generate the release-body skeleton from PRs since the last
+          # tag. We override on publish if needed.
+          generate_release_notes: true

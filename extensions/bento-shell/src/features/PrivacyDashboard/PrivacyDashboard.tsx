@@ -1,16 +1,29 @@
 // Layer-3 feature: PrivacyDashboard.
 //
-// M1 placeholder — read-only listing of the privacy prefs Bento ships
-// (defined in /prefs/bento.js, appended to firefox-branding.js + firefox.js
-// at build time). Visualizes the "off by default" posture so users can verify
-// without grepping the source.
-//
-// Future (M2+): live wire to browser.privacy.* + browser.experiments to
-// reflect runtime state and let the user toggle.
+// Three-part page:
+//   1. Live controls — Switch + ToggleButtonGroup wired to bento-tools'
+//      browser.privacy.* reader/writer. Round-trips through the bus on
+//      every change; tools replies with a fresh privacy/snapshot so the
+//      UI always reflects the actual stored value (no optimistic state).
+//   2. Quick actions — "Clear browsing data" routes through bento-tools'
+//      browser.browsingData.remove; "Open Firefox privacy settings"
+//      opens about:preferences#privacy in a new tab.
+//   3. Shipped defaults inventory — the existing read-only listing of
+//      prefs Bento sets in prefs/bento.js, kept manually in sync. Useful
+//      as a "what does Bento turn off out of the box" reference.
 
+import { useEffect, useState } from 'react';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
+import { Switch } from '@tale-ui/react/switch';
+import { ToggleButtonGroup } from '@tale-ui/react/toggle-group';
+import { ToggleButton } from '@tale-ui/react/toggle-button';
+import { Button } from '@tale-ui/react/button';
+import { Banner } from '@tale-ui/react/banner';
+
+import { dispatch, initToolsPort } from '../../bridge/useToolsPort';
+import { usePrivacyStore } from '../../state/privacy';
 import './PrivacyDashboard.css';
 
 interface PrefRow {
@@ -124,7 +137,81 @@ const SECTIONS: PrefSection[] = [
   },
 ];
 
+type ToastState = { kind: 'success' | 'error'; message: string } | null;
+
 export function PrivacyDashboard() {
+  const settings = usePrivacyStore((s) => s.settings);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  // Connect to the bus and request the current privacy snapshot. The
+  // bus listener (useToolsPort) routes the reply into usePrivacyStore.
+  useEffect(() => {
+    initToolsPort();
+    dispatch({ type: 'privacy/requestSnapshot' });
+  }, []);
+
+  // browsingData/cleared events are surfaced as a one-shot DOM event
+  // (see useToolsPort). Render a toast and auto-clear after 3s.
+  useEffect(() => {
+    function handle(e: Event) {
+      const detail = (e as CustomEvent<{ ok: boolean; error?: string }>).detail;
+      if (detail.ok) setToast({ kind: 'success', message: 'Browsing data cleared.' });
+      else
+        setToast({
+          kind: 'error',
+          message: 'Could not clear browsing data: ' + (detail.error ?? 'unknown error'),
+        });
+    }
+    window.addEventListener('bento:browsingDataCleared', handle);
+    return () => window.removeEventListener('bento:browsingDataCleared', handle);
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const onSetTracking = (keys: Iterable<unknown>) => {
+    // ToggleButtonGroup with selectionMode="single" emits a Selection
+    // (Set-like). Pull the first key — it's our mode value.
+    const first = [...(keys as Iterable<string>)][0];
+    if (first === 'always' || first === 'never' || first === 'private_browsing') {
+      dispatch({ type: 'privacy/setTrackingProtection', mode: first });
+    }
+  };
+  const onSetRfp = (enabled: boolean) =>
+    dispatch({ type: 'privacy/setResistFingerprinting', enabled });
+  const onSetNetPred = (enabled: boolean) =>
+    dispatch({ type: 'privacy/setNetworkPrediction', enabled });
+  const onSetWebRtc = (enabled: boolean) =>
+    dispatch({ type: 'privacy/setPeerConnection', enabled });
+
+  const clearBrowsingData = () => {
+    dispatch({
+      type: 'browsingData/clear',
+      since: 0,
+      // Conservative default — clear browsing-shape data, leave
+      // passwords + form data alone (those are higher-stakes; user can
+      // do that explicitly from Firefox's settings if needed).
+      dataTypes: {
+        cache: true,
+        cookies: true,
+        history: true,
+        downloads: true,
+        formData: false,
+        indexedDB: true,
+        localStorage: true,
+        passwords: false,
+        pluginData: true,
+        serviceWorkers: true,
+      },
+    });
+  };
+
+  const openFirefoxPrivacySettings = () => {
+    dispatch({ type: 'tab/openUrl', url: 'about:preferences#privacy' });
+  };
+
   return (
     <Column gap="l" className="bento-privacy">
       <Column gap="xs" className="bento-privacy__header">
@@ -133,7 +220,139 @@ export function PrivacyDashboard() {
         </Text>
         <Text variant="text" size="m" color="muted">
           Bento ships with telemetry, sponsored content, and Mozilla service promos disabled by
-          default. This page lists the prefs and their shipped values.
+          default. Use the controls below to adjust the live settings; the inventory further down
+          lists the prefs Bento turns off out of the box.
+        </Text>
+      </Column>
+
+      {toast && (
+        <Banner.Root variant={toast.kind === 'success' ? 'success' : 'error'}>
+          <Banner.Title>{toast.message}</Banner.Title>
+        </Banner.Root>
+      )}
+
+      <Column gap="s" className="bento-privacy__section">
+        <Text variant="heading" size="m" as="h2">
+          Live controls
+        </Text>
+        {settings === null ? (
+          <Column gap="2xs">
+            <div className="bento-privacy__skeleton" />
+            <div className="bento-privacy__skeleton" />
+            <div className="bento-privacy__skeleton" />
+          </Column>
+        ) : (
+          <Column gap="s">
+            <Row gap="m" align="center" className="bento-privacy__control">
+              <Column gap="3xs" className="bento-privacy__control-info">
+                <Text variant="text" size="m">
+                  Tracking protection
+                </Text>
+                <Text variant="text" size="s" color="muted">
+                  Block cross-site trackers, fingerprinters, cryptominers. Bento ships this on
+                  Always.
+                </Text>
+              </Column>
+              <ToggleButtonGroup
+                aria-label="Tracking protection mode"
+                selectionMode="single"
+                selectedKeys={new Set([settings.trackingProtectionMode])}
+                onSelectionChange={onSetTracking}
+              >
+                <ToggleButton id="always">Always</ToggleButton>
+                <ToggleButton id="private_browsing">Private only</ToggleButton>
+                <ToggleButton id="never">Never</ToggleButton>
+              </ToggleButtonGroup>
+            </Row>
+
+            <Row gap="m" align="center" className="bento-privacy__control">
+              <Column gap="3xs" className="bento-privacy__control-info">
+                <Text variant="text" size="m">
+                  Resist fingerprinting
+                </Text>
+                <Text variant="text" size="s" color="muted">
+                  Spoof browser characteristics to make tracking by fingerprint harder. May break
+                  some sites.
+                </Text>
+              </Column>
+              <Switch.Root
+                isSelected={settings.resistFingerprinting}
+                onChange={onSetRfp}
+                aria-label="Resist fingerprinting"
+              >
+                <Switch.Thumb />
+              </Switch.Root>
+            </Row>
+
+            <Row gap="m" align="center" className="bento-privacy__control">
+              <Column gap="3xs" className="bento-privacy__control-info">
+                <Text variant="text" size="m">
+                  Network prediction
+                </Text>
+                <Text variant="text" size="s" color="muted">
+                  DNS/TCP prefetching for hovered links. Faster loads, but contacts servers you did
+                  not click.
+                </Text>
+              </Column>
+              <Switch.Root
+                isSelected={settings.networkPrediction}
+                onChange={onSetNetPred}
+                aria-label="Network prediction"
+              >
+                <Switch.Thumb />
+              </Switch.Root>
+            </Row>
+
+            <Row gap="m" align="center" className="bento-privacy__control">
+              <Column gap="3xs" className="bento-privacy__control-info">
+                <Text variant="text" size="m">
+                  WebRTC peer connections
+                </Text>
+                <Text variant="text" size="s" color="muted">
+                  Required for video calls and some real-time apps. Off plugs the WebRTC IP-leak
+                  vector but breaks Meet, Discord call, etc.
+                </Text>
+              </Column>
+              <Switch.Root
+                isSelected={settings.peerConnection}
+                onChange={onSetWebRtc}
+                aria-label="WebRTC peer connections"
+              >
+                <Switch.Thumb />
+              </Switch.Root>
+            </Row>
+          </Column>
+        )}
+      </Column>
+
+      <Column gap="s" className="bento-privacy__section">
+        <Text variant="heading" size="m" as="h2">
+          Quick actions
+        </Text>
+        <Row gap="s" className="bento-privacy__actions">
+          <Button variant="primary" onPress={clearBrowsingData}>
+            Clear browsing data
+          </Button>
+          <Button variant="neutral" onPress={openFirefoxPrivacySettings}>
+            Open Firefox privacy settings
+          </Button>
+        </Row>
+        <Text variant="text" size="xs" color="muted">
+          Clear removes cache, cookies, history, downloads, IndexedDB, localStorage, and service
+          workers across all time. Saved passwords and form data are left alone.
+        </Text>
+      </Column>
+
+      <Column gap="s" className="bento-privacy__section">
+        <Text variant="heading" size="m" as="h2">
+          Shipped defaults
+        </Text>
+        <Text variant="text" size="s" color="muted">
+          Listed for transparency. The actual values come from{' '}
+          <Text variant="mono" size="xs">
+            prefs/bento.js
+          </Text>{' '}
+          at build time and can be inspected via about:config.
         </Text>
       </Column>
 

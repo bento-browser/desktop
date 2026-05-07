@@ -1,0 +1,11 @@
+# Locale alias map. Format: <input>:<output>, one per line, '#' starts a
+# comment. Surfer reads this in scripts/build-release.sh's package step
+# (via @bento-browser/surfer's getLocales) to translate short locale
+# codes from `supported-languages` into Mozilla's full BCP-47 locale tags.
+#
+# Bento ships en-US only for M1, so this file is currently empty of
+# actual mappings — the en-US line in supported-languages doesn't need
+# remapping. Add entries when shipping additional locales:
+#   nb:nb-NO
+#   pt:pt-BR
+#   zh:zh-CN

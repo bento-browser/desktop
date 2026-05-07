@@ -15,7 +15,7 @@
     "scripts": ["dist/background.js"],
     "persistent": true
   },
-  "permissions": ["tabs", "storage", "sessions"],
+  "permissions": ["tabs", "storage", "sessions", "privacy", "browsingData"],
   "commands": {
     "workspace-1": {
       "suggested_key": { "default": "Ctrl+Alt+1" },
@@ -52,14 +52,6 @@
     "workspace-9": {
       "suggested_key": { "default": "Ctrl+Alt+9" },
       "description": "Switch to workspace 9"
-    },
-    "open-bento-settings": {
-      "suggested_key": { "default": "Alt+Shift+Comma" },
-      "description": "Open Bento Settings"
-    },
-    "open-bento-privacy": {
-      "suggested_key": { "default": "Alt+Shift+Period" },
-      "description": "Open Bento Privacy Dashboard"
     }
   }
 }

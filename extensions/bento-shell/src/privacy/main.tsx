@@ -10,6 +10,10 @@ import '@tale-ui/core';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/row';
+import '@tale-ui/react-styles/switch';
+import '@tale-ui/react-styles/toggle-button';
+import '@tale-ui/react-styles/button';
+import '@tale-ui/react-styles/banner';
 
 import '../theme/bento-tokens.css';
 import '../theme/bento-fonts.css';

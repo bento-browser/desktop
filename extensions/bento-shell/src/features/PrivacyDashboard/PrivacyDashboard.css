@@ -72,4 +72,53 @@
     margin-top: var(--space-l);
     text-align: center;
   }
+
+  /* Live-controls section: each row pairs a label/description with a
+     Switch or SegmentedControl. Background is a slightly stronger surface
+     than the inventory rows so the eye reads them as the primary
+     interaction surface. */
+  .bento-privacy__control {
+    padding-block: var(--space-xs);
+    padding-inline: var(--space-s);
+    border-radius: var(--radius-m);
+    background-color: var(--bento-surface-active);
+    border: var(--bento-border-hairline) solid var(--bento-border-color-subtle);
+  }
+  .bento-privacy__control-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Pre-snapshot skeleton so the page doesn't flash empty before the
+     first privacy/snapshot arrives. */
+  .bento-privacy__skeleton {
+    height: 4rem;
+    border-radius: var(--radius-m);
+    background-color: var(--bento-surface-hover);
+    animation: bento-privacy-skel 1.2s ease-in-out infinite;
+  }
+  @keyframes bento-privacy-skel {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+
+  .bento-privacy__actions {
+    flex-wrap: wrap;
+  }
+  .bento-privacy__toast {
+    padding-block: var(--space-2xs);
+    padding-inline: var(--space-s);
+    border-radius: var(--radius-s);
+    background-color: var(--emerald-20);
+    color: var(--emerald-80);
+  }
+  .bento-privacy__toast--error {
+    background-color: var(--red-20);
+    color: var(--red-80);
+  }
 }

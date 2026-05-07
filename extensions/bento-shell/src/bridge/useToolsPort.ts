@@ -10,6 +10,8 @@ import { useSyncExternalStore } from 'react';
 import { useTabsStore } from '../state/tabs';
 import { useWorkspacesStore } from '../state/workspaces';
 import { useSettingsStore } from '../state/settings';
+import { usePanelsStore } from '../state/panels';
+import { usePrivacyStore } from '../state/privacy';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -82,6 +84,12 @@ function ensureConnection(): void {
         useSettingsStore.getState().apply(event.settings);
         return;
       case 'panels/sync':
+        // Mirror panel ids so the sidebar can subtract them from the
+        // tab list (panels and tabs are disjoint sets in Bento's model).
+        // Apply on every shell entry, not just the sidebar — secondary
+        // entries like the command palette also need to know which tabs
+        // are panels so their tab listings stay consistent.
+        usePanelsStore.getState().apply(event.panels.map((p) => p.tabId));
         // Forward to chrome via title-IPC. Format expected by bento-shell-
         // mount.js: BENTO_PANELS:<ts>:<base64-of-json>. Base64 because
         // panel URLs can contain colons / commas / equals signs that
@@ -95,6 +103,20 @@ function ensureConnection(): void {
           const b64 = btoa(unescape(encodeURIComponent(json)));
           document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
         }
+        return;
+      case 'privacy/snapshot':
+        usePrivacyStore.getState().apply(event.privacy);
+        return;
+      case 'browsingData/cleared':
+        // Surfaced via a one-shot DOM event; the dashboard listens and
+        // shows a confirmation banner. Keeping it out of the Zustand
+        // store avoids a flag the dashboard would have to remember to
+        // clear after rendering its toast.
+        window.dispatchEvent(
+          new CustomEvent('bento:browsingDataCleared', {
+            detail: { ok: event.ok, error: event.error },
+          }),
+        );
         return;
       case 'pong':
         return;

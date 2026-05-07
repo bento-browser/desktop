@@ -3,9 +3,11 @@
 // tools applies them and broadcasts deltas back, the listener applies the
 // deltas to this store.
 
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
 import type { TabDelta, TabSnapshot } from '@shared/protocol';
+import { usePanelsStore } from './panels';
 
 interface TabsState {
   /** Tab map keyed by id for O(1) selector subscriptions per tab row (§6.4). */
@@ -88,16 +90,19 @@ export function useTab(id: number): TabSnapshot | undefined {
   return useTabsStore((s) => s.byId[id]);
 }
 
-/** Returns ordered tab ids belonging to the given workspace. Tabs without a
- * workspaceId are NOT surfaced anywhere — bento-tools backfills boot-time
- * orphans on init and auto-assigns runtime-created tabs immediately, so the
- * only window where a tab is orphaned is the few ms between onCreated and
- * assignWorkspace's session.set resolving. Hiding orphans here keeps stray
- * tabs from bleeding across workspaces if a future bug ever leaves one
- * unassigned. useShallow keeps the array reference stable between renders so
- * TabList only re-renders when the filtered set actually changes. */
+/** Returns ordered tab ids belonging to the given workspace, with panel
+ * tabs subtracted. Panels and tabs are disjoint in Bento's model: a tab
+ * promoted to a side panel disappears from the sidebar list (the panel is
+ * its new home). Tabs without a workspaceId are NOT surfaced anywhere —
+ * bento-tools backfills boot-time orphans on init and auto-assigns
+ * runtime-created tabs immediately, so the only window where a tab is
+ * orphaned is the few ms between onCreated and assignWorkspace's
+ * session.set resolving. Hiding orphans here keeps stray tabs from
+ * bleeding across workspaces if a future bug ever leaves one unassigned.
+ * useShallow keeps the array reference stable between renders so TabList
+ * only re-renders when the filtered set actually changes. */
 export function useWorkspaceTabIds(workspaceId: string | null): number[] {
-  return useTabsStore(
+  const tabIds = useTabsStore(
     useShallow((s) => {
       if (!workspaceId) return s.orderedIds;
       const out: number[] = [];
@@ -109,4 +114,12 @@ export function useWorkspaceTabIds(workspaceId: string | null): number[] {
       return out;
     }),
   );
+  const panelIds = usePanelsStore((s) => s.ids);
+  // Memoize on (tabIds, panelIds): both are stable refs (useShallow above,
+  // and panelIds only changes when usePanelsStore.apply runs) so this
+  // returns the same array unless the inputs actually change.
+  return useMemo(() => {
+    if (panelIds.size === 0) return tabIds;
+    return tabIds.filter((id) => !panelIds.has(id));
+  }, [tabIds, panelIds]);
 }

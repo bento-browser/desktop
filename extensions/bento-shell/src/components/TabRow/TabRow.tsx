@@ -75,14 +75,19 @@ function TabRowImpl({
         {tab.title || 'Untitled'}
       </Text>
       <div className="bento-tab-row__actions">
-        <IconButton
-          variant="ghost"
-          size="sm"
-          aria-label="Open in side panel"
-          onPress={() => onOpenInSidePanel(id)}
-        >
-          <Icon icon={PanelRightOpen} />
-        </IconButton>
+        {/* The active tab renders into the main panel — moving it to a side
+         * panel would leave the main panel empty. Hide the affordance so the
+         * action can't be requested in the first place. */}
+        {!active && (
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label="Open in side panel"
+            onPress={() => onOpenInSidePanel(id)}
+          >
+            <Icon icon={PanelRightOpen} />
+          </IconButton>
+        )}
         <IconButton variant="ghost" size="sm" aria-label="Close tab" onPress={() => onClose(id)}>
           <Icon icon={X} />
         </IconButton>

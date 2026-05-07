@@ -6,11 +6,34 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
-import type { Action, Event } from '@shared/protocol';
+import type { Action, Event, PrivacySettings } from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
+
+// Read all four privacy fields in parallel and broadcast a snapshot.
+// browser.privacy.* setters return Promise<void> but reading via
+// `.get({})` returns the live value — that's the supported shape.
+async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
+  try {
+    const [tp, rfp, np, pc] = await Promise.all([
+      browser.privacy.websites.trackingProtectionMode.get({}),
+      browser.privacy.websites.resistFingerprinting.get({}),
+      browser.privacy.network.networkPredictionEnabled.get({}),
+      browser.privacy.network.peerConnectionEnabled.get({}),
+    ]);
+    const privacy: PrivacySettings = {
+      trackingProtectionMode: tp.value as PrivacySettings['trackingProtectionMode'],
+      resistFingerprinting: rfp.value as boolean,
+      networkPrediction: np.value as boolean,
+      peerConnection: pc.value as boolean,
+    };
+    ctx.send({ type: 'privacy/snapshot', privacy });
+  } catch (err) {
+    console.warn('[bento-tools] emitPrivacySnapshot failed:', err);
+  }
+}
 
 export interface HandlerContext {
   tabs: TabRegistry;
@@ -146,6 +169,51 @@ export function handle(action: Action, ctx: HandlerContext): void {
       ctx.emitPanelsSync(wsId);
       return;
     }
+    case 'panel/reorder': {
+      const wsId = ctx.workspaces.getActiveId();
+      if (!wsId) return;
+      if (ctx.panels.reorder(wsId, action.tabIds)) ctx.emitPanelsSync(wsId);
+      return;
+    }
+    case 'privacy/requestSnapshot':
+      void emitPrivacySnapshot(ctx);
+      return;
+    case 'privacy/setTrackingProtection':
+      browser.privacy.websites.trackingProtectionMode
+        .set({ value: action.mode })
+        .catch((err) => console.warn('[bento-tools] privacy/setTrackingProtection failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setResistFingerprinting':
+      browser.privacy.websites.resistFingerprinting
+        .set({ value: action.enabled })
+        .catch((err) => console.warn('[bento-tools] privacy/setResistFingerprinting failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setNetworkPrediction':
+      browser.privacy.network.networkPredictionEnabled
+        .set({ value: action.enabled })
+        .catch((err) => console.warn('[bento-tools] privacy/setNetworkPrediction failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setPeerConnection':
+      browser.privacy.network.peerConnectionEnabled
+        .set({ value: action.enabled })
+        .catch((err) => console.warn('[bento-tools] privacy/setPeerConnection failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'browsingData/clear':
+      browser.browsingData
+        .remove({ since: action.since }, action.dataTypes)
+        .then(() => ctx.send({ type: 'browsingData/cleared', ok: true }))
+        .catch((err) =>
+          ctx.send({
+            type: 'browsingData/cleared',
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      return;
     default: {
       const _exhaustive: never = action;
       console.warn('[bento-tools] unhandled action:', _exhaustive);

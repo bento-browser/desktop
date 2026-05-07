@@ -6,10 +6,13 @@
 // elements inside the existing #bento-side-panel-host strip; chrome
 // reconciles based on the snapshot we broadcast (panels/sync event).
 //
-// Persistence is intentionally session-only — Firefox tab IDs aren't
-// stable across browser restarts, so persisting them across restarts is
-// a footgun. (Restoring panels by URL after session-restore is a
-// separate future enhancement.)
+// Persistence: tab IDs aren't stable across browser restarts, so the
+// in-memory store keeps tabIds (efficient runtime) but the persistence
+// layer stores URLs (stable across restarts). The boot-time restorer
+// (background.ts) matches persisted URLs back to live tabIds and re-
+// promotes them via `add`. See ./Persistence.ts.
+
+import { Persistence, load } from './Persistence';
 
 export interface PanelEntry {
   tabId: number;
@@ -18,9 +21,30 @@ export interface PanelEntry {
 export class PanelStore {
   // workspaceId → ordered array of tab IDs that are panels for that workspace
   #byWorkspace = new Map<string, number[]>();
+  #persistence = new Persistence();
+  /** Persisted URLs from last shutdown, keyed by workspaceId. Consumed by
+   * the boot restorer (background.ts) and then cleared. Surviving here
+   * lets the restorer run after TabRegistry + WorkspaceStore are ready. */
+  #persistedUrls = new Map<string, string[]>();
 
-  /** No-op for parity with other stores (PanelStore is session-only). */
-  async init(): Promise<void> {}
+  async init(): Promise<void> {
+    const persisted = await load();
+    if (persisted) this.#persistedUrls = persisted.byWorkspace;
+  }
+
+  /** Pop the persisted URLs for a workspace, returning undefined after
+   * the first call. Used by the boot restorer; after a workspace is
+   * restored we don't want to re-run on subsequent activations. */
+  takePersistedUrls(workspaceId: string): string[] | undefined {
+    const urls = this.#persistedUrls.get(workspaceId);
+    if (urls) this.#persistedUrls.delete(workspaceId);
+    return urls;
+  }
+
+  /** All workspaceIds that still have unconsumed persisted URLs. */
+  workspacesWithPersistedUrls(): string[] {
+    return Array.from(this.#persistedUrls.keys());
+  }
 
   /** Get the panel tab IDs for a workspace, in left-to-right order. */
   getPanels(workspaceId: string | null): number[] {
@@ -33,6 +57,7 @@ export class PanelStore {
     const list = this.#byWorkspace.get(workspaceId) ?? [];
     if (list.includes(tabId)) return false;
     this.#byWorkspace.set(workspaceId, [...list, tabId]);
+    this.#schedulePersist();
     return true;
   }
 
@@ -44,12 +69,35 @@ export class PanelStore {
     if (next.length === list.length) return false;
     if (next.length === 0) this.#byWorkspace.delete(workspaceId);
     else this.#byWorkspace.set(workspaceId, next);
+    this.#schedulePersist();
     return true;
   }
 
   /** Drop all panels for a workspace (call when the workspace is deleted). */
   removeWorkspace(workspaceId: string): void {
-    this.#byWorkspace.delete(workspaceId);
+    if (!this.#byWorkspace.delete(workspaceId)) return;
+    this.#persistedUrls.delete(workspaceId);
+    this.#schedulePersist();
+  }
+
+  /** Replace the workspace's panel order. `tabIds` MUST be a permutation
+   * of the current set — same length, same members. If it isn't (a panel
+   * was added/removed in flight, or chrome sent stale ids), the reorder
+   * is rejected so the wire can't accidentally smuggle add/remove
+   * semantics through this channel. Returns true if the order actually
+   * changed. */
+  reorder(workspaceId: string, tabIds: number[]): boolean {
+    const list = this.#byWorkspace.get(workspaceId);
+    if (!list) return false;
+    if (tabIds.length !== list.length) return false;
+    const current = new Set(list);
+    for (const id of tabIds) {
+      if (!current.has(id)) return false;
+    }
+    if (tabIds.every((id, i) => list[i] === id)) return false;
+    this.#byWorkspace.set(workspaceId, [...tabIds]);
+    this.#schedulePersist();
+    return true;
   }
 
   /** Find every workspace that holds this tab as a panel. Used by the
@@ -62,5 +110,12 @@ export class PanelStore {
       if (list.includes(tabId)) out.push(wsId);
     }
     return out;
+  }
+
+  #schedulePersist(): void {
+    // Snapshot the map so the persistence layer's async flush sees the
+    // state at schedule time, not whatever happens to be in #byWorkspace
+    // when the debounce fires.
+    this.#persistence.schedule(new Map(this.#byWorkspace));
   }
 }

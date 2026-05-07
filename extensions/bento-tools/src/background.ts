@@ -36,6 +36,73 @@ function broadcastEvent(event: Event): void {
   }
 }
 
+// Restore a workspace's panels from URLs persisted across the last
+// shutdown. Idempotent: takePersistedUrls clears the entry on first call,
+// so subsequent activations of the same workspace are no-ops.
+//
+// URL → tabId matching: walk the workspace's existing tabs and consume
+// the first unmatched tab whose URL matches each persisted URL. For URLs
+// without a matching tab (Firefox sessionstore lost it, or the URL was
+// pinned only as a panel and the tab was closed at shutdown), open a new
+// tab with the URL and assign it to the workspace. Either way, each URL
+// becomes a tabId in the panels list.
+//
+// Multi-workspace restore is lazy: only the active workspace restores at
+// boot. Inactive workspaces restore on first activation (see
+// workspaces.onDeltas handler). A profile with 20 workspaces × 5 panels
+// each shouldn't pay the URL→tab matching cost up front.
+async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
+  const urls = panels.takePersistedUrls(workspaceId);
+  if (!urls || urls.length === 0) return;
+  // Tabs eligible for matching: this workspace's existing tabs.
+  const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === workspaceId);
+  // Need the URL too. TabSnapshot omits it (perf §6.5) so re-fetch via
+  // browser.tabs.get for the candidates only.
+  const tabUrls = new Map<number, string>();
+  for (const t of wsTabs) {
+    try {
+      const live = await browser.tabs.get(t.id);
+      if (live.url) tabUrls.set(t.id, live.url);
+    } catch {
+      /* tab gone */
+    }
+  }
+  const consumed = new Set<number>();
+  for (const url of urls) {
+    let matchedId: number | null = null;
+    for (const t of wsTabs) {
+      if (consumed.has(t.id)) continue;
+      if (tabUrls.get(t.id) === url) {
+        matchedId = t.id;
+        consumed.add(t.id);
+        break;
+      }
+    }
+    if (matchedId === null) {
+      // No existing tab — open one. active:false so panel restoration
+      // doesn't yank focus from the user's current tab.
+      try {
+        const created = await browser.tabs.create({ url, active: false });
+        if (typeof created.id === 'number') {
+          matchedId = created.id;
+          // The onCreated handler in this file auto-assigns to the
+          // CURRENT active workspace. If we're restoring a non-active
+          // workspace (lazy path), that's wrong — assign explicitly.
+          await tabs.assignWorkspace(matchedId, workspaceId);
+        }
+      } catch (err) {
+        console.warn('[bento-tools] panel restore: tabs.create failed for', url, err);
+      }
+    }
+    if (matchedId !== null) panels.add(workspaceId, matchedId);
+  }
+  // Broadcast even when this workspace isn't currently active —
+  // emitPanelsSync gates on activeId so the call is cheap. When the
+  // workspace IS active (boot path or just-activated lazy path),
+  // chrome reconciles the panel strip.
+  void emitPanelsSync(workspaceId);
+}
+
 // Resolve a workspace's panel tabIds to {tabId, url} entries and broadcast
 // to all connected shells. Each shell forwards the snapshot to chrome via
 // title-IPC; chrome reconciles its panel strip. Only the ACTIVE workspace's
@@ -71,7 +138,7 @@ Promise.all([
   workspaces.init().catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
   settings.init().catch((err) => console.error('[bento-tools] SettingsStore init failed:', err)),
   panels.init().catch((err) => console.error('[bento-tools] PanelStore init failed:', err)),
-]).then(() => {
+]).then(async () => {
   sleep.init();
   // Backfill: any tab that hydrated WITHOUT a workspaceId (fresh profile,
   // tabs from a pre-workspaces session, or tabs Firefox restored before
@@ -81,11 +148,17 @@ Promise.all([
   // listener can't see (hydrated tabs are inserted directly into the map,
   // they never emit a `created` delta).
   const wsId = workspaces.getActiveId();
-  if (!wsId) return;
-  for (const tab of tabs.snapshot()) {
-    if (tab.workspaceId) continue;
-    void tabs.assignWorkspace(tab.id, wsId);
+  if (wsId) {
+    for (const tab of tabs.snapshot()) {
+      if (tab.workspaceId) continue;
+      void tabs.assignWorkspace(tab.id, wsId);
+    }
   }
+  // Restore persisted panels for the active workspace. Inactive
+  // workspaces are restored lazily on first activation (see the
+  // workspaces.onDeltas handler below) so a profile with many
+  // workspaces doesn't pay the URL→tab matching cost up front.
+  if (wsId) await restorePanelsForWorkspace(wsId);
 });
 keys.init();
 
@@ -224,8 +297,18 @@ workspaces.onDeltas((deltas) => {
         .catch((err) => console.warn('[bento-tools] activate workspace tab failed:', err));
     }
 
-    // (2) Sync panels for the now-active workspace.
-    void emitPanelsSync(wsId);
+    // (2) Lazy panel restore for inactive workspaces — runs once per
+    // workspace per session. takePersistedUrls clears the entry so a
+    // second activation is a no-op. restorePanelsForWorkspace also
+    // emits panels/sync at the end, so we skip the explicit sync below
+    // when restore actually had work to do.
+    const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
+    if (hadPersisted) {
+      void restorePanelsForWorkspace(wsId);
+    } else {
+      // (3) Sync panels for the now-active workspace.
+      void emitPanelsSync(wsId);
+    }
   }
 });
 

@@ -69,11 +69,11 @@ interface Command {
 }
 
 function settingsUrl(): string {
-  return 'about:bento-settings';
+  return `${location.origin}/dist/settings.html`;
 }
 
 function privacyUrl(): string {
-  return 'about:bento-privacy';
+  return `${location.origin}/dist/privacy.html`;
 }
 
 function useCommands(closePalette: () => void): Command[] {

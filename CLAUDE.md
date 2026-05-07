@@ -171,23 +171,28 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 - **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from `@tale-ui/react/*` and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
 - **Per-component imports only**: `import { Button } from '@tale-ui/react/button'`. Never `from '@tale-ui/react'` (the barrel). Same rule for `@tale-ui/react-styles` and `lucide-react`.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
-- **Perf budgets** (CI fails on regression via [.size-limit.json](.size-limit.json)): shell cold-start JS < 135 KB gz, palette/settings/confirm cold-start JS < 130–140 KB gz (these chrome-overlay entries share the Dialog + useFirefoxTheme + useToolsPort chunks, ~115 KB gz of shared cost is structural), privacy cold-start JS < 80 KB gz, shell CSS < 24 KB gz, bento-tools background < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
+- **Perf budgets** (CI fails on regression via [.size-limit.json](.size-limit.json)): shell cold-start JS < 135 KB gz, palette/settings/confirm cold-start JS < 130–140 KB gz (these chrome-overlay entries share the Dialog + useFirefoxTheme + useToolsPort chunks, ~115 KB gz of shared cost is structural), privacy cold-start JS < 100 KB gz (raised from 80 KB once the dashboard gained interactive Switch + ToggleButtonGroup + Banner controls — those drag react-aria-components into the shared chunk), shell CSS < 24 KB gz, bento-tools background < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
 - **No raw design values in component CSS**: components reference Tale UI tokens (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, etc.) or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a needed value doesn't exist as a token, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired `--neutral-N-fg` token, not a raw neutral.
 - **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
 
-## 🔔 Tale UI: development → release migration (DO BEFORE FIRST PUBLIC RELEASE)
+## Tale UI: development ↔ release toggle
 
-**During development**, Tale UI is consumed via pnpm `link:` to `/Users/admin/Projects/tale-ui/core/packages/*`. Source edits hot-reload in Bento. This is intentional — we co-evolve the design system alongside the browser.
+Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react: 1.3.47`, `@tale-ui/core: 1.1.17`, etc.) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
 
-**Before producing public installer or auto-update artifacts (.dmg, .exe, .msi, MAR files), the Tale UI dependency MUST switch from local link to a pinned, immutable source.** Pick one:
+**Default install (dev loop)** — `pnpm install`:
 
-1. Publish Tale UI to npm at a fixed version. Pin in Bento's `package.json` (`"@tale-ui/react": "1.x.y"`) with the lockfile committed. Use `pnpm.overrides` in Bento's root `package.json` to map `@tale-ui/*` back to the local `link:` for individual developers' machines.
-2. Vendor Tale UI as a git submodule at `vendor/tale-ui` pinned to a specific SHA. Update the `link:` paths to point inside the submodule.
+- The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/core/packages/*`. Source edits in `tale-ui/core` hot-reload into Bento exactly as before R-1.
+- The lockfile records the `link:` paths.
 
-**Why this is non-negotiable**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. Same reasoning Bento already uses for pinning Surfer by SHA (see [docs/maintaining-surfer.md](docs/maintaining-surfer.md)).
+**Release install** — `BENTO_RELEASE=1 pnpm install --no-frozen-lockfile` (used by `scripts/build-release.sh` and the GitHub Actions release workflow):
 
-**When to do it**: in the same PR that wires up the release pipeline (likely late M1 or start of M2). If a future session is asked to set up release builds, signing, notarization, or update channels — flag this migration as a blocker before producing the first public artifact.
+- The hook detects `BENTO_RELEASE=1` and is a no-op. pnpm sees the npm-pinned versions in `package.json` and resolves from the registry.
+- `--no-frozen-lockfile` allows the lockfile to update from `link:` → `1.3.47` for the duration of the build. Release CI runs in a clean throwaway environment so this doesn't pollute developer state.
+
+**When updating the Tale UI version**: bump the version strings in both `extensions/bento-shell/package.json` and `extensions/bento-tools/package.json` (when bento-tools eventually pulls Tale UI). Run `pnpm install` to refresh the lockfile against the new local checkout. Verify it still works under release mode by `BENTO_RELEASE=1 pnpm install --no-frozen-lockfile` in a separate worktree.
+
+**Why this matters**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. Same reasoning Bento already uses for pinning Surfer by SHA (see [docs/maintaining-surfer.md](docs/maintaining-surfer.md)).
 
 ## Dev loop
 
