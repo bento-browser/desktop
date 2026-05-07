@@ -31,16 +31,21 @@ append_to() {
     echo "append-prefs: $dest missing — skipping that target" >&2
     return
   fi
+  local tmp
+  tmp="$(mktemp)"
   if grep -qF "$MARKER" "$dest"; then
-    echo "append-prefs: $dest already has Bento defaults"
-    return
+    awk -v marker="$MARKER" 'index($0, marker) == 1 { exit } { print }' "$dest" > "$tmp"
+  else
+    cp "$dest" "$tmp"
   fi
   {
     echo ""
     echo "$MARKER ==="
     cat "$PREFS_SRC"
-  } >> "$dest"
-  echo "append-prefs: appended $PREFS_SRC -> $dest"
+  } >> "$tmp"
+  cp "$tmp" "$dest"
+  rm -f "$tmp"
+  echo "append-prefs: refreshed $PREFS_SRC -> $dest"
 }
 
 # Two targets, both deployed as defaults/preferences/*.js. Firefox loads

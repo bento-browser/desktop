@@ -74,6 +74,12 @@ pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.upgradeDialog.enabled", false);
 pref("browser.preferences.moreFromMozilla", false);
 
+// --- Web compatibility ----------------------------------------------------
+// Keep Bento identifiable as Bento while also advertising Firefox compatibility
+// in the UA string. AMO and some Firefox-specific sites key browser support off
+// the Firefox token before they expose extension-install affordances.
+pref("general.useragent.compatMode.firefox", true);
+
 // --- Bento UI shell mount -------------------------------------------------
 // (extensions.webextensions.uuids isn't honored for built-in addons —
 // the chrome resolver script reads the assigned UUID at runtime instead.)
