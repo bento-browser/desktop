@@ -162,6 +162,17 @@ Promise.all([
 });
 keys.init();
 
+// Per-workspace memory of the last-focused tab. When the user switches
+// away from a workspace and returns, we restore them to the tab they
+// were viewing rather than always landing on wsTabs[0]. In-memory only
+// — session-scoped; on browser restart the memory resets and the
+// activate handler falls back to the first workspace tab.
+//
+// Updated on every tabs/activated delta (see the second tabs.onDeltas
+// listener below). Cleared on tabs/removed for the matching id and on
+// workspaces/removed for the matching workspace.
+const lastActiveTabByWorkspace = new Map<string, number>();
+
 // Tab delta orchestrator. Two responsibilities:
 //   1. Auto-assign newly created tabs to the currently active workspace.
 //      Existing tabs without an assignment (first-boot upgrade from a pre-
@@ -194,6 +205,34 @@ tabs.onDeltas((deltas) => {
       const activeId = workspaces.getActiveId();
       if (activeId && affected.includes(activeId)) {
         void emitPanelsSync(activeId);
+      }
+      continue;
+    }
+  }
+});
+
+// Per-workspace last-active tab tracker. Separate listener so the panels
+// orchestrator above stays focused on its own concern. Watches activated
+// + removed deltas to keep lastActiveTabByWorkspace in sync with reality:
+//   - activated: record (tab.workspaceId → tab.id) for non-panel tabs.
+//     Panel tabs are excluded — they're not in the sidebar tab list, so
+//     the user wouldn't expect to "land back" on a panel after a
+//     workspace round-trip.
+//   - removed: drop any entry that pointed at the gone tab so the next
+//     workspace activation falls back to wsTabs[0] instead of trying to
+//     restore a tab that no longer exists.
+tabs.onDeltas((deltas) => {
+  for (const d of deltas) {
+    if (d.kind === 'activated') {
+      const tab = tabs.snapshot().find((t) => t.id === d.id);
+      if (!tab || !tab.workspaceId) continue;
+      if (panels.findWorkspacesContainingTab(d.id).length > 0) continue;
+      lastActiveTabByWorkspace.set(tab.workspaceId, d.id);
+      continue;
+    }
+    if (d.kind === 'removed') {
+      for (const [wsId, tabId] of lastActiveTabByWorkspace) {
+        if (tabId === d.id) lastActiveTabByWorkspace.delete(wsId);
       }
       continue;
     }
@@ -276,22 +315,34 @@ workspaces.onDeltas((deltas) => {
   for (const d of deltas) {
     if (d.kind === 'removed') {
       panels.removeWorkspace(d.id);
+      lastActiveTabByWorkspace.delete(d.id);
       continue;
     }
     if (d.kind !== 'activated') continue;
     const wsId = d.id;
 
-    // (1) Ensure the workspace has a tab and that tab is focused.
-    const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId);
+    // (1) Ensure the workspace has a tab and that tab is focused. Panel
+    // tabs are excluded from candidates here — they live in their own
+    // <browser> elements in the side strip, not the main panel, so
+    // making one the active gBrowser tab would put its content in the
+    // main panel area (where another panel browser is already showing
+    // the same URL). The sidebar's tab list also excludes panels via
+    // useWorkspaceTabIds, so this matches what the user sees.
+    const panelTabIds = new Set(panels.getPanels(wsId));
+    const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
     if (wsTabs.length === 0) {
       browser.tabs
         .create({ active: true })
         .catch((err) => console.warn('[bento-tools] newtab for empty workspace failed:', err));
     } else if (!wsTabs.some((t) => t.active)) {
-      // No tab from this workspace is currently focused — focus the
-      // first one. Picking by index keeps the choice deterministic; a
-      // future "last active per workspace" tracker can refine this.
-      const target = wsTabs[0]!;
+      // Restore the tab the user was last viewing in this workspace.
+      // Falls back to the first tab when memory is empty (first
+      // activation this session) or the remembered tab is gone /
+      // moved / now a panel — wsTabs.find returns undefined in those
+      // cases so the wsTabs[0] branch fires.
+      const remembered = lastActiveTabByWorkspace.get(wsId);
+      const target =
+        (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) || wsTabs[0]!;
       browser.tabs
         .update(target.id, { active: true })
         .catch((err) => console.warn('[bento-tools] activate workspace tab failed:', err));

@@ -627,6 +627,10 @@
     setFrameSrc('bento-edit-workspace-frame', '/dist/edit-workspace.html');
   }
 
+  function setBentoWelcomeSrc() {
+    setFrameSrc('bento-welcome-frame', '/dist/welcome.html');
+  }
+
   // Create overlay host elements dynamically rather than in the patch.
   // Why: browser.xhtml is preprocessed by mach at full-build time, so adding
   // a new <vbox> to browser-box.inc.xhtml requires `npm run build` to land
@@ -675,6 +679,16 @@
     hostId: 'bento-edit-workspace-host',
     frameId: 'bento-edit-workspace-frame',
     zIndex: 99997,
+  });
+
+  // Welcome overlay (first-run). Same dev-factory path. zIndex below
+  // confirm/edit-workspace so a confirmation popup over a still-visible
+  // welcome (theoretical) takes precedence; in practice welcome is the
+  // very first overlay a user sees and there's nothing to stack against.
+  ensureOverlayHost({
+    hostId: 'bento-welcome-host',
+    frameId: 'bento-welcome-frame',
+    zIndex: 99996,
   });
 
   // ─── Palette overlay show/hide ──────────────────────────────────────────
@@ -820,6 +834,43 @@
     }, EDIT_WORKSPACE_TRANSITION_MS);
   }
 
+  // ─── Welcome overlay (first-run) ───────────────────────────────────────
+  // Same chrome-overlay pattern as confirm/palette/edit-workspace. Trigger
+  // is one-shot per fresh profile: sidebar inspects settings.welcomeSeen
+  // and signals BENTO_OPEN_WELCOME_<ts>; welcome content flips the flag
+  // on dismiss so it never fires again.
+  const WELCOME_TRANSITION_MS = 180;
+
+  function isWelcomeVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  function showWelcome() {
+    const host = document.getElementById('bento-welcome-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showWelcome: host missing');
+      return;
+    }
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    host.style.opacity = '1';
+    const frame = document.getElementById('bento-welcome-frame');
+    setTimeout(() => frame?.focus(), 0);
+  }
+
+  function hideWelcome() {
+    const host = document.getElementById('bento-welcome-host');
+    if (!host) return;
+    host.style.opacity = '0';
+    setTimeout(() => {
+      if (host.style.opacity === '0') {
+        host.style.display = 'none';
+        host.setAttribute('hidden', 'true');
+      }
+    }, WELCOME_TRANSITION_MS);
+  }
+
   // Cross-process IPC via document.title + DOMTitleChanged. Content in a
   // remote=true <browser> can't postMessage to the chrome process, but
   // title changes DO bubble cross-process to the chrome <browser>
@@ -838,6 +889,12 @@
   // Payload travels via BroadcastChannel('bento-edit-workspace-bus').
   const EDIT_WORKSPACE_OPEN_PREFIX = 'BENTO_OPEN_EDIT_WORKSPACE';
   const EDIT_WORKSPACE_CLOSE_PREFIX = 'BENTO_CLOSE_EDIT_WORKSPACE';
+  // Welcome overlay (first-run). No payload — sidebar's App.tsx reads
+  // settings.welcomeSeen and signals BENTO_OPEN_WELCOME_<ts> the first
+  // time it sees false; welcome content flips the flag + signals
+  // BENTO_CLOSE_WELCOME_<ts> on dismiss.
+  const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
+  const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
   // Multi-panel reconciliation. Title format from sidebar:
   //   BENTO_PANELS:<ts>:<base64-of-json-array>
   // where the JSON array is [{tabId, url}, ...] for the active workspace.
@@ -2664,17 +2721,37 @@
     const colonAfterTs = tail.indexOf(':');
     if (colonAfterTs < 0) return;
     const b64 = tail.slice(colonAfterTs + 1);
-    let panels;
+    let decoded;
     try {
       // Counterpart of the sidebar's btoa(unescape(encodeURIComponent(json))).
-      panels = JSON.parse(decodeURIComponent(escape(atob(b64))));
+      decoded = JSON.parse(decodeURIComponent(escape(atob(b64))));
     } catch (e) {
       console.warn('[bento-shell-mount] failed to decode BENTO_PANELS payload:', e);
       return;
     }
-    if (!Array.isArray(panels)) return;
+    // Payload shape: { workspaceId: string|null, panels: Array<{tabId, ...}> }.
+    // workspaceId is the currently-active Bento workspace; chrome stores it
+    // so the Cmd+1..9 handler can scope tab activation. The panels array
+    // drives the side-panel strip reconcile.
+    let panels;
+    if (Array.isArray(decoded)) {
+      panels = decoded;
+    } else if (decoded && Array.isArray(decoded.panels)) {
+      panels = decoded.panels;
+      currentWorkspaceId = typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
+      currentPanelTabIds = new Set(panels.map((p) => p.tabId));
+    } else {
+      return;
+    }
     reconcilePanels(panels);
   }
+
+  // Active workspace state mirrored from the shell via BENTO_PANELS payload.
+  // Cmd+1..9 reads these to scope tab activation to the current workspace
+  // (so Cmd+3 picks the 3rd tab in the active workspace, not the 3rd tab
+  // in Firefox's flat tab list which would jump across workspaces).
+  let currentWorkspaceId = null;
+  let currentPanelTabIds = new Set();
 
   function attachPaletteCloseListener() {
     const paletteFrame = document.getElementById('bento-palette-frame');
@@ -2717,6 +2794,17 @@
       }, 200);
     }
 
+    const welcomeFrame = document.getElementById('bento-welcome-frame');
+    if (welcomeFrame) {
+      let lastSeenWelcomeTitle = '';
+      setInterval(() => {
+        const title = welcomeFrame.contentTitle || '';
+        if (title === lastSeenWelcomeTitle) return;
+        lastSeenWelcomeTitle = title;
+        if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
+      }, 200);
+    }
+
     const shellFrame = document.getElementById('bento-shell-frame');
     if (shellFrame) {
       let lastSeenShellTitle = '';
@@ -2727,6 +2815,7 @@
         if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
         else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
         else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
+        else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
         else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
       }, 200);
     }
@@ -2755,6 +2844,13 @@
           e.preventDefault();
           e.stopPropagation();
           hideEditWorkspace();
+          return;
+        }
+        const welcomeHost = document.getElementById('bento-welcome-host');
+        if (welcomeHost && isWelcomeVisible(welcomeHost)) {
+          e.preventDefault();
+          e.stopPropagation();
+          hideWelcome();
           return;
         }
         const host = document.getElementById('bento-palette-host');
@@ -2793,6 +2889,125 @@
     );
   }
 
+  // ─── Cmd/Ctrl+1..9 → activate Nth tab in active workspace ──────────────
+  //
+  // Firefox's default Cmd+1..9 picks the Nth tab in gBrowser.tabs (a flat
+  // list across workspaces). In Bento that lands the user on a tab from
+  // a different workspace — Cmd+3 in workspace "Work" might activate the
+  // 3rd tab in workspace "Personal". We override to pick the Nth tab
+  // *within the active workspace*, matching what the sidebar shows.
+  //
+  // Tab → workspace lookup uses SessionStore.getCustomTabValue with the
+  // key WebExtensions persists at: `extension:<addon-id>:<key>`. That's
+  // documented behaviour of toolkit/components/extensions/parent/ext-
+  // sessions.js — getEncodedKey returns `extension:${extensionId}:${key}`
+  // and the value is JSON-encoded. Stable API; we read the same store
+  // bento-tools writes via browser.sessions.setTabValue.
+  //
+  // Panel exclusion uses ExtensionParent.apiManager.global.tabTracker to
+  // map gBrowser tabs → WebExtension tab IDs. Panels are still gBrowser
+  // tabs (separate from the panel's <browser>), so without exclusion
+  // Cmd+N would count them and the indices would drift from the sidebar
+  // list. tabTracker is the canonical mapping used by every WebExtension
+  // tabs.* API; importing it is supported via ExtensionParent.
+  let __sessionStoreModule = null;
+  let __tabTrackerModule = null;
+  function getSessionStore() {
+    if (__sessionStoreModule) return __sessionStoreModule;
+    try {
+      const mod = ChromeUtils.importESModule(
+        'resource:///modules/sessionstore/SessionStore.sys.mjs',
+      );
+      __sessionStoreModule = mod.SessionStore;
+    } catch (err) {
+      console.warn('[bento-shell-mount] SessionStore import failed:', err);
+    }
+    return __sessionStoreModule;
+  }
+  function getTabTracker() {
+    if (__tabTrackerModule) return __tabTrackerModule;
+    try {
+      const mod = ChromeUtils.importESModule('resource://gre/modules/ExtensionParent.sys.mjs');
+      __tabTrackerModule = mod.ExtensionParent?.apiManager?.global?.tabTracker || null;
+    } catch (err) {
+      console.warn('[bento-shell-mount] ExtensionParent import failed:', err);
+    }
+    return __tabTrackerModule;
+  }
+
+  const WORKSPACE_SESSION_KEY = 'extension:bento-tools@bento.app:bento.workspaceId';
+
+  function workspaceTabsInOrder() {
+    if (!window.gBrowser || !currentWorkspaceId) return [];
+    const SessionStore = getSessionStore();
+    if (!SessionStore) return [];
+    const tabTracker = getTabTracker();
+    const out = [];
+    for (const tab of window.gBrowser.tabs) {
+      if (tab.hidden || tab.closing) continue;
+      let wsValue = null;
+      try {
+        const raw = SessionStore.getCustomTabValue(tab, WORKSPACE_SESSION_KEY);
+        if (raw) wsValue = JSON.parse(raw);
+      } catch {
+        /* tab without value, treat as null */
+      }
+      if (wsValue !== currentWorkspaceId) continue;
+      // Exclude tabs that are pinned as side panels — they don't appear
+      // in the sidebar's tab list, so Cmd+N shouldn't index them either.
+      if (tabTracker && currentPanelTabIds.size > 0) {
+        let webExtId = null;
+        try {
+          webExtId = tabTracker.getId(tab);
+        } catch {
+          /* tabTracker may transiently not know about a tab; treat as not-a-panel */
+        }
+        if (webExtId !== null && currentPanelTabIds.has(webExtId)) continue;
+      }
+      out.push(tab);
+    }
+    return out;
+  }
+
+  function attachWorkspaceTabSwitchKeybinding() {
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        const accel = navigator.platform.toLowerCase().includes('mac')
+          ? e.metaKey
+          : e.ctrlKey;
+        if (!accel || e.altKey || e.shiftKey) return;
+        // Match physical Digit1..Digit9 (not Digit0). e.code is layout-
+        // independent so this works with non-QWERTY layouts.
+        if (!e.code.startsWith('Digit')) return;
+        const n = parseInt(e.code.slice(5), 10);
+        if (!Number.isInteger(n) || n < 1 || n > 9) return;
+        // No active workspace yet — let Firefox's default Cmd+N tab
+        // switch fire so the user isn't stranded with a no-op shortcut
+        // before bento-tools has connected.
+        if (!currentWorkspaceId) return;
+        const tabs = workspaceTabsInOrder();
+        const target = tabs[n - 1];
+        if (!target) {
+          // Workspace has fewer than N visible tabs. Suppress the
+          // default to avoid jumping into a different workspace's tab,
+          // which is the behaviour the user complained about.
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          window.gBrowser.selectedTab = target;
+        } catch (err) {
+          console.warn('[bento-shell-mount] workspace Cmd+N: selectedTab assign failed:', err);
+        }
+      },
+      true,
+    );
+  }
+
 
   // ─── Dev-reload glue ────────────────────────────────────────────────────
 
@@ -2823,6 +3038,7 @@
           'bento-palette-frame',
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
+          'bento-welcome-frame',
         ];
         for (const id of ids) {
           const frame = document.getElementById(id);
@@ -2836,6 +3052,7 @@
             else if (id === 'bento-palette-frame') setBentoPaletteSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
+            else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
           }
         }
       }, 100);
@@ -2852,6 +3069,7 @@
   setBentoPaletteSrc();
   setBentoConfirmSrc();
   setBentoEditWorkspaceSrc();
+  setBentoWelcomeSrc();
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so
   // the strip is ready by the first reconcilePanels(). Wrapped in
@@ -2884,4 +3102,5 @@
   attachPaletteKeybinding();
   attachPaletteEscListener();
   attachPaletteCloseListener();
+  attachWorkspaceTabSwitchKeybinding();
 })();

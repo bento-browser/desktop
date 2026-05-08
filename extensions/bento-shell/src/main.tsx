@@ -32,6 +32,7 @@ import '@tale-ui/react-styles/avatar';
 import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/autocomplete';
 import '@tale-ui/react-styles/search-field';
+import '@tale-ui/react-styles/spinner';
 
 import './theme/bento-tokens.css';
 import './theme/bento-fonts.css';

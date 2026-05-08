@@ -19,6 +19,7 @@
     "dist/index.html",
     "dist/settings.html",
     "dist/palette.html",
+    "dist/welcome.html",
     "dist/assets/*"
   ],
   "commands": {

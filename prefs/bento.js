@@ -74,6 +74,12 @@ pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.upgradeDialog.enabled", false);
 pref("browser.preferences.moreFromMozilla", false);
 
+// --- Chrome defaults ------------------------------------------------------
+// Firefox defaults to showing the bookmarks toolbar only on about:newtab.
+// Bento's shell uses its own vertical/navigation surfaces, so keep the native
+// bookmarks toolbar hidden unless users explicitly turn it back on.
+pref("browser.toolbars.bookmarks.visibility", "never");
+
 // --- Web compatibility ----------------------------------------------------
 // Keep Bento identifiable as Bento while also advertising Firefox compatibility
 // in the UA string. AMO and some Firefox-specific sites key browser support off

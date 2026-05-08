@@ -6,7 +6,11 @@
 @layer bento.components {
   .bento-tab-row {
     display: grid;
-    grid-template-columns: 1rem minmax(0, 1fr);
+    /* favicon | title | optional audible badge. The audible column is
+       0 when no badge is rendered — the column only stretches when the
+       child exists, so non-audible rows keep the original 2-column
+       layout exactly. */
+    grid-template-columns: 1rem minmax(0, 1fr) auto;
     position: relative;
     align-items: center;
     gap: var(--space-xs);
@@ -65,6 +69,47 @@
 
   .bento-tab-row__favicon--placeholder {
     background-color: var(--neutral-30);
+  }
+
+  /* Loading state replaces the favicon with the Tale UI Spinner. The slot
+     keeps its 1rem footprint so the title doesn't reflow as the throbber
+     toggles on/off during a normal page load. */
+  .bento-tab-row__favicon--loading {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+  }
+  .bento-tab-row__favicon--loading .tale-spinner {
+    width: var(--bento-favicon-size);
+    height: var(--bento-favicon-size);
+  }
+
+  /* Discarded (sleeping) — dim the favicon and the title so the row reads
+     as out-of-memory at a glance. Active discarded shouldn't happen in
+     practice (Firefox wakes a tab on activation) but we don't bother
+     guarding the modifier — the active style would override the dim
+     anyway via specificity. */
+  .bento-tab-row--discarded .bento-tab-row__favicon {
+    opacity: 0.45;
+    filter: grayscale(0.6);
+  }
+  .bento-tab-row--discarded > .tale-text {
+    opacity: 0.7;
+  }
+
+  /* Audible badge sits in the third grid column. Always visible (status,
+     not action). Hover/active states flow over the top via the actions
+     overlay. */
+  .bento-tab-row__audible {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--neutral-70);
+    padding-inline-end: var(--space-2xs);
+  }
+  .bento-tab-row--active .bento-tab-row__audible {
+    color: var(--neutral-90-fg);
   }
 
   .bento-tab-row > .tale-text {

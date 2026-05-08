@@ -11,7 +11,7 @@
 // — Bento doesn't duplicate them. See plans/bento-browser-features.md
 // and the repo README for the complete list of shipped privacy defaults.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '@tale-ui/react/card';
 import { Switch } from '@tale-ui/react/switch';
 import { NumberField } from '@tale-ui/react/number-field';
@@ -22,10 +22,12 @@ import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { Icon } from '@tale-ui/react/icon';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
+import Keyboard from 'lucide-react/dist/esm/icons/keyboard';
 
 import { useSettingsStore } from '../../state/settings';
 import { usePrivacyStore } from '../../state/privacy';
 import { dispatch, initToolsPort } from '../../bridge/useToolsPort';
+import { ShortcutsDialog } from './ShortcutsDialog';
 import './Settings.css';
 
 function update<K extends keyof import('@shared/protocol').BentoSettings>(
@@ -38,6 +40,7 @@ function update<K extends keyof import('@shared/protocol').BentoSettings>(
 export function Settings() {
   const settings = useSettingsStore((s) => s.current);
   const privacy = usePrivacyStore((s) => s.settings);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Request a fresh privacy snapshot on mount. Tools doesn't push
   // privacy/changed deltas (settings rarely change without explicit user
@@ -231,12 +234,36 @@ export function Settings() {
         </Card.Body>
       </Card.Root>
 
+      <Card.Root>
+        <Card.Header>
+          <Column gap="2xs">
+            <Text variant="heading" size="m">
+              Keyboard shortcuts
+            </Text>
+            <Text variant="text" size="s" color="muted">
+              Reference for the Bento-specific hotkeys (workspaces, panels, command palette).
+              Standard Firefox shortcuts continue to work.
+            </Text>
+          </Column>
+        </Card.Header>
+        <Card.Body>
+          <Row>
+            <Button variant="neutral" onPress={() => setShortcutsOpen(true)}>
+              <Icon icon={Keyboard} size="sm" />
+              View shortcuts
+            </Button>
+          </Row>
+        </Card.Body>
+      </Card.Root>
+
       <Row gap="s" align="center" className="bento-settings__footer">
         <Button variant="ghost" onPress={() => dispatch({ type: 'settings/reset' })}>
           <Icon icon={RotateCcw} size="sm" />
           Reset to defaults
         </Button>
       </Row>
+
+      <ShortcutsDialog isOpen={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </Column>
   );
 }

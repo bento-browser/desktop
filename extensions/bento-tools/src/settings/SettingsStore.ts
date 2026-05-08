@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   tabSleepKeepAlivePerWorkspace: 10,
   defaultWorkspaceName: 'Personal',
   commandPaletteEnabled: true,
+  welcomeSeen: false,
 });
 
 interface StoredShape {

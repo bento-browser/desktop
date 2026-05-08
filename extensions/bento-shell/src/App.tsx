@@ -11,7 +11,9 @@ import PanelRightClose from 'lucide-react/dist/esm/icons/panel-right-close';
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { dispatch, useToolsReady } from './bridge/useToolsPort';
+import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspacesStore } from './state/workspaces';
+import { useSettingsStore } from './state/settings';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -46,6 +48,34 @@ export function App() {
   const activeWorkspaceColor = useWorkspacesStore((s) =>
     s.activeId ? s.byId[s.activeId]?.color : undefined,
   );
+  // First-run welcome trigger. The settings snapshot lands a moment after
+  // the tools port connects; once it does and welcomeSeen=false, signal
+  // chrome to show the welcome overlay (chrome-mounted, full-window scrim
+  // — implemented via the welcome.html overlay frame).
+  //
+  // Why the retry loop: requestWelcome() sets document.title =
+  // BENTO_OPEN_WELCOME_<ts>, which the chrome poll picks up. But the
+  // `panels/sync` event handler in useToolsPort ALSO writes document.title
+  // (BENTO_PANELS:...) and lands moments later on cold boot — stomping
+  // the welcome title before the 200ms chrome poll can see it. On
+  // Alt+Shift+R there's no fresh panels broadcast so welcome wins on
+  // first try. Five attempts × 200ms = 1s window covers the cold-boot
+  // race; chrome's showWelcome() is idempotent so re-firing is a no-op
+  // once it's visible. Loop stops automatically when welcomeSeen flips
+  // true (effect cleanup) — no risk of looping forever.
+  const welcomeShouldShow = useSettingsStore((s) => s.current !== null && !s.current.welcomeSeen);
+  useEffect(() => {
+    if (!welcomeShouldShow) return;
+    let attempts = 0;
+    const fire = () => {
+      requestWelcome();
+      attempts += 1;
+      if (attempts >= 5) clearInterval(handle);
+    };
+    fire();
+    const handle = setInterval(fire, 200);
+    return () => clearInterval(handle);
+  }, [welcomeShouldShow]);
 
   // Propagate the active workspace's accent palette to <html data-workspace-color>
   // so per-workspace accent tokens (declared in bento-tokens.css) cascade to

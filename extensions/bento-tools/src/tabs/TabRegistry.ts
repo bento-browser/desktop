@@ -22,6 +22,8 @@ function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
     active: t.active,
     pinned: t.pinned,
     audible: t.audible ?? false,
+    loading: t.status === 'loading',
+    discarded: t.discarded ?? false,
   };
 }
 
@@ -124,6 +126,10 @@ export class TabRegistry {
     if (tab.favIconUrl !== existing.favIconUrl) changes.favIconUrl = tab.favIconUrl;
     if ((tab.audible ?? false) !== existing.audible) changes.audible = tab.audible ?? false;
     if (tab.pinned !== existing.pinned) changes.pinned = tab.pinned;
+    const nextLoading = tab.status === 'loading';
+    if (nextLoading !== (existing.loading ?? false)) changes.loading = nextLoading;
+    const nextDiscarded = tab.discarded ?? false;
+    if (nextDiscarded !== (existing.discarded ?? false)) changes.discarded = nextDiscarded;
     if (Object.keys(changes).length === 0) return;
     Object.assign(existing, changes);
     this.#enqueue({ kind: 'updated', id, changes });

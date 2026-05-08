@@ -1,0 +1,45 @@
+/* Welcome overlay — chrome-mounted, scrim-modal sized to be readable
+ * without overwhelming a fresh user. Same key-cap visual as the
+ * keyboard-shortcuts dialog so users see the same affordance in two
+ * places (the welcome teaches the language, the dialog reinforces it). */
+@layer bento.components {
+  .bento-welcome {
+    max-width: 28rem;
+    width: 100%;
+  }
+
+  .bento-welcome__head {
+    margin-block-end: var(--space-2xs);
+  }
+
+  .bento-welcome__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--bento-workspace-accent);
+  }
+
+  .bento-welcome__tips {
+    margin-block: var(--space-s);
+  }
+
+  .bento-welcome__tip {
+    justify-content: flex-start;
+  }
+
+  .bento-welcome__kbd {
+    display: inline-flex;
+    align-items: center;
+    min-width: 8rem;
+    padding: var(--space-3xs) var(--space-2xs);
+    border-radius: var(--radius-xs);
+    background-color: var(--neutral-15);
+    color: var(--neutral-90);
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+    font-size: var(--font-size-xs);
+    line-height: 1;
+    white-space: nowrap;
+  }
+}

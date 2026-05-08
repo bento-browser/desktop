@@ -17,6 +17,13 @@ export interface TabSnapshot {
   active: boolean;
   pinned: boolean;
   audible: boolean;
+  /** True while the tab is loading (browser.tabs status === 'loading').
+   * Surfaces the throbber on the sidebar tab row. */
+  loading?: boolean;
+  /** True when Firefox has unloaded the tab (SleepPolicy or user discard).
+   * Sidebar dims the favicon so users can see at a glance which tabs are
+   * sleeping vs. resident in memory. */
+  discarded?: boolean;
   /** Workspace this tab belongs to. Undefined during the brief window between
    * tab creation and tools assigning it to the active workspace. */
   workspaceId?: string;
@@ -65,6 +72,10 @@ export interface BentoSettings {
   defaultWorkspaceName: string;
   /** Cmd+K command palette enabled (M2 future feature). */
   commandPaletteEnabled: boolean;
+  /** False until the user dismisses the first-run welcome banner. The banner
+   * surfaces only when this is false; flipping it true hides the banner
+   * everywhere (storage.local persists the choice across launches). */
+  welcomeSeen: boolean;
 }
 
 export type Action =

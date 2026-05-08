@@ -2,9 +2,11 @@ import { memo, useRef } from 'react';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
+import { Spinner } from '@tale-ui/react/spinner';
 // Per-icon imports (no lucide-react barrel — see eslint config + §6.2).
 import X from 'lucide-react/dist/esm/icons/x';
 import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
+import Volume2 from 'lucide-react/dist/esm/icons/volume-2';
 import type { TabSnapshot } from '@shared/protocol';
 
 import { useTab } from '../../state/tabs';
@@ -46,12 +48,17 @@ function TabRowImpl({
   const tab = liveTab ?? lastSeenRef.current;
   if (!tab) return null;
 
+  const loading = tab.loading ?? false;
+  const discarded = tab.discarded ?? false;
+  const audible = tab.audible;
+
   return (
     <div
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
-        (removing ? ' bento-tab-row--removing' : '')
+        (removing ? ' bento-tab-row--removing' : '') +
+        (discarded ? ' bento-tab-row--discarded' : '')
       }
       onClick={() => removing || onActivate(id)}
       onMouseDown={(e) => {
@@ -65,8 +72,22 @@ function TabRowImpl({
         e.stopPropagation();
         onClose(id);
       }}
+      title={
+        loading
+          ? `Loading — ${tab.title || 'Untitled'}`
+          : discarded
+            ? `Sleeping — ${tab.title || 'Untitled'}`
+            : tab.title || 'Untitled'
+      }
     >
-      {tab.favIconUrl ? (
+      {/* Loading wins the favicon slot — the throbber is the cue Firefox
+       * users expect to mean "fetching". Discarded only dims the favicon
+       * (handled via the row modifier in CSS). */}
+      {loading ? (
+        <span className="bento-tab-row__favicon bento-tab-row__favicon--loading">
+          <Spinner size="sm" label="Loading" />
+        </span>
+      ) : tab.favIconUrl ? (
         <img className="bento-tab-row__favicon" src={tab.favIconUrl} alt="" />
       ) : (
         <span className="bento-tab-row__favicon bento-tab-row__favicon--placeholder" />
@@ -74,6 +95,15 @@ function TabRowImpl({
       <Text variant="text" size="s" color={active ? 'default' : 'muted'}>
         {tab.title || 'Untitled'}
       </Text>
+      {/* Audible indicator sits outside the actions container so it stays
+       * visible at rest (not just on hover). Hover/active reveal the action
+       * buttons over the top, which is the right priority — controls beat
+       * status. */}
+      {audible && (
+        <span className="bento-tab-row__audible" aria-label="Playing audio">
+          <Icon icon={Volume2} size="sm" />
+        </span>
+      )}
       <div className="bento-tab-row__actions">
         {/* The active tab renders into the main panel — moving it to a side
          * panel would leave the main panel empty. Hide the affordance so the
@@ -97,6 +127,10 @@ function TabRowImpl({
 }
 
 export const TabRow = memo(TabRowImpl, (prev, next) => {
+  // Tab content (title/favicon/loading/discarded/audible) reaches TabRowImpl
+  // via the useTab(id) selector — its store subscription rerenders the row
+  // when those fields shift, so the memo comparator only needs to gate the
+  // direct props.
   return (
     prev.id === next.id &&
     prev.active === next.active &&

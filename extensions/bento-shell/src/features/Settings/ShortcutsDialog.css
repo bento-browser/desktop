@@ -1,0 +1,36 @@
+/* Layer-3 helper: keyboard shortcuts dialog. The dialog popup gets a
+ * scroll affordance because the catalogue grows over time and shouldn't
+ * push the page beyond a comfortable reading height. */
+@layer bento.components {
+  .bento-shortcuts-dialog {
+    max-width: 32rem;
+    width: 100%;
+  }
+
+  .bento-shortcuts-dialog__groups {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-block: var(--space-xs);
+  }
+
+  .bento-shortcuts-dialog__row {
+    justify-content: flex-start;
+  }
+
+  /* Same key-cap visual as WelcomeBanner. Keep wide enough that two
+     adjacent rows align (the modifier column is the alignment anchor),
+     but allow the text to expand for compound combos like Cmd+Shift+T. */
+  .bento-shortcuts-dialog__combo {
+    display: inline-flex;
+    align-items: center;
+    min-width: 8rem;
+    padding: var(--space-3xs) var(--space-2xs);
+    border-radius: var(--radius-xs);
+    background-color: var(--neutral-15);
+    color: var(--neutral-90);
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+    font-size: var(--font-size-xs);
+    line-height: 1;
+    white-space: nowrap;
+  }
+}

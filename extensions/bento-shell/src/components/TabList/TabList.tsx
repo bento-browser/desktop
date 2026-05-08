@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Column } from '@tale-ui/react/column';
 import { Text } from '@tale-ui/react/text';
@@ -18,6 +18,10 @@ const ROW_HEIGHT_FALLBACK = 32;
 // Matches --bento-duration-base (200ms) used by the .bento-tab-row--removing
 // CSS transition. Keep in sync if either side changes.
 const REMOVAL_ANIMATION_MS = 200;
+// Workspace-switch slide. Slightly longer than per-tab removal so the eye
+// has time to track the directional motion. Keep in sync with the
+// .bento-tab-list-pane--{enter,exit}-* CSS animation duration.
+const WORKSPACE_SLIDE_MS = 260;
 
 // Keeps removed ids in `displayedIds` for REMOVAL_ANIMATION_MS so the row
 // can fade out before truly unmounting. Removed ids stay at their previous
@@ -99,11 +103,31 @@ function useDelayedRemovals(
   return { ids: displayed, removing };
 }
 
-export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps) {
-  const activeWorkspaceId = useWorkspacesStore((s) => s.activeId);
-  const orderedIds = useWorkspaceTabIds(activeWorkspaceId);
-  const { ids: displayedIds, removing } = useDelayedRemovals(orderedIds, REMOVAL_ANIMATION_MS);
-  const activeId = useTabsStore((s) => s.activeId);
+interface TabListPaneProps {
+  ids: number[];
+  activeId: number | null;
+  onActivate: (id: number) => void;
+  onClose: (id: number) => void;
+  onOpenInSidePanel: (id: number) => void;
+  className: string;
+}
+
+// One scrollable, virtualized tab list. The TabList stage composes one
+// or two of these — a single steady-state pane, or two layered panes
+// during a workspace-switch slide animation. Keeping the per-tab fade-
+// removal logic inside the pane (rather than in the stage) means the
+// outgoing pane during a workspace switch sees a stable `ids` snapshot
+// from its parent and naturally won't trigger any per-tab animations of
+// its own — the entire pane just slides off.
+function TabListPane({
+  ids,
+  activeId,
+  onActivate,
+  onClose,
+  onOpenInSidePanel,
+  className,
+}: TabListPaneProps) {
+  const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
   const parentRef = useRef<HTMLDivElement>(null);
   const [rowHeight, setRowHeight] = useState(ROW_HEIGHT_FALLBACK);
 
@@ -139,7 +163,7 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps
 
   if (displayedIds.length === 0) {
     return (
-      <Column gap="xs" align="center" className="bento-tab-list bento-tab-list--empty">
+      <Column gap="xs" align="center" className={`${className} bento-tab-list-pane--empty`}>
         <Text variant="text" size="s" color="muted">
           No tabs yet
         </Text>
@@ -148,7 +172,7 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps
   }
 
   return (
-    <div ref={parentRef} className="bento-tab-list">
+    <div ref={parentRef} className={className}>
       <div
         className="bento-tab-list__viewport"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
@@ -174,6 +198,108 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Workspace-switch slide:
+//   - When the active workspace changes, we capture the previous
+//     workspace's ids (snapshotRef) and render the previous pane as
+//     "outgoing" alongside the new pane as "incoming".
+//   - Direction comes from comparing positions in the workspace switcher:
+//     if the new workspace is later in the list, motion is rightward (new
+//     enters from right, old exits to left); otherwise leftward.
+//   - After WORKSPACE_SLIDE_MS the outgoing pane is dropped from the DOM,
+//     leaving the steady-state layout (incoming pane fills the stage).
+//
+// Why a directional slide instead of cross-fading the per-tab removal
+// animation: useDelayedRemovals interprets a workspace-induced id-set
+// change as "every previous tab was just closed" and renders the union
+// of both workspaces' tabs while the fade timer runs. With many tabs per
+// workspace that flash of all-tabs-at-once was visibly jarring. The
+// stage-level slide replaces it: the OLD pane carries OLD ids only, the
+// NEW pane carries NEW ids only, and the user sees a directional swap.
+export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps) {
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeId);
+  const workspaceOrder = useWorkspacesStore((s) => s.orderedIds);
+  const orderedIds = useWorkspaceTabIds(activeWorkspaceId);
+  const activeId = useTabsStore((s) => s.activeId);
+
+  // Per-workspace ids snapshot, kept across renders so the outgoing pane
+  // during a slide can render the workspace it represents (the store has
+  // already moved on to the new active workspace by the time we render).
+  // Updated on every render with the freshest ids for the current
+  // active workspace — when the user later switches AWAY, the snapshot
+  // for the leaving workspace is right-up-to-date.
+  const snapshotRef = useRef<Map<string, number[]>>(new Map());
+  if (activeWorkspaceId) snapshotRef.current.set(activeWorkspaceId, orderedIds);
+
+  const prevWorkspaceRef = useRef<string | null>(activeWorkspaceId);
+  const [outgoing, setOutgoing] = useState<{
+    wsId: string;
+    direction: 'left' | 'right';
+  } | null>(null);
+
+  // useLayoutEffect so the outgoing pane is in the DOM in the same paint
+  // as the incoming pane — using useEffect would let the browser paint
+  // the new pane alone for one frame before the outgoing pane mounts,
+  // missing the opening frames of the slide animation.
+  useLayoutEffect(() => {
+    const prev = prevWorkspaceRef.current;
+    prevWorkspaceRef.current = activeWorkspaceId;
+    if (prev === activeWorkspaceId) return;
+    if (prev === null || activeWorkspaceId === null) return;
+    if (!snapshotRef.current.has(prev)) return;
+    const prevIdx = workspaceOrder.indexOf(prev);
+    const newIdx = workspaceOrder.indexOf(activeWorkspaceId);
+    // 'right' = motion is leftward across the screen so the new pane
+    // enters from the right edge (and old exits to the left). Mirrors a
+    // mobile carousel: swiping to next page moves content leftward.
+    const direction: 'left' | 'right' =
+      newIdx >= 0 && prevIdx >= 0 && newIdx < prevIdx ? 'left' : 'right';
+    setOutgoing({ wsId: prev, direction });
+  }, [activeWorkspaceId, workspaceOrder]);
+
+  // Drop the outgoing pane after the slide completes. Any subsequent
+  // workspace switch will replace the outgoing state with a fresh entry
+  // (and new direction); the timer here only fires for the current one.
+  useEffect(() => {
+    if (!outgoing) return;
+    const t = setTimeout(() => setOutgoing(null), WORKSPACE_SLIDE_MS);
+    return () => clearTimeout(t);
+  }, [outgoing]);
+
+  const incomingClass =
+    'bento-tab-list-pane' + (outgoing ? ` bento-tab-list-pane--enter-${outgoing.direction}` : '');
+
+  return (
+    <div className="bento-tab-list-stage">
+      {outgoing && (
+        <TabListPane
+          // Re-key by outgoing wsId so consecutive workspace switches each
+          // remount the pane and cleanly re-trigger the exit animation.
+          key={`out:${outgoing.wsId}`}
+          ids={snapshotRef.current.get(outgoing.wsId) ?? []}
+          activeId={activeId}
+          onActivate={onActivate}
+          onClose={onClose}
+          onOpenInSidePanel={onOpenInSidePanel}
+          className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
+        />
+      )}
+      <TabListPane
+        // Re-key when activeWorkspaceId changes so the incoming pane mounts
+        // fresh — important for the virtualizer to recompute its window
+        // against the new ids without carrying scroll position from the
+        // departed workspace.
+        key={`in:${activeWorkspaceId ?? 'none'}`}
+        ids={orderedIds}
+        activeId={activeId}
+        onActivate={onActivate}
+        onClose={onClose}
+        onOpenInSidePanel={onOpenInSidePanel}
+        className={incomingClass}
+      />
     </div>
   );
 }

@@ -93,3 +93,67 @@ export const StateMatrix = () => {
 };
 
 StateMatrix.storyName = 'State matrix (inactive + active)';
+
+export const Loading = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false, loading: true }));
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+export const Discarded = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false, discarded: true }));
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+export const Audible = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false, audible: true }));
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+export const PerformanceMatrix = () => {
+  useEffect(() => {
+    // Seed five rows with id-keyed combinations so each row reads from a
+    // distinct store entry (otherwise useTab(id) would alias the same data
+    // across rows). seedSingle replaces the snapshot, so use applySnapshot
+    // via a local construction to keep all five tabs alive at once.
+    const tabs = [
+      makeTab({ id: 10, active: false }),
+      makeTab({ id: 11, active: false, loading: true }),
+      makeTab({ id: 12, active: false, discarded: true }),
+      makeTab({ id: 13, active: false, audible: true }),
+      makeTab({ id: 14, active: false, audible: true, discarded: true }),
+    ];
+    // Lazy import to avoid a top-of-file dep just for stories.
+    void import('../../state/tabs').then((m) => m.useTabsStore.getState().applySnapshot(tabs));
+  }, []);
+  return (
+    <SidebarFrame>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <TabRow id={10} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+        <TabRow id={11} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+        <TabRow id={12} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+        <TabRow id={13} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+        <TabRow id={14} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      </div>
+    </SidebarFrame>
+  );
+};
+
+PerformanceMatrix.storyName = 'Performance matrix (idle / loading / discarded / audible)';

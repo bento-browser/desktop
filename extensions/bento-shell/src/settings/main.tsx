@@ -18,6 +18,7 @@ import '@tale-ui/react-styles/card';
 import '@tale-ui/react-styles/switch';
 import '@tale-ui/react-styles/number-field';
 import '@tale-ui/react-styles/text-field';
+import '@tale-ui/react-styles/dialog';
 
 import '../theme/bento-tokens.css';
 import '../theme/bento-fonts.css';
