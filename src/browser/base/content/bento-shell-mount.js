@@ -2622,49 +2622,65 @@
     // more surgical attribute or a tab-flag that's separate from
     // hidden=true).
 
-    // Build the desired splitViewPanels array. The active main tab
-    // (gBrowser.selectedTab) is the FIRST slot; side panels follow in
-    // the order bento-tools provided.
+    // Build the ordered list of tabs to render in the split. Active
+    // main tab (gBrowser.selectedTab) is the FIRST slot; panel tabs
+    // follow in bento-tools' order. Dedupe on linkedPanel so a tab
+    // that's both selected and a panel doesn't appear twice.
     const mainTab = gBrowser.selectedTab;
-    const desired = [];
-    const seen = new Set();
+    const tabsToRender = [];
+    const seenPanelIds = new Set();
     if (mainTab?.linkedPanel) {
-      desired.push(mainTab.linkedPanel);
-      seen.add(mainTab.linkedPanel);
+      tabsToRender.push(mainTab);
+      seenPanelIds.add(mainTab.linkedPanel);
     }
     for (const { tab } of resolved) {
-      if (!tab.linkedPanel || seen.has(tab.linkedPanel)) continue;
-      // Ensure the tab's linkedBrowser is inserted in tabpanels (lazy
-      // tabs may not be yet) and its docShell is rendering.
-      try {
-        gBrowser._insertBrowser(tab);
-      } catch (err) {
-        console.warn('[bento-shell-mount] _insertBrowser failed:', err);
-      }
-      if (tab.linkedBrowser) {
-        tab.linkedBrowser.docShellIsActive = true;
-      }
-      desired.push(tab.linkedPanel);
-      seen.add(tab.linkedPanel);
+      if (!tab.linkedPanel || seenPanelIds.has(tab.linkedPanel)) continue;
+      tabsToRender.push(tab);
+      seenPanelIds.add(tab.linkedPanel);
     }
 
-    // Diff: tabs that USED to be in the split but no longer are get
-    // their docShell deactivated to free GPU layers + suspend timers.
+    // Tabs that USED to be in the split but no longer are: clear their
+    // per-panel split-view-active attribute AND deactivate their
+    // docshell. Setting splitViewPanels alone doesn't reset the per-
+    // panel state — Firefox tracks "this panel is part of the split"
+    // separately from the deck's overall splitView flag, so without
+    // this loop departing panels keep their attribute and overlap the
+    // active set.
     const previous = tabpanels.splitViewPanels || [];
     for (const panelId of previous) {
-      if (seen.has(panelId)) continue;
+      if (seenPanelIds.has(panelId)) continue;
+      try {
+        tabpanels.setSplitViewPanelActive(false, panelId);
+      } catch (err) {
+        console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
+      }
       const t = gBrowser.tabs.find((tab) => tab.linkedPanel === panelId);
       if (t && t !== mainTab && t.linkedBrowser) {
         t.linkedBrowser.docShellIsActive = false;
       }
     }
 
-    // Apply. The setter triggers tabbox.setSplitViewActive internally;
-    // Firefox renders the array of panels simultaneously.
+    // Use Firefox's high-level showSplitViewPanels API instead of just
+    // assigning splitViewPanels directly. The high-level call does
+    // three things in order:
+    //   1. _insertBrowser(tab) for each, ensuring lazy browsers are
+    //      materialised in tabpanels.
+    //   2. Sets linkedBrowser.docShellIsActive = true so each panel's
+    //      content renders.
+    //   3. Calls setIsSplitViewActive(true, tabs) which sets the
+    //      per-panel active attribute on each linkedPanel — THIS is
+    //      what makes Firefox lay them out side-by-side instead of
+    //      stacking them at the same position.
+    //   4. Sets tabpanels.splitViewPanels = panels.
+    //
+    // The earlier attempt set splitViewPanels directly and skipped (3),
+    // which made the diagnostic show two panels both at @209,52 (same
+    // x,y) instead of properly tiled. Phase 1's probe used
+    // showSplitViewPanels which is why it rendered correctly.
     try {
-      tabpanels.splitViewPanels = desired;
+      gBrowser.showSplitViewPanels(tabsToRender);
     } catch (err) {
-      console.error('[bento-shell-mount] splitViewPanels assignment failed:', err);
+      console.error('[bento-shell-mount] showSplitViewPanels failed:', err);
       return;
     }
 
