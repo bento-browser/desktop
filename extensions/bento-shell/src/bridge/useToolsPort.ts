@@ -107,17 +107,6 @@ function ensureConnection(): void {
       case 'privacy/snapshot':
         usePrivacyStore.getState().apply(event.privacy);
         return;
-      case 'browsingData/cleared':
-        // Surfaced via a one-shot DOM event; the dashboard listens and
-        // shows a confirmation banner. Keeping it out of the Zustand
-        // store avoids a flag the dashboard would have to remember to
-        // clear after rendering its toast.
-        window.dispatchEvent(
-          new CustomEvent('bento:browsingDataCleared', {
-            detail: { ok: event.ok, error: event.error },
-          }),
-        );
-        return;
       case 'pong':
         return;
       default:

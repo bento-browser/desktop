@@ -3,7 +3,6 @@
     "name": "bento-shell · shell cold-start JS (gz)",
     "path": [
       "extensions/bento-shell/dist/assets/*.js",
-      "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/settings.js",
       "!extensions/bento-shell/dist/assets/palette.js",
       "!extensions/bento-shell/dist/assets/confirm.js",
@@ -18,7 +17,6 @@
     "path": [
       "extensions/bento-shell/dist/assets/*.js",
       "!extensions/bento-shell/dist/assets/shell.js",
-      "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/settings.js",
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
@@ -32,7 +30,6 @@
     "path": [
       "extensions/bento-shell/dist/assets/*.js",
       "!extensions/bento-shell/dist/assets/shell.js",
-      "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/palette.js",
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
@@ -46,7 +43,6 @@
     "path": [
       "extensions/bento-shell/dist/assets/*.js",
       "!extensions/bento-shell/dist/assets/shell.js",
-      "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/settings.js",
       "!extensions/bento-shell/dist/assets/palette.js",
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
@@ -60,22 +56,12 @@
     "path": [
       "extensions/bento-shell/dist/assets/*.js",
       "!extensions/bento-shell/dist/assets/shell.js",
-      "!extensions/bento-shell/dist/assets/privacy.js",
       "!extensions/bento-shell/dist/assets/settings.js",
       "!extensions/bento-shell/dist/assets/palette.js",
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "155 KB",
-    "gzip": true
-  },
-  {
-    "name": "bento-shell · privacy cold-start JS (gz)",
-    "path": [
-      "extensions/bento-shell/dist/assets/privacy.js",
-      "extensions/bento-shell/dist/assets/useFirefoxTheme.js"
-    ],
-    "limit": "100 KB",
     "gzip": true
   },
   {

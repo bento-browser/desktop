@@ -126,36 +126,22 @@ export type Action =
   /** Update one privacy field. Tools writes via browser.privacy.* then
    * replies with a fresh privacy/snapshot. Per-field instead of a bulk
    * patch so the protocol stays readable and the handler doesn't have to
-   * partial-update around invalid combinations. */
-  | { type: 'privacy/setTrackingProtection'; mode: 'always' | 'never' | 'private_browsing' }
+   * partial-update around invalid combinations.
+   *
+   * Tracking protection (browser.privacy.websites.trackingProtectionMode) and
+   * browsing-data clearing live in Firefox's about:preferences#privacy,
+   * not in Bento — those are first-party Firefox surfaces and duplicating
+   * them in the Bento UI was just visual indirection. The three controls
+   * below are the prefs Firefox does NOT expose in its preferences UI
+   * (about:config only); Bento exposes them in Settings → Privacy. */
   | { type: 'privacy/setResistFingerprinting'; enabled: boolean }
   | { type: 'privacy/setNetworkPrediction'; enabled: boolean }
-  | { type: 'privacy/setPeerConnection'; enabled: boolean }
-  /** Clear browsing data per Firefox's browsingData API. `since` is a
-   * Unix timestamp (ms) — pass 0 to clear everything. `dataTypes` mirror
-   * browser.browsingData.DataTypeSet keys (cookies, history, cache,
-   * passwords, etc.). */
-  | {
-      type: 'browsingData/clear';
-      since: number;
-      dataTypes: {
-        cache?: boolean;
-        cookies?: boolean;
-        downloads?: boolean;
-        formData?: boolean;
-        history?: boolean;
-        indexedDB?: boolean;
-        localStorage?: boolean;
-        passwords?: boolean;
-        pluginData?: boolean;
-        serviceWorkers?: boolean;
-      };
-    };
+  | { type: 'privacy/setPeerConnection'; enabled: boolean };
 
 /** Snapshot of user-controllable privacy settings — read from
- * browser.privacy.* and refreshed after every privacy/set* action. */
+ * browser.privacy.* and refreshed after every privacy/set* action.
+ * Only fields that have a Bento-side toggle. */
 export interface PrivacySettings {
-  trackingProtectionMode: 'always' | 'never' | 'private_browsing';
   resistFingerprinting: boolean;
   networkPrediction: boolean;
   peerConnection: boolean;
@@ -185,10 +171,6 @@ export type Event =
       type: 'panels/sync';
       panels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
     }
-  | { type: 'privacy/snapshot'; privacy: PrivacySettings }
-  /** Reply to browsingData/clear — `ok` is true if the API call resolved
-   * cleanly. The dashboard surfaces the result so the user sees positive
-   * confirmation instead of guessing whether the click did anything. */
-  | { type: 'browsingData/cleared'; ok: boolean; error?: string };
+  | { type: 'privacy/snapshot'; privacy: PrivacySettings };
 
 export type WireMessage = Action | Event;

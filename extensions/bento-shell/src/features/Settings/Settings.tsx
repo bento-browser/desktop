@@ -4,9 +4,14 @@
 // bento-tools via the dispatch bus. Tale UI primitives (Card, Switch,
 // NumberField, TextField, Button) compose into a single-column form.
 //
-// The Privacy access point is a Button that opens privacy.html in the same
-// origin (no chrome touchpoint needed; it's just a moz-extension URL).
+// The Privacy section is the three controls Firefox does NOT expose in
+// about:preferences UI (resist fingerprinting, network prediction,
+// WebRTC peer connection). Tracking protection, clear-browsing-data,
+// and the full prefs inventory live in Firefox's own about:preferences
+// — Bento doesn't duplicate them. See plans/bento-browser-features.md
+// and the repo README for the complete list of shipped privacy defaults.
 
+import { useEffect } from 'react';
 import { Card } from '@tale-ui/react/card';
 import { Switch } from '@tale-ui/react/switch';
 import { NumberField } from '@tale-ui/react/number-field';
@@ -16,11 +21,11 @@ import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { Icon } from '@tale-ui/react/icon';
-import ExternalLink from 'lucide-react/dist/esm/icons/external-link';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 
 import { useSettingsStore } from '../../state/settings';
-import { dispatch } from '../../bridge/useToolsPort';
+import { usePrivacyStore } from '../../state/privacy';
+import { dispatch, initToolsPort } from '../../bridge/useToolsPort';
 import './Settings.css';
 
 function update<K extends keyof import('@shared/protocol').BentoSettings>(
@@ -30,15 +35,19 @@ function update<K extends keyof import('@shared/protocol').BentoSettings>(
   dispatch({ type: 'settings/update', changes: { [key]: value } });
 }
 
-function openPrivacyDashboard() {
-  // Same origin (moz-extension://<uuid>/dist/privacy.html). Resolving
-  // relative to the current page works because Settings + Privacy live
-  // under the same dist/ directory.
-  window.open('./privacy.html', '_blank');
-}
-
 export function Settings() {
   const settings = useSettingsStore((s) => s.current);
+  const privacy = usePrivacyStore((s) => s.settings);
+
+  // Request a fresh privacy snapshot on mount. Tools doesn't push
+  // privacy/changed deltas (settings rarely change without explicit user
+  // action), so the snapshot we get is the current truth at mount time;
+  // any toggle we dispatch below triggers a fresh snapshot via tools'
+  // .finally() handler.
+  useEffect(() => {
+    initToolsPort();
+    dispatch({ type: 'privacy/requestSnapshot' });
+  }, []);
 
   if (!settings) {
     return (
@@ -152,16 +161,73 @@ export function Settings() {
               Privacy
             </Text>
             <Text variant="text" size="s" color="muted">
-              Bento ships with telemetry, sponsored content, and Mozilla service promos disabled.
-              View the full list of preferences and their shipped values.
+              Bento ships with telemetry, sponsored content, crash reporting, studies, and Mozilla
+              service promos disabled by default. Tracking protection runs at &lsquo;strict&rsquo;.
+              Use Firefox&rsquo;s Settings (about:preferences#privacy) for tracking protection,
+              clearing browsing data, and the full preference list. The three controls below are
+              prefs Firefox doesn&rsquo;t expose in its UI.
             </Text>
           </Column>
         </Card.Header>
         <Card.Body>
-          <Button variant="neutral" onPress={openPrivacyDashboard}>
-            Open Privacy Dashboard
-            <Icon icon={ExternalLink} size="sm" />
-          </Button>
+          {privacy === null ? (
+            <Text variant="text" size="s" color="muted">
+              Loading privacy settings…
+            </Text>
+          ) : (
+            <Column gap="m">
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <Column gap="3xs" style={{ flex: 1 }}>
+                  <Text>Resist fingerprinting</Text>
+                  <Text variant="text" size="s" color="muted">
+                    Spoof browser characteristics to make tracking by fingerprint harder. May break
+                    some sites.
+                  </Text>
+                </Column>
+                <Switch.Root
+                  isSelected={privacy.resistFingerprinting}
+                  onChange={(v) =>
+                    dispatch({ type: 'privacy/setResistFingerprinting', enabled: v })
+                  }
+                  aria-label="Resist fingerprinting"
+                >
+                  <Switch.Thumb />
+                </Switch.Root>
+              </Row>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <Column gap="3xs" style={{ flex: 1 }}>
+                  <Text>Network prediction</Text>
+                  <Text variant="text" size="s" color="muted">
+                    DNS / TCP prefetching for hovered links. Faster loads, but contacts servers you
+                    didn&rsquo;t click.
+                  </Text>
+                </Column>
+                <Switch.Root
+                  isSelected={privacy.networkPrediction}
+                  onChange={(v) => dispatch({ type: 'privacy/setNetworkPrediction', enabled: v })}
+                  aria-label="Network prediction"
+                >
+                  <Switch.Thumb />
+                </Switch.Root>
+              </Row>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <Column gap="3xs" style={{ flex: 1 }}>
+                  <Text>WebRTC peer connections</Text>
+                  <Text variant="text" size="s" color="muted">
+                    Required for video calls and some real-time apps. Off plugs the WebRTC IP-leak
+                    vector but breaks Meet, Discord call, etc.
+                  </Text>
+                </Column>
+                <Switch.Root
+                  isSelected={privacy.peerConnection}
+                  onChange={(v) => dispatch({ type: 'privacy/setPeerConnection', enabled: v })}
+                  aria-label="WebRTC peer connections"
+                >
+                  <Switch.Thumb />
+                </Switch.Root>
+              </Row>
+            </Column>
+          )}
         </Card.Body>
       </Card.Root>
 

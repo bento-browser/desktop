@@ -12,19 +12,19 @@ import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 
-// Read all four privacy fields in parallel and broadcast a snapshot.
-// browser.privacy.* setters return Promise<void> but reading via
+// Read the three Bento-exposed privacy fields in parallel and broadcast a
+// snapshot. browser.privacy.* setters return Promise<void> but reading via
 // `.get({})` returns the live value — that's the supported shape.
+// Tracking protection is intentionally excluded — Firefox's own
+// about:preferences#privacy is the source of truth for that pref.
 async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   try {
-    const [tp, rfp, np, pc] = await Promise.all([
-      browser.privacy.websites.trackingProtectionMode.get({}),
+    const [rfp, np, pc] = await Promise.all([
       browser.privacy.websites.resistFingerprinting.get({}),
       browser.privacy.network.networkPredictionEnabled.get({}),
       browser.privacy.network.peerConnectionEnabled.get({}),
     ]);
     const privacy: PrivacySettings = {
-      trackingProtectionMode: tp.value as PrivacySettings['trackingProtectionMode'],
       resistFingerprinting: rfp.value as boolean,
       networkPrediction: np.value as boolean,
       peerConnection: pc.value as boolean,
@@ -178,12 +178,6 @@ export function handle(action: Action, ctx: HandlerContext): void {
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);
       return;
-    case 'privacy/setTrackingProtection':
-      browser.privacy.websites.trackingProtectionMode
-        .set({ value: action.mode })
-        .catch((err) => console.warn('[bento-tools] privacy/setTrackingProtection failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
-      return;
     case 'privacy/setResistFingerprinting':
       browser.privacy.websites.resistFingerprinting
         .set({ value: action.enabled })
@@ -201,18 +195,6 @@ export function handle(action: Action, ctx: HandlerContext): void {
         .set({ value: action.enabled })
         .catch((err) => console.warn('[bento-tools] privacy/setPeerConnection failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
-      return;
-    case 'browsingData/clear':
-      browser.browsingData
-        .remove({ since: action.since }, action.dataTypes)
-        .then(() => ctx.send({ type: 'browsingData/cleared', ok: true }))
-        .catch((err) =>
-          ctx.send({
-            type: 'browsingData/cleared',
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
       return;
     default: {
       const _exhaustive: never = action;

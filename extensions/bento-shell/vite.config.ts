@@ -61,12 +61,12 @@ export default defineConfig(({ mode }) => ({
       // package.json `build:background` script. Vite emits ES modules
       // (correct for the index.html entry that loads via type=module)
       // but MV2 background.scripts requires classic-script format.
-      // Multi-entry: shell is the chrome-mounted sidebar; privacy + settings
-      // are standalone moz-extension://<uuid>/dist/<name>.html pages; palette
-      // is a chrome-mounted overlay <browser> covering the whole window.
+      // Multi-entry: shell is the chrome-mounted sidebar; settings is a
+      // standalone moz-extension://<uuid>/dist/settings.html page; palette,
+      // confirm, and edit-workspace are chrome-mounted overlay <browser>
+      // elements covering the whole window.
       input: {
         shell: resolve(__dirname, 'index.html'),
-        privacy: resolve(__dirname, 'privacy.html'),
         settings: resolve(__dirname, 'settings.html'),
         palette: resolve(__dirname, 'palette.html'),
         confirm: resolve(__dirname, 'confirm.html'),

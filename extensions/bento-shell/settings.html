@@ -5,30 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bento Settings</title>
 
-    <!-- about:bento-settings routing fix — see privacy.html for the
-         full explanation. tl;dr: about: URL bar means relative <script
-         src="./..."> would resolve against `about:` and fail. We
-         inject a <base> pointing at the moz-extension dist/ before the
-         relative-src tags get parsed. Inline + synchronous, runs first. -->
-    <script>
-      (function () {
-        try {
-          if (
-            location.href.startsWith('about:bento-') &&
-            typeof browser !== 'undefined' &&
-            browser.runtime &&
-            typeof browser.runtime.getURL === 'function'
-          ) {
-            var base = document.createElement('base');
-            base.href = browser.runtime.getURL('dist/');
-            document.head.appendChild(base);
-          }
-        } catch (e) {
-          /* see privacy.html */
-        }
-      })();
-    </script>
-
     <!-- Persist color-mode preference; same boot script as the main shell. -->
     <script src="./boot.js"></script>
 
