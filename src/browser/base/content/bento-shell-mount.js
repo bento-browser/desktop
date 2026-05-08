@@ -587,20 +587,28 @@
 
       /* ─── Phase 2: native split-view panel layout ─────────────────────
          Activated when reconcilePanelsSplitView adds .bento-split-active
-         to #tabbrowser-tabpanels.
+         to #tabbrowser-tabpanels and sets the [splitview] attribute via
+         the BENTO_SPLIT_SENTINEL → setSplitViewActive() chain.
 
-         Phase 1's probe confirmed Firefox 150's tabpanels deck handles
-         multi-panel layout natively when splitViewPanels is set. We do
-         NOT override display / flex on the deck — fighting the platform
-         here breaks rendering entirely. We only add Bento-flavoured
-         touches on top: per-panel min-width, the rounded-corner / clip
-         on the per-panel notificationbox, and ensuring the injected
-         header appears above content. */
-      #tabbrowser-tabpanels.bento-split-active > notificationbox {
+         Each active panel is a <hbox class="browserSidebarContainer
+         split-view-panel split-view-panel-active">. By default that
+         hbox lays out children horizontally — which makes our injected
+         per-panel header sit to the LEFT of the <browser>, splitting
+         the panel's width in half. Override flex-direction so children
+         stack vertically: header on top, browser fills the rest. */
+      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active {
+        flex-direction: column;
         min-width: var(--bento-panel-min-width, 380px);
       }
-      /* Injected per-panel header — sits above the notificationstack +
-         browser inside each linkedPanel notificationbox. */
+      /* The browser fills whatever vertical space the header doesn't. */
+      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
+      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > .browserContainer,
+      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > .browserStack {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      /* Injected per-panel header — sits above the browser, takes its
+         natural height, doesn't flex. */
       .bento-panel-header[data-bento-injected="1"] {
         flex: 0 0 auto;
       }
