@@ -118,6 +118,20 @@ function ensureConnection(): void {
           }),
         );
         return;
+      case 'chrome/openMigrationWizard':
+        // Translate to chrome-bound title-IPC. Only the sidebar entry has
+        // sidePanelTitleBridge=true (see enableSidePanelTitleBridge in
+        // main.tsx); other entries (settings, palette, …) share this bus
+        // but must NOT write to document.title here — they have their own
+        // title-IPC contracts (palette: BENTO_*_PALETTE, confirm: BENTO_*_
+        // CONFIRM, etc.) and stomping on it would close them. The chrome
+        // script's polling loop (bento-shell-mount.js) matches the
+        // BENTO_OPEN_MIGRATION_ prefix on the bento-shell-frame's
+        // contentTitle and invokes MigrationUtils.showMigrationWizard.
+        if (state.sidePanelTitleBridge) {
+          document.title = `BENTO_OPEN_MIGRATION_${Date.now()}`;
+        }
+        return;
       case 'pong':
         return;
       default:

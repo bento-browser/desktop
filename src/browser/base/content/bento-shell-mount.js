@@ -820,6 +820,32 @@
     }, EDIT_WORKSPACE_TRANSITION_MS);
   }
 
+  // Open Firefox's MigrationWizard. Triggered from Bento Settings → "Import
+  // data from another browser" via the chrome/openMigrationWizard action +
+  // BENTO_OPEN_MIGRATION_<ts> title-IPC. We let MigrationUtils decide
+  // whether to render the wizard inside about:preferences (default) or as
+  // a standalone modal — the choice is governed by Firefox's own pref
+  // (browser.migrate.content-modal.about-welcome-behavior). Either UI
+  // works for our case; we just ask for it. ChromeUtils.importESModule
+  // lazy-loads the module so chrome startup doesn't pay the cost when
+  // the user never imports.
+  function showMigrationWizard() {
+    try {
+      const { MigrationUtils } = ChromeUtils.importESModule(
+        'resource:///modules/MigrationUtils.sys.mjs',
+      );
+      // PREFERENCES is the closest stock entrypoint constant — Bento's
+      // Settings is functionally Firefox's about:preferences. Telemetry
+      // recording happens regardless but is a no-op since Bento ships
+      // toolkit.telemetry.enabled=false (see prefs/bento.js).
+      MigrationUtils.showMigrationWizard(window, {
+        entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.PREFERENCES,
+      });
+    } catch (err) {
+      console.error('[bento-shell-mount] showMigrationWizard failed:', err);
+    }
+  }
+
   // Cross-process IPC via document.title + DOMTitleChanged. Content in a
   // remote=true <browser> can't postMessage to the chrome process, but
   // title changes DO bubble cross-process to the chrome <browser>
@@ -846,6 +872,12 @@
   // chars; timestamp ensures repeated identical states still trigger
   // the title-change poll.
   const PANELS_PREFIX = 'BENTO_PANELS:';
+  // Migration wizard trigger from the sidebar (Settings page → "Import data
+  // from another browser" button → dispatch → bento-tools rebroadcasts →
+  // sidebar bridges to this title). Chrome resolves MigrationUtils on
+  // demand (via ChromeUtils.importESModule) so the module isn't loaded at
+  // chrome startup for the common case where the user never imports.
+  const MIGRATION_OPEN_PREFIX = 'BENTO_OPEN_MIGRATION';
 
   // ─── Side panel strip (multi-panel) ────────────────────────────────────
   //
@@ -2728,6 +2760,7 @@
         else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
         else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
         else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
+        else if (title.startsWith(MIGRATION_OPEN_PREFIX)) showMigrationWizard();
       }, 200);
     }
   }
