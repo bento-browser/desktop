@@ -117,13 +117,6 @@ export type Action =
    * by chrome after a navigator drag-and-drop completes (drop-on-release,
    * not live during the drag). */
   | { type: 'panel/reorder'; tabIds: number[] }
-  /** Ask the chrome process to open Firefox's MigrationWizard (import data
-   * from another browser). Tools rebroadcasts as a chrome/openMigrationWizard
-   * event; the sidebar (sole `sidePanelTitleBridge` consumer) translates it
-   * into the BENTO_OPEN_MIGRATION_<ts> document.title-IPC the chrome script
-   * already listens for. Chrome calls MigrationUtils.showMigrationWizard.
-   * No payload — the wizard handles source selection internally. */
-  | { type: 'chrome/openMigrationWizard' }
   /** Ask tools to read the current privacy settings via browser.privacy.*
    * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard
    * mount; tools doesn't push privacy/changed deltas (settings rarely
@@ -196,12 +189,6 @@ export type Event =
   /** Reply to browsingData/clear — `ok` is true if the API call resolved
    * cleanly. The dashboard surfaces the result so the user sees positive
    * confirmation instead of guessing whether the click did anything. */
-  | { type: 'browsingData/cleared'; ok: boolean; error?: string }
-  /** Fan-out of chrome/openMigrationWizard. Tools rebroadcasts to every
-   * connected shell entry; the sidebar (sole sidePanelTitleBridge owner)
-   * translates this into a chrome-bound document.title sentinel that
-   * bento-shell-mount.js polls for. Other shell entries (settings, palette,
-   * privacy) ignore it — they didn't opt into chrome-IPC. */
-  | { type: 'chrome/openMigrationWizard' };
+  | { type: 'browsingData/cleared'; ok: boolean; error?: string };
 
 export type WireMessage = Action | Event;

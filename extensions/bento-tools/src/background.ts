@@ -349,15 +349,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onMessage.addListener((message: object) => {
-    handle(message as Action, {
-      tabs,
-      workspaces,
-      settings,
-      panels,
-      send,
-      broadcast: broadcastEvent,
-      emitPanelsSync,
-    });
+    handle(message as Action, { tabs, workspaces, settings, panels, send, emitPanelsSync });
   });
 
   port.onDisconnect.addListener(() => {

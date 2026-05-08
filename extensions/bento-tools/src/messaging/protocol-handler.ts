@@ -40,15 +40,7 @@ export interface HandlerContext {
   workspaces: WorkspaceStore;
   settings: SettingsStore;
   panels: PanelStore;
-  /** Send to the originating port. Use for replies that the requesting
-   * shell entry actually wants (e.g. settings/snapshot reply). */
   send: (event: Event) => void;
-  /** Send to ALL connected shell entries. Use for events that need to
-   * reach a different shell than the one that sent the action — e.g.
-   * chrome/openMigrationWizard is sent FROM Settings page but needs to
-   * reach the SIDEBAR (which owns chrome-IPC) to translate into the
-   * document.title-IPC chrome polls. */
-  broadcast: (event: Event) => void;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
    * broadcast access + browser.tabs.get for URL resolution); the handler
@@ -221,12 +213,6 @@ export function handle(action: Action, ctx: HandlerContext): void {
             error: err instanceof Error ? err.message : String(err),
           }),
         );
-      return;
-    case 'chrome/openMigrationWizard':
-      // No tools-side work — just fan out to all shells. The sidebar
-      // translates this into chrome-bound document.title IPC. Other
-      // shell entries (settings, palette, privacy) ignore it.
-      ctx.broadcast({ type: 'chrome/openMigrationWizard' });
       return;
     default: {
       const _exhaustive: never = action;

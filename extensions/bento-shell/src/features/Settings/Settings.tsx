@@ -18,7 +18,6 @@ import { Text } from '@tale-ui/react/text';
 import { Icon } from '@tale-ui/react/icon';
 import ExternalLink from 'lucide-react/dist/esm/icons/external-link';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
-import Download from 'lucide-react/dist/esm/icons/download';
 
 import { useSettingsStore } from '../../state/settings';
 import { dispatch } from '../../bridge/useToolsPort';
@@ -36,16 +35,6 @@ function openPrivacyDashboard() {
   // relative to the current page works because Settings + Privacy live
   // under the same dist/ directory.
   window.open('./privacy.html', '_blank');
-}
-
-function openMigrationWizard() {
-  // Round-trip through bento-tools so the chrome process can call
-  // MigrationUtils.showMigrationWizard. The Settings page shares the
-  // bento-shell-bus with the sidebar; the sidebar (sole owner of
-  // chrome-IPC via document.title) translates this into the
-  // BENTO_OPEN_MIGRATION_<ts> sentinel that the chrome script polls
-  // for. See protocol.ts → 'chrome/openMigrationWizard'.
-  dispatch({ type: 'chrome/openMigrationWizard' });
 }
 
 export function Settings() {
@@ -153,27 +142,6 @@ export function Settings() {
               keep their names.
             </TextField.Description>
           </TextField.Root>
-        </Card.Body>
-      </Card.Root>
-
-      <Card.Root>
-        <Card.Header>
-          <Column gap="2xs">
-            <Text variant="heading" size="m">
-              Import data
-            </Text>
-            <Text variant="text" size="s" color="muted">
-              Bring your bookmarks, history, saved passwords, and form data over from another
-              browser. Bento uses Firefox&rsquo;s built-in migration wizard, which supports Chrome,
-              Edge, Safari, Brave, and other Firefox profiles.
-            </Text>
-          </Column>
-        </Card.Header>
-        <Card.Body>
-          <Button variant="neutral" onPress={openMigrationWizard}>
-            <Icon icon={Download} size="sm" />
-            Import data from another browser
-          </Button>
         </Card.Body>
       </Card.Root>
 
