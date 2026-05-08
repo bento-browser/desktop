@@ -38,71 +38,112 @@ Success criteria:
 
 ## Architectural decision
 
-**Reparent the tab's existing panel-wrapper DOM element from `#tabbrowser-tabpanels` into `#bento-side-panel-host` at promote time. No swap, no second browser. The browser is the same element, the tab still owns it, the docShell follows.**
+**Create a new `<browser>` element in `#bento-side-panel-host`, swap docShells from the tab's existing browser into it via `gBrowser._swapBrowserDocShells`, then manually reassign `tab.linkedBrowser` and the `_tabForBrowser` reverse map. The tab now references the panel's browser; content scripts and accelerators follow.**
 
-### Why not the swap approach (rejected during planning)
+### Mechanism evolution (third revision; superseded approaches kept for reference)
 
-An earlier draft of this plan proposed creating a second browser element per panel and using `gBrowser._swapBrowserDocShells(tab, otherBrowser)` to move the docShell between them. **That approach is wrong.** Reading the function carefully:
+Three approaches were investigated experimentally before settling. All test scripts are at `/tmp/bento-reparent-test-{v2,v3,v4}.js` (out-of-tree).
 
-- `_swapBrowserDocShells` swaps docShells between two `<browser>` elements via `ourBrowser.swapDocShells(aOtherBrowser)` (line 6570 of `engine/browser/components/tabbrowser/content/tabbrowser.js`).
-- It also swaps `permanentKey`, progress listeners, registered URIs.
-- It does **NOT** update `tab.linkedBrowser` to point at the other browser. After the swap, `tab.linkedBrowser` still references the original strip browser — which now holds the OTHER browser's old (empty) docShell.
+**Rejected approach 1: reparent the panel wrapper element**
+`gBrowser.getPanel(browser)` returns a `<hbox class="browserSidebarContainer">` wrapper around the browser. Calling `host.appendChild(panel)` moves the wrapper. Hypothesis was that the contained browser's docShell follows since the DOM ancestry change is small. Result: docShell `historyID` matches but `webProgress` becomes undefined and content document is destroyed (URI → about:blank, contentTitle → empty). Firefox's bind/unbind machinery rebuilds the frame loader when the panel reparents.
 
-WebExtensions content scripts attach to `tab.linkedBrowser`. Cmd+R hits `gBrowser.selectedBrowser`, which derives from `tab.linkedBrowser`. With the swap approach, both still point at the empty strip browser — we accomplish nothing for our goal.
+**Rejected approach 2: reparent the `<browser>` element directly**
+Per `connectedMoveCallback` in `browser-custom-element.mjs:408` (and the bug 2007742 fix to `XULFrameElement::BindToTree`), Firefox supports atomic moves of `<browser>` elements without frame-loader reconstruction. Tested by extracting the browser from its panel wrapper and `host.appendChild(browser)`. Result: `webProgress` survives this time (frame loader preserved) but `currentWindowGlobal` is null and `contentTitle` is empty — the content document is still destroyed even though the browsingContext shell survives. The skip-reconstruction works for the frame loader but not for the document inside. Same outcome as approach 1 from the user's perspective.
 
-### How the reparent approach works
+**Accepted approach 3: swap-with-linkedBrowser-reassignment**
+Create a _new_ `<browser>` element in our host, then call `gBrowser._swapBrowserDocShells(T, newBrowser)` which transfers the docShell (and the document inside it) atomically between two existing browser elements. This is the same primitive Mozilla uses for tab tear-out across windows — documents survive the swap. After the swap, `tab.linkedBrowser` still points at the old strip browser (a known limitation of the function), so we manually reassign:
 
-Each tab's `<browser>` element lives inside a wrapper structure: `panel > browser-container > browser-stack > browser`. The outermost wrapper is what `gBrowser.getPanel(browser)` returns. `tab.linkedPanel` is the wrapper's `id` attribute. Lookups go through `document.getElementById(tab.linkedPanel)` — DOM-location-agnostic.
+```js
+// 1. Build the new browser in our host.
+const newBrowser = document.createXULElement('browser');
+newBrowser.setAttribute('type', 'content');
+newBrowser.setAttribute('remote', 'true');
+newBrowser.setAttribute('remoteType', oldBrowser.remoteType);
+newBrowser.setAttribute('messagemanagergroup', 'browsers');
+panelHost.appendChild(newBrowser);
 
-This means we can move the wrapper to a different DOM parent without breaking any of `gBrowser`'s identity tracking. The tab still has the same `linkedBrowser`, the same `linkedPanel`, the same `permanentKey`. WebExtensions still injects content scripts into `tab.linkedBrowser`. Cmd+R still reloads `tab.linkedBrowser`. The only difference: the user sees the browser rendered in our `#bento-side-panel-host` instead of in `#tabbrowser-tabpanels`.
+// 2. Transfer the docShell (and its content document).
+gBrowser._swapBrowserDocShells(tab, newBrowser);
+
+// 3. Repoint linkedBrowser + reverse map.
+tab.linkedBrowser = newBrowser;
+gBrowser._tabForBrowser.set(newBrowser, tab);
+gBrowser._tabForBrowser.delete(oldBrowser);
+
+// 4. Move the tab's progress listener from oldBrowser to newBrowser.
+//    _swapBrowserDocShells re-attaches the listener to oldBrowser as part
+//    of its cleanup; we need it on newBrowser instead, since that's now
+//    tab.linkedBrowser. Without this, demote-time _swapBrowserDocShells
+//    throws NS_ERROR_FAILURE on removeProgressListener. (See v4 test
+//    output for the exact failure mode.)
+//    Implementation: detach from oldBrowser, re-attach to newBrowser
+//    using the same TabProgressListener instance.
+```
+
+Verified: `newBrowser.contentTitle` and `newBrowser.currentURI` reflect the actual page (not about:blank). `gBrowser.getTabForBrowser(newBrowser) === tab`.
 
 **On `panel/add` (tab → panel):**
 
-1. Tab `T` exists in `gBrowser`; `panel = document.getElementById(T.linkedPanel)` is its wrapper element, currently a child of `#tabbrowser-tabpanels`.
-2. `host.appendChild(panel)` — moves the wrapper from `tabpanels` into our `#bento-side-panel-host`. (`appendChild` of an existing node moves it; no clone, no docShell churn.)
-3. Set `panel.style.display = 'block'` (or whatever): tabpanels' deck-style "show only the selected panel" mechanism doesn't apply once the panel isn't in tabpanels. We want it always visible.
-4. Set `T.linkedBrowser.docShellIsActive = true`: tabpanels' selection mechanism would normally toggle this; we take ownership.
-5. Set `T.hidden = true`: keeps the tab in `gBrowser.tabs` (so closing the tab still closes the panel) but invisible from any tab-strip UI. Bento already hides the strip via CSS, but `hidden` is the supported API for "in the tab list but not shown."
-6. Update PanelStore to record `T` is panel-hosted.
+1. Build a new `<browser>` element in the panel host with matching remoteType + messagemanagergroup as the tab's existing browser.
+2. Yield once to let the new browser's frame loader initialize its empty docShell (~100 ms is enough).
+3. `gBrowser._swapBrowserDocShells(T, newBrowser)` — content moves into newBrowser; oldBrowser becomes empty.
+4. `T.linkedBrowser = newBrowser` + update `_tabForBrowser` map both directions.
+5. Re-bind the tab's progress listener from oldBrowser to newBrowser.
+6. Set `T.hidden = true` — keeps T in `gBrowser.tabs` (so close-tab still closes the panel) but invisible from any tab-strip UI.
+7. Remove oldBrowser's `<browser>` from the strip's panel container (or leave it as garbage; it has no docShell, takes minimal memory).
+8. Update PanelStore to record T is panel-hosted.
 
 **On `panel/remove` (panel → tab):**
 
-1. `tabpanels.appendChild(panel)` — moves the wrapper back. Same primitive in reverse.
-2. Restore `T.hidden = false`.
-3. Restore tabpanels' control of `docShellIsActive` (set by `gBrowser`'s tab switcher when this tab is selected).
+1. Look up T's strip slot — gBrowser still has the `linkedPanel` wrapper in `tabpanels`, just with the oldBrowser empty inside it. Or we removed oldBrowser entirely in step 7 of promote; in that case, recreate a stub browser in the original panel position.
+2. Mirror image of promote: swap docShell from panel browser back into the strip browser via `_swapBrowserDocShells(T, restoredOldBrowser)`.
+3. Reassign `T.linkedBrowser` back to the strip browser; fix `_tabForBrowser` map.
+4. Re-bind progress listener back.
+5. Restore `T.hidden = false`.
+6. Remove the panel browser from our host.
 
 **On tab close while it's a panel:**
 
-`browser.tabs.onRemoved` fires. The wrapper is still in our panel host. We need to remove it — let the existing `PanelStore` cleanup + `reconcilePanels` handle that, with the reconciler aware that an "absent" panel needs `panel.remove()` (its docShell is already gone).
+`browser.tabs.onRemoved` fires. The panel browser still exists in our host. Our PanelStore listener (already exists) drops the panel entry; reconcilePanels removes the panel browser from the strip; the docShell was destroyed by tab close, so nothing to swap back.
 
 **On workspace switch:**
 
 Each workspace has its own panel set. Switching `A → B`:
 
-1. For every panel in `A`: reparent back to `tabpanels`, set `T.hidden = true` (the tab still belongs to workspace A and shouldn't appear in B's strip; per-workspace tab visibility is managed elsewhere).
-2. For every panel in `B`: reparent into `#bento-side-panel-host`.
-3. Total cost per panel: one DOM move + a couple of attribute toggles. No browser creation, no docShell swap. Should be near-instant even for many panels.
+1. For every panel in A: demote (swap docShells back into the strip browser, restore linkedBrowser, set T.hidden=true since A is no longer active).
+2. For every panel in B: promote into `#bento-side-panel-host`.
+3. Cost per panel: 1 swap + 5 small attribute mutations. Sub-millisecond. No per-workspace parking optimization needed.
 
-The original plan worried about per-workspace parking for perf. With the reparent approach, this is unnecessary — DOM moves are cheap.
+### Why this approach is unavoidable
+
+Both reparent variants destroyed the inner document. The skip-reconstruction support for `<browser>` element moves only preserves the frame loader, not the document. The swap-via-`swapDocShells` mechanism is the _only_ primitive Mozilla provides that transfers a document between two browser-element hosts without destroying it — that's why tab tear-out across windows uses exactly this. We piggyback on it.
+
+The cost is depth: we mutate `tab.linkedBrowser` and `_tabForBrowser` directly, which are gBrowser internals not part of any documented API. Firefox version bumps could break this. Mitigation: each Firefox bump runs the full Phase 4 edge-case bash to catch regressions.
 
 ## Implementation phases
 
 ### Phase 1: Foundation — single-tab promote/demote
 
-Build the core reparent mechanism in isolation, behind a pref so we can A/B against current behavior during development.
+Build the core swap-and-reassign mechanism in isolation, behind a pref so we can A/B against current behavior during development.
 
-- New chrome-side helper `src/browser/base/content/bento-panel-host.js`:
-  - `promoteTabToPanel(tabId, panelHostElement)` — looks up the tab via `gBrowser.tabs`, gets its panel wrapper via `gBrowser.getPanel(tab.linkedBrowser)`, calls `panelHostElement.appendChild(panel)`, sets `panel.style.display = 'block'`, sets `tab.linkedBrowser.docShellIsActive = true`, sets `tab.hidden = true`. Returns the panel wrapper element so the chrome script can append a Bento header / splitter alongside it.
-  - `demotePanelToTab(tabId)` — reverse: `gBrowser.tabpanels.appendChild(panel)`, restore `tab.hidden = false`, restore tabpanels-controlled docShellIsActive (probably unset our explicit assignment so the tab switcher takes back over).
+- New chrome-side helper `src/browser/base/content/bento-panel-host.js` (or reuse an existing chrome script):
+  - `promoteTabToPanel(tabId, panelHostElement)` — implements the 8-step promote sequence from the architectural decision above. Returns the new panel browser element so callers can wire a Bento header / splitter around it.
+  - `demotePanelToTab(tabId)` — implements the 6-step demote sequence.
+  - Both functions are guarded against re-entrant calls (a tab can only be promoted once).
 - Pref `bento.panels.tabRooted` (default `false`); to be flipped to `true` once Phase 4 is green.
 - `bento-shell-mount.js` checks the pref in `createPanelElement` / `reconcilePanels`. If true, route through the new helpers; if false, use the current separate-browser path.
 - Smoke test path: with `bento.panels.tabRooted = true`, open a tab with Vimium installed, promote it via the sidebar's "open in side panel" button. Verify:
-  - The page renders in the panel host (no reload).
+  - Page renders in the panel host with the actual content (not about:blank, no reload).
   - Vimium's `j`/`k` keys scroll the page from inside the panel.
   - Dark Reader (if installed) applies CSS to the panel page.
-  - `gBrowser.tabs.find(t => t.id matches).linkedBrowser` is the same browser element rendering inside our host.
-  - The tab is still in `browser.tabs.query({})` results (not removed).
-  - Demote: panel returns to tab strip with no reload, Vimium still works there.
+  - `gBrowser.getTabForBrowser(panelBrowser) === tab` (reverse map correct).
+  - `tab.linkedBrowser === panelBrowser` (forward map correct).
+  - `browser.tabs.query({})` still includes the tab (not removed).
+  - Demote: docShell swaps back into the strip browser; if the user switches to that tab, the page is there with no reload, Vimium still works.
+- The progress-listener rebind (step 5 of promote) needs special care. `_swapBrowserDocShells` re-creates a `TabProgressListener` bound to `oldBrowser` as part of its cleanup. We need to either:
+  - (a) Detach that listener and re-attach it to `newBrowser` — but reaching into `_tabFilters` / `_tabListeners` to swap targets requires careful sequencing.
+  - (b) Patch `_swapBrowserDocShells` to accept an "actually I'm reassigning the linkedBrowser too" flag that does the right thing internally.
+  - (b) is cleaner long-term but requires a Firefox patch (one of our chrome-layout patches grows). (a) keeps everything in our chrome script. Phase 1 starts with (a); revisit (b) in Phase 4 if (a) proves brittle.
 
 ### Phase 2: Wire into existing panel flow
 
@@ -151,30 +192,29 @@ Option (b) is cleaner. Work needed:
 
 ## Risk register
 
-| Risk                                                                                                    | Severity | Mitigation                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reparenting the panel wrapper triggers Firefox to detach + reattach the docShell (= reload, state loss) | **High** | Phase 1 first-test verifies this. Mozilla's own pattern of `tabpanels.appendChild(panel)` (in `_insertBrowser`) is a reparent of an existing element when one was previously created elsewhere; the comment at line 2851-2856 warns it triggers constructors but says nothing about docShell churn. If reparenting DOES reload, fall back to a more invasive swap-with-frame-loader approach. |
-| Tab switcher (`_switcher`) crashes when tabs have panels outside `tabpanels`                            | Medium   | Phase 4 verification with rapid tab switching. May need to disable the switcher (`gBrowser._switcher = null`?) for sessions where any panel is hosted, or guard our reparent against active switcher state.                                                                                                                                                                                   |
-| `tabpanels` deck `selectedPanel` setter throws when the target isn't a child                            | Medium   | Phase 4 verification; if it throws, override or guard.                                                                                                                                                                                                                                                                                                                                        |
-| Session restore loses the panel-rooted tab on next launch                                               | **High** | Phase 4 explicit test: launch with a panel, quit cleanly, relaunch. Sessionstore writes tab state from `tab.linkedBrowser` regardless of DOM location, so should work — but verify.                                                                                                                                                                                                           |
-| Devtools refuses to attach to a panel browser whose DOM parent isn't tabpanels                          | Medium   | Phase 4 test with right-click → Inspect on a panel page. Devtools APIs go through `tab.linkedBrowser`, which we don't change — should work.                                                                                                                                                                                                                                                   |
-| Hidden tab counts toward various tab-count limits / lifecycle behaviors                                 | Low      | `tab.hidden = true` is Mozilla's supported API; well-trodden by the multi-account-containers extension.                                                                                                                                                                                                                                                                                       |
-| Cross-origin navigation in a panel changes remoteness, breaking our reparented state                    | Medium   | Mozilla's remoteness change destroys/recreates the browser inside the panel wrapper, but the wrapper itself is unchanged. Should be transparent to our reparent. Phase 4 verification.                                                                                                                                                                                                        |
-| Panel reorder still triggers reload                                                                     | Low      | Existing in-place CSS-`order` reorder doesn't move DOM, so the wrapper stays put. Vimium state preserved across reorder.                                                                                                                                                                                                                                                                      |
+| Risk                                                                                                                                              | Severity | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manual `tab.linkedBrowser =` + `_tabForBrowser.set/.delete` mutations are gBrowser internals — Firefox version bumps could rename or change shape | **High** | The Phase 4 edge-case bash runs on every Firefox version bump (existing process, see [docs/maintaining-surfer.md](../docs/maintaining-surfer.md)). Catch breakage there. If `linkedBrowser` becomes a setter with side effects in a future Firefox, our manual assignment may misbehave; verify by reading tabbrowser.js source on each bump.                                                                    |
+| Progress-listener rebind from oldBrowser to newBrowser is fragile                                                                                 | **High** | Phase 1 demote test exposes this — the v4 probe hit `NS_ERROR_FAILURE` on the second `_swapBrowserDocShells` because the listener was attached to oldBrowser instead of the now-current linkedBrowser. Phase 1 needs an explicit "move TabProgressListener" helper. If that proves brittle, fall back to a Firefox patch that gives `_swapBrowserDocShells` an option to also reassign linkedBrowser internally. |
+| Tab switcher (`_switcher`) misbehaves when `tab.linkedBrowser` is a `<browser>` outside `#tabbrowser-tabpanels`                                   | Medium   | Phase 4 verification with rapid tab switching while panels are active. May need `gBrowser._switcher = null` when any panel is hosted, or guard against switcher state.                                                                                                                                                                                                                                           |
+| Session restore loses the panel-rooted tab on next launch                                                                                         | **High** | Phase 4 explicit test: launch with a panel, quit cleanly, relaunch. Sessionstore writes tab state via `tab.linkedBrowser.permanentKey` — `_swapBrowserDocShells` swaps `permanentKey`, so it should follow our `newBrowser`. Verify.                                                                                                                                                                             |
+| Devtools refuses to attach to a panel browser that isn't `gBrowser.selectedBrowser`                                                               | Medium   | Phase 4 test with right-click → Inspect on a panel page. Devtools resolves the docShell via `tab.linkedBrowser` (which we correctly point at `newBrowser`); should work. If it fails, Cmd+Option+I from a panel may need explicit retargeting.                                                                                                                                                                   |
+| Hidden tab counts toward various tab-count limits / lifecycle behaviors                                                                           | Low      | `tab.hidden = true` is Mozilla's supported API; well-trodden by multi-account-containers.                                                                                                                                                                                                                                                                                                                        |
+| Cross-origin navigation in a panel changes remoteness, breaking the swapped state                                                                 | Medium   | Mozilla's remoteness change creates a new browser inside the panel wrapper. Since our `newBrowser` IS that wrapper-equivalent for the tab now, remoteness change should rebuild it in place. Phase 4 verification with web → about:config navigation.                                                                                                                                                            |
+| `_swapBrowserDocShells` is private API (leading underscore)                                                                                       | Low      | Stable since Firefox 78+. Mozilla uses it for their own swap-windows feature. Same risk profile as the `linkedBrowser` mutation above.                                                                                                                                                                                                                                                                           |
+| Panel reorder still triggers reload                                                                                                               | Low      | Existing in-place CSS-`order` reorder doesn't move DOM. Document survives reorder.                                                                                                                                                                                                                                                                                                                               |
 
 ## Estimated effort
 
-Reparenting is a much smaller mechanism than the swap-based approach. Revised estimates:
+The swap-with-linkedBrowser-reassignment approach (the chosen mechanism) sits between the original swap-only estimate and the rejected reparent estimate:
 
-- Phase 1: 1–2 days (mechanism + smoke test in isolation)
-- Phase 2: 1 day (wire reconciler to use reparent path; rip out the parallel-browser path under the pref)
-- Phase 3: half a day (workspace switch handling — DOM moves are cheap)
-- Phase 4: 2–3 days (edge case bash; this is where unknowns will surface)
-- Phase 5: 1 day (accelerator retargeting — same as before, independent of mechanism)
+- Phase 1: 2–3 days (swap+reassign mechanism, progress-listener rebind, isolated smoke test). The mechanism is proven via the v4 probe; engineering it cleanly takes a real chunk of work.
+- Phase 2: 1–2 days (wire reconciler; tear down the parallel-browser path under the pref; promote/demote round-trip in the real flow).
+- Phase 3: 1 day (workspace switch handling — multiple swap+reassign per switch is the main work).
+- Phase 4: 2–3 days (edge case bash, especially session restore + remoteness change + tab switcher interactions).
+- Phase 5: 1 day (accelerator retargeting — independent of mechanism).
 
-Total: **5–7 days** of focused work. (Down from the original swap-based 7–10 day estimate.)
-
-If Phase 1's first-test reveals reparenting DOES trigger docShell reload, we fall back to the swap approach (with the additional `tab.linkedBrowser =` reassignment to fix the linked-browser problem) — that fallback adds ~2 days.
+Total: **7–10 days** of focused work. Same as the original estimate. The probe results don't shorten the work; they just confirm the right mechanism upfront so we don't waste days on a dead-end.
 
 ## Backward compatibility / migration
 
@@ -191,11 +231,20 @@ No user-visible state change. Existing panel persistence (URLs in storage.local)
 
 ## Open questions for implementation kickoff
 
-1. **Does `tabpanels.appendChild(panelFromOurHost)` cleanly reparent without reload?** (The whole plan hinges on this. Phase 1 first-test answers it. If no, fall back to the swap approach with explicit `tab.linkedBrowser` reassignment.)
-2. **Does `tab.hidden = true` keep the tab in `browser.tabs.query()`?** Probably yes (multi-account-containers relies on this). Does it keep the tab focusable via Cmd+number keyboard shortcuts? Probably no — that's actually fine for our model where panels aren't reachable via the strip's number keys.
-3. **When a tab is panel-hosted and the user does Cmd+W (close tab), what should happen?** Close the tab (= remove the panel + close)? Or remove it from the panel and put it back in the strip? Likely the former (matches "close" semantics) but worth confirming UX.
-4. **What does `gBrowser._switcher` do when activated for a tab whose panel is in our host?** The switcher's role is to "warm up" the next tab's docShell; if our panel browsers are always-active anyway, the switcher might be irrelevant for them. Verify it doesn't crash.
-5. **What does `tabpanels.selectedPanel = X` do when X isn't a child of tabpanels?** The deck mechanism might no-op, throw, or insert silently. Verify in Phase 1.
+Resolved (via the v2/v3/v4 probe sequence):
+
+- ~~Does `tabpanels.appendChild(panelFromOurHost)` cleanly reparent without reload?~~ **No**, v2 confirmed. Reparenting the panel destroys frame loader + content document.
+- ~~Does moving the `<browser>` element directly preserve the document?~~ **No**, v3 confirmed. `connectedMoveCallback` preserves frame loader but content document still dies.
+- ~~Does `_swapBrowserDocShells` + manual `linkedBrowser` reassignment preserve the document?~~ **Yes**, v4 confirmed. `contentTitle` and `currentURI` survived; `getTabForBrowser` returned the right tab. Mechanism is viable.
+
+Still open:
+
+1. **Progress-listener rebind**: v4 surfaced an `NS_ERROR_FAILURE` on the demote-side `_swapBrowserDocShells` because the listener was attached to the old browser. Phase 1 needs an explicit "move TabProgressListener" helper. Investigate whether it's safe to grab `gBrowser._tabFilters.get(tab)` + `gBrowser._tabListeners.get(tab)`, detach from oldBrowser.webProgress, re-attach to newBrowser.webProgress, without disrupting tabbrowser's tracking.
+2. **Tab switcher interactions**: when does `gBrowser._switcher` activate, and what happens if the activated tab's `linkedBrowser` is in our panel host? Verify in Phase 4.
+3. **`gBrowser.selectedTab` semantics for hidden tabs**: when the user closes the currently-selected tab and Firefox needs to pick a new selectedTab, does it skip `tab.hidden = true` tabs (= our panels)? If yes, good. If no, our panels could become "selected" which would do who-knows-what.
+4. **Cmd+W on a panel-hosted tab**: close the tab (= remove the panel + close)? Or demote and keep? Likely former. Confirm UX.
+5. **Session restore round-trip**: launch with a panel, quit, relaunch. Sessionstore writes via `tab.linkedBrowser.permanentKey` which should follow our newBrowser. Verify.
+6. **Cross-origin navigation triggering remoteness change**: the panel browser may need to be recreated by Firefox in place. Test web → about:config navigation in a panel.
 
 ## Out of scope
 
