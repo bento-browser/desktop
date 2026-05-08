@@ -100,6 +100,15 @@ pref("bento.panels.minWidth", 240);
 pref("bento.tabs.sleep.afterMinutes", 30);
 pref("bento.commandPalette.enabled", true);
 
+// Phase 2 of plans/bento-spaces-split-view-panels.md. When true, Bento
+// panels render via Firefox 150's native multi-panel tabpanels machinery
+// (tabpanels.splitViewPanels = [...]) instead of the legacy parallel-
+// browser path. Each panel is a real Firefox tab whose linkedBrowser
+// stays in tabpanels for its lifetime, so extension content scripts
+// (Vimium / Dark Reader / uBlock / …) attach correctly. Default false
+// during Phase 2 development; flips to true at the end of Phase 5.
+pref("bento.panels.splitView", false);
+
 // --- Update-check defaults ------------------------------------------------
 // Firefox's BrowserGlue.sys.mjs reads `app.update.checkInstallTime.days`
 // unconditionally during background-update scheduling. Vanilla Firefox ships

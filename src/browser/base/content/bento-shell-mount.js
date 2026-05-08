@@ -584,6 +584,59 @@
         width: var(--bento-icon-size-md);
         height: var(--bento-icon-size-md);
       }
+
+      /* ─── Phase 2: native split-view panel layout ─────────────────────
+         Activated when reconcilePanelsSplitView adds .bento-split-active
+         to #tabbrowser-tabpanels. Switches the deck from single-panel
+         display to a horizontal flex row, so the linkedPanels Firefox
+         renders via splitViewPanels lay out side-by-side with a
+         minimum width per panel and horizontal scroll for overflow.
+
+         Each linkedPanel is a notificationbox; we inject Bento's
+         per-panel header (.bento-panel-header[data-bento-injected])
+         as the first child so visual order is [header, content]. The
+         injected header gets the same rounded-corner / clip treatment
+         as the legacy parallel-browser panels.
+
+         When split is active, hide #bento-side-panel-host so the legacy
+         parallel-browser strip doesn't render alongside the native
+         tabpanels split. The host stays in DOM (so toggling the pref
+         off restores the legacy path instantly during smoke testing);
+         only its visibility changes. */
+      #tabbrowser-tabpanels.bento-split-active {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: stretch !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        gap: var(--space-2xs);
+        padding: var(--space-2xs);
+      }
+      #tabbrowser-tabpanels.bento-split-active > notificationbox,
+      #tabbrowser-tabpanels.bento-split-active > .browserStack {
+        flex: 0 0 auto;
+        min-width: var(--bento-panel-min-width, 380px);
+        max-width: 100%;
+        display: flex;
+        flex-direction: column;
+        border-radius: var(--radius-m);
+        overflow: clip;
+        background-color: var(--neutral-10, #1c1d22);
+      }
+      #tabbrowser-tabpanels.bento-split-active > notificationbox > browser,
+      #tabbrowser-tabpanels.bento-split-active > .browserStack > browser {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      /* The injected header sits above content inside each panel. */
+      #tabbrowser-tabpanels.bento-split-active .bento-panel-header[data-bento-injected="1"] {
+        flex: 0 0 auto;
+      }
+      /* Suppress the legacy parallel-browser strip while split-view is
+         active. The host stays in DOM but takes no space. */
+      body:has(#tabbrowser-tabpanels.bento-split-active) #bento-side-panel-host {
+        display: none !important;
+      }
     `;
     document.documentElement.appendChild(style);
   }
@@ -2515,7 +2568,192 @@
     });
   }
 
+  // ─── Phase 2: Native split-view panel rendering ────────────────────────
+  //
+  // Pref-gated alternative to the legacy parallel-browser reconciler
+  // below. When `bento.panels.splitView` is true, panel rendering is
+  // driven through Firefox 150's `tabpanels.splitViewPanels = [...]`
+  // setter — each panel is a real Firefox tab whose `linkedBrowser`
+  // stays in tabpanels for its lifetime. Extension content scripts
+  // attach correctly because nothing about a tab's identity changes.
+  //
+  // Plan: plans/bento-spaces-split-view-panels.md (Phase 2). The
+  // legacy reconciler stays in place until Phase 5 deletes it.
+  function isSplitViewEnabled() {
+    try {
+      return Services.prefs.getBoolPref('bento.panels.splitView', false);
+    } catch {
+      return false;
+    }
+  }
+
+  // The most recent panels payload, stashed so the TabSelect listener
+  // can re-reconcile when only the active main tab changes (the panel
+  // set is unchanged but the first slot of splitViewPanels follows
+  // gBrowser.selectedTab).
+  let __lastPanelsPayload = [];
+
+  function reconcilePanelsSplitView(panels) {
+    if (!window.gBrowser) {
+      console.warn('[bento-shell-mount] reconcilePanelsSplitView: gBrowser unavailable');
+      return;
+    }
+    const gBrowser = window.gBrowser;
+    const tabpanels = gBrowser.tabpanels;
+    if (!tabpanels) {
+      console.warn('[bento-shell-mount] reconcilePanelsSplitView: tabpanels unavailable');
+      return;
+    }
+
+    __lastPanelsPayload = panels.slice();
+
+    // Resolve panel tabIds (WebExtension IDs from bento-tools' panels/sync
+    // payload) to gBrowser tab elements via the same TabTracker path the
+    // Cmd+1..9 handler uses.
+    const tabTracker = (() => {
+      try {
+        const mod = ChromeUtils.importESModule(
+          'resource://gre/modules/ExtensionParent.sys.mjs',
+        );
+        return mod.ExtensionParent?.apiManager?.global?.tabTracker || null;
+      } catch (err) {
+        console.warn('[bento-shell-mount] tabTracker import failed:', err);
+        return null;
+      }
+    })();
+
+    const resolved = [];
+    if (tabTracker) {
+      for (const p of panels) {
+        try {
+          const t = tabTracker.getTab(p.tabId);
+          if (t) resolved.push({ tab: t, payload: p });
+        } catch {
+          // Tab might be gone (race with tab/close); skip
+        }
+      }
+    }
+
+    // Mark panel tabs as hidden from the native tab strip. Bento hides
+    // #TabsToolbar entirely, but tab.hidden is the right contract for
+    // anything iterating gBrowser.visibleTabs (multi-account-containers,
+    // home.js's _isTabAboutPreferencesOrSettings, etc.).
+    for (const { tab } of resolved) {
+      if (!tab.hidden) {
+        try {
+          gBrowser.hideTab(tab);
+        } catch (err) {
+          console.warn('[bento-shell-mount] hideTab failed:', err);
+        }
+      }
+    }
+
+    // Build the desired splitViewPanels array. The active main tab
+    // (gBrowser.selectedTab) is the FIRST slot; side panels follow in
+    // the order bento-tools provided.
+    const mainTab = gBrowser.selectedTab;
+    const desired = [];
+    const seen = new Set();
+    if (mainTab?.linkedPanel) {
+      desired.push(mainTab.linkedPanel);
+      seen.add(mainTab.linkedPanel);
+    }
+    for (const { tab } of resolved) {
+      if (!tab.linkedPanel || seen.has(tab.linkedPanel)) continue;
+      // Ensure the tab's linkedBrowser is inserted in tabpanels (lazy
+      // tabs may not be yet) and its docShell is rendering.
+      try {
+        gBrowser._insertBrowser(tab);
+      } catch (err) {
+        console.warn('[bento-shell-mount] _insertBrowser failed:', err);
+      }
+      if (tab.linkedBrowser) {
+        tab.linkedBrowser.docShellIsActive = true;
+      }
+      desired.push(tab.linkedPanel);
+      seen.add(tab.linkedPanel);
+    }
+
+    // Diff: tabs that USED to be in the split but no longer are get
+    // their docShell deactivated to free GPU layers + suspend timers.
+    const previous = tabpanels.splitViewPanels || [];
+    for (const panelId of previous) {
+      if (seen.has(panelId)) continue;
+      const t = gBrowser.tabs.find((tab) => tab.linkedPanel === panelId);
+      if (t && t !== mainTab && t.linkedBrowser) {
+        t.linkedBrowser.docShellIsActive = false;
+      }
+    }
+
+    // Apply. The setter triggers tabbox.setSplitViewActive internally;
+    // Firefox renders the array of panels simultaneously.
+    try {
+      tabpanels.splitViewPanels = desired;
+    } catch (err) {
+      console.error('[bento-shell-mount] splitViewPanels assignment failed:', err);
+      return;
+    }
+
+    // Per-panel header injection. Each linkedPanel is a notificationbox;
+    // we inject Bento's header (URL bar, back/forward/reload, X close,
+    // bookmark) as the FIRST child so the visual order is
+    // [header, notificationstack, browser]. Idempotent — re-running
+    // skips panels that already have a header.
+    for (const { tab, payload } of resolved) {
+      injectPanelHeaderIntoLinkedPanel(tab, payload.url || '');
+    }
+
+    // Mark tabpanels with a class so CSS can switch into Bento's
+    // split-view layout (flex row + horizontal scroll). Idempotent.
+    tabpanels.classList.add('bento-split-active');
+
+    // Refresh favicon nav strip (lives outside tabpanels; reads from
+    // panels/sync payload — same data the legacy reconciler consumes).
+    refreshPanelNav(panels);
+  }
+
+  function injectPanelHeaderIntoLinkedPanel(tab, url) {
+    const panelEl = document.getElementById(tab.linkedPanel);
+    if (!panelEl) return;
+    if (panelEl.querySelector(':scope > .bento-panel-header[data-bento-injected="1"]')) {
+      return; // already injected
+    }
+    if (!tab.linkedBrowser) return;
+    const tabId = (() => {
+      try {
+        const mod = ChromeUtils.importESModule(
+          'resource://gre/modules/ExtensionParent.sys.mjs',
+        );
+        return mod.ExtensionParent?.apiManager?.global?.tabTracker?.getId(tab) ?? null;
+      } catch {
+        return null;
+      }
+    })();
+    const header = createPanelHeader(tab.linkedBrowser, url, tabId);
+    header.dataset.bentoInjected = '1';
+    // notificationbox children typically are [notificationstack, browser];
+    // insert header as the first child so it visually sits above content.
+    panelEl.insertBefore(header, panelEl.firstChild);
+  }
+
+  // Re-reconcile the split view when the active main tab changes —
+  // splitViewPanels[0] needs to follow gBrowser.selectedTab. Cheap:
+  // computes the same desired array minus an unchanged panel set.
+  // No-op when the pref is off.
+  function attachTabSelectListener() {
+    if (!window.gBrowser) return;
+    window.gBrowser.tabContainer?.addEventListener('TabSelect', () => {
+      if (!isSplitViewEnabled()) return;
+      reconcilePanelsSplitView(__lastPanelsPayload);
+    });
+  }
+
   function reconcilePanels(panels) {
+    if (isSplitViewEnabled()) {
+      reconcilePanelsSplitView(panels);
+      return;
+    }
+
     const host = document.getElementById('bento-side-panel-host');
     const main = document.getElementById('tabbrowser-tabbox');
     if (!host) {
@@ -3119,4 +3357,5 @@
   attachPaletteEscListener();
   attachPaletteCloseListener();
   attachWorkspaceTabSwitchKeybinding();
+  attachTabSelectListener();
 })();

@@ -96,7 +96,7 @@ The user-facing behaviour must match the v0.0.1 implementation, with two materia
 
 ### Data flow
 
-```
+```text
 sidebar (React)                   bento-tools (TS)              chrome (bento-shell-mount.js)         Firefox tabpanels
 ─────────────────                 ─────────────────             ─────────────────────────────         ────────────────
 user clicks "open in       ─►     panel/add action      ─►      via existing reconciler       ─►     tabpanels.splitViewPanels =
@@ -177,15 +177,30 @@ Half a day. Removes the dead-end work so the codebase is clean before Phase 1.
 
 ### Phase 1: Probe — drive `tabpanels.splitViewPanels` from chrome script
 
-1 day. Validate the assumption that we can render multiple Bento panels via `splitViewPanels` without going through `MozTabSplitViewWrapper`. Lands behind a new pref `bento.panels.splitView` (default false) so we can compare against the legacy path during development.
+**Status: ✅ Green (2026-05-09).** Probe ran clean against 4 simultaneous tabs (Wikipedia, YouTube, Reddit, AMO). Path A (`gBrowser.showSplitViewPanels(tabs)`) succeeded; `tabpanels.splitViewPanels` accepted 4 entries with no `MozTabSplitViewWrapper` involvement; all 4 panel containers rendered (`DOM panel containers visible: 4 / 4`); per-tab invariants (`frameLoader`, `messageManager`, `webProgress`, `embedderElement === linkedBrowser`) stayed truthy before / during / after; `docShellIsActive` off→on cycle round-tripped cleanly; no `Conduits` / `messageManager` errors during the run. The architectural assumption is validated — Phase 2 unblocked.
 
-- Write a chrome-script probe (similar to the v4 probe in the prior plan): given two existing tabs, set `gBrowser.tabpanels.splitViewPanels = [tab1.linkedPanel, tab2.linkedPanel]` and verify both render simultaneously.
-- Verify each tab's `linkedBrowser.currentURI`, `messageManager`, `frameLoader` all stay valid before / during / after.
-- Smoke-test extensions: install Vimium, set the split, verify j/k scrolls each panel independently.
-- Smoke-test in-page state: scroll a long page, set the split, verify scroll is preserved.
-- Smoke-test docShellIsActive: when a tab leaves `splitViewPanels`, set its `docShellIsActive = false` and verify that's reversible (re-enter the array, set true, content resumes).
+1 day. Validate the assumption that we can render multiple Bento panels via `splitViewPanels` without going through `MozTabSplitViewWrapper`. The probe is a one-off Browser Toolbox script — no production code changes, no pref needed yet.
 
-If the probe passes, Phase 2 starts. If it doesn't, surface specifics here and revise the plan.
+**Probe script**: [/private/tmp/bento-splitview-probe.js](/private/tmp/bento-splitview-probe.js) — paste into Browser Toolbox console (Cmd+Opt+Shift+I) on a Bento window with at least 2 (preferably 3+) regular pages already loaded. The script:
+
+- Auto-discovers candidate tabs (filters out about:newtab / about:blank / hidden).
+- Snapshots invariants per-tab BEFORE the probe: `currentURI`, `contentTitle`, `frameLoader`, `messageManager`, `webProgress`, `docShellIsActive`, `browsingContext.id`, `linkedPanel`, and `browsingContext.top.embedderElement === linkedBrowser`.
+- Tries **Path A**: `gBrowser.showSplitViewPanels(tabs)` — the documented high-level API.
+- (If Path A fails, falls back to **Path B**: manual `_insertBrowser` + `linkedBrowser.docShellIsActive = true` + `tabpanels.splitViewPanels = [...]`.)
+- Re-snapshots DURING the active split, diffs against BEFORE per tab. Counts visible panel containers via `getBoundingClientRect`.
+- Exercises the `docShellIsActive` off→on cycle on the last tab, verifying clean reversibility.
+- Restores `tabpanels.splitViewPanels` and `gBrowser.selectedTab` to original state.
+- Re-snapshots AFTER, confirms invariants intact, prints a verdict line.
+
+**Pass criteria for Phase 2 unblock**:
+
+- All `[probe]` "invariants" lines show ✓ for every tab before / during / after (frame loader present, message manager present, embedder element is the linkedBrowser).
+- DOM panel containers visible == count of tabs passed in.
+- `docShellIsActive` cycle is a clean round-trip (no `frameLoader` / `messageManager` reset).
+- No `Actor 'Conduits' destroyed before query 'RuntimeMessage' was resolved` errors in the multiprocess console anywhere across the run.
+- Manual smoke test (run separately by the user, after the script has restored state): with the split active, install Vimium, verify `j`/`k` scrolls each panel; install Dark Reader, verify it applies to all visible panels.
+
+If any of those fail, surface specifics in this section and revise the plan before starting Phase 2.
 
 ### Phase 2: Reconciler rewrite
 
