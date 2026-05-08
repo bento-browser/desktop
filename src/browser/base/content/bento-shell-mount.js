@@ -587,55 +587,22 @@
 
       /* ─── Phase 2: native split-view panel layout ─────────────────────
          Activated when reconcilePanelsSplitView adds .bento-split-active
-         to #tabbrowser-tabpanels. Switches the deck from single-panel
-         display to a horizontal flex row, so the linkedPanels Firefox
-         renders via splitViewPanels lay out side-by-side with a
-         minimum width per panel and horizontal scroll for overflow.
+         to #tabbrowser-tabpanels.
 
-         Each linkedPanel is a notificationbox; we inject Bento's
-         per-panel header (.bento-panel-header[data-bento-injected])
-         as the first child so visual order is [header, content]. The
-         injected header gets the same rounded-corner / clip treatment
-         as the legacy parallel-browser panels.
-
-         When split is active, hide #bento-side-panel-host so the legacy
-         parallel-browser strip doesn't render alongside the native
-         tabpanels split. The host stays in DOM (so toggling the pref
-         off restores the legacy path instantly during smoke testing);
-         only its visibility changes. */
-      #tabbrowser-tabpanels.bento-split-active {
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: stretch !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        gap: var(--space-2xs);
-        padding: var(--space-2xs);
-      }
-      #tabbrowser-tabpanels.bento-split-active > notificationbox,
-      #tabbrowser-tabpanels.bento-split-active > .browserStack {
-        flex: 0 0 auto;
+         Phase 1's probe confirmed Firefox 150's tabpanels deck handles
+         multi-panel layout natively when splitViewPanels is set. We do
+         NOT override display / flex on the deck — fighting the platform
+         here breaks rendering entirely. We only add Bento-flavoured
+         touches on top: per-panel min-width, the rounded-corner / clip
+         on the per-panel notificationbox, and ensuring the injected
+         header appears above content. */
+      #tabbrowser-tabpanels.bento-split-active > notificationbox {
         min-width: var(--bento-panel-min-width, 380px);
-        max-width: 100%;
-        display: flex;
-        flex-direction: column;
-        border-radius: var(--radius-m);
-        overflow: clip;
-        background-color: var(--neutral-10, #1c1d22);
       }
-      #tabbrowser-tabpanels.bento-split-active > notificationbox > browser,
-      #tabbrowser-tabpanels.bento-split-active > .browserStack > browser {
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-      /* The injected header sits above content inside each panel. */
-      #tabbrowser-tabpanels.bento-split-active .bento-panel-header[data-bento-injected="1"] {
+      /* Injected per-panel header — sits above the notificationstack +
+         browser inside each linkedPanel notificationbox. */
+      .bento-panel-header[data-bento-injected="1"] {
         flex: 0 0 auto;
-      }
-      /* Suppress the legacy parallel-browser strip while split-view is
-         active. The host stays in DOM but takes no space. */
-      body:has(#tabbrowser-tabpanels.bento-split-active) #bento-side-panel-host {
-        display: none !important;
       }
     `;
     document.documentElement.appendChild(style);
