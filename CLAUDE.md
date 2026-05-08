@@ -176,6 +176,19 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 - **No raw design values in component CSS**: components reference Tale UI tokens (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, etc.) or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a needed value doesn't exist as a token, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired `--neutral-N-fg` token, not a raw neutral.
 - **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
 
+## Versioning policy
+
+**Bento is pre-distribution until v0.1.0.** Every release built before v0.1.0 is for the maintainer's own iteration only — no user-facing distribution, no GitHub Release publish, no landing-page download links pointing at it. The release pipeline (build-release.sh, GitHub Actions release.yml, signing/notarization plans) exists during this period so that v0.1.0 is a small, well-rehearsed step rather than a cliff, but the artifacts it produces stay private.
+
+**Concrete rules for agents:**
+
+- **Version bumps stay inside the v0.0.X range.** When bumping `brands.bento.release.displayVersion` in [surfer.json](surfer.json), increment the patch component only — `0.0.1` → `0.0.2` → `0.0.3` etc. Do NOT bump to `0.1.0` (or higher) unprompted, even if it would be conventional semver for a feature-complete cut.
+- **Only the maintainer flips to v0.1.0.** Wait for an explicit instruction like "bump to v0.1.0" before changing the major.minor. The cutover from v0.0.X → v0.1.0 is the moment Bento becomes a distributable artifact, with all the signing / notarization / public-release implications that carries — that's a deliberate handoff, not a routine bump.
+- **Don't suggest publishing v0.0.X publicly.** Don't propose `gh release create` against a `v0.0.X` tag, don't propose pushing artifacts to bentobrowser.app's hosting, don't propose announcing the release. Build and test locally; that's the v0.0.X scope.
+- **The release CI workflow can still run** on v0.0.X tags — that's how we exercise the pipeline. The draft GitHub Release that lands is for internal review only, not for publishing.
+
+**Why this matters**: every public installer creates obligations — Gatekeeper / SmartScreen warnings if unsigned (bad first impression), or a notarized cert chain that has to keep working (operational cost). Pre-v0.1.0 we get to iterate without those obligations. Once v0.1.0 ships, every subsequent release is a thing real users will reach for, with the support load that implies.
+
 ## Tale UI: development ↔ release toggle
 
 Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react: 1.3.47`, `@tale-ui/core: 1.1.17`, etc.) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
