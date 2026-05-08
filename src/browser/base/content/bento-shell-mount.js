@@ -2736,6 +2736,27 @@
       return;
     }
 
+    // showSplitViewPanels sets each tab.linkedBrowser.docShellIsActive
+    // = true BEFORE calling setIsSplitViewActive, which internally
+    // does `this.selectedPanel = selectedPanel`. Setting selectedPanel
+    // on a MozDeck triggers the deck's mutation observer / activation
+    // logic which DEACTIVATES docShells of non-selected children. So
+    // by the time showSplitViewPanels returns, every panel except the
+    // currently-deck-selected one has docShellIsActive=false again,
+    // and only the selected panel paints content (the others render
+    // their .split-view-panel-active container + our injected header
+    // but the browser inside stays blank).
+    //
+    // Re-force docShellIsActive=true on every panel's browser AFTER
+    // showSplitViewPanels has done its dance. The deck won't toggle
+    // them off again until the next setSelectedPanel — which we
+    // re-run on TabSelect, where this same path fires.
+    for (const tab of tabsToRender) {
+      if (tab.linkedBrowser && !tab.linkedBrowser.docShellIsActive) {
+        tab.linkedBrowser.docShellIsActive = true;
+      }
+    }
+
     // Per-panel header injection. Each linkedPanel is a notificationbox;
     // we inject Bento's header (URL bar, back/forward/reload, X close,
     // bookmark) as the FIRST child so the visual order is
