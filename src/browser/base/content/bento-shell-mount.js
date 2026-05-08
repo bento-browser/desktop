@@ -2560,6 +2560,13 @@
   // gBrowser.selectedTab).
   let __lastPanelsPayload = [];
 
+  // Sentinel assigned to `tab.splitview` for tabs Bento puts into the
+  // split. Firefox's setSplitViewActive() in tabbox.js gates the
+  // [splitview] attribute on tabpanels by `selectedTab.splitview &&
+  // updatedValue` — a boolean check. The sentinel just needs to be
+  // truthy. See reconcilePanelsSplitView below for the full rationale.
+  const BENTO_SPLIT_SENTINEL = Object.freeze({ kind: 'bento-split' });
+
   function reconcilePanelsSplitView(panels) {
     if (!window.gBrowser) {
       console.warn('[bento-shell-mount] reconcilePanelsSplitView: gBrowser unavailable');
@@ -2640,12 +2647,12 @@
     }
 
     // Tabs that USED to be in the split but no longer are: clear their
-    // per-panel split-view-active attribute AND deactivate their
-    // docshell. Setting splitViewPanels alone doesn't reset the per-
-    // panel state — Firefox tracks "this panel is part of the split"
-    // separately from the deck's overall splitView flag, so without
-    // this loop departing panels keep their attribute and overlap the
-    // active set.
+    // per-panel split-view-active attribute, clear our split sentinel,
+    // and deactivate their docshell. Setting splitViewPanels alone
+    // doesn't reset the per-panel state — Firefox tracks "this panel
+    // is part of the split" separately from the deck's overall
+    // splitview flag, so without this loop departing panels keep
+    // their attribute and overlap the active set.
     const previous = tabpanels.splitViewPanels || [];
     for (const panelId of previous) {
       if (seenPanelIds.has(panelId)) continue;
@@ -2655,28 +2662,51 @@
         console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
       }
       const t = gBrowser.tabs.find((tab) => tab.linkedPanel === panelId);
+      if (t && t.splitview === BENTO_SPLIT_SENTINEL) {
+        delete t.splitview;
+      }
       if (t && t !== mainTab && t.linkedBrowser) {
         t.linkedBrowser.docShellIsActive = false;
       }
     }
 
-    // Use Firefox's high-level showSplitViewPanels API instead of just
-    // assigning splitViewPanels directly. The high-level call does
-    // three things in order:
-    //   1. _insertBrowser(tab) for each, ensuring lazy browsers are
-    //      materialised in tabpanels.
-    //   2. Sets linkedBrowser.docShellIsActive = true so each panel's
-    //      content renders.
-    //   3. Calls setIsSplitViewActive(true, tabs) which sets the
-    //      per-panel active attribute on each linkedPanel — THIS is
-    //      what makes Firefox lay them out side-by-side instead of
-    //      stacking them at the same position.
-    //   4. Sets tabpanels.splitViewPanels = panels.
+    // Spoof tab.splitview so Firefox's setSplitViewActive() in
+    // toolkit/content/widgets/tabbox.js:545 recognises the split.
+    // That function gates the [splitview] attribute on tabpanels with:
     //
-    // The earlier attempt set splitViewPanels directly and skipped (3),
-    // which made the diagnostic show two panels both at @209,52 (same
-    // x,y) instead of properly tiled. Phase 1's probe used
-    // showSplitViewPanels which is why it rendered correctly.
+    //     let isActive = gBrowser.selectedTab.splitview && updatedValue;
+    //     this.toggleAttribute("splitview", isActive);
+    //
+    // The [splitview] attribute is what the layout CSS in
+    // browser/themes/shared/tabbrowser/content-area.css:168 keys off:
+    //
+    //     #tabbrowser-tabpanels[splitview] .split-view-panel.split-view-panel-active {
+    //       position: relative;
+    //       width: unset;  /* lets flex:1 distribute the panels */
+    //     }
+    //
+    // Without it every active panel falls back to the un-attributed
+    // `width: 49.4%` rule and they overlap at the deck's selected
+    // position — which is exactly what the smoke-test diagnostic
+    // showed (two panels both at 524x931@209,52).
+    //
+    // tab.splitview is normally set by MozTabSplitViewWrapper when a
+    // tab is added to a split group. We deliberately don't use that
+    // wrapper (it lives in tabContainer and is built for the 2-tab UI;
+    // Bento needs unbounded panels and hides the native tab strip
+    // anyway). A sentinel object is enough — only the boolean check
+    // matters; nothing else reads .splitview's identity unless code
+    // paths inside MozTabSplitViewWrapper run.
+    for (const tab of tabsToRender) {
+      tab.splitview = BENTO_SPLIT_SENTINEL;
+    }
+
+    // Use Firefox's high-level showSplitViewPanels API. It calls
+    // _insertBrowser, sets linkedBrowser.docShellIsActive=true, fires
+    // setIsSplitViewActive(true, tabs) (which calls
+    // setSplitViewPanelActive(true, panelId) per-panel AND, now that
+    // selectedTab.splitview is truthy, toggles the [splitview]
+    // attribute on tabpanels), then sets tabpanels.splitViewPanels.
     try {
       gBrowser.showSplitViewPanels(tabsToRender);
     } catch (err) {
