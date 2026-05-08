@@ -2697,8 +2697,22 @@
     // anyway). A sentinel object is enough — only the boolean check
     // matters; nothing else reads .splitview's identity unless code
     // paths inside MozTabSplitViewWrapper run.
+    // tab.splitview is a GETTER (browser/components/tabbrowser/content/
+    // tab.js:399) that returns parentElement only when parentElement is
+    // a <tab-split-view-wrapper>; no setter, so a plain assignment is
+    // silently shadowed. Use Object.defineProperty to add an own-
+    // property that takes precedence over the prototype getter.
     for (const tab of tabsToRender) {
-      tab.splitview = BENTO_SPLIT_SENTINEL;
+      try {
+        Object.defineProperty(tab, 'splitview', {
+          value: BENTO_SPLIT_SENTINEL,
+          configurable: true,
+          enumerable: false,
+          writable: true,
+        });
+      } catch (err) {
+        console.warn('[bento-shell-mount] tab.splitview defineProperty failed:', err);
+      }
     }
 
     // Use Firefox's high-level showSplitViewPanels API. It calls
