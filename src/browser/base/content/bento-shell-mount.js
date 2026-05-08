@@ -2601,19 +2601,26 @@
       }
     }
 
-    // Mark panel tabs as hidden from the native tab strip. Bento hides
-    // #TabsToolbar entirely, but tab.hidden is the right contract for
-    // anything iterating gBrowser.visibleTabs (multi-account-containers,
-    // home.js's _isTabAboutPreferencesOrSettings, etc.).
-    for (const { tab } of resolved) {
-      if (!tab.hidden) {
-        try {
-          gBrowser.hideTab(tab);
-        } catch (err) {
-          console.warn('[bento-shell-mount] hideTab failed:', err);
-        }
-      }
-    }
+    // NOTE: we do NOT call gBrowser.hideTab(tab) on panel tabs.
+    //
+    // The plan called for it (so panels stay out of native visibleTabs
+    // iterations), but the smoke test showed Firefox's split-view
+    // rendering produces a black/empty content slot for any tab that's
+    // hidden — the deck-selected attribute is set, the panel container
+    // sizes correctly, but the browser inside doesn't paint.
+    //
+    // Bento hides #TabsToolbar entirely (patches/core-ui/02-hide-native-
+    // tabs.patch) so panel tabs are already invisible to the user via
+    // the native strip. The sidebar's tab list filters panels via
+    // PanelStore membership in bento-tools (see useWorkspaceTabIds).
+    // Skipping tab.hidden costs us nothing visually and lets the
+    // split-view paint content for every panel.
+    //
+    // Side effect to watch in Phase 4: visibleTabs iterations from
+    // home.js / multi-account-containers / sessionstore will include
+    // panel tabs. If any of those misbehave, revisit (likely with a
+    // more surgical attribute or a tab-flag that's separate from
+    // hidden=true).
 
     // Build the desired splitViewPanels array. The active main tab
     // (gBrowser.selectedTab) is the FIRST slot; side panels follow in
