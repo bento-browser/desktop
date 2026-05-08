@@ -59,13 +59,20 @@ fi
 OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
 
-# Stash dev state so we can restore at end. Using a backup file rather
+# Stash dev state so we can restore at end. Using backup files rather
 # than `git stash` because the user may have intentional uncommitted
-# changes and we shouldn't conflate them with pnpm's lockfile churn.
+# changes and we shouldn't conflate them with pnpm's lockfile churn or
+# the buildMode toggle.
 LOCKFILE_BACKUP=""
 if [ -f pnpm-lock.yaml ]; then
   LOCKFILE_BACKUP="$(mktemp)"
   cp pnpm-lock.yaml "$LOCKFILE_BACKUP"
+fi
+BUILD_MODE_BACKUP=""
+BUILD_MODE_FILE=".surfer/dynamicConfig.buildMode.json"
+if [ -f "$BUILD_MODE_FILE" ]; then
+  BUILD_MODE_BACKUP="$(mktemp)"
+  cp "$BUILD_MODE_FILE" "$BUILD_MODE_BACKUP"
 fi
 
 # Restore dev state on exit so an interrupted release build doesn't
@@ -75,6 +82,14 @@ restore_dev_state() {
   if [ -n "$LOCKFILE_BACKUP" ]; then
     cp "$LOCKFILE_BACKUP" pnpm-lock.yaml
     rm -f "$LOCKFILE_BACKUP"
+  fi
+  if [ -n "$BUILD_MODE_BACKUP" ]; then
+    cp "$BUILD_MODE_BACKUP" "$BUILD_MODE_FILE"
+    rm -f "$BUILD_MODE_BACKUP"
+  else
+    # No prior buildMode file — the user was on the surfer default.
+    # Remove the release-mode file we set so they go back to default.
+    rm -f "$BUILD_MODE_FILE"
   fi
   # Re-install in dev mode (BENTO_RELEASE unset) so node_modules links
   # back to the local Tale UI checkout. Skip in CI — the runner is
@@ -95,6 +110,13 @@ BENTO_RELEASE=1 pnpm install --no-frozen-lockfile
 step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
 BENTO_RELEASE=1 pnpm run ext:build
 BENTO_RELEASE=1 pnpm run import
+# Switch surfer's buildMode to release for this build. Surfer's mozconfig
+# generation reads .surfer/dynamicConfig.buildMode.json — value "release"
+# enables --enable-release, disables --enable-debug, strips assertions.
+# The dev default ("dev" or unset) is faster to compile and surfaces more
+# debug output for daily iteration; release-mode is the right choice for
+# distributable artifacts. Restored by the trap on exit.
+npx surfer set buildMode release >/dev/null
 BENTO_RELEASE=1 npx surfer build
 
 step "3/4 Packaging installer (surfer package)"
