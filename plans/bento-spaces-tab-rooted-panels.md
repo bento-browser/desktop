@@ -2,6 +2,39 @@
 
 ## Status
 
+> **OBSOLETE — superseded by [plans/bento-spaces-split-view-panels.md](bento-spaces-split-view-panels.md).**
+>
+> Phase 1 of this plan was implemented and smoke-tested behind the
+> `bento.panels.tabRooted` pref (default false). Both option (a)
+> (chrome-script-only manual `tab.linkedBrowser` reassignment + progress-
+> listener rebind) and option (b) (Firefox patch making the reassignment
+> atomic inside `_swapBrowserDocShells`) ran into the same root cause:
+> JSWindowActor parent-side instances are recreated when
+> `browsingContext.top.embedderElement` changes, which means
+> `runtime.sendMessage` (Conduits) breaks for any extension that has
+> already attached content scripts to the tab being promoted. Dark
+> Reader, Vimium, etc. all surfaced "Actor 'Conduits' destroyed before
+> query 'RuntimeMessage' was resolved" errors on every promote.
+>
+> The new plan abandons the docShell-swap approach entirely and uses
+> Firefox 150's native multi-panel rendering machinery
+> (`tabpanels.splitViewPanels`, `MozTabSplitViewWrapper`,
+> `gBrowser.showSplitViewPanels`) — which Mozilla and Zen already use
+> for split-tab features. Each panel stays a regular Firefox tab whose
+> `linkedBrowser` is never moved or swapped; multiple tabs are simply
+> rendered simultaneously by the tabpanels deck. Extension support and
+> in-page state preservation come for free because nothing about a
+> tab's identity changes.
+>
+> All the artifacts from this plan
+> (`patches/chrome-layout/04-bento-panel-host-swap.patch`,
+> `src/browser/base/content/bento-panel-host.js`, the
+> `bento.panels.tabRooted` pref, the `createPanelElement` /
+> `reconcilePanels` branches in `bento-shell-mount.js`) get deleted in
+> the new plan's Phase 0.
+>
+> Prior status preserved below for archival reference.
+
 Pre-planning. Targeted at the next preview release (after v0.0.1 ships). Do not start implementation until v0.0.1 is published and we have a clean baseline.
 
 ## Problem statement

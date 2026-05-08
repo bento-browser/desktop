@@ -944,6 +944,7 @@
     star:
       'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z',
     plus: 'M12 5v14 M5 12h14',
+    x: 'M18 6 6 18 M6 6l12 12',
   };
 
   function makeIcon(d, size) {
@@ -1099,7 +1100,7 @@
   // listener doesn't need to fire first. about:blank is suppressed
   // (rendered as empty input) since it's the transient initial state
   // before the panel actually navigates.
-  function createPanelHeader(browserEl, initialUrl) {
+  function createPanelHeader(browserEl, initialUrl, tabId) {
     const header = document.createXULElement('hbox');
     header.className = 'bento-panel-header';
 
@@ -1154,11 +1155,22 @@
       bookmarkPanelPage(browserEl, starBtn),
     );
 
+    // Close button: dispatches panel/remove via the existing
+    // dispatchShellAction frame-script bridge, which drives the same
+    // chrome → reconcile → demote path used by the panel-favicon
+    // middle-click. Only wired when a tabId was passed (defensive — the
+    // header can be constructed in test contexts without one).
+    let closeBtn = null;
+    if (Number.isFinite(tabId)) {
+      closeBtn = makeHeaderButton('Close panel', ICONS.x, () => removePanel(tabId));
+    }
+
     header.appendChild(backBtn);
     header.appendChild(forwardBtn);
     header.appendChild(reloadBtn);
     header.appendChild(urlInput);
     header.appendChild(starBtn);
+    if (closeBtn) header.appendChild(closeBtn);
 
     // Refresh URL input + back/forward enabled state on navigation.
     // Initial pass after a short delay covers the case where the
@@ -1237,6 +1249,20 @@
     // mutate it as the user drags. CSS in injectChromeStyles maps width
     // to the rendered size via `flex: 0 0 auto`.
     vbox.setAttribute('width', String(PANEL_DEFAULT_WIDTH));
+
+    // The Add-Panel trailer creates tabs at about:blank?bento_add_as_panel=1
+    // as an in-band signal to bento-tools. Substitute about:newtab so
+    // the panel renders the new-tab page instead of the marker URL.
+    let panelUrl = url || '';
+    if (panelUrl.includes('bento_add_as_panel=1')) {
+      panelUrl = 'about:newtab';
+    }
+
+    // Parallel-browser path. The panel <browser> is a SEPARATE element
+    // from the underlying tab's <browser>; its src is what the panel
+    // renders. Extensions don't attach to it because content scripts
+    // target the tab's linkedBrowser, not this one — that limitation
+    // is what plans/bento-spaces-split-view-panels.md addresses.
     const browserEl = document.createXULElement('browser');
     browserEl.setAttribute('type', 'content');
     browserEl.setAttribute('remote', 'true');
@@ -1251,24 +1277,14 @@
     browserEl.setAttribute('context', 'contentAreaContextMenu');
     browserEl.setAttribute('tooltip', 'aHTMLTooltip');
     browserEl.setAttribute('messagemanagergroup', 'browsers');
-    // The panel <browser> is a SEPARATE element from the underlying
-    // tab's <browser> — its src is what the panel renders. If the URL
-    // came from the Add-Panel marker (about:blank?bento_add_as_panel=1),
-    // substitute about:newtab here so the panel shows the new-tab page
-    // instead of a blank page with marker query string. The underlying
-    // tab is also navigated to about:newtab by addNewPanel after a short
-    // delay, so the tab title cleans up too.
-    let panelUrl = url || '';
-    if (panelUrl.includes('bento_add_as_panel=1')) {
-      panelUrl = 'about:newtab';
-    }
     // src must be set BEFORE the header attaches its progress listener,
     // otherwise the header's setTimeout(refresh, 50) catches the
     // about:blank initial state but never sees onLocationChange for the
     // eventual URL because progress listeners attached after navigation
     // start may miss the first location change.
     if (panelUrl) browserEl.setAttribute('src', panelUrl);
-    const header = createPanelHeader(browserEl, panelUrl);
+
+    const header = createPanelHeader(browserEl, panelUrl, tabId);
     vbox.appendChild(header);
     vbox.appendChild(browserEl);
     return vbox;
