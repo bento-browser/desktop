@@ -108,7 +108,13 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
 // title-IPC; chrome reconciles its panel strip. Only the ACTIVE workspace's
 // panels render — emitting for an inactive workspace is wasted work.
 async function emitPanelsSync(workspaceId: string): Promise<void> {
-  if (workspaces.getActiveId() !== workspaceId) return;
+  // No active-workspace gate. Sidebar's tab-list filter
+  // (useWorkspaceTabIds) needs panel ids for EVERY workspace so the
+  // workspace-switch slide animation can render the new pane with
+  // the correct panel filter from frame 1, not after panels/sync
+  // arrives a frame later. Chrome's title-IPC forward in
+  // useToolsPort gates on activeId so only the active workspace's
+  // panels reach the chrome reconciler.
   const tabIds = panels.getPanels(workspaceId);
   const resolved = await Promise.all(
     tabIds.map((id) =>
@@ -125,7 +131,7 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
   const valid = resolved.filter(
     (p): p is { tabId: number; url: string; favIconUrl: string } => p !== null,
   );
-  broadcastEvent({ type: 'panels/sync', panels: valid });
+  broadcastEvent({ type: 'panels/sync', workspaceId, panels: valid });
 }
 
 const keys = new KeyRegistry({ workspaces, broadcastEvent });
@@ -384,10 +390,18 @@ browser.runtime.onConnectExternal.addListener((port) => {
   const wsSnap = workspaces.snapshot();
   send({ type: 'workspaces/snapshot', workspaces: wsSnap.workspaces, activeId: wsSnap.activeId });
   send({ type: 'settings/snapshot', settings: settings.snapshot() });
-  // Replay panels for the active workspace so a freshly mounted shell
-  // (cold boot, dev reload, second window) reconciles chrome's panel
-  // strip to the current state. Empty array → chrome hides the strip.
-  if (wsSnap.activeId) void emitPanelsSync(wsSnap.activeId);
+  // Replay panels for EVERY workspace so a freshly mounted shell can
+  // pre-populate its per-workspace panelsStore. Without this, the
+  // sidebar tab-list filter (useWorkspaceTabIds) for non-active
+  // workspaces would see an empty panel set, leaking panel tabs into
+  // the sidebar during the workspace-switch slide animation until
+  // the per-workspace panels/sync arrived (which only happened on
+  // workspace activation). With the pre-populated store, every
+  // workspace's slide pane renders with the correct filter from
+  // frame 1.
+  for (const ws of wsSnap.workspaces) {
+    void emitPanelsSync(ws.id);
+  }
 
   const unsubTabs = tabs.onDeltas((deltas) => {
     send({ type: 'tabs/changed', deltas });

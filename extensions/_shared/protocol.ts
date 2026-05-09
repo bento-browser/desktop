@@ -180,6 +180,13 @@ export type Event =
    * has no extension-API access. */
   | {
       type: 'panels/sync';
+      /** Workspace whose panel set this event describes. The chrome shell
+       * keys its panelsStore by this so the sidebar filter for any workspace
+       * can read the right panel ids — solves the workspace-switch
+       * transient where the previous-active panel set briefly filtered
+       * the new-active tab list, leaking panel tabs into the sidebar
+       * during the slide animation. */
+      workspaceId: string;
       panels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings };

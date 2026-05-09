@@ -84,33 +84,43 @@ function ensureConnection(): void {
         useSettingsStore.getState().apply(event.settings);
         return;
       case 'panels/sync':
-        // Mirror panel ids so the sidebar can subtract them from the
-        // tab list (panels and tabs are disjoint sets in Bento's model).
-        // Apply on every shell entry, not just the sidebar — secondary
-        // entries like the command palette also need to know which tabs
-        // are panels so their tab listings stay consistent.
-        usePanelsStore.getState().apply(event.panels.map((p) => p.tabId));
-        // Forward to chrome via title-IPC. Format expected by bento-shell-
-        // mount.js: BENTO_PANELS:<ts>:<base64-of-json>. Payload shape:
+        // Mirror panel ids per workspace so the sidebar can subtract
+        // them from the tab list (panels and tabs are disjoint sets in
+        // Bento's model). Apply on every shell entry, not just the
+        // sidebar — secondary entries like the command palette also
+        // need to know which tabs are panels so their tab listings
+        // stay consistent.
+        usePanelsStore.getState().apply(
+          event.workspaceId,
+          event.panels.map((p) => p.tabId),
+        );
+        // Forward to chrome via title-IPC, BUT only for the active
+        // workspace's panels — the chrome reconciler renders the
+        // currently-visible panel strip and would corrupt the
+        // layout if we sent panels for inactive workspaces. bento-
+        // tools now broadcasts panels/sync for every workspace (so
+        // the local store can pre-populate the per-workspace filter
+        // for the slide animation); this gate keeps chrome's view
+        // scoped to the active workspace as before.
+        //
+        // Format expected by bento-shell-mount.js:
+        //   BENTO_PANELS:<ts>:<base64-of-json>. Payload shape:
         //   { workspaceId: string|null, panels: Array<{tabId, url, ...}> }
-        // workspaceId carries the active workspace so chrome's Cmd+1..9
-        // handler can scope tab activation to the current workspace
-        // without needing a separate IPC channel (channels would compete
-        // on document.title — the BENTO_PANELS broadcast is already
-        // emitted on every workspace switch, so it's the natural place
-        // to carry workspace identity too). Base64 because URLs can
-        // contain colons / commas / equals signs that interfere with
-        // simpler delimiters. Gated on the bridge flag — only the
-        // sidebar opts in.
+        // workspaceId carries the active workspace so chrome's
+        // Cmd+1..9 handler can scope tab activation to the current
+        // workspace without needing a separate IPC channel.
         if (state.sidePanelTitleBridge) {
-          const payload = {
-            workspaceId: useWorkspacesStore.getState().activeId,
-            panels: event.panels,
-          };
-          const json = JSON.stringify(payload);
-          // btoa needs latin1; encodeURIComponent first to handle multibyte.
-          const b64 = btoa(unescape(encodeURIComponent(json)));
-          document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
+          const activeId = useWorkspacesStore.getState().activeId;
+          if (event.workspaceId === activeId) {
+            const payload = {
+              workspaceId: activeId,
+              panels: event.panels,
+            };
+            const json = JSON.stringify(payload);
+            // btoa needs latin1; encodeURIComponent first to handle multibyte.
+            const b64 = btoa(unescape(encodeURIComponent(json)));
+            document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
+          }
         }
         return;
       case 'privacy/snapshot':

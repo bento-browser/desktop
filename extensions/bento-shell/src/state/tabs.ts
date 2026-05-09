@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
 import type { TabDelta, TabSnapshot } from '@shared/protocol';
-import { usePanelsStore } from './panels';
+import { getPanelIdsForWorkspace, usePanelsStore } from './panels';
 
 interface TabsState {
   /** Tab map keyed by id for O(1) selector subscriptions per tab row (§6.4). */
@@ -114,10 +114,11 @@ export function useWorkspaceTabIds(workspaceId: string | null): number[] {
       return out;
     }),
   );
-  const panelIds = usePanelsStore((s) => s.ids);
-  // Memoize on (tabIds, panelIds): both are stable refs (useShallow above,
-  // and panelIds only changes when usePanelsStore.apply runs) so this
-  // returns the same array unless the inputs actually change.
+  // Per-workspace panel filter. The store keeps the Set reference
+  // stable for a given workspace until panels/sync replaces it, so
+  // useMemo below returns the same array unless the inputs actually
+  // change.
+  const panelIds = usePanelsStore((s) => getPanelIdsForWorkspace(s, workspaceId));
   return useMemo(() => {
     if (panelIds.size === 0) return tabIds;
     return tabIds.filter((id) => !panelIds.has(id));
