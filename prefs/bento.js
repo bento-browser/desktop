@@ -80,6 +80,16 @@ pref("browser.preferences.moreFromMozilla", false);
 // bookmarks toolbar hidden unless users explicitly turn it back on.
 pref("browser.toolbars.bookmarks.visibility", "never");
 
+// Disable the macOS two-finger trackpad swipe-back/forward history gesture.
+// Bento panels each have their own back/forward controls in the per-panel
+// header, so the gesture is redundant; in practice it misfires often during
+// horizontal trackpad scrolls over panel content. Users who want it back can
+// restore the Firefox defaults in about:config:
+//   browser.gesture.swipe.left  = "Browser:BackOrBackDuplicate"
+//   browser.gesture.swipe.right = "Browser:ForwardOrForwardDuplicate"
+pref("browser.gesture.swipe.left", "");
+pref("browser.gesture.swipe.right", "");
+
 // --- Web compatibility ----------------------------------------------------
 // Keep Bento identifiable as Bento while also advertising Firefox compatibility
 // in the UA string. AMO and some Firefox-specific sites key browser support off
