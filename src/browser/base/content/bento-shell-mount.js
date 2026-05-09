@@ -1680,6 +1680,15 @@
     if (!shouldHandlePanelArrowKey(e.target)) return;
 
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      // When focus lives inside a content <browser>, the BentoKey
+      // child actor owns Left/Right: it forwards to chrome only when
+      // the inner content target is non-editable, so a Wikipedia
+      // search input (or any in-page text field) keeps caret motion.
+      // shouldHandlePanelArrowKey can't see across the process
+      // boundary — document.activeElement reports the <browser>
+      // element, not the inner input — so bail here unconditionally
+      // when content has focus.
+      if (document.activeElement?.localName === 'browser') return;
       e.preventDefault();
       navigatePanels(e.key === 'ArrowRight' ? 1 : -1);
       return;
@@ -2012,17 +2021,30 @@
     currentActiveIdx = idx;
     applyActiveMarker(idx);
     applyPanelFocusIndicator(idx);
-    // Move keyboard focus to the selected cycle target. For panels,
-    // subsequent TAB walks into header buttons → URL input → page
-    // content. For the Add-panel trailer, Enter/Return activates the
-    // button directly.
     const targets = getPanelCycleTargets();
-    if (idx >= 0 && idx < targets.length) {
-      try {
-        targets[idx].focus({ preventScroll: true });
-      } catch {
-        /* focus best-effort; some browser elements may reject */
+    if (idx < 0 || idx >= targets.length) return;
+    const target = targets[idx];
+    // Panel target → focus the panel's <browser> content so the
+    // page receives keys natively. Page-bound keyboard extensions
+    // (Vimium j/k, Surfingkeys, etc.) only work when their content
+    // document has DOM focus; before the BentoKey content actor
+    // landed we focused the chrome notificationbox here instead,
+    // which made Left/Right cycling work but blocked all other
+    // page-bound keys. Now Left/Right is forwarded back to chrome
+    // via the actor (see attachContentKeyBridgeListener), so we
+    // can keep content-focused as the default.
+    //
+    // Add-trailer target (no inner <browser>) → focus the chrome
+    // element directly so Enter activates it.
+    try {
+      const browserEl = target.querySelector?.('browser');
+      if (browserEl) {
+        browserEl.focus({ preventScroll: true });
+      } else {
+        target.focus({ preventScroll: true });
       }
+    } catch {
+      /* focus best-effort; some browser elements may reject */
     }
   }
 
@@ -4259,6 +4281,51 @@
     });
   }
 
+  // Content-key bridge — register the BentoKey JSWindowActor pair
+  // (BentoKeyChild + BentoKeyParent in the same content directory)
+  // ONCE per process. Without this, panel cycling (Left/Right) only
+  // works while focus is on the chrome panel container, which keeps
+  // content from receiving any keys — breaking page-bound keyboard
+  // extensions (Vimium j/k, Surfingkeys, etc.) inside panels.
+  //
+  // The child listens for keydowns inside content, forwards Bento-
+  // bound keys to the parent (which dispatches a CustomEvent on this
+  // chrome window — see attachContentKeyBridgeListener below). All
+  // other keys pass through naturally so extensions still work.
+  //
+  // registerWindowActor is process-wide — the second window's
+  // bento-shell-mount.js boot would throw NS_ERROR_NOT_AVAILABLE
+  // because the actor is already registered. Guard idempotently.
+  function registerContentKeyActor() {
+    try {
+      ChromeUtils.registerWindowActor('BentoKey', {
+        parent: { esModuleURI: 'resource:///actors/BentoKeyParent.sys.mjs' },
+        child: {
+          esModuleURI: 'resource:///actors/BentoKeyChild.sys.mjs',
+          events: { keydown: { capture: true } },
+        },
+        allFrames: true,
+        matches: ['*://*/*', 'file:///*'],
+      });
+    } catch (err) {
+      // NS_ERROR_NOT_AVAILABLE = already registered (second window).
+      if (!String(err).includes('NS_ERROR_NOT_AVAILABLE')) {
+        console.warn('[bento-shell-mount] registerContentKeyActor failed:', err);
+      }
+    }
+  }
+
+  // Listen for the CustomEvent dispatched by BentoKeyParent.
+  // navigatePanels is closure-private, so the actor can't call it
+  // directly — the event is the bridge.
+  function attachContentKeyBridgeListener() {
+    window.addEventListener('BentoKey:Cycle', (e) => {
+      const dir = e?.detail?.direction;
+      if (dir !== 1 && dir !== -1) return;
+      navigatePanels(dir);
+    });
+  }
+
   configureSidePanelOnce();
   attachReloadListener();
   attachPaletteKeybinding();
@@ -4268,4 +4335,6 @@
   attachTabSelectListener();
   attachPanelAcceleratorListener();
   attachResizeRepaintPoke();
+  registerContentKeyActor();
+  attachContentKeyBridgeListener();
 })();
