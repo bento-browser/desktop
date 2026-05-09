@@ -612,6 +612,38 @@
       .bento-panel-header[data-bento-injected="1"] {
         flex: 0 0 auto;
       }
+
+      /* ─── Multi-panel column ordering ────────────────────────────────
+         Firefox's split-view CSS only assigns explicit flex 'order' for
+         column="0" and column="1" (designed for the 2-panel UI). With
+         3+ panels, columns 2+ get default 'order: 0' and end up
+         interleaved with column 0; column 1's 'order: 2' still pushes
+         it after the splitter. Result with N panels: visual layout is
+         [col 0, col 2, col 3, ..., splitter, col 1] instead of
+         [col 0, col 1, col 2, ...]. The new mainTab (always col 0)
+         appears in a non-deterministic visual slot depending on DOM
+         insertion order, which the user perceives as "main slot
+         moves to the second position when I press Cmd+T".
+         Override Firefox's [column="0"] and [column="1"] rules with
+         contiguous order values that scale to any panel count. The
+         splitter (Firefox order: 1) is unused in Bento's N-panel
+         layout — push it past everything with order: 99 and hide it.
+         If we ever want per-pair splitters, they'll need to be
+         injected separately from this layout. */
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="0"] { order: 0; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="1"] { order: 1; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="2"] { order: 2; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="3"] { order: 3; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="4"] { order: 4; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="5"] { order: 5; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="6"] { order: 6; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="7"] { order: 7; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="8"] { order: 8; }
+      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="9"] { order: 9; }
+      #tabbrowser-tabpanels[splitview] > .split-view-splitter {
+        order: 99;
+        display: none;
+      }
     `;
     document.documentElement.appendChild(style);
   }
