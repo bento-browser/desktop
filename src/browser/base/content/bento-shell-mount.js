@@ -2859,29 +2859,77 @@
     // or not).
     if (!panels || panels.length === 0) {
       const previous = tabpanels.splitViewPanels || [];
-      if (!previous.length && !__lastSplitViewMarker) {
+      const splitActive = tabpanels.classList.contains('bento-split-active');
+      if (!previous.length && !__lastSplitViewMarker && !splitActive) {
         return; // already torn down — nothing to do
       }
-      console.log(
-        '[bento-shell-mount] reconciler: no panels — tearing down split-view',
-      );
-      // Clear deck state and per-panel split-view classes
-      try {
-        for (const panelId of previous) {
-          tabpanels.setSplitViewPanelActive(false, panelId);
-        }
-        tabpanels.splitViewPanels = [];
-      } catch (err) {
-        console.warn('[bento-shell-mount] tear-down: clear splitViewPanels failed:', err);
-      }
-      // Drop our marker from any tab that still carries it
+
+      // Walk every tab in the window and strip the artifacts the
+      // reconciler stamps on panel containers. Two reasons we need to
+      // do this comprehensively here (not just for `previous`):
+      //   1. The TabSelect-triggered reconcile that fires WHEN bento-
+      //      tools activates the new workspace's tab runs BEFORE the
+      //      panels/sync arrives, so the new mainTab's container gets
+      //      stamped with data-bento-main-panel + style.order even
+      //      though the "real" reconcile (this one) is about to tear
+      //      everything down.
+      //   2. Firefox's tabpanels.splitViewPanels = [] setter only
+      //      adds .split-view-panel to NEW entries — it doesn't strip
+      //      from departing ones (asymmetric API). Without removing,
+      //      ex-panels keep `flex: 1; width: 49.4%` from
+      //      content-area.css:160 even after they've left the split,
+      //      causing the new selectedTab to render at fractional
+      //      width with blank flex slots beside it (the user-reported
+      //      "first tab in new workspace doesn't extend to full
+      //      window viewport" symptom).
+      //
+      // Includes all tabs (not just `previous`) to catch any artifacts
+      // left over from the transient TabSelect reconcile above.
       for (const tab of gBrowser.tabs) {
         if (tab.splitview && tab.splitview.kind === BENTO_SPLIT_KIND) {
           delete tab.splitview;
         }
+        const panelEl = document.getElementById(tab.linkedPanel);
+        if (!panelEl) continue;
+        delete panelEl.dataset.bentoMainPanel;
+        delete panelEl.dataset.bentoPanelTabId;
+        panelEl.style.removeProperty('order');
+        if (panelEl.getAttribute('tabindex') === '-1') {
+          panelEl.removeAttribute('tabindex');
+        }
+        panelEl.classList.remove('split-view-panel-active');
       }
-      // Notify Firefox so #activeSplitView clears and shouldActivateDocShell
-      // stops returning true for ex-panel browsers
+
+      // Use Firefox's removeTabsFromSplitview to strip .split-view-
+      // panel + [column] from each previous panel container in one
+      // go. Then clear the deck's split state.
+      const previousTabs = previous
+        .map((id) => gBrowser.tabs.find((t) => t.linkedPanel === id))
+        .filter((t) => !!t);
+      if (previousTabs.length) {
+        try {
+          tabpanels.removeTabsFromSplitview(previousTabs);
+        } catch (err) {
+          console.warn('[bento-shell-mount] tear-down: removeTabsFromSplitview failed:', err);
+        }
+      } else {
+        try {
+          tabpanels.splitViewPanels = [];
+        } catch (err) {
+          console.warn('[bento-shell-mount] tear-down: clear splitViewPanels failed:', err);
+        }
+      }
+
+      // Strip the Bento class from tabpanels so our overrides
+      // (overflow-x, scrollbar-width, etc.) stop applying — the deck
+      // returns to default Firefox rendering where the .deck-selected
+      // notificationbox uses position: absolute (from
+      // .browserSidebarContainer) to fill the viewport.
+      tabpanels.classList.remove('bento-split-active');
+
+      // Notify Firefox so #activeSplitView clears and
+      // shouldActivateDocShell stops returning true for ex-panel
+      // browsers.
       if (__lastSplitViewMarker) {
         try {
           window.dispatchEvent(
@@ -2898,6 +2946,7 @@
         }
         __lastSplitViewMarker = null;
       }
+
       // Refresh nav strip (no panels → empty)
       refreshPanelNav([]);
       return;
