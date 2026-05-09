@@ -11,6 +11,7 @@ import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
+import { clearPanelMarker } from '../panels/SessionMarker';
 
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
 // snapshot. browser.privacy.* setters return Promise<void> but reading via
@@ -46,6 +47,10 @@ export interface HandlerContext {
    * broadcast access + browser.tabs.get for URL resolution); the handler
    * only triggers it when panel state changes. */
   emitPanelsSync: (workspaceId: string) => void;
+  /** Rewrite session markers for every panel in the workspace with
+   * their current indexes. Call after any mutation that changes panel
+   * order so Cmd+Shift+T restores land in the right slot. */
+  syncPanelMarkers: (workspaceId: string) => void;
 }
 
 export function handle(action: Action, ctx: HandlerContext): void {
@@ -151,13 +156,23 @@ export function handle(action: Action, ctx: HandlerContext): void {
     case 'panel/add': {
       const wsId = ctx.workspaces.getActiveId();
       if (!wsId) return;
-      if (ctx.panels.add(wsId, action.id)) ctx.emitPanelsSync(wsId);
+      if (ctx.panels.add(wsId, action.id)) {
+        // syncPanelMarkers writes the new tab's marker (it's now in
+        // panels.getPanels at the last index) plus refreshes any
+        // existing markers — covers add, idempotent for the rest.
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
       return;
     }
     case 'panel/remove': {
       const wsId = ctx.workspaces.getActiveId();
       if (!wsId) return;
-      if (ctx.panels.remove(wsId, action.id)) ctx.emitPanelsSync(wsId);
+      if (ctx.panels.remove(wsId, action.id)) {
+        void clearPanelMarker(action.id);
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
       return;
     }
     case 'panels/clear': {
@@ -165,14 +180,20 @@ export function handle(action: Action, ctx: HandlerContext): void {
       if (!wsId) return;
       const current = ctx.panels.getPanels(wsId);
       if (current.length === 0) return;
-      for (const id of current) ctx.panels.remove(wsId, id);
+      for (const id of current) {
+        ctx.panels.remove(wsId, id);
+        void clearPanelMarker(id);
+      }
       ctx.emitPanelsSync(wsId);
       return;
     }
     case 'panel/reorder': {
       const wsId = ctx.workspaces.getActiveId();
       if (!wsId) return;
-      if (ctx.panels.reorder(wsId, action.tabIds)) ctx.emitPanelsSync(wsId);
+      if (ctx.panels.reorder(wsId, action.tabIds)) {
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
       return;
     }
     case 'privacy/requestSnapshot':

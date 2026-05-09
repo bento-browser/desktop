@@ -10,6 +10,7 @@ import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
+import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { Action, Event } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
@@ -207,7 +208,12 @@ tabs.onDeltas((deltas) => {
     if (d.kind === 'removed') {
       const affected = panels.findWorkspacesContainingTab(d.id);
       if (affected.length === 0) continue;
-      for (const wsId of affected) panels.remove(wsId, d.id);
+      for (const wsId of affected) {
+        panels.remove(wsId, d.id);
+        // Remaining panels' indexes shifted — rewrite their markers
+        // so a future Cmd+Shift+T lands at the correct slot.
+        syncPanelMarkersForWorkspace(wsId);
+      }
       const activeId = workspaces.getActiveId();
       if (activeId && affected.includes(activeId)) {
         void emitPanelsSync(activeId);
@@ -281,16 +287,128 @@ function maybeHandleAddPanelMarker(tabId: number, url: string, source: string): 
   }
   if (panels.add(wsId, tabId)) {
     console.log('[bento-tools] add-as-panel: panels.add OK, emitting sync');
+    syncPanelMarkersForWorkspace(wsId);
     void emitPanelsSync(wsId);
   } else {
     console.warn('[bento-tools] add-as-panel: panels.add returned false');
   }
 }
 
+// Restore a tab to its workspace's panel set after Cmd+Shift+T (Firefox
+// SessionStore preserves the bento.isPanel session value across the
+// close → restore round-trip; readPanelMarker pulls it back). Idempotent
+// via panels.add returning false when the tabId is already present.
+//
+// Workspace-not-loaded edge case: if the marker references a workspace
+// that no longer exists (deleted) or hasn't been loaded yet (boot path
+// before WorkspaceStore.init resolves), clear the marker silently and
+// skip — the user reopened the tab as a regular sidebar tab. The
+// boot-path URL-based persistence in PanelStore handles cold-start
+// restoration of all-workspace panel state.
+// Track the last "real" (non-panel) active tab so panel tabs activated
+// during Cmd+Shift+T restore can be reverted to that tab. Without this,
+// SessionStore's undoCloseTab activates the restored panel tab, our
+// reconciler treats it as the new mainTab, and the panel briefly
+// covers the main slot until the user clicks back to a sidebar tab.
+//
+// Seeded at startup from browser.tabs.query because tabs.onActivated
+// does NOT fire for the already-active tab at the moment our listener
+// attaches — without seeding, lastActiveNonPanelTabId stays null until
+// the user manually switches tabs, and Cmd+Shift+T on a fresh launch
+// fails to revert.
+let lastActiveNonPanelTabId: number | null = null;
+
+void (async () => {
+  try {
+    const [active] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (typeof active?.id !== 'number') return;
+    const marker = await readPanelMarker(active.id);
+    if (!marker) {
+      lastActiveNonPanelTabId = active.id;
+    }
+  } catch (err) {
+    console.warn('[bento-tools] seed lastActiveNonPanelTabId failed:', err);
+  }
+})();
+
+// Rewrite session markers for every panel in `workspaceId` with their
+// current indexes. Call after any mutation that changes panel order
+// (add, remove, reorder) so Cmd+Shift+T restores land in the same slot
+// the panel was in WHEN IT WAS CLOSED, not the end of the list.
+// Fire-and-forget per tab — the marker writes are independent and only
+// matter at the next close→restore round-trip.
+function syncPanelMarkersForWorkspace(workspaceId: string): void {
+  const list = panels.getPanels(workspaceId);
+  list.forEach((tabId, idx) => {
+    void setPanelMarker(tabId, workspaceId, idx);
+  });
+}
+
+async function maybeRestorePanelFromMarker(
+  tabId: number,
+  previousNonPanelTabId: number | null,
+): Promise<void> {
+  const marker = await readPanelMarker(tabId);
+  if (!marker) return;
+  const workspace = workspaces.snapshot().workspaces.find((w) => w.id === marker.workspaceId);
+  if (!workspace) {
+    void clearPanelMarker(tabId);
+    return;
+  }
+  if (panels.insertAt(marker.workspaceId, tabId, marker.position)) {
+    syncPanelMarkersForWorkspace(marker.workspaceId);
+    void emitPanelsSync(marker.workspaceId);
+  }
+  // Cmd+Shift+T activates the restored tab. If it's a panel, revert
+  // activation to the last non-panel tab so the panel lands in its side
+  // slot instead of overlaying the main slot. Uses
+  // `previousNonPanelTabId` captured synchronously in tabs.onCreated:
+  // the concurrent tabs.onActivated handler often clobbers the
+  // module-level lastActiveNonPanelTabId because SessionStore hasn't
+  // restored the marker yet at activation time.
+  if (previousNonPanelTabId === null || previousNonPanelTabId === tabId) {
+    return;
+  }
+  try {
+    const [active] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (active?.id !== tabId) return;
+    await browser.tabs.update(previousNonPanelTabId, { active: true });
+  } catch (err) {
+    console.warn('[bento-tools] revert from panel restore failed:', err);
+  }
+}
+
 browser.tabs.onCreated.addListener((tab) => {
   console.log('[bento-tools] tabs.onCreated:', tab.id, 'url=', tab.url);
   if (typeof tab.id !== 'number') return;
+  // Capture synchronously, BEFORE any await — the concurrent
+  // tabs.onActivated handler awaits readPanelMarker and, on a miss,
+  // overwrites lastActiveNonPanelTabId with the new (panel) tab's id.
+  const previousNonPanelTabId = lastActiveNonPanelTabId;
   maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated');
+  void maybeRestorePanelFromMarker(tab.id, previousNonPanelTabId);
+});
+
+browser.tabs.onActivated.addListener(async ({ tabId }) => {
+  const marker = await readPanelMarker(tabId);
+  if (!marker) {
+    lastActiveNonPanelTabId = tabId;
+    return;
+  }
+  // Backstop revert: if SessionStore restored the marker before
+  // onActivated fires, this catches it. The primary revert lives in
+  // maybeRestorePanelFromMarker because session values are usually
+  // not yet readable here.
+  if (lastActiveNonPanelTabId === null || lastActiveNonPanelTabId === tabId) {
+    return;
+  }
+  try {
+    await browser.tabs.update(lastActiveNonPanelTabId, { active: true });
+  } catch (err) {
+    console.warn('[bento-tools] revert panel-tab activation failed (may have been closed):', err);
+    // Stale lastActiveNonPanelTabId — clear so we don't keep trying.
+    lastActiveNonPanelTabId = null;
+  }
 });
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -414,7 +532,15 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onMessage.addListener((message: object) => {
-    handle(message as Action, { tabs, workspaces, settings, panels, send, emitPanelsSync });
+    handle(message as Action, {
+      tabs,
+      workspaces,
+      settings,
+      panels,
+      send,
+      emitPanelsSync,
+      syncPanelMarkers: syncPanelMarkersForWorkspace,
+    });
   });
 
   port.onDisconnect.addListener(() => {

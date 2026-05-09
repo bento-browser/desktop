@@ -61,6 +61,20 @@ export class PanelStore {
     return true;
   }
 
+  /** Insert a tab at a specific slot. Position is clamped to
+   * [0, list.length]; out-of-range values append. No-op if already
+   * present. Used by the Cmd+Shift+T restore path so panels return to
+   * their original slot rather than the end of the list. */
+  insertAt(workspaceId: string, tabId: number, position: number): boolean {
+    const list = this.#byWorkspace.get(workspaceId) ?? [];
+    if (list.includes(tabId)) return false;
+    const idx = Math.max(0, Math.min(position, list.length));
+    const next = [...list.slice(0, idx), tabId, ...list.slice(idx)];
+    this.#byWorkspace.set(workspaceId, next);
+    this.#schedulePersist();
+    return true;
+  }
+
   /** Remove a tab from a workspace's panels. Returns true if removed. */
   remove(workspaceId: string, tabId: number): boolean {
     const list = this.#byWorkspace.get(workspaceId);
