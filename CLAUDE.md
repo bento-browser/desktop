@@ -24,6 +24,44 @@ The following rules apply to all responses:
 16. Notify the user when documents or older messages become truncated.
 17. Flag uncertainty or potential conflict rather than performing states that can't be verified.
 
+## Backticks inside JS template literals
+
+When writing CSS/HTML inside a JS template literal (a backtick string), **never use backticks in the embedded content** — they terminate the template literal early and produce confusing TS/JS syntax errors that are easy to misdiagnose. This has happened repeatedly in [src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js) where chrome CSS is injected via a `style.textContent = ...` template literal.
+
+Bad — backticks around the word `order` end the outer template literal:
+
+```js
+style.textContent = `
+  /* Firefox's flex `order` property */
+  .foo { order: 0; }
+`;
+```
+
+Good — use single quotes inside CSS comments:
+
+```js
+style.textContent = `
+  /* Firefox's flex 'order' property */
+  .foo { order: 0; }
+`;
+```
+
+If a backtick really is required in the embedded content, escape it with a leading backslash. Same hazard for `${...}` — if you need a literal `${` in the embedded content, escape the dollar sign with a backslash.
+
+When the IDE diagnostics report `';' expected` or `Module declaration names may only use ' or " quoted strings` on lines inside a template literal, suspect a stray backtick or `${` first — TS isn't broken, it's correctly parsing the prematurely-terminated template.
+
+## Asking the user to run debug/test steps
+
+When you need the user to capture diagnostics, reproduce a bug, run a probe in the running browser, or any other multi-step manual procedure, write the request as a numbered checklist with these explicit markers:
+
+- **Which surface** each step happens in: `terminal`, `Bento window`, `Browser Toolbox Console` (Cmd+Opt+Shift+I, parent process), `regular DevTools Console` (Cmd+Opt+I, content), `about:config`, etc. Never assume the user knows which one — name it.
+- **Exact action verbs**: "paste this", "click X", "navigate to URL", "wait for Y to appear". No "then check" or "verify" without specifying how.
+- **Self-contained code blocks**: each block runnable as-is. If the user might re-run a snippet, use unique variable names (`ww`/`gg` instead of `w`/`g`) so `const` redeclaration doesn't error.
+- **What to send back**: name the exact console output range to copy (e.g. "everything from `[bento-trace] watcher attached` through the end of the diagnostic output"). Specify "include stack traces" when relevant.
+- **Sequence matters**: build/launch first, then open toolbox, then paste setup snippets, then reproduce in browser window, then paste capture snippets. Don't interleave.
+
+Do not give the user fragments and expect them to assemble the procedure. Do not ask "when do you want me to run this?" questions back at them — answer the ordering before they have to ask.
+
 ## What this project is
 
 Bento Browser is a Surfer-based Firefox 150 fork. The UI shell ships as two privileged built-in extensions:
