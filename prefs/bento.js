@@ -105,9 +105,12 @@ pref("bento.commandPalette.enabled", true);
 // (tabpanels.splitViewPanels = [...]) instead of the legacy parallel-
 // browser path. Each panel is a real Firefox tab whose linkedBrowser
 // stays in tabpanels for its lifetime, so extension content scripts
-// (Vimium / Dark Reader / uBlock / …) attach correctly. Default false
-// during Phase 2 development; flips to true at the end of Phase 5.
-pref("bento.panels.splitView", false);
+// (Vimium / Dark Reader / uBlock / …) attach correctly. Flipped to true
+// during Phase 2 once the reconciler stabilised, ahead of the formal
+// Phase 5 cutover, so dev:fresh sessions don't have to re-toggle this
+// in about:config every relaunch. Phase 5 will delete the legacy path
+// and remove this pref altogether.
+pref("bento.panels.splitView", true);
 
 // --- Update-check defaults ------------------------------------------------
 // Firefox's BrowserGlue.sys.mjs reads `app.update.checkInstallTime.days`
