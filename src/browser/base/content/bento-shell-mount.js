@@ -2798,6 +2798,20 @@
       get activeTab() {
         return tabs[0];
       },
+      // tabbrowser.js:_insertTabAtIndex (line ~4867) treats `tab.splitview`
+      // as a MozTabSplitViewWrapper DOM element — when the opener tab is
+      // the first in the split, it does `itemAfter = splitview` then
+      // `node.before(newTab)`. Without these shims our plain-object marker
+      // throws "node.before is not a function" on right-click→Open in New
+      // Tab and on Cmd+Shift+T panel restore. Delegating to the first /
+      // last tab in the split places the new tab adjacent to ours in the
+      // (hidden) tab strip, matching Firefox's intent.
+      before(newNode) {
+        tabs[0]?.before(newNode);
+      },
+      get nextElementSibling() {
+        return tabs[tabs.length - 1]?.nextElementSibling || null;
+      },
     };
   }
 
