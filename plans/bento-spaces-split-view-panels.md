@@ -227,9 +227,9 @@ Exit criterion: behind `bento.panels.splitView=true`, all v0.0.1 UX works AND ex
 - Verify <100 ms perceived latency on workspace switch with 5 panels per workspace (per the M2 perf budget).
 - Verify per-workspace state (each workspace's panels, ordering, URLs) round-trips correctly across workspace switches.
 
-### Phase 4: Cmd+R / Cmd+L / Cmd+F retargeting + Cmd+Shift+T restore
+### Phase 4: Cmd+R / Cmd+L / Cmd+F retargeting + Cmd+Shift+T restore + content-key bridge
 
-2 days. The hardest phase, but well-trodden territory.
+3 days. The hardest phase, but well-trodden territory. Bumped from 2d to accommodate the JSWindowActor bridge (queued from Phase 2 verification — see "Content-key bridge" below).
 
 #### Accelerator retargeting
 
@@ -238,6 +238,21 @@ Decide between Option I and Option II from the architecture section. Likely **Op
 - Window-level capture-phase keydown listeners for Cmd+R, Cmd+Shift+R, Cmd+L, Cmd+F, Cmd+G.
 - If a panel has focus (track via the existing focused-panel state used for arrow-key cycling): `preventDefault`, `stopPropagation`, route the action to the focused panel's `linkedBrowser` (e.g. `panelBrowser.reload()`, `panelBrowser.fixupAndLoadURIString(...)`, find-toolbar invocation against the panel's webNavigation).
 - If no panel is focused, let Firefox's default fire — accelerator targets the main panel as before.
+
+#### Content-key bridge (queued from Phase 2)
+
+**Known limitation in Phase 2:** the cycle indicator sits on the panel container (a chrome notificationbox we made `tabindex="-1"` so `setActiveByIndex` can focus it). DOM focus is therefore on chrome, not inside the page. This is fine for chrome-side handling (Left/Right cycling, our Up/Down → `cmd_scrollLineDown` / `cmd_scrollLineUp` chain), but content-side keyboard extensions like Vimium / Surfingkeys / Vimari, which bind keys via content-process keydown listeners on the page document, never receive keystrokes for the cycle-focused panel. The user must click into a panel to give content focus before page-bound keys work — same trade-off as the accelerator retargeting (Cmd+R etc.) section above.
+
+The cleanest fix is the same JSWindowActor pattern Phase 4 needs anyway:
+
+- Content-side `BentoKeyChild` actor: listens for keydowns inside every panel's content document. For configured chrome-bound keys (the cycle keys, the accelerators above), forwards to the parent actor and `preventDefault`s in content. Other keys pass through to the page (Vimium / page handlers see them normally).
+- Chrome-side `BentoKeyParent` actor: receives the messages, dispatches to `navigatePanels` / `panelBrowser.reload()` / etc.
+- Configuration: keys to forward are declared in the actor's manifest. Adding a key is one line.
+- Panel container loses `tabindex="-1"` (or keeps it for focus-ring fallback when content isn't loaded yet, but no longer the primary keyboard surface).
+
+This subsumes the Cmd+R/L/F retargeting work — both flows funnel through the same chrome→content message channel. Build the actor once.
+
+**Risk**: web pages that legitimately bind arrow keys (search results, slide decks, kanban boards, code editors) shouldn't lose them. The content actor's keydown handler must check `event.defaultPrevented`/`event.target` to decide whether to forward. Whitelist semantics (forward only when on a non-form, non-contenteditable target) is the safe default.
 
 #### Cmd+Shift+T restore
 
@@ -301,10 +316,10 @@ After Phase 5:
 - Phase 1 (probe `splitViewPanels` directly): 1 day
 - Phase 2 (reconciler rewrite + per-panel header injection): 2 days
 - Phase 3 (workspace switching): 1 day
-- Phase 4 (accelerator retargeting + Cmd+Shift+T restore): 2 days
+- Phase 4 (accelerator retargeting + Cmd+Shift+T restore + content-key bridge actor): 3 days
 - Phase 5 (cleanup + flip default): 0.5 days
 
-**Total: 7 days** of focused work. Slightly higher than the 2–3 day napkin estimate because we're being honest about Phase 4's Cmd+R/L/F retargeting and Cmd+Shift+T panel-restore, both of which are real engineering work that the prior plan also called out (Phase 5 of the obsolete plan).
+**Total: 8 days** of focused work. Slightly higher than the 2–3 day napkin estimate because we're being honest about Phase 4's Cmd+R/L/F retargeting, Cmd+Shift+T panel-restore, and the content-key bridge actor — all real engineering work that the prior plan called out (Phase 5 of the obsolete plan), plus the bridge queued from Phase 2 verification (Vimium / content-script keys not reaching the cycle-focused panel; see Phase 4 §"Content-key bridge").
 
 ## Backward compatibility / migration
 
