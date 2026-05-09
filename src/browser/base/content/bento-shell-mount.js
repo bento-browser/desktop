@@ -596,9 +596,28 @@
          per-panel header sit to the LEFT of the <browser>, splitting
          the panel's width in half. Override flex-direction so children
          stack vertically: header on top, browser fills the rest. */
+      /* When the combined min-width of all panels exceeds the viewport
+         width (typical at 4+ panels on a narrow window), the deck must
+         scroll horizontally instead of overflowing off-screen. flex-
+         shrink: 0 on each panel keeps them at their min-width — without
+         it, flex would shrink them past min-width and squash content
+         until the panels are unusable. */
+      #tabbrowser-tabpanels.bento-split-active {
+        overflow-x: auto;
+        /* Hide tabpanels' native horizontal scrollbar — the custom
+           always-visible #bento-strip-scrollbar in the sidebar drives
+           tabpanels.scrollLeft and is positioned next to the favicon
+           nav. macOS's overlay scrollbar floats over panel content and
+           auto-hides; the custom one stays put. */
+        scrollbar-width: none;
+      }
+      #tabbrowser-tabpanels.bento-split-active::-webkit-scrollbar {
+        display: none;
+      }
       #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active {
         flex-direction: column;
         min-width: var(--bento-panel-min-width, 380px);
+        flex-shrink: 0;
       }
       /* The browser fills whatever vertical space the header doesn't. */
       #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
@@ -643,6 +662,32 @@
       #tabbrowser-tabpanels[splitview] > .split-view-splitter {
         order: 99;
         display: none;
+      }
+
+      /* Cycle focus ring for split-view panels. Mirrors the legacy
+         #bento-side-panel-host rule but scoped to tabpanels children
+         (which have data-bento-main-panel / data-bento-panel-tab-id
+         stamped by the reconciler). Without this, arrow-key cycling
+         and Tab/click focus changes update the favicon strip marker
+         but produce no visible indicator on the panel itself. */
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
+        position: relative;
+      }
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]::after,
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id]::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: var(--bento-focus-ring-width) solid transparent;
+        border-radius: var(--radius-m);
+        pointer-events: none;
+        z-index: 1;
+        box-sizing: border-box;
+        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+      }
+      #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
+        border-color: var(--color-60);
       }
     `;
     document.documentElement.appendChild(style);
@@ -1487,6 +1532,25 @@
   // chrome — the content process consumes them — so webpages keep
   // their arrow-key behaviour for free.
   function getOrderedPanels() {
+    // Split-view mode: panels live as notificationbox children of
+    // gBrowser.tabpanels, in tabpanels.splitViewPanels order. The
+    // reconciler stamps data-bento-main-panel / data-bento-panel-tab-id
+    // on each panel container so downstream code (drag-reorder, arrow-
+    // key cycling, Esc-to-blur) reads tabIds the same way it does in
+    // the legacy parallel-browser path.
+    if (
+      isSplitViewEnabled() &&
+      window.gBrowser?.tabpanels?.classList.contains('bento-split-active')
+    ) {
+      const out = [];
+      const ids = window.gBrowser.tabpanels.splitViewPanels || [];
+      for (const panelId of ids) {
+        const el = document.getElementById(panelId);
+        if (el) out.push(el);
+      }
+      return out;
+    }
+    // Legacy parallel-browser path
     const host = document.getElementById('bento-side-panel-host');
     if (!host) return [];
     const out = [];
@@ -1549,7 +1613,12 @@
   }
 
   function navigatePanels(delta) {
-    const host = document.getElementById('bento-side-panel-host');
+    // Scroll the active host (tabpanels in split-view mode, legacy
+    // panel-host otherwise) so the next cycle target is brought into
+    // view alongside the favicon-strip marker advance. Without this,
+    // panels off-screen of the strip stay off-screen even though the
+    // favicon strip indicator advances.
+    const host = getStripScrollTarget();
     if (!host) return false;
     const targets = getPanelCycleTargets();
     if (targets.length === 0) return false;
@@ -1577,11 +1646,56 @@
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (!shouldHandlePanelArrowKey(e.target)) return;
-    e.preventDefault();
-    navigatePanels(e.key === 'ArrowRight' ? 1 : -1);
+
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      navigatePanels(e.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
+
+    // Up/Down on a cycle-focused panel container scroll the panel's
+    // content vertically. Without this, arrow keys produce no scroll
+    // because the panel container (a notificationbox) isn't a scroll
+    // surface and keyboard focus is on chrome, not content.
+    //
+    // We can't simply move keyboard focus to the panel's <browser>
+    // element to let the content's natural arrow-key handling take
+    // over: with focus in content (a remote process), the chrome
+    // keydown listener on `window` no longer sees Left/Right key
+    // events, breaking cycling. Instead, use the chrome command
+    // dispatcher's cmd_scrollLine{Up,Down} which routes scroll
+    // commands across the multi-process boundary to whichever
+    // browser is currently focused. Brief focus shuffle: focus the
+    // browser to direct the command at it, dispatch, then restore
+    // focus to the container so Left/Right cycling keeps working.
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const target = e.target;
+      const isPanelContainer = !!(
+        target &&
+        target.dataset &&
+        (target.dataset.bentoMainPanel || target.dataset.bentoPanelTabId)
+      );
+      if (!isPanelContainer) return;
+      const browser = target.querySelector('browser');
+      if (!browser) return;
+      e.preventDefault();
+      try {
+        browser.focus({ preventScroll: true });
+        const cmd = e.key === 'ArrowDown' ? 'cmd_scrollLineDown' : 'cmd_scrollLineUp';
+        const controller = document.commandDispatcher.getControllerForCommand(cmd);
+        controller?.doCommand?.(cmd);
+      } catch (err) {
+        console.warn('[bento-shell-mount] panel scroll failed:', err);
+      } finally {
+        try {
+          target.focus({ preventScroll: true });
+        } catch {
+          /* best-effort restore */
+        }
+      }
+    }
   });
 
   // Scroll the focused panel's content via a frame script. With panel
@@ -2170,8 +2284,25 @@
   // setPointerCapture on the thumb so drags continue when the cursor
   // crosses over a remote content browser (same reason inter-panel
   // splitters use it).
+  // Returns the element whose horizontal scroll the custom scrollbar
+  // should track. In split-view mode, the actual scroll context is
+  // #tabbrowser-tabpanels (Firefox's native deck — content-area.css and
+  // our injected overflow-x: auto make it scrollable when N panels
+  // exceed viewport width). In the legacy parallel-browser path, it's
+  // #bento-side-panel-host. Single helper so updateStripScrollbar +
+  // pointer drag handlers + track-click all stay aligned.
+  function getStripScrollTarget() {
+    if (
+      isSplitViewEnabled() &&
+      window.gBrowser?.tabpanels?.classList.contains('bento-split-active')
+    ) {
+      return window.gBrowser.tabpanels;
+    }
+    return document.getElementById('bento-side-panel-host');
+  }
+
   function updateStripScrollbar() {
-    const host = document.getElementById('bento-side-panel-host');
+    const host = getStripScrollTarget();
     const bar = document.getElementById('bento-strip-scrollbar');
     if (!host || !bar) return;
     // Show ONLY when there's actually overflow. +1 tolerance for
@@ -2210,7 +2341,7 @@
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
-      const host = document.getElementById('bento-side-panel-host');
+      const host = getStripScrollTarget();
       if (!host) return;
       dragState = {
         startX: e.clientX,
@@ -2227,7 +2358,7 @@
 
     thumb.addEventListener('pointermove', (e) => {
       if (!dragState || e.pointerId !== dragState.pointerId) return;
-      const host = document.getElementById('bento-side-panel-host');
+      const host = getStripScrollTarget();
       if (!host) return;
       const trackWidth = bar.clientWidth - thumb.clientWidth;
       const scrollableWidth = host.scrollWidth - host.clientWidth;
@@ -2259,7 +2390,7 @@
     bar.addEventListener('pointerdown', (e) => {
       if (e.target !== bar) return; // ignore clicks on the thumb
       if (e.button !== 0) return;
-      const host = document.getElementById('bento-side-panel-host');
+      const host = getStripScrollTarget();
       if (!host) return;
       const rect = bar.getBoundingClientRect();
       const ratio = (e.clientX - rect.left) / rect.width;
@@ -3029,6 +3160,66 @@
       browserEl?.removeEventListener('focus', tabpanels);
     }
 
+    // Set inline `order` per panel so flex layout renders them in
+    // splitViewPanels index order regardless of count. The static
+    // CSS rules in injectChromeStyles only enumerate columns 0..9
+    // (Firefox's split-view CSS only ships 0 and 1; we extended to
+    // 9). Beyond column 9, columns get default `order: 0` and end
+    // up in the same flex group as the main panel (also order: 0),
+    // rendering interleaved or before main. Empirically observed at
+    // ~10 panels: new panels start appearing adjacent to the right
+    // of main rather than at the strip's tail; older panels can land
+    // visually to the LEFT of main. Inline style.order overrides any
+    // CSS rule and scales to N panels.
+    //
+    // Also stamp the data-bento-main-panel / data-bento-panel-tab-id
+    // attributes the legacy parallel-browser renderer used to set —
+    // downstream code (getOrderedPanels, navigatePanels arrow-cycle,
+    // setupNavDrag drag-reorder, the Esc-to-blur handler) reads these
+    // to identify panels and recover tabIds. Without them, drag-
+    // reorder dispatches a bogus single-element panels list (which
+    // PanelStore.reorder rejects on length mismatch) and arrow-key
+    // cycling has no targets to walk through.
+    for (const [i, tab] of tabsToRender.entries()) {
+      const panelEl = document.getElementById(tab.linkedPanel);
+      if (!panelEl) continue;
+      panelEl.style.order = String(i);
+      // tabindex="-1" makes the notificationbox programmatically
+      // focusable. Without it, setActiveByIndex's targets[idx].focus()
+      // call is a silent no-op (HBOX/notificationbox isn't focusable
+      // by default), DOM focus stays wherever the user last clicked,
+      // and the Up/Down panel-content scroll handler routes the
+      // command to the wrong panel.
+      if (!panelEl.hasAttribute('tabindex')) {
+        panelEl.setAttribute('tabindex', '-1');
+      }
+      if (i === 0) {
+        panelEl.dataset.bentoMainPanel = '1';
+        delete panelEl.dataset.bentoPanelTabId;
+      } else {
+        delete panelEl.dataset.bentoMainPanel;
+        if (tabTracker) {
+          try {
+            const tabId = tabTracker.getId(tab);
+            if (tabId) panelEl.dataset.bentoPanelTabId = String(tabId);
+          } catch {
+            /* tabTracker can throw for transient/uninitialised tabs */
+          }
+        }
+      }
+    }
+    // Strip stale inline order + data attrs from departing tabs so
+    // they don't leak into a future split (e.g. tab returns to the
+    // layout via a workspace switch with a different position) or
+    // make getOrderedPanels mistakenly include them.
+    for (const tab of departingTabs) {
+      const panelEl = document.getElementById(tab.linkedPanel);
+      if (!panelEl) continue;
+      panelEl.style.removeProperty('order');
+      delete panelEl.dataset.bentoMainPanel;
+      delete panelEl.dataset.bentoPanelTabId;
+    }
+
     // Force the AsyncTabSwitcher to exist by calling the public
     // gBrowser.warmupTab API (which internally calls _getSwitcher() in
     // multi-process mode). This is critical: without the switcher,
@@ -3096,6 +3287,11 @@
     // Refresh favicon nav strip (lives outside tabpanels; reads from
     // panels/sync payload — same data the legacy reconciler consumes).
     refreshPanelNav(panels);
+
+    // Resize/reposition the custom always-visible scrollbar thumb to
+    // match the new panel count. Layout settles after this tick, so
+    // queue for the next frame.
+    setTimeout(updateStripScrollbar, 0);
   }
 
   function injectPanelHeaderIntoLinkedPanel(tab, url) {
@@ -3229,6 +3425,24 @@
     window.gBrowser.tabpanels?.addEventListener('select', () =>
       reconcile('tp.select'),
     );
+
+    // Wire the custom always-visible scrollbar (#bento-strip-scrollbar
+    // in the sidebar) to track tabpanels' horizontal scroll. The
+    // scrollbar's drag/click handlers already resolve their target via
+    // getStripScrollTarget(), but they only react to user interaction
+    // — the thumb position needs separate scroll + resize listeners
+    // to update when panels are added, scrollLeft changes via wheel,
+    // or the window resizes. Same pattern as the legacy host wiring
+    // (see setupPanelNavigator). One-time setup.
+    const tp = window.gBrowser.tabpanels;
+    if (tp && !tp.__bentoStripScrollWired) {
+      tp.addEventListener('scroll', updateStripScrollbar, { passive: true });
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(updateStripScrollbar);
+        ro.observe(tp);
+      }
+      tp.__bentoStripScrollWired = true;
+    }
   }
 
   function reconcilePanels(panels) {
