@@ -1215,11 +1215,14 @@
       bookmarkPanelPage(browserEl, starBtn),
     );
 
-    // Close button: dispatches panel/remove via the existing
-    // dispatchShellAction frame-script bridge, which drives the same
-    // chrome → reconcile → demote path used by the panel-favicon
-    // middle-click. Only wired when a tabId was passed (defensive — the
-    // header can be constructed in test contexts without one).
+    // Close button: dispatches tab/close (NOT panel/remove). Closing a
+    // side panel closes its underlying tab entirely — the tab does not
+    // return to the sidebar list. bento-tools' tabs.onRemoved handler
+    // (background.ts:201) automatically strips the tab from PanelStore
+    // and emits panels/sync, which drives the reconciler to remove the
+    // panel from the layout. Only wired when a tabId was passed
+    // (defensive — the header can be constructed in test contexts
+    // without one).
     let closeBtn = null;
     if (Number.isFinite(tabId)) {
       closeBtn = makeHeaderButton('Close panel', ICONS.x, () => removePanel(tabId));
@@ -1780,7 +1783,7 @@
     hidePanelNavContextMenu();
     const panel = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
     if (!panel) {
-      dispatchShellAction({ type: 'panel/remove', id: tabId });
+      dispatchShellAction({ type: 'tab/close', id: tabId });
       return;
     }
     if (panel._bentoPanelRemoving) return;
@@ -1800,7 +1803,7 @@
     panel.style.minWidth = '0px';
 
     setTimeout(() => {
-      dispatchShellAction({ type: 'panel/remove', id: tabId });
+      dispatchShellAction({ type: 'tab/close', id: tabId });
     }, PANEL_REMOVE_ANIMATION_MS);
   }
 
