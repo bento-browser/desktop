@@ -1247,13 +1247,43 @@
       // Spotlight-style: select-all on focus so typing replaces the URL.
       setTimeout(() => urlInput.select(), 0);
     });
+    // After Enter (navigate) or Escape (cancel), put DOM focus back on
+    // the panel container so the Up/Down content-scroll handler and the
+    // Left/Right cycle handler keep working. Without this, focus lands
+    // on document body after blur, and arrow keys do nothing until the
+    // user clicks back into the panel.
+    function returnFocusToPanel() {
+      const panelEl = urlInput.closest(
+        '[data-bento-main-panel], [data-bento-panel-tab-id]',
+      );
+      if (!panelEl) return;
+      try {
+        panelEl.focus({ preventScroll: true });
+      } catch {
+        /* best-effort; setActiveByIndex relies on the same call working */
+      }
+    }
     urlInput.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const value = urlInput.value.trim();
-      if (!value) return;
-      loadInPanel(browserEl, value);
-      urlInput.blur();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const value = urlInput.value.trim();
+        if (value) loadInPanel(browserEl, value);
+        returnFocusToPanel();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // Discard any in-progress edit by restoring the displayed URL
+        // before handing focus back. Mirrors Firefox's #urlbar Esc
+        // behaviour.
+        const spec = browserEl?.currentURI?.spec;
+        if (spec && spec !== 'about:blank' && spec !== 'about:newtab') {
+          urlInput.value = spec;
+        } else {
+          urlInput.value = '';
+        }
+        returnFocusToPanel();
+      }
     });
 
     const starBtn = makeHeaderButton('Bookmark page', ICONS.star, () =>
@@ -4012,6 +4042,91 @@
   // ─── Dev-reload glue ────────────────────────────────────────────────────
 
   // browser.runtime.reload() (Alt+Shift+R) restarts the addon but the
+  // ─── Per-panel accelerator retargeting (Phase 4a) ─────────────────────
+  // When DOM focus is on a Bento panel container (or an element inside
+  // one), redirect Cmd+R / Cmd+Shift+R / Cmd+L to act on that panel's
+  // browser instead of gBrowser.selectedTab. Falls through to Firefox's
+  // default behaviour when focus is not on a panel.
+  //
+  // Known limitation: works for chrome-side focus only (cycle-focused
+  // panel container, panel header buttons, panel URL input). When the
+  // user has clicked into a panel's web content, focus is in the child
+  // process and our chrome window keydown listener doesn't see Cmd+R
+  // — Firefox's XUL keyset binds Cmd+R to Browser:Reload, which acts
+  // on selectedTab. Fixing this needs the JSWindowActor bridge queued
+  // for Phase 4c (see plans/bento-spaces-split-view-panels.md
+  // "Content-key bridge"). Cmd+F / Cmd+G also deferred to that phase
+  // because the existing find toolbar is per-tabbox and switching
+  // selectedTab to invoke it would defeat the cycle-focus model.
+  //
+  // panelEl is found by walking up from document.activeElement to the
+  // closest element with data-bento-main-panel or data-bento-panel-
+  // tab-id (stamped on each panel container by the reconciler).
+  function getFocusedPanelInfo() {
+    const active = document.activeElement;
+    if (!active || typeof active.closest !== 'function') return null;
+    const panelEl = active.closest(
+      '[data-bento-main-panel], [data-bento-panel-tab-id]',
+    );
+    if (!panelEl) return null;
+    const browserEl = panelEl.querySelector('browser');
+    if (!browserEl) return null;
+    const urlInput = panelEl.querySelector('.bento-panel-header-url');
+    return { panelEl, browserEl, urlInput };
+  }
+
+  function attachPanelAcceleratorListener() {
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        // Match macOS-only for now (Cmd). Linux/Windows would use Ctrl;
+        // can extend when Bento ships there. Skip if any other modifier
+        // is held that would change semantics.
+        if (!e.metaKey || e.altKey || e.ctrlKey) return;
+
+        const key = e.key.toLowerCase();
+
+        // Cmd+R / Cmd+Shift+R: reload focused panel
+        if (key === 'r') {
+          const info = getFocusedPanelInfo();
+          if (!info) return;
+          try {
+            if (e.shiftKey) {
+              const flags =
+                Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE |
+                Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_PROXY;
+              info.browserEl.reloadWithFlags(flags);
+            } else {
+              info.browserEl.reload();
+            }
+            e.preventDefault();
+            e.stopPropagation();
+          } catch (err) {
+            console.warn('[bento-shell-mount] panel Cmd+R retarget failed:', err);
+          }
+          return;
+        }
+
+        // Cmd+L: focus + select the focused panel's URL input. Cmd+
+        // Shift+L is a different shortcut (downloads / library) — let
+        // it fall through.
+        if (key === 'l' && !e.shiftKey) {
+          const info = getFocusedPanelInfo();
+          if (!info?.urlInput) return;
+          try {
+            info.urlInput.focus();
+            info.urlInput.select();
+            e.preventDefault();
+            e.stopPropagation();
+          } catch (err) {
+            console.warn('[bento-shell-mount] panel Cmd+L retarget failed:', err);
+          }
+        }
+      },
+      { capture: true },
+    );
+  }
+
   // chrome-mounted <browser> elements keep their old contentDocuments —
   // Firefox auto-reloads moz-extension:// in normal tabs but not in chrome-
   // hosted browser elements. Listen for reload events and reload both
@@ -4104,4 +4219,5 @@
   attachPaletteCloseListener();
   attachWorkspaceTabSwitchKeybinding();
   attachTabSelectListener();
+  attachPanelAcceleratorListener();
 })();
