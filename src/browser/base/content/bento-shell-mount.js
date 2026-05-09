@@ -2600,13 +2600,106 @@
   // gBrowser.selectedTab).
   let __lastPanelsPayload = [];
 
-  // Sentinel assigned to `tab.splitview` for tabs Bento puts into the
+  // The most recent split-view marker dispatched via TabSplitViewActivate.
+  // We need to dispatch a matching TabSplitViewDeactivate (with === identity)
+  // before activating the next marker so gBrowser.#activeSplitView is cleared
+  // properly. Null when no split is currently active.
+  let __lastSplitViewMarker = null;
+
+  // Marker assigned to `tab.splitview` for tabs Bento puts into the
   // split. Firefox's setSplitViewActive() in tabbox.js gates the
   // [splitview] attribute on tabpanels by `selectedTab.splitview &&
-  // updatedValue` — a boolean check. The sentinel just needs to be
-  // truthy. See reconcilePanelsSplitView below for the full rationale.
-  const BENTO_SPLIT_SENTINEL = Object.freeze({ kind: 'bento-split' });
+  // updatedValue` (a boolean check), so the marker must be truthy.
+  //
+  // It also has to expose `.tabs` (the array of tabs in the split) and
+  // `.activeTab` because Firefox's tabbrowser.js progress listener does
+  // `this.mTab.splitview.tabs.indexOf(this.mTab)` on every onLocation-
+  // Change for split-view tabs (browser/components/tabbrowser/content/
+  // tabbrowser.js:9594). Without `.tabs` the read throws Uncaught
+  // TypeError, which aborts Firefox's progress-listener bookkeeping and
+  // leaves panel docShells in a half-broken state (this surfaced as
+  // "panels go blank when focus leaves them" during smoke testing).
+  //
+  // Each reconcile creates a fresh marker bound to the current
+  // tabsToRender array; the same marker object is shared by every tab
+  // in the split, so `tab.splitview.tabs.indexOf(tab)` always finds the
+  // tab and returns its slot index.
+  const BENTO_SPLIT_KIND = 'bento-split';
+  function makeSplitViewMarker(tabs) {
+    return {
+      kind: BENTO_SPLIT_KIND,
+      get tabs() {
+        return tabs;
+      },
+      get activeTab() {
+        return tabs[0];
+      },
+    };
+  }
 
+  // Reconciles the split-view layout to match the current panels payload
+  // (bento-tools' side-panel set) plus gBrowser.selectedTab (the active
+  // sidebar tab — always slot 0 of splitViewPanels). This is the single
+  // entry point for layout updates, called from both runtime panels/sync
+  // messages and from window-level selection signals (TabSelect /
+  // TabOpen / tp.select).
+  //
+  // ── The N-panel split-view fix architecture ────────────────────────
+  // Firefox's split-view machinery (toolkit/content/widgets/tabbox.js +
+  // browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs) is built for
+  // a 2-panel UI driven by MozTabSplitViewWrapper. Bento drives N
+  // simultaneous panels directly via tabpanels.splitViewPanels = [...]
+  // and dispatches the same TabSplitViewActivate event the wrapper
+  // emits, which feeds gBrowser.#activeSplitView and makes
+  // splitViewBrowsers / shouldDeactivateDocShell respect our panels.
+  //
+  // Several pieces of Firefox's per-tab activation lifecycle don't
+  // hold up under this usage. The fix is four coordinated mechanisms;
+  // removing any one re-introduces a specific failure mode:
+  //
+  // 1. tab.splitview marker (set via Object.defineProperty per-tab,
+  //    BEFORE the cleanup loop). Required so setSplitViewActive's
+  //    `gBrowser.selectedTab.splitview && updatedValue` gate keeps
+  //    [splitview] = true throughout the cleanup. Without it, cleanup
+  //    transiently removes [splitview] and the AsyncTabSwitcher
+  //    queues docShell deactivations that race with the rebuild.
+  //    The marker also exposes `.tabs`, which Firefox's onLocationChange
+  //    needs (tabbrowser.js:9594 reads `.splitview.tabs.indexOf(tab)`).
+  //
+  // 2. preserveLayers(true) before docShellIsActive=false on departing
+  //    tabs (cleanup loop). Without it, Firefox destroys the browser's
+  //    compositor layer when deactivated; on re-entry the slot stays
+  //    blank for one paint cycle even though all activation invariants
+  //    hold. preserveLayers caches the layer so re-entry paints
+  //    immediately.
+  //
+  // 3. setSplitViewPanelActive(false, panelId) before
+  //    removeTabsFromSplitview on departing tabs (cleanup loop).
+  //    Firefox's removeTabsFromSplitview only strips .split-view-panel,
+  //    NOT .split-view-panel-active — and the xul.css rule
+  //    `tabpanels > .split-view-panel-active { visibility: inherit }`
+  //    keeps the stale class visible. Combined with (2)'s preserved
+  //    layer, the departing tab renders as a ghost overlay on top of
+  //    the new mainTab. Stripping the class puts it back to default
+  //    visibility: hidden.
+  //
+  // 4. gBrowser.warmupTab(tab) for every tab in tabsToRender (after
+  //    showSplitViewPanels). The AsyncTabSwitcher (gBrowser._switcher)
+  //    is created lazily and DESTROYS itself after every successful
+  //    tab switch (AsyncTabSwitcher.sys.mjs:343 finish() calls
+  //    destroy() which sets tabbrowser._switcher = null). When the
+  //    switcher is null, gBrowser.on_visibilitychange takes the
+  //    `!this._switcher` fallback (tabbrowser.js:8158) which iterates
+  //    selectedBrowsers and forces docShellIsActive = !document.hidden
+  //    — silently deactivating panels on every visibility transition
+  //    with no path back. Calling the public warmupTab API recreates
+  //    the switcher so the fallback never runs. Belt-and-suspenders:
+  //    we also override on_visibilitychange to no-op while in
+  //    split-view mode (see attachTabSelectListener) for the windows
+  //    where the switcher gets destroyed between reconciles.
+  //
+  // The combined effect: panels stay painted across sidebar tab
+  // switches, Cmd+T, window minimise/restore, and DevTools toggling.
   function reconcilePanelsSplitView(panels) {
     if (!window.gBrowser) {
       console.warn('[bento-shell-mount] reconcilePanelsSplitView: gBrowser unavailable');
@@ -2620,6 +2713,61 @@
     }
 
     __lastPanelsPayload = panels.slice();
+
+    // No panels in the workspace → tear down split-view entirely
+    // instead of wrapping the lone selected tab in a 1-element "split".
+    // The previous behaviour added .split-view-panel-active to the tab's
+    // notificationbox, which applies the .split-view-panel-active margin
+    // from content-area.css:170 — visible as a small inset around an
+    // otherwise-normal full-width tab. Also avoids dispatching repeated
+    // TabSplitViewActivate cycles on every TabSelect when there are no
+    // panels (which TabSelect fires for whether a workspace has panels
+    // or not).
+    if (!panels || panels.length === 0) {
+      const previous = tabpanels.splitViewPanels || [];
+      if (!previous.length && !__lastSplitViewMarker) {
+        return; // already torn down — nothing to do
+      }
+      console.log(
+        '[bento-shell-mount] reconciler: no panels — tearing down split-view',
+      );
+      // Clear deck state and per-panel split-view classes
+      try {
+        for (const panelId of previous) {
+          tabpanels.setSplitViewPanelActive(false, panelId);
+        }
+        tabpanels.splitViewPanels = [];
+      } catch (err) {
+        console.warn('[bento-shell-mount] tear-down: clear splitViewPanels failed:', err);
+      }
+      // Drop our marker from any tab that still carries it
+      for (const tab of gBrowser.tabs) {
+        if (tab.splitview && tab.splitview.kind === BENTO_SPLIT_KIND) {
+          delete tab.splitview;
+        }
+      }
+      // Notify Firefox so #activeSplitView clears and shouldActivateDocShell
+      // stops returning true for ex-panel browsers
+      if (__lastSplitViewMarker) {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('TabSplitViewDeactivate', {
+              bubbles: true,
+              detail: {
+                tabs: __lastSplitViewMarker.tabs,
+                splitview: __lastSplitViewMarker,
+              },
+            }),
+          );
+        } catch (err) {
+          console.warn('[bento-shell-mount] tear-down: deactivate dispatch failed:', err);
+        }
+        __lastSplitViewMarker = null;
+      }
+      // Refresh nav strip (no panels → empty)
+      refreshPanelNav([]);
+      return;
+    }
 
     // Resolve panel tabIds (WebExtension IDs from bento-tools' panels/sync
     // payload) to gBrowser tab elements via the same TabTracker path the
@@ -2688,64 +2836,33 @@
 
     // Tabs that USED to be in the split but no longer are: clear their
     // per-panel split-view-active attribute, clear our split sentinel,
-    // and deactivate their docshell. Setting splitViewPanels alone
-    // doesn't reset the per-panel state — Firefox tracks "this panel
-    // is part of the split" separately from the deck's overall
-    // splitview flag, so without this loop departing panels keep
-    // their attribute and overlap the active set.
-    const previous = tabpanels.splitViewPanels || [];
-    for (const panelId of previous) {
-      if (seenPanelIds.has(panelId)) continue;
-      try {
-        tabpanels.setSplitViewPanelActive(false, panelId);
-      } catch (err) {
-        console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
-      }
-      const t = gBrowser.tabs.find((tab) => tab.linkedPanel === panelId);
-      if (t && t.splitview === BENTO_SPLIT_SENTINEL) {
-        delete t.splitview;
-      }
-      if (t && t !== mainTab && t.linkedBrowser) {
-        t.linkedBrowser.docShellIsActive = false;
-      }
-    }
-
-    // Spoof tab.splitview so Firefox's setSplitViewActive() in
-    // toolkit/content/widgets/tabbox.js:545 recognises the split.
-    // That function gates the [splitview] attribute on tabpanels with:
+    // ORDER MATTERS:
+    //   1. Set markers on every tab in tabsToRender FIRST.
+    //   2. Then run the cleanup loop (removeTabsFromSplitview).
     //
-    //     let isActive = gBrowser.selectedTab.splitview && updatedValue;
-    //     this.toggleAttribute("splitview", isActive);
+    // Why: removeTabsFromSplitview internally calls setSplitViewActive
+    // (toolkit/content/widgets/tabbox.js:536), which gates the
+    // [splitview] attribute on `gBrowser.selectedTab.splitview &&
+    // updatedValue` (line 546). If we run cleanup before setting the
+    // marker on the new mainTab, selectedTab.splitview is undefined →
+    // setSplitViewActive removes [splitview] → split deactivates
+    // briefly. The AsyncTabSwitcher (gBrowser._switcher) sees
+    // splitViewBrowsers shrink, queues docShell deactivations for the
+    // ex-split browsers, and those land before our subsequent
+    // showSplitViewPanels can re-assert docShellIsActive=true. Net
+    // result: blank content in the new main slot when toggling between
+    // two sidebar tabs (the bug surfaced in late Phase 2 testing).
     //
-    // The [splitview] attribute is what the layout CSS in
-    // browser/themes/shared/tabbrowser/content-area.css:168 keys off:
-    //
-    //     #tabbrowser-tabpanels[splitview] .split-view-panel.split-view-panel-active {
-    //       position: relative;
-    //       width: unset;  /* lets flex:1 distribute the panels */
-    //     }
-    //
-    // Without it every active panel falls back to the un-attributed
-    // `width: 49.4%` rule and they overlap at the deck's selected
-    // position — which is exactly what the smoke-test diagnostic
-    // showed (two panels both at 524x931@209,52).
-    //
-    // tab.splitview is normally set by MozTabSplitViewWrapper when a
-    // tab is added to a split group. We deliberately don't use that
-    // wrapper (it lives in tabContainer and is built for the 2-tab UI;
-    // Bento needs unbounded panels and hides the native tab strip
-    // anyway). A sentinel object is enough — only the boolean check
-    // matters; nothing else reads .splitview's identity unless code
-    // paths inside MozTabSplitViewWrapper run.
     // tab.splitview is a GETTER (browser/components/tabbrowser/content/
     // tab.js:399) that returns parentElement only when parentElement is
     // a <tab-split-view-wrapper>; no setter, so a plain assignment is
     // silently shadowed. Use Object.defineProperty to add an own-
     // property that takes precedence over the prototype getter.
+    const splitViewMarker = makeSplitViewMarker(tabsToRender);
     for (const tab of tabsToRender) {
       try {
         Object.defineProperty(tab, 'splitview', {
-          value: BENTO_SPLIT_SENTINEL,
+          value: splitViewMarker,
           configurable: true,
           enumerable: false,
           writable: true,
@@ -2753,6 +2870,119 @@
       } catch (err) {
         console.warn('[bento-shell-mount] tab.splitview defineProperty failed:', err);
       }
+    }
+
+    // Now teardown. Each departing tab is one that was in the previous
+    // splitViewPanels but isn't in the new tabsToRender. Firefox's
+    // removeTabsFromSplitview (toolkit/content/widgets/tabbox.js:516)
+    // handles the full per-panel teardown:
+    //   - .split-view-panel class removed (otherwise the base CSS at
+    //     content-area.css:160 keeps width: 49.4%, flex: 1 on the
+    //     leftover panel — it's invisible because it lacks
+    //     .split-view-panel-active and .deck-selected, but it still
+    //     consumes flex space, pushing the new main into visual
+    //     position 2. This was the original "main moves between
+    //     first and second positions" symptom.)
+    //   - [column] attribute removed.
+    //   - Auto-select click/focus listeners detached.
+    //   - panelId spliced from tabpanels.#splitViewPanels.
+    // Because we set the new marker first (above), the internal
+    // setSplitViewActive call here sees mainTab.splitview = truthy and
+    // keeps [splitview] = true throughout — no transient deactivation.
+    const previous = tabpanels.splitViewPanels || [];
+    const departingTabs = [];
+    for (const panelId of previous) {
+      if (seenPanelIds.has(panelId)) continue;
+      const t = gBrowser.tabs.find((tab) => tab.linkedPanel === panelId);
+      if (!t) continue;
+      departingTabs.push(t);
+      if (t.splitview && t.splitview.kind === BENTO_SPLIT_KIND) {
+        delete t.splitview;
+      }
+      if (t !== mainTab && t.linkedBrowser) {
+        // preserveLayers(true) BEFORE docShellIsActive=false. Without
+        // this, Firefox destroys the browser's compositor layers when
+        // deactivated; on reactivation the docShell processes again
+        // but the layers need re-rendering, leaving a blank frame
+        // until the next paint cycle. Empirically: even though all
+        // diagnostic invariants (docShellIsActive=true, frameLoader
+        // present, classes correct, panel rect non-zero, visibility
+        // visible) hold after re-entry, the slot stays blank because
+        // the cached layer is gone. Mirrors the order in
+        // tabbrowser.js:8161 on_visibilitychange.
+        t.linkedBrowser.preserveLayers(true);
+        t.linkedBrowser.docShellIsActive = false;
+      }
+      // Explicitly remove .split-view-panel-active. Firefox's
+      // removeTabsFromSplitview (tabbox.js:516) removes
+      // .split-view-panel but NOT .split-view-panel-active. The
+      // stale class keeps the departing panel visible via the
+      // xul.css rule:
+      //
+      //   tabpanels > .split-view-panel-active { visibility: inherit; }
+      //
+      // Combined with our preserveLayers(true) above (which keeps the
+      // browser's compositor layer alive), the result is a ghost
+      // panel rendered on top of the new mainTab's slot — observed
+      // as "I can see the first tab beneath the new tab". Strip the
+      // class explicitly to make the panel invisible the instant it
+      // leaves the split.
+      try {
+        tabpanels.setSplitViewPanelActive(false, panelId);
+      } catch (err) {
+        console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
+      }
+    }
+    if (departingTabs.length) {
+      try {
+        tabpanels.removeTabsFromSplitview(departingTabs);
+      } catch (err) {
+        console.warn('[bento-shell-mount] removeTabsFromSplitview failed:', err);
+      }
+    }
+
+    // Register the marker as gBrowser's activeSplitView via the same
+    // event MozTabSplitViewWrapper dispatches. tabbrowser.js listens
+    // for TabSplitViewActivate at window level (line 218) and stores
+    // event.detail.splitview in #activeSplitView. The splitViewBrowsers
+    // getter then iterates `#activeSplitView.tabs` (our marker exposes
+    // .tabs), and shouldActivateDocShell() returns true for any browser
+    // in that list (line 7949). That's how Firefox keeps every panel's
+    // docShell active even when only one is `selectedBrowser`.
+    //
+    // Without this, AsyncTabSwitcher (gBrowser._switcher) deactivates
+    // every browser except selectedBrowser as soon as it processes the
+    // next tick — exactly matching the reported "panels go blank
+    // moments after creation" symptom.
+    //
+    // Deactivate the previous marker first so the === identity check in
+    // on_TabSplitViewDeactivate (tabbrowser.js:8225) matches and the
+    // private field actually clears before we set the new one.
+    if (__lastSplitViewMarker) {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('TabSplitViewDeactivate', {
+            bubbles: true,
+            detail: {
+              tabs: __lastSplitViewMarker.tabs,
+              splitview: __lastSplitViewMarker,
+            },
+          }),
+        );
+      } catch (err) {
+        console.warn('[bento-shell-mount] TabSplitViewDeactivate dispatch failed:', err);
+      }
+    }
+    try {
+      window.dispatchEvent(
+        new CustomEvent('TabSplitViewActivate', {
+          bubbles: true,
+          detail: { tabs: tabsToRender, splitview: splitViewMarker },
+        }),
+      );
+      __lastSplitViewMarker = splitViewMarker;
+    } catch (err) {
+      console.warn('[bento-shell-mount] TabSplitViewActivate dispatch failed:', err);
     }
 
     // Use Firefox's high-level showSplitViewPanels API. It calls
@@ -2766,6 +2996,64 @@
     } catch (err) {
       console.error('[bento-shell-mount] showSplitViewPanels failed:', err);
       return;
+    }
+
+    // The splitViewPanels setter (toolkit/content/widgets/tabbox.js:498)
+    // attaches `click` and `focus` listeners on each panel's
+    // `.browserContainer` / `<browser>`. The handler (line 346-350)
+    // does `tabstrip.selectedItem = tab` — i.e. clicking into a panel
+    // makes that panel's tab the global gBrowser.selectedTab. That's
+    // correct for Firefox's 2-tab split UI but wrong for Bento, where
+    // panels are subordinate to a main tab: clicking a side panel
+    // should focus its content WITHOUT changing which sidebar tab is
+    // "main". Without this strip, our reconciler runs on every panel
+    // click, treats the just-clicked panel as mainTab, and shuffles
+    // splitViewPanels[0] to that panel — which causes the reported
+    // "main content disappears when focus leaves a panel" and
+    // "panels reorder when I click around" symptoms.
+    //
+    // Listeners are added with `this` (the tabpanels element itself)
+    // as the listener; removeEventListener with the same reference
+    // detaches them. Idempotent: safe to run after every reconcile.
+    // Mouseover/mouseout are left alone — they manage the per-panel
+    // link-preview StatusPanel, which is desirable behaviour.
+    for (const tab of tabsToRender) {
+      const panelEl = document.getElementById(tab.linkedPanel);
+      if (!panelEl) continue;
+      const browserContainer = panelEl.querySelector('.browserContainer');
+      const browserEl = panelEl.querySelector('browser');
+      browserContainer?.removeEventListener('click', tabpanels);
+      browserEl?.removeEventListener('focus', tabpanels);
+    }
+
+    // Force the AsyncTabSwitcher to exist by calling the public
+    // gBrowser.warmupTab API (which internally calls _getSwitcher() in
+    // multi-process mode). This is critical: without the switcher,
+    // gBrowser.on_visibilitychange (tabbrowser.js:8158) takes the
+    // `!this._switcher` fallback that iterates selectedBrowsers and
+    // sets docShellIsActive = !document.hidden — silently
+    // DEACTIVATING every panel browser whenever the OS/DevTools
+    // toggles window visibility, with no path to reactivate them.
+    // Empirically observed via docShellIsActive setter trace:
+    // 4 panels all set to false from on_visibilitychange line 8162,
+    // matching the user-reported "blank panels after a sidebar tab
+    // toggle" symptom.
+    //
+    // With the switcher created, on_visibilitychange's `if
+    // (!this._switcher)` branch never runs, and the switcher's own
+    // shouldDeactivateDocShell (AsyncTabSwitcher.sys.mjs:937) respects
+    // splitViewBrowsers — so panels stay active across visibility
+    // transitions.
+    //
+    // warmupTab is also idempotent + advances tabs in STATE_UNLOADED
+    // back to STATE_LOADING, so tabs that were previously unloaded
+    // get repainted on re-entry into the split.
+    for (const tab of tabsToRender) {
+      try {
+        gBrowser.warmupTab(tab);
+      } catch (err) {
+        console.warn('[bento-shell-mount] warmupTab failed:', err);
+      }
     }
 
     // showSplitViewPanels sets each tab.linkedBrowser.docShellIsActive
@@ -2835,12 +3123,109 @@
   // splitViewPanels[0] needs to follow gBrowser.selectedTab. Cheap:
   // computes the same desired array minus an unchanged panel set.
   // No-op when the pref is off.
+  //
+  // Listen on multiple targets to make sure we catch the event no matter
+  // how it's dispatched: tabContainer (where Mozilla's own listeners
+  // live), gBrowser itself (some flows fire here), and the window
+  // (TabSelect bubbles). Use a single dedup'd callback so we don't
+  // run the reconciler multiple times per actual selection change.
   function attachTabSelectListener() {
-    if (!window.gBrowser) return;
-    window.gBrowser.tabContainer?.addEventListener('TabSelect', () => {
+    // The IIFE that hosts this script runs synchronously during window
+    // construction, before gBrowser, gBrowser.tabContainer, and
+    // gBrowser.tabpanels are wired up. If we early-returned without
+    // attaching, none of the selection signals would ever fire and
+    // new-tab creation would silently bypass the reconciler — that's
+    // exactly the bug we hit when the listeners stayed silent for
+    // Cmd+T despite TabOpen demonstrably being dispatched. Defer until
+    // the window is fully loaded.
+    if (!window.gBrowser?.tabContainer || !window.gBrowser?.tabpanels) {
+      if (document.readyState !== 'complete') {
+        const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+        window.addEventListener(evt, attachTabSelectListener, { once: true });
+      }
+      return;
+    }
+    console.log('[bento-shell-mount] attachTabSelectListener: attaching listeners');
+
+    // Override gBrowser.on_visibilitychange so it doesn't deactivate
+    // split-view panels when the AsyncTabSwitcher isn't around.
+    //
+    // Background: tabbrowser.js:8158's on_visibilitychange runs the
+    // `!this._switcher` fallback that iterates selectedBrowsers and
+    // sets docShellIsActive = !document.hidden on each. With the
+    // AsyncTabSwitcher, this branch is skipped (the switcher handles
+    // visibility itself, respecting splitViewBrowsers). But the
+    // switcher destroys itself after every successful tab switch
+    // (AsyncTabSwitcher.sys.mjs:343 finish() → destroy() →
+    // tabbrowser._switcher = null), so by the time a visibility event
+    // fires, _switcher is null again, the fallback runs, and our
+    // panels get deactivated. Empirically observed: pre-warmup logs
+    // showed "switcher exists: false" at the start of every reconcile
+    // even though warmupTab created it inside the previous one.
+    //
+    // Our override is a no-op when in split-view mode. Panels stay
+    // active regardless of window visibility — small additional CPU
+    // cost when the window is minimised, but no blank-panel race.
+    // Out of split-view mode, falls through to the original handler
+    // so non-Bento behaviour is preserved.
+    if (
+      window.gBrowser &&
+      typeof window.gBrowser.on_visibilitychange === 'function' &&
+      !window.gBrowser.__bentoVisOverride
+    ) {
+      const original = window.gBrowser.on_visibilitychange.bind(
+        window.gBrowser,
+      );
+      window.gBrowser.on_visibilitychange = function () {
+        if (this.tabpanels?.hasAttribute('splitview')) {
+          return;
+        }
+        return original();
+      };
+      window.gBrowser.__bentoVisOverride = true;
+    }
+
+    let lastReconciledFor = null;
+    const reconcile = (_source) => {
       if (!isSplitViewEnabled()) return;
+      const sel = window.gBrowser.selectedTab;
+      if (sel === lastReconciledFor) return;
+      lastReconciledFor = sel;
       reconcilePanelsSplitView(__lastPanelsPayload);
-    });
+    };
+
+    // Signal 1: TabSelect on the tabContainer / gBrowser / window. This is
+    // the canonical Mozilla event but in practice doesn't always reach our
+    // listener for new-tab-creation flows (Cmd+T, sidebar +) — observed
+    // empirically: the reconciler never fires even though selectedTab
+    // demonstrably changes. Keep the listener registered as a fast path
+    // for the cases it does fire (sidebar tab clicks).
+    const onTabSelect = () => reconcile('TabSelect');
+    window.gBrowser.tabContainer?.addEventListener('TabSelect', onTabSelect);
+    window.gBrowser.addEventListener?.('TabSelect', onTabSelect);
+    window.addEventListener('TabSelect', onTabSelect, true);
+
+    // Signal 2: TabOpen. Catches new-tab creation regardless of whether
+    // the new tab becomes selected synchronously. The reconciler reads
+    // gBrowser.selectedTab when it runs, so if the new tab IS now the
+    // selected one (the typical case for Cmd+T), this picks it up.
+    // If TabOpen fires before selection settles, the dedup on
+    // lastReconciledFor turns the second pass into a no-op.
+    const onTabOpen = () => reconcile('TabOpen');
+    window.gBrowser.tabContainer?.addEventListener('TabOpen', onTabOpen);
+
+    // Signal 3: 'select' event on tabpanels. MozDeck's selectedIndex
+    // setter dispatches this event whenever the selected panel changes
+    // (toolkit/content/widgets/tabbox.js:237-239). It's the canonical
+    // signal for "the visible content area changed" and catches every
+    // selection mechanism — including ones where TabSelect/TabOpen
+    // don't reach our handler. The class the deck toggles is
+    // `.deck-selected` (line 218), not the `[selected]` attribute, so
+    // the earlier MutationObserver attempt with attributeFilter:
+    // ['selected'] never fired.
+    window.gBrowser.tabpanels?.addEventListener('select', () =>
+      reconcile('tp.select'),
+    );
   }
 
   function reconcilePanels(panels) {
