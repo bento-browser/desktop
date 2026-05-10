@@ -494,6 +494,43 @@
         min-height: var(--bento-panel-header-height);
         box-sizing: border-box;
       }
+      /* Dedicated drag handle — only this element initiates a
+         panel reorder drag. Sized to match the header buttons
+         so it reads as part of the same control row. */
+      .bento-panel-header-drag-handle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--bento-control-size-sm);
+        height: var(--bento-control-size-sm);
+        color: var(--neutral-50);
+        cursor: grab;
+        touch-action: none;
+        flex: 0 0 auto;
+        border-radius: var(--radius-s);
+        transition: background-color var(--bento-duration-fast) var(--bento-easing-standard),
+                    color var(--bento-duration-fast) var(--bento-easing-standard);
+      }
+      .bento-panel-header-drag-handle:hover {
+        background-color: var(--neutral-15);
+        color: var(--neutral-80);
+      }
+      .bento-panel-header-drag-handle--dragging {
+        cursor: grabbing;
+        background-color: var(--neutral-15);
+        color: var(--color-60);
+      }
+      /* Dragging state for the panel container — slight opacity
+         dip + subtle shadow so the floating panel reads as
+         "lifted off the strip". */
+      .bento-panel--dragging {
+        opacity: 0.85;
+      }
+      .bento-panel-drop-indicator {
+        background-color: var(--color-60);
+        border-radius: 1.5px;
+        pointer-events: none;
+      }
       .bento-panel-header-button {
         display: inline-flex;
         align-items: center;
@@ -675,6 +712,19 @@
           var(--color-60) calc(50% + 2.5px),
           transparent calc(50% + 2.5px)
         );
+      }
+      /* Hide every inter-panel splitter while a panel header is
+         being dragged. Splitters are absolute-positioned overlays
+         anchored to the layout positions of the panels they
+         separate; the dragged panel transforms via translate
+         (which doesn't fire the ResizeObserver, so syncInter-
+         PanelSplitters won't re-run), which would otherwise leave
+         splitters trailing the wrong panel boundaries. The drop
+         indicator above takes over as the visual cue during the
+         drag; splitters re-appear when endDrag re-syncs them
+         against the settled post-drop layout. */
+      #bento-side-panel-host.bento-side-panel-host--reordering > .bento-panel-splitter {
+        visibility: hidden;
       }
 
       /* Cycle focus ring for split-view panels. Mirrors the legacy
@@ -1060,6 +1110,11 @@
       'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z',
     plus: 'M12 5v14 M5 12h14',
     x: 'M18 6 6 18 M6 6l12 12',
+    // Lucide grip-vertical: two columns of three dots, signals
+    // "drag me" without the visual weight of a hamburger or
+    // bracket icon.
+    gripVertical:
+      'M9 5a1 1 0 1 0 0 0 M9 12a1 1 0 1 0 0 0 M9 19a1 1 0 1 0 0 0 M15 5a1 1 0 1 0 0 0 M15 12a1 1 0 1 0 0 0 M15 19a1 1 0 1 0 0 0',
   };
 
   function makeIcon(d, size) {
@@ -1292,6 +1347,20 @@
       closeBtn = makeHeaderButton('Close panel', ICONS.x, () => removePanel(tabId));
     }
 
+    // Drag handle for panel reordering. setupHeaderDrag binds
+    // pointerdown to it and runs the drag loop. The handle is
+    // styled small + leftmost so it reads as the obvious "grab
+    // here to move this panel" affordance. Absent on the main
+    // slot's header (the main panel is always col 0; reordering
+    // it would break Bento's selected-tab-is-main model — see
+    // setupHeaderDrag's early return).
+    const dragHandle = document.createXULElement('hbox');
+    dragHandle.className = 'bento-panel-header-drag-handle';
+    dragHandle.setAttribute('role', 'button');
+    dragHandle.setAttribute('aria-label', 'Drag to reorder panel');
+    dragHandle.appendChild(makeIcon(ICONS.gripVertical, 16));
+
+    header.appendChild(dragHandle);
     header.appendChild(backBtn);
     header.appendChild(forwardBtn);
     header.appendChild(reloadBtn);
@@ -1388,6 +1457,17 @@
   // we stash the desired main width in `mainPanelWidth` and re-apply
   // it on every reconcile so all tabs paint at the same width.
   let mainPanelWidth = null;
+
+  // Cross-panel FLIP animation buffer. setupHeaderDrag's endDrag
+  // populates this with each visible panel's pre-reorder rect
+  // when a reorder commit is dispatched; runPendingPanelFlip
+  // (called from the end of reconcilePanelsSplitView) reads
+  // the new rects, applies an instant counter-transform, and
+  // transitions back to translate(0) so the user sees the
+  // OTHER panels (not just the dragged one) glide between
+  // their old and new slots. Cleared at the start of every
+  // run so a stale snapshot can never leak across reconciles.
+  let __bentoPendingFlip = null;
 
   function createPanelSplitter() {
     // XUL <splitter> element — only XUL element type that XUL
@@ -1504,6 +1584,83 @@
   // ordering explicitly to avoid races where tabpanels.splitView-
   // Panels hasn't updated yet; if omitted, reads from current
   // splitViewPanels.
+  // FLIP runner for cross-panel reorder animation. Called from
+  // the end of reconcilePanelsSplitView. Reads __bentoPendingFlip
+  // (a Map<tabId, oldRect> populated by setupHeaderDrag's
+  // endDrag), computes each visible panel's new rect, applies
+  // an instant counter-transform (translateX(oldLeft - newLeft))
+  // so each panel visually starts at where it was before the
+  // reorder, then on the next frame transitions back to
+  // translate(0) — they glide smoothly to their new slots.
+  //
+  // The dragged panel is included here too. endDrag stashes its
+  // current PAINTED rect (which includes the live drag transform,
+  // i.e. the cursor position) as that panel's "old position".
+  // The FLIP then animates it from cursor X to its new slot,
+  // bypassing the bug where clearing the transform in endDrag
+  // would briefly snap the panel back to its OLD slot before
+  // the reconciler updated the layout.
+  function runPendingPanelFlip() {
+    if (!__bentoPendingFlip) return;
+    const snapshot = __bentoPendingFlip;
+    __bentoPendingFlip = null;
+    const moved = [];
+    for (const panelEl of getOrderedPanels()) {
+      const tabIdAttr = panelEl.dataset.bentoPanelTabId;
+      if (!tabIdAttr) continue;
+      const tabId = Number(tabIdAttr);
+      if (!Number.isFinite(tabId)) continue;
+      const oldRect = snapshot.get(tabId);
+      if (!oldRect) continue;
+      // Reset any leftover transform on the dragged panel so its
+      // newRect reflects pure layout coords. Without this, the
+      // dragged panel still has its cursor-following transform
+      // and getBoundingClientRect would include it, making
+      // dx ≈ 0.
+      const isDragged = tabId === snapshot.__draggedTabId;
+      if (isDragged) {
+        panelEl.style.transition = 'none';
+        panelEl.style.transform = '';
+      }
+      const newRect = panelEl.getBoundingClientRect();
+      const dx = oldRect.left - newRect.left;
+      if (Math.abs(dx) < 1) continue;
+      moved.push({ panelEl, dx, isDragged });
+    }
+    if (moved.length === 0) return;
+    // Instant counter-transform — panels visually stay where
+    // they were before the reorder (or for the dragged panel,
+    // where the cursor released).
+    for (const { panelEl, dx } of moved) {
+      panelEl.style.transition = 'none';
+      panelEl.style.willChange = 'transform';
+      panelEl.style.transform = 'translateX(' + dx + 'px)';
+    }
+    // Force a layout flush so the browser sees the transformed
+    // start state before the transition class is applied.
+    void window.gBrowser?.tabpanels?.offsetWidth;
+    // On the next frame, enable the transition and clear the
+    // transform — panels glide to their settled slots.
+    requestAnimationFrame(() => {
+      for (const { panelEl, isDragged } of moved) {
+        panelEl.style.transition =
+          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        panelEl.style.transform = '';
+        const cleanup = (e) => {
+          if (e && e.propertyName !== 'transform') return;
+          panelEl.style.transition = '';
+          panelEl.style.willChange = '';
+          if (isDragged) panelEl.style.zIndex = '';
+          panelEl.removeEventListener('transitionend', cleanup);
+        };
+        panelEl.addEventListener('transitionend', cleanup);
+        // Belt-and-suspenders: if transitionend somehow misses,
+        // wipe styles after the transition would have completed.
+        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+      }
+    });
+  }
+
   function syncInterPanelSplitters(tabsToRender) {
     const host = document.getElementById('bento-side-panel-host');
     if (!host || !window.gBrowser?.tabpanels) return;
@@ -2263,6 +2420,259 @@
     btn.addEventListener('pointerup', (e) => release(e, true));
     btn.addEventListener('pointercancel', (e) => release(e, false));
     btn.addEventListener('lostpointercapture', (e) => release(e, dragging));
+  }
+
+  // Drag-to-reorder via a dedicated grip handle on the per-panel
+  // header. The handle (createPanelHeader's leftmost child) is
+  // the only pointerdown target that initiates a drag — the rest
+  // of the header still routes to its native controls. Skips
+  // the main slot (main stays col 0).
+  //
+  // During drag the panel container follows the cursor via
+  // transform: translateX so the user gets immediate physical
+  // feedback. On release the panel CSS-transitions back to its
+  // settled spot (transform: 0); if the slot changed, the
+  // panel/reorder dispatch updates layout in the same frame.
+  function setupHeaderDrag(header, panelEl, tabId) {
+    if (!Number.isFinite(tabId) || !panelEl) return;
+    if (panelEl.dataset.bentoMainPanel === '1') return;
+    const handle = header.querySelector('.bento-panel-header-drag-handle');
+    if (!handle) return;
+
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
+    let pointerId = null;
+    let indicator = null;
+
+    function getStripContainer() {
+      return document.getElementById('bento-side-panel-host');
+    }
+    // All split-view panels in visual order including main.
+    function getPanels() {
+      return getOrderedPanels();
+    }
+    // Side panels (excluding main) in visual order. Excludes the
+    // dragged source so target-slot math is straightforward.
+    function getDropTargets() {
+      return getPanels()
+        .filter((p) => p.dataset.bentoPanelTabId)
+        .filter((p) => p !== panelEl);
+    }
+    // targetSlot = number of non-source side panels whose midpoint
+    // is to the left of the cursor. Maps to splice index in the
+    // post-reorder side-panel array.
+    function computeTargetSlot(clientX) {
+      const targets = getDropTargets();
+      let slot = 0;
+      for (const t of targets) {
+        const r = t.getBoundingClientRect();
+        if (clientX > r.left + r.width / 2) slot++;
+        else break;
+      }
+      return slot;
+    }
+    // Position a vertical bar at the boundary the panel will land
+    // at. Hosted in #bento-side-panel-host with absolute positioning,
+    // matching the inter-panel splitter pattern.
+    function placeIndicator(slot) {
+      const host = getStripContainer();
+      if (!host) return;
+      if (!indicator) {
+        indicator = document.createElementNS(HTML_NS, 'div');
+        indicator.className = 'bento-panel-drop-indicator';
+        host.appendChild(indicator);
+      }
+      const targets = getDropTargets();
+      const main = getPanels().find((p) => p.dataset.bentoMainPanel === '1');
+      const hostRect = host.getBoundingClientRect();
+      let x;
+      if (targets.length === 0 && main) {
+        // Only main + dragged source — drop spot is just after main.
+        const r = main.getBoundingClientRect();
+        x = r.right - hostRect.left;
+      } else if (slot >= targets.length) {
+        const r = targets[targets.length - 1].getBoundingClientRect();
+        x = r.right - hostRect.left;
+      } else if (slot === 0) {
+        // Drop before the first side panel — between main and it.
+        const r = targets[0].getBoundingClientRect();
+        x = r.left - hostRect.left;
+      } else {
+        const r = targets[slot].getBoundingClientRect();
+        x = r.left - hostRect.left;
+      }
+      const indicatorWidth = 3;
+      indicator.style.position = 'absolute';
+      indicator.style.top = '0';
+      indicator.style.bottom = '0';
+      indicator.style.left = x - indicatorWidth / 2 + 'px';
+      indicator.style.width = indicatorWidth + 'px';
+      indicator.style.zIndex = '6';
+    }
+    function clearIndicator() {
+      if (indicator?.parentNode) indicator.parentNode.removeChild(indicator);
+      indicator = null;
+    }
+
+    function startDrag() {
+      if (dragging) return;
+      dragging = true;
+      handle.classList.add('bento-panel-header-drag-handle--dragging');
+      panelEl.classList.add('bento-panel--dragging');
+      // Hide all inter-panel splitters for the duration of the
+      // drag. Their absolute-positioned overlays are anchored to
+      // panel rects via syncInterPanelSplitters, but during the
+      // drag the panel transforms (translate) without firing the
+      // ResizeObserver — splitters end up partially out of sync
+      // and visually trail. Cleanest is to skip them entirely;
+      // they re-sync (and re-appear) when the reconciler settles
+      // the post-drop layout.
+      const host = document.getElementById('bento-side-panel-host');
+      if (host) host.classList.add('bento-side-panel-host--reordering');
+      // No transition while the user is actively dragging — the
+      // transform should stick to the cursor 1:1. The release
+      // handler re-enables it before resetting transform so the
+      // snap-back / settle is animated.
+      panelEl.style.transition = 'none';
+      panelEl.style.willChange = 'transform';
+      panelEl.style.zIndex = '10';
+      hidePanelNavContextMenu();
+      document.documentElement.style.setProperty('cursor', 'grabbing', 'important');
+      document.documentElement.style.setProperty('user-select', 'none', 'important');
+    }
+    function followCursor(clientX) {
+      const dx = clientX - startX;
+      panelEl.style.transform = 'translateX(' + dx + 'px)';
+    }
+    function endDrag(commit, finalClientX) {
+      let dispatched = false;
+      if (dragging && commit) {
+        const slot = computeTargetSlot(finalClientX);
+        const sidePanelEls = getPanels().filter((p) => p.dataset.bentoPanelTabId);
+        const currentIds = sidePanelEls
+          .map((p) => Number(p.dataset.bentoPanelTabId))
+          .filter((n) => Number.isFinite(n));
+        const filtered = currentIds.filter((id) => id !== tabId);
+        const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
+        filtered.splice(clampedSlot, 0, tabId);
+        const changed =
+          filtered.length !== currentIds.length ||
+          filtered.some((id, i) => currentIds[i] !== id);
+        if (changed) {
+          // Snapshot every visible side panel's pre-reorder rect.
+          // The reconciler that runs after panels/sync arrives will
+          // read this via runPendingPanelFlip and animate every
+          // panel (including the dragged one) from its old screen
+          // position to its new slot.
+          //
+          // For the DRAGGED panel we record the cursor's release
+          // X instead of the layout left edge: the panel is
+          // currently displayed at cursorX (transform follows
+          // cursor), so the FLIP needs to use that as its
+          // "old position" anchor. Without this the dragged panel
+          // visually snaps back to its source slot for one frame
+          // before re-appearing at its destination.
+          const snap = new Map();
+          for (const p of sidePanelEls) {
+            const id = Number(p.dataset.bentoPanelTabId);
+            if (!Number.isFinite(id)) continue;
+            if (id === tabId) {
+              // Use the dragged panel's CURRENT painted rect —
+              // includes the live drag transform — so the FLIP
+              // can compute newRect.left - paintedLeft to
+              // counter-translate.
+              snap.set(id, p.getBoundingClientRect());
+            } else {
+              // Non-dragged panels are at their layout positions.
+              snap.set(id, p.getBoundingClientRect());
+            }
+          }
+          snap.__draggedTabId = tabId;
+          __bentoPendingFlip = snap;
+          dispatchShellAction({ type: 'panel/reorder', tabIds: filtered });
+          dispatched = true;
+          // Don't clear the dragged panel's transform yet — the
+          // FLIP runner will replace it with a counter-transform
+          // matching the post-reorder layout, then transition
+          // to translate(0). Clearing it now would animate the
+          // panel back to its OLD slot for the brief window
+          // before the reconciler runs, which is the bug we're
+          // fixing.
+        }
+      }
+      // Snap-back path: no commit OR no actual reorder. Animate
+      // the dragged panel back to its original slot.
+      if (dragging && !dispatched) {
+        panelEl.style.transition =
+          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        panelEl.style.transform = '';
+        const cleanup = () => {
+          panelEl.style.transition = '';
+          panelEl.style.willChange = '';
+          panelEl.style.zIndex = '';
+          panelEl.removeEventListener('transitionend', cleanup);
+        };
+        panelEl.addEventListener('transitionend', cleanup);
+        setTimeout(cleanup, 400);
+      }
+      handle.classList.remove('bento-panel-header-drag-handle--dragging');
+      panelEl.classList.remove('bento-panel--dragging');
+      const host = document.getElementById('bento-side-panel-host');
+      if (host) host.classList.remove('bento-side-panel-host--reordering');
+      // Splitters were hidden during the drag; immediately re-sync
+      // their positions so they re-appear at the post-drop layout
+      // boundaries without waiting for the ResizeObserver tick.
+      try {
+        syncInterPanelSplitters();
+      } catch (err) {
+        console.warn('[bento-shell-mount] post-drop splitter sync failed:', err);
+      }
+      clearIndicator();
+      document.documentElement.style.removeProperty('cursor');
+      document.documentElement.style.removeProperty('user-select');
+      dragging = false;
+      pointerId = null;
+    }
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        /* best-effort capture */
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (pointerId === null || e.pointerId !== pointerId) return;
+      if (!dragging) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (dx * dx + dy * dy < NAV_DRAG_THRESHOLD_PX * NAV_DRAG_THRESHOLD_PX) return;
+        startDrag();
+      }
+      followCursor(e.clientX);
+      placeIndicator(computeTargetSlot(e.clientX));
+    });
+
+    function release(e, commit) {
+      if (pointerId === null || e.pointerId !== pointerId) return;
+      try {
+        handle.releasePointerCapture(e.pointerId);
+      } catch {
+        /* best-effort */
+      }
+      endDrag(commit, e.clientX);
+    }
+    handle.addEventListener('pointerup', (e) => release(e, true));
+    handle.addEventListener('pointercancel', (e) => release(e, false));
+    handle.addEventListener('lostpointercapture', (e) => release(e, dragging));
   }
 
   function refreshPanelNavMain() {
@@ -3335,6 +3745,10 @@
     // match the new panel count. Layout settles after this tick, so
     // queue for the next frame.
     setTimeout(updateStripScrollbar, 0);
+
+    // FLIP-animate any cross-panel reorder that endDrag (header
+    // drag) has staged. No-op when no snapshot is pending.
+    runPendingPanelFlip();
   }
 
   function injectPanelHeaderIntoLinkedPanel(tab, url) {
@@ -3359,6 +3773,7 @@
     // notificationbox children typically are [notificationstack, browser];
     // insert header as the first child so it visually sits above content.
     panelEl.insertBefore(header, panelEl.firstChild);
+    setupHeaderDrag(header, panelEl, tabId);
   }
 
   // Re-reconcile the split view when the active main tab changes —
