@@ -4087,6 +4087,51 @@
     );
   }
 
+  // PopupNotifications gates "show this popup right now" on
+  // _isActiveBrowser, which compares the popup's browser against
+  // gBrowser.selectedBrowser. For Bento panels the panel's tab is
+  // never the selected tab — the main tab is — so popups
+  // originating in a panel (e.g. AMO's "Add to Firefox"
+  // permissions confirmation) get queued and never shown.
+  //
+  // Extend _isActiveBrowser to also accept any browser whose tab
+  // is in gBrowser.activeSplitView.tabs (the same set that
+  // splitViewBrowsers / shouldDeactivateDocShell respects), so
+  // panel-originated popups display immediately. Anchor follows
+  // the standard unified-extensions-button on the navbar — the
+  // popup hangs off there, visible to the user even when the
+  // origin tab isn't selectedTab.
+  function patchPopupNotificationsForSplitView() {
+    // window.PopupNotifications is a lazy getter — touching it
+    // before browser.js has wired up gBrowser (and the PopupNotifications
+    // constructor's tabbrowser argument) throws "Invalid tabbrowser".
+    // Defer until window load, when browser.js has finished init
+    // and the lazy getter resolves to a real instance.
+    const apply = () => {
+      const pn = window.PopupNotifications;
+      if (!pn || pn.__bentoSplitViewPatched) return;
+      pn.__bentoSplitViewPatched = true;
+      const original = pn._isActiveBrowser;
+      pn._isActiveBrowser = function (browser) {
+        if (original.call(this, browser)) return true;
+        const split = window.gBrowser?.activeSplitView;
+        if (split?.tabs) {
+          for (const tab of split.tabs) {
+            if (tab?.linkedBrowser?.frameLoader === browser?.frameLoader) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+    };
+    if (document.readyState === 'complete') {
+      apply();
+    } else {
+      window.addEventListener('load', apply, { once: true });
+    }
+  }
+
   configureSidePanelOnce();
   attachReloadListener();
   attachPaletteKeybinding();
@@ -4099,4 +4144,5 @@
   registerContentKeyActor();
   attachContentKeyBridgeListener();
   attachPanelFocusTracker();
+  patchPopupNotificationsForSplitView();
 })();
