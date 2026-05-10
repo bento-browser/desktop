@@ -1,5 +1,19 @@
 # Mach build hang — investigation plan
 
+## Status: RESOLVED (2026-05-10)
+
+Verified end-to-end the same day. `./scripts/mach-raw.sh build` ran from Bento's repo root completed in 6:43 with full live output, no zombie deadlock, exit code 0, "Your build was successful!" — and the BentoKey actors landed at `Bento.app/.../browser/actors/` automatically via `FINAL_TARGET_FILES.actors`. Phase 4c's manual `cp` workaround is officially no longer needed.
+
+The fix: [patches/experiments/01-mach-build-hang-guards.patch](../patches/experiments/01-mach-build-hang-guards.patch). The smoking gun was `mach/mixin/process.py` calling `subprocess.Popen(..., close_fds=False)` on its `pass_thru` build subprocess — exactly the self-paired-pipe pattern Phase 3 §6 of this plan flagged as the leading hypothesis. With `close_fds=True` the parent no longer inherits its own write end of the child's stdout pipe, so the read returns EOF cleanly when the child exits, the parent reaps the zombie, and mach proceeds. The patch also bounds two telemetry-init `wait()` calls with `timeout=30` so a stuck Glean dispatcher can no longer hang the rest of mach.
+
+Plus environment hardening (also in this commit history):
+
+- `scripts/mach-env.sh` — sources Python 3.12 from `~/.cache/codex-runtimes/...` (or `BENTO_MACH_PYTHON`, or `python3.12` on PATH) and unsets the four coding-agent env vars (`CLAUDECODE`, `CODEX_SANDBOX`, `GEMINI_CLI`, `OPENCODE`) so mach's "AI agent detected" output filter doesn't swallow real errors.
+- `scripts/mach-raw.sh` — wraps direct mach invocations using the above env (replaces the manual `env -u CLAUDECODE PATH=… ./mach …` ritual).
+- `scripts/surfer-env.sh` — same env for the surfer-wrapped product build path.
+
+Original phases below are kept as historical context; the steps under "Investigation plan" should not be repeated unless a new hang surfaces. If `npm run build` or `./scripts/mach-raw.sh build` ever hangs again, start by checking whether `BENTO_MACH_PYTHON` resolves to a 3.11+ binary and whether the experiments patch is still applied (`grep -n "close_fds=True" engine/python/mach/mach/mixin/process.py` should match).
+
 ## 2026-05-10 status check
 
 This plan describes a real failure mode, but parts of it are now stale:
@@ -10,8 +24,39 @@ This plan describes a real failure mode, but parts of it are now stale:
   - `engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/actors/BentoKeyParent.sys.mjs`
 - That means the original Phase 4c blocker, "manual cp actor files into the dist bundle", is not currently blocking this checkout.
 - `scripts/reset-engine-patches.sh` now exists and is safer than the raw `git -C engine checkout -- .` step below because it only resets files touched by Bento patches.
+- Follow-up investigation on 2026-05-10 added local hardening:
+  - `scripts/surfer-env.sh` wraps Surfer so product builds consistently unset Mach's coding-agent env vars and put Python 3.12 first in `PATH`.
+  - `scripts/mach-raw.sh` wraps direct Mach debugging for the same reason.
+  - `patches/experiments/01-mach-build-hang-guards.patch` patches Mach/mozprocess so telemetry waits and process-output reader joins cannot block forever.
+- Verification on 2026-05-10:
+  - `pnpm run import` reapplied all six git patches cleanly when run outside the Codex filesystem sandbox. Inside the sandbox, macOS `iconutil` reported `Invalid Iconset`; that was a sandbox artifact.
+  - A stale generated `engine/mozinfo.json` had `topobjdir == topsrcdir` and caused Mach's "object directory appears to be the same as your source directory" error. Removing that untracked generated file fixed the configuration lookup.
+  - `patches/chrome-layout/04-bento-key-actors.patch` was corrected so `BentoKey*.sys.mjs` stays alphabetically sorted in `FINAL_TARGET_FILES.actors`.
+  - `pnpm run build:ui` completed successfully; the final package-script verification took 14 seconds and ran the post-build sync.
+  - `scripts/sync-builtin-addon-symlinks.sh` now also copies content-process actor modules as real files after builds; `Bento.app/.../browser/actors/BentoKey*.sys.mjs` verified as regular files, not symlinks.
 
-Before doing the destructive reset steps in Phase 1, first re-check whether the hang still reproduces. If `npm run build` completes, archive this as historical context rather than active work.
+Before doing the destructive reset steps in Phase 1, first re-check whether the hang still reproduces. If `pnpm run build` completes, archive this as historical context rather than active work.
+
+## 2026-05-10 follow-up findings
+
+The three lookalike failures are all real, but they sit at different layers:
+
+1. **Output filtering is source-level behavior.** `engine/python/mozbuild/mozbuild/build_commands.py` forces `quiet=True` when `is_running_under_coding_agent()` sees `CLAUDECODE`, `CODEX_SANDBOX`, `GEMINI_CLI`, or `OPENCODE`. Surfer passes `process.env` through to Mach, so an agent shell can trigger this even though the user ran `npm run build`.
+2. **Python selection is stateful.** The current `~/.mozbuild/srcdirs/engine-978f37b56e10/_virtualenvs/` state was mixed: `mach`, `common`, and `taskgraph` were Python 3.9 while `build` was Python 3.12. That means direct `./mach` and Surfer-wrapped Mach can disagree, and a direct system-Python invocation can poison the shared Mach cache.
+3. **The zombie/pipe hang matches mozprocess.** `ProcessHandlerMixin.wait()` joins the process-output reader with no timeout. If a subprocess exits but a pipe writer remains inherited/open, the reader thread blocks in `readline()` and Mach waits forever even though the child is defunct. The local patch closes extra fds by default and bounds that reader join.
+
+Preferred commands after this hardening:
+
+```sh
+pnpm run build
+pnpm run mach:build
+```
+
+For raw one-off debugging:
+
+```sh
+bash scripts/mach-raw.sh build
+```
 
 ## Quick decision tree
 
@@ -26,18 +71,18 @@ Use this before starting the full investigation.
 2. Run the normal product build:
 
    ```sh
-   npm run build
+   pnpm run build
    ```
 
 3. Interpret the result:
-   - If `npm run build` completes and `Bento.app/.../browser/actors/BentoKey*.sys.mjs` exists, this plan is historical. Do not run destructive reset steps.
-   - If `npm run build` appears to succeed but the actors are missing, suspect Surfer/mach output filtering or stale dist state. Follow "Raw mach debugging recipe".
-   - If `npm run build` hangs, follow Phase 1 capture before killing anything.
+   - If `pnpm run build` completes and `Bento.app/.../browser/actors/BentoKey*.sys.mjs` exists, this plan is historical. Do not run destructive reset steps.
+   - If `pnpm run build` appears to succeed but the actors are missing, suspect Surfer/mach output filtering or stale dist state. Follow "Raw mach debugging recipe".
+   - If `pnpm run build` hangs, follow Phase 1 capture before killing anything.
    - If only direct `./mach build` fails with `tomllib`, that is the separate Python 3.9 issue documented below, not the zombie hang.
 
 ## Symptom
 
-`./mach build` (and therefore `npm run build`) hangs indefinitely at startup. The Python process consumes 0% CPU, has no live children, and never produces output. A defunct (zombie) child process appears in `ps`.
+`./mach build` (and therefore `pnpm run build`) hangs indefinitely at startup. The Python process consumes 0% CPU, has no live children, and never produces output. A defunct (zombie) child process appears in `ps`.
 
 An earlier debugging pass tried invoking `./mach build` directly instead of `npm run build` / `surfer build` to get raw mach output without Surfer's wrapping or log filtering. That direct path also hung or failed silently, so the problem was not just npm or Surfer swallowing output.
 
@@ -108,7 +153,7 @@ Workaround: prepend a Python 3.11+ to PATH before invoking mach.
 
 This unblocked the tomllib import, but the build still hung — see next section. The tomllib issue and the hang are separate; one masked the other for a while.
 
-Important caveat: when mach is wrapped by surfer, surfer's own Python execution path uses a different python (it sets up its own virtualenv at `~/.mozbuild/srcdirs/engine-978f37b56e10/_virtualenvs/mach/`, which is python3.12). So `npm run build` does NOT need PATH overriding for tomllib. The tomllib error only surfaces when running `./mach` directly.
+Follow-up caveat: do not assume Surfer's Mach venv is always Python 3.12. The 2026-05-10 check found a mixed cache where `mach`, `common`, and `taskgraph` were Python 3.9 while `build` was Python 3.12. The build scripts now route Surfer through `scripts/surfer-env.sh`, which puts Python 3.12 first in `PATH`; direct Mach debugging should use `scripts/mach-raw.sh` for the same reason. If the cache remains mixed after that, wipe only the Mach cache (`rm -rf ~/.mozbuild/srcdirs/engine-978f37b56e10`) and let the wrapper recreate it.
 
 ### 6. The hang itself
 
@@ -155,7 +200,15 @@ Practical implication for the build pipeline: surfer's symlink-everything-into-e
 
 ## Raw mach debugging recipe
 
-Use direct mach only when the normal build is hiding useful information. `npm run build` is still the product build command because it also runs extension builds, patch reset/import, Bento pref append, and symlink sync.
+Use direct mach only when the normal build is hiding useful information. `pnpm run build` is still the product build command because it also runs extension builds, patch reset/import, Bento pref append, and symlink sync.
+
+Preferred raw entrypoint now:
+
+```sh
+pnpm run mach:build
+```
+
+That script calls `scripts/mach-raw.sh`, which both prepends Python 3.12 and unsets the coding-agent env vars.
 
 Run direct mach from the Firefox checkout, not from the Bento repo root:
 
@@ -178,10 +231,9 @@ env -u CLAUDECODE -u CODEX_SANDBOX -u GEMINI_CLI -u OPENCODE ./mach build
 If the goal is to compare normal build vs raw mach, capture both logs explicitly:
 
 ```sh
-env -u CLAUDECODE -u CODEX_SANDBOX -u GEMINI_CLI -u OPENCODE npm run build > /tmp/bento-npm-build.log 2>&1
+pnpm run build > /tmp/bento-npm-build.log 2>&1
 
-cd engine
-env -u CLAUDECODE -u CODEX_SANDBOX -u GEMINI_CLI -u OPENCODE ./mach build > /tmp/bento-mach-build.log 2>&1
+bash scripts/mach-raw.sh build > /tmp/bento-mach-build.log 2>&1
 ```
 
 Expected interpretations:
@@ -193,7 +245,7 @@ Expected interpretations:
 
 ## Evidence already collected
 
-- The mach process loads python3.12 via `~/.mozbuild/srcdirs/engine-978f37b56e10/_virtualenvs/mach/lib/python3.12/...` (so the bundled mach virtualenv works; system Python 3.9 lacking `tomllib` is a separate issue that only surfaces on direct `./mach` invocation, not the surfer-wrapped path).
+- The original hung process loaded python3.12 via the Mach virtualenv, so the direct system-Python `tomllib` error was separate from that specific hang. Later follow-up found the cache can become mixed-version, so use the wrappers or rebuild the Mach cache before drawing conclusions from Python import errors.
 - `sample <pid>` shows the main thread blocked on `PyThread_acquire_lock_timed → _pthread_cond_wait → __psynch_cvwait`. A worker thread is blocked on `_io_FileIO_readinto → read` from a pipe (file descriptor for inter-process communication).
 - A glean dispatcher thread is parked (normal idle).
 - `pgrep -P <mach_pid>` returns no live children.
@@ -203,6 +255,9 @@ Expected interpretations:
 - It happens identically with `CLAUDECODE` set or unset (the env var only affects log filtering, not behaviour).
 - Direct `./mach build` was intentionally used during debugging to get raw build-system output. It still hung or failed silently, which points at mach / its Python startup path rather than npm's script runner.
 - Earlier in the same session the build succeeded; the hang appeared without a clearly attributable trigger. Possible candidates: the moz.build patch landing (touches `FINAL_TARGET_FILES.actors`), `surfer import` re-applying patches against a dirty engine, or one of the killed-then-restarted build attempts leaving stale state somewhere (e.g. an obj-dir lock, a glean state file in `~/.mozbuild/`, or a virtualenv corruption).
+- 2026-05-10 follow-up: no active mach/surfer/ninja build process was present when checked with `ps`.
+- 2026-05-10 follow-up: `~/.mozbuild/srcdirs/engine-978f37b56e10/_virtualenvs/` was mixed-version (`mach`, `common`, `taskgraph` at Python 3.9; `build` at Python 3.12), confirming the Python-path inconsistency.
+- 2026-05-10 follow-up: Surfer's dispatch helper merges env as `{...config.env, ...process.env}`, so caller env vars win. The fix must unset agent env vars before starting Surfer, not only when starting Mach inside Surfer.
 
 ## Hypothesis
 
@@ -214,6 +269,8 @@ Mach forks an early-startup helper subprocess (likely the Python virtualenv boot
 
 (1) is now the leading hypothesis given the `lsof` evidence (self-paired pipe). (2) is consistent with the main-thread stack but doesn't explain why fd cleanup is the visible smoking gun.
 
+2026-05-10 local hardening follows hypothesis (1): `patches/experiments/01-mach-build-hang-guards.patch` changes mozprocess to close extra fds by default and bounds `ProcessHandlerMixin.wait()`'s output-reader join. It also bounds Mach telemetry waits so telemetry cannot turn a normal failure into an indefinite wait.
+
 ## Investigation plan
 
 ### Phase 1 — Reproduce + capture (30 min)
@@ -222,7 +279,7 @@ Start with a non-destructive repro. Only move to the reset steps if the hang sti
 
 0. **Current-state check**:
    - `find engine/obj-*/dist -path '*BentoKey*.sys.mjs' -print`
-   - `npm run build`
+   - `pnpm run build`
    - If the build completes and actor files are still present in `Bento.app`, the issue is not active.
 
 Clean state every time once the hang is confirmed, so we're measuring the hang in isolation, not stale state from prior attempts.
@@ -231,11 +288,11 @@ Clean state every time once the hang is confirmed, so we're measuring the hang i
    - `pkill -9 -f "mach"; pkill -9 -f "surfer"` (only if stuck mach/surfer processes are confirmed)
    - `bash scripts/reset-engine-patches.sh`
    - `rm -rf ~/.mozbuild/srcdirs/engine-978f37b56e10` (forces virtualenv rebuild; destructive to local mach cache only)
-   - `cd engine && ./mach clobber` if it doesn't itself hang
-2. **Trigger the hang**: `env -u CLAUDECODE npm run build > /tmp/repro.log 2>&1 & echo $!`
-   - Prefer unsetting every known agent env var:
+   - `bash scripts/mach-raw.sh clobber` if it doesn't itself hang
+2. **Trigger the hang**: `pnpm run build > /tmp/repro.log 2>&1 & echo $!`
+   - `pnpm run build` now goes through `scripts/surfer-env.sh`, which unsets every known agent env var before Surfer starts Mach.
+   - If using an older checkout without that wrapper, unset all four names manually:
      `env -u CLAUDECODE -u CODEX_SANDBOX -u GEMINI_CLI -u OPENCODE npm run build > /tmp/repro.log 2>&1 & echo $!`
-   - This is intentional — without it the AI-detection filter swallows mach output and you can't tell hang-vs-error.
 3. **Capture within 60s of hang**:
    - `ps -o pid,ppid,etime,pcpu,state,wchan,command -ax | grep -E "(mach|surfer|<defunct>)"`
    - `sample <mach_pid> 2 -file /tmp/sample.txt` (full stack trace of every thread)
@@ -285,12 +342,12 @@ Once the spawn site is known:
 
 In parallel with Phase 3, try cheap workarounds in case one fixes it without root-cause work:
 
-1. `cd engine && ./mach clobber && env -u CLAUDECODE npm run build` — clobber re-runs configure
-2. `rm -rf ~/.mozbuild/srcdirs/engine-978f37b56e10 && env -u CLAUDECODE npm run build` — wipe mach virtualenv, force rebuild
-3. `MOZ_DISABLE_GLEAN=1 env -u CLAUDECODE npm run build` — if glean is the deadlock culprit
-4. `env -i HOME=$HOME PATH=/usr/bin:/usr/local/bin npm run build` from a fresh terminal — strip ALL inherited env vars; isolates whether something in the shell is contributing
+1. `bash scripts/mach-raw.sh clobber && pnpm run build` — clobber re-runs configure
+2. `rm -rf ~/.mozbuild/srcdirs/engine-978f37b56e10 && pnpm run build` — wipe mach virtualenv, force rebuild
+3. `MOZ_DISABLE_GLEAN=1 pnpm run build` — if glean is the deadlock culprit
+4. `env -i HOME=$HOME PATH=/usr/bin:/usr/local/bin:/opt/homebrew/bin pnpm run build` from a fresh terminal — strip inherited env vars; isolates whether something in the shell is contributing
 5. Try after a system reboot (clears any kernel-level fd leaks)
-6. Run the same `npm run build` inside Codex's runtime if available — its python3.12 environment is the one mach actually loads, so eliminating PATH discrepancies may help
+6. Run the same `pnpm run build` inside Codex's runtime if available — its python3.12 environment is the one mach should load, so eliminating PATH discrepancies may help
 
 If any of these unblocks the build, that's a strong signal about the root cause (e.g. workaround #2 succeeding ⇒ the virtualenv's state is corrupt; #3 succeeding ⇒ glean is at fault; #4 succeeding ⇒ a stale env var is the trigger).
 
@@ -298,7 +355,7 @@ If any of these unblocks the build, that's a strong signal about the root cause 
 
 Three possible outcomes:
 
-- **Local mach bug, local fix**: patch the spawn site to close fds correctly or use a different communication pattern. Add patch under `patches/build-fixes/`.
+- **Local mach bug, local fix**: patch the spawn site to close fds correctly or use a different communication pattern. Current local fix lives at `patches/experiments/01-mach-build-hang-guards.patch`; move it out of experiments once a successful full build proves it.
 - **Upstream Firefox bug**: file a bug at bugzilla.mozilla.org with the reproducer + sample stack. Pin a workaround locally until upstream lands a fix.
 - **Environmental issue** (e.g. specific to this machine, this Python version, this macOS version): document in `docs/maintaining-surfer.md` and CLAUDE.md, with the workaround commands (#2, #3 above).
 
@@ -337,13 +394,13 @@ find engine/obj-*/dist/Bento.app -path '*browser/actors/BentoKey*.sys.mjs' -type
 | Workaround #2 (wipe `~/.mozbuild` virtualenv) breaks other things     | Low        | The virtualenv is mach's per-srcdir build cache, not the user's environment. Rebuild takes ~5 min.                                                                                                                                                                                                 |
 | dtrace requires SIP disabled and the user doesn't want to             | High       | Default to instrumentation (Approach A) or `fs_usage` (Approach C) — both work without SIP changes.                                                                                                                                                                                                |
 | The hang clears itself before we can investigate                      | Medium     | The 2026-05-10 status check at the top of this doc suggests the bundle currently has the actor files present, which means a build DID succeed at some point after the original session ended. The hang may have been transient — confirm via Phase 1 step 0 before sinking time into reproduction. |
-| Real fix is upstream-only                                             | Medium     | Maintain a local patch under `patches/build-fixes/` until upstream lands. Same pattern Bento already uses for chrome patches.                                                                                                                                                                      |
+| Real fix is upstream-only                                             | Medium     | Maintain the local patch under `patches/experiments/` until a successful full build proves it; then move it to a stable build-fixes patch directory if needed.                                                                                                                                     |
 | Future content-process JS lands as symlinks again and silently breaks | Medium     | Add a build-pipeline assert: any file destined for `Bento.app/.../browser/actors/`, content scripts dirs, etc. must be a regular file, not a symlink. Could be a one-line check in `scripts/append-prefs.sh` or a new `scripts/verify-content-resources.sh`.                                       |
 
 ## Success criteria
 
-- `npm run build` runs to completion with no manual intervention.
-- A clean clone (`git clone && pnpm install && npm run build`) builds successfully on this machine.
+- `pnpm run build` runs to completion with no manual intervention.
+- A clean clone (`git clone && pnpm install && pnpm run build`) builds successfully on this machine.
 - Phase 4c's actor files land at `Bento.app/.../browser/actors/BentoKey*.sys.mjs` automatically via `FINAL_TARGET_FILES.actors`.
 - The fix (or documented workaround) is committed and explained in CLAUDE.md.
 - CLAUDE.md gains a "future content-process resources need real files, not symlinks" note that future sessions will see.
