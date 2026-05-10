@@ -378,9 +378,8 @@
       }
 
       /* Each side panel: column-flex of [header, browser]. flex stays
-         at 0 0 auto so the JS splitter's width updates take effect
-         (XUL splitter doesn't mutate sibling widths reliably inside a
-         CSS-flex container — see createPanelSplitter comment). */
+         at 0 0 auto so Firefox's native split-view splitter resize
+         updates take effect against the sibling width. */
       #bento-side-panel-host > [data-bento-panel-tab-id] {
         display: flex;
         flex-direction: column;
@@ -388,37 +387,22 @@
         min-width: var(--bento-panel-min-width);
         background-color: var(--neutral-5);
       }
-      /* FLIP reorder animation. The reorder path keeps every panel's
-         DOM position fixed (so chrome <browser> docShells don't detach
-         and reload) and re-shuffles via the CSS order property. After
-         the order changes we capture each panel's geometry before/after,
-         set an instant transform back to its old position, then
-         transition to 0 — classic FLIP. The class is removed once the
-         transition completes so it doesn't interfere with subsequent
-         layout work. */
-      #bento-side-panel-host > .bento-panel--reordering {
-        transition: transform var(--bento-duration-base) var(--bento-easing-standard);
-        will-change: transform;
-        z-index: 1;
-      }
-      #bento-side-panel-host > .bento-panel--removing {
-        overflow: hidden;
+      /* Close-panel fade-and-scale animation. Opacity + transform
+         only — width / flex-basis transitions used to be in here too,
+         but Firefox's split-view layout owns each panel's
+         flex-basis and its own width attr, so transitioning those
+         from JS produced visible flicker (panel collapsed instantly
+         while the fade played, then sibling panels jittered as
+         they redistributed space). Animating only the painted
+         surface gives clean visual feedback without fighting
+         Firefox's layout. */
+      .bento-panel--removing {
         pointer-events: none;
         opacity: 0;
-        transform: scale(0.985);
+        transform: scale(0.95);
         transition:
-          flex-basis 180ms var(--bento-easing-standard),
-          width 180ms var(--bento-easing-standard),
-          min-width 180ms var(--bento-easing-standard),
           opacity 140ms var(--bento-easing-standard),
           transform 180ms var(--bento-easing-standard);
-      }
-      #bento-side-panel-host > .bento-panel-splitter--removing {
-        flex-basis: 0;
-        opacity: 0;
-        transition:
-          flex-basis 180ms var(--bento-easing-standard),
-          opacity 140ms var(--bento-easing-standard);
       }
 
       /* Cycle focus indicator. Added on whichever panel is the user's
@@ -431,13 +415,39 @@
          is visible everywhere. Auto-removed 1.5s after the last nav
          action; border-color transitions for the fade. */
       #bento-side-panel-host > [data-bento-main-panel],
-      #bento-side-panel-host > [data-bento-panel-tab-id],
-      #bento-side-panel-host > .bento-panel-add-trailer {
+      #bento-side-panel-host > [data-bento-panel-tab-id] {
         position: relative;
       }
+      /* Suppress Firefox's default :focus outline on the panel
+         containers. They have tabindex="-1" so they're focusable;
+         when the user clicks into content the chrome focus path
+         walks through the container and Firefox would otherwise
+         paint a persistent default focus outline (rgb(251,251,254)
+         3px, reads as a cool/cyan ring against dark backgrounds)
+         that we don't own. !important is required because
+         Firefox's chrome stylesheet sets the outline at high
+         specificity. The cycle ring (.bento-panel--cycle-focused
+         ::after below) is the only focus indicator we want. */
+      [data-bento-main-panel],
+      [data-bento-main-panel]:focus,
+      [data-bento-main-panel]:focus-within,
+      [data-bento-panel-tab-id],
+      [data-bento-panel-tab-id]:focus,
+      [data-bento-panel-tab-id]:focus-within {
+        outline: none !important;
+      }
+      /* Firefox's content-area.css paints "outline: var(--focus-outline)"
+         on the ".deck-selected > .browserContainer" of every split-view
+         panel — that's where the cyan focus ring around the active tab's
+         main slot was actually coming from (NOT the tabbrowser-tabbox
+         itself, which we already neutralised above). Suppress it across
+         all split-view panel browserContainers; the .bento-panel--cycle-
+         focused ::after ring is the only focus indicator we want. */
+      #tabbrowser-tabpanels[splitview] .browserContainer {
+        outline: none !important;
+      }
       #bento-side-panel-host > [data-bento-main-panel]::after,
-      #bento-side-panel-host > [data-bento-panel-tab-id]::after,
-      #bento-side-panel-host > .bento-panel-add-trailer::after {
+      #bento-side-panel-host > [data-bento-panel-tab-id]::after {
         content: '';
         position: absolute;
         inset: 0;
@@ -454,30 +464,6 @@
       #bento-side-panel-host > [data-bento-panel-tab-id] > browser {
         flex: 1 1 auto;
         min-height: 0;
-      }
-
-      /* JS-driven inter-panel splitter. Bare div (HTML, not XUL) with
-         a pointerdown handler that re-measures sibling widths and
-         updates them on pointermove (with setPointerCapture so drags
-         survive the cursor crossing into a remote content browser).
-         Width matches --space-2xs so the gap reads as the same rhythm
-         as the strip's outer padding and the sidebar splitter. The
-         hover tint makes the grabbable area visible — without it the
-         splitter is a 6px transparent gap that's hard to discover. */
-      .bento-panel-splitter {
-        flex: 0 0 var(--space-2xs);
-        cursor: col-resize;
-        background-color: transparent;
-        align-self: stretch;
-        transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      .bento-panel-splitter:hover,
-      .bento-panel-splitter--dragging {
-        background-color: var(--color-60);
-      }
-      #bento-side-panel-host > .bento-panel-splitter.bento-panel-splitter--removing {
-        flex: 0 0 0;
-        opacity: 0;
       }
 
       /* Per-panel header: compact urlbar (back/fwd/reload, URL input,
@@ -549,43 +535,7 @@
         color: var(--neutral-50);
       }
 
-      /* Add-panel trailer: a button slot at the end of the strip,
-         matches panel height (stretches via align-items:stretch on
-         strip), narrow fixed width. Dashed outline + neutral colors
-         so it reads as "empty slot, click to fill". */
-      .bento-panel-add-trailer {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-2xs);
-        flex: 0 0 var(--bento-add-panel-trailer-width);
-        padding: var(--space-s);
-        background-color: transparent;
-        border: var(--bento-border-hairline) dashed var(--neutral-20);
-        border-radius: var(--radius-m);
-        color: var(--neutral-60);
-        cursor: pointer;
-        font-size: var(--font-xs);
-        font-family: inherit;
-        transition:
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard),
-          border-color var(--bento-duration-fast) var(--bento-easing-standard);
-        box-sizing: border-box;
-        outline: none;
-      }
-      .bento-panel-add-trailer:hover {
-        background-color: var(--neutral-10);
-        border-color: var(--neutral-30);
-        color: var(--neutral-80);
-      }
-      .bento-panel-add-trailer > svg {
-        width: var(--bento-icon-size-md);
-        height: var(--bento-icon-size-md);
-      }
-
-      /* ─── Phase 2: native split-view panel layout ─────────────────────
+      /* ─── Native split-view panel layout ──────────────────────────────
          Activated when reconcilePanelsSplitView adds .bento-split-active
          to #tabbrowser-tabpanels and sets the [splitview] attribute via
          the BENTO_SPLIT_SENTINEL → setSplitViewActive() chain.
@@ -645,10 +595,11 @@
          moves to the second position when I press Cmd+T".
          Override Firefox's [column="0"] and [column="1"] rules with
          contiguous order values that scale to any panel count. The
-         splitter (Firefox order: 1) is unused in Bento's N-panel
-         layout — push it past everything with order: 99 and hide it.
-         If we ever want per-pair splitters, they'll need to be
-         injected separately from this layout. */
+         splitter (Firefox order: 1) is intentionally hidden — its
+         resize semantics (per-tab width attr on the col-0
+         notificationbox, sibling-shrink instead of scroll-push)
+         don't match Bento's strip model. See the Phase-5-followup
+         plan for the proper inter-panel splitter implementation. */
       #tabbrowser-tabpanels[splitview] > .split-view-panel[column="0"] { order: 0; }
       #tabbrowser-tabpanels[splitview] > .split-view-panel[column="1"] { order: 1; }
       #tabbrowser-tabpanels[splitview] > .split-view-panel[column="2"] { order: 2; }
@@ -1037,9 +988,6 @@
   // workspace's panels list.
   const HTML_NS = 'http://www.w3.org/1999/xhtml';
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const PANEL_DEFAULT_WIDTH = 480;
-  const sidePanelShowHooks = [];
-  const sidePanelHideHooks = [];
 
   // Lucide icon paths (single-path d-string per icon — multi-segment uses M).
   const ICONS = {
@@ -1081,21 +1029,10 @@
     return btn;
   }
 
-  // Strip the patch's pre-baked single browser child if it's still there.
-  // Idempotent: if it was already removed (or the patch evolved out of
-  // it), this is a no-op.
-  function clearLegacySidePanelFrame() {
-    const legacy = document.getElementById('bento-side-panel-frame');
-    if (legacy) legacy.remove();
-  }
-
-  // Move the main tab content (#tabbrowser-tabbox) into the strip as its
-  // FIRST child, then drop the M2 patch's `bento-side-panel-splitter`
-  // (the splitter that used to live between main and the strip — now
-  // meaningless since main IS in the strip). The strip becomes the
-  // entire content area right of the sidebar — main + side panels +
-  // Add-panel trailer share one horizontal scroll context, one
-  // bottom-padding gap, etc.
+  // Move the main tab content (#tabbrowser-tabbox) into the strip as
+  // its first child. The strip becomes the entire content area right
+  // of the sidebar — main + side panels + Add-panel button share one
+  // horizontal scroll context, one bottom-padding gap, etc.
   //
   // Idempotent via the data-bento-strip-unified flag. Risk: tabbrowser
   // internals occasionally walk up the DOM looking for #tabbrowser-tabbox
@@ -1107,16 +1044,6 @@
     if (!host || !main) return;
     if (host.dataset.bentoStripUnified === '1') return;
 
-    const oldSplitter = document.getElementById('bento-side-panel-splitter');
-    if (oldSplitter) oldSplitter.remove();
-
-    // Strip now grows to fill remaining space — drop the patch's
-    // fixed-width / persist-width attributes so it behaves like a
-    // flex-1 container.
-    host.removeAttribute('width');
-    host.removeAttribute('persist');
-    host.setAttribute('flex', '1');
-    host.removeAttribute('hidden');
     host.dataset.bentoStripUnified = '1';
 
     main.dataset.bentoMainPanel = '1';
@@ -1376,179 +1303,7 @@
     return header;
   }
 
-  function createPanelElement(tabId, url) {
-    const vbox = document.createXULElement('vbox');
-    vbox.dataset.bentoPanelTabId = String(tabId);
-    // tabindex="-1" makes the panel programmatically focusable (so cycle
-    // navigation can focus it) but keeps it out of the natural Tab
-    // order — TAB still walks header buttons → URL input → star → page.
-    vbox.setAttribute('tabindex', '-1');
-    // XUL width attribute (not CSS flex-basis) so the splitter can
-    // mutate it as the user drags. CSS in injectChromeStyles maps width
-    // to the rendered size via `flex: 0 0 auto`.
-    vbox.setAttribute('width', String(PANEL_DEFAULT_WIDTH));
-
-    // The Add-Panel trailer creates tabs at about:blank?bento_add_as_panel=1
-    // as an in-band signal to bento-tools. Substitute about:newtab so
-    // the panel renders the new-tab page instead of the marker URL.
-    let panelUrl = url || '';
-    if (panelUrl.includes('bento_add_as_panel=1')) {
-      panelUrl = 'about:newtab';
-    }
-
-    // Parallel-browser path. The panel <browser> is a SEPARATE element
-    // from the underlying tab's <browser>; its src is what the panel
-    // renders. Extensions don't attach to it because content scripts
-    // target the tab's linkedBrowser, not this one — that limitation
-    // is what plans/bento-spaces-split-view-panels.md addresses.
-    const browserEl = document.createXULElement('browser');
-    browserEl.setAttribute('type', 'content');
-    browserEl.setAttribute('remote', 'true');
-    browserEl.setAttribute('remoteType', 'web');
-    browserEl.setAttribute('flex', '1');
-    browserEl.setAttribute('disablefullscreen', 'true');
-    // Wire up the standard Firefox content context menu (right-click →
-    // Inspect, View Source, Save As, etc.) and tooltip handler. Without
-    // these the panel browser has no right-click affordance — Inspect
-    // wouldn't show. messagemanagergroup="browsers" puts this browser
-    // in the same IPC group as gBrowser tabs so devtools can attach.
-    browserEl.setAttribute('context', 'contentAreaContextMenu');
-    browserEl.setAttribute('tooltip', 'aHTMLTooltip');
-    browserEl.setAttribute('messagemanagergroup', 'browsers');
-    // src must be set BEFORE the header attaches its progress listener,
-    // otherwise the header's setTimeout(refresh, 50) catches the
-    // about:blank initial state but never sees onLocationChange for the
-    // eventual URL because progress listeners attached after navigation
-    // start may miss the first location change.
-    if (panelUrl) browserEl.setAttribute('src', panelUrl);
-
-    const header = createPanelHeader(browserEl, panelUrl, tabId);
-    vbox.appendChild(header);
-    vbox.appendChild(browserEl);
-    return vbox;
-  }
-
   // JS-driven splitter using POINTER events with setPointerCapture.
-  //
-  // Why not XUL <splitter>: empirically the resizebefore/resizeafter
-  // width mutations don't round-trip reliably through CSS layout when
-  // the parent uses `display: flex`, which our strip does.
-  //
-  // Why not mousedown + window-level mousemove: when the cursor moves
-  // over a remote=true content <browser> (the panel's webpage), mouse
-  // events are consumed by the content process and never reach the
-  // chrome window, so the drag stops the moment the user crosses into
-  // a panel's webpage. setPointerCapture solves this — once a pointer
-  // is captured by a chrome element, every subsequent pointer event
-  // for that pointerId fires on the capturing element regardless of
-  // which element the cursor is over (cross-process safe).
-  // Splitter behaviour: every splitter resizes ONLY the panel on its
-  // left side. Right-side panels keep their widths and shift along
-  // the strip's horizontal scroll (the strip total width grows /
-  // shrinks by the drag delta). This is uniform across the first
-  // splitter (main ↔ first side panel) and every subsequent
-  // inter-panel splitter — main is no different from any other
-  // fixed-width panel once locked.
-  //
-  // Sizing main panel — the nuclear approach. tabbrowser-tabbox is a
-  // XUL <tabbox> with a `flex="1"` attribute and Firefox internals'
-  // own CSS rules. Setting `flex: 0 0 auto !important` + `width`
-  // empirically did NOT keep it at a fixed width — flex layout still
-  // redistributed space when neighbouring side panels resized.
-  // min-width = max-width = w is the only constraint CSS flex layout
-  // literally cannot violate, so we use that. Removing the XUL flex
-  // attribute eliminates one more competing input.
-  function setMainSize(target, w) {
-    target.removeAttribute('flex');
-    target.style.setProperty('flex', '0 0 ' + w + 'px', 'important');
-    target.style.setProperty('width', w + 'px', 'important');
-    target.style.setProperty('min-width', w + 'px', 'important');
-    target.style.setProperty('max-width', w + 'px', 'important');
-    target.setAttribute('width', String(w));
-  }
-
-  function unsetMainSize(target) {
-    target.setAttribute('flex', '1');
-    target.style.removeProperty('flex');
-    target.style.removeProperty('width');
-    target.style.removeProperty('min-width');
-    target.style.removeProperty('max-width');
-    target.removeAttribute('width');
-  }
-
-  function lockMainIfNeeded(target) {
-    if (!target.dataset || !target.dataset.bentoMainPanel) return;
-    if (target.style.width) return; // already locked
-    const w = target.getBoundingClientRect().width;
-    if (w <= 0) return;
-    setMainSize(target, w);
-  }
-
-  function startPanelDrag(splitter, e) {
-    if (e.button !== 0) return;
-    const target = splitter.previousElementSibling;
-    if (!target) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    lockMainIfNeeded(target);
-
-    splitter._panelDragState = {
-      target,
-      startX: e.clientX,
-      startWidth: target.getBoundingClientRect().width,
-      pointerId: e.pointerId,
-    };
-    try {
-      splitter.setPointerCapture(e.pointerId);
-    } catch (err) {
-      console.warn('[bento-shell-mount] setPointerCapture failed:', err);
-    }
-    splitter.classList.add('bento-panel-splitter--dragging');
-    document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
-    document.documentElement.style.setProperty('user-select', 'none', 'important');
-  }
-
-  function onPanelDragMove(splitter, e) {
-    const drag = splitter._panelDragState;
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    const delta = e.clientX - drag.startX;
-    const t = drag.target;
-    const next = Math.max(200, drag.startWidth + delta);
-    if (t.dataset && t.dataset.bentoMainPanel) {
-      setMainSize(t, next);
-    } else {
-      t.style.width = next + 'px';
-      t.setAttribute('width', String(next));
-    }
-  }
-
-  function endPanelDrag(splitter, e) {
-    const drag = splitter._panelDragState;
-    if (!drag) return;
-    if (e && e.pointerId !== undefined && e.pointerId !== drag.pointerId) return;
-    try {
-      splitter.releasePointerCapture(drag.pointerId);
-    } catch {
-      /* already released */
-    }
-    splitter._panelDragState = null;
-    splitter.classList.remove('bento-panel-splitter--dragging');
-    document.documentElement.style.removeProperty('cursor');
-    document.documentElement.style.removeProperty('user-select');
-  }
-
-  function createPanelSplitter() {
-    const splitter = document.createElementNS(HTML_NS, 'div');
-    splitter.className = 'bento-panel-splitter';
-    splitter.addEventListener('pointerdown', (e) => startPanelDrag(splitter, e));
-    splitter.addEventListener('pointermove', (e) => onPanelDragMove(splitter, e));
-    splitter.addEventListener('pointerup', (e) => endPanelDrag(splitter, e));
-    splitter.addEventListener('pointercancel', (e) => endPanelDrag(splitter, e));
-    splitter.addEventListener('lostpointercapture', () => endPanelDrag(splitter, null));
-    return splitter;
-  }
-
   // ─── Arrow-key panel navigation ────────────────────────────────────────
   // Left / Right arrow keys cycle through panels — main + each side
   // panel, then the Add-panel trailer when present. The "current" item
@@ -1562,44 +1317,27 @@
   // chrome — the content process consumes them — so webpages keep
   // their arrow-key behaviour for free.
   function getOrderedPanels() {
-    // Split-view mode: panels live as notificationbox children of
-    // gBrowser.tabpanels, in tabpanels.splitViewPanels order. The
-    // reconciler stamps data-bento-main-panel / data-bento-panel-tab-id
-    // on each panel container so downstream code (drag-reorder, arrow-
-    // key cycling, Esc-to-blur) reads tabIds the same way it does in
-    // the legacy parallel-browser path.
-    if (
-      isSplitViewEnabled() &&
-      window.gBrowser?.tabpanels?.classList.contains('bento-split-active')
-    ) {
-      const out = [];
-      const ids = window.gBrowser.tabpanels.splitViewPanels || [];
-      for (const panelId of ids) {
-        const el = document.getElementById(panelId);
-        if (el) out.push(el);
-      }
-      return out;
+    // Panels live as notificationbox children of gBrowser.tabpanels,
+    // in tabpanels.splitViewPanels order. The reconciler stamps
+    // data-bento-main-panel / data-bento-panel-tab-id on each panel
+    // container so downstream code (drag-reorder, arrow-key cycling,
+    // Esc-to-blur) reads tabIds. When tabpanels isn't yet in split-
+    // active mode (boot, or no panels in the active workspace), the
+    // ordered list is empty.
+    if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
+      return [];
     }
-    // Legacy parallel-browser path
-    const host = document.getElementById('bento-side-panel-host');
-    if (!host) return [];
     const out = [];
-    for (const child of host.children) {
-      if (
-        (child.dataset && child.dataset.bentoMainPanel) ||
-        (child.dataset && child.dataset.bentoPanelTabId)
-      ) {
-        out.push(child);
-      }
+    const ids = window.gBrowser.tabpanels.splitViewPanels || [];
+    for (const panelId of ids) {
+      const el = document.getElementById(panelId);
+      if (el) out.push(el);
     }
     return out;
   }
 
   function getPanelCycleTargets() {
-    const out = getOrderedPanels();
-    const trailer = document.querySelector('.bento-panel-add-trailer');
-    if (trailer) out.push(trailer);
-    return out;
+    return getOrderedPanels();
   }
 
   function shouldHandlePanelArrowKey(target) {
@@ -1942,18 +1680,7 @@
     if (panel._bentoPanelRemoving) return;
     panel._bentoPanelRemoving = true;
 
-    const splitter = panel.previousElementSibling;
-    const width = panel.getBoundingClientRect().width;
-    panel.style.width = width + 'px';
-    panel.style.flexBasis = width + 'px';
-    panel.style.minWidth = width + 'px';
-    panel.getBoundingClientRect();
-
     panel.classList.add('bento-panel--removing');
-    if (isSplitter(splitter)) splitter.classList.add('bento-panel-splitter--removing');
-    panel.style.width = '0px';
-    panel.style.flexBasis = '0px';
-    panel.style.minWidth = '0px';
 
     setTimeout(() => {
       dispatchShellAction({ type: 'tab/close', id: tabId });
@@ -2344,10 +2071,11 @@
   // #bento-side-panel-host. Single helper so updateStripScrollbar +
   // pointer drag handlers + track-click all stay aligned.
   function getStripScrollTarget() {
-    if (
-      isSplitViewEnabled() &&
-      window.gBrowser?.tabpanels?.classList.contains('bento-split-active')
-    ) {
+    // Once the reconciler has activated split-view mode, the deck
+    // (#tabbrowser-tabpanels) IS the scroll context for the panel
+    // strip. Before then (boot, or no panels in this workspace), the
+    // unified host vbox is the strip and tabpanels is just main.
+    if (window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
       return window.gBrowser.tabpanels;
     }
     return document.getElementById('bento-side-panel-host');
@@ -2599,20 +2327,6 @@
   // the active workspace's panels list, then emits panels/sync — which
   // round-trips back to chrome and the next reconcilePanels pass renders
   // the new panel.
-  function createAddPanelTrailer() {
-    const btn = document.createElementNS(HTML_NS, 'button');
-    btn.type = 'button';
-    btn.className = 'bento-panel-add-trailer';
-    btn.dataset.bentoAddPanel = '1';
-    btn.title = 'Add panel';
-    btn.setAttribute('aria-label', 'Add panel');
-    btn.appendChild(makeIcon(ICONS.plus, 20));
-    const label = document.createElementNS(HTML_NS, 'span');
-    label.textContent = 'Add panel';
-    btn.appendChild(label);
-    btn.addEventListener('click', addNewPanel);
-    return btn;
-  }
 
   // URL-marker IPC: chrome creates the tab at a sentinel URL; bento-tools'
   // tabs.onCreated handler reads tab.url, redirects to the real new-tab
@@ -2647,14 +2361,13 @@
       return;
     }
     if (!newTab) return;
-    // The PANEL <browser> handles the marker URL itself by substituting
-    // about:newtab when it sees the marker (createPanelElement). But the
-    // underlying tab also needs to navigate away from the marker URL so
-    // the tab title and main URL bar (when this tab becomes active) show
-    // a clean state. Chrome's loadURI bypasses any WebExtension API
-    // restrictions on about:newtab navigation. The 250ms delay gives
-    // bento-tools' tabs.onCreated listener time to fire with the marker
-    // URL and add the tab to the panel list before we navigate away.
+    // The newly-created tab needs to navigate away from the marker
+    // URL so the tab title and main URL bar (when this tab becomes
+    // active) show a clean state. Chrome's loadURI bypasses any
+    // WebExtension API restrictions on about:newtab navigation. The
+    // 250ms delay gives bento-tools' tabs.onCreated listener time to
+    // fire with the marker URL and add the tab to the panel list
+    // before we navigate away.
     setTimeout(() => {
       try {
         const principal = Services.scriptSecurityManager.getSystemPrincipal();
@@ -2672,113 +2385,15 @@
     }, 250);
   }
 
-  // Reconcile the strip's children against `panels` (Array<{tabId, url}>).
-  // Target layout: [main, splitter, p1, splitter, p2, ..., splitter, add-trailer].
+  // ─── Native split-view panel rendering ──────────────────────────────
   //
-  // INCREMENTAL strategy — never call insertBefore on a panel that is
-  // already at the destination position. Earlier versions tore down all
-  // splitters + the trailer and re-walked the panel list, which caused
-  // every existing panel to be moved via host.insertBefore(panel, X)
-  // even when it was already at X. Moving a chrome <browser> within
-  // its parent triggers Firefox to detach and reattach the docShell,
-  // which reloads the panel's content. Reusing splitters + only moving
-  // mis-positioned panels keeps existing panels intact across reconciles.
-  function isSplitter(node) {
-    return !!(node && node.classList && node.classList.contains('bento-panel-splitter'));
-  }
-  function isTrailer(node) {
-    return !!(node && node.classList && node.classList.contains('bento-panel-add-trailer'));
-  }
-  // Pure-reorder path: rearrange the strip via CSS `order` instead of
-  // DOM mutation, then FLIP-animate the slide. Each item gets an even
-  // order index based on its desired visual slot (main=0, panel-i=2*(i+1),
-  // trailer=2*(N+1)); each splitter gets an odd index between two items.
-  // Splitters are interchangeable — we just enumerate them in DOM order
-  // and assign odd indices 1, 3, 5, …
-  function reorderPanelsInPlace(host, main, panels) {
-    // 1. Capture pre-reorder geometry of every panel container.
-    const panelEls = new Map();
-    for (const child of host.children) {
-      if (child.dataset && child.dataset.bentoPanelTabId) {
-        panelEls.set(Number(child.dataset.bentoPanelTabId), child);
-      }
-    }
-    const oldRects = new Map();
-    for (const [id, el] of panelEls) oldRects.set(id, el.getBoundingClientRect());
-
-    // 2. Apply new orders.
-    if (main) main.style.order = '0';
-    for (let i = 0; i < panels.length; i++) {
-      const el = panelEls.get(panels[i].tabId);
-      if (el) el.style.order = String(2 * (i + 1));
-    }
-    // Splitters (one between each adjacent pair, plus a trailing one
-    // before the trailer when N>0) get odd orders. Walk DOM splitters
-    // in document order — they're identity-free, so any consistent
-    // assignment that yields one between each item pair is correct.
-    let splitterIdx = 0;
-    for (const child of host.children) {
-      if (!isSplitter(child)) continue;
-      child.style.order = String(2 * splitterIdx + 1);
-      splitterIdx++;
-    }
-    // Trailer last.
-    for (const child of host.children) {
-      if (isTrailer(child)) child.style.order = String(2 * (panels.length + 1));
-    }
-
-    // 3. FLIP — instant transform back to old position, then transition
-    // to translate(0). Force a synchronous reflow between the two so
-    // the browser registers the start state before applying the
-    // transition. Cleanup (remove class + transform) on transitionend.
-    requestAnimationFrame(() => {
-      for (const [id, el] of panelEls) {
-        const oldR = oldRects.get(id);
-        if (!oldR) continue;
-        const newR = el.getBoundingClientRect();
-        const dx = oldR.left - newR.left;
-        if (Math.abs(dx) < 1) continue;
-        el.style.transform = `translateX(${dx}px)`;
-        el.classList.remove('bento-panel--reordering');
-      }
-      // Force layout flush so the transform takes effect before we add
-      // the transition-bearing class on the next frame.
-      void host.offsetWidth;
-      requestAnimationFrame(() => {
-        const cleanup = (e) => {
-          if (e.propertyName !== 'transform') return;
-          const t = e.target;
-          t.classList.remove('bento-panel--reordering');
-          t.removeEventListener('transitionend', cleanup);
-        };
-        for (const el of panelEls.values()) {
-          if (!el.style.transform) continue;
-          el.classList.add('bento-panel--reordering');
-          el.style.transform = '';
-          el.addEventListener('transitionend', cleanup);
-        }
-      });
-    });
-  }
-
-  // ─── Phase 2: Native split-view panel rendering ────────────────────────
+  // Panel rendering is driven through Firefox 150's
+  // `tabpanels.splitViewPanels = [...]` setter — each panel is a real
+  // Firefox tab whose `linkedBrowser` stays in tabpanels for its
+  // lifetime. Extension content scripts attach correctly because
+  // nothing about a tab's identity changes.
   //
-  // Pref-gated alternative to the legacy parallel-browser reconciler
-  // below. When `bento.panels.splitView` is true, panel rendering is
-  // driven through Firefox 150's `tabpanels.splitViewPanels = [...]`
-  // setter — each panel is a real Firefox tab whose `linkedBrowser`
-  // stays in tabpanels for its lifetime. Extension content scripts
-  // attach correctly because nothing about a tab's identity changes.
-  //
-  // Plan: plans/bento-spaces-split-view-panels.md (Phase 2). The
-  // legacy reconciler stays in place until Phase 5 deletes it.
-  function isSplitViewEnabled() {
-    try {
-      return Services.prefs.getBoolPref('bento.panels.splitView', false);
-    } catch {
-      return false;
-    }
-  }
+  // Plan: plans/bento-spaces-split-view-panels.md.
 
   // The most recent panels payload, stashed so the TabSelect listener
   // can re-reconcile when only the active main tab changes (the panel
@@ -3501,7 +3116,6 @@
 
     let lastReconciledFor = null;
     const reconcile = (_source) => {
-      if (!isSplitViewEnabled()) return;
       const sel = window.gBrowser.selectedTab;
       if (sel === lastReconciledFor) return;
       lastReconciledFor = sel;
@@ -3561,223 +3175,7 @@
   }
 
   function reconcilePanels(panels) {
-    if (isSplitViewEnabled()) {
-      reconcilePanelsSplitView(panels);
-      return;
-    }
-
-    const host = document.getElementById('bento-side-panel-host');
-    const main = document.getElementById('tabbrowser-tabbox');
-    if (!host) {
-      console.warn('[bento-shell-mount] reconcilePanels: bento-side-panel-host missing');
-      return;
-    }
-
-    // Pure-reorder fast path: same panel set as before, just shuffled.
-    // Re-attach a chrome <browser> by host.insertBefore would detach +
-    // reattach its docShell, which reloads the panel. Avoid by leaving
-    // the DOM untouched and reshuffling via CSS `order` (the host is
-    // flex-direction: row). FLIP-animates the slide so the user sees
-    // the new arrangement settle in place.
-    const existingPanelIds = new Set();
-    for (const child of host.children) {
-      if (child.dataset && child.dataset.bentoPanelTabId) {
-        existingPanelIds.add(Number(child.dataset.bentoPanelTabId));
-      }
-    }
-    const desiredIdSet = new Set(panels.map((p) => p.tabId));
-    const sameSet =
-      existingPanelIds.size === desiredIdSet.size &&
-      [...existingPanelIds].every((id) => desiredIdSet.has(id));
-    if (sameSet && existingPanelIds.size > 0) {
-      reorderPanelsInPlace(host, main, panels);
-      // Navigator favicon strip mirrors panel order; refresh it so the
-      // new visual order shows immediately. Splitters / trailer keep
-      // their CSS-order identity from reorderPanelsInPlace.
-      refreshPanelNav(panels);
-      return;
-    }
-
-    // Main panel sizing — UNLOCK path runs first (so a 0-panels
-    // reconcile restores main to flex-fill before we touch anything
-    // else). The LOCK path runs at the end of this function, AFTER
-    // the new panel layout has been inserted, so main's
-    // getBoundingClientRect() reflects the post-shrink width
-    // (flex:1 yields to the new fixed-width panel). Locking at that
-    // width keeps the new panel visible — locking before would
-    // capture main's pre-shrink full width and the new panel would
-    // overflow off-screen.
-    if (main && panels.length === 0 && main.style.width) {
-      unsetMainSize(main);
-    }
-
-    // Slow path runs when the panel set itself changed (add/remove/
-    // workspace switch). Reset any explicit `order` styles left over
-    // from a previous fast-path reorder so the DOM walk below — which
-    // appends new elements at the end — gives correct visual ordering
-    // again. Without this, a new panel (no `order` set, defaults to 0)
-    // would jump to the front of a previously-reordered strip.
-    for (const child of host.children) {
-      if (child.style && child.style.order) child.style.order = '';
-    }
-
-    // Index existing panels by tabId. Splitters and the trailer are
-    // handled positionally below; we don't pre-snapshot them.
-    const existing = new Map();
-    for (const child of Array.from(host.children)) {
-      if (child === main) continue;
-      if (child.dataset && child.dataset.bentoPanelTabId) {
-        existing.set(Number(child.dataset.bentoPanelTabId), child);
-      }
-    }
-
-    // Drop panels not in the desired list, plus the splitter
-    // immediately to the LEFT of each removed panel (that splitter
-    // owned the boundary between the removed panel and its predecessor).
-    const desiredIds = new Set(panels.map((p) => p.tabId));
-    for (const [id, el] of existing) {
-      if (desiredIds.has(id)) continue;
-      const before = el.previousElementSibling;
-      if (isSplitter(before)) before.remove();
-      el.remove();
-      existing.delete(id);
-    }
-
-    // Always remove the trailer + its leading splitter — they get
-    // re-built in the right place after the panel walk. Cheap; trailer
-    // and trailing splitter carry no state.
-    for (const child of Array.from(host.children)) {
-      if (!isTrailer(child)) continue;
-      const before = child.previousElementSibling;
-      if (isSplitter(before)) before.remove();
-      child.remove();
-    }
-
-    const newlyCreated = [];
-
-    // Walk desired panels left-to-right. Reuse the splitter currently
-    // sitting at the boundary if one is there; create one only when
-    // missing. Move the panel only when it isn't already at the slot —
-    // skipping the no-op insertBefore is what keeps Firefox from
-    // reattaching the panel's docShell on every reconcile.
-    let prev = main;
-    for (const panel of panels) {
-      let el = existing.get(panel.tabId);
-      if (!el) {
-        el = createPanelElement(panel.tabId, panel.url);
-        newlyCreated.push({ tabId: panel.tabId, el });
-      } else {
-        const browserEl = el.querySelector('browser');
-        if (browserEl) {
-          let currentSpec = '';
-          try {
-            currentSpec = browserEl.currentURI ? browserEl.currentURI.spec : '';
-          } catch {
-            currentSpec = '';
-          }
-          if (panel.url && currentSpec !== panel.url) {
-            browserEl.setAttribute('src', panel.url);
-          }
-        }
-      }
-
-      let splitter = prev.nextSibling;
-      if (!isSplitter(splitter)) {
-        splitter = createPanelSplitter();
-        host.insertBefore(splitter, prev.nextSibling);
-      }
-
-      if (splitter.nextSibling !== el) {
-        host.insertBefore(el, splitter.nextSibling);
-      }
-
-      prev = el;
-    }
-
-    // Trailing splitter + Add-panel trailer — only when at least one
-    // side panel exists. With only the main panel the strip needs no
-    // Add-panel affordance (user creates the first panel from the
-    // sidebar's tab-row actions or the command palette).
-    if (panels.length > 0) {
-      let trailingSplitter = prev.nextSibling;
-      if (!isSplitter(trailingSplitter)) {
-        trailingSplitter = createPanelSplitter();
-        host.insertBefore(trailingSplitter, prev.nextSibling);
-      }
-      const trailer = createAddPanelTrailer();
-      host.insertBefore(trailer, trailingSplitter.nextSibling);
-    } else {
-      // Solo-main: any leftover splitter immediately after main is dead.
-      const next = main.nextSibling;
-      if (isSplitter(next)) next.remove();
-    }
-
-    // Refresh the bottom navigator (favicons + active marker) to
-    // match the new panel list. Cheap rebuild — list re-rendered from
-    // scratch on every reconcile. Custom scrollbar also updates so
-    // its thumb size reflects the new total scrollable width.
-    refreshPanelNav(panels);
-    setTimeout(updateStripScrollbar, 0);
-
-    // Lock main panel AT POST-INSERTION WIDTH if going from 0 → ≥1
-    // panels. Reading main's bounding rect now (after the new panels
-    // are in the DOM) gives the width main has shrunk to under flex:1
-    // pressure — locking at that width keeps the new panel visible.
-    // Idempotent via the !main.style.width check: subsequent reconciles
-    // (more panels added, panels re-ordered, etc.) don't re-lock and
-    // don't change main's width.
-    if (main && panels.length > 0 && !main.style.width) {
-      const w = main.getBoundingClientRect().width;
-      if (w > 0) setMainSize(main, w);
-    }
-
-    // Post-insertion: scroll newly-created panels into view + focus.
-    // Skipped if no panels were freshly created — avoids stealing
-    // focus from the main browser when the reconcile is triggered by
-    // an unrelated event (URL change in another panel, workspace
-    // switch with same panels, etc.).
-    if (newlyCreated.length > 0) {
-      setTimeout(() => {
-        for (const { el } of newlyCreated) {
-          try {
-            el.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-            const browserEl = el.querySelector('browser');
-            if (browserEl) browserEl.focus();
-          } catch (e) {
-            console.warn('[bento-shell-mount] post-create focus/scroll failed:', e);
-          }
-        }
-        const trailer = document.querySelector('.bento-panel-add-trailer');
-        if (trailer) {
-          try {
-            trailer.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-          } catch (e) {
-            console.warn('[bento-shell-mount] post-create trailer scroll failed:', e);
-          }
-        }
-      }, 0);
-    }
-
-    // Side-panel show/hide hooks were used by the old urlbar binding
-    // (since removed). Kept the arrays for future cross-cutting
-    // subscribers but they're effectively no-ops now — the strip is
-    // always visible because main lives in it.
-    for (const hook of sidePanelShowHooks) {
-      try {
-        hook();
-      } catch (e) {
-        console.warn('[bento-shell-mount] side panel show hook failed:', e);
-      }
-    }
-    if (panels.length === 0) {
-      for (const hook of sidePanelHideHooks) {
-        try {
-          hook();
-        } catch (e) {
-          console.warn('[bento-shell-mount] side panel hide hook failed:', e);
-        }
-      }
-    }
+    reconcilePanelsSplitView(panels);
   }
 
   function handlePanelsTitle(rawTitle) {
@@ -4237,15 +3635,14 @@
       }
       return;
     }
-    clearLegacySidePanelFrame();
     configureSidePanelStrip();
     unifyMainWithStrip();
     setupPanelNavigator();
-    // Initial reconcile with no side panels: builds [main, splitter,
-    // add-trailer] so the Add-panel button is visible from boot. The
-    // first panels/sync from bento-tools will replace this with the
-    // real panel list. refreshPanelNav inside reconcilePanels also
-    // populates the navigator with the main-panel favicon.
+    // Initial reconcile with no side panels — primes the strip into
+    // a clean baseline state so the first panels/sync from bento-tools
+    // can replace it with the real panel list. refreshPanelNav inside
+    // reconcilePanels also populates the navigator with the main-panel
+    // favicon.
     reconcilePanels([]);
   }
   // Window-resize repaint poke. After a window resize the active
@@ -4326,6 +3723,37 @@
     });
   }
 
+  // Click-into-panel needs to update currentActiveIdx so a subsequent
+  // ←/→ arrow advances from the clicked panel, not from the last
+  // explicitly-cycled one. Without this, the cycle index drifts away
+  // from the user's actual focus and the next arrow press lands at
+  // an unexpected slot.
+  //
+  // Capture-phase focus listener at the chrome window picks up focus
+  // changes on the panel's <browser> element (when content gains
+  // focus the chrome activeElement is the browser, whose closest()
+  // walks up to the panel container). The cycle focus indicator
+  // moves to the clicked panel too, so a fast click during the
+  // previous panel's fade-out doesn't leave the ring stranded on
+  // the wrong slot.
+  function attachPanelFocusTracker() {
+    window.addEventListener(
+      'focus',
+      (e) => {
+        const target = e.target;
+        if (!target || typeof target.closest !== 'function') return;
+        const container = target.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
+        if (!container) return;
+        const targets = getPanelCycleTargets();
+        const idx = targets.indexOf(container);
+        if (idx < 0 || idx === currentActiveIdx) return;
+        currentActiveIdx = idx;
+        applyPanelFocusIndicator(idx);
+      },
+      true,
+    );
+  }
+
   configureSidePanelOnce();
   attachReloadListener();
   attachPaletteKeybinding();
@@ -4337,4 +3765,5 @@
   attachResizeRepaintPoke();
   registerContentKeyActor();
   attachContentKeyBridgeListener();
+  attachPanelFocusTracker();
 })();
