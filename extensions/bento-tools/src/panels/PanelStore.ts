@@ -75,6 +75,16 @@ export class PanelStore {
     return Array.from(this.#persistedEntries.keys());
   }
 
+  /** Non-consuming peek of all persisted entries grouped by workspace.
+   * Used at boot to pre-assign workspaceIds on session-restored tabs by
+   * URL — the panel storage is a second source of truth for which
+   * workspace owns a tab, sidestepping the race where bento.workspaceId
+   * session values aren't fully hydrated by the time backfill runs and
+   * Wrong tabs get assigned to the active workspace. */
+  peekAllPersistedEntries(): Map<string, PersistedPanelEntry[]> {
+    return new Map(this.#persistedEntries);
+  }
+
   getWidth(tabId: number): number | undefined {
     return this.#widthByTabId.get(tabId);
   }

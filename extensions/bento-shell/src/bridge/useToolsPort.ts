@@ -82,6 +82,15 @@ function ensureConnection(): void {
       case 'settings/snapshot':
       case 'settings/changed':
         useSettingsStore.getState().apply(event.settings);
+        // Forward uiColorMode to chrome via title-IPC. The sidebar entry
+        // owns this signal (sidePanelTitleBridge gate); secondary entries
+        // share the bus to receive store snapshots but don't write
+        // chrome-side titles. uiColorMode is also sent inside
+        // BENTO_PANELS payloads (idempotent on chrome) — this dedicated
+        // path covers settings changes that DON'T trigger a panels/sync.
+        if (state.sidePanelTitleBridge) {
+          document.title = `BENTO_COLOR_MODE:${Date.now()}:${event.settings.uiColorMode}`;
+        }
         return;
       case 'panels/sync':
         // Mirror panel ids per workspace so the sidebar can subtract
@@ -116,6 +125,7 @@ function ensureConnection(): void {
               workspaceId: string;
               panels: typeof event.panels;
               mainWidthPx?: number;
+              uiColorMode?: string;
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -123,6 +133,13 @@ function ensureConnection(): void {
             if (typeof event.mainWidthPx === 'number') {
               payload.mainWidthPx = event.mainWidthPx;
             }
+            // Idempotent re-send of the user's uiColorMode preference.
+            // BENTO_COLOR_MODE has its own title-IPC path for changes
+            // that DON'T trigger reconcile, but bundling it here makes
+            // every reconcile self-correcting against any race that
+            // dropped the dedicated message.
+            const ui = useSettingsStore.getState().current?.uiColorMode;
+            if (ui) payload.uiColorMode = ui;
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.
             const b64 = btoa(unescape(encodeURIComponent(json)));

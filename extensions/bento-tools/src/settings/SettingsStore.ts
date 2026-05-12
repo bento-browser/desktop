@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   defaultWorkspaceName: 'Personal',
   commandPaletteEnabled: true,
   welcomeSeen: false,
+  uiColorMode: 'system',
+  contentColorMode: 'system',
 });
 
 interface StoredShape {

@@ -76,7 +76,22 @@ export interface BentoSettings {
    * surfaces only when this is false; flipping it true hides the banner
    * everywhere (storage.local persists the choice across launches). */
   welcomeSeen: boolean;
+  /** Color mode for Bento's chrome + shell UI. 'system' follows the OS via
+   * prefers-color-scheme; 'light'/'dark' force the choice independent of
+   * OS. Plumbed by setting data-color-mode on the shell's <html> AND on
+   * the chrome window's <window> root — Tale UI's _color-modes.css cascade
+   * (rewritten to :root selectors by scripts/generate-chrome-tokens.mjs)
+   * does the rest. */
+  uiColorMode: ColorModePref;
+  /** Color mode hint forwarded to web content via
+   * browser.browserSettings.overrideContentColorScheme. 'system' = page
+   * sees prefers-color-scheme based on OS; 'light'/'dark' = page is told
+   * to render in that mode regardless. Independent of uiColorMode so the
+   * user can keep Bento dark while pages render light, or vice versa. */
+  contentColorMode: ColorModePref;
 }
+
+export type ColorModePref = 'system' | 'light' | 'dark';
 
 export type Action =
   | { type: 'ping' }

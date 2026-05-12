@@ -12,7 +12,7 @@ import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
-import type { Action, Event } from '@shared/protocol';
+import type { Action, BentoSettings, Event } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
 console.log('[bento-tools] boot', new Date().toISOString());
@@ -21,6 +21,30 @@ const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
 const panels = new PanelStore();
+
+// Push contentColorMode to Firefox's prefers-color-scheme content
+// override. Tracked separately from uiColorMode (which only affects
+// Bento's chrome + shell) so users can keep e.g. light pages on a dark
+// chrome. browser.browserSettings.overrideContentColorScheme accepts
+// 'light' | 'dark' | 'system' | 'browser'; we map our 'system' →
+// 'system' (use OS) and pass the others through. Re-applied on every
+// settings change so a fresh launch with persisted overrides reaches
+// the right state without the user having to re-toggle.
+let lastAppliedContentColorMode: BentoSettings['contentColorMode'] | null = null;
+async function applyContentColorMode(mode: BentoSettings['contentColorMode']): Promise<void> {
+  if (lastAppliedContentColorMode === mode) return;
+  lastAppliedContentColorMode = mode;
+  // Firefox's overrideContentColorScheme accepts 'dark' | 'light' | 'auto'
+  // (the older 'system'/'browser' aliases were deprecated and now log a
+  // warning). Map our 'system' → 'auto' so the API receives the current
+  // preferred value.
+  const apiValue = mode === 'system' ? 'auto' : mode;
+  try {
+    await browser.browserSettings.overrideContentColorScheme.set({ value: apiValue });
+  } catch (err) {
+    console.warn('[bento-tools] overrideContentColorScheme failed:', err);
+  }
+}
 
 // Set of currently-connected shell document ports. Tools can broadcast
 // events to all of them — needed for tools-initiated UI events like
@@ -177,6 +201,14 @@ const bootReady = Promise.all([
   panels.init().catch((err) => console.error('[bento-tools] PanelStore init failed:', err)),
 ]).then(async () => {
   sleep.init();
+  // Push the persisted contentColorMode to Firefox's content
+  // prefers-color-scheme override at boot. Subsequent changes flow
+  // via settings.onChange below. Fire-and-forget: if the API errors
+  // (rare), the user can re-toggle to retry.
+  void applyContentColorMode(settings.snapshot().contentColorMode);
+  settings.onChange((next) => {
+    void applyContentColorMode(next.contentColorMode);
+  });
   // Backfill: any tab that hydrated WITHOUT a workspaceId (fresh profile,
   // tabs from a pre-workspaces session, or tabs Firefox restored before
   // bento-tools attached its session listener) gets assigned to the active
@@ -229,11 +261,57 @@ const bootReady = Promise.all([
   // a Workspace 2 boot, etc).
   await tabs.hydrateWorkspaceIds();
 
-  // Backfill: any tab still without a workspaceId after hydration —
-  // i.e. brand-new tabs from a fresh profile, or tabs Firefox restored
-  // without a session value (pre-bento sessions, or after a marker
-  // wipe) — get assigned to the active workspace. Tabs that DO have a
-  // hydrated workspaceId are left alone.
+  // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
+  // matches a panel in bento.panels storage. The panel storage is a
+  // second source of truth for workspace ownership: a URL stored under
+  // workspace X's panel list means any live tab with that URL belongs
+  // to workspace X. We do this BEFORE backfill because session values
+  // can be unhydrated at boot (sessionstore's extData attaches lazily,
+  // even after browserStartupPromise resolves), and a backfill that
+  // ran with stale undefined workspaceIds would overwrite the real
+  // session value with the active workspace — fixed before in
+  // hydrateWorkspaceIds for tabs whose values had hydrated, but
+  // unhydrated tabs still slip through. Walking panels storage closes
+  // that gap for panel tabs (the user's primary workspace-binding
+  // data); non-panel tabs still depend on session-value hydration +
+  // backfill, but their cross-workspace-leak blast radius is much
+  // smaller (they don't anchor a workspace's identity).
+  {
+    const allPanels = panels.peekAllPersistedEntries();
+    const tabUrls = new Map<number, string>();
+    for (const t of tabs.snapshot()) {
+      if (t.workspaceId) continue; // already hydrated; respect it
+      try {
+        const live = await browser.tabs.get(t.id);
+        if (live.url) tabUrls.set(t.id, live.url);
+      } catch {
+        /* tab gone */
+      }
+    }
+    const consumed = new Set<number>();
+    const pending: Promise<void>[] = [];
+    for (const [panelWsId, entries] of allPanels) {
+      for (const entry of entries) {
+        for (const [tabId, url] of tabUrls) {
+          if (consumed.has(tabId)) continue;
+          if (url !== entry.url) continue;
+          consumed.add(tabId);
+          // Await before backfill so the in-memory workspaceId is set
+          // — backfill below races otherwise and assigns to active.
+          pending.push(tabs.assignWorkspace(tabId, panelWsId));
+          break;
+        }
+      }
+    }
+    await Promise.all(pending);
+  }
+
+  // Backfill: any tab still without a workspaceId after hydration +
+  // panel-URL pre-assignment — i.e. brand-new tabs from a fresh
+  // profile, non-panel tabs Firefox restored without a session value
+  // — get assigned to the active workspace. Tabs that DO have a
+  // hydrated workspaceId (or got pre-assigned from panel storage)
+  // are left alone.
   if (wsId) {
     for (const tab of tabs.snapshot()) {
       if (tab.workspaceId) continue;
@@ -245,6 +323,30 @@ const bootReady = Promise.all([
   // workspaces.onDeltas handler below) so a profile with many
   // workspaces doesn't pay the URL→tab matching cost up front.
   if (wsId) await restorePanelsForWorkspace(wsId);
+
+  // Ensure Firefox's selectedTab belongs to the active workspace.
+  // SessionStore restores whichever tab was last selected at shutdown,
+  // which may be in a workspace OTHER than the one bento-tools considers
+  // active (workspaces store has its own activeId persisted via
+  // storage.local). Without this, the chrome reconciler renders the
+  // active workspace's panel strip but with a mainTab from a different
+  // workspace — symptom: panels visible only after the user manually
+  // switches workspaces, because the activation handler does this same
+  // tab.update for switches but not for boot. Mirrors the activation
+  // handler's tab-pick logic: prefer non-panel tabs (panels live in
+  // their own slots; mainTab should be a sidebar tab).
+  if (wsId) {
+    const panelTabIds = new Set(panels.getPanels(wsId));
+    const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
+    if (wsTabs.length > 0 && !wsTabs.some((t) => t.active)) {
+      const target = wsTabs[0]!;
+      try {
+        await browser.tabs.update(target.id, { active: true });
+      } catch (err) {
+        console.warn('[bento-tools] activate workspace tab at boot failed:', err);
+      }
+    }
+  }
 
   // Sweep stale `bento.isPanel` markers on session-restored tabs. The
   // marker is supposed to track tabs that ARE panels (so Cmd+Shift+T

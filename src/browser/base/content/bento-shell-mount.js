@@ -1071,6 +1071,36 @@
   // chars; timestamp ensures repeated identical states still trigger
   // the title-change poll.
   const PANELS_PREFIX = 'BENTO_PANELS:';
+  // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<system|light|dark>
+  // The shell sets this on settings/changed; the active BENTO_PANELS
+  // payload also carries the same uiColorMode field as a self-correcting
+  // backstop in case this dedicated message races with a panels/sync.
+  const COLOR_MODE_PREFIX = 'BENTO_COLOR_MODE:';
+
+  // Drive Tale UI's color-mode cascade in chrome by setting
+  // data-color-mode on the chrome window's <window> root.
+  // _color-modes.css selectors are rewritten from `html` to `:root` by
+  // scripts/generate-chrome-tokens.mjs, so the same cascade that flips
+  // shell tokens flips chrome tokens. 'system' clears the attribute so
+  // the @media (prefers-color-scheme) branch wins (OS-following).
+  function applyChromeColorMode(mode) {
+    const root = document.documentElement;
+    if (!root) return;
+    if (mode === 'light' || mode === 'dark') {
+      root.setAttribute('data-color-mode', mode);
+    } else {
+      root.removeAttribute('data-color-mode');
+    }
+  }
+  function handleColorModeTitle(rawTitle) {
+    const tail = rawTitle.slice(COLOR_MODE_PREFIX.length);
+    const colonAfterTs = tail.indexOf(':');
+    if (colonAfterTs < 0) return;
+    const mode = tail.slice(colonAfterTs + 1);
+    if (mode === 'light' || mode === 'dark' || mode === 'system') {
+      applyChromeColorMode(mode);
+    }
+  }
 
   // ─── Side panel strip (multi-panel) ────────────────────────────────────
   //
@@ -4081,6 +4111,18 @@
           ? decoded.mainWidthPx
           : null;
       __mainWidthTransitionForNextReconcile = wsChanged;
+      // Self-correcting backstop for the dedicated BENTO_COLOR_MODE
+      // path: if a panels/sync raced with a color-mode change and
+      // overwrote the title before chrome polled it, the next reconcile
+      // re-applies. Idempotent — applyChromeColorMode short-circuits
+      // when the attribute already matches.
+      if (
+        decoded.uiColorMode === 'light' ||
+        decoded.uiColorMode === 'dark' ||
+        decoded.uiColorMode === 'system'
+      ) {
+        applyChromeColorMode(decoded.uiColorMode);
+      }
     } else {
       return;
     }
@@ -4164,6 +4206,7 @@
         else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
         else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
         else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+        else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
         else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
       }, 200);
     }

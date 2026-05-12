@@ -155,10 +155,31 @@ const header = [
   '',
 ].join('\n');
 
+// Tale UI's color-mode + theme rules target `html` because they're written
+// for HTML documents. Chrome XHTML's documentElement is `<window>` (XUL),
+// so `html[data-color-mode="dark"]` etc. never match. Rewrite `html` (as
+// an element selector — bare, not part of a longer identifier) to `:root`
+// so the same cascade flips chrome tokens via the data-color-mode
+// attribute we set on the chrome window in bento-shell-mount.js.
+//
+// Conservative regex: matches `html` only when (a) preceded by start of
+// line, whitespace, comma, paren, colon, or bracket, AND (b) followed by
+// whitespace, comma, dot, hash, colon, bracket, paren, or end of line.
+// That covers `html { ... }`, `html:not(...)`, `html[data-...]`,
+// `:where(html:not(...))`, and `html, .light` — without touching the
+// `html` substring inside `<html lang="en">` if it ever appears in a
+// comment (Tale UI source has none today, but the guard keeps us safe).
+function rewriteHtmlToRoot(css) {
+  return css.replace(
+    /(^|[\s,(:\[])html(?=[\s,.#:\[)]|$)/g,
+    (_match, prefix) => prefix + ':root',
+  );
+}
+
 const body = sources
   .map(({ rel, content }) => {
     const banner = `/* ─── from tale-ui/${rel} ────────────────────────────── */\n`;
-    return banner + content.trimEnd() + '\n';
+    return banner + rewriteHtmlToRoot(content.trimEnd()) + '\n';
   })
   .join('\n');
 

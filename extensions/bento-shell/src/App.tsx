@@ -10,10 +10,12 @@ import PanelRightClose from 'lucide-react/dist/esm/icons/panel-right-close';
 
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
+import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useToolsReady } from './bridge/useToolsPort';
 import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspacesStore } from './state/workspaces';
 import { useSettingsStore } from './state/settings';
+import type { ColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -90,6 +92,12 @@ export function App() {
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const closeSidePanel = () => dispatch({ type: 'panels/clear' });
+  const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
+  const contentColorMode = useSettingsStore((s) => s.current?.contentColorMode);
+  const setUiColorMode = (next: ColorModePref) =>
+    dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
+  const setContentColorMode = (next: ColorModePref) =>
+    dispatch({ type: 'settings/update', changes: { contentColorMode: next } });
 
   return (
     <Column gap="xs" className="bento-shell-app">
@@ -119,6 +127,12 @@ export function App() {
         >
           <Icon icon={Command} />
         </IconButton>
+        <ColorModeCycle value={uiColorMode} onChange={setUiColorMode} surfaceLabel="Bento UI" />
+        <ColorModeCycle
+          value={contentColorMode}
+          onChange={setContentColorMode}
+          surfaceLabel="Website"
+        />
         <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
           <Icon icon={Settings} />
         </IconButton>
