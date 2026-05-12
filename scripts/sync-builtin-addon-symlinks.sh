@@ -107,6 +107,7 @@ sync_chrome_file() {
 }
 
 sync_chrome_file bento-chrome-tokens.css
+sync_chrome_file bento-chrome-theme.css
 
 APP_ACTORS_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/actors"
 BIN_ACTORS_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/bin/browser/actors"

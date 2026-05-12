@@ -1,0 +1,128 @@
+/*
+ * Bento chrome theme — maps Firefox's chrome color variables to Tale UI
+ * design tokens so the entire visible chrome (toolbar, URL bar, window
+ * background) re-themes from a single source of truth.
+ *
+ * Loaded as a chrome stylesheet via injectChromeTheme() in
+ * src/browser/base/content/bento-shell-mount.js, AFTER bento-chrome-tokens
+ * (which exposes the Tale UI variables on :root). Registered in jar.mn at
+ * `chrome://browser/content/bento-chrome-theme.css`.
+ *
+ * !important is required because Firefox's LightweightThemeManager writes
+ * its own defaults inline on the documentElement and the `:root[lwtheme]`
+ * cascade in toolbar.css has higher specificity than our :root rule. We
+ * want our overrides to win regardless of theme state.
+ *
+ * Coverage = visible chrome only:
+ *   - toolbar (#nav-bar) surface + text + icons + buttons
+ *   - URL bar field + focus state + inset boxes
+ *   - titlebar / toolbox background
+ *   - window accent (lwtheme baseline)
+ *
+ * NOT covered (deliberate — separate iteration):
+ *   - menus / context menus / popup panels (autocomplete, unified extensions)
+ *   - scrollbars
+ *   - find-in-page bar / notification bar
+ *   - devtools chrome
+ *   - downloads panel / library
+ *
+ * Tale UI tokens flip with data-color-mode (set on chrome <window> by
+ * bento-shell-mount's color-mode IPC), so a single attribute swap re-
+ * themes both light/dark variants. Per-workspace accent (color-60 maps
+ * to the workspace palette) flows through Tale UI's color cascade once
+ * the chrome window picks up data-workspace-color (future work — chrome
+ * is currently neutral-only).
+ */
+
+@layer bento.chrome-theme {
+  :root {
+    /* ─── Window / titlebar / toolbox surface ──────────────────────── */
+    /* Toolbox is the area containing the titlebar + tabs strip + nav bar.
+     * Bento hides #TabsToolbar (patches/core-ui/02-hide-native-tabs.patch)
+     * so toolbox visually = titlebar drag area + chrome border. */
+    --toolbox-bgcolor: var(--neutral-10) !important;
+    --toolbox-textcolor: var(--neutral-90) !important;
+    --toolbox-bgcolor-inactive: var(--neutral-10) !important;
+    --toolbox-textcolor-inactive: var(--neutral-70) !important;
+
+    /* Lightweight-theme accent vars (used when [lwtheme] is set on root).
+     * Bento doesn't ship a lwt by default, but Firefox can be in lwtheme
+     * state if the user installs one — keep these in sync so chrome
+     * doesn't snap back to Firefox defaults. */
+    --lwt-accent-color: var(--neutral-10) !important;
+    --lwt-accent-color-inactive: var(--neutral-12) !important;
+    --lwt-text-color: var(--neutral-90) !important;
+
+    /* ─── Main toolbar (#nav-bar) ──────────────────────────────────── */
+    --toolbar-bgcolor: var(--neutral-10) !important;
+    --toolbar-color: var(--neutral-90) !important;
+    --toolbar-bgimage: none !important;
+    --toolbarseparator-color: var(--neutral-30) !important;
+    --chrome-content-separator-color: var(--neutral-20) !important;
+
+    /* ─── Toolbar buttons (back/forward/reload/extensions/etc.) ──── */
+    --toolbarbutton-icon-fill: var(--neutral-80) !important;
+    --toolbarbutton-icon-fill-attention: var(--color-60) !important;
+    --toolbarbutton-icon-fill-attention-text: var(--color-60-fg) !important;
+    --toolbarbutton-hover-background: var(--neutral-16) !important;
+    --toolbarbutton-active-background: var(--neutral-20) !important;
+    --button-background-color: var(--neutral-14) !important;
+    --button-background-color-hover: var(--neutral-16) !important;
+    --button-background-color-active: var(--neutral-20) !important;
+    --button-text-color: var(--neutral-90) !important;
+    --button-text-color-primary: var(--color-60-fg) !important;
+    --color-accent-primary: var(--color-60) !important;
+
+    /* ─── URL bar field (#urlbar) ──────────────────────────────────── */
+    --toolbar-field-background-color: var(--neutral-14) !important;
+    --toolbar-field-color: var(--neutral-90) !important;
+    --toolbar-field-border-color: transparent !important;
+    --toolbar-field-focus-background-color: var(--neutral-12) !important;
+    --toolbar-field-focus-color: var(--neutral-90) !important;
+    --toolbar-field-focus-border-color: var(--color-60) !important;
+
+    /* URL bar inset boxes — the small affordances inside the URL bar
+     * (security indicator, identity icon, page actions). They sit on
+     * top of the field background, so they need slightly more contrast. */
+    --urlbar-box-bgcolor: var(--neutral-16) !important;
+    --urlbar-box-focus-bgcolor: var(--neutral-18) !important;
+    --urlbar-box-hover-bgcolor: var(--neutral-18) !important;
+    --urlbar-box-active-bgcolor: var(--neutral-20) !important;
+    --urlbar-box-text-color: var(--neutral-90) !important;
+    --urlbar-box-hover-text-color: var(--neutral-90) !important;
+    --urlbar-icon-fill-opacity: 1 !important;
+
+    /* Tabs separator (between titlebar drag area and nav bar). With
+     * #TabsToolbar hidden this is the seam at the top of the chrome. */
+    --tabs-navbar-separator-color: var(--neutral-22) !important;
+
+    /* Sidebar (Firefox's native sidebar — Bento uses its own). Themed
+     * for completeness in case any code path reveals it. */
+    --sidebar-background-color: var(--neutral-10) !important;
+    --sidebar-text-color: var(--neutral-90) !important;
+    --sidebar-border-color: var(--neutral-22) !important;
+
+    /* Focus ring color used by toolbar buttons + URL bar focus. */
+    --focus-outline-color: var(--color-60) !important;
+  }
+
+  /* ─── Sidebar host container ──────────────────────────────────────
+   * The 01-bento-shell-mount.patch sets an inline background-color on
+   * #bento-shell-host (the chrome <vbox> that wraps the bento-shell
+   * <browser>), hardcoded to #282A33 — Bento's old brand dark. With the
+   * theme system in place, that hardcoded color reads as a dark stripe
+   * around the sidebar even when the rest of the chrome is in light
+   * mode. Override here so the host blends with the surrounding chrome
+   * surface. !important is required because the patch's inline style
+   * has higher specificity than any non-important stylesheet rule.
+   * Also clear the hardcoded brand color on the panel hosts so they
+   * track the theme too. */
+  #bento-shell-host,
+  #bento-side-panel-host,
+  #bento-palette-host,
+  #bento-confirm-host,
+  #bento-edit-workspace-host,
+  #bento-welcome-host {
+    background-color: var(--neutral-10) !important;
+  }
+}
