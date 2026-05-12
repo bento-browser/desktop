@@ -13,18 +13,19 @@ step() {
 }
 
 step "1/5 Fetching Firefox source (surfer download)"
-npx surfer download
+bash scripts/surfer-env.sh download
 
 step "2/5 Bootstrapping Mozilla build environment (surfer bootstrap)"
-npx surfer bootstrap
+bash scripts/surfer-env.sh bootstrap
 
 step "3/5 Applying branding patches, extensions-copy, and git patches (surfer import)"
-npx surfer import
+bash scripts/surfer-env.sh import
 
 step "4/5 Building Bento Browser (surfer build)"
-npx surfer build
+bash scripts/surfer-env.sh build
+bash scripts/sync-builtin-addon-symlinks.sh
 
 step "5/5 Packaging artifacts (surfer package)"
-npx surfer package
+bash scripts/surfer-env.sh package
 
 step "Done. Artifacts in dist/."

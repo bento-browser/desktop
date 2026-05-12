@@ -2,12 +2,12 @@ diff --git a/browser/actors/moz.build b/browser/actors/moz.build
 index 55e8f81874..28815c13c4 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
-@@ -92,6 +92,8 @@ with Files("WebRTC*.sys.mjs"):
-     BUG_COMPONENT = ("Firefox", "Site Permissions")
- 
- FINAL_TARGET_FILES.actors += [
+@@ -103,6 +103,8 @@ FINAL_TARGET_FILES.actors += [
+     "AboutReaderParent.sys.mjs",
+     "AboutTabCrashedChild.sys.mjs",
+     "AboutTabCrashedParent.sys.mjs",
 +    "BentoKeyChild.sys.mjs",
 +    "BentoKeyParent.sys.mjs",
-     "AboutNewTabChild.sys.mjs",
-     "AboutNewTabParent.sys.mjs",
-     "AboutPrivateBrowsingChild.sys.mjs",
+     "BlockedSiteChild.sys.mjs",
+     "BlockedSiteParent.sys.mjs",
+     "BrowserProcessChild.sys.mjs",

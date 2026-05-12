@@ -1,0 +1,106 @@
+diff --git a/build/mach_initialize.py b/build/mach_initialize.py
+index 498f8c28a8..c545bd48fd 100644
+--- a/build/mach_initialize.py
++++ b/build/mach_initialize.py
+@@ -290,7 +290,7 @@ def initialize(topsrcdir, args=()):
+ 
+         # Wait for the background telemetry initialization to complete
+         if context._telemetry_init_done is not None:
+-            context._telemetry_init_done.wait()
++            context._telemetry_init_done.wait(timeout=30)
+ 
+         _finalize_telemetry_glean(
+             context.telemetry,
+diff --git a/python/mach/mach/main.py b/python/mach/mach/main.py
+index 9582455e7e..e323165cb4 100644
+--- a/python/mach/mach/main.py
++++ b/python/mach/mach/main.py
+@@ -374,9 +374,13 @@ To see more help for a specific command, run:
+             def _finish_telemetry_init(future):
+                 from .telemetry import report_invocation_metrics
+ 
+-                context.telemetry = future.result()
+-                report_invocation_metrics(context.telemetry, handler.name)
+-                context._telemetry_init_done.set()
++                try:
++                    context.telemetry = future.result()
++                    report_invocation_metrics(context.telemetry, handler.name)
++                except Exception:
++                    self.logger.exception("Failed to initialize mach telemetry.")
++                finally:
++                    context._telemetry_init_done.set()
+ 
+             self._telemetry_future.add_done_callback(_finish_telemetry_init)
+ 
+@@ -490,7 +494,7 @@ To see more help for a specific command, run:
+             return 1
+         finally:
+             if context._telemetry_init_done is not None:
+-                context._telemetry_init_done.wait()
++                context._telemetry_init_done.wait(timeout=30)
+ 
+     def log(self, level, action, params, format_str):
+         """Helper method to record a structured log event."""
+diff --git a/python/mach/mach/mixin/process.py b/python/mach/mach/mixin/process.py
+index cefe4412a6..d962865144 100644
+--- a/python/mach/mach/mixin/process.py
++++ b/python/mach/mach/mixin/process.py
+@@ -161,7 +161,7 @@ class ProcessExecutionMixin:
+         self.log(logging.DEBUG, "process", {"env": str(use_env)}, "Environment: {env}")
+ 
+         if pass_thru:
+-            proc = subprocess.Popen(args, cwd=cwd, env=use_env, close_fds=False)
++            proc = subprocess.Popen(args, cwd=cwd, env=use_env, close_fds=True)
+             status = None
+             # Leave it to the subprocess to handle Ctrl+C. If it terminates as
+             # a result of Ctrl+C, proc.wait() will return a status code, and,
+diff --git a/python/mozbuild/mozbuild/base.py b/python/mozbuild/mozbuild/base.py
+index ddd5fe8667..8b8eaf7486 100644
+--- a/python/mozbuild/mozbuild/base.py
++++ b/python/mozbuild/mozbuild/base.py
+@@ -1049,7 +1049,7 @@ class MachCommandBase(MozbuildObject):
+     def metrics(self):
+         if self._metrics is None and self._metrics_path:
+             if self._mach_context._telemetry_init_done is not None:
+-                self._mach_context._telemetry_init_done.wait()
++                self._mach_context._telemetry_init_done.wait(timeout=30)
+             self._metrics = self._mach_context.telemetry.metrics(self._metrics_path)
+         return self._metrics
+ 
+diff --git a/testing/mozbase/mozprocess/mozprocess/processhandler.py b/testing/mozbase/mozprocess/mozprocess/processhandler.py
+index 36d4625d93..f7145adf7c 100644
+--- a/testing/mozbase/mozprocess/mozprocess/processhandler.py
++++ b/testing/mozbase/mozprocess/mozprocess/processhandler.py
+@@ -98,7 +98,7 @@ class ProcessHandlerMixin:
+             stderr=None,
+             preexec_fn=None,
+-            close_fds=False,
++            close_fds=True,
+             shell=False,
+             cwd=None,
+             env=None,
+             universal_newlines=False,
+@@ -849,6 +849,7 @@ class ProcessHandlerMixin:
+             env=self.env,
+             ignore_children=self._ignore_children,
+         )
++        args.setdefault("close_fds", True)
+ 
+         # build process arguments
+         args.update(self.keywordargs)
+@@ -972,8 +973,14 @@ class ProcessHandlerMixin:
+             if self._ignore_children:
+                 while self.reader.is_still_reading(timeout=0.1):
+                     time.sleep(0.1)
+             else:
+-                self.reader.join()
++                self.reader.join(timeout=30)
++                if self.reader.is_alive():
++                    print(
++                        "WARNING | Process output reader did not finish; "
++                        "continuing after process exit.",
++                        file=sys.stderr,
++                    )
+         return self.returncode
+ 
+     @property

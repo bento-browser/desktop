@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Replace each built-in addon's deployed `dist/` directory in the app bundle
-# with a symlink to its source dist/ in engine/browser/extensions/<addon>/.
+# Refresh deployed app-bundle resources that Surfer/mach leave stale during
+# local iteration.
+#
+# Built-in addon dist/ directories and chrome-process support files are safe
+# as symlinks. Content-process actor modules are copied as real files because
+# macOS content sandboxing refuses app-bundle symlinks that point back into
+# the source checkout.
 #
 # Surfer's extension-copy step generates a static moz.build with explicit
 # per-FILE listings at first build. Files emitted between builds (Vite shared
@@ -12,8 +17,8 @@
 # Idempotent — safe to re-run. Skips silently if the deployed app bundle
 # isn't present (CI / pre-build state).
 #
-# Wired into `pnpm import` so it always runs after `surfer import`. Direct
-# `npx surfer import` invocations bypass this — use `pnpm import` instead.
+# Wired into `pnpm import` and post-build scripts. Direct `surfer import` /
+# `surfer build` invocations bypass this — use the package scripts instead.
 
 set -euo pipefail
 
@@ -102,3 +107,36 @@ sync_chrome_file() {
 }
 
 sync_chrome_file bento-chrome-tokens.css
+
+APP_ACTORS_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/actors"
+BIN_ACTORS_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/bin/browser/actors"
+SRC_ACTORS_ROOT="src/browser/actors"
+
+copy_content_actor() {
+  local filename="$1"
+  local source="$REPO_ROOT/$SRC_ACTORS_ROOT/$filename"
+  local copied=0
+
+  if [ ! -f "$source" ]; then
+    echo "sync-symlinks: actor source $source missing — skipping $filename"
+    return
+  fi
+
+  for target_root in "$BIN_ACTORS_ROOT" "$APP_ACTORS_ROOT"; do
+    local target="$REPO_ROOT/$target_root/$filename"
+    if [ ! -d "$REPO_ROOT/$target_root" ]; then
+      continue
+    fi
+    rm -f "$target"
+    cp "$source" "$target"
+    copied=1
+    echo "sync-symlinks: actor/$filename copied -> $target_root"
+  done
+
+  if [ "$copied" -eq 0 ]; then
+    echo "sync-symlinks: actor targets missing — skipping $filename"
+  fi
+}
+
+copy_content_actor BentoKeyChild.sys.mjs
+copy_content_actor BentoKeyParent.sys.mjs

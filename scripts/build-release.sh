@@ -116,8 +116,9 @@ BENTO_RELEASE=1 pnpm run import
 # The dev default ("dev" or unset) is faster to compile and surfaces more
 # debug output for daily iteration; release-mode is the right choice for
 # distributable artifacts. Restored by the trap on exit.
-npx surfer set buildMode release >/dev/null
-BENTO_RELEASE=1 npx surfer build
+bash scripts/surfer-env.sh set buildMode release >/dev/null
+BENTO_RELEASE=1 bash scripts/surfer-env.sh build
+bash scripts/sync-builtin-addon-symlinks.sh
 
 step "3/4 Packaging installer (surfer package)"
 case "$PLATFORM" in
@@ -127,7 +128,7 @@ case "$PLATFORM" in
     find engine/obj-*/dist -maxdepth 2 -name 'bento-*.dmg' -delete 2>/dev/null || true
     ;;
 esac
-npx surfer package
+bash scripts/surfer-env.sh package
 
 step "4/4 Collecting artifacts into $OUT_DIR"
 # Mach drops platform-specific installers under engine/obj-*/dist/.

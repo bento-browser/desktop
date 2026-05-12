@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 
 BRAND_FILE=".surfer/dynamicConfig.brand.json"
 if [ ! -f "$BRAND_FILE" ]; then
-  echo "error: $BRAND_FILE missing — set the active brand with 'npx surfer set brand <name>' first" >&2
+  echo "error: $BRAND_FILE missing — set the active brand with 'pnpm exec surfer set brand <name>' first" >&2
   exit 1
 fi
 
@@ -43,7 +43,7 @@ echo "branding cache cleared for brand '$BRAND'. Running 'surfer import' to rege
 # patch/branding apply. We have to invoke 'surfer import' explicitly to run
 # importMelonPatches → brandingPatch.apply, which regenerates the engine
 # branding folder from configs/branding/<brand>/ and surfer.json.
-npx surfer import
+bash "$REPO_ROOT/scripts/surfer-env.sh" import
 
 # Append Bento defaults via the shared script (also runs after every
 # `npm run import` / `npm run build` so prefs survive subsequent imports).
