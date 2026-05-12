@@ -1546,6 +1546,9 @@
     } catch {
       /* already released */
     }
+    const finalWidth = drag.leftPanel.getBoundingClientRect().width;
+    const isMain = drag.isMain;
+    const leftPanel = drag.leftPanel;
     splitter._panelDragState = null;
     splitter.classList.remove('bento-panel-splitter--dragging');
     document.documentElement.style.removeProperty('cursor');
@@ -1553,6 +1556,27 @@
     // After drag, re-position all splitters (the resized panel
     // shifts every splitter to its right).
     syncInterPanelSplitters();
+    // Persist the new width. Main panel is per-workspace; side panels
+    // are per-tabId. Both flow through bento-tools so the next launch
+    // re-applies them on reconcile.
+    if (isMain) {
+      if (finalWidth > 0) {
+        dispatchShellAction({
+          type: 'panel/setMainWidth',
+          widthPx: Math.round(finalWidth),
+        });
+      }
+    } else {
+      const tabIdAttr = leftPanel.dataset.bentoPanelTabId;
+      const tabId = tabIdAttr ? Number(tabIdAttr) : NaN;
+      if (Number.isFinite(tabId) && finalWidth > 0) {
+        dispatchShellAction({
+          type: 'panel/setWidth',
+          id: tabId,
+          widthPx: Math.round(finalWidth),
+        });
+      }
+    }
   }
 
   // ResizeObserver shared across all panels — re-syncs inter-panel
@@ -3351,6 +3375,46 @@
       }
     }
 
+    // Materialize + load lazy/pending panel tabs. SessionStore restores
+    // tabs with `pending="true"`, no linkedPanel, and no actual content
+    // loaded (Firefox's restore_on_demand default — content loads when
+    // the user clicks the tab). Two problems for panels:
+    //   1. The reconciler below filters tabs without linkedPanel, so a
+    //      pending tab is silently dropped — sessions reopen with panel
+    //      favicons in the navigator but no panel strip.
+    //   2. Even after _insertBrowser materializes the docshell (which
+    //      sets linkedPanel), no content is loaded — the panel renders
+    //      blank until clicked.
+    // Fix: _insertBrowser to materialize (same path gBrowser.selectTab
+    // uses for a lazy click, minus the selection change), then
+    // linkedBrowser.reload() to actually fetch the URL.
+    for (const { tab } of resolved) {
+      if (tab.linkedPanel && !tab.hasAttribute('pending')) continue;
+      if (!tab.linkedPanel) {
+        try {
+          window.gBrowser._insertBrowser(tab);
+        } catch (err) {
+          console.warn(
+            '[bento-shell-mount] _insertBrowser failed for tabId',
+            tab.id || '?',
+            err,
+          );
+          continue;
+        }
+      }
+      if (tab.hasAttribute('pending')) {
+        try {
+          tab.linkedBrowser?.reload();
+        } catch (err) {
+          console.warn(
+            '[bento-shell-mount] reload() failed for tabId',
+            tab.id || '?',
+            err,
+          );
+        }
+      }
+    }
+
     // NOTE: we do NOT call gBrowser.hideTab(tab) on panel tabs.
     //
     // The plan called for it (so panels stay out of native visibleTabs
@@ -3605,6 +3669,17 @@
     // at odd orders (1, 3, 5, ...) between them. The splitter has
     // `_bentoLeftPanelId` set to the panel it resizes (the one to
     // its left in visual order), used by startPanelDrag.
+    // Build per-tabId width lookup from the BENTO_PANELS payload so we
+    // can re-apply persisted widths during reconcile. Without this, a
+    // panel restored at boot or reordered during a workspace switch
+    // would render at its default flex width and lose whatever the
+    // user previously dragged it to.
+    const widthByTabId = new Map();
+    for (const p of panels) {
+      if (typeof p.widthPx === 'number' && p.widthPx > 0) {
+        widthByTabId.set(p.tabId, p.widthPx);
+      }
+    }
     for (const [i, tab] of tabsToRender.entries()) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
@@ -3626,18 +3701,56 @@
         // main width, not its own per-tab default. Only paints when
         // the user has actually dragged the main splitter once.
         if (mainPanelWidth !== null) {
+          // On workspace-switch reconciles, give the panel a one-shot
+          // CSS transition so the width change animates from the old
+          // to the new value instead of snapping ~200ms after the
+          // tab content swap. Drag-driven reconciles bypass this
+          // (the flag is only set when handlePanelsTitle observes a
+          // workspace-id change in the payload).
+          if (__mainWidthTransitionForNextReconcile) {
+            panelEl.style.transition =
+              'width var(--bento-duration-base, 200ms) ease,' +
+              ' min-width var(--bento-duration-base, 200ms) ease,' +
+              ' flex-basis var(--bento-duration-base, 200ms) ease';
+            // Clear the inline transition after it would have completed
+            // so subsequent inline width writes (e.g. drag pointermove)
+            // are instant.
+            window.setTimeout(() => {
+              panelEl.style.removeProperty('transition');
+            }, 250);
+            __mainWidthTransitionForNextReconcile = false;
+          }
           panelEl.style.width = mainPanelWidth + 'px';
           panelEl.style.minWidth = mainPanelWidth + 'px';
           panelEl.style.flex = '0 0 ' + mainPanelWidth + 'px';
         }
       } else {
         delete panelEl.dataset.bentoMainPanel;
+        let tabId = null;
         if (tabTracker) {
           try {
-            const tabId = tabTracker.getId(tab);
+            tabId = tabTracker.getId(tab);
             if (tabId) panelEl.dataset.bentoPanelTabId = String(tabId);
           } catch {
             /* tabTracker can throw for transient/uninitialised tabs */
+          }
+        }
+        // Apply persisted width if we have one. Don't paint a default
+        // width when none is persisted — the panel keeps whatever it
+        // had (in-flight drag width, or Firefox's flex default).
+        if (tabId !== null) {
+          const w = widthByTabId.get(tabId);
+          if (typeof w === 'number') {
+            // Skip if a drag is currently in flight on this panel —
+            // we'd otherwise stomp the user's live mutation with
+            // the persisted value (which is one drag-end behind).
+            const dragInFlight = panelEl.style.width &&
+              panelEl.classList.contains('bento-panel-resizing');
+            if (!dragInFlight) {
+              panelEl.style.width = w + 'px';
+              panelEl.style.minWidth = w + 'px';
+              panelEl.style.flex = '0 0 ' + w + 'px';
+            }
           }
         }
       }
@@ -3942,13 +4055,44 @@
       panels = decoded;
     } else if (decoded && Array.isArray(decoded.panels)) {
       panels = decoded.panels;
-      currentWorkspaceId = typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
+      const incomingWorkspaceId =
+        typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
+      // Workspace just changed — flag the next reconcile so the main
+      // panel gets a one-shot CSS width transition. Without this the
+      // sequence is: TabSelect fires immediately (new tab content swaps
+      // in), then up to 200ms later the title-IPC poll picks up the new
+      // mainWidthPx and the panel snaps to the new width. The snap
+      // reads as two-stage. The transition makes it feel synchronized
+      // even though the underlying messages aren't.
+      const wsChanged =
+        currentWorkspaceId !== null &&
+        incomingWorkspaceId !== null &&
+        currentWorkspaceId !== incomingWorkspaceId;
+      currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
+      // Update mainPanelWidth from the active workspace's payload. Each
+      // payload IS for the active workspace (shell's title-IPC gates on
+      // event.workspaceId === activeId), so this reflects the workspace
+      // we're currently rendering. mainWidthPx undefined → reset to
+      // null so the reconciler falls back to default flex sizing for
+      // workspaces the user hasn't dragged the main splitter on yet.
+      mainPanelWidth =
+        typeof decoded.mainWidthPx === 'number' && decoded.mainWidthPx > 0
+          ? decoded.mainWidthPx
+          : null;
+      __mainWidthTransitionForNextReconcile = wsChanged;
     } else {
       return;
     }
     reconcilePanels(panels);
   }
+
+  // One-shot flag set by handlePanelsTitle when the workspace changed.
+  // The reconciler reads + clears it before applying the main-panel
+  // width so the change animates from old to new width instead of
+  // snapping. Cleared after the first reconcile so subsequent same-
+  // workspace reconciles (TabSelect within a workspace) don't transition.
+  let __mainWidthTransitionForNextReconcile = false;
 
   // Active workspace state mirrored from the shell via BENTO_PANELS payload.
   // Cmd+1..9 reads these to scope tab activation to the current workspace
@@ -4547,6 +4691,56 @@
     }
   }
 
+  // ExtensionsUI subscribes to webextension-permission-prompt and
+  // related topics in its init() method (called by BrowserGlue at
+  // window startup). In some persistent-dev-profile situations
+  // those subscriptions don't get registered — observed
+  // empirically: enumerateObservers('webextension-permission-prompt')
+  // returns 0 entries even though ExtensionsUI is loaded.
+  // Symptom: AMO "Add to Firefox" downloads the addon, the install
+  // reaches STATE_DOWNLOADED, then hangs forever because no one's
+  // listening to dispatch the permissions popup.
+  //
+  // Defensively re-subscribe at chrome boot. Identity-checks each
+  // topic's observer list before adding so we don't double-subscribe
+  // (which would fire ExtensionsUI.observe twice per event) in
+  // profiles where the wiring is already correct.
+  function ensureExtensionsUIObservers() {
+    const apply = () => {
+      try {
+        const { ExtensionsUI } = ChromeUtils.importESModule(
+          'resource:///modules/ExtensionsUI.sys.mjs',
+        );
+        const topics = [
+          'webextension-permission-prompt',
+          'webextension-update-permission-prompt',
+          'webextension-optional-permission-prompt',
+          'webextension-defaultsearch-prompt',
+        ];
+        for (const topic of topics) {
+          let already = false;
+          const enums = Services.obs.enumerateObservers(topic);
+          while (enums.hasMoreElements()) {
+            if (enums.getNext() === ExtensionsUI) {
+              already = true;
+              break;
+            }
+          }
+          if (!already) {
+            Services.obs.addObserver(ExtensionsUI, topic);
+          }
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] ensureExtensionsUIObservers failed:', err);
+      }
+    };
+    if (document.readyState === 'complete') {
+      apply();
+    } else {
+      window.addEventListener('load', apply, { once: true });
+    }
+  }
+
   configureSidePanelOnce();
   attachReloadListener();
   attachPaletteKeybinding();
@@ -4560,4 +4754,5 @@
   attachContentKeyBridgeListener();
   attachPanelFocusTracker();
   patchPopupNotificationsForSplitView();
+  ensureExtensionsUIObservers();
 })();

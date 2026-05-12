@@ -18,32 +18,85 @@ export interface PanelEntry {
   tabId: number;
 }
 
+/** A persisted panel entry. width is in CSS pixels, optional (older
+ * persisted shapes had only URLs). */
+export interface PersistedPanelEntry {
+  url: string;
+  widthPx?: number;
+}
+
 export class PanelStore {
   // workspaceId → ordered array of tab IDs that are panels for that workspace
   #byWorkspace = new Map<string, number[]>();
+  // tabId → last-known panel width in CSS pixels. Set on panel/setWidth
+  // (chrome dispatches this from endPanelDrag) and on boot restore (so a
+  // restored panel renders at its previous width). Cleared on panel/remove
+  // and tab close. Independent of #byWorkspace so a panel that's moved
+  // between workspaces (future feature) keeps its width.
+  #widthByTabId = new Map<number, number>();
+  // workspaceId → main-panel width in CSS pixels. Set on panel/setMainWidth
+  // (chrome dispatches this when the user drags the main splitter). Lives
+  // alongside #byWorkspace because each workspace has its own main-slot
+  // sizing — wide for reading-focused workspaces, narrow for tool-strip
+  // workspaces, etc.
+  #mainWidthByWorkspace = new Map<string, number>();
   #persistence = new Persistence();
-  /** Persisted URLs from last shutdown, keyed by workspaceId. Consumed by
-   * the boot restorer (background.ts) and then cleared. Surviving here
-   * lets the restorer run after TabRegistry + WorkspaceStore are ready. */
-  #persistedUrls = new Map<string, string[]>();
+  /** Persisted entries (URL + optional width) from last shutdown, keyed
+   * by workspaceId. Consumed by the boot restorer (background.ts) and
+   * then cleared. Surviving here lets the restorer run after TabRegistry
+   * + WorkspaceStore are ready. */
+  #persistedEntries = new Map<string, PersistedPanelEntry[]>();
 
   async init(): Promise<void> {
     const persisted = await load();
-    if (persisted) this.#persistedUrls = persisted.byWorkspace;
+    if (persisted) {
+      this.#persistedEntries = persisted.byWorkspace;
+      // Main widths apply per-workspace and are workspace-scoped (not
+      // per-tab), so they go straight into the live map at init time —
+      // unlike #widthByTabId which has to wait for tabIds to materialize
+      // via restorePanelsForWorkspace.
+      for (const [wsId, w] of persisted.mainWidthByWorkspace) {
+        this.#mainWidthByWorkspace.set(wsId, w);
+      }
+    }
   }
 
-  /** Pop the persisted URLs for a workspace, returning undefined after
+  /** Pop the persisted entries for a workspace, returning undefined after
    * the first call. Used by the boot restorer; after a workspace is
    * restored we don't want to re-run on subsequent activations. */
-  takePersistedUrls(workspaceId: string): string[] | undefined {
-    const urls = this.#persistedUrls.get(workspaceId);
-    if (urls) this.#persistedUrls.delete(workspaceId);
-    return urls;
+  takePersistedEntries(workspaceId: string): PersistedPanelEntry[] | undefined {
+    const entries = this.#persistedEntries.get(workspaceId);
+    if (entries) this.#persistedEntries.delete(workspaceId);
+    return entries;
   }
 
-  /** All workspaceIds that still have unconsumed persisted URLs. */
+  /** All workspaceIds that still have unconsumed persisted entries. */
   workspacesWithPersistedUrls(): string[] {
-    return Array.from(this.#persistedUrls.keys());
+    return Array.from(this.#persistedEntries.keys());
+  }
+
+  getWidth(tabId: number): number | undefined {
+    return this.#widthByTabId.get(tabId);
+  }
+
+  setWidth(tabId: number, widthPx: number): void {
+    if (!Number.isFinite(widthPx) || widthPx <= 0) return;
+    const rounded = Math.round(widthPx);
+    if (this.#widthByTabId.get(tabId) === rounded) return;
+    this.#widthByTabId.set(tabId, rounded);
+    this.#schedulePersist();
+  }
+
+  getMainWidth(workspaceId: string): number | undefined {
+    return this.#mainWidthByWorkspace.get(workspaceId);
+  }
+
+  setMainWidth(workspaceId: string, widthPx: number): void {
+    if (!Number.isFinite(widthPx) || widthPx <= 0) return;
+    const rounded = Math.round(widthPx);
+    if (this.#mainWidthByWorkspace.get(workspaceId) === rounded) return;
+    this.#mainWidthByWorkspace.set(workspaceId, rounded);
+    this.#schedulePersist();
   }
 
   /** Get the panel tab IDs for a workspace, in left-to-right order. */
@@ -83,14 +136,30 @@ export class PanelStore {
     if (next.length === list.length) return false;
     if (next.length === 0) this.#byWorkspace.delete(workspaceId);
     else this.#byWorkspace.set(workspaceId, next);
+    // Width is per-tabId; drop it if no remaining workspace holds this
+    // tab as a panel. (findWorkspacesContainingTab is run AFTER the
+    // remove above, so a tab pinned in multiple workspaces keeps its
+    // width until the last one drops it.)
+    if (this.findWorkspacesContainingTab(tabId).length === 0) {
+      this.#widthByTabId.delete(tabId);
+    }
     this.#schedulePersist();
     return true;
   }
 
   /** Drop all panels for a workspace (call when the workspace is deleted). */
   removeWorkspace(workspaceId: string): void {
+    const list = this.#byWorkspace.get(workspaceId);
     if (!this.#byWorkspace.delete(workspaceId)) return;
-    this.#persistedUrls.delete(workspaceId);
+    this.#persistedEntries.delete(workspaceId);
+    this.#mainWidthByWorkspace.delete(workspaceId);
+    if (list) {
+      for (const tabId of list) {
+        if (this.findWorkspacesContainingTab(tabId).length === 0) {
+          this.#widthByTabId.delete(tabId);
+        }
+      }
+    }
     this.#schedulePersist();
   }
 
@@ -127,9 +196,13 @@ export class PanelStore {
   }
 
   #schedulePersist(): void {
-    // Snapshot the map so the persistence layer's async flush sees the
+    // Snapshot the maps so the persistence layer's async flush sees the
     // state at schedule time, not whatever happens to be in #byWorkspace
     // when the debounce fires.
-    this.#persistence.schedule(new Map(this.#byWorkspace));
+    this.#persistence.schedule(
+      new Map(this.#byWorkspace),
+      new Map(this.#widthByTabId),
+      new Map(this.#mainWidthByWorkspace),
+    );
   }
 }

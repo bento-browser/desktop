@@ -61,11 +61,28 @@ export function handle(action: Action, ctx: HandlerContext): void {
     case 'tabs/requestSnapshot':
       ctx.send({ type: 'tabs/snapshot', tabs: ctx.tabs.snapshot() });
       return;
-    case 'tab/activate':
+    case 'tab/activate': {
+      // Clear stale `bento.isPanel` marker if this tab isn't currently a
+      // panel. The marker exists to let Cmd+Shift+T restore a closed
+      // panel back to its slot, but it can stick around on tabs that
+      // were once panels and got demoted (panel/remove path was missed
+      // for some prior code path, or a session restore re-attached the
+      // marker to a tab whose workspace assignment changed). When that
+      // happens, the onActivated revert in background.ts treats the
+      // user's click as a Cmd+Shift+T-style restore and snaps the
+      // activation back to lastActiveNonPanelTabId — symptom: clicking
+      // a sidebar tab flickers content briefly then reverts. A tab the
+      // user is actively activating is by definition not a "to-be-
+      // restored panel", so it's safe to clear the marker here.
+      const isPanelTab = ctx.panels.findWorkspacesContainingTab(action.id).length > 0;
+      if (!isPanelTab) {
+        void clearPanelMarker(action.id);
+      }
       browser.tabs.update(action.id, { active: true }).catch((err) => {
         console.warn('[bento-tools] tab/activate failed:', action.id, err);
       });
       return;
+    }
     case 'tab/close':
       browser.tabs.remove(action.id).catch((err) => {
         console.warn('[bento-tools] tab/close failed:', action.id, err);
@@ -194,6 +211,27 @@ export function handle(action: Action, ctx: HandlerContext): void {
         ctx.syncPanelMarkers(wsId);
         ctx.emitPanelsSync(wsId);
       }
+      return;
+    }
+    case 'panel/setWidth': {
+      // Width is per-tabId — workspace ownership is informational. The
+      // setter no-ops on no-change so a noisy chrome-side dispatch
+      // (multiple endPanelDrag fires for the same width) doesn't
+      // re-trigger persistence. We do NOT emit panels/sync here:
+      // chrome already has the live width on the dragged panel
+      // element, and a sync round-trip would clobber the in-flight
+      // layout with stale values from the broadcast.
+      ctx.panels.setWidth(action.id, action.widthPx);
+      return;
+    }
+    case 'panel/setMainWidth': {
+      // Per-active-workspace. Same no-emit-after-set reasoning as
+      // panel/setWidth — chrome already has the live width on the
+      // main slot's element. Stored against the active workspace
+      // so workspace switches restore the correct main width.
+      const wsId = ctx.workspaces.getActiveId();
+      if (!wsId) return;
+      ctx.panels.setMainWidth(wsId, action.widthPx);
       return;
     }
     case 'privacy/requestSnapshot':

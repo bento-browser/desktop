@@ -128,6 +128,17 @@ export type Action =
    * by chrome after a navigator drag-and-drop completes (drop-on-release,
    * not live during the drag). */
   | { type: 'panel/reorder'; tabIds: number[] }
+  /** Update the persisted width (in pixels) for a panel. Dispatched by
+   * chrome from endPanelDrag after the user finishes resizing a panel
+   * via its inter-panel splitter. Tools persists per-tabId; on next
+   * launch the width is re-applied during reconcile. */
+  | { type: 'panel/setWidth'; id: number; widthPx: number }
+  /** Update the persisted width (in pixels) for the main panel of the
+   * active workspace. Dispatched by chrome from endPanelDrag when the
+   * user resizes the main slot. Per-workspace because users size their
+   * main slot differently for different workflows (wide for reading,
+   * narrow for tool-strip workspaces, etc.). */
+  | { type: 'panel/setMainWidth'; widthPx: number }
   /** Ask tools to read the current privacy settings via browser.privacy.*
    * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard
    * mount; tools doesn't push privacy/changed deltas (settings rarely
@@ -187,7 +198,11 @@ export type Event =
        * the new-active tab list, leaking panel tabs into the sidebar
        * during the slide animation. */
       workspaceId: string;
-      panels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
+      panels: Array<{ tabId: number; url: string; favIconUrl?: string; widthPx?: number }>;
+      /** Per-workspace main-panel width in CSS pixels. Undefined when the
+       * user hasn't dragged the main splitter for this workspace yet —
+       * chrome falls back to its default flex sizing in that case. */
+      mainWidthPx?: number;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings };
 

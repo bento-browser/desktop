@@ -1,0 +1,57 @@
+/* Loading-state placeholder rendered while tabs/snapshot + panels/sync
+ * arrive from bento-tools. Visual silhouette matches the static skeleton
+ * in index.html so the static-to-React handoff is invisible. */
+@layer bento.components {
+  .bento-tab-list-skeleton {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding: var(--space-2xs);
+  }
+
+  .bento-tab-list-skeleton__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    height: var(--bento-tab-row-height);
+    padding-inline: var(--space-2xs) 0;
+  }
+
+  .bento-tab-list-skeleton__avatar {
+    width: var(--bento-favicon-size);
+    height: var(--bento-favicon-size);
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+    background-color: var(--bento-surface-hover-solid);
+    animation: bento-tab-list-skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+
+  .bento-tab-list-skeleton__bar {
+    flex: 1;
+    height: 0.9rem;
+    max-width: 16rem;
+    border-radius: var(--radius-xs);
+    background-color: var(--bento-surface-hover-solid);
+    animation: bento-tab-list-skeleton-shimmer 1.4s ease-in-out infinite;
+    animation-delay: 0.1s;
+  }
+
+  @keyframes bento-tab-list-skeleton-shimmer {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* Respect motion preferences — static placeholder when prefers-reduced-motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .bento-tab-list-skeleton__avatar,
+    .bento-tab-list-skeleton__bar {
+      animation: none;
+    }
+  }
+}

@@ -5,7 +5,9 @@ import { Text } from '@tale-ui/react/text';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useWorkspacesStore } from '../../state/workspaces';
+import { usePanelsStore } from '../../state/panels';
 import { TabRow } from '../TabRow/TabRow';
+import { TabListSkeleton } from './TabListSkeleton';
 import './TabList.css';
 
 export interface TabListProps {
@@ -224,6 +226,22 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps
   const workspaceOrder = useWorkspacesStore((s) => s.orderedIds);
   const orderedIds = useWorkspaceTabIds(activeWorkspaceId);
   const activeId = useTabsStore((s) => s.activeId);
+  // Readiness gate: render the skeleton until BOTH stores have hydrated
+  // for the active workspace. tabsStore.hydrated flips on the first
+  // tabs/snapshot from bento-tools; panelsStore.hydratedWorkspaces gets
+  // an entry for a workspace on its first panels/sync (even an empty
+  // sync). Without this gate the sidebar momentarily shows the
+  // unfiltered tab list (panels included as tabs) for one frame at boot
+  // before panels/sync arrives. Rules of Hooks: the early return for
+  // the skeleton MUST come after every hook call below, otherwise the
+  // hook count diverges between the not-ready and ready renders and
+  // React tears the subtree down (observed: blank sidebar after the
+  // gate flipped).
+  const tabsHydrated = useTabsStore((s) => s.hydrated);
+  const activePanelsHydrated = usePanelsStore((s) =>
+    activeWorkspaceId ? s.hydratedWorkspaces.has(activeWorkspaceId) : false,
+  );
+  const ready = tabsHydrated && activePanelsHydrated;
 
   // Per-workspace ids snapshot, kept across renders so the outgoing pane
   // during a slide can render the workspace it represents (the store has
@@ -271,6 +289,10 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps
 
   const incomingClass =
     'bento-tab-list-pane' + (outgoing ? ` bento-tab-list-pane--enter-${outgoing.direction}` : '');
+
+  if (!ready) {
+    return <TabListSkeleton />;
+  }
 
   return (
     <div className="bento-tab-list-stage">

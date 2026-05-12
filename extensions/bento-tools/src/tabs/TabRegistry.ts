@@ -69,6 +69,29 @@ export class TabRegistry {
     }
   }
 
+  /** Read `bento.workspaceId` session value for every tab and apply it to
+   * the in-memory snapshot. Required after settle-wait at boot: Firefox
+   * SessionStore restores tabs via onCreated (after our init() resolves)
+   * and the WebExtension Tab object passed to onCreated does not include
+   * session values. Without this re-hydration, restored tabs sit in the
+   * registry with workspaceId=undefined, the boot-time backfill clobbers
+   * them by assigning to the active workspace, and tabs leak across
+   * workspace boundaries. */
+  async hydrateWorkspaceIds(): Promise<void> {
+    const ids = Array.from(this.#tabs.keys());
+    const results = await Promise.all(
+      ids.map(async (id) => ({ id, ws: await readWorkspaceId(id) })),
+    );
+    for (const { id, ws } of results) {
+      if (!ws) continue;
+      const tab = this.#tabs.get(id);
+      if (!tab) continue;
+      if (tab.workspaceId === ws) continue;
+      tab.workspaceId = ws;
+      this.#enqueue({ kind: 'updated', id, changes: { workspaceId: ws } });
+    }
+  }
+
   /** Assign (or reassign) a tab to a workspace. Persists via sessions API and
    * emits an `updated` delta so the shell mirror picks it up. */
   async assignWorkspace(id: number, workspaceId: string): Promise<void> {

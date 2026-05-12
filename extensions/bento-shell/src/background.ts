@@ -34,6 +34,11 @@ let firstMessageReceived = false;
 let lastBooted: Event | null = null;
 let lastTabsSnapshot: Event | null = null;
 let lastWorkspacesSnapshot: Event | null = null;
+let lastSettingsSnapshot: Event | null = null;
+// Per-workspace — panels are workspace-scoped, so a single "latest" cache
+// would lose workspaces beyond whichever fired most recently. Hello-replay
+// walks every entry so a freshly-mounted document gets the full picture.
+const lastPanelsSyncByWorkspace = new Map<string, Event>();
 
 function scheduleReconnect(): void {
   if (reconnectTimer) return;
@@ -63,6 +68,10 @@ function connectTools(): void {
     if (event.type === 'tools/booted') lastBooted = event;
     if (event.type === 'tabs/snapshot') lastTabsSnapshot = event;
     if (event.type === 'workspaces/snapshot') lastWorkspacesSnapshot = event;
+    if (event.type === 'settings/snapshot') lastSettingsSnapshot = event;
+    if (event.type === 'panels/sync') {
+      lastPanelsSyncByWorkspace.set(event.workspaceId, event);
+    }
     channel.postMessage({ kind: 'event', event });
   });
 
@@ -107,11 +116,19 @@ channel.addEventListener('message', (msg) => {
   if (data.kind === 'hello') {
     // New document came online — replay the cached state so it doesn't
     // have to wait for the next delta from tools.
-    console.log('[bento-shell] document hello — replaying state');
+    console.log(
+      '[bento-shell] document hello — replaying state (panels for',
+      lastPanelsSyncByWorkspace.size,
+      'workspaces)',
+    );
     if (lastBooted) channel.postMessage({ kind: 'event', event: lastBooted });
     if (lastTabsSnapshot) channel.postMessage({ kind: 'event', event: lastTabsSnapshot });
     if (lastWorkspacesSnapshot)
       channel.postMessage({ kind: 'event', event: lastWorkspacesSnapshot });
+    if (lastSettingsSnapshot) channel.postMessage({ kind: 'event', event: lastSettingsSnapshot });
+    for (const event of lastPanelsSyncByWorkspace.values()) {
+      channel.postMessage({ kind: 'event', event });
+    }
     return;
   }
 });

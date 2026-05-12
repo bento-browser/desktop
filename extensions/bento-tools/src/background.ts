@@ -53,8 +53,8 @@ function broadcastEvent(event: Event): void {
 // workspaces.onDeltas handler). A profile with 20 workspaces × 5 panels
 // each shouldn't pay the URL→tab matching cost up front.
 async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
-  const urls = panels.takePersistedUrls(workspaceId);
-  if (!urls || urls.length === 0) return;
+  const entries = panels.takePersistedEntries(workspaceId);
+  if (!entries || entries.length === 0) return;
   // Tabs eligible for matching: this workspace's existing tabs.
   const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === workspaceId);
   // Need the URL too. TabSnapshot omits it (perf §6.5) so re-fetch via
@@ -69,7 +69,8 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
     }
   }
   const consumed = new Set<number>();
-  for (const url of urls) {
+  for (const entry of entries) {
+    const url = entry.url;
     let matchedId: number | null = null;
     for (const t of wsTabs) {
       if (consumed.has(t.id)) continue;
@@ -86,16 +87,20 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
         const created = await browser.tabs.create({ url, active: false });
         if (typeof created.id === 'number') {
           matchedId = created.id;
-          // The onCreated handler in this file auto-assigns to the
-          // CURRENT active workspace. If we're restoring a non-active
-          // workspace (lazy path), that's wrong — assign explicitly.
           await tabs.assignWorkspace(matchedId, workspaceId);
         }
       } catch (err) {
         console.warn('[bento-tools] panel restore: tabs.create failed for', url, err);
       }
     }
-    if (matchedId !== null) panels.add(workspaceId, matchedId);
+    if (matchedId !== null) {
+      panels.add(workspaceId, matchedId);
+      // Re-apply the persisted width so chrome's reconcile sees a width
+      // in the panels/sync payload and applies it to the panel element.
+      if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
+        panels.setWidth(matchedId, entry.widthPx);
+      }
+    }
   }
   // Broadcast even when this workspace isn't currently active —
   // emitPanelsSync gates on activeId so the call is cheap. When the
@@ -121,18 +126,35 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
     tabIds.map((id) =>
       browser.tabs
         .get(id)
-        .then((tab) => ({
-          tabId: id,
-          url: tab.url ?? '',
-          favIconUrl: tab.favIconUrl ?? '',
-        }))
+        .then((tab) => {
+          const widthPx = panels.getWidth(id);
+          const entry: { tabId: number; url: string; favIconUrl: string; widthPx?: number } = {
+            tabId: id,
+            url: tab.url ?? '',
+            favIconUrl: tab.favIconUrl ?? '',
+          };
+          if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+          return entry;
+        })
         .catch(() => null),
     ),
   );
   const valid = resolved.filter(
-    (p): p is { tabId: number; url: string; favIconUrl: string } => p !== null,
+    (p): p is { tabId: number; url: string; favIconUrl: string; widthPx?: number } => p !== null,
   );
-  broadcastEvent({ type: 'panels/sync', workspaceId, panels: valid });
+  const mainWidthPx = panels.getMainWidth(workspaceId);
+  const event: {
+    type: 'panels/sync';
+    workspaceId: string;
+    panels: typeof valid;
+    mainWidthPx?: number;
+  } = {
+    type: 'panels/sync',
+    workspaceId,
+    panels: valid,
+  };
+  if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
+  broadcastEvent(event);
 }
 
 const keys = new KeyRegistry({ workspaces, broadcastEvent });
@@ -140,7 +162,15 @@ const sleep = new SleepPolicy(tabs, settings);
 // Sleep depends on TabRegistry + SettingsStore being populated for its first
 // sweep (Workspaces only matter if a tab has a workspaceId). Defer init
 // until they're ready.
-Promise.all([
+//
+// `bootReady` is awaited inside runtime.onConnectExternal so the initial
+// snapshots sent to a freshly-connected shell reflect post-restore state
+// (active workspace's panels populated, widths applied). Without this
+// gate, onConnect runs immediately at module-eval time, sends an empty
+// panels/sync (the in-memory store hasn't received restorePanelsForWorkspace's
+// adds yet), and the shell renders the unfiltered tab list for the
+// few hundred ms between that empty sync and the post-restore broadcast.
+const bootReady = Promise.all([
   tabs.init().catch((err) => console.error('[bento-tools] TabRegistry init failed:', err)),
   workspaces.init().catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
   settings.init().catch((err) => console.error('[bento-tools] SettingsStore init failed:', err)),
@@ -161,11 +191,91 @@ Promise.all([
       void tabs.assignWorkspace(tab.id, wsId);
     }
   }
+  // Wait for SessionStore restoration to settle. Firefox's session
+  // restore fires browser.tabs.onCreated for each restored tab AFTER
+  // bento-tools' init promise resolves (browserStartupPromise resolves
+  // on `sessionstore-windows-restored`, but the WINDOWS' tabs are
+  // restored asynchronously after that). Without this wait, restore
+  // sees an empty tabs.snapshot(), URL match fails for every persisted
+  // URL, and tabs.create gets called for each — duplicating panels.
+  // Settle-detect: wait for snapshot count to stop growing for ~300ms,
+  // capped at 3s so a hung restore doesn't block boot indefinitely.
+  await (async () => {
+    let lastCount = tabs.snapshot().length;
+    let stableTicks = 0;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const count = tabs.snapshot().length;
+      if (count === lastCount) {
+        stableTicks++;
+        if (stableTicks >= 3) return;
+      } else {
+        stableTicks = 0;
+      }
+      lastCount = count;
+    }
+    console.warn(
+      '[bento-tools] tab settlement timeout — proceeding with',
+      tabs.snapshot().length,
+      'tabs',
+    );
+  })();
+  // Re-hydrate workspaceId session values for every tab. SessionStore
+  // restores tabs via onCreated after our init() resolves, and the
+  // WebExtension Tab object in onCreated doesn't include session
+  // values — so without this, restored tabs sit in the registry with
+  // workspaceId=undefined and the backfill below would clobber them
+  // (assigning to active workspace, leaking Personal panel tabs into
+  // a Workspace 2 boot, etc).
+  await tabs.hydrateWorkspaceIds();
+
+  // Backfill: any tab still without a workspaceId after hydration —
+  // i.e. brand-new tabs from a fresh profile, or tabs Firefox restored
+  // without a session value (pre-bento sessions, or after a marker
+  // wipe) — get assigned to the active workspace. Tabs that DO have a
+  // hydrated workspaceId are left alone.
+  if (wsId) {
+    for (const tab of tabs.snapshot()) {
+      if (tab.workspaceId) continue;
+      void tabs.assignWorkspace(tab.id, wsId);
+    }
+  }
   // Restore persisted panels for the active workspace. Inactive
   // workspaces are restored lazily on first activation (see the
   // workspaces.onDeltas handler below) so a profile with many
   // workspaces doesn't pay the URL→tab matching cost up front.
   if (wsId) await restorePanelsForWorkspace(wsId);
+
+  // Sweep stale `bento.isPanel` markers on session-restored tabs. The
+  // marker is supposed to track tabs that ARE panels (so Cmd+Shift+T
+  // restoration can put a closed panel back in its slot). When a tab
+  // gets demoted from panel to sidebar via panel/remove the marker
+  // gets cleared correctly, but session-restored tabs can end up with
+  // markers that don't match the current panel list (e.g., the panel
+  // URL got reassigned to a different tab on restore, or a duplicate
+  // tab inherited the marker via session state). A stale marker
+  // triggers the onActivated revert path below — symptom: clicking
+  // a sidebar tab flickers content briefly, then snaps back. Clear
+  // markers for any tab that's not in any workspace's panels list.
+  try {
+    const { workspaces: wss } = workspaces.snapshot();
+    const allPanelTabIds = new Set<number>();
+    for (const ws of wss) {
+      for (const tabId of panels.getPanels(ws.id)) {
+        allPanelTabIds.add(tabId);
+      }
+    }
+    for (const tab of tabs.snapshot()) {
+      if (allPanelTabIds.has(tab.id)) continue;
+      const marker = await readPanelMarker(tab.id);
+      if (marker) {
+        console.log('[bento-tools] clearing stale panel marker on tab', tab.id);
+        await clearPanelMarker(tab.id);
+      }
+    }
+  } catch (err) {
+    console.warn('[bento-tools] stale-marker sweep failed:', err);
+  }
 });
 keys.init();
 
@@ -503,24 +613,12 @@ browser.runtime.onConnectExternal.addListener((port) => {
     }
   };
 
-  send({ type: 'tools/booted', version: '0.0.0' });
-  send({ type: 'tabs/snapshot', tabs: tabs.snapshot() });
-  const wsSnap = workspaces.snapshot();
-  send({ type: 'workspaces/snapshot', workspaces: wsSnap.workspaces, activeId: wsSnap.activeId });
-  send({ type: 'settings/snapshot', settings: settings.snapshot() });
-  // Replay panels for EVERY workspace so a freshly mounted shell can
-  // pre-populate its per-workspace panelsStore. Without this, the
-  // sidebar tab-list filter (useWorkspaceTabIds) for non-active
-  // workspaces would see an empty panel set, leaking panel tabs into
-  // the sidebar during the workspace-switch slide animation until
-  // the per-workspace panels/sync arrived (which only happened on
-  // workspace activation). With the pre-populated store, every
-  // workspace's slide pane renders with the correct filter from
-  // frame 1.
-  for (const ws of wsSnap.workspaces) {
-    void emitPanelsSync(ws.id);
-  }
-
+  // Subscribe to deltas synchronously so any tab/workspace/settings
+  // mutations that happen DURING the bootReady await still reach this
+  // port. Delivery is buffered (each onDeltas listener is invoked in
+  // emit order); without this synchronous subscribe, mutations that
+  // fire between addListener and the awaited send-snapshot would race
+  // and the shell would miss them.
   const unsubTabs = tabs.onDeltas((deltas) => {
     send({ type: 'tabs/changed', deltas });
   });
@@ -548,5 +646,32 @@ browser.runtime.onConnectExternal.addListener((port) => {
     unsubTabs();
     unsubWorkspaces();
     unsubSettings();
+  });
+
+  // Wait for bento-tools' init + restore + sweep chain to complete
+  // before sending the initial snapshots. Without this, on cold boot
+  // the initial panels/sync reflects pre-restore state (empty for the
+  // active workspace) and the shell's readiness gate flips with an
+  // empty panel filter — symptom: sidebar shows the unfiltered tab
+  // list for ~hundreds of ms before the post-restore panels/sync
+  // arrives and the filter kicks in.
+  void bootReady.then(() => {
+    send({ type: 'tools/booted', version: '0.0.0' });
+    send({ type: 'tabs/snapshot', tabs: tabs.snapshot() });
+    const wsSnap = workspaces.snapshot();
+    send({ type: 'workspaces/snapshot', workspaces: wsSnap.workspaces, activeId: wsSnap.activeId });
+    send({ type: 'settings/snapshot', settings: settings.snapshot() });
+    // Replay panels for EVERY workspace so a freshly mounted shell can
+    // pre-populate its per-workspace panelsStore. Without this, the
+    // sidebar tab-list filter (useWorkspaceTabIds) for non-active
+    // workspaces would see an empty panel set, leaking panel tabs into
+    // the sidebar during the workspace-switch slide animation until
+    // the per-workspace panels/sync arrived. The active workspace has
+    // had restorePanelsForWorkspace run by now (bootReady awaited it);
+    // inactive workspaces stay lazy-restored on first activation, so
+    // their sync here is the empty initial state until then.
+    for (const ws of wsSnap.workspaces) {
+      void emitPanelsSync(ws.id);
+    }
   });
 });

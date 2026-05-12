@@ -16,6 +16,12 @@ interface TabsState {
   orderedIds: number[];
   /** Currently focused tab id (or null on cold boot). */
   activeId: number | null;
+  /** True after the first tabs/snapshot from bento-tools has been applied.
+   * Sidebar uses this (alongside panels readiness) to defer rendering its
+   * tab list until both snapshots have arrived — without it the sidebar
+   * flashes the unfiltered tab list for one frame at boot before
+   * panels/sync arrives and the filter kicks in. */
+  hydrated: boolean;
 
   applySnapshot: (tabs: TabSnapshot[]) => void;
   applyDeltas: (deltas: TabDelta[]) => void;
@@ -31,6 +37,7 @@ export const useTabsStore = create<TabsState>((set) => ({
   byId: {},
   orderedIds: [],
   activeId: null,
+  hydrated: false,
 
   applySnapshot: (tabs) => {
     const byId: Record<number, TabSnapshot> = {};
@@ -39,7 +46,7 @@ export const useTabsStore = create<TabsState>((set) => ({
       byId[t.id] = t;
       if (t.active) activeId = t.id;
     }
-    set({ byId, orderedIds: recomputeOrder(byId), activeId });
+    set({ byId, orderedIds: recomputeOrder(byId), activeId, hydrated: true });
   },
 
   applyDeltas: (deltas) => {

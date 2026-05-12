@@ -74,6 +74,16 @@ pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.upgradeDialog.enabled", false);
 pref("browser.preferences.moreFromMozilla", false);
 
+// --- Session restore ------------------------------------------------------
+// Restore the previous session on launch. Bento is workspaces-first and
+// the per-tab workspace assignment (via browser.sessions.setTabValue +
+// bento.workspaceId) only matters if Firefox's SessionStore actually
+// brings tabs back across restarts. Default 1 = home page; 3 = previous
+// session. Without this, every Bento launch starts with an empty tab
+// and the per-workspace tab/panel restore mechanism has nothing to
+// rehydrate.
+pref("browser.startup.page", 3);
+
 // --- Chrome defaults ------------------------------------------------------
 // Firefox defaults to showing the bookmarks toolbar only on about:newtab.
 // Bento's shell uses its own vertical/navigation surfaces, so keep the native
