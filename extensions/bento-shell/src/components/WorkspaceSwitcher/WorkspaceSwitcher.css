@@ -89,6 +89,19 @@
     text-align: start;
   }
 
+  /* Collapsed sidebar — show only the avatar + chevron in a vertical
+     stack. The workspace name is hidden (no room in the rail), but
+     keeping the chevron visible makes the affordance discoverable —
+     users still know it's a workspace picker, not just a static avatar. */
+  html[data-bento-collapsed='true'] .bento-workspace-switcher__trigger {
+    flex-direction: column;
+    gap: var(--space-3xs);
+    padding-inline: var(--space-3xs);
+  }
+  html[data-bento-collapsed='true'] .bento-workspace-switcher__trigger-name {
+    display: none;
+  }
+
   .bento-workspace-switcher__chevron {
     opacity: 0.5;
     flex-shrink: 0;

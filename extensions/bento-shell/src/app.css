@@ -30,4 +30,27 @@
     border-top: 1px solid var(--bento-border-color-subtle);
     justify-content: flex-end;
   }
+
+  /* ─── Collapsed sidebar — narrow rail ───────────────────────────
+   * Triggered by useEffect in App.tsx when SettingsStore reports
+   * sidebarCollapsed=true. Chrome shrinks #bento-shell-host to a
+   * thin column via its own CSS (injectChromeStyles in
+   * bento-shell-mount.js); here we restyle the React tree to fit.
+   *
+   * Footer stack: column-reverse so the FIRST DOM child (the
+   * collapse/expand toggle) renders at the BOTTOM of the vertical
+   * stack — same on-screen position as the leftmost slot of the
+   * expanded horizontal row. The user's cursor doesn't have to
+   * move between collapse and expand. */
+  html[data-bento-collapsed='true'] .bento-shell-app__footer {
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: var(--space-2xs);
+  }
+
+  /* Header gets compact padding so the workspace switcher avatar +
+     arrows still fit in the rail. */
+  html[data-bento-collapsed='true'] .bento-shell-app__header {
+    padding-inline: var(--space-2xs);
+  }
 }

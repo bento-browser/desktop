@@ -6,7 +6,8 @@ import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
-import PanelRightClose from 'lucide-react/dist/esm/icons/panel-right-close';
+import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
+import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
@@ -91,13 +92,25 @@ export function App() {
   const onActivate = (id: number) => dispatch({ type: 'tab/activate', id });
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
-  const closeSidePanel = () => dispatch({ type: 'panels/clear' });
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const contentColorMode = useSettingsStore((s) => s.current?.contentColorMode);
+  const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   const setUiColorMode = (next: ColorModePref) =>
     dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
   const setContentColorMode = (next: ColorModePref) =>
     dispatch({ type: 'settings/update', changes: { contentColorMode: next } });
+  const toggleSidebarCollapsed = () =>
+    dispatch({ type: 'settings/update', changes: { sidebarCollapsed: !sidebarCollapsed } });
+
+  // Mirror sidebarCollapsed onto the shell document's <html> via a data
+  // attribute so CSS rules (TabRow, WorkspaceSwitcher, footer layout)
+  // can react. The chrome side gets the same flag via title-IPC and
+  // applies it to #bento-shell-host to actually shrink the rail.
+  useEffect(() => {
+    const html = document.documentElement;
+    if (sidebarCollapsed) html.setAttribute('data-bento-collapsed', 'true');
+    else html.removeAttribute('data-bento-collapsed');
+  }, [sidebarCollapsed]);
 
   return (
     <Column gap="xs" className="bento-shell-app">
@@ -111,13 +124,19 @@ export function App() {
       </Row>
       <TabList onActivate={onActivate} onClose={onClose} onOpenInSidePanel={onOpenInSidePanel} />
       <Row gap="2xs" align="center" className="bento-shell-app__footer">
+        {/* Collapse/expand toggle. DOM order matters: this is the FIRST
+            child so flex-direction:column-reverse in collapsed mode pins
+            it to the bottom of the vertical stack (= same on-screen
+            position as the leftmost slot of the expanded horizontal row).
+            That's the explicit UX requirement — clicking expand should
+            land at the same cursor position as clicking collapse. */}
         <IconButton
           variant="ghost"
           size="sm"
-          aria-label="Close side panel"
-          onPress={closeSidePanel}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onPress={toggleSidebarCollapsed}
         >
-          <Icon icon={PanelRightClose} />
+          <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
         </IconButton>
         <IconButton
           variant="ghost"

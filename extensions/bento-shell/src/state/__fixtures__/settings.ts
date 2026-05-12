@@ -16,6 +16,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   welcomeSeen: true,
   uiColorMode: 'system',
   contentColorMode: 'system',
+  sidebarCollapsed: false,
 };
 
 export function seedDefault(): void {

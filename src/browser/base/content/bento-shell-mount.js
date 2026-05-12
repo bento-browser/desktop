@@ -47,6 +47,22 @@
   }
   injectChromeTokens();
 
+  // Map Firefox's chrome color variables (--toolbar-bgcolor,
+  // --toolbar-field-background-color, --toolbox-textcolor, etc.) to
+  // Tale UI tokens so the visible chrome (toolbar, URL bar, titlebar)
+  // re-themes from the same source as the rest of Bento. Loaded AFTER
+  // tokens so the var() references it makes resolve. See the file
+  // header at chrome://browser/content/bento-chrome-theme.css for the
+  // coverage list — visible chrome only; menus, popups, scrollbars,
+  // devtools chrome stay on Firefox defaults until iterated.
+  function injectChromeTheme() {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'chrome://browser/content/bento-chrome-theme.css';
+    document.documentElement.appendChild(link);
+  }
+  injectChromeTheme();
+
   // Inject layout-shape CSS that depends on the tokens above. Kept in
   // a runtime-injected <style> rather than a static file because the
   // .browserContainer class only exists on per-tab elements created
@@ -84,6 +100,28 @@
       #bento-shell-splitter {
         width: var(--space-2xs);
         background-color: transparent;
+      }
+
+      /* Collapsed sidebar — narrow rail. Width covers favicon (1.6rem)
+         + per-side padding. Smooth width transition so the collapse/
+         expand toggle feels like a real animation rather than a snap.
+         Splitter hidden because there's nothing to resize when the rail
+         is at its minimum. The min-width/max-width inline styles on
+         the patch (200px/600px) are overridden via !important so the
+         narrow target actually applies. */
+      #bento-shell-host {
+        transition:
+          width 200ms var(--bento-easing-standard, ease),
+          min-width 200ms var(--bento-easing-standard, ease),
+          max-width 200ms var(--bento-easing-standard, ease);
+      }
+      #bento-shell-host.bento-sidebar-collapsed {
+        min-width: 4rem !important;
+        max-width: 4rem !important;
+        width: 4rem !important;
+      }
+      #bento-shell-splitter.bento-sidebar-collapsed {
+        display: none;
       }
 
       /* Bento panel rounded corners. overflow:clip so each remote
@@ -4123,10 +4161,46 @@
       ) {
         applyChromeColorMode(decoded.uiColorMode);
       }
+      // Sidebar collapsed state — toggle a class on the chrome host so
+      // CSS narrows the sidebar to a rail showing only favicons and the
+      // workspace avatar.
+      if (typeof decoded.sidebarCollapsed === 'boolean') {
+        applyChromeSidebarCollapsed(decoded.sidebarCollapsed);
+      }
     } else {
       return;
     }
     reconcilePanels(panels);
+  }
+
+  function applyChromeSidebarCollapsed(collapsed) {
+    const host = document.getElementById('bento-shell-host');
+    if (!host) return;
+    // First apply at boot: skip the CSS width transition so the
+    // persisted state paints at its target width immediately. Without
+    // this the user sees the sidebar mount at 240px (the patch's inline
+    // width) and animate to 4rem once the title-IPC arrives — reads as
+    // a flash. Subsequent toggles get the transition for the smooth
+    // collapse/expand UX.
+    if (!host.__bentoSidebarApplied) {
+      host.__bentoSidebarApplied = true;
+      const wasCollapsed = host.classList.contains('bento-sidebar-collapsed');
+      if (wasCollapsed !== collapsed) {
+        host.style.transition = 'none';
+        host.classList.toggle('bento-sidebar-collapsed', collapsed);
+        // Force layout commit so the next style change is treated as a
+        // new transition, not a continuation of the suppressed one.
+        // eslint-disable-next-line no-unused-expressions
+        host.offsetWidth;
+        host.style.removeProperty('transition');
+      }
+    } else {
+      host.classList.toggle('bento-sidebar-collapsed', collapsed);
+    }
+    // Hide the resize splitter when collapsed — there's nothing to drag
+    // when the rail is at its minimum width.
+    const splitter = document.getElementById('bento-shell-splitter');
+    if (splitter) splitter.classList.toggle('bento-sidebar-collapsed', collapsed);
   }
 
   // One-shot flag set by handlePanelsTitle when the workspace changed.

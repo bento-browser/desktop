@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   welcomeSeen: false,
   uiColorMode: 'system',
   contentColorMode: 'system',
+  sidebarCollapsed: false,
 });
 
 interface StoredShape {

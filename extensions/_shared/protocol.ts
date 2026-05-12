@@ -89,6 +89,11 @@ export interface BentoSettings {
    * to render in that mode regardless. Independent of uiColorMode so the
    * user can keep Bento dark while pages render light, or vice versa. */
   contentColorMode: ColorModePref;
+  /** Sidebar collapsed state. When true, the chrome shrinks the sidebar
+   * to a narrow rail showing only tab favicons + workspace avatar; the
+   * footer buttons stack vertically (with the collapse-toggle pinned at
+   * the same screen position so the cursor doesn't have to move). */
+  sidebarCollapsed: boolean;
 }
 
 export type ColorModePref = 'system' | 'light' | 'dark';

@@ -108,6 +108,26 @@ export class TabRegistry {
     this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
   }
 
+  /** In-memory-only workspace assignment for boot-time backfill. Does NOT
+   * call browser.sessions.setTabValue — so if `hydrateWorkspaceIds`
+   * transiently returned `undefined` for a tab (sessions API hadn't
+   * finished attaching extData yet) and we backfilled to the active
+   * workspace, the ORIGINAL session value is preserved. The next launch
+   * gets another chance to hydrate it correctly. Without this guard,
+   * each backfill destructively overwrites the session value and the
+   * tab leaks into whatever workspace is active at boot.
+   *
+   * The delta is still emitted so the shell mirror sees the same view
+   * the in-memory snapshot does. Persistent state stays clean.
+   */
+  setWorkspaceInMemory(id: number, workspaceId: string): void {
+    const tab = this.#tabs.get(id);
+    if (!tab) return;
+    if (tab.workspaceId === workspaceId) return;
+    tab.workspaceId = workspaceId;
+    this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
+  }
+
   snapshot(): TabSnapshot[] {
     return Array.from(this.#tabs.values()).sort((a, b) => a.index - b.index);
   }
@@ -120,9 +140,37 @@ export class TabRegistry {
   #onCreated = (tab: browser.tabs.Tab) => {
     const snap = toSnapshot(tab);
     if (snap.id === -1) return;
+    // Preserve any workspaceId we've already hydrated for this tab.
+    // SessionStore-restored tabs can fire onCreated AFTER init's query
+    // already saw and hydrated them — without this guard, the second
+    // toSnapshot (which can't read session values) would clobber the
+    // workspaceId field with undefined and the downstream onDeltas
+    // listener would auto-assign to the active workspace, destroying
+    // the original session value.
+    const existing = this.#tabs.get(snap.id);
+    if (existing?.workspaceId && !snap.workspaceId) {
+      snap.workspaceId = existing.workspaceId;
+    }
     this.#tabs.set(snap.id, snap);
     this.#enqueue({ kind: 'created', tab: snap });
+    // For tabs that have NEVER been hydrated (no existing entry, or
+    // the existing entry also lacked workspaceId), kick off an async
+    // session-value read. If a value comes back, set it in-memory.
+    // Doesn't write to sessions, so it can't corrupt — it only
+    // recovers a value that was already there.
+    if (!snap.workspaceId) {
+      void this.#hydrateOne(snap.id);
+    }
   };
+
+  async #hydrateOne(id: number): Promise<void> {
+    const ws = await readWorkspaceId(id);
+    if (!ws) return;
+    const tab = this.#tabs.get(id);
+    if (!tab || tab.workspaceId === ws) return;
+    tab.workspaceId = ws;
+    this.#enqueue({ kind: 'updated', id, changes: { workspaceId: ws } });
+  }
 
   #onUpdated = (
     id: number,

@@ -129,8 +129,12 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
   // Broadcast even when this workspace isn't currently active —
   // emitPanelsSync gates on activeId so the call is cheap. When the
   // workspace IS active (boot path or just-activated lazy path),
-  // chrome reconciles the panel strip.
-  void emitPanelsSync(workspaceId);
+  // chrome reconciles the panel strip. Awaited so the boot path
+  // doesn't return until the shell has had a chance to process the
+  // broadcast — without this, downstream boot code (or onConnect's
+  // bootReady await) can race ahead and the panels/sync gets dropped
+  // when the addon-upgrade-mid-init kills the bg port.
+  await emitPanelsSync(workspaceId);
 }
 
 // Resolve a workspace's panel tabIds to {tabId, url} entries and broadcast
@@ -206,8 +210,26 @@ const bootReady = Promise.all([
   // via settings.onChange below. Fire-and-forget: if the API errors
   // (rare), the user can re-toggle to retry.
   void applyContentColorMode(settings.snapshot().contentColorMode);
+  let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;
+  let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
+    settings.snapshot().sidebarCollapsed;
   settings.onChange((next) => {
     void applyContentColorMode(next.contentColorMode);
+    // Re-fire panels/sync for the active workspace whenever a
+    // chrome-bound setting changes (uiColorMode, sidebarCollapsed) so
+    // chrome picks up the new value via the BENTO_PANELS title (which
+    // carries those fields in its payload). The shell no longer writes
+    // dedicated title channels for these — they raced BENTO_PANELS via
+    // document.title and the shell would lose the panels message at
+    // boot. Single channel = no race.
+    const colorChanged = next.uiColorMode !== lastUiColorMode;
+    const collapsedChanged = next.sidebarCollapsed !== lastSidebarCollapsed;
+    if (colorChanged) lastUiColorMode = next.uiColorMode;
+    if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
+    if (colorChanged || collapsedChanged) {
+      const activeWs = workspaces.getActiveId();
+      if (activeWs) void emitPanelsSync(activeWs);
+    }
   });
   // Backfill: any tab that hydrated WITHOUT a workspaceId (fresh profile,
   // tabs from a pre-workspaces session, or tabs Firefox restored before
@@ -289,52 +311,56 @@ const bootReady = Promise.all([
       }
     }
     const consumed = new Set<number>();
-    const pending: Promise<void>[] = [];
     for (const [panelWsId, entries] of allPanels) {
       for (const entry of entries) {
         for (const [tabId, url] of tabUrls) {
           if (consumed.has(tabId)) continue;
           if (url !== entry.url) continue;
           consumed.add(tabId);
-          // Await before backfill so the in-memory workspaceId is set
-          // — backfill below races otherwise and assigns to active.
-          pending.push(tabs.assignWorkspace(tabId, panelWsId));
+          // In-memory only — preserves any existing session value (or
+          // absence). The user's explicit assignments remain canonical
+          // across launches; this is just a boot-time best-guess
+          // hint based on panel storage.
+          tabs.setWorkspaceInMemory(tabId, panelWsId);
           break;
         }
       }
     }
-    await Promise.all(pending);
   }
 
   // Backfill: any tab still without a workspaceId after hydration +
-  // panel-URL pre-assignment — i.e. brand-new tabs from a fresh
-  // profile, non-panel tabs Firefox restored without a session value
-  // — get assigned to the active workspace. Tabs that DO have a
-  // hydrated workspaceId (or got pre-assigned from panel storage)
-  // are left alone.
+  // panel-URL pre-assignment gets assigned to the active workspace —
+  // but ONLY in memory. Without the in-memory-only constraint, a
+  // sessions API hiccup (extData not yet fully attached for a
+  // session-restored tab) would have hydrate return undefined,
+  // backfill would write the active workspace to sessions, and the
+  // tab's original workspace assignment would be permanently
+  // overwritten. With the in-memory variant, the original session
+  // value is preserved across launches — the next launch's hydrate
+  // gets another chance to pick it up correctly.
   if (wsId) {
     for (const tab of tabs.snapshot()) {
       if (tab.workspaceId) continue;
-      void tabs.assignWorkspace(tab.id, wsId);
+      tabs.setWorkspaceInMemory(tab.id, wsId);
     }
   }
-  // Restore persisted panels for the active workspace. Inactive
-  // workspaces are restored lazily on first activation (see the
-  // workspaces.onDeltas handler below) so a profile with many
-  // workspaces doesn't pay the URL→tab matching cost up front.
-  if (wsId) await restorePanelsForWorkspace(wsId);
-
   // Ensure Firefox's selectedTab belongs to the active workspace.
   // SessionStore restores whichever tab was last selected at shutdown,
   // which may be in a workspace OTHER than the one bento-tools considers
-  // active (workspaces store has its own activeId persisted via
-  // storage.local). Without this, the chrome reconciler renders the
-  // active workspace's panel strip but with a mainTab from a different
-  // workspace — symptom: panels visible only after the user manually
-  // switches workspaces, because the activation handler does this same
-  // tab.update for switches but not for boot. Mirrors the activation
-  // handler's tab-pick logic: prefer non-panel tabs (panels live in
-  // their own slots; mainTab should be a sidebar tab).
+  // active. MUST happen BEFORE restorePanelsForWorkspace below: tabs.update
+  // triggers TabSelect in chrome, which kicks chrome's reconciler with the
+  // current __lastPanelsPayload (empty at boot, since no panels/sync has
+  // arrived yet). If we did this AFTER restore, the TabSelect reconcile
+  // would race against the in-flight panels/sync from restore's
+  // emitPanelsSync — chrome's poll might miss the title or the addon
+  // restart-mid-init (version bump) drops the broadcast, leaving chrome
+  // showing main-only. Doing it FIRST guarantees the late panels/sync
+  // overwrites the empty initial reconcile correctly.
+  //
+  // wsTabs filter excludes panel tabs (panels live in their own slots;
+  // mainTab should be a sidebar tab). At this point in boot, panels.add
+  // hasn't fired yet so getPanels returns []; the filter falls back to
+  // any non-panel tab in the workspace.
   if (wsId) {
     const panelTabIds = new Set(panels.getPanels(wsId));
     const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
@@ -347,6 +373,12 @@ const bootReady = Promise.all([
       }
     }
   }
+
+  // Restore persisted panels for the active workspace. Inactive
+  // workspaces are restored lazily on first activation (see the
+  // workspaces.onDeltas handler below) so a profile with many
+  // workspaces doesn't pay the URL→tab matching cost up front.
+  if (wsId) await restorePanelsForWorkspace(wsId);
 
   // Sweep stale `bento.isPanel` markers on session-restored tabs. The
   // marker is supposed to track tabs that ARE panels (so Cmd+Shift+T
@@ -405,9 +437,34 @@ const lastActiveTabByWorkspace = new Map<string, number>();
 tabs.onDeltas((deltas) => {
   for (const d of deltas) {
     if (d.kind === 'created') {
-      if (!d.tab.workspaceId) {
-        const wsId = workspaces.getActiveId();
-        if (wsId) void tabs.assignWorkspace(d.tab.id, wsId);
+      // Read CURRENT in-memory state, not the delta's frozen snapshot.
+      // Two paths can race:
+      //   - SessionStore-restored tabs: TabRegistry.#hydrateOne is
+      //     async; the workspaceId may have been set by the time this
+      //     listener runs even though it wasn't in the delta.
+      //   - restorePanelsForWorkspace: creates new tabs and immediately
+      //     calls assignWorkspace; if its writes land before this
+      //     listener, the live snapshot already has the right workspace.
+      // Reading live state means we don't trample either of those.
+      const live = tabs.snapshot().find((t) => t.id === d.tab.id);
+      if (live && !live.workspaceId) {
+        // No workspace yet. Try sessions one more time before falling
+        // back to the active workspace — covers the "session value
+        // hydrated mid-listener" race where the in-memory snapshot
+        // hasn't been updated yet but the persistent value IS present.
+        // Only writes to sessions if there's truly no value AND we
+        // need to assign to active.
+        void (async () => {
+          const sessionWs = await browser.sessions
+            .getTabValue(d.tab.id, 'bento.workspaceId')
+            .catch(() => null);
+          if (sessionWs && typeof sessionWs === 'string') {
+            tabs.setWorkspaceInMemory(d.tab.id, sessionWs);
+            return;
+          }
+          const wsId = workspaces.getActiveId();
+          if (wsId) void tabs.assignWorkspace(d.tab.id, wsId);
+        })();
       }
       // URL-marker check moved to a dedicated browser.tabs.onCreated
       // listener (below). TabRegistry's TabSnapshot intentionally
