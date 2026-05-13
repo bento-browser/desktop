@@ -31,6 +31,19 @@ function SidebarFrame({
   );
 }
 
+// Toggle data-bento-collapsed on <html> for the collapsed-rail stories.
+// Cleanup on unmount keeps the attribute from leaking into other stories.
+function useCollapsedAttribute(collapsed: boolean) {
+  useEffect(() => {
+    const html = document.documentElement;
+    if (collapsed) html.setAttribute('data-bento-collapsed', 'true');
+    else html.removeAttribute('data-bento-collapsed');
+    return () => {
+      html.removeAttribute('data-bento-collapsed');
+    };
+  }, [collapsed]);
+}
+
 export const Empty = () => {
   useEffect(() => {
     seedEmpty();
@@ -119,3 +132,34 @@ export const WideSidebar = () => {
 };
 
 WideSidebar.storyName = 'Wide (500px)';
+
+export const Collapsed = () => {
+  useEffect(() => {
+    seedTabs(8, 2);
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <SidebarFrame width={64}>
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+Collapsed.storyName = 'Collapsed (favicon-only stack)';
+
+export const CollapsedMany = () => {
+  // Verifies the favicon-only layout still virtualizes cleanly when more
+  // tabs exist than fit on screen — the rail should scroll vertically
+  // without any title text overflowing horizontally.
+  useEffect(() => {
+    seedTabs(40, 5);
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <SidebarFrame width={64}>
+      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+CollapsedMany.storyName = 'Collapsed — 40 tabs (scroll check)';

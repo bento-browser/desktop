@@ -35,6 +35,17 @@ function notify() {
   for (const fn of subscribers) fn();
 }
 
+function markToolsReady() {
+  if (typeof performance === 'undefined') return;
+
+  performance.mark('bento.toolsReady');
+  if (performance.getEntriesByName('bento.boot', 'mark').length === 0) {
+    return;
+  }
+
+  performance.measure('bento.bootToToolsReady', 'bento.boot', 'bento.toolsReady');
+}
+
 function ensureConnection(): void {
   if (state.channel) return;
   if (typeof BroadcastChannel === 'undefined') {
@@ -54,10 +65,9 @@ function ensureConnection(): void {
     switch (event.type) {
       case 'tools/booted':
         state.ready = true;
-        // Marks paired with bento.boot in main.tsx. Idempotent — performance
-        // marks dedupe internally if the bus replays this event.
-        performance.mark('bento.toolsReady');
-        performance.measure('bento.bootToToolsReady', 'bento.boot', 'bento.toolsReady');
+        // The sidebar has bento.boot from main.tsx; secondary entries also
+        // connect to this bus, but do not own that startup mark.
+        markToolsReady();
         notify();
         // The cached snapshot relayed by bento-shell background may be from
         // a moment when tools' TabRegistry hadn't yet captured all startup

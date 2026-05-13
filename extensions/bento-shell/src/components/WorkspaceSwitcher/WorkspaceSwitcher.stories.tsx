@@ -26,6 +26,21 @@ function HeaderFrame({ children, width = 240 }: { children: React.ReactNode; wid
   );
 }
 
+// Toggle data-bento-collapsed on <html> for the collapsed-rail story.
+// WorkspaceSwitcher's collapsed CSS switches the trigger to a vertical
+// avatar+chevron stack and hides the workspace name. Cleanup on unmount
+// keeps the attribute from leaking into other stories.
+function useCollapsedAttribute(collapsed: boolean) {
+  useEffect(() => {
+    const html = document.documentElement;
+    if (collapsed) html.setAttribute('data-bento-collapsed', 'true');
+    else html.removeAttribute('data-bento-collapsed');
+    return () => {
+      html.removeAttribute('data-bento-collapsed');
+    };
+  }, [collapsed]);
+}
+
 export const SingleWorkspace = () => {
   useEffect(() => {
     seedDefault();
@@ -109,3 +124,37 @@ DeleteWithTabs.storyName = 'Delete workspace with tabs (delete item visible)';
 // Edit menu item in Ladle just broadcasts on 'bento-edit-workspace-bus'
 // with no visible effect — the form itself can be exercised against
 // edit-workspace.html directly.
+
+export const Collapsed = () => {
+  // Narrow rail: avatar + chevron stack vertically, workspace name hidden.
+  // Open the menu to verify the popover still anchors correctly to the
+  // tighter trigger (it should appear to the right of the rail at chrome
+  // scale).
+  useEffect(() => {
+    seedDefault();
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <HeaderFrame width={64}>
+      <WorkspaceSwitcher />
+    </HeaderFrame>
+  );
+};
+
+Collapsed.storyName = 'Collapsed (avatar + chevron stack)';
+
+export const CollapsedMultiple = () => {
+  // Same collapsed layout but with the 'Work' workspace active so the
+  // emerald accent and a second-letter initial both render in the rail.
+  useEffect(() => {
+    seedMany();
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <HeaderFrame width={64}>
+      <WorkspaceSwitcher />
+    </HeaderFrame>
+  );
+};
+
+CollapsedMultiple.storyName = 'Collapsed — Work active (emerald avatar)';

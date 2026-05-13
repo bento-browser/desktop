@@ -62,3 +62,25 @@ export function seedEmpty(): void {
 export function seedSingle(snapshot: TabSnapshot): void {
   useTabsStore.getState().applySnapshot([snapshot]);
 }
+
+/** Seed tabs spread across multiple workspaces. `perWorkspace[i]` tabs are
+ * assigned to `workspaceIds[i]`. The first tab of `activeWorkspaceId` is
+ * marked active so the sidebar has a current selection to render. Used by
+ * the App-level Ladle demo to populate the full shell layout (sidebar + tab
+ * list + workspace switcher) without needing the real bento-tools port.
+ */
+export function seedTabsAcrossWorkspaces(
+  spec: { workspaceId: string; count: number }[],
+  activeWorkspaceId: string,
+): TabSnapshot[] {
+  const tabs: TabSnapshot[] = [];
+  let nextId = 1;
+  for (const { workspaceId, count } of spec) {
+    for (let i = 0; i < count; i++) {
+      const isActive = workspaceId === activeWorkspaceId && i === 0;
+      tabs.push(makeTab({ id: nextId++, workspaceId, active: isActive }));
+    }
+  }
+  useTabsStore.getState().applySnapshot(tabs);
+  return tabs;
+}

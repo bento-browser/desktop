@@ -7,20 +7,43 @@ import { makeTab, seedSingle } from '../../state/__fixtures__/tabs';
 
 const noop = () => {};
 
-function SidebarFrame({ children }: { children: React.ReactNode }) {
+function SidebarFrame({
+  children,
+  collapsed = false,
+}: {
+  children: React.ReactNode;
+  collapsed?: boolean;
+}) {
   // Mimic the real shell sidebar's width + dark canvas so visual states
-  // match what they look like inside Bento.
+  // match what they look like inside Bento. collapsed=true narrows the
+  // frame to 4rem (chrome's #bento-shell-host width when the rail
+  // collapses) so the favicon-only TabRow layout reads correctly.
   return (
     <div
       style={{
-        width: 240,
+        width: collapsed ? 64 : 240,
         backgroundColor: 'var(--bento-brand-bg)',
-        padding: 'var(--space-xs)',
+        padding: collapsed ? 0 : 'var(--space-xs)',
       }}
     >
       {children}
     </div>
   );
+}
+
+// Toggle data-bento-collapsed on <html> for the duration of the story so
+// TabRow's collapsed CSS rules (grid-template-columns: 1rem, hide title /
+// audible / actions) take effect. Cleanup on unmount keeps the attribute
+// from leaking into other stories.
+function useCollapsedAttribute(collapsed: boolean) {
+  useEffect(() => {
+    const html = document.documentElement;
+    if (collapsed) html.setAttribute('data-bento-collapsed', 'true');
+    else html.removeAttribute('data-bento-collapsed');
+    return () => {
+      html.removeAttribute('data-bento-collapsed');
+    };
+  }, [collapsed]);
 }
 
 export const Inactive = () => {
@@ -157,3 +180,62 @@ export const PerformanceMatrix = () => {
 };
 
 PerformanceMatrix.storyName = 'Performance matrix (idle / loading / discarded / audible)';
+
+export const Collapsed = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false }));
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <SidebarFrame collapsed>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+Collapsed.storyName = 'Collapsed (narrow rail, favicon-only)';
+
+export const CollapsedActive = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: true }));
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <SidebarFrame collapsed>
+      <TabRow id={1} active={true} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+CollapsedActive.storyName = 'Collapsed — active tab';
+
+export const CollapsedAudible = () => {
+  // Audible badge is hidden in collapsed mode (no room in the rail) — this
+  // story verifies the favicon centering still works when the audible
+  // class would otherwise add a third grid column.
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false, audible: true }));
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <SidebarFrame collapsed>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+CollapsedAudible.storyName = 'Collapsed — audible (badge hidden)';
+
+export const CollapsedDiscarded = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false, discarded: true }));
+  }, []);
+  useCollapsedAttribute(true);
+  return (
+    <SidebarFrame collapsed>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
+CollapsedDiscarded.storyName = 'Collapsed — discarded (dimmed favicon)';
