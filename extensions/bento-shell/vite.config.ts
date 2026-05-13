@@ -71,6 +71,7 @@ export default defineConfig(({ mode }) => ({
         palette: resolve(__dirname, 'palette.html'),
         confirm: resolve(__dirname, 'confirm.html'),
         'edit-workspace': resolve(__dirname, 'edit-workspace.html'),
+        'workspace-switcher': resolve(__dirname, 'workspace-switcher.html'),
         welcome: resolve(__dirname, 'welcome.html'),
       },
       output: {

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" class="tale-ui">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bento Workspace Switcher</title>
+
+    <script src="./boot.js"></script>
+
+    <!-- Transparent background — the chrome <browser> hosting this page
+         covers the entire browser window so the menu can render anywhere
+         without being clipped to the sidebar's bounds. The page itself
+         is non-blocking (pointer-events:none) until the menu opens, at
+         which point the React tree adds a backdrop that captures clicks
+         outside the menu (handled by react-aria's Popover dismiss). -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background-color: transparent;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/workspace-switcher/main.tsx"></script>
+  </body>
+</html>

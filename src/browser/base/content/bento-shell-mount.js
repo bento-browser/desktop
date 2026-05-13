@@ -102,26 +102,41 @@
         background-color: transparent;
       }
 
-      /* Collapsed sidebar — narrow rail. Width covers favicon (1.6rem)
-         + per-side padding. Smooth width transition so the collapse/
-         expand toggle feels like a real animation rather than a snap.
-         Splitter hidden because there's nothing to resize when the rail
-         is at its minimum. The min-width/max-width inline styles on
-         the patch (200px/600px) are overridden via !important so the
-         narrow target actually applies. */
+      /* Sidebar dimensions. The chrome patch ships inline
+         'min-width: 200px; max-width: 600px' on #bento-shell-host
+         (so the sidebar still renders sensibly if our stylesheet
+         hasn't loaded yet); we override both via !important here
+         from --bento-tab-strip-width-min/-max so the bounds become
+         tunable from bento-tokens.css without a patch rebuild.
+         Collapsed pins width/min/max to --bento-tab-strip-width-
+         collapsed and hides the splitter — there's nothing to
+         resize when the rail is at its minimum. The width
+         transition makes the collapse/expand toggle feel animated
+         rather than snapping. */
       #bento-shell-host {
+        min-width: var(--bento-tab-strip-width-min) !important;
+        max-width: var(--bento-tab-strip-width-max) !important;
         transition:
           width 200ms var(--bento-easing-standard, ease),
           min-width 200ms var(--bento-easing-standard, ease),
           max-width 200ms var(--bento-easing-standard, ease);
       }
       #bento-shell-host.bento-sidebar-collapsed {
-        min-width: 4rem !important;
-        max-width: 4rem !important;
-        width: 4rem !important;
+        min-width: var(--bento-tab-strip-width-collapsed) !important;
+        max-width: var(--bento-tab-strip-width-collapsed) !important;
+        width: var(--bento-tab-strip-width-collapsed) !important;
       }
       #bento-shell-splitter.bento-sidebar-collapsed {
-        display: none;
+        /* visibility:hidden (NOT display:none) so the splitter still
+           occupies its var(--space-2xs) width — that's what creates
+           the visible gap between the sidebar and the main content
+           slot. Without the reserved width, the gap collapses to 0
+           and the rail looks pasted against the panel area. The
+           hidden splitter remains non-interactive (can't be dragged
+           — there's nothing to resize when the rail is at its
+           minimum) which is the same behaviour display:none gave us
+           on the interaction front. */
+        visibility: hidden;
       }
 
       /* Bento panel rounded corners. overflow:clip so each remote
@@ -837,6 +852,10 @@
     setFrameSrc('bento-welcome-frame', '/dist/welcome.html');
   }
 
+  function setBentoWorkspaceSwitcherSrc() {
+    setFrameSrc('bento-workspace-switcher-frame', '/dist/workspace-switcher.html');
+  }
+
   // Create overlay host elements dynamically rather than in the patch.
   // Why: browser.xhtml is preprocessed by mach at full-build time, so adding
   // a new <vbox> to browser-box.inc.xhtml requires `npm run build` to land
@@ -896,6 +915,39 @@
     frameId: 'bento-welcome-frame',
     zIndex: 99996,
   });
+
+  // Workspace-switcher overlay. The Tale UI Menu popover would otherwise
+  // be clipped at the sidebar iframe boundary — useless when the rail is
+  // collapsed to 4rem. Lifting the menu into a chrome-mounted <browser>
+  // lets it render anywhere in the chrome window.
+  // zIndex BELOW edit-workspace (99997) so an Edit dialog opened from a
+  // menu item correctly overlays the menu while it's still fading out.
+  // ABOVE the welcome (99996) since the menu can in principle open while
+  // welcome is still mounted (welcome is dismissable but the menu would
+  // be the user's natural next action).
+  ensureOverlayHost({
+    hostId: 'bento-workspace-switcher-host',
+    frameId: 'bento-workspace-switcher-frame',
+    zIndex: 99995,
+  });
+  // Pre-warm: keep the host laid out (display:flex) from chrome init so
+  // window.screenLeft inside the overlay frame is accurate from the
+  // start. Without this, the first menu open mis-positions: the overlay
+  // React app receives the bus payload and re-renders BEFORE chrome's
+  // 200ms title-poll fires showWorkspaceSwitcher(); inside a display:
+  // none host, the iframe's content has no laid-out screen position
+  // and window.screenLeft returns stale zeros, so the trigger-to-
+  // overlay coord translation collapses and the menu ends up at the
+  // chrome window's centre.
+  // Invisibility + non-interactivity comes from opacity:0 +
+  // pointer-events:none — the host stays in the layout tree but
+  // intercepts no events and paints nothing visible.
+  const wsSwitcherHostInit = document.getElementById('bento-workspace-switcher-host');
+  if (wsSwitcherHostInit) {
+    wsSwitcherHostInit.style.display = 'flex';
+    wsSwitcherHostInit.style.pointerEvents = 'none';
+    // opacity:0 and hidden=true already set by ensureOverlayHost defaults.
+  }
 
   // ─── Palette overlay show/hide ──────────────────────────────────────────
 
@@ -1040,6 +1092,53 @@
     }, EDIT_WORKSPACE_TRANSITION_MS);
   }
 
+  // ─── Workspace-switcher overlay ────────────────────────────────────────
+  // The Tale UI Menu popover would otherwise be clipped at the sidebar
+  // iframe boundary — useless when the rail is collapsed to 4rem and the
+  // menu would render entirely outside the visible sidebar. Lifting it
+  // into a chrome-mounted <browser> lets the menu render anywhere in the
+  // chrome window. Sidebar's trigger button signals open via title-IPC;
+  // the overlay subscribes to the bento-workspace-switcher-bus
+  // BroadcastChannel for the trigger's anchor coords.
+  //
+  // Visibility is opacity-driven (NOT display) — see the prewarm note
+  // at the host registration above. No transition timeout to track,
+  // because we never flip display.
+
+  function isWorkspaceSwitcherVisible(host) {
+    // Visibility is opacity-driven (NOT display) for this overlay so the
+    // frame stays laid out from chrome init — see the pre-warm comment
+    // at the host registration above.
+    return host.style.opacity === '1';
+  }
+
+  function showWorkspaceSwitcher() {
+    const host = document.getElementById('bento-workspace-switcher-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showWorkspaceSwitcher: host missing');
+      return;
+    }
+    // Display stays 'flex' from the init prewarm — only opacity +
+    // pointer-events toggle here. Restoring display:flex would defeat
+    // the prewarm's purpose (the frame has to stay laid out so its
+    // window.screenLeft is accurate when the React app re-renders).
+    host.style.pointerEvents = 'auto';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    host.style.opacity = '1';
+    const frame = document.getElementById('bento-workspace-switcher-frame');
+    setTimeout(() => frame?.focus(), 0);
+  }
+
+  function hideWorkspaceSwitcher() {
+    const host = document.getElementById('bento-workspace-switcher-host');
+    if (!host) return;
+    host.style.opacity = '0';
+    host.style.pointerEvents = 'none';
+    host.setAttribute('hidden', 'true');
+    // No display:none after the transition — see prewarm comment.
+  }
+
   // ─── Welcome overlay (first-run) ───────────────────────────────────────
   // Same chrome-overlay pattern as confirm/palette/edit-workspace. Trigger
   // is one-shot per fresh profile: sidebar inspects settings.welcomeSeen
@@ -1101,6 +1200,11 @@
   // BENTO_CLOSE_WELCOME_<ts> on dismiss.
   const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
   const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
+  // Workspace-switcher menu overlay. Anchor coords travel via
+  // BroadcastChannel('bento-workspace-switcher-bus') — title is just the
+  // visibility signal.
+  const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
+  const WORKSPACE_SWITCHER_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_SWITCHER';
   // Multi-panel reconciliation. Title format from sidebar:
   //   BENTO_PANELS:<ts>:<base64-of-json-array>
   // where the JSON array is [{tabId, url}, ...] for the active workspace.
@@ -1109,7 +1213,7 @@
   // chars; timestamp ensures repeated identical states still trigger
   // the title-change poll.
   const PANELS_PREFIX = 'BENTO_PANELS:';
-  // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<system|light|dark>
+  // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark>
   // The shell sets this on settings/changed; the active BENTO_PANELS
   // payload also carries the same uiColorMode field as a self-correcting
   // backstop in case this dedicated message races with a panels/sync.
@@ -1119,15 +1223,15 @@
   // data-color-mode on the chrome window's <window> root.
   // _color-modes.css selectors are rewritten from `html` to `:root` by
   // scripts/generate-chrome-tokens.mjs, so the same cascade that flips
-  // shell tokens flips chrome tokens. 'system' clears the attribute so
-  // the @media (prefers-color-scheme) branch wins (OS-following).
+  // shell tokens flips chrome tokens. ColorModePref is now 'light' |
+  // 'dark' only — the previous 'system' (clear attribute, fall through
+  // to @media (prefers-color-scheme)) branch was removed in favour of
+  // explicit user choice.
   function applyChromeColorMode(mode) {
     const root = document.documentElement;
     if (!root) return;
     if (mode === 'light' || mode === 'dark') {
       root.setAttribute('data-color-mode', mode);
-    } else {
-      root.removeAttribute('data-color-mode');
     }
   }
   function handleColorModeTitle(rawTitle) {
@@ -1135,7 +1239,7 @@
     const colonAfterTs = tail.indexOf(':');
     if (colonAfterTs < 0) return;
     const mode = tail.slice(colonAfterTs + 1);
-    if (mode === 'light' || mode === 'dark' || mode === 'system') {
+    if (mode === 'light' || mode === 'dark') {
       applyChromeColorMode(mode);
     }
   }
@@ -2142,8 +2246,19 @@
   }
 
   function scrollPanelToLeftmost(panelEl) {
-    const host = document.getElementById('bento-side-panel-host');
-    if (!host || !panelEl) return;
+    if (!panelEl) return;
+    // Use getStripScrollTarget() — in split-view mode the actual
+    // scroll context is #tabbrowser-tabpanels (Firefox's native deck),
+    // NOT #bento-side-panel-host. Hardcoding the host meant favicon
+    // clicks scrolled the wrong container in split-view, which both
+    // failed to bring the panel into view AND visually misaligned the
+    // inter-panel splitters (their absolute positions are computed
+    // relative to the active scroll container — scrolling the wrong
+    // one leaves splitters anchored to the live tabpanels offsets but
+    // visually painted at the host's offsets). The cycle handler at
+    // ~line 2015 already uses this helper for the same reason. */
+    const host = getStripScrollTarget();
+    if (!host) return;
     const stripLeft = host.getBoundingClientRect().left;
     const panelLeft = panelEl.getBoundingClientRect().left;
     const targetScrollLeft = host.scrollLeft + (panelLeft - stripLeft);
@@ -2329,6 +2444,20 @@
         return;
       }
       onClick(e);
+    });
+    // Prevent left-click from moving DOM focus to the button. Without
+    // this, the click sequence is: focus → button (mousedown), then
+    // focus → panel content browser (setActiveByIndex). Two focus
+    // transitions back-to-back cancel the in-progress smooth scroll
+    // we kicked off via scrollPanelToLeftmost. Arrow-key cycling
+    // doesn't hit this because focus was already in chrome — there's
+    // only one focus shift (chrome → panel browser). preventDefault
+    // on left mousedown keeps focus stable through the click; the
+    // 'click' event still fires (preventDefault on mousedown only
+    // suppresses the default focus-on-mousedown behaviour, not the
+    // subsequent click event itself). */
+    btn.addEventListener('mousedown', (e) => {
+      if (e.button === 0) e.preventDefault();
     });
     if (Number.isFinite(tabId)) {
       btn.addEventListener('mousedown', (e) => {
@@ -2797,7 +2926,26 @@
     // Main panel always first.
     list.appendChild(
       buildNavIcon(getMainTabFavicon(), 'Main panel', () => {
-        const main = document.getElementById('tabbrowser-tabbox');
+        // Look up the actual main PANEL element via the same path the
+        // arrow-cycle handler uses: getOrderedPanels()[0]. That returns
+        // splitViewPanels[0] (e.g. "panel-3-1") in split-view mode —
+        // the panel element living INSIDE tabpanels.
+        //
+        // We can't use [data-bento-main-panel] as a selector here:
+        // BOTH the outer tabbrowser-tabbox AND the inner split-view
+        // main panel have that attribute set, and querySelector picks
+        // the outer in document order. The outer's bounding rect spans
+        // the whole tabbox area regardless of strip scroll position,
+        // which makes (panelLeft - stripLeft) compute to ~0 → silent
+        // no-op scrolls. The inner panel's rect tracks scroll
+        // correctly because it actually moves with the strip.
+        //
+        // Fallback to tabbrowser-tabbox keeps the legacy parallel-
+        // browser path (no split-view) working: getOrderedPanels()
+        // returns [] before split-view activates, so the fallback
+        // kicks in for the boot/empty-workspace state.
+        const ordered = getOrderedPanels();
+        const main = ordered[0] || document.getElementById('tabbrowser-tabbox');
         scrollPanelToLeftmost(main);
         setActiveByIndex(0);
       }),
@@ -4154,11 +4302,7 @@
       // overwrote the title before chrome polled it, the next reconcile
       // re-applies. Idempotent — applyChromeColorMode short-circuits
       // when the attribute already matches.
-      if (
-        decoded.uiColorMode === 'light' ||
-        decoded.uiColorMode === 'dark' ||
-        decoded.uiColorMode === 'system'
-      ) {
+      if (decoded.uiColorMode === 'light' || decoded.uiColorMode === 'dark') {
         applyChromeColorMode(decoded.uiColorMode);
       }
       // Sidebar collapsed state — toggle a class on the chrome host so
@@ -4269,6 +4413,17 @@
       }, 200);
     }
 
+    const wsSwitcherFrame = document.getElementById('bento-workspace-switcher-frame');
+    if (wsSwitcherFrame) {
+      let lastSeenWsSwitcherTitle = '';
+      setInterval(() => {
+        const title = wsSwitcherFrame.contentTitle || '';
+        if (title === lastSeenWsSwitcherTitle) return;
+        lastSeenWsSwitcherTitle = title;
+        if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) hideWorkspaceSwitcher();
+      }, 200);
+    }
+
     const shellFrame = document.getElementById('bento-shell-frame');
     if (shellFrame) {
       let lastSeenShellTitle = '';
@@ -4280,6 +4435,7 @@
         else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
         else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
         else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+        else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
         else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
         else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
       }, 200);
@@ -4295,8 +4451,8 @@
       (e) => {
         if (e.key !== 'Escape') return;
         // Stack precedence (top = highest): confirm > edit-workspace >
-        // palette. If multiple overlays are somehow open at once, dismiss
-        // the topmost first.
+        // welcome > workspace-switcher > palette. If multiple overlays
+        // are somehow open at once, dismiss the topmost first.
         const confirmHost = document.getElementById('bento-confirm-host');
         if (confirmHost && isConfirmVisible(confirmHost)) {
           e.preventDefault();
@@ -4316,6 +4472,13 @@
           e.preventDefault();
           e.stopPropagation();
           hideWelcome();
+          return;
+        }
+        const wsSwitcherHost = document.getElementById('bento-workspace-switcher-host');
+        if (wsSwitcherHost && isWorkspaceSwitcherVisible(wsSwitcherHost)) {
+          e.preventDefault();
+          e.stopPropagation();
+          hideWorkspaceSwitcher();
           return;
         }
         const host = document.getElementById('bento-palette-host');
@@ -4589,6 +4752,7 @@
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
           'bento-welcome-frame',
+          'bento-workspace-switcher-frame',
         ];
         for (const id of ids) {
           const frame = document.getElementById(id);
@@ -4603,6 +4767,7 @@
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
             else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
+            else if (id === 'bento-workspace-switcher-frame') setBentoWorkspaceSwitcherSrc();
           }
         }
       }, 100);
@@ -4620,6 +4785,7 @@
   setBentoConfirmSrc();
   setBentoEditWorkspaceSrc();
   setBentoWelcomeSrc();
+  setBentoWorkspaceSwitcherSrc();
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so
   // the strip is ready by the first reconcilePanels(). Wrapped in

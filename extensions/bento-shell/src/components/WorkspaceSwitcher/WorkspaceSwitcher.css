@@ -30,6 +30,28 @@
   color: var(--bento-workspace-accent-fg);
 }
 
+/* Collapsed sidebar — hide the chevron, fade out the trigger-name.
+ * Unlayered because Tale UI's .tale-icon { display: inline-block } and
+ * .tale-text defaults are unlayered too — a layered display: none would
+ * lose regardless of specificity (CSS spec: unlayered > any layer). The
+ * compound .tale-icon.bento-* / .tale-text.bento-* selectors also win
+ * on specificity over Tale UI's single-class rules.
+ *
+ * The chevron snaps via display:none — losing it doesn't shift the
+ * avatar's position because the chevron's grid/flex slot collapses
+ * cleanly. The trigger-name uses opacity:0 instead so the text
+ * smoothly fades during the 200ms collapse transition rather than
+ * abruptly disappearing. The text already shrinks to 0 width via
+ * flex:1 + min-width:0 as the rail narrows, so opacity:0 doesn't
+ * disturb the layout — the avatar stays where it is. */
+html[data-bento-collapsed='true'] .tale-icon.bento-workspace-switcher__chevron {
+  display: none;
+}
+html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-name {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Cap the menu popup so it sits exactly under the trigger's outer width.
  * Tale UI's .tale-menu__popup defaults to `min-width: 16rem;
  * max-width: 32rem; width: max-content` — a long "Delete <very long
@@ -70,11 +92,102 @@
     color: var(--neutral-90-fg);
     border-radius: var(--radius-s);
     cursor: pointer;
-    transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
+    /* outline lives in the transition list so the focus ring fades in
+       rather than snapping when the user tabs into the trigger.
+       outline-color follows --bento-workspace-accent so the ring picks
+       up the active workspace's tint — keeps the visual coherent with
+       the avatar next to it. */
+    outline: 0 solid transparent;
+    outline-offset: 1px;
+    transition:
+      background-color var(--bento-duration-fast) var(--bento-easing-standard),
+      outline-color var(--bento-duration-fast) var(--bento-easing-standard),
+      padding var(--bento-duration-base) var(--bento-easing-standard);
   }
 
-  .bento-workspace-switcher__trigger:hover {
+  /* Hover: subtle surface tint. Both :hover and [data-hovered] because
+     Tale UI's Menu.Trigger wraps react-aria's AriaButton, which sets a
+     data-hovered attribute managed by usePress (touch+mouse uniform).
+     Keep both for keyboard-only-no-mouse users (where :hover is never
+     true but data-hovered isn't set either — overlap is fine, neither
+     fires) and for safe overlap when both code paths agree. */
+  .bento-workspace-switcher__trigger:hover,
+  .bento-workspace-switcher__trigger[data-hovered] {
     background-color: var(--bento-surface-hover);
+  }
+
+  /* Pressed (held down): stronger surface tint. Pairs with the hover
+     state so the user gets a clear depth cue between resting/hover/
+     pressed. data-pressed is react-aria's standard "currently being
+     activated" attribute, set during the press-and-hold window. */
+  .bento-workspace-switcher__trigger:active,
+  .bento-workspace-switcher__trigger[data-pressed] {
+    background-color: var(--bento-surface-active);
+  }
+
+  /* Open (menu showing): persistent accent-tinted surface so the trigger
+     reads as "this is what the open popover belongs to" while the menu
+     is visible. Distinct from :hover/:pressed (which use neutral 8% /
+     16% tints — too subtle on the dark sidebar to register as a
+     persistent state). The accent tint at 22% gives a clearly visible
+     coloured wash without screaming, AND it picks up the active
+     workspace's hue so the open state visually links to the workspace
+     identity.
+     The --open modifier class is applied by App-side state mirroring
+     the overlay's open status (Menu.Trigger here is used standalone —
+     no MenuTrigger context to provide a data-state attribute, so we
+     apply our own modifier class).
+     :hover during --open bumps the tint to 32% so hovering the open
+     trigger still reads as interactive — same layered-state pattern
+     as the active TabRow. */
+  /* !important + compound .X.X--open selector (specificity 0,2,0) to
+     out-rank the (0,2,0) :hover / [data-hovered] / :active /
+     [data-pressed] / :focus-visible / [data-focus-visible] rules above
+     AND any unlayered Tale UI / react-aria default that we haven't
+     traced. Without !important an unlayered rule with the same
+     specificity would still win the cascade because unlayered always
+     beats layered (CSS spec).
+     Plain rgba (NOT color-mix) so we don't depend on Firefox 150's
+     color-mix-with-transparent parsing. White at 18% over the dark
+     sidebar gives a clearly visible active state. Not accent-tinted
+     because the avatar already carries the accent identity. */
+  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open {
+    /* Same surface tokens as the active tab row in the sidebar
+       (TabRow.css .bento-tab-row--active) for visual consistency —
+       both states answer "this is the currently-active thing in the
+       sidebar". --bento-surface-active is a 16% neutral-90 tint;
+       --bento-surface-active-hover bumps to 24% on hover. */
+    background-color: var(--bento-surface-active) !important;
+  }
+  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open:hover,
+  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open[data-hovered] {
+    background-color: var(--bento-surface-active-hover) !important;
+  }
+  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open
+    .bento-workspace-switcher__chevron {
+    opacity: 1;
+  }
+
+  /* Keyboard focus ring (NOT pointer-driven focus — :focus-visible
+     filters out clicks). Coloured with the active workspace's accent
+     so the ring reads as part of the workspace identity rather than a
+     generic focus indicator. data-focus-visible is react-aria's
+     attribute that mirrors the spec's :focus-visible rules. */
+  .bento-workspace-switcher__trigger:focus-visible,
+  .bento-workspace-switcher__trigger[data-focus-visible] {
+    outline: var(--bento-focus-ring-width) solid var(--bento-workspace-accent);
+  }
+
+  /* Chevron emphasis on hover/focus — the icon is muted at rest
+     (opacity:0.5 from the rule below) so its hover state needs to
+     visibly brighten to communicate "click here". transition is on
+     the icon's own transition list (added below) so the change
+     animates rather than snaps. */
+  .bento-workspace-switcher__trigger:hover .bento-workspace-switcher__chevron,
+  .bento-workspace-switcher__trigger[data-hovered] .bento-workspace-switcher__chevron,
+  .bento-workspace-switcher__trigger:focus-visible .bento-workspace-switcher__chevron,
+  .bento-workspace-switcher__trigger[data-focus-visible] .bento-workspace-switcher__chevron {
+    opacity: 1;
   }
 
   /* Active-workspace name in the trigger — truncate with ellipsis once
@@ -87,24 +200,30 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: start;
+    /* Fade out smoothly when collapsed (paired with the unlayered
+       opacity rule below). flex:1 + min-width:0 already lets the
+       text shrink to 0 width as the rail narrows, so the only thing
+       missing for a smooth disappearance is the opacity transition. */
+    transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
   }
 
-  /* Collapsed sidebar — show only the avatar + chevron in a vertical
-     stack. The workspace name is hidden (no room in the rail), but
-     keeping the chevron visible makes the affordance discoverable —
-     users still know it's a workspace picker, not just a static avatar. */
+  /* Collapsed sidebar — drift the avatar toward the centre of the
+     rail by animating padding-inline rather than snapping
+     justify-content. The Tale UI Avatar size sm is 2.4rem; centring
+     it in the 4rem rail needs (4 - 2.4) / 2 = 0.8rem each side, but
+     the trigger sits inside the header which already adds inset, so
+     0.4rem here lands the avatar near visually centred without
+     over-shooting. The trigger-name and chevron are hidden via the
+     unlayered rule above (a layered display:none would lose to Tale
+     UI's unlayered .tale-icon / .tale-text defaults). */
   html[data-bento-collapsed='true'] .bento-workspace-switcher__trigger {
-    flex-direction: column;
-    gap: var(--space-3xs);
-    padding-inline: var(--space-3xs);
-  }
-  html[data-bento-collapsed='true'] .bento-workspace-switcher__trigger-name {
-    display: none;
+    padding-inline: 0.4rem;
   }
 
   .bento-workspace-switcher__chevron {
     opacity: 0.5;
     flex-shrink: 0;
+    transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
   }
 
   /* Each Menu.Item is a flex row (Tale UI default). min-width:0 stops the
