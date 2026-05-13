@@ -28,6 +28,9 @@ Thumbs.db
 # Dev profile (persisted across `npm run dev` launches)
 .bento-dev-profile/
 
+# Local-only dev notes (per-developer scratch / workflow docs)
+.dev-notes/
+
 # Release artifacts (built by scripts/build-release.sh / .github/workflows/release.yml)
 release-out/
 

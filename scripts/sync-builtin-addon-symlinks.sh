@@ -43,11 +43,11 @@ sync_addon() {
 
   if [ ! -d "$source_dist" ]; then
     echo "sync-symlinks: $source_dist missing — skipping $addon"
-    return
+    return 0
   fi
   if [ ! -d "$target_addon_dir" ]; then
     echo "sync-symlinks: $target_addon_dir missing — skipping $addon (built-in not registered yet)"
-    return
+    return 0
   fi
 
   # If target_dist is already a symlink pointing to source_dist, no-op.
@@ -56,7 +56,7 @@ sync_addon() {
     current="$(readlink "$target_dist")"
     if [ "$current" = "$source_dist" ]; then
       echo "sync-symlinks: $addon already linked"
-      return
+      return 0
     fi
   fi
 
@@ -65,6 +65,7 @@ sync_addon() {
   rm -rf "$target_dist"
   ln -s "$source_dist" "$target_dist"
   echo "sync-symlinks: $addon dist/ linked -> $source_dist"
+  return 0
 }
 
 sync_addon bento-shell
@@ -87,23 +88,24 @@ sync_chrome_file() {
 
   if [ ! -e "$source" ]; then
     echo "sync-symlinks: chrome source $source missing — skipping $filename"
-    return
+    return 0
   fi
   if [ ! -d "$APP_CHROME_ROOT" ]; then
     echo "sync-symlinks: $APP_CHROME_ROOT missing — skipping chrome files"
-    return
+    return 0
   fi
   if [ -L "$target" ]; then
     local current
     current="$(readlink "$target")"
     if [ "$current" = "$source" ]; then
       echo "sync-symlinks: chrome/$filename already linked"
-      return
+      return 0
     fi
   fi
   rm -f "$target"
   ln -s "$source" "$target"
   echo "sync-symlinks: chrome/$filename linked -> $source"
+  return 0
 }
 
 sync_chrome_file bento-chrome-tokens.css
@@ -120,7 +122,7 @@ copy_content_actor() {
 
   if [ ! -f "$source" ]; then
     echo "sync-symlinks: actor source $source missing — skipping $filename"
-    return
+    return 0
   fi
 
   for target_root in "$BIN_ACTORS_ROOT" "$APP_ACTORS_ROOT"; do
@@ -128,8 +130,14 @@ copy_content_actor() {
     if [ ! -d "$REPO_ROOT/$target_root" ]; then
       continue
     fi
-    rm -f "$target"
-    cp "$source" "$target"
+    rm -f "$target" || {
+      echo "sync-symlinks: failed to remove $target" >&2
+      return 1
+    }
+    cp "$source" "$target" || {
+      echo "sync-symlinks: failed to copy $source -> $target" >&2
+      return 1
+    }
     copied=1
     echo "sync-symlinks: actor/$filename copied -> $target_root"
   done
@@ -137,7 +145,10 @@ copy_content_actor() {
   if [ "$copied" -eq 0 ]; then
     echo "sync-symlinks: actor targets missing — skipping $filename"
   fi
+  return 0
 }
 
 copy_content_actor BentoKeyChild.sys.mjs
 copy_content_actor BentoKeyParent.sys.mjs
+echo "sync-symlinks: finished"
+exit 0
