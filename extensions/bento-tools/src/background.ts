@@ -25,22 +25,16 @@ const panels = new PanelStore();
 // Push contentColorMode to Firefox's prefers-color-scheme content
 // override. Tracked separately from uiColorMode (which only affects
 // Bento's chrome + shell) so users can keep e.g. light pages on a dark
-// chrome. browser.browserSettings.overrideContentColorScheme accepts
-// 'light' | 'dark' | 'system' | 'browser'; we map our 'system' →
-// 'system' (use OS) and pass the others through. Re-applied on every
-// settings change so a fresh launch with persisted overrides reaches
-// the right state without the user having to re-toggle.
+// chrome. ColorModePref is now 'light' | 'dark' only — pass straight
+// through to Firefox's overrideContentColorScheme API. Re-applied on
+// every settings change so a fresh launch with persisted overrides
+// reaches the right state without the user having to re-toggle.
 let lastAppliedContentColorMode: BentoSettings['contentColorMode'] | null = null;
 async function applyContentColorMode(mode: BentoSettings['contentColorMode']): Promise<void> {
   if (lastAppliedContentColorMode === mode) return;
   lastAppliedContentColorMode = mode;
-  // Firefox's overrideContentColorScheme accepts 'dark' | 'light' | 'auto'
-  // (the older 'system'/'browser' aliases were deprecated and now log a
-  // warning). Map our 'system' → 'auto' so the API receives the current
-  // preferred value.
-  const apiValue = mode === 'system' ? 'auto' : mode;
   try {
-    await browser.browserSettings.overrideContentColorScheme.set({ value: apiValue });
+    await browser.browserSettings.overrideContentColorScheme.set({ value: mode });
   } catch (err) {
     console.warn('[bento-tools] overrideContentColorScheme failed:', err);
   }

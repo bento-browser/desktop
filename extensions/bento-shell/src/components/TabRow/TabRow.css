@@ -26,7 +26,8 @@
     transition:
       background-color var(--bento-duration-fast) var(--bento-easing-standard),
       opacity var(--bento-duration-base) var(--bento-easing-standard),
-      transform var(--bento-duration-base) var(--bento-easing-standard);
+      transform var(--bento-duration-base) var(--bento-easing-standard),
+      padding var(--bento-duration-base) var(--bento-easing-standard);
     /* Skip layout/paint when scrolled off-screen (§6.4). */
     content-visibility: auto;
     contain-intrinsic-size: var(--bento-tab-row-height);
@@ -122,7 +123,9 @@
     align-self: center;
     position: relative;
     top: 2px;
-    transition: color var(--bento-duration-fast) var(--bento-easing-standard);
+    transition:
+      color var(--bento-duration-fast) var(--bento-easing-standard),
+      opacity var(--bento-duration-base) var(--bento-easing-standard);
   }
 
   .bento-tab-row__actions {
@@ -170,17 +173,30 @@
   }
 
   /* ─── Collapsed sidebar — favicon-only ──────────────────────────
-   * In the narrow rail there's no room for title text, audio badge,
-   * or hover actions. Center the favicon and skip the rest. The grid
-   * is reduced to a single column so the favicon doesn't drift left
-   * (the favicon column is 1rem; with padding-inline:0 it lands in
-   * the visual center of the 4rem rail). */
+   * Drift the favicon toward the centre of the 4rem rail by animating
+   * padding-inline rather than swapping the grid template + justify-
+   * content (which would snap discretely). The title (1fr column)
+   * naturally collapses to 0 width as the host shrinks, and its
+   * opacity fades — so visually only the favicon remains, drifting
+   * smoothly to its centred position over the same 200ms as the host
+   * width transition.
+   *
+   * Padding math: the favicon is --bento-favicon-size (1.6rem). To
+   * centre it in the 4rem rail, padding = (4 - 1.6) / 2 = 1.2rem on
+   * each side. The favicon visually overflows its 1rem grid column
+   * by 0.6rem — that's fine, the title column it overlaps has
+   * opacity:0.
+   *
+   * Audio/actions snap via display:none — they're hover-state, not
+   * always-visible, so a fade is wasted there and keeping them in
+   * the layout would push other rows around. */
   html[data-bento-collapsed='true'] .bento-tab-row {
-    grid-template-columns: 1rem;
-    justify-content: center;
-    padding-inline: 0;
+    padding-inline: 1.2rem;
   }
-  html[data-bento-collapsed='true'] .bento-tab-row .tale-text,
+  html[data-bento-collapsed='true'] .bento-tab-row > .tale-text {
+    opacity: 0;
+    pointer-events: none;
+  }
   html[data-bento-collapsed='true'] .bento-tab-row__audible,
   html[data-bento-collapsed='true'] .bento-tab-row__actions {
     display: none;

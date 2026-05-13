@@ -14,8 +14,8 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   // Default to seen=true so existing stories aren't covered by the
   // welcome banner. The WelcomeBanner stories provide their own state.
   welcomeSeen: true,
-  uiColorMode: 'system',
-  contentColorMode: 'system',
+  uiColorMode: 'dark',
+  contentColorMode: 'light',
   sidebarCollapsed: false,
 };
 

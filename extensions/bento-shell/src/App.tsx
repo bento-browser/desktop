@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
@@ -112,6 +112,68 @@ export function App() {
     else html.removeAttribute('data-bento-collapsed');
   }, [sidebarCollapsed]);
 
+  // Footer cross-fade. The footer's flex-direction snaps from row to
+  // column-reverse when collapse toggles — discrete CSS property,
+  // can't transition. To hide the snap behind a fade, snap opacity to
+  // 0 SYNCHRONOUSLY before the browser paints (via useLayoutEffect),
+  // then transition back to 1 on the next frame. The new layout is
+  // never seen at full opacity — the first paint after the toggle is
+  // already at opacity 0, then fades in.
+  //
+  // Duration is intentionally LONGER than the host-width transition
+  // (200ms) so the buttons keep fading in after the rail has settled
+  // — gives the eye time to register the new layout instead of
+  // snapping into focus the instant the rail stops moving.
+  //
+  // Skip the very first run (when prevCollapsed.current is undefined)
+  // so the boot doesn't briefly fade — initial render shows the
+  // restored state without animation.
+  const footerRef = useRef<HTMLDivElement>(null);
+  const prevCollapsed = useRef<boolean | undefined>(undefined);
+  useLayoutEffect(() => {
+    const isFirstRun = prevCollapsed.current === undefined;
+    const changed = prevCollapsed.current !== sidebarCollapsed;
+    prevCollapsed.current = sidebarCollapsed;
+    if (isFirstRun || !changed) return;
+    const footer = footerRef.current;
+    if (!footer) return;
+    // Fade-in duration; matches a hypothetical --bento-duration-xslow.
+    // If the design system grows that token later, swap this for a
+    // getComputedStyle read on documentElement.
+    const FADE_MS = 500;
+    // Phase 1 (sync, pre-paint): instant opacity 0 with no transition.
+    footer.style.transition = 'none';
+    footer.style.opacity = '0';
+    // Force style flush so the no-transition rule + opacity:0 land in
+    // the same paint as the layout snap that triggered this effect.
+    void footer.offsetWidth;
+    // Phase 2 (post-paint): restore the transition and animate back to
+    // 1. Two rAFs guarantee the previous frame committed before we
+    // change the target value; without them the browser can collapse
+    // both opacity assignments into a single paint and skip the fade.
+    let rafA = 0;
+    let rafB = 0;
+    let cleanupTimer = 0;
+    rafA = requestAnimationFrame(() => {
+      rafB = requestAnimationFrame(() => {
+        footer.style.transition = `opacity ${FADE_MS}ms ease`;
+        footer.style.opacity = '1';
+        cleanupTimer = window.setTimeout(() => {
+          // Strip inline styles after the transition completes so any
+          // future hover / class-based opacity rules can take over
+          // without competing with stale inline values.
+          footer.style.transition = '';
+          footer.style.opacity = '';
+        }, FADE_MS + 50);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(rafA);
+      cancelAnimationFrame(rafB);
+      clearTimeout(cleanupTimer);
+    };
+  }, [sidebarCollapsed]);
+
   return (
     <Column gap="xs" className="bento-shell-app">
       <Row gap="xs" align="center" className="bento-shell-app__header">
@@ -123,7 +185,7 @@ export function App() {
         )}
       </Row>
       <TabList onActivate={onActivate} onClose={onClose} onOpenInSidePanel={onOpenInSidePanel} />
-      <Row gap="2xs" align="center" className="bento-shell-app__footer">
+      <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">
         {/* Collapse/expand toggle. DOM order matters: this is the FIRST
             child so flex-direction:column-reverse in collapsed mode pins
             it to the bottom of the vertical stack (= same on-screen

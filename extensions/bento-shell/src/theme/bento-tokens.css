@@ -54,18 +54,21 @@
        lower-saturation variant for hover states / subtle tints. */
     --bento-workspace-accent: var(--color-60);
     --bento-workspace-accent-fg: var(--color-5);
-    --bento-workspace-accent-soft: var(--color-20);
 
-    /* Vertical tab strip dimensions */
+    /* Vertical tab strip dimensions. -min/-max bound the user-resizable
+       expanded sidebar; -collapsed is the fixed narrow-rail width when
+       the user toggles the sidebar shut. All three are applied to
+       #bento-shell-host via the chrome-injected stylesheet in
+       bento-shell-mount.js — the chrome patch ships inline min/max
+       values that the !important overrides there clobber. */
     --bento-tab-row-height: 3.2rem;
-    --bento-tab-strip-width: 240px;
-    --bento-tab-strip-width-collapsed: 48px;
+    --bento-tab-strip-width-min: 200px;
+    --bento-tab-strip-width-max: 600px;
+    --bento-tab-strip-width-collapsed: 5rem;
 
     /* Bento Spaces panel layout */
     --bento-panel-min-width: 240px;
     --bento-main-panel-min-width: 320px;
-    --bento-panel-handle-width: 4px;
-    --bento-panel-handle-hover-width: 8px;
 
     /* Brand background. --neutral-5 auto-flips with data-color-mode via
        Tale UI's color-modes mechanism: in light mode it resolves to the
@@ -131,7 +134,6 @@
     /* SVG icon sizes inside chrome controls. */
     --bento-icon-size-xs: 14px;
     --bento-icon-size-sm: 16px;
-    --bento-icon-size-md: 20px;
 
     /* Compact icon-button (24×24) used in the panel header and the
        favicon navigator. Matches Tale UI's IconButton size="sm". */
@@ -146,11 +148,6 @@
     --bento-scrollbar-thickness: 8px;
     --bento-scrollbar-radius: 4px;
     --bento-scrollbar-thumb-min-width: 30px;
-
-    /* Add-panel trailer ("+ Add panel" button at the end of the
-       strip). Narrow enough not to dominate; wide enough to fit the
-       icon + label. */
-    --bento-add-panel-trailer-width: 96px;
 
     /* Focus / cycle indicator ring width (inset box-shadow on the
        active panel). */
@@ -174,41 +171,33 @@
   [data-workspace-color='blue'] {
     --bento-workspace-accent: var(--indigo-60);
     --bento-workspace-accent-fg: var(--indigo-5);
-    --bento-workspace-accent-soft: var(--indigo-20);
   }
   [data-workspace-color='emerald'] {
     --bento-workspace-accent: var(--emerald-60);
     --bento-workspace-accent-fg: var(--emerald-5);
-    --bento-workspace-accent-soft: var(--emerald-20);
   }
   [data-workspace-color='amber'] {
     --bento-workspace-accent: var(--amber-60);
     --bento-workspace-accent-fg: var(--amber-5);
-    --bento-workspace-accent-soft: var(--amber-20);
   }
   [data-workspace-color='red'] {
     --bento-workspace-accent: var(--red-60);
     --bento-workspace-accent-fg: var(--red-5);
-    --bento-workspace-accent-soft: var(--red-20);
   }
   [data-workspace-color='violet'] {
     --bento-workspace-accent: var(--violet-60);
     --bento-workspace-accent-fg: var(--violet-5);
-    --bento-workspace-accent-soft: var(--violet-20);
   }
   [data-workspace-color='pink'] {
     --bento-workspace-accent: var(--pink-60);
     --bento-workspace-accent-fg: var(--pink-5);
-    --bento-workspace-accent-soft: var(--pink-20);
   }
   [data-workspace-color='cyan'] {
     --bento-workspace-accent: var(--cyan-60);
     --bento-workspace-accent-fg: var(--cyan-5);
-    --bento-workspace-accent-soft: var(--cyan-20);
   }
   [data-workspace-color='neutral'] {
     --bento-workspace-accent: var(--neutral-60);
     --bento-workspace-accent-fg: var(--neutral-5);
-    --bento-workspace-accent-soft: var(--neutral-20);
   }
 }
