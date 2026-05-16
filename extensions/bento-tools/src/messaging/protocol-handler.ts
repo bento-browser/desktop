@@ -174,6 +174,12 @@ export function handle(action: Action, ctx: HandlerContext): void {
       const wsId = ctx.workspaces.getActiveId();
       if (!wsId) return;
       if (ctx.panels.add(wsId, action.id)) {
+        // Stamp the configured default width so the new panel renders
+        // at the user's preferred size on first paint. Same logic in
+        // background.ts maybeHandleAddPanelMarker for the chrome-side
+        // "Add panel" button path.
+        const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+        if (defaultWidth > 0) ctx.panels.setWidth(action.id, defaultWidth);
         // syncPanelMarkers writes the new tab's marker (it's now in
         // panels.getPanels at the last index) plus refreshes any
         // existing markers — covers add, idempotent for the rest.

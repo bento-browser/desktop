@@ -16,6 +16,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   welcomeSeen: true,
   uiColorMode: 'dark',
   contentColorMode: 'light',
+  defaultPanelWidthPx: 640,
   sidebarCollapsed: false,
 };
 

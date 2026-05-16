@@ -159,6 +159,34 @@ export function Settings() {
 
       <Card.Root>
         <Card.Header>
+          <Text variant="heading" size="m">
+            Panels
+          </Text>
+        </Card.Header>
+        <Card.Body>
+          <NumberField.Root
+            value={settings.defaultPanelWidthPx}
+            onChange={(v) => update('defaultPanelWidthPx', v)}
+            minValue={200}
+            maxValue={2400}
+            step={40}
+          >
+            <NumberField.Label>Default new panel width (px)</NumberField.Label>
+            <NumberField.Group>
+              <NumberField.Decrement />
+              <NumberField.Input />
+              <NumberField.Increment />
+            </NumberField.Group>
+            <NumberField.Description>
+              Width applied to new panels before you drag their splitter. Existing panels keep their
+              stored widths.
+            </NumberField.Description>
+          </NumberField.Root>
+        </Card.Body>
+      </Card.Root>
+
+      <Card.Root>
+        <Card.Header>
           <Column gap="2xs">
             <Text variant="heading" size="m">
               Privacy

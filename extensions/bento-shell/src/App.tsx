@@ -89,7 +89,16 @@ export function App() {
     else html.removeAttribute('data-workspace-color');
   }, [activeWorkspaceColor]);
 
-  const onActivate = (id: number) => dispatch({ type: 'tab/activate', id });
+  const onActivate = (id: number) => {
+    dispatch({ type: 'tab/activate', id });
+    // Signal chrome to scroll the panel strip back to the main slot.
+    // Fires for EVERY tab-row click, including re-clicks on the
+    // already-active tab — Firefox suppresses TabSelect for the
+    // already-active tab, so chrome's TabSelect-driven reconcile
+    // never runs for that case and the strip stays stuck wherever
+    // the user last scrolled it. Title sentinel covers the gap.
+    document.title = `BENTO_SCROLL_TO_MAIN_${Date.now()}`;
+  };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);

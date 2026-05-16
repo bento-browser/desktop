@@ -96,6 +96,13 @@ export interface BentoSettings {
    * footer buttons stack vertically (with the collapse-toggle pinned at
    * the same screen position so the cursor doesn't have to move). */
   sidebarCollapsed: boolean;
+  /** Default width (CSS pixels) applied to a newly-added panel before
+   * the user has dragged its splitter. Persists per panel after the
+   * first drag (PanelStore.setWidth). 640 is wide enough for most
+   * sites' content without horizontally squishing them yet narrow
+   * enough that 2-3 panels fit comfortably on a typical 1440px+
+   * viewport. */
+  defaultPanelWidthPx: number;
 }
 
 export type ColorModePref = 'light' | 'dark';

@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   uiColorMode: 'dark',
   contentColorMode: 'light',
   sidebarCollapsed: false,
+  defaultPanelWidthPx: 640,
 });
 
 interface StoredShape {

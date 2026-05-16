@@ -11,7 +11,7 @@ index d58fcdf998..a1b1b1b100 100644
 +  <vbox id="bento-shell-host"
 +        persist="width"
 +        width="240"
-+        style="min-width: 200px; max-width: 600px; background-color: #282A33;">
++        style="min-width: 200px; max-width: 600px;">
 +    <browser id="bento-shell-frame"
 +             type="content"
 +             remote="true"

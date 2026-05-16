@@ -550,6 +550,13 @@ function maybeHandleAddPanelMarker(tabId: number, url: string, source: string): 
   }
   if (panels.add(wsId, tabId)) {
     console.log('[bento-tools] add-as-panel: panels.add OK, emitting sync');
+    // Stamp the configured default width so the new panel renders at
+    // the user's preferred size on first paint instead of Firefox's
+    // flex default (--bento-panel-min-width = 380px). The setting is
+    // mirrored in PanelStore via setWidth so it persists alongside
+    // any later drag-resize.
+    const defaultWidth = settings.snapshot().defaultPanelWidthPx;
+    if (defaultWidth > 0) panels.setWidth(tabId, defaultWidth);
     syncPanelMarkersForWorkspace(wsId);
     void emitPanelsSync(wsId);
   } else {
