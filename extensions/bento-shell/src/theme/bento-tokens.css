@@ -70,12 +70,13 @@
     --bento-panel-min-width: 240px;
     --bento-main-panel-min-width: 320px;
 
-    /* Brand background. --neutral-5 auto-flips with data-color-mode via
-       Tale UI's color-modes mechanism: in light mode it resolves to the
-       lightest neutral (cool-5 via our default-family override above), in
-       dark mode to the darkest (color-mix of cool-100 with black). One
-       token, no manual data-color-mode selectors needed here. */
-    --bento-brand-bg: var(--neutral-14);
+    /* Brand background. Matches the chrome's --toolbox-bgcolor /
+       --toolbar-bgcolor (both --neutral-10 in
+       src/browser/base/content/bento-chrome-theme.css) so the sidebar
+       reads as the same surface as the URL bar and chrome window
+       background. Auto-flips with data-color-mode via Tale UI's
+       color-modes mechanism. */
+    --bento-brand-bg: var(--neutral-10);
 
     /* Component dimensions */
     --bento-favicon-size: 1.6rem;

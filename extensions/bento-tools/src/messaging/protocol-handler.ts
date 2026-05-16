@@ -188,6 +188,36 @@ export function handle(action: Action, ctx: HandlerContext): void {
       }
       return;
     }
+    case 'panel/openAt': {
+      const wsId = ctx.workspaces.getActiveId();
+      if (!wsId) return;
+      // Compute insert position from sourceTabId:
+      //   null  → 0 (immediately right of main panel)
+      //   id    → that panel's index + 1 (immediately right of it)
+      //   not-a-panel id → append (defensive: shouldn't normally happen
+      //   because the menu item only shows when the right-click was
+      //   inside a known panel)
+      const currentPanels = ctx.panels.getPanels(wsId);
+      let position: number;
+      if (action.sourceTabId === null) {
+        position = 0;
+      } else {
+        const idx = currentPanels.indexOf(action.sourceTabId);
+        position = idx < 0 ? currentPanels.length : idx + 1;
+      }
+      browser.tabs
+        .create({ url: action.url, active: false })
+        .then((tab) => {
+          if (typeof tab.id !== 'number') return;
+          if (!ctx.panels.insertAt(wsId, tab.id, position)) return;
+          const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+          if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
+          ctx.syncPanelMarkers(wsId);
+          ctx.emitPanelsSync(wsId);
+        })
+        .catch((err) => console.warn('[bento-tools] panel/openAt failed:', err));
+      return;
+    }
     case 'panel/remove': {
       const wsId = ctx.workspaces.getActiveId();
       if (!wsId) return;

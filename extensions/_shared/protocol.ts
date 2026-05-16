@@ -145,6 +145,13 @@ export type Action =
    * Multi-panel: each workspace can have arbitrary N panels, scrolled
    * horizontally if they overflow. */
   | { type: 'panel/add'; id: number }
+  /** Open `url` in a new tab and insert it as a panel immediately
+   * after the source panel. `sourceTabId === null` means the right-
+   * click happened in the main panel — the new panel becomes the
+   * first side panel (position 0). Otherwise the new panel is
+   * inserted at sourceTabId's index + 1. Backs the "Open in new
+   * panel" link context-menu item in chrome. */
+  | { type: 'panel/openAt'; url: string; sourceTabId: number | null }
   /** Remove a tab from the active workspace's panels. Tab itself
    * stays open in the sidebar list — only the panel binding goes away. */
   | { type: 'panel/remove'; id: number }

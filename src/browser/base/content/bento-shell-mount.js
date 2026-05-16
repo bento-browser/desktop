@@ -80,26 +80,43 @@
          pulls Tale UI's spacing tokens into chrome, so --space-2xs is
          defined here just like it is in the bento-shell extension. */
 
-      /* Sidebar treatment: top/left/bottom margins (inset from the
-         window edge) so it visually reads as a "panel". Right edge
-         lives flush against the resize splitter (which provides the
-         right-side gap). */
+      /* Inline sidebar: no padding around the frame, no rounded
+         corners on the frame. Edges flush with the window so the
+         sidebar reads as part of the chrome rather than a floating
+         card. */
       #bento-shell-host {
-        padding-top: var(--space-2xs);
-        padding-bottom: var(--space-2xs);
-        padding-left: var(--space-2xs);
+        padding: 0;
       }
       #bento-shell-host > #bento-shell-frame {
-        border-radius: var(--radius-m);
-        overflow: clip;
+        border-radius: 0;
       }
-      /* Sidebar splitter: same width as the chrome gap so the gap
-         between sidebar and main panel reads as the same rhythm as
-         every other gap. Style applied here (not in the M1 patch) so
-         we don't need a patch rebuild to retune the value. */
+      /* Sidebar splitter: zero NET layout width (so panel strip sits
+         flush against the sidebar), but a wider invisible hit area
+         centered on the boundary so users can still grab + drag to
+         resize. Achieved with width:8px + margin-inline:-4px — the
+         8px element box renders, but the negative margins cancel
+         out its layout width to 0. Position: relative + z-index so
+         the hit area paints above adjacent flex siblings (sidebar
+         to the left, strip-container to the right) — without it,
+         later-painted siblings would absorb the pointer events.
+         !important needed for width + min-width because XUL chrome
+         CSS sets defaults for <splitter> that win otherwise. */
+      /* Remove the chrome-content separator line under the URL bar.
+         Firefox's content-area.css applies
+           #navigator-toolbox { border-bottom: 0.01px solid ... }
+         which renders as a 1px hairline between the toolbar and the
+         content area. Bento wants the panels flush against the URL
+         bar (no separator); zero the border style here. */
+      #navigator-toolbox {
+        border-bottom-style: none !important;
+      }
       #bento-shell-splitter {
-        width: var(--space-2xs);
+        width: 8px !important;
+        min-width: 0 !important;
+        margin-inline: -4px;
         background-color: transparent;
+        position: relative;
+        z-index: 3;
       }
 
       /* Sidebar dimensions. The chrome patch ships inline
@@ -200,8 +217,8 @@
         overflow-x: scroll;
         overflow-y: hidden;
         border-radius: var(--radius-m);
-        clip-path: inset(var(--space-2xs) 0 var(--space-2xs) 0 round var(--radius-m));
-        padding-block: var(--space-2xs);
+        clip-path: inset(0 0 var(--space-2xs) 0 round var(--radius-m));
+        padding-block-end: var(--space-2xs);
         padding-right: var(--space-2xs);
         gap: 0;
         flex: 1 1 auto;
@@ -265,6 +282,7 @@
       #bento-panel-nav {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: var(--space-2xs);
         padding: var(--space-2xs);
         flex: 0 0 auto;
@@ -325,10 +343,24 @@
         cursor: pointer;
         flex: 0 0 auto;
         position: relative;
+        overflow: hidden;
         /* Active-marker transition uses --bento-duration-base (200ms)
            — visible fade as the user navigates, but quick enough not
-           to feel laggy. */
+           to feel laggy.
+           width + padding + margin transitions drive the enter/leave
+           animation when refreshPanelNav adds or removes favicons:
+           a new icon starts at the --entering state (width 0) and
+           transitions to its natural width on the next frame; a
+           removed icon gets --leaving (width 0) and is yanked from
+           the DOM after the transition. The flex parent's flex:0 0
+           auto means its own width follows the sum of its children's
+           transitioning widths — so the nav row grows / shrinks
+           smoothly without needing its own width transition. */
         transition:
+          width var(--bento-duration-base) var(--bento-easing-standard),
+          padding var(--bento-duration-base) var(--bento-easing-standard),
+          margin var(--bento-duration-base) var(--bento-easing-standard),
+          opacity var(--bento-duration-base) var(--bento-easing-standard),
           background-color var(--bento-duration-base) var(--bento-easing-standard),
           border-color var(--bento-duration-base) var(--bento-easing-standard);
       }
@@ -340,6 +372,18 @@
       .bento-panel-nav__icon--active {
         border-color: var(--color-60);
         background-color: var(--color-3);
+      }
+      /* Enter / leave states. width:0 + 0 padding makes the favicon
+         collapse to 0 layout space; transition above interpolates
+         back to natural. opacity smooths the fade. !important so
+         drag/hover state overrides during animation don't reopen the
+         button mid-flight. */
+      .bento-panel-nav__icon--entering,
+      .bento-panel-nav__icon--leaving {
+        width: 0 !important;
+        padding-inline: 0 !important;
+        margin-inline-start: calc(-1 * var(--space-3xs));
+        opacity: 0;
       }
       .bento-panel-nav__icon > img {
         width: var(--bento-icon-size-sm);
@@ -686,19 +730,19 @@
            with higher specificity than our previous margin attempt,
            so flex gap (which the spec explicitly says doesn't
            collide with margin) is the cleaner override.
-           padding-block + padding-inline-start give the panel cards
-           room to render their box-shadow without it being clipped
-           by tabpanels' implicit overflow:auto on both axes (CSS
-           spec: setting overflow-x to auto promotes overflow-y from
-           visible to auto). The right padding is reserved for the
-           Add-panel trailer's slot via padding-inline-end. */
+           No padding-inline-start: the first panel sits flush against
+           the sidebar (sidebar-splitter is width:0). The padding was
+           originally there to give panel box-shadow clearance, but
+           shadows are now rendered by .bento-panel-shadow proxies in
+           #bento-strip-container, so it's no longer needed. The right
+           padding is still reserved for the Add-panel trailer's slot
+           via padding-inline-end. */
         display: flex;
         flex-direction: row;
         align-items: stretch;
         gap: var(--space-s);
         overflow-x: scroll;
         overflow-y: hidden;
-        padding-inline-start: var(--space-2xs);
         /* Hide tabpanels' native horizontal scrollbar — the custom
            always-visible #bento-strip-scrollbar in the sidebar drives
            tabpanels.scrollLeft and is positioned next to the favicon
@@ -713,6 +757,14 @@
         flex-direction: column;
         min-width: var(--bento-panel-min-width, 380px);
         flex-shrink: 0;
+        /* Firefox's content-area.css applies margin: var(--space-xsmall)
+           to active split-view panels — pushes the first panel away
+           from the top URL bar and from the sidebar (and double-spaces
+           against the inter-panel gap). Bento controls all spacing via
+           tabpanels' gap + strip padding, so zero out the upstream
+           margin. !important required because the upstream rule wins
+           the specificity tie on source order otherwise. */
+        margin: 0 !important;
       }
       /* Per-panel border. The accompanying outer shadow comes from
          .bento-panel-shadow proxies (siblings of host inside
@@ -894,15 +946,12 @@
         /* Invisible at rest — the gap between panels reads as
            breathing room, not as a draggable affordance until the
            user hovers. The splitter is still present (14px wide
-           grab zone) and accepts pointer events; just nothing
-           painted. */
-        background-image: none;
-        transition: background-image var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      #bento-side-panel-host > .bento-panel-splitter:hover,
-      #bento-side-panel-host > .bento-panel-splitter--dragging {
-        /* On hover / active drag, paint the accent bar so the user
-           sees what they're about to grab. */
+           grab zone) and accepts pointer events at opacity 0
+           (CSS opacity doesn't disable hit-testing).
+           Gradient is always painted so we can transition opacity
+           — background-image transitions between 'none' and a
+           gradient never interpolate (no in-between value), which
+           is why the previous transition was a no-op snap. */
         background-image: linear-gradient(
           to right,
           transparent calc(50% - 2.5px),
@@ -910,6 +959,12 @@
           var(--color-60) calc(50% + 2.5px),
           transparent calc(50% + 2.5px)
         );
+        opacity: 0;
+        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+      }
+      #bento-side-panel-host > .bento-panel-splitter:hover,
+      #bento-side-panel-host > .bento-panel-splitter--dragging {
+        opacity: 1;
       }
       /* Hide every inter-panel splitter while a panel header is
          being dragged. Splitters are absolute-positioned overlays
@@ -3146,65 +3201,148 @@
   }
 
   // Called from reconcilePanels with the current desired panel list.
+  // Diff-based update so favicon buttons that survive a reconcile
+  // (same tabId still present) are reused — that preserves their
+  // pointer-capture / drag state and lets the enter/leave width
+  // transition only fire for icons that are actually new or going
+  // away. The full innerHTML='' rebuild used previously made every
+  // reconcile look like every favicon was new (no animation possible)
+  // and tore down drag listeners between reconciles.
   function refreshPanelNav(panels) {
     const list = document.querySelector('.bento-panel-nav__list');
     if (!list) return;
     hidePanelNavContextMenu();
-    list.innerHTML = '';
-    // Main panel always first.
-    list.appendChild(
-      buildNavIcon(getMainTabFavicon(), 'Main panel', () => {
-        // Look up the actual main PANEL element via the same path the
-        // arrow-cycle handler uses: getOrderedPanels()[0]. That returns
-        // splitViewPanels[0] (e.g. "panel-3-1") in split-view mode —
-        // the panel element living INSIDE tabpanels.
-        //
-        // We can't use [data-bento-main-panel] as a selector here:
-        // BOTH the outer tabbrowser-tabbox AND the inner split-view
-        // main panel have that attribute set, and querySelector picks
-        // the outer in document order. The outer's bounding rect spans
-        // the whole tabbox area regardless of strip scroll position,
-        // which makes (panelLeft - stripLeft) compute to ~0 → silent
-        // no-op scrolls. The inner panel's rect tracks scroll
-        // correctly because it actually moves with the strip.
-        //
-        // Fallback to tabbrowser-tabbox keeps the legacy parallel-
-        // browser path (no split-view) working: getOrderedPanels()
-        // returns [] before split-view activates, so the fallback
-        // kicks in for the boot/empty-workspace state.
-        const ordered = getOrderedPanels();
-        const main = ordered[0] || document.getElementById('tabbrowser-tabbox');
-        scrollPanelToLeftmost(main);
-        setActiveByIndex(0);
-      }),
-    );
-    // Side panels in order. Capture index in closure so each click sets
-    // the right active marker — including for panels that can't scroll
-    // all the way to leftmost (end of the strip).
-    for (let i = 0; i < panels.length; i++) {
-      const tabId = panels[i].tabId;
-      const navIdx = i + 1;
-      list.appendChild(
-        buildNavIcon(
-          panels[i].favIconUrl || '',
-          'Panel',
-          () => {
-            const el = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
-            if (el) scrollPanelToLeftmost(el);
-            setActiveByIndex(navIdx);
-          },
-          tabId,
-        ),
+
+    // Index existing children by their bento nav key. Skip ones already
+    // mid-leave so they're not accidentally reused.
+    const existing = new Map();
+    for (const child of Array.from(list.children)) {
+      if (child.dataset.bentoNavLeaving === '1') continue;
+      const key = child.dataset.bentoNavKey;
+      if (key) existing.set(key, child);
+    }
+
+    // Desired keys in order: 'main' first, then each panel tabId.
+    const desiredKeys = ['main'];
+    for (const panel of panels) desiredKeys.push(String(panel.tabId));
+
+    // Build / reuse each desired icon in order, collecting which ones
+    // are new (need enter animation).
+    const desiredEls = [];
+    const newEls = [];
+    for (let i = 0; i < desiredKeys.length; i++) {
+      const key = desiredKeys[i];
+      let btn = existing.get(key);
+      if (btn) {
+        existing.delete(key);
+      } else {
+        // New icon — construct via buildNavIcon with the right handler.
+        if (key === 'main') {
+          btn = buildNavIcon(getMainTabFavicon(), 'Main panel', () => {
+            const ordered = getOrderedPanels();
+            const main = ordered[0] || document.getElementById('tabbrowser-tabbox');
+            scrollPanelToLeftmost(main);
+            setActiveByIndex(0);
+          });
+        } else {
+          const tabId = Number(key);
+          btn = buildNavIcon(
+            panels[i - 1].favIconUrl || '',
+            'Panel',
+            () => {
+              const el = document.querySelector(
+                '[data-bento-panel-tab-id="' + tabId + '"]',
+              );
+              if (el) scrollPanelToLeftmost(el);
+              // Re-compute the icon's CURRENT index in the live nav
+              // list (skipping any leaving siblings) — the closure
+              // index captured at build time goes stale as other
+              // panels add/remove around this one.
+              const targets = getPanelCycleTargets();
+              const idx = targets.findIndex(
+                (t) => t.dataset.bentoPanelTabId === String(tabId),
+              );
+              setActiveByIndex(idx >= 0 ? idx : 0);
+            },
+            tabId,
+          );
+        }
+        btn.dataset.bentoNavKey = key;
+        btn.classList.add('bento-panel-nav__icon--entering');
+        newEls.push(btn);
+      }
+      desiredEls.push(btn);
+    }
+
+    // Re-order: appendChild moves existing children to the end, so
+    // iterating in desired order yields the final order.
+    for (const el of desiredEls) list.appendChild(el);
+
+    // Departing icons — animate out then remove.
+    for (const [, el] of existing) {
+      el.dataset.bentoNavLeaving = '1';
+      el.classList.add('bento-panel-nav__icon--leaving');
+      setTimeout(
+        () => {
+          el.remove();
+        },
+        // Match the transition duration in CSS; small buffer for
+        // sub-frame scheduling. --bento-duration-base is 200ms.
+        260,
       );
     }
-    // Clamp active index to current cycle target count and re-paint the
-    // marker (panel count may have decreased since the last selection).
-    // The Add-panel trailer is part of keyboard cycling but has no
-    // favicon marker, so applyActiveMarker naturally leaves all favicons
-    // unmarked when it is selected.
+
+    // Trigger enter animation on next frame so the browser commits
+    // the initial 'entering' (width:0) state before we remove the
+    // class. Without the rAF, browsers may collapse both states into
+    // one paint and skip the transition.
+    if (newEls.length > 0) {
+      requestAnimationFrame(() => {
+        for (const el of newEls) {
+          el.classList.remove('bento-panel-nav__icon--entering');
+        }
+      });
+    }
+
+    // Keep the main favicon up to date (selectedTab can change without
+    // refreshPanelNav being called for tab favicons, but when it IS
+    // called we want the freshest favicon).
+    const mainBtn = desiredEls[0];
+    if (mainBtn) refreshNavIconImage(mainBtn, getMainTabFavicon());
+
+    // Clamp active index to current cycle target count and re-paint
+    // the marker (panel count may have decreased since the last
+    // selection). The Add-panel trailer is part of keyboard cycling
+    // but has no favicon marker, so applyActiveMarker naturally
+    // leaves all favicons unmarked when it is selected.
     const total = getPanelCycleTargets().length;
     if (currentActiveIdx >= total) currentActiveIdx = 0;
     applyActiveMarker(currentActiveIdx);
+  }
+
+  // Update a nav-icon button's <img> src without rebuilding the button
+  // (preserves drag state). Mirrors the placeholder fallback from
+  // buildNavIcon.
+  function refreshNavIconImage(btn, favIconUrl) {
+    let img = btn.querySelector('img');
+    if (favIconUrl) {
+      btn.classList.remove('bento-panel-nav__icon--placeholder');
+      if (img) {
+        if (img.src !== favIconUrl) img.src = favIconUrl;
+      } else {
+        img = document.createElementNS(HTML_NS, 'img');
+        img.src = favIconUrl;
+        img.alt = '';
+        img.addEventListener('error', () => {
+          img.remove();
+          btn.classList.add('bento-panel-nav__icon--placeholder');
+        });
+        btn.appendChild(img);
+      }
+    } else {
+      if (img) img.remove();
+      btn.classList.add('bento-panel-nav__icon--placeholder');
+    }
   }
 
   // ─── Custom always-on horizontal scrollbar ────────────────────────────
@@ -3628,6 +3766,16 @@
   // clicks should bring main back into view even if the user was
   // looking at a side panel.
   let __lastMainPanelId = null;
+  // Workspace ID we've successfully reconciled at least once. Compared
+  // against currentWorkspaceId to detect "this is the initial hydration
+  // for this workspace" (boot OR workspace switch) versus "user mutated
+  // the panel set within the same workspace". The previousTabIds diff
+  // alone can't distinguish these: a workspace that previously had zero
+  // panels has previousTabIds empty whether we're hydrating it for the
+  // first time or the user just added the first panel via the link
+  // context menu. Updated in both the empty-panels early-return path
+  // AND the main return path so it stays accurate across teardowns.
+  let __reconciledForWorkspace = null;
 
   // The most recent split-view marker dispatched via TabSplitViewActivate.
   // We need to dispatch a matching TabSplitViewDeactivate (with === identity)
@@ -3776,7 +3924,10 @@
       const previous = tabpanels.splitViewPanels || [];
       const splitActive = tabpanels.classList.contains('bento-split-active');
       if (!previous.length && !__lastSplitViewMarker && !splitActive) {
-        return; // already torn down — nothing to do
+        // Already torn down — record the workspace so a subsequent
+        // first-panel-add within it is detected as mid-session.
+        __reconciledForWorkspace = currentWorkspaceId;
+        return;
       }
 
       // Walk every tab in the window and strip the artifacts the
@@ -3876,6 +4027,11 @@
 
       // Refresh nav strip (no panels → empty)
       refreshPanelNav([]);
+      // Record that we've completed a reconcile for this workspace —
+      // the next reconcile within the same workspace is mid-session
+      // (e.g. user adding the first panel via "Open in new panel"),
+      // not hydration.
+      __reconciledForWorkspace = currentWorkspaceId;
       return;
     }
 
@@ -4399,27 +4555,39 @@
     // drag) has staged. No-op when no snapshot is pending.
     runPendingPanelFlip();
 
-    // Auto-scroll to bring any freshly-added panel into view. Skip
-    // when previousTabIds is empty (boot / workspace-switch repopulate)
-    // — there's no "new" panel in that context, the user expects to
-    // see the workspace's leftmost (main) panel, not the rightmost
-    // side panel. When there IS a new panel, scroll to the LAST new
-    // tab id (rightmost in DOM, which is where panel/add appends and
-    // where the Add-panel trailer sits next to). setTimeout 0 lets
-    // tabpanels' layout commit the new panel's width before
-    // scrollPanelToLeftmost reads its bounding rect.
+    // Auto-scroll to bring any freshly-added panel into view. Trigger
+    // whenever a new panel id appears AND we've already reconciled
+    // this workspace at least once (so this is a mid-session mutation,
+    // not the initial hydration of a boot/switch). Scrolls to the
+    // LAST new tab id (rightmost in DOM, which is where panel/add
+    // appends and the right-click-on-side-panel insert lands; for
+    // panel/openAt-from-main with sourceTabId=null, the new panel is
+    // at position 0 and is the only new id, so "last new" still
+    // resolves correctly).
+    //
+    // Workspace match handles three cases that the previous
+    // previousTabIds-only guard conflated:
+    //   - Boot hydration (__reconciledForWorkspace null → mismatch → skip)
+    //   - Workspace switch (__reconciledForWorkspace = prior → mismatch → skip)
+    //   - First-panel-add to a previously-empty workspace
+    //     (__reconciledForWorkspace was set by the empty-panels early-
+    //     return path → match → scroll)
+    //
+    // setTimeout 0 lets tabpanels' layout commit the new panel's
+    // width before scrollPanelToLeftmost reads its bounding rect.
     let scrolledToNewPanel = false;
-    if (previousTabIds.size > 0) {
-      const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
-      if (newTabIds.length > 0) {
-        const newId = newTabIds[newTabIds.length - 1];
-        scrolledToNewPanel = true;
-        setTimeout(() => {
-          const panelEl = document.querySelector('[data-bento-panel-tab-id="' + newId + '"]');
-          if (panelEl) scrollPanelToLeftmost(panelEl);
-        }, 0);
-      }
+    const isInitialReconcileForWorkspace =
+      __reconciledForWorkspace !== currentWorkspaceId;
+    const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
+    if (newTabIds.length > 0 && !isInitialReconcileForWorkspace) {
+      const newId = newTabIds[newTabIds.length - 1];
+      scrolledToNewPanel = true;
+      setTimeout(() => {
+        const panelEl = document.querySelector('[data-bento-panel-tab-id="' + newId + '"]');
+        if (panelEl) scrollPanelToLeftmost(panelEl);
+      }, 0);
     }
+    __reconciledForWorkspace = currentWorkspaceId;
 
     // Auto-scroll to the MAIN panel when the selected tab changes
     // (sidebar tab click, Cmd+T new tab, Cmd+Shift+T undo-close, ...).
@@ -4526,6 +4694,103 @@
     );
   }
   attachPanelClickAutoScroll();
+
+  // ─── "Open in new panel" link context-menu item ────────────────────────
+  // Adds a menuitem to Firefox's contentAreaContextMenu that appears when
+  // the user right-clicks a link inside any Bento panel (main or side).
+  // Clicking the item dispatches panel/openAt with the link's URL plus
+  // the source panel's identity — bento-tools then creates the tab and
+  // inserts it as a panel immediately to the right of the source.
+  function installOpenInNewPanelMenuItem() {
+    const menu = document.getElementById('contentAreaContextMenu');
+    if (!menu) {
+      console.warn('[bento-shell-mount] contentAreaContextMenu missing');
+      return;
+    }
+    if (document.getElementById('bento-context-open-in-panel')) return;
+
+    const item = document.createXULElement('menuitem');
+    item.id = 'bento-context-open-in-panel';
+    item.setAttribute('label', 'Open in new panel');
+    item.hidden = true;
+    // Sit next to the existing "Open Link in New Tab" / "Open Link in
+    // New Window" items if they exist; fall back to first child.
+    const anchor =
+      document.getElementById('context-openlinkincurrent') ||
+      document.getElementById('context-openlink') ||
+      menu.firstChild;
+    menu.insertBefore(item, anchor);
+
+    // Resolve the source panel container from gContextMenu.browser.
+    // closest() walks up — when split-view is active, the inner main
+    // panel and inner side panels carry data-bento-* attrs (set by
+    // reconcilePanelsSplitView). When NO side panels exist yet, the
+    // OUTER #tabbrowser-tabbox is the only element tagged data-bento-
+    // main-panel (set by unifyMainWithStrip at boot). Accept that
+    // case too: the outer tabbox has no data-bento-panel-tab-id, so
+    // the command handler reads sourceTabId as null → handler inserts
+    // at position 0 (first side panel), seeding split-view from a
+    // right-click in a plain tab.
+    function findSourcePanel() {
+      const browser = typeof gContextMenu !== 'undefined' ? gContextMenu?.browser : null;
+      if (!browser) return null;
+      return browser.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
+    }
+
+    // Defer popupshowing-listener registration until DOMContentLoaded.
+    // Firefox initializes gContextMenu inside a DOMContentLoaded callback in
+    // browser-context.js — that callback is registered before this script
+    // runs (browser-context.inc is parsed before browser-box.inc.xhtml), so
+    // it fires first and Firefox's popupshowing listener attaches first. If
+    // we attach during parsing, our listener registers earlier and runs
+    // first on every popup — seeing gContextMenu from the PREVIOUS open
+    // (or undefined initially) and bailing on !onLink before Firefox
+    // reassigns it. Deferring to DOMContentLoaded guarantees Firefox's
+    // listener registers first.
+    const attachPopupShowingListener = () => {
+      menu.addEventListener('popupshowing', () => {
+        try {
+          if (typeof gContextMenu === 'undefined' || !gContextMenu?.onLink) {
+            item.hidden = true;
+            return;
+          }
+          if (!gContextMenu.linkURL) {
+            item.hidden = true;
+            return;
+          }
+          if (!findSourcePanel()) {
+            item.hidden = true;
+            return;
+          }
+          item.hidden = false;
+        } catch (err) {
+          console.warn('[bento-shell-mount] open-in-panel popupshowing failed:', err);
+          item.hidden = true;
+        }
+      });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attachPopupShowingListener, { once: true });
+    } else {
+      attachPopupShowingListener();
+    }
+
+    item.addEventListener('command', () => {
+      try {
+        const url = gContextMenu?.linkURL;
+        if (!url) return;
+        const source = findSourcePanel();
+        if (!source) return;
+        const sourceTabId = source.dataset.bentoPanelTabId
+          ? Number(source.dataset.bentoPanelTabId)
+          : null;
+        dispatchShellAction({ type: 'panel/openAt', url, sourceTabId });
+      } catch (err) {
+        console.warn('[bento-shell-mount] open-in-panel command failed:', err);
+      }
+    });
+  }
+  installOpenInNewPanelMenuItem();
 
   function injectPanelHeaderIntoLinkedPanel(tab, url) {
     const panelEl = document.getElementById(tab.linkedPanel);
@@ -4874,19 +5139,32 @@
     const shellFrame = document.getElementById('bento-shell-frame');
     if (shellFrame) {
       let lastSeenShellTitle = '';
-      setInterval(() => {
+      // requestAnimationFrame loop (~60Hz, paint-aligned). setInterval
+      // at 200ms (or even 32ms) leaves a visible lag between the
+      // sidebar flipping color modes locally and the chrome catching
+      // up via the title-IPC channel — users perceive sidebar
+      // changing first. rAF guarantees the chrome's data-color-mode
+      // mutation lands in the SAME paint frame as the sidebar's, so
+      // the entire chrome flips in one visual transition. The poll
+      // body (a property read + string compare) is well within a
+      // frame budget. Other modal frames stay on setInterval at 200ms
+      // — they're user-triggered open/close, no sync requirement.
+      const pollShellFrame = () => {
         const title = shellFrame.contentTitle || '';
-        if (title === lastSeenShellTitle) return;
-        lastSeenShellTitle = title;
-        if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
-        else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
-        else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
-        else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
-        else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
-        else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
-        else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
-        else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
-      }, 200);
+        if (title !== lastSeenShellTitle) {
+          lastSeenShellTitle = title;
+          if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
+          else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
+          else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
+          else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+          else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
+          else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
+          else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
+          else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
+        }
+        window.requestAnimationFrame(pollShellFrame);
+      };
+      window.requestAnimationFrame(pollShellFrame);
     }
   }
 

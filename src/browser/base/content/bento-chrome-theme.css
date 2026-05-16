@@ -106,22 +106,31 @@
     --focus-outline-color: var(--color-60) !important;
   }
 
-  /* ─── Sidebar host container ──────────────────────────────────────
-   * Chrome-mounted hosts (sidebar shell, side-panel strip, overlay
-   * frames) have no theme background — they let the chrome window's
-   * own bg show through, and the per-panel .bento-panel-shadow
-   * proxies (see bento-shell-mount.js) drop their shadow into the
-   * resulting transparent gap below each panel. Previously these
-   * hosts carried an inline #282A33 from 01-bento-shell-mount.patch
-   * (now removed at the patch source) and were re-themed here to
-   * --neutral-10; both are gone. !important keeps the override
-   * winning if the inline style ever returns. */
-  #bento-shell-host,
+  /* ─── Unified chrome surface ──────────────────────────────────────
+   * Bento's sidebar, the navigator-toolbox (URL bar area), and the
+   * chrome window background are all the same neutral-10 surface so
+   * they read as one continuous chrome surface. body uses
+   * --toolbox-bgcolor (= neutral-10 above) by default; navigator-
+   * toolbox normally inherits / is transparent — set both to neutral-
+   * 10 explicitly here to guarantee they match. The Bento sidebar
+   * host was previously transparent; switching to neutral-10 makes
+   * it match the rest instead of showing whatever happens to be
+   * painted behind it. Overlay hosts (palette, confirm, etc.) stay
+   * transparent — they're modal scrims, not chrome surfaces. */
+  #bento-shell-host {
+    background-color: var(--neutral-10) !important;
+  }
   #bento-side-panel-host,
   #bento-palette-host,
   #bento-confirm-host,
   #bento-edit-workspace-host,
   #bento-welcome-host {
     background-color: transparent !important;
+  }
+  #navigator-toolbox {
+    background-color: var(--neutral-10) !important;
+  }
+  body {
+    background-color: var(--neutral-10) !important;
   }
 }

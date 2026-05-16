@@ -100,6 +100,24 @@ pref("browser.toolbars.bookmarks.visibility", "never");
 pref("browser.gesture.swipe.left", "");
 pref("browser.gesture.swipe.right", "");
 
+// Hide every native split-view UI surface — Bento panels are built on top
+// of Firefox's split-view machinery (tabpanels.splitViewPanels, the
+// TabSplitViewActivate event, the tab.splitview marker), but the upstream
+// UI exposes a parallel entry point that creates an untracked split:
+//   - "Open Link in Split View" on the link context menu
+//   - "Move Tab to Split View" / "Separate Tabs" / "Reverse Tab Order"
+//     on the tab context menu
+//   - The split-view button in the URL bar
+// Any of those routes bypass bento-tools' PanelStore, so the resulting
+// split has no workspace persistence, no favicon nav entry, and gets
+// erased the next time panels/sync reconciles. The pref only gates UI
+// visibility (verified: zero references in src/, Bento writes the
+// underlying APIs directly), so flipping it removes the conflicting
+// surface without breaking anything Bento depends on. Future Firefox
+// upgrades that add new split-view UI gated on the same pref are
+// auto-hidden too.
+pref("browser.tabs.splitView.enabled", false);
+
 // --- Web compatibility ----------------------------------------------------
 // Keep Bento identifiable as Bento while also advertising Firefox compatibility
 // in the UA string. AMO and some Firefox-specific sites key browser support off
