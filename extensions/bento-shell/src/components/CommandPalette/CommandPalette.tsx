@@ -44,8 +44,8 @@ import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
 import PanelRightCloseIcon from 'lucide-react/dist/esm/icons/panel-right-close';
 
 import { useTabsStore } from '../../state/tabs';
-import { useWorkspacesStore } from '../../state/workspaces';
-import { dispatch } from '../../bridge/useToolsPort';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
+import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import './CommandPalette.css';
 
 export interface CommandPaletteProps {
@@ -82,7 +82,8 @@ function useCommands(closePalette: () => void): Command[] {
     useShallow((s) => s.orderedIds.map((id) => s.byId[id]).filter((t) => !!t)),
   );
   const activeTabId = useTabsStore((s) => s.activeId);
-  const activeWorkspaceId = useWorkspacesStore((s) => s.activeId);
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
 
   return useMemo(() => {
     const cmds: Command[] = [];

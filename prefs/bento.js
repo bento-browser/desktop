@@ -100,23 +100,37 @@ pref("browser.toolbars.bookmarks.visibility", "never");
 pref("browser.gesture.swipe.left", "");
 pref("browser.gesture.swipe.right", "");
 
-// Hide every native split-view UI surface — Bento panels are built on top
-// of Firefox's split-view machinery (tabpanels.splitViewPanels, the
-// TabSplitViewActivate event, the tab.splitview marker), but the upstream
-// UI exposes a parallel entry point that creates an untracked split:
-//   - "Open Link in Split View" on the link context menu
-//   - "Move Tab to Split View" / "Separate Tabs" / "Reverse Tab Order"
-//     on the tab context menu
-//   - The split-view button in the URL bar
-// Any of those routes bypass bento-tools' PanelStore, so the resulting
-// split has no workspace persistence, no favicon nav entry, and gets
-// erased the next time panels/sync reconciles. The pref only gates UI
-// visibility (verified: zero references in src/, Bento writes the
-// underlying APIs directly), so flipping it removes the conflicting
-// surface without breaking anything Bento depends on. Future Firefox
-// upgrades that add new split-view UI gated on the same pref are
-// auto-hidden too.
-pref("browser.tabs.splitView.enabled", false);
+// Native split-view UI is hidden via patches/window-sync/04-splitview-
+// disable.patch — each of Firefox's three `browser.tabs.splitView.enabled`
+// read sites is hardcoded to false:
+//   - tabbrowser.js: tab context menu's "Move Tab to Split View",
+//     "Separate Tabs", "Reverse Tab Order" entries
+//   - nsContextMenu.sys.mjs: link context menu's "Open in Split View"
+//   - tab.js: alt-click-to-split on tab elements
+// Each of these routes bypasses bento-tools' PanelStore and would
+// produce untracked splits with no workspace persistence; Bento panels
+// use the underlying split-view machinery directly. Hardcoded rather
+// than pref-gated because a user flipping the pref back on would
+// silently re-expose the conflicting entry points.
+
+// --- Bento window sync ---------------------------------------------------
+// The synced/unsynced concept (BrowserWindowTracker patch, the
+// `bento-synced-window` / `bento-unsynced-window` attribute on chrome
+// documentElement, container inheritance from opener on unsynced
+// windows, the Cmd+Shift+Alt+N command, tear-out → unsynced) is
+// foundational behaviour and not pref-gated. New windows are synced
+// by default; Cmd+Shift+Alt+N and tab tear-out always produce
+// unsynced windows with the opener's container inherited.
+
+// Last-tab close behaviour is patched directly into tabbrowser.js (see
+// patches/window-sync/03-tabbrowser-close-last-tab.patch) instead of going
+// through browser.tabs.closeWindowWithLastTab. bento-tools' tabs.onRemoved
+// handler is the sole authority on what happens when the last tab in a
+// workspace is removed — promote a panel into the main slot, delete the
+// workspace and switch the window to the next available one, or close
+// the window. Hardcoded rather than pref-gated because a user flipping
+// the pref back to its Firefox default of true would silently break
+// workspace promotion and produce surprise window closures.
 
 // --- Web compatibility ----------------------------------------------------
 // Keep Bento identifiable as Bento while also advertising Firefox compatibility

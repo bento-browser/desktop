@@ -1,0 +1,24 @@
+diff --git a/browser/modules/BrowserWindowTracker.sys.mjs b/browser/modules/BrowserWindowTracker.sys.mjs
+index 9aecab66d8..fcb74e6518 100644
+--- a/browser/modules/BrowserWindowTracker.sys.mjs
++++ b/browser/modules/BrowserWindowTracker.sys.mjs
+@@ -330,6 +330,7 @@ export const BrowserWindowTracker = {
+       args = null,
+       remote = undefined,
+       fission = undefined,
++      bentoSyncedWindow = true,
+     } = options;
+ 
+     args = lazy.AIWindow.handleAIWindowOptions(options);
+@@ -386,6 +387,11 @@ export const BrowserWindowTracker = {
+       windowFeatures,
+       args
+     );
++    win._bentoStartupSyncFlag = bentoSyncedWindow ? "synced" : "unsynced";
++    if (win._bentoStartupSyncFlag === "unsynced" && openerWindow) {
++      win._bentoStartupUnsyncedUserContextId =
++        openerWindow.gBrowser?.selectedTab?.userContextId ?? 0;
++    }
+     this.registerOpeningWindow(win, isPrivate);
+ 
+     win.addEventListener(

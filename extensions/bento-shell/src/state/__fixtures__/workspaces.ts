@@ -16,8 +16,12 @@ export function makeWorkspace(overrides: Partial<Workspace> & { id: string }): W
   };
 }
 
-export function seedWorkspaces(workspaces: Workspace[], activeId: string | null): void {
-  useWorkspacesStore.getState().applySnapshot(workspaces, activeId);
+export function seedWorkspaces(
+  workspaces: Workspace[],
+  activeId: string | null,
+  activeIdByWindow: Record<number, string> = {},
+): void {
+  useWorkspacesStore.getState().applySnapshot(workspaces, activeId, activeIdByWindow);
 }
 
 export function seedDefault(): Workspace[] {

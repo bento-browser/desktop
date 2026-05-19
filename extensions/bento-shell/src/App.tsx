@@ -12,9 +12,9 @@ import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
-import { dispatch, useToolsReady } from './bridge/useToolsPort';
+import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
 import { requestWelcome } from './bridge/useWelcome';
-import { useWorkspacesStore } from './state/workspaces';
+import { useWorkspacesStore, useActiveWorkspaceIdForWindow } from './state/workspaces';
 import { useSettingsStore } from './state/settings';
 import type { ColorModePref } from '@shared/protocol';
 
@@ -48,8 +48,10 @@ function openCommandPalette() {
 
 export function App() {
   const ready = useToolsReady();
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const activeWorkspaceColor = useWorkspacesStore((s) =>
-    s.activeId ? s.byId[s.activeId]?.color : undefined,
+    activeWorkspaceId ? s.byId[activeWorkspaceId]?.color : undefined,
   );
   // First-run welcome trigger. The settings snapshot lands a moment after
   // the tools port connects; once it does and welcomeSeen=false, signal
@@ -101,6 +103,19 @@ export function App() {
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
+  const onReorder = (id: number, anchorId: number, before: boolean) => {
+    // Title-IPC to chrome rather than browser.tabs.move via bento-tools.
+    // browser.tabs.move runs Firefox's moveTabTo, which transforms the
+    // element through `element = element.splitview` when the tab has a
+    // splitview marker. Bento panels assign every active tab a plain-
+    // object .splitview marker that isn't a MozTabSplitViewWrapper, so
+    // #handleTabMove then throws "Can only move a tab, tab group, or
+    // split view within the tab bar". gBrowser.moveTabBefore /
+    // moveTabAfter (called from chrome via this title-IPC) operate on
+    // the original element reference and skip the transformation, so
+    // dragging works for active/main-panel tabs too.
+    document.title = `BENTO_TAB_MOVE:${Date.now()}:${id}:${anchorId}:${before ? 'before' : 'after'}`;
+  };
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const contentColorMode = useSettingsStore((s) => s.current?.contentColorMode);
   const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
@@ -193,7 +208,12 @@ export function App() {
           </Text>
         )}
       </Row>
-      <TabList onActivate={onActivate} onClose={onClose} onOpenInSidePanel={onOpenInSidePanel} />
+      <TabList
+        onActivate={onActivate}
+        onClose={onClose}
+        onOpenInSidePanel={onOpenInSidePanel}
+        onReorder={onReorder}
+      />
       <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">
         {/* Collapse/expand toggle. DOM order matters: this is the FIRST
             child so flex-direction:column-reverse in collapsed mode pins

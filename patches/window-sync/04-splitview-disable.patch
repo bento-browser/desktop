@@ -1,0 +1,56 @@
+diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
+index 5ee0ee4246..acf18f8280 100644
+--- a/browser/base/content/nsContextMenu.sys.mjs
++++ b/browser/base/content/nsContextMenu.sys.mjs
+@@ -495,9 +495,11 @@ export class nsContextMenu {
+     let showContainers =
+       Services.prefs.getBoolPref("privacy.userContext.enabled") &&
+       lazy.ContextualIdentityService.getPublicIdentities().length;
+-    let showSplitViews = Services.prefs.getBoolPref(
+-      "browser.tabs.splitView.enabled"
+-    );
++    // Bento: hardcoded false — native split-view UI bypasses bento-tools'
++    // PanelStore and produces untracked splits. Bento panels use the
++    // underlying split-view machinery directly; this gate hides the
++    // link context menu's "Open in Split View" entry point.
++    let showSplitViews = false;
+     let currentTabInSplitView = !!window.gBrowser?.selectedTab?.splitview;
+     this.showItem("context-openlink", shouldShow && !isWindowPrivate);
+     this.showItem(
+diff --git a/browser/components/tabbrowser/content/tab.js b/browser/components/tabbrowser/content/tab.js
+index 2e02bad1a7..6c00aeb907 100644
+--- a/browser/components/tabbrowser/content/tab.js
++++ b/browser/components/tabbrowser/content/tab.js
+@@ -606,7 +606,9 @@
+           !event.target.classList.contains("tab-audio-button") &&
+           !this.selected &&
+           !gBrowser.selectedTab.hidden &&
+-          Services.prefs.getBoolPref("browser.tabs.splitView.enabled", false) &&
++          // Bento: alt-click-to-split disabled — bento-tools owns split
++          // creation via PanelStore so the alt-click route stays inert.
++          false &&
+           !this.splitview &&
+           !gBrowser.selectedTab.splitview &&
+           !this.pinned &&
+diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
+index 2643e1a2aa..b7d12c8cde 100644
+--- a/browser/components/tabbrowser/content/tabbrowser.js
++++ b/browser/components/tabbrowser/content/tabbrowser.js
+@@ -10366,11 +10366,12 @@ var TabContextMenu = {
+       contextUpdateNote.hidden = true;
+     }
+ 
+-    // Split View
+-    let splitViewEnabled = Services.prefs.getBoolPref(
+-      "browser.tabs.splitView.enabled",
+-      false
+-    );
++    // Split View — Bento: hardcoded false. The native tab context menu's
++    // split-view entries ("Move Tab to Split View", "Separate Tabs",
++    // "Reverse Tab Order") bypass bento-tools' PanelStore and would
++    // produce untracked splits. Bento panels use the underlying split-
++    // view machinery directly; hiding these items removes the conflict.
++    let splitViewEnabled = false;
+     let contextMoveTabToNewSplitView = document.getElementById(
+       "context_moveTabToSplitView"
+     );

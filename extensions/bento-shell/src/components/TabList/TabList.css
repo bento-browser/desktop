@@ -42,6 +42,46 @@
     left: 0;
     right: 0;
     width: 100%;
+    /* Glide between virtualizer-computed positions so a drop-reorder or
+       a post-removal sibling shift animates smoothly. The row's React
+       key is the tab id (stable across reorder), so a re-rendered
+       virtualizer doesn't unmount the row when it moves — the inline
+       transform changes from old vi.start to new vi.start and the
+       browser interpolates.
+
+       Scrolling DOES NOT trigger this transition: the virtualizer
+       window slides so different ids occupy each slot, which means
+       React keys change and rows unmount/remount at their new
+       positions rather than transitioning across them. Only data
+       reorders (where the same id moves between slots) animate. */
+    transition: transform var(--bento-duration-base) var(--bento-easing-standard);
+  }
+
+  /* Reduced motion: skip the slide. The drop indicator's instant
+     reorder still reads clearly — it just snaps instead of gliding. */
+  @media (prefers-reduced-motion: reduce) {
+    .bento-tab-list__row {
+      transition: none;
+    }
+  }
+
+  /* Drop indicator: a 2px horizontal bar painted between rows during a
+     reorder drag. translateY positions it at the gap between slot N-1
+     and slot N (slot * row-height). Centre via translateY(-50%) so the
+     bar straddles the gap symmetrically rather than sitting flush with
+     the row below it. Workspace accent so the cue matches the active
+     workspace's identity. */
+  .bento-tab-list__drop-indicator {
+    position: absolute;
+    top: 0;
+    left: var(--space-2xs);
+    right: var(--space-2xs);
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 1px;
+    background-color: var(--bento-workspace-accent);
+    pointer-events: none;
+    z-index: 1;
   }
 
   /* Workspace-switch slide.

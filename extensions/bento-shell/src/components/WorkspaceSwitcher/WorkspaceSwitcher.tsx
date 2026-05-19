@@ -16,11 +16,12 @@ import { Icon } from '@tale-ui/react/icon';
 import { Avatar } from '@tale-ui/react/avatar';
 import ChevronsUpDown from 'lucide-react/dist/esm/icons/chevrons-up-down';
 
-import { useWorkspacesStore } from '../../state/workspaces';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import {
   requestWorkspaceSwitcher,
   subscribeToWorkspaceSwitcherClose,
 } from '../../bridge/useWorkspaceSwitcher';
+import { useCurrentWindowId } from '../../bridge/useToolsPort';
 import './WorkspaceSwitcher.css';
 
 function workspaceInitial(name: string): string {
@@ -29,7 +30,11 @@ function workspaceInitial(name: string): string {
 }
 
 export function WorkspaceSwitcher() {
-  const active = useWorkspacesStore((s) => (s.activeId ? s.byId[s.activeId] : undefined));
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
+  const active = useWorkspacesStore((s) =>
+    activeWorkspaceId ? s.byId[activeWorkspaceId] : undefined,
+  );
   // Menu.Trigger (Tale UI's styled AriaButton) used standalone here — the
   // popover lives in a chrome-mounted overlay rather than a Menu.Popover
   // child, so we don't need the surrounding Menu.Root (MenuTrigger)

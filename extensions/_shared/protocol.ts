@@ -52,7 +52,14 @@ export type WorkspaceDelta =
   | { kind: 'created'; workspace: Workspace }
   | { kind: 'updated'; id: string; changes: Partial<Workspace> }
   | { kind: 'removed'; id: string }
-  | { kind: 'activated'; id: string };
+  /** When `windowId` is present the activation is scoped to that chrome
+   * window only (Zen-style per-window active workspace). When absent it's
+   * a global activation: legacy single-window UI and tools-internal flows
+   * use this form and every shell mirror treats it as "the active id for
+   * everyone". Shells that track per-window state should apply the new
+   * id to `activeIdByWindow[windowId]` when present, otherwise to the
+   * fallback `activeId` field. */
+  | { kind: 'activated'; id: string; windowId?: number };
 
 /** User-configurable Bento settings. Persisted in storage.local; defaults
  * mirror the values declared in prefs/bento.js (the latter remain the source
@@ -109,6 +116,16 @@ export type ColorModePref = 'light' | 'dark';
 
 export type Action =
   | { type: 'ping' }
+  /** Sent once per shell-document connection so bento-tools learns which
+   * chrome window this shell instance lives in. Per-window awareness is
+   * the foundation for multi-window features (synced windows, per-window
+   * active workspace). Architectural note: bento-shell's background is a
+   * SINGLETON across all chrome windows — every shell document shares one
+   * port to tools — so the port itself can't be window-tagged. Each shell
+   * document instead identifies itself with this action on mount, and
+   * every subsequent dispatch carries the same windowId on the wire
+   * envelope (see WireAction). */
+  | { type: 'shell/hello'; windowId: number }
   | { type: 'tabs/requestSnapshot' }
   | { type: 'tab/activate'; id: number }
   | { type: 'tab/close'; id: number }
@@ -210,7 +227,20 @@ export type Event =
   | { type: 'tools/booted'; version: string }
   | { type: 'tabs/snapshot'; tabs: TabSnapshot[] }
   | { type: 'tabs/changed'; deltas: TabDelta[] }
-  | { type: 'workspaces/snapshot'; workspaces: Workspace[]; activeId: string | null }
+  | {
+      type: 'workspaces/snapshot';
+      workspaces: Workspace[];
+      /** Global fallback active id — used by legacy clients and for any
+       * window that hasn't yet activated a workspace per-window. Persists
+       * across sessions. */
+      activeId: string | null;
+      /** Per-window active workspace map. Empty at boot (windows fall back
+       * to `activeId` until each one explicitly activates per-window).
+       * Populated by Zen-style per-window activations dispatched with a
+       * non-null `__windowId` on the wire envelope. In-memory in tools;
+       * phase G's disk sidebar will persist this. */
+      activeIdByWindow: Record<number, string>;
+    }
   | { type: 'workspaces/changed'; deltas: WorkspaceDelta[] }
   | { type: 'settings/snapshot'; settings: BentoSettings }
   | { type: 'settings/changed'; settings: BentoSettings }
@@ -242,4 +272,17 @@ export type Event =
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings };
 
-export type WireMessage = Action | Event;
+/** Wire-level envelope around an Action: the action itself plus an
+ * optional routing field that bento-shell's dispatcher stamps with the
+ * source chrome window's WebExtension windowId. bento-tools reads this
+ * to set `HandlerContext.sourceWindowId` so per-window state (active
+ * workspace, panel emissions) routes correctly.
+ *
+ * `__windowId` lives in the prefix-double-underscore namespace because
+ * it is NOT part of the action's semantic body — it's a routing hint
+ * the action-handling code strips before dispatching to the action's
+ * effect. Discriminated-union narrowing on `type` keeps working
+ * unchanged: TS allows extra optional properties on union variants. */
+export type WireAction = Action & { __windowId?: number };
+
+export type WireMessage = WireAction | Event;

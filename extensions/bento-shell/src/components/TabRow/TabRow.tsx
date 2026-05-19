@@ -19,21 +19,36 @@ export interface TabRowProps {
    * the row mounted briefly so it can fade out via the
    * `bento-tab-row--removing` modifier before the virtualizer drops it. */
   removing?: boolean;
+  /** True while this row is the source of an in-flight drag. Dimmed via
+   * the `bento-tab-row--dragging` modifier so the user has a clear cue
+   * which row is being moved — Firefox renders a translucent drag-image
+   * floating with the cursor, but the in-list source row still occupies
+   * its original slot and without an explicit modifier it reads
+   * identically to a stationary row. */
+  dragging?: boolean;
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   /** Open this tab's URL in the chrome side panel (Bento Spaces M2-PR-3
    * foundation). Tools resolves the URL and tells chrome to reveal +
    * navigate the side <browser>. */
   onOpenInSidePanel: (id: number) => void;
+  /** Drag-source hooks supplied by TabList when reordering is enabled.
+   * When undefined the row is non-draggable (stories without reorder
+   * coverage, future read-only variants). */
+  onDragStart?: (id: number) => void;
+  onDragEnd?: (id: number) => void;
 }
 
 function TabRowImpl({
   id,
   active,
   removing = false,
+  dragging = false,
   onActivate,
   onClose,
   onOpenInSidePanel,
+  onDragStart,
+  onDragEnd,
 }: TabRowProps) {
   const liveTab = useTab(id);
   // Cache the last seen tab data so we can keep rendering after the store
@@ -52,15 +67,41 @@ function TabRowImpl({
   const discarded = tab.discarded ?? false;
   const audible = tab.audible;
 
+  const draggable = onDragStart !== undefined;
+
   return (
     <div
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
         (removing ? ' bento-tab-row--removing' : '') +
-        (discarded ? ' bento-tab-row--discarded' : '')
+        (discarded ? ' bento-tab-row--discarded' : '') +
+        (dragging ? ' bento-tab-row--dragging' : '')
       }
-      onClick={() => removing || onActivate(id)}
+      draggable={draggable}
+      onDragStart={
+        draggable
+          ? (e) => {
+              // dataTransfer.effectAllowed='move' tells Firefox the drag is
+              // a reorder (no copy variant), which matches the cursor
+              // affordance and the drop-effect we'll set in TabList's
+              // onDragOver. Setting a small marker on the bento namespace
+              // lets future cross-pane drops (workspace → workspace) tell
+              // sidebar drags apart from arbitrary external drags.
+              e.dataTransfer.effectAllowed = 'move';
+              try {
+                e.dataTransfer.setData('application/x-bento-tab-id', String(id));
+              } catch {
+                // setData can throw in some sandbox contexts; the drag
+                // still works without it since TabList tracks the
+                // source id via its own state.
+              }
+              onDragStart(id);
+            }
+          : undefined
+      }
+      onDragEnd={draggable ? () => onDragEnd?.(id) : undefined}
+      onClick={() => removing || dragging || onActivate(id)}
       onMouseDown={(e) => {
         // Middle-mouse-down triggers the autoscroll cursor — preventDefault
         // suppresses it so the click feels like a normal close action.
@@ -134,6 +175,9 @@ export const TabRow = memo(TabRowImpl, (prev, next) => {
   return (
     prev.id === next.id &&
     prev.active === next.active &&
-    (prev.removing ?? false) === (next.removing ?? false)
+    (prev.removing ?? false) === (next.removing ?? false) &&
+    (prev.dragging ?? false) === (next.dragging ?? false) &&
+    prev.onDragStart === next.onDragStart &&
+    prev.onDragEnd === next.onDragEnd
   );
 });

@@ -1,9 +1,12 @@
 // TabList visual + virtualization stories. The 200-tabs story is the
 // main perf check before touching the real browser.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { TabList } from './TabList';
-import { seedEmpty, seedTabs } from '../../state/__fixtures__/tabs';
+import { seedEmpty, seedTabs, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
+import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
+import { seedPanelsHydrated } from '../../state/__fixtures__/panels';
+import { useTabsStore } from '../../state/tabs';
 
 const noop = () => {};
 
@@ -163,3 +166,52 @@ export const CollapsedMany = () => {
 };
 
 CollapsedMany.storyName = 'Collapsed — 40 tabs (scroll check)';
+
+// Interactive drag-and-drop reorder demo. Seeds a workspace + panels so
+// TabList's readiness gate releases (the unfiltered stories above show
+// rows because the gate's `activeWorkspaceId` falls back to null —
+// rendering the unfiltered list — but the drag flow needs a real
+// active workspace so useWorkspaceTabIds returns the seeded set and
+// drop targets resolve correctly). The onReorder callback applies the
+// browser.tabs.move semantics locally to the store so the resulting
+// order is visible without a real bento-tools port.
+export const DragReorder = () => {
+  const [log, setLog] = useState<string[]>([]);
+  useEffect(() => {
+    seedDefaultWorkspaces();
+    seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 8 }], 'w-personal');
+    seedPanelsHydrated(['w-personal']);
+  }, []);
+  const onReorder = (id: number, anchorId: number, before: boolean) => {
+    setLog((prev) =>
+      [`tab/move { id: ${id}, ${before ? 'before' : 'after'}: ${anchorId} }`, ...prev].slice(0, 6),
+    );
+    // Mirror gBrowser.moveTabBefore/After locally: remove the tab from
+    // its current slot and reinsert relative to the anchor, then rewrite
+    // every tab's `index` so useWorkspaceTabIds re-derives the new
+    // ordering on the next pass.
+    const state = useTabsStore.getState();
+    const sorted = Object.values(state.byId).sort((a, b) => a.index - b.index);
+    const fromIdx = sorted.findIndex((t) => t.id === id);
+    if (fromIdx < 0) return;
+    const [moved] = sorted.splice(fromIdx, 1);
+    if (!moved) return;
+    const anchorIdx = sorted.findIndex((t) => t.id === anchorId);
+    if (anchorIdx < 0) return;
+    sorted.splice(before ? anchorIdx : anchorIdx + 1, 0, moved);
+    useTabsStore.getState().applySnapshot(sorted.map((t, i) => ({ ...t, index: i })));
+  };
+  return (
+    <div style={{ display: 'flex', gap: 16 }}>
+      <SidebarFrame>
+        <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} onReorder={onReorder} />
+      </SidebarFrame>
+      <div style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--neutral-70)' }}>
+        <div style={{ marginBottom: 8 }}>Drag any row to reorder. Recent dispatches:</div>
+        {log.length === 0 ? <div>(none yet)</div> : log.map((l, i) => <div key={i}>{l}</div>)}
+      </div>
+    </div>
+  );
+};
+
+DragReorder.storyName = 'Drag to reorder (interactive)';

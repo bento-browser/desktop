@@ -108,15 +108,31 @@ export function useTab(id: number): TabSnapshot | undefined {
  * bleeding across workspaces if a future bug ever leaves one unassigned.
  * useShallow keeps the array reference stable between renders so TabList
  * only re-renders when the filtered set actually changes. */
-export function useWorkspaceTabIds(workspaceId: string | null): number[] {
+export function useWorkspaceTabIds(workspaceId: string | null, windowId?: number | null): number[] {
   const tabIds = useTabsStore(
     useShallow((s) => {
-      if (!workspaceId) return s.orderedIds;
+      if (!workspaceId && typeof windowId !== 'number') return s.orderedIds;
       const out: number[] = [];
       for (const id of s.orderedIds) {
         const tab = s.byId[id];
         if (!tab) continue;
-        if (tab.workspaceId === workspaceId) out.push(id);
+        if (workspaceId && tab.workspaceId !== workspaceId) continue;
+        // Filter by windowId so each window's sidebar only shows tabs
+        // that physically live in its OWN gBrowser. With the "one
+        // workspace per window" enforcement, the sidebar in window B
+        // would otherwise also list tabs from window A's gBrowser that
+        // happen to share the same workspaceId (orphans from a prior
+        // workspace switch, or tabs created when another window owned
+        // the workspace). Clicking those cross-window tabs dispatches
+        // tab/activate → browser.tabs.update activates the tab in its
+        // own window (and focuses it) — symptom: clicking in window B
+        // marks the tab active in B's sidebar but the main slot stays
+        // on the previous tab. Hiding cross-window tabs avoids the
+        // confusion. Phase C twin-tabs will fix this properly by
+        // mirroring tabs across windows. Caller passing `undefined`
+        // gets the legacy workspace-only filter (overlays, Ladle).
+        if (typeof windowId === 'number' && tab.windowId !== windowId) continue;
+        out.push(id);
       }
       return out;
     }),

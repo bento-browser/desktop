@@ -3,10 +3,17 @@
 //
 // Schema is versioned so a future migration can be detected without losing
 // data — bump VERSION + add an upgrade arm in load() when the shape changes.
+//
+// A single-slot backup (`bento.workspaces.backup`) holds the previous good
+// value so a corrupt primary write can be recovered from on next load.
+// Phase G.2 — bento doesn't need a Zen-style rolling N-file backup because
+// the worst case here is "the last debounced flush ate my data," which one
+// slot covers.
 
 import type { Workspace } from '@shared/protocol';
 
 const STORAGE_KEY = 'bento.workspaces';
+const BACKUP_STORAGE_KEY = 'bento.workspaces.backup';
 const VERSION = 1;
 const DEBOUNCE_MS = 500;
 
@@ -21,20 +28,48 @@ export interface PersistedState {
   activeId: string | null;
 }
 
-export async function load(): Promise<PersistedState | null> {
-  try {
-    const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
-    const stored = raw[STORAGE_KEY] as StoredShape | undefined;
-    if (!stored || typeof stored !== 'object') return null;
-    if (stored.version !== VERSION) {
-      console.warn('[bento-tools] workspaces: unknown version', stored.version, '— ignoring');
-      return null;
-    }
-    return { workspaces: stored.workspaces, activeId: stored.activeId };
-  } catch (err) {
-    console.error('[bento-tools] workspaces: load failed', err);
+function parseStored(stored: unknown): PersistedState | null {
+  if (!stored || typeof stored !== 'object') return null;
+  const obj = stored as Partial<StoredShape>;
+  if (obj.version !== VERSION) {
+    console.warn('[bento-tools] workspaces: unknown version', obj.version, '— ignoring');
     return null;
   }
+  if (!Array.isArray(obj.workspaces)) return null;
+  return { workspaces: obj.workspaces, activeId: obj.activeId ?? null };
+}
+
+export async function load(): Promise<PersistedState | null> {
+  let primary: PersistedState | null = null;
+  try {
+    const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
+    primary = parseStored(raw[STORAGE_KEY]);
+  } catch (err) {
+    console.error('[bento-tools] workspaces: primary load failed', err);
+  }
+  if (primary) return primary;
+  // Primary missing or corrupt — try the backup slot.
+  let backup: PersistedState | null = null;
+  try {
+    const raw = (await browser.storage.local.get(BACKUP_STORAGE_KEY)) as Record<string, unknown>;
+    backup = parseStored(raw[BACKUP_STORAGE_KEY]);
+  } catch (err) {
+    console.error('[bento-tools] workspaces: backup load failed', err);
+    return null;
+  }
+  if (!backup) return null;
+  console.log('[bento-tools] workspaces: recovered from backup slot');
+  // Immediately rewrite the primary from the backup so the next load
+  // doesn't go through the recovery path again.
+  const payload: StoredShape = {
+    version: VERSION,
+    workspaces: backup.workspaces,
+    activeId: backup.activeId,
+  };
+  void browser.storage.local
+    .set({ [STORAGE_KEY]: payload })
+    .catch((err) => console.error('[bento-tools] workspaces: primary rewrite failed', err));
+  return backup;
 }
 
 export class Persistence {
@@ -58,6 +93,20 @@ export class Persistence {
       workspaces: state.workspaces,
       activeId: state.activeId,
     };
+    // Two-step write: copy the existing primary to the backup slot
+    // before overwriting. Skips when there's no prior primary (first
+    // ever write) since there's nothing worth backing up. Backup failure
+    // doesn't block the primary write — losing the backup is far less
+    // bad than failing to persist the latest state.
+    try {
+      const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
+      const prev = raw[STORAGE_KEY];
+      if (prev !== undefined) {
+        await browser.storage.local.set({ [BACKUP_STORAGE_KEY]: prev });
+      }
+    } catch (err) {
+      console.warn('[bento-tools] workspaces: backup write failed', err);
+    }
     try {
       await browser.storage.local.set({ [STORAGE_KEY]: payload });
     } catch (err) {

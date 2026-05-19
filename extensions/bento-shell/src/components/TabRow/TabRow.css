@@ -45,6 +45,18 @@
     pointer-events: none;
   }
 
+  /* Drag source: the in-list slot the user grabbed. Firefox renders a
+     translucent drag-image floating with the cursor; we dim the
+     stationary source row so the user can see which one is being
+     moved and so the hover-action overlay doesn't fade in over a row
+     they're actively dragging away from. */
+  .bento-tab-row--dragging {
+    opacity: 0.4;
+  }
+  .bento-tab-row--dragging .bento-tab-row__actions {
+    opacity: 0;
+  }
+
   .bento-tab-row:hover {
     background-color: var(--bento-surface-hover);
   }

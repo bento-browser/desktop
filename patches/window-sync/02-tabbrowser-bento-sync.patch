@@ -1,0 +1,96 @@
+diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
+index 2643e1a2aa..26295769cc 100644
+--- a/browser/components/tabbrowser/content/tabbrowser.js
++++ b/browser/components/tabbrowser/content/tabbrowser.js
+@@ -4104,6 +4104,12 @@
+       if (userContextId == null && openerTab) {
+         userContextId = openerTab.getAttribute("usercontextid") || 0;
+       }
++      // Bento: an unsynced window opened from a synced one inherits the
++      // opener workspace's container, so the new window's first tab opens
++      // in the same usercontext as the source workspace.
++      if (typeof window._bentoStartupUnsyncedUserContextId == "number") {
++        userContextId = window._bentoStartupUnsyncedUserContextId;
++      }
+ 
+       if (!noInitialLabel) {
+         if (isBlankPageURL(uriString)) {
+@@ -6290,8 +6296,17 @@
+     /**
+      * @returns {boolean}
+      *   False if swapping isn't permitted, true otherwise.
++     *
++     * @param {MozTabbrowserTab} aOurTab Destination tab in this window.
++     * @param {MozTabbrowserTab} aOtherTab Source tab whose browser/docShell
++     *   are moved into aOurTab.
++     * @param {boolean} [bentoCloseOther=true] When true (default Firefox
++     *   behavior) the source tab is removed and, if it was the last tab in
++     *   its window, the source window is closed. When false (Bento's
++     *   docShell hot-potato path), the source twin is left in place so the
++     *   sync engine can keep it as a placeholder for a future swap back.
+      */
+-    swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
++    swapBrowsersAndCloseOther(aOurTab, aOtherTab, bentoCloseOther = true) {
+       // Do not allow transfering a private tab to a non-private window
+       // and vice versa.
+       if (
+@@ -6344,7 +6359,10 @@
+       // First, start teardown of the other browser.  Make sure to not
+       // fire the beforeunload event in the process.  Close the other
+       // window if this was its last tab.
++      // Bento: when bentoCloseOther is false, skip teardown — the source
++      // twin survives so the sync engine can later swap the docShell back.
+       if (
++        bentoCloseOther &&
+         !remoteBrowser._beginRemoveTab(aOtherTab, {
+           adoptedByTab: aOurTab,
+           closeWindowWithLastTab: true,
+@@ -6356,7 +6374,7 @@
+       // If this is the last tab of the window, hide the window
+       // immediately without animation before the docshell swap, to avoid
+       // about:blank being painted.
+-      let [closeWindow] = aOtherTab._endRemoveArgs;
++      let [closeWindow] = bentoCloseOther ? aOtherTab._endRemoveArgs : [false];
+       if (closeWindow) {
+         let win = aOtherTab.ownerGlobal;
+         win.windowUtils.suppressAnimation(true);
+@@ -6483,11 +6501,14 @@
+         });
+       }
+ 
+-      // Finish tearing down the tab that's going away.
+-      if (closeWindow) {
+-        aOtherTab.ownerGlobal.close();
+-      } else {
+-        remoteBrowser._endRemoveTab(aOtherTab);
++      // Finish tearing down the tab that's going away. Bento: skip when
++      // bentoCloseOther is false (the source twin survives the swap).
++      if (bentoCloseOther) {
++        if (closeWindow) {
++          aOtherTab.ownerGlobal.close();
++        } else {
++          remoteBrowser._endRemoveTab(aOtherTab);
++        }
+       }
+ 
+       this.setTabTitle(aOurTab);
+@@ -6770,6 +6791,11 @@
+       // tell a new window to take the "dropped" tab
+       let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+       args.appendElement(aTab.splitview ?? aTab);
++      // Bento: tear-out always opens an UNSYNCED window — the user's
++      // gesture signals "I want this tab in its own context", and an
++      // unsynced window inherits the source's container ID so the
++      // new window stays in the same userContext (Facebook Container
++      // etc.). Not pref-gated; this is foundational behaviour.
+       return BrowserWindowTracker.openWindow({
+         private: PrivateBrowsingUtils.isWindowPrivate(window),
+         features: Object.entries(aOptions)
+@@ -6777,6 +6803,7 @@
+           .join(","),
+         openerWindow: window,
+         args,
++        bentoSyncedWindow: false,
+       });
+     }
+ 

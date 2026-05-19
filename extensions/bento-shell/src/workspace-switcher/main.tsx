@@ -39,7 +39,7 @@ import '@tale-ui/react-styles/avatar';
 import '../theme/bento-tokens.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
-import { initToolsPort, dispatch } from '../bridge/useToolsPort';
+import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
 import { requestConfirm } from '../bridge/useConfirm';
 import { requestEditWorkspace } from '../bridge/useEditWorkspace';
 import {
@@ -48,7 +48,7 @@ import {
   notifyWorkspaceSwitcherClosed,
   type WorkspaceSwitcherOpenPayload,
 } from '../bridge/useWorkspaceSwitcher';
-import { useWorkspacesStore } from '../state/workspaces';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import { useWorkspaceTabIds } from '../state/tabs';
 // Reuse the inline menu's CSS — only the trigger styles in
 // WorkspaceSwitcher.css are unused here; the popover/avatar/item rules
@@ -71,7 +71,10 @@ function workspaceInitial(name: string): string {
 function WorkspaceSwitcherOverlayApp() {
   useFirefoxTheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
-  const activeId = useWorkspacesStore((s) => s.activeId);
+  // Per-window active workspace (phase A.3). The chrome window that owns
+  // this overlay determines which workspace is highlighted as "current".
+  const windowId = useCurrentWindowId();
+  const activeId = useActiveWorkspaceIdForWindow(windowId);
   const active = activeId ? workspaces.find((w) => w.id === activeId) : undefined;
   const tabIdsInActive = useWorkspaceTabIds(activeId);
   const tabCount = tabIdsInActive.length;
@@ -80,13 +83,36 @@ function WorkspaceSwitcherOverlayApp() {
 
   const [openPayload, setOpenPayload] = useState<WorkspaceSwitcherOpenPayload | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Set true when an item action forwards to another chrome overlay
+  // (edit-workspace, confirm). In that case close() must NOT overwrite
+  // document.title — react-aria's Menu.Item fires onAction then closes
+  // the menu in the same JS tick, so a CLOSE title written here would
+  // clobber the OPEN_EDIT_WORKSPACE / OPEN_CONFIRM title that the
+  // forwarding call just set, and the chrome poll on this frame would
+  // only ever see the close sentinel. Skipping the close-title in that
+  // case lets the chrome poll see the forward sentinel and call the
+  // matching show*() + hideWorkspaceSwitcher() pair.
+  const forwardingRef = useRef(false);
 
   useEffect(() => {
-    return subscribeToWorkspaceSwitcherRequests(setOpenPayload);
+    return subscribeToWorkspaceSwitcherRequests((payload) => {
+      // Defensive reset in case a prior forward bailed before close()
+      // ran (e.g. an exception in the forwarding call).
+      forwardingRef.current = false;
+      setOpenPayload(payload);
+    });
   }, []);
 
   function close() {
     setOpenPayload(null);
+    if (forwardingRef.current) {
+      forwardingRef.current = false;
+      // Sidebar trigger still needs to drop its "open" visual state;
+      // chrome will hide this overlay as part of handling the forward
+      // sentinel that the item action just wrote to document.title.
+      notifyWorkspaceSwitcherClosed();
+      return;
+    }
     document.title = `${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`;
     // Tell the sidebar trigger to drop its "open" visual state. The
     // chrome hide is signalled by the title above; this is purely for
@@ -110,6 +136,7 @@ function WorkspaceSwitcherOverlayApp() {
   }
   function onRequestEdit() {
     if (!canEdit || !active) return;
+    forwardingRef.current = true;
     requestEditWorkspace({
       workspaceId: active.id,
       name: active.name,
@@ -123,6 +150,7 @@ function WorkspaceSwitcherOverlayApp() {
       dispatch({ type: 'workspace/delete', id: active.id, closeTabs: false });
       return;
     }
+    forwardingRef.current = true;
     requestConfirm({
       title: `Delete "${active.name}"?`,
       description: `This will close ${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'} in this workspace. This action cannot be undone.`,

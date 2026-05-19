@@ -26,6 +26,66 @@
 
   const ADDON_ID = 'bento-shell@bento.app';
 
+  // Mirror the synced/unsynced flag from BrowserWindowTracker.openWindow
+  // (set on `window._bentoStartupSyncFlag` by patches/window-sync/01-...)
+  // onto documentElement as a chrome-attribute so it's:
+  //   1. Observable in the Browser Toolbox (Phase B verification step).
+  //   2. Available to CSS for chrome differentiation if needed later.
+  //   3. Read by Phase C's BentoWindowSync to decide whether to attach
+  //      its event listeners to this window.
+  // Default to "synced" when the flag is missing (e.g. the very first
+  // window opened at startup before BrowserWindowTracker's openWindow has
+  // run — Firefox itself creates that one) so the master pref's "synced
+  // by default" stance still applies.
+  (() => {
+    const flag = window._bentoStartupSyncFlag === 'unsynced' ? 'unsynced' : 'synced';
+    if (flag === 'synced') {
+      document.documentElement.setAttribute('bento-synced-window', 'true');
+    } else {
+      document.documentElement.setAttribute('bento-unsynced-window', 'true');
+    }
+    console.log('[bento-shell-mount] sync flag:', flag);
+  })();
+
+  // Cmd+Shift+Alt+N (macOS) / Ctrl+Shift+Alt+N (others) → open a new
+  // UNSYNCED window. Bound via capture-phase listener on window so we
+  // intercept the event BEFORE Firefox's XUL <key> element bindings get
+  // a chance — XUL <key> matching is sometimes lax about extra
+  // modifiers, so Cmd+Shift+Alt+N can accidentally trigger
+  // key_privatebrowsing (Cmd+Shift+N) or even key_newNavigator (Cmd+N)
+  // depending on the Firefox version's matching rules. preventDefault +
+  // stopImmediatePropagation in the capture phase aborts the chain
+  // before chrome <key>-derived handlers fire. The default Cmd+N path
+  // continues to go through OpenBrowserWindow() with no explicit
+  // bentoSyncedWindow option (→ synced via the openWindow default).
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!e.altKey || !e.shiftKey) return;
+      const isAccel = e.metaKey || e.ctrlKey;
+      if (!isAccel) return;
+      if (e.code !== 'KeyN') return;
+      console.log(
+        '[bento-shell-mount] cmd_bentoNewNavigatorUnsynced fired',
+        { meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, code: e.code },
+      );
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      try {
+        if (typeof window.OpenBrowserWindow === 'function') {
+          window.OpenBrowserWindow({ bentoSyncedWindow: false });
+        } else {
+          console.warn(
+            '[bento-shell-mount] OpenBrowserWindow not defined — cannot open unsynced window',
+          );
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] cmd_bentoNewNavigatorUnsynced failed:', err);
+      }
+    },
+    true /* capture */,
+  );
+
   // Tale UI design tokens for chrome. The token CSS is generated from
   // tale-ui source by scripts/generate-chrome-tokens.mjs (runs as part
   // of `pnpm run import`) and registered in chrome via patches/chrome-
@@ -1016,20 +1076,109 @@
     return 'moz-extension://' + policy.mozExtensionHostname + path;
   }
 
-  function setFrameSrc(frameId, path) {
+  // Resolve THIS chrome window's WebExtension windowId. We pass it
+  // through to every shell document we host (sidebar, palette, confirm,
+  // edit-workspace, etc.) as a `?bentoWindowId=<N>` query param so the
+  // shell document can stamp it on its outgoing dispatches via the
+  // WireAction `__windowId` envelope.
+  //
+  // Why not call browser.windows.getCurrent() from the shell document?
+  // Bento's chrome-mounted <browser> frames (e.g. #bento-shell-frame)
+  // are not regular tabs — they live directly in browser.xhtml, NOT in
+  // tabbrowser-tabpanels. From the shell's content process, getCurrent()
+  // typically resolves to the most-recently-focused chrome window, NOT
+  // the one hosting this <browser>. That's wrong when window A's shell
+  // is initializing while window B is focused — both windows then
+  // believe they're window B.
+  //
+  // Chrome-side `windowTracker.getId(window)` reads from the same
+  // BrowserWindowTracker the WebExtension API uses internally — same
+  // ID space the shell document would otherwise be trying (and failing)
+  // to resolve.
+  //
+  // Computed LAZILY at every setFrameSrc call (not once at module eval)
+  // because this script can run before the chrome window has finished
+  // registering with BrowserWindowTracker — early eval returns -1, the
+  // lazy retry path catches it on the next call after registration.
+  // Lazily importing on first call (and caching the result) is important:
+  // bento-shell-mount.js evaluates very early during browser.xhtml parse,
+  // which can be before `Extension.sys.mjs` has fully initialized the
+  // Management.global namespace. Repeated lookups would also be expensive.
+  // Sentinel `undefined` = "not yet attempted"; `null` = "attempted, gave up".
+  let __bentoWindowTracker /* : object|null|undefined */ = undefined;
+  function getChromeWindowId() {
+    if (__bentoWindowTracker === undefined) {
+      try {
+        const mod = ChromeUtils.importESModule('resource://gre/modules/Extension.sys.mjs');
+        __bentoWindowTracker = mod.Management?.global?.windowTracker || null;
+      } catch (err) {
+        console.warn('[bento-shell-mount] Extension.sys.mjs import failed:', err);
+        __bentoWindowTracker = null;
+      }
+    }
+    if (!__bentoWindowTracker) return null;
+    try {
+      const wid = __bentoWindowTracker.getId(window);
+      return typeof wid === 'number' && wid >= 0 ? wid : null;
+    } catch (err) {
+      console.warn('[bento-shell-mount] windowTracker.getId failed:', err);
+      return null;
+    }
+  }
+
+  // Hard cap on setFrameSrc retries when windowId isn't resolving yet —
+  // otherwise the spam can starve other startup work and the chrome
+  // window's shell never paints (observed: blank chrome from infinite
+  // retry loop). After this many failures, give up and load the URL
+  // WITHOUT the windowId param. The shell document then dispatches with
+  // __windowId=null and bento-tools falls back to legacy global semantics
+  // — degraded but still functional (matches pre-A.1 behaviour).
+  const SET_FRAME_SRC_MAX_RETRIES = 20; // ~1s @ 50ms
+
+  function setFrameSrc(frameId, path, attempt) {
+    const tries = typeof attempt === 'number' ? attempt : 0;
     const url = moz(path);
     if (!url) {
       // Extension hasn't loaded yet; try again on the next tick.
-      setTimeout(() => setFrameSrc(frameId, path), 50);
+      setTimeout(() => setFrameSrc(frameId, path, tries + 1), 50);
       return;
     }
     const frame = document.getElementById(frameId);
     if (!frame) return;
+    const windowId = getChromeWindowId();
+    if (windowId === null && tries < SET_FRAME_SRC_MAX_RETRIES) {
+      // Not yet — retry shortly. Capped via SET_FRAME_SRC_MAX_RETRIES so
+      // a permanently-missing windowTracker doesn't loop forever.
+      setTimeout(() => setFrameSrc(frameId, path, tries + 1), 50);
+      return;
+    }
+    // Stamp the windowId as a URL HASH (not a query string). Hashes are
+    // purely client-side fragments — they don't change the resource path
+    // Firefox loads, don't change the document's origin, and crucially
+    // don't trigger BrowsingContextGroup re-partitioning. Earlier we
+    // tried `?bentoWindowId=N` as a query string and observed that
+    // BroadcastChannel('bento-shell-bus') stopped delivering events from
+    // the singleton bento-shell background to the per-window shell
+    // documents — symptom: shells stuck on "connecting…" with skeleton
+    // rendering, because the channel can't cross BCG boundaries even
+    // within the same origin. The hash form sidesteps that entirely.
+    const finalUrl = windowId !== null ? url + '#bentoWindowId=' + windowId : url;
+    if (windowId === null) {
+      console.warn(
+        '[bento-shell-mount] setFrameSrc(' +
+          frameId +
+          '): giving up on windowId after ' +
+          tries +
+          ' retries; loading without hash (single-window fallback).',
+      );
+    } else {
+      console.log('[bento-shell-mount] setFrameSrc(' + frameId + ') windowId:', windowId);
+    }
     // setAttribute('src') works even before the <browser>'s webNavigation
     // is initialized; the loadURI APIs throw in that window. Stay with
     // setAttribute — the chrome process forwards the URL to the extension
     // content process when ready.
-    frame.setAttribute('src', url);
+    frame.setAttribute('src', finalUrl);
   }
 
   function setBentoShellSrc() {
@@ -1423,6 +1572,15 @@
   // payload also carries the same uiColorMode field as a self-correcting
   // backstop in case this dedicated message races with a panels/sync.
   const COLOR_MODE_PREFIX = 'BENTO_COLOR_MODE:';
+  // Sidebar drag-to-reorder. Title format:
+  //   BENTO_TAB_MOVE:<ts>:<srcTabId>:<anchorTabId>:<before|after>
+  // Calls gBrowser.moveTabBefore / moveTabAfter so the dragged tab lands
+  // immediately before/after the anchor. browser.tabs.move would route
+  // through Firefox's moveTabTo which does `element = element.splitview`
+  // and then throws on Bento's plain-object splitview marker — chrome's
+  // moveTabBefore/After skip that transformation and preserve tab
+  // identity, so dragging the currently-active (panel-marked) tab works.
+  const TAB_MOVE_PREFIX = 'BENTO_TAB_MOVE:';
 
   // Drive Tale UI's color-mode cascade in chrome by setting
   // data-color-mode on the chrome window's <window> root.
@@ -3498,6 +3656,37 @@
     return dominantDelta * unit;
   }
 
+  // Horizontal scroll anywhere on chrome (sidebar, panel headers, gaps
+  // between panels) routes to the panel strip. Gives the user a reliable
+  // place to rest the cursor and scroll the strip without panels'
+  // horizontally-overflowing web content stealing the scroll. Skips
+  // events targeting web content (<browser>) so pages keep handling
+  // their own horizontal scroll. Skips modifier gestures so it doesn't
+  // collide with Shift+wheel (panel cycling) or Ctrl/Cmd+wheel (zoom).
+  function onChromeHorizontalWheel(e) {
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    const target = e.target;
+    if (target?.localName === 'browser') return;
+    if (typeof target?.closest === 'function' && target.closest('browser')) return;
+    // Only act on horizontal-dominant deltas. A tie (deltaX === deltaY)
+    // is ambiguous; defer to native handling.
+    const ax = Math.abs(e.deltaX);
+    const ay = Math.abs(e.deltaY);
+    if (ax === 0 || ax <= ay) return;
+    const stripTarget = getStripScrollTarget();
+    if (!stripTarget) return;
+    const linePx = SCROLL_LINE_PX;
+    const pagePx = Math.max(linePx, window.innerWidth || 800);
+    const unit =
+      e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? linePx
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? pagePx
+          : 1;
+    e.preventDefault();
+    stripTarget.scrollLeft += e.deltaX * unit;
+  }
+
   function onPanelStripWheel(e) {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (!shouldHandlePanelArrowKey(e.target)) return;
@@ -3588,6 +3777,19 @@
     // position DOES update on scroll though.
     host.addEventListener('scroll', updateStripScrollbar, { passive: true });
     host.addEventListener('wheel', onPanelStripWheel, { capture: true, passive: false });
+    // Chrome-wide horizontal-wheel intercept: any side-scroll over the
+    // chrome (sidebar, panel headers, between-panel gaps) scrolls the
+    // panel strip, so the user always has a reliable surface to rest
+    // the cursor on. Capture-phase so it sees the event before any
+    // chrome scroll container's native handling; preventDefault on
+    // matched events prevents double-scroll. Web content (<browser>)
+    // is excluded inside the handler so pages keep their own
+    // horizontal scrolling. Once-per-window; setupPanelNavigator runs
+    // exactly once at chrome boot.
+    window.addEventListener('wheel', onChromeHorizontalWheel, {
+      capture: true,
+      passive: false,
+    });
     // Splitters live in bento-side-panel-host (not tabpanels) because
     // tabpanels' XUL deck refuses to paint non-panel children, so
     // they don't follow tabpanels' horizontal scroll automatically.
@@ -4624,6 +4826,58 @@
     if (mainEl) scrollPanelToLeftmost(mainEl);
   }
 
+  // Sidebar drag-to-reorder. Resolves srcTabId + anchorTabId (WebExtension
+  // ids from bento-tools' TabRegistry) to <tab> DOM elements via the same
+  // tabTracker the panel reconciler uses, then calls
+  // gBrowser.moveTabBefore / moveTabAfter. Those APIs operate on element
+  // references (no `element.splitview` transformation), so the
+  // currently-active tab — which has Bento's plain-object .splitview
+  // marker — moves correctly. Firefox's tab-moved event fires from
+  // gBrowser; bento-tools' TabRegistry.#onMoved catches it and emits the
+  // `updated` delta that refreshes the sidebar mirror, so the visual
+  // reorder rides the same pipeline as any other tab-index change.
+  function handleTabMoveTitle(rawTitle) {
+    // Format: BENTO_TAB_MOVE:<ts>:<srcId>:<anchorId>:<before|after>
+    const tail = rawTitle.slice(TAB_MOVE_PREFIX.length);
+    const parts = tail.split(':');
+    if (parts.length !== 4) return;
+    const srcId = Number.parseInt(parts[1], 10);
+    const anchorId = Number.parseInt(parts[2], 10);
+    const side = parts[3];
+    if (!Number.isInteger(srcId) || !Number.isInteger(anchorId)) return;
+    if (side !== 'before' && side !== 'after') return;
+    let tabTracker;
+    try {
+      const mod = ChromeUtils.importESModule('resource://gre/modules/ExtensionParent.sys.mjs');
+      tabTracker = mod.ExtensionParent?.apiManager?.global?.tabTracker;
+    } catch (err) {
+      console.warn('[bento-shell-mount] BENTO_TAB_MOVE: tabTracker import failed:', err);
+      return;
+    }
+    if (!tabTracker) return;
+    let srcTab;
+    let anchorTab;
+    try {
+      srcTab = tabTracker.getTab(srcId);
+      anchorTab = tabTracker.getTab(anchorId);
+    } catch {
+      // One of the tabs was closed between the drop and now — drop the
+      // reorder silently. The sidebar will reflect the gone tab via its
+      // own removed-delta path.
+      return;
+    }
+    if (!srcTab || !anchorTab || srcTab === anchorTab) return;
+    try {
+      if (side === 'before') {
+        window.gBrowser.moveTabBefore(srcTab, anchorTab);
+      } else {
+        window.gBrowser.moveTabAfter(srcTab, anchorTab);
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] BENTO_TAB_MOVE: gBrowser.moveTab* failed:', err);
+    }
+  }
+
   // Click-into-partial-panel auto-scroll. When the user clicks inside
   // a panel's <browser> content, Firefox's focus engine routes chrome
   // focus to that <browser> element — focusin fires on chrome's
@@ -4974,10 +5228,16 @@
       console.warn('[bento-shell-mount] failed to decode BENTO_PANELS payload:', e);
       return;
     }
-    // Payload shape: { workspaceId: string|null, panels: Array<{tabId, ...}> }.
-    // workspaceId is the currently-active Bento workspace; chrome stores it
-    // so the Cmd+1..9 handler can scope tab activation. The panels array
-    // drives the side-panel strip reconcile.
+    // Payload shape: { workspaceId, panels, windowId?, ... }.
+    // workspaceId is the currently-active Bento workspace for THIS WINDOW
+    // (phase A.4 — per-window active workspace); chrome stores it so the
+    // Cmd+1..9 handler can scope tab activation. The panels array drives
+    // the side-panel strip reconcile. windowId is informational — each
+    // chrome window reads its own document.title intrinsically, but the
+    // shell stamps the originating window for cross-window debugging /
+    // future validation. We don't strictly need to act on windowId (the
+    // per-window-ness is already implicit in document.title scope) but
+    // we log it so a mismatched payload would be visible.
     let panels;
     if (Array.isArray(decoded)) {
       panels = decoded;
@@ -4985,6 +5245,17 @@
       panels = decoded.panels;
       const incomingWorkspaceId =
         typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
+      if (typeof decoded.windowId === 'number') {
+        // No window-ID validation against gBrowser here yet — chrome
+        // can't trivially resolve "my own WebExtension windowId" without
+        // a hop through ExtensionParent.windowTracker. Phase F's
+        // workspace mirroring will revisit this when per-window
+        // routing becomes load-bearing. For now, the per-window
+        // selector in useToolsPort already ensures each shell only
+        // writes its own window's title.
+        // eslint-disable-next-line no-unused-expressions
+        decoded.windowId; // documented presence; informational only
+      }
       // Workspace just changed — flag the next reconcile so the main
       // panel gets a one-shot CSS width transition. Without this the
       // sequence is: TabSelect fires immediately (new tab content swaps
@@ -5132,7 +5403,21 @@
         const title = wsSwitcherFrame.contentTitle || '';
         if (title === lastSeenWsSwitcherTitle) return;
         lastSeenWsSwitcherTitle = title;
-        if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) hideWorkspaceSwitcher();
+        if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) {
+          hideWorkspaceSwitcher();
+        } else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
+          // "Edit <workspace>" menu item: the overlay set this title
+          // when forwarding to the edit-workspace modal. The payload
+          // already reached the edit overlay via BroadcastChannel;
+          // we just need to swap the visible host here.
+          hideWorkspaceSwitcher();
+          showEditWorkspace();
+        } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+          // "Delete <workspace>" menu item with tabs: forwards to the
+          // destructive-confirm modal. Same swap as edit above.
+          hideWorkspaceSwitcher();
+          showConfirm();
+        }
       }, 200);
     }
 
@@ -5159,6 +5444,7 @@
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
           else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
           else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
+          else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
           else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
           else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
         }

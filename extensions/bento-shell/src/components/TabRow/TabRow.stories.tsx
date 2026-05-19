@@ -239,3 +239,47 @@ export const CollapsedDiscarded = () => {
 };
 
 CollapsedDiscarded.storyName = 'Collapsed — discarded (dimmed favicon)';
+
+export const Dragging = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false }));
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabRow
+        id={1}
+        active={false}
+        dragging
+        onActivate={noop}
+        onClose={noop}
+        onOpenInSidePanel={noop}
+        onDragStart={noop}
+        onDragEnd={noop}
+      />
+    </SidebarFrame>
+  );
+};
+
+Dragging.storyName = 'Dragging (source row dim)';
+
+export const DraggingActive = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: true }));
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabRow
+        id={1}
+        active
+        dragging
+        onActivate={noop}
+        onClose={noop}
+        onOpenInSidePanel={noop}
+        onDragStart={noop}
+        onDragEnd={noop}
+      />
+    </SidebarFrame>
+  );
+};
+
+DraggingActive.storyName = 'Dragging — active tab';

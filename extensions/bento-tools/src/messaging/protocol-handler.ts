@@ -6,7 +6,7 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
-import type { Action, Event, PrivacySettings } from '@shared/protocol';
+import type { Action, Event, PrivacySettings, WireAction } from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
@@ -51,13 +51,79 @@ export interface HandlerContext {
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
   syncPanelMarkers: (workspaceId: string) => void;
+  /** WebExtension windowId of the chrome window whose shell document
+   * dispatched the current action. Plumbed via the WireAction `__windowId`
+   * envelope. Null for actions that arrived before the shell document
+   * resolved its windowId (the brief async gap between mount and
+   * `browser.windows.getCurrent()` resolving), for tools-internal
+   * dispatches that bypass the bus (none today), and for any future
+   * caller that doesn't know its window. Phase A handlers that don't
+   * need per-window routing simply ignore it; phases B+ that DO need it
+   * fall back to legacy single-window behaviour when null so this stays
+   * additive. */
+  sourceWindowId: number | null;
 }
 
-export function handle(action: Action, ctx: HandlerContext): void {
+export function handle(wireAction: WireAction, ctx: HandlerContext): void {
+  // Strip the routing envelope so the rest of the handler sees a clean
+  // Action (existing exhaustive switch keeps working unchanged). The
+  // windowId is exposed via ctx.sourceWindowId — set by the caller
+  // (background.ts) before invoking handle(), so this function doesn't
+  // need to extract it; it just narrows the type back to Action.
+  const action: Action = wireAction;
   switch (action.type) {
     case 'ping':
       ctx.send({ type: 'pong', ts: Date.now() });
       return;
+    case 'shell/hello': {
+      console.log(
+        '[bento-tools] shell/hello — windowId',
+        action.windowId,
+        '(sourceWindowId from envelope:',
+        ctx.sourceWindowId,
+        ')',
+      );
+      // Auto-assign this window an active workspace if it doesn't already
+      // own one. The "one workspace per window" invariant means we can't
+      // have window B silently inherit window A's workspace — the panel
+      // reconciler can't render the same tabs in two windows (Phase C
+      // territory) and trying to do so produces missing panels and
+      // workspace-switcher confusion. Picking the first available
+      // workspace ensures each window has its own isolated state from
+      // the moment it connects. When every workspace is taken (more
+      // windows than workspaces), create a fresh one automatically —
+      // leaving the window in a "No workspace" empty state has been
+      // user-reported as confusing and also breaks the chrome color-
+      // mode plumbing (which rides on panels/sync, which only fires for
+      // a window with an active workspace).
+      const wid = action.windowId;
+      if (typeof wid === 'number' && wid >= 0) {
+        let picked = ctx.workspaces.assignAvailable(wid);
+        if (!picked) {
+          const existing = ctx.workspaces.snapshot().workspaces;
+          // Pick "Workspace 2", "Workspace 3", … skipping names already
+          // taken so a delete-and-recreate cycle doesn't collide.
+          const taken = new Set(existing.map((w) => w.name));
+          let idx = existing.length + 1;
+          let name = `Workspace ${idx}`;
+          while (taken.has(name)) {
+            idx += 1;
+            name = `Workspace ${idx}`;
+          }
+          const ws = ctx.workspaces.create({ name }, wid);
+          picked = ws.id;
+          console.log(
+            '[bento-tools] shell/hello — no available workspace, created',
+            name,
+            'for window',
+            wid,
+          );
+        } else {
+          console.log('[bento-tools] shell/hello — assigned window', wid, '→ workspace', picked);
+        }
+      }
+      return;
+    }
     case 'tabs/requestSnapshot':
       ctx.send({ type: 'tabs/snapshot', tabs: ctx.tabs.snapshot() });
       return;
@@ -120,11 +186,19 @@ export function handle(action: Action, ctx: HandlerContext): void {
         type: 'workspaces/snapshot',
         workspaces: snap.workspaces,
         activeId: snap.activeId,
+        activeIdByWindow: snap.activeIdByWindow,
       });
       return;
     }
     case 'workspace/create':
-      ctx.workspaces.create({ name: action.name, color: action.color, icon: action.icon });
+      // Per-window auto-activation: when the requesting shell knows its
+      // windowId, the new workspace foregrounds only in that window.
+      // Other windows keep whatever they were on. Falls back to global
+      // activation when sourceWindowId is null (legacy / dev-loop).
+      ctx.workspaces.create(
+        { name: action.name, color: action.color, icon: action.icon },
+        ctx.sourceWindowId,
+      );
       return;
     case 'workspace/rename':
       ctx.workspaces.rename(action.id, action.name);
@@ -158,9 +232,33 @@ export function handle(action: Action, ctx: HandlerContext): void {
       ctx.workspaces.delete(action.id);
       return;
     }
-    case 'workspace/activate':
-      ctx.workspaces.activate(action.id);
+    case 'workspace/activate': {
+      // Scope the activation to the requesting window when available.
+      // sourceWindowId null falls back to legacy global activation so
+      // older shells / tools-internal callers keep working unchanged.
+      const result = ctx.workspaces.activate(action.id, ctx.sourceWindowId);
+      if (result === 'conflict') {
+        // Another window already owns this workspace. Bento enforces
+        // "one workspace per window" because two windows rendering the
+        // same workspace's panels currently produce broken state (the
+        // panel reconciler resolves panel tabs against gBrowser, which
+        // is per-window — Phase C twin-tabs will fix this and let
+        // synced display work). Until then, the friendlier behaviour is
+        // to focus the window already showing the workspace. The
+        // requesting shell's UI will reconcile on its next workspaces/
+        // changed delta (its activeIdByWindow entry stays unchanged
+        // since no 'activated' delta fired).
+        const owner = ctx.workspaces.findOwningWindow(action.id);
+        if (owner !== null) {
+          browser.windows
+            .update(owner, { focused: true })
+            .catch((err) =>
+              console.warn('[bento-tools] workspace/activate: focus owner failed:', err),
+            );
+        }
+      }
       return;
+    }
     case 'settings/requestSnapshot':
       ctx.send({ type: 'settings/snapshot', settings: ctx.settings.snapshot() });
       return;
@@ -171,7 +269,7 @@ export function handle(action: Action, ctx: HandlerContext): void {
       ctx.settings.reset();
       return;
     case 'panel/add': {
-      const wsId = ctx.workspaces.getActiveId();
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       if (ctx.panels.add(wsId, action.id)) {
         // Stamp the configured default width so the new panel renders
@@ -189,7 +287,7 @@ export function handle(action: Action, ctx: HandlerContext): void {
       return;
     }
     case 'panel/openAt': {
-      const wsId = ctx.workspaces.getActiveId();
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       // Compute insert position from sourceTabId:
       //   null  → 0 (immediately right of main panel)
@@ -219,7 +317,7 @@ export function handle(action: Action, ctx: HandlerContext): void {
       return;
     }
     case 'panel/remove': {
-      const wsId = ctx.workspaces.getActiveId();
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       if (ctx.panels.remove(wsId, action.id)) {
         void clearPanelMarker(action.id);
@@ -229,7 +327,7 @@ export function handle(action: Action, ctx: HandlerContext): void {
       return;
     }
     case 'panels/clear': {
-      const wsId = ctx.workspaces.getActiveId();
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       const current = ctx.panels.getPanels(wsId);
       if (current.length === 0) return;
@@ -241,7 +339,7 @@ export function handle(action: Action, ctx: HandlerContext): void {
       return;
     }
     case 'panel/reorder': {
-      const wsId = ctx.workspaces.getActiveId();
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       if (ctx.panels.reorder(wsId, action.tabIds)) {
         ctx.syncPanelMarkers(wsId);
@@ -264,8 +362,10 @@ export function handle(action: Action, ctx: HandlerContext): void {
       // Per-active-workspace. Same no-emit-after-set reasoning as
       // panel/setWidth — chrome already has the live width on the
       // main slot's element. Stored against the active workspace
-      // so workspace switches restore the correct main width.
-      const wsId = ctx.workspaces.getActiveId();
+      // so workspace switches restore the correct main width. Reads
+      // the source window's active workspace so window A and window B
+      // can carry different main widths for different workspaces.
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       ctx.panels.setMainWidth(wsId, action.widthPx);
       return;

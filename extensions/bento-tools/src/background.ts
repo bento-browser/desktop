@@ -12,7 +12,7 @@ import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
-import type { Action, BentoSettings, Event } from '@shared/protocol';
+import type { BentoSettings, Event, WireAction } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
 console.log('[bento-tools] boot', new Date().toISOString());
@@ -225,19 +225,45 @@ const bootReady = Promise.all([
       if (activeWs) void emitPanelsSync(activeWs);
     }
   });
+  // Phase G.1 — restore per-window active workspace from SessionStore
+  // before any backfill runs. Each window's `bento.activeWorkspaceId`
+  // session value was written by WorkspaceStore.activate / assignAvailable
+  // across the previous session; rehydrating it now means the downstream
+  // backfill (`getActiveId(windowId)`) sees the correct per-window
+  // workspace rather than the global fallback. Windows with no saved
+  // value (first launch, brand-new windows mid-session) fall through
+  // unchanged and pick up assignAvailable when their shell connects.
+  try {
+    const allWindows = await browser.windows.getAll();
+    for (const win of allWindows) {
+      if (typeof win.id !== 'number') continue;
+      await workspaces.restoreFromSession(win.id);
+    }
+  } catch (err) {
+    console.warn('[bento-tools] per-window workspace restore failed:', err);
+  }
+
+  // Boot-time global active workspace, used by the orchestration steps
+  // below (selected-tab activation, second backfill, panel restore).
+  // Pass null to getActiveId so it returns `#lastGlobalActiveId` — the
+  // persisted fallback that every window falls back to before activating
+  // its own per-window workspace.
+  const wsId = workspaces.getActiveId(null);
+
   // Backfill: any tab that hydrated WITHOUT a workspaceId (fresh profile,
   // tabs from a pre-workspaces session, or tabs Firefox restored before
   // bento-tools attached its session listener) gets assigned to the active
-  // workspace. The runtime onCreated path handles future tabs via the
-  // tabs.onDeltas listener below; this catches the boot-time gap that
-  // listener can't see (hydrated tabs are inserted directly into the map,
-  // they never emit a `created` delta).
-  const wsId = workspaces.getActiveId();
-  if (wsId) {
-    for (const tab of tabs.snapshot()) {
-      if (tab.workspaceId) continue;
-      void tabs.assignWorkspace(tab.id, wsId);
-    }
+  // workspace for ITS WINDOW. At cold boot, per-window state is empty so
+  // every getActiveId(windowId) falls back to #lastGlobalActiveId — same
+  // result as the pre-A.2 single-active behaviour. The per-window read
+  // matters after a session has been running (windows have activated
+  // their own workspaces) and the user opens an additional tab via a
+  // path that bypasses the runtime onCreated listener (rare; defensive).
+  for (const tab of tabs.snapshot()) {
+    if (tab.workspaceId) continue;
+    const tabWindowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
+    const wsForTab = workspaces.getActiveId(tabWindowId);
+    if (wsForTab) void tabs.assignWorkspace(tab.id, wsForTab);
   }
   // Wait for SessionStore restoration to settle. Firefox's session
   // restore fires browser.tabs.onCreated for each restored tab AFTER
@@ -448,6 +474,16 @@ tabs.onDeltas((deltas) => {
         // hasn't been updated yet but the persistent value IS present.
         // Only writes to sessions if there's truly no value AND we
         // need to assign to active.
+        //
+        // Per-window assignment (phase A): the tab's `windowId` is the
+        // chrome window it was created in. Use that window's per-
+        // window active workspace so a Cmd+T in window A (showing
+        // Personal) creates a Personal tab even when window B is on a
+        // different workspace. Without this, the assignment falls back
+        // to `#lastGlobalActiveId`, which is whatever the last GLOBAL
+        // activation set it to — typically wrong in multi-window use.
+        const sourceWindowId =
+          typeof d.tab.windowId === 'number' && d.tab.windowId >= 0 ? d.tab.windowId : null;
         void (async () => {
           const sessionWs = await browser.sessions
             .getTabValue(d.tab.id, 'bento.workspaceId')
@@ -456,7 +492,7 @@ tabs.onDeltas((deltas) => {
             tabs.setWorkspaceInMemory(d.tab.id, sessionWs);
             return;
           }
-          const wsId = workspaces.getActiveId();
+          const wsId = workspaces.getActiveId(sourceWindowId);
           if (wsId) void tabs.assignWorkspace(d.tab.id, wsId);
         })();
       }
@@ -531,7 +567,12 @@ tabs.onDeltas((deltas) => {
 // onCreated time.
 const handledAddPanelMarker = new Set<number>();
 
-function maybeHandleAddPanelMarker(tabId: number, url: string, source: string): void {
+function maybeHandleAddPanelMarker(
+  tabId: number,
+  url: string,
+  source: string,
+  windowId: number | null,
+): void {
   if (handledAddPanelMarker.has(tabId)) return;
   if (!url.includes('bento_add_as_panel=1')) return;
   handledAddPanelMarker.add(tabId);
@@ -542,8 +583,10 @@ function maybeHandleAddPanelMarker(tabId: number, url: string, source: string): 
   // substitutes about:newtab in createPanelElement when it sees the
   // marker URL, so the panel renders the new-tab page regardless of
   // chrome's redirect timing. Our only job here is to add the tab to
-  // the active workspace's panel list and broadcast.
-  const wsId = workspaces.getActiveId();
+  // THAT WINDOW's active workspace's panel list and broadcast — the
+  // "+" button lives in a per-window chrome strip so the panel belongs
+  // to the window's own active workspace, not the global fallback.
+  const wsId = workspaces.getActiveId(windowId);
   if (!wsId) {
     console.warn('[bento-tools] add-as-panel: no active workspace, dropping');
     return;
@@ -655,7 +698,8 @@ browser.tabs.onCreated.addListener((tab) => {
   // tabs.onActivated handler awaits readPanelMarker and, on a miss,
   // overwrites lastActiveNonPanelTabId with the new (panel) tab's id.
   const previousNonPanelTabId = lastActiveNonPanelTabId;
-  maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated');
+  const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
+  maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated', windowId);
   void maybeRestorePanelFromMarker(tab.id, previousNonPanelTabId);
 });
 
@@ -681,11 +725,162 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 });
 
-browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     console.log('[bento-tools] tabs.onUpdated url change:', tabId, '→', changeInfo.url);
-    maybeHandleAddPanelMarker(tabId, changeInfo.url, 'onUpdated');
+    const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
+    maybeHandleAddPanelMarker(tabId, changeInfo.url, 'onUpdated', windowId);
   }
+});
+
+// Release per-window workspace ownership when a chrome window closes so
+// the workspace it was displaying becomes available to other windows
+// (or to a future re-opened window). Without this, closing a window
+// would leave its workspace permanently "taken" in
+// WorkspaceStore.#activeIdByWindow — assignAvailable on the next new
+// window would skip past it, and workspace/activate would forever
+// route to a windowId that no longer exists (browser.windows.update
+// would throw, but the activation would have been refused anyway).
+browser.windows.onRemoved.addListener((windowId) => {
+  console.log('[bento-tools] windows.onRemoved:', windowId);
+  workspaces.forgetWindow(windowId);
+});
+
+// When the last tab in a window's ACTIVE workspace is closed, close the
+// whole window — match the user's "Cmd+W until done" intent rather than
+// letting Firefox's default tab-close logic auto-select an orphan tab
+// from a workspace this window previously owned. Without this:
+//   1. If the window has orphan tabs from a prior workspace (left
+//      behind when the user switched workspace earlier), Firefox makes
+//      one of them active — the user is suddenly viewing a tab whose
+//      workspace isn't in the sidebar.
+//   2. If gBrowser is truly empty (no orphans), Firefox closes the
+//      window naturally and focus jumps to the next window — continued
+//      Cmd+W eats the next window's tabs, which the user reads as
+//      "Cmd+W is closing tabs in other workspaces".
+// Closing the window explicitly resolves both: window goes away, focus
+// jumps next time the user clicks (or via Cmd+`), and the next Cmd+W
+// closes a tab in whichever window is now focused — predictable.
+// An earlier iteration auto-spawned a fresh tab here; that produced an
+// infinite Cmd+W spin (spawn → close → spawn) and was reverted.
+//
+// Use Cmd+Shift+W if you want to close the window with tabs still in
+// the workspace; that path doesn't touch this handler.
+browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  // Firefox is already tearing the window down (last-tab close or
+  // window-close API) — don't double-close.
+  if (removeInfo.isWindowClosing) return;
+  const windowId =
+    typeof removeInfo.windowId === 'number' && removeInfo.windowId >= 0
+      ? removeInfo.windowId
+      : null;
+  if (windowId === null) return;
+  const activeWsId = workspaces.getActiveId(windowId);
+  if (!activeWsId) return;
+  // Filter the just-removed tab out explicitly because the
+  // browser.tabs.onRemoved → TabRegistry-onRemoved propagation isn't
+  // guaranteed to run before this handler.
+  const panelTabIds = panels.getPanels(activeWsId);
+  const panelTabIdsSet = new Set(panelTabIds);
+  const remaining = tabs
+    .snapshot()
+    .filter(
+      (t) =>
+        t.id !== tabId &&
+        t.windowId === windowId &&
+        t.workspaceId === activeWsId &&
+        !panelTabIdsSet.has(t.id),
+    );
+  if (remaining.length > 0) return;
+
+  // No sidebar (non-panel) tabs left. If the workspace still has panels,
+  // PROMOTE the leftmost panel into the main content slot rather than
+  // closing the workspace. The promotion is a panel-store / panels/sync
+  // mutation — the underlying Firefox tab keeps its docShell, so the
+  // chrome reconciler relocates the existing <browser> from the
+  // split-view slot to the main tabpanel without reloading the page
+  // (DOM move, not a navigate). Repeated Cmd+W then chews through one
+  // panel per press until the workspace is truly empty.
+  if (panelTabIds.length > 0) {
+    const promote = panelTabIds[0]!;
+    console.log(
+      '[bento-tools] sidebar tabs exhausted in workspace',
+      activeWsId,
+      '— promoting leftmost panel',
+      promote,
+      'to main slot',
+    );
+    if (panels.remove(activeWsId, promote)) {
+      void clearPanelMarker(promote);
+      syncPanelMarkersForWorkspace(activeWsId);
+      void emitPanelsSync(activeWsId);
+    }
+    // Activate the promoted tab so it takes over the main content slot.
+    // The chrome reconciler already removed it from the panel strip via
+    // the emitPanelsSync above; activating routes the tab through the
+    // normal selectedTab → main-slot rendering path. No reload because
+    // Firefox keeps the docShell live across the deck-position change.
+    browser.tabs
+      .update(promote, { active: true })
+      .catch((err) => console.warn('[bento-tools] promote-panel activate failed:', err));
+    return;
+  }
+
+  // Sidebar + panels both empty: delete the workspace and switch this
+  // window to the next available one. "Available" = exists AND not
+  // owned by another window AND not the one we're about to delete.
+  // Compute the candidate FIRST so we can fall back gracefully when
+  // there's nothing to switch to (no other workspace exists, or all
+  // others are taken by other windows): keep the empty workspace
+  // around and just close the window — a future window opening can
+  // pick it up via assignAvailable and the orchestrator will spawn a
+  // fresh tab on activation.
+  const wsList = workspaces.snapshot().workspaces;
+  const ownedByOthers = new Set(
+    Object.entries(workspaces.getActiveIdByWindow())
+      .filter(([k]) => Number(k) !== windowId)
+      .map(([, v]) => v),
+  );
+  const candidate = wsList.find((w) => w.id !== activeWsId && !ownedByOthers.has(w.id));
+
+  if (candidate) {
+    console.log(
+      '[bento-tools] workspace',
+      activeWsId,
+      'truly empty in window',
+      windowId,
+      '— deleting it and switching to',
+      candidate.id,
+    );
+    // Release ownership BEFORE delete so the delete()'s own
+    // "reassign every window that had this workspace" path is a no-op
+    // for us. We're handling our own reassignment via the activate()
+    // below to control which workspace we switch to (delete()'s
+    // fallback picks first-in-insertion-order, which can collide with
+    // another window's ownership).
+    workspaces.forgetWindow(windowId);
+    workspaces.delete(activeWsId);
+    const result = workspaces.activate(candidate.id, windowId);
+    if (result !== 'activated') {
+      console.warn(
+        '[bento-tools] post-delete activate returned',
+        result,
+        '— window may be left with no active workspace',
+      );
+    }
+    return;
+  }
+
+  console.log(
+    '[bento-tools] active workspace',
+    activeWsId,
+    'in window',
+    windowId,
+    'truly empty and no other workspace available — closing the window (workspace preserved)',
+  );
+  browser.windows
+    .remove(windowId)
+    .catch((err) => console.warn('[bento-tools] close-window-on-empty-workspace failed:', err));
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
@@ -705,6 +900,95 @@ browser.tabs.onRemoved.addListener((tabId) => {
 //      workspace's panels (could be empty, could be many — chrome handles
 //      both via the same reconciler).
 // Removed-workspace cleanup keeps the panel store from leaking entries.
+async function handleWorkspaceActivation(
+  wsId: string,
+  targetWindowId: number | null,
+): Promise<void> {
+  // (0) Cross-window tab move: with the "one workspace per window"
+  // invariant, a workspace's tabs (sidebar tabs AND panel tabs) follow
+  // workspace ownership. When window B claims a workspace whose tabs
+  // currently live in window A's gBrowser (orphans from a prior
+  // workspace switch, or panels created when another window owned
+  // this workspace), those tabs MUST relocate to B so the panel
+  // reconciler in B can materialize <browser> elements and the user
+  // can interact with them. Skipped for global activations (no
+  // windowId) — those are legacy/internal and don't have a target
+  // window. Filtered STRICTLY by workspaceId === wsId so other
+  // workspaces' tabs that happen to share a window aren't touched.
+  if (targetWindowId !== null) {
+    const stray = tabs
+      .snapshot()
+      .filter((t) => t.workspaceId === wsId && t.windowId !== targetWindowId)
+      .map((t) => t.id);
+    if (stray.length > 0) {
+      try {
+        await browser.tabs.move(stray, { windowId: targetWindowId, index: -1 });
+        console.log(
+          '[bento-tools] moved',
+          stray.length,
+          'tabs of workspace',
+          wsId,
+          '→ window',
+          targetWindowId,
+        );
+      } catch (err) {
+        console.warn('[bento-tools] cross-window tab move failed:', err);
+      }
+    }
+  }
+
+  // (1) Ensure the workspace has a tab and that tab is focused. Panel
+  // tabs are excluded from candidates here — they live in their own
+  // <browser> elements in the side strip, not the main panel, so
+  // making one the active gBrowser tab would put its content in the
+  // main panel area (where another panel browser is already showing
+  // the same URL). The sidebar's tab list also excludes panels via
+  // useWorkspaceTabIds, so this matches what the user sees.
+  //
+  // wsTabs is filtered globally (across all windows) for the legacy
+  // global-activation path. For per-window activations we additionally
+  // restrict to the target window — combined with the move step above,
+  // every wsId tab now lives in targetWindowId, so this filter just
+  // doubles as a safety check.
+  const panelTabIds = new Set(panels.getPanels(wsId));
+  const allWsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
+  const wsTabs =
+    targetWindowId !== null ? allWsTabs.filter((t) => t.windowId === targetWindowId) : allWsTabs;
+  if (wsTabs.length === 0) {
+    browser.tabs
+      .create({
+        active: true,
+        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+      })
+      .catch((err) => console.warn('[bento-tools] newtab for empty workspace failed:', err));
+  } else if (!wsTabs.some((t) => t.active)) {
+    // Restore the tab the user was last viewing in this workspace.
+    // Falls back to the first tab when memory is empty (first
+    // activation this session) or the remembered tab is gone /
+    // moved / now a panel — wsTabs.find returns undefined in those
+    // cases so the wsTabs[0] branch fires.
+    const remembered = lastActiveTabByWorkspace.get(wsId);
+    const target =
+      (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) || wsTabs[0]!;
+    browser.tabs
+      .update(target.id, { active: true })
+      .catch((err) => console.warn('[bento-tools] activate workspace tab failed:', err));
+  }
+
+  // (2) Lazy panel restore for inactive workspaces — runs once per
+  // workspace per session. takePersistedUrls clears the entry so a
+  // second activation is a no-op. restorePanelsForWorkspace also
+  // emits panels/sync at the end, so we skip the explicit sync below
+  // when restore actually had work to do.
+  const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
+  if (hadPersisted) {
+    void restorePanelsForWorkspace(wsId);
+  } else {
+    // (3) Sync panels for the now-active workspace.
+    void emitPanelsSync(wsId);
+  }
+}
+
 workspaces.onDeltas((deltas) => {
   for (const d of deltas) {
     if (d.kind === 'removed') {
@@ -713,47 +997,8 @@ workspaces.onDeltas((deltas) => {
       continue;
     }
     if (d.kind !== 'activated') continue;
-    const wsId = d.id;
-
-    // (1) Ensure the workspace has a tab and that tab is focused. Panel
-    // tabs are excluded from candidates here — they live in their own
-    // <browser> elements in the side strip, not the main panel, so
-    // making one the active gBrowser tab would put its content in the
-    // main panel area (where another panel browser is already showing
-    // the same URL). The sidebar's tab list also excludes panels via
-    // useWorkspaceTabIds, so this matches what the user sees.
-    const panelTabIds = new Set(panels.getPanels(wsId));
-    const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
-    if (wsTabs.length === 0) {
-      browser.tabs
-        .create({ active: true })
-        .catch((err) => console.warn('[bento-tools] newtab for empty workspace failed:', err));
-    } else if (!wsTabs.some((t) => t.active)) {
-      // Restore the tab the user was last viewing in this workspace.
-      // Falls back to the first tab when memory is empty (first
-      // activation this session) or the remembered tab is gone /
-      // moved / now a panel — wsTabs.find returns undefined in those
-      // cases so the wsTabs[0] branch fires.
-      const remembered = lastActiveTabByWorkspace.get(wsId);
-      const target =
-        (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) || wsTabs[0]!;
-      browser.tabs
-        .update(target.id, { active: true })
-        .catch((err) => console.warn('[bento-tools] activate workspace tab failed:', err));
-    }
-
-    // (2) Lazy panel restore for inactive workspaces — runs once per
-    // workspace per session. takePersistedUrls clears the entry so a
-    // second activation is a no-op. restorePanelsForWorkspace also
-    // emits panels/sync at the end, so we skip the explicit sync below
-    // when restore actually had work to do.
-    const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
-    if (hadPersisted) {
-      void restorePanelsForWorkspace(wsId);
-    } else {
-      // (3) Sync panels for the now-active workspace.
-      void emitPanelsSync(wsId);
-    }
+    const targetWindowId = typeof d.windowId === 'number' ? d.windowId : null;
+    void handleWorkspaceActivation(d.id, targetWindowId);
   }
 });
 
@@ -790,7 +1035,17 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onMessage.addListener((message: object) => {
-    handle(message as Action, {
+    const wireAction = message as WireAction;
+    // Extract the routing envelope's __windowId once and expose it on the
+    // handler context. The shell document stamps every dispatch with the
+    // WebExtension windowId of its chrome window; tools uses this to scope
+    // per-window state (active workspace, panels/sync emission). Null on
+    // older shell builds, on actions that fired before the document
+    // resolved its windowId, or in dev-loop scenarios where the bus is
+    // mocked. Handlers that need it should fall back to legacy global
+    // semantics when null (no breaking change for single-window use).
+    const sourceWindowId = typeof wireAction.__windowId === 'number' ? wireAction.__windowId : null;
+    handle(wireAction, {
       tabs,
       workspaces,
       settings,
@@ -798,6 +1053,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       send,
       emitPanelsSync,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
+      sourceWindowId,
     });
   });
 
@@ -819,7 +1075,12 @@ browser.runtime.onConnectExternal.addListener((port) => {
     send({ type: 'tools/booted', version: '0.0.0' });
     send({ type: 'tabs/snapshot', tabs: tabs.snapshot() });
     const wsSnap = workspaces.snapshot();
-    send({ type: 'workspaces/snapshot', workspaces: wsSnap.workspaces, activeId: wsSnap.activeId });
+    send({
+      type: 'workspaces/snapshot',
+      workspaces: wsSnap.workspaces,
+      activeId: wsSnap.activeId,
+      activeIdByWindow: wsSnap.activeIdByWindow,
+    });
     send({ type: 'settings/snapshot', settings: settings.snapshot() });
     // Replay panels for EVERY workspace so a freshly mounted shell can
     // pre-populate its per-workspace panelsStore. Without this, the

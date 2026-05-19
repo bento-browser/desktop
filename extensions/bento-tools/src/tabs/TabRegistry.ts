@@ -51,6 +51,14 @@ export class TabRegistry {
     browser.tabs.onRemoved.addListener(this.#onRemoved);
     browser.tabs.onActivated.addListener(this.#onActivated);
     browser.tabs.onMoved.addListener(this.#onMoved);
+    // onMoved fires only for WITHIN-window moves. Cross-window moves
+    // (browser.tabs.move with a different windowId) fire onDetached
+    // followed by onAttached. Tracking onAttached keeps the registry's
+    // tab.windowId in sync after a workspace-claim moves panel tabs
+    // from one window to another — without this the orchestrator's
+    // post-move snapshot would still show the old windowId and would
+    // re-move the tabs forever.
+    browser.tabs.onAttached.addListener(this.#onAttached);
 
     const all = await browser.tabs.query({});
     // Hydrate session-stored workspace assignments in parallel.
@@ -226,8 +234,51 @@ export class TabRegistry {
   #onMoved = (id: number, info: browser.tabs._OnMovedMoveInfo) => {
     const t = this.#tabs.get(id);
     if (!t) return;
-    t.index = info.toIndex;
-    this.#enqueue({ kind: 'updated', id, changes: { index: info.toIndex } });
+    // tabs.onMoved only fires for the explicitly-moved tab. Every other
+    // tab in the same window whose position changed to make room for
+    // (or fill the gap left by) the moved tab needs its mirror index
+    // updated too — otherwise the registry's snapshot has two tabs at
+    // the same index and recomputeOrder produces a stale ordering. The
+    // shift rule matches Firefox's internal tab-strip splice:
+    //   forward move (toIndex > fromIndex): tabs in (fromIndex, toIndex]
+    //     shift down by 1.
+    //   backward move (toIndex < fromIndex): tabs in [toIndex, fromIndex)
+    //     shift up by 1.
+    const { fromIndex, toIndex, windowId } = info;
+    if (toIndex > fromIndex) {
+      for (const other of this.#tabs.values()) {
+        if (other.id === id) continue;
+        if (other.windowId !== windowId) continue;
+        if (other.index > fromIndex && other.index <= toIndex) {
+          other.index -= 1;
+          this.#enqueue({ kind: 'updated', id: other.id, changes: { index: other.index } });
+        }
+      }
+    } else if (toIndex < fromIndex) {
+      for (const other of this.#tabs.values()) {
+        if (other.id === id) continue;
+        if (other.windowId !== windowId) continue;
+        if (other.index >= toIndex && other.index < fromIndex) {
+          other.index += 1;
+          this.#enqueue({ kind: 'updated', id: other.id, changes: { index: other.index } });
+        }
+      }
+    }
+    t.index = toIndex;
+    this.#enqueue({ kind: 'updated', id, changes: { index: toIndex } });
+  };
+
+  #onAttached = (id: number, info: browser.tabs._OnAttachedAttachInfo) => {
+    const t = this.#tabs.get(id);
+    if (!t) return;
+    if (t.windowId === info.newWindowId && t.index === info.newPosition) return;
+    t.windowId = info.newWindowId;
+    t.index = info.newPosition;
+    this.#enqueue({
+      kind: 'updated',
+      id,
+      changes: { windowId: info.newWindowId, index: info.newPosition },
+    });
   };
 
   #enqueue(delta: TabDelta): void {

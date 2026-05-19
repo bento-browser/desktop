@@ -4,8 +4,9 @@ import { Column } from '@tale-ui/react/column';
 import { Text } from '@tale-ui/react/text';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
-import { useWorkspacesStore } from '../../state/workspaces';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
+import { useCurrentWindowId } from '../../bridge/useToolsPort';
 import { TabRow } from '../TabRow/TabRow';
 import { TabListSkeleton } from './TabListSkeleton';
 import './TabList.css';
@@ -14,6 +15,16 @@ export interface TabListProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
+  /** Called when the user drops a tab at a new position. The dragged tab
+   * should land immediately before (`before=true`) or after (`before=false`)
+   * `anchorId` in the chrome window's tab strip. Anchor-based (not
+   * absolute-index-based) because Bento panels assign each active tab a
+   * plain-object `splitview` marker; browser.tabs.move's
+   * index-with-splitview-transformation throws on those tabs. Chrome's
+   * gBrowser.moveTabBefore / moveTabAfter operate on element references
+   * and preserve tab identity, so anchor coords map cleanly. Optional so
+   * stories can render without wiring a port. */
+  onReorder?: (id: number, anchorId: number, before: boolean) => void;
 }
 
 const ROW_HEIGHT_FALLBACK = 32;
@@ -111,6 +122,12 @@ interface TabListPaneProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
+  /** When defined, the pane enables HTML5 drag-and-drop reordering and
+   * calls back with (id, anchorId, before) once the user drops. The
+   * outgoing pane during a workspace-switch slide passes undefined so
+   * its rows aren't grabbable while sliding off (it is also
+   * pointer-events:none in CSS, but the prop gate is clearer). */
+  onReorder?: (id: number, anchorId: number, before: boolean) => void;
   className: string;
 }
 
@@ -127,11 +144,22 @@ function TabListPane({
   onActivate,
   onClose,
   onOpenInSidePanel,
+  onReorder,
   className,
 }: TabListPaneProps) {
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
   const parentRef = useRef<HTMLDivElement>(null);
   const [rowHeight, setRowHeight] = useState(ROW_HEIGHT_FALLBACK);
+  // Drag source — the tab id the user is currently grabbing, or null.
+  // Removed-but-fading rows in displayedIds keep their slot; locking the
+  // source id (not its filtered index) means the indicator math stays
+  // correct even if a fade-out and the drag overlap.
+  const [dragSourceId, setDragSourceId] = useState<number | null>(null);
+  // Drop slot — 0..displayedIds.length, where slot N means "insert above
+  // the row that currently occupies filtered position N" (and `length`
+  // means "drop at end"). Null when the cursor isn't over a valid drop
+  // target so the indicator hides.
+  const [dropSlot, setDropSlot] = useState<number | null>(null);
 
   // Persistent probe + ResizeObserver. Vite injects CSS asynchronously in
   // dev, so a one-shot read can race the stylesheet and fall back. Watching
@@ -163,6 +191,106 @@ function TabListPane({
     overscan: 5,
   });
 
+  // Translate the pointer's y position into a drop slot (0..displayedIds.length).
+  // Reads the viewport's scrollable coords, divides by the measured row
+  // height, then rounds toward the nearest gap (top-half = insert above,
+  // bottom-half = insert below). Returns null if the geometry isn't ready
+  // or the pointer is outside the viewport bounds.
+  const computeDropSlot = useCallback(
+    (clientY: number): number | null => {
+      const el = parentRef.current;
+      if (!el || rowHeight <= 0) return null;
+      const rect = el.getBoundingClientRect();
+      const relY = clientY - rect.top + el.scrollTop;
+      const len = displayedIds.length;
+      if (len === 0) return 0;
+      let slot = Math.round(relY / rowHeight);
+      if (slot < 0) slot = 0;
+      if (slot > len) slot = len;
+      return slot;
+    },
+    [rowHeight, displayedIds.length],
+  );
+
+  // Resolve the dragged tab's drop position to an anchor tab + side.
+  // Picks the displayed tab adjacent to the drop slot (after removing the
+  // source from the filtered list) and returns whether the dragged tab
+  // should be inserted before or after it. Returns null if state is
+  // incoherent (source not in displayedIds, empty list after removal,
+  // etc.) so the caller skips dispatch.
+  //
+  // Anchor-based (not absolute-index) because Bento marks each active
+  // tab's `.splitview` with a plain-object marker; Firefox's
+  // browser.tabs.move() transforms `element = element.splitview` inside
+  // moveTabTo, then throws "Can only move a tab, tab group, or split
+  // view within the tab bar" because the marker isn't a real
+  // MozTabSplitViewWrapper. Chrome's gBrowser.moveTabBefore/After don't
+  // do that transformation — they operate on the original element
+  // reference. So we pass anchor coords across title-IPC and let chrome
+  // call the safe API.
+  const resolveAnchor = useCallback(
+    (sourceId: number, hoverSlot: number): { anchorId: number; before: boolean } | null => {
+      const srcSlot = displayedIds.indexOf(sourceId);
+      if (srcSlot < 0) return null;
+      // Position in the source-removed displayed list (0..len-1 = slot
+      // after that index; len = drop at end).
+      const slotInRemoved = hoverSlot <= srcSlot ? hoverSlot : hoverSlot - 1;
+      const without = displayedIds.filter((id) => id !== sourceId);
+      if (without.length === 0) return null;
+      if (slotInRemoved >= without.length) {
+        const anchor = without[without.length - 1];
+        if (anchor === undefined) return null;
+        return { anchorId: anchor, before: false };
+      }
+      const anchor = without[slotInRemoved];
+      if (anchor === undefined) return null;
+      return { anchorId: anchor, before: true };
+    },
+    [displayedIds],
+  );
+
+  const onPaneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (dragSourceId === null) return;
+    // preventDefault opts this element in as a drop target — without it
+    // Firefox blocks the drop and the cursor shows a "not allowed"
+    // icon. dropEffect='move' mirrors the effectAllowed we set in
+    // onDragStart so the cursor reads as a reorder.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const slot = computeDropSlot(e.clientY);
+    if (slot !== null && slot !== dropSlot) setDropSlot(slot);
+  };
+
+  const onPaneDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    // dragleave fires when the cursor moves onto a child element too —
+    // ignore those by gating on relatedTarget being outside the pane.
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDropSlot(null);
+  };
+
+  const onPaneDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (dragSourceId === null) return;
+    e.preventDefault();
+    const slot = computeDropSlot(e.clientY);
+    const sourceId = dragSourceId;
+    setDropSlot(null);
+    setDragSourceId(null);
+    if (slot === null || !onReorder) return;
+    const anchor = resolveAnchor(sourceId, slot);
+    if (anchor === null || anchor.anchorId === sourceId) return;
+    onReorder(sourceId, anchor.anchorId, anchor.before);
+  };
+
+  const handleDragStart = useCallback((id: number) => {
+    setDragSourceId(id);
+    setDropSlot(null);
+  }, []);
+  const handleDragEnd = useCallback(() => {
+    setDragSourceId(null);
+    setDropSlot(null);
+  }, []);
+
   if (displayedIds.length === 0) {
     return (
       <Column gap="xs" align="center" className={`${className} bento-tab-list-pane--empty`}>
@@ -173,12 +301,27 @@ function TabListPane({
     );
   }
 
+  const dragEnabled = onReorder !== undefined;
+
   return (
-    <div ref={parentRef} className={className}>
+    <div
+      ref={parentRef}
+      className={className}
+      onDragOver={dragEnabled ? onPaneDragOver : undefined}
+      onDragLeave={dragEnabled ? onPaneDragLeave : undefined}
+      onDrop={dragEnabled ? onPaneDrop : undefined}
+    >
       <div
         className="bento-tab-list__viewport"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
       >
+        {dropSlot !== null && dragSourceId !== null && (
+          <div
+            className="bento-tab-list__drop-indicator"
+            style={{ transform: `translateY(${dropSlot * rowHeight}px)` }}
+            aria-hidden="true"
+          />
+        )}
         {virtualizer.getVirtualItems().map((vi) => {
           const id = displayedIds[vi.index];
           if (id === undefined) return null;
@@ -192,9 +335,12 @@ function TabListPane({
                 id={id}
                 active={id === activeId}
                 removing={removing.has(id)}
+                dragging={id === dragSourceId}
                 onActivate={onActivate}
                 onClose={onClose}
                 onOpenInSidePanel={onOpenInSidePanel}
+                onDragStart={dragEnabled ? handleDragStart : undefined}
+                onDragEnd={dragEnabled ? handleDragEnd : undefined}
               />
             </div>
           );
@@ -221,10 +367,22 @@ function TabListPane({
 // workspace that flash of all-tabs-at-once was visibly jarring. The
 // stage-level slide replaces it: the OLD pane carries OLD ids only, the
 // NEW pane carries NEW ids only, and the user sees a directional swap.
-export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps) {
-  const activeWorkspaceId = useWorkspacesStore((s) => s.activeId);
+export function TabList({ onActivate, onClose, onOpenInSidePanel, onReorder }: TabListProps) {
+  // Per-window active workspace (phase A.3): each chrome window's TabList
+  // resolves its active workspace via the document's captured windowId.
+  // Falls back to the global activeId when the windowId hasn't yet
+  // resolved or hasn't been activated per-window. Single-window users see
+  // no behavioural change; multi-window users get independent tab lists
+  // per window once they activate workspaces per-window.
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const workspaceOrder = useWorkspacesStore((s) => s.orderedIds);
-  const orderedIds = useWorkspaceTabIds(activeWorkspaceId);
+  // Pass windowId so the filter ALSO restricts to tabs in this window's
+  // gBrowser — cross-window tabs from another window with the same
+  // workspaceId aren't actionable here (clicking them activates them in
+  // their original window, not this one), so showing them confuses the
+  // user. See useWorkspaceTabIds for the full rationale.
+  const orderedIds = useWorkspaceTabIds(activeWorkspaceId, windowId);
   const activeId = useTabsStore((s) => s.activeId);
   // Readiness gate: render the skeleton until BOTH stores have hydrated
   // for the active workspace. tabsStore.hydrated flips on the first
@@ -320,6 +478,11 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel }: TabListProps
         onActivate={onActivate}
         onClose={onClose}
         onOpenInSidePanel={onOpenInSidePanel}
+        // Only the steady-state incoming pane allows reorder. The
+        // outgoing pane (rendered above during a workspace-switch slide)
+        // is mid-animation and pointer-events:none anyway; gating here
+        // also keeps `dragging` state from leaking between pane mounts.
+        onReorder={onReorder}
         className={incomingClass}
       />
     </div>

@@ -1,0 +1,36 @@
+diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
+index 2643e1a2aa..9093af5576 100644
+--- a/browser/components/tabbrowser/content/tabbrowser.js
++++ b/browser/components/tabbrowser/content/tabbrowser.js
+@@ -5469,11 +5469,16 @@
+         telemetrySource,
+       } = {}
+     ) {
+-      // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
+-      // can be considered equivalent to closing the window.
++      // Bento: hardcoded false — bento-tools' tabs.onRemoved handler is the
++      // sole authority on last-tab close behavior. When the last tab in a
++      // workspace is removed, the handler promotes a panel into the main
++      // slot, deletes the workspace and switches to the next, or closes
++      // the window. Letting Firefox short-circuit to closeWindow here
++      // pre-empts that decision. Replaces:
++      //   Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
+       if (
+         this.tabs.length == tabs.length &&
+-        Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
++        false
+       ) {
+         window.closeWindow(
+           true,
+@@ -5791,8 +5796,9 @@
+         closeWindow =
+           closeWindowWithLastTab != null
+             ? closeWindowWithLastTab
+-            : !window.toolbar.visible ||
+-              Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab");
++            // Bento: popup windows (no toolbar) still auto-close on last
++            // tab; toolbar windows defer to bento-tools' handler.
++            : !window.toolbar.visible;
+ 
+         if (closeWindow) {
+           // We've already called beforeunload on all the relevant tabs if we get here,
