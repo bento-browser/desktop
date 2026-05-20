@@ -3776,7 +3776,13 @@
     // override the user's selection. The custom scrollbar's thumb
     // position DOES update on scroll though.
     host.addEventListener('scroll', updateStripScrollbar, { passive: true });
-    host.addEventListener('wheel', onPanelStripWheel, { capture: true, passive: false });
+    // Shift+wheel panel cycling is attached to the strip CONTAINER, not
+    // just the panel host — so the gesture also works when the cursor
+    // is over the custom scrollbar (#bento-strip-scrollbar) or the
+    // favicon navigator (#bento-panel-nav) underneath the panels.
+    // Those are siblings of the host inside #bento-strip-container, so
+    // a listener on the host alone never sees their wheel events.
+    wrap.addEventListener('wheel', onPanelStripWheel, { capture: true, passive: false });
     // Chrome-wide horizontal-wheel intercept: any side-scroll over the
     // chrome (sidebar, panel headers, between-panel gaps) scrolls the
     // panel strip, so the user always has a reliable surface to rest
@@ -4257,7 +4263,22 @@
       for (const p of panels) {
         try {
           const t = tabTracker.getTab(p.tabId);
-          if (t) resolved.push({ tab: t, payload: p });
+          // Skip tabs that are being closed. Two flags are checked:
+          //   - tab.closing: Firefox's own flag, set in _beginRemoveTab
+          //     at line 5863 — but only AFTER _blurTab at line 5796 has
+          //     already fired TabSelect on the successor tab. So during
+          //     the FIRST reconcile triggered by _blurTab's TabSelect,
+          //     `tab.closing` is still false.
+          //   - tab.bentoClosing: our flag set in the _beginRemoveTab
+          //     wrapper above, BEFORE Firefox's own logic runs. This is
+          //     what catches the close-the-main-slot-panel case where
+          //     the closing tab would otherwise be re-rendered as a
+          //     strip panel for one frame (the "ghost panel" symptom).
+          // Both flags are checked because the wrapper might miss an
+          // edge-case path that bypasses _beginRemoveTab.
+          if (t && !t.closing && !t.bentoClosing) {
+            resolved.push({ tab: t, payload: p });
+          }
         } catch {
           // Tab might be gone (race with tab/close); skip
         }
@@ -5137,6 +5158,130 @@
       window.gBrowser.__bentoVisOverride = true;
     }
 
+    // Mark tabs as "bento-closing" at the START of _beginRemoveTab — before
+    // _blurTab fires TabSelect on a different tab. Firefox's _beginRemoveTab
+    // (tabbrowser.js:5730) sets aTab.closing=true at line 5863, but only
+    // AFTER it has already called _blurTab(aTab) at line 5796. _blurTab
+    // synchronously assigns selectedTab and dispatches TabSelect — which
+    // wakes the reconciler. So by the time the reconciler runs, the panels
+    // payload still contains the to-be-closed tab AND that tab's `.closing`
+    // is still false. The in-reconciler `!t.closing` filter is therefore
+    // a no-op for that specific reconcile.
+    //
+    // We can't safely reorder Firefox's own statements, but setting our
+    // own `t.bentoClosing` flag in a pre-call wrapper IS safe — the flag
+    // exists from the very first instruction of _beginRemoveTab and the
+    // reconciler checks it alongside `.closing`. Net effect: the closing
+    // tab is filtered out of `resolved` on the very first reconcile
+    // triggered by _blurTab, so no ghost strip-panel is rendered.
+    if (
+      window.gBrowser &&
+      typeof window.gBrowser._beginRemoveTab === 'function' &&
+      !window.gBrowser.__bentoBeginRemoveOverride
+    ) {
+      const originalBeginRemove = window.gBrowser._beginRemoveTab.bind(window.gBrowser);
+      window.gBrowser._beginRemoveTab = function (aTab, ...args) {
+        if (aTab) aTab.bentoClosing = true;
+        const ok = originalBeginRemove(aTab, ...args);
+        // _beginRemoveTab returns false when the close is rejected: tab
+        // already closing, window already closing, or beforeunload denied
+        // permitUnload. In the beforeunload-denied case the tab survives
+        // and must not stay filtered, otherwise it'd be excluded from
+        // every future reconcile.
+        if (!ok && aTab) aTab.bentoClosing = false;
+        return ok;
+      };
+      window.gBrowser.__bentoBeginRemoveOverride = true;
+    }
+
+    // Scope tab-close succession to the current workspace's sidebar tabs.
+    // Firefox's _findTabToBlurTo (tabbrowser.js:6231) picks "the next
+    // visible tab" when the selected tab is closed. In Bento, the global
+    // tab list is shared across workspaces, so Firefox's default
+    // succession can land on:
+    //   (a) a strip panel — promotes it to main, shifts every other
+    //       strip slot to fill the gap. Symptom: "strip shifts as if
+    //       the main slot itself is closing."
+    //   (b) a tab in another workspace (or unassigned) — the new
+    //       active is "foreign" and doesn't appear in the current
+    //       workspace's sidebar list. Symptom: "the tab that becomes
+    //       active is sometimes not one of the tabs in the workspace."
+    //
+    // Exclude both classes from succession. Firefox's existing fallback
+    // chain (successor → owner → next visible → collapsed-group) runs
+    // against the filtered set, landing on a current-workspace sidebar
+    // tab whenever one exists. If none remain (degenerate case: every
+    // other tab is a panel or foreign), fall back to the unfiltered
+    // original so we don't strand selectedTab at null.
+    //
+    // The bentoClosing pre-mark above is the orthogonal half of this
+    // fix: it filters the closing tab itself out of the reconciler's
+    // `resolved` list so it isn't re-rendered as a strip panel for one
+    // frame during the _blurTab-triggered reconcile.
+    if (
+      window.gBrowser &&
+      typeof window.gBrowser._findTabToBlurTo === 'function' &&
+      !window.gBrowser.__bentoFindTabOverride
+    ) {
+      const original = window.gBrowser._findTabToBlurTo.bind(window.gBrowser);
+      window.gBrowser._findTabToBlurTo = function (aTab, aExcludeTabs = []) {
+        const tabTracker = getTabTracker();
+        const SessionStore = getSessionStore();
+        const haveWorkspaceContext = currentWorkspaceId && SessionStore;
+        const havePanelContext = currentPanelTabIds.size > 0 && tabTracker;
+        if (haveWorkspaceContext || havePanelContext) {
+          const panelExtras = [];
+          const foreignExtras = [];
+          for (const tab of this.tabs) {
+            if (tab === aTab) continue;
+            if (havePanelContext) {
+              let webExtId = null;
+              try {
+                webExtId = tabTracker.getId(tab);
+              } catch {
+                /* tabTracker may transiently not know about a tab */
+              }
+              if (webExtId !== null && currentPanelTabIds.has(webExtId)) {
+                panelExtras.push(tab);
+                continue;
+              }
+            }
+            if (haveWorkspaceContext) {
+              let wsValue = null;
+              try {
+                const raw = SessionStore.getCustomTabValue(tab, WORKSPACE_SESSION_KEY);
+                if (raw) wsValue = JSON.parse(raw);
+              } catch {
+                /* tab without value, treat as null (foreign) */
+              }
+              if (wsValue !== currentWorkspaceId) {
+                foreignExtras.push(tab);
+              }
+            }
+          }
+          // Preference order:
+          //   1. Current-workspace sidebar tab (excludes both panels
+          //      and foreign/unassigned). Matches what the user sees
+          //      in the sidebar — the natural "next" tab.
+          //   2. Any non-panel tab (excludes panels only). Avoids the
+          //      strip-shift symptom; tolerates landing on a foreign
+          //      tab if no current-workspace sidebar tab exists.
+          //   3. Unfiltered original. Last-resort so selectedTab isn't
+          //      stranded at null when every other tab is a panel.
+          if (panelExtras.length > 0 || foreignExtras.length > 0) {
+            const tier1 = original(aTab, aExcludeTabs.concat(panelExtras, foreignExtras));
+            if (tier1) return tier1;
+          }
+          if (panelExtras.length > 0) {
+            const tier2 = original(aTab, aExcludeTabs.concat(panelExtras));
+            if (tier2) return tier2;
+          }
+        }
+        return original(aTab, aExcludeTabs);
+      };
+      window.gBrowser.__bentoFindTabOverride = true;
+    }
+
     let lastReconciledFor = null;
     const reconcile = (_source) => {
       const sel = window.gBrowser.selectedTab;
@@ -5889,7 +6034,22 @@
           events: { keydown: { capture: true } },
         },
         allFrames: true,
-        matches: ['*://*/*', 'file:///*'],
+        // *://*/* covers http(s)/ws(s); file:/// covers local files;
+        // moz-extension://*/* covers Bento's own in-panel pages (settings,
+        // privacy dashboard); about:newtab is where new panels land (see
+        // addNewPanel); about:blank is the transient marker URL panels sit
+        // at before the navigate-away setTimeout fires. Without these the
+        // actor doesn't attach inside the panel's <browser>, and since the
+        // chrome-side keydown handler bails when activeElement is <browser>
+        // (delegating to the actor), Left/Right cycling appears to "stop"
+        // whenever the focused panel is on one of these URLs.
+        matches: [
+          '*://*/*',
+          'file:///*',
+          'moz-extension://*/*',
+          'about:newtab',
+          'about:blank',
+        ],
       });
     } catch (err) {
       // NS_ERROR_NOT_AVAILABLE = already registered (second window).

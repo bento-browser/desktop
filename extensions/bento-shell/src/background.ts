@@ -32,9 +32,6 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let firstMessageReceived = false;
 
 let lastBooted: Event | null = null;
-let lastTabsSnapshot: Event | null = null;
-let lastWorkspacesSnapshot: Event | null = null;
-let lastSettingsSnapshot: Event | null = null;
 // Per-workspace — panels are workspace-scoped, so a single "latest" cache
 // would lose workspaces beyond whichever fired most recently. Hello-replay
 // walks every entry so a freshly-mounted document gets the full picture.
@@ -66,9 +63,6 @@ function connectTools(): void {
     }
     console.log('[bento-shell] tools said:', event.type);
     if (event.type === 'tools/booted') lastBooted = event;
-    if (event.type === 'tabs/snapshot') lastTabsSnapshot = event;
-    if (event.type === 'workspaces/snapshot') lastWorkspacesSnapshot = event;
-    if (event.type === 'settings/snapshot') lastSettingsSnapshot = event;
     if (event.type === 'panels/sync') {
       lastPanelsSyncByWorkspace.set(event.workspaceId, event);
     }
@@ -114,18 +108,39 @@ channel.addEventListener('message', (msg) => {
   }
 
   if (data.kind === 'hello') {
-    // New document came online — replay the cached state so it doesn't
-    // have to wait for the next delta from tools.
+    // New document came online — replay just enough state for it to
+    // bootstrap. The cached tabs/workspaces/settings snapshots are
+    // DELIBERATELY NOT broadcast: BroadcastChannel sends to every
+    // listener (joiner AND existing docs), and the bg's cache for
+    // those three lags behind live state — `tabs/changed` deltas
+    // update each document's mirror store directly, but they DO NOT
+    // update the cached snapshot. So a tab created via tab/openUrl
+    // sits in every doc's store but is missing from the cache until
+    // the next explicit tabs/requestSnapshot resolves. Replaying the
+    // cache here would broadcast that stale value over the channel,
+    // each existing doc would run applySnapshot (which REPLACES
+    // byId, not merges), and the freshly-created tab would vanish
+    // from the sidebar — re-appearing only when the joiner's own
+    // requestSnapshot dispatch comes back. Symptom: opening a
+    // settings/palette/confirm overlay wipes recently-created tabs
+    // out of the sidebar for a few frames.
+    //
+    // The joiner re-fetches tabs/workspaces/settings via its own
+    // useToolsPort handler on receipt of tools/booted (it dispatches
+    // tabs/requestSnapshot etc.); tools answers with a fresh
+    // snapshot that's broadcast to the whole channel, idempotent
+    // for existing docs whose state already matches.
+    //
+    // panels/sync IS replayed because its cache stays in lock-step
+    // with tools: every panel mutation triggers an emit, the bg
+    // captures each emit per workspace, so the cached value reflects
+    // current state. No staleness window.
     console.log(
-      '[bento-shell] document hello — replaying state (panels for',
+      '[bento-shell] document hello — replaying booted + panels for',
       lastPanelsSyncByWorkspace.size,
-      'workspaces)',
+      'workspaces (tabs/workspaces/settings re-requested by joiner)',
     );
     if (lastBooted) channel.postMessage({ kind: 'event', event: lastBooted });
-    if (lastTabsSnapshot) channel.postMessage({ kind: 'event', event: lastTabsSnapshot });
-    if (lastWorkspacesSnapshot)
-      channel.postMessage({ kind: 'event', event: lastWorkspacesSnapshot });
-    if (lastSettingsSnapshot) channel.postMessage({ kind: 'event', event: lastSettingsSnapshot });
     for (const event of lastPanelsSyncByWorkspace.values()) {
       channel.postMessage({ kind: 'event', event });
     }

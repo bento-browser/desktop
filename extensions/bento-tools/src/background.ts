@@ -209,20 +209,35 @@ const bootReady = Promise.all([
     settings.snapshot().sidebarCollapsed;
   settings.onChange((next) => {
     void applyContentColorMode(next.contentColorMode);
-    // Re-fire panels/sync for the active workspace whenever a
+    // Re-fire panels/sync for every active workspace whenever a
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed) so
     // chrome picks up the new value via the BENTO_PANELS title (which
     // carries those fields in its payload). The shell no longer writes
     // dedicated title channels for these — they raced BENTO_PANELS via
     // document.title and the shell would lose the panels message at
     // boot. Single channel = no race.
+    //
+    // CRITICAL: broadcast for every workspace currently active in any
+    // window, not just `getActiveId()` (which returns the GLOBAL
+    // fallback). Each window's chrome only honors panels/sync whose
+    // workspaceId matches THAT window's active workspace
+    // (useToolsPort.ts:218). If we broadcast only the global fallback
+    // (e.g. "Personal") while the user is on "Support" in their
+    // current window, the chrome filter rejects the message, the
+    // BENTO_PANELS title never updates, and only the sidebar (which
+    // caches uiColorMode in React state) reflects the change.
     const colorChanged = next.uiColorMode !== lastUiColorMode;
     const collapsedChanged = next.sidebarCollapsed !== lastSidebarCollapsed;
     if (colorChanged) lastUiColorMode = next.uiColorMode;
     if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
     if (colorChanged || collapsedChanged) {
-      const activeWs = workspaces.getActiveId();
-      if (activeWs) void emitPanelsSync(activeWs);
+      const targets = new Set<string>();
+      const globalActive = workspaces.getActiveId();
+      if (globalActive) targets.add(globalActive);
+      for (const wsId of Object.values(workspaces.getActiveIdByWindow())) {
+        if (wsId) targets.add(wsId);
+      }
+      for (const wsId of targets) void emitPanelsSync(wsId);
     }
   });
   // Phase G.1 — restore per-window active workspace from SessionStore

@@ -30,8 +30,12 @@ function openSettings() {
   // window.open opens a new window not a tab (Firefox decides per user
   // prefs). Resolving the URL via location.origin keeps it relative to
   // bento-shell's UUID without needing to ask tools.
+  //
+  // focusExisting: Settings is a singleton — repeated clicks should
+  // bring the existing tab forward rather than stack duplicates inside
+  // the workspace.
   const url = `${location.origin}/dist/settings.html`;
-  dispatch({ type: 'tab/openUrl', url });
+  dispatch({ type: 'tab/openUrl', url, focusExisting: true });
 }
 
 function openCommandPalette() {

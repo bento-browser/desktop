@@ -88,14 +88,16 @@ function useCommands(closePalette: () => void): Command[] {
   return useMemo(() => {
     const cmds: Command[] = [];
 
-    // Navigation
+    // Navigation. focusExisting: Settings and Privacy are singletons —
+    // re-running the command should bring the existing tab forward rather
+    // than stack duplicates inside the workspace.
     cmds.push({
       id: 'nav:settings',
       label: 'Open Settings',
       section: 'Navigation',
       icon: SettingsIcon,
       run: () => {
-        dispatch({ type: 'tab/openUrl', url: settingsUrl() });
+        dispatch({ type: 'tab/openUrl', url: settingsUrl(), focusExisting: true });
         closePalette();
       },
     });
@@ -105,7 +107,7 @@ function useCommands(closePalette: () => void): Command[] {
       section: 'Navigation',
       icon: ShieldIcon,
       run: () => {
-        dispatch({ type: 'tab/openUrl', url: privacyUrl() });
+        dispatch({ type: 'tab/openUrl', url: privacyUrl(), focusExisting: true });
         closePalette();
       },
     });

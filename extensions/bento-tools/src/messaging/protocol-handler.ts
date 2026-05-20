@@ -160,14 +160,80 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'tab/openUrl':
       // Background script always has browser.tabs available; the chrome-
       // mounted shell document doesn't, which is why this round-trip exists.
-      browser.tabs
-        .create({ url: action.url, active: action.active ?? true })
-        .catch((err) => console.warn('[bento-tools] tab/openUrl failed:', err));
+      //
+      // Pass `windowId` so the tab lands in the source window even when
+      // Firefox's "current window" tracking differs from the window the
+      // user actually clicked in. Eagerly assign workspaceId via
+      // TabRegistry so the 'updated' delta batches with the 'created'
+      // delta in a single rAF — without this, the sidebar's
+      // workspaceId filter excludes the new tab on first paint and only
+      // catches it after a workspace round-trip forces re-filter.
+      void (async () => {
+        try {
+          const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+          // focusExisting: if a tab with this URL already lives in the
+          // source workspace, activate it instead of stacking a
+          // duplicate. Used for singleton internal pages (Settings,
+          // Privacy). TabSnapshot doesn't carry `url` (§6.5 perf
+          // budget), so cross-reference workspace-membership from the
+          // registry with the URL from browser.tabs.query. Panel tabs
+          // are excluded because activating them as the main tab fires
+          // the panel-revert path in onActivated (background.ts) —
+          // briefly activates the panel then snaps back to the last
+          // non-panel tab, which the user reads as the click being
+          // ignored. Falling through to create-new gives them a real
+          // main-area Settings tab alongside the panel.
+          if (action.focusExisting && wsId) {
+            const panelIds = new Set(ctx.panels.getPanels(wsId));
+            const wsTabIds = new Set(
+              ctx.tabs
+                .snapshot()
+                .filter((t) => t.workspaceId === wsId && !panelIds.has(t.id))
+                .map((t) => t.id),
+            );
+            if (wsTabIds.size > 0) {
+              const candidates = await browser.tabs.query({ url: action.url });
+              const match = candidates.find((t) => typeof t.id === 'number' && wsTabIds.has(t.id));
+              if (match && typeof match.id === 'number') {
+                await browser.tabs.update(match.id, { active: true });
+                if (typeof match.windowId === 'number' && match.windowId >= 0) {
+                  await browser.windows
+                    .update(match.windowId, { focused: true })
+                    .catch((err) =>
+                      console.warn('[bento-tools] tab/openUrl: focus window failed:', err),
+                    );
+                }
+                return;
+              }
+            }
+          }
+          const created = await browser.tabs.create({
+            url: action.url,
+            active: action.active ?? true,
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof created.id !== 'number') return;
+          if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
+        } catch (err) {
+          console.warn('[bento-tools] tab/openUrl failed:', err);
+        }
+      })();
       return;
     case 'tab/create':
-      browser.tabs
-        .create({ active: action.active ?? true })
-        .catch((err) => console.warn('[bento-tools] tab/create failed:', err));
+      // Same windowId + eager-assign rationale as tab/openUrl above.
+      void (async () => {
+        try {
+          const created = await browser.tabs.create({
+            active: action.active ?? true,
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof created.id !== 'number') return;
+          const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+          if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
+        } catch (err) {
+          console.warn('[bento-tools] tab/create failed:', err);
+        }
+      })();
       return;
     case 'tab/reload':
       browser.tabs

@@ -130,7 +130,13 @@ export type Action =
   | { type: 'tab/activate'; id: number }
   | { type: 'tab/close'; id: number }
   | { type: 'tab/assignWorkspace'; id: number; workspaceId: string }
-  | { type: 'tab/openUrl'; url: string; active?: boolean }
+  /** Open `url` in a new tab. When `focusExisting` is set, the handler
+   * first looks for a tab in the source window's active workspace whose
+   * URL exactly matches `url`; if found, it activates that tab instead
+   * of creating a new one. Useful for singleton internal pages (Bento
+   * Settings, Privacy) where re-opening the button should bring the
+   * existing tab forward rather than stack duplicates. */
+  | { type: 'tab/openUrl'; url: string; active?: boolean; focusExisting?: boolean }
   /** Open a new tab at the user's configured new-tab page (about:newtab,
    * about:home, or whatever the pref points at). Uses
    * browser.tabs.create({active: true}) — no explicit URL — which avoids

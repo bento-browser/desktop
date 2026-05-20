@@ -41,6 +41,15 @@ export class TabRegistry {
   #pending: TabDelta[] = [];
   #flushScheduled = false;
   #listeners = new Set<Listener>();
+  // Eager pre-assignments stashed by `assignWorkspaceEagerly` when the
+  // tab hasn't yet been seen by #onCreated. Firefox is free to resolve
+  // tabs.create's promise BEFORE dispatching the onCreated event, so a
+  // handler that calls assignWorkspaceEagerly straight after `await
+  // browser.tabs.create(...)` can race ahead of #tabs being populated.
+  // The pending entry is consumed by #onCreated on arrival so the
+  // emitted 'created' delta already carries workspaceId — avoids any
+  // shell-side "tab briefly orphaned" frame.
+  #pendingWorkspaceAssignments = new Map<number, string>();
 
   async init(): Promise<void> {
     // Register listeners FIRST so we don't miss tabs created during the
@@ -136,6 +145,39 @@ export class TabRegistry {
     this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
   }
 
+  /** Eager assignment for handler-initiated tab creation (tab/openUrl,
+   * tab/create). Emits the 'updated' delta SYNCHRONOUSLY so it batches
+   * with the preceding 'created' delta in the same rAF flush — the
+   * shell mirror sees workspaceId on the new tab in the first broadcast
+   * instead of "tab briefly orphaned until a follow-up batch lands".
+   * Persists via browser.sessions.setTabValue in the background; if
+   * persistence fails, the in-memory + shell state stays consistent and
+   * the next launch picks up the active-workspace fallback (same
+   * failure mode as a session.set that lost its write).
+   *
+   * If the tab isn't yet in #tabs (Firefox can resolve tabs.create
+   * BEFORE dispatching onCreated), stash the assignment so the next
+   * #onCreated picks it up — either path lands workspaceId on the
+   * downstream 'created' delta.
+   *
+   * Distinct from assignWorkspace: that one awaits setTabValue before
+   * emitting (strict fail-closed semantics for explicit user re-
+   * assignment). This one favours first-paint UI freshness, which is
+   * what tab-creation handlers actually need. */
+  assignWorkspaceEagerly(id: number, workspaceId: string): void {
+    const tab = this.#tabs.get(id);
+    if (tab) {
+      if (tab.workspaceId === workspaceId) return;
+      tab.workspaceId = workspaceId;
+      this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
+    } else {
+      this.#pendingWorkspaceAssignments.set(id, workspaceId);
+    }
+    void browser.sessions
+      .setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId)
+      .catch((err) => console.warn('[bento-tools] sessions.setTabValue (eager) failed:', id, err));
+  }
+
   snapshot(): TabSnapshot[] {
     return Array.from(this.#tabs.values()).sort((a, b) => a.index - b.index);
   }
@@ -148,6 +190,16 @@ export class TabRegistry {
   #onCreated = (tab: browser.tabs.Tab) => {
     const snap = toSnapshot(tab);
     if (snap.id === -1) return;
+    // Eager pre-assignment from assignWorkspaceEagerly: covers the case
+    // where Firefox resolved tabs.create's promise (and the handler ran
+    // its eager-assign call) BEFORE this onCreated dispatch. Apply
+    // before the hydration carry-over so a deliberate pre-assignment
+    // wins over a stale prior value.
+    const pending = this.#pendingWorkspaceAssignments.get(snap.id);
+    if (pending) {
+      snap.workspaceId = pending;
+      this.#pendingWorkspaceAssignments.delete(snap.id);
+    }
     // Preserve any workspaceId we've already hydrated for this tab.
     // SessionStore-restored tabs can fire onCreated AFTER init's query
     // already saw and hydrated them — without this guard, the second
@@ -215,6 +267,7 @@ export class TabRegistry {
   };
 
   #onRemoved = (id: number) => {
+    this.#pendingWorkspaceAssignments.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };
