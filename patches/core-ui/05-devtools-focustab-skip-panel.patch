@@ -1,0 +1,18 @@
+diff --git a/devtools/client/framework/toolbox-hosts.js b/devtools/client/framework/toolbox-hosts.js
+index add425f56d..ea3e117d4f 100644
+--- a/devtools/client/framework/toolbox-hosts.js
++++ b/devtools/client/framework/toolbox-hosts.js
+@@ -492,6 +492,13 @@ class PageHost {
+ function focusTab(tab) {
+   const browserWindow = tab.ownerGlobal;
+   browserWindow.focus();
++  // Bento: a panel tab's <browser> lives inside a side-panel container
++  // and is always visible. Reassigning selectedTab would fire TabSelect
++  // and trigger the strip's scroll-to-main reconcile, yanking the
++  // viewport away from the panel the user is debugging.
++  if (tab.linkedBrowser?.closest?.("[data-bento-panel-tab-id]")) {
++    return;
++  }
+   browserWindow.gBrowser.selectedTab = tab;
+ }
+ 

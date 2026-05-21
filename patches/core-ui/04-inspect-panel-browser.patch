@@ -1,0 +1,29 @@
+diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
+index 5ee0ee4246..c927fe0f9e 100644
+--- a/browser/base/content/nsContextMenu.sys.mjs
++++ b/browser/base/content/nsContextMenu.sys.mjs
+@@ -1386,15 +1386,22 @@ export class nsContextMenu {
+   }
+ 
+   inspectNode() {
++    // Bento: each panel is a tab whose <browser> was re-parented into the
++    // side-panel deck. ContextMenuParent sets contentData.browser (mirrored
++    // here as this.browser) to the panel's browser, but selectedTab is
++    // always the main tab — resolve the tab from the browser so DevTools
++    // opens for the panel content the user actually right-clicked in.
+     return lazy.DevToolsShim.inspectNode(
+-      this.window.gBrowser.selectedTab,
++      this.window.gBrowser.getTabForBrowser(this.browser) ||
++        this.window.gBrowser.selectedTab,
+       this.targetIdentifier
+     );
+   }
+ 
+   inspectA11Y() {
+     return lazy.DevToolsShim.inspectA11Y(
+-      this.window.gBrowser.selectedTab,
++      this.window.gBrowser.getTabForBrowser(this.browser) ||
++        this.window.gBrowser.selectedTab,
+       this.targetIdentifier
+     );
+   }

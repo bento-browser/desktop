@@ -1,0 +1,20 @@
+diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
+index 2643e1a2aa..d9dbc7e7d7 100644
+--- a/browser/components/tabbrowser/content/tabbrowser.js
++++ b/browser/components/tabbrowser/content/tabbrowser.js
+@@ -8149,6 +8149,15 @@
+         // preventDefault(). It will still raise the window if appropriate.
+         return;
+       }
++      // Bento: panel tabs are always visible in the side-panel strip.
++      // Promoting one to selectedTab triggers bento-tools' revert path
++      // (tabs.onActivated → tabs.update back to the previous main),
++      // which fires a TabSelect cascade and scrolls the strip to main.
++      // Observed on DevTools close: the inspected panel browser regains
++      // focus, fires framefocusrequested, and starts the cascade.
++      if (tab.linkedBrowser?.closest?.("[data-bento-panel-tab-id]")) {
++        return;
++      }
+       this.selectedTab = tab;
+       window.focus();
+       aEvent.preventDefault();
