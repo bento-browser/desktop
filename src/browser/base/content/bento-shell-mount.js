@@ -545,6 +545,25 @@
       .bento-panel-nav-menu__item:hover {
         background-color: var(--neutral-10);
       }
+      /* Hide the kebab 'more' button on the main panel — the menu's
+         current contents (custom panel sizes) only apply to side
+         panels, which use panel/setWidth. The main slot has its own
+         shared-across-workspaces width (panel/setMainWidth) and gets
+         resized via the main splitter instead.
+
+         CRITICAL: scope via direct-child > to the panel header,
+         because BOTH #tabbrowser-tabbox (the deck, marked by
+         unifyMainWithStrip) AND the active-tab notificationbox carry
+         data-bento-main-panel. A bare descendant selector matches
+         the deck and hides the kebab on EVERY panel header,
+         including side panels. The header is a direct child of its
+         notificationbox; the deck has notificationboxes (not
+         headers) as direct children, so '> .bento-panel-header'
+         only matches when the marked element IS the main panel
+         notificationbox. */
+      [data-bento-main-panel] > .bento-panel-header .bento-panel-header-button--more {
+        display: none;
+      }
 
       /* The main panel (moved tabbrowser-tabbox). flex-grow:1 so it
          fills remaining space when no side panels exist; flex-basis:
@@ -671,43 +690,15 @@
         min-height: var(--bento-panel-header-height);
         box-sizing: border-box;
       }
-      /* Dedicated drag handle — only this element initiates a
-         panel reorder drag. Sized to match the header buttons
-         so it reads as part of the same control row. */
-      .bento-panel-header-drag-handle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: var(--bento-control-size-sm);
-        height: var(--bento-control-size-sm);
-        color: var(--neutral-50);
-        cursor: grab;
-        touch-action: none;
-        flex: 0 0 auto;
-        border-radius: var(--radius-s);
-        transition: background-color var(--bento-duration-fast) var(--bento-easing-standard),
-                    color var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      .bento-panel-header-drag-handle:hover {
-        background-color: var(--neutral-15);
-        color: var(--neutral-80);
-      }
-      .bento-panel-header-drag-handle--dragging {
-        cursor: grabbing;
-        background-color: var(--neutral-15);
-        color: var(--color-60);
-      }
-      /* Dragging state for the panel container — slight opacity
-         dip + subtle shadow so the floating panel reads as
-         "lifted off the strip". */
-      .bento-panel--dragging {
-        opacity: 0.85;
-      }
-      .bento-panel-drop-indicator {
-        background-color: var(--color-60);
-        border-radius: 1.5px;
-        pointer-events: none;
-      }
+      /* Header controls — drag handle (leftmost), back / forward /
+         reload, then star / close / more on the right. All share the
+         same 24×24 icon-button shape, default colour, hover, focus,
+         and icon size; only the cursor and "engaged" state vary by
+         role (grab/grabbing on the drag handle, filled-icon on the
+         bookmark star). This shared rule is the single source of
+         truth — per-element rules below override only the bits that
+         genuinely differ. */
+      .bento-panel-header-drag-handle,
       .bento-panel-header-button {
         display: inline-flex;
         align-items: center;
@@ -720,25 +711,72 @@
         border-radius: var(--radius-s);
         color: var(--neutral-70);
         cursor: pointer;
+        flex: 0 0 auto;
         transition:
           background-color var(--bento-duration-fast) var(--bento-easing-standard),
           color var(--bento-duration-fast) var(--bento-easing-standard);
-        flex: 0 0 auto;
       }
+      .bento-panel-header-drag-handle > svg,
+      .bento-panel-header-button > svg {
+        width: var(--bento-icon-size-xs);
+        height: var(--bento-icon-size-xs);
+        pointer-events: none;
+      }
+      /* Dot-pattern icons (grip-vertical on the drag handle,
+         more-vertical on the kebab) render each dot as the round
+         cap of a zero-length stroke segment, so the dot diameter
+         equals stroke-width. At stroke-width 2 in a 24-unit
+         viewBox displayed at 14px, each dot is only ~1.17px —
+         a fraction of the ink the continuous-stroke icons put
+         on screen (chevrons, refresh, star, close), so the dot
+         icons read as "disabled" even at the same currentColor.
+         Bumping the stroke compensates so all header icons hit
+         the same optical weight. */
+      .bento-panel-header-drag-handle > svg,
+      .bento-panel-header-button--more > svg {
+        stroke-width: 3.5;
+      }
+      .bento-panel-header-drag-handle:hover,
       .bento-panel-header-button:hover:not([disabled]) {
         background-color: var(--neutral-15);
         color: var(--neutral-90);
+      }
+      .bento-panel-header-drag-handle:focus-visible,
+      .bento-panel-header-button:focus-visible {
+        outline: var(--bento-focus-ring-width) solid var(--color-60);
+        outline-offset: -1px;
       }
       .bento-panel-header-button[disabled] {
         opacity: 0.4;
         cursor: default;
       }
+      /* Drag handle: behaves as a button (role='button') but is
+         operated by pointer drag, not click — override the default
+         pointer cursor with grab / grabbing. */
+      .bento-panel-header-drag-handle {
+        cursor: grab;
+        touch-action: none;
+      }
+      .bento-panel-header-drag-handle--dragging {
+        cursor: grabbing;
+        background-color: var(--neutral-15);
+        color: var(--color-60);
+      }
+      /* Bookmark star: filled outline when the current URL is in
+         the bookmarks DB. Fill uses currentColor so the icon picks
+         up whatever default / hover colour the shared rule sets. */
       .bento-panel-header-button--active > svg {
         fill: currentColor;
       }
-      .bento-panel-header-button > svg {
-        width: var(--bento-icon-size-xs);
-        height: var(--bento-icon-size-xs);
+      /* Dragging state for the panel container — slight opacity
+         dip + subtle shadow so the floating panel reads as
+         'lifted off the strip'. */
+      .bento-panel--dragging {
+        opacity: 0.85;
+      }
+      .bento-panel-drop-indicator {
+        background-color: var(--color-60);
+        border-radius: 1.5px;
         pointer-events: none;
       }
       .bento-panel-header-url {
@@ -784,7 +822,7 @@
         /* No background fill — chrome bg shows through directly so
            there's no surface discrepancy. Panels are cards lifted
            via box-shadow over that same chrome bg.
-           display:flex + gap:var(--space-s) is the single source of
+           display:flex + gap:var(--space-2xs) is the single source of
            truth for inter-panel spacing — Firefox's content-area.css
            sets margin-left: 5px on .split-view-panel-active children
            with higher specificity than our previous margin attempt,
@@ -800,7 +838,7 @@
         display: flex;
         flex-direction: row;
         align-items: stretch;
-        gap: var(--space-s);
+        gap: var(--space-2xs);
         overflow-x: scroll;
         overflow-y: hidden;
         /* Hide tabpanels' native horizontal scrollbar — the custom
@@ -994,24 +1032,26 @@
          regardless of element type or position). Positioned
          absolutely at the right edge of each "left" panel via
          syncInterPanelSplitters in JS.
-         Visual: a 4px neutral line at the centre of a 14px grab
+         Visual: a fixed-width accent line at the centre of a 14px grab
          zone, drawn via background linear-gradient (XUL splitter
          elements ignore ::before pseudo-elements, so element-side
-         CSS is the only path). On hover the centre line widens
-         to 6px and switches to the cyan accent. The wider grab
-         zone makes the boundary forgiving to hover even though
-         the painted bar is narrow. */
+         CSS is the only path). Hover/drag changes opacity only; the
+         hit target and painted bar do not resize, so panel boundaries
+         do not visually jump under the cursor. */
       #bento-side-panel-host > .bento-panel-splitter {
         cursor: col-resize;
-        /* Invisible at rest — the gap between panels reads as
-           breathing room, not as a draggable affordance until the
-           user hovers. The splitter is still present (14px wide
-           grab zone) and accepts pointer events at opacity 0
-           (CSS opacity doesn't disable hit-testing).
-           Gradient is always painted so we can transition opacity
-           — background-image transitions between 'none' and a
-           gradient never interpolate (no in-between value), which
-           is why the previous transition was a no-op snap. */
+        width: 14px !important;
+        min-width: 14px !important;
+        max-width: 14px !important;
+        box-sizing: border-box;
+        border: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        appearance: none;
+        /* Invisible at rest and visible on hover/drag. The splitter is
+           always the same 14px hit target with the same fixed-width
+           painted bar; only opacity changes, so there is no apparent
+           growth/shrink animation under the cursor. */
         background-image: linear-gradient(
           to right,
           transparent calc(50% - 2.5px),
@@ -1205,6 +1245,10 @@
     setFrameSrc('bento-workspace-switcher-frame', '/dist/workspace-switcher.html');
   }
 
+  function setBentoMenuSrc() {
+    setFrameSrc('bento-menu-frame', '/dist/menu.html');
+  }
+
   // Create overlay host elements dynamically rather than in the patch.
   // Why: browser.xhtml is preprocessed by mach at full-build time, so adding
   // a new <vbox> to browser-box.inc.xhtml requires `npm run build` to land
@@ -1232,7 +1276,8 @@
     host.style.cssText =
       'position: absolute; top: 0; left: 0; width: 100%; height: 100%;' +
       ` z-index: ${zIndex}; background-color: transparent; pointer-events: auto;` +
-      ' display: none; opacity: 0; transition: opacity 0.18s ease;';
+      ' display: none; opacity: 0;' +
+      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
     const frame = document.createXULElement('browser');
     frame.id = frameId;
     frame.setAttribute('type', 'content');
@@ -1525,6 +1570,68 @@
     }, WELCOME_TRANSITION_MS);
   }
 
+  // ─── Generic chrome-menu overlay ───────────────────────────────────────
+  // showChromeMenu({ anchor, items, onSelect }) opens a Tale UI Menu over
+  // the entire chrome window, positioned next to `anchor` (a DOMRect-ish
+  // {left, top, width, height} from the trigger element's
+  // getBoundingClientRect). Each open generates a unique contextId so
+  // overlapping opens (or rapid open→select sequences) route their
+  // results back to the right handler. The map cleanup happens on the
+  // first SELECT/CLOSE title-IPC we observe for that contextId.
+  //
+  // No fade transition (unlike palette/confirm) — menus should feel
+  // instant. The React side stays mounted and updates state on
+  // BroadcastChannel 'menu/open' actions; chrome just toggles host
+  // display.
+  const menuOnSelectByContext = new Map();
+
+  function showChromeMenu({ anchor, items, onSelect }) {
+    const host = document.getElementById('bento-menu-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showChromeMenu: bento-menu-host missing');
+      return;
+    }
+    if (!anchor || !Array.isArray(items)) {
+      console.warn('[bento-shell-mount] showChromeMenu: bad args', { anchor, items });
+      return;
+    }
+    const contextId =
+      'm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    if (typeof onSelect === 'function') menuOnSelectByContext.set(contextId, onSelect);
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    // Translate the trigger's chrome-document coords into menu-overlay
+    // coords. The overlay frame fills #bento-menu-host (which lives
+    // inside <hbox id="browser">, BELOW the chrome toolbar/tabstrip);
+    // position:fixed inside the overlay is relative to the overlay's
+    // own viewport, NOT the chrome document. Without this translation
+    // the menu floats roughly one toolbar-height below the trigger.
+    const hostRect = host.getBoundingClientRect();
+    const adjustedAnchor = {
+      left: anchor.left - hostRect.left,
+      top: anchor.top - hostRect.top,
+      width: anchor.width,
+      height: anchor.height,
+    };
+    // Send the open payload over the shell bus. The menu page's React
+    // listens for kind:'action' messages with action.type==='menu/open'.
+    dispatchShellAction({
+      type: 'menu/open',
+      contextId,
+      items,
+      anchor: adjustedAnchor,
+    });
+    const frame = document.getElementById('bento-menu-frame');
+    setTimeout(() => frame?.focus(), 0);
+  }
+
+  function hideChromeMenu() {
+    const host = document.getElementById('bento-menu-host');
+    if (!host) return;
+    host.style.display = 'none';
+    host.setAttribute('hidden', 'true');
+  }
+
   // Cross-process IPC via document.title + DOMTitleChanged. Content in a
   // remote=true <browser> can't postMessage to the chrome process, but
   // title changes DO bubble cross-process to the chrome <browser>
@@ -1554,6 +1661,14 @@
   // visibility signal.
   const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
   const WORKSPACE_SWITCHER_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_SWITCHER';
+  // Generic chrome-menu overlay. Items, anchor, and a routing contextId
+  // travel from chrome into the menu page via a 'menu/open' shell-bus
+  // action; the menu page reports back via these title prefixes which
+  // include the contextId so chrome can find the right onSelect handler:
+  //   BENTO_MENU_SELECT:<contextId>:<itemId>
+  //   BENTO_MENU_CLOSE:<contextId>
+  const MENU_SELECT_PREFIX = 'BENTO_MENU_SELECT:';
+  const MENU_CLOSE_PREFIX = 'BENTO_MENU_CLOSE:';
   // Sidebar-driven scroll-to-main signal. Fires on every sidebar
   // tab-row click (including re-clicks on the active tab) so the
   // strip always returns to the main slot — see
@@ -1636,7 +1751,23 @@
   const HTML_NS = 'http://www.w3.org/1999/xhtml';
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
-  // Lucide icon paths (single-path d-string per icon — multi-segment uses M).
+  // Lucide icon paths — hand-copied from lucide-react (pinned in
+  // extensions/bento-shell/package.json, currently ^0.460.0). This
+  // file runs in Firefox's chrome JS context (browser.xhtml, parent
+  // process) which has no npm module graph, so we can't import from
+  // lucide-react directly the way the React-side extension code does.
+  //
+  // To verify or re-sync a path: open node_modules/lucide-react/dist/
+  // esm/icons/<kebab-name>.js — each Lucide icon ships its path data
+  // as static array exports. Key names below are camelCased versions
+  // of the upstream kebab names (chevron-left → chevronLeft, etc.),
+  // so the mapping is mechanical.
+  //
+  // Multi-segment icons concatenate sub-paths with 'M' moves so each
+  // entry stays a single d-string (one <path> per icon — keeps
+  // makeIcon trivial). gripVertical and moreVertical use Lucide's
+  // degenerate-arc trick: zero-length segments rendered as filled
+  // circles via stroke-linecap='round', dot diameter == stroke-width.
   const ICONS = {
     chevronLeft: 'm15 18-6-6 6-6',
     chevronRight: 'm9 18 6-6-6-6',
@@ -1645,11 +1776,11 @@
       'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z',
     plus: 'M12 5v14 M5 12h14',
     x: 'M18 6 6 18 M6 6l12 12',
-    // Lucide grip-vertical: two columns of three dots, signals
-    // "drag me" without the visual weight of a hamburger or
-    // bracket icon.
+    // grip-vertical: 2×3 dot grid — drag-to-reorder affordance.
     gripVertical:
       'M9 5a1 1 0 1 0 0 0 M9 12a1 1 0 1 0 0 0 M9 19a1 1 0 1 0 0 0 M15 5a1 1 0 1 0 0 0 M15 12a1 1 0 1 0 0 0 M15 19a1 1 0 1 0 0 0',
+    // more-vertical: 1×3 dot column — canonical kebab "more" trigger.
+    moreVertical: 'M12 5a1 1 0 1 0 0 0 M12 12a1 1 0 1 0 0 0 M12 19a1 1 0 1 0 0 0',
   };
 
   function makeIcon(d, size) {
@@ -1882,6 +2013,47 @@
       closeBtn = makeHeaderButton('Close panel', ICONS.x, () => removePanel(tabId));
     }
 
+    // Kebab "more" button: opens a Tale UI Menu (via the generic
+    // chrome-menu overlay) of panel-scoped options. First population
+    // is the custom panel sizes from Bento Settings; future items
+    // (e.g., move to workspace, duplicate panel) — including SUBMENUS —
+    // join here by extending the items array. Hidden on the main
+    // panel via CSS: the menu's current actions only apply to side
+    // panels (panel/setWidth is per-tab; main uses the shared
+    // panel/setMainWidth and gets resized via the splitter).
+    let moreBtn = null;
+    if (Number.isFinite(tabId)) {
+      moreBtn = makeHeaderButton('Panel options', ICONS.moreVertical, () => {
+        const panelEl = moreBtn.closest('[data-bento-panel-tab-id]');
+        if (!panelEl) return;
+        const items =
+          currentCustomPanelSizes.length > 0
+            ? currentCustomPanelSizes.map((px) => ({
+                id: 'size:' + px,
+                label: px + ' px',
+              }))
+            : [
+                {
+                  id: 'no-sizes',
+                  label: 'No panel sizes set in Bento Settings',
+                  isDisabled: true,
+                },
+              ];
+        showChromeMenu({
+          anchor: moreBtn.getBoundingClientRect(),
+          items,
+          onSelect: (itemId) => {
+            if (typeof itemId !== 'string') return;
+            if (itemId.startsWith('size:')) {
+              const px = Number(itemId.slice('size:'.length));
+              applyPanelWidth(panelEl, px);
+            }
+          },
+        });
+      });
+      moreBtn.classList.add('bento-panel-header-button--more');
+    }
+
     // Drag handle for panel reordering. setupHeaderDrag binds
     // pointerdown to it and runs the drag loop. The handle is
     // styled small + leftmost so it reads as the obvious "grab
@@ -1893,7 +2065,7 @@
     dragHandle.className = 'bento-panel-header-drag-handle';
     dragHandle.setAttribute('role', 'button');
     dragHandle.setAttribute('aria-label', 'Drag to reorder panel');
-    dragHandle.appendChild(makeIcon(ICONS.gripVertical, 16));
+    dragHandle.appendChild(makeIcon(ICONS.gripVertical));
 
     header.appendChild(dragHandle);
     header.appendChild(backBtn);
@@ -1902,6 +2074,7 @@
     header.appendChild(urlInput);
     header.appendChild(starBtn);
     if (closeBtn) header.appendChild(closeBtn);
+    if (moreBtn) header.appendChild(moreBtn);
 
     // Refresh URL input + back/forward enabled state on navigation.
     // Initial pass after a short delay covers the case where the
@@ -2360,6 +2533,8 @@
       sp.style.height = lr.height + 'px';
       sp.style.left = gapCentre - hostRect.left - SPLITTER_WIDTH / 2 + 'px';
       sp.style.width = SPLITTER_WIDTH + 'px';
+      sp.style.minWidth = SPLITTER_WIDTH + 'px';
+      sp.style.maxWidth = SPLITTER_WIDTH + 'px';
       sp.style.zIndex = '5';
     }
     // Re-observe after positioning so the next layout commit
@@ -2709,6 +2884,39 @@
     host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
   }
 
+  // Minimal-scroll variant for "newly-added panel" auto-scroll. If the
+  // panel is already fully on screen, no-op. If it sits past the right
+  // edge (the common case — new panels append rightward, after either
+  // the source panel for openAt or at the end for plain add), nudge
+  // just far enough that the panel's right edge meets the viewport's
+  // right edge — keeping the previously-visible panels (including the
+  // source) in view to the left. If the panel sits past the left edge,
+  // align its left edge instead. Wider-than-viewport panels can't be
+  // fully shown; fall back to leftmost alignment so the header is at
+  // least visible.
+  function scrollPanelIntoViewFromRight(panelEl) {
+    if (!panelEl) return;
+    const host = getStripScrollTarget();
+    if (!host) return;
+    const hostRect = host.getBoundingClientRect();
+    const panelRect = panelEl.getBoundingClientRect();
+    const fullyVisible =
+      panelRect.left >= hostRect.left - 1 && panelRect.right <= hostRect.right + 1;
+    if (fullyVisible) return;
+    if (panelRect.width > hostRect.width) {
+      scrollPanelToLeftmost(panelEl);
+      return;
+    }
+    let delta = 0;
+    if (panelRect.right > hostRect.right) {
+      delta = panelRect.right - hostRect.right;
+    } else if (panelRect.left < hostRect.left) {
+      delta = panelRect.left - hostRect.left;
+    }
+    const targetScrollLeft = host.scrollLeft + delta;
+    host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
+  }
+
   // The active panel is the user's current cycle selection. Source of
   // truth for both the bottom favicon marker and the cycle-focus
   // indicator on the panel itself. NOT recomputed from scroll position
@@ -2768,6 +2976,71 @@
     }, PANEL_REMOVE_ANIMATION_MS);
   }
 
+  // Cmd/Ctrl+W in a side panel closes THAT panel, not the active tab.
+  // Without this, key_close → cmd_close → BrowserCommands.closeTabOrWindow
+  // → gBrowser.removeCurrentTab always closes the main slot's tab, even
+  // when focus is in a side panel — out of step with the user's mental
+  // model ("close the thing in front of me").
+  //
+  // Capture phase + the key's reserved="true" flag means we see the
+  // keydown on the chrome window even while content has focus, and
+  // stopImmediatePropagation aborts before the XUL <key> binding fires.
+  // Main panel (data-bento-main-panel) intentionally falls through:
+  // closing the main panel IS closing the active tab, which is what
+  // stock Cmd+W already does. Shift/Alt skipped so Cmd+Shift+W (close
+  // window) and other compound shortcuts keep their meaning.
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      const isAccel = e.metaKey || e.ctrlKey;
+      if (!isAccel) return;
+      if (e.altKey || e.shiftKey) return;
+      if (e.code !== 'KeyW') return;
+      const active = document.activeElement;
+      if (!active || typeof active.closest !== 'function') return;
+      const panel = active.closest('[data-bento-panel-tab-id]');
+      if (!panel) return;
+      const tabId = Number(panel.dataset.bentoPanelTabId);
+      if (!Number.isFinite(tabId)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      removePanel(tabId);
+    },
+    true /* capture */,
+  );
+
+  // Cmd/Ctrl+S toggles the sidebar collapsed state. Firefox's stock
+  // key_savePage is patched to reserved="true" (patches/core-ui/
+  // 07-key-savepage-reserved.patch) so chrome's capture-phase listener
+  // sees the keydown even when content has focus, and content can no
+  // longer intercept it. We stopImmediatePropagation to abort the
+  // Browser:SavePage command — File → Save Page As stays available via
+  // the menu for users who still need to save.
+  //
+  // Current collapsed state is read from #bento-shell-host's class
+  // (set by applyChromeSidebarCollapsed on each panels/sync). Dispatch
+  // settings/update with the toggled value; tools persists + broadcasts
+  // back via BENTO_PANELS, and applyChromeSidebarCollapsed re-applies
+  // the class so the next press toggles the other way.
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      const isAccel = e.metaKey || e.ctrlKey;
+      if (!isAccel) return;
+      if (e.altKey || e.shiftKey) return;
+      if (e.code !== 'KeyS') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const host = document.getElementById('bento-shell-host');
+      const currentlyCollapsed = !!host?.classList.contains('bento-sidebar-collapsed');
+      dispatchShellAction({
+        type: 'settings/update',
+        changes: { sidebarCollapsed: !currentlyCollapsed },
+      });
+    },
+    true /* capture */,
+  );
+
   function hidePanelNavContextMenu() {
     if (!panelNavContextMenu) return;
     panelNavContextMenu.remove();
@@ -2799,6 +3072,45 @@
     setTimeout(() => {
       removeBtn.focus();
     }, 0);
+  }
+
+  // Apply a preset width to a single side panel. Mirrors the inline
+  // style writes that endPanelDrag produces during a drag so the
+  // resize is instant — bento-tools intentionally does NOT broadcast
+  // panels/sync after panel/setWidth (see protocol-handler.ts) to
+  // avoid clobbering live drag layouts, so the persisted value only
+  // re-applies on a future unrelated reconcile. Without the inline
+  // write the panel would visually stay at its old width until then.
+  // The shared ResizeObserver re-syncs inter-panel splitters on the
+  // next layout commit.
+  function applyPanelWidth(panelEl, widthPx) {
+    if (!panelEl) return;
+    if (!Number.isFinite(widthPx) || widthPx <= 0) return;
+    const tabIdAttr = panelEl.dataset.bentoPanelTabId;
+    const tabId = tabIdAttr ? Number(tabIdAttr) : NaN;
+    if (!Number.isFinite(tabId)) return;
+    const px = Math.round(widthPx);
+    // One-shot transition for menu-driven (non-drag) resizes. Drag uses
+    // pointermove which writes inline width every frame — a transition
+    // there lags the cursor. Menu-driven resizes have no follow-along
+    // pointer, so snapping reads as jarring; ease the change instead.
+    // Same shape as the workspace-switch main-panel transition (see
+    // reconcilePanels). Snappy curve matches the workspace-switch tab-
+    // list slide so simultaneous transitions feel like one motion.
+    // Inline `transition` is cleared after 250ms so subsequent drags
+    // revert to instant.
+    const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
+    panelEl.style.transition =
+      'width var(--bento-duration-base, 200ms) ' + snappy +
+      ', min-width var(--bento-duration-base, 200ms) ' + snappy +
+      ', flex-basis var(--bento-duration-base, 200ms) ' + snappy;
+    window.setTimeout(() => {
+      panelEl.style.removeProperty('transition');
+    }, 250);
+    panelEl.style.width = px + 'px';
+    panelEl.style.minWidth = px + 'px';
+    panelEl.style.flex = '0 0 ' + px + 'px';
+    dispatchShellAction({ type: 'panel/setWidth', id: tabId, widthPx: px });
   }
 
   function applyActiveMarker(idx) {
@@ -4621,10 +4933,14 @@
           // (the flag is only set when handlePanelsTitle observes a
           // workspace-id change in the payload).
           if (__mainWidthTransitionForNextReconcile) {
+            // Snappy easing matches the workspace-switch tab-list slide
+            // (TabList.css) so the simultaneous main-panel resize and
+            // sidebar tab swap feel like one motion.
+            const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
             panelEl.style.transition =
-              'width var(--bento-duration-base, 200ms) ease,' +
-              ' min-width var(--bento-duration-base, 200ms) ease,' +
-              ' flex-basis var(--bento-duration-base, 200ms) ease';
+              'width var(--bento-duration-base, 200ms) ' + snappy +
+              ', min-width var(--bento-duration-base, 200ms) ' + snappy +
+              ', flex-basis var(--bento-duration-base, 200ms) ' + snappy;
             // Clear the inline transition after it would have completed
             // so subsequent inline width writes (e.g. drag pointermove)
             // are instant.
@@ -4809,7 +5125,12 @@
     //     return path → match → scroll)
     //
     // setTimeout 0 lets tabpanels' layout commit the new panel's
-    // width before scrollPanelToLeftmost reads its bounding rect.
+    // width before scrollPanelIntoViewFromRight reads its bounding
+    // rect. Uses the minimal-scroll variant rather than leftmost so
+    // the source panel (the one the user right-clicked, or the
+    // currently-focused panel for plain panel/add) stays in view to
+    // the left of the new one — the new panel just nudges into view
+    // from the right, instead of jumping the strip to the new panel.
     let scrolledToNewPanel = false;
     const isInitialReconcileForWorkspace =
       __reconciledForWorkspace !== currentWorkspaceId;
@@ -4819,7 +5140,7 @@
       scrolledToNewPanel = true;
       setTimeout(() => {
         const panelEl = document.querySelector('[data-bento-panel-tab-id="' + newId + '"]');
-        if (panelEl) scrollPanelToLeftmost(panelEl);
+        if (panelEl) scrollPanelIntoViewFromRight(panelEl);
       }, 0);
     }
     __reconciledForWorkspace = currentWorkspaceId;
@@ -4917,22 +5238,12 @@
   // document with the browser as the target. We listen here so that
   // if the focused panel is only partially in view (the user clicked
   // an edge that was peeking past the strip's visible area), the
-  // strip auto-scrolls to bring the full panel into view.
-  // Programmatic focus from setActiveByIndex / reconcile also fires
-  // focusin, but the partial-visibility guard makes those a no-op
-  // when the panel is already fully on screen.
-  function scrollPanelIfPartial(panelEl) {
-    const host = getStripScrollTarget();
-    if (!host || !panelEl) return;
-    const hostRect = host.getBoundingClientRect();
-    const panelRect = panelEl.getBoundingClientRect();
-    // 1px tolerance for sub-pixel rounding so a fully-aligned panel
-    // doesn't trigger a 0px scroll.
-    const fullyVisible =
-      panelRect.left >= hostRect.left - 1 && panelRect.right <= hostRect.right + 1;
-    if (fullyVisible) return;
-    scrollPanelToLeftmost(panelEl);
-  }
+  // strip nudges just enough to bring the full panel into view —
+  // preserving the neighbouring panels' context rather than jumping
+  // the clicked panel to the leftmost slot. Programmatic focus from
+  // setActiveByIndex / reconcile also fires focusin, but
+  // scrollPanelIntoViewFromRight's fully-visible early-return makes
+  // those a no-op when the panel is already on screen.
   function attachPanelClickAutoScroll() {
     window.addEventListener(
       'focusin',
@@ -4949,7 +5260,7 @@
         // Only scroll if the panel is inside the active strip. If
         // tabpanels isn't in split-view mode, no strip to scroll.
         if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) return;
-        scrollPanelIfPartial(panelEl);
+        scrollPanelIntoViewFromRight(panelEl);
         // Sync the navigator's active marker to match the panel that
         // just received focus. Without this, clicking into a panel
         // scrolls the strip but leaves the favicon highlight stuck on
@@ -5410,7 +5721,7 @@
         // routing becomes load-bearing. For now, the per-window
         // selector in useToolsPort already ensures each shell only
         // writes its own window's title.
-        // eslint-disable-next-line no-unused-expressions
+         
         decoded.windowId; // documented presence; informational only
       }
       // Workspace just changed — flag the next reconcile so the main
@@ -5449,6 +5760,16 @@
       if (typeof decoded.sidebarCollapsed === 'boolean') {
         applyChromeSidebarCollapsed(decoded.sidebarCollapsed);
       }
+      // Custom panel sizes (kebab menu presets). Filter to finite
+      // positive integers up front so the menu doesn't have to defend
+      // against malformed entries on every open. Missing key leaves
+      // the list untouched — earlier payloads might have carried it.
+      if (Array.isArray(decoded.customPanelSizes)) {
+        currentCustomPanelSizes = decoded.customPanelSizes
+          .map((n) => Number(n))
+          .filter((n) => Number.isFinite(n) && n > 0)
+          .map((n) => Math.round(n));
+      }
     } else {
       return;
     }
@@ -5472,7 +5793,7 @@
         host.classList.toggle('bento-sidebar-collapsed', collapsed);
         // Force layout commit so the next style change is treated as a
         // new transition, not a continuation of the suppressed one.
-        // eslint-disable-next-line no-unused-expressions
+         
         host.offsetWidth;
         host.style.removeProperty('transition');
       }
@@ -5498,6 +5819,13 @@
   // in Firefox's flat tab list which would jump across workspaces).
   let currentWorkspaceId = null;
   let currentPanelTabIds = new Set();
+  // Preset side-panel widths surfaced in each panel header's kebab menu.
+  // Mirrored from BentoSettings.customPanelSizes via the BENTO_PANELS
+  // payload — same single-channel-no-race rationale as uiColorMode /
+  // sidebarCollapsed (see useToolsPort.ts). Read on-demand when the
+  // user opens a kebab menu; stays empty until the first payload that
+  // includes it (settings store default is [320, 480, 768, 1280]).
+  let currentCustomPanelSizes = [];
 
   function attachPaletteCloseListener() {
     const paletteFrame = document.getElementById('bento-palette-frame');
@@ -5549,6 +5877,46 @@
         lastSeenWelcomeTitle = title;
         if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
       }, 200);
+    }
+
+    // Menu overlay: SELECT routes the chosen itemId back to the chrome
+    // onSelect handler registered when showChromeMenu was called; CLOSE
+    // just hides the overlay (Esc / outside-click in the React menu).
+    // Faster poll than the modal overlays (60ms vs 200ms) — a menu
+    // selection should feel immediate. Body is still cheap (string
+    // startsWith + small map lookup) so the higher frequency is fine.
+    const menuFrame = document.getElementById('bento-menu-frame');
+    if (menuFrame) {
+      let lastSeenMenuTitle = '';
+      setInterval(() => {
+        const title = menuFrame.contentTitle || '';
+        if (title === lastSeenMenuTitle) return;
+        lastSeenMenuTitle = title;
+        if (title.startsWith(MENU_SELECT_PREFIX)) {
+          const rest = title.slice(MENU_SELECT_PREFIX.length);
+          const firstColon = rest.indexOf(':');
+          if (firstColon < 0) {
+            hideChromeMenu();
+            return;
+          }
+          const contextId = rest.slice(0, firstColon);
+          const itemId = rest.slice(firstColon + 1);
+          const handler = menuOnSelectByContext.get(contextId);
+          menuOnSelectByContext.delete(contextId);
+          hideChromeMenu();
+          if (handler) {
+            try {
+              handler(itemId);
+            } catch (err) {
+              console.warn('[bento-shell-mount] chrome menu select handler threw:', err);
+            }
+          }
+        } else if (title.startsWith(MENU_CLOSE_PREFIX)) {
+          const contextId = title.slice(MENU_CLOSE_PREFIX.length);
+          menuOnSelectByContext.delete(contextId);
+          hideChromeMenu();
+        }
+      }, 60);
     }
 
     const wsSwitcherFrame = document.getElementById('bento-workspace-switcher-frame');
@@ -5920,6 +6288,7 @@
           'bento-edit-workspace-frame',
           'bento-welcome-frame',
           'bento-workspace-switcher-frame',
+          'bento-menu-frame',
         ];
         for (const id of ids) {
           const frame = document.getElementById(id);
@@ -5935,6 +6304,7 @@
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
             else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
             else if (id === 'bento-workspace-switcher-frame') setBentoWorkspaceSwitcherSrc();
+            else if (id === 'bento-menu-frame') setBentoMenuSrc();
           }
         }
       }, 100);
@@ -5953,6 +6323,7 @@
   setBentoEditWorkspaceSrc();
   setBentoWelcomeSrc();
   setBentoWorkspaceSwitcherSrc();
+  setBentoMenuSrc();
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so
   // the strip is ready by the first reconcilePanels(). Wrapped in

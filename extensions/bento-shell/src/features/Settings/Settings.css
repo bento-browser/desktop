@@ -23,4 +23,14 @@
     margin-top: var(--space-s);
     justify-content: flex-end;
   }
+
+  /* Pinned width for every NumberField in Settings so wide-digit
+     values (1280, etc.) don't wrap and the controls line up
+     visually. With Tale UI's Group + Input now flex-grow-aware (see
+     @tale-ui/react-styles number-field.css), setting Root width alone
+     is enough: Group fills Root, Input fills remaining Group space. */
+  .bento-settings__number-field {
+    width: 18rem;
+    flex: 0 0 auto;
+  }
 }

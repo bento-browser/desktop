@@ -24,7 +24,7 @@
     border-radius: var(--radius-xs);
     flex-shrink: 0;
     background-color: var(--bento-surface-hover-solid);
-    animation: bento-tab-list-skeleton-shimmer 1.4s ease-in-out infinite;
+    animation: bento-tab-list-skeleton-shimmer 1.4s var(--bento-easing-in-out) infinite;
   }
 
   .bento-tab-list-skeleton__bar {
@@ -33,7 +33,7 @@
     max-width: 16rem;
     border-radius: var(--radius-xs);
     background-color: var(--bento-surface-hover-solid);
-    animation: bento-tab-list-skeleton-shimmer 1.4s ease-in-out infinite;
+    animation: bento-tab-list-skeleton-shimmer 1.4s var(--bento-easing-in-out) infinite;
     animation-delay: 0.1s;
   }
 

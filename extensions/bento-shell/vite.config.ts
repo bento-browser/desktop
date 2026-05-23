@@ -73,6 +73,7 @@ export default defineConfig(({ mode }) => ({
         'edit-workspace': resolve(__dirname, 'edit-workspace.html'),
         'workspace-switcher': resolve(__dirname, 'workspace-switcher.html'),
         welcome: resolve(__dirname, 'welcome.html'),
+        menu: resolve(__dirname, 'menu.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

@@ -140,10 +140,10 @@
 
   /* direction='right': new enters from right, old exits to left. */
   .bento-tab-list-pane--enter-right {
-    animation: bento-tab-list-enter-from-right 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+    animation: bento-tab-list-enter-from-right 260ms var(--bento-easing-snappy) both;
   }
   .bento-tab-list-pane--exit-right {
-    animation: bento-tab-list-exit-to-left 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+    animation: bento-tab-list-exit-to-left 260ms var(--bento-easing-snappy) both;
     /* The outgoing pane is non-interactive while sliding off — clicks land
        on the incoming pane underneath. */
     pointer-events: none;
@@ -151,10 +151,10 @@
 
   /* direction='left': new enters from left, old exits to right. */
   .bento-tab-list-pane--enter-left {
-    animation: bento-tab-list-enter-from-left 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+    animation: bento-tab-list-enter-from-left 260ms var(--bento-easing-snappy) both;
   }
   .bento-tab-list-pane--exit-left {
-    animation: bento-tab-list-exit-to-right 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+    animation: bento-tab-list-exit-to-right 260ms var(--bento-easing-snappy) both;
     pointer-events: none;
   }
 

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" class="tale-ui">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bento Menu</title>
+
+    <!-- Persist color-mode preference; same boot script as the main shell. -->
+    <script src="./boot.js"></script>
+
+    <!-- Background is intentionally transparent. The chrome <browser> frame
+         hosting this page sits over the entire browser window; the menu
+         positions itself near the anchor coords passed in from chrome
+         and renders nothing else. Without transparent here, the page
+         background would obscure browser content beneath. -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background-color: transparent;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/menu/main.tsx"></script>
+  </body>
+</html>

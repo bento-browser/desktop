@@ -110,6 +110,15 @@ export interface BentoSettings {
    * enough that 2-3 panels fit comfortably on a typical 1440px+
    * viewport. */
   defaultPanelWidthPx: number;
+  /** Preset widths (CSS pixels) surfaced in each side panel header's
+   * kebab menu. Clicking a preset resizes only the panel whose menu is
+   * open, via panel/setWidth (same code path the drag-splitter uses).
+   * Order is preserved as the user entered it — no auto-sort, no
+   * dedup. Empty array = the kebab menu shows no presets (still opens,
+   * lets future menu items live there). Defaults [320, 480, 768, 1280]
+   * cover narrow chat / standard reading / wide research / near-full-
+   * width split-screen breakpoints. */
+  customPanelSizes: number[];
 }
 
 export type ColorModePref = 'light' | 'dark';

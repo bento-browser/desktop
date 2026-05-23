@@ -223,6 +223,7 @@ function ensureConnection(): void {
               mainWidthPx?: number;
               uiColorMode?: string;
               sidebarCollapsed?: boolean;
+              customPanelSizes?: number[];
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -237,13 +238,17 @@ function ensureConnection(): void {
             // they reach chrome via the single BENTO_PANELS title-IPC
             // channel. uiColorMode flips Tale UI tokens on the chrome
             // window root; sidebarCollapsed toggles the narrow-rail
-            // class on #bento-shell-host. Single channel = no race
-            // with separate title writes (the COLOR_MODE channel was
-            // dropped earlier for this reason).
+            // class on #bento-shell-host; customPanelSizes populates
+            // each side panel header's kebab "more" menu. Single
+            // channel = no race with separate title writes (the
+            // COLOR_MODE channel was dropped earlier for this reason).
             const cur = useSettingsStore.getState().current;
             if (cur?.uiColorMode) payload.uiColorMode = cur.uiColorMode;
             if (typeof cur?.sidebarCollapsed === 'boolean') {
               payload.sidebarCollapsed = cur.sidebarCollapsed;
+            }
+            if (Array.isArray(cur?.customPanelSizes)) {
+              payload.customPanelSizes = cur.customPanelSizes;
             }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.

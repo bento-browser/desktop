@@ -17,12 +17,15 @@ import { Switch } from '@tale-ui/react/switch';
 import { NumberField } from '@tale-ui/react/number-field';
 import { TextField } from '@tale-ui/react/text-field';
 import { Button } from '@tale-ui/react/button';
+import { IconButton } from '@tale-ui/react/icon-button';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { Icon } from '@tale-ui/react/icon';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 import Keyboard from 'lucide-react/dist/esm/icons/keyboard';
+import Plus from 'lucide-react/dist/esm/icons/plus';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
 import { useSettingsStore } from '../../state/settings';
 import { usePrivacyStore } from '../../state/privacy';
@@ -101,8 +104,10 @@ export function Settings() {
               onChange={(v) => update('tabSleepAfterMinutes', v)}
               minValue={1}
               maxValue={1440}
-              step={5}
+              step={1}
+              formatOptions={{ useGrouping: false, maximumFractionDigits: 0 }}
               isDisabled={!settings.tabSleepEnabled}
+              className="bento-settings__number-field"
             >
               <NumberField.Label>Sleep after (minutes)</NumberField.Label>
               <NumberField.Group>
@@ -120,7 +125,9 @@ export function Settings() {
               minValue={1}
               maxValue={50}
               step={1}
+              formatOptions={{ useGrouping: false, maximumFractionDigits: 0 }}
               isDisabled={!settings.tabSleepEnabled}
+              className="bento-settings__number-field"
             >
               <NumberField.Label>Keep alive per workspace</NumberField.Label>
               <NumberField.Group>
@@ -164,24 +171,91 @@ export function Settings() {
           </Text>
         </Card.Header>
         <Card.Body>
-          <NumberField.Root
-            value={settings.defaultPanelWidthPx}
-            onChange={(v) => update('defaultPanelWidthPx', v)}
-            minValue={200}
-            maxValue={2400}
-            step={40}
-          >
-            <NumberField.Label>Default new panel width (px)</NumberField.Label>
-            <NumberField.Group>
-              <NumberField.Decrement />
-              <NumberField.Input />
-              <NumberField.Increment />
-            </NumberField.Group>
-            <NumberField.Description>
-              Width applied to new panels before you drag their splitter. Existing panels keep their
-              stored widths.
-            </NumberField.Description>
-          </NumberField.Root>
+          <Column gap="l">
+            <NumberField.Root
+              value={settings.defaultPanelWidthPx}
+              onChange={(v) => {
+                if (!Number.isFinite(v) || v <= 0) return;
+                update('defaultPanelWidthPx', Math.round(v));
+              }}
+              minValue={200}
+              maxValue={2400}
+              step={1}
+              formatOptions={{ useGrouping: false, maximumFractionDigits: 0 }}
+              className="bento-settings__number-field"
+            >
+              <NumberField.Label>Default new panel width (px)</NumberField.Label>
+              <NumberField.Group>
+                <NumberField.Decrement />
+                <NumberField.Input />
+                <NumberField.Increment />
+              </NumberField.Group>
+              <NumberField.Description>
+                Width applied to new panels before you drag their splitter. Existing panels keep
+                their stored widths.
+              </NumberField.Description>
+            </NumberField.Root>
+            <Column gap="2xs">
+              <Text>Custom panel sizes (px)</Text>
+              <Text variant="text" size="s" color="muted">
+                Presets shown in each side panel header&rsquo;s kebab menu. Clicking a size resizes
+                only that panel.
+              </Text>
+            </Column>
+            <Column gap="xs">
+              {(settings.customPanelSizes ?? []).map((px, i) => (
+                <Row key={i} gap="xs" align="end">
+                  <NumberField.Root
+                    value={px}
+                    onChange={(v) => {
+                      // Skip NaN (occurs when the input is cleared mid-edit)
+                      // so we don't persist garbage; the user's next keystroke
+                      // will dispatch a valid number.
+                      if (!Number.isFinite(v) || v <= 0) return;
+                      const next = [...(settings.customPanelSizes ?? [])];
+                      next[i] = Math.round(v);
+                      update('customPanelSizes', next);
+                    }}
+                    minValue={120}
+                    maxValue={2400}
+                    step={1}
+                    formatOptions={{ useGrouping: false, maximumFractionDigits: 0 }}
+                    aria-label={`Custom panel size ${i + 1}`}
+                    className="bento-settings__number-field"
+                  >
+                    <NumberField.Group>
+                      <NumberField.Decrement />
+                      <NumberField.Input />
+                      <NumberField.Increment />
+                    </NumberField.Group>
+                  </NumberField.Root>
+                  <IconButton
+                    variant="ghost"
+                    aria-label={`Remove size ${px} px`}
+                    onPress={() => {
+                      const next = (settings.customPanelSizes ?? []).filter((_, j) => j !== i);
+                      update('customPanelSizes', next);
+                    }}
+                  >
+                    <Icon icon={Trash2} />
+                  </IconButton>
+                </Row>
+              ))}
+              <Row>
+                <Button
+                  variant="neutral"
+                  size="sm"
+                  onPress={() => {
+                    const next = [...(settings.customPanelSizes ?? []), 480];
+                    update('customPanelSizes', next);
+                  }}
+                >
+                  <Icon icon={Plus} size="sm" />
+                  Add size
+                </Button>
+              </Row>
+            </Column>
+          </Column>
         </Card.Body>
       </Card.Root>
 

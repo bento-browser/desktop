@@ -119,11 +119,22 @@
        `1px solid var(--bento-border-color-subtle)`. */
     --bento-border-color-subtle: color-mix(in srgb, currentColor 10%, transparent);
 
-    /* Motion */
+    /* Motion. Three named curves cover every Bento-authored transition;
+       new motion should pick from these rather than introduce new ones.
+       Tale UI components ship their own hardcoded curves internally —
+       we don't override those.
+         standard: general-purpose hover/idle/fade. Symmetric, gentle.
+         snappy:   discrete state changes (workspace switch, slide,
+                   menu-driven resize). Fast start, soft settle so the
+                   user sees motion react immediately then come to rest.
+         in-out:   indefinite / looping animations (shimmer, pulse).
+                   Symmetric so the loop has no obvious seam. */
     --bento-duration-fast: 100ms;
     --bento-duration-base: 200ms;
     --bento-duration-slow: 350ms;
     --bento-easing-standard: ease;
+    --bento-easing-snappy: cubic-bezier(0.32, 0.72, 0, 1);
+    --bento-easing-in-out: ease-in-out;
 
     /* Chrome panel components (header, navigator, scrollbar, etc.).
        Defined here so future themes can re-skin the entire panel

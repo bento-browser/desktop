@@ -18,6 +18,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   contentColorMode: 'light',
   defaultPanelWidthPx: 640,
   sidebarCollapsed: false,
+  customPanelSizes: [320, 480, 768, 1280],
 };
 
 export function seedDefault(): void {

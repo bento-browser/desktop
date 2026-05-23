@@ -2,7 +2,7 @@ diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/b
 index d58fcdf998..a1b1b1b100 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -2,7 +2,42 @@
+@@ -2,7 +2,50 @@
  # License, v. 2.0. If a copy of the MPL was not distributed with this
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
@@ -37,6 +37,14 @@ index d58fcdf998..a1b1b1b100 100644
 +  <vbox id="bento-confirm-host" hidden="true"
 +        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99998; background-color: transparent; pointer-events: auto; display: none; opacity: 0; transition: opacity 0.18s ease;">
 +    <browser id="bento-confirm-frame"
++             type="content" remote="true" remoteType="extension"
++             primary="false" flex="1"
++             transparent="transparent"
++             style="background-color: transparent; -moz-appearance: none;"/>
++  </vbox>
++  <vbox id="bento-menu-host" hidden="true"
++        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background-color: transparent; pointer-events: auto; display: none;">
++    <browser id="bento-menu-frame"
 +             type="content" remote="true" remoteType="extension"
 +             primary="false" flex="1"
 +             transparent="transparent"
