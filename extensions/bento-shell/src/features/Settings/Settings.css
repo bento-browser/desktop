@@ -7,7 +7,7 @@
     margin: 0 auto;
     padding-block: var(--space-l);
     padding-inline: var(--space-m);
-    color: var(--neutral-90-fg);
+    color: var(--neutral-90);
   }
 
   .bento-settings--loading {
