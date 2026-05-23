@@ -733,8 +733,8 @@
         opacity: 0.4;
         cursor: default;
       }
-      .bento-panel-header-button--active {
-        color: var(--color-60);
+      .bento-panel-header-button--active > svg {
+        fill: currentColor;
       }
       .bento-panel-header-button > svg {
         width: var(--bento-icon-size-xs);
@@ -1986,11 +1986,11 @@
   // window-level mousemove would lose drag the moment the cursor
   // entered a panel's webpage.
   //
-  // Main panel width is universal across tabs. Each tab has its own
-  // col-0 notificationbox; if we wrote width to that one element,
-  // switching tabs would reveal a default-width main slot. Instead
-  // we stash the desired main width in `mainPanelWidth` and re-apply
-  // it on every reconcile so all tabs paint at the same width.
+  // Main panel width is a single window/profile layout choice. Each
+  // tab has its own col-0 notificationbox; if we only wrote width to
+  // that one element, switching tabs/workspaces would reveal stale
+  // per-element sizing. Keep this chrome-side value as the immediate
+  // source of truth; bento-tools persists the same value for next boot.
   let mainPanelWidth = null;
 
   // Cross-panel FLIP animation buffer. setupHeaderDrag's endDrag
@@ -2060,11 +2060,14 @@
     const drag = splitter._panelDragState;
     if (!drag || e.pointerId !== drag.pointerId) return;
     const delta = e.clientX - drag.startX;
-    const next = Math.max(200, drag.startWidth + delta);
+    const minWidth = drag.isMain ? 320 : 240;
+    const next = Math.max(minWidth, drag.startWidth + delta);
     drag.leftPanel.style.width = next + 'px';
     drag.leftPanel.style.minWidth = next + 'px';
     drag.leftPanel.style.flex = '0 0 ' + next + 'px';
-    if (drag.isMain) mainPanelWidth = next;
+    if (drag.isMain) {
+      mainPanelWidth = next;
+    }
     // Re-position splitters so they track the live panel widths.
     // Without this the dragged splitter (and any splitters to its
     // right) stay at their pre-drag positions and detach visually
@@ -4633,6 +4636,15 @@
           panelEl.style.width = mainPanelWidth + 'px';
           panelEl.style.minWidth = mainPanelWidth + 'px';
           panelEl.style.flex = '0 0 ' + mainPanelWidth + 'px';
+        } else {
+          // A tab panel can carry stale inline sizing from a previous
+          // workspace, split-view activation, or pre-sync reconcile.
+          // When the profile has no persisted main width yet, let the
+          // CSS flex rule make the main slot fill available space
+          // instead of preserving an old narrow per-workspace width.
+          panelEl.style.removeProperty('width');
+          panelEl.style.removeProperty('min-width');
+          panelEl.style.removeProperty('flex');
         }
       } else {
         delete panelEl.dataset.bentoMainPanel;
@@ -5414,16 +5426,14 @@
         currentWorkspaceId !== incomingWorkspaceId;
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
-      // Update mainPanelWidth from the active workspace's payload. Each
-      // payload IS for the active workspace (shell's title-IPC gates on
-      // event.workspaceId === activeId), so this reflects the workspace
-      // we're currently rendering. mainWidthPx undefined → reset to
-      // null so the reconciler falls back to default flex sizing for
-      // workspaces the user hasn't dragged the main splitter on yet.
-      mainPanelWidth =
-        typeof decoded.mainWidthPx === 'number' && decoded.mainWidthPx > 0
-          ? decoded.mainWidthPx
-          : null;
+      // Update mainPanelWidth from persisted tools state when present.
+      // Missing mainWidthPx is not authoritative: workspace-switch
+      // payloads can arrive before tools has echoed the just-written
+      // value, and the main slot width is intentionally shared across
+      // workspaces for this window/profile.
+      if (typeof decoded.mainWidthPx === 'number' && decoded.mainWidthPx > 0) {
+        mainPanelWidth = decoded.mainWidthPx;
+      }
       __mainWidthTransitionForNextReconcile = wsChanged;
       // Self-correcting backstop for the dedicated BENTO_COLOR_MODE
       // path: if a panels/sync raced with a color-mode change and

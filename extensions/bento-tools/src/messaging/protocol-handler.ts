@@ -425,15 +425,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'panel/setMainWidth': {
-      // Per-active-workspace. Same no-emit-after-set reasoning as
+      // Shared main content slot width. Same no-emit-after-set reasoning as
       // panel/setWidth — chrome already has the live width on the
-      // main slot's element. Stored against the active workspace
-      // so workspace switches restore the correct main width. Reads
-      // the source window's active workspace so window A and window B
-      // can carry different main widths for different workspaces.
-      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
-      if (!wsId) return;
-      ctx.panels.setMainWidth(wsId, action.widthPx);
+      // main slot's element, and a sync round-trip would clobber the
+      // in-flight layout with stale values from the broadcast.
+      ctx.panels.setMainWidth(action.widthPx);
       return;
     }
     case 'privacy/requestSnapshot':

@@ -164,7 +164,7 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
   const valid = resolved.filter(
     (p): p is { tabId: number; url: string; favIconUrl: string; widthPx?: number } => p !== null,
   );
-  const mainWidthPx = panels.getMainWidth(workspaceId);
+  const mainWidthPx = panels.getMainWidth();
   const event: {
     type: 'panels/sync';
     workspaceId: string;

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Launch Bento for local dev without turning normal browser shutdown into a
-# pnpm lifecycle failure. Early non-zero exits still fail so startup problems
-# remain visible.
+# Launch Bento for local dev without turning browser/devtools shutdown into a
+# pnpm lifecycle failure. Missing build products still fail before launch.
 
 set -u
 
@@ -10,7 +9,6 @@ cd "$REPO_ROOT"
 
 BENTO_BIN="${BENTO_BIN:-engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento}"
 PROFILE="${1:-${BENTO_DEV_PROFILE:-.bento-dev-profile}}"
-NORMAL_SHUTDOWN_AFTER_SECONDS="${BENTO_DEV_NORMAL_SHUTDOWN_AFTER_SECONDS:-15}"
 
 if [ ! -x "$BENTO_BIN" ]; then
   echo "dev-launch: missing executable $BENTO_BIN; run a full build first" >&2
@@ -38,10 +36,5 @@ case "$status" in
     ;;
 esac
 
-if [ "$elapsed_seconds" -ge "$NORMAL_SHUTDOWN_AFTER_SECONDS" ]; then
-  echo "dev-launch: Bento exited with status $status after ${elapsed_seconds}s; treating as normal dev shutdown"
-  exit 0
-fi
-
-echo "dev-launch: Bento exited early with status $status after ${elapsed_seconds}s" >&2
-exit "$status"
+echo "dev-launch: Bento exited with status $status after ${elapsed_seconds}s; treating as dev shutdown"
+exit 0

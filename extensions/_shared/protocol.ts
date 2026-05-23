@@ -192,11 +192,10 @@ export type Action =
    * via its inter-panel splitter. Tools persists per-tabId; on next
    * launch the width is re-applied during reconcile. */
   | { type: 'panel/setWidth'; id: number; widthPx: number }
-  /** Update the persisted width (in pixels) for the main panel of the
-   * active workspace. Dispatched by chrome from endPanelDrag when the
-   * user resizes the main slot. Per-workspace because users size their
-   * main slot differently for different workflows (wide for reading,
-   * narrow for tool-strip workspaces, etc.). */
+  /** Update the persisted width (in pixels) for the main content slot.
+   * Dispatched by chrome from endPanelDrag when the user resizes the
+   * main slot. Shared across workspaces so workspace switches cannot
+   * resurrect stale per-workspace inline sizing. */
   | { type: 'panel/setMainWidth'; widthPx: number }
   /** Ask tools to read the current privacy settings via browser.privacy.*
    * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard

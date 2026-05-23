@@ -64,6 +64,9 @@ KEEP=(
   "user.js"
   # Extension storage (Bento workspace data + any installed addon's storage)
   "storage"
+  "storage.sqlite"
+  "storage.sqlite-wal"
+  "storage.sqlite-shm"
   "storage-sync-v2.sqlite"
   "storage-sync-v2.sqlite-wal"
   "storage-sync-v2.sqlite-shm"
@@ -85,7 +88,9 @@ KEEP=(
   "extensions.json"
   "extension-preferences.json"
   "extension-settings"
+  "extension-settings.json"
   "extension-store"
+  "extension-store-menus"
   # NOT kept: "addonStartup.json.lz4", "addons.json".
   # These are runtime caches (pre-resolved manifest, addon discovery list).
   # When pnpm run import rewrites bento-{shell,tools}/dist/background.js

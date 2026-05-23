@@ -34,12 +34,9 @@ export class PanelStore {
   // and tab close. Independent of #byWorkspace so a panel that's moved
   // between workspaces (future feature) keeps its width.
   #widthByTabId = new Map<number, number>();
-  // workspaceId → main-panel width in CSS pixels. Set on panel/setMainWidth
-  // (chrome dispatches this when the user drags the main splitter). Lives
-  // alongside #byWorkspace because each workspace has its own main-slot
-  // sizing — wide for reading-focused workspaces, narrow for tool-strip
-  // workspaces, etc.
-  #mainWidthByWorkspace = new Map<string, number>();
+  // Main-panel width in CSS pixels. Side panels are workspace-scoped,
+  // but the main content slot is a single window/profile layout choice.
+  #mainWidthPx: number | undefined;
   #persistence = new Persistence();
   /** Persisted entries (URL + optional width) from last shutdown, keyed
    * by workspaceId. Consumed by the boot restorer (background.ts) and
@@ -51,13 +48,7 @@ export class PanelStore {
     const persisted = await load();
     if (persisted) {
       this.#persistedEntries = persisted.byWorkspace;
-      // Main widths apply per-workspace and are workspace-scoped (not
-      // per-tab), so they go straight into the live map at init time —
-      // unlike #widthByTabId which has to wait for tabIds to materialize
-      // via restorePanelsForWorkspace.
-      for (const [wsId, w] of persisted.mainWidthByWorkspace) {
-        this.#mainWidthByWorkspace.set(wsId, w);
-      }
+      this.#mainWidthPx = persisted.mainWidthPx;
     }
   }
 
@@ -94,19 +85,19 @@ export class PanelStore {
     const rounded = Math.round(widthPx);
     if (this.#widthByTabId.get(tabId) === rounded) return;
     this.#widthByTabId.set(tabId, rounded);
-    this.#schedulePersist();
+    this.#flushPersist();
   }
 
-  getMainWidth(workspaceId: string): number | undefined {
-    return this.#mainWidthByWorkspace.get(workspaceId);
+  getMainWidth(): number | undefined {
+    return this.#mainWidthPx;
   }
 
-  setMainWidth(workspaceId: string, widthPx: number): void {
+  setMainWidth(widthPx: number): void {
     if (!Number.isFinite(widthPx) || widthPx <= 0) return;
-    const rounded = Math.round(widthPx);
-    if (this.#mainWidthByWorkspace.get(workspaceId) === rounded) return;
-    this.#mainWidthByWorkspace.set(workspaceId, rounded);
-    this.#schedulePersist();
+    const rounded = Math.max(320, Math.round(widthPx));
+    if (this.#mainWidthPx === rounded) return;
+    this.#mainWidthPx = rounded;
+    this.#flushPersist();
   }
 
   /** Get the panel tab IDs for a workspace, in left-to-right order. */
@@ -162,7 +153,6 @@ export class PanelStore {
     const list = this.#byWorkspace.get(workspaceId);
     if (!this.#byWorkspace.delete(workspaceId)) return;
     this.#persistedEntries.delete(workspaceId);
-    this.#mainWidthByWorkspace.delete(workspaceId);
     if (list) {
       for (const tabId of list) {
         if (this.findWorkspacesContainingTab(tabId).length === 0) {
@@ -212,7 +202,15 @@ export class PanelStore {
     this.#persistence.schedule(
       new Map(this.#byWorkspace),
       new Map(this.#widthByTabId),
-      new Map(this.#mainWidthByWorkspace),
+      this.#mainWidthPx,
+    );
+  }
+
+  #flushPersist(): void {
+    this.#persistence.flushNow(
+      new Map(this.#byWorkspace),
+      new Map(this.#widthByTabId),
+      this.#mainWidthPx,
     );
   }
 }

@@ -1,23 +1,26 @@
 // storage.local-backed persistence for side panels. Stores per-workspace
 // panel URLs (NOT tab IDs — tab IDs aren't stable across browser restarts)
-// + per-panel widths in CSS pixels + per-workspace main-panel widths.
+// + per-panel widths in CSS pixels + the main-panel width.
 // On boot, the restorer matches persisted URLs back to live tabs (or
 // opens new ones), re-promotes them via PanelStore.add, and re-applies
-// per-panel widths via PanelStore.setWidth. Per-workspace main widths
-// hydrate straight at panels.init() time and broadcast via emitPanelsSync.
+// per-panel widths via PanelStore.setWidth. The main width hydrates
+// straight at panels.init() time and broadcasts via emitPanelsSync.
 //
 // Mirrors workspaces/Persistence.ts: versioned StoredShape so a future
 // migration can be detected, debounced writes so a flurry of add/remove/
 // reorder collapses into one IO. Versions:
 //   - v1: byWorkspace = Record<wsId, string[]>             (URLs only)
 //   - v2: byWorkspace = Record<wsId, {url, widthPx?}[]>    (added per-panel widths)
-//   - v3: + mainWidthByWorkspace = Record<wsId, number>    (added per-workspace main width)
+//   - v3: + mainWidthByWorkspace = Record<wsId, number>    (legacy per-workspace main width)
 
 import type { PersistedPanelEntry } from './PanelStore';
 
 const STORAGE_KEY = 'bento.panels';
+const MAIN_WIDTH_STORAGE_KEY = 'bento.panelMainWidth';
+const LEGACY_MAIN_WIDTHS_STORAGE_KEY = 'bento.panelMainWidths';
 const VERSION = 3;
 const DEBOUNCE_MS = 500;
+const MAIN_PANEL_MIN_WIDTH = 320;
 
 interface StoredEntryV2 {
   url: string;
@@ -46,20 +49,46 @@ type StoredShape = StoredShapeV1 | StoredShapeV2 | StoredShapeV3;
 
 export interface PersistedPanels {
   byWorkspace: Map<string, PersistedPanelEntry[]>;
-  mainWidthByWorkspace: Map<string, number>;
+  mainWidthPx?: number;
 }
 
 export async function load(): Promise<PersistedPanels | null> {
   try {
-    const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
+    const raw = (await browser.storage.local.get([
+      STORAGE_KEY,
+      MAIN_WIDTH_STORAGE_KEY,
+      LEGACY_MAIN_WIDTHS_STORAGE_KEY,
+    ])) as Record<string, unknown>;
     const stored = raw[STORAGE_KEY] as StoredShape | undefined;
-    if (!stored || typeof stored !== 'object') return null;
+    const storedMainWidth = raw[MAIN_WIDTH_STORAGE_KEY];
+    const legacyMainWidths = raw[LEGACY_MAIN_WIDTHS_STORAGE_KEY] as
+      | Record<string, unknown>
+      | undefined;
+    const byWorkspace = new Map<string, PersistedPanelEntry[]>();
+    const legacyGlobalWidth =
+      legacyMainWidths && typeof legacyMainWidths.__global__ === 'number'
+        ? legacyMainWidths.__global__
+        : undefined;
+    let mainWidthPx =
+      typeof storedMainWidth === 'number' && storedMainWidth > 0
+        ? Math.max(MAIN_PANEL_MIN_WIDTH, storedMainWidth)
+        : undefined;
+
+    if (
+      mainWidthPx === undefined &&
+      typeof legacyGlobalWidth === 'number' &&
+      legacyGlobalWidth > 0
+    ) {
+      mainWidthPx = Math.max(MAIN_PANEL_MIN_WIDTH, legacyGlobalWidth);
+    }
+
+    if (!stored || typeof stored !== 'object') {
+      return { byWorkspace, mainWidthPx };
+    }
     if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3) {
       console.warn('[bento-tools] panels: unknown version', stored.version, '— ignoring');
-      return null;
+      return { byWorkspace, mainWidthPx };
     }
-    const byWorkspace = new Map<string, PersistedPanelEntry[]>();
-    const mainWidthByWorkspace = new Map<string, number>();
     if (stored.version >= 2) {
       const v2 = stored as StoredShapeV2 | StoredShapeV3;
       for (const [wsId, list] of Object.entries(v2.byWorkspace)) {
@@ -84,11 +113,16 @@ export async function load(): Promise<PersistedPanels | null> {
       }
     }
     if (stored.version === 3) {
-      for (const [wsId, w] of Object.entries(stored.mainWidthByWorkspace ?? {})) {
-        if (typeof w === 'number' && w > 0) mainWidthByWorkspace.set(wsId, w);
+      const storedLegacyGlobal = stored.mainWidthByWorkspace?.__global__;
+      if (
+        mainWidthPx === undefined &&
+        typeof storedLegacyGlobal === 'number' &&
+        storedLegacyGlobal > 0
+      ) {
+        mainWidthPx = Math.max(MAIN_PANEL_MIN_WIDTH, storedLegacyGlobal);
       }
     }
-    return { byWorkspace, mainWidthByWorkspace };
+    return { byWorkspace, mainWidthPx };
   } catch (err) {
     console.error('[bento-tools] panels: load failed', err);
     return null;
@@ -104,36 +138,51 @@ export class Persistence {
   /** Latest width snapshot — tabId → widthPx. Resolved alongside URLs at
    * flush time so a single debounced write captures both. */
   #pendingWidths: Map<number, number> | null = null;
-  /** Latest main-panel width snapshot per workspace. */
-  #pendingMainWidths: Map<string, number> | null = null;
+  /** Latest main-panel width snapshot. */
+  #pendingMainWidth: number | undefined;
 
   schedule(
     state: Map<string, number[]>,
     widths: Map<number, number>,
-    mainWidths: Map<string, number>,
+    mainWidthPx: number | undefined,
   ): void {
     this.#pendingByWs = state;
     this.#pendingWidths = widths;
-    this.#pendingMainWidths = mainWidths;
+    this.#pendingMainWidth = mainWidthPx;
     if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
       const nextState = this.#pendingByWs;
       const nextWidths = this.#pendingWidths;
-      const nextMainWidths = this.#pendingMainWidths;
+      const nextMainWidth = this.#pendingMainWidth;
       this.#pendingByWs = null;
       this.#pendingWidths = null;
-      this.#pendingMainWidths = null;
-      if (nextState && nextWidths && nextMainWidths) {
-        void this.#flush(nextState, nextWidths, nextMainWidths);
+      this.#pendingMainWidth = undefined;
+      if (nextState && nextWidths) {
+        void this.#flush(nextState, nextWidths, nextMainWidth);
       }
     }, DEBOUNCE_MS);
+  }
+
+  flushNow(
+    state: Map<string, number[]>,
+    widths: Map<number, number>,
+    mainWidthPx: number | undefined,
+  ): void {
+    if (this.#timer) {
+      clearTimeout(this.#timer);
+      this.#timer = null;
+    }
+    this.#pendingByWs = null;
+    this.#pendingWidths = null;
+    this.#pendingMainWidth = undefined;
+    void this.#flush(state, widths, mainWidthPx);
   }
 
   async #flush(
     state: Map<string, number[]>,
     widths: Map<number, number>,
-    mainWidths: Map<string, number>,
+    mainWidthPx: number | undefined,
   ): Promise<void> {
     const byWorkspace: Record<string, StoredEntryV2[]> = {};
     for (const [wsId, tabIds] of state) {
@@ -158,13 +207,28 @@ export class Persistence {
       // Empty workspaces don't need an entry.
       if (entries.length > 0) byWorkspace[wsId] = entries;
     }
-    const mainWidthByWorkspace: Record<string, number> = {};
-    for (const [wsId, w] of mainWidths) {
-      if (typeof w === 'number' && w > 0) mainWidthByWorkspace[wsId] = w;
-    }
-    const payload: StoredShapeV3 = { version: VERSION, byWorkspace, mainWidthByWorkspace };
+    const roundedMainWidth =
+      typeof mainWidthPx === 'number' && mainWidthPx > 0
+        ? Math.max(MAIN_PANEL_MIN_WIDTH, Math.round(mainWidthPx))
+        : undefined;
+    const payload: StoredShapeV3 = {
+      version: VERSION,
+      byWorkspace,
+      mainWidthByWorkspace: roundedMainWidth !== undefined ? { __global__: roundedMainWidth } : {},
+    };
     try {
-      await browser.storage.local.set({ [STORAGE_KEY]: payload });
+      const writePayload: Record<string, unknown> = { [STORAGE_KEY]: payload };
+      if (roundedMainWidth !== undefined) {
+        writePayload[MAIN_WIDTH_STORAGE_KEY] = roundedMainWidth;
+        writePayload[LEGACY_MAIN_WIDTHS_STORAGE_KEY] = { __global__: roundedMainWidth };
+      }
+      await browser.storage.local.set(writePayload);
+      if (roundedMainWidth === undefined) {
+        await browser.storage.local.remove([
+          MAIN_WIDTH_STORAGE_KEY,
+          LEGACY_MAIN_WIDTHS_STORAGE_KEY,
+        ]);
+      }
     } catch (err) {
       console.error('[bento-tools] panels: save failed', err);
     }
