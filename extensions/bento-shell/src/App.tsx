@@ -12,9 +12,9 @@ import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 import { TabList } from './components/TabList/TabList';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
-import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
+import { dispatch, useToolsReady } from './bridge/useToolsPort';
 import { requestWelcome } from './bridge/useWelcome';
-import { useWorkspacesStore, useActiveWorkspaceIdForWindow } from './state/workspaces';
+import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import type { ColorModePref } from '@shared/protocol';
 
@@ -52,11 +52,14 @@ function openCommandPalette() {
 
 export function App() {
   const ready = useToolsReady();
-  const windowId = useCurrentWindowId();
-  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
-  const activeWorkspaceColor = useWorkspacesStore((s) =>
-    activeWorkspaceId ? s.byId[activeWorkspaceId]?.color : undefined,
-  );
+  // Per-workspace theme. Mirrors the active workspace's themeId onto
+  // <html data-bento-theme="..."> so the scoped theme rules in
+  // theme/presets/<id>.css apply to the shell. The sidebar is also
+  // the canonical chrome→theme messenger (pushChrome: true), so the
+  // chrome window's <window> root re-themes in lockstep — see
+  // src/browser/base/content/bento-shell-mount.js's BENTO_THEME
+  // title-IPC handler.
+  useWorkspaceTheme({ pushChrome: true });
   // First-run welcome trigger. The settings snapshot lands a moment after
   // the tools port connects; once it does and welcomeSeen=false, signal
   // chrome to show the welcome overlay (chrome-mounted, full-window scrim
@@ -85,15 +88,6 @@ export function App() {
     const handle = setInterval(fire, 200);
     return () => clearInterval(handle);
   }, [welcomeShouldShow]);
-
-  // Propagate the active workspace's accent palette to <html data-workspace-color>
-  // so per-workspace accent tokens (declared in bento-tokens.css) cascade to
-  // the entire shell.
-  useEffect(() => {
-    const html = document.documentElement;
-    if (activeWorkspaceColor) html.setAttribute('data-workspace-color', activeWorkspaceColor);
-    else html.removeAttribute('data-workspace-color');
-  }, [activeWorkspaceColor]);
 
   const onActivate = (id: number) => {
     dispatch({ type: 'tab/activate', id });

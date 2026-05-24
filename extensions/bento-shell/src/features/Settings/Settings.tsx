@@ -195,6 +195,22 @@ export function Settings() {
                 their stored widths.
               </NumberField.Description>
             </NumberField.Root>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Column gap="3xs" style={{ flex: 1 }}>
+                <Text>Wrap arrow-key cycling at the ends</Text>
+                <Text variant="text" size="s" color="muted">
+                  When on, pressing the Right arrow past the Add-panel button cycles back to the
+                  main content slot. When off, the Add-panel button is the rightmost stop.
+                </Text>
+              </Column>
+              <Switch.Root
+                isSelected={settings.panelCycleWraparound}
+                onChange={(v) => update('panelCycleWraparound', v)}
+                aria-label="Wrap arrow-key cycling at the ends"
+              >
+                <Switch.Thumb />
+              </Switch.Root>
+            </Row>
             <Column gap="2xs">
               <Text>Custom panel sizes (px)</Text>
               <Text variant="text" size="s" color="muted">

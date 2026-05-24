@@ -262,15 +262,12 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // Other windows keep whatever they were on. Falls back to global
       // activation when sourceWindowId is null (legacy / dev-loop).
       ctx.workspaces.create(
-        { name: action.name, color: action.color, icon: action.icon },
+        { name: action.name, themeId: action.themeId, icon: action.icon },
         ctx.sourceWindowId,
       );
       return;
     case 'workspace/rename':
       ctx.workspaces.rename(action.id, action.name);
-      return;
-    case 'workspace/recolor':
-      ctx.workspaces.recolor(action.id, action.color);
       return;
     case 'workspace/update':
       ctx.workspaces.update(action.id, action.changes);
@@ -354,7 +351,20 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     }
     case 'panel/openAt': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
-      if (!wsId) return;
+      console.log(
+        '[bento-tools] panel/openAt received url=',
+        action.url,
+        'sourceTabId=',
+        action.sourceTabId,
+        'sourceWindowId=',
+        ctx.sourceWindowId,
+        'resolved wsId=',
+        wsId,
+      );
+      if (!wsId) {
+        console.warn('[bento-tools] panel/openAt: no active workspace — bailing');
+        return;
+      }
       // Compute insert position from sourceTabId:
       //   null  → 0 (immediately right of main panel)
       //   id    → that panel's index + 1 (immediately right of it)
@@ -369,15 +379,47 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         const idx = currentPanels.indexOf(action.sourceTabId);
         position = idx < 0 ? currentPanels.length : idx + 1;
       }
+      console.log(
+        '[bento-tools] panel/openAt: currentPanels=',
+        currentPanels,
+        'computed position=',
+        position,
+      );
       browser.tabs
-        .create({ url: action.url, active: false })
+        .create({
+          url: action.url,
+          active: false,
+          ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+        })
         .then((tab) => {
-          if (typeof tab.id !== 'number') return;
-          if (!ctx.panels.insertAt(wsId, tab.id, position)) return;
+          console.log(
+            '[bento-tools] panel/openAt: tabs.create resolved tab.id=',
+            tab.id,
+            'tab.windowId=',
+            tab.windowId,
+          );
+          if (typeof tab.id !== 'number') {
+            console.warn('[bento-tools] panel/openAt: tab.id not a number — bailing');
+            return;
+          }
+          const inserted = ctx.panels.insertAt(wsId, tab.id, position);
+          console.log('[bento-tools] panel/openAt: panels.insertAt returned', inserted);
+          if (!inserted) {
+            console.warn(
+              '[bento-tools] panel/openAt: insertAt returned false (tab already in panel list?) — bailing without sync',
+            );
+            return;
+          }
           const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
           if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
           ctx.syncPanelMarkers(wsId);
           ctx.emitPanelsSync(wsId);
+          console.log(
+            '[bento-tools] panel/openAt: syncPanelMarkers + emitPanelsSync fired for wsId=',
+            wsId,
+            'final panel list=',
+            ctx.panels.getPanels(wsId),
+          );
         })
         .catch((err) => console.warn('[bento-tools] panel/openAt failed:', err));
       return;

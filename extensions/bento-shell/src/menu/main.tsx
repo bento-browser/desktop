@@ -32,12 +32,15 @@ import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/menu';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
 
 function MenuApp() {
   useFirefoxTheme();
+  useWorkspaceTheme();
   const [payload, setPayload] = useState<ChromeMenuOpenPayload | null>(null);
   // react-aria's Menu fires onAction (our onSelect) FIRST, then closes the
   // menu in the same synchronous frame which fires onOpenChange(false)

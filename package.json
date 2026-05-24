@@ -29,7 +29,8 @@
     "tools:build": "pnpm --filter @bento/tools build",
     "ext:build": "pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
     "size": "pnpm run ext:build && size-limit",
-    "size:check": "size-limit"
+    "size:check": "size-limit",
+    "theme:import": "node scripts/import-theme.mjs"
   },
   "devDependencies": {
     "@bento-browser/surfer": "github:Bento-Browser/surfer#358ca0418217c59fb659acd05ce7996682105147",

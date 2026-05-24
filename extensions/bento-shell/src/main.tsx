@@ -35,6 +35,7 @@ import '@tale-ui/react-styles/search-field';
 import '@tale-ui/react-styles/spinner';
 
 import './theme/bento-tokens.css';
+import './theme/presets/index.css';
 import './theme/bento-fonts.css';
 import './app.css';
 import { App } from './App';

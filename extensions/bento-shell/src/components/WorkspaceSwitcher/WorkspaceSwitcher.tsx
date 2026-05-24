@@ -22,6 +22,7 @@ import {
   subscribeToWorkspaceSwitcherClose,
 } from '../../bridge/useWorkspaceSwitcher';
 import { useCurrentWindowId } from '../../bridge/useToolsPort';
+import { DEFAULT_THEME_ID } from '../../theme/presets';
 import './WorkspaceSwitcher.css';
 
 function workspaceInitial(name: string): string {
@@ -82,7 +83,7 @@ export function WorkspaceSwitcher() {
       <Avatar.Root
         size="sm"
         className="bento-workspace-switcher__avatar"
-        data-workspace-color={active?.color}
+        data-bento-theme={active?.themeId ?? DEFAULT_THEME_ID}
       >
         <Avatar.Fallback>{active?.icon || workspaceInitial(active?.name ?? '?')}</Avatar.Fallback>
       </Avatar.Root>

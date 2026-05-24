@@ -25,7 +25,9 @@ export interface EditWorkspacePayload {
    * Forms render against this so cancel-and-reopen always shows the live
    * values rather than abandoned drafts. */
   name: string;
-  color?: string;
+  /** Current theme id; the picker selects this row on open. Undefined =
+   * Default. */
+  themeId?: string;
   icon?: string;
 }
 

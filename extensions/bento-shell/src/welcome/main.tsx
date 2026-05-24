@@ -35,8 +35,10 @@ import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/dialog';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch } from '../bridge/useToolsPort';
 import { WELCOME_CLOSE_PREFIX } from '../bridge/useWelcome';
 import './welcome.css';
@@ -71,6 +73,7 @@ function close() {
 
 function WelcomeApp() {
   useFirefoxTheme();
+  useWorkspaceTheme();
   return (
     <Dialog.Root
       isOpen={true}

@@ -37,8 +37,10 @@ import '@tale-ui/react-styles/menu';
 import '@tale-ui/react-styles/avatar';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
 import { requestConfirm } from '../bridge/useConfirm';
 import { requestEditWorkspace } from '../bridge/useEditWorkspace';
@@ -50,6 +52,7 @@ import {
 } from '../bridge/useWorkspaceSwitcher';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import { useWorkspaceTabIds } from '../state/tabs';
+import { BENTO_THEMES, DEFAULT_THEME_ID } from '../theme/presets';
 // Reuse the inline menu's CSS — only the trigger styles in
 // WorkspaceSwitcher.css are unused here; the popover/avatar/item rules
 // all apply identically to this overlay's menu DOM.
@@ -60,8 +63,27 @@ initToolsPort();
 const NEW_WORKSPACE_KEY = '__new__';
 const EDIT_WORKSPACE_KEY = '__edit__';
 const DELETE_WORKSPACE_KEY = '__delete__';
-// Mirrors COLOR_ROTATION in components/WorkspaceSwitcher/WorkspaceSwitcher.tsx.
-const COLOR_ROTATION = ['blue', 'emerald', 'amber'] as const;
+
+// Themes new workspaces cycle through so each is visually distinct in the
+// switcher without the user having to open Edit Workspace. Excludes the
+// Default theme — that's reserved for the first workspace (which usually
+// represents the user's "home base") and as the fallback for unrecognised
+// themeIds. Order matters: the first New click after first-boot lands
+// `teal`, then `terracotta`, then `rosewater`, then wraps.
+const THEME_ROTATION = BENTO_THEMES.map((t) => t.id).filter((id) => id !== DEFAULT_THEME_ID);
+
+/** Pick the next theme for a brand-new workspace. Prefers any rotation
+ * theme not already in use; falls back to round-robin once every theme
+ * has been assigned at least once. This way the first few "+ New
+ * workspace" clicks always produce visually distinct rows in the
+ * switcher menu — only after the user has at least one of every theme
+ * do duplicates appear. */
+function pickRotatedTheme(used: ReadonlySet<string | undefined>, total: number): string {
+  if (THEME_ROTATION.length === 0) return DEFAULT_THEME_ID;
+  const unused = THEME_ROTATION.find((id) => !used.has(id));
+  if (unused) return unused;
+  return THEME_ROTATION[total % THEME_ROTATION.length]!;
+}
 
 function workspaceInitial(name: string): string {
   const trimmed = name.trim();
@@ -70,6 +92,7 @@ function workspaceInitial(name: string): string {
 
 function WorkspaceSwitcherOverlayApp() {
   useFirefoxTheme();
+  useWorkspaceTheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   // Per-window active workspace (phase A.3). The chrome window that owns
   // this overlay determines which workspace is highlighted as "current".
@@ -128,10 +151,11 @@ function WorkspaceSwitcherOverlayApp() {
   }
   function onCreate() {
     const nextIndex = workspaces.length;
+    const usedThemes = new Set(workspaces.map((w) => w.themeId));
     dispatch({
       type: 'workspace/create',
       name: `Workspace ${nextIndex + 1}`,
-      color: COLOR_ROTATION[nextIndex % COLOR_ROTATION.length],
+      themeId: pickRotatedTheme(usedThemes, nextIndex),
     });
   }
   function onRequestEdit() {
@@ -140,7 +164,7 @@ function WorkspaceSwitcherOverlayApp() {
     requestEditWorkspace({
       workspaceId: active.id,
       name: active.name,
-      color: active.color,
+      themeId: active.themeId,
       icon: active.icon,
     });
   }
@@ -218,7 +242,7 @@ function WorkspaceSwitcherOverlayApp() {
               <Avatar.Root
                 size="sm"
                 className="bento-workspace-switcher__avatar"
-                data-workspace-color={w.color}
+                data-bento-theme={w.themeId ?? DEFAULT_THEME_ID}
               >
                 <Avatar.Fallback>{w.icon || workspaceInitial(w.name)}</Avatar.Fallback>
               </Avatar.Root>

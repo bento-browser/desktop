@@ -46,12 +46,14 @@
     --neutral-default-98: var(--neutral-cool-98);
     --neutral-default-100: var(--neutral-cool-100);
 
-    /* Workspace accent — set <html data-workspace-color="..."> at runtime
-       to swap the entire UI's accent palette per active workspace.
-       --accent / --accent-fg follow Tale UI's --color-60 / --color-60-fg
-       contrast pair: the accent tints surfaces (avatar bg, focus ring,
-       etc.) and -fg renders legible text on top. -soft stays as a
-       lower-saturation variant for hover states / subtle tints. */
+    /* Workspace accent — derived directly from Tale UI's --color-60 /
+       --color-5 contrast pair, which themselves alias to --brand-60 /
+       --brand-5. Workspace theme presets (see theme/presets/<id>.css)
+       redefine --brand-* under [data-bento-theme="<id>"] scopes, so
+       this token automatically retunes per active workspace via the
+       [data-bento-theme] re-link rule below.
+       Root declaration covers the no-theme case (e.g. Ladle previews
+       and the brief window before useWorkspaceTheme runs). */
     --bento-workspace-accent: var(--color-60);
     --bento-workspace-accent-fg: var(--color-5);
 
@@ -170,46 +172,32 @@
     --bento-border-hairline: 1px;
   }
 
-  /* Per-workspace accent presets. Each picker swatch in the workspace edit
-     dialog needs a matching block here. Set <html data-workspace-color="X">
-     from the active workspace. Order should match WORKSPACE_COLORS in
-     WorkspaceSwitcher.tsx so the color picker swatches read left-to-right
-     in the same order as the values. */
-  /* 'blue' is a legacy workspace-color name that pre-dates the Tale UI
-     audit — Tale UI's color tokens don't include a --blue scale (the
-     blue-family scales it ships are sky / indigo / cyan). Keep the name
-     as the rotation default since it's persisted in profiles, and map
-     it to --indigo-60 which is the closest visual match. */
-  [data-workspace-color='blue'] {
-    --bento-workspace-accent: var(--indigo-60);
-    --bento-workspace-accent-fg: var(--indigo-5);
-  }
-  [data-workspace-color='emerald'] {
-    --bento-workspace-accent: var(--emerald-60);
-    --bento-workspace-accent-fg: var(--emerald-5);
-  }
-  [data-workspace-color='amber'] {
-    --bento-workspace-accent: var(--amber-60);
-    --bento-workspace-accent-fg: var(--amber-5);
-  }
-  [data-workspace-color='red'] {
-    --bento-workspace-accent: var(--red-60);
-    --bento-workspace-accent-fg: var(--red-5);
-  }
-  [data-workspace-color='violet'] {
-    --bento-workspace-accent: var(--violet-60);
-    --bento-workspace-accent-fg: var(--violet-5);
-  }
-  [data-workspace-color='pink'] {
-    --bento-workspace-accent: var(--pink-60);
-    --bento-workspace-accent-fg: var(--pink-5);
-  }
-  [data-workspace-color='cyan'] {
-    --bento-workspace-accent: var(--cyan-60);
-    --bento-workspace-accent-fg: var(--cyan-5);
-  }
-  [data-workspace-color='neutral'] {
-    --bento-workspace-accent: var(--neutral-60);
-    --bento-workspace-accent-fg: var(--neutral-5);
+  /* Per-element theme re-link. Critical for menu items that show
+     different workspaces' avatars side-by-side: each avatar carries
+     `data-bento-theme="<id>"`, the theme preset (theme/presets/<id>.css)
+     redeclares --brand-* on the avatar — but CSS custom properties are
+     inherited as RESOLVED values, so descendants of the document root
+     inherit --color-N and --bento-workspace-accent already resolved
+     against the document-root theme. The local --brand-* never reaches
+     them.
+     This rule re-runs the alias chain at every element that opts into
+     a theme via data-bento-theme. Substitution then happens at that
+     element, picking up its local --brand-* declaration.
+     Empirically verified — without this, every menu-item avatar shows
+     the active workspace's colour instead of its own. */
+  [data-bento-theme] {
+    --color-5: var(--brand-5);
+    --color-10: var(--brand-10);
+    --color-20: var(--brand-20);
+    --color-30: var(--brand-30);
+    --color-40: var(--brand-40);
+    --color-50: var(--brand-50);
+    --color-60: var(--brand-60);
+    --color-70: var(--brand-70);
+    --color-80: var(--brand-80);
+    --color-90: var(--brand-90);
+    --color-100: var(--brand-100);
+    --bento-workspace-accent: var(--color-60);
+    --bento-workspace-accent-fg: var(--color-5);
   }
 }

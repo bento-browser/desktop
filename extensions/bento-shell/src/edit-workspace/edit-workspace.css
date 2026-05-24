@@ -5,9 +5,10 @@
     padding-block: var(--space-s);
   }
 
-  /* Tale UI ColorSwatchPicker default layout is fine; this class is here
-     so future per-shell tweaks (gap, wrap, max-width) have a hook. */
-  .bento-edit-workspace__picker {
+  /* Theme picker swatch row. Tale UI's ColorSwatchPicker.Root default
+     layout is a horizontal flex; just nudge gap so the swatches breathe
+     a bit on the dialog's tight form width. */
+  .bento-edit-workspace__theme-picker {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2xs);

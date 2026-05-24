@@ -28,8 +28,10 @@ import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/alert-dialog';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch } from '../bridge/useToolsPort';
 import {
   CONFIRM_CLOSE_PREFIX,
@@ -41,6 +43,7 @@ initToolsPort();
 
 function ConfirmApp() {
   useFirefoxTheme();
+  useWorkspaceTheme();
   // Last-received payload — chrome shows this overlay only after a payload
   // is broadcast, but we initialize null and treat absent payload as a
   // benign empty dialog (no buttons fire actions until a payload arrives).

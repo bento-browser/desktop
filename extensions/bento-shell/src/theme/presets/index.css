@@ -1,0 +1,17 @@
+/*
+ * Theme presets barrel. Each preset's `.css` file is `@import`ed below
+ * — that file is responsible for scoping its overrides via
+ * `[data-bento-theme="<id>"]` selectors.
+ *
+ * The Default theme has no `.css` file because "default" means the
+ * absence of any theme override — Tale UI tokens + bento-tokens.css
+ * cool-neutral pinning stand.
+ *
+ * Imports are inserted by `pnpm theme:import` (scripts/import-theme.mjs)
+ * — keep them sorted alphabetically and idempotent (no duplicates).
+ */
+
+@import './default.css';
+@import './rosewater.css';
+@import './teal.css';
+@import './terracotta.css';

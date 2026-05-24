@@ -35,14 +35,16 @@ export type TabDelta =
   | { kind: 'removed'; id: number }
   | { kind: 'activated'; id: number; windowId: number };
 
-/** Workspace metadata. `color` keys into `data-workspace-color` on <html>
- * (see bento-tokens.css per-workspace accent presets). */
+/** Workspace metadata. `themeId` keys into the theme presets registry
+ * (`extensions/bento-shell/src/theme/presets/index.ts`) and is mirrored
+ * onto `<html data-bento-theme="…">` for both the shell and the chrome
+ * window. */
 export interface Workspace {
   id: string;
   name: string;
-  /** Accent palette key. Must match a [data-workspace-color="<color>"] block
-   * in bento-tokens.css ('blue' | 'emerald' | 'amber' | … or undefined for default). */
-  color?: string;
+  /** Theme preset id. Resolves to a `BentoThemeMeta` in the shell's
+   * presets registry. Undefined falls back to the Default theme. */
+  themeId?: string;
   /** Optional emoji or short string rendered in the workspace switcher. */
   icon?: string;
   createdAt: number;
@@ -119,6 +121,12 @@ export interface BentoSettings {
    * cover narrow chat / standard reading / wide research / near-full-
    * width split-screen breakpoints. */
   customPanelSizes: number[];
+  /** Wrap Left/Right arrow panel cycling at the ends of the strip. When
+   * false (default), pressing Right at the Add-panel trailer (or Left at
+   * the main panel) is a no-op — cycling clamps at the endpoints. When
+   * true, Right at the trailer wraps back to the main panel and Left at
+   * the main panel wraps forward to the trailer. */
+  panelCycleWraparound: boolean;
 }
 
 export type ColorModePref = 'light' | 'dark';
@@ -155,17 +163,16 @@ export type Action =
   | { type: 'tab/reload'; id: number; bypassCache?: boolean }
   | { type: 'tab/togglePin'; id: number }
   | { type: 'workspaces/requestSnapshot' }
-  | { type: 'workspace/create'; name: string; color?: string; icon?: string }
+  | { type: 'workspace/create'; name: string; themeId?: string; icon?: string }
   | { type: 'workspace/rename'; id: string; name: string }
-  | { type: 'workspace/recolor'; id: string; color?: string }
-  /** Atomic update for the editable workspace fields (name + color + icon).
+  /** Atomic update for the editable workspace fields (name + themeId + icon).
    * The edit-workspace dialog dispatches a single `workspace/update` so the
    * sidebar mirror sees one delta instead of three flickering ones, and a
    * future history/undo stack records one logical change. */
   | {
       type: 'workspace/update';
       id: string;
-      changes: Partial<Pick<Workspace, 'name' | 'color' | 'icon'>>;
+      changes: Partial<Pick<Workspace, 'name' | 'themeId' | 'icon'>>;
     }
   | { type: 'workspace/delete'; id: string; closeTabs?: boolean }
   | { type: 'workspace/activate'; id: string }

@@ -10,7 +10,6 @@ export function makeWorkspace(overrides: Partial<Workspace> & { id: string }): W
   return {
     id,
     name: 'Workspace',
-    color: 'blue',
     createdAt: 0,
     ...rest,
   };
@@ -26,7 +25,7 @@ export function seedWorkspaces(
 
 export function seedDefault(): Workspace[] {
   const workspaces: Workspace[] = [
-    makeWorkspace({ id: 'w-personal', name: 'Personal', color: 'blue', createdAt: 1 }),
+    makeWorkspace({ id: 'w-personal', name: 'Personal', createdAt: 1 }),
   ];
   seedWorkspaces(workspaces, 'w-personal');
   return workspaces;
@@ -34,9 +33,9 @@ export function seedDefault(): Workspace[] {
 
 export function seedMany(): Workspace[] {
   const workspaces: Workspace[] = [
-    makeWorkspace({ id: 'w-personal', name: 'Personal', color: 'blue', createdAt: 1 }),
-    makeWorkspace({ id: 'w-work', name: 'Work', color: 'emerald', createdAt: 2 }),
-    makeWorkspace({ id: 'w-side', name: 'Side project', color: 'amber', createdAt: 3 }),
+    makeWorkspace({ id: 'w-personal', name: 'Personal', createdAt: 1 }),
+    makeWorkspace({ id: 'w-work', name: 'Work', themeId: 'teal', createdAt: 2 }),
+    makeWorkspace({ id: 'w-side', name: 'Side project', themeId: 'terracotta', createdAt: 3 }),
   ];
   seedWorkspaces(workspaces, 'w-work');
   return workspaces;
@@ -47,7 +46,7 @@ export function seedLongName(): Workspace[] {
     makeWorkspace({
       id: 'w-long',
       name: 'A very long workspace name that needs to truncate',
-      color: 'amber',
+      themeId: 'rosewater',
       createdAt: 1,
     }),
   ];

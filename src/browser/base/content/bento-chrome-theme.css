@@ -28,10 +28,12 @@
  *
  * Tale UI tokens flip with data-color-mode (set on chrome <window> by
  * bento-shell-mount's color-mode IPC), so a single attribute swap re-
- * themes both light/dark variants. Per-workspace accent (color-60 maps
- * to the workspace palette) flows through Tale UI's color cascade once
- * the chrome window picks up data-workspace-color (future work — chrome
- * is currently neutral-only).
+ * themes both light/dark variants. Per-workspace theme (re-points
+ * --brand-*, --neutral-default-*, and --color-N-fg) flows through Tale
+ * UI's color cascade via data-bento-theme on the chrome window — set
+ * by the BENTO_THEME title-IPC handler in bento-shell-mount.js. The
+ * workspace theme presets ship inside bento-chrome-tokens.css
+ * (concatenated by scripts/generate-chrome-tokens.mjs).
  */
 
 @layer bento.chrome-theme {

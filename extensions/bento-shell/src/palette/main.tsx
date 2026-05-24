@@ -21,9 +21,11 @@ import '@tale-ui/react-styles/autocomplete';
 import '@tale-ui/react-styles/search-field';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import CommandPalette from '../components/CommandPalette/CommandPalette';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 
 initToolsPort();
@@ -39,6 +41,11 @@ const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_PALETTE';
 
 function PaletteApp() {
   useFirefoxTheme();
+  // Theme to the active workspace so the palette overlay renders with the
+  // same brand/neutral palette as the sidebar. pushChrome is OFF — only
+  // the sidebar (main.tsx) owns the BENTO_THEME title-IPC; secondary
+  // overlays writing it would clobber their own close sentinels.
+  useWorkspaceTheme();
   const handleClose = () => {
     const newTitle = `${CLOSE_TITLE_PREFIX}_${Date.now()}`;
     console.log('[Palette] handleClose: setting title to', newTitle);

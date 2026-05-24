@@ -12,7 +12,6 @@ import { Persistence, load } from './Persistence';
 type Listener = (deltas: WorkspaceDelta[]) => void;
 
 const DEFAULT_WORKSPACE_NAME = 'Personal';
-const DEFAULT_WORKSPACE_COLOR = 'blue';
 
 // Per-window active workspace persistence. Rides Firefox SessionStore's
 // extData via browser.sessions.setWindowValue, the same way per-tab
@@ -60,7 +59,6 @@ export class WorkspaceStore {
       const w: Workspace = {
         id: makeId(),
         name: DEFAULT_WORKSPACE_NAME,
-        color: DEFAULT_WORKSPACE_COLOR,
         createdAt: Date.now(),
       };
       this.#workspaces.set(w.id, w);
@@ -121,13 +119,13 @@ export class WorkspaceStore {
   }
 
   create(
-    input: { name: string; color?: string; icon?: string },
+    input: { name: string; themeId?: string; icon?: string },
     windowId?: number | null,
   ): Workspace {
     const w: Workspace = {
       id: makeId(),
       name: input.name,
-      color: input.color,
+      themeId: input.themeId,
       icon: input.icon,
       createdAt: Date.now(),
     };
@@ -168,27 +166,19 @@ export class WorkspaceStore {
     this.#schedulePersist();
   }
 
-  recolor(id: string, color: string | undefined): void {
-    const w = this.#workspaces.get(id);
-    if (!w || w.color === color) return;
-    w.color = color;
-    this.#enqueue({ kind: 'updated', id, changes: { color } });
-    this.#schedulePersist();
-  }
-
   /** Atomic multi-field update for the workspace edit dialog. Computes the
    * actual diff against the existing workspace and emits a single delta
    * containing only the fields that changed (so listeners can rely on
    * `changes` keys to know what to re-render). No-op if nothing changed. */
-  update(id: string, changes: Partial<Pick<Workspace, 'name' | 'color' | 'icon'>>): void {
+  update(id: string, changes: Partial<Pick<Workspace, 'name' | 'themeId' | 'icon'>>): void {
     const w = this.#workspaces.get(id);
     if (!w) return;
-    const diff: Partial<Pick<Workspace, 'name' | 'color' | 'icon'>> = {};
+    const diff: Partial<Pick<Workspace, 'name' | 'themeId' | 'icon'>> = {};
     if ('name' in changes && changes.name !== undefined && changes.name !== w.name) {
       diff.name = changes.name;
     }
-    if ('color' in changes && changes.color !== w.color) {
-      diff.color = changes.color;
+    if ('themeId' in changes && changes.themeId !== w.themeId) {
+      diff.themeId = changes.themeId;
     }
     if ('icon' in changes && changes.icon !== w.icon) {
       diff.icon = changes.icon;

@@ -1,11 +1,12 @@
 /* Layer-2 component: WorkspaceSwitcher.
  *
- * The avatar uses the per-workspace accent set on its own element via
- * data-workspace-color="..." (see bento-tokens.css). Because Tale UI's
- * --bento-workspace-accent-* tokens cascade from the element they're
- * declared on, this lets each menu row tint its own avatar with that
- * workspace's color while the active workspace's color also propagates
- * to <html data-workspace-color> for the broader UI accent. */
+ * The avatar uses the workspace's theme set on its own element via
+ * data-bento-theme="..." — that scopes the theme preset's --brand-*
+ * overrides (theme/presets/<id>.css) to the avatar, which then derives
+ * its accent through --bento-workspace-accent → --color-60 → --brand-60.
+ * Each menu row tints its own avatar with that workspace's theme while
+ * the active workspace's theme also propagates to <html data-bento-theme>
+ * for the rest of the shell + chrome via useWorkspaceTheme. */
 
 /* Avatar accent override — Tale UI's .tale-avatar { background-color }
  * rule is UNLAYERED, so a @layer-wrapped rule loses regardless of

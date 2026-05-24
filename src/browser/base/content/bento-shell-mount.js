@@ -1105,6 +1105,16 @@
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
+      /* The Add-panel trailer is a XUL <vbox>; ::after pseudo-elements
+         don't reliably paint on XUL elements in Firefox chrome, so we
+         can't reuse the ::after-overlay ring used for real panels.
+         Instead, paint an inset box-shadow ring on the trailer itself
+         when keyboard cycling lands on it — same visible result, no
+         pseudo-element required. */
+      #bento-add-panel-trailer.bento-panel--cycle-focused {
+        box-shadow: inset 0 0 0 var(--bento-focus-ring-width) var(--color-60);
+        border-color: transparent;
+      }
     `;
     document.documentElement.appendChild(style);
   }
@@ -1687,6 +1697,16 @@
   // payload also carries the same uiColorMode field as a self-correcting
   // backstop in case this dedicated message races with a panels/sync.
   const COLOR_MODE_PREFIX = 'BENTO_COLOR_MODE:';
+  // Per-workspace theme IPC. Title format: BENTO_THEME:<ts>:<themeId>
+  // The sidebar's useWorkspaceTheme hook (with pushChrome: true) writes
+  // this on every active-workspace-theme change. We mirror it onto
+  // documentElement[data-bento-theme] so the workspace theme presets in
+  // bento-chrome-tokens.css (concatenated by generate-chrome-tokens.mjs
+  // from extensions/bento-shell/src/theme/presets/*.css) scope their
+  // overrides to the chrome window root. Boot race acknowledged in the
+  // theme plan — until the first BENTO_THEME push lands, chrome paints
+  // in the Default theme even when the workspace prefers another.
+  const THEME_PREFIX = 'BENTO_THEME:';
   // Sidebar drag-to-reorder. Title format:
   //   BENTO_TAB_MOVE:<ts>:<srcTabId>:<anchorTabId>:<before|after>
   // Calls gBrowser.moveTabBefore / moveTabAfter so the dragged tab lands
@@ -1711,6 +1731,20 @@
     if (mode === 'light' || mode === 'dark') {
       root.setAttribute('data-color-mode', mode);
     }
+  }
+  function handleThemeTitle(rawTitle) {
+    // Format: BENTO_THEME:<ts>:<themeId>
+    const tail = rawTitle.slice(THEME_PREFIX.length);
+    const colonAfterTs = tail.indexOf(':');
+    if (colonAfterTs < 0) return;
+    const themeId = tail.slice(colonAfterTs + 1).trim();
+    // Defensive: ignore empty / whitespace-only payloads. Anything else
+    // is mirrored verbatim — the chrome stylesheet either has scoped
+    // rules for that id (which apply) or doesn't (chrome stays on
+    // defaults). Lenient by design so a typo'd new theme in the
+    // registry doesn't break chrome.
+    if (themeId.length === 0) return;
+    document.documentElement.setAttribute('data-bento-theme', themeId);
   }
   function handleColorModeTitle(rawTitle) {
     const tail = rawTitle.slice(COLOR_MODE_PREFIX.length);
@@ -2582,7 +2616,18 @@
   }
 
   function getPanelCycleTargets() {
-    return getOrderedPanels();
+    // Cycle targets = ordered panels + the Add-panel trailer (when
+    // present). The trailer is a focusable XUL vbox sibling of the
+    // panel containers inside tabpanels; including it as the final
+    // cycle slot lets Right-arrow past the last panel land on it, and
+    // its Enter/Space keydown handler then triggers addNewPanel.
+    // applyActiveMarker is naturally a no-op for this index because
+    // the favicon strip only renders entries for real panels.
+    const targets = getOrderedPanels();
+    if (targets.length === 0) return targets;
+    const trailer = document.getElementById('bento-add-panel-trailer');
+    if (trailer) targets.push(trailer);
+    return targets;
   }
 
   function shouldHandlePanelArrowKey(target) {
@@ -2643,7 +2688,18 @@
     // (b) the bottom marker stays in sync with what the user just
     // selected, (c) manual scroll (mouse wheel) doesn't change the
     // selection.
-    const nextIdx = Math.max(0, Math.min(targets.length - 1, currentActiveIdx + delta));
+    //
+    // Endpoint behaviour: clamp by default; wrap when the user has
+    // opted into wraparound via Settings. Modulo handles both ends
+    // (Left from index 0 wraps to the trailer, Right from the trailer
+    // wraps to the main panel).
+    let nextIdx;
+    if (currentPanelCycleWraparound) {
+      const n = targets.length;
+      nextIdx = (((currentActiveIdx + delta) % n) + n) % n;
+    } else {
+      nextIdx = Math.max(0, Math.min(targets.length - 1, currentActiveIdx + delta));
+    }
     if (nextIdx === currentActiveIdx) return false;
 
     const targetPanel = targets[nextIdx];
@@ -2950,7 +3006,27 @@
         mm.loadFrameScript(SHELL_ACTION_FRAME_SCRIPT_URL, true);
         shellFrame._bentoShellActionScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoShellAction', action);
+      // Stamp this chrome window's WebExtension windowId on the wire
+      // envelope so bento-tools' per-window state lookups
+      // (getActiveId(sourceWindowId), browser.tabs.create({windowId, …}))
+      // resolve to THIS window's active workspace — not the global
+      // fallback. Without this stamp, panel/openAt from a chrome menu
+      // item routes to whatever workspace getActiveId(null) returns
+      // (lastGlobalActiveId), so in multi-window setups the panel can
+      // get registered against a workspace that isn't this window's
+      // current one: the new tab is created in this window (focused),
+      // gets assigned this window's workspaceId via tabs.onCreated, but
+      // the panels list update lands on the wrong workspace. Result:
+      // tab appears in the sidebar (wrong workspace's panel filter
+      // doesn't exclude it) and never renders as a panel here.
+      // The React-side dispatch() in useToolsPort.ts does the same
+      // stamping — see the WireAction __windowId envelope notes.
+      const windowId = getChromeWindowId();
+      const wireAction =
+        typeof windowId === 'number' && windowId >= 0
+          ? Object.assign({}, action, { __windowId: windowId })
+          : action;
+      mm.sendAsyncMessage('BentoShellAction', wireAction);
       return true;
     } catch (err) {
       console.warn('[bento-shell-mount] shell action dispatch failed:', err);
@@ -5250,6 +5326,13 @@
       (e) => {
         const target = e.target;
         if (!target || typeof target.closest !== 'function') return;
+        // Add-panel trailer focus must bypass this listener: the trailer
+        // has neither data-bento-* attr, so closest() walks past it up
+        // to the outer #tabbrowser-tabbox (which DOES carry data-bento-
+        // main-panel) and the fallback below incorrectly resets
+        // currentActiveIdx to 0 — turning the next Right-arrow press
+        // from the trailer into a wrap-to-first-side-panel jump.
+        if (target.closest('#bento-add-panel-trailer')) return;
         // Browser elements live inside the panel containers (notif-
         // boxes) tagged with data-bento-{main-panel,panel-tab-id};
         // closest() walks up to find the right one regardless of any
@@ -5389,6 +5472,151 @@
     });
   }
   installOpenInNewPanelMenuItem();
+
+  // ─── "Open in new panel" places context-menu item ──────────────────────
+  // Mirrors installOpenInNewPanelMenuItem but for the bookmark / history /
+  // sidebar Places menu (#placesContext). Right-click a bookmark on the
+  // toolbar, in the bookmarks menu, or in the sidebar → "Open in New Panel"
+  // dispatches panel/openAt with sourceTabId=null, which the handler treats
+  // as "insert as first side panel" — same path the main-panel link
+  // right-click already uses, so the behaviour is consistent across the
+  // two surfaces.
+  function installOpenInNewPanelBookmarkMenuItem() {
+    const menu = document.getElementById('placesContext');
+    if (!menu) return;
+    if (document.getElementById('bento-places-context-open-in-panel')) return;
+
+    const item = document.createXULElement('menuitem');
+    item.id = 'bento-places-context-open-in-panel';
+    item.setAttribute('label', 'Open in New Panel');
+    item.hidden = true;
+    // Sit immediately after "Open in New Tab" so the open-in-* items stay
+    // visually grouped. Fall back through the rest of the family if the
+    // preferred anchor is missing (private-browsing / container disabled).
+    const anchor =
+      document.getElementById('placesContext_open:newcontainertab') ||
+      document.getElementById('placesContext_openContainer:tabs') ||
+      document.getElementById('placesContext_openLinks:tabs') ||
+      document.getElementById('placesContext_open:newwindow') ||
+      document.getElementById('placesContext_openSeparator') ||
+      null;
+    if (anchor) menu.insertBefore(item, anchor);
+    else menu.appendChild(item);
+
+    // Read the single-selection URL. Firefox's own popupshowing listener
+    // (PlacesUIUtils.placesContextShowing) runs first — it stashes the
+    // resolved view on menu._view and the trigger element on
+    // PlacesUIUtils.lastContextMenuTriggerNode. Managed (enterprise-policy)
+    // bookmarks live in a separate DOM tree under #managed-bookmarks and
+    // carry the URL directly on the trigger as .link instead of going
+    // through a Places view.
+    //
+    // place: URIs are Firefox-internal query strings (history smart
+    // folders, tag queries, etc.) — they don't render meaningfully in a
+    // tab let alone a panel, so we hide the item for those.
+    function getBookmarkUrl(callsite) {
+      try {
+        const trigger =
+          typeof PlacesUIUtils !== 'undefined' ? PlacesUIUtils.lastContextMenuTriggerNode : null;
+        if (trigger?.closest?.('#managed-bookmarks')) {
+          const link = typeof trigger.link === 'string' ? trigger.link : null;
+          const result = link && !link.startsWith('place:') ? link : null;
+          console.log(
+            '[bento-shell-mount] places open-in-panel:',
+            callsite,
+            '— managed bookmark, link=',
+            link,
+            'result=',
+            result,
+          );
+          return result;
+        }
+        const view = menu._view;
+        const selected = view?.selectedNode;
+        if (!selected) {
+          console.log(
+            '[bento-shell-mount] places open-in-panel:',
+            callsite,
+            '— no selected node (view=',
+            view,
+            'trigger=',
+            trigger?.tagName,
+            ')',
+          );
+          return null;
+        }
+        const uri = typeof selected.uri === 'string' ? selected.uri : null;
+        if (!uri || uri.startsWith('place:')) {
+          console.log(
+            '[bento-shell-mount] places open-in-panel:',
+            callsite,
+            '— uri rejected (uri=',
+            uri,
+            ')',
+          );
+          return null;
+        }
+        console.log(
+          '[bento-shell-mount] places open-in-panel:',
+          callsite,
+          '— resolved uri=',
+          uri,
+        );
+        return uri;
+      } catch (err) {
+        console.warn(
+          '[bento-shell-mount] places open-in-panel:',
+          callsite,
+          '— getBookmarkUrl threw:',
+          err,
+        );
+        return null;
+      }
+    }
+
+    // Same registration-order rationale as installOpenInNewPanelMenuItem:
+    // Firefox attaches its popupshowing handler inside DOMContentLoaded
+    // (placesContextMenu.js), so we defer ours to the same event to
+    // guarantee menu._view is populated by the time we run.
+    const attachPopupShowing = () => {
+      menu.addEventListener('popupshowing', () => {
+        try {
+          const url = getBookmarkUrl('popupshowing');
+          item.hidden = !url;
+        } catch (err) {
+          console.warn('[bento-shell-mount] places open-in-panel popupshowing failed:', err);
+          item.hidden = true;
+        }
+      });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attachPopupShowing, { once: true });
+    } else {
+      attachPopupShowing();
+    }
+
+    item.addEventListener('command', () => {
+      try {
+        const url = getBookmarkUrl('command');
+        if (!url) {
+          console.warn(
+            '[bento-shell-mount] places open-in-panel: command fired but no url — view was probably cleared by popuphiding before command ran',
+          );
+          return;
+        }
+        const sent = dispatchShellAction({ type: 'panel/openAt', url, sourceTabId: null });
+        console.log(
+          '[bento-shell-mount] places open-in-panel: dispatched panel/openAt url=',
+          url,
+          'dispatchShellAction returned',
+          sent,
+        );
+      } catch (err) {
+        console.warn('[bento-shell-mount] places open-in-panel command failed:', err);
+      }
+    });
+  }
+  installOpenInNewPanelBookmarkMenuItem();
 
   function injectPanelHeaderIntoLinkedPanel(tab, url) {
     const panelEl = document.getElementById(tab.linkedPanel);
@@ -5770,6 +5998,9 @@
           .filter((n) => Number.isFinite(n) && n > 0)
           .map((n) => Math.round(n));
       }
+      if (typeof decoded.panelCycleWraparound === 'boolean') {
+        currentPanelCycleWraparound = decoded.panelCycleWraparound;
+      }
     } else {
       return;
     }
@@ -5826,6 +6057,11 @@
   // user opens a kebab menu; stays empty until the first payload that
   // includes it (settings store default is [320, 480, 768, 1280]).
   let currentCustomPanelSizes = [];
+  // BentoSettings.panelCycleWraparound mirrored via the same payload.
+  // When true, Left/Right arrow cycling wraps past the Add-panel
+  // trailer back to the main panel (and vice versa). Default false:
+  // cycling clamps at the endpoints.
+  let currentPanelCycleWraparound = false;
 
   function attachPaletteCloseListener() {
     const paletteFrame = document.getElementById('bento-palette-frame');
@@ -5969,6 +6205,7 @@
           else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
           else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
           else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
+          else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
           else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
         }
         window.requestAnimationFrame(pollShellFrame);

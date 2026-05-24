@@ -224,6 +224,7 @@ function ensureConnection(): void {
               uiColorMode?: string;
               sidebarCollapsed?: boolean;
               customPanelSizes?: number[];
+              panelCycleWraparound?: boolean;
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -249,6 +250,9 @@ function ensureConnection(): void {
             }
             if (Array.isArray(cur?.customPanelSizes)) {
               payload.customPanelSizes = cur.customPanelSizes;
+            }
+            if (typeof cur?.panelCycleWraparound === 'boolean') {
+              payload.panelCycleWraparound = cur.panelCycleWraparound;
             }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.

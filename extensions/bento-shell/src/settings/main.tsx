@@ -21,15 +21,18 @@ import '@tale-ui/react-styles/text-field';
 import '@tale-ui/react-styles/dialog';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { Settings } from '../features/Settings/Settings';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 
 initToolsPort();
 
 function SettingsApp() {
   useFirefoxTheme();
+  useWorkspaceTheme();
   return <Settings />;
 }
 

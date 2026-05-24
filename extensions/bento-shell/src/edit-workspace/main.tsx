@@ -26,6 +26,13 @@ import { Text } from '@tale-ui/react/text';
 import { Column } from '@tale-ui/react/column';
 import { ColorSwatchPicker } from '@tale-ui/react/color-swatch-picker';
 import { ColorSwatch } from '@tale-ui/react/color-swatch';
+// Type-only — react-aria's ColorSwatchPicker accepts `string | Color` for
+// `value`/`defaultValue` and emits `Color` from `onChange`. We pass plain
+// brand-60 hex strings in (no parseColor needed) and call `.toString('hex')`
+// on the emitted Color to look up the matching theme. Keeping this as a
+// type-only import avoids pulling the (~30 KB gz) parseColor + Color
+// implementation into the bundle.
+import type { Color } from 'react-aria-components';
 
 import '@tale-ui/core';
 import '@tale-ui/react-styles/_primitives';
@@ -38,93 +45,28 @@ import '@tale-ui/react-styles/color-swatch-picker';
 import '@tale-ui/react-styles/color-swatch';
 
 import '../theme/bento-tokens.css';
+import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
+import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch } from '../bridge/useToolsPort';
 import {
   EDIT_WORKSPACE_CLOSE_PREFIX,
   subscribeToEditWorkspaceRequests,
   type EditWorkspacePayload,
 } from '../bridge/useEditWorkspace';
+import { BENTO_THEMES, DEFAULT_THEME_ID, getThemeMeta } from '../theme/presets';
 import './edit-workspace.css';
 
 initToolsPort();
 
-// Order MUST match the [data-workspace-color='X'] blocks in bento-tokens.css.
-const WORKSPACE_COLORS = [
-  'blue',
-  'emerald',
-  'amber',
-  'red',
-  'violet',
-  'pink',
-  'cyan',
-  'neutral',
-] as const;
-type WorkspaceColor = (typeof WORKSPACE_COLORS)[number];
-
-// Resolve each workspace-color name to its actual rendered hex by probing
-// the DOM with a hidden element carrying the data-workspace-color attribute
-// and reading the resulting --bento-workspace-accent. Done at runtime so
-// any change to bento-tokens.css OR the underlying Tale UI primitives flows
-// through without a hardcoded color map drifting out of sync.
-function resolveWorkspaceColors(): Record<WorkspaceColor, string> {
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:absolute;visibility:hidden;width:0;height:0;pointer-events:none';
-  document.body.appendChild(probe);
-  const out = {} as Record<WorkspaceColor, string>;
-  for (const name of WORKSPACE_COLORS) {
-    probe.setAttribute('data-workspace-color', name);
-    const accent = getComputedStyle(probe).getPropertyValue('--bento-workspace-accent').trim();
-    out[name] = accent || '#888';
-  }
-  probe.remove();
-  return out;
-}
-
-// Normalize any color value (CSS string from probed tokens OR a Color
-// object from react-aria's onChange) to a single comparable key. We
-// route everything through a hidden probe div so '#abc', '#aabbcc',
-// 'rgb(...)', 'hsl(...)' all collapse to the same canonical
-// 'rgb(R, G, B)' the browser computes — equality between the picker's
-// emitted Color and our color-map values then always matches regardless
-// of the notation each side happens to use.
-interface ToCSSable {
-  toString(format?: string): string;
-}
-function colorKey(color: string | ToCSSable): string {
-  const css = typeof color === 'string' ? color : color.toString('css');
-  const probe = document.createElement('div');
-  probe.style.color = css;
-  document.body.appendChild(probe);
-  const computed = getComputedStyle(probe).color;
-  probe.remove();
-  return computed.toUpperCase();
-}
-
 function EditWorkspaceApp() {
   useFirefoxTheme();
+  useWorkspaceTheme();
   const [payload, setPayload] = useState<EditWorkspacePayload | null>(null);
   const [draftName, setDraftName] = useState('');
-  const [draftColor, setDraftColor] = useState<WorkspaceColor | undefined>(undefined);
+  const [draftThemeId, setDraftThemeId] = useState<string>(DEFAULT_THEME_ID);
   const [draftIcon, setDraftIcon] = useState('');
-
-  // Resolve workspace color names → hex once. Tale UI tokens are loaded
-  // synchronously via @tale-ui/core import above, so the values are
-  // available by the time React first renders. Keeping this stable across
-  // renders avoids re-probing on every Save click.
-  const colorMap = useMemo(() => resolveWorkspaceColors(), []);
-  // Reverse lookup: normalized color key → workspace color name. Built
-  // once with the same colorKey normalization the picker's onChange uses,
-  // so equality always matches even when ColorSwatchPicker re-emits a
-  // color in a different CSS notation than the one we fed in.
-  const nameByKey = useMemo(() => {
-    const out: Record<string, WorkspaceColor> = {};
-    for (const name of WORKSPACE_COLORS) {
-      out[colorKey(colorMap[name])] = name;
-    }
-    return out;
-  }, [colorMap]);
 
   useEffect(() => {
     return subscribeToEditWorkspaceRequests((next) => {
@@ -133,24 +75,30 @@ function EditWorkspaceApp() {
       // values, not the abandoned draft.
       setPayload(next);
       setDraftName(next.name);
-      setDraftColor(
-        next.color && (WORKSPACE_COLORS as readonly string[]).includes(next.color)
-          ? (next.color as WorkspaceColor)
-          : undefined,
-      );
+      setDraftThemeId(next.themeId ?? DEFAULT_THEME_ID);
       setDraftIcon(next.icon ?? '');
     });
   }, []);
 
-  // ColorSwatchPicker controlled-mode requires Color objects (and Tale UI's
-  // `parseColor` helper isn't in the consumed build of @tale-ui/react —
-  // only in source). Sidestep by using uncontrolled mode + a `key` prop
-  // tied to the workspace id and current draftColor, so reopening or
-  // changing the swatch via React state forces a remount with the new
-  // defaultValue. onChange still fires for user clicks; we map the picked
-  // Color object back to a workspace name via colorKey + nameByKey.
-  const pickerKey = `${payload?.workspaceId ?? 'none'}:${draftColor ?? 'none'}`;
-  const pickerDefault = colorMap[draftColor ?? WORKSPACE_COLORS[0]] || '#888888';
+  // Reverse lookup: normalized brand-60 hex → themeId. Built once from
+  // BENTO_THEMES so onChange can resolve the picker's emitted Color
+  // back to a stable theme id without depending on object identity.
+  const themeIdByBrandHex = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const theme of BENTO_THEMES) out[theme.brand60.toLowerCase()] = theme.id;
+    return out;
+  }, []);
+
+  // Picker value tracks the workspace's current theme. react-aria's
+  // ColorSwatchPicker.Root accepts `string | Color` for value, so we
+  // pass the brand-60 hex straight in — no parseColor needed.
+  const pickerValue = getThemeMeta(draftThemeId).brand60;
+
+  function onPickerChange(color: Color) {
+    const hex = color.toString('hex').toLowerCase();
+    const matchedId = themeIdByBrandHex[hex];
+    if (matchedId) setDraftThemeId(matchedId);
+  }
 
   function close() {
     document.title = `${EDIT_WORKSPACE_CLOSE_PREFIX}_${Date.now()}`;
@@ -170,7 +118,7 @@ function EditWorkspaceApp() {
         // Empty name falls back to the snapshot — workspaces with empty
         // names render as "?" and become hard to identify.
         name: trimmedName || payload.name,
-        color: draftColor,
+        themeId: draftThemeId,
         icon: trimmedIcon || undefined,
       },
     });
@@ -188,7 +136,7 @@ function EditWorkspaceApp() {
         <Dialog.Popup>
           <Dialog.Title>Edit workspace</Dialog.Title>
           <Dialog.Description>
-            Rename, recolor, or set a one-character icon for this workspace.
+            Rename, pick a theme, or set a one-character icon for this workspace.
           </Dialog.Description>
           <Column gap="m" className="bento-edit-workspace__form">
             <TextField.Root value={draftName} onChange={setDraftName}>
@@ -197,21 +145,22 @@ function EditWorkspaceApp() {
             </TextField.Root>
             <Column gap="2xs">
               <Text variant="label" size="s">
-                Color
+                Theme
               </Text>
               <ColorSwatchPicker.Root
-                key={pickerKey}
-                defaultValue={pickerDefault}
-                onChange={(color) => {
-                  const name = nameByKey[colorKey(color)];
-                  if (name) setDraftColor(name);
-                }}
-                aria-label="Workspace color"
-                className="bento-edit-workspace__picker"
+                shape="circle"
+                value={pickerValue}
+                onChange={onPickerChange}
+                aria-label="Workspace theme"
+                className="bento-edit-workspace__theme-picker"
               >
-                {WORKSPACE_COLORS.map((name) => (
-                  <ColorSwatchPicker.Item key={name} color={colorMap[name]} aria-label={name}>
-                    <ColorSwatch />
+                {BENTO_THEMES.map((theme) => (
+                  <ColorSwatchPicker.Item
+                    key={theme.id}
+                    color={theme.brand60}
+                    aria-label={theme.name}
+                  >
+                    <ColorSwatch secondaryColor={theme.neutral20} />
                   </ColorSwatchPicker.Item>
                 ))}
               </ColorSwatchPicker.Root>
