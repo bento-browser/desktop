@@ -2362,7 +2362,43 @@
     splitter.addEventListener('pointerup', (e) => endPanelDrag(splitter, e));
     splitter.addEventListener('pointercancel', (e) => endPanelDrag(splitter, e));
     splitter.addEventListener('lostpointercapture', () => endPanelDrag(splitter, null));
+    splitter.addEventListener('contextmenu', (e) => showPanelSplitterContextMenu(splitter, e));
     return splitter;
+  }
+
+  function showPanelSplitterContextMenu(splitter, e) {
+    const sourceTabId = getPanelSplitterSourceTabId(splitter);
+    if (sourceTabId === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showChromeMenu({
+      anchor: {
+        left: e.clientX,
+        top: e.clientY,
+        width: 1,
+        height: 1,
+      },
+      items: [{ id: 'insert-panel-here', label: 'Insert panel here' }],
+      onSelect: (itemId) => {
+        if (itemId !== 'insert-panel-here') return;
+        dispatchShellAction({
+          type: 'panel/openAt',
+          url: 'about:newtab',
+          sourceTabId,
+        });
+      },
+    });
+  }
+
+  function getPanelSplitterSourceTabId(splitter) {
+    const leftPanelId = splitter?._bentoLeftPanelId;
+    if (!leftPanelId) return undefined;
+    const leftPanel = document.getElementById(leftPanelId);
+    if (!leftPanel) return undefined;
+    if (leftPanel.dataset.bentoMainPanel === '1') return null;
+    const raw = leftPanel.dataset.bentoPanelTabId;
+    const tabId = raw ? Number(raw) : NaN;
+    return Number.isFinite(tabId) ? tabId : undefined;
   }
 
   function startPanelDrag(splitter, e) {
@@ -2450,6 +2486,52 @@
         });
       }
     }
+  }
+
+  function animatePanelEnter(panelEl, options = {}) {
+    if (!panelEl) return;
+    const finalWidth = panelEl.getBoundingClientRect().width;
+    if (!Number.isFinite(finalWidth) || finalWidth <= 0) return;
+    const clearSizingAfter = !!options.clearSizingAfter;
+    panelEl.style.transition = 'none';
+    panelEl.style.opacity = '0';
+    panelEl.style.transform = 'scale(0.98)';
+    panelEl.style.minWidth = '0';
+    panelEl.style.width = '0';
+    panelEl.style.flex = '0 0 0';
+    panelEl.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      panelEl.style.transition =
+        'opacity 140ms var(--bento-easing-standard), ' +
+        'transform 180ms var(--bento-easing-standard), ' +
+        'width 180ms var(--bento-easing-standard), ' +
+        'min-width 180ms var(--bento-easing-standard), ' +
+        'flex-basis 180ms var(--bento-easing-standard)';
+      panelEl.style.opacity = '1';
+      panelEl.style.transform = 'scale(1)';
+      panelEl.style.width = finalWidth + 'px';
+      panelEl.style.minWidth = finalWidth + 'px';
+      panelEl.style.flex = '0 0 ' + finalWidth + 'px';
+      let onTransitionEnd = null;
+      const cleanup = () => {
+        panelEl.style.removeProperty('transition');
+        panelEl.style.removeProperty('opacity');
+        panelEl.style.removeProperty('transform');
+        if (clearSizingAfter) {
+          panelEl.style.removeProperty('width');
+          panelEl.style.removeProperty('min-width');
+          panelEl.style.removeProperty('flex');
+        }
+        if (onTransitionEnd) panelEl.removeEventListener('transitionend', onTransitionEnd);
+      };
+      onTransitionEnd = (event) => {
+        if (event.target !== panelEl) return;
+        if (event.propertyName !== 'width' && event.propertyName !== 'flex-basis') return;
+        cleanup();
+      };
+      panelEl.addEventListener('transitionend', onTransitionEnd);
+      setTimeout(cleanup, 260);
+    });
   }
 
   // ResizeObserver shared across all panels — re-syncs inter-panel
@@ -5223,6 +5305,10 @@
         widthByTabId.set(p.tabId, p.widthPx);
       }
     }
+    const isInitialReconcileForWorkspace =
+      __reconciledForWorkspace !== currentWorkspaceId;
+    const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
+    const shouldAnimateNewPanels = newTabIds.length > 0 && !isInitialReconcileForWorkspace;
     for (const [i, tab] of tabsToRender.entries()) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
@@ -5307,6 +5393,9 @@
               panelEl.style.minWidth = w + 'px';
               panelEl.style.flex = '0 0 ' + w + 'px';
             }
+          }
+          if (shouldAnimateNewPanels && newTabIds.includes(tabId)) {
+            animatePanelEnter(panelEl, { clearSizingAfter: typeof w !== 'number' });
           }
         }
       }
@@ -5450,9 +5539,6 @@
     // the left of the new one — the new panel just nudges into view
     // from the right, instead of jumping the strip to the new panel.
     let scrolledToNewPanel = false;
-    const isInitialReconcileForWorkspace =
-      __reconciledForWorkspace !== currentWorkspaceId;
-    const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
     if (newTabIds.length > 0 && !isInitialReconcileForWorkspace) {
       const newId = newTabIds[newTabIds.length - 1];
       scrolledToNewPanel = true;
