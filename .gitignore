@@ -37,6 +37,9 @@ release-out/
 # Plans
 # plans/
 
+# Bugs
+# bugs/
+
 # TS-compiled outputs of shared sources (we only want sources tracked)
 extensions/_shared/*.js
 

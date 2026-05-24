@@ -1735,6 +1735,12 @@
   // strip always returns to the main slot — see
   // handleScrollToMainTitle for the rationale.
   const SCROLL_TO_MAIN_PREFIX = 'BENTO_SCROLL_TO_MAIN_';
+  // Sidebar-driven scroll-into-view + focus signal for a specific
+  // panel. Fired by the PinnedPanels row click after the workspace
+  // activation dispatches. Format: BENTO_FOCUS_PANEL:<ts>:<tabId>.
+  // See handleFocusPanelTitle for the retry rationale (workspace
+  // reconcile can run after the title write lands).
+  const FOCUS_PANEL_PREFIX = 'BENTO_FOCUS_PANEL:';
   // Multi-panel reconciliation. Title format from sidebar:
   //   BENTO_PANELS:<ts>:<base64-of-json-array>
   // where the JSON array is [{tabId, url}, ...] for the active workspace.
@@ -2111,7 +2117,7 @@
       moreBtn = makeHeaderButton('Panel options', ICONS.moreVertical, () => {
         const panelEl = moreBtn.closest('[data-bento-panel-tab-id]');
         if (!panelEl) return;
-        const items =
+        const sizeItems =
           currentCustomPanelSizes.length > 0
             ? currentCustomPanelSizes.map((px) => ({
                 id: 'size:' + px,
@@ -2124,11 +2130,43 @@
                   isDisabled: true,
                 },
               ];
+        // Pin/Unpin item leads the menu. Label flips based on whether
+        // THIS tab is currently in the active workspace's pin set —
+        // BENTO_PANELS payload's `pinnedTabIdsInWorkspace` keeps
+        // currentPinnedTabIdsInWorkspace in sync. Resolving the
+        // workspaceId at click time (not menu-build time) is fine
+        // here: both the menu open and the dispatch happen on the
+        // chrome event loop, no async gap during which
+        // currentWorkspaceId could shift.
+        const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
+        const pinItem = {
+          id: isPinned ? 'unpin' : 'pin',
+          label: isPinned ? 'Unpin this tab' : 'Pin this tab',
+        };
+        const items = [pinItem, ...sizeItems];
         showChromeMenu({
           anchor: moreBtn.getBoundingClientRect(),
           items,
           onSelect: (itemId) => {
             if (typeof itemId !== 'string') return;
+            if (itemId === 'pin') {
+              if (!currentWorkspaceId) return;
+              dispatchShellAction({
+                type: 'pinnedPanel/add',
+                workspaceId: currentWorkspaceId,
+                tabId,
+              });
+              return;
+            }
+            if (itemId === 'unpin') {
+              if (!currentWorkspaceId) return;
+              dispatchShellAction({
+                type: 'pinnedPanel/remove',
+                workspaceId: currentWorkspaceId,
+                tabId,
+              });
+              return;
+            }
             if (itemId.startsWith('size:')) {
               const px = Number(itemId.slice('size:'.length));
               applyPanelWidth(panelEl, px);
@@ -5324,6 +5362,50 @@
     if (mainEl) scrollPanelToLeftmost(mainEl);
   }
 
+  // Sidebar-driven panel focus signal. Fired by the PinnedPanels row
+  // click in the React shell — workspace switch goes through the
+  // tools port, but the workspace's panels are only materialized
+  // after the next reconcile, so the target [data-bento-panel-tab-id]
+  // element may not exist when this title write lands. Retry briefly
+  // (covers the fade + reconcile window), then give up — the user
+  // can still click the panel themselves.
+  function handleFocusPanelTitle(rawTitle) {
+    // Format: BENTO_FOCUS_PANEL:<ts>:<tabId>
+    const tail = rawTitle.slice(FOCUS_PANEL_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return;
+    const tabId = Number.parseInt(tail.slice(colon + 1), 10);
+    if (!Number.isInteger(tabId)) return;
+    const DEADLINE_MS = 2000;
+    const POLL_MS = 50;
+    const started = Date.now();
+    const tryFocus = () => {
+      const panel = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
+      if (panel) {
+        // Scroll the strip so the panel lands at the leftmost visible
+        // slot, matching the favicon-navigator-click affordance. Focus
+        // the inner <browser> so the page receives keys natively
+        // (mirrors setActiveByIndex's panel-target branch).
+        try {
+          scrollPanelToLeftmost(panel);
+        } catch (err) {
+          console.warn('[bento-shell-mount] FOCUS_PANEL scroll failed:', err);
+        }
+        try {
+          const browserEl = panel.querySelector && panel.querySelector('browser');
+          if (browserEl) browserEl.focus({ preventScroll: true });
+          else panel.focus({ preventScroll: true });
+        } catch (err) {
+          console.warn('[bento-shell-mount] FOCUS_PANEL focus failed:', err);
+        }
+        return;
+      }
+      if (Date.now() - started > DEADLINE_MS) return;
+      setTimeout(tryFocus, POLL_MS);
+    };
+    tryFocus();
+  }
+
   // Sidebar drag-to-reorder. Resolves srcTabId + anchorTabId (WebExtension
   // ids from bento-tools' TabRegistry) to <tab> DOM elements via the same
   // tabTracker the panel reconciler uses, then calls
@@ -6126,6 +6208,22 @@
       if (typeof decoded.panelShadowsEnabled === 'boolean') {
         applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
       }
+      // Pinned-panel tabIds for the incoming workspace. Workspace-
+      // filtered upstream so a Set.has(tabId) is enough to pick the
+      // Pin/Unpin label in the kebab menu. Missing key means the
+      // workspace has no pins (tools omits the field when the array
+      // is empty); reset the local mirror accordingly so a workspace
+      // switch from a pinned workspace into an unpinned one doesn't
+      // carry stale state forward.
+      if (Array.isArray(decoded.pinnedTabIdsInWorkspace)) {
+        currentPinnedTabIdsInWorkspace = new Set(
+          decoded.pinnedTabIdsInWorkspace
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n)),
+        );
+      } else {
+        currentPinnedTabIdsInWorkspace = new Set();
+      }
       // Per-workspace panel-strip scroll position. Capture into the
       // module-level map keyed by workspaceId so:
       //   - Same-workspace reconciles (panel add/remove, width change)
@@ -6467,6 +6565,14 @@
   // false, the shadow proxy elements are removed and no new ones are
   // created during splitter/scroll/resize sync. Default true.
   let currentPanelShadowsEnabled = true;
+  // Pinned-panel tabIds for THIS WINDOW's active workspace, mirrored
+  // from BENTO_PANELS payload's `pinnedTabIdsInWorkspace` field. The
+  // kebab menu reads this to pick the Pin/Unpin label without having
+  // to round-trip a fresh query through bento-tools. Workspace-
+  // filtered upstream (tools only includes the active workspace's
+  // pin subset) so a Set.has(tabId) lookup is enough — no global pin
+  // map needed chrome-side.
+  let currentPinnedTabIdsInWorkspace = new Set();
 
   function applyChromePanelShadowsEnabled(enabled) {
     currentPanelShadowsEnabled = enabled;
@@ -6624,6 +6730,7 @@
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
           else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
           else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
+          else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);
           else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
           else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
           else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);

@@ -1,0 +1,44 @@
+/* Layer-2 component: PinnedPanels.
+ *
+ * Rows reuse the .bento-tab-row BEM class set so the two sidebar
+ * sections (pinned panels + tab list) are visually identical by
+ * construction. This file only owns the section wrapper — the section
+ * divider, internal max-height + scroll for many pins, the heading,
+ * and the per-row height that TabList otherwise sets via its
+ * virtualizer.
+ */
+@layer bento.components {
+  .bento-pinned-panels {
+    flex-shrink: 0;
+    max-height: 40vh;
+    overflow-y: auto;
+    /* Matches .bento-tab-list-pane padding-inline so pinned rows align
+     * horizontally with tab rows below the divider. */
+    padding-inline: var(--space-2xs);
+    padding-block-end: var(--space-2xs);
+    margin-block-end: var(--space-2xs);
+    border-bottom: var(--bento-border-hairline) solid var(--bento-border-color-subtle);
+  }
+
+  /* Section subtitle. padding-inline matches .bento-tab-row's internal
+   * start-padding (var(--space-2xs)) so the label sits in the same
+   * horizontal track as the row favicons. */
+  .bento-pinned-panels__heading {
+    padding-inline: var(--space-2xs);
+    padding-block: var(--space-2xs);
+  }
+
+  /* TabList rows get their height from the virtualizer's row wrapper
+   * (which sets inline `height: ${vi.size}px` on each item). PinnedPanels
+   * doesn't virtualize, so each row needs an explicit height — .bento-tab-row
+   * itself is `height: 100%` and would collapse without a sized parent. */
+  .bento-pinned-panels__row {
+    height: var(--bento-tab-row-height);
+  }
+
+  /* Collapsed rail: hide the subtitle so only the favicon-only rows
+   * remain (matching how TabRow hides its title text in the same mode). */
+  html[data-bento-collapsed='true'] .bento-pinned-panels__heading {
+    display: none;
+  }
+}

@@ -10,6 +10,7 @@ import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
+import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
@@ -21,6 +22,7 @@ const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
 const panels = new PanelStore();
+const pinnedPanels = new PinnedPanelsStore();
 
 // Push contentColorMode to Firefox's prefers-color-scheme content
 // override. Tracked separately from uiColorMode (which only affects
@@ -72,7 +74,13 @@ function broadcastEvent(event: Event): void {
 // each shouldn't pay the URL→tab matching cost up front.
 async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
   const entries = panels.takePersistedEntries(workspaceId);
-  if (!entries || entries.length === 0) return;
+  if (!entries || entries.length === 0) {
+    // No panels to restore, but the workspace might still have pending
+    // pinned-panel entries waiting. Drop those — the panels they
+    // depended on are gone (no persistence), so the pins can't bind.
+    pinnedPanels.recoverTabIdsAfterPanelRestore(workspaceId, new Map());
+    return;
+  }
   // Tabs eligible for matching: this workspace's existing tabs.
   const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === workspaceId);
   // Need the URL too. TabSnapshot omits it (perf §6.5) so re-fetch via
@@ -86,6 +94,11 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
       /* tab gone */
     }
   }
+  // URL → tabId map for the pinned-panel restorer below. Built up as
+  // each persisted panel entry is reconciled, so a pin whose URL
+  // matches a panel created mid-restore (no existing tab — see
+  // tabs.create branch) also rebinds correctly.
+  const urlToTabId = new Map<string, number>();
   const consumed = new Set<number>();
   for (const entry of entries) {
     const url = entry.url;
@@ -113,6 +126,7 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
     }
     if (matchedId !== null) {
       panels.add(workspaceId, matchedId);
+      urlToTabId.set(url, matchedId);
       // Re-apply the persisted width so chrome's reconcile sees a width
       // in the panels/sync payload and applies it to the panel element.
       if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
@@ -120,6 +134,11 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
       }
     }
   }
+  // Restore pinned-panel bindings for this workspace now that we know
+  // which URLs map to which live tabIds. Pins whose URL doesn't match
+  // any restored panel are dropped — the panel they referred to is
+  // gone, so there's nothing to pin.
+  pinnedPanels.recoverTabIdsAfterPanelRestore(workspaceId, urlToTabId);
   // Broadcast even when this workspace isn't currently active —
   // emitPanelsSync gates on activeId so the call is cheap. When the
   // workspace IS active (boot path or just-activated lazy path),
@@ -166,12 +185,14 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
   );
   const mainWidthPx = panels.getMainWidth();
   const stripScrollLeft = panels.getStripScroll(workspaceId);
+  const pinnedTabIdsInWorkspace = pinnedPanels.entriesForWorkspace(workspaceId);
   const event: {
     type: 'panels/sync';
     workspaceId: string;
     panels: typeof valid;
     mainWidthPx?: number;
     stripScrollLeft?: number;
+    pinnedTabIdsInWorkspace?: number[];
   } = {
     type: 'panels/sync',
     workspaceId,
@@ -180,6 +201,9 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
   if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
   if (typeof stripScrollLeft === 'number' && stripScrollLeft >= 0) {
     event.stripScrollLeft = stripScrollLeft;
+  }
+  if (pinnedTabIdsInWorkspace.length > 0) {
+    event.pinnedTabIdsInWorkspace = pinnedTabIdsInWorkspace;
   }
   broadcastEvent(event);
 }
@@ -202,6 +226,9 @@ const bootReady = Promise.all([
   workspaces.init().catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
   settings.init().catch((err) => console.error('[bento-tools] SettingsStore init failed:', err)),
   panels.init().catch((err) => console.error('[bento-tools] PanelStore init failed:', err)),
+  pinnedPanels
+    .init()
+    .catch((err) => console.error('[bento-tools] PinnedPanelsStore init failed:', err)),
 ]).then(async () => {
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
@@ -583,8 +610,41 @@ tabs.onDeltas((deltas) => {
       for (const [wsId, tabId] of lastActiveTabByWorkspace) {
         if (tabId === d.id) lastActiveTabByWorkspace.delete(wsId);
       }
+      // Drop any pin pointing at the gone tab. Covers CMD+W, the
+      // panel-header X (which dispatches tab/close), the auto-promote-
+      // leftmost-panel path (tab still exists but its panel binding
+      // is gone — covered separately via panels.onPanelRemoved below),
+      // and any external close. Pin's workspaceId is implicit in
+      // `removeForTab` walking every entry.
+      pinnedPanels.removeForTab(d.id);
       continue;
     }
+  }
+});
+
+// Pin auto-cleanup: when a panel binding ceases to exist, the pin that
+// referenced it has nothing to point at. PanelStore.onPanelRemoved fires
+// from panels.remove + panels.removeWorkspace (which the leftmost-
+// promote-on-empty path at the bottom of background.ts also routes
+// through), so this single listener covers every panel-lifecycle path
+// without duplicating cleanup at four call sites.
+panels.onPanelRemoved((workspaceId, tabId) => {
+  if (pinnedPanels.remove(workspaceId, tabId)) {
+    // Re-emit so the kebab menu's Pin/Unpin label catches up. Active-
+    // workspace gating happens at the shell mirror; broadcasting for any
+    // workspace whose pin set changed is cheap (no chrome side effects
+    // when the workspaceId doesn't match this window's active).
+    void emitPanelsSync(workspaceId);
+  }
+});
+
+// Drop pins for a deleted workspace. closeTabs: true would have already
+// fired tabs/removed deltas (and the tab handler above sweeps tab-keyed
+// pins); closeTabs: false leaves the tabs around but the pin's anchor
+// is the binding, not the tab — drop it either way.
+workspaces.onDeltas((deltas) => {
+  for (const d of deltas) {
+    if (d.kind === 'removed') pinnedPanels.removeForWorkspace(d.id);
   }
 });
 
@@ -1071,6 +1131,9 @@ browser.runtime.onConnectExternal.addListener((port) => {
   const unsubSettings = settings.onChange((next) => {
     send({ type: 'settings/changed', settings: next });
   });
+  const unsubPinnedPanels = pinnedPanels.onDeltas((deltas) => {
+    send({ type: 'pinnedPanels/changed', deltas });
+  });
 
   port.onMessage.addListener((message: object) => {
     const wireAction = message as WireAction;
@@ -1088,6 +1151,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       workspaces,
       settings,
       panels,
+      pinnedPanels,
       send,
       emitPanelsSync,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
@@ -1100,6 +1164,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     unsubTabs();
     unsubWorkspaces();
     unsubSettings();
+    unsubPinnedPanels();
   });
 
   // Wait for bento-tools' init + restore + sweep chain to complete
@@ -1120,6 +1185,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       activeIdByWindow: wsSnap.activeIdByWindow,
     });
     send({ type: 'settings/snapshot', settings: settings.snapshot() });
+    send({ type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
     // Replay panels for EVERY workspace so a freshly mounted shell can
     // pre-populate its per-workspace panelsStore. Without this, the
     // sidebar tab-list filter (useWorkspaceTabIds) for non-active

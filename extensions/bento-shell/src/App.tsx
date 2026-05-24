@@ -10,6 +10,7 @@ import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 
 import { TabList } from './components/TabList/TabList';
+import { PinnedPanels } from './components/PinnedPanels/PinnedPanels';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useToolsReady } from './bridge/useToolsPort';
@@ -206,6 +207,7 @@ export function App() {
           </Text>
         )}
       </Row>
+      <PinnedPanels />
       <TabList
         onActivate={onActivate}
         onClose={onClose}

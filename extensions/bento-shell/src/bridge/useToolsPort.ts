@@ -42,6 +42,7 @@ import { useTabsStore } from '../state/tabs';
 import { selectActiveIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import { useSettingsStore } from '../state/settings';
 import { usePanelsStore } from '../state/panels';
+import { usePinnedPanelsStore } from '../state/pinnedPanels';
 import { usePrivacyStore } from '../state/privacy';
 
 const CHANNEL_NAME = 'bento-shell-bus';
@@ -148,6 +149,7 @@ function ensureConnection(): void {
         dispatch({ type: 'tabs/requestSnapshot' });
         dispatch({ type: 'workspaces/requestSnapshot' });
         dispatch({ type: 'settings/requestSnapshot' });
+        dispatch({ type: 'pinnedPanels/requestSnapshot' });
         return;
       case 'tabs/snapshot':
         useTabsStore.getState().applySnapshot(event.tabs);
@@ -271,6 +273,12 @@ function ensureConnection(): void {
         return;
       case 'privacy/snapshot':
         usePrivacyStore.getState().apply(event.privacy);
+        return;
+      case 'pinnedPanels/snapshot':
+        usePinnedPanelsStore.getState().applySnapshot(event.entries);
+        return;
+      case 'pinnedPanels/changed':
+        usePinnedPanelsStore.getState().applyDeltas(event.deltas);
         return;
       case 'pong':
         return;

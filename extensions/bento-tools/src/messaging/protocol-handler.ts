@@ -11,6 +11,7 @@ import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
+import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import { clearPanelMarker } from '../panels/SessionMarker';
 
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
@@ -41,6 +42,7 @@ export interface HandlerContext {
   workspaces: WorkspaceStore;
   settings: SettingsStore;
   panels: PanelStore;
+  pinnedPanels: PinnedPanelsStore;
   send: (event: Event) => void;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
@@ -155,6 +157,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       });
       return;
     case 'tab/assignWorkspace':
+      // Pins are anchored to (workspaceId, tabId). When the user moves a
+      // tab into a different workspace, the pin's stored workspaceId
+      // would become stale — and a panel can only live in one workspace
+      // at a time, so the binding is effectively gone. Drop the pin
+      // BEFORE the assignment fires so the resulting panels/sync carries
+      // the post-cleanup pin set.
+      ctx.pinnedPanels.removeForTab(action.id);
       void ctx.tabs.assignWorkspace(action.id, action.workspaceId);
       return;
     case 'tab/openUrl':
@@ -485,6 +494,60 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.panels.setStripScroll(action.workspaceId, action.scrollLeft);
       return;
     }
+    case 'pinnedPanel/add': {
+      // Validate that the workspace exists AND the tab is currently a
+      // panel in that workspace. Pinning a non-panel tab would put the
+      // sidebar Pinned panels section in an unreachable state (no panel
+      // to activate). Silent no-op on duplicate — the store's add()
+      // returns false in that case and we don't emit anything.
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (!ctx.panels.getPanels(action.workspaceId).includes(action.tabId)) return;
+      if (ctx.pinnedPanels.add(action.workspaceId, action.tabId)) {
+        // Re-emit panels/sync for the affected workspace so chrome's
+        // kebab menu (which reads pinnedTabIdsInWorkspace from the
+        // payload) picks up the new state on its next open. Active-
+        // workspace-only filtering happens in the shell mirror.
+        ctx.emitPanelsSync(action.workspaceId);
+      }
+      return;
+    }
+    case 'pinnedPanel/remove': {
+      if (ctx.pinnedPanels.remove(action.workspaceId, action.tabId)) {
+        ctx.emitPanelsSync(action.workspaceId);
+      }
+      return;
+    }
+    case 'pinnedPanel/activate': {
+      // Switch to the workspace that owns the pinned panel; the panel
+      // tab is NOT activated as the main tab. Activating it would
+      // relocate the panel's <browser> into the main content slot
+      // (chrome's reconciler routes the selected tab there), which is
+      // the opposite of what a pinned panel should do — the panel
+      // stays in its side slot.
+      //
+      // Scrolling the panel strip + focusing the panel's <browser> is
+      // handled chrome-side: the React caller writes a
+      // BENTO_FOCUS_PANEL:<ts>:<tabId> title alongside the dispatch,
+      // and chrome retries the scroll+focus until the workspace
+      // reconcile has materialized the panel element.
+      const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+      if (owner !== null && owner !== ctx.sourceWindowId) {
+        // Another window already owns the workspace. Focus that window
+        // and stop — its shell will see the pin row activate via its
+        // own user gesture if the user wants to focus the panel there.
+        browser.windows
+          .update(owner, { focused: true })
+          .catch((err) =>
+            console.warn('[bento-tools] pinnedPanel/activate: focus owner failed:', err),
+          );
+        return;
+      }
+      ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+      return;
+    }
+    case 'pinnedPanels/requestSnapshot':
+      ctx.send({ type: 'pinnedPanels/snapshot', entries: ctx.pinnedPanels.entries() });
+      return;
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);
       return;

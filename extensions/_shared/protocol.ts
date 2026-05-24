@@ -250,7 +250,40 @@ export type Action =
    * (about:config only); Bento exposes them in Settings → Privacy. */
   | { type: 'privacy/setResistFingerprinting'; enabled: boolean }
   | { type: 'privacy/setNetworkPrediction'; enabled: boolean }
-  | { type: 'privacy/setPeerConnection'; enabled: boolean };
+  | { type: 'privacy/setPeerConnection'; enabled: boolean }
+  /** Pin a panel binding `(workspaceId, tabId)` to the global Pinned panels
+   * sidebar section. Validated against the live panel set — tools no-ops
+   * when the tab isn't currently a panel in that workspace, or when the
+   * binding is already pinned. Pins persist across launches via URL, and
+   * are auto-removed when the binding ceases to exist (tab closed,
+   * panel/remove, workspace deleted, tab/assignWorkspace). */
+  | { type: 'pinnedPanel/add'; workspaceId: string; tabId: number }
+  /** Unpin a binding. Used by both the sidebar X button and the kebab
+   * "Unpin this tab" item — the underlying panel/tab stays open. */
+  | { type: 'pinnedPanel/remove'; workspaceId: string; tabId: number }
+  /** Click on a sidebar pin row: switch to the pin's workspace (focusing
+   * the owning chrome window on cross-window conflict) AND activate the
+   * pinned panel's tab. See background.ts handleWorkspaceActivation for
+   * the activation-override race coordination. */
+  | { type: 'pinnedPanel/activate'; workspaceId: string; tabId: number }
+  | { type: 'pinnedPanels/requestSnapshot' };
+
+/** A pinned-panel entry. Identity is `(workspaceId, tabId)` — at most one
+ * pin per binding. `order` is append-on-add and stable across renames /
+ * restarts; the shell renders pins in ascending `order`. */
+export interface PinnedPanelEntry {
+  workspaceId: string;
+  tabId: number;
+  order: number;
+}
+
+/** Pinned-panel delta. `reordered` is currently unused (drag-to-reorder is
+ * a future feature) but reserved so the wire schema doesn't need to be
+ * widened later. */
+export type PinnedPanelDelta =
+  | { kind: 'added'; entry: PinnedPanelEntry }
+  | { kind: 'removed'; workspaceId: string; tabId: number }
+  | { kind: 'reordered'; entries: PinnedPanelEntry[] };
 
 /** Snapshot of user-controllable privacy settings — read from
  * browser.privacy.* and refreshed after every privacy/set* action.
@@ -314,8 +347,16 @@ export type Event =
        * when nothing has been recorded for the workspace (fresh
        * workspace or never-scrolled). */
       stripScrollLeft?: number;
+      /** Subset of `workspaceId`'s panel tabIds that are currently
+       * pinned. Workspace-filtered (not the global pin set) so chrome's
+       * kebab menu for THIS window's active workspace can `Set.has(tabId)`
+       * to pick the "Pin" vs "Unpin" label without having to track the
+       * cross-workspace pin map. */
+      pinnedTabIdsInWorkspace?: number[];
     }
-  | { type: 'privacy/snapshot'; privacy: PrivacySettings };
+  | { type: 'privacy/snapshot'; privacy: PrivacySettings }
+  | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }
+  | { type: 'pinnedPanels/changed'; deltas: PinnedPanelDelta[] };
 
 /** Wire-level envelope around an Action: the action itself plus an
  * optional routing field that bento-shell's dispatcher stamps with the

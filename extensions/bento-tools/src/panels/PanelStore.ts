@@ -18,6 +18,8 @@ export interface PanelEntry {
   tabId: number;
 }
 
+type PanelRemovedListener = (workspaceId: string, tabId: number) => void;
+
 /** A persisted panel entry. width is in CSS pixels, optional (older
  * persisted shapes had only URLs). */
 export interface PersistedPanelEntry {
@@ -49,6 +51,12 @@ export class PanelStore {
    * then cleared. Surviving here lets the restorer run after TabRegistry
    * + WorkspaceStore are ready. */
   #persistedEntries = new Map<string, PersistedPanelEntry[]>();
+  /** Fires whenever a panel binding `(workspaceId, tabId)` ceases to
+   * exist — explicit `remove`, bulk `removeWorkspace`, or the leftmost-
+   * promote path in `background.ts` (which calls `remove` itself).
+   * Lets downstream stores (PinnedPanelsStore) drop dependent entries
+   * without hand-cleaning at every call site. */
+  #panelRemovedListeners = new Set<PanelRemovedListener>();
 
   async init(): Promise<void> {
     const persisted = await load();
@@ -56,6 +64,21 @@ export class PanelStore {
       this.#persistedEntries = persisted.byWorkspace;
       this.#mainWidthPx = persisted.mainWidthPx;
       this.#stripScrollByWorkspace = persisted.stripScrollByWorkspace;
+    }
+  }
+
+  onPanelRemoved(listener: PanelRemovedListener): () => void {
+    this.#panelRemovedListeners.add(listener);
+    return () => this.#panelRemovedListeners.delete(listener);
+  }
+
+  #emitPanelRemoved(workspaceId: string, tabId: number): void {
+    for (const l of this.#panelRemovedListeners) {
+      try {
+        l(workspaceId, tabId);
+      } catch (err) {
+        console.warn('[bento-tools] PanelStore onPanelRemoved listener threw:', err);
+      }
     }
   }
 
@@ -171,6 +194,7 @@ export class PanelStore {
       this.#widthByTabId.delete(tabId);
     }
     this.#schedulePersist();
+    this.#emitPanelRemoved(workspaceId, tabId);
     return true;
   }
 
@@ -188,6 +212,9 @@ export class PanelStore {
       }
     }
     this.#schedulePersist();
+    if (list) {
+      for (const tabId of list) this.#emitPanelRemoved(workspaceId, tabId);
+    }
   }
 
   /** Replace the workspace's panel order. `tabIds` MUST be a permutation
