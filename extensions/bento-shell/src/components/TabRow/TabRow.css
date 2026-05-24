@@ -70,7 +70,7 @@
   }
 
   .bento-tab-row--active .tale-text {
-    color: var(--neutral-90-fg);
+    color: var(--neutral-90);
   }
 
   .bento-tab-row__favicon {
@@ -122,7 +122,7 @@
     padding-inline-end: var(--space-2xs);
   }
   .bento-tab-row--active .bento-tab-row__audible {
-    color: var(--neutral-90-fg);
+    color: var(--neutral-90);
   }
 
   .bento-tab-row > .tale-text {

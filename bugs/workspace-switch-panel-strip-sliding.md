@@ -1,6 +1,6 @@
 # Panel strip slides/scrolls during workspace switch
 
-**Status:** Unresolved
+**Status:** Resolved — fixed by Attempt 8
 **Last updated:** 2026-05-24
 **Repro reliability:** 100% — every workspace switch
 **Primary file:** [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
@@ -180,27 +180,26 @@ The 28 animations at fade-in-start are the smoking gun — these started when th
 
 **Change:** In `src/browser/base/content/bento-shell-mount.js`, the TabSelect reconciler now reads the selected tab's persisted workspace id. If it differs from `currentWorkspaceId`, it immediately arms the workspace fade, cancels any native smooth strip scroll, and skips the stale reconcile. The later BENTO_PANELS payload still performs the real hidden reconcile. Added `.bento-workspace-stabilizing` so layout-affecting transitions on direct panel containers, splitters, and favicon nav stay disabled until after fade-in completes.
 
-**Result:** Pending user verification in a built browser.
+**Result:** Verified by user. Workspace switches now render as a static fade-out / fade-in with no visible panel scrolling or sliding behind the fade.
 
-**Verdict:** PENDING — intended to address both the pre-payload paint race and fade-in transition restart without broad descendant `animation: none`.
+**Verdict:** FIXED — the issue was the combination of the pre-payload TabSelect reconcile race and layout transitions restarting during fade-in. The fix avoids the stale reconcile and keeps targeted layout-transition suppression active until the fade-in has completed, without broad descendant `animation: none`.
 
 ## What we know
 
 - The fade itself (opacity transition on the parents) is working.
-- Five known animation sources have been suppressed (Attempts 1–4 + 5's intent), and slide still happens.
-- The diagnostic at attempt 6 confirms 28 active animations at fade-in-start — _something_ is animating, we don't yet know what.
-- Reduced-motion users (`prefers-reduced-motion: reduce`) skip the fade entirely; we don't know if they also see sliding (the user didn't test this).
+- Attempt 8 fixed the visible slide.
+- The stale TabSelect reconcile was a real contributor: Firefox could select the destination workspace's tab before the destination `BENTO_PANELS` payload arrived, causing chrome to reconcile with the previous workspace's panel payload.
+- Fade-in transition restart was also a real contributor: targeted layout-transition suppression must remain active beyond `.bento-workspace-switching` removal so direct panel containers, splitters, and the favicon nav cannot animate width/flex/transform while opacity fades back in.
+- The broad descendant `animation: none !important` approach remains unsafe because it can blank panel rendering.
 
 ## What we don't know
 
-- The exact targets and properties of the 28 fade-in-start animations.
-- Whether the slide is CSS-transition-driven, JS-driven, or compositor-driven (Firefox's native tab-switching machinery, `AsyncTabSwitcher`, may animate panels independently of our chrome script).
-- Whether `splitViewPanels` setter triggers any internal Firefox animation on the deck.
-- Whether `transform` properties on panels are being mutated by `runPendingPanelFlip` or by Firefox itself.
+- The exact targets and properties of the 28 fade-in-start animations from Attempt 6 were never captured in expanded JSON form. This is no longer required for the fix, but would still be useful if similar transition regressions appear later.
+- Whether Firefox's `splitViewPanels` setter or `AsyncTabSwitcher` contributed secondary motion was not isolated. Attempt 8 fixed the user-visible symptom without needing to modify those internals.
 
 ## Next-attempt ideas (untested)
 
-These are hypotheses worth exploring. Each should be tried in isolation:
+Resolved. These are retained only as historical fallback ideas if the slide regresses:
 
 1. **Capture the 28 active animations** properly. Get the user to re-run the diagnostic with the summary stringified to JSON so the targets and properties are pasteable. Without this, every other attempt is a guess.
 2. **Targeted descendant CSS suppression** — instead of the broken `*` selector, enumerate specific descendant types (`notificationbox`, `tabpanel`, etc.) and apply `transition: none` only to layout-affecting properties (`width`, `min-width`, `max-width`, `flex`, `flex-basis`, `transform`, `left`, `right`).
@@ -236,7 +235,8 @@ Add a new section under "Attempts & results":
 5. Observe the panel strip during the transition.
 
 **Expected:** Static opacity fade — no horizontal motion of any panel.
-**Actual:** Panels visibly slide left/right during the fade-in window.
+**Actual before Attempt 8:** Panels visibly slid left/right during the fade-in window.
+**Actual after Attempt 8:** Static fade-out / fade-in with no visible panel motion.
 
 ## Diagnostic snippets
 

@@ -90,7 +90,7 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
     padding-inline: var(--space-xs);
     border: 0;
     background-color: transparent;
-    color: var(--neutral-90-fg);
+    color: var(--neutral-90);
     border-radius: var(--radius-s);
     cursor: pointer;
     /* outline lives in the transition list so the focus ring fades in

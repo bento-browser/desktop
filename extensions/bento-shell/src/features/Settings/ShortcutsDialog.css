@@ -26,7 +26,7 @@
     min-width: 8rem;
     padding: var(--space-3xs) var(--space-2xs);
     border-radius: var(--radius-xs);
-    background-color: var(--neutral-15);
+    background-color: var(--neutral-16);
     color: var(--neutral-90);
     font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
     font-size: var(--font-size-xs);

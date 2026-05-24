@@ -225,6 +225,7 @@ function ensureConnection(): void {
               sidebarCollapsed?: boolean;
               customPanelSizes?: number[];
               panelCycleWraparound?: boolean;
+              panelShadowsEnabled?: boolean;
               stripScrollLeft?: number;
             } = {
               workspaceId: activeId,
@@ -257,6 +258,9 @@ function ensureConnection(): void {
             }
             if (typeof cur?.panelCycleWraparound === 'boolean') {
               payload.panelCycleWraparound = cur.panelCycleWraparound;
+            }
+            if (typeof cur?.panelShadowsEnabled === 'boolean') {
+              payload.panelShadowsEnabled = cur.panelShadowsEnabled;
             }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.

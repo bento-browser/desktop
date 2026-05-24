@@ -416,7 +416,7 @@
           color var(--bento-duration-fast) var(--bento-easing-standard);
       }
       .bento-panel-nav__btn:hover {
-        background-color: var(--neutral-15);
+        background-color: var(--neutral-16);
         color: var(--neutral-90);
       }
       .bento-panel-nav__btn > svg {
@@ -476,7 +476,7 @@
           border-color var(--bento-duration-base) var(--bento-easing-standard);
       }
       .bento-panel-nav__icon:hover {
-        background-color: var(--neutral-15);
+        background-color: var(--neutral-16);
         border-color: var(--neutral-30);
         transform: translateY(-1px);
       }
@@ -666,15 +666,9 @@
           margin 180ms var(--bento-easing-standard);
       }
 
-      /* Cycle focus indicator. Added on whichever panel is the user's
-         current cycle selection (arrow keys / cycle buttons / favicon
-         click). Implemented as an ::after pseudo-element overlay
-         (z-index: 1, pointer-events: none) instead of inset
-         box-shadow because the panel header has its own background
-         which would paint OVER an inset shadow. The overlay renders
-         on top of all panel content (header + browser) so the ring
-         is visible everywhere. Auto-removed 1.5s after the last nav
-         action; border-color transitions for the fade. */
+      /* Panel containers are positioned for drag/focus bookkeeping, but
+         do not paint their own frame. The splitters and optional shadow
+         proxies provide separation without outlining every slot. */
       #bento-side-panel-host > [data-bento-main-panel],
       #bento-side-panel-host > [data-bento-panel-tab-id] {
         position: relative;
@@ -715,10 +709,11 @@
         border: var(--bento-focus-ring-width) solid transparent;
         border-radius: var(--radius-m);
         pointer-events: none;
-        z-index: 1;
+        z-index: 10;
         box-sizing: border-box;
         transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
       }
+      #bento-side-panel-host > .bento-panel--focused::after,
       #bento-side-panel-host > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
@@ -735,8 +730,8 @@
         align-items: center;
         gap: var(--space-3xs);
         padding: var(--space-3xs) var(--space-2xs);
-        background-color: var(--neutral-10);
-        border-bottom: var(--bento-border-hairline) solid var(--neutral-15);
+        background-color: var(--neutral-16);
+        border-bottom: var(--bento-border-hairline) solid var(--neutral-16);
         flex: 0 0 auto;
         min-height: var(--bento-panel-header-height);
         box-sizing: border-box;
@@ -789,7 +784,7 @@
       }
       .bento-panel-header-drag-handle:hover,
       .bento-panel-header-button:hover:not([disabled]) {
-        background-color: var(--neutral-15);
+        background-color: var(--neutral-16);
         color: var(--neutral-90);
       }
       .bento-panel-header-drag-handle:focus-visible,
@@ -810,7 +805,7 @@
       }
       .bento-panel-header-drag-handle--dragging {
         cursor: grabbing;
-        background-color: var(--neutral-15);
+        background-color: var(--neutral-16);
         color: var(--color-60);
       }
       /* Bookmark star: filled outline when the current URL is in
@@ -845,7 +840,7 @@
         box-sizing: border-box;
       }
       .bento-panel-header-url:focus {
-        background-color: var(--neutral-0);
+        background-color: var(--neutral-5);
         border-color: var(--color-60);
       }
       .bento-panel-header-url::placeholder {
@@ -915,16 +910,16 @@
            the specificity tie on source order otherwise. */
         margin: 0 !important;
       }
-      /* Per-panel border. The accompanying outer shadow comes from
-         .bento-panel-shadow proxies (siblings of host inside
-         strip-container — see below). Box-shadow on the panel itself
-         is clipped by tabpanels' overflow box at the panel's bottom
-         edge; the proxy escapes that clip. */
+      /* Panels/main slot do not paint a border. The optional outer
+         shadow comes from .bento-panel-shadow proxies (siblings of
+         host inside strip-container — see below). Box-shadow on the
+         panel itself is clipped by tabpanels' overflow box at the
+         panel's bottom edge; the proxy escapes that clip. */
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
         border-radius: var(--radius-m);
         box-sizing: border-box;
-        border: var(--bento-border-hairline) solid var(--neutral-20);
+        border: 0;
       }
       /* Outer shadow for each panel. Lives in #bento-strip-container
          (not inside the host) so the shadow can extend below the
@@ -947,6 +942,9 @@
         background-color: transparent;
         border-radius: var(--radius-m);
         box-shadow: var(--shadow-l);
+      }
+      #bento-strip-container.bento-panel-shadows-disabled > .bento-panel-shadow {
+        display: none;
       }
       /* The browser fills whatever vertical space the header doesn't. */
       #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
@@ -1004,7 +1002,9 @@
         transition:
           background-color var(--bento-duration-fast) var(--bento-easing-standard),
           border-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard);
+          color var(--bento-duration-fast) var(--bento-easing-standard),
+          box-shadow var(--bento-duration-slow) var(--bento-easing-standard);
+        box-shadow: inset 0 0 0 var(--bento-focus-ring-width) transparent;
       }
       #bento-add-panel-trailer:hover {
         background-color: var(--bento-surface-hover);
@@ -1131,12 +1131,8 @@
         visibility: hidden;
       }
 
-      /* Cycle focus ring for split-view panels. Mirrors the legacy
-         #bento-side-panel-host rule but scoped to tabpanels children
-         (which have data-bento-main-panel / data-bento-panel-tab-id
-         stamped by the reconciler). Without this, arrow-key cycling
-         and Tab/click focus changes update the favicon strip marker
-         but produce no visible indicator on the panel itself. */
+      /* Split-view panel containers are positioned for drag/focus
+         bookkeeping, but do not paint outline rings around the slots. */
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
         position: relative;
@@ -1149,10 +1145,11 @@
         border: var(--bento-focus-ring-width) solid transparent;
         border-radius: var(--radius-m);
         pointer-events: none;
-        z-index: 1;
+        z-index: 10;
         box-sizing: border-box;
         transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
       }
+      #tabbrowser-tabpanels.bento-split-active > .bento-panel--focused::after,
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
@@ -1165,6 +1162,9 @@
       #bento-add-panel-trailer.bento-panel--cycle-focused {
         box-shadow: inset 0 0 0 var(--bento-focus-ring-width) var(--color-60);
         border-color: transparent;
+      }
+      #bento-add-panel-trailer:focus-visible {
+        box-shadow: inset 0 0 0 var(--bento-focus-ring-width) var(--color-60);
       }
     `;
     document.documentElement.appendChild(style);
@@ -2498,7 +2498,11 @@
     if (!container || !host || !window.gBrowser?.tabpanels) return;
     const tabpanels = window.gBrowser.tabpanels;
     // Tear-down: split-view inactive → remove all shadows.
-    if (!tabpanels.classList.contains('bento-split-active') || !panelIds.length) {
+    if (
+      !currentPanelShadowsEnabled ||
+      !tabpanels.classList.contains('bento-split-active') ||
+      !panelIds.length
+    ) {
       for (const sh of container.querySelectorAll(':scope > .bento-panel-shadow')) sh.remove();
       return;
     }
@@ -3262,6 +3266,13 @@
     panelFocusTimer = setTimeout(() => {
       target.classList.remove('bento-panel--cycle-focused');
     }, 1500);
+  }
+
+  function applyFocusedPanelIndicator(panelEl) {
+    const targets = getPanelCycleTargets();
+    for (const target of targets) {
+      target.classList.toggle('bento-panel--focused', target === panelEl);
+    }
   }
 
   function setActiveByIndex(idx) {
@@ -5389,17 +5400,26 @@
         // main-panel) and the fallback below incorrectly resets
         // currentActiveIdx to 0 — turning the next Right-arrow press
         // from the trailer into a wrap-to-first-side-panel jump.
-        if (target.closest('#bento-add-panel-trailer')) return;
+        if (target.closest('#bento-add-panel-trailer')) {
+          applyFocusedPanelIndicator(null);
+          return;
+        }
         // Browser elements live inside the panel containers (notif-
         // boxes) tagged with data-bento-{main-panel,panel-tab-id};
         // closest() walks up to find the right one regardless of any
         // wrapper depth Firefox introduces between <browser> and the
         // panel container.
         const panelEl = target.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
-        if (!panelEl) return;
+        if (!panelEl) {
+          applyFocusedPanelIndicator(null);
+          return;
+        }
         // Only scroll if the panel is inside the active strip. If
         // tabpanels isn't in split-view mode, no strip to scroll.
-        if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) return;
+        if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
+          applyFocusedPanelIndicator(null);
+          return;
+        }
         scrollPanelIntoViewFromRight(panelEl);
         // Sync the navigator's active marker to match the panel that
         // just received focus. Without this, clicking into a panel
@@ -5426,6 +5446,7 @@
         if (idx >= 0) {
           currentActiveIdx = idx;
           applyActiveMarker(idx);
+          applyFocusedPanelIndicator(targets[idx]);
         }
       },
       true,
@@ -6102,6 +6123,9 @@
       if (typeof decoded.panelCycleWraparound === 'boolean') {
         currentPanelCycleWraparound = decoded.panelCycleWraparound;
       }
+      if (typeof decoded.panelShadowsEnabled === 'boolean') {
+        applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
+      }
       // Per-workspace panel-strip scroll position. Capture into the
       // module-level map keyed by workspaceId so:
       //   - Same-workspace reconciles (panel add/remove, width change)
@@ -6439,6 +6463,26 @@
   // trailer back to the main panel (and vice versa). Default false:
   // cycling clamps at the endpoints.
   let currentPanelCycleWraparound = false;
+  // BentoSettings.panelShadowsEnabled mirrored via BENTO_PANELS. When
+  // false, the shadow proxy elements are removed and no new ones are
+  // created during splitter/scroll/resize sync. Default true.
+  let currentPanelShadowsEnabled = true;
+
+  function applyChromePanelShadowsEnabled(enabled) {
+    currentPanelShadowsEnabled = enabled;
+    const container = document.getElementById('bento-strip-container');
+    if (!container) return;
+    container.classList.toggle('bento-panel-shadows-disabled', !enabled);
+    if (!enabled) {
+      for (const sh of container.querySelectorAll(':scope > .bento-panel-shadow')) sh.remove();
+      return;
+    }
+    try {
+      syncPanelShadows((window.gBrowser?.tabpanels?.splitViewPanels || []).slice());
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel shadow enable sync failed:', err);
+    }
+  }
 
   function attachPaletteCloseListener() {
     const paletteFrame = document.getElementById('bento-palette-frame');

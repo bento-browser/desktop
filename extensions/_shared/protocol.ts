@@ -127,6 +127,10 @@ export interface BentoSettings {
    * true, Right at the trailer wraps back to the main panel and Left at
    * the main panel wraps forward to the trailer. */
   panelCycleWraparound: boolean;
+  /** Render outer box shadows around split-view panels. Enabled by
+   * default; disabling removes the chrome-side shadow proxy elements for
+   * users who prefer flatter panels or want less visual separation. */
+  panelShadowsEnabled: boolean;
 }
 
 export type ColorModePref = 'light' | 'dark';

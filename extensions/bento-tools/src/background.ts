@@ -215,11 +215,13 @@ const bootReady = Promise.all([
   let lastCustomPanelSizesKey: string = JSON.stringify(settings.snapshot().customPanelSizes ?? []);
   let lastPanelCycleWraparound: BentoSettings['panelCycleWraparound'] =
     settings.snapshot().panelCycleWraparound;
+  let lastPanelShadowsEnabled: BentoSettings['panelShadowsEnabled'] =
+    settings.snapshot().panelShadowsEnabled;
   settings.onChange((next) => {
     void applyContentColorMode(next.contentColorMode);
     // Re-fire panels/sync for every active workspace whenever a
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
-    // customPanelSizes, panelCycleWraparound) so chrome picks up the
+    // customPanelSizes, panelCycleWraparound, panelShadowsEnabled) so chrome picks up the
     // new value via the BENTO_PANELS title (which carries those
     // fields in its payload). The shell no longer writes dedicated
     // title channels for these — they raced BENTO_PANELS via
@@ -245,11 +247,13 @@ const bootReady = Promise.all([
     const sizesKey = JSON.stringify(next.customPanelSizes ?? []);
     const sizesChanged = sizesKey !== lastCustomPanelSizesKey;
     const wraparoundChanged = next.panelCycleWraparound !== lastPanelCycleWraparound;
+    const shadowsChanged = next.panelShadowsEnabled !== lastPanelShadowsEnabled;
     if (colorChanged) lastUiColorMode = next.uiColorMode;
     if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
     if (sizesChanged) lastCustomPanelSizesKey = sizesKey;
     if (wraparoundChanged) lastPanelCycleWraparound = next.panelCycleWraparound;
-    if (colorChanged || collapsedChanged || sizesChanged || wraparoundChanged) {
+    if (shadowsChanged) lastPanelShadowsEnabled = next.panelShadowsEnabled;
+    if (colorChanged || collapsedChanged || sizesChanged || wraparoundChanged || shadowsChanged) {
       const targets = new Set<string>();
       const globalActive = workspaces.getActiveId();
       if (globalActive) targets.add(globalActive);

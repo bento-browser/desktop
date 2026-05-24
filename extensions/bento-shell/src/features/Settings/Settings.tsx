@@ -211,6 +211,21 @@ export function Settings() {
                 <Switch.Thumb />
               </Switch.Root>
             </Row>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Column gap="3xs" style={{ flex: 1 }}>
+                <Text>Panel shadows</Text>
+                <Text variant="text" size="s" color="muted">
+                  Show the outer shadows around panels in the split-view strip.
+                </Text>
+              </Column>
+              <Switch.Root
+                isSelected={settings.panelShadowsEnabled}
+                onChange={(v) => update('panelShadowsEnabled', v)}
+                aria-label="Panel shadows"
+              >
+                <Switch.Thumb />
+              </Switch.Root>
+            </Row>
             <Column gap="2xs">
               <Text>Custom panel sizes (px)</Text>
               <Text variant="text" size="s" color="muted">

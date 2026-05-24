@@ -20,6 +20,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   sidebarCollapsed: false,
   customPanelSizes: [320, 480, 768, 1280],
   panelCycleWraparound: false,
+  panelShadowsEnabled: true,
 };
 
 export function seedDefault(): void {
