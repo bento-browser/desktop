@@ -11,6 +11,7 @@ import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
+import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
@@ -23,6 +24,7 @@ const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
 const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore();
+const savedPanels = new SavedPanelsStore();
 
 // Push contentColorMode to Firefox's prefers-color-scheme content
 // override. Tracked separately from uiColorMode (which only affects
@@ -186,6 +188,12 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
   const mainWidthPx = panels.getMainWidth();
   const stripScrollLeft = panels.getStripScroll(workspaceId);
   const pinnedTabIdsInWorkspace = pinnedPanels.entriesForWorkspace(workspaceId);
+  // Saved-panel count is GLOBAL (not workspace-scoped) but rides on this
+  // event because chrome already polls BENTO_PANELS and needs the count
+  // to size the Add-panel trailer's inline favicon row. Always include
+  // when the store has initialized (zero counts matter — chrome shrinks
+  // the trailer back to its base width when the user empties the folder).
+  const savedPanelCount = savedPanels.list().length;
   const event: {
     type: 'panels/sync';
     workspaceId: string;
@@ -193,10 +201,12 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
     mainWidthPx?: number;
     stripScrollLeft?: number;
     pinnedTabIdsInWorkspace?: number[];
+    savedPanelCount?: number;
   } = {
     type: 'panels/sync',
     workspaceId,
     panels: valid,
+    savedPanelCount,
   };
   if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
   if (typeof stripScrollLeft === 'number' && stripScrollLeft >= 0) {
@@ -229,6 +239,9 @@ const bootReady = Promise.all([
   pinnedPanels
     .init()
     .catch((err) => console.error('[bento-tools] PinnedPanelsStore init failed:', err)),
+  savedPanels
+    .init()
+    .catch((err) => console.error('[bento-tools] SavedPanelsStore init failed:', err)),
 ]).then(async () => {
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
@@ -646,6 +659,29 @@ workspaces.onDeltas((deltas) => {
   for (const d of deltas) {
     if (d.kind === 'removed') pinnedPanels.removeForWorkspace(d.id);
   }
+});
+
+// "Saved panels" folder list changes propagate two places:
+//   1. Direct savedPanels/snapshot broadcast — the panel-trailer iframe
+//      (and any other shell entry that mirrors the list) updates its
+//      Zustand store and re-renders.
+//   2. panels/sync re-emit for every active workspace — chrome's
+//      BENTO_PANELS title carries the new savedPanelCount, which
+//      drives the trailer's outer-vbox width. Without this, the
+//      trailer doesn't grow until an unrelated workspace switch /
+//      panel mutation re-fires panels/sync.
+//
+// Mirrors the settings.onChange wiring above: collect the set of every
+// per-window active workspace plus the global fallback, then sync each.
+savedPanels.onChange((items) => {
+  broadcastEvent({ type: 'savedPanels/snapshot', items });
+  const targets = new Set<string>();
+  const globalActive = workspaces.getActiveId();
+  if (globalActive) targets.add(globalActive);
+  for (const wsId of Object.values(workspaces.getActiveIdByWindow())) {
+    if (wsId) targets.add(wsId);
+  }
+  for (const wsId of targets) void emitPanelsSync(wsId);
 });
 
 // "Add panel" trailer button (bento-shell-mount.js) creates the tab at
@@ -1152,6 +1188,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       settings,
       panels,
       pinnedPanels,
+      savedPanels,
       send,
       emitPanelsSync,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
@@ -1186,6 +1223,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     });
     send({ type: 'settings/snapshot', settings: settings.snapshot() });
     send({ type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
+    send({ type: 'savedPanels/snapshot', items: savedPanels.list() });
     // Replay panels for EVERY workspace so a freshly mounted shell can
     // pre-populate its per-workspace panelsStore. Without this, the
     // sidebar tab-list filter (useWorkspaceTabIds) for non-active

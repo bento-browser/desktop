@@ -962,12 +962,11 @@
       /* ─── Add-panel trailer ────────────────────────────────────────
        * Slim flex item appended to the end of the split-view strip
        * (last child of #tabbrowser-tabpanels.bento-split-active).
-       * Click → addNewPanel() (same path as the favicon-nav add
-       * button). Inline order:999 keeps it visually after every panel
-       * regardless of the per-panel order:N inline styles the
-       * reconciler stamps (panel orders top out around 2*8=16 in
-       * practice). Dashed border signals 'drop zone' / 'click to add'
-       * without competing with the solid panel borders. */
+       * The outer XUL host is only a layout/focus/cycle target; the
+       * actual interactive controls are the "+" and saved-panel buttons
+       * rendered inside the panel-trailer iframe. Inline order:999
+       * keeps it visually after every panel regardless of the per-panel
+       * order:N inline styles the reconciler stamps. */
       /* Trailer is a flex sibling of the panels inside tabpanels (NOT
          an absolute overlay) so it scrolls with the strip and the
          last panel's splitter sits between the last panel and the
@@ -982,54 +981,45 @@
          trailer adapts to light + dark mode automatically. SVG
          currentColor inherits from the trailer's color property so
          the icon tracks the same token. */
+      /* Trailer width reserves a 3x3 button grid. If more than eight
+         saved panels exist, React adds a native select underneath the
+         grid and applyTrailerWidth() flips --bento-saved-panel-overflow
+         to 1 so the host widens just enough for the select. */
       #bento-add-panel-trailer {
-        flex: 0 0 var(--space-2xl) !important;
-        min-width: var(--space-2xl) !important;
+        flex: 0 0
+          calc(
+            (var(--space-l) * 3) +
+              (var(--space-3xs) * 2) +
+              (var(--space-xs) * 2) +
+              (
+                var(--bento-saved-panel-overflow, 0) *
+                  (12rem - ((var(--space-l) * 3) + (var(--space-3xs) * 2)))
+              )
+          ) !important;
+        min-width: calc((var(--space-l) * 3) + (var(--space-3xs) * 2) + (var(--space-xs) * 2)) !important;
         align-self: stretch !important;
         display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
+        flex-direction: row !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
         order: 999 !important;
         box-sizing: border-box;
         margin-block: var(--space-2xs);
         padding: 0;
         background-color: transparent;
-        border: var(--bento-border-hairline) dashed var(--neutral-30);
+        border: 0;
         border-radius: var(--radius-m);
         color: var(--neutral-70);
-        cursor: pointer;
         transition:
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          border-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard),
-          box-shadow var(--bento-duration-slow) var(--bento-easing-standard);
-        box-shadow: inset 0 0 0 var(--bento-focus-ring-width) transparent;
+          flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard);
       }
-      #bento-add-panel-trailer:hover {
-        background-color: var(--bento-surface-hover);
-        border-color: var(--neutral-50);
-        color: var(--neutral-90);
-      }
-      #bento-add-panel-trailer:active {
-        background-color: var(--bento-surface-active);
-      }
-      #bento-add-panel-trailer svg {
-        width: var(--bento-icon-size-md, 20px);
-        height: var(--bento-icon-size-md, 20px);
-      }
-      #bento-add-panel-trailer:active {
-        background-color: var(--bento-surface-active);
-      }
-      /* Explicit SVG dimensions — makeIcon doesn't set width/height
-         by default and chrome XHTML doesn't always honour width from
-         a CSS rule for SVG elements without an explicit viewBox-
-         backed intrinsic size. Inline px keeps the icon visible
-         regardless of any cascade weirdness. */
-      #bento-add-panel-trailer svg {
-        width: 24px;
-        height: 24px;
-        color: inherit;
+      /* Inner moz-extension <browser> iframe — fills the trailer host
+         so the React PanelTrailer paints edge-to-edge. The iframe owns
+         hover/active/focus styling for the actual buttons. */
+      #bento-add-panel-trailer > #bento-panel-trailer-frame {
+        flex: 1 1 auto;
+        min-width: 0;
+        background-color: transparent;
       }
 
       /* ─── Multi-panel column ordering ────────────────────────────────
@@ -1152,19 +1142,6 @@
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--focused::after,
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
-      }
-      /* The Add-panel trailer is a XUL <vbox>; ::after pseudo-elements
-         don't reliably paint on XUL elements in Firefox chrome, so we
-         can't reuse the ::after-overlay ring used for real panels.
-         Instead, paint an inset box-shadow ring on the trailer itself
-         when keyboard cycling lands on it — same visible result, no
-         pseudo-element required. */
-      #bento-add-panel-trailer.bento-panel--cycle-focused {
-        box-shadow: inset 0 0 0 var(--bento-focus-ring-width) var(--color-60);
-        border-color: transparent;
-      }
-      #bento-add-panel-trailer:focus-visible {
-        box-shadow: inset 0 0 0 var(--bento-focus-ring-width) var(--color-60);
       }
     `;
     document.documentElement.appendChild(style);
@@ -1308,6 +1285,13 @@
 
   function setBentoMenuSrc() {
     setFrameSrc('bento-menu-frame', '/dist/menu.html');
+  }
+
+  // Trailer-frame source helper. Mirrors the other overlay-frame helpers
+  // but the host is the existing #bento-add-panel-trailer XUL <vbox>
+  // (not an ensureOverlayHost overlay) — see ensureAddPanelTrailer.
+  function setBentoPanelTrailerSrc() {
+    setFrameSrc('bento-panel-trailer-frame', '/dist/panel-trailer.html');
   }
 
   // Create overlay host elements dynamically rather than in the patch.
@@ -2143,7 +2127,19 @@
           id: isPinned ? 'unpin' : 'pin',
           label: isPinned ? 'Unpin this tab' : 'Pin this tab',
         };
-        const items = [pinItem, ...sizeItems];
+        // Size presets nest under a "Custom panel widths" submenu so
+        // the menu has room for new top-level actions — `items.items`
+        // makes ChromeMenu.tsx render a SubmenuTrigger via
+        // react-aria-components (no Tale UI Menu change needed).
+        // "Save panel" sits as a sibling below a separator; clicking
+        // dispatches `savedPanels/save` and bento-tools inserts the
+        // bookmark into the "Saved panels" folder (de-dupes silently).
+        const items = [
+          pinItem,
+          { id: 'custom-widths', label: 'Custom panel widths', items: sizeItems },
+          { id: 'sep-save-panel', kind: 'separator' },
+          { id: 'save-panel', label: 'Save panel' },
+        ];
         showChromeMenu({
           anchor: moreBtn.getBoundingClientRect(),
           items,
@@ -2164,6 +2160,49 @@
                 type: 'pinnedPanel/remove',
                 workspaceId: currentWorkspaceId,
                 tabId,
+              });
+              return;
+            }
+            if (itemId === 'save-panel') {
+              // Read the panel's current URL + title and dispatch to
+              // bento-tools — SavedPanelsStore owns the find-or-create
+              // folder + dedupe + insert path. Chrome avoids touching
+              // PlacesUtils directly here (the star button at
+              // bookmarkPanelPage still does, but that's a different
+              // folder + a precedent we are NOT extending — bookmarks
+              // mutated from chrome would bypass tools' list mirror
+              // and the trailer iframe would lag until the next manual
+              // refresh).
+              const innerBrowser = panelEl.querySelector('browser');
+              if (!innerBrowser) return;
+              let uri;
+              try {
+                uri = innerBrowser.currentURI;
+              } catch {
+                return;
+              }
+              if (!uri || !uri.spec) return;
+              let title;
+              try {
+                title = innerBrowser.contentTitle || uri.spec;
+              } catch {
+                title = uri.spec;
+              }
+              let favIconUrl = '';
+              try {
+                favIconUrl =
+                  innerBrowser.mIconURL ||
+                  innerBrowser.getAttribute?.('image') ||
+                  innerBrowser.getAttribute?.('icon') ||
+                  '';
+              } catch {
+                favIconUrl = '';
+              }
+              dispatchShellAction({
+                type: 'savedPanels/save',
+                url: uri.spec,
+                title,
+                favIconUrl,
               });
               return;
             }
@@ -3089,6 +3128,23 @@
   const SHELL_ACTION_FRAME_SCRIPT_URL =
     'data:application/javascript;charset=utf-8,' + encodeURIComponent(SHELL_ACTION_FRAME_SCRIPT_SRC);
 
+  const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoPanelTrailerCycleFocus", function(msg) {' +
+    '  try {' +
+    '    var root = content.document && content.document.documentElement;' +
+    '    if (!root) return;' +
+    '    if (msg.data && msg.data.focused) {' +
+    '      root.setAttribute("data-bento-cycle-focus-add", "1");' +
+    '    } else {' +
+    '      root.removeAttribute("data-bento-cycle-focus-add");' +
+    '    }' +
+    '  } catch (e) {}' +
+    '});';
+  const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC);
+
   function dispatchShellAction(action) {
     const shellFrame = document.getElementById('bento-shell-frame');
     if (!shellFrame) return false;
@@ -3124,6 +3180,22 @@
     } catch (err) {
       console.warn('[bento-shell-mount] shell action dispatch failed:', err);
       return false;
+    }
+  }
+
+  function setPanelTrailerAddFocus(focused) {
+    const frame = document.getElementById('bento-panel-trailer-frame');
+    if (!frame) return;
+    try {
+      const mm = frame.messageManager;
+      if (!mm || typeof mm.sendAsyncMessage !== 'function') return;
+      if (!frame._bentoPanelTrailerFocusScriptLoaded && typeof mm.loadFrameScript === 'function') {
+        mm.loadFrameScript(PANEL_TRAILER_FOCUS_FRAME_SCRIPT_URL, true);
+        frame._bentoPanelTrailerFocusScriptLoaded = true;
+      }
+      mm.sendAsyncMessage('BentoPanelTrailerCycleFocus', { focused: !!focused });
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel trailer focus sync failed:', err);
     }
   }
 
@@ -3297,12 +3369,16 @@
   function applyPanelFocusIndicator(idx) {
     const targets = getPanelCycleTargets();
     for (const target of targets) target.classList.remove('bento-panel--cycle-focused');
+    setPanelTrailerAddFocus(false);
     if (idx < 0 || idx >= targets.length) return;
     const target = targets[idx];
     target.classList.add('bento-panel--cycle-focused');
+    const isTrailer = target.id === 'bento-add-panel-trailer';
+    if (isTrailer) setPanelTrailerAddFocus(true);
     if (panelFocusTimer) clearTimeout(panelFocusTimer);
     panelFocusTimer = setTimeout(() => {
       target.classList.remove('bento-panel--cycle-focused');
+      if (isTrailer) setPanelTrailerAddFocus(false);
     }, 1500);
   }
 
@@ -3330,10 +3406,16 @@
     // via the actor (see attachContentKeyBridgeListener), so we
     // can keep content-focused as the default.
     //
-    // Add-trailer target (no inner <browser>) → focus the chrome
-    // element directly so Enter activates it.
+    // Add-trailer target → focus the outer vbox (NOT its inner
+    // panel-trailer-frame iframe). The trailer hosts a moz-extension
+    // iframe child since the saved-panels feature; if we focused that
+    // iframe, the chrome-side keydown handler on the vbox wouldn't see
+    // Enter and the cycle-Enter "create blank panel" UX would break.
+    // Mouse hover/click on the iframe's React buttons still works
+    // normally — those don't go through this focus path.
     try {
-      const browserEl = target.querySelector?.('browser');
+      const isTrailer = target.id === 'bento-add-panel-trailer';
+      const browserEl = isTrailer ? null : target.querySelector?.('browser');
       if (browserEl) {
         browserEl.focus({ preventScroll: true });
       } else {
@@ -4396,6 +4478,14 @@
   // panel and try to wrap a <browser> around it). The order:999 inline
   // CSS keeps it at the visual end regardless of where Firefox's
   // append puts it in DOM order.
+  //
+  // The visible "+" button and the per-saved-bookmark favicon buttons
+  // are rendered by a React app inside a moz-extension <browser>
+  // iframe (panel-trailer.html). The XUL <vbox> here is purely the
+  // host: it owns the paint-pipeline class, focus-ring CSS,
+  // splitter/cycle-target identity, and the keyboard Enter handler
+  // that survives for cycle-Enter UX (since chrome captures the key
+  // before the iframe's React app sees it).
   function ensureAddPanelTrailer(tabpanels) {
     let trailer = document.getElementById('bento-add-panel-trailer');
     if (!trailer) {
@@ -4406,9 +4496,9 @@
       // trailer's centre showed tabpanels itself rather than the
       // trailer, confirming the HTML element wasn't reaching the
       // compositor. Other tabpanels children are XUL notificationboxes
-      // for the same reason. Inner HTML SVG icon stays since SVG is
-      // namespace-portable. role="button" + tabindex make the vbox
-      // accessible without changing its render path. */
+      // for the same reason. The XUL <browser> child paints fine
+      // inside this <vbox> — same constraint that makes every real
+      // panel's <browser> work.
       trailer = document.createXULElement('vbox');
       trailer.id = 'bento-add-panel-trailer';
       // .split-view-panel-active opts the trailer into Firefox's
@@ -4416,26 +4506,78 @@
       // suppresses non-panel children even with display:flex +
       // visibility:visible !important. Our #id rule overrides the
       // 380px min-width that the .split-view-panel-active class
-      // selector applies to real panels. */
+      // selector applies to real panels.
       trailer.classList.add('split-view-panel-active');
-      trailer.setAttribute('role', 'button');
+      // tabindex + keydown survive so keyboard cycling Right past the
+      // last panel lands on the trailer; Enter still creates a blank
+      // panel via the existing addNewPanel marker URL path. The
+      // visible "+" inside the iframe also dispatches panel/openAt
+      // when mouse-clicked — both end states are equivalent (a new
+      // panel appended to the strip).
       trailer.setAttribute('tabindex', '0');
-      trailer.setAttribute('title', 'Add panel');
       trailer.setAttribute('aria-label', 'Add panel');
-      trailer.appendChild(makeIcon(ICONS.plus));
-      trailer.addEventListener('click', addNewPanel);
+      // Removed (vs. pre-iframe trailer):
+      //   - role="button": the vbox is now a CONTAINER; the iframe
+      //     child renders the actual button widgets.
+      //   - inline `title`: replaced by the iframe's Tale UI Tooltip.
+      //   - click handler: the iframe captures mouse clicks before
+      //     they reach the vbox. The keydown handler stays because
+      //     keyboard cycle-Enter focuses the vbox (see
+      //     setActiveByIndex's trailer special-case) and the keydown
+      //     fires there directly.
       trailer.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           addNewPanel();
         }
       });
+      // Inner moz-extension iframe — same attribute set as
+      // ensureOverlayHost frames. Renders /dist/panel-trailer.html
+      // which mounts the React PanelTrailer app. Mouse clicks on the
+      // iframe's "+" / favicon buttons dispatch panel/openAt with
+      // position 'end'; the existing panels/sync round-trip surfaces
+      // the new panel in chrome's strip.
+      const frame = document.createXULElement('browser');
+      frame.id = 'bento-panel-trailer-frame';
+      frame.setAttribute('type', 'content');
+      frame.setAttribute('remote', 'true');
+      frame.setAttribute('remoteType', 'extension');
+      frame.setAttribute('primary', 'false');
+      frame.setAttribute('flex', '1');
+      frame.setAttribute('transparent', 'transparent');
+      frame.style.cssText = 'background-color: transparent; -moz-appearance: none;';
+      trailer.appendChild(frame);
+      // NOTE: setBentoPanelTrailerSrc() is called AFTER the trailer is
+      // appended to tabpanels below — setFrameSrc resolves the frame
+      // via document.getElementById, which silently returns null when
+      // the element is still detached from the document.
     }
     // Append to tabpanels as the LAST child every reconcile. order:999
     // (in CSS) keeps it visually trailing regardless of DOM order.
-    if (trailer.parentNode !== tabpanels || tabpanels.lastElementChild !== trailer) {
+    const wasDetached = trailer.parentNode !== tabpanels;
+    if (wasDetached || tabpanels.lastElementChild !== trailer) {
       tabpanels.appendChild(trailer);
     }
+    // First-mount-only: now that the trailer + its inner <browser> are
+    // in the document, kick off the moz-extension URL load. Subsequent
+    // reconciles re-append the same node but the iframe's `src`
+    // (already set on first mount) survives the DOM move.
+    if (wasDetached) {
+      const frame = document.getElementById('bento-panel-trailer-frame');
+      if (frame && !frame.getAttribute('src')) {
+        setBentoPanelTrailerSrc();
+      }
+    }
+  }
+
+  // Update the trailer's flex-basis so it grows only when the saved-panel
+  // overflow select is present. The first eight saved panels fit into the
+  // 3x3 grid around the centre "new tab" button.
+  function applyTrailerWidth(count) {
+    const trailer = document.getElementById('bento-add-panel-trailer');
+    if (!trailer) return;
+    const safe = Number.isFinite(count) && count >= 0 ? Math.round(count) : 0;
+    trailer.style.setProperty('--bento-saved-panel-overflow', safe > 8 ? '1' : '0');
   }
 
   function removeAddPanelTrailer() {
@@ -6224,6 +6366,18 @@
       } else {
         currentPinnedTabIdsInWorkspace = new Set();
       }
+      // Saved-panel count drives the Add-panel trailer's flex-basis
+      // so the inline favicon row has room to render. Global (not
+      // workspace-scoped) but rides on this payload because chrome
+      // already polls BENTO_PANELS — see SavedPanelsStore in
+      // bento-tools. Missing key resets to 0 (legacy tools builds
+      // that haven't been rebuilt with the bookmarks permission).
+      if (typeof decoded.savedPanelCount === 'number' && decoded.savedPanelCount >= 0) {
+        currentSavedPanelCount = Math.round(decoded.savedPanelCount);
+      } else {
+        currentSavedPanelCount = 0;
+      }
+      applyTrailerWidth(currentSavedPanelCount);
       // Per-workspace panel-strip scroll position. Capture into the
       // module-level map keyed by workspaceId so:
       //   - Same-workspace reconciles (panel add/remove, width change)
@@ -6573,6 +6727,11 @@
   // pin subset) so a Set.has(tabId) lookup is enough — no global pin
   // map needed chrome-side.
   let currentPinnedTabIdsInWorkspace = new Set();
+  // Number of bookmarks in the "Saved panels" folder. Mirrored from
+  // BENTO_PANELS payload's `savedPanelCount` field. Drives the
+  // Add-panel trailer's flex-basis via applyTrailerWidth so the
+  // inline favicon row has room to grow.
+  let currentSavedPanelCount = 0;
 
   function applyChromePanelShadowsEnabled(enabled) {
     currentPanelShadowsEnabled = enabled;
@@ -7054,6 +7213,7 @@
           'bento-welcome-frame',
           'bento-workspace-switcher-frame',
           'bento-menu-frame',
+          'bento-panel-trailer-frame',
         ];
         for (const id of ids) {
           const frame = document.getElementById(id);
@@ -7070,6 +7230,7 @@
             else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
             else if (id === 'bento-workspace-switcher-frame') setBentoWorkspaceSwitcherSrc();
             else if (id === 'bento-menu-frame') setBentoMenuSrc();
+            else if (id === 'bento-panel-trailer-frame') setBentoPanelTrailerSrc();
           }
         }
       }, 100);

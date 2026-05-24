@@ -188,13 +188,23 @@ export type Action =
    * Multi-panel: each workspace can have arbitrary N panels, scrolled
    * horizontally if they overflow. */
   | { type: 'panel/add'; id: number }
-  /** Open `url` in a new tab and insert it as a panel immediately
-   * after the source panel. `sourceTabId === null` means the right-
-   * click happened in the main panel — the new panel becomes the
-   * first side panel (position 0). Otherwise the new panel is
-   * inserted at sourceTabId's index + 1. Backs the "Open in new
-   * panel" link context-menu item in chrome. */
-  | { type: 'panel/openAt'; url: string; sourceTabId: number | null }
+  /** Open `url` in a new tab and insert it as a panel. Default
+   * (`position` omitted or `'after'`): inserts immediately after the
+   * source panel — `sourceTabId === null` means the right-click happened
+   * in the main panel and the new panel becomes the first side panel
+   * (position 0); otherwise the new panel is inserted at sourceTabId's
+   * index + 1. Backs the "Open in new panel" link context-menu item.
+   *
+   * `position: 'end'` ignores `sourceTabId` and appends to the end of
+   * the panel strip — used by the Add-panel trailer ("+" button and
+   * saved-panel favicon buttons) where the natural insertion point is
+   * the rightmost slot, not "after" any particular panel. */
+  | {
+      type: 'panel/openAt';
+      url: string;
+      sourceTabId: number | null;
+      position?: 'after' | 'end';
+    }
   /** Remove a tab from the active workspace's panels. Tab itself
    * stays open in the sidebar list — only the panel binding goes away. */
   | { type: 'panel/remove'; id: number }
@@ -266,7 +276,27 @@ export type Action =
    * pinned panel's tab. See background.ts handleWorkspaceActivation for
    * the activation-override race coordination. */
   | { type: 'pinnedPanel/activate'; workspaceId: string; tabId: number }
-  | { type: 'pinnedPanels/requestSnapshot' };
+  | { type: 'pinnedPanels/requestSnapshot' }
+  /** Bookmark the panel's URL into the "Saved panels" folder under
+   * "Other Bookmarks". Tools find-or-creates the folder lazily and
+   * de-dupes by URL (no-op when the URL is already saved). Chrome
+   * dispatches this when the user picks "Save panel" from the panel
+   * kebab menu — the dispatch carries the URL + title that chrome
+   * read off the panel's <browser> element. */
+  | { type: 'savedPanels/save'; url: string; title: string; favIconUrl?: string }
+  /** Ask tools to broadcast the current "Saved panels" folder contents
+   * as a `savedPanels/snapshot` event. Sent on shell entry mount so
+   * the panel-trailer iframe paints its favicon row immediately. */
+  | { type: 'savedPanels/requestSnapshot' };
+
+/** One entry in the "Saved panels" bookmark folder. `id` is the Firefox
+ * bookmark id; `title` and `url` come straight from browser.bookmarks. */
+export interface SavedPanelEntry {
+  id: string;
+  title: string;
+  url: string;
+  favIconUrl?: string;
+}
 
 /** A pinned-panel entry. Identity is `(workspaceId, tabId)` — at most one
  * pin per binding. `order` is append-on-add and stable across renames /
@@ -353,10 +383,23 @@ export type Event =
        * to pick the "Pin" vs "Unpin" label without having to track the
        * cross-workspace pin map. */
       pinnedTabIdsInWorkspace?: number[];
+      /** Total count of bookmarks in the "Saved panels" folder. Global —
+       * not workspace-scoped — but rides on panels/sync because chrome
+       * already polls this channel and needs the count to size the
+       * Add-panel trailer's inline favicon row. Undefined means tools
+       * has no info to share (boot path before SavedPanelsStore.init
+       * has finished) and chrome should treat as zero. */
+      savedPanelCount?: number;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }
-  | { type: 'pinnedPanels/changed'; deltas: PinnedPanelDelta[] };
+  | { type: 'pinnedPanels/changed'; deltas: PinnedPanelDelta[] }
+  /** Full list of bookmarks in the "Saved panels" folder. Emitted on
+   * shell connect, on `savedPanels/requestSnapshot`, and whenever
+   * SavedPanelsStore detects a change (bookmark added/removed/renamed
+   * inside the folder). The panel-trailer iframe mirrors this into its
+   * Zustand store and re-renders the favicon row. */
+  | { type: 'savedPanels/snapshot'; items: SavedPanelEntry[] };
 
 /** Wire-level envelope around an Action: the action itself plus an
  * optional routing field that bento-shell's dispatcher stamps with the

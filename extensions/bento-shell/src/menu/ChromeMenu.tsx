@@ -56,9 +56,16 @@ function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
       // Menu.SubmenuTrigger styles the trigger ITEM (chevron, etc.); the
       // OUTER wrapper that wires up open-on-hover/click belongs to
       // react-aria-components.
+      //
+      // `id` MUST be present on Menu.SubmenuTrigger (it's a styled
+      // AriaMenuItem and react-aria's collection layer dereferences a
+      // null id during keyboard-navigation map lookups — symptom is
+      // "t is null" in the minified bundle the first time the menu
+      // renders). The React `key` is unrelated; it satisfies the
+      // children-array diff, not the collection identity.
       return (
         <SubmenuTrigger key={item.id}>
-          <Menu.SubmenuTrigger>{item.label ?? ''}</Menu.SubmenuTrigger>
+          <Menu.SubmenuTrigger id={item.id}>{item.label ?? ''}</Menu.SubmenuTrigger>
           <Menu.Popover>
             <Menu.MenuList onAction={(key) => onSelect(String(key))}>
               {renderItems(item.items, onSelect)}

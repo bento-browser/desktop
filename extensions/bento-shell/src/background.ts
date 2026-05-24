@@ -95,8 +95,17 @@ channel.addEventListener('message', (msg) => {
   if (!data || typeof data !== 'object') return;
 
   if (data.kind === 'action') {
+    // Client-internal actions stay on the bus — they're consumed by
+    // another shell document (the menu overlay iframe) and have no
+    // tools-side handler, so forwarding them produces a benign but
+    // noisy "unhandled action" warning in the tools console on every
+    // kebab menu open. The Action protocol union doesn't include
+    // these intentionally; treat anything matching the prefix as
+    // bus-only.
+    const actionType = (data.action as { type?: string } | undefined)?.type;
+    if (actionType === 'menu/open') return;
     if (!toolsPort) {
-      console.warn('[bento-shell] action dropped — tools port not connected:', data.action?.type);
+      console.warn('[bento-shell] action dropped — tools port not connected:', actionType);
       return;
     }
     try {

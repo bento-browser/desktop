@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Bento Tools",
   "short_name": "bento-tools",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Bento Browser background tools — tab/keyboard/persistence logic.",
   "hidden": true,
   "browser_specific_settings": {
@@ -15,7 +15,7 @@
     "scripts": ["dist/background.js"],
     "persistent": true
   },
-  "permissions": ["tabs", "storage", "sessions", "privacy", "browserSettings"],
+  "permissions": ["tabs", "storage", "sessions", "privacy", "browserSettings", "bookmarks"],
   "commands": {
     "workspace-1": {
       "suggested_key": { "default": "Ctrl+Alt+1" },

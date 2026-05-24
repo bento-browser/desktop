@@ -1,0 +1,85 @@
+/* Layer-2 component: PanelTrailer.
+ *
+ * Lives inside a moz-extension iframe hosted by the chrome XUL trailer
+ * (#bento-add-panel-trailer in bento-shell-mount.js). The chrome host
+ * sizes itself via the savedPanelCount-derived flexBasis; this CSS only
+ * lays out the buttons inside the iframe.
+ */
+@layer bento.components {
+  .bento-panel-trailer {
+    /* Fill the iframe — chrome controls the outer vbox width. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2xs);
+    padding-inline: var(--space-xs);
+    padding-block: var(--space-2xs);
+    height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    background-color: transparent;
+  }
+
+  .bento-panel-trailer__grid {
+    display: grid;
+    grid-template-columns: repeat(3, var(--space-l));
+    grid-template-rows: repeat(3, var(--space-l));
+    gap: var(--space-3xs);
+    flex: 0 0 auto;
+  }
+
+  /* Common button shape for "+" and favicon buttons. tale-button base
+   * classes (applied alongside) handle hover/active/focus rings. The
+   * BEM modifiers force a square aspect for icon-only triggers. */
+  .bento-panel-trailer__btn {
+    --tale-button-padding-inline: var(--space-2xs);
+    flex: 0 0 auto;
+    width: var(--space-l);
+    height: var(--space-l);
+    min-width: var(--space-l);
+    border-radius: var(--radius-s);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bento-panel-trailer__btn svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  :root[data-bento-cycle-focus-add='1'] .bento-panel-trailer__btn--add {
+    box-shadow: inset 0 0 0 var(--bento-focus-ring-width) var(--color-60);
+  }
+
+  .bento-panel-trailer__placeholder {
+    width: var(--space-l);
+    height: var(--space-l);
+    border-radius: var(--radius-s);
+    background-color: var(--neutral-18);
+  }
+
+  .bento-panel-trailer__favicon {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-2xs);
+    object-fit: cover;
+    /* Bookmarks for never-visited URLs render Firefox's default-favicon
+     * which is a faded grey globe; keep a subtle background so it
+     * doesn't blur into the trailer surface. */
+    background-color: var(--neutral-12);
+  }
+
+  .bento-panel-trailer__favicon--placeholder {
+    background-color: var(--neutral-20);
+    /* Slight border so the empty placeholder still reads as a clickable
+     * affordance even when the page-icon fetch failed. */
+    box-shadow: inset 0 0 0 1px var(--bento-border-color-subtle, var(--neutral-30));
+  }
+
+  .bento-panel-trailer__more {
+    flex: 0 0 auto;
+    width: 12rem;
+  }
+}

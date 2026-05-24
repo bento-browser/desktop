@@ -12,6 +12,7 @@ import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
+import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import { clearPanelMarker } from '../panels/SessionMarker';
 
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
@@ -43,6 +44,7 @@ export interface HandlerContext {
   settings: SettingsStore;
   panels: PanelStore;
   pinnedPanels: PinnedPanelsStore;
+  savedPanels: SavedPanelsStore;
   send: (event: Event) => void;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
@@ -374,15 +376,25 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         console.warn('[bento-tools] panel/openAt: no active workspace — bailing');
         return;
       }
-      // Compute insert position from sourceTabId:
-      //   null  → 0 (immediately right of main panel)
-      //   id    → that panel's index + 1 (immediately right of it)
+      // Compute insert position from sourceTabId and the optional
+      // position hint:
+      //   position 'end' → currentPanels.length (append). Used by the
+      //     Add-panel trailer ("+" button and saved-panel favicon
+      //     buttons) where "after which panel" doesn't apply — the
+      //     trailer always inserts at the rightmost slot.
+      //   null sourceTabId, no position hint → 0 (immediately right
+      //     of main panel). Used by link context-menu "Open in new
+      //     panel" when the right-click happened in the main panel.
+      //   id sourceTabId → that panel's index + 1 (immediately right
+      //     of it).
       //   not-a-panel id → append (defensive: shouldn't normally happen
-      //   because the menu item only shows when the right-click was
-      //   inside a known panel)
+      //     because the menu item only shows when the right-click was
+      //     inside a known panel)
       const currentPanels = ctx.panels.getPanels(wsId);
       let position: number;
-      if (action.sourceTabId === null) {
+      if (action.position === 'end') {
+        position = currentPanels.length;
+      } else if (action.sourceTabId === null) {
         position = 0;
       } else {
         const idx = currentPanels.indexOf(action.sourceTabId);
@@ -394,9 +406,16 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         'computed position=',
         position,
       );
+      // WebExtensions' tabs.create rejects most `about:*` URLs as "Illegal
+      // URL". `about:newtab` specifically is the user's configured new-tab
+      // page; tabs.create with NO `url` field resolves to it via Firefox's
+      // AboutNewTabRedirector. Treat that string as a sentinel meaning
+      // "the default new tab page" and omit `url` accordingly. Same
+      // workaround the `tab/create` action already uses.
+      const isDefaultNewTab = !action.url || action.url === 'about:newtab';
       browser.tabs
         .create({
-          url: action.url,
+          ...(isDefaultNewTab ? {} : { url: action.url }),
           active: false,
           ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
         })
@@ -547,6 +566,16 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     }
     case 'pinnedPanels/requestSnapshot':
       ctx.send({ type: 'pinnedPanels/snapshot', entries: ctx.pinnedPanels.entries() });
+      return;
+    case 'savedPanels/save':
+      // Fire-and-forget — SavedPanelsStore's onCreated listener picks
+      // up the new bookmark, refreshes the list, and broadcasts via
+      // savedPanels.onChange so chrome's trailer iframe re-renders.
+      // De-dupe + folder lazy-recreate live inside `save()`.
+      void ctx.savedPanels.save(action.url, action.title, action.favIconUrl);
+      return;
+    case 'savedPanels/requestSnapshot':
+      ctx.send({ type: 'savedPanels/snapshot', items: ctx.savedPanels.list() });
       return;
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);

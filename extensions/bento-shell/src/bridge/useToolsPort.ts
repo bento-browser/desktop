@@ -43,6 +43,7 @@ import { selectActiveIdForWindow, useWorkspacesStore } from '../state/workspaces
 import { useSettingsStore } from '../state/settings';
 import { usePanelsStore } from '../state/panels';
 import { usePinnedPanelsStore } from '../state/pinnedPanels';
+import { useSavedPanelsStore } from '../state/savedPanels';
 import { usePrivacyStore } from '../state/privacy';
 
 const CHANNEL_NAME = 'bento-shell-bus';
@@ -150,6 +151,7 @@ function ensureConnection(): void {
         dispatch({ type: 'workspaces/requestSnapshot' });
         dispatch({ type: 'settings/requestSnapshot' });
         dispatch({ type: 'pinnedPanels/requestSnapshot' });
+        dispatch({ type: 'savedPanels/requestSnapshot' });
         return;
       case 'tabs/snapshot':
         useTabsStore.getState().applySnapshot(event.tabs);
@@ -229,6 +231,8 @@ function ensureConnection(): void {
               panelCycleWraparound?: boolean;
               panelShadowsEnabled?: boolean;
               stripScrollLeft?: number;
+              pinnedTabIdsInWorkspace?: number[];
+              savedPanelCount?: number;
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -264,6 +268,18 @@ function ensureConnection(): void {
             if (typeof cur?.panelShadowsEnabled === 'boolean') {
               payload.panelShadowsEnabled = cur.panelShadowsEnabled;
             }
+            // Pinned-panel set for THIS workspace (Set.has(tabId) drives
+            // the kebab menu's Pin/Unpin label) and the global count of
+            // bookmarks in the "Saved panels" folder (chrome reads this
+            // to size the Add-panel trailer's inline favicon row). Both
+            // ride on this single chrome-bound channel — tools is the
+            // source of truth and populates them directly on the event.
+            if (Array.isArray(event.pinnedTabIdsInWorkspace)) {
+              payload.pinnedTabIdsInWorkspace = event.pinnedTabIdsInWorkspace;
+            }
+            if (typeof event.savedPanelCount === 'number') {
+              payload.savedPanelCount = event.savedPanelCount;
+            }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.
             const b64 = btoa(unescape(encodeURIComponent(json)));
@@ -279,6 +295,9 @@ function ensureConnection(): void {
         return;
       case 'pinnedPanels/changed':
         usePinnedPanelsStore.getState().applyDeltas(event.deltas);
+        return;
+      case 'savedPanels/snapshot':
+        useSavedPanelsStore.getState().apply(event.items);
         return;
       case 'pong':
         return;
