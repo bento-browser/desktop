@@ -270,6 +270,57 @@
         position: relative;
         overflow: clip;
       }
+      /* Workspace-switch fade. Applied as a class toggle to BOTH the
+         split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
+         holds the main browser AND the side-panel browsers) AND the
+         strip container (favicon navigator + custom scrollbar). They
+         live in separate parts of the chrome tree so the only way to
+         crossfade everything visible in one motion is to drive both
+         with the same class. The visible transition is opacity-only;
+         layout transitions on strip descendants are suppressed during
+         the swap so reconcile writes land without visible motion.
+         performWorkspaceSwitchFade also sets a swapping flag that
+         suppresses in-reconcile animations (main-width transition,
+         scroll-to-main smooth scroll, favicon nav enter/leave width
+         transitions) so the user sees a STATIC fade — no panel
+         sliding into place during fade-in. */
+      #tabbrowser-tabpanels,
+      #bento-strip-container {
+        transition: opacity var(--bento-duration-fast, 140ms)
+          var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1));
+      }
+      #tabbrowser-tabpanels.bento-workspace-switching,
+      #bento-strip-container.bento-workspace-switching {
+        opacity: 0;
+      }
+      /* Suppress layout transitions while the workspace strip is being
+         swapped and while it fades back in. The opacity transition is
+         our only workspace-switch animation; width/flex/transform
+         transitions on panel containers or the favicon nav can restart
+         when the fade class is removed, which reads as panels sliding
+         behind the fade-in. Keep this scoped to Bento-owned strip
+         structure rather than all descendants: broad animation
+         suppression can break Firefox's internal browser painting. */
+      #tabbrowser-tabpanels.bento-workspace-stabilizing > .split-view-panel-active,
+      #tabbrowser-tabpanels.bento-workspace-stabilizing > [data-bento-main-panel],
+      #tabbrowser-tabpanels.bento-workspace-stabilizing > [data-bento-panel-tab-id],
+      #tabbrowser-tabpanels.bento-workspace-stabilizing > .split-view-splitter,
+      #tabbrowser-tabpanels.bento-workspace-switching > .split-view-panel-active,
+      #tabbrowser-tabpanels.bento-workspace-switching > [data-bento-main-panel],
+      #tabbrowser-tabpanels.bento-workspace-switching > [data-bento-panel-tab-id],
+      #tabbrowser-tabpanels.bento-workspace-switching > .split-view-splitter,
+      #bento-strip-container.bento-workspace-stabilizing .bento-panel-nav__icon,
+      #bento-strip-container.bento-workspace-stabilizing .bento-panel-nav__list,
+      #bento-strip-container.bento-workspace-switching .bento-panel-nav__icon,
+      #bento-strip-container.bento-workspace-switching .bento-panel-nav__list {
+        transition: none !important;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #tabbrowser-tabpanels,
+        #bento-strip-container {
+          transition: none;
+        }
+      }
       #bento-side-panel-host {
         display: flex;
         flex-direction: row;
@@ -5236,7 +5287,13 @@
     const currentMainPanelId = window.gBrowser?.selectedTab?.linkedPanel ?? null;
     const mainChanged = currentMainPanelId !== __lastMainPanelId;
     __lastMainPanelId = currentMainPanelId;
-    if (!scrolledToNewPanel && mainChanged && panels.length > 0 && currentMainPanelId) {
+    if (
+      !scrolledToNewPanel &&
+      mainChanged &&
+      panels.length > 0 &&
+      currentMainPanelId &&
+      !__workspaceSwitchSwapping
+    ) {
       setTimeout(() => {
         const mainEl = getOrderedPanels()[0];
         if (mainEl) scrollPanelToLeftmost(mainEl);
@@ -5838,6 +5895,10 @@
       const sel = window.gBrowser.selectedTab;
       if (sel === lastReconciledFor) return;
       lastReconciledFor = sel;
+      if (shouldDeferReconcileForWorkspaceSwitch(sel)) {
+        armWorkspaceSwitchFade();
+        return;
+      }
       reconcilePanelsSplitView(__lastPanelsPayload);
     };
 
@@ -5962,6 +6023,11 @@
     // per-window-ness is already implicit in document.title scope) but
     // we log it so a mismatched payload would be visible.
     let panels;
+    // Hoisted to outer scope so the fade-routing branch BELOW the
+    // if/else can read it. A `const` inside the else-if would be
+    // out-of-scope at the read site and throw ReferenceError on every
+    // payload, silently aborting the reconcile.
+    let isWorkspaceTransition = false;
     if (Array.isArray(decoded)) {
       panels = decoded;
     } else if (decoded && Array.isArray(decoded.panels)) {
@@ -5991,10 +6057,12 @@
         incomingWorkspaceId !== null &&
         currentWorkspaceId !== incomingWorkspaceId;
       // Broader transition test (boot included) — used below to decide
-      // whether to restore the panel-strip scroll position. Computed
-      // BEFORE the currentWorkspaceId mutation so the comparison
-      // actually sees the previous value.
-      const isWorkspaceTransition =
+      // both panel-strip scroll restore AND the workspace-switch fade.
+      // Computed BEFORE the currentWorkspaceId mutation so the
+      // comparison actually sees the previous value. Assigned (not
+      // re-declared) so the outer-scope `let` from the top of
+      // handlePanelsTitle is the binding the fade router below reads.
+      isWorkspaceTransition =
         incomingWorkspaceId !== null && currentWorkspaceId !== incomingWorkspaceId;
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
@@ -6061,39 +6129,240 @@
     } else {
       return;
     }
-    reconcilePanels(panels);
-    // Apply any pending strip-scroll restore after the reconciler has
-    // committed the new panel DOM. Two rAFs because the first commits
-    // the layout style writes and the second is the first frame where
-    // scrollWidth reflects the final panel widths — applying earlier
-    // gets clamped to the (pre-reconcile) scrollWidth and lands short.
-    if (__pendingStripScrollRestore !== null) {
-      const target = __pendingStripScrollRestore;
-      __pendingStripScrollRestore = null;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const host = getStripScrollTarget();
-          if (!host) return;
-          // Suppress the dispatch the scroll listener would otherwise
-          // fire: this is a programmatic restore, not a user gesture,
-          // and dispatching here would write the restored value back
-          // to tools as if it were a fresh user action (harmless but
-          // noisy in the log + persistence layer).
-          __suppressStripScrollDispatch = true;
-          try {
-            host.scrollLeft = Math.max(0, target);
-          } finally {
-            // Clear the suppression on the next frame so any user
-            // scroll that lands AFTER the programmatic write is
-            // captured normally.
-            requestAnimationFrame(() => {
-              __suppressStripScrollDispatch = false;
-            });
-          }
-        });
-      });
+    // OS-level reduced-motion: skip the fade (and the 140ms
+    // pre-reconcile delay it implies) so the swap is instant for
+    // users who've opted out of animation. Matches the React
+    // sidebar's TabList.css behaviour.
+    const reduceMotion = prefersReducedWorkspaceMotion();
+    if (isWorkspaceTransition && !reduceMotion) {
+      // Crossfade-then-swap: fade the visible workspace contents out,
+      // perform the reconcile DOM swap behind the opacity-0 curtain,
+      // then fade back in. Without this, the panel strip / favicon
+      // navigator / main content all swap instantly while only the
+      // React sidebar slides — the asymmetric motion reads as a
+      // visual glitch even though each individual swap is correct.
+      performWorkspaceSwitchFade(panels);
+    } else {
+      reconcilePanels(panels);
+      applyPendingStripScrollRestore();
     }
   }
+
+  // Apply any pending strip-scroll restore after the reconciler has
+  // committed the new panel DOM. Two rAFs because the first commits
+  // the layout style writes and the second is the first frame where
+  // scrollWidth reflects the final panel widths — applying earlier
+  // gets clamped to the (pre-reconcile) scrollWidth and lands short.
+  // NOT used during the fade path — that branch applies scroll
+  // restore synchronously, under the opacity-0 curtain, so the user
+  // never sees the scroll position settle.
+  function applyPendingStripScrollRestore() {
+    if (__pendingStripScrollRestore === null) return;
+    const target = __pendingStripScrollRestore;
+    __pendingStripScrollRestore = null;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const host = getStripScrollTarget();
+        if (!host) return;
+        // Suppress the dispatch the scroll listener would otherwise
+        // fire: this is a programmatic restore, not a user gesture,
+        // and dispatching here would write the restored value back
+        // to tools as if it were a fresh user action (harmless but
+        // noisy in the log + persistence layer).
+        __suppressStripScrollDispatch = true;
+        try {
+          host.scrollLeft = Math.max(0, target);
+        } finally {
+          // Clear the suppression on the next frame so any user
+          // scroll that lands AFTER the programmatic write is
+          // captured normally.
+          requestAnimationFrame(() => {
+            __suppressStripScrollDispatch = false;
+          });
+        }
+      });
+    });
+  }
+
+  // Workspace-switch fade coordinator. Adds the fade-out class
+  // immediately, defers the reconcile until the fade-out CSS
+  // transition has visually completed, then queues a single rAF to
+  // remove the class and let the CSS transition handle fade-in.
+  //
+  // Key invariant: NOTHING moves during the fade. The reconcile runs
+  // at opacity 0, with main-width transition suppressed and the
+  // auto-scroll-to-main path gated off; scroll restore happens
+  // synchronously under the curtain. By the time the fade class is
+  // removed, all layout is at its final destination — the user sees
+  // a STATIC fade-in, no sliding.
+  //
+  // Belt-and-suspenders cleanup: each fragile step has its own
+  // try/catch, the rAF that removes the class lives in `finally`
+  // (always runs), and a watchdog timer force-clears the class if
+  // it's still present after WORKSPACE_FADE_WATCHDOG_MS. Without
+  // these guards a single failed reconcile would strand opacity at
+  // 0 — chrome would go blank until process restart.
+  let __workspaceSwitchTimer = null;
+  let __workspaceFadeWatchdog = null;
+  let __workspaceFadeCleanupTimer = null;
+  const WORKSPACE_FADE_WATCHDOG_MS = 1500;
+  const WORKSPACE_FADE_MS = 140;
+  const WORKSPACE_STABILIZE_MS = 260;
+  function clearWorkspaceFadeClasses() {
+    const sc = document.getElementById('bento-strip-container');
+    const tp = window.gBrowser?.tabpanels;
+    if (sc) sc.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
+    if (tp) tp.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
+    if (__workspaceFadeCleanupTimer) {
+      clearTimeout(__workspaceFadeCleanupTimer);
+      __workspaceFadeCleanupTimer = null;
+    }
+  }
+  function setWorkspaceFadeClasses(enabled) {
+    const stripContainer = document.getElementById('bento-strip-container');
+    const tp = window.gBrowser?.tabpanels;
+    for (const el of [stripContainer, tp]) {
+      if (!el) continue;
+      el.classList.toggle('bento-workspace-switching', enabled);
+      el.classList.toggle('bento-workspace-stabilizing', enabled);
+    }
+  }
+  function cancelStripScrollMotion() {
+    const host = getStripScrollTarget();
+    if (!host) return;
+    // Assigning the current value cancels an in-flight native smooth
+    // scroll without changing the final position.
+    host.scrollLeft = host.scrollLeft;
+  }
+  function armWorkspaceSwitchFade() {
+    cancelStripScrollMotion();
+    setWorkspaceFadeClasses(true);
+  }
+  function selectedTabWorkspaceId(tab) {
+    if (!tab) return null;
+    const SessionStore = getSessionStore();
+    if (!SessionStore) return null;
+    try {
+      const raw = SessionStore.getCustomTabValue(tab, WORKSPACE_SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+  function shouldDeferReconcileForWorkspaceSwitch(tab) {
+    if (prefersReducedWorkspaceMotion()) return false;
+    if (!currentWorkspaceId) return false;
+    const tabWorkspaceId = selectedTabWorkspaceId(tab);
+    return tabWorkspaceId !== null && tabWorkspaceId !== currentWorkspaceId;
+  }
+  function prefersReducedWorkspaceMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  }
+  function performWorkspaceSwitchFade(panels) {
+    const stripContainer = document.getElementById('bento-strip-container');
+    const tp = window.gBrowser?.tabpanels;
+    if (__workspaceSwitchTimer) clearTimeout(__workspaceSwitchTimer);
+    if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
+    if (__workspaceFadeCleanupTimer) {
+      clearTimeout(__workspaceFadeCleanupTimer);
+      __workspaceFadeCleanupTimer = null;
+    }
+    // Watchdog armed BEFORE we add the class so any throw between
+    // here and the cleanup rAF still gets a chance to clear the
+    // class and restore visibility.
+    __workspaceFadeWatchdog = setTimeout(() => {
+      __workspaceFadeWatchdog = null;
+      if (
+        (stripContainer && stripContainer.classList.contains('bento-workspace-switching')) ||
+        (tp && tp.classList.contains('bento-workspace-switching'))
+      ) {
+        console.warn(
+          '[bento-shell-mount] workspace-switch watchdog fired — fade class lingered, force-clearing',
+        );
+        clearWorkspaceFadeClasses();
+      }
+    }, WORKSPACE_FADE_WATCHDOG_MS);
+    armWorkspaceSwitchFade();
+    __workspaceSwitchTimer = setTimeout(() => {
+      __workspaceSwitchTimer = null;
+      // Suppress every in-reconcile animation. The fade IS our
+      // transition; any layout animation here would tail past the
+      // fade-in and the user would see panels sliding into place.
+      //  - Clear __mainWidthTransitionForNextReconcile (set above on
+      //    wsChanged) so reconcile snaps the main-panel width
+      //    instead of running a 200ms width transition.
+      //  - Set __workspaceSwitchSwapping so reconcilePanelsSplitView
+      //    skips its smooth scrollPanelToLeftmost auto-scroll-to-main.
+      __mainWidthTransitionForNextReconcile = false;
+      __workspaceSwitchSwapping = true;
+      try {
+        try {
+          reconcilePanels(panels);
+          cancelStripScrollMotion();
+        } catch (err) {
+          console.warn('[bento-shell-mount] workspace-switch reconcile threw:', err);
+        }
+        // Apply scroll restore SYNCHRONOUSLY, not via
+        // applyPendingStripScrollRestore's double-rAF (which would
+        // defer past fade-in). Setting scrollLeft directly is
+        // instant — no smooth animation — so the user can't see
+        // the strip moving. Happens under the opacity-0 curtain
+        // because the class-removal rAF hasn't fired yet.
+        if (__pendingStripScrollRestore !== null) {
+          try {
+            const target = __pendingStripScrollRestore;
+            __pendingStripScrollRestore = null;
+            const host = getStripScrollTarget();
+            if (host) {
+              __suppressStripScrollDispatch = true;
+              try {
+                host.scrollLeft = Math.max(0, target);
+              } finally {
+                requestAnimationFrame(() => {
+                  __suppressStripScrollDispatch = false;
+                });
+              }
+            }
+          } catch (err) {
+            console.warn(
+              '[bento-shell-mount] workspace-switch scroll restore threw:',
+              err,
+            );
+          }
+        }
+      } finally {
+        __workspaceSwitchSwapping = false;
+        // Class removal MUST run even if reconcile/scroll-restore
+        // threw — otherwise the chrome stays at opacity 0 forever.
+        // The watchdog above is the belt; this `finally` is the
+        // suspenders.
+        requestAnimationFrame(() => {
+          if (stripContainer) stripContainer.classList.remove('bento-workspace-switching');
+          if (tp) tp.classList.remove('bento-workspace-switching');
+          // Keep layout-transition suppression through the fade-in. If
+          // we remove it in the same frame as the opacity class, pending
+          // width/flex changes can begin animating under the fade-in and
+          // look like the strip is sliding to the destination workspace.
+          __workspaceFadeCleanupTimer = setTimeout(() => {
+            __workspaceFadeCleanupTimer = null;
+            if (stripContainer) {
+              stripContainer.classList.remove('bento-workspace-stabilizing');
+            }
+            if (tp) tp.classList.remove('bento-workspace-stabilizing');
+          }, WORKSPACE_STABILIZE_MS);
+          if (__workspaceFadeWatchdog) {
+            clearTimeout(__workspaceFadeWatchdog);
+            __workspaceFadeWatchdog = null;
+          }
+        });
+      }
+    }, WORKSPACE_FADE_MS);
+  }
+  // True while the deferred reconcile inside performWorkspaceSwitchFade
+  // is running. Read by reconcilePanelsSplitView to skip the smooth
+  // scrollPanelToLeftmost auto-scroll-to-main that would otherwise
+  // tail past the fade-in window as visible sliding.
+  let __workspaceSwitchSwapping = false;
 
   // Module-level mirror of bento-tools' per-workspace strip-scroll map.
   // Populated from BENTO_PANELS payloads (which carry stripScrollLeft).
