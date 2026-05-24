@@ -213,6 +213,20 @@ export type Action =
    * main slot. Shared across workspaces so workspace switches cannot
    * resurrect stale per-workspace inline sizing. */
   | { type: 'panel/setMainWidth'; widthPx: number }
+  /** Update the persisted horizontal scroll position (in pixels) of the
+   * chrome panel strip for a specific workspace. Chrome captures the
+   * value from the tabpanels deck's scrollLeft on a debounced scroll
+   * listener and dispatches it; tools persists per workspace and
+   * includes it in the next panels/sync payload so chrome can restore
+   * it after a workspace-switch reconcile. No echo: chrome already
+   * holds the live value it just sent.
+   *
+   * `workspaceId` rides on the action (rather than resolving from
+   * sourceWindowId on the tools side) because the dispatch is
+   * debounced: by the time it fires the user may have switched
+   * workspaces, and the SOURCE workspace's scroll value would
+   * otherwise leak into the destination workspace's storage. */
+  | { type: 'panel/setStripScroll'; workspaceId: string; scrollLeft: number }
   /** Ask tools to read the current privacy settings via browser.privacy.*
    * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard
    * mount; tools doesn't push privacy/changed deltas (settings rarely
@@ -290,6 +304,12 @@ export type Event =
        * user hasn't dragged the main splitter for this workspace yet —
        * chrome falls back to its default flex sizing in that case. */
       mainWidthPx?: number;
+      /** Per-workspace horizontal scroll position of the chrome panel
+       * strip in CSS pixels. Chrome restores tabpanels.scrollLeft to
+       * this value after the workspace-switch reconcile. Undefined
+       * when nothing has been recorded for the workspace (fresh
+       * workspace or never-scrolled). */
+      stripScrollLeft?: number;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings };
 

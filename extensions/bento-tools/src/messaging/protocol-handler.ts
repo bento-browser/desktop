@@ -474,6 +474,17 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.panels.setMainWidth(action.widthPx);
       return;
     }
+    case 'panel/setStripScroll': {
+      // Per-workspace panel-strip scroll position. Same no-emit-after-
+      // set reasoning as panel/setWidth: chrome owns the live value
+      // and we'd just be echoing it back. workspaceId is carried on
+      // the action (not derived from sourceWindowId) so a debounced
+      // dispatch that lands after a workspace switch still writes to
+      // the source workspace, not the destination.
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      ctx.panels.setStripScroll(action.workspaceId, action.scrollLeft);
+      return;
+    }
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);
       return;

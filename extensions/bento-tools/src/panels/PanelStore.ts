@@ -37,6 +37,12 @@ export class PanelStore {
   // Main-panel width in CSS pixels. Side panels are workspace-scoped,
   // but the main content slot is a single window/profile layout choice.
   #mainWidthPx: number | undefined;
+  // workspaceId → horizontal scroll position of the chrome panel strip
+  // at last update, in CSS pixels. Chrome captures scroll on the
+  // tabpanels deck (debounced) and dispatches `panel/setStripScroll`;
+  // tools writes here and includes the value in the next panels/sync
+  // payload so chrome restores it after a workspace-switch reconcile.
+  #stripScrollByWorkspace = new Map<string, number>();
   #persistence = new Persistence();
   /** Persisted entries (URL + optional width) from last shutdown, keyed
    * by workspaceId. Consumed by the boot restorer (background.ts) and
@@ -49,6 +55,7 @@ export class PanelStore {
     if (persisted) {
       this.#persistedEntries = persisted.byWorkspace;
       this.#mainWidthPx = persisted.mainWidthPx;
+      this.#stripScrollByWorkspace = persisted.stripScrollByWorkspace;
     }
   }
 
@@ -90,6 +97,25 @@ export class PanelStore {
 
   getMainWidth(): number | undefined {
     return this.#mainWidthPx;
+  }
+
+  /** Read the persisted strip-scroll position for a workspace, or
+   * undefined if none has been recorded. Chrome consumes this via the
+   * `stripScrollLeft` field on the panels/sync payload. */
+  getStripScroll(workspaceId: string): number | undefined {
+    return this.#stripScrollByWorkspace.get(workspaceId);
+  }
+
+  /** Write the chrome panel-strip scroll position for a workspace.
+   * No-op on no-change so noisy chrome-side scroll events don't
+   * re-trigger persistence on every pixel. Schedules a debounced
+   * persistence write — same DEBOUNCE_MS as panel widths. */
+  setStripScroll(workspaceId: string, scrollLeft: number): void {
+    if (!Number.isFinite(scrollLeft) || scrollLeft < 0) return;
+    const rounded = Math.round(scrollLeft);
+    if (this.#stripScrollByWorkspace.get(workspaceId) === rounded) return;
+    this.#stripScrollByWorkspace.set(workspaceId, rounded);
+    this.#schedulePersist();
   }
 
   setMainWidth(widthPx: number): void {
@@ -153,6 +179,7 @@ export class PanelStore {
     const list = this.#byWorkspace.get(workspaceId);
     if (!this.#byWorkspace.delete(workspaceId)) return;
     this.#persistedEntries.delete(workspaceId);
+    this.#stripScrollByWorkspace.delete(workspaceId);
     if (list) {
       for (const tabId of list) {
         if (this.findWorkspacesContainingTab(tabId).length === 0) {
@@ -203,6 +230,7 @@ export class PanelStore {
       new Map(this.#byWorkspace),
       new Map(this.#widthByTabId),
       this.#mainWidthPx,
+      new Map(this.#stripScrollByWorkspace),
     );
   }
 
@@ -211,6 +239,7 @@ export class PanelStore {
       new Map(this.#byWorkspace),
       new Map(this.#widthByTabId),
       this.#mainWidthPx,
+      new Map(this.#stripScrollByWorkspace),
     );
   }
 }

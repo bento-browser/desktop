@@ -165,17 +165,22 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
     (p): p is { tabId: number; url: string; favIconUrl: string; widthPx?: number } => p !== null,
   );
   const mainWidthPx = panels.getMainWidth();
+  const stripScrollLeft = panels.getStripScroll(workspaceId);
   const event: {
     type: 'panels/sync';
     workspaceId: string;
     panels: typeof valid;
     mainWidthPx?: number;
+    stripScrollLeft?: number;
   } = {
     type: 'panels/sync',
     workspaceId,
     panels: valid,
   };
   if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
+  if (typeof stripScrollLeft === 'number' && stripScrollLeft >= 0) {
+    event.stripScrollLeft = stripScrollLeft;
+  }
   broadcastEvent(event);
 }
 

@@ -225,6 +225,7 @@ function ensureConnection(): void {
               sidebarCollapsed?: boolean;
               customPanelSizes?: number[];
               panelCycleWraparound?: boolean;
+              stripScrollLeft?: number;
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -234,6 +235,9 @@ function ensureConnection(): void {
             }
             if (typeof event.mainWidthPx === 'number') {
               payload.mainWidthPx = event.mainWidthPx;
+            }
+            if (typeof event.stripScrollLeft === 'number' && event.stripScrollLeft >= 0) {
+              payload.stripScrollLeft = event.stripScrollLeft;
             }
             // Bundle chrome-bound settings into the panels payload so
             // they reach chrome via the single BENTO_PANELS title-IPC

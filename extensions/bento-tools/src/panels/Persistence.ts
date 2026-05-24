@@ -18,6 +18,12 @@ import type { PersistedPanelEntry } from './PanelStore';
 const STORAGE_KEY = 'bento.panels';
 const MAIN_WIDTH_STORAGE_KEY = 'bento.panelMainWidth';
 const LEGACY_MAIN_WIDTHS_STORAGE_KEY = 'bento.panelMainWidths';
+/** Per-workspace horizontal scroll position of the chrome panel strip, in
+ * CSS pixels. Stored in a top-level storage key (rather than nested inside
+ * the versioned StoredShape) so this lightweight UI state doesn't require a
+ * schema bump and won't be discarded if a future version migration is
+ * incomplete. Record<workspaceId, scrollLeft>. */
+const STRIP_SCROLL_STORAGE_KEY = 'bento.panelStripScroll';
 const VERSION = 3;
 const DEBOUNCE_MS = 500;
 const MAIN_PANEL_MIN_WIDTH = 320;
@@ -50,6 +56,9 @@ type StoredShape = StoredShapeV1 | StoredShapeV2 | StoredShapeV3;
 export interface PersistedPanels {
   byWorkspace: Map<string, PersistedPanelEntry[]>;
   mainWidthPx?: number;
+  /** workspaceId → horizontal scroll position of the chrome panel strip
+   * in CSS pixels at last shutdown. */
+  stripScrollByWorkspace: Map<string, number>;
 }
 
 export async function load(): Promise<PersistedPanels | null> {
@@ -58,12 +67,22 @@ export async function load(): Promise<PersistedPanels | null> {
       STORAGE_KEY,
       MAIN_WIDTH_STORAGE_KEY,
       LEGACY_MAIN_WIDTHS_STORAGE_KEY,
+      STRIP_SCROLL_STORAGE_KEY,
     ])) as Record<string, unknown>;
     const stored = raw[STORAGE_KEY] as StoredShape | undefined;
     const storedMainWidth = raw[MAIN_WIDTH_STORAGE_KEY];
     const legacyMainWidths = raw[LEGACY_MAIN_WIDTHS_STORAGE_KEY] as
       | Record<string, unknown>
       | undefined;
+    const stripScrollRaw = raw[STRIP_SCROLL_STORAGE_KEY] as Record<string, unknown> | undefined;
+    const stripScrollByWorkspace = new Map<string, number>();
+    if (stripScrollRaw && typeof stripScrollRaw === 'object') {
+      for (const [wsId, value] of Object.entries(stripScrollRaw)) {
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+          stripScrollByWorkspace.set(wsId, value);
+        }
+      }
+    }
     const byWorkspace = new Map<string, PersistedPanelEntry[]>();
     const legacyGlobalWidth =
       legacyMainWidths && typeof legacyMainWidths.__global__ === 'number'
@@ -83,11 +102,11 @@ export async function load(): Promise<PersistedPanels | null> {
     }
 
     if (!stored || typeof stored !== 'object') {
-      return { byWorkspace, mainWidthPx };
+      return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
     }
     if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3) {
       console.warn('[bento-tools] panels: unknown version', stored.version, '— ignoring');
-      return { byWorkspace, mainWidthPx };
+      return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
     }
     if (stored.version >= 2) {
       const v2 = stored as StoredShapeV2 | StoredShapeV3;
@@ -122,7 +141,7 @@ export async function load(): Promise<PersistedPanels | null> {
         mainWidthPx = Math.max(MAIN_PANEL_MIN_WIDTH, storedLegacyGlobal);
       }
     }
-    return { byWorkspace, mainWidthPx };
+    return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
   } catch (err) {
     console.error('[bento-tools] panels: load failed', err);
     return null;
@@ -140,26 +159,32 @@ export class Persistence {
   #pendingWidths: Map<number, number> | null = null;
   /** Latest main-panel width snapshot. */
   #pendingMainWidth: number | undefined;
+  /** Latest per-workspace strip-scroll snapshot. */
+  #pendingStripScroll: Map<string, number> | null = null;
 
   schedule(
     state: Map<string, number[]>,
     widths: Map<number, number>,
     mainWidthPx: number | undefined,
+    stripScrollByWorkspace: Map<string, number>,
   ): void {
     this.#pendingByWs = state;
     this.#pendingWidths = widths;
     this.#pendingMainWidth = mainWidthPx;
+    this.#pendingStripScroll = stripScrollByWorkspace;
     if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
       const nextState = this.#pendingByWs;
       const nextWidths = this.#pendingWidths;
       const nextMainWidth = this.#pendingMainWidth;
+      const nextStripScroll = this.#pendingStripScroll;
       this.#pendingByWs = null;
       this.#pendingWidths = null;
       this.#pendingMainWidth = undefined;
-      if (nextState && nextWidths) {
-        void this.#flush(nextState, nextWidths, nextMainWidth);
+      this.#pendingStripScroll = null;
+      if (nextState && nextWidths && nextStripScroll) {
+        void this.#flush(nextState, nextWidths, nextMainWidth, nextStripScroll);
       }
     }, DEBOUNCE_MS);
   }
@@ -168,6 +193,7 @@ export class Persistence {
     state: Map<string, number[]>,
     widths: Map<number, number>,
     mainWidthPx: number | undefined,
+    stripScrollByWorkspace: Map<string, number>,
   ): void {
     if (this.#timer) {
       clearTimeout(this.#timer);
@@ -176,13 +202,15 @@ export class Persistence {
     this.#pendingByWs = null;
     this.#pendingWidths = null;
     this.#pendingMainWidth = undefined;
-    void this.#flush(state, widths, mainWidthPx);
+    this.#pendingStripScroll = null;
+    void this.#flush(state, widths, mainWidthPx, stripScrollByWorkspace);
   }
 
   async #flush(
     state: Map<string, number[]>,
     widths: Map<number, number>,
     mainWidthPx: number | undefined,
+    stripScrollByWorkspace: Map<string, number>,
   ): Promise<void> {
     const byWorkspace: Record<string, StoredEntryV2[]> = {};
     for (const [wsId, tabIds] of state) {
@@ -222,12 +250,24 @@ export class Persistence {
         writePayload[MAIN_WIDTH_STORAGE_KEY] = roundedMainWidth;
         writePayload[LEGACY_MAIN_WIDTHS_STORAGE_KEY] = { __global__: roundedMainWidth };
       }
+      const stripScrollRecord: Record<string, number> = {};
+      for (const [wsId, scrollLeft] of stripScrollByWorkspace) {
+        if (Number.isFinite(scrollLeft) && scrollLeft >= 0) {
+          stripScrollRecord[wsId] = Math.round(scrollLeft);
+        }
+      }
+      if (Object.keys(stripScrollRecord).length > 0) {
+        writePayload[STRIP_SCROLL_STORAGE_KEY] = stripScrollRecord;
+      }
       await browser.storage.local.set(writePayload);
       if (roundedMainWidth === undefined) {
         await browser.storage.local.remove([
           MAIN_WIDTH_STORAGE_KEY,
           LEGACY_MAIN_WIDTHS_STORAGE_KEY,
         ]);
+      }
+      if (Object.keys(stripScrollRecord).length === 0) {
+        await browser.storage.local.remove([STRIP_SCROLL_STORAGE_KEY]);
       }
     } catch (err) {
       console.error('[bento-tools] panels: save failed', err);

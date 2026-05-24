@@ -5895,6 +5895,33 @@
         } catch (err) {
           console.warn('[bento-shell-mount] strip scroll splitter sync failed:', err);
         }
+        // Persist the user's scroll position for the active workspace.
+        // Skip programmatic writes (workspace-switch restore) so we
+        // don't echo restored values back to tools. Skip when we
+        // don't know our workspace yet (boot before first panels/sync)
+        // — the next genuine scroll after boot will capture it.
+        if (__suppressStripScrollDispatch) return;
+        if (!currentWorkspaceId) return;
+        const left = tp.scrollLeft;
+        // Capture workspaceId at scroll time, not dispatch time. The
+        // debounce can outlive a workspace switch; binding the id
+        // here ensures the dispatched value targets the workspace
+        // the user was scrolling, not whatever's active when the
+        // setTimeout fires.
+        const capturedWorkspaceId = currentWorkspaceId;
+        // Update the local mirror eagerly so a workspace-switch round-
+        // trip (leave + return quickly) picks up the latest position
+        // even if the title-IPC echo from tools hasn't landed yet.
+        stripScrollByWorkspace.set(capturedWorkspaceId, left);
+        if (__stripScrollDispatchTimer) clearTimeout(__stripScrollDispatchTimer);
+        __stripScrollDispatchTimer = setTimeout(() => {
+          __stripScrollDispatchTimer = null;
+          dispatchShellAction({
+            type: 'panel/setStripScroll',
+            workspaceId: capturedWorkspaceId,
+            scrollLeft: left,
+          });
+        }, STRIP_SCROLL_DEBOUNCE_MS);
       };
       tp.addEventListener('scroll', onStripChange, { passive: true });
       if (window.ResizeObserver) {
@@ -5963,6 +5990,12 @@
         currentWorkspaceId !== null &&
         incomingWorkspaceId !== null &&
         currentWorkspaceId !== incomingWorkspaceId;
+      // Broader transition test (boot included) — used below to decide
+      // whether to restore the panel-strip scroll position. Computed
+      // BEFORE the currentWorkspaceId mutation so the comparison
+      // actually sees the previous value.
+      const isWorkspaceTransition =
+        incomingWorkspaceId !== null && currentWorkspaceId !== incomingWorkspaceId;
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
       // Update mainPanelWidth from persisted tools state when present.
@@ -6001,11 +6034,86 @@
       if (typeof decoded.panelCycleWraparound === 'boolean') {
         currentPanelCycleWraparound = decoded.panelCycleWraparound;
       }
+      // Per-workspace panel-strip scroll position. Capture into the
+      // module-level map keyed by workspaceId so:
+      //   - Same-workspace reconciles (panel add/remove, width change)
+      //     don't clobber a fresh in-flight user scroll.
+      //   - Workspace-switch reconciles can look up the destination
+      //     workspace's stored scrollLeft and apply it after the
+      //     reconcile has finished laying out the new panel set.
+      // Missing field on the payload leaves the current map entry
+      // untouched (older tools, or no scroll recorded yet).
+      if (typeof decoded.stripScrollLeft === 'number' && decoded.stripScrollLeft >= 0) {
+        stripScrollByWorkspace.set(incomingWorkspaceId, decoded.stripScrollLeft);
+      }
+      // Workspace transition: apply the destination workspace's
+      // stored scroll AFTER the reconcile commits layout. Without
+      // this the chrome strip always lands at scrollLeft=0 (rebuilding
+      // the tabpanels children resets scroll), so the user always
+      // sees the main slot regardless of where the strip was before.
+      //
+      // Triggers on BOTH boot (null → X) AND inter-workspace switches
+      // (X → Y) — see isWorkspaceTransition computation above.
+      if (isWorkspaceTransition) {
+        const targetScroll = stripScrollByWorkspace.get(incomingWorkspaceId);
+        __pendingStripScrollRestore = typeof targetScroll === 'number' ? targetScroll : null;
+      }
     } else {
       return;
     }
     reconcilePanels(panels);
+    // Apply any pending strip-scroll restore after the reconciler has
+    // committed the new panel DOM. Two rAFs because the first commits
+    // the layout style writes and the second is the first frame where
+    // scrollWidth reflects the final panel widths — applying earlier
+    // gets clamped to the (pre-reconcile) scrollWidth and lands short.
+    if (__pendingStripScrollRestore !== null) {
+      const target = __pendingStripScrollRestore;
+      __pendingStripScrollRestore = null;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const host = getStripScrollTarget();
+          if (!host) return;
+          // Suppress the dispatch the scroll listener would otherwise
+          // fire: this is a programmatic restore, not a user gesture,
+          // and dispatching here would write the restored value back
+          // to tools as if it were a fresh user action (harmless but
+          // noisy in the log + persistence layer).
+          __suppressStripScrollDispatch = true;
+          try {
+            host.scrollLeft = Math.max(0, target);
+          } finally {
+            // Clear the suppression on the next frame so any user
+            // scroll that lands AFTER the programmatic write is
+            // captured normally.
+            requestAnimationFrame(() => {
+              __suppressStripScrollDispatch = false;
+            });
+          }
+        });
+      });
+    }
   }
+
+  // Module-level mirror of bento-tools' per-workspace strip-scroll map.
+  // Populated from BENTO_PANELS payloads (which carry stripScrollLeft).
+  // Read on workspace switch to decide which scroll position to restore.
+  const stripScrollByWorkspace = new Map();
+  // Single-shot scroll value the next reconcile should apply after
+  // layout commits (workspace-switch path). Null when no restore is
+  // pending. Cleared after consumption so subsequent same-workspace
+  // reconciles don't re-apply it.
+  let __pendingStripScrollRestore = null;
+  // True while a programmatic scrollLeft write is in flight. The
+  // scroll listener that dispatches panel/setStripScroll checks this
+  // and skips the dispatch so we don't echo restored values back to
+  // tools.
+  let __suppressStripScrollDispatch = false;
+  // Debounce handle for outbound panel/setStripScroll dispatches.
+  // Scroll events fire continuously during a drag; coalesce to one
+  // dispatch per rest. Matches the persistence DEBOUNCE_MS pattern.
+  let __stripScrollDispatchTimer = null;
+  const STRIP_SCROLL_DEBOUNCE_MS = 250;
 
   function applyChromeSidebarCollapsed(collapsed) {
     const host = document.getElementById('bento-shell-host');
