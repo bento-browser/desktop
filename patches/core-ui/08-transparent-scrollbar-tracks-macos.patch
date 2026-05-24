@@ -1,0 +1,15 @@
+diff --git a/widget/ScrollbarDrawingCocoa.cpp b/widget/ScrollbarDrawingCocoa.cpp
+index f57d683a3d..ed77584ab5 100644
+--- a/widget/ScrollbarDrawingCocoa.cpp
++++ b/widget/ScrollbarDrawingCocoa.cpp
+@@ -390,6 +390,10 @@ void ScrollbarDrawingCocoa::DoPaintScrollbar(
+     return;
+   }
+ 
++  // Bento: page scrollbars in the main slot and side panels should read
++  // as floating thumbs, without an opaque gutter behind them.
++  return;
++
+   // Paint our track.
+   const auto color = ComputeScrollbarTrackColor(aFrame, aStyle, aColors);
+   ThemeDrawing::FillRect(aPaintData, aRect, color);

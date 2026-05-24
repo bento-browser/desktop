@@ -343,6 +343,14 @@
       #bento-side-panel-host::-webkit-scrollbar {
         display: none;
       }
+      #bento-strip-container.bento-no-side-panels > #bento-panel-nav,
+      #bento-strip-container.bento-no-side-panels > #bento-strip-scrollbar {
+        display: none !important;
+      }
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
+        overflow-x: hidden;
+        padding-right: var(--space-2xs);
+      }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
          panel strip and the favicon navigator. Track + thumb both
@@ -2644,21 +2652,11 @@
   // Offscreen shadow updates are skipped to keep the per-frame cost
   // bounded even with many panels — only the 3-5 visible panels at
   // any moment get their shadow position synced.
-  function syncPanelShadows(panelIds) {
-    const container = document.getElementById('bento-strip-container');
-    const host = document.getElementById('bento-side-panel-host');
-    if (!container || !host || !window.gBrowser?.tabpanels) return;
-    const tabpanels = window.gBrowser.tabpanels;
-    // Tear-down: split-view inactive → remove all shadows.
-    if (
-      !currentPanelShadowsEnabled ||
-      !tabpanels.classList.contains('bento-split-active') ||
-      !panelIds.length
-    ) {
-      for (const sh of container.querySelectorAll(':scope > .bento-panel-shadow')) sh.remove();
-      return;
-    }
-    const desired = panelIds.length;
+  function removePanelShadows(container) {
+    for (const sh of container.querySelectorAll(':scope > .bento-panel-shadow')) sh.remove();
+  }
+
+  function ensurePanelShadowCount(container, desired) {
     const existing = Array.from(container.querySelectorAll(':scope > .bento-panel-shadow'));
     for (let i = existing.length; i > desired; i--) existing[i - 1].remove();
     for (let i = existing.length; i < desired; i++) {
@@ -2672,6 +2670,49 @@
       container.insertBefore(sh, container.firstChild);
       existing.unshift(sh);
     }
+    return existing;
+  }
+
+  function syncMainOnlyPanelShadow(container) {
+    const main = document.getElementById('tabbrowser-tabbox');
+    if (!main) {
+      removePanelShadows(container);
+      return;
+    }
+    const shadows = ensurePanelShadowCount(container, 1);
+    const sh = shadows[0];
+    const containerRect = container.getBoundingClientRect();
+    const mainRect = main.getBoundingClientRect();
+    if (!mainRect.width || !mainRect.height) {
+      removePanelShadows(container);
+      return;
+    }
+    sh.style.top = mainRect.top - containerRect.top + 'px';
+    sh.style.left = mainRect.left - containerRect.left + 'px';
+    sh.style.width = mainRect.width + 'px';
+    sh.style.height = mainRect.height + 'px';
+  }
+
+  function syncPanelShadows(panelIds) {
+    const container = document.getElementById('bento-strip-container');
+    const host = document.getElementById('bento-side-panel-host');
+    if (!container || !host || !window.gBrowser?.tabpanels) return;
+    const tabpanels = window.gBrowser.tabpanels;
+    if (!currentPanelShadowsEnabled) {
+      removePanelShadows(container);
+      return;
+    }
+    if (container.classList.contains('bento-no-side-panels')) {
+      syncMainOnlyPanelShadow(container);
+      return;
+    }
+    // Tear-down: split-view inactive → remove all shadows.
+    if (!tabpanels.classList.contains('bento-split-active') || !panelIds.length) {
+      removePanelShadows(container);
+      return;
+    }
+    const desired = panelIds.length;
+    const existing = ensurePanelShadowCount(container, desired);
     const containerRect = container.getBoundingClientRect();
     // Visibility cull: skip shadow updates for panels whose rect
     // doesn't overlap the visible container area (with one-panel-
@@ -4660,6 +4701,99 @@
     if (trailer) trailer.remove();
   }
 
+  function setNoSidePanelsMode(enabled) {
+    const container = document.getElementById('bento-strip-container');
+    const host = document.getElementById('bento-side-panel-host');
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (container) {
+      container.classList.toggle('bento-no-side-panels', enabled);
+    }
+    if (enabled) {
+      if (host) host.scrollLeft = 0;
+      if (tabpanels) tabpanels.scrollLeft = 0;
+    }
+  }
+
+  function forceMainOnlyChromeState(gBrowser, tabpanels) {
+    setNoSidePanelsMode(true);
+    syncInterPanelSplitters([]);
+    removeAddPanelTrailer();
+
+    if (tabpanels) {
+      try {
+        const previous = tabpanels.splitViewPanels || [];
+        const previousTabs = previous
+          .map((id) => gBrowser?.tabs?.find((t) => t.linkedPanel === id))
+          .filter((t) => !!t);
+        if (previousTabs.length && typeof tabpanels.removeTabsFromSplitview === 'function') {
+          tabpanels.removeTabsFromSplitview(previousTabs);
+        } else {
+          tabpanels.splitViewPanels = [];
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] force main-only teardown failed:', err);
+        try {
+          tabpanels.splitViewPanels = [];
+        } catch {
+          /* best-effort fallback */
+        }
+      }
+      tabpanels.classList.remove('bento-split-active');
+      tabpanels.removeAttribute('splitview');
+    }
+
+    if (gBrowser?.tabs) {
+      for (const tab of gBrowser.tabs) {
+        if (tab.splitview && tab.splitview.kind === BENTO_SPLIT_KIND) {
+          delete tab.splitview;
+        }
+        const panelEl = document.getElementById(tab.linkedPanel);
+        if (!panelEl) continue;
+        delete panelEl.dataset.bentoMainPanel;
+        delete panelEl.dataset.bentoPanelTabId;
+        panelEl.style.removeProperty('order');
+        panelEl.style.removeProperty('width');
+        panelEl.style.removeProperty('min-width');
+        panelEl.style.removeProperty('flex');
+        panelEl.classList.remove(
+          'split-view-panel',
+          'split-view-panel-active',
+          'bento-panel--focused',
+          'bento-panel--cycle-focused',
+        );
+        panelEl.removeAttribute('column');
+        if (panelEl.getAttribute('tabindex') === '-1') {
+          panelEl.removeAttribute('tabindex');
+        }
+      }
+    }
+
+    if (__lastSplitViewMarker) {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('TabSplitViewDeactivate', {
+            bubbles: true,
+            detail: {
+              tabs: __lastSplitViewMarker.tabs,
+              splitview: __lastSplitViewMarker,
+            },
+          }),
+        );
+      } catch (err) {
+        console.warn('[bento-shell-mount] force teardown deactivate failed:', err);
+      }
+      __lastSplitViewMarker = null;
+    }
+
+    refreshPanelNav([]);
+    currentActiveIdx = 0;
+    __lastPanelsPayload = [];
+    __reconciledForWorkspace = currentWorkspaceId;
+    __lastMainPanelId = window.gBrowser?.selectedTab?.linkedPanel ?? null;
+    updateStripScrollbar();
+    syncPanelShadows([]);
+  }
+
   // ─── Native split-view panel rendering ──────────────────────────────
   //
   // Panel rendering is driven through Firefox 150's
@@ -4818,7 +4952,6 @@
       console.warn('[bento-shell-mount] reconcilePanelsSplitView: tabpanels unavailable');
       return;
     }
-
     // Capture the previous panel-set for "did a new panel just get
     // added?" detection at the end of this function — so we can
     // auto-scroll the strip to bring the freshly-added panel into
@@ -4837,6 +4970,7 @@
     // panels (which TabSelect fires for whether a workspace has panels
     // or not).
     if (!panels || panels.length === 0) {
+      setNoSidePanelsMode(true);
       const previous = tabpanels.splitViewPanels || [];
       const splitActive = tabpanels.classList.contains('bento-split-active');
       if (!previous.length && !__lastSplitViewMarker && !splitActive) {
@@ -5032,6 +5166,11 @@
         }
       }
     }
+    if (resolved.length === 0) {
+      forceMainOnlyChromeState(gBrowser, tabpanels);
+      return;
+    }
+    setNoSidePanelsMode(false);
 
     // NOTE: we do NOT call gBrowser.hideTab(tab) on panel tabs.
     //
@@ -5069,6 +5208,14 @@
       if (!tab.linkedPanel || seenPanelIds.has(tab.linkedPanel)) continue;
       tabsToRender.push(tab);
       seenPanelIds.add(tab.linkedPanel);
+    }
+    // Closing the last side panel can briefly leave that tab selected
+    // as the main slot while it still appears in the stale panels
+    // payload. After dedupe, that means there is only main to render:
+    // tear the split down instead of leaving a main-only strip.
+    if (tabsToRender.length <= 1) {
+      forceMainOnlyChromeState(gBrowser, tabpanels);
+      return;
     }
 
     // Tabs that USED to be in the split but no longer are: clear their
@@ -6785,7 +6932,7 @@
     if (!container) return;
     container.classList.toggle('bento-panel-shadows-disabled', !enabled);
     if (!enabled) {
-      for (const sh of container.querySelectorAll(':scope > .bento-panel-shadow')) sh.remove();
+      removePanelShadows(container);
       return;
     }
     try {

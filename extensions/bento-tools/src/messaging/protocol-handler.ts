@@ -139,8 +139,21 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'tab/close':
+      {
+        const affected = ctx.panels.findWorkspacesContainingTab(action.id);
+        if (affected.length > 0) {
+          for (const wsId of affected) {
+            ctx.panels.remove(wsId, action.id);
+            ctx.syncPanelMarkers(wsId);
+            ctx.emitPanelsSync(wsId);
+          }
+          void clearPanelMarker(action.id);
+        }
+      }
       browser.tabs.remove(action.id).catch((err) => {
-        console.warn('[bento-tools] tab/close failed:', action.id, err);
+        if (!String(err).includes('Invalid tab ID')) {
+          console.warn('[bento-tools] tab/close failed:', action.id, err);
+        }
       });
       return;
     case 'tab/assignWorkspace':
