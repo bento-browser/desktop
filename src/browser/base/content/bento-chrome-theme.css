@@ -129,8 +129,13 @@
   #bento-welcome-host {
     background-color: transparent !important;
   }
-  #navigator-toolbox {
+  #navigator-toolbox,
+  #nav-bar,
+  #PersonalToolbar,
+  #TabsToolbar {
     background-color: var(--neutral-10) !important;
+    background-image: none !important;
+    color: var(--neutral-90) !important;
   }
   body {
     background-color: var(--neutral-10) !important;

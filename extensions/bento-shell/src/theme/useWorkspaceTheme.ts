@@ -30,6 +30,9 @@ interface UseWorkspaceThemeOptions {
 export function useWorkspaceTheme(options: UseWorkspaceThemeOptions = {}): void {
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
+  const workspaceExists = useWorkspacesStore((s) =>
+    activeWorkspaceId ? Boolean(s.byId[activeWorkspaceId]) : false,
+  );
   const themeId = useWorkspacesStore((s) =>
     activeWorkspaceId ? s.byId[activeWorkspaceId]?.themeId : undefined,
   );
@@ -38,6 +41,8 @@ export function useWorkspaceTheme(options: UseWorkspaceThemeOptions = {}): void 
   useEffect(() => {
     const resolved = themeId ?? DEFAULT_THEME_ID;
     document.documentElement.setAttribute('data-bento-theme', resolved);
-    if (pushChrome) pushChromeTheme(resolved);
-  }, [themeId, pushChrome]);
+    const shouldPushChromeTheme =
+      pushChrome && (activeWorkspaceId === null ? windowId === null : workspaceExists);
+    if (shouldPushChromeTheme) pushChromeTheme(resolved);
+  }, [activeWorkspaceId, themeId, pushChrome, windowId, workspaceExists]);
 }

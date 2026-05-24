@@ -336,11 +336,6 @@ export class WorkspaceStore {
     }
     if (!savedId) return null;
     if (!this.#workspaces.has(savedId)) {
-      console.log(
-        '[bento-tools] saved workspace no longer exists; window will fall back:',
-        windowId,
-        savedId,
-      );
       return null;
     }
     const result = this.activate(savedId, windowId);

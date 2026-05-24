@@ -17,8 +17,6 @@ import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
-console.log('[bento-tools] boot', new Date().toISOString());
-
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
@@ -501,7 +499,6 @@ const bootReady = Promise.all([
       if (allPanelTabIds.has(tab.id)) continue;
       const marker = await readPanelMarker(tab.id);
       if (marker) {
-        console.log('[bento-tools] clearing stale panel marker on tab', tab.id);
         await clearPanelMarker(tab.id);
       }
     }
@@ -710,7 +707,7 @@ function maybeHandleAddPanelMarker(
   if (handledAddPanelMarker.has(tabId)) return;
   if (!url.includes('bento_add_as_panel=1')) return;
   handledAddPanelMarker.add(tabId);
-  console.log('[bento-tools] add-as-panel marker hit via', source, '— tabId:', tabId);
+  void source;
   // Chrome (bento-shell-mount.js) owns the redirect of the underlying
   // tab away from the marker URL — its loadURI bypasses any
   // WebExtension API restrictions on about:newtab. The panel <browser>
@@ -726,7 +723,6 @@ function maybeHandleAddPanelMarker(
     return;
   }
   if (panels.add(wsId, tabId)) {
-    console.log('[bento-tools] add-as-panel: panels.add OK, emitting sync');
     // Stamp the configured default width so the new panel renders at
     // the user's preferred size on first paint instead of Firefox's
     // flex default (--bento-panel-min-width = 380px). The setting is
@@ -826,7 +822,6 @@ async function maybeRestorePanelFromMarker(
 }
 
 browser.tabs.onCreated.addListener((tab) => {
-  console.log('[bento-tools] tabs.onCreated:', tab.id, 'url=', tab.url);
   if (typeof tab.id !== 'number') return;
   // Capture synchronously, BEFORE any await — the concurrent
   // tabs.onActivated handler awaits readPanelMarker and, on a miss,
@@ -861,7 +856,6 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url) {
-    console.log('[bento-tools] tabs.onUpdated url change:', tabId, '→', changeInfo.url);
     const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
     maybeHandleAddPanelMarker(tabId, changeInfo.url, 'onUpdated', windowId);
   }
@@ -876,7 +870,6 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // route to a windowId that no longer exists (browser.windows.update
 // would throw, but the activation would have been refused anyway).
 browser.windows.onRemoved.addListener((windowId) => {
-  console.log('[bento-tools] windows.onRemoved:', windowId);
   workspaces.forgetWindow(windowId);
 });
 
@@ -937,13 +930,6 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   // panel per press until the workspace is truly empty.
   if (panelTabIds.length > 0) {
     const promote = panelTabIds[0]!;
-    console.log(
-      '[bento-tools] sidebar tabs exhausted in workspace',
-      activeWsId,
-      '— promoting leftmost panel',
-      promote,
-      'to main slot',
-    );
     if (panels.remove(activeWsId, promote)) {
       void clearPanelMarker(promote);
       syncPanelMarkersForWorkspace(activeWsId);
@@ -978,14 +964,6 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   const candidate = wsList.find((w) => w.id !== activeWsId && !ownedByOthers.has(w.id));
 
   if (candidate) {
-    console.log(
-      '[bento-tools] workspace',
-      activeWsId,
-      'truly empty in window',
-      windowId,
-      '— deleting it and switching to',
-      candidate.id,
-    );
     // Release ownership BEFORE delete so the delete()'s own
     // "reassign every window that had this workspace" path is a no-op
     // for us. We're handling our own reassignment via the activate()
@@ -1005,13 +983,6 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
     return;
   }
 
-  console.log(
-    '[bento-tools] active workspace',
-    activeWsId,
-    'in window',
-    windowId,
-    'truly empty and no other workspace available — closing the window (workspace preserved)',
-  );
   browser.windows
     .remove(windowId)
     .catch((err) => console.warn('[bento-tools] close-window-on-empty-workspace failed:', err));
@@ -1057,14 +1028,6 @@ async function handleWorkspaceActivation(
     if (stray.length > 0) {
       try {
         await browser.tabs.move(stray, { windowId: targetWindowId, index: -1 });
-        console.log(
-          '[bento-tools] moved',
-          stray.length,
-          'tabs of workspace',
-          wsId,
-          '→ window',
-          targetWindowId,
-        );
       } catch (err) {
         console.warn('[bento-tools] cross-window tab move failed:', err);
       }
@@ -1141,7 +1104,6 @@ browser.runtime.onConnectExternal.addListener((port) => {
     console.warn('[bento-tools] rejecting unknown port name:', port.name);
     return;
   }
-  console.log('[bento-tools] shell connected:', port.sender?.id);
   connectedPorts.add(port);
 
   const send = (event: Event) => {

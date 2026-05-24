@@ -70,7 +70,6 @@ export class SleepPolicy {
       settings.tabSleepKeepAlivePerWorkspace,
     );
     if (candidates.length === 0) return;
-    console.log('[bento-tools] SleepPolicy: discarding', candidates.length, 'tabs');
     for (const id of candidates) {
       try {
         await browser.tabs.discard(id);

@@ -22,8 +22,6 @@ const CHANNEL_NAME = 'bento-shell-bus';
 const RECONNECT_BASE_MS = 200;
 const RECONNECT_MAX_MS = 5000;
 
-console.log('[bento-shell] boot (background)', new Date().toISOString());
-
 const channel = new BroadcastChannel(CHANNEL_NAME);
 
 let toolsPort: browser.runtime.Port | null = null;
@@ -39,7 +37,6 @@ const lastPanelsSyncByWorkspace = new Map<string, Event>();
 
 function scheduleReconnect(): void {
   if (reconnectTimer) return;
-  console.log('[bento-shell] reconnecting to tools in', reconnectDelay, 'ms');
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectTools();
@@ -48,7 +45,6 @@ function scheduleReconnect(): void {
 }
 
 function connectTools(): void {
-  console.log('[bento-shell] connecting to bento-tools…');
   const port = browser.runtime.connect('bento-tools@bento.app', {
     name: SHELL_TOOLS_PORT,
   });
@@ -61,7 +57,6 @@ function connectTools(): void {
       firstMessageReceived = true;
       reconnectDelay = RECONNECT_BASE_MS; // reset backoff on healthy port
     }
-    console.log('[bento-shell] tools said:', event.type);
     if (event.type === 'tools/booted') lastBooted = event;
     if (event.type === 'panels/sync') {
       lastPanelsSyncByWorkspace.set(event.workspaceId, event);
@@ -70,11 +65,6 @@ function connectTools(): void {
   });
 
   port.onDisconnect.addListener(() => {
-    console.log(
-      '[bento-shell] tools port disconnected (firstMessageReceived=',
-      firstMessageReceived,
-      ')',
-    );
     if (toolsPort === port) toolsPort = null;
     // Always retry. On fresh profiles tools may not be listening yet; on
     // long-running sessions it may have been reloaded via dev-reload.
@@ -144,11 +134,6 @@ channel.addEventListener('message', (msg) => {
     // with tools: every panel mutation triggers an emit, the bg
     // captures each emit per workspace, so the cached value reflects
     // current state. No staleness window.
-    console.log(
-      '[bento-shell] document hello — replaying booted + panels for',
-      lastPanelsSyncByWorkspace.size,
-      'workspaces (tabs/workspaces/settings re-requested by joiner)',
-    );
     if (lastBooted) channel.postMessage({ kind: 'event', event: lastBooted });
     for (const event of lastPanelsSyncByWorkspace.values()) {
       channel.postMessage({ kind: 'event', event });

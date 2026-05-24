@@ -44,7 +44,6 @@
     } else {
       document.documentElement.setAttribute('bento-unsynced-window', 'true');
     }
-    console.log('[bento-shell-mount] sync flag:', flag);
   })();
 
   // Cmd+Shift+Alt+N (macOS) / Ctrl+Shift+Alt+N (others) → open a new
@@ -65,10 +64,6 @@
       const isAccel = e.metaKey || e.ctrlKey;
       if (!isAccel) return;
       if (e.code !== 'KeyN') return;
-      console.log(
-        '[bento-shell-mount] cmd_bentoNewNavigatorUnsynced fired',
-        { meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, code: e.code },
-      );
       e.preventDefault();
       e.stopImmediatePropagation();
       try {
@@ -1249,8 +1244,6 @@
           tries +
           ' retries; loading without hash (single-window fallback).',
       );
-    } else {
-      console.log('[bento-shell-mount] setFrameSrc(' + frameId + ') windowId:', windowId);
     }
     // setAttribute('src') works even before the <browser>'s webNavigation
     // is initialized; the loadURI APIs throw in that window. Stay with
@@ -5909,47 +5902,17 @@
         if (trigger?.closest?.('#managed-bookmarks')) {
           const link = typeof trigger.link === 'string' ? trigger.link : null;
           const result = link && !link.startsWith('place:') ? link : null;
-          console.log(
-            '[bento-shell-mount] places open-in-panel:',
-            callsite,
-            '— managed bookmark, link=',
-            link,
-            'result=',
-            result,
-          );
           return result;
         }
         const view = menu._view;
         const selected = view?.selectedNode;
         if (!selected) {
-          console.log(
-            '[bento-shell-mount] places open-in-panel:',
-            callsite,
-            '— no selected node (view=',
-            view,
-            'trigger=',
-            trigger?.tagName,
-            ')',
-          );
           return null;
         }
         const uri = typeof selected.uri === 'string' ? selected.uri : null;
         if (!uri || uri.startsWith('place:')) {
-          console.log(
-            '[bento-shell-mount] places open-in-panel:',
-            callsite,
-            '— uri rejected (uri=',
-            uri,
-            ')',
-          );
           return null;
         }
-        console.log(
-          '[bento-shell-mount] places open-in-panel:',
-          callsite,
-          '— resolved uri=',
-          uri,
-        );
         return uri;
       } catch (err) {
         console.warn(
@@ -5993,12 +5956,7 @@
           return;
         }
         const sent = dispatchShellAction({ type: 'panel/openAt', url, sourceTabId: null });
-        console.log(
-          '[bento-shell-mount] places open-in-panel: dispatched panel/openAt url=',
-          url,
-          'dispatchShellAction returned',
-          sent,
-        );
+        void sent;
       } catch (err) {
         console.warn('[bento-shell-mount] places open-in-panel command failed:', err);
       }
@@ -6057,8 +6015,6 @@
       }
       return;
     }
-    console.log('[bento-shell-mount] attachTabSelectListener: attaching listeners');
-
     // Override gBrowser.on_visibilitychange so it doesn't deactivate
     // split-view panels when the AsyncTabSwitcher isn't around.
     //
@@ -6413,6 +6369,10 @@
       // when the attribute already matches.
       if (decoded.uiColorMode === 'light' || decoded.uiColorMode === 'dark') {
         applyChromeColorMode(decoded.uiColorMode);
+      }
+      if (typeof decoded.themeId === 'string' && decoded.themeId.trim().length > 0) {
+        const themeId = decoded.themeId.trim();
+        document.documentElement.setAttribute('data-bento-theme', themeId);
       }
       // Sidebar collapsed state — toggle a class on the chrome host so
       // CSS narrows the sidebar to a rail showing only favicons and the

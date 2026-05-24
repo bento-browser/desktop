@@ -100,9 +100,6 @@ const state: BusState = {
   sidePanelTitleBridge: false,
   windowId: readWindowIdFromHash(),
 };
-if (state.windowId !== null) {
-  console.log('[bento-shell document] windowId from URL hash:', state.windowId);
-}
 const subscribers = new Set<() => void>();
 
 function notify() {
@@ -127,7 +124,6 @@ function ensureConnection(): void {
     return;
   }
 
-  console.log('[bento-shell document] opening BroadcastChannel…');
   const channel = new BroadcastChannel(CHANNEL_NAME);
   state.channel = channel;
 
@@ -135,7 +131,6 @@ function ensureConnection(): void {
     const { data } = msg;
     if (!data || data.kind !== 'event') return;
     const event = data.event as Event;
-    console.log('[bento-shell document] event:', event.type);
     switch (event.type) {
       case 'tools/booted':
         state.ready = true;
@@ -224,6 +219,7 @@ function ensureConnection(): void {
               workspaceId: string;
               panels: typeof event.panels;
               windowId?: number;
+              themeId?: string;
               mainWidthPx?: number;
               uiColorMode?: string;
               sidebarCollapsed?: boolean;
@@ -239,6 +235,12 @@ function ensureConnection(): void {
             };
             if (state.windowId !== null) {
               payload.windowId = state.windowId;
+            }
+            const activeWorkspace = wsState.byId[activeId];
+            if (activeWorkspace?.themeId) {
+              payload.themeId = activeWorkspace.themeId;
+            } else {
+              payload.themeId = 'default';
             }
             if (typeof event.mainWidthPx === 'number') {
               payload.mainWidthPx = event.mainWidthPx;
@@ -308,7 +310,6 @@ function ensureConnection(): void {
 
   // Tell the background we're alive so it replays last booted + snapshot.
   channel.postMessage({ kind: 'hello' });
-  console.log('[bento-shell document] hello sent');
 
   // windowId was already captured synchronously from `?bentoWindowId=` at
   // module load. Send shell/hello so bento-tools logs the windowId for

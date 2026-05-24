@@ -47,7 +47,6 @@ function openCommandPalette() {
   // Timestamp suffix ensures successive presses always fire the event
   // (no change = no event).
   const newTitle = `BENTO_OPEN_PALETTE_${Date.now()}`;
-  console.log('[App] openCommandPalette: setting title to', newTitle);
   document.title = newTitle;
 }
 

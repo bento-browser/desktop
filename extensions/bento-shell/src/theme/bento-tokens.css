@@ -197,7 +197,38 @@
     --color-80: var(--brand-80);
     --color-90: var(--brand-90);
     --color-100: var(--brand-100);
+    --neutral-5: var(--neutral-default-5);
+    --neutral-10: var(--neutral-default-10);
+    --neutral-12: var(--neutral-default-12);
+    --neutral-14: var(--neutral-default-14);
+    --neutral-16: var(--neutral-default-16);
+    --neutral-18: var(--neutral-default-18);
+    --neutral-20: var(--neutral-default-20);
+    --neutral-22: var(--neutral-default-22);
+    --neutral-24: var(--neutral-default-24);
+    --neutral-26: var(--neutral-default-26);
+    --neutral-28: var(--neutral-default-28);
+    --neutral-30: var(--neutral-default-30);
+    --neutral-40: var(--neutral-default-40);
+    --neutral-50: var(--neutral-default-50);
+    --neutral-60: var(--neutral-default-60);
+    --neutral-70: var(--neutral-default-70);
+    --neutral-80: var(--neutral-default-80);
+    --neutral-82: var(--neutral-default-82);
+    --neutral-84: var(--neutral-default-84);
+    --neutral-86: var(--neutral-default-86);
+    --neutral-88: var(--neutral-default-88);
+    --neutral-90: var(--neutral-default-90);
+    --neutral-92: var(--neutral-default-92);
+    --neutral-94: var(--neutral-default-94);
+    --neutral-96: var(--neutral-default-96);
+    --neutral-98: var(--neutral-default-98);
+    --neutral-100: var(--neutral-default-100);
+    --display-color: var(--neutral-default-90);
+    --text-color: var(--neutral-default-90);
+    --mono-color: var(--neutral-default-90);
     --bento-workspace-accent: var(--color-60);
     --bento-workspace-accent-fg: var(--color-5);
+    --bento-brand-bg: var(--neutral-10);
   }
 }

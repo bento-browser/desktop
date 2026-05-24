@@ -58,7 +58,6 @@ export async function load(): Promise<PersistedState | null> {
     return null;
   }
   if (!backup) return null;
-  console.log('[bento-tools] workspaces: recovered from backup slot');
   // Immediately rewrite the primary from the backup so the next load
   // doesn't go through the recovery path again.
   const payload: StoredShape = {

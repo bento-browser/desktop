@@ -69,7 +69,6 @@ export async function load(): Promise<PersistedState | null> {
     return null;
   }
   if (!backup) return null;
-  console.log('[bento-tools] pinnedPanels: recovered from backup slot');
   const payload: StoredShapeV1 = {
     version: VERSION,
     entries: backup.entries,

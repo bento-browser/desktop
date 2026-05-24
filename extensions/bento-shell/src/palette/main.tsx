@@ -48,7 +48,6 @@ function PaletteApp() {
   useWorkspaceTheme();
   const handleClose = () => {
     const newTitle = `${CLOSE_TITLE_PREFIX}_${Date.now()}`;
-    console.log('[Palette] handleClose: setting title to', newTitle);
     document.title = newTitle;
   };
   return <CommandPalette onClose={handleClose} />;

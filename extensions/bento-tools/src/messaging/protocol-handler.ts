@@ -80,13 +80,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.send({ type: 'pong', ts: Date.now() });
       return;
     case 'shell/hello': {
-      console.log(
-        '[bento-tools] shell/hello — windowId',
-        action.windowId,
-        '(sourceWindowId from envelope:',
-        ctx.sourceWindowId,
-        ')',
-      );
       // Auto-assign this window an active workspace if it doesn't already
       // own one. The "one workspace per window" invariant means we can't
       // have window B silently inherit window A's workspace — the panel
@@ -116,14 +109,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           }
           const ws = ctx.workspaces.create({ name }, wid);
           picked = ws.id;
-          console.log(
-            '[bento-tools] shell/hello — no available workspace, created',
-            name,
-            'for window',
-            wid,
-          );
-        } else {
-          console.log('[bento-tools] shell/hello — assigned window', wid, '→ workspace', picked);
         }
       }
       return;
@@ -362,16 +347,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     }
     case 'panel/openAt': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
-      console.log(
-        '[bento-tools] panel/openAt received url=',
-        action.url,
-        'sourceTabId=',
-        action.sourceTabId,
-        'sourceWindowId=',
-        ctx.sourceWindowId,
-        'resolved wsId=',
-        wsId,
-      );
       if (!wsId) {
         console.warn('[bento-tools] panel/openAt: no active workspace — bailing');
         return;
@@ -400,12 +375,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         const idx = currentPanels.indexOf(action.sourceTabId);
         position = idx < 0 ? currentPanels.length : idx + 1;
       }
-      console.log(
-        '[bento-tools] panel/openAt: currentPanels=',
-        currentPanels,
-        'computed position=',
-        position,
-      );
       // WebExtensions' tabs.create rejects most `about:*` URLs as "Illegal
       // URL". `about:newtab` specifically is the user's configured new-tab
       // page; tabs.create with NO `url` field resolves to it via Firefox's
@@ -420,18 +389,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
         })
         .then((tab) => {
-          console.log(
-            '[bento-tools] panel/openAt: tabs.create resolved tab.id=',
-            tab.id,
-            'tab.windowId=',
-            tab.windowId,
-          );
           if (typeof tab.id !== 'number') {
             console.warn('[bento-tools] panel/openAt: tab.id not a number — bailing');
             return;
           }
           const inserted = ctx.panels.insertAt(wsId, tab.id, position);
-          console.log('[bento-tools] panel/openAt: panels.insertAt returned', inserted);
           if (!inserted) {
             console.warn(
               '[bento-tools] panel/openAt: insertAt returned false (tab already in panel list?) — bailing without sync',
@@ -442,12 +404,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
           ctx.syncPanelMarkers(wsId);
           ctx.emitPanelsSync(wsId);
-          console.log(
-            '[bento-tools] panel/openAt: syncPanelMarkers + emitPanelsSync fired for wsId=',
-            wsId,
-            'final panel list=',
-            ctx.panels.getPanels(wsId),
-          );
         })
         .catch((err) => console.warn('[bento-tools] panel/openAt failed:', err));
       return;
