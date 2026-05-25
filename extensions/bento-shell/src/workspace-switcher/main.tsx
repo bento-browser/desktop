@@ -63,6 +63,7 @@ initToolsPort();
 const NEW_WORKSPACE_KEY = '__new__';
 const EDIT_WORKSPACE_KEY = '__edit__';
 const DELETE_WORKSPACE_KEY = '__delete__';
+const SMALL_MENU_CLASS = 'tale-menu__popup--sm';
 
 // Themes new workspaces cycle through so each is visually distinct in the
 // switcher without the user having to open Edit Workspace. Excludes the
@@ -202,6 +203,7 @@ function WorkspaceSwitcherOverlayApp() {
 
   return (
     <Menu.Root
+      size="sm"
       isOpen={true}
       onOpenChange={(open) => {
         if (!open) close();
@@ -236,7 +238,7 @@ function WorkspaceSwitcherOverlayApp() {
         offset={4}
         className="bento-workspace-switcher__popover"
       >
-        <Menu.MenuList aria-label="Workspaces">
+        <Menu.MenuList className={SMALL_MENU_CLASS} aria-label="Workspaces">
           {workspaces.map((w) => (
             <Menu.Item key={w.id} id={w.id} textValue={w.name} onAction={() => onActivate(w.id)}>
               <Avatar.Root

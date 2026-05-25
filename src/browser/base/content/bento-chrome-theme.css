@@ -42,21 +42,21 @@
     /* Toolbox is the area containing the titlebar + tabs strip + nav bar.
      * Bento hides #TabsToolbar (patches/core-ui/02-hide-native-tabs.patch)
      * so toolbox visually = titlebar drag area + chrome border. */
-    --toolbox-bgcolor: var(--neutral-10) !important;
+    --toolbox-bgcolor: var(--neutral-5) !important;
     --toolbox-textcolor: var(--neutral-90) !important;
-    --toolbox-bgcolor-inactive: var(--neutral-10) !important;
+    --toolbox-bgcolor-inactive: var(--neutral-5) !important;
     --toolbox-textcolor-inactive: var(--neutral-70) !important;
 
     /* Lightweight-theme accent vars (used when [lwtheme] is set on root).
      * Bento doesn't ship a lwt by default, but Firefox can be in lwtheme
      * state if the user installs one — keep these in sync so chrome
      * doesn't snap back to Firefox defaults. */
-    --lwt-accent-color: var(--neutral-10) !important;
-    --lwt-accent-color-inactive: var(--neutral-12) !important;
+    --lwt-accent-color: var(--neutral-5) !important;
+    --lwt-accent-color-inactive: var(--neutral-5) !important;
     --lwt-text-color: var(--neutral-90) !important;
 
     /* ─── Main toolbar (#nav-bar) ──────────────────────────────────── */
-    --toolbar-bgcolor: var(--neutral-10) !important;
+    --toolbar-bgcolor: var(--neutral-5) !important;
     --toolbar-color: var(--neutral-90) !important;
     --toolbar-bgimage: none !important;
     --toolbarseparator-color: var(--neutral-30) !important;
@@ -110,17 +110,17 @@
 
   /* ─── Unified chrome surface ──────────────────────────────────────
    * Bento's sidebar, the navigator-toolbox (URL bar area), and the
-   * chrome window background are all the same neutral-10 surface so
+   * chrome window background are all the same neutral-5 surface so
    * they read as one continuous chrome surface. body uses
-   * --toolbox-bgcolor (= neutral-10 above) by default; navigator-
+   * --toolbox-bgcolor (= neutral-5 above) by default; navigator-
    * toolbox normally inherits / is transparent — set both to neutral-
-   * 10 explicitly here to guarantee they match. The Bento sidebar
-   * host was previously transparent; switching to neutral-10 makes
+   * 5 explicitly here to guarantee they match. The Bento sidebar
+   * host was previously transparent; switching to neutral-5 makes
    * it match the rest instead of showing whatever happens to be
    * painted behind it. Overlay hosts (palette, confirm, etc.) stay
    * transparent — they're modal scrims, not chrome surfaces. */
   #bento-shell-host {
-    background-color: var(--neutral-10) !important;
+    background-color: var(--neutral-5) !important;
   }
   #bento-side-panel-host,
   #bento-palette-host,
@@ -133,11 +133,11 @@
   #nav-bar,
   #PersonalToolbar,
   #TabsToolbar {
-    background-color: var(--neutral-10) !important;
+    background-color: var(--neutral-5) !important;
     background-image: none !important;
     color: var(--neutral-90) !important;
   }
   body {
-    background-color: var(--neutral-10) !important;
+    background-color: var(--neutral-5) !important;
   }
 }

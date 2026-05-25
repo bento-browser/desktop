@@ -45,6 +45,8 @@ interface ChromeMenuProps {
   onClose: () => void;
 }
 
+const SMALL_MENU_CLASS = 'tale-menu__popup--sm';
+
 function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
   return items.map((item, index) => {
     if (item.kind === 'separator') {
@@ -67,7 +69,7 @@ function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
         <SubmenuTrigger key={item.id}>
           <Menu.SubmenuTrigger id={item.id}>{item.label ?? ''}</Menu.SubmenuTrigger>
           <Menu.Popover>
-            <Menu.MenuList onAction={(key) => onSelect(String(key))}>
+            <Menu.MenuList className={SMALL_MENU_CLASS} onAction={(key) => onSelect(String(key))}>
               {renderItems(item.items, onSelect)}
             </Menu.MenuList>
           </Menu.Popover>
@@ -95,6 +97,7 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
 
   return (
     <Menu.Root
+      size="sm"
       isOpen={true}
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -119,7 +122,7 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
         }}
       />
       <Menu.Popover placement="bottom end" offset={4}>
-        <Menu.MenuList onAction={(key) => onSelect(String(key))}>
+        <Menu.MenuList className={SMALL_MENU_CLASS} onAction={(key) => onSelect(String(key))}>
           {renderItems(items, onSelect)}
         </Menu.MenuList>
       </Menu.Popover>

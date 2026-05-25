@@ -73,12 +73,12 @@
     --bento-main-panel-min-width: 320px;
 
     /* Brand background. Matches the chrome's --toolbox-bgcolor /
-       --toolbar-bgcolor (both --neutral-10 in
+       --toolbar-bgcolor (both --neutral-5 in
        src/browser/base/content/bento-chrome-theme.css) so the sidebar
        reads as the same surface as the URL bar and chrome window
        background. Auto-flips with data-color-mode via Tale UI's
        color-modes mechanism. */
-    --bento-brand-bg: var(--neutral-10);
+    --bento-brand-bg: var(--neutral-5);
 
     /* Component dimensions */
     --bento-favicon-size: 1.6rem;
@@ -229,6 +229,6 @@
     --mono-color: var(--neutral-default-90);
     --bento-workspace-accent: var(--color-60);
     --bento-workspace-accent-fg: var(--color-5);
-    --bento-brand-bg: var(--neutral-10);
+    --bento-brand-bg: var(--neutral-5);
   }
 }

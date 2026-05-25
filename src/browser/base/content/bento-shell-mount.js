@@ -963,6 +963,16 @@
         flex: 1 1 auto;
         min-height: 0;
       }
+      /* Side-panel content sits directly under the injected panel header.
+         Keep the content's bottom corners rounded, but square off the
+         top corners so it joins flush to the header's square bottom
+         edge. The main content slot keeps all four rounded corners. */
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > browser,
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserContainer,
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserStack {
+        border-start-start-radius: 0 !important;
+        border-start-end-radius: 0 !important;
+      }
       /* Injected per-panel header — sits above the browser, takes its
          natural height, doesn't flex. */
       .bento-panel-header[data-bento-injected="1"] {
@@ -2129,7 +2139,7 @@
                 },
               ];
         // Pin/Unpin item leads the menu. Label flips based on whether
-        // THIS tab is currently in the active workspace's pin set —
+        // THIS panel is currently in the active workspace's pin set —
         // BENTO_PANELS payload's `pinnedTabIdsInWorkspace` keeps
         // currentPinnedTabIdsInWorkspace in sync. Resolving the
         // workspaceId at click time (not menu-build time) is fine
@@ -2139,7 +2149,7 @@
         const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
         const pinItem = {
           id: isPinned ? 'unpin' : 'pin',
-          label: isPinned ? 'Unpin this tab' : 'Pin this tab',
+          label: isPinned ? 'Unpin this panel' : 'Pin this panel',
         };
         // Size presets nest under a "Custom panel widths" submenu so
         // the menu has room for new top-level actions — `items.items`

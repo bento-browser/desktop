@@ -269,7 +269,7 @@ export type Action =
    * panel/remove, workspace deleted, tab/assignWorkspace). */
   | { type: 'pinnedPanel/add'; workspaceId: string; tabId: number }
   /** Unpin a binding. Used by both the sidebar X button and the kebab
-   * "Unpin this tab" item — the underlying panel/tab stays open. */
+   * "Unpin this panel" item — the underlying panel/tab stays open. */
   | { type: 'pinnedPanel/remove'; workspaceId: string; tabId: number }
   /** Click on a sidebar pin row: switch to the pin's workspace (focusing
    * the owning chrome window on cross-window conflict) AND activate the
