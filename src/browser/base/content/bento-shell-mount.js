@@ -138,9 +138,14 @@
       /* Inline sidebar: no padding around the frame, no rounded
          corners on the frame. Edges flush with the window so the
          sidebar reads as part of the chrome rather than a floating
-         card. */
+         card. Position + z-index make the sidebar host the paint mask
+         for panel-shadow overflow from the strip to its right; its
+         background is the same chrome surface, so the mask is visually
+         identical to chrome UI rather than a separate sidebar fill. */
       #bento-shell-host {
         padding: 0;
+        position: relative;
+        z-index: 2;
       }
       #bento-shell-host > #bento-shell-frame {
         border-radius: 0;
@@ -255,15 +260,14 @@
            clips shadow extension downward into the scrollbar / nav
            rows. The container has no overflow, so shadow can extend
            past the host into the lower area.
-           overflow: clip prevents the lateral shadow bleed escaping
-           the container's left/right edges into adjacent chrome
-           (the sidebar to the left, anything to the right). It's
-           clip rather than hidden so no scroll context is created.
-           The bottom-direction shadow extension still works because
-           the scrollbar + nav rows are inside the container — only
-           paint past container edges gets clipped. */
+           Keep overflow visible so the first panel/main-slot shadow can
+           bleed left into the chrome background beside the sidebar.
+           The sidebar itself stays in normal layout flow, so the actual
+           panel bodies still start at the strip edge; only the shadow
+           proxy paint extends past it. */
         position: relative;
-        overflow: clip;
+        z-index: 1;
+        overflow: visible;
       }
       /* Workspace-switch fade. Applied as a class toggle to BOTH the
          split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
@@ -947,7 +951,7 @@
         box-shadow: var(--shadow-l);
       }
       #bento-strip-container > .bento-panel-shadow.bento-panel-shadow--strip-start {
-        clip-path: inset(-64px -64px -64px 0 round var(--radius-m));
+        clip-path: inset(-64px round var(--radius-m));
       }
       #bento-strip-container.bento-panel-shadows-disabled > .bento-panel-shadow {
         display: none;

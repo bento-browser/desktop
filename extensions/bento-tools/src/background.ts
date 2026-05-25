@@ -821,6 +821,50 @@ async function maybeRestorePanelFromMarker(
   }
 }
 
+async function maybePromotePanelOpenerTab(
+  tab: browser.tabs.Tab,
+  previousNonPanelTabId: number | null,
+): Promise<void> {
+  if (typeof tab.id !== 'number') return;
+  if (typeof tab.openerTabId !== 'number') return;
+
+  const sourceWorkspaceIds = panels.findWorkspacesContainingTab(tab.openerTabId);
+  if (sourceWorkspaceIds.length === 0) return;
+
+  const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
+  const activeWorkspaceId = workspaces.getActiveId(windowId);
+  const workspaceId =
+    activeWorkspaceId && sourceWorkspaceIds.includes(activeWorkspaceId)
+      ? activeWorkspaceId
+      : sourceWorkspaceIds[0];
+  if (!workspaceId) return;
+
+  const sourcePanels = panels.getPanels(workspaceId);
+  const sourceIndex = sourcePanels.indexOf(tab.openerTabId);
+  const insertPosition = sourceIndex >= 0 ? sourceIndex + 1 : sourcePanels.length;
+  if (!panels.insertAt(workspaceId, tab.id, insertPosition)) return;
+
+  const defaultWidth = settings.snapshot().defaultPanelWidthPx;
+  if (typeof defaultWidth === 'number' && defaultWidth > 0) {
+    panels.setWidth(tab.id, defaultWidth);
+  }
+  syncPanelMarkersForWorkspace(workspaceId);
+  void emitPanelsSync(workspaceId);
+
+  if (previousNonPanelTabId === null || previousNonPanelTabId === tab.id) return;
+  try {
+    const query =
+      typeof tab.windowId === 'number' && tab.windowId >= 0
+        ? { active: true, windowId: tab.windowId }
+        : { active: true, currentWindow: true };
+    const [active] = await browser.tabs.query(query);
+    if (active?.id !== tab.id) return;
+    await browser.tabs.update(previousNonPanelTabId, { active: true });
+  } catch (err) {
+    console.warn('[bento-tools] revert from panel opener promotion failed:', err);
+  }
+}
+
 browser.tabs.onCreated.addListener((tab) => {
   if (typeof tab.id !== 'number') return;
   // Capture synchronously, BEFORE any await — the concurrent
@@ -829,7 +873,9 @@ browser.tabs.onCreated.addListener((tab) => {
   const previousNonPanelTabId = lastActiveNonPanelTabId;
   const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
   maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated', windowId);
-  void maybeRestorePanelFromMarker(tab.id, previousNonPanelTabId);
+  void maybeRestorePanelFromMarker(tab.id, previousNonPanelTabId).then(() =>
+    maybePromotePanelOpenerTab(tab, previousNonPanelTabId),
+  );
 });
 
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
