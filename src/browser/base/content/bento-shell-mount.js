@@ -118,6 +118,39 @@
   }
   injectChromeTheme();
 
+  function resolveChromeToken(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function syncArrowPanelTheme(panel) {
+    if (!panel || panel.localName !== 'panel' || panel.getAttribute('type') !== 'arrow') return;
+
+    const background = resolveChromeToken('--neutral-10');
+    const color = resolveChromeToken('--neutral-90');
+    const borderColor = resolveChromeToken('--neutral-20');
+    const radius = resolveChromeToken('--radius-l');
+
+    if (background) panel.style.setProperty('--panel-background', background, 'important');
+    if (color) panel.style.setProperty('--panel-color', color, 'important');
+    if (borderColor) panel.style.setProperty('--panel-border-color', borderColor, 'important');
+    if (radius) panel.style.setProperty('--panel-border-radius', radius, 'important');
+  }
+
+  function syncArrowPanelsTheme() {
+    for (const panel of document.querySelectorAll('panel[type="arrow"]')) {
+      syncArrowPanelTheme(panel);
+    }
+  }
+
+  document.addEventListener(
+    'popupshowing',
+    (event) => {
+      syncArrowPanelTheme(event.target);
+    },
+    true,
+  );
+  requestAnimationFrame(syncArrowPanelsTheme);
+
   // Inject layout-shape CSS that depends on the tokens above. Kept in
   // a runtime-injected <style> rather than a static file because the
   // .browserContainer class only exists on per-tab elements created
@@ -1162,6 +1195,27 @@
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--focused::after,
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
+      }
+
+      /* Arrow-panel theming. macOS popup.css sets --panel-background:
+         none on all panel elements so the native NSVisualEffectView
+         renders the backdrop. Arrow panels disable native rendering
+         (appearance: none) but still inherit --panel-background: none,
+         leaving ::part(content) transparent. Override both the variable
+         on the host element and the background on ::part(content)
+         directly — the variable chain through @layer bento.chrome-theme
+         does not reliably reach the XUL shadow part on macOS. */
+      *|panel[type="arrow"] {
+        --panel-background: var(--neutral-10) !important;
+        --panel-color: var(--neutral-90) !important;
+        --panel-border-color: var(--neutral-20) !important;
+        --panel-border-radius: var(--radius-l) !important;
+      }
+      *|panel[type="arrow"]::part(content) {
+        background: var(--neutral-10) !important;
+        background-color: var(--neutral-10) !important;
+        color: var(--neutral-90) !important;
+        border-color: var(--neutral-20) !important;
       }
     `;
     document.documentElement.appendChild(style);

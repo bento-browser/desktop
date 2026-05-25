@@ -20,11 +20,9 @@
  *   - window accent (lwtheme baseline)
  *
  * NOT covered (deliberate — separate iteration):
- *   - menus / context menus / popup panels (autocomplete, unified extensions)
  *   - scrollbars
  *   - find-in-page bar / notification bar
  *   - devtools chrome
- *   - downloads panel / library
  *
  * Tale UI tokens flip with data-color-mode (set on chrome <window> by
  * bento-shell-mount's color-mode IPC), so a single attribute swap re-
@@ -104,6 +102,24 @@
     --sidebar-text-color: var(--neutral-90) !important;
     --sidebar-border-color: var(--neutral-22) !important;
 
+    /* ─── Popup panels (app menu, downloads, extensions, account) ─ */
+    --arrowpanel-background: var(--neutral-10) !important;
+    --arrowpanel-color: var(--neutral-90) !important;
+    --arrowpanel-border-color: var(--neutral-20) !important;
+    --arrowpanel-border-radius: var(--radius-l) !important;
+    --arrowpanel-dimmed: var(--neutral-16) !important;
+    --arrowpanel-dimmed-further: var(--neutral-22) !important;
+    --panel-shadow: var(--shadow-l) !important;
+    --panel-separator-color: var(--neutral-16) !important;
+
+    /* ─── Panel menu items ─────────────────────────────────────────── */
+    --arrowpanel-menuitem-border-radius: var(--radius-s) !important;
+    --menuitem-icon-fill: var(--neutral-80) !important;
+    --panel-banner-item-color: var(--neutral-90) !important;
+    --panel-banner-item-background-color: var(--neutral-12) !important;
+    --panel-banner-item-hover-bgcolor: var(--neutral-16) !important;
+    --panel-banner-item-active-bgcolor: var(--neutral-20) !important;
+
     /* Focus ring color used by toolbar buttons + URL bar focus. */
     --focus-outline-color: var(--color-60) !important;
   }
@@ -139,6 +155,22 @@
   }
   body {
     background-color: var(--neutral-5) !important;
+  }
+
+  /* ─── macOS arrow-panel background fix ─────────────────────────
+   * popup.css sets --panel-background: none on all menupopup/panel
+   * elements on macOS so the native NSVisualEffectView renders the
+   * backdrop. Arrow panels (app menu, downloads, extensions, account)
+   * disable native rendering (appearance: none in popup.css line 98)
+   * but still inherit the --panel-background: none override because
+   * popup.css loads after global-shared.css's arrowpanel mapping and
+   * wins the specificity tie. Re-point the panel variables at the
+   * element level so ::part(content) gets an opaque background. */
+  *|panel[type='arrow'] {
+    --panel-background: var(--arrowpanel-background) !important;
+    --panel-color: var(--arrowpanel-color) !important;
+    --panel-border-color: var(--arrowpanel-border-color) !important;
+    --panel-border-radius: var(--arrowpanel-border-radius) !important;
   }
 
   ::selection {
