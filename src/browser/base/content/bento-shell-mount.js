@@ -3249,6 +3249,53 @@
     host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
   }
 
+  function isPanelFullyVisible(panelEl) {
+    if (!panelEl) return false;
+    const host = getStripScrollTarget();
+    if (!host) return false;
+    const hostRect = host.getBoundingClientRect();
+    const panelRect = panelEl.getBoundingClientRect();
+    return panelRect.left >= hostRect.left - 1 && panelRect.right <= hostRect.right + 1;
+  }
+
+  function scrollPanelFullyIntoView(panelEl) {
+    if (!panelEl) return;
+    const host = getStripScrollTarget();
+    if (!host) return;
+    const hostRect = host.getBoundingClientRect();
+    const panelRect = panelEl.getBoundingClientRect();
+    if (isPanelFullyVisible(panelEl)) return;
+    // Explicit open targets should land as complete panels. Aligning
+    // the left edge is more reliable than a minimal right-edge nudge
+    // while the trailer width, panel width, and smooth scroll settle.
+    const targetScrollLeft = host.scrollLeft + (panelRect.left - hostRect.left);
+    host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
+  }
+
+  function scheduleScrollPanelTabIntoView(tabId, options = {}) {
+    if (!Number.isInteger(tabId)) return;
+    const DEADLINE_MS = 2000;
+    const POLL_MS = 50;
+    const started = Date.now();
+    const tryScroll = () => {
+      const panelEl = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
+      if (panelEl) {
+        if (options.reveal === 'full') {
+          scrollPanelFullyIntoView(panelEl);
+          if (!isPanelFullyVisible(panelEl) && Date.now() - started <= DEADLINE_MS) {
+            setTimeout(tryScroll, 120);
+          }
+        } else {
+          scrollPanelIntoViewFromRight(panelEl);
+        }
+        return;
+      }
+      if (Date.now() - started > DEADLINE_MS) return;
+      setTimeout(tryScroll, POLL_MS);
+    };
+    setTimeout(tryScroll, 0);
+  }
+
   // The active panel is the user's current cycle selection. Source of
   // truth for both the bottom favicon marker and the cycle-focus
   // indicator on the panel itself. NOT recomputed from scroll position
@@ -4969,7 +5016,7 @@
   //
   // The combined effect: panels stay painted across sidebar tab
   // switches, Cmd+T, window minimise/restore, and DevTools toggling.
-  function reconcilePanelsSplitView(panels) {
+  function reconcilePanelsSplitView(panels, options = {}) {
     if (!window.gBrowser) {
       console.warn('[bento-shell-mount] reconcilePanelsSplitView: gBrowser unavailable');
       return;
@@ -5707,13 +5754,15 @@
     // the left of the new one — the new panel just nudges into view
     // from the right, instead of jumping the strip to the new panel.
     let scrolledToNewPanel = false;
-    if (newTabIds.length > 0 && !isInitialReconcileForWorkspace) {
+    const explicitScrollId =
+      Number.isInteger(options.scrollToPanelTabId) ? options.scrollToPanelTabId : null;
+    if (explicitScrollId !== null) {
+      scrolledToNewPanel = true;
+      scheduleScrollPanelTabIntoView(explicitScrollId, { reveal: 'full' });
+    } else if (newTabIds.length > 0 && !isInitialReconcileForWorkspace) {
       const newId = newTabIds[newTabIds.length - 1];
       scrolledToNewPanel = true;
-      setTimeout(() => {
-        const panelEl = document.querySelector('[data-bento-panel-tab-id="' + newId + '"]');
-        if (panelEl) scrollPanelIntoViewFromRight(panelEl);
-      }, 0);
+      scheduleScrollPanelTabIntoView(newId);
     }
     __reconciledForWorkspace = currentWorkspaceId;
 
@@ -6455,8 +6504,8 @@
     }
   }
 
-  function reconcilePanels(panels) {
-    reconcilePanelsSplitView(panels);
+  function reconcilePanels(panels, options = {}) {
+    reconcilePanelsSplitView(panels, options);
   }
 
   function handlePanelsTitle(rawTitle) {
@@ -6490,6 +6539,7 @@
     // out-of-scope at the read site and throw ReferenceError on every
     // payload, silently aborting the reconcile.
     let isWorkspaceTransition = false;
+    let scrollToPanelTabId = null;
     if (Array.isArray(decoded)) {
       panels = decoded;
     } else if (decoded && Array.isArray(decoded.panels)) {
@@ -6571,6 +6621,12 @@
       if (typeof decoded.panelShadowsEnabled === 'boolean') {
         applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
       }
+      if (
+        typeof decoded.scrollToPanelTabId === 'number' &&
+        Number.isInteger(decoded.scrollToPanelTabId)
+      ) {
+        scrollToPanelTabId = decoded.scrollToPanelTabId;
+      }
       // Pinned-panel tabIds for the incoming workspace. Workspace-
       // filtered upstream so a Set.has(tabId) is enough to pick the
       // Pin/Unpin label in the kebab menu. Missing key means the
@@ -6640,7 +6696,7 @@
       // visual glitch even though each individual swap is correct.
       performWorkspaceSwitchFade(panels);
     } else {
-      reconcilePanels(panels);
+      reconcilePanels(panels, { scrollToPanelTabId });
       applyPendingStripScrollRestore();
     }
   }

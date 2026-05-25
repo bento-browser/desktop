@@ -12,6 +12,9 @@ export interface TabSnapshot {
   id: number;
   windowId: number;
   index: number;
+  /** Optional Bento-side display name for the sidebar. Does not mutate
+   * the page title; the live browser title remains in `title`. */
+  customTitle?: string;
   title: string;
   favIconUrl?: string;
   active: boolean;
@@ -150,6 +153,7 @@ export type Action =
   | { type: 'tabs/requestSnapshot' }
   | { type: 'tab/activate'; id: number }
   | { type: 'tab/close'; id: number }
+  | { type: 'tab/rename'; id: number; title: string }
   | { type: 'tab/assignWorkspace'; id: number; workspaceId: string }
   /** Open `url` in a new tab. When `focusExisting` is set, the handler
    * first looks for a tab in the source window's active workspace whose
@@ -390,6 +394,10 @@ export type Event =
        * has no info to share (boot path before SavedPanelsStore.init
        * has finished) and chrome should treat as zero. */
       savedPanelCount?: number;
+      /** One-shot chrome scroll target for a panel that was just created
+       * by an explicit user action. Used when panel creation races chrome
+       * tab resolution: chrome retries until the panel element exists. */
+      scrollToPanelTabId?: number;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }

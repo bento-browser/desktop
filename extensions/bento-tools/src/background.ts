@@ -154,7 +154,10 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
 // to all connected shells. Each shell forwards the snapshot to chrome via
 // title-IPC; chrome reconciles its panel strip. Only the ACTIVE workspace's
 // panels render — emitting for an inactive workspace is wasted work.
-async function emitPanelsSync(workspaceId: string): Promise<void> {
+async function emitPanelsSync(
+  workspaceId: string,
+  options: { scrollToPanelTabId?: number } = {},
+): Promise<void> {
   // No active-workspace gate. Sidebar's tab-list filter
   // (useWorkspaceTabIds) needs panel ids for EVERY workspace so the
   // workspace-switch slide animation can render the new pane with
@@ -200,6 +203,7 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
     stripScrollLeft?: number;
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
+    scrollToPanelTabId?: number;
   } = {
     type: 'panels/sync',
     workspaceId,
@@ -212,6 +216,12 @@ async function emitPanelsSync(workspaceId: string): Promise<void> {
   }
   if (pinnedTabIdsInWorkspace.length > 0) {
     event.pinnedTabIdsInWorkspace = pinnedTabIdsInWorkspace;
+  }
+  if (
+    typeof options.scrollToPanelTabId === 'number' &&
+    valid.some((panel) => panel.tabId === options.scrollToPanelTabId)
+  ) {
+    event.scrollToPanelTabId = options.scrollToPanelTabId;
   }
   broadcastEvent(event);
 }

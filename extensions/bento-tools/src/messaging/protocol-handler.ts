@@ -50,7 +50,7 @@ export interface HandlerContext {
    * broadcast a panels/sync event. Lives on background.ts (it needs
    * broadcast access + browser.tabs.get for URL resolution); the handler
    * only triggers it when panel state changes. */
-  emitPanelsSync: (workspaceId: string) => void;
+  emitPanelsSync: (workspaceId: string, options?: { scrollToPanelTabId?: number }) => void;
   /** Rewrite session markers for every panel in the workspace with
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
@@ -155,6 +155,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           console.warn('[bento-tools] tab/close failed:', action.id, err);
         }
       });
+      return;
+    case 'tab/rename':
+      void ctx.tabs.rename(action.id, action.title);
       return;
     case 'tab/assignWorkspace':
       // Pins are anchored to (workspaceId, tabId). When the user moves a
@@ -416,7 +419,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
           if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
           ctx.syncPanelMarkers(wsId);
-          ctx.emitPanelsSync(wsId);
+          ctx.emitPanelsSync(wsId, { scrollToPanelTabId: tab.id });
         })
         .catch((err) => console.warn('[bento-tools] panel/openAt failed:', err));
       return;

@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react';
+import { memo, useRef, useState } from 'react';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
@@ -9,6 +9,7 @@ import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
 import Volume2 from 'lucide-react/dist/esm/icons/volume-2';
 import type { TabSnapshot } from '@shared/protocol';
 
+import { dispatch } from '../../bridge/useToolsPort';
 import { useTab } from '../../state/tabs';
 import './TabRow.css';
 
@@ -59,6 +60,8 @@ function TabRowImpl({
   // unmount the row's DOM and skip the fade. Falling back to the cached
   // snapshot lets the fade actually run.
   const lastSeenRef = useRef<TabSnapshot | undefined>(liveTab);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
   if (liveTab) lastSeenRef.current = liveTab;
   const tab = liveTab ?? lastSeenRef.current;
   if (!tab) return null;
@@ -66,8 +69,29 @@ function TabRowImpl({
   const loading = tab.loading ?? false;
   const discarded = tab.discarded ?? false;
   const audible = tab.audible;
+  const displayTitle = tab.customTitle || tab.title || 'Untitled';
 
   const draggable = onDragStart !== undefined;
+
+  const beginRename = () => {
+    if (removing || dragging) return;
+    setDraftTitle(displayTitle);
+    setRenaming(true);
+  };
+  const commitRename = () => {
+    if (!renaming) return;
+    const nextTitle = draftTitle.trim();
+    if (nextTitle.length === 0) {
+      if (tab.customTitle) dispatch({ type: 'tab/rename', id, title: '' });
+    } else if (nextTitle !== displayTitle.trim()) {
+      dispatch({ type: 'tab/rename', id, title: nextTitle });
+    }
+    setRenaming(false);
+  };
+  const cancelRename = () => {
+    setDraftTitle(displayTitle);
+    setRenaming(false);
+  };
 
   return (
     <div
@@ -78,7 +102,7 @@ function TabRowImpl({
         (discarded ? ' bento-tab-row--discarded' : '') +
         (dragging ? ' bento-tab-row--dragging' : '')
       }
-      draggable={draggable}
+      draggable={draggable && !renaming}
       onDragStart={
         draggable
           ? (e) => {
@@ -101,7 +125,12 @@ function TabRowImpl({
           : undefined
       }
       onDragEnd={draggable ? () => onDragEnd?.(id) : undefined}
-      onClick={() => removing || dragging || onActivate(id)}
+      onClick={() => renaming || removing || dragging || onActivate(id)}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        beginRename();
+      }}
       onMouseDown={(e) => {
         // Middle-mouse-down triggers the autoscroll cursor — preventDefault
         // suppresses it so the click feels like a normal close action.
@@ -115,10 +144,10 @@ function TabRowImpl({
       }}
       title={
         loading
-          ? `Loading — ${tab.title || 'Untitled'}`
+          ? `Loading — ${displayTitle}`
           : discarded
-            ? `Sleeping — ${tab.title || 'Untitled'}`
-            : tab.title || 'Untitled'
+            ? `Sleeping — ${displayTitle}`
+            : displayTitle
       }
     >
       {/* Loading wins the favicon slot — the throbber is the cue Firefox
@@ -133,9 +162,31 @@ function TabRowImpl({
       ) : (
         <span className="bento-tab-row__favicon bento-tab-row__favicon--placeholder" />
       )}
-      <Text variant="text" size="s" color={active ? 'default' : 'muted'}>
-        {tab.title || 'Untitled'}
-      </Text>
+      {renaming ? (
+        <input
+          className="bento-tab-row__rename-input"
+          value={draftTitle}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setDraftTitle(e.currentTarget.value)}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitRename();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelRename();
+            }
+          }}
+          onBlur={commitRename}
+        />
+      ) : (
+        <Text variant="text" size="s" color={active ? 'default' : 'muted'}>
+          {displayTitle}
+        </Text>
+      )}
       {/* Audible indicator sits outside the actions container so it stays
        * visible at rest (not just on hover). Hover/active reveal the action
        * buttons over the top, which is the right priority — controls beat

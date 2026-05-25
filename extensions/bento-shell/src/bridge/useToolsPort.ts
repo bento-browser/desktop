@@ -229,6 +229,7 @@ function ensureConnection(): void {
               stripScrollLeft?: number;
               pinnedTabIdsInWorkspace?: number[];
               savedPanelCount?: number;
+              scrollToPanelTabId?: number;
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -281,6 +282,9 @@ function ensureConnection(): void {
             }
             if (typeof event.savedPanelCount === 'number') {
               payload.savedPanelCount = event.savedPanelCount;
+            }
+            if (typeof event.scrollToPanelTabId === 'number') {
+              payload.scrollToPanelTabId = event.scrollToPanelTabId;
             }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.

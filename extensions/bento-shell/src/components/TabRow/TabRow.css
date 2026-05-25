@@ -126,10 +126,13 @@
   }
 
   .bento-tab-row > .tale-text {
+    user-select: none;
+    -moz-user-select: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    font-size: var(--bento-tab-row-font-size);
     line-height: 1;
     margin: 0;
     align-self: center;
@@ -138,6 +141,30 @@
     transition:
       color var(--bento-duration-fast) var(--bento-easing-standard),
       opacity var(--bento-duration-base) var(--bento-easing-standard);
+  }
+
+  .bento-tab-row__rename-input {
+    min-width: 0;
+    width: 100%;
+    height: calc(var(--bento-tab-row-height) - var(--space-3xs));
+    padding: 0 var(--space-3xs);
+    background-color: var(--neutral-5);
+    border: var(--bento-border-hairline) solid var(--color-60);
+    border-radius: var(--radius-s);
+    color: var(--neutral-90);
+    font-family: var(--text-font-family);
+    font-size: var(--bento-tab-row-font-size);
+    font-weight: var(--text-font-weight);
+    letter-spacing: var(--text-letter-spacing);
+    line-height: 1;
+    outline: none;
+    box-sizing: border-box;
+    user-select: text;
+    -moz-user-select: text;
+  }
+
+  .bento-tab-row:has(.bento-tab-row__rename-input) .bento-tab-row__actions {
+    display: none;
   }
 
   .bento-tab-row__actions {
@@ -213,4 +240,11 @@
   html[data-bento-collapsed='true'] .bento-tab-row__actions {
     display: none;
   }
+}
+
+/* Unlayered by design: raw form controls and Tale UI utilities are
+ * unlayered, so this must be unlayered too or the rename input can keep
+ * browser/input typography instead of matching the sidebar row label. */
+.bento-tab-row__rename-input {
+  font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family) !important;
 }

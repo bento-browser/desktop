@@ -64,6 +64,7 @@
        bento-shell-mount.js — the chrome patch ships inline min/max
        values that the !important overrides there clobber. */
     --bento-tab-row-height: 3.2rem;
+    --bento-tab-row-font-size: var(--text-xs-font-size);
     --bento-tab-strip-width-min: 200px;
     --bento-tab-strip-width-max: 600px;
     --bento-tab-strip-width-collapsed: 5rem;
@@ -231,4 +232,14 @@
     --bento-workspace-accent-fg: var(--color-5);
     --bento-brand-bg: var(--neutral-5);
   }
+}
+
+/* Unlayered so raw form controls and Tale UI's unlayered component styles
+   cannot override Bento's selection foreground/background pairing. */
+::selection,
+input::selection,
+textarea::selection,
+[contenteditable='true']::selection {
+  background-color: var(--color-60);
+  color: var(--color-60-fg);
 }

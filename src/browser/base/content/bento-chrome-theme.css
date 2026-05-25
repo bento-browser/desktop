@@ -140,4 +140,9 @@
   body {
     background-color: var(--neutral-5) !important;
   }
+
+  ::selection {
+    background-color: var(--color-60) !important;
+    color: var(--color-60-fg) !important;
+  }
 }

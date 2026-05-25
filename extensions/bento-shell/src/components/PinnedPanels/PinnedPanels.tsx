@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
@@ -28,9 +28,18 @@ function PinnedPanelRowImpl({ workspaceId, tabId }: PinnedPanelRowProps) {
   // the activation handler dispatches through bento-tools which has
   // access to every window's tabs.
   const tab = useTab(tabId);
-  const title = tab?.title || 'Pinned panel';
+  const title = tab?.customTitle || tab?.title || 'Pinned panel';
   const favIconUrl = tab?.favIconUrl;
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const activateTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (activateTimerRef.current !== null) window.clearTimeout(activateTimerRef.current);
+    };
+  }, []);
   const onActivate = () => {
+    if (renaming) return;
     // Workspace switch goes through tools; the panel is NOT activated
     // as the main tab (that would relocate it into the main content
     // slot — see protocol-handler `pinnedPanel/activate`). The chrome-
@@ -41,14 +50,53 @@ function PinnedPanelRowImpl({ workspaceId, tabId }: PinnedPanelRowProps) {
     document.title = `BENTO_FOCUS_PANEL:${Date.now()}:${tabId}`;
   };
   const onUnpin = () => dispatch({ type: 'pinnedPanel/remove', workspaceId, tabId });
+  const scheduleActivate = () => {
+    if (renaming) return;
+    if (activateTimerRef.current !== null) window.clearTimeout(activateTimerRef.current);
+    activateTimerRef.current = window.setTimeout(() => {
+      activateTimerRef.current = null;
+      onActivate();
+    }, 180);
+  };
+  const beginRename = () => {
+    if (activateTimerRef.current !== null) {
+      window.clearTimeout(activateTimerRef.current);
+      activateTimerRef.current = null;
+    }
+    setDraftTitle(title);
+    setRenaming(true);
+  };
+  const commitRename = () => {
+    if (!renaming) return;
+    const nextTitle = draftTitle.trim();
+    if (nextTitle.length === 0) {
+      if (tab?.customTitle) dispatch({ type: 'tab/rename', id: tabId, title: '' });
+    } else if (nextTitle !== title.trim()) {
+      dispatch({ type: 'tab/rename', id: tabId, title: nextTitle });
+    }
+    setRenaming(false);
+  };
+  const cancelRename = () => {
+    setDraftTitle(title);
+    setRenaming(false);
+  };
   return (
     <div
       className="bento-tab-row"
-      onClick={onActivate}
+      onClick={(e) => {
+        if (e.detail > 1) return;
+        scheduleActivate();
+      }}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        beginRename();
+      }}
       title={title}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
+        if (renaming) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onActivate();
@@ -60,9 +108,31 @@ function PinnedPanelRowImpl({ workspaceId, tabId }: PinnedPanelRowProps) {
       ) : (
         <span className="bento-tab-row__favicon bento-tab-row__favicon--placeholder" />
       )}
-      <Text variant="text" size="s" color="muted">
-        {title}
-      </Text>
+      {renaming ? (
+        <input
+          className="bento-tab-row__rename-input"
+          value={draftTitle}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setDraftTitle(e.currentTarget.value)}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitRename();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelRename();
+            }
+          }}
+          onBlur={commitRename}
+        />
+      ) : (
+        <Text variant="text" size="s" color="muted">
+          {title}
+        </Text>
+      )}
       {/* React Aria's IconButton onPress doesn't stop the underlying
        * click from bubbling, so a click on X would also reach the row's
        * onClick and trigger pinnedPanel/activate — switching workspace

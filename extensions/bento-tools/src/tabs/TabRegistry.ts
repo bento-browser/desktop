@@ -11,6 +11,7 @@ import type { TabDelta, TabSnapshot } from '@shared/protocol';
 type Listener = (deltas: TabDelta[]) => void;
 
 const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
+const CUSTOM_TITLE_SESSION_KEY = 'bento.customTitle';
 
 function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
   return {
@@ -31,6 +32,17 @@ async function readWorkspaceId(tabId: number): Promise<string | undefined> {
   try {
     const value = await browser.sessions.getTabValue(tabId, WORKSPACE_SESSION_KEY);
     return typeof value === 'string' ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readCustomTitle(tabId: number): Promise<string | undefined> {
+  try {
+    const value = await browser.sessions.getTabValue(tabId, CUSTOM_TITLE_SESSION_KEY);
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   } catch {
     return undefined;
   }
@@ -75,7 +87,12 @@ export class TabRegistry {
       all.map(async (t) => {
         const snap = toSnapshot(t);
         if (snap.id === -1) return snap;
-        snap.workspaceId = await readWorkspaceId(snap.id);
+        const [workspaceId, customTitle] = await Promise.all([
+          readWorkspaceId(snap.id),
+          readCustomTitle(snap.id),
+        ]);
+        snap.workspaceId = workspaceId;
+        snap.customTitle = customTitle;
         return snap;
       }),
     );
@@ -123,6 +140,25 @@ export class TabRegistry {
     }
     tab.workspaceId = workspaceId;
     this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
+  }
+
+  /** Set or clear Bento's sidebar display name for a tab. This does not
+   * call browser.tabs.update({ title }) because Firefox tab titles are
+   * page-owned; Bento stores a per-tab override in SessionStore instead. */
+  async rename(id: number, title: string): Promise<void> {
+    const tab = this.#tabs.get(id);
+    if (!tab) return;
+    const customTitle = title.trim();
+    try {
+      await browser.sessions.setTabValue(id, CUSTOM_TITLE_SESSION_KEY, customTitle);
+    } catch (err) {
+      console.warn('[bento-tools] sessions.setTabValue custom title failed:', id, err);
+      return;
+    }
+    const next = customTitle.length > 0 ? customTitle : undefined;
+    if (tab.customTitle === next) return;
+    tab.customTitle = next;
+    this.#enqueue({ kind: 'updated', id, changes: { customTitle: next } });
   }
 
   /** In-memory-only workspace assignment for boot-time backfill. Does NOT
@@ -211,6 +247,9 @@ export class TabRegistry {
     if (existing?.workspaceId && !snap.workspaceId) {
       snap.workspaceId = existing.workspaceId;
     }
+    if (existing?.customTitle && !snap.customTitle) {
+      snap.customTitle = existing.customTitle;
+    }
     this.#tabs.set(snap.id, snap);
     this.#enqueue({ kind: 'created', tab: snap });
     // For tabs that have NEVER been hydrated (no existing entry, or
@@ -224,12 +263,19 @@ export class TabRegistry {
   };
 
   async #hydrateOne(id: number): Promise<void> {
-    const ws = await readWorkspaceId(id);
-    if (!ws) return;
+    const [ws, customTitle] = await Promise.all([readWorkspaceId(id), readCustomTitle(id)]);
     const tab = this.#tabs.get(id);
-    if (!tab || tab.workspaceId === ws) return;
-    tab.workspaceId = ws;
-    this.#enqueue({ kind: 'updated', id, changes: { workspaceId: ws } });
+    if (!tab) return;
+    const changes: Partial<TabSnapshot> = {};
+    if (ws && tab.workspaceId !== ws) {
+      tab.workspaceId = ws;
+      changes.workspaceId = ws;
+    }
+    if (customTitle && tab.customTitle !== customTitle) {
+      tab.customTitle = customTitle;
+      changes.customTitle = customTitle;
+    }
+    if (Object.keys(changes).length > 0) this.#enqueue({ kind: 'updated', id, changes });
   }
 
   #onUpdated = (
