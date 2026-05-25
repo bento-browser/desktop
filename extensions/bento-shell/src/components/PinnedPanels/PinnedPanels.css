@@ -16,7 +16,7 @@
      * horizontally with tab rows below the divider. */
     padding-inline: var(--space-2xs);
     padding-block-end: var(--space-2xs);
-    margin-block-end: var(--space-2xs);
+    margin-block-end: 0;
     border-bottom: var(--bento-border-hairline) solid var(--bento-border-color-subtle);
   }
 
@@ -25,7 +25,8 @@
    * horizontal track as the row favicons. */
   .bento-pinned-panels__heading {
     padding-inline: var(--space-2xs);
-    padding-block: var(--space-2xs);
+    padding-block-start: var(--space-3xs);
+    padding-block-end: var(--space-2xs);
   }
 
   /* TabList rows get their height from the virtualizer's row wrapper

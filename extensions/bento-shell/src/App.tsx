@@ -197,7 +197,7 @@ export function App() {
   }, [sidebarCollapsed]);
 
   return (
-    <Column gap="xs" className="bento-shell-app">
+    <Column gap="2xs" className="bento-shell-app">
       <Row gap="xs" align="center" className="bento-shell-app__header">
         <WorkspaceSwitcher />
         {!ready && (

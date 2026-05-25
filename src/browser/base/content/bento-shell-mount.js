@@ -946,6 +946,9 @@
         border-radius: var(--radius-m);
         box-shadow: var(--shadow-l);
       }
+      #bento-strip-container > .bento-panel-shadow.bento-panel-shadow--strip-start {
+        clip-path: inset(-64px -64px -64px 0 round var(--radius-m));
+      }
       #bento-strip-container.bento-panel-shadows-disabled > .bento-panel-shadow {
         display: none;
       }
@@ -1261,6 +1264,12 @@
   }
 
   function setBentoShellSrc() {
+    const frame = document.getElementById('bento-shell-frame');
+    if (frame) {
+      frame.setAttribute('transparent', 'transparent');
+      frame.style.backgroundColor = 'transparent';
+      frame.style.setProperty('-moz-appearance', 'none');
+    }
     setFrameSrc('bento-shell-frame', '/dist/index.html');
   }
 
@@ -2681,6 +2690,7 @@
     }
     const shadows = ensurePanelShadowCount(container, 1);
     const sh = shadows[0];
+    sh.classList.add('bento-panel-shadow--strip-start');
     const containerRect = container.getBoundingClientRect();
     const mainRect = main.getBoundingClientRect();
     if (!mainRect.width || !mainRect.height) {
@@ -2723,7 +2733,11 @@
     for (let i = 0; i < desired; i++) {
       const sh = existing[i];
       const panelEl = document.getElementById(panelIds[i]);
-      if (!panelEl) continue;
+      if (!panelEl) {
+        sh.classList.remove('bento-panel-shadow--strip-start');
+        continue;
+      }
+      sh.classList.toggle('bento-panel-shadow--strip-start', panelEl.id === 'tabbrowser-tabbox');
       const pr = panelEl.getBoundingClientRect();
       if (pr.right < visLeft || pr.left > visRight) continue;
       sh.style.top = pr.top - containerRect.top + 'px';

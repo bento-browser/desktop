@@ -13,7 +13,7 @@
   .bento-shell-app {
     display: flex;
     flex-direction: column;
-    background-color: var(--bento-brand-bg);
+    background-color: transparent;
     color: var(--neutral-90);
     overflow: hidden;
   }
