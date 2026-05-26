@@ -741,7 +741,7 @@ function maybeHandleAddPanelMarker(
     const defaultWidth = settings.snapshot().defaultPanelWidthPx;
     if (defaultWidth > 0) panels.setWidth(tabId, defaultWidth);
     syncPanelMarkersForWorkspace(wsId);
-    void emitPanelsSync(wsId);
+    void emitPanelsSync(wsId, { scrollToPanelTabId: tabId });
   } else {
     console.warn('[bento-tools] add-as-panel: panels.add returned false');
   }

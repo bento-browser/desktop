@@ -357,7 +357,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         // panels.getPanels at the last index) plus refreshes any
         // existing markers — covers add, idempotent for the rest.
         ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId);
+        ctx.emitPanelsSync(wsId, { scrollToPanelTabId: action.id });
       }
       return;
     }

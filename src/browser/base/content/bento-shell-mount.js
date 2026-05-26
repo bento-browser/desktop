@@ -181,15 +181,12 @@
       #bento-shell-host > #bento-shell-frame {
         border-radius: 0;
       }
-      /* Sidebar splitter: zero NET layout width (so panel strip sits
-         flush against the sidebar), but a wider invisible hit area
-         centered on the boundary so users can still grab + drag to
-         resize. Achieved with width:8px + margin-inline:-4px — the
-         8px element box renders, but the negative margins cancel
-         out its layout width to 0. Position: relative + z-index so
-         the hit area paints above adjacent flex siblings (sidebar
-         to the left, strip-container to the right) — without it,
-         later-painted siblings would absorb the pointer events.
+      /* Sidebar splitter: the native XUL splitter owns persistence and
+         baseline layout, but its own painting stays invisible. The
+         visible hover/drag affordance is #bento-shell-splitter-
+         affordance, an HTML overlay positioned from actual sidebar and
+         content rects so it sits in the gap instead of on the sidebar
+         edge.
          !important needed for width + min-width because XUL chrome
          CSS sets defaults for <splitter> that win otherwise. */
       /* Remove the chrome-content separator line under the URL bar.
@@ -202,12 +199,43 @@
         border-bottom-style: none !important;
       }
       #bento-shell-splitter {
-        width: 8px !important;
-        min-width: 0 !important;
-        margin-inline: -4px;
+        width: 14px !important;
+        min-width: 14px !important;
+        max-width: 14px !important;
+        margin-inline: -7px;
+        cursor: col-resize;
+        border: 0 !important;
+        padding: 0 !important;
+        appearance: none;
         background-color: transparent;
+        background-image: none;
         position: relative;
         z-index: 3;
+      }
+      #bento-shell-splitter-affordance {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 14px;
+        cursor: col-resize;
+        pointer-events: auto;
+        z-index: 4;
+        background-image: linear-gradient(
+          to right,
+          transparent calc(50% - 2.5px),
+          var(--color-60) calc(50% - 2.5px),
+          var(--color-60) calc(50% + 2.5px),
+          transparent calc(50% + 2.5px)
+        );
+        opacity: 0;
+        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+      }
+      #bento-shell-splitter-affordance:hover,
+      #bento-shell-splitter-affordance.bento-shell-splitter--dragging {
+        opacity: 1;
+      }
+      #bento-shell-splitter-affordance.bento-sidebar-collapsed {
+        display: none;
       }
 
       /* Sidebar dimensions. The chrome patch ships inline
@@ -279,10 +307,10 @@
         flex: 1 1 0%;
         min-width: 0;
         --bento-panel-nav-height: calc(
-          var(--bento-control-size-sm) + var(--space-2xs) + var(--space-2xs)
+          var(--bento-control-size-sm) + var(--space-xs) + var(--space-xs)
         );
         --bento-strip-scrollbar-row-height: calc(
-          var(--bento-scrollbar-thickness) + var(--space-3xs)
+          var(--bento-scrollbar-thickness) + var(--space-4xs)
         );
         --bento-strip-controls-height: calc(
           var(--bento-panel-nav-height) + var(--bento-strip-scrollbar-row-height)
@@ -372,7 +400,14 @@
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
         overflow-x: hidden;
+        padding-block-end: var(--space-2xs);
         padding-right: var(--space-2xs);
+      }
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
+        border-radius: var(--radius-m);
+        background-color: var(--neutral-5);
+        box-shadow: var(--shadow-l);
+        overflow: visible;
       }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
@@ -383,7 +418,7 @@
         position: absolute;
         left: var(--space-2xs);
         right: var(--space-2xs);
-        bottom: calc(var(--bento-panel-nav-height) + var(--space-3xs));
+        bottom: calc(var(--bento-panel-nav-height) + var(--space-4xs));
         z-index: 20;
         height: var(--bento-scrollbar-thickness);
         margin: 0;
@@ -429,7 +464,7 @@
         align-items: center;
         justify-content: center;
         gap: var(--space-2xs);
-        padding: var(--space-2xs);
+        padding: var(--space-xs);
         box-sizing: border-box;
         min-height: var(--bento-panel-nav-height);
       }
@@ -1981,6 +2016,83 @@
     host.style.cssText = '';
   }
 
+  function attachSidebarSplitterFeedback() {
+    const splitter = document.getElementById('bento-shell-splitter');
+    const shell = document.getElementById('browser');
+    const host = document.getElementById('bento-shell-host');
+    if (!splitter || !shell || !host || splitter.dataset.bentoFeedbackAttached === '1') return;
+    splitter.dataset.bentoFeedbackAttached = '1';
+
+    let affordance = document.getElementById('bento-shell-splitter-affordance');
+    if (!affordance) {
+      affordance = document.createElementNS(HTML_NS, 'div');
+      affordance.id = 'bento-shell-splitter-affordance';
+      shell.appendChild(affordance);
+    }
+
+    const getContentEdge = () => {
+      const splitMain = document.querySelector(
+        '#tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]',
+      );
+      const main = splitMain || document.querySelector('#tabbrowser-tabbox[data-bento-main-panel]');
+      const strip = document.getElementById('bento-strip-container');
+      return (main || strip)?.getBoundingClientRect().left ?? host.getBoundingClientRect().right;
+    };
+
+    const updateAffordancePosition = () => {
+      const shellRect = shell.getBoundingClientRect();
+      const hostRect = host.getBoundingClientRect();
+      const contentLeft = getContentEdge();
+      const center = hostRect.right + Math.max(0, contentLeft - hostRect.right) / 2;
+      affordance.style.left = Math.round(center - shellRect.left - 7) + 'px';
+    };
+
+    const clearDragging = () => {
+      affordance.classList.remove('bento-shell-splitter--dragging');
+      document.documentElement.style.removeProperty('cursor');
+    };
+
+    affordance.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startWidth = host.getBoundingClientRect().width;
+      const style = getComputedStyle(host);
+      const min = parseFloat(style.minWidth) || 0;
+      const max = parseFloat(style.maxWidth) || Number.POSITIVE_INFINITY;
+
+      affordance.classList.add('bento-shell-splitter--dragging');
+      document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
+
+      const onMove = (moveEvent) => {
+        const next = Math.max(min, Math.min(max, startWidth + moveEvent.clientX - startX));
+        host.style.width = next + 'px';
+        host.setAttribute('width', String(Math.round(next)));
+        updateAffordancePosition();
+      };
+
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove, true);
+        window.removeEventListener('mouseup', onUp, true);
+        clearDragging();
+      };
+
+      window.addEventListener('mousemove', onMove, true);
+      window.addEventListener('mouseup', onUp, true);
+      window.addEventListener('blur', onUp, { once: true });
+    });
+
+    updateAffordancePosition();
+    window.addEventListener('resize', updateAffordancePosition);
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(updateAffordancePosition);
+      ro.observe(host);
+      const strip = document.getElementById('bento-strip-container');
+      if (strip) ro.observe(strip);
+    }
+  }
+
   // Type the value into the panel browser's URI fixup machinery and
   // navigate. Mirrors what the chrome URL bar does on Enter, but routed
   // to a specific <browser> rather than gBrowser.selectedBrowser.
@@ -3189,6 +3301,7 @@
     if (!host) return false;
     const hostRect = host.getBoundingClientRect();
     const panelRect = panelEl.getBoundingClientRect();
+    if (panelRect.width <= 1 || panelRect.height <= 1) return false;
     return panelRect.left >= hostRect.left - 1 && panelRect.right <= hostRect.right + 1;
   }
 
@@ -3198,7 +3311,6 @@
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
     const panelRect = panelEl.getBoundingClientRect();
-    if (isPanelFullyVisible(panelEl)) return;
     // Explicit open targets should land as complete panels. Aligning
     // the left edge is more reliable than a minimal right-edge nudge
     // while the trailer width, panel width, and smooth scroll settle.
@@ -3214,6 +3326,17 @@
     const tryScroll = () => {
       const panelEl = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
       if (panelEl) {
+        const rect = panelEl.getBoundingClientRect();
+        const host = getStripScrollTarget();
+        const layoutReady =
+          host &&
+          rect.width > 1 &&
+          rect.height > 1 &&
+          host.scrollWidth > host.clientWidth + 1;
+        if (!layoutReady && Date.now() - started <= DEADLINE_MS) {
+          setTimeout(tryScroll, POLL_MS);
+          return;
+        }
         if (options.reveal === 'full') {
           scrollPanelFullyIntoView(panelEl);
           if (!isPanelFullyVisible(panelEl) && Date.now() - started <= DEADLINE_MS) {
@@ -6627,7 +6750,7 @@
       // navigator / main content all swap instantly while only the
       // React sidebar slides — the asymmetric motion reads as a
       // visual glitch even though each individual swap is correct.
-      performWorkspaceSwitchFade(panels);
+      performWorkspaceSwitchFade(panels, { scrollToPanelTabId });
     } else {
       reconcilePanels(panels, { scrollToPanelTabId });
       applyPendingStripScrollRestore();
@@ -6744,7 +6867,8 @@
   function prefersReducedWorkspaceMotion() {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   }
-  function performWorkspaceSwitchFade(panels) {
+  function performWorkspaceSwitchFade(panels, options = {}) {
+    const hasExplicitScrollTarget = Number.isInteger(options.scrollToPanelTabId);
     const stripContainer = document.getElementById('bento-strip-container');
     const tp = window.gBrowser?.tabpanels;
     if (__workspaceSwitchTimer) clearTimeout(__workspaceSwitchTimer);
@@ -6783,8 +6907,10 @@
       __workspaceSwitchSwapping = true;
       try {
         try {
-          reconcilePanels(panels);
-          cancelStripScrollMotion();
+          reconcilePanels(panels, options);
+          if (!hasExplicitScrollTarget) {
+            cancelStripScrollMotion();
+          }
         } catch (err) {
           console.warn('[bento-shell-mount] workspace-switch reconcile threw:', err);
         }
@@ -6794,7 +6920,7 @@
         // instant — no smooth animation — so the user can't see
         // the strip moving. Happens under the opacity-0 curtain
         // because the class-removal rAF hasn't fired yet.
-        if (__pendingStripScrollRestore !== null) {
+        if (!hasExplicitScrollTarget && __pendingStripScrollRestore !== null) {
           try {
             const target = __pendingStripScrollRestore;
             __pendingStripScrollRestore = null;
@@ -6898,6 +7024,8 @@
     // when the rail is at its minimum width.
     const splitter = document.getElementById('bento-shell-splitter');
     if (splitter) splitter.classList.toggle('bento-sidebar-collapsed', collapsed);
+    const affordance = document.getElementById('bento-shell-splitter-affordance');
+    if (affordance) affordance.classList.toggle('bento-sidebar-collapsed', collapsed);
   }
 
   // One-shot flag set by handlePanelsTitle when the workspace changed.
@@ -7463,6 +7591,7 @@
     configureSidePanelStrip();
     unifyMainWithStrip();
     setupPanelNavigator();
+    attachSidebarSplitterFeedback();
     // Initial reconcile with no side panels — primes the strip into
     // a clean baseline state so the first panels/sync from bento-tools
     // can replace it with the real panel list. refreshPanelNav inside
