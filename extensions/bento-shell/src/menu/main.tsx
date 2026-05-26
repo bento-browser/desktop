@@ -80,6 +80,17 @@ function MenuApp() {
     };
   }, []);
 
+  useEffect(() => {
+    const preventNativeContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener('contextmenu', preventNativeContextMenu, true);
+    return () => {
+      document.removeEventListener('contextmenu', preventNativeContextMenu, true);
+    };
+  }, []);
+
   if (!payload) return null;
 
   return (

@@ -1,10 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
-import { Menu } from '@tale-ui/react/menu';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
 import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
@@ -19,6 +18,7 @@ import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
+import { useWorkspacesStore } from './state/workspaces';
 import type { ColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
@@ -52,14 +52,23 @@ function openCommandPalette() {
   document.title = newTitle;
 }
 
+interface SidebarMenuItem {
+  id: string;
+  label?: string;
+  items?: SidebarMenuItem[];
+  kind?: 'separator';
+  isDisabled?: boolean;
+}
+
+function encodeSidebarMenuPayload(payload: object): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
 export function App() {
   const ready = useToolsReady();
   const tabsById = useTabsStore((s) => s.byId);
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    tabId: number | null;
-  } | null>(null);
+  const workspacesById = useWorkspacesStore((s) => s.byId);
+  const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
   // Per-workspace theme. Mirrors the active workspace's themeId onto
   // <html data-bento-theme="..."> so the scoped theme rules in
   // theme/presets/<id>.css apply to the shell. The sidebar is also
@@ -109,33 +118,48 @@ export function App() {
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
-  const closeContextMenu = () => setContextMenu(null);
-  const showContextMenu = (x: number, y: number, tabId: number | null = null) => {
-    setContextMenu({ x, y, tabId });
+  const openSidebarContextMenu = (event: React.MouseEvent, tabId: number | null) => {
+    event.preventDefault();
+    const items: SidebarMenuItem[] = [{ id: 'new-tab', label: 'New tab' }];
+    const tab = tabId !== null ? tabsById[tabId] : null;
+    if (tabId !== null) {
+      const workspaceItems = workspaceIds.map((workspaceId) => {
+        const workspace = workspacesById[workspaceId];
+        return {
+          id: `move-to-workspace:${workspaceId}`,
+          label: workspace?.name ?? 'Untitled workspace',
+          isDisabled: tab?.workspaceId === workspaceId,
+        };
+      });
+      items.push(
+        { id: 'sep-tab-actions', kind: 'separator' },
+        { id: 'reload-tab', label: 'Reload tab' },
+        { id: 'toggle-pin', label: tab?.pinned ? 'Unpin tab' : 'Pin tab' },
+        { id: 'open-in-side-panel', label: 'Open in side panel' },
+      );
+      if (workspaceItems.length > 0) {
+        items.push({
+          id: 'move-to-workspace',
+          label: 'Move to workspace',
+          items: workspaceItems,
+        });
+      }
+      items.push(
+        { id: 'sep-close-tab', kind: 'separator' },
+        { id: 'close-tab', label: 'Close tab' },
+      );
+    }
+    document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+      anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
+      tabId,
+      items,
+    })}`;
   };
   const onRootContextMenu = (event: React.MouseEvent) => {
-    event.preventDefault();
-    showContextMenu(event.clientX, event.clientY, null);
+    openSidebarContextMenu(event, null);
   };
   const onTabContextMenu = (id: number, event: React.MouseEvent<HTMLDivElement>) => {
-    showContextMenu(event.clientX, event.clientY, id);
-  };
-  const runContextMenuAction = (key: React.Key) => {
-    const action = String(key);
-    const targetId = contextMenu?.tabId ?? null;
-    closeContextMenu();
-
-    if (action === 'new-tab') {
-      dispatch({ type: 'tab/create' });
-    } else if (targetId !== null && action === 'reload-tab') {
-      dispatch({ type: 'tab/reload', id: targetId });
-    } else if (targetId !== null && action === 'toggle-pin') {
-      dispatch({ type: 'tab/togglePin', id: targetId });
-    } else if (targetId !== null && action === 'open-in-side-panel') {
-      dispatch({ type: 'panel/add', id: targetId });
-    } else if (targetId !== null && action === 'close-tab') {
-      dispatch({ type: 'tab/close', id: targetId });
-    }
+    openSidebarContextMenu(event, id);
   };
   const onReorder = (id: number, anchorId: number, before: boolean) => {
     // Title-IPC to chrome rather than browser.tabs.move via bento-tools.
@@ -283,65 +307,6 @@ export function App() {
           <Icon icon={Settings} />
         </IconButton>
       </Row>
-      {contextMenu ? (
-        <Menu.Root
-          size="sm"
-          isOpen={true}
-          onOpenChange={(open) => {
-            if (!open) closeContextMenu();
-          }}
-        >
-          <Menu.Trigger
-            aria-hidden
-            excludeFromTabOrder
-            style={{
-              position: 'fixed',
-              left: contextMenu.x,
-              top: contextMenu.y,
-              width: 1,
-              height: 1,
-              opacity: 0,
-              pointerEvents: 'none',
-              border: 0,
-              background: 'transparent',
-              padding: 0,
-              margin: 0,
-            }}
-          />
-          <Menu.Popover placement="bottom start" offset={4}>
-            <Menu.MenuList
-              className="tale-menu__popup--sm"
-              aria-label="Sidebar actions"
-              onAction={runContextMenuAction}
-            >
-              <Menu.Item id="new-tab" textValue="New tab">
-                New tab
-              </Menu.Item>
-              {contextMenu.tabId !== null ? (
-                <>
-                  <Menu.Separator />
-                  <Menu.Item id="reload-tab" textValue="Reload tab">
-                    Reload tab
-                  </Menu.Item>
-                  <Menu.Item
-                    id="toggle-pin"
-                    textValue={tabsById[contextMenu.tabId]?.pinned ? 'Unpin tab' : 'Pin tab'}
-                  >
-                    {tabsById[contextMenu.tabId]?.pinned ? 'Unpin tab' : 'Pin tab'}
-                  </Menu.Item>
-                  <Menu.Item id="open-in-side-panel" textValue="Open in side panel">
-                    Open in side panel
-                  </Menu.Item>
-                  <Menu.Separator />
-                  <Menu.Item id="close-tab" textValue="Close tab">
-                    Close tab
-                  </Menu.Item>
-                </>
-              ) : null}
-            </Menu.MenuList>
-          </Menu.Popover>
-        </Menu.Root>
-      ) : null}
     </Column>
   );
 }

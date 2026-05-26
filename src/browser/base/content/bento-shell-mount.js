@@ -1878,6 +1878,10 @@
   // strip always returns to the main slot — see
   // handleScrollToMainTitle for the rationale.
   const SCROLL_TO_MAIN_PREFIX = 'BENTO_SCROLL_TO_MAIN_';
+  // Sidebar context menu request. The sidebar cannot render menus
+  // outside its own remote <browser> bounds, so it sends a serialized
+  // menu request here and chrome renders it in #bento-menu-host.
+  const SIDEBAR_CONTEXT_MENU_PREFIX = 'BENTO_SIDEBAR_CONTEXT_MENU:';
   // Sidebar-driven scroll-into-view + focus signal for a specific
   // panel. Fired by the PinnedPanels row click after the workspace
   // activation dispatches. Format: BENTO_FOCUS_PANEL:<ts>:<tabId>.
@@ -6136,7 +6140,62 @@
   // brings main back into view.
   function handleScrollToMainTitle() {
     const mainEl = getOrderedPanels()[0];
-    if (mainEl) scrollPanelToLeftmost(mainEl);
+    if (!mainEl) return;
+    scrollPanelToLeftmost(mainEl);
+    currentActiveIdx = 0;
+    applyActiveMarker(0);
+    applyFocusedPanelIndicator(mainEl);
+  }
+
+  function handleSidebarContextMenuTitle(rawTitle) {
+    // Format: BENTO_SIDEBAR_CONTEXT_MENU:<ts>:<base64-json>
+    const tail = rawTitle.slice(SIDEBAR_CONTEXT_MENU_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return;
+    let payload;
+    try {
+      payload = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar menu payload parse failed:', err);
+      return;
+    }
+    if (!payload || !payload.anchor || !Array.isArray(payload.items)) return;
+    const shellFrame = document.getElementById('bento-shell-frame');
+    if (!shellFrame) return;
+    const shellRect = shellFrame.getBoundingClientRect();
+    const anchor = {
+      left: shellRect.left + Number(payload.anchor.left || 0),
+      top: shellRect.top + Number(payload.anchor.top || 0),
+      width: Number(payload.anchor.width || 1),
+      height: Number(payload.anchor.height || 1),
+    };
+    const tabId = Number(payload.tabId);
+    showChromeMenu({
+      anchor,
+      items: payload.items,
+      onSelect: (itemId) => {
+        if (itemId === 'new-tab') {
+          dispatchShellAction({ type: 'tab/create' });
+          return;
+        }
+        if (!Number.isFinite(tabId)) return;
+        if (itemId === 'reload-tab') {
+          dispatchShellAction({ type: 'tab/reload', id: tabId });
+        } else if (itemId === 'toggle-pin') {
+          dispatchShellAction({ type: 'tab/togglePin', id: tabId });
+        } else if (itemId === 'open-in-side-panel') {
+          dispatchShellAction({ type: 'panel/add', id: tabId });
+        } else if (itemId === 'close-tab') {
+          dispatchShellAction({ type: 'tab/close', id: tabId });
+        } else if (typeof itemId === 'string' && itemId.startsWith('move-to-workspace:')) {
+          dispatchShellAction({
+            type: 'tab/assignWorkspace',
+            id: tabId,
+            workspaceId: itemId.slice('move-to-workspace:'.length),
+          });
+        }
+      },
+    });
   }
 
   // Sidebar-driven panel focus signal. Fired by the PinnedPanels row
@@ -7579,6 +7638,9 @@
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
           else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
           else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
+          else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
+            handleSidebarContextMenuTitle(title);
+          }
           else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);
           else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
           else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
