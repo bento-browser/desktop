@@ -171,9 +171,9 @@
       /* Inline sidebar: no padding around the frame, no rounded
          corners on the frame. Edges flush with the window so the
          sidebar reads as part of the chrome rather than a floating
-         card. Keep it in normal paint order; a higher z-index masks
-         real panel content at the sidebar/strip boundary while the
-         separate shadow proxy can still bleed through. */
+         card. Keep it in normal paint order so real panel content and
+         direct panel shadows clip together at the sidebar/strip
+         boundary. */
       #bento-shell-host {
         padding: 0;
         position: relative;
@@ -247,20 +247,15 @@
         visibility: hidden;
       }
 
-      /* Bento panel rounded corners. overflow:clip so each remote
-         <browser>'s rendered content (and the panel header sitting
-         above it) are visually clipped to the rounded shape.
+      /* Bento panel rounded corners. The real panel frame owns outer
+         shadow/radius; clipping belongs to the inner browser surfaces
+         so direct box-shadows are not cut off by the panel itself.
          - .browserContainer = the per-tab content area inside the main
            tab panel (one per browser tab in tabbrowser-tabbox).
          - [data-bento-panel-tab-id] = each side-panel vbox in the strip.
          - [data-bento-main-panel] = #tabbrowser-tabbox after we move
-           it into the strip — gets the same rounded-corner / clip
-           treatment so it visually matches the side panels.
-         The strip itself uses overflow-x:auto for horizontal scrolling
-         so we can't put overflow:clip on the strip. */
-      .browserContainer,
-      #bento-side-panel-host > [data-bento-panel-tab-id],
-      #bento-side-panel-host > [data-bento-main-panel] {
+           it into the strip. */
+      .browserContainer {
         border-radius: var(--radius-m);
         overflow: clip;
       }
@@ -269,11 +264,10 @@
          #tabbrowser-tabbox in, the strip IS the entire content area
          right of the sidebar — main panel + side panels + Add-panel
          trailer in one horizontal scroll context. The container itself
-         carries the sidebar-to-main gap so the scroll host does not
-         create an internal padding area where only shadow proxies can
-         paint. Inline-end and block-end padding on the scroll host
-         reserve the same rhythm at the trailer/window edge and below
-         the panels. */
+         carries the sidebar-to-main gap. In split-view mode the real
+         scrollport is #tabbrowser-tabpanels, which owns its own
+         internal padding so panel content and direct shadows clip
+         together at the scrollport edge. */
       /* The strip is wrapped in a vbox container by setupPanelNavigator
          so we can place the navigator bar immediately below it. The
          strip itself is still horizontally scrollable but the native
@@ -284,17 +278,15 @@
         flex-direction: column;
         flex: 1 1 0%;
         min-width: 0;
-        /* position: relative so per-panel .bento-panel-shadow proxy
-           elements (children of this container — see syncPanelShadows)
-           anchor to the strip-container's coordinate system. They
-           live HERE, not inside #bento-side-panel-host, because the
-           host has overflow-x:scroll which forces overflow-y:auto and
-           clips shadow extension downward into the scrollbar / nav
-           rows. The container has no overflow, so shadow can extend
-           past the host into the lower area.
-           Keep overflow visible so panel shadows can extend below the
-           host into the scrollbar / nav rows. Horizontal shadow bleed
-           is clipped in JS to match the scrollport's visible edges. */
+        --bento-panel-nav-height: calc(
+          var(--bento-control-size-sm) + var(--space-2xs) + var(--space-2xs)
+        );
+        --bento-strip-scrollbar-row-height: calc(
+          var(--bento-scrollbar-thickness) + var(--space-3xs)
+        );
+        --bento-strip-controls-height: calc(
+          var(--bento-panel-nav-height) + var(--bento-strip-scrollbar-row-height)
+        );
         position: relative;
         z-index: 1;
         overflow: visible;
@@ -355,12 +347,8 @@
         display: flex;
         flex-direction: row;
         align-items: stretch;
-        overflow-x: scroll;
-        overflow-y: hidden;
+        overflow: visible;
         border-radius: var(--radius-m);
-        clip-path: inset(0 0 var(--space-2xs) 0 round var(--radius-m));
-        padding-block-end: var(--space-2xs);
-        padding-right: var(--space-2xs);
         gap: 0;
         flex: 1 1 auto;
         min-height: 0;
@@ -392,15 +380,18 @@
          drawn from neutral tokens; thumb uses the workspace accent
          while being dragged so the user knows it's active. */
       #bento-strip-scrollbar {
-        flex: 0 0 auto;
+        position: absolute;
+        left: var(--space-2xs);
+        right: var(--space-2xs);
+        bottom: calc(var(--bento-panel-nav-height) + var(--space-3xs));
+        z-index: 20;
         height: var(--bento-scrollbar-thickness);
-        margin: 0 var(--space-2xs) var(--space-3xs);
-        position: relative;
+        margin: 0;
         /* No track bg — the scrollbar sits in the row below the
-           panels where .bento-panel-shadow proxies extend their
-           drop shadow downward. An opaque track here would cover
-           that shadow extension. The thumb has its own bg, so the
-           scrollbar remains usable as a floating-thumb scrollbar. */
+           panels where direct panel shadows can extend into the
+           scrollport's internal clearance. The thumb has its own bg,
+           so the scrollbar remains usable as a floating-thumb
+           scrollbar. */
         border-radius: var(--bento-scrollbar-radius);
         cursor: pointer;
       }
@@ -429,12 +420,18 @@
          Active item (whichever panel is currently leftmost in the
          strip) gets the accent border + tinted background. */
       #bento-panel-nav {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: var(--space-2xs);
         padding: var(--space-2xs);
-        flex: 0 0 auto;
+        box-sizing: border-box;
+        min-height: var(--bento-panel-nav-height);
       }
       .bento-panel-nav__btn {
         display: inline-flex;
@@ -704,9 +701,9 @@
           margin 180ms var(--bento-easing-standard);
       }
 
-      /* Panel containers are positioned for drag/focus bookkeeping, but
-         do not paint their own frame. The splitters and optional shadow
-         proxies provide separation without outlining every slot. */
+      /* Legacy host-owned panel containers are positioned for
+         drag/focus bookkeeping. Native split-view panels get their
+         direct frame/shadow rules under #tabbrowser-tabpanels below. */
       #bento-side-panel-host > [data-bento-main-panel],
       #bento-side-panel-host > [data-bento-panel-tab-id] {
         position: relative;
@@ -912,16 +909,19 @@
            with higher specificity than our previous margin attempt,
            so flex gap (which the spec explicitly says doesn't
            collide with margin) is the cleaner override.
-           No tabpanels padding-inline-start: the parent strip host owns
-           the sidebar-to-main gap. Panel shadows are rendered by
-           .bento-panel-shadow proxies in #bento-strip-container, so the
-           deck itself does not need extra shadow clearance. */
+           Padding belongs to the real scrollport so panel content and
+           direct shadows clip together at the left/right edges. */
         display: flex;
         flex-direction: row;
         align-items: stretch;
         gap: var(--space-2xs);
+        padding-block-start: var(--space-2xs);
+        padding-block-end: calc(var(--bento-strip-controls-height) + var(--space-2xs));
+        padding-inline-start: var(--space-2xs);
+        padding-inline-end: var(--space-2xs);
         overflow-x: scroll;
         overflow-y: hidden;
+        box-sizing: border-box;
         /* Hide tabpanels' native horizontal scrollbar — the custom
            always-visible #bento-strip-scrollbar in the sidebar drives
            tabpanels.scrollLeft and is positioned next to the favicon
@@ -945,42 +945,22 @@
            the specificity tie on source order otherwise. */
         margin: 0 !important;
       }
-      /* Panels/main slot do not paint a border. The optional outer
-         shadow comes from .bento-panel-shadow proxies (siblings of
-         host inside strip-container — see below). Box-shadow on the
-         panel itself is clipped by tabpanels' overflow box at the
-         panel's bottom edge; the proxy escapes that clip. */
+      /* The real split-view panels are the visual frames. Shadows live
+         on the same elements as content, so both clip together at the
+         horizontal scrollport edge. */
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
         border-radius: var(--radius-m);
+        background-color: var(--neutral-5);
+        box-shadow: var(--shadow-l);
         box-sizing: border-box;
         border: 0;
+        overflow: visible;
+        position: relative;
       }
-      /* Outer shadow for each panel. Lives in #bento-strip-container
-         (not inside the host) so the shadow can extend below the
-         host into the scrollbar + favicon-nav area without being
-         clipped by the host's overflow-x:scroll (which forces
-         overflow-y:auto, clipping both axes). Inserted as the FIRST
-         child of strip-container so document-order paint puts proxies
-         BEFORE the host: host then paints over the proxy's interior,
-         leaving only shadow extension visible past panel edges. The
-         host's bg is transparent, as are tabpanels and the gap
-         between panels — so shadow visible through to proxy beneath
-         in inter-panel gaps. Below the host, scrollbar + nav are
-         mostly transparent (scrollbar has narrow opaque track but
-         margin around it lets shadow show through). Position +
-         size synced from JS by syncPanelShadows() (called from
-         syncInterPanelSplitters — same trigger conditions). */
-      #bento-strip-container > .bento-panel-shadow {
-        position: absolute;
-        pointer-events: none;
-        background-color: transparent;
-        border-radius: var(--radius-m);
-        box-shadow: var(--shadow-l);
-        transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      #bento-strip-container.bento-panel-shadows-disabled > .bento-panel-shadow {
-        display: none;
+      #tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-main-panel],
+      #tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-panel-tab-id] {
+        box-shadow: none;
       }
       /* The browser fills whatever vertical space the header doesn't. */
       #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
@@ -989,6 +969,12 @@
         flex: 1 1 auto;
         min-height: 0;
       }
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > browser,
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > .browserContainer,
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > .browserStack {
+        border-radius: var(--radius-m);
+        overflow: clip;
+      }
       /* Side-panel content sits directly under the injected panel header.
          Keep the content's bottom corners rounded, but square off the
          top corners so it joins flush to the header's square bottom
@@ -996,13 +982,17 @@
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > browser,
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserContainer,
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserStack {
+        border-end-start-radius: var(--radius-m);
+        border-end-end-radius: var(--radius-m);
         border-start-start-radius: 0 !important;
         border-start-end-radius: 0 !important;
+        overflow: clip;
       }
       /* Injected per-panel header — sits above the browser, takes its
          natural height, doesn't flex. */
       .bento-panel-header[data-bento-injected="1"] {
         flex: 0 0 auto;
+        border-radius: var(--radius-m) var(--radius-m) 0 0;
       }
 
       /* ─── Add-panel trailer ────────────────────────────────────────
@@ -2711,139 +2701,6 @@
     });
   }
 
-  // Shadow proxies — sibling-of-tabpanels divs that mirror each
-  // panel's bounding rect and render the actual outer box-shadow.
-  // Lives outside tabpanels so the shadow extent isn't clipped by
-  // tabpanels' overflow context (overflow-x:scroll → CSS spec
-  // promotes overflow-y to auto regardless of what we set, which
-  // clips outer shadows top + bottom).
-  // Visibility gate: only updates shadows for panels that intersect
-  // (or are within a one-panel-width margin of) tabpanels' viewport.
-  // Offscreen shadow updates are skipped to keep the per-frame cost
-  // bounded even with many panels — only the 3-5 visible panels at
-  // any moment get their shadow position synced.
-  function removePanelShadows(container) {
-    for (const sh of container.querySelectorAll(':scope > .bento-panel-shadow')) sh.remove();
-  }
-
-  function ensurePanelShadowCount(container, desired) {
-    const existing = Array.from(container.querySelectorAll(':scope > .bento-panel-shadow'));
-    for (let i = existing.length; i > desired; i--) existing[i - 1].remove();
-    for (let i = existing.length; i < desired; i++) {
-      const sh = document.createElementNS(HTML_NS, 'div');
-      sh.className = 'bento-panel-shadow';
-      // Insert as FIRST child so document-order paint puts the
-      // proxy BEFORE the host (and the scrollbar / nav). Host then
-      // paints over the proxy's interior; shadow extension past
-      // panel edges remains visible through host's transparent gap
-      // areas and below the host into the scrollbar / nav rows.
-      container.insertBefore(sh, container.firstChild);
-      existing.unshift(sh);
-    }
-    return existing;
-  }
-
-  function syncPanelShadowRect(sh, panelRect, containerRect, visibleRect) {
-    const shadowBleed = 64;
-    const leftClip = Math.max(-shadowBleed, visibleRect.left - panelRect.left);
-    const rightClip = Math.max(-shadowBleed, panelRect.right - visibleRect.right);
-
-    sh.style.top = panelRect.top - containerRect.top + 'px';
-    sh.style.left = panelRect.left - containerRect.left + 'px';
-    sh.style.width = panelRect.width + 'px';
-    sh.style.height = panelRect.height + 'px';
-    // The real browser surface is clipped by the horizontal scrollport.
-    // Match that clip horizontally so a partially scrolled panel cannot
-    // leave a shadow-only sliver under the sidebar/window edge.
-    sh.style.clipPath =
-      'inset(-' +
-      shadowBleed +
-      'px ' +
-      rightClip +
-      'px -' +
-      shadowBleed +
-      'px ' +
-      leftClip +
-      'px round var(--radius-m))';
-  }
-
-  function syncMainOnlyPanelShadow(container) {
-    const host = document.getElementById('bento-side-panel-host');
-    const main = document.getElementById('tabbrowser-tabbox');
-    if (!host || !main) {
-      removePanelShadows(container);
-      return;
-    }
-    const shadows = ensurePanelShadowCount(container, 1);
-    const sh = shadows[0];
-    const containerRect = container.getBoundingClientRect();
-    const hostRect = host.getBoundingClientRect();
-    const mainRect = main.getBoundingClientRect();
-    if (!mainRect.width || !mainRect.height) {
-      removePanelShadows(container);
-      return;
-    }
-    syncPanelShadowRect(sh, mainRect, containerRect, hostRect);
-  }
-
-  function syncPanelShadows(panelIds) {
-    const container = document.getElementById('bento-strip-container');
-    const host = document.getElementById('bento-side-panel-host');
-    if (!container || !host || !window.gBrowser?.tabpanels) return;
-    const tabpanels = window.gBrowser.tabpanels;
-    if (!currentPanelShadowsEnabled) {
-      removePanelShadows(container);
-      return;
-    }
-    if (container.classList.contains('bento-no-side-panels')) {
-      syncMainOnlyPanelShadow(container);
-      return;
-    }
-    // Tear-down: split-view inactive → remove all shadows.
-    if (!tabpanels.classList.contains('bento-split-active') || !panelIds.length) {
-      removePanelShadows(container);
-      return;
-    }
-    const desired = panelIds.length;
-    const existing = ensurePanelShadowCount(container, desired);
-    const containerRect = container.getBoundingClientRect();
-    const hostRect = host.getBoundingClientRect();
-    // Visibility cull: skip shadow updates for panels whose rect
-    // doesn't overlap the visible container area (with one-panel-
-    // width margin so shadows are ready when scrolled into view).
-    const cullMargin = 800;
-    const visLeft = containerRect.left - cullMargin;
-    const visRight = containerRect.right + cullMargin;
-    for (let i = 0; i < desired; i++) {
-      const sh = existing[i];
-      const panelEl = document.getElementById(panelIds[i]);
-      if (!panelEl) {
-        sh.style.display = 'none';
-        continue;
-      }
-      const pr = panelEl.getBoundingClientRect();
-      if (pr.right < visLeft || pr.left > visRight) {
-        sh.style.display = 'none';
-        continue;
-      }
-      sh.style.display = '';
-      if (panelEl.dataset.bentoMainPanel === '1') {
-        // The main slot is slot 0, so horizontal scrolling can move its
-        // real browser surface under the strip scrollport's left clip.
-        // Fade its proxy out over the first few chrome-gap widths instead
-        // of snapping it off as soon as it crosses the boundary.
-        const hostStyles = getComputedStyle(host);
-        const chromeGap = parseFloat(hostStyles.paddingRight) || 1;
-        const fadeDistance = Math.max(1, 4 * chromeGap);
-        const hiddenDistance = Math.max(0, hostRect.left - pr.left);
-        sh.style.opacity = String(Math.max(0, Math.min(1, 1 - hiddenDistance / fadeDistance)));
-      } else {
-        sh.style.opacity = '';
-      }
-      syncPanelShadowRect(sh, pr, containerRect, hostRect);
-    }
-  }
-
   function syncInterPanelSplitters(tabsToRender) {
     const host = document.getElementById('bento-side-panel-host');
     if (!host || !window.gBrowser?.tabpanels) return;
@@ -2854,12 +2711,6 @@
     } else {
       panelIds = (tabpanels.splitViewPanels || []).slice();
     }
-
-    // Sync the per-panel shadow proxies. Same trigger conditions as
-    // splitters (reconcile, drag, scroll, resize) — the proxies need
-    // to track panel rects in lockstep, so piggy-back here rather
-    // than re-installing the same listeners.
-    syncPanelShadows(panelIds);
 
     // Splitter count: N-1 between adjacent panel pairs, plus 1 more
     // between the last panel and the Add-panel trailer (when the
@@ -4949,7 +4800,6 @@
     __reconciledForWorkspace = currentWorkspaceId;
     __lastMainPanelId = window.gBrowser?.selectedTab?.linkedPanel ?? null;
     updateStripScrollbar();
-    syncPanelShadows([]);
   }
 
   // ─── Native split-view panel rendering ──────────────────────────────
@@ -7075,10 +6925,6 @@
   // trailer back to the main panel (and vice versa). Default false:
   // cycling clamps at the endpoints.
   let currentPanelCycleWraparound = false;
-  // BentoSettings.panelShadowsEnabled mirrored via BENTO_PANELS. When
-  // false, the shadow proxy elements are removed and no new ones are
-  // created during splitter/scroll/resize sync. Default true.
-  let currentPanelShadowsEnabled = true;
   // Pinned-panel tabIds for THIS WINDOW's active workspace, mirrored
   // from BENTO_PANELS payload's `pinnedTabIdsInWorkspace` field. The
   // kebab menu reads this to pick the Pin/Unpin label without having
@@ -7094,19 +6940,7 @@
   let currentSavedPanelCount = 0;
 
   function applyChromePanelShadowsEnabled(enabled) {
-    currentPanelShadowsEnabled = enabled;
-    const container = document.getElementById('bento-strip-container');
-    if (!container) return;
-    container.classList.toggle('bento-panel-shadows-disabled', !enabled);
-    if (!enabled) {
-      removePanelShadows(container);
-      return;
-    }
-    try {
-      syncPanelShadows((window.gBrowser?.tabpanels?.splitViewPanels || []).slice());
-    } catch (err) {
-      console.warn('[bento-shell-mount] panel shadow enable sync failed:', err);
-    }
+    window.gBrowser?.tabpanels?.classList.toggle('bento-panel-shadows-disabled', !enabled);
   }
 
   function attachPaletteCloseListener() {
