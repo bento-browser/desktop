@@ -61,8 +61,8 @@
   }
 
   .bento-panel-trailer__favicon {
-    width: 16px;
-    height: 16px;
+    width: var(--bento-control-size-sm);
+    height: var(--bento-control-size-sm);
     border-radius: var(--radius-2xs);
     object-fit: cover;
     /* Bookmarks for never-visited URLs render Firefox's default-favicon

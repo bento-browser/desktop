@@ -306,8 +306,10 @@
         flex-direction: column;
         flex: 1 1 0%;
         min-width: 0;
+        --bento-panel-nav-button-size: var(--space-l);
+        --bento-panel-nav-favicon-size: var(--bento-control-size-sm);
         --bento-panel-nav-height: calc(
-          var(--bento-control-size-sm) + var(--space-xs) + var(--space-xs)
+          var(--bento-panel-nav-button-size) + var(--space-xs)
         );
         --bento-strip-scrollbar-row-height: calc(
           var(--bento-scrollbar-thickness) + var(--space-4xs)
@@ -465,7 +467,7 @@
         align-items: center;
         justify-content: center;
         gap: var(--space-2xs);
-        padding: var(--space-xs);
+        padding: 0 0 var(--space-xs) 0;
         box-sizing: border-box;
         min-height: var(--bento-panel-nav-height);
       }
@@ -473,8 +475,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: var(--bento-control-size-sm);
-        height: var(--bento-control-size-sm);
+        width: var(--bento-panel-nav-button-size);
+        height: var(--bento-panel-nav-button-size);
         padding: 0;
         background: transparent;
         border: none;
@@ -491,8 +493,8 @@
         color: var(--neutral-90);
       }
       .bento-panel-nav__btn > svg {
-        width: var(--bento-icon-size-xs);
-        height: var(--bento-icon-size-xs);
+        width: var(--bento-icon-size-sm);
+        height: var(--bento-icon-size-sm);
         pointer-events: none;
       }
       .bento-panel-nav__list {
@@ -507,6 +509,8 @@
         align-items: center;
         gap: var(--space-3xs);
         overflow-x: auto;
+        padding-block-start: var(--space-4xs);
+        margin-block-start: calc(-1 * var(--space-4xs));
         scrollbar-width: none;
       }
       .bento-panel-nav__list::-webkit-scrollbar {
@@ -516,8 +520,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: var(--bento-control-size-sm);
-        height: var(--bento-control-size-sm);
+        width: var(--bento-panel-nav-button-size);
+        height: var(--bento-panel-nav-button-size);
         padding: var(--space-3xs);
         background: transparent;
         border: var(--bento-border-hairline) solid transparent;
@@ -549,7 +553,6 @@
       .bento-panel-nav__icon:hover {
         background-color: var(--neutral-16);
         border-color: var(--neutral-30);
-        transform: translateY(-1px);
       }
       .bento-panel-nav__icon--active {
         border-color: var(--color-60);
@@ -568,8 +571,8 @@
         opacity: 0;
       }
       .bento-panel-nav__icon > img {
-        width: var(--bento-icon-size-sm);
-        height: var(--bento-icon-size-sm);
+        width: var(--bento-panel-nav-favicon-size);
+        height: var(--bento-panel-nav-favicon-size);
         display: block;
         /* Make the favicon image pointer-transparent so pointerdown is
            always reported with the button as the target — keeps the
@@ -580,7 +583,11 @@
       .bento-panel-nav__icon--placeholder::before {
         content: '';
         position: absolute;
-        inset: var(--space-3xs);
+        inset-block-start: 50%;
+        inset-inline-start: 50%;
+        width: var(--bento-panel-nav-favicon-size);
+        height: var(--bento-panel-nav-favicon-size);
+        transform: translate(-50%, -50%);
         border-radius: 50%;
         background-color: var(--neutral-30);
       }
@@ -642,8 +649,8 @@
       .bento-panel-nav-menu {
         position: fixed;
         z-index: 100000;
-        min-width: 150px;
-        padding: var(--space-3xs);
+        min-width: max-content;
+        padding: var(--space-4xs);
         background-color: var(--neutral-5);
         border: var(--bento-border-hairline) solid var(--neutral-20);
         border-radius: var(--radius-s);
@@ -663,6 +670,13 @@
         font: inherit;
         font-size: var(--font-s);
         text-align: left;
+      }
+      .bento-panel-nav-menu__item:focus,
+      .bento-panel-nav-menu__item:focus-visible {
+        outline: none;
+      }
+      .bento-panel-nav-menu__item::-moz-focus-inner {
+        border: 0;
       }
       .bento-panel-nav-menu__item:hover {
         background-color: var(--neutral-10);
@@ -917,6 +931,51 @@
       .bento-panel-header-url::placeholder {
         color: var(--neutral-50);
       }
+      .bento-panel-loading-overlay {
+        position: absolute;
+        inset-block-start: var(--bento-panel-header-height);
+        inset-inline: 0;
+        inset-block-end: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--neutral-5);
+        border-end-start-radius: var(--radius-m);
+        border-end-end-radius: var(--radius-m);
+        color: var(--color-60);
+        pointer-events: none;
+        z-index: 9;
+      }
+      .bento-panel-loading-overlay[hidden] {
+        display: none !important;
+      }
+      .bento-panel-loading-overlay .tale-spinner {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        --_spinner-size: 3.6rem;
+      }
+      .bento-panel-loading-overlay .tale-spinner__svg {
+        width: var(--_spinner-size);
+        height: var(--_spinner-size);
+        animation: tale-spinner-rotate 1s linear infinite;
+      }
+      .bento-panel-loading-overlay .tale-spinner__track {
+        stroke: var(--neutral-20);
+      }
+      .bento-panel-loading-overlay .tale-spinner__arc {
+        stroke: var(--color-60);
+        stroke-dasharray: 44, 63;
+        animation: tale-spinner-dash 1.2s ease-in-out infinite;
+      }
+      @keyframes tale-spinner-rotate {
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes tale-spinner-dash {
+        0% { stroke-dasharray: 1, 63; stroke-dashoffset: 0; }
+        50% { stroke-dasharray: 44, 63; stroke-dashoffset: -16; }
+        100% { stroke-dasharray: 44, 63; stroke-dashoffset: -62; }
+      }
 
       /* ─── Native split-view panel layout ──────────────────────────────
          Activated when reconcilePanelsSplitView adds .bento-split-active
@@ -967,6 +1026,9 @@
       }
       #tabbrowser-tabpanels.bento-split-active::-webkit-scrollbar {
         display: none;
+      }
+      #tabbrowser-tabpanels.bento-split-active split-view-footer {
+        display: none !important;
       }
       #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active {
         flex-direction: column;
@@ -2478,6 +2540,129 @@
     return header;
   }
 
+  function createPanelLoadingOverlay() {
+    const overlay = document.createElementNS(HTML_NS, 'div');
+    overlay.className = 'bento-panel-loading-overlay';
+    overlay.hidden = true;
+
+    const spinner = document.createElementNS(HTML_NS, 'div');
+    spinner.className = 'tale-spinner tale-spinner--lg';
+    spinner.setAttribute('role', 'status');
+    spinner.setAttribute('aria-label', 'Loading');
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'tale-spinner__svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    track.setAttribute('class', 'tale-spinner__track');
+    track.setAttribute('cx', '12');
+    track.setAttribute('cy', '12');
+    track.setAttribute('r', '10');
+    track.setAttribute('stroke-width', '3');
+
+    const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    arc.setAttribute('class', 'tale-spinner__arc');
+    arc.setAttribute('cx', '12');
+    arc.setAttribute('cy', '12');
+    arc.setAttribute('r', '10');
+    arc.setAttribute('stroke-width', '3');
+    arc.setAttribute('stroke-linecap', 'round');
+
+    svg.appendChild(track);
+    svg.appendChild(arc);
+    spinner.appendChild(svg);
+    overlay.appendChild(spinner);
+    return overlay;
+  }
+
+  function isPanelBrowserLoading(browserEl) {
+    if (!browserEl) return false;
+    try {
+      if (browserEl.webProgress?.isLoadingDocument) return true;
+    } catch {
+      // Fall through to URI state.
+    }
+    try {
+      const spec = browserEl.currentURI?.spec ?? '';
+      return !spec || spec === 'about:blank';
+    } catch {
+      return true;
+    }
+  }
+
+  function ensurePanelLoadingOverlay(panelEl, browserEl) {
+    if (!panelEl || !browserEl) return;
+    let overlay = panelEl.querySelector(':scope > .bento-panel-loading-overlay');
+    if (!overlay) {
+      overlay = createPanelLoadingOverlay();
+      panelEl.appendChild(overlay);
+    }
+
+    const setVisible = (visible) => {
+      overlay.hidden = !visible;
+      overlay.toggleAttribute('data-bento-visible', visible);
+    };
+    const hideAfterPaint = () => {
+      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(false)));
+    };
+
+    if (panelEl.__bentoLoadingBrowser === browserEl) {
+      setVisible(isPanelBrowserLoading(browserEl));
+      return;
+    }
+    if (panelEl.__bentoLoadingBrowser && panelEl.__bentoLoadingListener) {
+      try {
+        panelEl.__bentoLoadingBrowser.removeProgressListener(panelEl.__bentoLoadingListener);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+
+    const listener = {
+      QueryInterface: ChromeUtils.generateQI([
+        'nsIWebProgressListener',
+        'nsISupportsWeakReference',
+      ]),
+      onStateChange(webProgress, request, stateFlags) {
+        if (webProgress && !webProgress.isTopLevel) return;
+        if (stateFlags & Ci.nsIWebProgressListener.STATE_START) {
+          setVisible(true);
+        }
+        if (stateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
+          hideAfterPaint();
+        }
+      },
+      onLocationChange() {
+        if (isPanelBrowserLoading(browserEl)) setVisible(true);
+        else hideAfterPaint();
+      },
+      onProgressChange() {},
+      onStatusChange() {},
+      onSecurityChange() {},
+      onContentBlockingEvent() {},
+    };
+
+    try {
+      browserEl.addProgressListener(
+        listener,
+        Ci.nsIWebProgress.NOTIFY_LOCATION | Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT,
+      );
+      panelEl.__bentoLoadingBrowser = browserEl;
+      panelEl.__bentoLoadingListener = listener;
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel loading listener attach failed:', err);
+    }
+
+    setVisible(isPanelBrowserLoading(browserEl));
+    setTimeout(() => {
+      if (!panelEl.isConnected || panelEl.__bentoLoadingBrowser !== browserEl) return;
+      setVisible(isPanelBrowserLoading(browserEl));
+    }, 100);
+  }
+
   // ─── Inter-panel splitter (drag to resize) ────────────────────────────
   //
   // Firefox's native split-view splitter only sits between col 0 and
@@ -2512,6 +2697,7 @@
   // their old and new slots. Cleared at the start of every
   // run so a stale snapshot can never leak across reconciles.
   let __bentoPendingFlip = null;
+  let __bentoPendingNavFlip = null;
 
   function createPanelSplitter() {
     // XUL <splitter> element — only XUL element type that XUL
@@ -2809,6 +2995,49 @@
         panelEl.addEventListener('transitionend', cleanup);
         // Belt-and-suspenders: if transitionend somehow misses,
         // wipe styles after the transition would have completed.
+        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+      }
+    });
+  }
+
+  function runPendingPanelNavFlip() {
+    if (!__bentoPendingNavFlip) return;
+    const snapshot = __bentoPendingNavFlip;
+    __bentoPendingNavFlip = null;
+    const list = document.querySelector('.bento-panel-nav__list');
+    if (!list) return;
+    const moved = [];
+    for (const btn of Array.from(list.children)) {
+      if (!btn.classList?.contains('bento-panel-nav__icon')) continue;
+      if (btn.dataset.bentoNavLeaving === '1') continue;
+      const key = btn.dataset.bentoNavKey;
+      if (!key) continue;
+      const oldRect = snapshot.get(key);
+      if (!oldRect) continue;
+      const newRect = btn.getBoundingClientRect();
+      const dx = oldRect.left - newRect.left;
+      if (Math.abs(dx) < 1) continue;
+      moved.push({ btn, dx });
+    }
+    if (moved.length === 0) return;
+    for (const { btn, dx } of moved) {
+      btn.style.transition = 'none';
+      btn.style.willChange = 'transform';
+      btn.style.transform = 'translateX(' + dx + 'px)';
+    }
+    void list.offsetWidth;
+    requestAnimationFrame(() => {
+      for (const { btn } of moved) {
+        btn.style.transition =
+          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        btn.style.transform = '';
+        const cleanup = (e) => {
+          if (e && e.propertyName !== 'transform') return;
+          btn.style.transition = '';
+          btn.style.willChange = '';
+          btn.removeEventListener('transitionend', cleanup);
+        };
+        btn.addEventListener('transitionend', cleanup);
         setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
       }
     });
@@ -3577,10 +3806,6 @@
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
     panelNavContextMenu = menu;
-
-    setTimeout(() => {
-      removeBtn.focus();
-    }, 0);
   }
 
   // Apply a preset width to a single side panel. Mirrors the inline
@@ -3767,8 +3992,9 @@
   // panel strip. The user said: "panels should reorder as soon as I let
   // go of the button for performance reasons" — so during the drag we
   // only paint visual state (source dim + drop indicator), and the actual
-  // panel/reorder action fires once on pointerup. The reorder snaps in
-  // when chrome receives the next panels/sync from tools.
+  // panel/reorder action fires once on pointerup. The reconciler then
+  // FLIP-animates both the real panels and the favicon buttons into
+  // their new slots.
   //
   // Pointer events + setPointerCapture so the drag survives the cursor
   // crossing into a panel's remote=true content browser (same constraint
@@ -3872,7 +4098,26 @@
         const changed =
           filtered.length !== currentIds.length ||
           filtered.some((id, i) => currentIds[i] !== id);
-        if (changed) dispatchShellAction({ type: 'panel/reorder', tabIds: filtered });
+        if (changed) {
+          const panelSnap = new Map();
+          for (const panel of panels) {
+            const id = Number(panel.dataset.bentoPanelTabId);
+            if (!Number.isFinite(id)) continue;
+            panelSnap.set(id, panel.getBoundingClientRect());
+          }
+          __bentoPendingFlip = panelSnap;
+
+          const navSnap = new Map();
+          for (const child of Array.from(list.children)) {
+            if (!child.classList?.contains('bento-panel-nav__icon')) continue;
+            if (child.dataset.bentoNavLeaving === '1') continue;
+            const key = child.dataset.bentoNavKey;
+            if (key) navSnap.set(key, child.getBoundingClientRect());
+          }
+          __bentoPendingNavFlip = navSnap;
+
+          dispatchShellAction({ type: 'panel/reorder', tabIds: filtered });
+        }
       }
       if (list) list.classList.remove('bento-panel-nav__list--dragging');
       btn.classList.remove('bento-panel-nav__icon--dragging');
@@ -5804,6 +6049,7 @@
     // Refresh favicon nav strip (lives outside tabpanels; reads from
     // panels/sync payload — same data the legacy reconciler consumes).
     refreshPanelNav(panels);
+    runPendingPanelNavFlip();
 
     // Resize/reposition the custom always-visible scrollbar thumb to
     // match the new panel count. Layout settles after this tick, so
@@ -5921,6 +6167,13 @@
           scrollPanelToLeftmost(panel);
         } catch (err) {
           console.warn('[bento-shell-mount] FOCUS_PANEL scroll failed:', err);
+        }
+        const targets = getPanelCycleTargets();
+        const idx = targets.indexOf(panel);
+        if (idx >= 0) {
+          currentActiveIdx = idx;
+          applyActiveMarker(idx);
+          applyFocusedPanelIndicator(panel);
         }
         try {
           const browserEl = panel.querySelector && panel.querySelector('browser');
@@ -6277,10 +6530,11 @@
   function injectPanelHeaderIntoLinkedPanel(tab, url) {
     const panelEl = document.getElementById(tab.linkedPanel);
     if (!panelEl) return;
+    if (!tab.linkedBrowser) return;
     if (panelEl.querySelector(':scope > .bento-panel-header[data-bento-injected="1"]')) {
+      ensurePanelLoadingOverlay(panelEl, tab.linkedBrowser);
       return; // already injected
     }
-    if (!tab.linkedBrowser) return;
     const tabId = (() => {
       try {
         const mod = ChromeUtils.importESModule(
@@ -6296,6 +6550,7 @@
     // notificationbox children typically are [notificationstack, browser];
     // insert header as the first child so it visually sits above content.
     panelEl.insertBefore(header, panelEl.firstChild);
+    ensurePanelLoadingOverlay(panelEl, tab.linkedBrowser);
     setupHeaderDrag(header, panelEl, tabId);
   }
 
@@ -6303,6 +6558,17 @@
     if (!panelEl) return;
     const header = panelEl.querySelector(':scope > .bento-panel-header[data-bento-injected="1"]');
     if (header) header.remove();
+    const overlay = panelEl.querySelector(':scope > .bento-panel-loading-overlay');
+    if (overlay) overlay.remove();
+    if (panelEl.__bentoLoadingBrowser && panelEl.__bentoLoadingListener) {
+      try {
+        panelEl.__bentoLoadingBrowser.removeProgressListener(panelEl.__bentoLoadingListener);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+    delete panelEl.__bentoLoadingBrowser;
+    delete panelEl.__bentoLoadingListener;
   }
 
   function restoreSelectedMainBrowser(gBrowser, tabpanels, context) {

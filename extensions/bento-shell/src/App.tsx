@@ -54,7 +54,6 @@ function openCommandPalette() {
 
 export function App() {
   const ready = useToolsReady();
-  const activeTabId = useTabsStore((s) => s.activeId);
   const tabsById = useTabsStore((s) => s.byId);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -123,7 +122,7 @@ export function App() {
   };
   const runContextMenuAction = (key: React.Key) => {
     const action = String(key);
-    const targetId = contextMenu?.tabId ?? activeTabId;
+    const targetId = contextMenu?.tabId ?? null;
     closeContextMenu();
 
     if (action === 'new-tab') {
@@ -318,38 +317,27 @@ export function App() {
               <Menu.Item id="new-tab" textValue="New tab">
                 New tab
               </Menu.Item>
-              <Menu.Separator />
-              <Menu.Item
-                id="reload-tab"
-                textValue="Reload tab"
-                isDisabled={(contextMenu.tabId ?? activeTabId) === null}
-              >
-                Reload tab
-              </Menu.Item>
-              <Menu.Item
-                id="toggle-pin"
-                textValue={
-                  tabsById[contextMenu.tabId ?? activeTabId ?? -1]?.pinned ? 'Unpin tab' : 'Pin tab'
-                }
-                isDisabled={(contextMenu.tabId ?? activeTabId) === null}
-              >
-                {tabsById[contextMenu.tabId ?? activeTabId ?? -1]?.pinned ? 'Unpin tab' : 'Pin tab'}
-              </Menu.Item>
-              <Menu.Item
-                id="open-in-side-panel"
-                textValue="Open in side panel"
-                isDisabled={(contextMenu.tabId ?? activeTabId) === null}
-              >
-                Open in side panel
-              </Menu.Item>
-              <Menu.Separator />
-              <Menu.Item
-                id="close-tab"
-                textValue="Close tab"
-                isDisabled={(contextMenu.tabId ?? activeTabId) === null}
-              >
-                Close tab
-              </Menu.Item>
+              {contextMenu.tabId !== null ? (
+                <>
+                  <Menu.Separator />
+                  <Menu.Item id="reload-tab" textValue="Reload tab">
+                    Reload tab
+                  </Menu.Item>
+                  <Menu.Item
+                    id="toggle-pin"
+                    textValue={tabsById[contextMenu.tabId]?.pinned ? 'Unpin tab' : 'Pin tab'}
+                  >
+                    {tabsById[contextMenu.tabId]?.pinned ? 'Unpin tab' : 'Pin tab'}
+                  </Menu.Item>
+                  <Menu.Item id="open-in-side-panel" textValue="Open in side panel">
+                    Open in side panel
+                  </Menu.Item>
+                  <Menu.Separator />
+                  <Menu.Item id="close-tab" textValue="Close tab">
+                    Close tab
+                  </Menu.Item>
+                </>
+              ) : null}
             </Menu.MenuList>
           </Menu.Popover>
         </Menu.Root>
