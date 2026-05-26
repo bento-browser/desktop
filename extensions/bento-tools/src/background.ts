@@ -929,6 +929,27 @@ browser.windows.onRemoved.addListener((windowId) => {
   workspaces.forgetWindow(windowId);
 });
 
+async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Promise<void> {
+  if (!panels.remove(workspaceId, tabId)) return;
+
+  // Clear the panel session marker BEFORE activation. onActivated treats
+  // a marked tab as a restored panel and bounces focus back to the last
+  // non-panel tab; in the last-sidebar-tab-close path that fallback is
+  // the tab being closed, so promotion can lose the race.
+  await clearPanelMarker(tabId);
+  lastActiveNonPanelTabId = tabId;
+
+  syncPanelMarkersForWorkspace(workspaceId);
+
+  try {
+    await browser.tabs.update(tabId, { active: true });
+  } catch (err) {
+    console.warn('[bento-tools] promote-panel activate failed:', err);
+  }
+
+  void emitPanelsSync(workspaceId);
+}
+
 // When the last tab in a window's ACTIVE workspace is closed, close the
 // whole window — match the user's "Cmd+W until done" intent rather than
 // letting Firefox's default tab-close logic auto-select an orphan tab
@@ -985,20 +1006,7 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   // (DOM move, not a navigate). Repeated Cmd+W then chews through one
   // panel per press until the workspace is truly empty.
   if (panelTabIds.length > 0) {
-    const promote = panelTabIds[0]!;
-    if (panels.remove(activeWsId, promote)) {
-      void clearPanelMarker(promote);
-      syncPanelMarkersForWorkspace(activeWsId);
-      void emitPanelsSync(activeWsId);
-    }
-    // Activate the promoted tab so it takes over the main content slot.
-    // The chrome reconciler already removed it from the panel strip via
-    // the emitPanelsSync above; activating routes the tab through the
-    // normal selectedTab → main-slot rendering path. No reload because
-    // Firefox keeps the docShell live across the deck-position change.
-    browser.tabs
-      .update(promote, { active: true })
-      .catch((err) => console.warn('[bento-tools] promote-panel activate failed:', err));
+    void promoteLeftmostPanelToTab(activeWsId, panelTabIds[0]!);
     return;
   }
 

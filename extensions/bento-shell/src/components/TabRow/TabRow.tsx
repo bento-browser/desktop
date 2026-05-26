@@ -33,6 +33,7 @@ export interface TabRowProps {
    * foundation). Tools resolves the URL and tells chrome to reveal +
    * navigate the side <browser>. */
   onOpenInSidePanel: (id: number) => void;
+  onContextMenu?: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   /** Drag-source hooks supplied by TabList when reordering is enabled.
    * When undefined the row is non-draggable (stories without reorder
    * coverage, future read-only variants). */
@@ -48,6 +49,7 @@ function TabRowImpl({
   onActivate,
   onClose,
   onOpenInSidePanel,
+  onContextMenu,
   onDragStart,
   onDragEnd,
 }: TabRowProps) {
@@ -130,6 +132,11 @@ function TabRowImpl({
         e.preventDefault();
         e.stopPropagation();
         beginRename();
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu?.(id, e);
       }}
       onMouseDown={(e) => {
         // Middle-mouse-down triggers the autoscroll cursor — preventDefault
@@ -228,6 +235,7 @@ export const TabRow = memo(TabRowImpl, (prev, next) => {
     prev.active === next.active &&
     (prev.removing ?? false) === (next.removing ?? false) &&
     (prev.dragging ?? false) === (next.dragging ?? false) &&
+    prev.onContextMenu === next.onContextMenu &&
     prev.onDragStart === next.onDragStart &&
     prev.onDragEnd === next.onDragEnd
   );

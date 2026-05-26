@@ -401,7 +401,8 @@
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
         overflow-x: hidden;
         padding-block-end: var(--space-2xs);
-        padding-right: var(--space-2xs);
+        padding-inline-start: var(--space-2xs);
+        padding-inline-end: var(--space-2xs);
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
         border-radius: var(--radius-m);
@@ -3025,7 +3026,9 @@
     if (nextIdx === currentActiveIdx) return false;
 
     const targetPanel = targets[nextIdx];
-    const stripLeft = host.getBoundingClientRect().left;
+    const hostRect = host.getBoundingClientRect();
+    const insets = getStripScrollInsets(host);
+    const stripLeft = hostRect.left + insets.inlineStart;
     const panelLeft = targetPanel.getBoundingClientRect().left;
     const targetScrollLeft = host.scrollLeft + (panelLeft - stripLeft);
     host.scrollTo({
@@ -3256,10 +3259,20 @@
     // ~line 2015 already uses this helper for the same reason. */
     const host = getStripScrollTarget();
     if (!host) return;
-    const stripLeft = host.getBoundingClientRect().left;
+    const hostRect = host.getBoundingClientRect();
+    const insets = getStripScrollInsets(host);
+    const stripLeft = hostRect.left + insets.inlineStart;
     const panelLeft = panelEl.getBoundingClientRect().left;
     const targetScrollLeft = host.scrollLeft + (panelLeft - stripLeft);
     host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
+  }
+
+  function getStripScrollInsets(host) {
+    if (!host) return { inlineStart: 0, inlineEnd: 0 };
+    const styles = getComputedStyle(host);
+    const inlineStart = parseFloat(styles.paddingInlineStart || styles.paddingLeft) || 0;
+    const inlineEnd = parseFloat(styles.paddingInlineEnd || styles.paddingRight) || 0;
+    return { inlineStart, inlineEnd };
   }
 
   // Minimal-scroll variant for "newly-added panel" auto-scroll. If the
@@ -3278,18 +3291,21 @@
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
     const panelRect = panelEl.getBoundingClientRect();
+    const insets = getStripScrollInsets(host);
+    const visibleLeft = hostRect.left + insets.inlineStart;
+    const visibleRight = hostRect.right - insets.inlineEnd;
     const fullyVisible =
-      panelRect.left >= hostRect.left - 1 && panelRect.right <= hostRect.right + 1;
+      panelRect.left >= visibleLeft - 1 && panelRect.right <= visibleRight + 1;
     if (fullyVisible) return;
-    if (panelRect.width > hostRect.width) {
+    if (panelRect.width > visibleRight - visibleLeft) {
       scrollPanelToLeftmost(panelEl);
       return;
     }
     let delta = 0;
-    if (panelRect.right > hostRect.right) {
-      delta = panelRect.right - hostRect.right;
-    } else if (panelRect.left < hostRect.left) {
-      delta = panelRect.left - hostRect.left;
+    if (panelRect.right > visibleRight) {
+      delta = panelRect.right - visibleRight;
+    } else if (panelRect.left < visibleLeft) {
+      delta = panelRect.left - visibleLeft;
     }
     const targetScrollLeft = host.scrollLeft + delta;
     host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
@@ -3301,8 +3317,11 @@
     if (!host) return false;
     const hostRect = host.getBoundingClientRect();
     const panelRect = panelEl.getBoundingClientRect();
+    const insets = getStripScrollInsets(host);
+    const visibleLeft = hostRect.left + insets.inlineStart;
+    const visibleRight = hostRect.right - insets.inlineEnd;
     if (panelRect.width <= 1 || panelRect.height <= 1) return false;
-    return panelRect.left >= hostRect.left - 1 && panelRect.right <= hostRect.right + 1;
+    return panelRect.left >= visibleLeft - 1 && panelRect.right <= visibleRight + 1;
   }
 
   function scrollPanelFullyIntoView(panelEl) {
@@ -3311,10 +3330,11 @@
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
     const panelRect = panelEl.getBoundingClientRect();
+    const insets = getStripScrollInsets(host);
     // Explicit open targets should land as complete panels. Aligning
     // the left edge is more reliable than a minimal right-edge nudge
     // while the trailer width, panel width, and smooth scroll settle.
-    const targetScrollLeft = host.scrollLeft + (panelRect.left - hostRect.left);
+    const targetScrollLeft = host.scrollLeft + (panelRect.left - hostRect.left - insets.inlineStart);
     host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
   }
 
@@ -4847,6 +4867,7 @@
   }
 
   function forceMainOnlyChromeState(gBrowser, tabpanels) {
+    cancelWorkspaceFadeForMainOnly();
     setNoSidePanelsMode(true);
     syncInterPanelSplitters([]);
     removeAddPanelTrailer();
@@ -4874,6 +4895,8 @@
       tabpanels.removeAttribute('splitview');
     }
 
+    restoreSelectedMainBrowser(gBrowser, tabpanels, 'force main-only');
+
     if (gBrowser?.tabs) {
       for (const tab of gBrowser.tabs) {
         if (tab.splitview && tab.splitview.kind === BENTO_SPLIT_KIND) {
@@ -4893,6 +4916,7 @@
           'bento-panel--focused',
           'bento-panel--cycle-focused',
         );
+        removeInjectedPanelHeader(panelEl);
         panelEl.removeAttribute('column');
         if (panelEl.getAttribute('tabindex') === '-1') {
           panelEl.removeAttribute('tabindex');
@@ -5101,6 +5125,7 @@
     // panels (which TabSelect fires for whether a workspace has panels
     // or not).
     if (!panels || panels.length === 0) {
+      cancelWorkspaceFadeForMainOnly();
       setNoSidePanelsMode(true);
       const previous = tabpanels.splitViewPanels || [];
       const splitActive = tabpanels.classList.contains('bento-split-active');
@@ -5147,6 +5172,7 @@
         if (panelEl.getAttribute('tabindex') === '-1') {
           panelEl.removeAttribute('tabindex');
         }
+        removeInjectedPanelHeader(panelEl);
         panelEl.classList.remove('split-view-panel-active');
       }
       // Remove inter-panel splitters — they live in the strip
@@ -5181,6 +5207,8 @@
       // notificationbox uses position: absolute (from
       // .browserSidebarContainer) to fill the viewport.
       tabpanels.classList.remove('bento-split-active');
+
+      restoreSelectedMainBrowser(gBrowser, tabpanels, 'tear-down');
 
       // Drop the Add-panel trailer too — its dashed-border styling
       // would float in the empty deck without any panels around it.
@@ -5596,6 +5624,7 @@
       if (i === 0) {
         panelEl.dataset.bentoMainPanel = '1';
         delete panelEl.dataset.bentoPanelTabId;
+        removeInjectedPanelHeader(panelEl);
         // Apply the universal main-panel width every reconcile so
         // every tab's col-0 notificationbox shows the user's chosen
         // main width, not its own per-tab default. Only paints when
@@ -5700,6 +5729,7 @@
       panelEl.style.removeProperty('flex');
       delete panelEl.dataset.bentoMainPanel;
       delete panelEl.dataset.bentoPanelTabId;
+      removeInjectedPanelHeader(panelEl);
     }
 
     // Force the AsyncTabSwitcher to exist by calling the public
@@ -6269,6 +6299,53 @@
     setupHeaderDrag(header, panelEl, tabId);
   }
 
+  function removeInjectedPanelHeader(panelEl) {
+    if (!panelEl) return;
+    const header = panelEl.querySelector(':scope > .bento-panel-header[data-bento-injected="1"]');
+    if (header) header.remove();
+  }
+
+  function restoreSelectedMainBrowser(gBrowser, tabpanels, context) {
+    try {
+      const selectedTab = gBrowser?.selectedTab;
+      const selectedPanel = document.getElementById(gBrowser?.selectedTab?.linkedPanel);
+      if (selectedPanel && tabpanels) {
+        tabpanels.selectedPanel = selectedPanel;
+      }
+      const selectedBrowser = gBrowser?.selectedTab?.linkedBrowser;
+      if (selectedBrowser) {
+        selectedBrowser.preserveLayers(true);
+        selectedBrowser.docShellIsActive = true;
+      }
+      scheduleSelectedMainBrowserRepaint(gBrowser, tabpanels, selectedTab, context);
+    } catch (err) {
+      console.warn('[bento-shell-mount] ' + context + ' selected browser restore failed:', err);
+    }
+  }
+
+  function scheduleSelectedMainBrowserRepaint(gBrowser, tabpanels, expectedTab, context) {
+    const repaint = () => {
+      try {
+        if (!expectedTab || gBrowser?.selectedTab !== expectedTab) {
+          return;
+        }
+        const selectedPanel = document.getElementById(expectedTab.linkedPanel);
+        if (selectedPanel && tabpanels) {
+          tabpanels.selectedPanel = selectedPanel;
+        }
+        const browserEl = expectedTab.linkedBrowser;
+        if (!browserEl) return;
+        browserEl.preserveLayers(true);
+        browserEl.docShellIsActive = false;
+        browserEl.docShellIsActive = true;
+      } catch (err) {
+        console.warn('[bento-shell-mount] ' + context + ' selected browser repaint failed:', err);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(repaint));
+    window.setTimeout(repaint, 80);
+  }
+
   // Re-reconcile the split view when the active main tab changes —
   // splitViewPanels[0] needs to follow gBrowser.selectedTab. Cheap:
   // computes the same desired array minus an unchanged panel set.
@@ -6826,6 +6903,31 @@
       clearTimeout(__workspaceFadeCleanupTimer);
       __workspaceFadeCleanupTimer = null;
     }
+  }
+  function cancelWorkspaceFadeForMainOnly() {
+    const sc = document.getElementById('bento-strip-container');
+    const tp = window.gBrowser?.tabpanels;
+    const hadFadeClass =
+      sc?.classList.contains('bento-workspace-switching') ||
+      sc?.classList.contains('bento-workspace-stabilizing') ||
+      tp?.classList.contains('bento-workspace-switching') ||
+      tp?.classList.contains('bento-workspace-stabilizing');
+    const hadTimer =
+      __workspaceSwitchTimer !== null ||
+      __workspaceFadeWatchdog !== null ||
+      __workspaceFadeCleanupTimer !== null;
+    if (!hadFadeClass && !hadTimer) return;
+
+    if (__workspaceSwitchTimer) {
+      clearTimeout(__workspaceSwitchTimer);
+      __workspaceSwitchTimer = null;
+    }
+    if (__workspaceFadeWatchdog) {
+      clearTimeout(__workspaceFadeWatchdog);
+      __workspaceFadeWatchdog = null;
+    }
+    clearWorkspaceFadeClasses();
+    __workspaceSwitchSwapping = false;
   }
   function setWorkspaceFadeClasses(enabled) {
     const stripContainer = document.getElementById('bento-strip-container');

@@ -15,6 +15,7 @@ export interface TabListProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
+  onTabContextMenu?: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   /** Called when the user drops a tab at a new position. The dragged tab
    * should land immediately before (`before=true`) or after (`before=false`)
    * `anchorId` in the chrome window's tab strip. Anchor-based (not
@@ -122,6 +123,7 @@ interface TabListPaneProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
+  onTabContextMenu?: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   /** When defined, the pane enables HTML5 drag-and-drop reordering and
    * calls back with (id, anchorId, before) once the user drops. The
    * outgoing pane during a workspace-switch slide passes undefined so
@@ -144,6 +146,7 @@ function TabListPane({
   onActivate,
   onClose,
   onOpenInSidePanel,
+  onTabContextMenu,
   onReorder,
   className,
 }: TabListPaneProps) {
@@ -339,6 +342,7 @@ function TabListPane({
                 onActivate={onActivate}
                 onClose={onClose}
                 onOpenInSidePanel={onOpenInSidePanel}
+                onContextMenu={onTabContextMenu}
                 onDragStart={dragEnabled ? handleDragStart : undefined}
                 onDragEnd={dragEnabled ? handleDragEnd : undefined}
               />
@@ -367,7 +371,13 @@ function TabListPane({
 // workspace that flash of all-tabs-at-once was visibly jarring. The
 // stage-level slide replaces it: the OLD pane carries OLD ids only, the
 // NEW pane carries NEW ids only, and the user sees a directional swap.
-export function TabList({ onActivate, onClose, onOpenInSidePanel, onReorder }: TabListProps) {
+export function TabList({
+  onActivate,
+  onClose,
+  onOpenInSidePanel,
+  onTabContextMenu,
+  onReorder,
+}: TabListProps) {
   // Per-window active workspace (phase A.3): each chrome window's TabList
   // resolves its active workspace via the document's captured windowId.
   // Falls back to the global activeId when the windowId hasn't yet
@@ -464,6 +474,7 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel, onReorder }: T
           onActivate={onActivate}
           onClose={onClose}
           onOpenInSidePanel={onOpenInSidePanel}
+          onTabContextMenu={onTabContextMenu}
           className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
         />
       )}
@@ -478,6 +489,7 @@ export function TabList({ onActivate, onClose, onOpenInSidePanel, onReorder }: T
         onActivate={onActivate}
         onClose={onClose}
         onOpenInSidePanel={onOpenInSidePanel}
+        onTabContextMenu={onTabContextMenu}
         // Only the steady-state incoming pane allows reorder. The
         // outgoing pane (rendered above during a workspace-switch slide)
         // is mid-animation and pointer-events:none anyway; gating here
