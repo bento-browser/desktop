@@ -977,6 +977,7 @@
         background-color: transparent;
         border-radius: var(--radius-m);
         box-shadow: var(--shadow-l);
+        transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
       }
       #bento-strip-container.bento-panel-shadows-disabled > .bento-panel-shadow {
         display: none;
@@ -2825,15 +2826,20 @@
         sh.style.display = 'none';
         continue;
       }
-      if (panelEl.dataset.bentoMainPanel === '1' && pr.left < hostRect.left) {
-        // The main slot's real browser surface is clipped by the strip
-        // scrollport while horizontally scrolled away from slot 0. Hide
-        // its shadow proxy in that state so the sidebar edge cannot show
-        // a shadow-only slice with no matching content.
-        sh.style.display = 'none';
-        continue;
-      }
       sh.style.display = '';
+      if (panelEl.dataset.bentoMainPanel === '1') {
+        // The main slot is slot 0, so horizontal scrolling can move its
+        // real browser surface under the strip scrollport's left clip.
+        // Fade its proxy out over the first few chrome-gap widths instead
+        // of snapping it off as soon as it crosses the boundary.
+        const hostStyles = getComputedStyle(host);
+        const chromeGap = parseFloat(hostStyles.paddingRight) || 1;
+        const fadeDistance = Math.max(1, 4 * chromeGap);
+        const hiddenDistance = Math.max(0, hostRect.left - pr.left);
+        sh.style.opacity = String(Math.max(0, Math.min(1, 1 - hiddenDistance / fadeDistance)));
+      } else {
+        sh.style.opacity = '';
+      }
       syncPanelShadowRect(sh, pr, containerRect, hostRect);
     }
   }
