@@ -171,14 +171,12 @@
       /* Inline sidebar: no padding around the frame, no rounded
          corners on the frame. Edges flush with the window so the
          sidebar reads as part of the chrome rather than a floating
-         card. Position + z-index make the sidebar host the paint mask
-         for panel-shadow overflow from the strip to its right; its
-         background is the same chrome surface, so the mask is visually
-         identical to chrome UI rather than a separate sidebar fill. */
+         card. Keep it in normal paint order; a higher z-index masks
+         real panel content at the sidebar/strip boundary while the
+         separate shadow proxy can still bleed through. */
       #bento-shell-host {
         padding: 0;
         position: relative;
-        z-index: 2;
       }
       #bento-shell-host > #bento-shell-frame {
         border-radius: 0;
@@ -270,11 +268,12 @@
       /* Strip layout. Once unifyMainWithStrip() has moved
          #tabbrowser-tabbox in, the strip IS the entire content area
          right of the sidebar — main panel + side panels + Add-panel
-         trailer in one horizontal scroll context. Symmetric padding
-         on all four edges (the left edge is invisible because the
-         sidebar-splitter sits there providing the same gap). The
-         native horizontal scrollbar renders inside the bottom padding
-         when overflow happens. */
+         trailer in one horizontal scroll context. The container itself
+         carries the sidebar-to-main gap so the scroll host does not
+         create an internal padding area where only shadow proxies can
+         paint. Inline-end and block-end padding on the scroll host
+         reserve the same rhythm at the trailer/window edge and below
+         the panels. */
       /* The strip is wrapped in a vbox container by setupPanelNavigator
          so we can place the navigator bar immediately below it. The
          strip itself is still horizontally scrollable but the native
@@ -293,14 +292,13 @@
            clips shadow extension downward into the scrollbar / nav
            rows. The container has no overflow, so shadow can extend
            past the host into the lower area.
-           Keep overflow visible so the first panel/main-slot shadow can
-           bleed left into the chrome background beside the sidebar.
-           The sidebar itself stays in normal layout flow, so the actual
-           panel bodies still start at the strip edge; only the shadow
-           proxy paint extends past it. */
+           Keep overflow visible so panel shadows can extend below the
+           host into the scrollbar / nav rows. Horizontal shadow bleed
+           is clipped in JS to match the scrollport's visible edges. */
         position: relative;
         z-index: 1;
         overflow: visible;
+        margin-left: var(--space-2xs);
       }
       /* Workspace-switch fade. Applied as a class toggle to BOTH the
          split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
@@ -914,13 +912,10 @@
            with higher specificity than our previous margin attempt,
            so flex gap (which the spec explicitly says doesn't
            collide with margin) is the cleaner override.
-           No padding-inline-start: the first panel sits flush against
-           the sidebar (sidebar-splitter is width:0). The padding was
-           originally there to give panel box-shadow clearance, but
-           shadows are now rendered by .bento-panel-shadow proxies in
-           #bento-strip-container, so it's no longer needed. The right
-           padding is still reserved for the Add-panel trailer's slot
-           via padding-inline-end. */
+           No tabpanels padding-inline-start: the parent strip host owns
+           the sidebar-to-main gap. Panel shadows are rendered by
+           .bento-panel-shadow proxies in #bento-strip-container, so the
+           deck itself does not need extra shadow clearance. */
         display: flex;
         flex-direction: row;
         align-items: stretch;
@@ -982,9 +977,6 @@
         background-color: transparent;
         border-radius: var(--radius-m);
         box-shadow: var(--shadow-l);
-      }
-      #bento-strip-container > .bento-panel-shadow.bento-panel-shadow--strip-start {
-        clip-path: inset(-64px round var(--radius-m));
       }
       #bento-strip-container.bento-panel-shadows-disabled > .bento-panel-shadow {
         display: none;
@@ -2750,25 +2742,47 @@
     return existing;
   }
 
+  function syncPanelShadowRect(sh, panelRect, containerRect, visibleRect) {
+    const shadowBleed = 64;
+    const leftClip = Math.max(-shadowBleed, visibleRect.left - panelRect.left);
+    const rightClip = Math.max(-shadowBleed, panelRect.right - visibleRect.right);
+
+    sh.style.top = panelRect.top - containerRect.top + 'px';
+    sh.style.left = panelRect.left - containerRect.left + 'px';
+    sh.style.width = panelRect.width + 'px';
+    sh.style.height = panelRect.height + 'px';
+    // The real browser surface is clipped by the horizontal scrollport.
+    // Match that clip horizontally so a partially scrolled panel cannot
+    // leave a shadow-only sliver under the sidebar/window edge.
+    sh.style.clipPath =
+      'inset(-' +
+      shadowBleed +
+      'px ' +
+      rightClip +
+      'px -' +
+      shadowBleed +
+      'px ' +
+      leftClip +
+      'px round var(--radius-m))';
+  }
+
   function syncMainOnlyPanelShadow(container) {
+    const host = document.getElementById('bento-side-panel-host');
     const main = document.getElementById('tabbrowser-tabbox');
-    if (!main) {
+    if (!host || !main) {
       removePanelShadows(container);
       return;
     }
     const shadows = ensurePanelShadowCount(container, 1);
     const sh = shadows[0];
-    sh.classList.add('bento-panel-shadow--strip-start');
     const containerRect = container.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
     const mainRect = main.getBoundingClientRect();
     if (!mainRect.width || !mainRect.height) {
       removePanelShadows(container);
       return;
     }
-    sh.style.top = mainRect.top - containerRect.top + 'px';
-    sh.style.left = mainRect.left - containerRect.left + 'px';
-    sh.style.width = mainRect.width + 'px';
-    sh.style.height = mainRect.height + 'px';
+    syncPanelShadowRect(sh, mainRect, containerRect, hostRect);
   }
 
   function syncPanelShadows(panelIds) {
@@ -2792,6 +2806,7 @@
     const desired = panelIds.length;
     const existing = ensurePanelShadowCount(container, desired);
     const containerRect = container.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
     // Visibility cull: skip shadow updates for panels whose rect
     // doesn't overlap the visible container area (with one-panel-
     // width margin so shadows are ready when scrolled into view).
@@ -2802,16 +2817,24 @@
       const sh = existing[i];
       const panelEl = document.getElementById(panelIds[i]);
       if (!panelEl) {
-        sh.classList.remove('bento-panel-shadow--strip-start');
+        sh.style.display = 'none';
         continue;
       }
-      sh.classList.toggle('bento-panel-shadow--strip-start', panelEl.id === 'tabbrowser-tabbox');
       const pr = panelEl.getBoundingClientRect();
-      if (pr.right < visLeft || pr.left > visRight) continue;
-      sh.style.top = pr.top - containerRect.top + 'px';
-      sh.style.left = pr.left - containerRect.left + 'px';
-      sh.style.width = pr.width + 'px';
-      sh.style.height = pr.height + 'px';
+      if (pr.right < visLeft || pr.left > visRight) {
+        sh.style.display = 'none';
+        continue;
+      }
+      if (panelEl.dataset.bentoMainPanel === '1' && pr.left < hostRect.left) {
+        // The main slot's real browser surface is clipped by the strip
+        // scrollport while horizontally scrolled away from slot 0. Hide
+        // its shadow proxy in that state so the sidebar edge cannot show
+        // a shadow-only slice with no matching content.
+        sh.style.display = 'none';
+        continue;
+      }
+      sh.style.display = '';
+      syncPanelShadowRect(sh, pr, containerRect, hostRect);
     }
   }
 
