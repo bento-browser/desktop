@@ -13,7 +13,10 @@ import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
+import type { BackupStore } from '../backup/BackupStore';
 import { clearPanelMarker } from '../panels/SessionMarker';
+import { validateExportSchema } from '../backup/ExportSchema';
+import { executeImport } from '../backup/ImportExecutor';
 
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
 // snapshot. browser.privacy.* setters return Promise<void> but reading via
@@ -38,6 +41,100 @@ async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   }
 }
 
+async function promoteLeftmostPanelToTabAfterMove(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+): Promise<void> {
+  if (!ctx.panels.remove(workspaceId, tabId)) return;
+
+  // Clear the marker before activation. A promoted panel is now a normal
+  // sidebar tab; leaving bento.isPanel set makes the activation guard in
+  // background.ts treat it as a restored panel and bounce focus away.
+  await clearPanelMarker(tabId);
+  ctx.syncPanelMarkers(workspaceId);
+
+  try {
+    await browser.tabs.update(tabId, { active: true });
+  } catch (err) {
+    console.warn('[bento-tools] assignWorkspace promote-panel activate failed:', err);
+  }
+
+  ctx.emitPanelsSync(workspaceId);
+}
+
+function pickAvailableWorkspaceAfterDeleting(
+  ctx: HandlerContext,
+  deletingWorkspaceId: string,
+  preferredWorkspaceId: string,
+  windowId: number,
+): string | null {
+  const ownedByOthers = new Set(
+    Object.entries(ctx.workspaces.getActiveIdByWindow())
+      .filter(([k]) => Number(k) !== windowId)
+      .map(([, v]) => v),
+  );
+  const workspaces = ctx.workspaces.snapshot().workspaces;
+  const preferred = workspaces.find(
+    (w) =>
+      w.id === preferredWorkspaceId && w.id !== deletingWorkspaceId && !ownedByOthers.has(w.id),
+  );
+  if (preferred) return preferred.id;
+  return (
+    workspaces.find((w) => w.id !== deletingWorkspaceId && !ownedByOthers.has(w.id))?.id ?? null
+  );
+}
+
+async function cleanupWorkspaceAfterTabMove(
+  ctx: HandlerContext,
+  movedTabId: number,
+  fromWorkspaceId: string,
+  toWorkspaceId: string,
+): Promise<void> {
+  const panelTabIds = ctx.panels.getPanels(fromWorkspaceId);
+  const panelTabIdSet = new Set(panelTabIds);
+  const remainingNormalTabs = ctx.tabs
+    .snapshot()
+    .filter(
+      (t) => t.id !== movedTabId && t.workspaceId === fromWorkspaceId && !panelTabIdSet.has(t.id),
+    );
+  if (remainingNormalTabs.length > 0) return;
+
+  if (panelTabIds.length > 0) {
+    await promoteLeftmostPanelToTabAfterMove(ctx, fromWorkspaceId, panelTabIds[0]!);
+    return;
+  }
+
+  const sourceWindowId = ctx.sourceWindowId;
+  const isActiveInSourceWindow =
+    typeof sourceWindowId === 'number' &&
+    ctx.workspaces.getActiveId(sourceWindowId) === fromWorkspaceId;
+
+  if (isActiveInSourceWindow) {
+    const candidate = pickAvailableWorkspaceAfterDeleting(
+      ctx,
+      fromWorkspaceId,
+      toWorkspaceId,
+      sourceWindowId,
+    );
+    if (candidate) {
+      ctx.workspaces.forgetWindow(sourceWindowId);
+      ctx.workspaces.delete(fromWorkspaceId);
+      const result = ctx.workspaces.activate(candidate, sourceWindowId);
+      if (result !== 'activated' && result !== 'noop') {
+        console.warn(
+          '[bento-tools] assignWorkspace post-delete activate returned',
+          result,
+          '— window may be left with no active workspace',
+        );
+      }
+      return;
+    }
+  }
+
+  ctx.workspaces.delete(fromWorkspaceId);
+}
+
 export interface HandlerContext {
   tabs: TabRegistry;
   workspaces: WorkspaceStore;
@@ -45,6 +142,7 @@ export interface HandlerContext {
   panels: PanelStore;
   pinnedPanels: PinnedPanelsStore;
   savedPanels: SavedPanelsStore;
+  backup: BackupStore;
   send: (event: Event) => void;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
@@ -166,8 +264,15 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // at a time, so the binding is effectively gone. Drop the pin
       // BEFORE the assignment fires so the resulting panels/sync carries
       // the post-cleanup pin set.
-      ctx.pinnedPanels.removeForTab(action.id);
-      void ctx.tabs.assignWorkspace(action.id, action.workspaceId);
+      void (async () => {
+        const before = ctx.tabs.snapshot().find((t) => t.id === action.id);
+        const fromWorkspaceId = before?.workspaceId;
+        ctx.pinnedPanels.removeForTab(action.id);
+        await ctx.tabs.assignWorkspace(action.id, action.workspaceId);
+        if (fromWorkspaceId && fromWorkspaceId !== action.workspaceId) {
+          await cleanupWorkspaceAfterTabMove(ctx, action.id, fromWorkspaceId, action.workspaceId);
+        }
+      })();
       return;
     case 'tab/openUrl':
       // Background script always has browser.tabs available; the chrome-
@@ -569,6 +674,82 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         .set({ value: action.enabled })
         .catch((err) => console.warn('[bento-tools] privacy/setPeerConnection failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'backup/export':
+      void (async () => {
+        try {
+          const data = await ctx.backup.collectSnapshot(action.workspaceIds);
+          const json = JSON.stringify(data, null, 2);
+          const date = new Date().toISOString().slice(0, 10);
+          ctx.send({ type: 'backup/exportReady', json, filename: `bento-backup-${date}.json` });
+        } catch (err) {
+          console.warn('[bento-tools] backup/export failed:', err);
+        }
+      })();
+      return;
+    case 'backup/import': {
+      const validated = validateExportSchema(action.data);
+      if (!validated) {
+        ctx.send({ type: 'backup/importError', message: 'Invalid export file format.' });
+        return;
+      }
+      void (async () => {
+        try {
+          const summary = await executeImport(validated, action.options, {
+            workspaces: ctx.workspaces,
+            tabs: ctx.tabs,
+            panels: ctx.panels,
+            pinnedPanels: ctx.pinnedPanels,
+            settings: ctx.settings,
+            savedPanels: ctx.savedPanels,
+          });
+          ctx.send({ type: 'backup/importComplete', summary });
+        } catch (err) {
+          console.warn('[bento-tools] backup/import failed:', err);
+          ctx.send({ type: 'backup/importError', message: String(err) });
+        }
+      })();
+      return;
+    }
+    case 'backup/requestList':
+      void (async () => {
+        const backups = await ctx.backup.listBackups();
+        ctx.send({ type: 'backup/list', backups });
+      })();
+      return;
+    case 'backup/restore':
+      void (async () => {
+        try {
+          const data = await ctx.backup.getBackupData(action.backupId);
+          if (!data) {
+            ctx.send({ type: 'backup/importError', message: 'Backup not found.' });
+            return;
+          }
+          const summary = await executeImport(
+            data,
+            { importSettings: false, importSavedPanels: false, replaceExisting: false },
+            {
+              workspaces: ctx.workspaces,
+              tabs: ctx.tabs,
+              panels: ctx.panels,
+              pinnedPanels: ctx.pinnedPanels,
+              settings: ctx.settings,
+              savedPanels: ctx.savedPanels,
+            },
+          );
+          ctx.send({ type: 'backup/importComplete', summary });
+        } catch (err) {
+          console.warn('[bento-tools] backup/restore failed:', err);
+          ctx.send({ type: 'backup/importError', message: String(err) });
+        }
+      })();
+      return;
+    case 'backup/delete':
+      void (async () => {
+        await ctx.backup.deleteBackup(action.backupId);
+        const backups = await ctx.backup.listBackups();
+        ctx.send({ type: 'backup/list', backups });
+      })();
       return;
     default: {
       const _exhaustive: never = action;

@@ -320,7 +320,6 @@
         position: relative;
         z-index: 1;
         overflow: visible;
-        margin-left: var(--space-2xs);
       }
       /* Workspace-switch fade. Applied as a class toggle to BOTH the
          split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
@@ -1882,6 +1881,9 @@
   // outside its own remote <browser> bounds, so it sends a serialized
   // menu request here and chrome renders it in #bento-menu-host.
   const SIDEBAR_CONTEXT_MENU_PREFIX = 'BENTO_SIDEBAR_CONTEXT_MENU:';
+  // Panel-trailer context menu request. Same title-IPC pattern as the
+  // sidebar because the trailer is its own remote extension frame.
+  const PANEL_TRAILER_CONTEXT_MENU_PREFIX = 'BENTO_PANEL_TRAILER_CONTEXT_MENU:';
   // Sidebar-driven scroll-into-view + focus signal for a specific
   // panel. Fired by the PinnedPanels row click after the workspace
   // activation dispatches. Format: BENTO_FOCUS_PANEL:<ts>:<tabId>.
@@ -2097,21 +2099,10 @@
       shell.appendChild(affordance);
     }
 
-    const getContentEdge = () => {
-      const splitMain = document.querySelector(
-        '#tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]',
-      );
-      const main = splitMain || document.querySelector('#tabbrowser-tabbox[data-bento-main-panel]');
-      const strip = document.getElementById('bento-strip-container');
-      return (main || strip)?.getBoundingClientRect().left ?? host.getBoundingClientRect().right;
-    };
-
     const updateAffordancePosition = () => {
       const shellRect = shell.getBoundingClientRect();
-      const hostRect = host.getBoundingClientRect();
-      const contentLeft = getContentEdge();
-      const center = hostRect.right + Math.max(0, contentLeft - hostRect.right) / 2;
-      affordance.style.left = Math.round(center - shellRect.left - 7) + 'px';
+      const splitterRect = splitter.getBoundingClientRect();
+      affordance.style.left = Math.round(splitterRect.left - shellRect.left) + 'px';
     };
 
     const clearDragging = () => {
@@ -2750,6 +2741,38 @@
           url: 'about:newtab',
           sourceTabId,
         });
+      },
+    });
+  }
+
+  function showPanelStripContextMenu(e) {
+    if (e.defaultPrevented) return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    if (
+      target.closest('browser') ||
+      target.closest('.browserContainer') ||
+      target.closest('.bento-panel-header') ||
+      target.closest('#bento-panel-nav') ||
+      target.closest('#bento-strip-scrollbar') ||
+      target.closest('.bento-panel-splitter')
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    showChromeMenu({
+      anchor: {
+        left: e.clientX,
+        top: e.clientY,
+        width: 1,
+        height: 1,
+      },
+      items: [{ id: 'add-new-panel', label: 'Add new panel' }],
+      onSelect: (itemId) => {
+        if (itemId !== 'add-new-panel') return;
+        addNewPanel();
       },
     });
   }
@@ -4818,6 +4841,7 @@
     wrap.setAttribute('flex', '1');
     host.parentNode.insertBefore(wrap, host);
     wrap.appendChild(host);
+    wrap.addEventListener('contextmenu', showPanelStripContextMenu);
 
     // Custom scrollbar between strip and navigator.
     const scrollbar = buildStripScrollbar();
@@ -6194,6 +6218,37 @@
             workspaceId: itemId.slice('move-to-workspace:'.length),
           });
         }
+      },
+    });
+  }
+
+  function handlePanelTrailerContextMenuTitle(rawTitle) {
+    // Format: BENTO_PANEL_TRAILER_CONTEXT_MENU:<ts>:<base64-json>
+    const tail = rawTitle.slice(PANEL_TRAILER_CONTEXT_MENU_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return;
+    let payload;
+    try {
+      payload = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel trailer menu payload parse failed:', err);
+      return;
+    }
+    if (!payload || !payload.anchor) return;
+    const frame = document.getElementById('bento-panel-trailer-frame');
+    if (!frame) return;
+    const frameRect = frame.getBoundingClientRect();
+    showChromeMenu({
+      anchor: {
+        left: frameRect.left + Number(payload.anchor.left || 0),
+        top: frameRect.top + Number(payload.anchor.top || 0),
+        width: Number(payload.anchor.width || 1),
+        height: Number(payload.anchor.height || 1),
+      },
+      items: [{ id: 'add-new-panel', label: 'Add new panel' }],
+      onSelect: (itemId) => {
+        if (itemId !== 'add-new-panel') return;
+        addNewPanel();
       },
     });
   }
@@ -7614,6 +7669,17 @@
         }
       }, 200);
     }
+
+    let lastSeenPanelTrailerTitle = '';
+    setInterval(() => {
+      const panelTrailerFrame = document.getElementById('bento-panel-trailer-frame');
+      const title = panelTrailerFrame?.contentTitle || '';
+      if (title === lastSeenPanelTrailerTitle) return;
+      lastSeenPanelTrailerTitle = title;
+      if (title.startsWith(PANEL_TRAILER_CONTEXT_MENU_PREFIX)) {
+        handlePanelTrailerContextMenuTitle(title);
+      }
+    }, 60);
 
     const shellFrame = document.getElementById('bento-shell-frame');
     if (shellFrame) {

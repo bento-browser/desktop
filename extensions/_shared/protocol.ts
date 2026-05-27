@@ -73,6 +73,60 @@ export type WorkspaceDelta =
  * Add a new field by: (1) extending this interface, (2) adding a default
  * in DEFAULT_SETTINGS in SettingsStore.ts, (3) reading it where consumed.
  * Reverting a field to default = removing it from storage.local. */
+/** Exported workspace snapshot schema. Used for manual export/import and
+ * auto-backups. Versioned so the importer can migrate older exports. */
+export interface BentoExportSchema {
+  schemaVersion: 1;
+  bentoVersion: string;
+  exportedAt: number;
+  workspaces: Array<{
+    id: string;
+    name: string;
+    themeId?: string;
+    icon?: string;
+    createdAt: number;
+    tabs: Array<{
+      url: string;
+      title: string;
+      customTitle?: string;
+      pinned: boolean;
+    }>;
+    panels: Array<{
+      url: string;
+      widthPx?: number;
+    }>;
+    pinnedPanels: Array<{
+      url: string;
+      order: number;
+    }>;
+  }>;
+  settings?: Partial<BentoSettings>;
+  savedPanels: Array<{
+    title: string;
+    url: string;
+  }>;
+}
+
+export interface ImportOptions {
+  importSettings: boolean;
+  importSavedPanels: boolean;
+  replaceExisting: boolean;
+}
+
+export interface ImportSummary {
+  workspacesCreated: number;
+  tabsOpened: number;
+  panelsRestored: number;
+  settingsApplied: boolean;
+}
+
+export interface BackupListEntry {
+  id: string;
+  createdAt: number;
+  workspaceCount: number;
+  tabCount: number;
+}
+
 export interface BentoSettings {
   /** Tab sleep on/off. When false, SleepPolicy's sweep is a no-op. */
   tabSleepEnabled: boolean;
@@ -134,6 +188,12 @@ export interface BentoSettings {
    * default; disabling removes the chrome-side shadow proxy elements for
    * users who prefer flatter panels or want less visual separation. */
   panelShadowsEnabled: boolean;
+  /** Automatic periodic backup of workspace state to storage.local. */
+  autoBackupEnabled: boolean;
+  /** Minutes between automatic backups. */
+  autoBackupIntervalMinutes: number;
+  /** Maximum number of automatic backups to retain (FIFO). */
+  autoBackupMaxCount: number;
 }
 
 export type ColorModePref = 'light' | 'dark';
@@ -291,7 +351,22 @@ export type Action =
   /** Ask tools to broadcast the current "Saved panels" folder contents
    * as a `savedPanels/snapshot` event. Sent on shell entry mount so
    * the panel-trailer iframe paints its favicon row immediately. */
-  | { type: 'savedPanels/requestSnapshot' };
+  | { type: 'savedPanels/requestSnapshot' }
+  /** Export workspace state as a JSON snapshot. When `workspaceIds` is
+   * omitted, all workspaces are exported. Tools collects the full state
+   * (including tab URLs via browser.tabs.get) and replies with
+   * `backup/exportReady`. */
+  | { type: 'backup/export'; workspaceIds?: string[] }
+  /** Import workspace state from a validated export schema. Additive:
+   * creates new workspaces with fresh UUIDs, never overwrites existing. */
+  | { type: 'backup/import'; data: BentoExportSchema; options: ImportOptions }
+  /** Request the list of stored auto-backups (metadata only). */
+  | { type: 'backup/requestList' }
+  /** Restore from a stored auto-backup by id. Same additive semantics
+   * as backup/import. */
+  | { type: 'backup/restore'; backupId: string }
+  /** Delete a stored auto-backup by id. */
+  | { type: 'backup/delete'; backupId: string };
 
 /** One entry in the "Saved panels" bookmark folder. `id` is the Firefox
  * bookmark id; `title` and `url` come straight from browser.bookmarks. */
@@ -407,7 +482,11 @@ export type Event =
    * SavedPanelsStore detects a change (bookmark added/removed/renamed
    * inside the folder). The panel-trailer iframe mirrors this into its
    * Zustand store and re-renders the favicon row. */
-  | { type: 'savedPanels/snapshot'; items: SavedPanelEntry[] };
+  | { type: 'savedPanels/snapshot'; items: SavedPanelEntry[] }
+  | { type: 'backup/exportReady'; json: string; filename: string }
+  | { type: 'backup/importComplete'; summary: ImportSummary }
+  | { type: 'backup/importError'; message: string }
+  | { type: 'backup/list'; backups: BackupListEntry[] };
 
 /** Wire-level envelope around an Action: the action itself plus an
  * optional routing field that bento-shell's dispatcher stamps with the

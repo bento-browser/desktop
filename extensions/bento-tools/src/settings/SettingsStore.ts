@@ -30,6 +30,9 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   customPanelSizes: [320, 480, 768, 1280],
   panelCycleWraparound: false,
   panelShadowsEnabled: true,
+  autoBackupEnabled: true,
+  autoBackupIntervalMinutes: 30,
+  autoBackupMaxCount: 5,
 });
 
 interface StoredShape {

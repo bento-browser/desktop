@@ -31,6 +31,7 @@ import { useSettingsStore } from '../../state/settings';
 import { usePrivacyStore } from '../../state/privacy';
 import { dispatch, initToolsPort } from '../../bridge/useToolsPort';
 import { ShortcutsDialog } from './ShortcutsDialog';
+import { BackupSection } from './BackupSection';
 import './Settings.css';
 
 function update<K extends keyof import('@shared/protocol').BentoSettings>(
@@ -388,6 +389,8 @@ export function Settings() {
           </Row>
         </Card.Body>
       </Card.Root>
+
+      <BackupSection />
 
       <Row gap="s" align="center" className="bento-settings__footer">
         <Button variant="ghost" onPress={() => dispatch({ type: 'settings/reset' })}>

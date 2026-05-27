@@ -75,6 +75,18 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   max-width: calc(100vw - 2 * var(--space-s));
 }
 
+/* Menu.Trigger renders a real button. The trigger uses Tale UI neutral
+ * button classes for its visual frame; Bento only controls the sidebar
+ * layout constraints here. */
+.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  justify-content: flex-start;
+}
+
 @layer bento.components {
   .bento-workspace-switcher__trigger {
     /* display:flex (not inline-flex) + width:100% + min-width:0 so the
@@ -84,99 +96,15 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
     display: flex;
     width: 100%;
     min-width: 0;
+    box-sizing: border-box;
     align-items: center;
-    gap: var(--space-2xs);
-    padding-block: var(--space-2xs);
-    padding-inline: var(--space-xs);
-    border: 0;
-    background-color: transparent;
-    color: var(--neutral-90);
-    border-radius: var(--radius-s);
-    cursor: pointer;
-    /* outline lives in the transition list so the focus ring fades in
-       rather than snapping when the user tabs into the trigger.
-       outline-color follows --bento-workspace-accent so the ring picks
-       up the active workspace's tint — keeps the visual coherent with
-       the avatar next to it. */
-    outline: 0 solid transparent;
-    outline-offset: 1px;
-    transition:
-      background-color var(--bento-duration-fast) var(--bento-easing-standard),
-      outline-color var(--bento-duration-fast) var(--bento-easing-standard),
-      padding var(--bento-duration-base) var(--bento-easing-standard);
+    justify-content: flex-start;
+    transition: padding var(--bento-duration-base) var(--bento-easing-standard);
   }
 
-  /* Hover: subtle surface tint. Both :hover and [data-hovered] because
-     Tale UI's Menu.Trigger wraps react-aria's AriaButton, which sets a
-     data-hovered attribute managed by usePress (touch+mouse uniform).
-     Keep both for keyboard-only-no-mouse users (where :hover is never
-     true but data-hovered isn't set either — overlap is fine, neither
-     fires) and for safe overlap when both code paths agree. */
-  .bento-workspace-switcher__trigger:hover,
-  .bento-workspace-switcher__trigger[data-hovered] {
-    background-color: var(--bento-surface-hover);
-  }
-
-  /* Pressed (held down): stronger surface tint. Pairs with the hover
-     state so the user gets a clear depth cue between resting/hover/
-     pressed. data-pressed is react-aria's standard "currently being
-     activated" attribute, set during the press-and-hold window. */
-  .bento-workspace-switcher__trigger:active,
-  .bento-workspace-switcher__trigger[data-pressed] {
-    background-color: var(--bento-surface-active);
-  }
-
-  /* Open (menu showing): persistent accent-tinted surface so the trigger
-     reads as "this is what the open popover belongs to" while the menu
-     is visible. Distinct from :hover/:pressed (which use neutral 8% /
-     16% tints — too subtle on the dark sidebar to register as a
-     persistent state). The accent tint at 22% gives a clearly visible
-     coloured wash without screaming, AND it picks up the active
-     workspace's hue so the open state visually links to the workspace
-     identity.
-     The --open modifier class is applied by App-side state mirroring
-     the overlay's open status (Menu.Trigger here is used standalone —
-     no MenuTrigger context to provide a data-state attribute, so we
-     apply our own modifier class).
-     :hover during --open bumps the tint to 32% so hovering the open
-     trigger still reads as interactive — same layered-state pattern
-     as the active TabRow. */
-  /* !important + compound .X.X--open selector (specificity 0,2,0) to
-     out-rank the (0,2,0) :hover / [data-hovered] / :active /
-     [data-pressed] / :focus-visible / [data-focus-visible] rules above
-     AND any unlayered Tale UI / react-aria default that we haven't
-     traced. Without !important an unlayered rule with the same
-     specificity would still win the cascade because unlayered always
-     beats layered (CSS spec).
-     Plain rgba (NOT color-mix) so we don't depend on Firefox 150's
-     color-mix-with-transparent parsing. White at 18% over the dark
-     sidebar gives a clearly visible active state. Not accent-tinted
-     because the avatar already carries the accent identity. */
-  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open {
-    /* Same surface tokens as the active tab row in the sidebar
-       (TabRow.css .bento-tab-row--active) for visual consistency —
-       both states answer "this is the currently-active thing in the
-       sidebar". --bento-surface-active is a 16% neutral-90 tint;
-       --bento-surface-active-hover bumps to 24% on hover. */
-    background-color: var(--bento-surface-active) !important;
-  }
-  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open:hover,
-  .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open[data-hovered] {
-    background-color: var(--bento-surface-active-hover) !important;
-  }
   .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open
     .bento-workspace-switcher__chevron {
     opacity: 1;
-  }
-
-  /* Keyboard focus ring (NOT pointer-driven focus — :focus-visible
-     filters out clicks). Coloured with the active workspace's accent
-     so the ring reads as part of the workspace identity rather than a
-     generic focus indicator. data-focus-visible is react-aria's
-     attribute that mirrors the spec's :focus-visible rules. */
-  .bento-workspace-switcher__trigger:focus-visible,
-  .bento-workspace-switcher__trigger[data-focus-visible] {
-    outline: var(--bento-focus-ring-width) solid var(--bento-workspace-accent);
   }
 
   /* Chevron emphasis on hover/focus — the icon is muted at rest

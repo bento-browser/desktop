@@ -12,8 +12,8 @@
     flex-shrink: 0;
     max-height: 40vh;
     overflow-y: auto;
-    /* Matches .bento-tab-list-pane padding-inline so pinned rows align
-     * horizontally with tab rows below the divider. */
+    /* Matches .bento-shell-app__header and .bento-tab-list-pane so
+     * workspace switcher, pinned rows, and tab rows share one inset. */
     padding-inline: var(--space-2xs);
     padding-block-end: var(--space-2xs);
     margin-block-end: 0;

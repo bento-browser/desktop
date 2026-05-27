@@ -54,6 +54,18 @@ function onOpenSaved(url: string) {
   dispatch({ type: 'panel/openAt', url, sourceTabId: null, position: 'end' });
 }
 
+function encodePanelTrailerMenuPayload(payload: object): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
+function openPanelTrailerContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  document.title = `BENTO_PANEL_TRAILER_CONTEXT_MENU:${Date.now()}:${encodePanelTrailerMenuPayload({
+    anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
+  })}`;
+}
+
 function PanelTrailerApp() {
   useFirefoxTheme();
   useWorkspaceTheme();
@@ -63,6 +75,8 @@ function PanelTrailerApp() {
 
 const container = document.getElementById('root');
 if (!container) throw new Error('bento-shell panel-trailer: #root not found');
+
+document.addEventListener('contextmenu', openPanelTrailerContextMenu, true);
 
 createRoot(container).render(
   <StrictMode>

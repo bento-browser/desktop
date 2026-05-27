@@ -12,6 +12,7 @@ import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
+import { BackupStore } from './backup/BackupStore';
 import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
@@ -23,6 +24,7 @@ const settings = new SettingsStore();
 const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore();
 const savedPanels = new SavedPanelsStore();
+const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
 
 // Push contentColorMode to Firefox's prefers-color-scheme content
 // override. Tracked separately from uiColorMode (which only affects
@@ -310,7 +312,9 @@ const bootReady = Promise.all([
       }
       for (const wsId of targets) void emitPanelsSync(wsId);
     }
+    backup.onSettingsChanged(next);
   });
+  backup.startAutoBackup(settings.snapshot());
   // Phase G.1 — restore per-window active workspace from SessionStore
   // before any backfill runs. Each window's `bento.activeWorkspaceId`
   // session value was written by WorkspaceStore.activate / assignAvailable
@@ -1215,6 +1219,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       panels,
       pinnedPanels,
       savedPanels,
+      backup,
       send,
       emitPanelsSync,
       syncPanelMarkers: syncPanelMarkersForWorkspace,

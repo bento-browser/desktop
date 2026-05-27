@@ -69,7 +69,7 @@ export async function load(): Promise<PersistedPanels | null> {
       LEGACY_MAIN_WIDTHS_STORAGE_KEY,
       STRIP_SCROLL_STORAGE_KEY,
     ])) as Record<string, unknown>;
-    const stored = raw[STORAGE_KEY] as StoredShape | undefined;
+    const storedRaw = raw[STORAGE_KEY];
     const storedMainWidth = raw[MAIN_WIDTH_STORAGE_KEY];
     const legacyMainWidths = raw[LEGACY_MAIN_WIDTHS_STORAGE_KEY] as
       | Record<string, unknown>
@@ -101,13 +101,15 @@ export async function load(): Promise<PersistedPanels | null> {
       mainWidthPx = Math.max(MAIN_PANEL_MIN_WIDTH, legacyGlobalWidth);
     }
 
-    if (!stored || typeof stored !== 'object') {
+    if (!storedRaw || typeof storedRaw !== 'object') {
       return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
     }
-    if (stored.version !== 1 && stored.version !== 2 && stored.version !== 3) {
-      console.warn('[bento-tools] panels: unknown version', stored.version, '— ignoring');
+    const storedVersion = (storedRaw as { version?: unknown }).version;
+    if (storedVersion !== 1 && storedVersion !== 2 && storedVersion !== 3) {
+      console.warn('[bento-tools] panels: unknown version', storedVersion, '— ignoring');
       return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
     }
+    const stored = storedRaw as StoredShape;
     if (stored.version >= 2) {
       const v2 = stored as StoredShapeV2 | StoredShapeV3;
       for (const [wsId, list] of Object.entries(v2.byWorkspace)) {

@@ -17,7 +17,7 @@
 // purely a chrome concern via the host overlay (same pattern as palette
 // and confirm).
 
-import { StrictMode, useEffect, useMemo, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog } from '@tale-ui/react/dialog';
 import { Button } from '@tale-ui/react/button';
@@ -148,11 +148,10 @@ function EditWorkspaceApp() {
                 Theme
               </Text>
               <ColorSwatchPicker.Root
-                shape="circle"
                 value={pickerValue}
                 onChange={onPickerChange}
                 aria-label="Workspace theme"
-                className="bento-edit-workspace__theme-picker"
+                className="bento-edit-workspace__theme-picker tale-color-swatch-picker--circle"
               >
                 {BENTO_THEMES.map((theme) => (
                   <ColorSwatchPicker.Item
@@ -160,7 +159,14 @@ function EditWorkspaceApp() {
                     color={theme.brand60}
                     aria-label={theme.name}
                   >
-                    <ColorSwatch secondaryColor={theme.neutral20} />
+                    <ColorSwatch
+                      className="tale-color-swatch--split"
+                      style={
+                        {
+                          '--tale-color-swatch-secondary': theme.neutral20,
+                        } as CSSProperties
+                      }
+                    />
                   </ColorSwatchPicker.Item>
                 ))}
               </ColorSwatchPicker.Root>

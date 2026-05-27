@@ -20,7 +20,7 @@
 
   .bento-shell-app__header {
     padding-block: var(--space-xs);
-    padding-inline: var(--space-s);
+    padding-inline: var(--space-2xs);
     border-bottom: 1px solid var(--bento-border-color-subtle);
     /* Animate padding so the workspace-switcher trigger's effective
        width drifts smoothly during collapse/expand instead of snapping

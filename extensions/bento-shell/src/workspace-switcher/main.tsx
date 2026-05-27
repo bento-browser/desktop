@@ -203,7 +203,6 @@ function WorkspaceSwitcherOverlayApp() {
 
   return (
     <Menu.Root
-      size="sm"
       isOpen={true}
       onOpenChange={(open) => {
         if (!open) close();

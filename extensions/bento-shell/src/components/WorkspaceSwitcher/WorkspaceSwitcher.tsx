@@ -73,7 +73,7 @@ export function WorkspaceSwitcher() {
     <Menu.Trigger
       ref={triggerRef}
       className={
-        'bento-workspace-switcher__trigger' +
+        'tale-button tale-button--neutral tale-button--md bento-workspace-switcher__trigger' +
         (isOpen ? ' bento-workspace-switcher__trigger--open' : '')
       }
       aria-label={active ? `Workspace ${active.name} — switch workspace` : 'Switch workspace'}

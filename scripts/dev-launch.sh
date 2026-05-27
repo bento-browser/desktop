@@ -5,7 +5,7 @@
 set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit
 
 BENTO_BIN="${BENTO_BIN:-engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento}"
 PROFILE="${1:-${BENTO_DEV_PROFILE:-.bento-dev-profile}}"

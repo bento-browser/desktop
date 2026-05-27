@@ -1,0 +1,20 @@
+@layer bento.features {
+  .bento-backup__ws-select {
+    padding: var(--space-s);
+    border-radius: var(--radius-m);
+    background: var(--neutral-5);
+  }
+
+  .bento-backup__preview {
+    padding: var(--space-s);
+    border-radius: var(--radius-m);
+    background: var(--neutral-5);
+    border: 1px solid var(--neutral-20);
+  }
+
+  .bento-backup__entry {
+    padding: var(--space-xs) var(--space-s);
+    border-radius: var(--radius-s);
+    background: var(--neutral-5);
+  }
+}

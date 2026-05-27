@@ -97,7 +97,6 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
 
   return (
     <Menu.Root
-      size="sm"
       isOpen={true}
       onOpenChange={(open) => {
         if (!open) onClose();

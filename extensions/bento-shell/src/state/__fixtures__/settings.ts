@@ -21,6 +21,9 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   customPanelSizes: [320, 480, 768, 1280],
   panelCycleWraparound: false,
   panelShadowsEnabled: true,
+  autoBackupEnabled: true,
+  autoBackupIntervalMinutes: 30,
+  autoBackupMaxCount: 5,
 };
 
 export function seedDefault(): void {
