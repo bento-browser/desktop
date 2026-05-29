@@ -9,7 +9,7 @@ import { TabRegistry } from './tabs/TabRegistry';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
-import { PanelStore } from './panels/PanelStore';
+import { PanelStore, type PersistedSubdivision } from './panels/PanelStore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { BackupStore } from './backup/BackupStore';
@@ -102,30 +102,63 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
   // tabs.create branch) also rebinds correctly.
   const urlToTabId = new Map<string, number>();
   const consumed = new Set<number>();
-  for (const entry of entries) {
-    const url = entry.url;
-    let matchedId: number | null = null;
+
+  const restoreTabForUrl = async (url: string): Promise<number | null> => {
     for (const t of wsTabs) {
       if (consumed.has(t.id)) continue;
       if (tabUrls.get(t.id) === url) {
-        matchedId = t.id;
         consumed.add(t.id);
-        break;
+        return t.id;
       }
     }
-    if (matchedId === null) {
-      // No existing tab — open one. active:false so panel restoration
-      // doesn't yank focus from the user's current tab.
-      try {
-        const created = await browser.tabs.create({ url, active: false });
-        if (typeof created.id === 'number') {
-          matchedId = created.id;
-          await tabs.assignWorkspace(matchedId, workspaceId);
-        }
-      } catch (err) {
-        console.warn('[bento-tools] panel restore: tabs.create failed for', url, err);
+
+    // No existing tab — open one. active:false so panel restoration
+    // doesn't yank focus from the user's current tab.
+    try {
+      const created = await browser.tabs.create({ url, active: false });
+      if (typeof created.id === 'number') {
+        await tabs.assignWorkspace(created.id, workspaceId);
+        return created.id;
+      }
+    } catch (err) {
+      console.warn('[bento-tools] panel restore: tabs.create failed for', url, err);
+    }
+    return null;
+  };
+
+  const restoreSubdivisionForPanel = async (
+    parentTabId: number,
+    subdivision: PersistedSubdivision | undefined,
+  ): Promise<void> => {
+    if (!subdivision) return;
+    const created = panels.subdivide(workspaceId, parentTabId);
+    if (!created && !panels.getSubdivision(parentTabId)) return;
+
+    const expected = subdivision.mode === 'dual' ? 2 : 1;
+    const urls = subdivision.subPanelUrls.slice(0, expected);
+    const subTabIds: number[] = [];
+    for (const subUrl of urls) {
+      const subTabId = await restoreTabForUrl(subUrl);
+      if (subTabId === null) continue;
+      subTabIds.push(subTabId);
+      urlToTabId.set(subUrl, subTabId);
+    }
+
+    if (subTabIds.length > 0) {
+      const mode = subdivision.mode === 'dual' && subTabIds.length === 2 ? 'dual' : 'single';
+      panels.fillSubdivision(parentTabId, mode, mode === 'dual' ? subTabIds : [subTabIds[0]!]);
+      if (mode === 'dual' && typeof subdivision.splitRatio === 'number') {
+        panels.setSubdivisionSplitRatio(parentTabId, subdivision.splitRatio);
       }
     }
+    if (typeof subdivision.topHeightFraction === 'number') {
+      panels.setSubdivisionHeight(parentTabId, subdivision.topHeightFraction);
+    }
+  };
+
+  for (const entry of entries) {
+    const url = entry.url;
+    const matchedId = await restoreTabForUrl(url);
     if (matchedId !== null) {
       panels.add(workspaceId, matchedId);
       urlToTabId.set(url, matchedId);
@@ -134,6 +167,7 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
       if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
         panels.setWidth(matchedId, entry.widthPx);
       }
+      await restoreSubdivisionForPanel(matchedId, entry.subdivision);
     }
   }
   // Restore pinned-panel bindings for this workspace now that we know

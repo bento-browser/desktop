@@ -455,7 +455,7 @@ export class PanelStore {
       subPanelTabIds: [],
       splitRatio: 0.5,
     });
-    this.#schedulePersist();
+    this.#flushPersist();
     return true;
   }
 
@@ -468,7 +468,7 @@ export class PanelStore {
     sub.mode = mode;
     sub.subPanelTabIds = [...subTabIds];
     if (mode === 'single') sub.splitRatio = 0.5;
-    this.#schedulePersist();
+    this.#flushPersist();
     return true;
   }
 

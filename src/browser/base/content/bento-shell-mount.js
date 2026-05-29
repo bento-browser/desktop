@@ -1420,29 +1420,28 @@
       }
       .bento-subdivision-vsplitter {
         cursor: row-resize !important;
-        flex: 0 0 8px !important;
-        min-height: 8px !important;
-        max-height: 8px !important;
+        flex: 0 0 14px !important;
+        min-height: 14px !important;
+        max-height: 14px !important;
         appearance: none !important;
         border: 0 !important;
-        background: transparent !important;
+        background-color: transparent !important;
+        background-image: linear-gradient(
+          to bottom,
+          transparent calc(50% - 2.5px),
+          var(--color-60) calc(50% - 2.5px),
+          var(--color-60) calc(50% + 2.5px),
+          transparent calc(50% + 2.5px)
+        ) !important;
+        opacity: 0 !important;
+        transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
         position: relative !important;
       }
       .bento-subdivision-vsplitter::after {
-        content: '' !important;
-        position: absolute !important;
-        left: 25% !important;
-        right: 25% !important;
-        top: 50% !important;
-        height: 3px !important;
-        transform: translateY(-50%) !important;
-        border-radius: 1.5px !important;
-        background: var(--neutral-30) !important;
-        opacity: 0 !important;
-        transition: opacity 150ms ease !important;
+        content: none !important;
       }
-      .bento-subdivision-vsplitter:hover::after,
-      .bento-subdivision-vsplitter--dragging::after {
+      .bento-subdivision-vsplitter:hover,
+      .bento-subdivision-vsplitter--dragging {
         opacity: 1 !important;
       }
       .bento-subdivision-bottom {
@@ -3324,6 +3323,58 @@
     forcePanelHeaderInteractiveState(headerEl);
   }
 
+  function forceSubPanelBrowserPaint(tab, panelEl, options = {}) {
+    if (!panelEl) return;
+    const browserEl = tab?.linkedBrowser || panelEl.querySelector?.('browser') || null;
+    const browserContainer = panelEl.querySelector?.(':scope > .browserContainer') || null;
+    const browserStack =
+      panelEl.querySelector?.(':scope > .browserContainer > .browserStack') ||
+      panelEl.querySelector?.(':scope > .browserStack') ||
+      null;
+
+    panelEl.classList.add('split-view-panel-active');
+    panelEl.removeAttribute('hidden');
+    panelEl.removeAttribute('collapsed');
+    panelEl.style.setProperty('-moz-subtree-hidden-only-visually', '0', 'important');
+    panelEl.style.setProperty('visibility', 'inherit', 'important');
+
+    for (const el of [browserContainer, browserStack, browserEl]) {
+      if (!el) continue;
+      el.removeAttribute?.('hidden');
+      el.removeAttribute?.('collapsed');
+      el.style.setProperty('-moz-subtree-hidden-only-visually', '0', 'important');
+      el.style.setProperty('visibility', 'inherit', 'important');
+      el.style.setProperty('opacity', '1', 'important');
+      el.style.setProperty('min-height', '0', 'important');
+      el.style.setProperty('min-width', '0', 'important');
+    }
+    if (browserEl) {
+      browserEl.removeAttribute('blank');
+      browserEl.removeAttribute('pendingpaint');
+      browserEl.style.setProperty('width', '100%', 'important');
+      browserEl.style.setProperty('height', '100%', 'important');
+      try {
+        browserEl.preserveLayers?.(true);
+        browserEl.renderLayers = true;
+        browserEl.docShellIsActive = true;
+      } catch {
+        // Best-effort paint restoration; callers keep layout state intact.
+      }
+    }
+    if (options.hideOverlay !== false) {
+      forceHidePanelLoadingOverlay(panelEl);
+    }
+  }
+
+  function scheduleSubPanelPaintRestore(tab, panelEl, options = {}) {
+    forceSubPanelBrowserPaint(tab, panelEl, options);
+    requestAnimationFrame(() => {
+      forceSubPanelBrowserPaint(tab, panelEl, options);
+      requestAnimationFrame(() => forceSubPanelBrowserPaint(tab, panelEl, options));
+    });
+    window.setTimeout(() => forceSubPanelBrowserPaint(tab, panelEl, options), 350);
+  }
+
   function forceTopClosedSubPanelPaint(tab, panelEl) {
     if (!panelEl) return;
     const tabId = getBentoTabId(tab);
@@ -3560,7 +3611,7 @@
     const d = splitter._vDragState;
     if (!d || e.pointerId !== d.pointerId) return;
     const delta = e.clientY - d.startY;
-    const splitterH = 8;
+    const splitterH = splitter.getBoundingClientRect().height || 14;
     const usable = d.colHeight - splitterH;
     const minH = usable * 0.2;
     const next = Math.max(minH, Math.min(usable - minH, d.startHeight + delta));
@@ -3975,6 +4026,9 @@
       for (const el of parentPanel.querySelectorAll(
         ':scope > .bento-subdivision-vsplitter, :scope > .bento-subdivision-chooser, :scope > .bento-subdivision-bottom, :scope > [data-bento-subpanel]',
       )) {
+        if (el.classList?.contains('bento-subdivision-vsplitter')) {
+          continue;
+        }
         if (el.hasAttribute('data-bento-subpanel') && desiredSubPanelIds.has(el.id)) {
           continue;
         }
@@ -4082,8 +4136,13 @@
         staleVSplitter.style.pointerEvents = topClosed ? 'none' : '';
       }
 
-      const vsplitter = topClosed ? null : createVerticalSplitter(parentTabId);
-      if (vsplitter) parentPanel.appendChild(vsplitter);
+      const vsplitter = topClosed ? staleVSplitter : staleVSplitter || createVerticalSplitter(parentTabId);
+      if (vsplitter) {
+        vsplitter._bentoParentTabId = parentTabId;
+        if (!topClosed && vsplitter.parentNode !== parentPanel) {
+          parentPanel.appendChild(vsplitter);
+        }
+      }
 
       if (!sub.subPanels || sub.subPanels.length === 0) {
         const chooser = createSubdivisionChooser(parentTabId);
@@ -4143,13 +4202,13 @@
                 loadDefaultNewTabInBrowser(spBrowser);
               }
               try {
-                if (topClosed) {
-                  spBrowser.preserveLayers?.(true);
-                  spBrowser.renderLayers = true;
-                  spBrowser.docShellIsActive = true;
-                }
-                else { spBrowser.docShellIsActive = false; spBrowser.docShellIsActive = true; }
+                spBrowser.preserveLayers?.(true);
+                spBrowser.renderLayers = true;
+                spBrowser.docShellIsActive = true;
               } catch {}
+            }
+            if (!topClosed && !isNewSubdivision) {
+              scheduleSubPanelPaintRestore(spTab, spPanel);
             }
           }
         }
@@ -4191,7 +4250,14 @@
             if (!sub.subPanels[j].url || sub.subPanels[j].url === 'about:blank' || sub.subPanels[j].url === 'about:newtab') {
               loadDefaultNewTabInBrowser(spBrowser);
             }
-            try { spBrowser.docShellIsActive = false; spBrowser.docShellIsActive = true; } catch {}
+            try {
+              spBrowser.preserveLayers?.(true);
+              spBrowser.renderLayers = true;
+              spBrowser.docShellIsActive = true;
+            } catch {}
+          }
+          if (!isNewSubdivision) {
+            scheduleSubPanelPaintRestore(spTab, spPanel);
           }
           if (j === 0) {
             bottom.appendChild(createHorizontalSubSplitter(parentTabId));
@@ -4224,7 +4290,7 @@
             parentPanel.querySelector(':scope > browser');
           if (currentContent) {
             const headerH = headerEl?.getBoundingClientRect().height || 0;
-            const splitterH = vsplitter?.getBoundingClientRect().height || 8;
+            const splitterH = vsplitter?.getBoundingClientRect().height || 14;
             const availableH = Math.max(
               0,
               parentPanel.getBoundingClientRect().height - headerH - splitterH,
@@ -7511,7 +7577,7 @@
   //    the new mainTab. Stripping the class puts it back to default
   //    visibility: hidden.
   //
-  // 4. gBrowser.warmupTab(tab) for every tab in tabsToRender (after
+  // 4. gBrowser.warmupTab(tab) for every tab in tabsToKeepActive (after
   //    showSplitViewPanels). The AsyncTabSwitcher (gBrowser._switcher)
   //    is created lazily and DESTROYS itself after every successful
   //    tab switch (AsyncTabSwitcher.sys.mjs:343 finish() calls
@@ -7956,16 +8022,16 @@
     for (const { tab } of resolved) {
       renderTab(tab);
     }
-    // Include sub-panel tabs in Firefox's split-view set even though
-    // Bento physically nests them inside the parent panel below. That
-    // keeps the remote browser's paint/docShell state intact; the
-    // separate layoutTabsToRender list below is what prevents nested
-    // sub-panels from becoming separate top-level columns.
+    // Keep sub-panel tabs in Bento's active split marker so Firefox's
+    // AsyncTabSwitcher treats their browsers as active, but do NOT pass
+    // them to showSplitViewPanels. Firefox's tabpanels split-view code
+    // assumes every split-view panel is a direct child of tabpanels; nested
+    // subpanels violate that assumption and have to be temporarily detached,
+    // which causes the visible bottom-panel flicker when nearby top-level
+    // panels are added or subdivided.
     if (resolvedSubPanels.length > 0) {
       for (const { tab } of resolvedSubPanels) {
-        if (tab.linkedPanel && !seenPanelIds.has(tab.linkedPanel)) {
-          renderTab(tab);
-        }
+        keepActiveTab(tab);
       }
     }
     if (topClosedSubPanelTabIds.size > 0) {
@@ -8027,6 +8093,66 @@
       }
     }
 
+    const cleanupDroppedSplitViewPanel = (panelId) => {
+      const panelEl = panelId ? document.getElementById(panelId) : null;
+      if (!panelEl) return;
+      panelEl.classList.remove('split-view-panel', 'split-view-panel-active');
+      panelEl.removeAttribute('column');
+      const tab = gBrowser.tabs.find((candidate) => candidate.linkedPanel === panelId);
+      if (tab && !activePanelIds.has(panelId) && tab.splitview?.kind === BENTO_SPLIT_KIND) {
+        delete tab.splitview;
+      }
+      const browserContainer = panelEl.querySelector('.browserContainer');
+      const browserEl = panelEl.querySelector('browser');
+      browserContainer?.removeEventListener('click', tabpanels);
+      browserContainer?.removeEventListener('mouseover', tabpanels);
+      browserContainer?.removeEventListener('mouseout', tabpanels);
+      browserEl?.removeEventListener('focus', tabpanels);
+      if (tab && activePanelIds.has(panelId)) {
+        scheduleSubPanelPaintRestore(tab, panelEl);
+      }
+    };
+
+    const sanitizeExistingSplitViewPanelsForFirefox = () => {
+      const currentPanelIds = Array.from(tabpanels.splitViewPanels || []);
+      if (!currentPanelIds.length) return currentPanelIds;
+
+      const nextPanelIds = [];
+      const droppedPanelIds = [];
+      for (const panelId of currentPanelIds) {
+        const panelEl = panelId ? document.getElementById(panelId) : null;
+        if (panelEl?.parentNode === tabpanels) {
+          nextPanelIds.push(panelId);
+        } else {
+          droppedPanelIds.push(panelId);
+        }
+      }
+
+      const changed =
+        nextPanelIds.length !== currentPanelIds.length ||
+        nextPanelIds.some((panelId, index) => panelId !== currentPanelIds[index]);
+      if (!changed) return currentPanelIds;
+
+      for (const panelId of droppedPanelIds) {
+        cleanupDroppedSplitViewPanel(panelId);
+      }
+
+      try {
+        tabpanels.splitViewPanels = nextPanelIds;
+        return nextPanelIds;
+      } catch (err) {
+        console.warn('[bento-shell-mount] sanitize splitViewPanels failed:', err);
+        try {
+          tabpanels.splitViewPanels = [];
+        } catch (clearErr) {
+          console.warn('[bento-shell-mount] clear stale splitViewPanels failed:', clearErr);
+        }
+        return [];
+      }
+    };
+
+    sanitizeExistingSplitViewPanelsForFirefox();
+
     // Now teardown. Each departing tab is one that was in the previous
     // splitViewPanels but isn't in the new tabsToRender. Firefox's
     // removeTabsFromSplitview (toolkit/content/widgets/tabbox.js:516)
@@ -8046,15 +8172,20 @@
     // keeps [splitview] = true throughout — no transient deactivation.
     const previous = tabpanels.splitViewPanels || [];
     const departingTabs = [];
+    const departingStillActiveTabs = [];
     for (const panelId of previous) {
       if (seenPanelIds.has(panelId)) continue;
       const t = gBrowser.tabs.find((tab) => tab.linkedPanel === panelId);
       if (!t) continue;
+      const stillKeepActive = activePanelIds.has(panelId);
       departingTabs.push(t);
-      if (t.splitview && t.splitview.kind === BENTO_SPLIT_KIND) {
+      if (stillKeepActive) {
+        departingStillActiveTabs.push(t);
+      }
+      if (!stillKeepActive && t.splitview && t.splitview.kind === BENTO_SPLIT_KIND) {
         delete t.splitview;
       }
-      if (t !== mainTab && t.linkedBrowser) {
+      if (!stillKeepActive && t !== mainTab && t.linkedBrowser) {
         // preserveLayers(true) BEFORE docShellIsActive=false. Without
         // this, Firefox destroys the browser's compositor layers when
         // deactivated; on reactivation the docShell processes again
@@ -8082,10 +8213,12 @@
       // as "I can see the first tab beneath the new tab". Strip the
       // class explicitly to make the panel invisible the instant it
       // leaves the split.
-      try {
-        tabpanels.setSplitViewPanelActive(false, panelId);
-      } catch (err) {
-        console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
+      if (!stillKeepActive) {
+        try {
+          tabpanels.setSplitViewPanelActive(false, panelId);
+        } catch (err) {
+          console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
+        }
       }
     }
     if (departingTabs.length) {
@@ -8093,6 +8226,13 @@
         tabpanels.removeTabsFromSplitview(departingTabs);
       } catch (err) {
         console.warn('[bento-shell-mount] removeTabsFromSplitview failed:', err);
+      }
+    }
+
+    for (const tab of departingStillActiveTabs) {
+      const panelEl = tab.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+      if (panelEl) {
+        scheduleSubPanelPaintRestore(tab, panelEl);
       }
     }
 
@@ -8143,8 +8283,33 @@
     try {
       gBrowser.showSplitViewPanels(tabsToRender);
     } catch (err) {
-      console.error('[bento-shell-mount] showSplitViewPanels failed:', err);
-      return;
+      if (!String(err?.message || err).includes('Wrong reference child')) {
+        console.error('[bento-shell-mount] showSplitViewPanels failed:', err);
+        return;
+      }
+      console.warn('[bento-shell-mount] showSplitViewPanels stale split list; retrying:', err);
+      try {
+        tabpanels.splitViewPanels = [];
+      } catch (clearErr) {
+        console.warn('[bento-shell-mount] retry clear splitViewPanels failed:', clearErr);
+      }
+      for (const tab of tabsToKeepActive) {
+        try {
+          tab.linkedBrowser?.preserveLayers?.(true);
+          if (tab.linkedBrowser) {
+            tab.linkedBrowser.renderLayers = true;
+            tab.linkedBrowser.docShellIsActive = true;
+          }
+        } catch (paintErr) {
+          console.warn('[bento-shell-mount] retry paint preserve failed:', paintErr);
+        }
+      }
+      try {
+        gBrowser.showSplitViewPanels(tabsToRender);
+      } catch (retryErr) {
+        console.error('[bento-shell-mount] showSplitViewPanels retry failed:', retryErr);
+        return;
+      }
     }
 
     // The splitViewPanels setter (toolkit/content/widgets/tabbox.js:498)
@@ -8369,7 +8534,7 @@
     // warmupTab is also idempotent + advances tabs in STATE_UNLOADED
     // back to STATE_LOADING, so tabs that were previously unloaded
     // get repainted on re-entry into the split.
-    for (const tab of tabsToRender) {
+    for (const tab of tabsToKeepActive) {
       try {
         gBrowser.warmupTab(tab);
       } catch (err) {
