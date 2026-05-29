@@ -2535,6 +2535,18 @@
     }
   }
 
+  function getLivePanelBrowser(tabOrBrowser) {
+    const browserEl =
+      tabOrBrowser?.localName === 'browser' ? tabOrBrowser : tabOrBrowser?.linkedBrowser;
+    if (!browserEl) return null;
+    try {
+      if (!browserEl.frameLoader) return null;
+    } catch {
+      return null;
+    }
+    return browserEl;
+  }
+
   function ensurePanelInitialContent(tab, panelEl, browserEl, payloadUrl, options = {}) {
     if (!browserEl) return;
     const currentSpec = getBrowserCurrentSpec(browserEl);
@@ -3936,8 +3948,13 @@
     return true;
   }
 
-	  function applySubdivisions(tabpanels, subdivisions) {
+	  function applySubdivisions(tabpanels, subdivisions, options = {}) {
 	    const tabTracker = getBentoTabTracker();
+	    const activePanelIds = options.activePanelIds instanceof Set ? options.activePanelIds : null;
+	    const isActivePanelElement = (el) => {
+	      if (!activePanelIds) return true;
+	      return !!el?.id && activePanelIds.has(el.id);
+	    };
 	    const elementStillHasSubdivision = (el) => {
 	      const tabIdAttr = el.dataset.bentoPanelTabId;
 	      const tabId = tabIdAttr ? Number(tabIdAttr) : NaN;
@@ -3962,6 +3979,7 @@
 	    // Clear subdivisions from panels that are no longer subdivided
 	    for (const el of tabpanels.querySelectorAll('[data-bento-subdivided]')) {
 	      if (!elementStillHasSubdivision(el)) {
+	        if (!isActivePanelElement(el)) continue;
 	        const isTopClosedSurvivor = isCurrentTopClosedSurvivorElement(el);
 	        clearSubdivisionFromPanel(el, { force: true, animate: !isTopClosedSurvivor });
 	      }
@@ -5515,12 +5533,13 @@
       }
       const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
       if (!panelEl?.hasAttribute('data-bento-subpanel')) continue;
+      const liveBrowser = getLivePanelBrowser(tab);
       try {
-        if (typeof tab.linkedBrowser?.preserveLayers === 'function') {
-          tab.linkedBrowser.preserveLayers(true);
+        if (typeof liveBrowser?.preserveLayers === 'function') {
+          liveBrowser.preserveLayers(true);
         }
-        if (tab.linkedBrowser) {
-          tab.linkedBrowser.docShellIsActive = true;
+        if (liveBrowser) {
+          liveBrowser.docShellIsActive = true;
         }
       } catch {
         // Preserve the no-navigation promotion path even if layer nudging fails.
@@ -7412,7 +7431,21 @@
     const tabpanels = window.gBrowser?.tabpanels;
     if (!tabpanels) return false;
     setNoSidePanelsMode(false);
-    applySubdivisions(tabpanels, currentSubdivisions);
+    const activePanelIds = new Set();
+    const tabTracker = getBentoTabTracker();
+    if (tabTracker) {
+      for (const panel of panels || []) {
+        const tab = getTrackedTabById(tabTracker, panel?.tabId);
+        if (tab?.linkedPanel) activePanelIds.add(tab.linkedPanel);
+      }
+      for (const sub of currentSubdivisions.values()) {
+        for (const sp of sub?.subPanels || []) {
+          const tab = getTrackedTabById(tabTracker, sp?.tabId);
+          if (tab?.linkedPanel) activePanelIds.add(tab.linkedPanel);
+        }
+      }
+    }
+    applySubdivisions(tabpanels, currentSubdivisions, { activePanelIds });
     for (const [, sub] of currentSubdivisions) {
       if (!sub?.topClosed || sub.subPanels?.length !== 1) continue;
       const tabId = sub.subPanels[0]?.tabId;
@@ -7620,9 +7653,19 @@
     if (!panels || panels.length === 0) {
       cancelWorkspaceFadeForMainOnly();
       setNoSidePanelsMode(true);
-      // Clear in-place subdivisions when tearing down split-view
+      // Clear in-place subdivisions only on the selected main panel. Panels
+      // from the workspace we are leaving may still be parked in tabpanels;
+      // tearing their subdivision DOM down here detaches bottom-panel
+      // notificationboxes and strands their linkedBrowser/frameLoader.
+      const selectedTab = gBrowser.selectedTab;
+      const selectedPanelId =
+        selectedTabWorkspaceId(selectedTab) === currentWorkspaceId
+          ? selectedTab?.linkedPanel || null
+          : null;
       for (const el of tabpanels.querySelectorAll('[data-bento-subdivided]')) {
-        clearSubdivisionFromPanel(el);
+        if (el.id === selectedPanelId) {
+          clearSubdivisionFromPanel(el);
+        }
       }
       const previous = tabpanels.splitViewPanels || [];
       const splitActive = tabpanels.classList.contains('bento-split-active');
@@ -7856,6 +7899,10 @@
         }
         return false;
       }
+      if (!getLivePanelBrowser(tab)) {
+        scheduleMaterializeRetry();
+        return false;
+      }
       if (wasPending) {
         try {
           const spec = tab.linkedBrowser?.currentURI?.spec || '';
@@ -7909,9 +7956,10 @@
       removeInjectedPanelHeader(panelEl);
       injectPanelHeaderIntoLinkedPanel(tab, payload?.url || '');
       forceHidePanelLoadingOverlay(panelEl);
-      if (tab.linkedBrowser) {
+      const liveBrowser = getLivePanelBrowser(tab);
+      if (liveBrowser) {
         try {
-          tab.linkedBrowser.docShellIsActive = true;
+          liveBrowser.docShellIsActive = true;
         } catch {
           // Best effort; the normal docShell forcing later also runs.
         }
@@ -8005,12 +8053,12 @@
     const seenPanelIds = new Set();
     const activePanelIds = new Set();
     const keepActiveTab = (tab) => {
-      if (!tab?.linkedPanel || !tab.linkedBrowser || activePanelIds.has(tab.linkedPanel)) return;
+      if (!tab?.linkedPanel || !getLivePanelBrowser(tab) || activePanelIds.has(tab.linkedPanel)) return;
       tabsToKeepActive.push(tab);
       activePanelIds.add(tab.linkedPanel);
     };
     const renderTab = (tab) => {
-      if (!tab?.linkedPanel || !tab.linkedBrowser || seenPanelIds.has(tab.linkedPanel)) return;
+      if (!tab?.linkedPanel || !getLivePanelBrowser(tab) || seenPanelIds.has(tab.linkedPanel)) return;
       tabsToRender.push(tab);
       seenPanelIds.add(tab.linkedPanel);
       keepActiveTab(tab);
@@ -8174,7 +8222,8 @@
       if (!stillKeepActive && t.splitview && t.splitview.kind === BENTO_SPLIT_KIND) {
         delete t.splitview;
       }
-      if (!stillKeepActive && t !== mainTab && t.linkedBrowser) {
+      const liveBrowser = getLivePanelBrowser(t);
+      if (!stillKeepActive && t !== mainTab && liveBrowser) {
         // preserveLayers(true) BEFORE docShellIsActive=false. Without
         // this, Firefox destroys the browser's compositor layers when
         // deactivated; on reactivation the docShell processes again
@@ -8185,8 +8234,8 @@
         // visible) hold after re-entry, the slot stays blank because
         // the cached layer is gone. Mirrors the order in
         // tabbrowser.js:8161 on_visibilitychange.
-        t.linkedBrowser.preserveLayers(true);
-        t.linkedBrowser.docShellIsActive = false;
+        liveBrowser.preserveLayers(true);
+        liveBrowser.docShellIsActive = false;
       }
       // Explicitly remove .split-view-panel-active. Firefox's
       // removeTabsFromSplitview (tabbox.js:516) removes
@@ -8283,12 +8332,12 @@
         console.warn('[bento-shell-mount] retry clear splitViewPanels failed:', clearErr);
       }
       for (const tab of tabsToKeepActive) {
+        const liveBrowser = getLivePanelBrowser(tab);
+        if (!liveBrowser) continue;
         try {
-          tab.linkedBrowser?.preserveLayers?.(true);
-          if (tab.linkedBrowser) {
-            tab.linkedBrowser.renderLayers = true;
-            tab.linkedBrowser.docShellIsActive = true;
-          }
+          liveBrowser.preserveLayers?.(true);
+          liveBrowser.renderLayers = true;
+          liveBrowser.docShellIsActive = true;
         } catch (paintErr) {
           console.warn('[bento-shell-mount] retry paint preserve failed:', paintErr);
         }
@@ -8490,7 +8539,6 @@
     for (const tab of departingTabs) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
-      clearSubdivisionFromPanel(panelEl);
       panelEl.style.removeProperty('order');
       panelEl.style.removeProperty('width');
       panelEl.style.removeProperty('min-width');
@@ -8524,10 +8572,14 @@
     // back to STATE_LOADING, so tabs that were previously unloaded
     // get repainted on re-entry into the split.
     for (const tab of tabsToKeepActive) {
+      if (!getLivePanelBrowser(tab)) {
+        scheduleMaterializeRetry();
+        continue;
+      }
       try {
         gBrowser.warmupTab(tab);
-      } catch (err) {
-        console.warn('[bento-shell-mount] warmupTab failed:', err);
+      } catch {
+        scheduleMaterializeRetry();
       }
     }
 
@@ -8547,8 +8599,9 @@
     // them off again until the next setSelectedPanel — which we
     // re-run on TabSelect, where this same path fires.
     for (const tab of tabsToKeepActive) {
-      if (tab.linkedBrowser && !tab.linkedBrowser.docShellIsActive) {
-        tab.linkedBrowser.docShellIsActive = true;
+      const liveBrowser = getLivePanelBrowser(tab);
+      if (liveBrowser && !liveBrowser.docShellIsActive) {
+        liveBrowser.docShellIsActive = true;
       }
     }
 
@@ -8556,7 +8609,7 @@
     // a notificationbox into a column wrapper can deactivate its docShell;
     // the wrapper function cycles docShellIsActive on each reparented
     // browser to re-establish content painting.
-    applySubdivisions(tabpanels, currentSubdivisions);
+    applySubdivisions(tabpanels, currentSubdivisions, { activePanelIds });
 
     // Per-panel header injection. Each linkedPanel is a notificationbox;
     // we inject Bento's header (URL bar, back/forward/reload, X close,
@@ -9220,7 +9273,7 @@
       if (selectedPanel && tabpanels) {
         tabpanels.selectedPanel = selectedPanel;
       }
-      const selectedBrowser = gBrowser?.selectedTab?.linkedBrowser;
+      const selectedBrowser = getLivePanelBrowser(gBrowser?.selectedTab);
       if (selectedBrowser) {
         selectedBrowser.preserveLayers(true);
         selectedBrowser.docShellIsActive = true;
@@ -9241,7 +9294,7 @@
         if (selectedPanel && tabpanels) {
           tabpanels.selectedPanel = selectedPanel;
         }
-        const browserEl = expectedTab.linkedBrowser;
+        const browserEl = getLivePanelBrowser(expectedTab);
         if (!browserEl) return;
         browserEl.preserveLayers(true);
         browserEl.docShellIsActive = false;
