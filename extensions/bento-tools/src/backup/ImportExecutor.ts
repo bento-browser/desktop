@@ -105,6 +105,31 @@ export async function executeImport(
         if (typeof panelData.widthPx === 'number' && panelData.widthPx > 0) {
           ctx.panels.setWidth(tabId, panelData.widthPx);
         }
+        if (panelData.subdivision && Array.isArray(panelData.subdivision.subPanelUrls)) {
+          ctx.panels.subdivide(ws.id, tabId);
+          const subTabIds: number[] = [];
+          for (const spUrl of panelData.subdivision.subPanelUrls) {
+            try {
+              const spTab = await browser.tabs.create({ url: spUrl, active: false });
+              if (typeof spTab.id === 'number') subTabIds.push(spTab.id);
+            } catch {
+              // skip sub-panel tabs that fail to restore
+            }
+          }
+          if (subTabIds.length > 0) {
+            const mode =
+              panelData.subdivision.mode === 'dual' && subTabIds.length === 2
+                ? ('dual' as const)
+                : ('single' as const);
+            ctx.panels.fillSubdivision(tabId, mode, mode === 'dual' ? subTabIds : [subTabIds[0]!]);
+            if (typeof panelData.subdivision.topHeightFraction === 'number') {
+              ctx.panels.setSubdivisionHeight(tabId, panelData.subdivision.topHeightFraction);
+            }
+            if (mode === 'dual' && typeof panelData.subdivision.splitRatio === 'number') {
+              ctx.panels.setSubdivisionSplitRatio(tabId, panelData.subdivision.splitRatio);
+            }
+          }
+        }
         summary.panelsRestored++;
       }
     }

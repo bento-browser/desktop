@@ -135,6 +135,53 @@ async function cleanupWorkspaceAfterTabMove(
   ctx.workspaces.delete(fromWorkspaceId);
 }
 
+const TAB_REMOVE_RETRY_DELAYS_MS = [150, 500, 1200];
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function tabStillExists(tabId: number): Promise<boolean> {
+  try {
+    await browser.tabs.get(tabId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeMarkedTabWithRetries(tabId: number, label: string, attempt = 0): void {
+  void browser.tabs.remove(tabId).catch(async (err) => {
+    await sleepMs(80);
+    if (!(await tabStillExists(tabId))) return;
+    if (attempt < TAB_REMOVE_RETRY_DELAYS_MS.length) {
+      setTimeout(
+        () => removeMarkedTabWithRetries(tabId, label, attempt + 1),
+        TAB_REMOVE_RETRY_DELAYS_MS[attempt],
+      );
+      return;
+    }
+    if (!String(err).includes('Invalid tab ID')) {
+      console.warn(`[bento-tools] ${label}: tabs.remove failed after retries:`, tabId, err);
+    }
+  });
+}
+
+async function closeTabAsRemoved(
+  ctx: HandlerContext,
+  tabId: number,
+  options: { delayMs?: number; label?: string; clearPanelMarker?: boolean } = {},
+): Promise<void> {
+  await ctx.tabs.markClosing(tabId);
+  if (options.clearPanelMarker) void clearPanelMarker(tabId);
+  const start = () => removeMarkedTabWithRetries(tabId, options.label ?? 'tab/close');
+  if (typeof options.delayMs === 'number' && options.delayMs > 0) {
+    setTimeout(start, options.delayMs);
+  } else {
+    start();
+  }
+}
+
 export interface HandlerContext {
   tabs: TabRegistry;
   workspaces: WorkspaceStore;
@@ -238,21 +285,59 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     }
     case 'tab/close':
       {
-        const affected = ctx.panels.findWorkspacesContainingTab(action.id);
-        if (affected.length > 0) {
-          for (const wsId of affected) {
-            ctx.panels.remove(wsId, action.id);
-            ctx.syncPanelMarkers(wsId);
-            ctx.emitPanelsSync(wsId);
+        void (async () => {
+          await ctx.tabs.markClosing(action.id);
+          const affected = ctx.panels.findWorkspacesContainingTab(action.id);
+          let delayActualTabRemove = false;
+          console.log('[bento-subdiv-debug] tools tab/close start', {
+            tabId: action.id,
+            affectedWorkspaces: affected,
+            parentOfSubPanel: ctx.panels.findParentOfSubPanel(action.id) ?? null,
+            activeWorkspaceId: ctx.workspaces.getActiveId(ctx.sourceWindowId),
+            sourceWindowId: ctx.sourceWindowId,
+          });
+          if (affected.length > 0) {
+            for (const wsId of affected) {
+              const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.id);
+              if (promoted && ctx.panels.getPanels(wsId).length > 0) {
+                delayActualTabRemove = true;
+              }
+              console.log('[bento-subdiv-debug] tools tab/close parent-panel path', {
+                tabId: action.id,
+                workspaceId: wsId,
+                promoted,
+                panelsAfter: ctx.panels.getPanels(wsId),
+                subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
+              });
+              ctx.syncPanelMarkers(wsId);
+              ctx.emitPanelsSync(wsId);
+            }
+            void clearPanelMarker(action.id);
+          } else {
+            const parentId = ctx.panels.removeSubPanelTab(action.id);
+            console.log('[bento-subdiv-debug] tools tab/close sub-panel path', {
+              tabId: action.id,
+              parentId: parentId ?? null,
+              subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
+            });
+            if (parentId !== undefined) {
+              const parentWs = ctx.panels.findWorkspacesContainingPanelOrSubPanel(parentId);
+              console.log('[bento-subdiv-debug] tools tab/close sub-panel sync targets', {
+                tabId: action.id,
+                parentId,
+                parentWorkspaces: parentWs,
+              });
+              for (const wsId of parentWs) ctx.emitPanelsSync(wsId);
+            }
           }
-          void clearPanelMarker(action.id);
-        }
+          const delayMs = delayActualTabRemove ? 500 : 0;
+          console.log('[bento-subdiv-debug] tools tab/close removing underlying Firefox tab', {
+            tabId: action.id,
+            delayed: delayActualTabRemove,
+          });
+          await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
+        })();
       }
-      browser.tabs.remove(action.id).catch((err) => {
-        if (!String(err).includes('Invalid tab ID')) {
-          console.warn('[bento-tools] tab/close failed:', action.id, err);
-        }
-      });
       return;
     case 'tab/rename':
       void ctx.tabs.rename(action.id, action.title);
@@ -532,11 +617,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'panel/remove': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      if (ctx.panels.remove(wsId, action.id)) {
-        void clearPanelMarker(action.id);
-        ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId);
+      const subVictims = ctx.panels.removeWithSubPanels(wsId, action.id);
+      for (const spId of subVictims) {
+        void closeTabAsRemoved(ctx, spId, { label: 'panel/remove sub-panel' });
       }
+      void clearPanelMarker(action.id);
+      ctx.syncPanelMarkers(wsId);
+      ctx.emitPanelsSync(wsId);
       return;
     }
     case 'panels/clear': {
@@ -545,7 +632,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       const current = ctx.panels.getPanels(wsId);
       if (current.length === 0) return;
       for (const id of current) {
-        ctx.panels.remove(wsId, id);
+        const subVictims = ctx.panels.removeWithSubPanels(wsId, id);
+        for (const spId of subVictims) {
+          void closeTabAsRemoved(ctx, spId, { label: 'panels/clear sub-panel' });
+        }
         void clearPanelMarker(id);
       }
       ctx.emitPanelsSync(wsId);
@@ -580,24 +670,153 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'panel/setStripScroll': {
-      // Per-workspace panel-strip scroll position. Same no-emit-after-
-      // set reasoning as panel/setWidth: chrome owns the live value
-      // and we'd just be echoing it back. workspaceId is carried on
-      // the action (not derived from sourceWindowId) so a debounced
-      // dispatch that lands after a workspace switch still writes to
-      // the source workspace, not the destination.
       if (!ctx.workspaces.has(action.workspaceId)) return;
       ctx.panels.setStripScroll(action.workspaceId, action.scrollLeft);
       return;
     }
+    case 'panel/subdivide': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const panelList = ctx.panels.getPanels(wsId);
+      const isFullSlotSubPanel = ctx.panels.isFullSlotSubPanel(wsId, action.tabId);
+      if (!panelList.includes(action.tabId) && !isFullSlotSubPanel) {
+        console.log('[bento-subdiv-debug] tools subdivide rejected', {
+          tabId: action.tabId,
+          workspaceId: wsId,
+          panelList,
+          isFullSlotSubPanel,
+        });
+        return;
+      }
+      const subdivided = ctx.panels.subdivide(wsId, action.tabId);
+      const existingSubdivision = ctx.panels.getSubdivision(action.tabId);
+      console.log('[bento-subdiv-debug] tools subdivide requested', {
+        tabId: action.tabId,
+        workspaceId: wsId,
+        panelList,
+        isFullSlotSubPanel,
+        subdivided,
+        hadExistingSubdivision: !!existingSubdivision,
+      });
+      if (subdivided || existingSubdivision) {
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
+    case 'panel/removeSubdivision': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const victims = ctx.panels.removeSubdivision(wsId, action.tabId);
+      for (const spId of victims) {
+        void closeTabAsRemoved(ctx, spId, {
+          delayMs: action.closeDelayMs,
+          label: 'panel/removeSubdivision sub-panel',
+        });
+      }
+      ctx.emitPanelsSync(wsId);
+      return;
+    }
+    case 'panel/breakOutSubPanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const result = ctx.panels.breakOutSubPanel(wsId, action.tabId);
+      console.log('[bento-subdiv-debug] tools break out sub-panel', {
+        tabId: action.tabId,
+        workspaceId: wsId,
+        result,
+        panelsAfter: ctx.panels.getPanels(wsId),
+        subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
+      });
+      if (!result) return;
+      ctx.syncPanelMarkers(wsId);
+      ctx.emitPanelsSync(wsId, { scrollToPanelTabId: result.promotedTabId });
+      for (const parentTabId of result.removedParentTabIds) {
+        void closeTabAsRemoved(ctx, parentTabId, {
+          delayMs: 500,
+          label: 'panel/breakOutSubPanel parent',
+          clearPanelMarker: true,
+        });
+      }
+      return;
+    }
+    case 'panel/closeSubdivisionTop': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.closeSubdivisionTop(wsId, action.tabId)) {
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
+    case 'panel/promoteSubdivisionParent': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.tabId);
+      console.log('[bento-subdiv-debug] tools promote subdivision parent path', {
+        tabId: action.tabId,
+        workspaceId: wsId,
+        promoted,
+        panelsAfter: ctx.panels.getPanels(wsId),
+        subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
+      });
+      if (promoted) {
+        void clearPanelMarker(action.tabId);
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
+    case 'panel/setSubdivisionContent': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const sub = ctx.panels.getSubdivision(action.tabId);
+      if (!sub) return;
+      const expected = action.mode === 'single' ? 1 : 2;
+      const urls = action.urls.slice(0, expected);
+      if (urls.length !== expected) return;
+      void (async () => {
+        try {
+          const newTabIds: number[] = [];
+          for (const url of urls) {
+            const isDefaultNewTab = !url || url === 'about:newtab';
+            const tab = await browser.tabs.create({
+              ...(isDefaultNewTab ? {} : { url }),
+              active: false,
+              ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+            });
+            if (typeof tab.id === 'number') newTabIds.push(tab.id);
+          }
+          if (newTabIds.length !== expected) return;
+          ctx.panels.fillSubdivision(action.tabId, action.mode, newTabIds);
+          ctx.emitPanelsSync(wsId);
+        } catch (err) {
+          console.warn('[bento-tools] panel/setSubdivisionContent failed:', err);
+        }
+      })();
+      return;
+    }
+    case 'panel/setSubdivisionHeight': {
+      ctx.panels.setSubdivisionHeight(action.tabId, action.topHeightFraction);
+      return;
+    }
+    case 'panel/setSubdivisionSplitRatio': {
+      ctx.panels.setSubdivisionSplitRatio(action.tabId, action.splitRatio);
+      return;
+    }
     case 'pinnedPanel/add': {
       // Validate that the workspace exists AND the tab is currently a
-      // panel in that workspace. Pinning a non-panel tab would put the
-      // sidebar Pinned panels section in an unreachable state (no panel
-      // to activate). Silent no-op on duplicate — the store's add()
-      // returns false in that case and we don't emit anything.
+      // panel or nested sub-panel in that workspace. Full-slot survivor
+      // panels are still represented as sub-panels under a hidden
+      // top-closed parent, and ordinary subdivided panels are legitimate
+      // visible panel surfaces too, so top-level-only validation rejects
+      // valid header menu requests. Silent no-op on duplicate — the
+      // store's add() returns false in that case and we don't emit.
       if (!ctx.workspaces.has(action.workspaceId)) return;
-      if (!ctx.panels.getPanels(action.workspaceId).includes(action.tabId)) return;
+      if (
+        !ctx.panels
+          .findWorkspacesContainingPanelOrSubPanel(action.tabId)
+          .includes(action.workspaceId)
+      )
+        return;
       if (ctx.pinnedPanels.add(action.workspaceId, action.tabId)) {
         // Re-emit panels/sync for the affected workspace so chrome's
         // kebab menu (which reads pinnedTabIdsInWorkspace from the

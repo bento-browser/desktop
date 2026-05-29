@@ -12,6 +12,7 @@ type Listener = (deltas: TabDelta[]) => void;
 
 const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
 const CUSTOM_TITLE_SESSION_KEY = 'bento.customTitle';
+const CLOSING_TAB_SESSION_KEY = 'bento.closingTab';
 
 function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
   return {
@@ -48,11 +49,20 @@ async function readCustomTitle(tabId: number): Promise<string | undefined> {
   }
 }
 
+async function readClosingTab(tabId: number): Promise<boolean> {
+  try {
+    return (await browser.sessions.getTabValue(tabId, CLOSING_TAB_SESSION_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export class TabRegistry {
   #tabs = new Map<number, TabSnapshot>();
   #pending: TabDelta[] = [];
   #flushScheduled = false;
   #listeners = new Set<Listener>();
+  #closingTabIds = new Set<number>();
   // Eager pre-assignments stashed by `assignWorkspaceEagerly` when the
   // tab hasn't yet been seen by #onCreated. Firefox is free to resolve
   // tabs.create's promise BEFORE dispatching the onCreated event, so a
@@ -87,11 +97,13 @@ export class TabRegistry {
       all.map(async (t) => {
         const snap = toSnapshot(t);
         if (snap.id === -1) return snap;
-        const [workspaceId, customTitle] = await Promise.all([
+        const [workspaceId, customTitle, closing] = await Promise.all([
           readWorkspaceId(snap.id),
           readCustomTitle(snap.id),
+          readClosingTab(snap.id),
         ]);
-        snap.workspaceId = workspaceId;
+        if (closing) this.#closingTabIds.add(snap.id);
+        else snap.workspaceId = workspaceId;
         snap.customTitle = customTitle;
         return snap;
       }),
@@ -114,12 +126,24 @@ export class TabRegistry {
   async hydrateWorkspaceIds(): Promise<void> {
     const ids = Array.from(this.#tabs.keys());
     const results = await Promise.all(
-      ids.map(async (id) => ({ id, ws: await readWorkspaceId(id) })),
+      ids.map(async (id) => ({
+        id,
+        ws: await readWorkspaceId(id),
+        closing: await readClosingTab(id),
+      })),
     );
-    for (const { id, ws } of results) {
-      if (!ws) continue;
+    for (const { id, ws, closing } of results) {
       const tab = this.#tabs.get(id);
       if (!tab) continue;
+      if (closing) {
+        this.#closingTabIds.add(id);
+        if (tab.workspaceId !== undefined) {
+          delete tab.workspaceId;
+          this.#enqueue({ kind: 'updated', id, changes: { workspaceId: undefined } });
+        }
+        continue;
+      }
+      if (!ws) continue;
       if (tab.workspaceId === ws) continue;
       tab.workspaceId = ws;
       this.#enqueue({ kind: 'updated', id, changes: { workspaceId: ws } });
@@ -129,6 +153,7 @@ export class TabRegistry {
   /** Assign (or reassign) a tab to a workspace. Persists via sessions API and
    * emits an `updated` delta so the shell mirror picks it up. */
   async assignWorkspace(id: number, workspaceId: string): Promise<void> {
+    if (this.#closingTabIds.has(id)) return;
     const tab = this.#tabs.get(id);
     if (!tab) return;
     if (tab.workspaceId === workspaceId) return;
@@ -174,6 +199,7 @@ export class TabRegistry {
    * the in-memory snapshot does. Persistent state stays clean.
    */
   setWorkspaceInMemory(id: number, workspaceId: string): void {
+    if (this.#closingTabIds.has(id)) return;
     const tab = this.#tabs.get(id);
     if (!tab) return;
     if (tab.workspaceId === workspaceId) return;
@@ -201,6 +227,7 @@ export class TabRegistry {
    * assignment). This one favours first-paint UI freshness, which is
    * what tab-creation handlers actually need. */
   assignWorkspaceEagerly(id: number, workspaceId: string): void {
+    if (this.#closingTabIds.has(id)) return;
     const tab = this.#tabs.get(id);
     if (tab) {
       if (tab.workspaceId === workspaceId) return;
@@ -212,6 +239,50 @@ export class TabRegistry {
     void browser.sessions
       .setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId)
       .catch((err) => console.warn('[bento-tools] sessions.setTabValue (eager) failed:', id, err));
+  }
+
+  isClosing(id: number): boolean {
+    return this.#closingTabIds.has(id);
+  }
+
+  async isClosingOrMarked(id: number): Promise<boolean> {
+    if (this.#closingTabIds.has(id)) return true;
+    if (!(await readClosingTab(id))) return false;
+    this.#closingTabIds.add(id);
+    return true;
+  }
+
+  async markClosing(id: number): Promise<void> {
+    this.#closingTabIds.add(id);
+    this.#pendingWorkspaceAssignments.delete(id);
+
+    const tab = this.#tabs.get(id);
+    if (tab?.workspaceId !== undefined) {
+      delete tab.workspaceId;
+      this.#enqueue({ kind: 'updated', id, changes: { workspaceId: undefined } });
+    }
+
+    const ignoreInvalidTab = (err: unknown) => {
+      if (!String(err).includes('Invalid tab ID')) {
+        console.warn('[bento-tools] markClosing session write failed:', id, err);
+      }
+    };
+    await Promise.all([
+      browser.sessions.setTabValue(id, CLOSING_TAB_SESSION_KEY, '1').catch(ignoreInvalidTab),
+      browser.sessions.removeTabValue(id, WORKSPACE_SESSION_KEY).catch(ignoreInvalidTab),
+    ]);
+  }
+
+  async closeMarkedTabs(): Promise<void> {
+    const ids = Array.from(this.#closingTabIds).filter((id) => this.#tabs.has(id));
+    for (const id of ids) {
+      await this.markClosing(id);
+      void browser.tabs.remove(id).catch((err) => {
+        if (!String(err).includes('Invalid tab ID')) {
+          console.warn('[bento-tools] closing-tab retry failed:', id, err);
+        }
+      });
+    }
   }
 
   snapshot(): TabSnapshot[] {
@@ -244,7 +315,7 @@ export class TabRegistry {
     // listener would auto-assign to the active workspace, destroying
     // the original session value.
     const existing = this.#tabs.get(snap.id);
-    if (existing?.workspaceId && !snap.workspaceId) {
+    if (!this.#closingTabIds.has(snap.id) && existing?.workspaceId && !snap.workspaceId) {
       snap.workspaceId = existing.workspaceId;
     }
     if (existing?.customTitle && !snap.customTitle) {
@@ -263,11 +334,21 @@ export class TabRegistry {
   };
 
   async #hydrateOne(id: number): Promise<void> {
-    const [ws, customTitle] = await Promise.all([readWorkspaceId(id), readCustomTitle(id)]);
+    const [ws, customTitle, closing] = await Promise.all([
+      readWorkspaceId(id),
+      readCustomTitle(id),
+      readClosingTab(id),
+    ]);
     const tab = this.#tabs.get(id);
     if (!tab) return;
     const changes: Partial<TabSnapshot> = {};
-    if (ws && tab.workspaceId !== ws) {
+    if (closing) {
+      this.#closingTabIds.add(id);
+      if (tab.workspaceId !== undefined) {
+        delete tab.workspaceId;
+        changes.workspaceId = undefined;
+      }
+    } else if (ws && tab.workspaceId !== ws) {
       tab.workspaceId = ws;
       changes.workspaceId = ws;
     }
@@ -314,6 +395,7 @@ export class TabRegistry {
 
   #onRemoved = (id: number) => {
     this.#pendingWorkspaceAssignments.delete(id);
+    this.#closingTabIds.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };

@@ -188,6 +188,15 @@ async function emitPanelsSync(
   const valid = resolved.filter(
     (p): p is { tabId: number; url: string; favIconUrl: string; widthPx?: number } => p !== null,
   );
+  const validPanelIds = new Set(valid.map((panel) => panel.tabId));
+  const missingPanelIds = tabIds.filter((id) => !validPanelIds.has(id));
+  if (missingPanelIds.length > 0) {
+    for (const id of missingPanelIds) {
+      panels.promoteSubPanelsWhenRemovingParent(workspaceId, id);
+    }
+    await emitPanelsSync(workspaceId, options);
+    return;
+  }
   const mainWidthPx = panels.getMainWidth();
   const stripScrollLeft = panels.getStripScroll(workspaceId);
   const pinnedTabIdsInWorkspace = pinnedPanels.entriesForWorkspace(workspaceId);
@@ -197,6 +206,75 @@ async function emitPanelsSync(
   // when the store has initialized (zero counts matter — chrome shrinks
   // the trailer back to its base width when the user empties the folder).
   const savedPanelCount = savedPanels.list().length;
+
+  const allSubs = panels.getAllSubdivisions();
+  const subdivisionParentIds = new Set<number>(tabIds);
+  const collectVisibleSubdivisionParents = (parentTabId: number): void => {
+    if (subdivisionParentIds.has(parentTabId)) return;
+    subdivisionParentIds.add(parentTabId);
+    const sub = allSubs.get(parentTabId);
+    if (!sub?.topClosed || sub.subPanelTabIds.length !== 1) return;
+    const survivorTabId = sub.subPanelTabIds[0];
+    if (typeof survivorTabId === 'number' && Number.isFinite(survivorTabId)) {
+      collectVisibleSubdivisionParents(survivorTabId);
+    }
+  };
+  for (const parentTabId of tabIds) {
+    const sub = allSubs.get(parentTabId);
+    if (!sub?.topClosed || sub.subPanelTabIds.length !== 1) continue;
+    const survivorTabId = sub.subPanelTabIds[0];
+    if (typeof survivorTabId === 'number' && Number.isFinite(survivorTabId)) {
+      collectVisibleSubdivisionParents(survivorTabId);
+    }
+  }
+  const subdivisions: Record<
+    number,
+    {
+      mode: 'single' | 'dual';
+      topHeightFraction: number;
+      subPanels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
+      splitRatio?: number;
+      topClosed?: boolean;
+    }
+  > = {};
+  const missingSubPanelIds: number[] = [];
+  for (const [parentTabId, sub] of allSubs) {
+    if (!subdivisionParentIds.has(parentTabId)) continue;
+    try {
+      await browser.tabs.get(parentTabId);
+    } catch {
+      missingSubPanelIds.push(parentTabId);
+      continue;
+    }
+    const subPanels: Array<{ tabId: number; url: string; favIconUrl?: string }> = [];
+    for (const spId of sub.subPanelTabIds) {
+      try {
+        const spTab = await browser.tabs.get(spId);
+        subPanels.push({
+          tabId: spId,
+          url: spTab.url ?? '',
+          favIconUrl: spTab.favIconUrl ?? '',
+        });
+      } catch {
+        missingSubPanelIds.push(spId);
+      }
+    }
+    subdivisions[parentTabId] = {
+      mode: sub.mode,
+      topHeightFraction: sub.topHeightFraction,
+      subPanels,
+      splitRatio: sub.mode === 'dual' ? sub.splitRatio : undefined,
+      topClosed: sub.topClosed || undefined,
+    };
+  }
+  if (missingSubPanelIds.length > 0) {
+    for (const id of missingSubPanelIds) {
+      panels.removeSubPanelTab(id);
+    }
+    await emitPanelsSync(workspaceId, options);
+    return;
+  }
+
   const event: {
     type: 'panels/sync';
     workspaceId: string;
@@ -206,6 +284,7 @@ async function emitPanelsSync(
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
     scrollToPanelTabId?: number;
+    subdivisions?: typeof subdivisions;
   } = {
     type: 'panels/sync',
     workspaceId,
@@ -224,6 +303,9 @@ async function emitPanelsSync(
     valid.some((panel) => panel.tabId === options.scrollToPanelTabId)
   ) {
     event.scrollToPanelTabId = options.scrollToPanelTabId;
+  }
+  if (Object.keys(subdivisions).length > 0) {
+    event.subdivisions = subdivisions;
   }
   broadcastEvent(event);
 }
@@ -350,6 +432,7 @@ const bootReady = Promise.all([
   // their own workspaces) and the user opens an additional tab via a
   // path that bypasses the runtime onCreated listener (rare; defensive).
   for (const tab of tabs.snapshot()) {
+    if (tabs.isClosing(tab.id)) continue;
     if (tab.workspaceId) continue;
     const tabWindowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
     const wsForTab = workspaces.getActiveId(tabWindowId);
@@ -392,6 +475,7 @@ const bootReady = Promise.all([
   // (assigning to active workspace, leaking Personal panel tabs into
   // a Workspace 2 boot, etc).
   await tabs.hydrateWorkspaceIds();
+  await tabs.closeMarkedTabs();
 
   // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
   // matches a panel in bento.panels storage. The panel storage is a
@@ -412,6 +496,7 @@ const bootReady = Promise.all([
     const allPanels = panels.peekAllPersistedEntries();
     const tabUrls = new Map<number, string>();
     for (const t of tabs.snapshot()) {
+      if (tabs.isClosing(t.id)) continue;
       if (t.workspaceId) continue; // already hydrated; respect it
       try {
         const live = await browser.tabs.get(t.id);
@@ -450,6 +535,7 @@ const bootReady = Promise.all([
   // gets another chance to pick it up correctly.
   if (wsId) {
     for (const tab of tabs.snapshot()) {
+      if (tabs.isClosing(tab.id)) continue;
       if (tab.workspaceId) continue;
       tabs.setWorkspaceInMemory(tab.id, wsId);
     }
@@ -574,6 +660,15 @@ tabs.onDeltas((deltas) => {
         const sourceWindowId =
           typeof d.tab.windowId === 'number' && d.tab.windowId >= 0 ? d.tab.windowId : null;
         void (async () => {
+          if (await tabs.isClosingOrMarked(d.tab.id)) {
+            await tabs.markClosing(d.tab.id);
+            void browser.tabs.remove(d.tab.id).catch((err) => {
+              if (!String(err).includes('Invalid tab ID')) {
+                console.warn('[bento-tools] closing restored tab failed:', d.tab.id, err);
+              }
+            });
+            return;
+          }
           const sessionWs = await browser.sessions
             .getTabValue(d.tab.id, 'bento.workspaceId')
             .catch(() => null);
@@ -595,9 +690,21 @@ tabs.onDeltas((deltas) => {
     }
     if (d.kind === 'removed') {
       const affected = panels.findWorkspacesContainingTab(d.id);
-      if (affected.length === 0) continue;
+      if (affected.length === 0) {
+        const parentId = panels.removeSubPanelTab(d.id);
+        if (parentId === undefined) continue;
+        const parentWorkspaces = panels.findWorkspacesContainingPanelOrSubPanel(parentId);
+        for (const wsId of parentWorkspaces) {
+          syncPanelMarkersForWorkspace(wsId);
+        }
+        const activeId = workspaces.getActiveId();
+        if (activeId && parentWorkspaces.includes(activeId)) {
+          void emitPanelsSync(activeId);
+        }
+        continue;
+      }
       for (const wsId of affected) {
-        panels.remove(wsId, d.id);
+        panels.promoteSubPanelsWhenRemovingParent(wsId, d.id);
         // Remaining panels' indexes shifted — rewrite their markers
         // so a future Cmd+Shift+T lands at the correct slot.
         syncPanelMarkersForWorkspace(wsId);
@@ -652,7 +759,15 @@ tabs.onDeltas((deltas) => {
 // promote-on-empty path at the bottom of background.ts also routes
 // through), so this single listener covers every panel-lifecycle path
 // without duplicating cleanup at four call sites.
+const recentlyRemovedPanelTabIds = new Set<number>();
 panels.onPanelRemoved((workspaceId, tabId) => {
+  console.log('[bento-subdiv-debug] background panelRemoved marker add', {
+    workspaceId,
+    tabId,
+    panelsNow: panels.getPanels(workspaceId),
+  });
+  recentlyRemovedPanelTabIds.add(tabId);
+  setTimeout(() => recentlyRemovedPanelTabIds.delete(tabId), 5000);
   if (pinnedPanels.remove(workspaceId, tabId)) {
     // Re-emit so the kebab menu's Pin/Unpin label catches up. Active-
     // workspace gating happens at the shell mirror; broadcasting for any
@@ -975,16 +1090,32 @@ async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Pr
 // Use Cmd+Shift+W if you want to close the window with tabs still in
 // the workspace; that path doesn't touch this handler.
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  console.log('[bento-subdiv-debug] background tabs.onRemoved empty-workspace guard start', {
+    tabId,
+    removeInfo,
+  });
   // Firefox is already tearing the window down (last-tab close or
   // window-close API) — don't double-close.
-  if (removeInfo.isWindowClosing) return;
+  if (removeInfo.isWindowClosing) {
+    console.log('[bento-subdiv-debug] background tabs.onRemoved skip window closing', { tabId });
+    return;
+  }
   const windowId =
     typeof removeInfo.windowId === 'number' && removeInfo.windowId >= 0
       ? removeInfo.windowId
       : null;
-  if (windowId === null) return;
+  if (windowId === null) {
+    console.log('[bento-subdiv-debug] background tabs.onRemoved skip null window', { tabId });
+    return;
+  }
   const activeWsId = workspaces.getActiveId(windowId);
-  if (!activeWsId) return;
+  if (!activeWsId) {
+    console.log('[bento-subdiv-debug] background tabs.onRemoved skip no active workspace', {
+      tabId,
+      windowId,
+    });
+    return;
+  }
   // Filter the just-removed tab out explicitly because the
   // browser.tabs.onRemoved → TabRegistry-onRemoved propagation isn't
   // guaranteed to run before this handler.
@@ -999,7 +1130,26 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
         t.workspaceId === activeWsId &&
         !panelTabIdsSet.has(t.id),
     );
+  console.log('[bento-subdiv-debug] background tabs.onRemoved computed workspace state', {
+    tabId,
+    windowId,
+    activeWsId,
+    panelTabIds,
+    remainingNonPanelTabIds: remaining.map((t) => t.id),
+    recentlyRemovedHasTab: recentlyRemovedPanelTabIds.has(tabId),
+  });
   if (remaining.length > 0) return;
+  if (recentlyRemovedPanelTabIds.delete(tabId) && panelTabIds.length > 0) {
+    console.log(
+      '[bento-subdiv-debug] background tabs.onRemoved skip auto-promote due recent panel removal',
+      {
+        tabId,
+        activeWsId,
+        panelTabIds,
+      },
+    );
+    return;
+  }
 
   // No sidebar (non-panel) tabs left. If the workspace still has panels,
   // PROMOTE the leftmost panel into the main content slot rather than
@@ -1010,6 +1160,12 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   // (DOM move, not a navigate). Repeated Cmd+W then chews through one
   // panel per press until the workspace is truly empty.
   if (panelTabIds.length > 0) {
+    console.log('[bento-subdiv-debug] background tabs.onRemoved auto-promote leftmost panel', {
+      tabId,
+      activeWsId,
+      promoteTabId: panelTabIds[0],
+      panelTabIds,
+    });
     void promoteLeftmostPanelToTab(activeWsId, panelTabIds[0]!);
     return;
   }

@@ -772,7 +772,10 @@
       [data-bento-main-panel]:focus-within,
       [data-bento-panel-tab-id],
       [data-bento-panel-tab-id]:focus,
-      [data-bento-panel-tab-id]:focus-within {
+      [data-bento-panel-tab-id]:focus-within,
+      [data-bento-subpanel],
+      [data-bento-subpanel]:focus,
+      [data-bento-subpanel]:focus-within {
         outline: none !important;
       }
       /* Firefox's content-area.css paints "outline: var(--focus-outline)"
@@ -948,6 +951,9 @@
       .bento-panel-loading-overlay[hidden] {
         display: none !important;
       }
+      [data-bento-subpanel] > .bento-panel-loading-overlay {
+        inset-block-start: var(--bento-panel-header-height);
+      }
       .bento-panel-loading-overlay .tale-spinner {
         display: inline-flex;
         align-items: center;
@@ -1090,6 +1096,8 @@
       .bento-panel-header[data-bento-injected="1"] {
         flex: 0 0 auto;
         border-radius: var(--radius-m) var(--radius-m) 0 0;
+        position: relative;
+        z-index: 5;
       }
 
       /* ─── Add-panel trailer ────────────────────────────────────────
@@ -1276,6 +1284,21 @@
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed])::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: var(--bento-focus-ring-width) solid transparent;
+        border-radius: var(--radius-m);
+        pointer-events: none;
+        z-index: 10;
+        box-sizing: border-box;
+        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+      }
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]).bento-panel--focused::after,
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]).bento-panel--cycle-focused::after {
+        border-color: var(--color-60);
+      }
 
       /* Arrow-panel theming. macOS popup.css sets --panel-background:
          none on all panel elements so the native NSVisualEffectView
@@ -1296,6 +1319,290 @@
         background-color: var(--neutral-10) !important;
         color: var(--neutral-90) !important;
         border-color: var(--neutral-20) !important;
+      }
+
+      /* ─── Subdivision (in-place, CSS Grid) ──────────────────────── */
+      [data-bento-subdivided] > .browserContainer,
+      [data-bento-subdivided] > .browserStack,
+      [data-bento-subdivided] > browser {
+        overflow: clip !important;
+        min-height: 0 !important;
+        position: relative !important;
+        z-index: 2 !important;
+      }
+      [data-bento-subdivided] > [data-bento-subpanel] {
+        box-shadow: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        position: relative !important;
+        visibility: inherit !important;
+        z-index: 1 !important;
+      }
+      /* Disable the focus ring on the outer subdivided panel —
+         each sub-section should own its own indicator (future). */
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after {
+        display: none !important;
+      }
+      /* Stacked favicon layout for subdivided nav icons */
+      .bento-panel-nav__icon--subdivided {
+        display: inline-flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 1px !important;
+        padding: 2px !important;
+      }
+      .bento-panel-nav__icon--subdivided > .bento-nav-subdiv-row {
+        display: flex;
+        gap: 1px;
+        align-items: center;
+        justify-content: center;
+      }
+      .bento-panel-nav__icon--subdivided img {
+        display: block;
+        pointer-events: none;
+      }
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivided] {
+        background-color: transparent !important;
+        box-shadow: none !important;
+      }
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-top-closed] {
+        background-color: var(--neutral-5) !important;
+        box-shadow: var(--shadow-l) !important;
+        border-radius: var(--radius-m) !important;
+      }
+      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-survivor-subdivided] {
+        background-color: transparent !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+      }
+      [data-bento-subdivision-survivor-subdivided] > [data-bento-subpanel][data-bento-subdivided] {
+        overflow: visible !important;
+      }
+      [data-bento-subdivided] > browser,
+      [data-bento-subdivided] > .browserContainer,
+      [data-bento-subdivided] > .browserStack,
+      [data-bento-subdivided] > [data-bento-subpanel],
+      .bento-subdivision-bottom > [data-bento-subpanel] {
+        background-color: var(--neutral-5) !important;
+        box-shadow: var(--shadow-l) !important;
+        border-radius: var(--radius-m) !important;
+      }
+      [data-bento-subdivision-animating="1"] > browser,
+      [data-bento-subdivision-animating="1"] > .browserContainer,
+      [data-bento-subdivision-animating="1"] > .browserStack,
+      [data-bento-subdivision-animating="1"] > .bento-subdivision-chooser,
+      [data-bento-subdivision-animating="1"] > [data-bento-subpanel],
+      [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom,
+      [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > [data-bento-subpanel],
+      [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > .bento-subdivision-hsplitter {
+        transition:
+          flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard),
+          opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard) !important;
+      }
+      .bento-subdivision-vsplitter {
+        cursor: row-resize !important;
+        flex: 0 0 8px !important;
+        min-height: 8px !important;
+        max-height: 8px !important;
+        appearance: none !important;
+        border: 0 !important;
+        background: transparent !important;
+        position: relative !important;
+      }
+      .bento-subdivision-vsplitter::after {
+        content: '' !important;
+        position: absolute !important;
+        left: 25% !important;
+        right: 25% !important;
+        top: 50% !important;
+        height: 3px !important;
+        transform: translateY(-50%) !important;
+        border-radius: 1.5px !important;
+        background: var(--neutral-30) !important;
+        opacity: 0 !important;
+        transition: opacity 150ms ease !important;
+      }
+      .bento-subdivision-vsplitter:hover::after,
+      .bento-subdivision-vsplitter--dragging::after {
+        opacity: 1 !important;
+      }
+      .bento-subdivision-bottom {
+        display: flex !important;
+        flex-direction: row !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        position: relative !important;
+        z-index: 1 !important;
+      }
+      .bento-subdivision-bottom > [data-bento-subpanel] {
+        overflow: hidden !important;
+        min-height: 0 !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        align-self: stretch !important;
+        display: flex !important;
+        flex-direction: column !important;
+        position: relative !important;
+        visibility: inherit !important;
+      }
+      [data-bento-subdivided] > [data-bento-subpanel] {
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        align-self: stretch !important;
+      }
+      [data-bento-subdivided] > .bento-subdivision-vsplitter {
+        position: relative !important;
+        z-index: 3 !important;
+      }
+      [data-bento-subdivision-top-closed] {
+        overflow: hidden !important;
+      }
+      [data-bento-subdivision-top-closed] > .bento-panel-header,
+      [data-bento-subdivision-top-closed] > .browserContainer,
+      [data-bento-subdivision-top-closed] > .browserStack,
+      [data-bento-subdivision-top-closed] > browser,
+      [data-bento-subdivision-top-closed] > .bento-panel-loading-overlay,
+      [data-bento-subdivision-top-closed] > .bento-subdivision-vsplitter {
+        flex: 0 0 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border-width: 0 !important;
+        opacity: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+        visibility: hidden !important;
+      }
+      [data-bento-subdivision-top-closed] > [data-bento-subpanel] {
+        flex: 1 1 100% !important;
+        height: 100% !important;
+        max-height: none !important;
+        align-self: stretch !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+      }
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .bento-panel-header {
+        position: relative !important;
+        z-index: 5 !important;
+        pointer-events: auto !important;
+        visibility: inherit !important;
+        opacity: 1 !important;
+      }
+      [data-bento-subpanel][data-bento-subdivision-top-closed] {
+        background-color: transparent !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+      }
+      [data-bento-subpanel][data-bento-subdivision-top-closed] > [data-bento-subpanel]:not([data-bento-subdivided]) {
+        background-color: var(--neutral-5) !important;
+        box-shadow: var(--shadow-l) !important;
+        border-radius: var(--radius-m) !important;
+      }
+      [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] {
+        background-color: transparent !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+      }
+      [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] > .browserContainer {
+        overflow: visible !important;
+      }
+      [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] > .browserContainer > .browserStack {
+        border-radius: inherit !important;
+        overflow: clip !important;
+      }
+      [data-bento-subpanel]:not([data-bento-subdivided]) > browser,
+      [data-bento-subpanel]:not([data-bento-subdivided]) > .browserContainer,
+      [data-bento-subpanel]:not([data-bento-subdivided]) > .browserStack {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow: clip !important;
+        position: relative !important;
+        z-index: 2 !important;
+        -moz-subtree-hidden-only-visually: 0 !important;
+        visibility: inherit !important;
+        opacity: 1 !important;
+      }
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > browser,
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer,
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserStack,
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack,
+      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack > browser {
+        border-end-start-radius: var(--radius-m) !important;
+        border-end-end-radius: var(--radius-m) !important;
+        border-start-start-radius: 0 !important;
+        border-start-end-radius: 0 !important;
+        overflow: clip !important;
+      }
+      [data-bento-subpanel] > .browserContainer > .browserStack,
+      [data-bento-subpanel] > .browserContainer > .browserStack > browser,
+      [data-bento-subpanel] browser {
+        -moz-subtree-hidden-only-visually: 0 !important;
+        visibility: inherit !important;
+        opacity: 1 !important;
+      }
+      [data-bento-subpanel] browser:is([blank], [pendingpaint]) {
+        opacity: 1 !important;
+      }
+      .bento-subdivision-hsplitter {
+        cursor: col-resize !important;
+        flex: 0 0 8px !important;
+        min-width: 8px !important;
+        max-width: 8px !important;
+        appearance: none !important;
+        border: 0 !important;
+        background: transparent !important;
+        position: relative !important;
+      }
+      .bento-subdivision-hsplitter::after {
+        content: '' !important;
+        position: absolute !important;
+        top: 25% !important;
+        bottom: 25% !important;
+        left: 50% !important;
+        width: 3px !important;
+        transform: translateX(-50%) !important;
+        border-radius: 1.5px !important;
+        background: var(--neutral-30) !important;
+        opacity: 0 !important;
+        transition: opacity 150ms ease !important;
+      }
+      .bento-subdivision-hsplitter:hover::after,
+      .bento-subdivision-hsplitter--dragging::after {
+        opacity: 1 !important;
+      }
+      .bento-subdivision-chooser {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--space-s) !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        position: relative !important;
+        background: var(--neutral-8) !important;
+        border-radius: 0 0 var(--radius-m) var(--radius-m) !important;
+        z-index: 1 !important;
+      }
+      .bento-subdivision-chooser__btn {
+        padding: var(--space-xs) var(--space-m) !important;
+        border: 1px solid var(--neutral-20) !important;
+        border-radius: var(--radius-s) !important;
+        background: var(--neutral-5) !important;
+        color: var(--neutral-80) !important;
+        cursor: pointer !important;
+        font-size: var(--font-size-s) !important;
+        font-family: inherit !important;
+        line-height: 1.4 !important;
+      }
+      .bento-subdivision-chooser__btn:hover {
+        background: var(--neutral-16) !important;
       }
     `;
     document.documentElement.appendChild(style);
@@ -2154,6 +2461,19 @@
   // Type the value into the panel browser's URI fixup machinery and
   // navigate. Mirrors what the chrome URL bar does on Enter, but routed
   // to a specific <browser> rather than gBrowser.selectedBrowser.
+  function isRealPanelUrl(url) {
+    return !!url && url !== 'about:blank' && url !== 'about:newtab';
+  }
+
+  function rememberPanelBrowserUrl(browserEl, url) {
+    if (!browserEl || !isRealPanelUrl(url)) return;
+    browserEl._bentoLastNonBlankUrl = url;
+    const panelEl = browserEl.closest?.(
+      '[data-bento-main-panel], [data-bento-panel-tab-id], [data-bento-subpanel]',
+    );
+    if (panelEl) panelEl.dataset.bentoLastNonBlankUrl = url;
+  }
+
   function loadInPanel(browserEl, value) {
     try {
       const flags =
@@ -2162,6 +2482,7 @@
       const info = Services.uriFixup.getFixupURIInfo(value, flags);
       const uri = info.preferredURI;
       if (!uri) return;
+      rememberPanelBrowserUrl(browserEl, uri.spec);
       const principal = Services.scriptSecurityManager.getSystemPrincipal();
       if (typeof browserEl.fixupAndLoadURIString === 'function') {
         browserEl.fixupAndLoadURIString(uri.spec, { triggeringPrincipal: principal });
@@ -2170,6 +2491,22 @@
       }
     } catch (err) {
       console.warn('[bento-shell-mount] panel header load failed:', err);
+    }
+  }
+
+  function loadDefaultNewTabInBrowser(browserEl) {
+    if (!browserEl) return;
+    try {
+      const principal = Services.scriptSecurityManager.getSystemPrincipal();
+      if (typeof browserEl.fixupAndLoadURIString === 'function') {
+        browserEl.fixupAndLoadURIString('about:newtab', { triggeringPrincipal: principal });
+      } else if (typeof browserEl.loadURI === 'function') {
+        browserEl.loadURI(Services.io.newURI('about:newtab'), {
+          triggeringPrincipal: principal,
+        });
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] default newtab load failed:', err);
     }
   }
 
@@ -2221,6 +2558,94 @@
   // listener doesn't need to fire first. about:blank is suppressed
   // (rendered as empty input) since it's the transient initial state
   // before the panel actually navigates.
+  function getFullSlotSurvivorParentTabId(tabId) {
+    if (!Number.isFinite(tabId)) return null;
+    const seen = new Set();
+    let current = tabId;
+    while (!seen.has(current)) {
+      seen.add(current);
+      const parentId = getSubdivisionParentTabId(current);
+      if (!Number.isFinite(parentId)) return null;
+      const sub = currentSubdivisions.get(parentId);
+      if (!sub?.topClosed || sub.subPanels?.length !== 1) return null;
+      if (sub.subPanels[0]?.tabId !== current) return null;
+      if (currentPanelTabIds.has(parentId)) return parentId;
+      current = parentId;
+    }
+    return null;
+  }
+
+  function getSubdivisionParentTabId(tabId) {
+    if (!Number.isFinite(tabId)) return null;
+    for (const [parentTabId, sub] of currentSubdivisions) {
+      if (!Array.isArray(sub?.subPanels)) continue;
+      if (sub.subPanels.some((sp) => sp?.tabId === tabId)) return Number(parentTabId);
+    }
+    return null;
+  }
+
+  function isFullSlotSurvivorPanelElement(panelEl) {
+    if (!panelEl?.hasAttribute?.('data-bento-subpanel')) return false;
+    const seen = new Set();
+    let current = panelEl;
+    while (current?.hasAttribute?.('data-bento-subpanel') && !seen.has(current)) {
+      seen.add(current);
+      const parent = current.parentElement;
+      if (!parent?.hasAttribute?.('data-bento-subdivision-top-closed')) return false;
+      const directSubPanels = Array.from(parent.children).filter((child) =>
+        child?.hasAttribute?.('data-bento-subpanel'),
+      );
+      if (directSubPanels.length !== 1 || directSubPanels[0] !== current) return false;
+      const rootTabId = Number(parent.getAttribute?.('data-bento-panel-tab-id'));
+      if (Number.isFinite(rootTabId) && currentPanelTabIds.has(rootTabId)) return true;
+      current = parent;
+    }
+    return false;
+  }
+
+  function isFullSlotSurvivorForPanelHeader(tabId, panelEl) {
+    return (
+      Number.isFinite(getFullSlotSurvivorParentTabId(tabId)) ||
+      isFullSlotSurvivorPanelElement(panelEl)
+    );
+  }
+
+  function canSubdivideFromPanelHeader(tabId, panelEl) {
+    if (!Number.isFinite(tabId) || !panelEl) return false;
+    if (panelEl.hasAttribute('data-bento-panel-tab-id')) return true;
+    return isFullSlotSurvivorForPanelHeader(tabId, panelEl);
+  }
+
+  function canBreakOutFromPanelHeader(tabId, panelEl) {
+    return !!(
+      Number.isFinite(tabId) &&
+      panelEl?.hasAttribute('data-bento-subpanel') &&
+      !isFullSlotSurvivorForPanelHeader(tabId, panelEl) &&
+      Number.isFinite(getSubdivisionParentTabId(tabId))
+    );
+  }
+
+  function getTopLevelSlotPanelElement(panelEl) {
+    if (!panelEl) return null;
+    return panelEl.closest?.('[data-bento-panel-tab-id]') || panelEl;
+  }
+
+  function getTopLevelSlotTabId(panelEl) {
+    const slotPanel = getTopLevelSlotPanelElement(panelEl);
+    const tabId = Number(slotPanel?.dataset?.bentoPanelTabId);
+    return Number.isFinite(tabId) ? tabId : null;
+  }
+
+  function getHeaderActionBrowser(panelEl, fallbackBrowserEl) {
+    if (fallbackBrowserEl?.isConnected) return fallbackBrowserEl;
+    return (
+      panelEl?.querySelector?.(':scope > .browserContainer browser') ||
+      panelEl?.querySelector?.(':scope > browser') ||
+      panelEl?.querySelector?.('browser') ||
+      null
+    );
+  }
+
   function createPanelHeader(browserEl, initialUrl, tabId) {
     const header = document.createXULElement('hbox');
     header.className = 'bento-panel-header';
@@ -2256,8 +2681,9 @@
     // own URL bar renders them as empty too. Skip them so the user sees
     // an empty, focusable input ready for typing rather than a noisy
     // about: URL on a fresh panel.
-    if (initialUrl && initialUrl !== 'about:blank' && initialUrl !== 'about:newtab') {
+    if (isRealPanelUrl(initialUrl)) {
       urlInput.value = initialUrl;
+      rememberPanelBrowserUrl(browserEl, initialUrl);
     }
     urlInput.addEventListener('focus', () => {
       // Spotlight-style: select-all on focus so typing replaces the URL.
@@ -2270,7 +2696,7 @@
     // user clicks back into the panel.
     function returnFocusToPanel() {
       const panelEl = urlInput.closest(
-        '[data-bento-main-panel], [data-bento-panel-tab-id]',
+        '[data-bento-main-panel], [data-bento-panel-tab-id], [data-bento-subpanel]',
       );
       if (!panelEl) return;
       try {
@@ -2330,7 +2756,7 @@
     let moreBtn = null;
     if (Number.isFinite(tabId)) {
       moreBtn = makeHeaderButton('Panel options', ICONS.moreVertical, () => {
-        const panelEl = moreBtn.closest('[data-bento-panel-tab-id]');
+        const panelEl = moreBtn.closest('[data-bento-panel-tab-id], [data-bento-subpanel]');
         if (!panelEl) return;
         const sizeItems =
           currentCustomPanelSizes.length > 0
@@ -2365,9 +2791,20 @@
         // "Save panel" sits as a sibling below a separator; clicking
         // dispatches `savedPanels/save` and bento-tools inserts the
         // bookmark into the "Saved panels" folder (de-dupes silently).
+        const canSubdivide = canSubdivideFromPanelHeader(tabId, panelEl);
+        const canBreakOut = canBreakOutFromPanelHeader(tabId, panelEl);
+        const subdivisionItems = [
+          ...(canSubdivide && !currentSubdivisions.has(tabId)
+            ? [{ id: 'subdivide', label: 'Subdivide panel' }]
+            : []),
+          ...(canBreakOut
+            ? [{ id: 'break-out-sub-panel', label: 'Break out this panel' }]
+            : []),
+        ];
         const items = [
           pinItem,
           { id: 'custom-widths', label: 'Custom panel widths', items: sizeItems },
+          ...subdivisionItems,
           { id: 'sep-save-panel', kind: 'separator' },
           { id: 'save-panel', label: 'Save panel' },
         ];
@@ -2394,6 +2831,27 @@
               });
               return;
             }
+            if (itemId === 'subdivide') {
+              console.log('[bento-subdiv-debug] chrome dispatch subdivide from panel header', {
+                tabId,
+                linkedPanel: panelEl.id || null,
+                isSubPanel: panelEl.hasAttribute('data-bento-subpanel'),
+                parentPanel: panelEl.closest('[data-bento-subdivided]')?.id || null,
+                fullSlotSurvivorParentTabId: getFullSlotSurvivorParentTabId(tabId),
+                domFullSlotSurvivor: isFullSlotSurvivorPanelElement(panelEl),
+              });
+              dispatchShellAction({ type: 'panel/subdivide', tabId });
+              return;
+            }
+            if (itemId === 'break-out-sub-panel') {
+              console.log('[bento-subdiv-debug] chrome dispatch break out sub-panel', {
+                tabId,
+                linkedPanel: panelEl.id || null,
+                parentTabId: getSubdivisionParentTabId(tabId),
+              });
+              dispatchShellAction({ type: 'panel/breakOutSubPanel', tabId });
+              return;
+            }
             if (itemId === 'save-panel') {
               // Read the panel's current URL + title and dispatch to
               // bento-tools — SavedPanelsStore owns the find-or-create
@@ -2404,7 +2862,7 @@
               // mutated from chrome would bypass tools' list mirror
               // and the trailer iframe would lag until the next manual
               // refresh).
-              const innerBrowser = panelEl.querySelector('browser');
+              const innerBrowser = getHeaderActionBrowser(panelEl, browserEl);
               if (!innerBrowser) return;
               let uri;
               try {
@@ -2488,8 +2946,9 @@
           } catch {
             spec = '';
           }
-          if (spec && spec !== 'about:blank' && spec !== 'about:newtab') {
+          if (isRealPanelUrl(spec)) {
             urlInput.value = spec;
+            rememberPanelBrowserUrl(browserEl, spec);
           } else if (spec === 'about:newtab') {
             // Clear when navigating to newtab (e.g. user typed nothing
             // and the address eventually resolves to about:newtab via
@@ -2656,6 +3115,263 @@
       if (!panelEl.isConnected || panelEl.__bentoLoadingBrowser !== browserEl) return;
       setVisible(isPanelBrowserLoading(browserEl));
     }, 100);
+    setTimeout(() => {
+      if (!panelEl.isConnected || panelEl.__bentoLoadingBrowser !== browserEl) return;
+      if (!panelEl.hasAttribute('data-bento-subpanel')) return;
+      try {
+        const spec = browserEl.currentURI?.spec ?? '';
+        if (!spec || spec === 'about:blank' || spec === 'about:newtab') {
+          setVisible(false);
+        }
+      } catch {
+        setVisible(false);
+      }
+    }, 2500);
+  }
+
+  function forceHidePanelLoadingOverlay(panelEl) {
+    if (!panelEl) return;
+    const overlay = panelEl.querySelector(':scope > .bento-panel-loading-overlay');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.removeAttribute('data-bento-visible');
+  }
+
+  function logPromotedPanelBrowserState(label, tab, panelEl) {
+    try {
+      const browserEl = tab?.linkedBrowser;
+      console.log(`[bento-subdiv-debug] chrome promoted sub-panel ${label}`, {
+        linkedPanel: tab?.linkedPanel || null,
+        panelConnected: !!panelEl?.isConnected,
+        hasSubPanelAttr: !!panelEl?.hasAttribute('data-bento-subpanel'),
+        overlayVisible: !!panelEl
+          ?.querySelector(':scope > .bento-panel-loading-overlay')
+          ?.hasAttribute('data-bento-visible'),
+        browserConnected: !!browserEl?.isConnected,
+        currentURI: browserEl?.currentURI?.spec || null,
+        isLoadingDocument: !!browserEl?.webProgress?.isLoadingDocument,
+        documentURI: browserEl?.contentDocument?.documentURI || null,
+      });
+    } catch (err) {
+      console.log(`[bento-subdiv-debug] chrome promoted sub-panel ${label} state failed`, err);
+    }
+  }
+
+  function getPaintStyleState(el) {
+    if (!el) return null;
+    try {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return {
+        tagName: el.localName || el.tagName || null,
+        id: el.id || null,
+        className: typeof el.className === 'string' ? el.className : String(el.className || ''),
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        flex: style.flex,
+        overflow: style.overflow,
+        pointerEvents: style.pointerEvents,
+        position: style.position,
+        zIndex: style.zIndex,
+        subtreeHidden: style.getPropertyValue('-moz-subtree-hidden-only-visually') || null,
+        hidden: !!el.hidden,
+        collapsed: el.getAttribute?.('collapsed') || null,
+      };
+    } catch (err) {
+      return { error: String(err) };
+    }
+  }
+
+  function logTopClosedSubPanelPaintState(label, tab, panelEl) {
+    try {
+      const browserEl = tab?.linkedBrowser || panelEl?.querySelector?.('browser') || null;
+      const browserContainer = panelEl?.querySelector?.(':scope > .browserContainer') || null;
+      const browserStack =
+        panelEl?.querySelector?.(':scope > .browserContainer > .browserStack') ||
+        panelEl?.querySelector?.(':scope > .browserStack') ||
+        null;
+      const headerEl = panelEl?.querySelector?.(':scope > .bento-panel-header') || null;
+      const parentPanel = panelEl?.closest?.('[data-bento-subdivided]') || null;
+      const remoteTab = browserEl?.frameLoader?.remoteTab || null;
+      console.log(`[bento-subdiv-debug] chrome top-closed sub-panel paint ${label}`, {
+        linkedPanel: tab?.linkedPanel || panelEl?.id || null,
+        parentPanel: parentPanel?.id || null,
+        hasSubPanelAttr: !!panelEl?.hasAttribute?.('data-bento-subpanel'),
+        splitViewActive: !!panelEl?.classList?.contains('split-view-panel-active'),
+        deckSelected: !!panelEl?.classList?.contains('deck-selected'),
+        browserConnected: !!browserEl?.isConnected,
+        currentURI: browserEl?.currentURI?.spec || null,
+        documentURI: browserEl?.contentDocument?.documentURI || null,
+        rememberedUrl:
+          browserEl?._bentoLastNonBlankUrl ||
+          panelEl?.dataset?.bentoLastNonBlankUrl ||
+          panelEl?.querySelector?.(':scope > .bento-panel-header .bento-panel-header-url')?.value ||
+          null,
+        docShellIsActive: !!browserEl?.docShellIsActive,
+        renderLayers: !!browserEl?.renderLayers,
+        hasLayers: !!browserEl?.hasLayers,
+        frameLoader: !!browserEl?.frameLoader,
+        remoteTab: !!remoteTab,
+        remoteTabRenderLayers: remoteTab ? !!remoteTab.renderLayers : null,
+        remoteTabHasLayers: remoteTab ? !!remoteTab.hasLayers : null,
+        remoteTabHasPresented: remoteTab ? !!remoteTab.hasPresented : null,
+        blankAttr: !!browserEl?.hasAttribute?.('blank'),
+        pendingPaintAttr: !!browserEl?.hasAttribute?.('pendingpaint'),
+        tabpanelsPendingPaint: !!window.gBrowser?.tabpanels?.hasAttribute?.('pendingpaint'),
+        panel: getPaintStyleState(panelEl),
+        header: getPaintStyleState(headerEl),
+        browserContainer: getPaintStyleState(browserContainer),
+        browserStack: getPaintStyleState(browserStack),
+        browser: getPaintStyleState(browserEl),
+      });
+    } catch (err) {
+      console.log(`[bento-subdiv-debug] chrome top-closed sub-panel paint ${label} failed`, err);
+    }
+  }
+
+  function getBentoTabTracker() {
+    try {
+      const mod = ChromeUtils.importESModule(
+        'resource://gre/modules/ExtensionParent.sys.mjs',
+      );
+      return mod.ExtensionParent?.apiManager?.global?.tabTracker || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function getTrackedTabById(tabTracker, tabId) {
+    if (!tabTracker || !Number.isFinite(Number(tabId))) return null;
+    try {
+      return tabTracker.getTab(Number(tabId)) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function getBentoTabId(tab) {
+    if (!tab) return null;
+    const tabTracker = getBentoTabTracker();
+    if (!tabTracker) return null;
+    try {
+      const id = Number(tabTracker.getId(tab));
+      return Number.isFinite(id) ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function resetPanelHeaderInlineState(headerEl) {
+    if (!headerEl) return;
+    for (const prop of [
+      'display',
+      'flex',
+      'height',
+      'min-height',
+      'max-height',
+      'opacity',
+      'overflow',
+      'margin',
+      'padding',
+      'border-width',
+      'visibility',
+      'pointer-events',
+      'transition',
+      'position',
+      'z-index',
+    ]) {
+      headerEl.style.removeProperty(prop);
+    }
+  }
+
+  function forcePanelHeaderInteractiveState(headerEl) {
+    if (!headerEl) return;
+    headerEl.removeAttribute('hidden');
+    headerEl.removeAttribute('collapsed');
+    headerEl.style.setProperty('position', 'relative', 'important');
+    headerEl.style.setProperty('z-index', '5', 'important');
+    headerEl.style.setProperty('pointer-events', 'auto', 'important');
+    headerEl.style.setProperty('visibility', 'inherit', 'important');
+    headerEl.style.setProperty('opacity', '1', 'important');
+  }
+
+  function resetVisiblePanelHeaderState(panelEl) {
+    const headerEl = panelEl?.querySelector?.(':scope > .bento-panel-header');
+    resetPanelHeaderInlineState(headerEl);
+    forcePanelHeaderInteractiveState(headerEl);
+  }
+
+  function forceTopClosedSubPanelPaint(tab, panelEl) {
+    if (!panelEl) return;
+    const tabId = getBentoTabId(tab);
+    const ownSubdivision = Number.isFinite(tabId) ? currentSubdivisions.get(tabId) : null;
+    const survivorOwnTopClosed = !!ownSubdivision?.topClosed && ownSubdivision.subPanels?.length === 1;
+    const survivorIsSubdivided =
+      panelEl.hasAttribute('data-bento-subdivided') ||
+      (Number.isFinite(tabId) && currentSubdivisions.has(tabId));
+    const browserEl = tab?.linkedBrowser || panelEl.querySelector?.('browser') || null;
+    const browserContainer = panelEl.querySelector?.(':scope > .browserContainer') || null;
+    const browserStack =
+      panelEl.querySelector?.(':scope > .browserContainer > .browserStack') ||
+      panelEl.querySelector?.(':scope > .browserStack') ||
+      null;
+
+    panelEl.classList.add('split-view-panel-active');
+    panelEl.removeAttribute('hidden');
+    panelEl.removeAttribute('collapsed');
+    panelEl.setAttribute('data-bento-subpanel', '1');
+    panelEl.style.setProperty('-moz-subtree-hidden-only-visually', '0', 'important');
+    panelEl.style.setProperty('visibility', 'inherit', 'important');
+    panelEl.style.setProperty('opacity', '1', 'important');
+    panelEl.style.setProperty('display', 'flex', 'important');
+    panelEl.style.setProperty('flex-direction', 'column', 'important');
+    panelEl.style.setProperty('flex', '1 1 100%', 'important');
+    panelEl.style.setProperty('height', '100%', 'important');
+    panelEl.style.setProperty('max-height', 'none', 'important');
+    panelEl.style.setProperty('align-self', 'stretch', 'important');
+    panelEl.style.setProperty('min-height', '0', 'important');
+    panelEl.style.setProperty('overflow', survivorIsSubdivided ? 'visible' : 'hidden', 'important');
+    if (!survivorOwnTopClosed) resetVisiblePanelHeaderState(panelEl);
+
+    for (const el of [browserContainer, browserStack, browserEl]) {
+      if (!el) continue;
+      el.removeAttribute?.('hidden');
+      el.removeAttribute?.('collapsed');
+      el.style.setProperty('-moz-subtree-hidden-only-visually', '0', 'important');
+      el.style.setProperty('visibility', 'inherit', 'important');
+      el.style.setProperty('opacity', '1', 'important');
+      el.style.setProperty('min-height', '0', 'important');
+      el.style.setProperty('min-width', '0', 'important');
+      if (!survivorIsSubdivided) {
+        el.style.setProperty('overflow', 'clip', 'important');
+        el.style.setProperty('flex', '1 1 auto', 'important');
+      }
+    }
+
+    if (browserContainer) {
+      browserContainer.style.setProperty('display', 'flex', 'important');
+      browserContainer.style.setProperty('flex-direction', 'column', 'important');
+    }
+    if (browserEl) {
+      browserEl.removeAttribute('blank');
+      browserEl.removeAttribute('pendingpaint');
+      browserEl.style.setProperty('width', '100%', 'important');
+      browserEl.style.setProperty('height', '100%', 'important');
+      try {
+        browserEl.preserveLayers?.(true);
+        browserEl.renderLayers = true;
+        browserEl.docShellIsActive = true;
+      } catch {
+        // best-effort paint restoration
+      }
+    }
   }
 
   // ─── Inter-panel splitter (drag to resize) ────────────────────────────
@@ -2775,6 +3491,772 @@
         addNewPanel();
       },
     });
+  }
+
+  // ─── Subdivision helpers ─────────────────────────────────────────
+
+  function createVerticalSplitter(parentTabId) {
+    const splitter = document.createXULElement('splitter');
+    splitter.className = 'bento-subdivision-vsplitter';
+    splitter.setAttribute('resizebefore', 'none');
+    splitter.setAttribute('resizeafter', 'none');
+    splitter.setAttribute('flex', '0');
+    splitter._bentoParentTabId = parentTabId;
+    splitter.addEventListener('pointerdown', (e) => startVerticalDrag(splitter, e));
+    splitter.addEventListener('pointermove', (e) => onVerticalDragMove(splitter, e));
+    splitter.addEventListener('pointerup', (e) => endVerticalDrag(splitter, e));
+    splitter.addEventListener('pointercancel', (e) => endVerticalDrag(splitter, e));
+    splitter.addEventListener('lostpointercapture', () => endVerticalDrag(splitter, null));
+    return splitter;
+  }
+
+  function startVerticalDrag(splitter, e) {
+    if (e.button !== 0) return;
+    const col =
+      splitter.closest('.bento-subdivision-column') ||
+      splitter.closest('[data-bento-subdivided]');
+    if (!col) return;
+    const topPanel =
+      col.classList?.contains('bento-subdivision-column')
+        ? col.querySelector(':scope > [data-bento-panel-tab-id]')
+        : (
+            col.querySelector(':scope > .browserContainer') ||
+            col.querySelector(':scope > browser')
+          );
+    if (!topPanel) return;
+    e.preventDefault();
+    e.stopPropagation();
+    splitter._vDragState = {
+      col,
+      topPanel,
+      startY: e.clientY,
+      startHeight: topPanel.getBoundingClientRect().height,
+      colHeight: col.getBoundingClientRect().height,
+      pointerId: e.pointerId,
+    };
+    try { splitter.setPointerCapture(e.pointerId); } catch {}
+    splitter.classList.add('bento-subdivision-vsplitter--dragging');
+    document.documentElement.style.setProperty('cursor', 'row-resize', 'important');
+    document.documentElement.style.setProperty('user-select', 'none', 'important');
+  }
+
+  function onVerticalDragMove(splitter, e) {
+    const d = splitter._vDragState;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const delta = e.clientY - d.startY;
+    const splitterH = 8;
+    const usable = d.colHeight - splitterH;
+    const minH = usable * 0.2;
+    const next = Math.max(minH, Math.min(usable - minH, d.startHeight + delta));
+    d.topPanel.style.flex = '0 0 ' + next + 'px';
+  }
+
+  function endVerticalDrag(splitter, e) {
+    const d = splitter._vDragState;
+    if (!d) return;
+    if (e && e.pointerId !== undefined && e.pointerId !== d.pointerId) return;
+    try { splitter.releasePointerCapture(d.pointerId); } catch {}
+    splitter._vDragState = null;
+    splitter.classList.remove('bento-subdivision-vsplitter--dragging');
+    document.documentElement.style.removeProperty('cursor');
+    document.documentElement.style.removeProperty('user-select');
+    const topH = d.topPanel.getBoundingClientRect().height;
+    const colH = d.col.getBoundingClientRect().height;
+    const ratio = colH > 0 ? topH / colH : 0.5;
+    dispatchShellAction({
+      type: 'panel/setSubdivisionHeight',
+      tabId: splitter._bentoParentTabId,
+      topHeightFraction: Math.max(0.2, Math.min(0.8, ratio)),
+    });
+  }
+
+  function createHorizontalSubSplitter(parentTabId) {
+    const splitter = document.createXULElement('splitter');
+    splitter.className = 'bento-subdivision-hsplitter';
+    splitter.setAttribute('resizebefore', 'none');
+    splitter.setAttribute('resizeafter', 'none');
+    splitter._bentoParentTabId = parentTabId;
+    splitter.addEventListener('pointerdown', (e) => startHSubDrag(splitter, e));
+    splitter.addEventListener('pointermove', (e) => onHSubDragMove(splitter, e));
+    splitter.addEventListener('pointerup', (e) => endHSubDrag(splitter, e));
+    splitter.addEventListener('pointercancel', (e) => endHSubDrag(splitter, e));
+    splitter.addEventListener('lostpointercapture', () => endHSubDrag(splitter, null));
+    return splitter;
+  }
+
+  function startHSubDrag(splitter, e) {
+    if (e.button !== 0) return;
+    const bottom = splitter.closest('.bento-subdivision-bottom');
+    if (!bottom) return;
+    const leftPanel = bottom.querySelector(':scope > [data-bento-subpanel]:first-child');
+    if (!leftPanel) return;
+    e.preventDefault();
+    e.stopPropagation();
+    splitter._hSubDragState = {
+      bottom,
+      leftPanel,
+      startX: e.clientX,
+      startWidth: leftPanel.getBoundingClientRect().width,
+      bottomWidth: bottom.getBoundingClientRect().width,
+      pointerId: e.pointerId,
+    };
+    try { splitter.setPointerCapture(e.pointerId); } catch {}
+    splitter.classList.add('bento-subdivision-hsplitter--dragging');
+    document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
+    document.documentElement.style.setProperty('user-select', 'none', 'important');
+  }
+
+  function onHSubDragMove(splitter, e) {
+    const d = splitter._hSubDragState;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const delta = e.clientX - d.startX;
+    const splitterW = 8;
+    const usable = d.bottomWidth - splitterW;
+    const minW = usable * 0.2;
+    const next = Math.max(minW, Math.min(usable - minW, d.startWidth + delta));
+    d.leftPanel.style.flex = '0 0 ' + next + 'px';
+  }
+
+  function endHSubDrag(splitter, e) {
+    const d = splitter._hSubDragState;
+    if (!d) return;
+    if (e && e.pointerId !== undefined && e.pointerId !== d.pointerId) return;
+    try { splitter.releasePointerCapture(d.pointerId); } catch {}
+    splitter._hSubDragState = null;
+    splitter.classList.remove('bento-subdivision-hsplitter--dragging');
+    document.documentElement.style.removeProperty('cursor');
+    document.documentElement.style.removeProperty('user-select');
+    const leftW = d.leftPanel.getBoundingClientRect().width;
+    const bottomW = d.bottom.getBoundingClientRect().width;
+    const ratio = bottomW > 0 ? leftW / bottomW : 0.5;
+    dispatchShellAction({
+      type: 'panel/setSubdivisionSplitRatio',
+      tabId: splitter._bentoParentTabId,
+      splitRatio: Math.max(0.2, Math.min(0.8, ratio)),
+    });
+  }
+
+  function createSubdivisionChooser(parentTabId) {
+    const HTML_NS = 'http://www.w3.org/1999/xhtml';
+    const container = document.createXULElement('vbox');
+    container.className = 'bento-subdivision-chooser';
+    container.setAttribute('flex', '1');
+
+    const singleBtn = document.createElementNS(HTML_NS, 'button');
+    singleBtn.className = 'bento-subdivision-chooser__btn';
+    singleBtn.textContent = 'Full panel';
+    singleBtn.addEventListener('click', () => {
+      dispatchShellAction({
+        type: 'panel/setSubdivisionContent',
+        tabId: parentTabId,
+        mode: 'single',
+        urls: ['about:newtab'],
+      });
+    });
+
+    const dualBtn = document.createElementNS(HTML_NS, 'button');
+    dualBtn.className = 'bento-subdivision-chooser__btn';
+    dualBtn.textContent = 'Split panels';
+    dualBtn.addEventListener('click', () => {
+      dispatchShellAction({
+        type: 'panel/setSubdivisionContent',
+        tabId: parentTabId,
+        mode: 'dual',
+        urls: ['about:newtab', 'about:newtab'],
+      });
+    });
+
+    container.appendChild(singleBtn);
+    container.appendChild(dualBtn);
+    return container;
+  }
+
+  // ── In-place subdivision ──
+  // Instead of reparenting browser elements (which destroys their
+  // rendering surface), we convert the panel itself into a vertical
+  // flex container and append subdivision elements directly inside it.
+  // The browser stays in its original DOM position — no docShell issues.
+
+  function clearSubdivisionFromPanel(panelEl, options = {}) {
+    if (!panelEl) return;
+    const force = !!options.force;
+    if (!force && !panelEl.hasAttribute('data-bento-subdivided')) return;
+    if (options.animate && panelEl.hasAttribute('data-bento-subdivided')) {
+      if (panelEl.hasAttribute('data-bento-subdivision-clearing')) return;
+      panelEl.setAttribute('data-bento-subdivision-clearing', '1');
+      const headerEl = panelEl.querySelector(':scope > .bento-panel-header');
+      const contentEl =
+        panelEl.querySelector(':scope > .browserContainer') ||
+        panelEl.querySelector(':scope > browser');
+      const bottomEls = Array.from(panelEl.querySelectorAll(
+        ':scope > .bento-subdivision-chooser, :scope > .bento-subdivision-bottom, :scope > [data-bento-subpanel], :scope > .bento-subdivision-vsplitter',
+      ));
+      panelEl.setAttribute('data-bento-subdivision-animating', '1');
+      const survivorAnimation = isFullSlotSurvivorPanel(panelEl);
+      if (survivorAnimation) {
+        for (const el of [contentEl, ...bottomEls].filter(Boolean)) {
+          el.style.transition = 'none';
+        }
+      }
+      const panelH = panelEl.getBoundingClientRect().height;
+      const headerH = headerEl?.getBoundingClientRect().height || 0;
+      const targetH = Math.max(0, panelH - headerH);
+      if (contentEl) {
+        const currentH = contentEl.getBoundingClientRect().height;
+        setSubdivisionFlex(contentEl, '0 0 ' + currentH + 'px');
+      }
+      for (const el of bottomEls) {
+        el.style.opacity = '1';
+      }
+      panelEl.getBoundingClientRect();
+      scheduleSubdivisionAnimationFrame(panelEl, () => {
+        if (survivorAnimation) {
+          for (const el of [contentEl, ...bottomEls].filter(Boolean)) {
+            el.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
+          }
+        }
+        if (contentEl) setSubdivisionFlex(contentEl, '0 0 ' + targetH + 'px');
+        for (const el of bottomEls) {
+          el.style.opacity = '0';
+          if (!el.classList?.contains('bento-subdivision-vsplitter')) {
+            setSubdivisionFlex(el, '0 1 0');
+          }
+        }
+      });
+      window.setTimeout(() => {
+        clearSubdivisionFromPanel(panelEl, { force: true });
+      }, 230);
+      return;
+    }
+    delete panelEl._bentoPanelRemoving;
+    for (const el of panelEl.querySelectorAll(
+      ':scope > .bento-subdivision-vsplitter, :scope > .bento-subdivision-chooser, :scope > .bento-subdivision-bottom, :scope > [data-bento-subpanel]',
+    )) {
+      el.remove();
+    }
+    panelEl.removeAttribute('data-bento-subdivided');
+    panelEl.removeAttribute('data-bento-subdivision-animating');
+    panelEl.removeAttribute('data-bento-subdivision-clearing');
+    panelEl.removeAttribute('data-bento-subdivision-top-closed');
+    panelEl.removeAttribute('data-bento-subdivision-survivor-subdivided');
+    panelEl.style.removeProperty('display');
+    panelEl.style.removeProperty('flex-direction');
+    panelEl.style.removeProperty('overflow');
+    for (const child of panelEl.querySelectorAll(
+      ':scope > .bento-panel-header, :scope > .browserContainer, :scope > browser, :scope > .browserStack, :scope > .bento-panel-loading-overlay',
+    )) {
+      child.style.removeProperty('min-height');
+      child.style.removeProperty('min-width');
+      child.style.removeProperty('overflow');
+      child.style.removeProperty('flex');
+      child.style.removeProperty('display');
+      child.style.removeProperty('height');
+      child.style.removeProperty('max-height');
+      child.style.removeProperty('width');
+      child.style.removeProperty('align-self');
+      child.style.removeProperty('opacity');
+      child.style.removeProperty('visibility');
+      child.style.removeProperty('transition');
+      child.style.removeProperty('margin');
+      child.style.removeProperty('padding');
+      child.style.removeProperty('border-width');
+      child.style.removeProperty('pointer-events');
+      child.style.removeProperty('position');
+      child.style.removeProperty('z-index');
+    }
+  }
+
+  const BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION =
+    'flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
+    'opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard)';
+
+  function setSubdivisionFlex(el, value) {
+    if (!el) return;
+    el.style.setProperty('flex', value, 'important');
+  }
+
+  function isFullSlotSurvivorPanel(panelEl) {
+    return !!(
+      panelEl?.hasAttribute('data-bento-subpanel') &&
+      panelEl.parentElement?.hasAttribute('data-bento-subdivision-top-closed')
+    );
+  }
+
+  function scheduleSubdivisionAnimationFrame(panelEl, callback) {
+    if (isFullSlotSurvivorPanel(panelEl)) {
+      requestAnimationFrame(() => requestAnimationFrame(callback));
+      return;
+    }
+    requestAnimationFrame(callback);
+  }
+
+  function animateDualSubdivisionToSingle(parentPanel, sub, tabTracker, parentTabId) {
+    const bottom = parentPanel.querySelector(':scope > .bento-subdivision-bottom');
+    if (!bottom || !sub?.subPanels || sub.subPanels.length !== 1) return false;
+    const remainingTab = getTrackedTabById(tabTracker, sub.subPanels[0].tabId);
+    if (!remainingTab?.linkedPanel) return false;
+    const remainingPanel = document.getElementById(remainingTab.linkedPanel);
+    if (!remainingPanel || !bottom.contains(remainingPanel)) return false;
+    const panels = Array.from(bottom.querySelectorAll(':scope > [data-bento-subpanel]'));
+    const removing = panels.filter((el) => el !== remainingPanel);
+    const splitters = Array.from(bottom.querySelectorAll(':scope > .bento-subdivision-hsplitter'));
+
+    if (panels.length === 1 && panels[0] === remainingPanel) {
+      for (const splitter of splitters) splitter.remove();
+      parentPanel.appendChild(remainingPanel);
+      bottom.remove();
+      remainingPanel.style.removeProperty('opacity');
+      remainingPanel.style.removeProperty('transition');
+      setSubdivisionFlex(remainingPanel, '1 1 0');
+      remainingPanel.style.minHeight = '0';
+      remainingPanel.style.overflow = 'hidden';
+      remainingPanel.style.display = 'flex';
+      remainingPanel.style.flexDirection = 'column';
+      injectPanelHeaderIntoLinkedPanel(remainingTab, sub.subPanels[0].url);
+      parentPanel.removeAttribute('data-bento-subdivision-animating');
+      return true;
+    }
+
+    if (panels.length < 2) return false;
+    const survivorAnimation = isFullSlotSurvivorPanel(parentPanel);
+    const animatedEls = [remainingPanel, ...removing, ...splitters];
+
+    parentPanel.setAttribute('data-bento-subdivision-animating', '1');
+    if (survivorAnimation) {
+      for (const el of animatedEls) el.style.transition = 'none';
+    }
+    const remainingW = remainingPanel.getBoundingClientRect().width;
+    setSubdivisionFlex(remainingPanel, '0 0 ' + remainingW + 'px');
+    for (const el of removing) {
+      setSubdivisionFlex(el, '0 0 ' + el.getBoundingClientRect().width + 'px');
+      el.style.opacity = '1';
+    }
+    for (const splitter of splitters) splitter.style.opacity = '1';
+
+    bottom.getBoundingClientRect();
+    scheduleSubdivisionAnimationFrame(parentPanel, () => {
+      if (survivorAnimation) {
+        for (const el of animatedEls) {
+          el.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
+        }
+      }
+      setSubdivisionFlex(remainingPanel, '1 1 auto');
+      for (const el of removing) {
+        setSubdivisionFlex(el, '0 1 0');
+        el.style.opacity = '0';
+      }
+      for (const splitter of splitters) splitter.style.opacity = '0';
+    });
+
+    window.setTimeout(() => {
+      if (!parentPanel.isConnected) return;
+      for (const el of removing) el.remove();
+      for (const splitter of splitters) splitter.remove();
+      bottom.remove();
+      remainingPanel.style.removeProperty('opacity');
+      remainingPanel.style.removeProperty('transition');
+      setSubdivisionFlex(remainingPanel, '1 1 0');
+      remainingPanel.style.minHeight = '0';
+      remainingPanel.style.overflow = 'hidden';
+      remainingPanel.style.display = 'flex';
+      remainingPanel.style.flexDirection = 'column';
+      parentPanel.appendChild(remainingPanel);
+      injectPanelHeaderIntoLinkedPanel(remainingTab, sub.subPanels[0].url);
+      parentPanel.removeAttribute('data-bento-subdivision-animating');
+    }, 230);
+    return true;
+  }
+
+	  function applySubdivisions(tabpanels, subdivisions) {
+	    const tabTracker = getBentoTabTracker();
+	    const elementStillHasSubdivision = (el) => {
+	      const tabIdAttr = el.dataset.bentoPanelTabId;
+	      const tabId = tabIdAttr ? Number(tabIdAttr) : NaN;
+      if (Number.isFinite(tabId)) return subdivisions?.has(tabId);
+      if (!tabTracker || !el.id) return false;
+      for (const parentTabId of subdivisions?.keys?.() || []) {
+        const tab = getTrackedTabById(tabTracker, parentTabId);
+        if (tab?.linkedPanel === el.id) return true;
+	      }
+	      return false;
+	    };
+	    const isCurrentTopClosedSurvivorElement = (el) => {
+	      if (!tabTracker || !el?.id) return false;
+	      for (const sub of subdivisions?.values?.() || []) {
+	        if (!sub?.topClosed || sub.subPanels?.length !== 1) continue;
+	        const survivorTab = getTrackedTabById(tabTracker, sub.subPanels[0]?.tabId);
+	        if (survivorTab?.linkedPanel === el.id) return true;
+	      }
+	      return false;
+	    };
+
+	    // Clear subdivisions from panels that are no longer subdivided
+	    for (const el of tabpanels.querySelectorAll('[data-bento-subdivided]')) {
+	      if (!elementStillHasSubdivision(el)) {
+	        const isTopClosedSurvivor = isCurrentTopClosedSurvivorElement(el);
+	        if (isTopClosedSurvivor) {
+	          console.log('[bento-subdiv-debug] chrome clear stale survivor subdivision without replaying animation', {
+	            linkedPanel: el.id || null,
+	          });
+	        }
+	        clearSubdivisionFromPanel(el, { force: true, animate: !isTopClosedSurvivor });
+	      }
+	    }
+
+    if (!subdivisions || subdivisions.size === 0) return;
+    if (!tabTracker) return;
+
+    for (const [parentTabId, sub] of subdivisions) {
+      const parentTab = getTrackedTabById(tabTracker, parentTabId);
+      if (!parentTab) continue;
+      const parentPanel = document.getElementById(parentTab.linkedPanel);
+      if (!parentPanel) continue;
+
+      const wasSubdivided = parentPanel.hasAttribute('data-bento-subdivided');
+      const hadSubdivisionElements = !!parentPanel.querySelector(
+        ':scope > .bento-subdivision-vsplitter, :scope > .bento-subdivision-chooser, :scope > .bento-subdivision-bottom, :scope > [data-bento-subpanel]',
+      );
+      const isNewSubdivision = !wasSubdivided || !hadSubdivisionElements;
+      parentPanel.setAttribute('data-bento-subdivided', '1');
+      const topClosed = !!sub.topClosed && sub.subPanels?.length === 1;
+      const topClosedChildTabId = topClosed ? Number(sub.subPanels?.[0]?.tabId) : NaN;
+      const survivorSubdivided =
+        topClosed &&
+        Number.isFinite(topClosedChildTabId) &&
+        subdivisions.has(topClosedChildTabId);
+      parentPanel.toggleAttribute('data-bento-subdivision-top-closed', topClosed);
+      parentPanel.toggleAttribute(
+        'data-bento-subdivision-survivor-subdivided',
+        survivorSubdivided,
+      );
+      if (topClosed) {
+        delete parentPanel._bentoPanelRemoving;
+        parentPanel.removeAttribute('data-bento-subdivision-animating');
+      }
+      if (isNewSubdivision && !topClosed) {
+        parentPanel.setAttribute('data-bento-subdivision-animating', '1');
+        window.setTimeout(() => {
+          parentPanel.removeAttribute('data-bento-subdivision-animating');
+        }, 260);
+      }
+      const topFraction = sub.topHeightFraction ?? 0.5;
+      const isFullSlotSurvivorSubdivision =
+        isNewSubdivision &&
+        !topClosed &&
+        isFullSlotSurvivorPanel(parentPanel);
+
+      if (!isNewSubdivision && animateDualSubdivisionToSingle(parentPanel, sub, tabTracker, parentTabId)) {
+        continue;
+      }
+
+      const desiredSubPanelIds = new Set();
+      for (const sp of sub.subPanels || []) {
+        const spTab = getTrackedTabById(tabTracker, sp.tabId);
+        if (spTab?.linkedPanel) desiredSubPanelIds.add(spTab.linkedPanel);
+      }
+
+      // Remove stale subdivision elements before re-adding
+      for (const el of parentPanel.querySelectorAll(
+        ':scope > .bento-subdivision-vsplitter, :scope > .bento-subdivision-chooser, :scope > .bento-subdivision-bottom, :scope > [data-bento-subpanel]',
+      )) {
+        if (el.hasAttribute('data-bento-subpanel') && desiredSubPanelIds.has(el.id)) {
+          continue;
+        }
+        el.remove();
+      }
+
+      const headerEl = parentPanel.querySelector(':scope > .bento-panel-header');
+      const loadingEl = parentPanel.querySelector(':scope > .bento-panel-loading-overlay');
+      const staleVSplitter = parentPanel.querySelector(':scope > .bento-subdivision-vsplitter');
+      const contentEl =
+        parentPanel.querySelector(':scope > .browserContainer') ||
+        parentPanel.querySelector(':scope > browser');
+
+      parentPanel.style.display = 'flex';
+      parentPanel.style.flexDirection = 'column';
+      if (isFullSlotSurvivorPanel(parentPanel)) {
+        parentPanel.style.setProperty('overflow', 'visible', 'important');
+      } else {
+        parentPanel.style.overflow = 'visible';
+      }
+
+      if (headerEl) {
+        headerEl.style.display = '';
+        headerEl.style.flex = topClosed ? '0 0 0' : '0 0 auto';
+        headerEl.style.opacity = topClosed ? '0' : '';
+        headerEl.style.height = topClosed ? '0' : '';
+        headerEl.style.minHeight = topClosed ? '0' : '';
+        headerEl.style.maxHeight = topClosed ? '0' : '';
+        headerEl.style.overflow = topClosed ? 'hidden' : '';
+        headerEl.style.margin = topClosed ? '0' : '';
+        headerEl.style.padding = topClosed ? '0' : '';
+        headerEl.style.borderWidth = topClosed ? '0' : '';
+        headerEl.style.visibility = topClosed ? 'hidden' : '';
+        headerEl.style.pointerEvents = topClosed ? 'none' : '';
+      }
+      if (contentEl) {
+        contentEl.style.display = '';
+        if (topClosed) {
+          setSubdivisionFlex(contentEl, '0 0 0');
+          contentEl.style.height = '0';
+          contentEl.style.maxHeight = '0';
+          contentEl.style.opacity = '0';
+          contentEl.style.visibility = 'hidden';
+          contentEl.style.pointerEvents = 'none';
+          contentEl.style.margin = '0';
+          contentEl.style.padding = '0';
+          contentEl.style.borderWidth = '0';
+        } else if (isNewSubdivision) {
+          contentEl.style.height = '';
+          contentEl.style.maxHeight = '';
+          contentEl.style.opacity = '';
+          contentEl.style.visibility = '';
+          contentEl.style.pointerEvents = '';
+          contentEl.style.margin = '';
+          contentEl.style.padding = '';
+          contentEl.style.borderWidth = '';
+          const headerH = headerEl?.getBoundingClientRect().height || 0;
+          const startH = isFullSlotSurvivorPanel(parentPanel)
+            ? Math.max(
+                contentEl.getBoundingClientRect().height,
+                parentPanel.getBoundingClientRect().height - headerH,
+              )
+            : contentEl.getBoundingClientRect().height;
+          setSubdivisionFlex(contentEl, '0 0 ' + startH + 'px');
+        } else {
+          contentEl.style.height = '';
+          contentEl.style.maxHeight = '';
+          contentEl.style.opacity = '';
+          contentEl.style.visibility = '';
+          contentEl.style.pointerEvents = '';
+          contentEl.style.margin = '';
+          contentEl.style.padding = '';
+          contentEl.style.borderWidth = '';
+          setSubdivisionFlex(contentEl, '0 0 ' + (topFraction * 100) + '%');
+        }
+        contentEl.style.minHeight = '0';
+        contentEl.style.overflow = 'hidden';
+      }
+      if (loadingEl) {
+        loadingEl.style.display = '';
+        loadingEl.style.flex = topClosed ? '0 0 0' : '0 0 ' + (topFraction * 100) + '%';
+        loadingEl.style.height = topClosed ? '0' : '';
+        loadingEl.style.minHeight = topClosed ? '0' : '';
+        loadingEl.style.maxHeight = topClosed ? '0' : '';
+        loadingEl.style.opacity = topClosed ? '0' : '';
+        loadingEl.style.overflow = topClosed ? 'hidden' : '';
+        loadingEl.style.margin = topClosed ? '0' : '';
+        loadingEl.style.padding = topClosed ? '0' : '';
+        loadingEl.style.borderWidth = topClosed ? '0' : '';
+        loadingEl.style.visibility = topClosed ? 'hidden' : '';
+        loadingEl.style.pointerEvents = topClosed ? 'none' : '';
+      }
+      if (staleVSplitter) {
+        staleVSplitter.style.display = '';
+        staleVSplitter.style.flex = topClosed ? '0 0 0' : '';
+        staleVSplitter.style.height = topClosed ? '0' : '';
+        staleVSplitter.style.minHeight = topClosed ? '0' : '';
+        staleVSplitter.style.maxHeight = topClosed ? '0' : '';
+        staleVSplitter.style.opacity = topClosed ? '0' : '';
+        staleVSplitter.style.overflow = topClosed ? 'hidden' : '';
+        staleVSplitter.style.margin = topClosed ? '0' : '';
+        staleVSplitter.style.padding = topClosed ? '0' : '';
+        staleVSplitter.style.borderWidth = topClosed ? '0' : '';
+        staleVSplitter.style.visibility = topClosed ? 'hidden' : '';
+        staleVSplitter.style.pointerEvents = topClosed ? 'none' : '';
+      }
+
+      const vsplitter = topClosed ? null : createVerticalSplitter(parentTabId);
+      if (vsplitter) parentPanel.appendChild(vsplitter);
+
+      if (!sub.subPanels || sub.subPanels.length === 0) {
+        const chooser = createSubdivisionChooser(parentTabId);
+        setSubdivisionFlex(chooser, isNewSubdivision ? '0 1 0' : '1 1 0');
+        if (isNewSubdivision) {
+          chooser.style.opacity = '0';
+          chooser.style.overflow = 'hidden';
+        }
+        parentPanel.appendChild(chooser);
+      } else if (sub.subPanels.length === 1) {
+        const spTab = getTrackedTabById(tabTracker, sub.subPanels[0].tabId);
+        if (spTab) {
+          const spPanel = document.getElementById(spTab.linkedPanel);
+          if (spPanel) {
+            for (const f of spPanel.querySelectorAll('split-view-footer')) f.remove();
+            spPanel.setAttribute('data-bento-subpanel', '1');
+            delete spPanel.dataset.bentoMainPanel;
+            delete spPanel.dataset.bentoPanelTabId;
+            spPanel.style.removeProperty('order');
+            spPanel.style.removeProperty('width');
+            spPanel.style.removeProperty('min-width');
+            setSubdivisionFlex(spPanel, isNewSubdivision && !topClosed ? '0 1 0' : '1 1 0');
+            if (isNewSubdivision && !topClosed) spPanel.style.opacity = '0';
+            else spPanel.style.opacity = '1';
+            spPanel.style.minHeight = '0';
+            spPanel.style.overflow = 'hidden';
+            spPanel.style.display = 'flex';
+            spPanel.style.flexDirection = 'column';
+            spPanel.style.visibility = 'inherit';
+            if (spPanel.parentNode !== parentPanel) {
+              parentPanel.appendChild(spPanel);
+            }
+            injectPanelHeaderIntoLinkedPanel(spTab, sub.subPanels[0].url);
+            if (topClosed) {
+              forceTopClosedSubPanelPaint(spTab, spPanel);
+              logTopClosedSubPanelPaintState('after apply', spTab, spPanel);
+              forceHidePanelLoadingOverlay(spPanel);
+              requestAnimationFrame(() => {
+                forceTopClosedSubPanelPaint(spTab, spPanel);
+                forceHidePanelLoadingOverlay(spPanel);
+                logTopClosedSubPanelPaintState('after first paint', spTab, spPanel);
+                requestAnimationFrame(() => {
+                  forceTopClosedSubPanelPaint(spTab, spPanel);
+                  forceHidePanelLoadingOverlay(spPanel);
+                  logTopClosedSubPanelPaintState('after second paint', spTab, spPanel);
+                });
+              });
+              window.setTimeout(() => {
+                forceTopClosedSubPanelPaint(spTab, spPanel);
+                forceHidePanelLoadingOverlay(spPanel);
+                logTopClosedSubPanelPaintState('after settle', spTab, spPanel);
+              }, 350);
+            }
+            const spBrowser = spPanel.querySelector('browser');
+            if (spBrowser) {
+              if (!topClosed && (!sub.subPanels[0].url || sub.subPanels[0].url === 'about:blank' || sub.subPanels[0].url === 'about:newtab')) {
+                loadDefaultNewTabInBrowser(spBrowser);
+              }
+              try {
+                if (topClosed) {
+                  spBrowser.preserveLayers?.(true);
+                  spBrowser.renderLayers = true;
+                  spBrowser.docShellIsActive = true;
+                }
+                else { spBrowser.docShellIsActive = false; spBrowser.docShellIsActive = true; }
+              } catch {}
+            }
+          }
+        }
+      } else if (sub.subPanels.length === 2) {
+        const bottom = document.createXULElement('hbox');
+        bottom.className = 'bento-subdivision-bottom';
+        bottom.style.display = 'flex';
+        setSubdivisionFlex(bottom, isNewSubdivision ? '0 1 0' : '1 1 0');
+        if (isNewSubdivision) {
+          bottom.style.opacity = '0';
+          bottom.style.overflow = 'hidden';
+        }
+        bottom.style.minHeight = '0';
+        const leftRatio = sub.splitRatio ?? 0.5;
+        for (let j = 0; j < 2; j++) {
+          const spTab = getTrackedTabById(tabTracker, sub.subPanels[j].tabId);
+          if (!spTab) continue;
+          const spPanel = document.getElementById(spTab.linkedPanel);
+          if (!spPanel) continue;
+          spPanel.setAttribute('data-bento-subpanel', '1');
+          delete spPanel.dataset.bentoMainPanel;
+          delete spPanel.dataset.bentoPanelTabId;
+          setSubdivisionFlex(
+            spPanel,
+            j === 0 ? '0 0 ' + (leftRatio * 100) + '%' : '1 1 auto',
+          );
+          spPanel.style.removeProperty('order');
+          spPanel.style.removeProperty('width');
+          spPanel.style.minWidth = '0';
+          spPanel.style.minHeight = '0';
+          spPanel.style.height = 'auto';
+          spPanel.style.display = 'flex';
+          spPanel.style.flexDirection = 'column';
+          spPanel.style.overflow = 'hidden';
+          bottom.appendChild(spPanel);
+          injectPanelHeaderIntoLinkedPanel(spTab, sub.subPanels[j].url);
+          const spBrowser = spPanel.querySelector('browser');
+          if (spBrowser) {
+            if (!sub.subPanels[j].url || sub.subPanels[j].url === 'about:blank' || sub.subPanels[j].url === 'about:newtab') {
+              loadDefaultNewTabInBrowser(spBrowser);
+            }
+            try { spBrowser.docShellIsActive = false; spBrowser.docShellIsActive = true; } catch {}
+          }
+          if (j === 0) {
+            bottom.appendChild(createHorizontalSubSplitter(parentTabId));
+          }
+        }
+        parentPanel.appendChild(bottom);
+      }
+
+      if (isNewSubdivision && !topClosed) {
+        if (isFullSlotSurvivorSubdivision) {
+          const startingContent =
+            parentPanel.querySelector(':scope > .browserContainer') ||
+            parentPanel.querySelector(':scope > browser');
+          const startingBottom =
+            parentPanel.querySelector(':scope > .bento-subdivision-chooser') ||
+            parentPanel.querySelector(':scope > .bento-subdivision-bottom') ||
+            parentPanel.querySelector(':scope > [data-bento-subpanel]');
+          if (startingContent) {
+            startingContent.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
+          }
+          if (startingBottom) {
+            startingBottom.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
+          }
+        }
+
+        const applyTargetSubdivisionLayout = () => {
+          if (!parentPanel.isConnected) return;
+          const currentContent =
+            parentPanel.querySelector(':scope > .browserContainer') ||
+            parentPanel.querySelector(':scope > browser');
+          if (currentContent) {
+            const headerH = headerEl?.getBoundingClientRect().height || 0;
+            const splitterH = vsplitter?.getBoundingClientRect().height || 8;
+            const availableH = Math.max(
+              0,
+              parentPanel.getBoundingClientRect().height - headerH - splitterH,
+            );
+            setSubdivisionFlex(currentContent, '0 0 ' + (availableH * topFraction) + 'px');
+          }
+          const bottomEl =
+            parentPanel.querySelector(':scope > .bento-subdivision-chooser') ||
+            parentPanel.querySelector(':scope > .bento-subdivision-bottom') ||
+            parentPanel.querySelector(':scope > [data-bento-subpanel]');
+          if (bottomEl) {
+            setSubdivisionFlex(bottomEl, '1 1 0');
+            bottomEl.style.opacity = '1';
+          }
+        };
+
+        parentPanel.getBoundingClientRect();
+        scheduleSubdivisionAnimationFrame(parentPanel, applyTargetSubdivisionLayout);
+        window.setTimeout(() => {
+          if (!parentPanel.isConnected) return;
+          const currentContent =
+            parentPanel.querySelector(':scope > .browserContainer') ||
+            parentPanel.querySelector(':scope > browser');
+          if (currentContent && parentPanel.hasAttribute('data-bento-subdivided')) {
+            setSubdivisionFlex(currentContent, '0 0 ' + (topFraction * 100) + '%');
+            if (isFullSlotSurvivorSubdivision) currentContent.style.transition = '';
+          }
+          if (isFullSlotSurvivorSubdivision) {
+            const bottomEl =
+              parentPanel.querySelector(':scope > .bento-subdivision-chooser') ||
+              parentPanel.querySelector(':scope > .bento-subdivision-bottom') ||
+              parentPanel.querySelector(':scope > [data-bento-subpanel]');
+            if (bottomEl) bottomEl.style.transition = '';
+          }
+          const bottomEl =
+            parentPanel.querySelector(':scope > .bento-subdivision-chooser') ||
+            parentPanel.querySelector(':scope > .bento-subdivision-bottom');
+          if (bottomEl) bottomEl.style.removeProperty('overflow');
+        }, isFullSlotSurvivorSubdivision ? 360 : 240);
+      }
+
+      // Hide orphan browserSidebarContainer elements (no id) that Firefox's
+      // split-view creates as artifacts.
+      for (const child of tabpanels.querySelectorAll(':scope > hbox.browserSidebarContainer:not([id])')) {
+        child.style.display = 'none';
+      }
+
+    }
   }
 
   function getPanelSplitterSourceTabId(splitter) {
@@ -3078,7 +4560,11 @@
     if (tabsToRender) {
       panelIds = tabsToRender.map((t) => t.linkedPanel).filter((id) => !!id);
     } else {
-      panelIds = (tabpanels.splitViewPanels || []).slice();
+      panelIds = (tabpanels.splitViewPanels || []).filter((id) => {
+        const el = document.getElementById(id);
+        if (!el || el.hasAttribute('data-bento-subpanel')) return false;
+        return el.dataset.bentoMainPanel === '1' || !!el.dataset.bentoPanelTabId;
+      });
     }
 
     // Splitter count: N-1 between adjacent panel pairs, plus 1 more
@@ -3189,6 +4675,7 @@
     const ids = window.gBrowser.tabpanels.splitViewPanels || [];
     for (const panelId of ids) {
       const el = document.getElementById(panelId);
+      if (el?.hasAttribute('data-bento-subpanel')) continue;
       if (el) out.push(el);
     }
     return out;
@@ -3207,6 +4694,27 @@
     const trailer = document.getElementById('bento-add-panel-trailer');
     if (trailer) targets.push(trailer);
     return targets;
+  }
+
+  function getPanelFocusIndicatorTargets() {
+    const out = [];
+    const seen = new Set();
+    const add = (target) => {
+      if (!target || seen.has(target)) return;
+      seen.add(target);
+      out.push(target);
+    };
+    for (const target of getPanelCycleTargets()) add(target);
+
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (tabpanels?.classList.contains('bento-split-active')) {
+      for (const subPanel of Array.from(tabpanels.querySelectorAll('[data-bento-subpanel]'))) {
+        if (!subPanel.isConnected) continue;
+        if (subPanel.hasAttribute('data-bento-subdivision-top-closed')) continue;
+        add(subPanel);
+      }
+    }
+    return out;
   }
 
   function shouldHandlePanelArrowKey(target) {
@@ -3727,8 +5235,84 @@
     if (!Number.isFinite(tabId)) return;
     hidePanelNavContextMenu();
     const panel = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
+    console.log('[bento-subdiv-debug] chrome removePanel start', {
+      tabId,
+      hasTopLevelPanel: !!panel,
+      hasSubdivision: currentSubdivisions.has(tabId),
+      subdivision: currentSubdivisions.get(tabId) || null,
+    });
     if (!panel) {
+      const subPanel = (() => {
+        try {
+          const mod = ChromeUtils.importESModule(
+            'resource://gre/modules/ExtensionParent.sys.mjs',
+          );
+          const tab = mod.ExtensionParent?.apiManager?.global?.tabTracker?.getTab(tabId);
+          return tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+        } catch {
+          return null;
+        }
+      })();
+      console.log('[bento-subdiv-debug] chrome removePanel no top-level panel', {
+        tabId,
+        hasSubPanelElement: !!subPanel,
+        isSubPanel: !!subPanel?.hasAttribute('data-bento-subpanel'),
+        linkedPanel: subPanel?.id || null,
+      });
+      if (subPanel?.hasAttribute('data-bento-subpanel') && currentSubdivisions.has(tabId)) {
+        const subdivision = currentSubdivisions.get(tabId) || null;
+        console.log('[bento-subdiv-debug] chrome dispatch close for subdivided survivor parent', {
+          tabId,
+          linkedPanel: subPanel.id,
+          subdivision,
+        });
+        if (subdivision?.subPanels?.length === 1) {
+          animateSubdividedParentClose(subPanel, subdivision, () => {
+            dispatchShellAction({ type: 'panel/closeSubdivisionTop', tabId });
+          }, { detachBeforeDone: false });
+        } else {
+          animateSubPanelClose(subPanel, () => {
+            console.log('[bento-subdiv-debug] chrome dispatch close for subdivided sub-panel parent', {
+              tabId,
+              childCount: subdivision?.subPanels?.length ?? 0,
+            });
+            dispatchShellAction({ type: 'tab/close', id: tabId });
+          });
+        }
+        return;
+      }
+      if (subPanel?.hasAttribute('data-bento-subpanel')) {
+        animateSubPanelClose(subPanel, () => {
+          console.log('[bento-subdiv-debug] chrome dispatch sub-panel close after animation', { tabId });
+          dispatchShellAction({ type: 'tab/close', id: tabId });
+        });
+        return;
+      }
+      console.log('[bento-subdiv-debug] chrome dispatch close for unknown panel element', { tabId });
       dispatchShellAction({ type: 'tab/close', id: tabId });
+      return;
+    }
+    if (currentSubdivisions.has(tabId)) {
+      const subdivision = currentSubdivisions.get(tabId) || null;
+      console.log('[bento-subdiv-debug] chrome dispatch close for subdivided parent without card animation', {
+        tabId,
+        linkedPanel: panel.id,
+        subdivision,
+      });
+      if (subdivision?.subPanels?.length === 1) {
+        animateSubdividedParentClose(panel, subdivision, () => {
+          dispatchShellAction({ type: 'panel/closeSubdivisionTop', tabId });
+        }, { detachBeforeDone: false });
+      } else {
+        for (const subPanel of subdivision?.subPanels || []) {
+          if (Number.isFinite(subPanel?.tabId)) {
+            pendingPromotedSubPanelEnterSkips.add(subPanel.tabId);
+          }
+        }
+        animateSubdividedParentClose(panel, subdivision, () => {
+          dispatchShellAction({ type: 'tab/close', id: tabId });
+        });
+      }
       return;
     }
     if (panel._bentoPanelRemoving) return;
@@ -3737,8 +5321,241 @@
     panel.classList.add('bento-panel--removing');
 
     setTimeout(() => {
+      console.log('[bento-subdiv-debug] chrome dispatch close after normal panel remove animation', { tabId });
       dispatchShellAction({ type: 'tab/close', id: tabId });
     }, PANEL_REMOVE_ANIMATION_MS);
+  }
+
+  function animateSubdividedParentClose(parentPanel, subdivision, done, options = {}) {
+    if (!parentPanel || parentPanel._bentoPanelRemoving) {
+      done();
+      return;
+    }
+    parentPanel._bentoPanelRemoving = true;
+    parentPanel.setAttribute('data-bento-subdivision-animating', '1');
+
+    const headerEl = parentPanel.querySelector(':scope > .bento-panel-header');
+    const contentEl =
+      parentPanel.querySelector(':scope > .browserContainer') ||
+      parentPanel.querySelector(':scope > browser');
+    const loadingEl = parentPanel.querySelector(':scope > .bento-panel-loading-overlay');
+    const vsplitter = parentPanel.querySelector(':scope > .bento-subdivision-vsplitter');
+    const bottomEl =
+      parentPanel.querySelector(':scope > .bento-subdivision-bottom') ||
+      parentPanel.querySelector(':scope > [data-bento-subpanel]') ||
+      parentPanel.querySelector(':scope > .bento-subdivision-chooser');
+    const collapseEls = [headerEl, contentEl, loadingEl, vsplitter].filter(Boolean);
+
+    console.log('[bento-subdiv-debug] chrome animate subdivided parent close', {
+      linkedPanel: parentPanel.id || null,
+      subPanelTabIds: (subdivision?.subPanels || []).map((sp) => sp.tabId),
+      hasBottomEl: !!bottomEl,
+      childBrowserStates: (subdivision?.subPanels || []).map((sp) => {
+        try {
+          const mod = ChromeUtils.importESModule(
+            'resource://gre/modules/ExtensionParent.sys.mjs',
+          );
+          const tab = mod.ExtensionParent?.apiManager?.global?.tabTracker?.getTab(sp.tabId);
+          const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+          const browserEl = tab?.linkedBrowser || panelEl?.querySelector?.('browser') || null;
+          return {
+            tabId: sp.tabId,
+            linkedPanel: tab?.linkedPanel || null,
+            currentURI: browserEl?.currentURI?.spec || null,
+            rememberedUrl:
+              browserEl?._bentoLastNonBlankUrl ||
+              panelEl?.dataset?.bentoLastNonBlankUrl ||
+              panelEl?.querySelector?.(':scope > .bento-panel-header .bento-panel-header-url')?.value ||
+              null,
+            parentPanel: panelEl?.parentElement?.id || null,
+          };
+        } catch {
+          return { tabId: sp.tabId, error: true };
+        }
+      }),
+    });
+
+    for (const el of collapseEls) {
+      const rect = el.getBoundingClientRect();
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+      el.style.overflow = 'hidden';
+      setSubdivisionFlex(el, '0 0 ' + rect.height + 'px');
+      el.style.minHeight = '0';
+      if (el === headerEl) {
+        el.style.height = rect.height + 'px';
+      }
+    }
+    if (bottomEl) {
+      const rect = bottomEl.getBoundingClientRect();
+      bottomEl.style.transition = 'none';
+      setSubdivisionFlex(bottomEl, '0 0 ' + rect.height + 'px');
+      bottomEl.style.minHeight = '0';
+      bottomEl.style.opacity = '1';
+    }
+
+    parentPanel.getBoundingClientRect();
+    scheduleSubdivisionAnimationFrame(parentPanel, () => {
+      for (const el of collapseEls) {
+        el.style.transition =
+          'flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
+          'height var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
+          'opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard)';
+        setSubdivisionFlex(el, '0 1 0');
+        el.style.opacity = '0';
+        if (el === headerEl) {
+          el.style.height = '0';
+        }
+      }
+      if (bottomEl) {
+        bottomEl.style.transition =
+          'flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
+          'opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard)';
+        setSubdivisionFlex(bottomEl, '1 1 0');
+        bottomEl.style.opacity = '1';
+      }
+    });
+
+    window.setTimeout(() => {
+      if (options.detachBeforeDone !== false) {
+        detachSubPanelsBeforeParentRemoval(subdivision, 'before parent close dispatch');
+      }
+      done();
+    }, 230);
+  }
+
+  function detachSubPanelsBeforeParentRemoval(subdivision, reason) {
+    if (!subdivision?.subPanels?.length) return;
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!tabpanels) return;
+    const tabTracker = (() => {
+      try {
+        const mod = ChromeUtils.importESModule(
+          'resource://gre/modules/ExtensionParent.sys.mjs',
+        );
+        return mod.ExtensionParent?.apiManager?.global?.tabTracker || null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!tabTracker) return;
+
+    for (const subPanel of subdivision.subPanels) {
+      if (!Number.isFinite(subPanel?.tabId)) continue;
+      let tab = null;
+      try {
+        tab = tabTracker.getTab(subPanel.tabId);
+      } catch {
+        tab = null;
+      }
+      const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+      if (!panelEl?.hasAttribute('data-bento-subpanel')) continue;
+      const oldParent = panelEl.closest('[data-bento-subdivided]');
+      console.log('[bento-subdiv-debug] chrome pre-detach promoted sub-panel', {
+        reason,
+        tabId: subPanel.tabId,
+        linkedPanel: tab.linkedPanel,
+        oldParentPanel: oldParent?.id || null,
+        currentURI: tab.linkedBrowser?.currentURI?.spec || null,
+      });
+      try {
+        if (typeof tab.linkedBrowser?.preserveLayers === 'function') {
+          tab.linkedBrowser.preserveLayers(true);
+        }
+        if (tab.linkedBrowser) {
+          tab.linkedBrowser.docShellIsActive = true;
+        }
+      } catch {
+        // Preserve the no-navigation promotion path even if layer nudging fails.
+      }
+      tabpanels.appendChild(panelEl);
+      panelEl.style.removeProperty('opacity');
+      panelEl.style.removeProperty('height');
+      panelEl.style.removeProperty('align-self');
+      panelEl.style.removeProperty('display');
+      panelEl.style.removeProperty('flex-direction');
+      panelEl.style.removeProperty('overflow');
+      forceHidePanelLoadingOverlay(panelEl);
+    }
+  }
+
+  function animateSubPanelClose(subPanel, done) {
+    if (!subPanel || subPanel._bentoPanelRemoving) {
+      done();
+      return;
+    }
+    subPanel._bentoPanelRemoving = true;
+    const parentPanel = subPanel.closest('[data-bento-subdivided]');
+    if (!parentPanel) {
+      done();
+      return;
+    }
+    parentPanel.setAttribute('data-bento-subdivision-animating', '1');
+    const survivorAnimation = isFullSlotSurvivorPanel(parentPanel);
+    let transitionCleanupEls = [];
+    const bottom = subPanel.closest('.bento-subdivision-bottom');
+    if (bottom) {
+      const siblings = Array.from(bottom.querySelectorAll(':scope > [data-bento-subpanel]'))
+        .filter((el) => el !== subPanel);
+      transitionCleanupEls = [subPanel, ...siblings];
+      if (survivorAnimation) {
+        for (const el of transitionCleanupEls) el.style.transition = 'none';
+      }
+      for (const panelEl of [subPanel, ...siblings]) {
+        setSubdivisionFlex(panelEl, '0 0 ' + panelEl.getBoundingClientRect().width + 'px');
+      }
+      subPanel.style.opacity = '1';
+      bottom.getBoundingClientRect();
+      scheduleSubdivisionAnimationFrame(parentPanel, () => {
+        if (survivorAnimation) {
+          for (const el of transitionCleanupEls) {
+            el.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
+          }
+        }
+        setSubdivisionFlex(subPanel, '0 1 0');
+        subPanel.style.opacity = '0';
+        for (const sibling of siblings) setSubdivisionFlex(sibling, '1 1 auto');
+      });
+    } else {
+      const contentEl =
+        parentPanel.querySelector(':scope > .browserContainer') ||
+        parentPanel.querySelector(':scope > browser');
+      const headerEl = parentPanel.querySelector(':scope > .bento-panel-header');
+      const vsplitter = parentPanel.querySelector(':scope > .bento-subdivision-vsplitter');
+      const panelH = parentPanel.getBoundingClientRect().height;
+      const headerH = headerEl?.getBoundingClientRect().height || 0;
+      const targetH = Math.max(0, panelH - headerH);
+      transitionCleanupEls = [contentEl, subPanel, vsplitter].filter(Boolean);
+      if (survivorAnimation) {
+        for (const el of transitionCleanupEls) el.style.transition = 'none';
+      }
+      if (contentEl) {
+        setSubdivisionFlex(contentEl, '0 0 ' + contentEl.getBoundingClientRect().height + 'px');
+      }
+      setSubdivisionFlex(subPanel, '0 0 ' + subPanel.getBoundingClientRect().height + 'px');
+      subPanel.style.opacity = '1';
+      if (vsplitter) vsplitter.style.opacity = '1';
+      parentPanel.getBoundingClientRect();
+      scheduleSubdivisionAnimationFrame(parentPanel, () => {
+        if (survivorAnimation) {
+          for (const el of transitionCleanupEls) {
+            el.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
+          }
+        }
+        if (contentEl) setSubdivisionFlex(contentEl, '0 0 ' + targetH + 'px');
+        setSubdivisionFlex(subPanel, '0 1 0');
+        subPanel.style.opacity = '0';
+        if (vsplitter) vsplitter.style.opacity = '0';
+      });
+    }
+    window.setTimeout(() => {
+      if (survivorAnimation) {
+        for (const el of transitionCleanupEls) {
+          el.style.removeProperty('transition');
+        }
+      }
+      done();
+    }, 230);
   }
 
   // Cmd/Ctrl+W in a side panel closes THAT panel, not the active tab.
@@ -3847,8 +5664,9 @@
   function applyPanelWidth(panelEl, widthPx) {
     if (!panelEl) return;
     if (!Number.isFinite(widthPx) || widthPx <= 0) return;
-    const tabIdAttr = panelEl.dataset.bentoPanelTabId;
-    const tabId = tabIdAttr ? Number(tabIdAttr) : NaN;
+    const targetPanelEl = getTopLevelSlotPanelElement(panelEl);
+    const tabId = getTopLevelSlotTabId(panelEl);
+    if (!targetPanelEl) return;
     if (!Number.isFinite(tabId)) return;
     const px = Math.round(widthPx);
     // One-shot transition for menu-driven (non-drag) resizes. Drag uses
@@ -3861,16 +5679,16 @@
     // Inline `transition` is cleared after 250ms so subsequent drags
     // revert to instant.
     const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
-    panelEl.style.transition =
+    targetPanelEl.style.transition =
       'width var(--bento-duration-base, 200ms) ' + snappy +
       ', min-width var(--bento-duration-base, 200ms) ' + snappy +
       ', flex-basis var(--bento-duration-base, 200ms) ' + snappy;
     window.setTimeout(() => {
-      panelEl.style.removeProperty('transition');
+      targetPanelEl.style.removeProperty('transition');
     }, 250);
-    panelEl.style.width = px + 'px';
-    panelEl.style.minWidth = px + 'px';
-    panelEl.style.flex = '0 0 ' + px + 'px';
+    targetPanelEl.style.width = px + 'px';
+    targetPanelEl.style.minWidth = px + 'px';
+    targetPanelEl.style.flex = '0 0 ' + px + 'px';
     dispatchShellAction({ type: 'panel/setWidth', id: tabId, widthPx: px });
   }
 
@@ -3888,7 +5706,9 @@
   // through several panels in quick succession keeps the ring visible.
   function applyPanelFocusIndicator(idx) {
     const targets = getPanelCycleTargets();
-    for (const target of targets) target.classList.remove('bento-panel--cycle-focused');
+    for (const target of getPanelFocusIndicatorTargets()) {
+      target.classList.remove('bento-panel--cycle-focused');
+    }
     setPanelTrailerAddFocus(false);
     if (idx < 0 || idx >= targets.length) return;
     const target = targets[idx];
@@ -3903,7 +5723,7 @@
   }
 
   function applyFocusedPanelIndicator(panelEl) {
-    const targets = getPanelCycleTargets();
+    const targets = getPanelFocusIndicatorTargets();
     for (const target of targets) {
       target.classList.toggle('bento-panel--focused', target === panelEl);
     }
@@ -3944,6 +5764,75 @@
     } catch {
       /* focus best-effort; some browser elements may reject */
     }
+  }
+
+  function buildSubdividedNavIcon(sub, parentFavIcon, parentTitle, onClick, tabId) {
+    const btn = document.createElementNS(HTML_NS, 'button');
+    btn.type = 'button';
+    btn.className = 'bento-panel-nav__icon bento-panel-nav__icon--subdivided';
+    btn.title = parentTitle + ' (subdivided)';
+    btn.setAttribute('aria-label', btn.title);
+
+    const subPanels = sub.subPanels || [];
+    const isDual = subPanels.length === 2;
+    const faviconSize = isDual ? 9 : 12;
+
+    const makeImg = (url) => {
+      const img = document.createElementNS(HTML_NS, 'img');
+      img.src = url || '';
+      img.alt = '';
+      img.style.width = faviconSize + 'px';
+      img.style.height = faviconSize + 'px';
+      img.style.borderRadius = '2px';
+      img.style.objectFit = 'cover';
+      img.addEventListener('error', () => {
+        img.style.background = 'var(--neutral-30)';
+        img.removeAttribute('src');
+      });
+      return img;
+    };
+    const makeDot = () => {
+      const dot = document.createElementNS(HTML_NS, 'span');
+      dot.style.width = faviconSize + 'px';
+      dot.style.height = faviconSize + 'px';
+      dot.style.borderRadius = '2px';
+      dot.style.background = 'var(--neutral-30)';
+      dot.style.display = 'block';
+      return dot;
+    };
+
+    // Top row: parent favicon
+    const topRow = document.createElementNS(HTML_NS, 'span');
+    topRow.className = 'bento-nav-subdiv-row';
+    topRow.appendChild(parentFavIcon ? makeImg(parentFavIcon) : makeDot());
+    btn.appendChild(topRow);
+
+    // Bottom row: sub-panel favicon(s)
+    const bottomRow = document.createElementNS(HTML_NS, 'span');
+    bottomRow.className = 'bento-nav-subdiv-row';
+    if (subPanels.length === 0) {
+      bottomRow.appendChild(makeDot());
+    } else if (isDual) {
+      bottomRow.appendChild(subPanels[0].favIconUrl ? makeImg(subPanels[0].favIconUrl) : makeDot());
+      bottomRow.appendChild(subPanels[1].favIconUrl ? makeImg(subPanels[1].favIconUrl) : makeDot());
+    } else {
+      bottomRow.appendChild(subPanels[0].favIconUrl ? makeImg(subPanels[0].favIconUrl) : makeDot());
+    }
+    btn.appendChild(bottomRow);
+
+    btn.addEventListener('click', (e) => {
+      if (btn._bentoSuppressClick) {
+        btn._bentoSuppressClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      onClick(e);
+    });
+    btn.addEventListener('mousedown', (e) => {
+      if (e.button === 0) e.preventDefault();
+    });
+    return btn;
   }
 
   function buildNavIcon(favIconUrl, title, onClick, tabId) {
@@ -4471,6 +6360,50 @@
     }
   }
 
+  function resolveVisiblePanelForNav(panelPayload) {
+    const visible = {
+      tabId: Number(panelPayload?.tabId),
+      title: panelPayload?.title || 'Panel',
+      favIconUrl: panelPayload?.favIconUrl || '',
+    };
+    const seen = new Set();
+    let currentTabId = visible.tabId;
+    while (Number.isFinite(currentTabId) && !seen.has(currentTabId)) {
+      seen.add(currentTabId);
+      const sub = currentSubdivisions.get(currentTabId);
+      if (!sub?.topClosed || sub.subPanels?.length !== 1) break;
+      const survivor = sub.subPanels[0];
+      currentTabId = Number(survivor?.tabId);
+      if (!Number.isFinite(currentTabId)) break;
+      visible.tabId = currentTabId;
+      visible.favIconUrl = survivor?.favIconUrl || visible.favIconUrl || '';
+      visible.title = survivor?.title || visible.title || 'Panel';
+    }
+    return {
+      visible,
+      subdivision: Number.isFinite(visible.tabId)
+        ? currentSubdivisions.get(visible.tabId) || null
+        : null,
+    };
+  }
+
+  function getPanelNavSignature(panelPayload) {
+    const { visible, subdivision } = resolveVisiblePanelForNav(panelPayload);
+    if (!subdivision || (subdivision.topClosed && subdivision.subPanels?.length === 1)) {
+      return ['panel', visible.tabId, visible.favIconUrl].join(':');
+    }
+    const subSig = (subdivision.subPanels || [])
+      .map((sp) => [sp?.tabId, sp?.favIconUrl || ''].join('@'))
+      .join('|');
+    return [
+      'subdivided',
+      visible.tabId,
+      visible.favIconUrl,
+      subdivision.mode || 'single',
+      subSig,
+    ].join(':');
+  }
+
   // Called from reconcilePanels with the current desired panel list.
   // Diff-based update so favicon buttons that survive a reconcile
   // (same tabId still present) are reused — that preserves their
@@ -4505,8 +6438,24 @@
       const key = desiredKeys[i];
       let btn = existing.get(key);
       if (btn) {
-        existing.delete(key);
-      } else {
+        // Rebuild if subdivision state changed (e.g. panel was subdivided or unsubdivided)
+        const tabId = Number(key);
+        const panelPayload = Number.isFinite(tabId) ? panels[i - 1] : null;
+        const desiredSignature = panelPayload ? getPanelNavSignature(panelPayload) : key;
+        const wasSub = btn.classList.contains('bento-panel-nav__icon--subdivided');
+        const navInfo = panelPayload ? resolveVisiblePanelForNav(panelPayload) : null;
+        const subForKey = navInfo?.subdivision || null;
+        const isSub = !!subForKey && !(subForKey.topClosed && subForKey.subPanels?.length === 1);
+        const signatureChanged =
+          key !== 'main' && btn.dataset.bentoNavSignature !== desiredSignature;
+        if (wasSub !== isSub || signatureChanged) {
+          btn.remove();
+          btn = null;
+        } else {
+          existing.delete(key);
+        }
+      }
+      if (!btn) {
         // New icon — construct via buildNavIcon with the right handler.
         if (key === 'main') {
           btn = buildNavIcon(getMainTabFavicon(), 'Main panel', () => {
@@ -4517,32 +6466,47 @@
           });
         } else {
           const tabId = Number(key);
-          btn = buildNavIcon(
-            panels[i - 1].favIconUrl || '',
-            'Panel',
-            () => {
-              const el = document.querySelector(
-                '[data-bento-panel-tab-id="' + tabId + '"]',
-              );
-              if (el) scrollPanelToLeftmost(el);
-              // Re-compute the icon's CURRENT index in the live nav
-              // list (skipping any leaving siblings) — the closure
-              // index captured at build time goes stale as other
-              // panels add/remove around this one.
-              const targets = getPanelCycleTargets();
-              const idx = targets.findIndex(
-                (t) => t.dataset.bentoPanelTabId === String(tabId),
-              );
-              setActiveByIndex(idx >= 0 ? idx : 0);
-            },
-            tabId,
-          );
+          const panelPayload = panels[i - 1];
+          const clickHandler = () => {
+            const el = document.querySelector(
+              '[data-bento-panel-tab-id="' + tabId + '"]',
+            );
+            if (el) scrollPanelToLeftmost(el);
+            const targets = getPanelCycleTargets();
+            const idx = targets.findIndex(
+              (t) => t.dataset.bentoPanelTabId === String(tabId),
+            );
+            setActiveByIndex(idx >= 0 ? idx : 0);
+          };
+          const navInfo = resolveVisiblePanelForNav(panelPayload);
+          const visiblePanel = navInfo.visible;
+          const sub = navInfo.subdivision;
+          if (!sub || (sub.topClosed && sub.subPanels?.length === 1)) {
+            btn = buildNavIcon(
+              visiblePanel.favIconUrl || panelPayload.favIconUrl || '',
+              visiblePanel.title || panelPayload.title || 'Panel',
+              clickHandler,
+              tabId,
+            );
+          } else {
+            btn = buildSubdividedNavIcon(
+              sub,
+              visiblePanel.favIconUrl || panelPayload.favIconUrl || '',
+              visiblePanel.title || panelPayload.title || 'Panel',
+              clickHandler,
+              tabId,
+            );
+          }
         }
         btn.dataset.bentoNavKey = key;
         btn.classList.add('bento-panel-nav__icon--entering');
         newEls.push(btn);
       }
       desiredEls.push(btn);
+      if (key !== 'main') {
+        const panelPayload = panels[i - 1];
+        if (panelPayload) btn.dataset.bentoNavSignature = getPanelNavSignature(panelPayload);
+      }
     }
 
     // Re-order: appendChild moves existing children to the end, so
@@ -5217,6 +7181,7 @@
     refreshPanelNav([]);
     currentActiveIdx = 0;
     __lastPanelsPayload = [];
+    __lastSubdivisionsSnapshot = new Map();
     __reconciledForWorkspace = currentWorkspaceId;
     __lastMainPanelId = window.gBrowser?.selectedTab?.linkedPanel ?? null;
     updateStripScrollbar();
@@ -5254,6 +7219,156 @@
   // context menu. Updated in both the empty-panels early-return path
   // AND the main return path so it stays accurate across teardowns.
   let __reconciledForWorkspace = null;
+  let __lastSubdivisionsSnapshot = new Map();
+
+  function sanitizeSubdivisionPayload(rawSubdivisions) {
+    const out = new Map();
+    if (!rawSubdivisions || typeof rawSubdivisions !== 'object') return out;
+    const tabTracker = getBentoTabTracker();
+    for (const [k, v] of Object.entries(rawSubdivisions)) {
+      const parentTabId = Number(k);
+      if (!Number.isFinite(parentTabId) || !v || typeof v !== 'object') continue;
+      if (tabTracker && !getTrackedTabById(tabTracker, parentTabId)) continue;
+      const rawSubPanels = Array.isArray(v.subPanels) ? v.subPanels : [];
+      const subPanels = [];
+      for (const sp of rawSubPanels) {
+        const tabId = Number(sp?.tabId);
+        if (!Number.isFinite(tabId)) continue;
+        if (tabTracker && !getTrackedTabById(tabTracker, tabId)) continue;
+        subPanels.push({
+          tabId,
+          url: typeof sp?.url === 'string' ? sp.url : '',
+          favIconUrl: typeof sp?.favIconUrl === 'string' ? sp.favIconUrl : '',
+        });
+      }
+      const topClosed = !!v.topClosed && subPanels.length === 1;
+      if (v.topClosed && !topClosed) continue;
+      const mode = v.mode === 'dual' && subPanels.length === 2 ? 'dual' : 'single';
+      out.set(parentTabId, {
+        mode,
+        topHeightFraction:
+          typeof v.topHeightFraction === 'number' ? v.topHeightFraction : 0.5,
+        subPanels,
+        splitRatio: typeof v.splitRatio === 'number' ? v.splitRatio : 0.5,
+        ...(topClosed ? { topClosed: true } : {}),
+      });
+    }
+    return out;
+  }
+
+  function snapshotSubdivisions(subdivisions = currentSubdivisions) {
+    const snap = new Map();
+    for (const [parentTabId, sub] of subdivisions || []) {
+      const subPanelIds = Array.isArray(sub?.subPanels)
+        ? sub.subPanels
+          .map((sp) => Number(sp?.tabId))
+          .filter((id) => Number.isFinite(id))
+        : [];
+      snap.set(Number(parentTabId), {
+        mode: sub?.mode || 'single',
+        subPanelIds,
+        splitRatio: typeof sub?.splitRatio === 'number' ? sub.splitRatio : null,
+        topHeightFraction:
+          typeof sub?.topHeightFraction === 'number' ? sub.topHeightFraction : null,
+        topClosed: !!sub?.topClosed,
+      });
+    }
+    return snap;
+  }
+
+  function samePanelOrder(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i]?.tabId !== b[i]?.tabId) return false;
+    }
+    return true;
+  }
+
+  function canFastPathTopClosedSubdivision(panels) {
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!tabpanels?.classList.contains('bento-split-active')) return false;
+    if (!samePanelOrder(panels, __lastPanelsPayload)) return false;
+    if (__lastSubdivisionsSnapshot.size !== currentSubdivisions.size) return false;
+    if (tabpanels.querySelector('[data-bento-subdivision-clearing]')) return false;
+
+    let topClosedSingleCount = 0;
+    const topClosedSurvivorIds = new Set();
+    const next = snapshotSubdivisions(currentSubdivisions);
+    for (const [parentTabId, sub] of next) {
+      const prev = __lastSubdivisionsSnapshot.get(parentTabId);
+      if (!prev) return false;
+      if (sub.mode !== prev.mode) return false;
+      if (sub.splitRatio !== prev.splitRatio) return false;
+      if (sub.subPanelIds.length !== prev.subPanelIds.length) return false;
+      for (let i = 0; i < sub.subPanelIds.length; i++) {
+        if (sub.subPanelIds[i] !== prev.subPanelIds[i]) return false;
+      }
+
+      if (sub.topClosed && sub.subPanelIds.length === 1) {
+        topClosedSingleCount += 1;
+        topClosedSurvivorIds.add(sub.subPanelIds[0]);
+      }
+      if (sub.topClosed !== prev.topClosed) {
+        if (!sub.topClosed || prev.topClosed || sub.subPanelIds.length !== 1) return false;
+        continue;
+      }
+      if (!sub.topClosed && sub.topHeightFraction !== prev.topHeightFraction) return false;
+    }
+    if (topClosedSingleCount !== 1) return false;
+    const tabTracker = getBentoTabTracker();
+    for (const survivorTabId of topClosedSurvivorIds) {
+      if (next.has(survivorTabId)) return false;
+      const tab = tabTracker ? getTrackedTabById(tabTracker, survivorTabId) : null;
+      const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+      if (panelEl?.hasAttribute('data-bento-subdivided')) return false;
+    }
+    return true;
+  }
+
+  function fastPathTopClosedSubdivision(panels) {
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!tabpanels) return false;
+    console.log('[bento-subdiv-debug] chrome top-closed fast path');
+    setNoSidePanelsMode(false);
+    applySubdivisions(tabpanels, currentSubdivisions);
+    for (const [, sub] of currentSubdivisions) {
+      if (!sub?.topClosed || sub.subPanels?.length !== 1) continue;
+      const tabId = sub.subPanels[0]?.tabId;
+      if (!Number.isFinite(tabId)) continue;
+      try {
+        const mod = ChromeUtils.importESModule(
+          'resource://gre/modules/ExtensionParent.sys.mjs',
+        );
+        const tab = mod.ExtensionParent?.apiManager?.global?.tabTracker?.getTab(tabId);
+        const browserEl = tab?.linkedBrowser;
+        const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+        if (panelEl) {
+          forceTopClosedSubPanelPaint(tab, panelEl);
+          logTopClosedSubPanelPaintState('fast path', tab, panelEl);
+        }
+        if (browserEl) {
+          browserEl.preserveLayers?.(true);
+          browserEl.renderLayers = true;
+          browserEl.docShellIsActive = true;
+        }
+        if (panelEl) {
+          requestAnimationFrame(() => {
+            forceTopClosedSubPanelPaint(tab, panelEl);
+            logTopClosedSubPanelPaintState('fast path after paint', tab, panelEl);
+          });
+        }
+      } catch {
+        // best-effort paint preservation
+      }
+    }
+    refreshPanelNav(panels);
+    syncInterPanelSplitters();
+    setTimeout(updateStripScrollbar, 0);
+    __lastPanelsPayload = panels.slice();
+    __lastSubdivisionsSnapshot = snapshotSubdivisions(currentSubdivisions);
+    __reconciledForWorkspace = currentWorkspaceId;
+    return true;
+  }
 
   // The most recent split-view marker dispatched via TabSplitViewActivate.
   // We need to dispatch a matching TabSplitViewDeactivate (with === identity)
@@ -5386,6 +7501,14 @@
     // view. Snapshot BEFORE overwriting __lastPanelsPayload below;
     // otherwise the comparison would always show zero deltas.
     const previousTabIds = new Set(__lastPanelsPayload.map((p) => p.tabId));
+    const selectedMainPanelAtStart = gBrowser.selectedTab?.linkedPanel ?? null;
+    if (
+      selectedMainPanelAtStart === __lastMainPanelId &&
+      canFastPathTopClosedSubdivision(panels)
+    ) {
+      fastPathTopClosedSubdivision(panels);
+      return;
+    }
     __lastPanelsPayload = panels.slice();
 
     // No panels in the workspace → tear down split-view entirely
@@ -5400,12 +7523,17 @@
     if (!panels || panels.length === 0) {
       cancelWorkspaceFadeForMainOnly();
       setNoSidePanelsMode(true);
+      // Clear in-place subdivisions when tearing down split-view
+      for (const el of tabpanels.querySelectorAll('[data-bento-subdivided]')) {
+        clearSubdivisionFromPanel(el);
+      }
       const previous = tabpanels.splitViewPanels || [];
       const splitActive = tabpanels.classList.contains('bento-split-active');
       if (!previous.length && !__lastSplitViewMarker && !splitActive) {
         // Already torn down — record the workspace so a subsequent
         // first-panel-add within it is detected as mid-session.
         __reconciledForWorkspace = currentWorkspaceId;
+        __lastSubdivisionsSnapshot = snapshotSubdivisions(currentSubdivisions);
         return;
       }
 
@@ -5514,6 +7642,7 @@
       // (e.g. user adding the first panel via "Open in new panel"),
       // not hydration.
       __reconciledForWorkspace = currentWorkspaceId;
+      __lastSubdivisionsSnapshot = snapshotSubdivisions(currentSubdivisions);
       return;
     }
 
@@ -5558,6 +7687,28 @@
         }
       }
     }
+    const resolvedSubPanels = [];
+    const topClosedSubPanelTabIds = new Set();
+    for (const [, sub] of currentSubdivisions) {
+      if (!sub?.topClosed || !Array.isArray(sub.subPanels) || sub.subPanels.length !== 1) continue;
+      const tabId = sub.subPanels[0]?.tabId;
+      if (Number.isFinite(tabId)) topClosedSubPanelTabIds.add(tabId);
+    }
+    if (tabTracker && currentSubdivisions.size > 0) {
+      for (const [, sub] of currentSubdivisions) {
+        if (!Array.isArray(sub.subPanels)) continue;
+        for (const sp of sub.subPanels) {
+          try {
+            const t = tabTracker.getTab(sp.tabId);
+            if (t && !t.closing && !t.bentoClosing) {
+              resolvedSubPanels.push({ tab: t, payload: sp });
+            }
+          } catch {
+            // Sub-panel tab may have closed between sync and reconcile.
+          }
+        }
+      }
+    }
 
     // Materialize + load lazy/pending panel tabs. SessionStore restores
     // tabs with `pending="true"`, no linkedPanel, and no actual content
@@ -5572,37 +7723,120 @@
     // Fix: _insertBrowser to materialize (same path gBrowser.selectTab
     // uses for a lazy click, minus the selection change), then
     // linkedBrowser.reload() to actually fetch the URL.
-    for (const { tab } of resolved) {
-      if (tab.linkedPanel && !tab.hasAttribute('pending')) continue;
-      if (!tab.linkedPanel) {
+    const materializePanelTab = (tab, payloadUrl, label) => {
+      const needsMaterialize = !tab.linkedPanel;
+      const wasPending = tab.hasAttribute('pending');
+      if (needsMaterialize) {
         try {
           window.gBrowser._insertBrowser(tab);
         } catch (err) {
           console.warn(
             '[bento-shell-mount] _insertBrowser failed for tabId',
             tab.id || '?',
+            label || 'panel',
             err,
           );
-          continue;
+          return;
         }
       }
-      if (tab.hasAttribute('pending')) {
+      if (wasPending) {
         try {
-          tab.linkedBrowser?.reload();
+          const spec = tab.linkedBrowser?.currentURI?.spec || '';
+          if (needsMaterialize || !spec || spec === 'about:blank') {
+            tab.linkedBrowser?.reload();
+          }
         } catch (err) {
           console.warn(
             '[bento-shell-mount] reload() failed for tabId',
             tab.id || '?',
+            label || 'panel',
             err,
           );
         }
       }
+      const shouldLoadDefaultNewTab =
+        payloadUrl === 'about:newtab' ||
+        (label === 'sub-panel' && (!payloadUrl || payloadUrl === 'about:blank'));
+      if (shouldLoadDefaultNewTab) {
+        try {
+          const browserEl = tab.linkedBrowser;
+          const spec = browserEl?.currentURI?.spec || '';
+          if (!spec || spec === 'about:blank') {
+            const principal = Services.scriptSecurityManager.getSystemPrincipal();
+            loadDefaultNewTabInBrowser(browserEl);
+          }
+        } catch (err) {
+          console.warn(
+            '[bento-shell-mount] about:newtab load failed for tabId',
+            tab.id || '?',
+            label || 'panel',
+            err,
+          );
+        }
+      }
+    };
+    for (const { tab, payload } of resolved) {
+      materializePanelTab(tab, payload?.url, 'panel');
+    }
+    for (const { tab, payload } of resolvedSubPanels) {
+      materializePanelTab(tab, payload?.url, 'sub-panel');
     }
     if (resolved.length === 0) {
       forceMainOnlyChromeState(gBrowser, tabpanels);
       return;
     }
     setNoSidePanelsMode(false);
+
+    // A subdivision parent can be closed while its child panel is still
+    // physically nested inside the parent's notificationbox. bento-tools
+    // promotes the child tabId into the top-level panels list before the
+    // parent tab is removed, but if chrome leaves the child DOM nested,
+    // removing the parent takes the promoted panel with it until restart.
+    // Detach any now-top-level panel from a stale subdivision parent before
+    // showSplitViewPanels/removal races run.
+    for (const { tab, payload } of resolved) {
+      const panelEl = tab.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
+      if (!panelEl?.hasAttribute('data-bento-subpanel')) continue;
+      const oldParent = panelEl.closest('[data-bento-subdivided]');
+      console.log('[bento-subdiv-debug] chrome detach promoted sub-panel before reconcile', {
+        tabId: tabTracker ? (() => {
+          try { return tabTracker.getId(tab); } catch { return null; }
+        })() : null,
+        linkedPanel: tab.linkedPanel,
+        oldParentPanel: oldParent?.id || null,
+        payload,
+      });
+      tabpanels.appendChild(panelEl);
+      panelEl.removeAttribute('data-bento-subpanel');
+      panelEl.style.removeProperty('opacity');
+      panelEl.style.removeProperty('height');
+      panelEl.style.removeProperty('align-self');
+      panelEl.style.removeProperty('display');
+      panelEl.style.removeProperty('flex-direction');
+      panelEl.style.removeProperty('overflow');
+      removeInjectedPanelHeader(panelEl);
+      injectPanelHeaderIntoLinkedPanel(tab, payload?.url || '');
+      forceHidePanelLoadingOverlay(panelEl);
+      logPromotedPanelBrowserState('after detach', tab, panelEl);
+      if (tab.linkedBrowser) {
+        try {
+          tab.linkedBrowser.docShellIsActive = true;
+        } catch {
+          // Best effort; the normal docShell forcing later also runs.
+        }
+      }
+      requestAnimationFrame(() => {
+        forceHidePanelLoadingOverlay(panelEl);
+        requestAnimationFrame(() => {
+          forceHidePanelLoadingOverlay(panelEl);
+          logPromotedPanelBrowserState('after paint', tab, panelEl);
+        });
+      });
+      setTimeout(() => {
+        forceHidePanelLoadingOverlay(panelEl);
+        logPromotedPanelBrowserState('after settle', tab, panelEl);
+      }, 500);
+    }
 
     // NOTE: we do NOT call gBrowser.hideTab(tab) on panel tabs.
     //
@@ -5629,18 +7863,79 @@
     // main tab (gBrowser.selectedTab) is the FIRST slot; panel tabs
     // follow in bento-tools' order. Dedupe on linkedPanel so a tab
     // that's both selected and a panel doesn't appear twice.
-    const mainTab = gBrowser.selectedTab;
-    const tabsToRender = [];
-    const seenPanelIds = new Set();
-    if (mainTab?.linkedPanel) {
-      tabsToRender.push(mainTab);
-      seenPanelIds.add(mainTab.linkedPanel);
+    const subPanelIds = new Set(resolvedSubPanels.map(({ tab }) => tab.linkedPanel));
+    const topLevelPanelIds = new Set(resolved.map(({ tab }) => tab.linkedPanel));
+    let mainTab = gBrowser.selectedTab;
+    const selectedPanelEl = mainTab?.linkedPanel
+      ? document.getElementById(mainTab.linkedPanel)
+      : null;
+    if (
+      mainTab?.linkedPanel &&
+      (subPanelIds.has(mainTab.linkedPanel) ||
+        selectedPanelEl?.hasAttribute('data-bento-subpanel'))
+    ) {
+      const replacement = Array.from(gBrowser.tabs).find((tab) => {
+        if (!tab?.linkedPanel || tab.closing || tab.bentoClosing) return false;
+        if (topLevelPanelIds.has(tab.linkedPanel)) return false;
+        if (subPanelIds.has(tab.linkedPanel)) return false;
+        const panelEl = document.getElementById(tab.linkedPanel);
+        return !panelEl?.hasAttribute('data-bento-subpanel');
+      });
+      if (replacement) {
+        mainTab = replacement;
+        try {
+          gBrowser.selectedTab = replacement;
+        } catch {
+          // Best effort: rendering with the replacement is still better
+          // than promoting a sub-panel into the main slot.
+        }
+      }
     }
-    for (const { tab } of resolved) {
-      if (!tab.linkedPanel || seenPanelIds.has(tab.linkedPanel)) continue;
+    const tabsToRender = [];
+    const tabsToKeepActive = [];
+    const seenPanelIds = new Set();
+    const activePanelIds = new Set();
+    const keepActiveTab = (tab) => {
+      if (!tab?.linkedPanel || activePanelIds.has(tab.linkedPanel)) return;
+      tabsToKeepActive.push(tab);
+      activePanelIds.add(tab.linkedPanel);
+    };
+    const renderTab = (tab) => {
+      if (!tab?.linkedPanel || seenPanelIds.has(tab.linkedPanel)) return;
       tabsToRender.push(tab);
       seenPanelIds.add(tab.linkedPanel);
+      keepActiveTab(tab);
+    };
+    if (mainTab?.linkedPanel) {
+      renderTab(mainTab);
     }
+    for (const { tab } of resolved) {
+      renderTab(tab);
+    }
+    // Include sub-panel tabs in Firefox's split-view set even though
+    // Bento physically nests them inside the parent panel below. That
+    // keeps the remote browser's paint/docShell state intact; the
+    // separate layoutTabsToRender list below is what prevents nested
+    // sub-panels from becoming separate top-level columns.
+    if (resolvedSubPanels.length > 0) {
+      for (const { tab } of resolvedSubPanels) {
+        if (tab.linkedPanel && !seenPanelIds.has(tab.linkedPanel)) {
+          renderTab(tab);
+        }
+      }
+    }
+    if (topClosedSubPanelTabIds.size > 0) {
+      console.log('[bento-subdiv-debug] chrome top-closed split bookkeeping', {
+        renderTabIds: tabsToRender.map((tab) => {
+          try { return tabTracker?.getId(tab) ?? null; } catch { return null; }
+        }),
+        keepActiveTabIds: tabsToKeepActive.map((tab) => {
+          try { return tabTracker?.getId(tab) ?? null; } catch { return null; }
+        }),
+        topClosedSubPanelTabIds: Array.from(topClosedSubPanelTabIds),
+      });
+    }
+    const layoutTabsToRender = tabsToRender.filter((tab) => !subPanelIds.has(tab.linkedPanel));
     // Closing the last side panel can briefly leave that tab selected
     // as the main slot while it still appears in the stale panels
     // payload. After dedupe, that means there is only main to render:
@@ -5674,8 +7969,8 @@
     // a <tab-split-view-wrapper>; no setter, so a plain assignment is
     // silently shadowed. Use Object.defineProperty to add an own-
     // property that takes precedence over the prototype getter.
-    const splitViewMarker = makeSplitViewMarker(tabsToRender);
-    for (const tab of tabsToRender) {
+    const splitViewMarker = makeSplitViewMarker(tabsToKeepActive);
+    for (const tab of tabsToKeepActive) {
       try {
         Object.defineProperty(tab, 'splitview', {
           value: splitViewMarker,
@@ -5793,7 +8088,7 @@
       window.dispatchEvent(
         new CustomEvent('TabSplitViewActivate', {
           bubbles: true,
-          detail: { tabs: tabsToRender, splitview: splitViewMarker },
+          detail: { tabs: tabsToKeepActive, splitview: splitViewMarker },
         }),
       );
       __lastSplitViewMarker = splitViewMarker;
@@ -5801,12 +8096,6 @@
       console.warn('[bento-shell-mount] TabSplitViewActivate dispatch failed:', err);
     }
 
-    // Use Firefox's high-level showSplitViewPanels API. It calls
-    // _insertBrowser, sets linkedBrowser.docShellIsActive=true, fires
-    // setIsSplitViewActive(true, tabs) (which calls
-    // setSplitViewPanelActive(true, panelId) per-panel AND, now that
-    // selectedTab.splitview is truthy, toggles the [splitview]
-    // attribute on tabpanels), then sets tabpanels.splitViewPanels.
     try {
       gBrowser.showSplitViewPanels(tabsToRender);
     } catch (err) {
@@ -5833,7 +8122,7 @@
     // detaches them. Idempotent: safe to run after every reconcile.
     // Mouseover/mouseout are left alone — they manage the per-panel
     // link-preview StatusPanel, which is desirable behaviour.
-    for (const tab of tabsToRender) {
+    for (const tab of tabsToKeepActive) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
       const browserContainer = panelEl.querySelector('.browserContainer');
@@ -5877,11 +8166,17 @@
         widthByTabId.set(p.tabId, p.widthPx);
       }
     }
+    if (currentSubdivisions.size === 0) {
+      for (const { tab } of resolved) {
+        const panelEl = document.getElementById(tab.linkedPanel);
+        if (panelEl) clearSubdivisionFromPanel(panelEl, { force: true });
+      }
+    }
     const isInitialReconcileForWorkspace =
       __reconciledForWorkspace !== currentWorkspaceId;
     const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
     const shouldAnimateNewPanels = newTabIds.length > 0 && !isInitialReconcileForWorkspace;
-    for (const [i, tab] of tabsToRender.entries()) {
+    for (const [i, tab] of layoutTabsToRender.entries()) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
       panelEl.style.order = String(i * 2);
@@ -5967,7 +8262,8 @@
               panelEl.style.flex = '0 0 ' + w + 'px';
             }
           }
-          if (shouldAnimateNewPanels && newTabIds.includes(tabId)) {
+          const skipPromotedEnter = pendingPromotedSubPanelEnterSkips.delete(tabId);
+          if (shouldAnimateNewPanels && newTabIds.includes(tabId) && !skipPromotedEnter) {
             animatePanelEnter(panelEl, { clearSizingAfter: typeof w !== 'number' });
           }
         }
@@ -5987,7 +8283,7 @@
     // edge of each "left" panel. They float above tabpanels'
     // boundary regions. Repositioned on every reconcile and on
     // window resize so panel-width changes shift the splitter.
-    syncInterPanelSplitters(tabsToRender);
+    syncInterPanelSplitters(layoutTabsToRender);
 
     // Strip stale inline order + data attrs from departing tabs so
     // they don't leak into a future split (e.g. tab returns to the
@@ -5996,12 +8292,14 @@
     for (const tab of departingTabs) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
+      clearSubdivisionFromPanel(panelEl);
       panelEl.style.removeProperty('order');
       panelEl.style.removeProperty('width');
       panelEl.style.removeProperty('min-width');
       panelEl.style.removeProperty('flex');
       delete panelEl.dataset.bentoMainPanel;
       delete panelEl.dataset.bentoPanelTabId;
+      panelEl.removeAttribute('data-bento-subpanel');
       removeInjectedPanelHeader(panelEl);
     }
 
@@ -6050,11 +8348,17 @@
     // showSplitViewPanels has done its dance. The deck won't toggle
     // them off again until the next setSelectedPanel — which we
     // re-run on TabSelect, where this same path fires.
-    for (const tab of tabsToRender) {
+    for (const tab of tabsToKeepActive) {
       if (tab.linkedBrowser && !tab.linkedBrowser.docShellIsActive) {
         tab.linkedBrowser.docShellIsActive = true;
       }
     }
+
+    // Wrap subdivided panels AFTER docShellIsActive forcing. Reparenting
+    // a notificationbox into a column wrapper can deactivate its docShell;
+    // the wrapper function cycles docShellIsActive on each reparented
+    // browser to re-establish content painting.
+    applySubdivisions(tabpanels, currentSubdivisions);
 
     // Per-panel header injection. Each linkedPanel is a notificationbox;
     // we inject Bento's header (URL bar, back/forward/reload, X close,
@@ -6125,6 +8429,7 @@
       scheduleScrollPanelTabIntoView(newId);
     }
     __reconciledForWorkspace = currentWorkspaceId;
+    __lastSubdivisionsSnapshot = snapshotSubdivisions(currentSubdivisions);
 
     // Auto-scroll to the MAIN panel when the selected tab changes
     // (sidebar tab click, Cmd+T new tab, Cmd+Shift+T undo-close, ...).
@@ -6389,7 +8694,9 @@
         // closest() walks up to find the right one regardless of any
         // wrapper depth Firefox introduces between <browser> and the
         // panel container.
-        const panelEl = target.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
+        const panelEl = target.closest(
+          '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+        );
         if (!panelEl) {
           applyFocusedPanelIndicator(null);
           return;
@@ -6400,7 +8707,8 @@
           applyFocusedPanelIndicator(null);
           return;
         }
-        scrollPanelIntoViewFromRight(panelEl);
+        const stripPanelEl = getTopLevelSlotPanelElement(panelEl) || panelEl;
+        scrollPanelIntoViewFromRight(stripPanelEl);
         // Sync the navigator's active marker to match the panel that
         // just received focus. Without this, clicking into a panel
         // scrolls the strip but leaves the favicon highlight stuck on
@@ -6419,15 +8727,19 @@
         // mapping the outer tabbox to targets[0] (the inner main
         // panel always sits at index 0 in splitViewPanels).
         const targets = getPanelCycleTargets();
-        let idx = targets.indexOf(panelEl);
+        let idx = targets.indexOf(stripPanelEl);
         if (idx < 0 && panelEl.id === 'tabbrowser-tabbox' && targets.length > 0) {
           idx = 0;
         }
+        let focusedIndicatorEl = panelEl;
         if (idx >= 0) {
           currentActiveIdx = idx;
           applyActiveMarker(idx);
-          applyFocusedPanelIndicator(targets[idx]);
+          if (panelEl.id === 'tabbrowser-tabbox') {
+            focusedIndicatorEl = targets[idx];
+          }
         }
+        applyFocusedPanelIndicator(focusedIndicatorEl);
       },
       true,
     );
@@ -6645,22 +8957,40 @@
     const panelEl = document.getElementById(tab.linkedPanel);
     if (!panelEl) return;
     if (!tab.linkedBrowser) return;
-    if (panelEl.querySelector(':scope > .bento-panel-header[data-bento-injected="1"]')) {
-      ensurePanelLoadingOverlay(panelEl, tab.linkedBrowser);
-      return; // already injected
-    }
-    const tabId = (() => {
-      try {
-        const mod = ChromeUtils.importESModule(
-          'resource://gre/modules/ExtensionParent.sys.mjs',
-        );
-        return mod.ExtensionParent?.apiManager?.global?.tabTracker?.getId(tab) ?? null;
-      } catch {
-        return null;
+    const tabId = getBentoTabId(tab);
+    const ownSubdivision = Number.isFinite(Number(tabId))
+      ? currentSubdivisions.get(Number(tabId))
+      : null;
+    const ownTopClosed = !!ownSubdivision?.topClosed && ownSubdivision.subPanels?.length === 1;
+    const numericTabId = Number(tabId);
+    const canCompareHeaderTabId = Number.isFinite(numericTabId);
+    let existingHeader = panelEl.querySelector(
+      ':scope > .bento-panel-header[data-bento-injected="1"]',
+    );
+    if (existingHeader) {
+      const headerTabId = Number(existingHeader.dataset.bentoPanelHeaderTabId);
+      const headerTabMatches = !canCompareHeaderTabId || headerTabId === numericTabId;
+      const headerBrowserMatches =
+        !existingHeader._bentoBrowserEl || existingHeader._bentoBrowserEl === tab.linkedBrowser;
+      if (!headerTabMatches || !headerBrowserMatches) {
+        existingHeader.remove();
+        existingHeader = null;
+      } else {
+        if (!ownTopClosed) {
+          resetPanelHeaderInlineState(existingHeader);
+          forcePanelHeaderInteractiveState(existingHeader);
+        }
+        ensurePanelLoadingOverlay(panelEl, tab.linkedBrowser);
+        return; // already injected
       }
-    })();
+    }
     const header = createPanelHeader(tab.linkedBrowser, url, tabId);
     header.dataset.bentoInjected = '1';
+    if (canCompareHeaderTabId) {
+      header.dataset.bentoPanelHeaderTabId = String(numericTabId);
+    }
+    header._bentoBrowserEl = tab.linkedBrowser;
+    if (!ownTopClosed) forcePanelHeaderInteractiveState(header);
     // notificationbox children typically are [notificationstack, browser];
     // insert header as the first child so it visually sits above content.
     panelEl.insertBefore(header, panelEl.firstChild);
@@ -7168,6 +9498,7 @@
         currentSavedPanelCount = 0;
       }
       applyTrailerWidth(currentSavedPanelCount);
+      currentSubdivisions = sanitizeSubdivisionPayload(decoded.subdivisions);
       // Per-workspace panel-strip scroll position. Capture into the
       // module-level map keyed by workspaceId so:
       //   - Same-workspace reconciles (panel add/remove, width change)
@@ -7208,6 +9539,9 @@
       // React sidebar slides — the asymmetric motion reads as a
       // visual glitch even though each individual swap is correct.
       performWorkspaceSwitchFade(panels, { scrollToPanelTabId });
+    } else if (!isWorkspaceTransition && canFastPathTopClosedSubdivision(panels)) {
+      fastPathTopClosedSubdivision(panels);
+      applyPendingStripScrollRestore();
     } else {
       reconcilePanels(panels, { scrollToPanelTabId });
       applyPendingStripScrollRestore();
@@ -7548,6 +9882,8 @@
   // Add-panel trailer's flex-basis via applyTrailerWidth so the
   // inline favicon row has room to grow.
   let currentSavedPanelCount = 0;
+  let currentSubdivisions = new Map();
+  const pendingPromotedSubPanelEnterSkips = new Set();
 
   function applyChromePanelShadowsEnabled(enabled) {
     window.gBrowser?.tabpanels?.classList.toggle('bento-panel-shadows-disabled', !enabled);

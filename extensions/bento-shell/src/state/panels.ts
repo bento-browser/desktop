@@ -15,31 +15,45 @@ import { create } from 'zustand';
 interface PanelsState {
   /** workspaceId → set of tabIds currently rendered as side panels. */
   byWorkspace: Map<string, Set<number>>;
-  /** Workspaces that have received their first panels/sync this session.
-   * Sidebar uses this to wait for panel filter readiness before rendering
-   * — without it the sidebar momentarily shows tabs that are about to be
-   * filtered out as panels. Even an empty panels/sync (workspace has no
-   * panels) marks the workspace as hydrated; this distinguishes "no
-   * panels yet" from "no panels here". */
+  /** Tab IDs that are sub-panels (subdivision children). Globally tracked
+   * so the sidebar tab-list filter excludes them alongside regular panels. */
+  subPanelTabIds: Set<number>;
+  /** Workspaces that have received their first panels/sync this session. */
   hydratedWorkspaces: Set<string>;
-  apply: (workspaceId: string, tabIds: number[]) => void;
+  apply: (workspaceId: string, tabIds: number[], subPanelIds?: number[]) => void;
 }
 
 const EMPTY: Set<number> = new Set();
 
 export const usePanelsStore = create<PanelsState>((set) => ({
   byWorkspace: new Map(),
+  subPanelTabIds: new Set(),
   hydratedWorkspaces: new Set(),
-  apply: (workspaceId, tabIds) =>
+  apply: (workspaceId, tabIds, subPanelIds) =>
     set((state) => {
       const nextByWorkspace = new Map(state.byWorkspace);
-      nextByWorkspace.set(workspaceId, new Set(tabIds));
+      const allIds = new Set(tabIds);
+      const nextSubPanelIds = new Set(state.subPanelTabIds);
+      for (const id of state.byWorkspace.get(workspaceId) ?? EMPTY) {
+        nextSubPanelIds.delete(id);
+      }
+      if (subPanelIds) {
+        for (const id of subPanelIds) {
+          allIds.add(id);
+          nextSubPanelIds.add(id);
+        }
+      }
+      nextByWorkspace.set(workspaceId, allIds);
       let nextHydrated = state.hydratedWorkspaces;
       if (!nextHydrated.has(workspaceId)) {
         nextHydrated = new Set(nextHydrated);
         nextHydrated.add(workspaceId);
       }
-      return { byWorkspace: nextByWorkspace, hydratedWorkspaces: nextHydrated };
+      return {
+        byWorkspace: nextByWorkspace,
+        hydratedWorkspaces: nextHydrated,
+        subPanelTabIds: nextSubPanelIds,
+      };
     }),
 }));
 

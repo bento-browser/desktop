@@ -178,16 +178,21 @@ function ensureConnection(): void {
         // which produces a fresh BENTO_PANELS title carrying the new
         // uiColorMode — single channel, no race.
         return;
-      case 'panels/sync':
-        // Mirror panel ids per workspace so the sidebar can subtract
-        // them from the tab list (panels and tabs are disjoint sets in
-        // Bento's model). Apply on every shell entry, not just the
-        // sidebar — secondary entries like the command palette also
-        // need to know which tabs are panels so their tab listings
-        // stay consistent.
+      case 'panels/sync': {
+        const subPanelIds: number[] = [];
+        if (event.subdivisions) {
+          for (const sub of Object.values(event.subdivisions)) {
+            if (Array.isArray(sub.subPanels)) {
+              for (const sp of sub.subPanels) {
+                if (typeof sp.tabId === 'number') subPanelIds.push(sp.tabId);
+              }
+            }
+          }
+        }
         usePanelsStore.getState().apply(
           event.workspaceId,
           event.panels.map((p) => p.tabId),
+          subPanelIds,
         );
         // Forward to chrome via title-IPC, BUT only for THIS WINDOW'S
         // active workspace — the chrome reconciler renders the
@@ -231,6 +236,7 @@ function ensureConnection(): void {
               pinnedTabIdsInWorkspace?: number[];
               savedPanelCount?: number;
               scrollToPanelTabId?: number;
+              subdivisions?: typeof event.subdivisions;
             } = {
               workspaceId: activeId,
               panels: event.panels,
@@ -287,6 +293,9 @@ function ensureConnection(): void {
             if (typeof event.scrollToPanelTabId === 'number') {
               payload.scrollToPanelTabId = event.scrollToPanelTabId;
             }
+            if (event.subdivisions && Object.keys(event.subdivisions).length > 0) {
+              payload.subdivisions = event.subdivisions;
+            }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.
             const b64 = btoa(unescape(encodeURIComponent(json)));
@@ -294,6 +303,7 @@ function ensureConnection(): void {
           }
         }
         return;
+      }
       case 'privacy/snapshot':
         usePrivacyStore.getState().apply(event.privacy);
         return;

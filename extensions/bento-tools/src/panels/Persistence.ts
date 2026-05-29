@@ -13,7 +13,7 @@
 //   - v2: byWorkspace = Record<wsId, {url, widthPx?}[]>    (added per-panel widths)
 //   - v3: + mainWidthByWorkspace = Record<wsId, number>    (legacy per-workspace main width)
 
-import type { PersistedPanelEntry } from './PanelStore';
+import type { PersistedPanelEntry, SubdivisionRuntime } from './PanelStore';
 
 const STORAGE_KEY = 'bento.panels';
 const MAIN_WIDTH_STORAGE_KEY = 'bento.panelMainWidth';
@@ -24,13 +24,30 @@ const LEGACY_MAIN_WIDTHS_STORAGE_KEY = 'bento.panelMainWidths';
  * schema bump and won't be discarded if a future version migration is
  * incomplete. Record<workspaceId, scrollLeft>. */
 const STRIP_SCROLL_STORAGE_KEY = 'bento.panelStripScroll';
-const VERSION = 3;
+const VERSION = 4;
 const DEBOUNCE_MS = 500;
 const MAIN_PANEL_MIN_WIDTH = 320;
 
 interface StoredEntryV2 {
   url: string;
   widthPx?: number;
+}
+
+interface StoredSubdivisionV4 {
+  mode: 'single' | 'dual';
+  topHeightFraction: number;
+  subPanelUrls: string[];
+  splitRatio?: number;
+}
+
+interface StoredEntryV4 extends StoredEntryV2 {
+  subdivision?: StoredSubdivisionV4;
+}
+
+interface StoredShapeV4 {
+  version: 4;
+  byWorkspace: Record<string, StoredEntryV4[]>;
+  mainWidthByWorkspace: Record<string, number>;
 }
 
 interface StoredShapeV3 {
@@ -51,7 +68,7 @@ interface StoredShapeV1 {
   byWorkspace: Record<string, string[]>;
 }
 
-type StoredShape = StoredShapeV1 | StoredShapeV2 | StoredShapeV3;
+type StoredShape = StoredShapeV1 | StoredShapeV2 | StoredShapeV3 | StoredShapeV4;
 
 export interface PersistedPanels {
   byWorkspace: Map<string, PersistedPanelEntry[]>;
@@ -105,26 +122,41 @@ export async function load(): Promise<PersistedPanels | null> {
       return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
     }
     const storedVersion = (storedRaw as { version?: unknown }).version;
-    if (storedVersion !== 1 && storedVersion !== 2 && storedVersion !== 3) {
+    if (storedVersion !== 1 && storedVersion !== 2 && storedVersion !== 3 && storedVersion !== 4) {
       console.warn('[bento-tools] panels: unknown version', storedVersion, '— ignoring');
       return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
     }
     const stored = storedRaw as StoredShape;
     if (stored.version >= 2) {
-      const v2 = stored as StoredShapeV2 | StoredShapeV3;
-      for (const [wsId, list] of Object.entries(v2.byWorkspace)) {
+      const v2plus = stored as StoredShapeV2 | StoredShapeV3 | StoredShapeV4;
+      for (const [wsId, list] of Object.entries(v2plus.byWorkspace)) {
         if (!Array.isArray(list)) continue;
         const entries: PersistedPanelEntry[] = [];
         for (const e of list) {
           if (!e || typeof e.url !== 'string') continue;
           const entry: PersistedPanelEntry = { url: e.url };
           if (typeof e.widthPx === 'number' && e.widthPx > 0) entry.widthPx = e.widthPx;
+          const ev4 = e as StoredEntryV4;
+          if (stored.version >= 4 && ev4.subdivision && typeof ev4.subdivision === 'object') {
+            const s = ev4.subdivision;
+            if (
+              (s.mode === 'single' || s.mode === 'dual') &&
+              typeof s.topHeightFraction === 'number' &&
+              Array.isArray(s.subPanelUrls)
+            ) {
+              entry.subdivision = {
+                mode: s.mode,
+                topHeightFraction: s.topHeightFraction,
+                subPanelUrls: s.subPanelUrls.filter((u): u is string => typeof u === 'string'),
+                splitRatio: typeof s.splitRatio === 'number' ? s.splitRatio : undefined,
+              };
+            }
+          }
           entries.push(entry);
         }
         byWorkspace.set(wsId, entries);
       }
     } else {
-      // v1 → upgrade to v2 (no widths recorded yet)
       for (const [wsId, urls] of Object.entries(stored.byWorkspace)) {
         if (!Array.isArray(urls)) continue;
         byWorkspace.set(
@@ -133,8 +165,9 @@ export async function load(): Promise<PersistedPanels | null> {
         );
       }
     }
-    if (stored.version === 3) {
-      const storedLegacyGlobal = stored.mainWidthByWorkspace?.__global__;
+    if (stored.version === 3 || stored.version === 4) {
+      const v3plus = stored as StoredShapeV3 | StoredShapeV4;
+      const storedLegacyGlobal = v3plus.mainWidthByWorkspace?.__global__;
       if (
         mainWidthPx === undefined &&
         typeof storedLegacyGlobal === 'number' &&
@@ -152,28 +185,24 @@ export async function load(): Promise<PersistedPanels | null> {
 
 export class Persistence {
   #timer: ReturnType<typeof setTimeout> | null = null;
-  /** Latest snapshot to flush — workspaceId → ordered tabIds. URLs are
-   * resolved at flush time via browser.tabs.get (so the in-memory store
-   * doesn't have to track URLs alongside tabIds). */
   #pendingByWs: Map<string, number[]> | null = null;
-  /** Latest width snapshot — tabId → widthPx. Resolved alongside URLs at
-   * flush time so a single debounced write captures both. */
   #pendingWidths: Map<number, number> | null = null;
-  /** Latest main-panel width snapshot. */
   #pendingMainWidth: number | undefined;
-  /** Latest per-workspace strip-scroll snapshot. */
   #pendingStripScroll: Map<string, number> | null = null;
+  #pendingSubdivisions: Map<number, SubdivisionRuntime> | null = null;
 
   schedule(
     state: Map<string, number[]>,
     widths: Map<number, number>,
     mainWidthPx: number | undefined,
     stripScrollByWorkspace: Map<string, number>,
+    subdivisions: Map<number, SubdivisionRuntime>,
   ): void {
     this.#pendingByWs = state;
     this.#pendingWidths = widths;
     this.#pendingMainWidth = mainWidthPx;
     this.#pendingStripScroll = stripScrollByWorkspace;
+    this.#pendingSubdivisions = subdivisions;
     if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
@@ -181,12 +210,14 @@ export class Persistence {
       const nextWidths = this.#pendingWidths;
       const nextMainWidth = this.#pendingMainWidth;
       const nextStripScroll = this.#pendingStripScroll;
+      const nextSubs = this.#pendingSubdivisions;
       this.#pendingByWs = null;
       this.#pendingWidths = null;
       this.#pendingMainWidth = undefined;
       this.#pendingStripScroll = null;
-      if (nextState && nextWidths && nextStripScroll) {
-        void this.#flush(nextState, nextWidths, nextMainWidth, nextStripScroll);
+      this.#pendingSubdivisions = null;
+      if (nextState && nextWidths && nextStripScroll && nextSubs) {
+        void this.#flush(nextState, nextWidths, nextMainWidth, nextStripScroll, nextSubs);
       }
     }, DEBOUNCE_MS);
   }
@@ -196,6 +227,7 @@ export class Persistence {
     widths: Map<number, number>,
     mainWidthPx: number | undefined,
     stripScrollByWorkspace: Map<string, number>,
+    subdivisions: Map<number, SubdivisionRuntime>,
   ): void {
     if (this.#timer) {
       clearTimeout(this.#timer);
@@ -205,7 +237,35 @@ export class Persistence {
     this.#pendingWidths = null;
     this.#pendingMainWidth = undefined;
     this.#pendingStripScroll = null;
-    void this.#flush(state, widths, mainWidthPx, stripScrollByWorkspace);
+    this.#pendingSubdivisions = null;
+    void this.#flush(state, widths, mainWidthPx, stripScrollByWorkspace, subdivisions);
+  }
+
+  async #resolveSubdivision(sub: SubdivisionRuntime): Promise<StoredSubdivisionV4 | undefined> {
+    if (sub.subPanelTabIds.length === 0) {
+      return {
+        mode: sub.mode,
+        topHeightFraction: sub.topHeightFraction,
+        subPanelUrls: [],
+        splitRatio: sub.mode === 'dual' ? sub.splitRatio : undefined,
+      };
+    }
+    const urls: string[] = [];
+    for (const spId of sub.subPanelTabIds) {
+      try {
+        const tab = await browser.tabs.get(spId);
+        if (tab.url && tab.url !== 'about:blank') urls.push(tab.url);
+      } catch {
+        // sub-panel tab gone
+      }
+    }
+    if (urls.length === 0 && sub.subPanelTabIds.length > 0) return undefined;
+    return {
+      mode: sub.mode,
+      topHeightFraction: sub.topHeightFraction,
+      subPanelUrls: urls,
+      splitRatio: sub.mode === 'dual' ? sub.splitRatio : undefined,
+    };
   }
 
   async #flush(
@@ -213,35 +273,36 @@ export class Persistence {
     widths: Map<number, number>,
     mainWidthPx: number | undefined,
     stripScrollByWorkspace: Map<string, number>,
+    subdivisions: Map<number, SubdivisionRuntime>,
   ): Promise<void> {
-    const byWorkspace: Record<string, StoredEntryV2[]> = {};
+    const byWorkspace: Record<string, StoredEntryV4[]> = {};
     for (const [wsId, tabIds] of state) {
-      const entries: StoredEntryV2[] = [];
+      const entries: StoredEntryV4[] = [];
       for (const id of tabIds) {
         try {
           const tab = await browser.tabs.get(id);
-          // Skip transient/empty URLs — restoring them on the next boot
-          // would just re-create about:blank panels. Skip privileged
-          // about: URLs other than newtab to avoid surprises (about:config,
-          // etc. shouldn't auto-restore as panels).
           const url = tab.url;
           if (!url || url === 'about:blank') continue;
-          const entry: StoredEntryV2 = { url };
+          const entry: StoredEntryV4 = { url };
           const w = widths.get(id);
           if (typeof w === 'number' && w > 0) entry.widthPx = w;
+          const sub = subdivisions.get(id);
+          if (sub) {
+            const resolved = await this.#resolveSubdivision(sub);
+            if (resolved) entry.subdivision = resolved;
+          }
           entries.push(entry);
         } catch {
           // Tab gone between schedule and flush — drop silently.
         }
       }
-      // Empty workspaces don't need an entry.
       if (entries.length > 0) byWorkspace[wsId] = entries;
     }
     const roundedMainWidth =
       typeof mainWidthPx === 'number' && mainWidthPx > 0
         ? Math.max(MAIN_PANEL_MIN_WIDTH, Math.round(mainWidthPx))
         : undefined;
-    const payload: StoredShapeV3 = {
+    const payload: StoredShapeV4 = {
       version: VERSION,
       byWorkspace,
       mainWidthByWorkspace: roundedMainWidth !== undefined ? { __global__: roundedMainWidth } : {},

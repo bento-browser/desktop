@@ -94,6 +94,12 @@ export interface BentoExportSchema {
     panels: Array<{
       url: string;
       widthPx?: number;
+      subdivision?: {
+        mode: SubdivisionMode;
+        topHeightFraction: number;
+        subPanelUrls: string[];
+        splitRatio?: number;
+      };
     }>;
     pinnedPanels: Array<{
       url: string;
@@ -197,6 +203,20 @@ export interface BentoSettings {
 }
 
 export type ColorModePref = 'light' | 'dark';
+
+export type SubdivisionMode = 'single' | 'dual';
+
+export interface SubdivisionSync {
+  mode: SubdivisionMode;
+  topHeightFraction: number;
+  subPanels: Array<{
+    tabId: number;
+    url: string;
+    favIconUrl?: string;
+  }>;
+  splitRatio?: number;
+  topClosed?: boolean;
+}
 
 export type Action =
   | { type: 'ping' }
@@ -305,6 +325,32 @@ export type Action =
    * workspaces, and the SOURCE workspace's scroll value would
    * otherwise leak into the destination workspace's storage. */
   | { type: 'panel/setStripScroll'; workspaceId: string; scrollLeft: number }
+  /** Subdivide a side panel: shrink it to the top half, show a chooser in
+   * the bottom half. No-op if the panel is already subdivided, is the main
+   * panel, or is a sub-panel that is not the single full-slot survivor of
+   * a top-level subdivision. */
+  | { type: 'panel/subdivide'; tabId: number }
+  /** Remove a subdivision, closing its sub-panel tabs. The parent panel
+   * returns to full column height. */
+  | { type: 'panel/removeSubdivision'; tabId: number; closeDelayMs?: number }
+  /** Promote a sub-panel out of its containing subdivision into the
+   * top-level panel strip. The source subdivision collapses according to
+   * its remaining visible panels. */
+  | { type: 'panel/breakOutSubPanel'; tabId: number }
+  /** Hide the parent/top section of a single-sub-panel subdivision while
+   * keeping the sub-panel browser in place and expanded. */
+  | { type: 'panel/closeSubdivisionTop'; tabId: number }
+  /** Remove a subdivision parent from the panel strip while keeping its
+   * sub-panel tab(s) as normal top-level panels. Used by chrome after the
+   * parent section has visually collapsed. */
+  | { type: 'panel/promoteSubdivisionParent'; tabId: number }
+  /** Fill a subdivision's bottom region with sub-panel content. Creates
+   * 1 or 2 new tabs depending on mode. */
+  | { type: 'panel/setSubdivisionContent'; tabId: number; mode: SubdivisionMode; urls: string[] }
+  /** Adjust the vertical split ratio (top panel height fraction). */
+  | { type: 'panel/setSubdivisionHeight'; tabId: number; topHeightFraction: number }
+  /** Adjust the horizontal split ratio between dual sub-panels. */
+  | { type: 'panel/setSubdivisionSplitRatio'; tabId: number; splitRatio: number }
   /** Ask tools to read the current privacy settings via browser.privacy.*
    * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard
    * mount; tools doesn't push privacy/changed deltas (settings rarely
@@ -473,6 +519,10 @@ export type Event =
        * by an explicit user action. Used when panel creation races chrome
        * tab resolution: chrome retries until the panel element exists. */
       scrollToPanelTabId?: number;
+      /** Per-panel subdivision state. Key is the parent panel's tabId.
+       * Only panels that have been subdivided appear here. When
+       * `subPanels` is empty, chrome renders the chooser UI. */
+      subdivisions?: Record<number, SubdivisionSync>;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }

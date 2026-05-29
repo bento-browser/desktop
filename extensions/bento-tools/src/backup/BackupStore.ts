@@ -95,8 +95,26 @@ export class BackupStore {
           if (!live.url) continue;
           tabIdToUrl.set(tabId, live.url);
           const widthPx = this.#ctx.panels.getWidth(tabId);
-          const entry: { url: string; widthPx?: number } = { url: live.url };
+          const entry: BentoExportSchema['workspaces'][0]['panels'][0] = { url: live.url };
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+          const sub = this.#ctx.panels.getSubdivision(tabId);
+          if (sub) {
+            const subPanelUrls: string[] = [];
+            for (const spId of sub.subPanelTabIds) {
+              try {
+                const spLive = await browser.tabs.get(spId);
+                if (spLive.url) subPanelUrls.push(spLive.url);
+              } catch {
+                // sub-panel tab gone
+              }
+            }
+            entry.subdivision = {
+              mode: sub.mode,
+              topHeightFraction: sub.topHeightFraction,
+              subPanelUrls,
+              splitRatio: sub.mode === 'dual' ? sub.splitRatio : undefined,
+            };
+          }
           panels.push(entry);
         } catch {
           // tab gone
