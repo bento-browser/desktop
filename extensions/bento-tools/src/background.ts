@@ -881,6 +881,7 @@ function maybeHandleAddPanelMarker(
     return;
   }
   if (panels.add(wsId, tabId)) {
+    tabs.assignWorkspaceEagerly(tabId, wsId);
     // Stamp the configured default width so the new panel renders at
     // the user's preferred size on first paint instead of Firefox's
     // flex default (--bento-panel-min-width = 380px). The setting is

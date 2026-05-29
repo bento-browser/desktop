@@ -578,6 +578,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             );
             return;
           }
+          ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
           const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
           if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
           ctx.syncPanelMarkers(wsId);

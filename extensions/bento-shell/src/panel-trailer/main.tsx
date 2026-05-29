@@ -12,7 +12,9 @@
 //   - initToolsPort opens the BroadcastChannel('bento-shell-bus') and
 //     auto-dispatches `savedPanels/requestSnapshot` on `tools/booted`.
 //   - useSavedPanelsStore mirrors the snapshot.
-//   - "+" / favicon clicks dispatch `panel/openAt` with position: 'end'.
+//   - "+" sets a title-IPC sentinel so chrome creates the blank panel
+//     through its native addNewPanel path.
+//   - Favicon clicks dispatch `panel/openAt` with position: 'end'.
 //     Tools creates the tab and appends it as a panel; the existing
 //     panels/sync round-trip puts the new panel in chrome's strip.
 
@@ -39,15 +41,10 @@ import { PanelTrailer } from '../components/PanelTrailer/PanelTrailer';
 initToolsPort();
 
 function onAddBlank() {
-  // Append a blank panel. position 'end' bypasses the sourceTabId
-  // computation so the new panel lands rightmost regardless of the
-  // current main / panel selection.
-  dispatch({
-    type: 'panel/openAt',
-    url: 'about:newtab',
-    sourceTabId: null,
-    position: 'end',
-  });
+  // Append a blank panel via chrome's addNewPanel marker path. This keeps
+  // the native tab and its notificationbox in the same chrome window as
+  // the visible panel strip.
+  document.title = `BENTO_PANEL_TRAILER_ADD_BLANK:${Date.now()}`;
 }
 
 function onOpenSaved(url: string) {

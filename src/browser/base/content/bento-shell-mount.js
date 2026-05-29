@@ -2206,6 +2206,7 @@
   // Panel-trailer context menu request. Same title-IPC pattern as the
   // sidebar because the trailer is its own remote extension frame.
   const PANEL_TRAILER_CONTEXT_MENU_PREFIX = 'BENTO_PANEL_TRAILER_CONTEXT_MENU:';
+  const PANEL_TRAILER_ADD_BLANK_PREFIX = 'BENTO_PANEL_TRAILER_ADD_BLANK:';
   // Sidebar-driven scroll-into-view + focus signal for a specific
   // panel. Fired by the PinnedPanels row click after the workspace
   // activation dispatches. Format: BENTO_FOCUS_PANEL:<ts>:<tabId>.
@@ -2490,6 +2491,7 @@
   }
 
   function loadInPanel(browserEl, value) {
+    if (!browserEl) return;
     try {
       const flags =
         Services.uriFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP |
@@ -2525,6 +2527,53 @@
     }
   }
 
+  function getBrowserCurrentSpec(browserEl) {
+    try {
+      return browserEl?.currentURI?.spec || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function ensurePanelInitialContent(tab, panelEl, browserEl, payloadUrl, options = {}) {
+    if (!browserEl) return;
+    const currentSpec = getBrowserCurrentSpec(browserEl);
+    if (isRealPanelUrl(currentSpec)) {
+      rememberPanelBrowserUrl(browserEl, currentSpec);
+      return;
+    }
+
+    const payload = typeof payloadUrl === 'string' ? payloadUrl.trim() : '';
+    if (payload === 'about:newtab') {
+      if (shouldLoadDefaultNewTabForPanel(browserEl, panelEl, payload, options)) {
+        loadDefaultNewTabInBrowser(browserEl);
+      }
+      return;
+    }
+
+    const remembered = getRememberedPanelUrl(panelEl, browserEl);
+    const target = isRealPanelUrl(remembered) ? remembered : payload;
+    if (!isRealPanelUrl(target)) return;
+
+    try {
+      if (browserEl.webProgress?.isLoadingDocument && browserEl._bentoEnsuringUrl === target) {
+        return;
+      }
+    } catch {
+      // If webProgress is unavailable, fall through and try the load.
+    }
+
+    browserEl._bentoEnsuringUrl = target;
+    if (tab?.linkedBrowser) {
+      try {
+        tab.linkedBrowser.docShellIsActive = true;
+      } catch {
+        // Best effort before forcing the URL load.
+      }
+    }
+    loadInPanel(browserEl, target);
+  }
+
   function getRememberedPanelUrl(panelEl, browserEl) {
     const headerUrl =
       panelEl?.querySelector?.(':scope > .bento-panel-header .bento-panel-header-url')?.value ||
@@ -2535,6 +2584,32 @@
       headerUrl ||
       ''
     );
+  }
+
+  function reloadPanelBrowser(browserEl, panelEl, fallbackUrl, reloadFlags = null) {
+    if (!browserEl) return;
+    try {
+      if (reloadFlags !== null && typeof browserEl.reloadWithFlags === 'function') {
+        browserEl.reloadWithFlags(reloadFlags);
+      } else {
+        browserEl.reload();
+      }
+      return;
+    } catch {
+      // A nested subpanel can briefly have a browser object whose navigation
+      // facade is not ready after reparenting. Fall back to loading the URL
+      // we already know for this panel instead of routing reload to selectedTab.
+    }
+
+    const target =
+      getRememberedPanelUrl(panelEl, browserEl) ||
+      getBrowserCurrentSpec(browserEl) ||
+      (typeof fallbackUrl === 'string' ? fallbackUrl : '');
+    if (isRealPanelUrl(target)) {
+      loadInPanel(browserEl, target);
+    } else if (!target || target === 'about:newtab' || target === 'about:blank') {
+      loadDefaultNewTabInBrowser(browserEl);
+    }
   }
 
   function shouldLoadDefaultNewTabForPanel(browserEl, panelEl, payloadUrl, options = {}) {
@@ -2690,27 +2765,34 @@
   function createPanelHeader(browserEl, initialUrl, tabId) {
     const header = document.createXULElement('hbox');
     header.className = 'bento-panel-header';
+    const getActionBrowser = () => {
+      const panelEl = header.closest?.(
+        '[data-bento-main-panel], [data-bento-panel-tab-id], [data-bento-subpanel]',
+      );
+      return getHeaderActionBrowser(panelEl, browserEl) || browserEl;
+    };
 
     const backBtn = makeHeaderButton('Back', ICONS.chevronLeft, () => {
       try {
-        if (browserEl.canGoBack) browserEl.goBack();
+        const actionBrowser = getActionBrowser();
+        if (actionBrowser?.canGoBack) actionBrowser.goBack();
       } catch (e) {
         console.warn('[bento-shell-mount] panel goBack failed:', e);
       }
     });
     const forwardBtn = makeHeaderButton('Forward', ICONS.chevronRight, () => {
       try {
-        if (browserEl.canGoForward) browserEl.goForward();
+        const actionBrowser = getActionBrowser();
+        if (actionBrowser?.canGoForward) actionBrowser.goForward();
       } catch (e) {
         console.warn('[bento-shell-mount] panel goForward failed:', e);
       }
     });
     const reloadBtn = makeHeaderButton('Reload', ICONS.rotate, () => {
-      try {
-        browserEl.reload();
-      } catch (e) {
-        console.warn('[bento-shell-mount] panel reload failed:', e);
-      }
+      const panelEl = header.closest?.(
+        '[data-bento-main-panel], [data-bento-panel-tab-id], [data-bento-subpanel]',
+      );
+      reloadPanelBrowser(getActionBrowser(), panelEl, initialUrl);
     });
 
     const urlInput = document.createElementNS(HTML_NS, 'input');
@@ -2750,7 +2832,7 @@
       if (e.key === 'Enter') {
         e.preventDefault();
         const value = urlInput.value.trim();
-        if (value) loadInPanel(browserEl, value);
+        if (value) loadInPanel(getActionBrowser(), value);
         returnFocusToPanel();
         return;
       }
@@ -2759,7 +2841,12 @@
         // Discard any in-progress edit by restoring the displayed URL
         // before handing focus back. Mirrors Firefox's #urlbar Esc
         // behaviour.
-        const spec = browserEl?.currentURI?.spec;
+        let spec = '';
+        try {
+          spec = getActionBrowser()?.currentURI?.spec || '';
+        } catch {
+          spec = '';
+        }
         if (spec && spec !== 'about:blank' && spec !== 'about:newtab') {
           urlInput.value = spec;
         } else {
@@ -2769,9 +2856,9 @@
       }
     });
 
-    const starBtn = makeHeaderButton('Bookmark page', ICONS.star, () =>
-      bookmarkPanelPage(browserEl, starBtn),
-    );
+    const starBtn = makeHeaderButton('Bookmark page', ICONS.star, () => {
+      bookmarkPanelPage(getActionBrowser(), starBtn);
+    });
 
     // Close button: dispatches tab/close (NOT panel/remove). Closing a
     // side panel closes its underlying tab entirely — the tab does not
@@ -2967,10 +3054,11 @@
     // URL still lands in the input.
     const refresh = () => {
       try {
+        const actionBrowser = getActionBrowser();
         if (document.activeElement !== urlInput) {
           let spec = '';
           try {
-            spec = browserEl.currentURI ? browserEl.currentURI.spec : '';
+            spec = actionBrowser?.currentURI ? actionBrowser.currentURI.spec : '';
           } catch {
             spec = '';
           }
@@ -2984,9 +3072,9 @@
             urlInput.value = '';
           }
         }
-        if (browserEl.canGoBack) backBtn.removeAttribute('disabled');
+        if (actionBrowser?.canGoBack) backBtn.removeAttribute('disabled');
         else backBtn.setAttribute('disabled', 'true');
-        if (browserEl.canGoForward) forwardBtn.removeAttribute('disabled');
+        if (actionBrowser?.canGoForward) forwardBtn.removeAttribute('disabled');
         else forwardBtn.setAttribute('disabled', 'true');
       } catch {
         // Browser not yet attached — refresh again on next tick.
@@ -4125,13 +4213,10 @@
             }
             const spBrowser = spPanel.querySelector('browser');
             if (spBrowser) {
-              if (
-                !topClosed &&
-                shouldLoadDefaultNewTabForPanel(spBrowser, spPanel, sub.subPanels[0].url, {
+              if (!topClosed) {
+                ensurePanelInitialContent(spTab, spPanel, spBrowser, sub.subPanels[0].url, {
                   wasPending: spTab.hasAttribute?.('pending'),
-                })
-              ) {
-                loadDefaultNewTabInBrowser(spBrowser);
+                });
               }
               try {
                 spBrowser.preserveLayers?.(true);
@@ -4204,13 +4289,9 @@
           injectPanelHeaderIntoLinkedPanel(spTab, sub.subPanels[j].url);
           const spBrowser = spPanel.querySelector('browser');
           if (spBrowser) {
-            if (
-              shouldLoadDefaultNewTabForPanel(spBrowser, spPanel, sub.subPanels[j].url, {
-                wasPending: spTab.hasAttribute?.('pending'),
-              })
-            ) {
-              loadDefaultNewTabInBrowser(spBrowser);
-            }
+            ensurePanelInitialContent(spTab, spPanel, spBrowser, sub.subPanels[j].url, {
+              wasPending: spTab.hasAttribute?.('pending'),
+            });
             try {
               spBrowser.preserveLayers?.(true);
               spBrowser.renderLayers = true;
@@ -7020,9 +7101,8 @@
       // tabindex + keydown survive so keyboard cycling Right past the
       // last panel lands on the trailer; Enter still creates a blank
       // panel via the existing addNewPanel marker URL path. The
-      // visible "+" inside the iframe also dispatches panel/openAt
-      // when mouse-clicked — both end states are equivalent (a new
-      // panel appended to the strip).
+      // visible "+" inside the iframe uses title IPC so tab creation
+      // still happens through this chrome window's addNewPanel path.
       trailer.setAttribute('tabindex', '0');
       trailer.setAttribute('aria-label', 'Add panel');
       // Removed (vs. pre-iframe trailer):
@@ -7042,10 +7122,9 @@
       });
       // Inner moz-extension iframe — same attribute set as
       // ensureOverlayHost frames. Renders /dist/panel-trailer.html
-      // which mounts the React PanelTrailer app. Mouse clicks on the
-      // iframe's "+" / favicon buttons dispatch panel/openAt with
-      // position 'end'; the existing panels/sync round-trip surfaces
-      // the new panel in chrome's strip.
+      // which mounts the React PanelTrailer app. Saved favicon buttons
+      // dispatch panel/openAt with position 'end'; the blank "+" button
+      // signals chrome to call addNewPanel directly.
       const frame = document.createXULElement('browser');
       frame.id = 'bento-panel-trailer-frame';
       frame.setAttribute('type', 'content');
@@ -7502,6 +7581,23 @@
     // view. Snapshot BEFORE overwriting __lastPanelsPayload below;
     // otherwise the comparison would always show zero deltas.
     const previousTabIds = new Set(__lastPanelsPayload.map((p) => p.tabId));
+    const materializeRetry = Number.isInteger(options.materializeRetry)
+      ? options.materializeRetry
+      : 0;
+    let hasPendingMaterialization = false;
+    let materializeRetryScheduled = false;
+    const scheduleMaterializeRetry = () => {
+      hasPendingMaterialization = true;
+      if (materializeRetryScheduled || materializeRetry >= 8) return;
+      materializeRetryScheduled = true;
+      const delay = Math.min(500, 50 + materializeRetry * 75);
+      window.setTimeout(() => {
+        reconcilePanelsSplitView(__lastPanelsPayload, {
+          ...options,
+          materializeRetry: materializeRetry + 1,
+        });
+      }, delay);
+    };
     const selectedMainPanelAtStart = gBrowser.selectedTab?.linkedPanel ?? null;
     if (
       selectedMainPanelAtStart === __lastMainPanelId &&
@@ -7682,9 +7778,12 @@
           // edge-case path that bypasses _beginRemoveTab.
           if (t && !t.closing && !t.bentoClosing) {
             resolved.push({ tab: t, payload: p });
+          } else if (!t) {
+            scheduleMaterializeRetry();
           }
         } catch {
           // Tab might be gone (race with tab/close); skip
+          scheduleMaterializeRetry();
         }
       }
     }
@@ -7703,9 +7802,12 @@
             const t = tabTracker.getTab(sp.tabId);
             if (t && !t.closing && !t.bentoClosing) {
               resolvedSubPanels.push({ tab: t, payload: sp });
+            } else if (!t) {
+              scheduleMaterializeRetry();
             }
           } catch {
             // Sub-panel tab may have closed between sync and reconcile.
+            scheduleMaterializeRetry();
           }
         }
       }
@@ -7725,27 +7827,33 @@
     // uses for a lazy click, minus the selection change), then
     // linkedBrowser.reload() to actually fetch the URL.
     const materializePanelTab = (tab, payloadUrl, label) => {
-      const needsMaterialize = !tab.linkedPanel || !tab.linkedBrowser;
+      const needsMaterialize = !tab.linkedPanel;
       const wasPending = tab.hasAttribute('pending');
       if (needsMaterialize) {
         try {
           window.gBrowser._insertBrowser(tab);
         } catch (err) {
-          console.warn(
-            '[bento-shell-mount] _insertBrowser failed for tabId',
-            tab.id || '?',
-            label || 'panel',
-            err,
-          );
+          scheduleMaterializeRetry();
+          if (materializeRetry >= 8) {
+            console.warn(
+              '[bento-shell-mount] _insertBrowser failed for tabId',
+              tab.id || '?',
+              label || 'panel',
+              err,
+            );
+          }
           return false;
         }
       }
       if (!tab.linkedPanel || !tab.linkedBrowser) {
-        console.warn(
-          '[bento-shell-mount] dropping split tab without linkedBrowser',
-          tab.id || '?',
-          label || 'panel',
-        );
+        scheduleMaterializeRetry();
+        if (materializeRetry >= 8) {
+          console.warn(
+            '[bento-shell-mount] dropping split tab without linkedBrowser',
+            tab.id || '?',
+            label || 'panel',
+          );
+        }
         return false;
       }
       if (wasPending) {
@@ -7764,23 +7872,7 @@
         }
       }
       const panelEl = tab.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
-      if (
-        shouldLoadDefaultNewTabForPanel(tab.linkedBrowser, panelEl, payloadUrl, {
-          wasPending,
-        })
-      ) {
-        try {
-          const browserEl = tab.linkedBrowser;
-          loadDefaultNewTabInBrowser(browserEl);
-        } catch (err) {
-          console.warn(
-            '[bento-shell-mount] about:newtab load failed for tabId',
-            tab.id || '?',
-            label || 'panel',
-            err,
-          );
-        }
-      }
+      ensurePanelInitialContent(tab, panelEl, tab.linkedBrowser, payloadUrl, { wasPending });
       return true;
     };
     resolved = resolved.filter(({ tab, payload }) => {
@@ -7790,6 +7882,7 @@
       return materializePanelTab(tab, payload?.url, 'sub-panel');
     });
     if (resolved.length === 0) {
+      if (hasPendingMaterialization) return;
       forceMainOnlyChromeState(gBrowser, tabpanels);
       return;
     }
@@ -7946,6 +8039,7 @@
     // payload. After dedupe, that means there is only main to render:
     // tear the split down instead of leaving a main-only strip.
     if (layoutTabsToRender.length <= 1) {
+      if (hasPendingMaterialization) return;
       forceMainOnlyChromeState(gBrowser, tabpanels);
       return;
     }
@@ -10118,6 +10212,8 @@
       lastSeenPanelTrailerTitle = title;
       if (title.startsWith(PANEL_TRAILER_CONTEXT_MENU_PREFIX)) {
         handlePanelTrailerContextMenuTitle(title);
+      } else if (title.startsWith(PANEL_TRAILER_ADD_BLANK_PREFIX)) {
+        addNewPanel();
       }
     }, 60);
 
@@ -10375,13 +10471,14 @@
   // selectedTab to invoke it would defeat the cycle-focus model.
   //
   // panelEl is found by walking up from document.activeElement to the
-  // closest element with data-bento-main-panel or data-bento-panel-
-  // tab-id (stamped on each panel container by the reconciler).
+  // closest element with data-bento-main-panel, data-bento-panel-tab-id,
+  // or data-bento-subpanel (stamped on each panel container by the
+  // reconciler/subdivision wrapper).
   function getFocusedPanelInfo() {
     const active = document.activeElement;
     if (!active || typeof active.closest !== 'function') return null;
     const panelEl = active.closest(
-      '[data-bento-main-panel], [data-bento-panel-tab-id]',
+      '[data-bento-main-panel], [data-bento-panel-tab-id], [data-bento-subpanel]',
     );
     if (!panelEl) return null;
     const browserEl = panelEl.querySelector('browser');
@@ -10410,9 +10507,9 @@
               const flags =
                 Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE |
                 Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_PROXY;
-              info.browserEl.reloadWithFlags(flags);
+              reloadPanelBrowser(info.browserEl, info.panelEl, null, flags);
             } else {
-              info.browserEl.reload();
+              reloadPanelBrowser(info.browserEl, info.panelEl, null);
             }
             e.preventDefault();
             e.stopPropagation();
