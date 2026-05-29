@@ -1501,7 +1501,9 @@
         max-height: none !important;
         align-self: stretch !important;
         margin: 0 !important;
-        box-shadow: none !important;
+        background-color: var(--neutral-5) !important;
+        box-shadow: var(--shadow-l) !important;
+        border-radius: var(--radius-m) !important;
       }
       [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .bento-panel-header {
         position: relative !important;
@@ -1567,29 +1569,31 @@
       }
       .bento-subdivision-hsplitter {
         cursor: col-resize !important;
-        flex: 0 0 8px !important;
-        min-width: 8px !important;
-        max-width: 8px !important;
+        flex: 0 0 14px !important;
+        min-width: 14px !important;
+        max-width: 14px !important;
+        box-sizing: border-box !important;
         appearance: none !important;
         border: 0 !important;
-        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background-color: transparent !important;
+        background-image: linear-gradient(
+          to right,
+          transparent calc(50% - 2.5px),
+          var(--color-60) calc(50% - 2.5px),
+          var(--color-60) calc(50% + 2.5px),
+          transparent calc(50% + 2.5px)
+        ) !important;
+        opacity: 0 !important;
+        transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
         position: relative !important;
       }
       .bento-subdivision-hsplitter::after {
-        content: '' !important;
-        position: absolute !important;
-        top: 25% !important;
-        bottom: 25% !important;
-        left: 50% !important;
-        width: 3px !important;
-        transform: translateX(-50%) !important;
-        border-radius: 1.5px !important;
-        background: var(--neutral-30) !important;
-        opacity: 0 !important;
-        transition: opacity 150ms ease !important;
+        content: none !important;
       }
-      .bento-subdivision-hsplitter:hover::after,
-      .bento-subdivision-hsplitter--dragging::after {
+      .bento-subdivision-hsplitter:hover,
+      .bento-subdivision-hsplitter--dragging {
         opacity: 1 !important;
       }
       .bento-subdivision-chooser {
@@ -3114,6 +3118,8 @@
           listener,
           Ci.nsIWebProgress.NOTIFY_LOCATION | Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT,
         );
+        header._bentoProgressBrowser = browserEl;
+        header._bentoProgressListener = listener;
       }
     } catch (err) {
       console.warn('[bento-shell-mount] panel progress listener attach failed:', err);
@@ -3656,6 +3662,7 @@
     splitter.className = 'bento-subdivision-hsplitter';
     splitter.setAttribute('resizebefore', 'none');
     splitter.setAttribute('resizeafter', 'none');
+    splitter.setAttribute('flex', '0');
     splitter._bentoParentTabId = parentTabId;
     splitter.addEventListener('pointerdown', (e) => startHSubDrag(splitter, e));
     splitter.addEventListener('pointermove', (e) => onHSubDragMove(splitter, e));
@@ -3691,7 +3698,7 @@
     const d = splitter._hSubDragState;
     if (!d || e.pointerId !== d.pointerId) return;
     const delta = e.clientX - d.startX;
-    const splitterW = 8;
+    const splitterW = 14;
     const usable = d.bottomWidth - splitterW;
     const minW = usable * 0.2;
     const next = Math.max(minW, Math.min(usable - minW, d.startWidth + delta));
@@ -3881,70 +3888,47 @@
     const panels = Array.from(bottom.querySelectorAll(':scope > [data-bento-subpanel]'));
     const removing = panels.filter((el) => el !== remainingPanel);
     const splitters = Array.from(bottom.querySelectorAll(':scope > .bento-subdivision-hsplitter'));
-
-    if (panels.length === 1 && panels[0] === remainingPanel) {
-      for (const splitter of splitters) splitter.remove();
-      parentPanel.appendChild(remainingPanel);
-      bottom.remove();
+    const finishRemainingPanel = () => {
+      delete remainingPanel._bentoPanelRemoving;
+      parentPanel.removeAttribute('data-bento-subdivision-animating');
+      bottom.style.display = 'flex';
+      bottom.style.opacity = '1';
+      bottom.style.minHeight = '0';
+      bottom.style.overflow = '';
+      setSubdivisionFlex(bottom, '1 1 0');
       remainingPanel.style.removeProperty('opacity');
       remainingPanel.style.removeProperty('transition');
-      setSubdivisionFlex(remainingPanel, '1 1 0');
+      setSubdivisionFlex(remainingPanel, '1 1 auto');
+      remainingPanel.style.removeProperty('width');
+      remainingPanel.style.removeProperty('min-width');
+      remainingPanel.style.removeProperty('height');
       remainingPanel.style.minHeight = '0';
       remainingPanel.style.overflow = 'hidden';
       remainingPanel.style.display = 'flex';
       remainingPanel.style.flexDirection = 'column';
-      injectPanelHeaderIntoLinkedPanel(remainingTab, sub.subPanels[0].url);
-      parentPanel.removeAttribute('data-bento-subdivision-animating');
+      forceHidePanelLoadingOverlay(remainingPanel);
+      const liveBrowser = getLivePanelBrowser(remainingTab);
+      try {
+        liveBrowser?.preserveLayers?.(true);
+        if (liveBrowser) {
+          liveBrowser.docShellIsActive = true;
+        }
+      } catch {
+        // Keep the no-reparent/no-navigation collapse path intact.
+      }
+    };
+
+    if (panels.length === 1 && panels[0] === remainingPanel) {
+      for (const splitter of splitters) splitter.remove();
+      finishRemainingPanel();
       return true;
     }
 
     if (panels.length < 2) return false;
-    const survivorAnimation = isFullSlotSurvivorPanel(parentPanel);
-    const animatedEls = [remainingPanel, ...removing, ...splitters];
-
     parentPanel.setAttribute('data-bento-subdivision-animating', '1');
-    if (survivorAnimation) {
-      for (const el of animatedEls) el.style.transition = 'none';
-    }
-    const remainingW = remainingPanel.getBoundingClientRect().width;
-    setSubdivisionFlex(remainingPanel, '0 0 ' + remainingW + 'px');
-    for (const el of removing) {
-      setSubdivisionFlex(el, '0 0 ' + el.getBoundingClientRect().width + 'px');
-      el.style.opacity = '1';
-    }
-    for (const splitter of splitters) splitter.style.opacity = '1';
-
-    bottom.getBoundingClientRect();
-    scheduleSubdivisionAnimationFrame(parentPanel, () => {
-      if (survivorAnimation) {
-        for (const el of animatedEls) {
-          el.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
-        }
-      }
-      setSubdivisionFlex(remainingPanel, '1 1 auto');
-      for (const el of removing) {
-        setSubdivisionFlex(el, '0 1 0');
-        el.style.opacity = '0';
-      }
-      for (const splitter of splitters) splitter.style.opacity = '0';
-    });
-
-    window.setTimeout(() => {
-      if (!parentPanel.isConnected) return;
-      for (const el of removing) el.remove();
-      for (const splitter of splitters) splitter.remove();
-      bottom.remove();
-      remainingPanel.style.removeProperty('opacity');
-      remainingPanel.style.removeProperty('transition');
-      setSubdivisionFlex(remainingPanel, '1 1 0');
-      remainingPanel.style.minHeight = '0';
-      remainingPanel.style.overflow = 'hidden';
-      remainingPanel.style.display = 'flex';
-      remainingPanel.style.flexDirection = 'column';
-      parentPanel.appendChild(remainingPanel);
-      injectPanelHeaderIntoLinkedPanel(remainingTab, sub.subPanels[0].url);
-      parentPanel.removeAttribute('data-bento-subdivision-animating');
-    }, 230);
+    for (const splitter of splitters) splitter.remove();
+    for (const el of removing) el.remove();
+    finishRemainingPanel();
     return true;
   }
 
@@ -4266,6 +4250,9 @@
         const hsplitter = splitters.shift() || createHorizontalSubSplitter(parentTabId);
         hsplitter._bentoParentTabId = parentTabId;
         for (const extraSplitter of splitters) extraSplitter.remove();
+        if (bottom.parentNode !== parentPanel) {
+          parentPanel.appendChild(bottom);
+        }
         for (let j = 0; j < 2; j++) {
           const spTab = getTrackedTabById(tabTracker, sub.subPanels[j].tabId);
           if (!spTab) continue;
@@ -4319,9 +4306,6 @@
           if (!isNewSubdivision) {
             scheduleSubPanelPaintRestore(spTab, spPanel);
           }
-        }
-        if (bottom.parentNode !== parentPanel) {
-          parentPanel.appendChild(bottom);
         }
       }
 
@@ -5456,6 +5440,7 @@
           }, { detachBeforeDone: false });
         } else {
           animateSubPanelClose(subPanel, () => {
+            removeInjectedPanelHeader(subPanel);
             dispatchShellAction({ type: 'tab/close', id: tabId });
           });
         }
@@ -5463,6 +5448,7 @@
       }
       if (subPanel?.hasAttribute('data-bento-subpanel')) {
         animateSubPanelClose(subPanel, () => {
+          removeInjectedPanelHeader(subPanel);
           dispatchShellAction({ type: 'tab/close', id: tabId });
         });
         return;
@@ -5631,14 +5617,9 @@
     let transitionCleanupEls = [];
     const bottom = subPanel.closest('.bento-subdivision-bottom');
     if (bottom) {
-      const siblings = Array.from(bottom.querySelectorAll(':scope > [data-bento-subpanel]'))
-        .filter((el) => el !== subPanel);
-      transitionCleanupEls = [subPanel, ...siblings];
+      transitionCleanupEls = [subPanel];
       if (survivorAnimation) {
         for (const el of transitionCleanupEls) el.style.transition = 'none';
-      }
-      for (const panelEl of [subPanel, ...siblings]) {
-        setSubdivisionFlex(panelEl, '0 0 ' + panelEl.getBoundingClientRect().width + 'px');
       }
       subPanel.style.opacity = '1';
       bottom.getBoundingClientRect();
@@ -5648,9 +5629,7 @@
             el.style.transition = BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION;
           }
         }
-        setSubdivisionFlex(subPanel, '0 1 0');
         subPanel.style.opacity = '0';
-        for (const sibling of siblings) setSubdivisionFlex(sibling, '1 1 auto');
       });
     } else {
       const contentEl =
@@ -9268,7 +9247,7 @@
       const headerBrowserMatches =
         !existingHeader._bentoBrowserEl || existingHeader._bentoBrowserEl === tab.linkedBrowser;
       if (!headerTabMatches || !headerBrowserMatches) {
-        existingHeader.remove();
+        removePanelHeaderElement(existingHeader);
         existingHeader = null;
       } else {
         if (!ownTopClosed) {
@@ -9293,10 +9272,24 @@
     setupHeaderDrag(header, panelEl, tabId);
   }
 
+  function removePanelHeaderElement(header) {
+    if (!header) return;
+    if (header._bentoProgressBrowser && header._bentoProgressListener) {
+      try {
+        header._bentoProgressBrowser.removeProgressListener(header._bentoProgressListener);
+      } catch {
+        // The browser may already be mid-removal/remoteness-change.
+      }
+    }
+    delete header._bentoProgressBrowser;
+    delete header._bentoProgressListener;
+    header.remove();
+  }
+
   function removeInjectedPanelHeader(panelEl) {
     if (!panelEl) return;
     const header = panelEl.querySelector(':scope > .bento-panel-header[data-bento-injected="1"]');
-    if (header) header.remove();
+    if (header) removePanelHeaderElement(header);
     const overlay = panelEl.querySelector(':scope > .bento-panel-loading-overlay');
     if (overlay) overlay.remove();
     if (panelEl.__bentoLoadingBrowser && panelEl.__bentoLoadingListener) {
