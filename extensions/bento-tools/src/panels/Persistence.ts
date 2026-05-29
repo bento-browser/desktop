@@ -254,7 +254,12 @@ export class Persistence {
     for (const spId of sub.subPanelTabIds) {
       try {
         const tab = await browser.tabs.get(spId);
-        if (tab.url && tab.url !== 'about:blank') urls.push(tab.url);
+        const pendingUrl =
+          typeof (tab as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
+            ? ((tab as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? '')
+            : '';
+        const url = tab.url && tab.url !== 'about:blank' ? tab.url : pendingUrl;
+        if (url && url !== 'about:blank') urls.push(url);
       } catch {
         // sub-panel tab gone
       }
@@ -281,7 +286,11 @@ export class Persistence {
       for (const id of tabIds) {
         try {
           const tab = await browser.tabs.get(id);
-          const url = tab.url;
+          const pendingUrl =
+            typeof (tab as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
+              ? ((tab as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? '')
+              : '';
+          const url = tab.url && tab.url !== 'about:blank' ? tab.url : pendingUrl;
           if (!url || url === 'about:blank') continue;
           const entry: StoredEntryV4 = { url };
           const w = widths.get(id);

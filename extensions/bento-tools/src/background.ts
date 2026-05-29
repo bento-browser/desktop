@@ -1062,6 +1062,12 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
     maybeHandleAddPanelMarker(tabId, changeInfo.url, 'onUpdated', windowId);
+    if (
+      changeInfo.url !== 'about:blank' &&
+      panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0
+    ) {
+      panels.persistCurrentState();
+    }
   }
 });
 

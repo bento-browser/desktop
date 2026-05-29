@@ -173,6 +173,13 @@ export class PanelStore {
     this.#flushPersist();
   }
 
+  /** Persist the current panel bindings without changing structure.
+   * Used when a panel or sub-panel tab navigates: persistence stores URLs,
+   * but URL changes do not otherwise mutate PanelStore state. */
+  persistCurrentState(): void {
+    this.#flushPersist();
+  }
+
   /** Get the panel tab IDs for a workspace, in left-to-right order. */
   getPanels(workspaceId: string | null): number[] {
     if (!workspaceId) return [];
