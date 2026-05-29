@@ -2847,23 +2847,10 @@
               return;
             }
             if (itemId === 'subdivide') {
-              console.log('[bento-subdiv-debug] chrome dispatch subdivide from panel header', {
-                tabId,
-                linkedPanel: panelEl.id || null,
-                isSubPanel: panelEl.hasAttribute('data-bento-subpanel'),
-                parentPanel: panelEl.closest('[data-bento-subdivided]')?.id || null,
-                fullSlotSurvivorParentTabId: getFullSlotSurvivorParentTabId(tabId),
-                domFullSlotSurvivor: isFullSlotSurvivorPanelElement(panelEl),
-              });
               dispatchShellAction({ type: 'panel/subdivide', tabId });
               return;
             }
             if (itemId === 'break-out-sub-panel') {
-              console.log('[bento-subdiv-debug] chrome dispatch break out sub-panel', {
-                tabId,
-                linkedPanel: panelEl.id || null,
-                parentTabId: getSubdivisionParentTabId(tabId),
-              });
               dispatchShellAction({ type: 'panel/breakOutSubPanel', tabId });
               return;
             }
@@ -3150,105 +3137,6 @@
     if (!overlay) return;
     overlay.hidden = true;
     overlay.removeAttribute('data-bento-visible');
-  }
-
-  function logPromotedPanelBrowserState(label, tab, panelEl) {
-    try {
-      const browserEl = tab?.linkedBrowser;
-      console.log(`[bento-subdiv-debug] chrome promoted sub-panel ${label}`, {
-        linkedPanel: tab?.linkedPanel || null,
-        panelConnected: !!panelEl?.isConnected,
-        hasSubPanelAttr: !!panelEl?.hasAttribute('data-bento-subpanel'),
-        overlayVisible: !!panelEl
-          ?.querySelector(':scope > .bento-panel-loading-overlay')
-          ?.hasAttribute('data-bento-visible'),
-        browserConnected: !!browserEl?.isConnected,
-        currentURI: browserEl?.currentURI?.spec || null,
-        isLoadingDocument: !!browserEl?.webProgress?.isLoadingDocument,
-        documentURI: browserEl?.contentDocument?.documentURI || null,
-      });
-    } catch (err) {
-      console.log(`[bento-subdiv-debug] chrome promoted sub-panel ${label} state failed`, err);
-    }
-  }
-
-  function getPaintStyleState(el) {
-    if (!el) return null;
-    try {
-      const rect = el.getBoundingClientRect();
-      const style = window.getComputedStyle(el);
-      return {
-        tagName: el.localName || el.tagName || null,
-        id: el.id || null,
-        className: typeof el.className === 'string' ? el.className : String(el.className || ''),
-        rect: {
-          x: Math.round(rect.x),
-          y: Math.round(rect.y),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        },
-        display: style.display,
-        visibility: style.visibility,
-        opacity: style.opacity,
-        flex: style.flex,
-        overflow: style.overflow,
-        pointerEvents: style.pointerEvents,
-        position: style.position,
-        zIndex: style.zIndex,
-        subtreeHidden: style.getPropertyValue('-moz-subtree-hidden-only-visually') || null,
-        hidden: !!el.hidden,
-        collapsed: el.getAttribute?.('collapsed') || null,
-      };
-    } catch (err) {
-      return { error: String(err) };
-    }
-  }
-
-  function logTopClosedSubPanelPaintState(label, tab, panelEl) {
-    try {
-      const browserEl = tab?.linkedBrowser || panelEl?.querySelector?.('browser') || null;
-      const browserContainer = panelEl?.querySelector?.(':scope > .browserContainer') || null;
-      const browserStack =
-        panelEl?.querySelector?.(':scope > .browserContainer > .browserStack') ||
-        panelEl?.querySelector?.(':scope > .browserStack') ||
-        null;
-      const headerEl = panelEl?.querySelector?.(':scope > .bento-panel-header') || null;
-      const parentPanel = panelEl?.closest?.('[data-bento-subdivided]') || null;
-      const remoteTab = browserEl?.frameLoader?.remoteTab || null;
-      console.log(`[bento-subdiv-debug] chrome top-closed sub-panel paint ${label}`, {
-        linkedPanel: tab?.linkedPanel || panelEl?.id || null,
-        parentPanel: parentPanel?.id || null,
-        hasSubPanelAttr: !!panelEl?.hasAttribute?.('data-bento-subpanel'),
-        splitViewActive: !!panelEl?.classList?.contains('split-view-panel-active'),
-        deckSelected: !!panelEl?.classList?.contains('deck-selected'),
-        browserConnected: !!browserEl?.isConnected,
-        currentURI: browserEl?.currentURI?.spec || null,
-        documentURI: browserEl?.contentDocument?.documentURI || null,
-        rememberedUrl:
-          browserEl?._bentoLastNonBlankUrl ||
-          panelEl?.dataset?.bentoLastNonBlankUrl ||
-          panelEl?.querySelector?.(':scope > .bento-panel-header .bento-panel-header-url')?.value ||
-          null,
-        docShellIsActive: !!browserEl?.docShellIsActive,
-        renderLayers: !!browserEl?.renderLayers,
-        hasLayers: !!browserEl?.hasLayers,
-        frameLoader: !!browserEl?.frameLoader,
-        remoteTab: !!remoteTab,
-        remoteTabRenderLayers: remoteTab ? !!remoteTab.renderLayers : null,
-        remoteTabHasLayers: remoteTab ? !!remoteTab.hasLayers : null,
-        remoteTabHasPresented: remoteTab ? !!remoteTab.hasPresented : null,
-        blankAttr: !!browserEl?.hasAttribute?.('blank'),
-        pendingPaintAttr: !!browserEl?.hasAttribute?.('pendingpaint'),
-        tabpanelsPendingPaint: !!window.gBrowser?.tabpanels?.hasAttribute?.('pendingpaint'),
-        panel: getPaintStyleState(panelEl),
-        header: getPaintStyleState(headerEl),
-        browserContainer: getPaintStyleState(browserContainer),
-        browserStack: getPaintStyleState(browserStack),
-        browser: getPaintStyleState(browserEl),
-      });
-    } catch (err) {
-      console.log(`[bento-subdiv-debug] chrome top-closed sub-panel paint ${label} failed`, err);
-    }
   }
 
   function getBentoTabTracker() {
@@ -3961,11 +3849,6 @@
 	    for (const el of tabpanels.querySelectorAll('[data-bento-subdivided]')) {
 	      if (!elementStillHasSubdivision(el)) {
 	        const isTopClosedSurvivor = isCurrentTopClosedSurvivorElement(el);
-	        if (isTopClosedSurvivor) {
-	          console.log('[bento-subdiv-debug] chrome clear stale survivor subdivision without replaying animation', {
-	            linkedPanel: el.id || null,
-	          });
-	        }
 	        clearSubdivisionFromPanel(el, { force: true, animate: !isTopClosedSurvivor });
 	      }
 	    }
@@ -4178,22 +4061,18 @@
             injectPanelHeaderIntoLinkedPanel(spTab, sub.subPanels[0].url);
             if (topClosed) {
               forceTopClosedSubPanelPaint(spTab, spPanel);
-              logTopClosedSubPanelPaintState('after apply', spTab, spPanel);
               forceHidePanelLoadingOverlay(spPanel);
               requestAnimationFrame(() => {
                 forceTopClosedSubPanelPaint(spTab, spPanel);
                 forceHidePanelLoadingOverlay(spPanel);
-                logTopClosedSubPanelPaintState('after first paint', spTab, spPanel);
                 requestAnimationFrame(() => {
                   forceTopClosedSubPanelPaint(spTab, spPanel);
                   forceHidePanelLoadingOverlay(spPanel);
-                  logTopClosedSubPanelPaintState('after second paint', spTab, spPanel);
                 });
               });
               window.setTimeout(() => {
                 forceTopClosedSubPanelPaint(spTab, spPanel);
                 forceHidePanelLoadingOverlay(spPanel);
-                logTopClosedSubPanelPaintState('after settle', spTab, spPanel);
               }, 350);
             }
             const spBrowser = spPanel.querySelector('browser');
@@ -5317,12 +5196,6 @@
     if (!Number.isFinite(tabId)) return;
     hidePanelNavContextMenu();
     const panel = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
-    console.log('[bento-subdiv-debug] chrome removePanel start', {
-      tabId,
-      hasTopLevelPanel: !!panel,
-      hasSubdivision: currentSubdivisions.has(tabId),
-      subdivision: currentSubdivisions.get(tabId) || null,
-    });
     if (!panel) {
       const subPanel = (() => {
         try {
@@ -5335,29 +5208,14 @@
           return null;
         }
       })();
-      console.log('[bento-subdiv-debug] chrome removePanel no top-level panel', {
-        tabId,
-        hasSubPanelElement: !!subPanel,
-        isSubPanel: !!subPanel?.hasAttribute('data-bento-subpanel'),
-        linkedPanel: subPanel?.id || null,
-      });
       if (subPanel?.hasAttribute('data-bento-subpanel') && currentSubdivisions.has(tabId)) {
         const subdivision = currentSubdivisions.get(tabId) || null;
-        console.log('[bento-subdiv-debug] chrome dispatch close for subdivided survivor parent', {
-          tabId,
-          linkedPanel: subPanel.id,
-          subdivision,
-        });
         if (subdivision?.subPanels?.length === 1) {
           animateSubdividedParentClose(subPanel, subdivision, () => {
             dispatchShellAction({ type: 'panel/closeSubdivisionTop', tabId });
           }, { detachBeforeDone: false });
         } else {
           animateSubPanelClose(subPanel, () => {
-            console.log('[bento-subdiv-debug] chrome dispatch close for subdivided sub-panel parent', {
-              tabId,
-              childCount: subdivision?.subPanels?.length ?? 0,
-            });
             dispatchShellAction({ type: 'tab/close', id: tabId });
           });
         }
@@ -5365,22 +5223,15 @@
       }
       if (subPanel?.hasAttribute('data-bento-subpanel')) {
         animateSubPanelClose(subPanel, () => {
-          console.log('[bento-subdiv-debug] chrome dispatch sub-panel close after animation', { tabId });
           dispatchShellAction({ type: 'tab/close', id: tabId });
         });
         return;
       }
-      console.log('[bento-subdiv-debug] chrome dispatch close for unknown panel element', { tabId });
       dispatchShellAction({ type: 'tab/close', id: tabId });
       return;
     }
     if (currentSubdivisions.has(tabId)) {
       const subdivision = currentSubdivisions.get(tabId) || null;
-      console.log('[bento-subdiv-debug] chrome dispatch close for subdivided parent without card animation', {
-        tabId,
-        linkedPanel: panel.id,
-        subdivision,
-      });
       if (subdivision?.subPanels?.length === 1) {
         animateSubdividedParentClose(panel, subdivision, () => {
           dispatchShellAction({ type: 'panel/closeSubdivisionTop', tabId });
@@ -5403,7 +5254,6 @@
     panel.classList.add('bento-panel--removing');
 
     setTimeout(() => {
-      console.log('[bento-subdiv-debug] chrome dispatch close after normal panel remove animation', { tabId });
       dispatchShellAction({ type: 'tab/close', id: tabId });
     }, PANEL_REMOVE_ANIMATION_MS);
   }
@@ -5427,35 +5277,6 @@
       parentPanel.querySelector(':scope > [data-bento-subpanel]') ||
       parentPanel.querySelector(':scope > .bento-subdivision-chooser');
     const collapseEls = [headerEl, contentEl, loadingEl, vsplitter].filter(Boolean);
-
-    console.log('[bento-subdiv-debug] chrome animate subdivided parent close', {
-      linkedPanel: parentPanel.id || null,
-      subPanelTabIds: (subdivision?.subPanels || []).map((sp) => sp.tabId),
-      hasBottomEl: !!bottomEl,
-      childBrowserStates: (subdivision?.subPanels || []).map((sp) => {
-        try {
-          const mod = ChromeUtils.importESModule(
-            'resource://gre/modules/ExtensionParent.sys.mjs',
-          );
-          const tab = mod.ExtensionParent?.apiManager?.global?.tabTracker?.getTab(sp.tabId);
-          const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
-          const browserEl = tab?.linkedBrowser || panelEl?.querySelector?.('browser') || null;
-          return {
-            tabId: sp.tabId,
-            linkedPanel: tab?.linkedPanel || null,
-            currentURI: browserEl?.currentURI?.spec || null,
-            rememberedUrl:
-              browserEl?._bentoLastNonBlankUrl ||
-              panelEl?.dataset?.bentoLastNonBlankUrl ||
-              panelEl?.querySelector?.(':scope > .bento-panel-header .bento-panel-header-url')?.value ||
-              null,
-            parentPanel: panelEl?.parentElement?.id || null,
-          };
-        } catch {
-          return { tabId: sp.tabId, error: true };
-        }
-      }),
-    });
 
     for (const el of collapseEls) {
       const rect = el.getBoundingClientRect();
@@ -5532,14 +5353,6 @@
       }
       const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
       if (!panelEl?.hasAttribute('data-bento-subpanel')) continue;
-      const oldParent = panelEl.closest('[data-bento-subdivided]');
-      console.log('[bento-subdiv-debug] chrome pre-detach promoted sub-panel', {
-        reason,
-        tabId: subPanel.tabId,
-        linkedPanel: tab.linkedPanel,
-        oldParentPanel: oldParent?.id || null,
-        currentURI: tab.linkedBrowser?.currentURI?.spec || null,
-      });
       try {
         if (typeof tab.linkedBrowser?.preserveLayers === 'function') {
           tab.linkedBrowser.preserveLayers(true);
@@ -7438,7 +7251,6 @@
   function fastPathTopClosedSubdivision(panels) {
     const tabpanels = window.gBrowser?.tabpanels;
     if (!tabpanels) return false;
-    console.log('[bento-subdiv-debug] chrome top-closed fast path');
     setNoSidePanelsMode(false);
     applySubdivisions(tabpanels, currentSubdivisions);
     for (const [, sub] of currentSubdivisions) {
@@ -7454,7 +7266,6 @@
         const panelEl = tab?.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
         if (panelEl) {
           forceTopClosedSubPanelPaint(tab, panelEl);
-          logTopClosedSubPanelPaintState('fast path', tab, panelEl);
         }
         if (browserEl) {
           browserEl.preserveLayers?.(true);
@@ -7464,7 +7275,6 @@
         if (panelEl) {
           requestAnimationFrame(() => {
             forceTopClosedSubPanelPaint(tab, panelEl);
-            logTopClosedSubPanelPaintState('fast path after paint', tab, panelEl);
           });
         }
       } catch {
@@ -7907,15 +7717,6 @@
     for (const { tab, payload } of resolved) {
       const panelEl = tab.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
       if (!panelEl?.hasAttribute('data-bento-subpanel')) continue;
-      const oldParent = panelEl.closest('[data-bento-subdivided]');
-      console.log('[bento-subdiv-debug] chrome detach promoted sub-panel before reconcile', {
-        tabId: tabTracker ? (() => {
-          try { return tabTracker.getId(tab); } catch { return null; }
-        })() : null,
-        linkedPanel: tab.linkedPanel,
-        oldParentPanel: oldParent?.id || null,
-        payload,
-      });
       tabpanels.appendChild(panelEl);
       panelEl.removeAttribute('data-bento-subpanel');
       panelEl.style.removeProperty('opacity');
@@ -7927,7 +7728,6 @@
       removeInjectedPanelHeader(panelEl);
       injectPanelHeaderIntoLinkedPanel(tab, payload?.url || '');
       forceHidePanelLoadingOverlay(panelEl);
-      logPromotedPanelBrowserState('after detach', tab, panelEl);
       if (tab.linkedBrowser) {
         try {
           tab.linkedBrowser.docShellIsActive = true;
@@ -7939,12 +7739,10 @@
         forceHidePanelLoadingOverlay(panelEl);
         requestAnimationFrame(() => {
           forceHidePanelLoadingOverlay(panelEl);
-          logPromotedPanelBrowserState('after paint', tab, panelEl);
         });
       });
       setTimeout(() => {
         forceHidePanelLoadingOverlay(panelEl);
-        logPromotedPanelBrowserState('after settle', tab, panelEl);
       }, 500);
     }
 
@@ -8033,17 +7831,6 @@
       for (const { tab } of resolvedSubPanels) {
         keepActiveTab(tab);
       }
-    }
-    if (topClosedSubPanelTabIds.size > 0) {
-      console.log('[bento-subdiv-debug] chrome top-closed split bookkeeping', {
-        renderTabIds: tabsToRender.map((tab) => {
-          try { return tabTracker?.getId(tab) ?? null; } catch { return null; }
-        }),
-        keepActiveTabIds: tabsToKeepActive.map((tab) => {
-          try { return tabTracker?.getId(tab) ?? null; } catch { return null; }
-        }),
-        topClosedSubPanelTabIds: Array.from(topClosedSubPanelTabIds),
-      });
     }
     const layoutTabsToRender = tabsToRender.filter((tab) => !subPanelIds.has(tab.linkedPanel));
     // Closing the last side panel can briefly leave that tab selected

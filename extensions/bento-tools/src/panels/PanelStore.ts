@@ -238,42 +238,19 @@ export class PanelStore {
   promoteSubPanelsWhenRemovingParent(workspaceId: string, parentTabId: number): boolean {
     const list = this.#byWorkspace.get(workspaceId);
     if (!list) {
-      console.log('[bento-subdiv-debug] PanelStore promote no workspace list', {
-        workspaceId,
-        parentTabId,
-      });
       return false;
     }
     const idx = list.indexOf(parentTabId);
     if (idx === -1) {
-      console.log('[bento-subdiv-debug] PanelStore promote parent not in list', {
-        workspaceId,
-        parentTabId,
-        list,
-      });
       return false;
     }
     const sub = this.#subdivisions.get(parentTabId);
     if (!sub || sub.subPanelTabIds.length === 0) {
-      console.log('[bento-subdiv-debug] PanelStore promote no subdivision, removing normally', {
-        workspaceId,
-        parentTabId,
-        list,
-        subdivision: sub ?? null,
-      });
       return this.remove(workspaceId, parentTabId);
     }
 
     const promoted = sub.subPanelTabIds.filter((id) => Number.isFinite(id));
     const next = [...list.slice(0, idx), ...promoted, ...list.slice(idx + 1)];
-    console.log('[bento-subdiv-debug] PanelStore promote parent to sub-panels', {
-      workspaceId,
-      parentTabId,
-      before: list,
-      subdivision: sub,
-      promoted,
-      after: next,
-    });
     if (next.length === 0) this.#byWorkspace.delete(workspaceId);
     else this.#byWorkspace.set(workspaceId, next);
 

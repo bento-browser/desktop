@@ -289,52 +289,24 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           await ctx.tabs.markClosing(action.id);
           const affected = ctx.panels.findWorkspacesContainingTab(action.id);
           let delayActualTabRemove = false;
-          console.log('[bento-subdiv-debug] tools tab/close start', {
-            tabId: action.id,
-            affectedWorkspaces: affected,
-            parentOfSubPanel: ctx.panels.findParentOfSubPanel(action.id) ?? null,
-            activeWorkspaceId: ctx.workspaces.getActiveId(ctx.sourceWindowId),
-            sourceWindowId: ctx.sourceWindowId,
-          });
           if (affected.length > 0) {
             for (const wsId of affected) {
               const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.id);
               if (promoted && ctx.panels.getPanels(wsId).length > 0) {
                 delayActualTabRemove = true;
               }
-              console.log('[bento-subdiv-debug] tools tab/close parent-panel path', {
-                tabId: action.id,
-                workspaceId: wsId,
-                promoted,
-                panelsAfter: ctx.panels.getPanels(wsId),
-                subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
-              });
               ctx.syncPanelMarkers(wsId);
               ctx.emitPanelsSync(wsId);
             }
             void clearPanelMarker(action.id);
           } else {
             const parentId = ctx.panels.removeSubPanelTab(action.id);
-            console.log('[bento-subdiv-debug] tools tab/close sub-panel path', {
-              tabId: action.id,
-              parentId: parentId ?? null,
-              subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
-            });
             if (parentId !== undefined) {
               const parentWs = ctx.panels.findWorkspacesContainingPanelOrSubPanel(parentId);
-              console.log('[bento-subdiv-debug] tools tab/close sub-panel sync targets', {
-                tabId: action.id,
-                parentId,
-                parentWorkspaces: parentWs,
-              });
               for (const wsId of parentWs) ctx.emitPanelsSync(wsId);
             }
           }
           const delayMs = delayActualTabRemove ? 500 : 0;
-          console.log('[bento-subdiv-debug] tools tab/close removing underlying Firefox tab', {
-            tabId: action.id,
-            delayed: delayActualTabRemove,
-          });
           await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
         })();
       }
@@ -680,24 +652,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       const panelList = ctx.panels.getPanels(wsId);
       const isFullSlotSubPanel = ctx.panels.isFullSlotSubPanel(wsId, action.tabId);
       if (!panelList.includes(action.tabId) && !isFullSlotSubPanel) {
-        console.log('[bento-subdiv-debug] tools subdivide rejected', {
-          tabId: action.tabId,
-          workspaceId: wsId,
-          panelList,
-          isFullSlotSubPanel,
-        });
         return;
       }
       const subdivided = ctx.panels.subdivide(wsId, action.tabId);
       const existingSubdivision = ctx.panels.getSubdivision(action.tabId);
-      console.log('[bento-subdiv-debug] tools subdivide requested', {
-        tabId: action.tabId,
-        workspaceId: wsId,
-        panelList,
-        isFullSlotSubPanel,
-        subdivided,
-        hadExistingSubdivision: !!existingSubdivision,
-      });
       if (subdivided || existingSubdivision) {
         ctx.emitPanelsSync(wsId);
       }
@@ -720,13 +678,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       const result = ctx.panels.breakOutSubPanel(wsId, action.tabId);
-      console.log('[bento-subdiv-debug] tools break out sub-panel', {
-        tabId: action.tabId,
-        workspaceId: wsId,
-        result,
-        panelsAfter: ctx.panels.getPanels(wsId),
-        subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
-      });
       if (!result) return;
       ctx.syncPanelMarkers(wsId);
       ctx.emitPanelsSync(wsId, { scrollToPanelTabId: result.promotedTabId });
@@ -751,13 +702,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.tabId);
-      console.log('[bento-subdiv-debug] tools promote subdivision parent path', {
-        tabId: action.tabId,
-        workspaceId: wsId,
-        promoted,
-        panelsAfter: ctx.panels.getPanels(wsId),
-        subdivisionsAfter: Array.from(ctx.panels.getAllSubdivisions().entries()),
-      });
       if (promoted) {
         void clearPanelMarker(action.tabId);
         ctx.syncPanelMarkers(wsId);

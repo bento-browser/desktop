@@ -795,11 +795,6 @@ tabs.onDeltas((deltas) => {
 // without duplicating cleanup at four call sites.
 const recentlyRemovedPanelTabIds = new Set<number>();
 panels.onPanelRemoved((workspaceId, tabId) => {
-  console.log('[bento-subdiv-debug] background panelRemoved marker add', {
-    workspaceId,
-    tabId,
-    panelsNow: panels.getPanels(workspaceId),
-  });
   recentlyRemovedPanelTabIds.add(tabId);
   setTimeout(() => recentlyRemovedPanelTabIds.delete(tabId), 5000);
   if (pinnedPanels.remove(workspaceId, tabId)) {
@@ -1124,14 +1119,9 @@ async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Pr
 // Use Cmd+Shift+W if you want to close the window with tabs still in
 // the workspace; that path doesn't touch this handler.
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
-  console.log('[bento-subdiv-debug] background tabs.onRemoved empty-workspace guard start', {
-    tabId,
-    removeInfo,
-  });
   // Firefox is already tearing the window down (last-tab close or
   // window-close API) — don't double-close.
   if (removeInfo.isWindowClosing) {
-    console.log('[bento-subdiv-debug] background tabs.onRemoved skip window closing', { tabId });
     return;
   }
   const windowId =
@@ -1139,15 +1129,10 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
       ? removeInfo.windowId
       : null;
   if (windowId === null) {
-    console.log('[bento-subdiv-debug] background tabs.onRemoved skip null window', { tabId });
     return;
   }
   const activeWsId = workspaces.getActiveId(windowId);
   if (!activeWsId) {
-    console.log('[bento-subdiv-debug] background tabs.onRemoved skip no active workspace', {
-      tabId,
-      windowId,
-    });
     return;
   }
   // Filter the just-removed tab out explicitly because the
@@ -1164,24 +1149,8 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
         t.workspaceId === activeWsId &&
         !panelTabIdsSet.has(t.id),
     );
-  console.log('[bento-subdiv-debug] background tabs.onRemoved computed workspace state', {
-    tabId,
-    windowId,
-    activeWsId,
-    panelTabIds,
-    remainingNonPanelTabIds: remaining.map((t) => t.id),
-    recentlyRemovedHasTab: recentlyRemovedPanelTabIds.has(tabId),
-  });
   if (remaining.length > 0) return;
   if (recentlyRemovedPanelTabIds.delete(tabId) && panelTabIds.length > 0) {
-    console.log(
-      '[bento-subdiv-debug] background tabs.onRemoved skip auto-promote due recent panel removal',
-      {
-        tabId,
-        activeWsId,
-        panelTabIds,
-      },
-    );
     return;
   }
 
@@ -1194,12 +1163,6 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   // (DOM move, not a navigate). Repeated Cmd+W then chews through one
   // panel per press until the workspace is truly empty.
   if (panelTabIds.length > 0) {
-    console.log('[bento-subdiv-debug] background tabs.onRemoved auto-promote leftmost panel', {
-      tabId,
-      activeWsId,
-      promoteTabId: panelTabIds[0],
-      panelTabIds,
-    });
     void promoteLeftmostPanelToTab(activeWsId, panelTabIds[0]!);
     return;
   }
