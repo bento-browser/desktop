@@ -4791,7 +4791,8 @@
 
   // ─── Arrow-key panel navigation ────────────────────────────────────────
   // Left / Right arrow keys cycle through panels — main + each side
-  // panel, then the Add-panel trailer when present. The "current" item
+  // panel's flattened subdivision targets, then the Add-panel trailer
+  // when present. The "current" item
   // advances from the user's explicit selection; pressing Right scrolls
   // the next item into view, Left scrolls the previous one. Stops at the
   // ends (no wraparound).
@@ -4822,19 +4823,78 @@
     return out;
   }
 
+  function appendPanelCycleTargets(panelEl, out) {
+    if (!panelEl) return;
+    const topClosed = panelEl.hasAttribute('data-bento-subdivision-top-closed');
+    if (!topClosed) out.push(panelEl);
+    if (!panelEl.hasAttribute('data-bento-subdivided')) return;
+
+    const bottom = panelEl.querySelector(':scope > .bento-subdivision-bottom');
+    const subPanels = bottom
+      ? Array.from(bottom.children).filter((el) => el.hasAttribute?.('data-bento-subpanel'))
+      : Array.from(panelEl.querySelectorAll(':scope > [data-bento-subpanel]'));
+    for (const subPanel of subPanels) {
+      appendPanelCycleTargets(subPanel, out);
+    }
+  }
+
   function getPanelCycleTargets() {
     // Cycle targets = ordered panels + the Add-panel trailer (when
     // present). The trailer is a focusable XUL vbox sibling of the
     // panel containers inside tabpanels; including it as the final
     // cycle slot lets Right-arrow past the last panel land on it, and
     // its Enter/Space keydown handler then triggers addNewPanel.
-    // applyActiveMarker is naturally a no-op for this index because
-    // the favicon strip only renders entries for real panels.
-    const targets = getOrderedPanels();
+    // The favicon strip only renders top-level panel entries, so
+    // applyActiveMarker maps sub-panel targets back to their containing
+    // top-level panel.
+    const targets = [];
+    for (const panel of getOrderedPanels()) {
+      appendPanelCycleTargets(panel, targets);
+    }
     if (targets.length === 0) return targets;
     const trailer = document.getElementById('bento-add-panel-trailer');
     if (trailer) targets.push(trailer);
     return targets;
+  }
+
+  function getTopLevelPanelForCycleTarget(target) {
+    if (!target || target.id === 'bento-add-panel-trailer') return null;
+    const orderedPanels = getOrderedPanels();
+    if (orderedPanels.includes(target)) return target;
+    return orderedPanels.find((panel) => panel.contains(target)) || null;
+  }
+
+  function getNavIndexForCycleIndex(idx) {
+    const target = getPanelCycleTargets()[idx];
+    const topLevelPanel = getTopLevelPanelForCycleTarget(target);
+    if (!topLevelPanel) return -1;
+    return getOrderedPanels().indexOf(topLevelPanel);
+  }
+
+  function getCycleIndexForPanelElement(panelEl) {
+    if (!panelEl) return -1;
+    const targets = getPanelCycleTargets();
+    let idx = targets.indexOf(panelEl);
+    if (idx >= 0) return idx;
+    idx = targets.findIndex((target) => panelEl.contains(target));
+    return idx;
+  }
+
+  function getCycleIndexForPanelTabId(tabId) {
+    if (!Number.isFinite(tabId)) return -1;
+    const panelEl = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
+    return getCycleIndexForPanelElement(panelEl);
+  }
+
+  function getPanelTargetBrowser(panelEl) {
+    if (!panelEl) return null;
+    if (panelEl.dataset?.bentoMainPanel) {
+      return window.gBrowser?.selectedBrowser || null;
+    }
+    return (
+      panelEl.querySelector(':scope > .browserContainer browser') ||
+      panelEl.querySelector(':scope > browser')
+    );
   }
 
   function getPanelFocusIndicatorTargets() {
@@ -4983,7 +5043,9 @@
       const isPanelContainer = !!(
         target &&
         target.dataset &&
-        (target.dataset.bentoMainPanel || target.dataset.bentoPanelTabId)
+        (target.dataset.bentoMainPanel ||
+          target.dataset.bentoPanelTabId ||
+          target.hasAttribute?.('data-bento-subpanel'))
       );
       if (!isPanelContainer) return;
       const browser = target.querySelector('browser');
@@ -5048,10 +5110,7 @@
     // For the main panel container (#tabbrowser-tabbox), the actual
     // content lives in the active tab's browser. For side panels,
     // the panel container has its own dedicated <browser> child.
-    if (panelEl.dataset && panelEl.dataset.bentoMainPanel) {
-      return window.gBrowser ? window.gBrowser.selectedBrowser : null;
-    }
-    return panelEl.querySelector('browser');
+    return getPanelTargetBrowser(panelEl);
   }
 
   function scrollPanelContent(panelEl, dy) {
@@ -5087,7 +5146,11 @@
     if (!isUp && !isDown && !isSpace) return;
     const active = document.activeElement;
     if (!active || !active.dataset) return;
-    if (!active.dataset.bentoMainPanel && !active.dataset.bentoPanelTabId) return;
+    if (
+      !active.dataset.bentoMainPanel &&
+      !active.dataset.bentoPanelTabId &&
+      !active.hasAttribute?.('data-bento-subpanel')
+    ) return;
     const panelBrowser = getPanelScrollBrowser(active);
     const panelHeight = panelBrowser?.clientHeight || 600;
     const pageStep = Math.max(SCROLL_LINE_PX, panelHeight - SCROLL_LINE_PX);
@@ -5114,26 +5177,23 @@
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const active = document.activeElement;
     if (!active) return;
-    const panels = getOrderedPanels();
-    for (let i = 0; i < panels.length; i++) {
-      const panel = panels[i];
-      // Already on the panel container itself — nothing to escape from.
-      if (active === panel) continue;
-      if (panel.contains(active)) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Blur whatever input/button currently has focus, then focus
-        // the panel container. Re-applies the cycle indicator so the
-        // user has a visual cue they're back in panel-cycle mode.
-        try {
-          if (typeof active.blur === 'function') active.blur();
-        } catch {
-          /* best-effort */
-        }
-        setActiveByIndex(i);
-        return;
-      }
+    const panel = active.closest?.(
+      '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+    );
+    if (!panel || active === panel) return;
+    const idx = getCycleIndexForPanelElement(panel);
+    if (idx < 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Blur whatever input/button currently has focus, then focus
+    // the panel container. Re-applies the cycle indicator so the
+    // user has a visual cue they're back in panel-cycle mode.
+    try {
+      if (typeof active.blur === 'function') active.blur();
+    } catch {
+      /* best-effort */
     }
+    setActiveByIndex(idx);
   });
 
   // ─── Panel navigator (favicon strip + cycle buttons) ──────────────────
@@ -5771,8 +5831,9 @@
   function applyActiveMarker(idx) {
     const list = document.querySelector('.bento-panel-nav__list');
     if (!list) return;
+    const navIdx = getNavIndexForCycleIndex(idx);
     for (let i = 0; i < list.children.length; i++) {
-      list.children[i].classList.toggle('bento-panel-nav__icon--active', i === idx);
+      list.children[i].classList.toggle('bento-panel-nav__icon--active', i === navIdx);
     }
   }
 
@@ -5859,7 +5920,7 @@
     // normally — those don't go through this focus path.
     try {
       const isTrailer = target.id === 'bento-add-panel-trailer';
-      const browserEl = isTrailer ? null : target.querySelector?.('browser');
+      const browserEl = isTrailer ? null : getPanelTargetBrowser(target);
       if (browserEl) {
         browserEl.focus({ preventScroll: true });
       } else {
@@ -6576,10 +6637,7 @@
               '[data-bento-panel-tab-id="' + tabId + '"]',
             );
             if (el) scrollPanelToLeftmost(el);
-            const targets = getPanelCycleTargets();
-            const idx = targets.findIndex(
-              (t) => t.dataset.bentoPanelTabId === String(tabId),
-            );
+            const idx = getCycleIndexForPanelTabId(tabId);
             setActiveByIndex(idx >= 0 ? idx : 0);
           };
           const navInfo = resolveVisiblePanelForNav(panelPayload);
@@ -8838,15 +8896,14 @@
         } catch (err) {
           console.warn('[bento-shell-mount] FOCUS_PANEL scroll failed:', err);
         }
-        const targets = getPanelCycleTargets();
-        const idx = targets.indexOf(panel);
+        const idx = getCycleIndexForPanelElement(panel);
         if (idx >= 0) {
           currentActiveIdx = idx;
           applyActiveMarker(idx);
-          applyFocusedPanelIndicator(panel);
+          applyPanelFocusIndicator(idx);
         }
         try {
-          const browserEl = panel.querySelector && panel.querySelector('browser');
+          const browserEl = getPanelTargetBrowser(panel);
           if (browserEl) browserEl.focus({ preventScroll: true });
           else panel.focus({ preventScroll: true });
         } catch (err) {
@@ -8968,29 +9025,16 @@
         // that helper also focuses the panel's <browser>, which
         // would re-fire this same focusin handler.
         //
-        // Index resolution has a subtlety: closest() with the
-        // [data-bento-main-panel] selector can match EITHER the inner
-        // split-view main panel (the one in getPanelCycleTargets) OR
-        // the outer #tabbrowser-tabbox (which also carries the attr,
-        // see line 1488 + 4228). When closest returns the outer
-        // tabbox, indexOf returns -1 because targets only holds the
-        // inner panels — we'd silently skip the update. Resolve by
-        // mapping the outer tabbox to targets[0] (the inner main
-        // panel always sits at index 0 in splitViewPanels).
         const targets = getPanelCycleTargets();
-        let idx = targets.indexOf(stripPanelEl);
+        let idx = getCycleIndexForPanelElement(panelEl);
         if (idx < 0 && panelEl.id === 'tabbrowser-tabbox' && targets.length > 0) {
           idx = 0;
         }
-        let focusedIndicatorEl = panelEl;
         if (idx >= 0) {
           currentActiveIdx = idx;
           applyActiveMarker(idx);
-          if (panelEl.id === 'tabbrowser-tabbox') {
-            focusedIndicatorEl = targets[idx];
-          }
         }
-        applyFocusedPanelIndicator(focusedIndicatorEl);
+        applyFocusedPanelIndicator(idx >= 0 ? targets[idx] : panelEl);
       },
       true,
     );
@@ -10805,10 +10849,11 @@
       (e) => {
         const target = e.target;
         if (!target || typeof target.closest !== 'function') return;
-        const container = target.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
+        const container = target.closest(
+          '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+        );
         if (!container) return;
-        const targets = getPanelCycleTargets();
-        const idx = targets.indexOf(container);
+        const idx = getCycleIndexForPanelElement(container);
         if (idx < 0 || idx === currentActiveIdx) return;
         currentActiveIdx = idx;
         applyPanelFocusIndicator(idx);
