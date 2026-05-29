@@ -1284,7 +1284,7 @@
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed])::after {
+      [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed])::after {
         content: '';
         position: absolute;
         inset: 0;
@@ -1295,8 +1295,8 @@
         box-sizing: border-box;
         transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
       }
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]).bento-panel--focused::after,
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]).bento-panel--cycle-focused::after {
+      [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--focused::after,
+      [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
 
@@ -1344,6 +1344,22 @@
          each sub-section should own its own indicator (future). */
       #tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after {
         display: none !important;
+      }
+      [data-bento-subdivided]::before {
+        content: '';
+        position: absolute;
+        inset-inline: 0;
+        top: 0;
+        height: var(--bento-subdivision-top-focus-height, 50%);
+        border: var(--bento-focus-ring-width) solid transparent;
+        border-radius: var(--radius-m);
+        pointer-events: none;
+        z-index: 12;
+        box-sizing: border-box;
+        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+      }
+      [data-bento-subdivided].bento-subdivision-top--focused::before {
+        border-color: var(--color-60);
       }
       /* Stacked favicon layout for subdivided nav icons */
       .bento-panel-nav__icon--subdivided {
@@ -5708,24 +5724,52 @@
     const targets = getPanelCycleTargets();
     for (const target of getPanelFocusIndicatorTargets()) {
       target.classList.remove('bento-panel--cycle-focused');
+      target.classList.remove('bento-subdivision-top--focused');
     }
     setPanelTrailerAddFocus(false);
     if (idx < 0 || idx >= targets.length) return;
     const target = targets[idx];
     target.classList.add('bento-panel--cycle-focused');
+    if (target.hasAttribute?.('data-bento-subdivided')) {
+      applySubdividedTopFocusIndicator(target);
+    }
     const isTrailer = target.id === 'bento-add-panel-trailer';
     if (isTrailer) setPanelTrailerAddFocus(true);
     if (panelFocusTimer) clearTimeout(panelFocusTimer);
     panelFocusTimer = setTimeout(() => {
       target.classList.remove('bento-panel--cycle-focused');
+      if (!target.classList.contains('bento-panel--focused')) {
+        target.classList.remove('bento-subdivision-top--focused');
+      }
       if (isTrailer) setPanelTrailerAddFocus(false);
     }, 1500);
+  }
+
+  function applySubdividedTopFocusIndicator(panelEl) {
+    if (!panelEl?.hasAttribute?.('data-bento-subdivided')) return;
+    if (panelEl.hasAttribute('data-bento-subdivision-top-closed')) return;
+    const panelRect = panelEl.getBoundingClientRect();
+    const splitterRect = panelEl
+      .querySelector(':scope > .bento-subdivision-vsplitter')
+      ?.getBoundingClientRect();
+    const contentRect = (
+      panelEl.querySelector(':scope > .browserContainer') ||
+      panelEl.querySelector(':scope > browser')
+    )?.getBoundingClientRect();
+    const bottom = splitterRect?.top || contentRect?.bottom || panelRect.bottom;
+    const height = Math.max(0, bottom - panelRect.top);
+    panelEl.style.setProperty('--bento-subdivision-top-focus-height', Math.round(height) + 'px');
+    panelEl.classList.add('bento-subdivision-top--focused');
   }
 
   function applyFocusedPanelIndicator(panelEl) {
     const targets = getPanelFocusIndicatorTargets();
     for (const target of targets) {
       target.classList.toggle('bento-panel--focused', target === panelEl);
+      target.classList.remove('bento-subdivision-top--focused');
+    }
+    if (panelEl?.hasAttribute?.('data-bento-subdivided')) {
+      applySubdividedTopFocusIndicator(panelEl);
     }
   }
 
