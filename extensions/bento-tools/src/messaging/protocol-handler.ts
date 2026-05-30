@@ -752,6 +752,30 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       return;
     }
+    case 'panelLayout/splitTopPanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (!ctx.panels.canSplitTopPanel(wsId, action.tabId)) return;
+      void (async () => {
+        try {
+          const isDefaultNewTab = !action.url || action.url === 'about:newtab';
+          const tab = await browser.tabs.create({
+            ...(isDefaultNewTab ? {} : { url: action.url }),
+            active: false,
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof tab.id !== 'number') return;
+          ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
+          if (ctx.panels.splitTopPanel(wsId, action.tabId, tab.id)) {
+            ctx.syncPanelMarkers(wsId);
+            ctx.emitPanelsSync(wsId, { scrollToPanelTabId: tab.id });
+          }
+        } catch (err) {
+          console.warn('[bento-tools] panelLayout/splitTopPanel failed:', err);
+        }
+      })();
+      return;
+    }
     case 'panelLayout/removeVerticalGroup': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;

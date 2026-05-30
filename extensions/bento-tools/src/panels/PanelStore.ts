@@ -4,6 +4,7 @@ import {
   breakOutPanel,
   canBreakOut,
   canSubdivide,
+  canSplitTopPanel,
   cloneLayout,
   containsPanel,
   emptyLayout,
@@ -24,6 +25,7 @@ import {
   removeWorkspace,
   reorderRootNodes,
   setGroupRatio,
+  splitTopPanel,
   subdividePanel,
   toPersistenceLayout,
   toSyncLayout,
@@ -185,6 +187,11 @@ export class PanelStore {
     return canSubdivide(this.#layoutByWorkspace.get(workspaceId), tabId);
   }
 
+  canSplitTopPanel(workspaceId: string | null, tabId: number): boolean {
+    if (!workspaceId) return false;
+    return canSplitTopPanel(this.#layoutByWorkspace.get(workspaceId), tabId);
+  }
+
   canBreakOut(workspaceId: string | null, tabId: number): boolean {
     if (!workspaceId) return false;
     return canBreakOut(this.#layoutByWorkspace.get(workspaceId), tabId);
@@ -321,6 +328,16 @@ export class PanelStore {
     const changed = subdividePanel(layout, tabId, {
       groupId: this.#newLayoutId('vertical'),
       chooserId: this.#newLayoutId('chooser'),
+    });
+    if (changed) this.#flushPersist();
+    return changed;
+  }
+
+  splitTopPanel(workspaceId: string, tabId: number, newTabId: number): boolean {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    if (!layout) return false;
+    const changed = splitTopPanel(layout, tabId, newTabId, {
+      horizontalGroupId: this.#newLayoutId('horizontal'),
     });
     if (changed) this.#flushPersist();
     return changed;

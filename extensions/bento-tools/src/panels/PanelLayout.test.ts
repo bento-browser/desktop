@@ -10,8 +10,10 @@ import {
   getVisiblePanelIds,
   migrateLegacyEntriesToPersistence,
   removePanel,
+  removeVerticalGroup,
   reorderRootNodes,
   setGroupRatio,
+  splitTopPanel,
   subdividePanel,
 } from './PanelLayout';
 
@@ -61,6 +63,27 @@ describe('PanelLayout', () => {
     ).toBe(0.8);
   });
 
+  it('splits the top of a vertical group so top and bottom can form a 2x2 grid', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 25);
+    subdividePanel(layout, 25, { groupId: 'v25', chooserId: 'c25' });
+
+    expect(splitTopPanel(layout, 25, 26, { horizontalGroupId: 'h25-top' })).toBe(true);
+    expect(fillChooser(layout, 'c25', 'dual', [27, 28], { horizontalGroupId: 'h25-bottom' })).toBe(
+      true,
+    );
+
+    expect(getVisiblePanelIds(layout)).toEqual([25, 26, 27, 28]);
+    expect(getPanelLayoutStatus(layout, 25)).toBe('split-child');
+    expect(getPanelLayoutStatus(layout, 26)).toBe('split-child');
+    expect(getPanelLayoutStatus(layout, 27)).toBe('split-child');
+    expect(getPanelLayoutStatus(layout, 28)).toBe('split-child');
+
+    expect(setGroupRatio(layout, 'h25-top', 0.65)).toBe(true);
+    expect(setGroupRatio(layout, 'h25-bottom', 0.35)).toBe(true);
+    expect(getRootNodeIds(layout)).toEqual(['v25']);
+  });
+
   it('promotes a single bottom panel when the top panel is removed', () => {
     const layout = emptyLayout();
     addPanel(layout, 30);
@@ -82,6 +105,18 @@ describe('PanelLayout', () => {
     expect(removePanel(layout, 40)).toBe(true);
     expect(getVisiblePanelIds(layout)).toEqual([41, 42, 50]);
     expect(getRootNodeIds(layout)).toEqual(['panel:41', 'panel:42', 'panel:50']);
+  });
+
+  it('keeps top split children when removing a vertical group', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 45);
+    subdividePanel(layout, 45, { groupId: 'v45', chooserId: 'c45' });
+    splitTopPanel(layout, 45, 46, { horizontalGroupId: 'h45-top' });
+    fillChooser(layout, 'c45', 'dual', [47, 48], { horizontalGroupId: 'h45-bottom' });
+
+    expect(removeVerticalGroup(layout, 'v45')).toEqual([47, 48]);
+    expect(getVisiblePanelIds(layout)).toEqual([45, 46]);
+    expect(getRootNodeIds(layout)).toEqual(['panel:45', 'panel:46']);
   });
 
   it('rejects malformed root reorder payloads', () => {

@@ -8,6 +8,7 @@ import type {
 } from '@shared/protocol';
 
 export type RootNode = PanelLeafNode | VerticalGroupNode;
+export type VerticalTopNode = PanelLeafNode | HorizontalGroupNode;
 export type VerticalBottomNode = PanelLeafNode | ChooserNode | HorizontalGroupNode;
 
 export interface PanelLeafNode {
@@ -20,7 +21,7 @@ export interface VerticalGroupNode {
   axis: 'vertical';
   id: string;
   ratio: number;
-  children: [PanelLeafNode, VerticalBottomNode];
+  children: [VerticalTopNode, VerticalBottomNode];
 }
 
 export interface HorizontalGroupNode {
@@ -51,6 +52,10 @@ export type PanelPersistenceRootNode =
   | PanelPersistencePanelNode
   | PanelPersistenceVerticalGroupNode;
 
+export type PanelPersistenceVerticalTopNode =
+  | PanelPersistencePanelNode
+  | PanelPersistenceHorizontalGroupNode;
+
 export type PanelPersistenceVerticalBottomNode =
   | PanelPersistencePanelNode
   | PanelPersistenceChooserNode
@@ -66,7 +71,7 @@ export interface PanelPersistenceVerticalGroupNode {
   axis: 'vertical';
   id: string;
   ratio: number;
-  children: [PanelPersistencePanelNode, PanelPersistenceVerticalBottomNode];
+  children: [PanelPersistenceVerticalTopNode, PanelPersistenceVerticalBottomNode];
 }
 
 export interface PanelPersistenceHorizontalGroupNode {
@@ -161,8 +166,12 @@ export function getPanelLayoutStatus(
       continue;
     }
     const [top, bottom] = node.children;
-    if (top.tabId === tabId) {
-      return bottom.kind === 'chooser' ? 'chooser-owner' : 'subdivision-top';
+    if (top.kind === 'panel') {
+      if (top.tabId === tabId) {
+        return bottom.kind === 'chooser' ? 'chooser-owner' : 'subdivision-top';
+      }
+    } else if (top.children.some((child) => child.tabId === tabId)) {
+      return 'split-child';
     }
     if (bottom.kind === 'panel') {
       if (bottom.tabId === tabId) return 'subdivision-bottom';
@@ -187,6 +196,16 @@ export function getPanelStatusMap(
 
 export function canSubdivide(layout: WorkspacePanelLayout | undefined, tabId: number): boolean {
   return getPanelLayoutStatus(layout, tabId) === 'root-panel';
+}
+
+export function canSplitTopPanel(layout: WorkspacePanelLayout | undefined, tabId: number): boolean {
+  if (!Number.isFinite(tabId)) return false;
+  for (const node of layout?.root ?? []) {
+    if (node.kind !== 'group' || node.axis !== 'vertical') continue;
+    const top = node.children[0];
+    if (top.kind === 'panel' && top.tabId === tabId) return true;
+  }
+  return false;
 }
 
 export function canBreakOut(layout: WorkspacePanelLayout | undefined, tabId: number): boolean {
@@ -251,7 +270,11 @@ export function removePanelWithDescendants(layout: WorkspacePanelLayout, tabId: 
   const root = layout.root[rootIndex];
   if (!root) return [];
   const victims: number[] = [];
-  if (root.kind === 'group' && root.children[0].tabId === tabId) {
+  if (
+    root.kind === 'group' &&
+    root.children[0].kind === 'panel' &&
+    root.children[0].tabId === tabId
+  ) {
     collectPanelIds(root.children[1], victims);
     layout.root.splice(rootIndex, 1);
     return victims.filter((id) => id !== tabId);
@@ -302,6 +325,30 @@ export function subdividePanel(
   return true;
 }
 
+export function splitTopPanel(
+  layout: WorkspacePanelLayout,
+  tabId: number,
+  newTabId: number,
+  ids: { horizontalGroupId: string },
+): boolean {
+  if (!Number.isFinite(tabId) || !Number.isFinite(newTabId)) return false;
+  if (containsPanel(layout, newTabId)) return false;
+  for (const root of layout.root) {
+    if (root.kind !== 'group' || root.axis !== 'vertical') continue;
+    const top = root.children[0];
+    if (top.kind !== 'panel' || top.tabId !== tabId) continue;
+    root.children[0] = {
+      kind: 'group',
+      axis: 'horizontal',
+      id: ids.horizontalGroupId,
+      ratio: 0.5,
+      children: [panelNode(tabId), panelNode(newTabId)],
+    };
+    return true;
+  }
+  return false;
+}
+
 export function fillChooser(
   layout: WorkspacePanelLayout,
   chooserId: string,
@@ -342,7 +389,7 @@ export function removeVerticalGroup(layout: WorkspacePanelLayout, groupId: strin
   const group = layout.root[idx] as VerticalGroupNode;
   const victims: number[] = [];
   collectPanelIds(group.children[1], victims);
-  layout.root[idx] = group.children[0];
+  layout.root.splice(idx, 1, ...topToRootNodes(group.children[0]));
   return victims;
 }
 
@@ -523,7 +570,10 @@ export function migrateLegacyEntriesToPersistence(
   return { entries: outEntries, layout: { root } };
 }
 
-function collectPanelIds(node: RootNode | VerticalBottomNode, out: number[]): void {
+function collectPanelIds(
+  node: RootNode | VerticalTopNode | VerticalBottomNode,
+  out: number[],
+): void {
   if (node.kind === 'panel') {
     out.push(node.tabId);
     return;
@@ -546,14 +596,15 @@ function removePanelFromRoot(
     return node.tabId === tabId ? { changed: true, nodes: [] } : { changed: false, nodes: [node] };
   }
   const [top, bottom] = node.children;
-  if (top.tabId === tabId) {
-    if (bottom.kind === 'chooser') return { changed: true, nodes: [] };
-    if (bottom.kind === 'panel') return { changed: true, nodes: [bottom] };
-    return { changed: true, nodes: [...bottom.children] };
+  const topRemoval = removePanelFromHorizontalCapableNode(top, tabId);
+  if (topRemoval.changed) {
+    if (!topRemoval.node) return { changed: true, nodes: bottomToRootNodes(bottom) };
+    node.children[0] = topRemoval.node;
+    return { changed: true, nodes: [node] };
   }
   if (bottom.kind === 'panel') {
     if (bottom.tabId !== tabId) return { changed: false, nodes: [node] };
-    return { changed: true, nodes: [top] };
+    return { changed: true, nodes: topToRootNodes(top) };
   }
   if (bottom.kind === 'chooser') return { changed: false, nodes: [node] };
 
@@ -575,7 +626,25 @@ function normalizeRootNode(node: RootNode): RootNode[] {
   if (bottom.kind === 'chooser') return [node];
   if (bottom.kind === 'panel') return [node];
   if (bottom.children.length === 2) return [node];
-  return [top];
+  return topToRootNodes(top);
+}
+
+function removePanelFromHorizontalCapableNode(
+  node: VerticalTopNode,
+  tabId: number,
+): { changed: boolean; node: VerticalTopNode | null } {
+  if (node.kind === 'panel') {
+    return node.tabId === tabId ? { changed: true, node: null } : { changed: false, node };
+  }
+  const [left, right] = node.children;
+  if (left.tabId === tabId) return { changed: true, node: right };
+  if (right.tabId === tabId) return { changed: true, node: left };
+  return { changed: false, node };
+}
+
+function topToRootNodes(node: VerticalTopNode): RootNode[] {
+  if (node.kind === 'panel') return [node];
+  return [...node.children];
 }
 
 function findRootIndexContaining(layout: WorkspacePanelLayout, tabId: number): number {
@@ -596,6 +665,8 @@ function findGroupById(
   for (const root of layout.root) {
     if (root.kind !== 'group') continue;
     if (root.id === groupId) return root;
+    const top = root.children[0];
+    if (top.kind === 'group' && top.id === groupId) return top;
     const bottom = root.children[1];
     if (bottom.kind === 'group' && bottom.id === groupId) return bottom;
   }
@@ -614,13 +685,22 @@ function cloneRootNode(node: RootNode): RootNode {
     axis: 'vertical',
     id: node.id,
     ratio: node.ratio,
-    children: [panelNode(node.children[0].tabId), cloneVerticalBottomNode(node.children[1])],
+    children: [cloneVerticalTopNode(node.children[0]), cloneVerticalBottomNode(node.children[1])],
   };
+}
+
+function cloneVerticalTopNode(node: VerticalTopNode): VerticalTopNode {
+  if (node.kind === 'panel') return panelNode(node.tabId);
+  return cloneHorizontalGroupNode(node);
 }
 
 function cloneVerticalBottomNode(node: VerticalBottomNode): VerticalBottomNode {
   if (node.kind === 'panel') return panelNode(node.tabId);
   if (node.kind === 'chooser') return { kind: 'chooser', id: node.id, ownerTabId: node.ownerTabId };
+  return cloneHorizontalGroupNode(node);
+}
+
+function cloneHorizontalGroupNode(node: HorizontalGroupNode): HorizontalGroupNode {
   return {
     kind: 'group',
     axis: 'horizontal',
@@ -637,8 +717,15 @@ function toSyncRootNode(node: RootNode): PanelLayoutSyncRootNode {
     id: node.id,
     axis: 'vertical',
     ratio: node.ratio,
-    children: [toSyncPanel(node.children[0]), toSyncVerticalBottomNode(node.children[1])],
+    children: [toSyncVerticalTopNode(node.children[0]), toSyncVerticalBottomNode(node.children[1])],
   };
+}
+
+function toSyncVerticalTopNode(
+  node: VerticalTopNode,
+): PanelLayoutSyncPanelNode | PanelLayoutSyncHorizontalGroupNode {
+  if (node.kind === 'panel') return toSyncPanel(node);
+  return toSyncHorizontalGroupNode(node);
 }
 
 function toSyncVerticalBottomNode(
@@ -648,6 +735,10 @@ function toSyncVerticalBottomNode(
   if (node.kind === 'chooser') {
     return { kind: 'chooser', id: node.id, ownerTabId: node.ownerTabId };
   }
+  return toSyncHorizontalGroupNode(node);
+}
+
+function toSyncHorizontalGroupNode(node: HorizontalGroupNode): PanelLayoutSyncHorizontalGroupNode {
   return {
     kind: 'group',
     id: node.id,
@@ -666,7 +757,7 @@ function toPersistenceRootNode(
   panelKeysByTabId: Map<number, string>,
 ): PanelPersistenceRootNode | null {
   if (node.kind === 'panel') return toPersistencePanelNode(node, panelKeysByTabId);
-  const top = toPersistencePanelNode(node.children[0], panelKeysByTabId);
+  const top = toPersistenceVerticalTopNode(node.children[0], panelKeysByTabId);
   const bottom = toPersistenceVerticalBottomNode(node.children[1], panelKeysByTabId);
   if (!top || !bottom) return null;
   return {
@@ -676,6 +767,14 @@ function toPersistenceRootNode(
     ratio: node.ratio,
     children: [top, bottom],
   };
+}
+
+function toPersistenceVerticalTopNode(
+  node: VerticalTopNode,
+  panelKeysByTabId: Map<number, string>,
+): PanelPersistenceVerticalTopNode | null {
+  if (node.kind === 'panel') return toPersistencePanelNode(node, panelKeysByTabId);
+  return toPersistenceHorizontalGroupNode(node, panelKeysByTabId);
 }
 
 function toPersistenceVerticalBottomNode(
@@ -688,6 +787,13 @@ function toPersistenceVerticalBottomNode(
     if (!ownerPanelKey) return null;
     return { kind: 'chooser', id: node.id, ownerPanelKey };
   }
+  return toPersistenceHorizontalGroupNode(node, panelKeysByTabId);
+}
+
+function toPersistenceHorizontalGroupNode(
+  node: HorizontalGroupNode,
+  panelKeysByTabId: Map<number, string>,
+): PanelPersistenceHorizontalGroupNode | null {
   const left = toPersistencePanelNode(node.children[0], panelKeysByTabId);
   const right = toPersistencePanelNode(node.children[1], panelKeysByTabId);
   if (!left || !right) return null;
@@ -717,18 +823,20 @@ function fromPersistenceRootNode(
     return panel ? [panel] : [];
   }
   if (node.axis !== 'vertical') return [];
-  const top = fromPersistencePanelNode(node.children[0], tabIdByPanelKey);
+  const top = fromPersistenceVerticalTopNode(node.children[0], tabIdByPanelKey);
   const bottom = fromPersistenceVerticalBottomNode(node.children[1], tabIdByPanelKey);
   if (!top) return bottom ? bottomToRootNodes(bottom) : [];
-  if (!bottom) return [top];
+  if (!bottom) return topToRootNodes(top);
   if (bottom.kind === 'chooser') {
+    const ownerTabId = firstPanelIdInTopNode(top);
+    if (!Number.isFinite(ownerTabId)) return topToRootNodes(top);
     return [
       {
         kind: 'group',
         axis: 'vertical',
         id: node.id,
         ratio: clampRatio(node.ratio),
-        children: [top, { ...bottom, ownerTabId: top.tabId }],
+        children: [top, { ...bottom, ownerTabId }],
       },
     ];
   }
@@ -741,6 +849,26 @@ function fromPersistenceRootNode(
       children: [top, bottom],
     },
   ];
+}
+
+function fromPersistenceVerticalTopNode(
+  node: PanelPersistenceVerticalTopNode,
+  tabIdByPanelKey: Map<string, number>,
+): VerticalTopNode | null {
+  if (node.kind === 'panel') return fromPersistencePanelNode(node, tabIdByPanelKey);
+  if (node.axis !== 'horizontal') return null;
+  const left = fromPersistencePanelNode(node.children[0], tabIdByPanelKey);
+  const right = fromPersistencePanelNode(node.children[1], tabIdByPanelKey);
+  if (left && right) {
+    return {
+      kind: 'group',
+      axis: 'horizontal',
+      id: node.id,
+      ratio: clampRatio(node.ratio),
+      children: [left, right],
+    };
+  }
+  return left ?? right ?? null;
 }
 
 function fromPersistenceVerticalBottomNode(
@@ -776,4 +904,9 @@ function bottomToRootNodes(node: VerticalBottomNode): RootNode[] {
   if (node.kind === 'panel') return [node];
   if (node.kind === 'chooser') return [];
   return [...node.children];
+}
+
+function firstPanelIdInTopNode(node: VerticalTopNode): number {
+  if (node.kind === 'panel') return node.tabId;
+  return node.children[0].tabId;
 }

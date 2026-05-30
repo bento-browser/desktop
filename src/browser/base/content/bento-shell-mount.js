@@ -2929,6 +2929,12 @@
     return currentPanelStatusByTabId.get(tabId) === 'root-panel';
   }
 
+  function canSplitTopPanelFromPanelHeader(tabId, panelEl) {
+    if (!Number.isFinite(tabId) || !panelEl) return false;
+    const status = currentPanelStatusByTabId.get(tabId);
+    return status === 'chooser-owner' || status === 'subdivision-top';
+  }
+
   function canBreakOutFromPanelHeader(tabId, panelEl) {
     if (!Number.isFinite(tabId) || !panelEl) return false;
     const status = currentPanelStatusByTabId.get(tabId);
@@ -2944,6 +2950,19 @@
     const slotPanel = getTopLevelSlotPanelElement(panelEl);
     const tabId = Number(slotPanel?.dataset?.bentoPanelTabId);
     return Number.isFinite(tabId) ? tabId : null;
+  }
+
+  function getResizableSlotWidth(panelEl) {
+    if (!panelEl) return 0;
+    if (panelEl.dataset?.bentoMainPanel === '1') {
+      const mainWidth = currentPanelLayoutGeometry?.mainRect?.width;
+      if (Number.isFinite(mainWidth) && mainWidth > 0) return Math.round(mainWidth);
+    }
+    const rootNodeId = panelEl.dataset?.bentoRootNodeId;
+    const rootWidth = rootNodeId ? currentPanelLayoutGeometry?.rootRects?.get(rootNodeId)?.width : 0;
+    if (Number.isFinite(rootWidth) && rootWidth > 0) return Math.round(rootWidth);
+    const rectWidth = panelEl.getBoundingClientRect?.().width || 0;
+    return rectWidth > 0 ? Math.round(rectWidth) : 0;
   }
 
   function getHeaderActionBrowser(panelEl, fallbackBrowserEl) {
@@ -3114,11 +3133,13 @@
         // dispatches `savedPanels/save` and bento-tools inserts the
         // bookmark into the "Saved panels" folder (de-dupes silently).
         const canSubdivide = canSubdivideFromPanelHeader(tabId, panelEl);
+        const canSplitTopPanel = canSplitTopPanelFromPanelHeader(tabId, panelEl);
         const canBreakOut = canBreakOutFromPanelHeader(tabId, panelEl);
         const subdivisionItems = [
           ...(canSubdivide && !currentSubdivisions.has(tabId)
             ? [{ id: 'subdivide', label: 'Subdivide panel' }]
             : []),
+          ...(canSplitTopPanel ? [{ id: 'split-top-panel', label: 'Split this panel' }] : []),
           ...(canBreakOut ? [{ id: 'break-out-sub-panel', label: 'Break out this panel' }] : []),
         ];
         const items = [
@@ -3153,6 +3174,10 @@
             }
             if (itemId === 'subdivide') {
               dispatchShellAction({ type: 'panelLayout/subdivide', tabId });
+              return;
+            }
+            if (itemId === 'split-top-panel') {
+              dispatchShellAction({ type: 'panelLayout/splitTopPanel', tabId });
               return;
             }
             if (itemId === 'break-out-sub-panel') {
@@ -4657,7 +4682,7 @@
       leftPanel,
       isMain: !!leftPanel.dataset.bentoMainPanel,
       startX: e.clientX,
-      startWidth: leftPanel.getBoundingClientRect().width,
+      startWidth: getResizableSlotWidth(leftPanel),
       pointerId: e.pointerId,
       tabId: getPanelTabIdForElement(leftPanel),
     };
@@ -4712,7 +4737,7 @@
     } catch {
       /* already released */
     }
-    const finalWidth = drag.leftPanel.getBoundingClientRect().width;
+    const finalWidth = getResizableSlotWidth(drag.leftPanel);
     const isMain = drag.isMain;
     const leftPanel = drag.leftPanel;
     splitter._panelDragState = null;
@@ -7980,6 +8005,25 @@
       if (node?.kind !== 'panel' || !Number.isFinite(tabId) || !panelIds.has(tabId)) return null;
       return { kind: 'panel', tabId };
     };
+    const sanitizeHorizontalGroupNode = (node) => {
+      if (node?.kind !== 'group' || node.axis !== 'horizontal' || typeof node.id !== 'string') {
+        return null;
+      }
+      const children = Array.isArray(node.children) ? node.children : [];
+      const left = sanitizePanelNode(children[0]);
+      const right = sanitizePanelNode(children[1]);
+      if (!left || !right) return null;
+      return {
+        kind: 'group',
+        id: node.id,
+        axis: 'horizontal',
+        ratio: typeof node.ratio === 'number' ? node.ratio : 0.5,
+        children: [left, right],
+      };
+    };
+    const sanitizeTopNode = (node) => {
+      return sanitizePanelNode(node) || sanitizeHorizontalGroupNode(node);
+    };
     const sanitizeBottomNode = (node) => {
       const panel = sanitizePanelNode(node);
       if (panel) return panel;
@@ -7988,19 +8032,8 @@
         if (!Number.isFinite(ownerTabId) || !panelIds.has(ownerTabId)) return null;
         return { kind: 'chooser', id: node.id, ownerTabId };
       }
-      if (node?.kind === 'group' && node.axis === 'horizontal' && typeof node.id === 'string') {
-        const children = Array.isArray(node.children) ? node.children : [];
-        const left = sanitizePanelNode(children[0]);
-        const right = sanitizePanelNode(children[1]);
-        if (!left || !right) return null;
-        return {
-          kind: 'group',
-          id: node.id,
-          axis: 'horizontal',
-          ratio: typeof node.ratio === 'number' ? node.ratio : 0.5,
-          children: [left, right],
-        };
-      }
+      const horizontal = sanitizeHorizontalGroupNode(node);
+      if (horizontal) return horizontal;
       return null;
     };
     const root = [];
@@ -8014,7 +8047,7 @@
         continue;
       }
       const children = Array.isArray(node.children) ? node.children : [];
-      const top = sanitizePanelNode(children[0]);
+      const top = sanitizeTopNode(children[0]);
       const bottom = sanitizeBottomNode(children[1]);
       if (!top || !bottom) continue;
       root.push({
@@ -8053,32 +8086,35 @@
 
   function collectLayoutLeafEntries(layout) {
     const entries = [];
+    const visitHorizontalGroup = (node, rootNodeId) => {
+      if (!node || node.kind !== 'group' || node.axis !== 'horizontal') return false;
+      const left = node.children?.[0];
+      const right = node.children?.[1];
+      if (left?.kind === 'panel') {
+        entries.push({
+          tabId: Number(left.tabId),
+          rootNodeId,
+          role: 'split-child',
+          horizontalGroupId: node.id,
+        });
+      }
+      if (right?.kind === 'panel') {
+        entries.push({
+          tabId: Number(right.tabId),
+          rootNodeId,
+          role: 'split-child',
+          horizontalGroupId: node.id,
+        });
+      }
+      return true;
+    };
     const visitBottom = (node, rootNodeId, role) => {
       if (!node) return;
       if (node.kind === 'panel') {
         entries.push({ tabId: Number(node.tabId), rootNodeId, role });
         return;
       }
-      if (node.kind === 'group' && node.axis === 'horizontal') {
-        const left = node.children?.[0];
-        const right = node.children?.[1];
-        if (left?.kind === 'panel') {
-          entries.push({
-            tabId: Number(left.tabId),
-            rootNodeId,
-            role: 'split-child',
-            horizontalGroupId: node.id,
-          });
-        }
-        if (right?.kind === 'panel') {
-          entries.push({
-            tabId: Number(right.tabId),
-            rootNodeId,
-            role: 'split-child',
-            horizontalGroupId: node.id,
-          });
-        }
-      }
+      visitHorizontalGroup(node, rootNodeId);
     };
 
     for (const node of layout?.root || []) {
@@ -8097,6 +8133,8 @@
           role: 'subdivision-top',
           verticalGroupId: node.id,
         });
+      } else {
+        visitHorizontalGroup(top, rootNodeId);
       }
       visitBottom(bottom, rootNodeId, bottom?.kind === 'panel' ? 'subdivision-bottom' : 'split-child');
     }
@@ -8203,26 +8241,46 @@
       return rectWidth > 0 ? Math.round(rectWidth) : 0;
     };
 
-    const existingWidthForTabId = (tabId) => {
+    const storedWidthForTabId = (tabId) => {
       const overrideWidth = Number(widthByTabIdOverride.get(Number(tabId)));
       if (Number.isFinite(overrideWidth) && overrideWidth > 0) return Math.round(overrideWidth);
+      const payload = panelByTabId.get(Number(tabId));
+      const payloadWidth = Number(payload?.widthPx);
+      if (Number.isFinite(payloadWidth) && payloadWidth > 0) return Math.round(payloadWidth);
+      return 0;
+    };
+
+    const existingWidthForTabId = (tabId) => {
+      const storedWidth = storedWidthForTabId(tabId);
+      if (storedWidth > 0) return storedWidth;
       if (preferLivePanelWidths) {
         const liveWidth = liveWidthForTabId(tabId);
         if (liveWidth > 0) return liveWidth;
       }
-      const payload = panelByTabId.get(Number(tabId));
-      const payloadWidth = Number(payload?.widthPx);
-      if (Number.isFinite(payloadWidth) && payloadWidth > 0) return Math.round(payloadWidth);
       const liveWidth = liveWidthForTabId(tabId);
       if (liveWidth > 0) return liveWidth;
       return minPanelWidth;
     };
 
+    const firstPanelNode = (node) => {
+      if (node?.kind === 'panel') return node;
+      if (node?.kind === 'group' && node.axis === 'horizontal') {
+        return firstPanelNode(node.children?.[0]) || firstPanelNode(node.children?.[1]);
+      }
+      return null;
+    };
+
     const rootWidth = (node) => {
       if (node?.kind === 'panel') return existingWidthForTabId(node.tabId);
       if (node?.kind === 'group' && node.axis === 'vertical') {
-        const top = node.children?.[0];
-        if (top?.kind === 'panel') return existingWidthForTabId(top.tabId);
+        const anchor = firstPanelNode(node.children?.[0]) || firstPanelNode(node.children?.[1]);
+        if (anchor) {
+          const storedWidth = storedWidthForTabId(anchor.tabId);
+          if (storedWidth > 0) return storedWidth;
+          const liveRootWidth = currentPanelLayoutGeometry?.rootRects?.get(node.id)?.width;
+          if (Number.isFinite(liveRootWidth) && liveRootWidth > 0) return Math.round(liveRootWidth);
+          return existingWidthForTabId(anchor.tabId);
+        }
       }
       return minPanelWidth;
     };
@@ -8256,7 +8314,39 @@
       panelRects.set(tabId, Object.assign({ rootNodeId }, rect));
     };
 
-    const layoutBottom = (node, rect, rootNodeId) => {
+    const layoutHorizontalGroup = (node, rect, rootNodeId) => {
+      const ratio = clampLayoutRatio(node.ratio);
+      const leftWidth = Math.max(0, (rect.width - splitterSize) * ratio);
+      const rightWidth = Math.max(0, rect.width - splitterSize - leftWidth);
+      const leftRect = {
+        left: rect.left,
+        top: rect.top,
+        width: leftWidth,
+        height: rect.height,
+      };
+      const splitterRect = {
+        left: rect.left + leftWidth,
+        top: rect.top,
+        width: splitterSize,
+        height: rect.height,
+      };
+      const rightRect = {
+        left: splitterRect.left + splitterSize,
+        top: rect.top,
+        width: rightWidth,
+        height: rect.height,
+      };
+      addPanelRect(node.children?.[0], leftRect, rootNodeId);
+      addPanelRect(node.children?.[1], rightRect, rootNodeId);
+      splitters.push({
+        axis: 'horizontal',
+        groupId: node.id,
+        rect: splitterRect,
+        groupRect: rect,
+      });
+    };
+
+    const layoutVerticalChild = (node, rect, rootNodeId) => {
       if (!node) return;
       if (node.kind === 'panel') {
         addPanelRect(node, rect, rootNodeId);
@@ -8271,35 +8361,7 @@
         return;
       }
       if (node.kind === 'group' && node.axis === 'horizontal') {
-        const ratio = clampLayoutRatio(node.ratio);
-        const leftWidth = Math.max(0, (rect.width - splitterSize) * ratio);
-        const rightWidth = Math.max(0, rect.width - splitterSize - leftWidth);
-        const leftRect = {
-          left: rect.left,
-          top: rect.top,
-          width: leftWidth,
-          height: rect.height,
-        };
-        const splitterRect = {
-          left: rect.left + leftWidth,
-          top: rect.top,
-          width: splitterSize,
-          height: rect.height,
-        };
-        const rightRect = {
-          left: splitterRect.left + splitterSize,
-          top: rect.top,
-          width: rightWidth,
-          height: rect.height,
-        };
-        addPanelRect(node.children?.[0], leftRect, rootNodeId);
-        addPanelRect(node.children?.[1], rightRect, rootNodeId);
-        splitters.push({
-          axis: 'horizontal',
-          groupId: node.id,
-          rect: splitterRect,
-          groupRect: rect,
-        });
+        layoutHorizontalGroup(node, rect, rootNodeId);
       }
     };
 
@@ -8332,8 +8394,8 @@
           width,
           height: bottomHeight,
         };
-        addPanelRect(node.children?.[0], topRect, rootNodeId);
-        layoutBottom(node.children?.[1], bottomRect, rootNodeId);
+        layoutVerticalChild(node.children?.[0], topRect, rootNodeId);
+        layoutVerticalChild(node.children?.[1], bottomRect, rootNodeId);
         splitters.push({
           axis: 'vertical',
           groupId: node.id,
@@ -8472,7 +8534,7 @@
 
   function findCurrentLayoutGroup(groupId) {
     if (!groupId) return null;
-    const visitBottom = (node) => {
+    const visitChild = (node) => {
       if (!node) return null;
       if (node.kind === 'group') return visitGroup(node);
       return null;
@@ -8480,7 +8542,9 @@
     const visitGroup = (node) => {
       if (!node || node.kind !== 'group') return null;
       if (node.id === groupId) return node;
-      if (node.axis === 'vertical') return visitBottom(node.children?.[1]);
+      if (node.axis === 'vertical') {
+        return visitChild(node.children?.[0]) || visitChild(node.children?.[1]);
+      }
       return null;
     };
     for (const node of currentPanelLayout?.root || []) {

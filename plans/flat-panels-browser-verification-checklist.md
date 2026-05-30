@@ -57,18 +57,27 @@ items are easy to scan.
 5. **Subdivide root panel**
    - Open panel kebab menu, then choose `Subdivide panel`.
    - Expected: chooser appears below the original panel; menu no longer shows `Subdivide panel` for that top panel.
+   - Result: Pass. ✅ Complete
+   - Verified: User confirmed item 5 is working.
 
 6. **Fill chooser as single panel**
    - Click chooser `Full panel`.
    - Expected: bottom panel appears under top panel; both are live and focusable.
+   - Result: Pass. ✅ Complete
    - Reported failure: `Full panel` creates the new bottom panel at the default root-panel width instead of the existing vertical group's width.
-   - Fix status: Ready for re-verification. Chooser-created subdivision children now get their flat-layout rects before enter animation and fade in without width or transform animation.
+   - Verified: User confirmed subpanel sizes are working.
+   - Fix status: Confirmed. Chooser-created subdivision children now get their flat-layout rects before enter animation and fade in without width or transform animation.
 
 7. **Fill chooser as dual split**
    - Subdivide another root panel, then click `Split panels`.
    - Expected: two bottom panels appear side-by-side under top panel.
+   - Result: Pass. ✅ Complete
    - Reported failure: `Split panels` initially spawns the new panels at the default root-panel size, then transitions them to the vertical group's width.
-   - Fix status: Ready for re-verification. Chooser-created split children now get their flat-layout rects before enter animation, fade in at their final sizes, and tools no longer stamps default root-panel width onto chooser children.
+   - Verified: User confirmed subpanel sizes are working.
+   - Follow-up request: After a vertical group is created, the top panel should offer `Split this panel` so the top row can split horizontally while the bottom chooser can also create split panels.
+   - Follow-up failure: Creating split panels in the bottom should produce one shared 2x2 vertical group when the top is split, not two separate 1x2 vertical groups.
+   - Follow-up verified: User confirmed the top-row split and shared 2x2 group behavior is working. ✅ Complete
+   - Fix status: Confirmed. Vertical groups now support a horizontal split in the top row as well as the bottom row, and the top panel menu exposes `Split this panel` for eligible unsplit top panels.
 
 8. **Depth cap**
    - Open kebab menu on subdivision top, bottom, and split children.

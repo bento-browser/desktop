@@ -343,6 +343,31 @@ Chooser fill sizing:
 - Manual verification surface: checklist items 6 and 7, fill chooser as single
   panel and dual split.
 
+Top-row splits and 2x2 groups:
+
+- Source of truth: `PanelLayout` vertical groups now accept a top child of
+  either a panel or a horizontal group. The bottom child remains a panel,
+  chooser, or horizontal group.
+- Tools path: `panelLayout/splitTopPanel` creates one new tab, assigns it to
+  the workspace, and calls `PanelStore.splitTopPanel` to replace the single top
+  panel with a horizontal group. Do not model this as a second vertical group;
+  that creates two independent 1x2 columns instead of one shared 2x2 grid.
+- Renderer path: `computePanelLayoutGeometry` uses the same horizontal-group
+  rect logic for vertical group top and bottom children, and emits a separate
+  overlay splitter for each horizontal group id. Root width should be anchored
+  to the top-left panel's stored width when present, falling back to the
+  previous root rect when a just-created top split has no stored width yet.
+- Top-level strip resize pitfall: once the top row is split, the first visible
+  panel element is only the left child. `startPanelDrag` and `endPanelDrag`
+  must read the root rect width for that element's `data-bento-root-node-id`,
+  then persist that width through the anchor tab id. Reading the child element's
+  own rect collapses the vertical group to half width on the next reconcile.
+- Header menu: an unsplit top panel with status `chooser-owner` or
+  `subdivision-top` exposes `Split this panel`. Once it is split, both top-row
+  panels are `split-child` entries and the split action is no longer shown.
+- Manual verification surface: checklist item 7, top split plus bottom split
+  creates a single 2x2 vertical group.
+
 ### Flat layout pitfalls
 
 - Keep live panel browser containers as direct `tabpanels` children unless the

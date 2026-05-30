@@ -225,6 +225,10 @@ export interface PanelLayoutSync {
 
 export type PanelLayoutSyncRootNode = PanelLayoutSyncPanelNode | PanelLayoutSyncVerticalGroupNode;
 
+export type PanelLayoutSyncVerticalTopNode =
+  | PanelLayoutSyncPanelNode
+  | PanelLayoutSyncHorizontalGroupNode;
+
 export type PanelLayoutSyncVerticalBottomNode =
   | PanelLayoutSyncPanelNode
   | PanelLayoutSyncChooserNode
@@ -240,7 +244,7 @@ export interface PanelLayoutSyncVerticalGroupNode {
   id: string;
   axis: 'vertical';
   ratio: number;
-  children: [PanelLayoutSyncPanelNode, PanelLayoutSyncVerticalBottomNode];
+  children: [PanelLayoutSyncVerticalTopNode, PanelLayoutSyncVerticalBottomNode];
 }
 
 export interface PanelLayoutSyncHorizontalGroupNode {
@@ -265,6 +269,10 @@ export type PanelLayoutExportRootNode =
   | PanelLayoutExportPanelNode
   | PanelLayoutExportVerticalGroupNode;
 
+export type PanelLayoutExportVerticalTopNode =
+  | PanelLayoutExportPanelNode
+  | PanelLayoutExportHorizontalGroupNode;
+
 export type PanelLayoutExportVerticalBottomNode =
   | PanelLayoutExportPanelNode
   | PanelLayoutExportChooserNode
@@ -280,7 +288,7 @@ export interface PanelLayoutExportVerticalGroupNode {
   id: string;
   axis: 'vertical';
   ratio: number;
-  children: [PanelLayoutExportPanelNode, PanelLayoutExportVerticalBottomNode];
+  children: [PanelLayoutExportVerticalTopNode, PanelLayoutExportVerticalBottomNode];
 }
 
 export interface PanelLayoutExportHorizontalGroupNode {
@@ -403,6 +411,7 @@ export type Action =
    * otherwise leak into the destination workspace's storage. */
   | { type: 'panel/setStripScroll'; workspaceId: string; scrollLeft: number }
   | { type: 'panelLayout/subdivide'; tabId: number }
+  | { type: 'panelLayout/splitTopPanel'; tabId: number; url?: string }
   | {
       type: 'panelLayout/fillChooser';
       chooserId: string;
