@@ -75,7 +75,7 @@ type StoredShape = StoredShapeV1 | StoredShapeV2 | StoredShapeV3 | StoredShapeV4
 
 export interface PersistedPanels {
   byWorkspace: Map<string, PersistedWorkspacePanels>;
-  mainWidthPx?: number;
+  mainWidthByWorkspace: Map<string, number>;
   stripScrollByWorkspace: Map<string, number>;
 }
 
@@ -94,25 +94,26 @@ export async function load(): Promise<PersistedPanels | null> {
       | undefined;
     const stripScrollByWorkspace = parseStripScroll(raw[STRIP_SCROLL_STORAGE_KEY]);
     const byWorkspace = new Map<string, PersistedWorkspacePanels>();
+    const mainWidthByWorkspace = new Map<string, number>();
     const legacyGlobalWidth =
       legacyMainWidths && typeof legacyMainWidths.__global__ === 'number'
         ? legacyMainWidths.__global__
         : undefined;
-    let mainWidthPx =
+    let legacyMainWidth =
       typeof storedMainWidth === 'number' && storedMainWidth > 0
         ? Math.max(MAIN_PANEL_MIN_WIDTH, storedMainWidth)
         : undefined;
 
     if (
-      mainWidthPx === undefined &&
+      legacyMainWidth === undefined &&
       typeof legacyGlobalWidth === 'number' &&
       legacyGlobalWidth > 0
     ) {
-      mainWidthPx = Math.max(MAIN_PANEL_MIN_WIDTH, legacyGlobalWidth);
+      legacyMainWidth = Math.max(MAIN_PANEL_MIN_WIDTH, legacyGlobalWidth);
     }
 
     if (!storedRaw || typeof storedRaw !== 'object') {
-      return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
+      return { byWorkspace, mainWidthByWorkspace, stripScrollByWorkspace };
     }
     const storedVersion = (storedRaw as { version?: unknown }).version;
     if (
@@ -123,7 +124,7 @@ export async function load(): Promise<PersistedPanels | null> {
       storedVersion !== 5
     ) {
       console.warn('[bento-tools] panels: unknown version', storedVersion, '- ignoring');
-      return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
+      return { byWorkspace, mainWidthByWorkspace, stripScrollByWorkspace };
     }
     const stored = storedRaw as StoredShape;
 
@@ -146,17 +147,31 @@ export async function load(): Promise<PersistedPanels | null> {
     }
 
     if (stored.version === 3 || stored.version === 4 || stored.version === 5) {
-      const storedLegacyGlobal = (stored as StoredShapeV3 | StoredShapeV4 | StoredShapeV5)
-        .mainWidthByWorkspace?.__global__;
+      const storedMainWidths = (stored as StoredShapeV3 | StoredShapeV4 | StoredShapeV5)
+        .mainWidthByWorkspace;
+      for (const [workspaceId, width] of Object.entries(storedMainWidths ?? {})) {
+        if (workspaceId === '__global__') continue;
+        if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+          mainWidthByWorkspace.set(workspaceId, Math.max(MAIN_PANEL_MIN_WIDTH, Math.round(width)));
+        }
+      }
+      const storedLegacyGlobal = storedMainWidths?.__global__;
       if (
-        mainWidthPx === undefined &&
+        legacyMainWidth === undefined &&
         typeof storedLegacyGlobal === 'number' &&
         storedLegacyGlobal > 0
       ) {
-        mainWidthPx = Math.max(MAIN_PANEL_MIN_WIDTH, storedLegacyGlobal);
+        legacyMainWidth = Math.max(MAIN_PANEL_MIN_WIDTH, storedLegacyGlobal);
       }
     }
-    return { byWorkspace, mainWidthPx, stripScrollByWorkspace };
+    if (typeof legacyMainWidth === 'number' && legacyMainWidth > 0) {
+      for (const workspaceId of byWorkspace.keys()) {
+        if (!mainWidthByWorkspace.has(workspaceId)) {
+          mainWidthByWorkspace.set(workspaceId, legacyMainWidth);
+        }
+      }
+    }
+    return { byWorkspace, mainWidthByWorkspace, stripScrollByWorkspace };
   } catch (err) {
     console.error('[bento-tools] panels: load failed', err);
     return null;
@@ -167,32 +182,32 @@ export class Persistence {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #pendingLayouts: Map<string, WorkspacePanelLayout> | null = null;
   #pendingWidths: Map<number, number> | null = null;
-  #pendingMainWidth: number | undefined;
+  #pendingMainWidths: Map<string, number> | null = null;
   #pendingStripScroll: Map<string, number> | null = null;
 
   schedule(
     layouts: Map<string, WorkspacePanelLayout>,
     widths: Map<number, number>,
-    mainWidthPx: number | undefined,
+    mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): void {
     this.#pendingLayouts = layouts;
     this.#pendingWidths = widths;
-    this.#pendingMainWidth = mainWidthPx;
+    this.#pendingMainWidths = mainWidthByWorkspace;
     this.#pendingStripScroll = stripScrollByWorkspace;
     if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
       const nextLayouts = this.#pendingLayouts;
       const nextWidths = this.#pendingWidths;
-      const nextMainWidth = this.#pendingMainWidth;
+      const nextMainWidths = this.#pendingMainWidths;
       const nextStripScroll = this.#pendingStripScroll;
       this.#pendingLayouts = null;
       this.#pendingWidths = null;
-      this.#pendingMainWidth = undefined;
+      this.#pendingMainWidths = null;
       this.#pendingStripScroll = null;
-      if (nextLayouts && nextWidths && nextStripScroll) {
-        void this.#flush(nextLayouts, nextWidths, nextMainWidth, nextStripScroll);
+      if (nextLayouts && nextWidths && nextMainWidths && nextStripScroll) {
+        void this.#flush(nextLayouts, nextWidths, nextMainWidths, nextStripScroll);
       }
     }, DEBOUNCE_MS);
   }
@@ -200,7 +215,7 @@ export class Persistence {
   flushNow(
     layouts: Map<string, WorkspacePanelLayout>,
     widths: Map<number, number>,
-    mainWidthPx: number | undefined,
+    mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): void {
     if (this.#timer) {
@@ -209,15 +224,15 @@ export class Persistence {
     }
     this.#pendingLayouts = null;
     this.#pendingWidths = null;
-    this.#pendingMainWidth = undefined;
+    this.#pendingMainWidths = null;
     this.#pendingStripScroll = null;
-    void this.#flush(layouts, widths, mainWidthPx, stripScrollByWorkspace);
+    void this.#flush(layouts, widths, mainWidthByWorkspace, stripScrollByWorkspace);
   }
 
   async #flush(
     layouts: Map<string, WorkspacePanelLayout>,
     widths: Map<number, number>,
-    mainWidthPx: number | undefined,
+    mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): Promise<void> {
     const byWorkspace: Record<string, StoredWorkspaceV5> = {};
@@ -250,21 +265,19 @@ export class Persistence {
         };
       }
     }
-    const roundedMainWidth =
-      typeof mainWidthPx === 'number' && mainWidthPx > 0
-        ? Math.max(MAIN_PANEL_MIN_WIDTH, Math.round(mainWidthPx))
-        : undefined;
+    const mainWidthRecord: Record<string, number> = {};
+    for (const [workspaceId, width] of mainWidthByWorkspace) {
+      if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+        mainWidthRecord[workspaceId] = Math.max(MAIN_PANEL_MIN_WIDTH, Math.round(width));
+      }
+    }
     const payload: StoredShapeV5 = {
       version: VERSION,
       byWorkspace,
-      mainWidthByWorkspace: roundedMainWidth !== undefined ? { __global__: roundedMainWidth } : {},
+      mainWidthByWorkspace: mainWidthRecord,
     };
     try {
       const writePayload: Record<string, unknown> = { [STORAGE_KEY]: payload };
-      if (roundedMainWidth !== undefined) {
-        writePayload[MAIN_WIDTH_STORAGE_KEY] = roundedMainWidth;
-        writePayload[LEGACY_MAIN_WIDTHS_STORAGE_KEY] = { __global__: roundedMainWidth };
-      }
       const stripScrollRecord: Record<string, number> = {};
       for (const [workspaceId, scrollLeft] of stripScrollByWorkspace) {
         if (Number.isFinite(scrollLeft) && scrollLeft >= 0) {
@@ -275,12 +288,7 @@ export class Persistence {
         writePayload[STRIP_SCROLL_STORAGE_KEY] = stripScrollRecord;
       }
       await browser.storage.local.set(writePayload);
-      if (roundedMainWidth === undefined) {
-        await browser.storage.local.remove([
-          MAIN_WIDTH_STORAGE_KEY,
-          LEGACY_MAIN_WIDTHS_STORAGE_KEY,
-        ]);
-      }
+      await browser.storage.local.remove([MAIN_WIDTH_STORAGE_KEY, LEGACY_MAIN_WIDTHS_STORAGE_KEY]);
       if (Object.keys(stripScrollRecord).length === 0) {
         await browser.storage.local.remove([STRIP_SCROLL_STORAGE_KEY]);
       }

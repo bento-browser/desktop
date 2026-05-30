@@ -59,6 +59,8 @@ items are easy to scan.
    - Expected: chooser appears below the original panel; menu no longer shows `Subdivide panel` for that top panel.
    - Result: Pass. ✅ Complete
    - Verified: User confirmed item 5 is working.
+   - Follow-up request: Splitting or subdividing a panel should preserve the current panel-strip scroll position instead of auto-scrolling.
+   - Fix status: Ready for re-verification. Subdivision-created child panels no longer request explicit scroll targets, and generic new-panel auto-scroll now ignores non-root subdivision children.
 
 6. **Fill chooser as single panel**
    - Click chooser `Full panel`.
@@ -82,14 +84,23 @@ items are easy to scan.
 8. **Depth cap**
    - Open kebab menu on subdivision top, bottom, and split children.
    - Expected: only eligible root panels show `Subdivide panel`; nested subdivision cannot be created.
+   - Result: Pass. ✅ Complete
+   - Verified: User confirmed item 8 is working.
 
 9. **Break out bottom panel**
    - On a bottom or split child kebab menu, click `Break out this panel`.
    - Expected: selected child becomes a root panel after its former group; old group normalizes correctly.
+   - Result: Pass. ✅ Complete
+   - Verified: User confirmed item 9 is working.
+   - Follow-up failure: Breaking out a panel auto-scrolls the promoted root panel to the left edge of the strip.
+   - Follow-up verified: User confirmed break-out now preserves the current strip position. ✅ Complete
+   - Fix status: Confirmed. Break-out now preserves the current strip position instead of emitting an explicit scroll target.
 
 10. **Remove vertical group**
     - Use any UI path that removes or collapses the subdivision group if available.
     - Expected: bottom children close or collapse according to command; top panel remains root.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 10 is working.
 
 ## Closing And Promotion
 
@@ -98,20 +109,27 @@ items are easy to scan.
     - Close the top panel.
     - Expected: bottom panel becomes root panel; content does not reload; menu now shows `Subdivide panel`.
     - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
-    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 11 is working.
+    - Fix status: Confirmed. The close-removal class animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 12. **Close top with dual bottom split**
     - Create top plus two bottom split children.
     - Close the top panel.
     - Expected: both bottom children become adjacent root panels, keep widths, and keep content painted.
     - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
-    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 12 is working.
+    - Fix status: Confirmed. The close-removal class animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 13. **Close bottom child**
     - Close one bottom or split child.
     - Expected: remaining layout normalizes; no orphan chooser or blank slot remains.
     - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
-    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
+    - Follow-up request: After closing one panel in a bottom split duo, the surviving bottom panel should be able to `Split this panel` again without creating a nested vertical subdivision.
+    - Split survivor verified: User confirmed the survivor can be split again. ✅ Complete
+    - Split survivor fix status: Confirmed. A single bottom survivor now exposes `Split this panel`, which recreates a horizontal split in the existing bottom row.
+    - Close animation fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 14. **Cmd+W on panels**
     - Focus a side panel, then press `Cmd+W`.
@@ -146,7 +164,9 @@ items are easy to scan.
     - Earlier re-test: Fail. User confirmed the scroll jump still happened after the live scroll-preserve fix.
     - Additional observation: resizing panels appears to reset the size of other panels, which can present as a strip jump.
     - Verified: User confirmed resizing panels is now working and other panel widths are retained.
-    - Fix status: Confirmed. Live layout recompute preserves existing live panel widths instead of replaying stale payload widths for panels not being actively resized.
+    - Follow-up regression: User reported resizing a split panel via its splitter can reset the width of the vertical group.
+    - Follow-up verified: User confirmed split-child splitter resizing no longer resets the vertical group width. ✅ Complete
+    - Fix status: Confirmed. Live layout recompute now preserves the vertical group's current root rect before considering stale payload widths during split-child splitter drags.
 
 17. **Root panel width resize**
     - Drag inter-panel splitter between root panels.
@@ -187,6 +207,11 @@ items are easy to scan.
     - Expected: cycles main to visible panels to trailer, including grouped visible leaves, without focus getting stuck.
     - Result: Pass. ✅ Complete
     - Verified: User confirmed keyboard traversal cycles through the panels.
+    - Follow-up failure: User reported traversal auto-scroll feels locked to the left-most edge. Expected: cycling should not scroll while the next focused panel is already visible; it should only nudge the strip when focus reaches the right or left edge of the viewport.
+    - Follow-up failure: User reported Shift-wheel scroll cycling loops back to the start when arrow-key wraparound is enabled. Expected: scroll cycling never wraps, regardless of the `Wrap arrow-key cycling at the ends` setting.
+    - Re-test: Fail. User reported scrolling past the trailing Add panels buttons can still loop back to the main content slot.
+    - Follow-up verified: User confirmed scroll cycling no longer loops back to the main content slot after the trailing Add panels buttons. ✅ Complete
+    - Fix status: Confirmed. Arrow-key and Shift-wheel traversal now use minimal reveal scrolling, Shift-wheel traversal clamps at the ends, and trailer focus no longer resets the active cycle index to the main content slot.
 
 23. **Trailer focus/add**
     - Cycle to Add-panel trailer and activate it.
@@ -208,6 +233,16 @@ items are easy to scan.
     - Create a grouped panel layout.
     - Switch workspace away and back.
     - Expected: layout and panel content remain painted.
+    - Follow-up failure: Opening the workspace switcher menu can paint a non-transparent full-window overlay over the browser content.
+    - Fix status: Ready for re-verification. The workspace switcher overlay document now forces a transparent background after shared CSS loads, and the chrome overlay host is listed as transparent.
+    - Follow-up failure: After creating a new workspace, the main content slot can remain at a prior split-view width instead of spanning the full window.
+    - Follow-up verified: User confirmed new-workspace main content spans the full window. ✅ Complete
+    - Fix status: Confirmed. Main-only teardown now scans for stale split-view/flat-layout artifacts before taking the already-torn-down fast path and removes all Bento rect styles/classes from tab panels.
+    - Follow-up failure: Edit-workspace and command-palette modals can paint opaque full-window overlays.
+    - Fix status: Ready for re-verification. Chrome overlay documents now force transparent page backgrounds after shared CSS loads; dialog components remain responsible for their own scrims.
+    - Follow-up failure: Resizing the main content slot in one workspace also resizes it in other workspaces.
+    - Follow-up verified: User confirmed workspace-scoped main content widths are working. ✅ Complete
+    - Fix status: Confirmed. `panel/setMainWidth` now persists the main content width per active workspace, and chrome clears the carried main width when a workspace has no saved `mainWidthPx`.
 
 25. **Strip scroll restore**
     - Create enough panels to overflow horizontally.
@@ -223,11 +258,21 @@ items are easy to scan.
     - Create root panels, subdivision, dual split, and pins.
     - Quit and relaunch Bento.
     - Expected: v5 layout restores with same visible structure, widths, and pins.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 26 is working.
 
 27. **Cmd+Shift+T restore**
     - Close a split child.
     - Press `Cmd+Shift+T`.
     - Expected: restored panel returns as a root panel near recorded root slot; no stale group is recreated.
+    - Result: Fail.
+    - Notes: User reported `Cmd+Shift+T` brings back an actual tab instead of restoring a closed panel. This applies to both child panels and top-level panels.
+    - Re-test: Fail. User reported that after closing a panel, it cannot be restored via `Cmd+Shift+T`.
+    - Re-test: Fail. User reported that `Cmd+Shift+T` restores the closed panel but it appears behind another panel.
+    - Re-test: Fail. User confirmed the same overlap still occurs, and the panel sizes correctly after dragging a splitter.
+    - Re-test: Fail. User confirmed the panel is restored but is too large; it should restore at the configured `Default new panel width`.
+    - Diagnostic status: Temporary console diagnostics added with prefix `[bento-restore-debug]` in the tools close/restore path and chrome flat-layout reconciliation path. Remove once the fix is confirmed and recorded.
+    - Fix status: Ready for re-verification. The `tab/close` path preserves the closing panel's `bento.isPanel` session marker, restored panel tabs clear stale `bento.closingTab`, tools reselect a non-panel main tab after restore, chrome rejects selected panel tabs as main-slot candidates, flat-layout panel-enter animation preserves inline width, chrome appends any panel payload entries missing from the decoded layout before computing flat geometry, root-panel enter animation now starts only after flat rects are applied so it measures the restored panel's final strip width, and Cmd+Shift+T restore stamps the restored root panel with the settings `Default new panel width` before emitting `panels/sync`.
 
 ## Persistence And Import Export
 

@@ -114,8 +114,9 @@ Core panel actions are handled in
 
 `emitPanelsSync` in `extensions/bento-tools/src/background.ts` resolves live tab
 ids to `{ tabId, url, favIconUrl, widthPx }`, includes `layout`,
-`panelStatusByTabId`, main width, strip scroll, pinned tab ids, saved-panel
-count, and optional `scrollToPanelTabId`, then broadcasts `panels/sync`.
+`panelStatusByTabId`, workspace-scoped main width, strip scroll, pinned tab
+ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
+`panels/sync`.
 
 ### Panel state pitfalls
 
@@ -128,8 +129,51 @@ count, and optional `scrollToPanelTabId`, then broadcasts `panels/sync`.
   `panelKey`; tab ids are runtime-only.
 - Keep panel markers synced after add, remove, reorder, and restore. Closed-tab
   restore depends on marker root indexes and containing root ids.
+- Do not clear a panel's `bento.isPanel` marker in the `tab/close` path. Firefox
+  needs that tab session value to survive into the closed-tab entry so
+  `Cmd+Shift+T` can route the restored tab through
+  `maybeRestorePanelFromMarker`. Clear the marker only when the tab stays open
+  as a normal tab, such as `panel/remove` or explicit panel promotion.
+- A user-restored panel tab can also carry Bento's `bento.closingTab` marker
+  from the original close path. Clear that closing marker before assignment or
+  panel insertion. Otherwise the created-tab workspace backfill guard treats the
+  restored tab as still closing and removes it again before panel restore wins.
+  `TabRegistry.unmarkClosing` must also suppress stale async hydration reads
+  that may have observed the old marker before it was removed.
+- Firefox activates the restored tab during `Cmd+Shift+T`. After restoring a
+  marked panel, switch selection back to the captured prior non-panel tab, or to
+  another non-panel tab in the same workspace/window if the captured value is
+  missing. Chrome reconciliation must also reject any selected tab that is
+  present in the Bento panel payload as the main slot. Otherwise the restored
+  panel can be painted as both selected content and side-panel content, causing
+  overlap behind adjacent panels.
+- Restored panels often have no `widthPx` because `PanelStore.remove` drops
+  width state when the tab leaves all panel layouts. When
+  `maybeRestorePanelFromMarker` reinserts the tab, stamp
+  `settings.snapshot().defaultPanelWidthPx` through `PanelStore.setWidth` before
+  emitting `panels/sync`; `Cmd+Shift+T` restore should use the configured
+  default new-panel width, not a stale browser/container width. In flat layout,
+  do not clear inline width after the panel-enter animation. Absolute rects
+  depend on inline `width`, `min-width`, and `flex`; clearing width lets the
+  restored panel auto-size and overlap adjacent panels until a splitter drag
+  rewrites sizing.
+- Root-panel enter animation must start after chrome computes flat-layout
+  geometry and calls `applyPanelLayoutRects`. Starting the animation while the
+  restored panel still has Firefox's stale split-view dimensions lets
+  `animatePanelEnter` measure the wrong final width and write that stale width
+  back on the next animation frame, making the restored panel overlap until a
+  splitter drag refreshes layout.
+- Chrome's layout sanitizer must treat the `panels` payload as the authoritative
+  visible panel set. If a `panels/sync` payload includes a tab id that is absent
+  from the decoded layout tree, append it as a root before computing flat-layout
+  geometry. Otherwise the panel is resolved and rendered, but receives no
+  `panelRects` entry and overlaps until the next live layout refresh.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
+- `panelLayout/breakOut` promotes an existing child into the root layout and
+  must not emit `scrollToPanelTabId`. Break-out is a layout normalization action,
+  not a new-panel reveal; emitting an explicit scroll target left-aligns the
+  promoted panel and loses the user's current strip context.
 
 ## Shell to chrome bridge
 
@@ -169,6 +213,29 @@ overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 - The shell forwards `panels/sync` to chrome only for the active workspace in
   that window. Tools may broadcast panel state for every workspace so shell
   mirrors can filter tab lists during workspace transitions.
+
+### Chrome overlay transparency
+
+Chrome-mounted menu overlays such as the workspace switcher cover the whole
+browser window so their popovers can escape the sidebar iframe. The host and the
+overlay document must both stay transparent; the popover itself is the only
+opaque surface.
+
+Load-bearing details:
+
+- `ensureOverlayHost` creates JS-owned overlay hosts with transparent XUL
+  `vbox` and `<browser>` backgrounds. Static or theme-owned overlay hosts must
+  also be listed as transparent in `bento-chrome-theme.css`.
+- Chrome overlay HTML entries, including `workspace-switcher.html`,
+  `palette.html`, `edit-workspace.html`, `confirm.html`, `welcome.html`, and
+  `panel-trailer.html`, must force `html`, `body`, and `#root` to
+  `background: transparent !important`. The shell build uses
+  `cssCodeSplit: false`, so unrelated entry CSS such as `panel-newtab.css` can
+  arrive later in the shared `style.css` bundle and otherwise override plain
+  transparent background declarations.
+- Do not add an app-wide surface to menu overlay roots. If an overlay needs a
+  scrim, it should be drawn by that overlay's dialog/backdrop component, not by
+  the page or chrome host background.
 
 ## Chrome panel rendering
 
@@ -244,6 +311,13 @@ The following mechanisms are load-bearing:
 - Keep cleanup broad when tearing down to main-only mode. Stale split-view
   classes, inline sizing, and data attributes can make the next main tab render
   at fractional width.
+- The main-only "already torn down" fast path must first scan for stale Bento
+  artifacts: `bento-flat-panel-layout`, the flat layout extent, overlay
+  splitters/choosers, Bento data attributes, split-view classes, `column`, panel
+  headers, loading overlays, and inline rect styles (`left`, `width`,
+  `max-width`, `height`, `flex`, etc.). If any remain, run the full teardown.
+  Otherwise a newly-created or newly-activated empty workspace can show its main
+  tab at an old panel width with blank space beside it.
 
 ## Flat panel layout and subdivisions
 
@@ -269,9 +343,15 @@ Flat layout overlays include:
 Top-level panel resizing:
 
 - Source of truth: `PanelStore` persists side-panel widths through
-  `panel/setWidth`; the main slot width persists through `panel/setMainWidth`.
+  `panel/setWidth`; the main slot width persists per workspace through
+  `panel/setMainWidth`.
 - Chrome bridge: `bento-shell-mount.js` dispatches the width action only after
   drag end. The live drag must not wait for a `panels/sync` echo.
+- Main width scope: `panel/setMainWidth` resolves the active workspace for the
+  dispatching window and stores the width in `mainWidthByWorkspace`. A
+  `panels/sync` payload without `mainWidthPx` is authoritative for that
+  workspace and chrome must clear `mainPanelWidth` to return to default flex
+  sizing. Do not use a global or profile-wide fallback for new workspaces.
 - Renderer path: flat layout uses absolute rects from
   `computePanelLayoutGeometry`. During pointer movement,
   `refreshFlatPanelLayoutFromLiveState` recomputes geometry with the live width
@@ -321,6 +401,12 @@ Subdivision splitter resizing:
 - Working solution: live subdivision ratio recomputes must also preserve current
   rendered root panel widths. Otherwise adjusting a vertical or horizontal
   subdivision splitter can reset neighboring root widths from stale payload data.
+- Regression pitfall: when `computePanelLayoutGeometry` is called with
+  `preferLivePanelWidths`, root panel width overrides still win, but existing
+  vertical groups must prefer `currentPanelLayoutGeometry.rootRects` over
+  payload `widthPx`. A horizontal split-child drag changes child panel rects;
+  treating a child payload/live width as the vertical group's root width can
+  collapse or reset the whole group.
 - Manual verification surface: checklist items 15 and 16, vertical and
   horizontal subdivision splitter drag.
 
@@ -332,6 +418,8 @@ Chooser fill sizing:
 - Tools path: `panelLayout/fillChooser` creates the requested tab or tabs and
   assigns them to the workspace, but must not call `PanelStore.setWidth` with
   the default root-panel width. A chooser child is not a new root panel.
+  It also must not emit `scrollToPanelTabId`; subdivision fill should preserve
+  the user's current strip scroll position.
 - Renderer path: subdivision child enter animations are collected during
   reconcile, but run only after `applyPanelLayoutRects` has applied the final
   flat-layout rects. They fade in without width or transform animation so the
@@ -340,6 +428,9 @@ Chooser fill sizing:
   `subdivision-bottom` or `split-child` panels before flat geometry is applied.
   Its requestAnimationFrame callback can overwrite the correct rect with a
   stale default-width measurement.
+- Regression pitfall: generic new-panel auto-scroll in `reconcilePanels` must
+  ignore new tabs whose layout status is `subdivision-bottom` or `split-child`.
+  Only new root panels should trigger implicit panel-strip auto-scroll.
 - Manual verification surface: checklist items 6 and 7, fill chooser as single
   panel and dual split.
 
@@ -352,6 +443,16 @@ Top-row splits and 2x2 groups:
   the workspace, and calls `PanelStore.splitTopPanel` to replace the single top
   panel with a horizontal group. Do not model this as a second vertical group;
   that creates two independent 1x2 columns instead of one shared 2x2 grid.
+  It must not emit `scrollToPanelTabId`; splitting inside an existing vertical
+  group should preserve strip scroll.
+- Bottom survivor re-split path: when one child of a bottom horizontal split is
+  closed, `removePanelFromRoot` normalizes the bottom child back to a single
+  `subdivision-bottom` panel. That panel exposes `Split this panel`, dispatches
+  `panelLayout/splitBottomPanel`, and `PanelStore.splitBottomPanel` replaces the
+  bottom panel with a new horizontal group in the same vertical group. Do not
+  route this through `panelLayout/subdivide`; that would violate the depth cap
+  by creating a nested vertical subdivision. This path also preserves strip
+  scroll rather than focusing or revealing the new split child.
 - Renderer path: `computePanelLayoutGeometry` uses the same horizontal-group
   rect logic for vertical group top and bottom children, and emits a separate
   overlay splitter for each horizontal group id. Root width should be anchored
@@ -363,10 +464,12 @@ Top-row splits and 2x2 groups:
   then persist that width through the anchor tab id. Reading the child element's
   own rect collapses the vertical group to half width on the next reconcile.
 - Header menu: an unsplit top panel with status `chooser-owner` or
-  `subdivision-top` exposes `Split this panel`. Once it is split, both top-row
-  panels are `split-child` entries and the split action is no longer shown.
+  `subdivision-top`, and a single bottom panel with status
+  `subdivision-bottom`, exposes `Split this panel`. Once it is split, children
+  are `split-child` entries and the split action is no longer shown.
 - Manual verification surface: checklist item 7, top split plus bottom split
-  creates a single 2x2 vertical group.
+  creates a single 2x2 vertical group; checklist item 13, close one bottom
+  split child and re-split the survivor.
 
 ### Flat layout pitfalls
 
@@ -413,6 +516,23 @@ keyboard extensions like Vimium still receive normal content key events.
 chrome notificationbox. The add-panel trailer is the exception: cycle focus
 stays on the outer XUL `vbox` so Enter/Space creates a blank panel.
 
+Arrow-key and Shift-wheel traversal must use minimal reveal scrolling. If the
+next cycle target is already fully visible, the strip should not scroll. When
+the target reaches an edge, call `scrollPanelIntoViewFromRight` so the strip
+only nudges enough to reveal the target instead of snapping the target to the
+leftmost slot. Navigator favicon clicks are the explicit left-align affordance
+and still use `scrollPanelToLeftmost`.
+
+The `Wrap arrow-key cycling at the ends` setting applies to arrow-key
+traversal only. Shift-wheel panel cycling must always clamp at the first and
+last cycle targets; do not let scroll gestures loop back to the start or end.
+When the Add-panel trailer receives focus, both the `focusin` auto-scroll
+listener and the capture-phase focus tracker must ignore it. The trailer sits
+under an ancestor with `data-bento-main-panel`, so an unguarded `closest()`
+lookup can misidentify trailer focus as main-panel focus and reset
+`currentActiveIdx` to 0. That makes the next scroll gesture appear to loop back
+to the main content slot even when wheel traversal is clamped.
+
 The Add-panel trailer's visible cycle indicator belongs on the outer
 `#bento-add-panel-trailer` XUL host, not only inside the iframe. The host is the
 actual arrow-cycle focus target; the iframe owns pointer/Tab focus for the
@@ -445,6 +565,12 @@ Pinned panel activation is a two-part flow:
 
 - Do not focus chrome panel containers as the normal traversal target. Content
   key extensions need DOM focus inside the page.
+- Do not use `scrollPanelToLeftmost` for arrow-key or Shift-wheel traversal.
+  That makes focus appear locked to the left edge and hides visible context.
+- Do not let Shift-wheel traversal inherit arrow-key wraparound. Pass
+  `allowWrap: false` when scroll gestures call `navigatePanels`.
+- Do not let trailer focus update `currentActiveIdx` through ancestor
+  `data-bento-main-panel` lookup.
 - Do not forward arrow keys from editable targets in the actor.
 - Do not activate a pinned panel by setting `gBrowser.selectedTab` to the panel
   tab. That relocates the panel into the main slot.

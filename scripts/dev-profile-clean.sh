@@ -124,12 +124,20 @@ for k in "${KEEP[@]}"; do
   FIND_PRUNE_ARGS+=("-path" "$PROFILE/$k" "-prune" "-o")
 done
 
-# Walk the profile, skipping anything under the kept paths, and
-# delete the rest. -mindepth 1 so we don't delete the profile dir
-# itself.
-find "${FIND_PRUNE_ARGS[@]}" -mindepth 1 -print 2>/dev/null | while read -r f; do
+# Walk the profile, skipping anything under the kept paths, and snapshot the
+# delete list before removing anything. Deleting while find is still traversing
+# the same tree can make find race with rm and exit nonzero under pipefail.
+DELETE_LIST="$(mktemp)"
+trap 'rm -f "$DELETE_LIST"' EXIT
+
+if ! find "${FIND_PRUNE_ARGS[@]}" -mindepth 1 -print0 >"$DELETE_LIST"; then
+  echo "dev-profile-clean: failed to scan $PROFILE" >&2
+  exit 1
+fi
+
+while IFS= read -r -d '' f; do
   rm -rf "$f"
-done
+done <"$DELETE_LIST"
 
 # Fresh marker: Firefox uses .startup-incomplete to detect crash
 # recovery. Always remove it so we don't get the "didn't quit

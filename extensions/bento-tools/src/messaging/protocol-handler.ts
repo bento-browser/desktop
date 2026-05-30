@@ -18,6 +18,12 @@ import { clearPanelMarker } from '../panels/SessionMarker';
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
 
+const PANEL_RESTORE_DEBUG = true;
+function restoreDebug(label: string, data: Record<string, unknown> = {}): void {
+  if (!PANEL_RESTORE_DEBUG) return;
+  console.info('[bento-restore-debug][protocol]', label, data);
+}
+
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
 // snapshot. browser.privacy.* setters return Promise<void> but reading via
 // `.get({})` returns the live value — that's the supported shape.
@@ -377,9 +383,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           await ctx.tabs.markClosing(action.id);
           const affected = ctx.panels.findWorkspacesContainingTab(action.id);
           let delayActualTabRemove = false;
+          const statuses: Record<string, string> = {};
           if (affected.length > 0) {
             for (const wsId of affected) {
               const status = ctx.panels.getPanelLayoutStatus(wsId, action.id);
+              statuses[wsId] = status;
               const promoted =
                 status === 'subdivision-top' ||
                 status === 'chooser-owner' ||
@@ -391,8 +399,18 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               ctx.syncPanelMarkers(wsId);
               ctx.emitPanelsSync(wsId);
             }
-            void clearPanelMarker(action.id);
+            // Keep the closing tab's bento.isPanel session marker in place.
+            // Firefox carries it through the closed-tab entry, and
+            // Cmd+Shift+T uses it to restore the tab back as a panel instead
+            // of reopening it as a normal tab.
           }
+          restoreDebug('tab-close-panel-path', {
+            tabId: action.id,
+            affected,
+            statuses,
+            delayActualTabRemove,
+            markerPreservedForUndoClose: affected.length > 0,
+          });
           const delayMs = delayActualTabRemove ? 500 : 0;
           await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
         })();
@@ -731,11 +749,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'panel/setMainWidth': {
-      // Shared main content slot width. Same no-emit-after-set reasoning as
-      // panel/setWidth — chrome already has the live width on the
-      // main slot's element, and a sync round-trip would clobber the
+      // Main content slot width is workspace-scoped. Same no-emit-after-set
+      // reasoning as panel/setWidth — chrome already has the live width on
+      // the main slot's element, and a sync round-trip would clobber the
       // in-flight layout with stale values from the broadcast.
-      ctx.panels.setMainWidth(action.widthPx);
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      ctx.panels.setMainWidth(wsId, action.widthPx);
       return;
     }
     case 'panel/setStripScroll': {
@@ -768,10 +788,34 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
           if (ctx.panels.splitTopPanel(wsId, action.tabId, tab.id)) {
             ctx.syncPanelMarkers(wsId);
-            ctx.emitPanelsSync(wsId, { scrollToPanelTabId: tab.id });
+            ctx.emitPanelsSync(wsId);
           }
         } catch (err) {
           console.warn('[bento-tools] panelLayout/splitTopPanel failed:', err);
+        }
+      })();
+      return;
+    }
+    case 'panelLayout/splitBottomPanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (!ctx.panels.canSplitBottomPanel(wsId, action.tabId)) return;
+      void (async () => {
+        try {
+          const isDefaultNewTab = !action.url || action.url === 'about:newtab';
+          const tab = await browser.tabs.create({
+            ...(isDefaultNewTab ? {} : { url: action.url }),
+            active: false,
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof tab.id !== 'number') return;
+          ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
+          if (ctx.panels.splitBottomPanel(wsId, action.tabId, tab.id)) {
+            ctx.syncPanelMarkers(wsId);
+            ctx.emitPanelsSync(wsId);
+          }
+        } catch (err) {
+          console.warn('[bento-tools] panelLayout/splitBottomPanel failed:', err);
         }
       })();
       return;
@@ -795,7 +839,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       const result = ctx.panels.breakOut(wsId, action.tabId);
       if (!result) return;
       ctx.syncPanelMarkers(wsId);
-      ctx.emitPanelsSync(wsId, { scrollToPanelTabId: result.promotedTabId });
+      ctx.emitPanelsSync(wsId);
       return;
     }
     case 'panelLayout/fillChooser': {
@@ -822,7 +866,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           }
           if (ctx.panels.fillChooser(wsId, action.chooserId, action.mode, newTabIds)) {
             ctx.syncPanelMarkers(wsId);
-            ctx.emitPanelsSync(wsId, { scrollToPanelTabId: newTabIds[0] });
+            ctx.emitPanelsSync(wsId);
           }
         } catch (err) {
           console.warn('[bento-tools] panelLayout/fillChooser failed:', err);

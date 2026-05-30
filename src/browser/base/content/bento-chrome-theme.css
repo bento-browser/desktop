@@ -142,7 +142,8 @@
   #bento-palette-host,
   #bento-confirm-host,
   #bento-edit-workspace-host,
-  #bento-welcome-host {
+  #bento-welcome-host,
+  #bento-workspace-switcher-host {
     background-color: transparent !important;
   }
   #navigator-toolbox,

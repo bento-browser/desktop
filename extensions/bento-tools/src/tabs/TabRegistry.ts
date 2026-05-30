@@ -63,6 +63,7 @@ export class TabRegistry {
   #flushScheduled = false;
   #listeners = new Set<Listener>();
   #closingTabIds = new Set<number>();
+  #unmarkedClosingTabIds = new Set<number>();
   // Eager pre-assignments stashed by `assignWorkspaceEagerly` when the
   // tab hasn't yet been seen by #onCreated. Firefox is free to resolve
   // tabs.create's promise BEFORE dispatching the onCreated event, so a
@@ -102,8 +103,11 @@ export class TabRegistry {
           readCustomTitle(snap.id),
           readClosingTab(snap.id),
         ]);
-        if (closing) this.#closingTabIds.add(snap.id);
-        else snap.workspaceId = workspaceId;
+        if (closing && !this.#unmarkedClosingTabIds.has(snap.id)) {
+          this.#closingTabIds.add(snap.id);
+        } else {
+          snap.workspaceId = workspaceId;
+        }
         snap.customTitle = customTitle;
         return snap;
       }),
@@ -135,7 +139,7 @@ export class TabRegistry {
     for (const { id, ws, closing } of results) {
       const tab = this.#tabs.get(id);
       if (!tab) continue;
-      if (closing) {
+      if (closing && !this.#unmarkedClosingTabIds.has(id)) {
         this.#closingTabIds.add(id);
         if (tab.workspaceId !== undefined) {
           delete tab.workspaceId;
@@ -246,13 +250,26 @@ export class TabRegistry {
   }
 
   async isClosingOrMarked(id: number): Promise<boolean> {
+    if (this.#unmarkedClosingTabIds.has(id)) return false;
     if (this.#closingTabIds.has(id)) return true;
     if (!(await readClosingTab(id))) return false;
     this.#closingTabIds.add(id);
     return true;
   }
 
+  async unmarkClosing(id: number): Promise<void> {
+    this.#unmarkedClosingTabIds.add(id);
+    this.#closingTabIds.delete(id);
+    try {
+      await browser.sessions.removeTabValue(id, CLOSING_TAB_SESSION_KEY);
+    } catch {
+      // removeTabValue throws if the key is already absent. The desired
+      // state is "not marked as closing", so missing is fine.
+    }
+  }
+
   async markClosing(id: number): Promise<void> {
+    this.#unmarkedClosingTabIds.delete(id);
     this.#closingTabIds.add(id);
     this.#pendingWorkspaceAssignments.delete(id);
 
@@ -342,7 +359,7 @@ export class TabRegistry {
     const tab = this.#tabs.get(id);
     if (!tab) return;
     const changes: Partial<TabSnapshot> = {};
-    if (closing) {
+    if (closing && !this.#unmarkedClosingTabIds.has(id)) {
       this.#closingTabIds.add(id);
       if (tab.workspaceId !== undefined) {
         delete tab.workspaceId;
@@ -396,6 +413,7 @@ export class TabRegistry {
   #onRemoved = (id: number) => {
     this.#pendingWorkspaceAssignments.delete(id);
     this.#closingTabIds.delete(id);
+    this.#unmarkedClosingTabIds.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };

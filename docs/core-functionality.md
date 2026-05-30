@@ -27,9 +27,22 @@ Each workspace owns:
 - persisted layout state such as panel order, widths, subdivisions, and scroll
   position.
 
+The main content slot width is also workspace-specific. Resizing the main
+content area in one workspace should not resize the main content area in another
+workspace.
+
 Workspaces should feel persistent. Closing Bento and reopening it should restore
 the user's active contexts without forcing them to rebuild their browser
 arrangement from memory.
+
+The workspace switcher should behave like a lightweight anchored menu. Opening
+it should leave the current browser content visible behind the menu rather than
+covering the window with an opaque overlay.
+
+Chrome-level menus and modals should preserve visual context. A command palette,
+workspace editor, confirmation, or welcome dialog may draw its intended modal
+scrim, but the overlay page itself should not cover the browser with an opaque
+surface.
 
 ### Main content
 
@@ -57,6 +70,8 @@ Panels support the core Bento workflow:
 - close or remove a panel without losing the rest of the workspace; closing
   panels fade out without resizing neighboring panels during the exit animation,
   then plain top-level panel slots glide closed when the panel is removed.
+- restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
+  regular tab, using the configured default new-panel width.
 
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools
@@ -73,6 +88,11 @@ split within the same area. Panels created inside a subdivision appear at the
 subdivision's assigned size immediately, rather than starting as default-width
 root panels. After creating a vertical group, the top panel can also be split
 so the workspace can form a single shared 2x2 grid instead of separate columns.
+If one panel in a bottom split is closed, the surviving bottom panel can be
+split again in the same row. Splitting or subdividing a panel preserves the
+current panel-strip position rather than auto-scrolling away from the user's
+current context. Breaking a panel out of a subdivision also preserves the
+current strip position.
 The intended layout primitives are:
 
 - horizontal splits for wide and ultrawide displays;

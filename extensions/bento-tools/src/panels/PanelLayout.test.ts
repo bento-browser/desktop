@@ -13,6 +13,7 @@ import {
   removeVerticalGroup,
   reorderRootNodes,
   setGroupRatio,
+  splitBottomPanel,
   splitTopPanel,
   subdividePanel,
 } from './PanelLayout';
@@ -61,6 +62,23 @@ describe('PanelLayout', () => {
         ? layout.root[0].children[1].ratio
         : null,
     ).toBe(0.8);
+  });
+
+  it('re-splits a bottom survivor after one split child is removed', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 23);
+    subdividePanel(layout, 23, { groupId: 'v23', chooserId: 'c23' });
+    fillChooser(layout, 'c23', 'dual', [24, 25], { horizontalGroupId: 'h23-a' });
+
+    expect(removePanel(layout, 25)).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([23, 24]);
+    expect(getPanelLayoutStatus(layout, 24)).toBe('subdivision-bottom');
+
+    expect(splitBottomPanel(layout, 24, 26, { horizontalGroupId: 'h23-b' })).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([23, 24, 26]);
+    expect(getPanelLayoutStatus(layout, 24)).toBe('split-child');
+    expect(getPanelLayoutStatus(layout, 26)).toBe('split-child');
+    expect(getRootNodeIds(layout)).toEqual(['v23']);
   });
 
   it('splits the top of a vertical group so top and bottom can form a 2x2 grid', () => {

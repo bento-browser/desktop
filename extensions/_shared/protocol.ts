@@ -393,8 +393,8 @@ export type Action =
   | { type: 'panel/setWidth'; id: number; widthPx: number }
   /** Update the persisted width (in pixels) for the main content slot.
    * Dispatched by chrome from endPanelDrag when the user resizes the
-   * main slot. Shared across workspaces so workspace switches cannot
-   * resurrect stale per-workspace inline sizing. */
+   * main slot. Tools scopes the write to the active workspace for the
+   * dispatching window. */
   | { type: 'panel/setMainWidth'; widthPx: number }
   /** Update the persisted horizontal scroll position (in pixels) of the
    * chrome panel strip for a specific workspace. Chrome captures the
@@ -412,6 +412,7 @@ export type Action =
   | { type: 'panel/setStripScroll'; workspaceId: string; scrollLeft: number }
   | { type: 'panelLayout/subdivide'; tabId: number }
   | { type: 'panelLayout/splitTopPanel'; tabId: number; url?: string }
+  | { type: 'panelLayout/splitBottomPanel'; tabId: number; url?: string }
   | {
       type: 'panelLayout/fillChooser';
       chooserId: string;

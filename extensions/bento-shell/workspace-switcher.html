@@ -11,8 +11,8 @@
          covers the entire browser window so the menu can render anywhere
          without being clipped to the sidebar's bounds. The page itself
          is non-blocking (pointer-events:none) until the menu opens, at
-         which point the React tree adds a backdrop that captures clicks
-         outside the menu (handled by react-aria's Popover dismiss). -->
+         which point react-aria's Popover dismiss handling catches outside
+         clicks without drawing a page-wide scrim. -->
     <style>
       :root {
         color-scheme: light dark;
@@ -24,7 +24,8 @@
         padding: 0;
         height: 100%;
         width: 100%;
-        background-color: transparent;
+        background: transparent !important;
+        background-color: transparent !important;
         font-family:
           system-ui,
           -apple-system,

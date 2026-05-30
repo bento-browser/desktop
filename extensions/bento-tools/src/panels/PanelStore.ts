@@ -4,6 +4,7 @@ import {
   breakOutPanel,
   canBreakOut,
   canSubdivide,
+  canSplitBottomPanel,
   canSplitTopPanel,
   cloneLayout,
   containsPanel,
@@ -25,6 +26,7 @@ import {
   removeWorkspace,
   reorderRootNodes,
   setGroupRatio,
+  splitBottomPanel,
   splitTopPanel,
   subdividePanel,
   toPersistenceLayout,
@@ -56,7 +58,7 @@ export interface BreakOutPanelResult {
 export class PanelStore {
   #layoutByWorkspace = new Map<string, WorkspacePanelLayout>();
   #widthByTabId = new Map<number, number>();
-  #mainWidthPx: number | undefined;
+  #mainWidthByWorkspace = new Map<string, number>();
   #stripScrollByWorkspace = new Map<string, number>();
   #persistence = new Persistence();
   #persistedWorkspaces = new Map<string, PersistedWorkspacePanels>();
@@ -66,7 +68,7 @@ export class PanelStore {
     const persisted = await load();
     if (persisted) {
       this.#persistedWorkspaces = persisted.byWorkspace;
-      this.#mainWidthPx = persisted.mainWidthPx;
+      this.#mainWidthByWorkspace = persisted.mainWidthByWorkspace;
       this.#stripScrollByWorkspace = persisted.stripScrollByWorkspace;
     }
   }
@@ -120,15 +122,16 @@ export class PanelStore {
     this.#flushPersist();
   }
 
-  getMainWidth(): number | undefined {
-    return this.#mainWidthPx;
+  getMainWidth(workspaceId: string | null): number | undefined {
+    if (!workspaceId) return undefined;
+    return this.#mainWidthByWorkspace.get(workspaceId);
   }
 
-  setMainWidth(widthPx: number): void {
+  setMainWidth(workspaceId: string, widthPx: number): void {
     if (!Number.isFinite(widthPx) || widthPx <= 0) return;
     const rounded = Math.max(320, Math.round(widthPx));
-    if (this.#mainWidthPx === rounded) return;
-    this.#mainWidthPx = rounded;
+    if (this.#mainWidthByWorkspace.get(workspaceId) === rounded) return;
+    this.#mainWidthByWorkspace.set(workspaceId, rounded);
     this.#flushPersist();
   }
 
@@ -190,6 +193,11 @@ export class PanelStore {
   canSplitTopPanel(workspaceId: string | null, tabId: number): boolean {
     if (!workspaceId) return false;
     return canSplitTopPanel(this.#layoutByWorkspace.get(workspaceId), tabId);
+  }
+
+  canSplitBottomPanel(workspaceId: string | null, tabId: number): boolean {
+    if (!workspaceId) return false;
+    return canSplitBottomPanel(this.#layoutByWorkspace.get(workspaceId), tabId);
   }
 
   canBreakOut(workspaceId: string | null, tabId: number): boolean {
@@ -302,9 +310,13 @@ export class PanelStore {
 
   removeWorkspace(workspaceId: string): number[] {
     const layout = this.#layoutByWorkspace.get(workspaceId);
-    if (!layout && !this.#persistedWorkspaces.delete(workspaceId)) return [];
-    this.#persistedWorkspaces.delete(workspaceId);
+    const hadPersisted = this.#persistedWorkspaces.delete(workspaceId);
+    const hadMainWidth = this.#mainWidthByWorkspace.delete(workspaceId);
     this.#stripScrollByWorkspace.delete(workspaceId);
+    if (!layout && !hadPersisted) {
+      if (hadMainWidth) this.#schedulePersist();
+      return [];
+    }
     const victims = layout ? removeWorkspace(layout) : [];
     this.#layoutByWorkspace.delete(workspaceId);
     for (const tabId of victims) {
@@ -337,6 +349,16 @@ export class PanelStore {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
     const changed = splitTopPanel(layout, tabId, newTabId, {
+      horizontalGroupId: this.#newLayoutId('horizontal'),
+    });
+    if (changed) this.#flushPersist();
+    return changed;
+  }
+
+  splitBottomPanel(workspaceId: string, tabId: number, newTabId: number): boolean {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    if (!layout) return false;
+    const changed = splitBottomPanel(layout, tabId, newTabId, {
       horizontalGroupId: this.#newLayoutId('horizontal'),
     });
     if (changed) this.#flushPersist();
@@ -423,7 +445,7 @@ export class PanelStore {
     this.#persistence.schedule(
       new Map(this.#layoutByWorkspace),
       new Map(this.#widthByTabId),
-      this.#mainWidthPx,
+      new Map(this.#mainWidthByWorkspace),
       new Map(this.#stripScrollByWorkspace),
     );
   }
@@ -432,7 +454,7 @@ export class PanelStore {
     this.#persistence.flushNow(
       new Map(this.#layoutByWorkspace),
       new Map(this.#widthByTabId),
-      this.#mainWidthPx,
+      new Map(this.#mainWidthByWorkspace),
       new Map(this.#stripScrollByWorkspace),
     );
   }

@@ -208,6 +208,19 @@ export function canSplitTopPanel(layout: WorkspacePanelLayout | undefined, tabId
   return false;
 }
 
+export function canSplitBottomPanel(
+  layout: WorkspacePanelLayout | undefined,
+  tabId: number,
+): boolean {
+  if (!Number.isFinite(tabId)) return false;
+  for (const node of layout?.root ?? []) {
+    if (node.kind !== 'group' || node.axis !== 'vertical') continue;
+    const bottom = node.children[1];
+    if (bottom.kind === 'panel' && bottom.tabId === tabId) return true;
+  }
+  return false;
+}
+
 export function canBreakOut(layout: WorkspacePanelLayout | undefined, tabId: number): boolean {
   const status = getPanelLayoutStatus(layout, tabId);
   return status === 'subdivision-bottom' || status === 'split-child';
@@ -338,6 +351,30 @@ export function splitTopPanel(
     const top = root.children[0];
     if (top.kind !== 'panel' || top.tabId !== tabId) continue;
     root.children[0] = {
+      kind: 'group',
+      axis: 'horizontal',
+      id: ids.horizontalGroupId,
+      ratio: 0.5,
+      children: [panelNode(tabId), panelNode(newTabId)],
+    };
+    return true;
+  }
+  return false;
+}
+
+export function splitBottomPanel(
+  layout: WorkspacePanelLayout,
+  tabId: number,
+  newTabId: number,
+  ids: { horizontalGroupId: string },
+): boolean {
+  if (!Number.isFinite(tabId) || !Number.isFinite(newTabId)) return false;
+  if (containsPanel(layout, newTabId)) return false;
+  for (const root of layout.root) {
+    if (root.kind !== 'group' || root.axis !== 'vertical') continue;
+    const bottom = root.children[1];
+    if (bottom.kind !== 'panel' || bottom.tabId !== tabId) continue;
+    root.children[1] = {
       kind: 'group',
       axis: 'horizontal',
       id: ids.horizontalGroupId,
