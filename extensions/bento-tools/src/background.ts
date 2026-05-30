@@ -247,18 +247,20 @@ async function emitPanelsSync(
     if (subdivisionParentIds.has(parentTabId)) return;
     subdivisionParentIds.add(parentTabId);
     const sub = allSubs.get(parentTabId);
-    if (!sub?.topClosed || sub.subPanelTabIds.length !== 1) return;
-    const survivorTabId = sub.subPanelTabIds[0];
-    if (typeof survivorTabId === 'number' && Number.isFinite(survivorTabId)) {
-      collectVisibleSubdivisionParents(survivorTabId);
+    if (!sub?.topClosed) return;
+    for (const subPanelTabId of sub.subPanelTabIds) {
+      if (typeof subPanelTabId === 'number' && Number.isFinite(subPanelTabId)) {
+        collectVisibleSubdivisionParents(subPanelTabId);
+      }
     }
   };
   for (const parentTabId of tabIds) {
     const sub = allSubs.get(parentTabId);
-    if (!sub?.topClosed || sub.subPanelTabIds.length !== 1) continue;
-    const survivorTabId = sub.subPanelTabIds[0];
-    if (typeof survivorTabId === 'number' && Number.isFinite(survivorTabId)) {
-      collectVisibleSubdivisionParents(survivorTabId);
+    if (!sub?.topClosed) continue;
+    for (const subPanelTabId of sub.subPanelTabIds) {
+      if (typeof subPanelTabId === 'number' && Number.isFinite(subPanelTabId)) {
+        collectVisibleSubdivisionParents(subPanelTabId);
+      }
     }
   }
   const subdivisions: Record<
@@ -266,7 +268,7 @@ async function emitPanelsSync(
     {
       mode: 'single' | 'dual';
       topHeightFraction: number;
-      subPanels: Array<{ tabId: number; url: string; favIconUrl?: string }>;
+      subPanels: Array<{ tabId: number; url: string; favIconUrl?: string; widthPx?: number }>;
       splitRatio?: number;
       topClosed?: boolean;
     }
@@ -284,11 +286,14 @@ async function emitPanelsSync(
     for (const spId of sub.subPanelTabIds) {
       try {
         const spTab = await browser.tabs.get(spId);
-        subPanels.push({
+        const widthPx = panels.getWidth(spId);
+        const entry: { tabId: number; url: string; favIconUrl?: string; widthPx?: number } = {
           tabId: spId,
           url: spTab.url ?? '',
           favIconUrl: spTab.favIconUrl ?? '',
-        });
+        };
+        if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+        subPanels.push(entry);
       } catch {
         missingSubPanelIds.push(spId);
       }
@@ -596,11 +601,7 @@ const bootReady = Promise.all([
     const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
     if (wsTabs.length > 0 && !wsTabs.some((t) => t.active)) {
       const target = wsTabs[0]!;
-      try {
-        await browser.tabs.update(target.id, { active: true });
-      } catch (err) {
-        console.warn('[bento-tools] activate workspace tab at boot failed:', err);
-      }
+      await activateNonPanelTab(target.id, 'activate workspace tab at boot', target.windowId);
     }
   }
 
@@ -880,7 +881,21 @@ function maybeHandleAddPanelMarker(
     console.warn('[bento-tools] add-as-panel: no active workspace, dropping');
     return;
   }
-  if (panels.add(wsId, tabId)) {
+  const sourceTabIdMatch = /[?&]bento_source_tab_id=([^&#]+)/.exec(url);
+  const sourceTabIdRaw = sourceTabIdMatch ? decodeURIComponent(sourceTabIdMatch[1]) : '';
+  let inserted = false;
+  if (sourceTabIdRaw === 'main') {
+    inserted = panels.insertAt(wsId, tabId, 0);
+  } else if (sourceTabIdRaw) {
+    const sourceTabId = Number(sourceTabIdRaw);
+    const currentPanels = panels.getPanels(wsId);
+    const sourceIndex = currentPanels.indexOf(sourceTabId);
+    const position = sourceIndex >= 0 ? sourceIndex + 1 : currentPanels.length;
+    inserted = panels.insertAt(wsId, tabId, position);
+  } else {
+    inserted = panels.add(wsId, tabId);
+  }
+  if (inserted) {
     tabs.assignWorkspaceEagerly(tabId, wsId);
     // Stamp the configured default width so the new panel renders at
     // the user's preferred size on first paint instead of Firefox's
@@ -892,7 +907,7 @@ function maybeHandleAddPanelMarker(
     syncPanelMarkersForWorkspace(wsId);
     void emitPanelsSync(wsId, { scrollToPanelTabId: tabId });
   } else {
-    console.warn('[bento-tools] add-as-panel: panels.add returned false');
+    console.warn('[bento-tools] add-as-panel: panel insert returned false');
   }
 }
 
@@ -920,13 +935,45 @@ function maybeHandleAddPanelMarker(
 // fails to revert.
 let lastActiveNonPanelTabId: number | null = null;
 
+function isPanelOrSubPanelTabId(tabId: number): boolean {
+  return panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0;
+}
+
+async function activateNonPanelTab(
+  tabId: number,
+  label: string,
+  windowId?: number,
+): Promise<boolean> {
+  if (!Number.isFinite(tabId)) return false;
+  if (tabs.isClosing(tabId)) return false;
+  if (isPanelOrSubPanelTabId(tabId)) return false;
+  const snap = tabs.snapshot().find((candidate) => candidate.id === tabId);
+  if (!snap) return false;
+  if (typeof windowId === 'number' && snap.windowId !== windowId) return false;
+  try {
+    await browser.tabs.get(tabId);
+    await browser.tabs.update(tabId, { active: true });
+    return true;
+  } catch (err) {
+    console.warn(`[bento-tools] ${label} failed:`, err);
+    return false;
+  }
+}
+
+function rememberLastActiveNonPanelTab(tabId: number): void {
+  if (!Number.isFinite(tabId)) return;
+  if (tabs.isClosing(tabId)) return;
+  if (isPanelOrSubPanelTabId(tabId)) return;
+  lastActiveNonPanelTabId = tabId;
+}
+
 void (async () => {
   try {
     const [active] = await browser.tabs.query({ active: true, currentWindow: true });
     if (typeof active?.id !== 'number') return;
     const marker = await readPanelMarker(active.id);
     if (!marker) {
-      lastActiveNonPanelTabId = active.id;
+      rememberLastActiveNonPanelTab(active.id);
     }
   } catch (err) {
     console.warn('[bento-tools] seed lastActiveNonPanelTabId failed:', err);
@@ -974,7 +1021,7 @@ async function maybeRestorePanelFromMarker(
   try {
     const [active] = await browser.tabs.query({ active: true, currentWindow: true });
     if (active?.id !== tabId) return;
-    await browser.tabs.update(previousNonPanelTabId, { active: true });
+    await activateNonPanelTab(previousNonPanelTabId, 'revert from panel restore');
   } catch (err) {
     console.warn('[bento-tools] revert from panel restore failed:', err);
   }
@@ -1018,7 +1065,11 @@ async function maybePromotePanelOpenerTab(
         : { active: true, currentWindow: true };
     const [active] = await browser.tabs.query(query);
     if (active?.id !== tab.id) return;
-    await browser.tabs.update(previousNonPanelTabId, { active: true });
+    await activateNonPanelTab(
+      previousNonPanelTabId,
+      'revert from panel opener promotion',
+      windowId ?? undefined,
+    );
   } catch (err) {
     console.warn('[bento-tools] revert from panel opener promotion failed:', err);
   }
@@ -1040,7 +1091,7 @@ browser.tabs.onCreated.addListener((tab) => {
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
   const marker = await readPanelMarker(tabId);
   if (!marker) {
-    lastActiveNonPanelTabId = tabId;
+    rememberLastActiveNonPanelTab(tabId);
     return;
   }
   // Backstop revert: if SessionStore restored the marker before
@@ -1051,7 +1102,11 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
     return;
   }
   try {
-    await browser.tabs.update(lastActiveNonPanelTabId, { active: true });
+    const reverted = await activateNonPanelTab(
+      lastActiveNonPanelTabId,
+      'revert panel-tab activation',
+    );
+    if (!reverted) lastActiveNonPanelTabId = null;
   } catch (err) {
     console.warn('[bento-tools] revert panel-tab activation failed (may have been closed):', err);
     // Stale lastActiveNonPanelTabId — clear so we don't keep trying.
@@ -1092,15 +1147,11 @@ async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Pr
   // non-panel tab; in the last-sidebar-tab-close path that fallback is
   // the tab being closed, so promotion can lose the race.
   await clearPanelMarker(tabId);
-  lastActiveNonPanelTabId = tabId;
+  rememberLastActiveNonPanelTab(tabId);
 
   syncPanelMarkersForWorkspace(workspaceId);
 
-  try {
-    await browser.tabs.update(tabId, { active: true });
-  } catch (err) {
-    console.warn('[bento-tools] promote-panel activate failed:', err);
-  }
+  await activateNonPanelTab(tabId, 'promote-panel activate');
 
   void emitPanelsSync(workspaceId);
 }
@@ -1295,9 +1346,7 @@ async function handleWorkspaceActivation(
     const remembered = lastActiveTabByWorkspace.get(wsId);
     const target =
       (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) || wsTabs[0]!;
-    browser.tabs
-      .update(target.id, { active: true })
-      .catch((err) => console.warn('[bento-tools] activate workspace tab failed:', err));
+    void activateNonPanelTab(target.id, 'activate workspace tab', target.windowId);
   }
 
   // (2) Lazy panel restore for inactive workspaces — runs once per

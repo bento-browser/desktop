@@ -54,13 +54,67 @@ async function promoteLeftmostPanelToTabAfterMove(
   await clearPanelMarker(tabId);
   ctx.syncPanelMarkers(workspaceId);
 
-  try {
-    await browser.tabs.update(tabId, { active: true });
-  } catch (err) {
-    console.warn('[bento-tools] assignWorkspace promote-panel activate failed:', err);
+  await activateNonPanelTab(ctx, tabId, 'assignWorkspace promote-panel activate');
+
+  ctx.emitPanelsSync(workspaceId);
+}
+
+async function promoteLeftmostPanelBeforeMainClose(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+): Promise<boolean> {
+  const originalPosition = ctx.panels.getPanels(workspaceId).indexOf(tabId);
+  if (!ctx.panels.remove(workspaceId, tabId)) return false;
+
+  // A promoted panel becomes the real main tab before the old main tab
+  // is removed. Clearing the marker first prevents the activation guard
+  // in background.ts from bouncing focus back to the tab we are closing.
+  await clearPanelMarker(tabId);
+  ctx.syncPanelMarkers(workspaceId);
+
+  const activated = await activateNonPanelTab(ctx, tabId, 'tab/closeMain promote-panel activate');
+  if (!activated) {
+    ctx.panels.insertAt(workspaceId, tabId, originalPosition);
+    ctx.syncPanelMarkers(workspaceId);
+    ctx.emitPanelsSync(workspaceId);
+    return false;
   }
 
   ctx.emitPanelsSync(workspaceId);
+  return true;
+}
+
+async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number): Promise<void> {
+  const sourceWindowId = ctx.sourceWindowId;
+  const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
+  const workspaceId =
+    tab?.workspaceId ??
+    (typeof sourceWindowId === 'number' ? ctx.workspaces.getActiveId(sourceWindowId) : null);
+
+  await ctx.tabs.markClosing(tabId);
+
+  if (workspaceId) {
+    const panelTabIds = ctx.panels.getPanels(workspaceId);
+    const panelTabIdSet = new Set(panelTabIds);
+    const remainingNormalTabs = ctx.tabs.snapshot().filter((candidate) => {
+      if (candidate.id === tabId) return false;
+      if (candidate.workspaceId !== workspaceId) return false;
+      if (typeof sourceWindowId === 'number' && candidate.windowId !== sourceWindowId) return false;
+      return !panelTabIdSet.has(candidate.id);
+    });
+
+    if (remainingNormalTabs.length === 0 && panelTabIds.length > 0) {
+      const promoted = await promoteLeftmostPanelBeforeMainClose(ctx, workspaceId, panelTabIds[0]!);
+      await closeTabAsRemoved(ctx, tabId, {
+        delayMs: promoted ? 80 : 0,
+        label: 'tab/closeMain',
+      });
+      return;
+    }
+  }
+
+  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain' });
 }
 
 function pickAvailableWorkspaceAfterDeleting(
@@ -182,6 +236,25 @@ async function closeTabAsRemoved(
   }
 }
 
+async function activateNonPanelTab(
+  ctx: HandlerContext,
+  tabId: number,
+  label: string,
+): Promise<boolean> {
+  if (!Number.isFinite(tabId)) return false;
+  if (ctx.tabs.isClosing(tabId)) return false;
+  if (ctx.panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0) return false;
+  if (!ctx.tabs.snapshot().some((tab) => tab.id === tabId)) return false;
+  try {
+    await browser.tabs.get(tabId);
+    await browser.tabs.update(tabId, { active: true });
+    return true;
+  } catch (err) {
+    console.warn(`[bento-tools] ${label} failed:`, tabId, err);
+    return false;
+  }
+}
+
 export interface HandlerContext {
   tabs: TabRegistry;
   workspaces: WorkspaceStore;
@@ -274,13 +347,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // a sidebar tab flickers content briefly then reverts. A tab the
       // user is actively activating is by definition not a "to-be-
       // restored panel", so it's safe to clear the marker here.
-      const isPanelTab = ctx.panels.findWorkspacesContainingTab(action.id).length > 0;
+      const isPanelTab = ctx.panels.findWorkspacesContainingPanelOrSubPanel(action.id).length > 0;
       if (!isPanelTab) {
         void clearPanelMarker(action.id);
       }
-      browser.tabs.update(action.id, { active: true }).catch((err) => {
-        console.warn('[bento-tools] tab/activate failed:', action.id, err);
-      });
+      void activateNonPanelTab(ctx, action.id, 'tab/activate');
       return;
     }
     case 'tab/close':
@@ -310,6 +381,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
         })();
       }
+      return;
+    case 'tab/closeMain':
+      void closeMainTabWithPanelPromotion(ctx, action.id);
       return;
     case 'tab/rename':
       void ctx.tabs.rename(action.id, action.title);
@@ -369,7 +443,12 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               const candidates = await browser.tabs.query({ url: action.url });
               const match = candidates.find((t) => typeof t.id === 'number' && wsTabIds.has(t.id));
               if (match && typeof match.id === 'number') {
-                await browser.tabs.update(match.id, { active: true });
+                const activated = await activateNonPanelTab(
+                  ctx,
+                  match.id,
+                  'tab/openUrl focus existing',
+                );
+                if (!activated) return;
                 if (typeof match.windowId === 'number' && match.windowId >= 0) {
                   await browser.windows
                     .update(match.windowId, { focused: true })
@@ -694,6 +773,14 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'panel/closeSubdivisionTop': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
+      if (Array.isArray(action.subPanelWidths)) {
+        for (const entry of action.subPanelWidths) {
+          if (!entry || typeof entry.tabId !== 'number' || typeof entry.widthPx !== 'number') {
+            continue;
+          }
+          ctx.panels.setWidth(entry.tabId, entry.widthPx);
+        }
+      }
       if (ctx.panels.closeSubdivisionTop(wsId, action.tabId)) {
         ctx.emitPanelsSync(wsId);
       }
@@ -702,11 +789,19 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'panel/promoteSubdivisionParent': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
+      if (Array.isArray(action.subPanelWidths)) {
+        for (const entry of action.subPanelWidths) {
+          if (!entry || typeof entry.tabId !== 'number' || typeof entry.widthPx !== 'number') {
+            continue;
+          }
+          ctx.panels.setWidth(entry.tabId, entry.widthPx);
+        }
+      }
       const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.tabId);
       if (promoted) {
-        void clearPanelMarker(action.tabId);
         ctx.syncPanelMarkers(wsId);
         ctx.emitPanelsSync(wsId);
+        void clearPanelMarker(action.tabId);
       }
       return;
     }

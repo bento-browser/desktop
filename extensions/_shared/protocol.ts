@@ -233,6 +233,7 @@ export type Action =
   | { type: 'tabs/requestSnapshot' }
   | { type: 'tab/activate'; id: number }
   | { type: 'tab/close'; id: number }
+  | { type: 'tab/closeMain'; id: number }
   | { type: 'tab/rename'; id: number; title: string }
   | { type: 'tab/assignWorkspace'; id: number; workspaceId: string }
   /** Open `url` in a new tab. When `focusExisting` is set, the handler
@@ -337,13 +338,21 @@ export type Action =
    * top-level panel strip. The source subdivision collapses according to
    * its remaining visible panels. */
   | { type: 'panel/breakOutSubPanel'; tabId: number }
-  /** Hide the parent/top section of a single-sub-panel subdivision while
-   * keeping the sub-panel browser in place and expanded. */
-  | { type: 'panel/closeSubdivisionTop'; tabId: number }
+  /** Hide the parent/top section of a subdivision while keeping its
+   * sub-panel browser(s) in place and expanded. */
+  | {
+      type: 'panel/closeSubdivisionTop';
+      tabId: number;
+      subPanelWidths?: Array<{ tabId: number; widthPx: number }>;
+    }
   /** Remove a subdivision parent from the panel strip while keeping its
    * sub-panel tab(s) as normal top-level panels. Used by chrome after the
    * parent section has visually collapsed. */
-  | { type: 'panel/promoteSubdivisionParent'; tabId: number }
+  | {
+      type: 'panel/promoteSubdivisionParent';
+      tabId: number;
+      subPanelWidths?: Array<{ tabId: number; widthPx: number }>;
+    }
   /** Fill a subdivision's bottom region with sub-panel content. Creates
    * 1 or 2 new tabs depending on mode. */
   | { type: 'panel/setSubdivisionContent'; tabId: number; mode: SubdivisionMode; urls: string[] }

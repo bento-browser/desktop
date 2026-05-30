@@ -263,7 +263,11 @@ export class PanelStore {
 
     const parentWidth = this.#widthByTabId.get(parentTabId);
     this.#widthByTabId.delete(parentTabId);
-    if (typeof parentWidth === 'number' && promoted.length > 0) {
+    if (
+      typeof parentWidth === 'number' &&
+      promoted.length > 0 &&
+      !this.#widthByTabId.has(promoted[0]!)
+    ) {
       this.#widthByTabId.set(promoted[0]!, parentWidth);
     }
     this.#subdivisions.delete(parentTabId);
@@ -412,7 +416,10 @@ export class PanelStore {
       const parent = this.findParentOfSubPanel(current);
       if (parent === undefined) return undefined;
       const sub = this.#subdivisions.get(parent);
-      if (!sub?.topClosed || sub.subPanelTabIds.length !== 1 || sub.subPanelTabIds[0] !== current) {
+      // A top-closed subdivision exposes its children as the visible panel
+      // surfaces. A dual split child is not full-width, but it is still a
+      // user-addressable panel and may itself be subdivided.
+      if (!sub?.topClosed || !sub.subPanelTabIds.includes(current)) {
         return undefined;
       }
       if (roots.includes(parent)) return parent;
@@ -468,7 +475,7 @@ export class PanelStore {
 
   closeSubdivisionTop(_workspaceId: string, parentTabId: number): boolean {
     const sub = this.#subdivisions.get(parentTabId);
-    if (!sub || sub.subPanelTabIds.length !== 1) return false;
+    if (!sub || sub.subPanelTabIds.length === 0) return false;
     sub.topClosed = true;
     sub.topHeightFraction = 0;
     this.#schedulePersist();

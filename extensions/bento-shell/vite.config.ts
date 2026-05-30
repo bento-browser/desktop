@@ -98,6 +98,7 @@ export default defineConfig(({ mode }) => ({
         welcome: resolve(__dirname, 'welcome.html'),
         menu: resolve(__dirname, 'menu.html'),
         'panel-trailer': resolve(__dirname, 'panel-trailer.html'),
+        'panel-newtab': resolve(__dirname, 'panel-newtab.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',
