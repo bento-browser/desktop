@@ -745,31 +745,14 @@
         min-width: var(--bento-panel-min-width);
         background-color: var(--neutral-5);
       }
-      /* Close-panel fade-shrink animation. Width transitions
-         smoothly so adjacent panels (and the per-pair splitters
-         tracked via ResizeObserver) shift in real time as the
-         panel collapses, instead of snapping to the new layout
-         after the fade finishes. !important + min-width: 0
-         overrides Firefox's split-view min-width that would
-         otherwise refuse to let the panel shrink past its
-         configured floor. */
+      /* Close-panel animation. Fade only: keep the panel's current
+         layout size while it exits, then let the post-close reconcile
+         remove its slot. Do not animate width/flex/margins here; that
+         makes neighbouring panels resize during the fade. */
       .bento-panel--removing {
         pointer-events: none;
         opacity: 0;
-        transform: scale(0.95);
-        min-width: 0 !important;
-        max-width: 0 !important;
-        width: 0 !important;
-        flex: 0 0 0 !important;
-        margin: 0 !important;
-        transition:
-          opacity 120ms var(--bento-easing-standard),
-          transform 180ms var(--bento-easing-standard),
-          min-width 180ms var(--bento-easing-standard),
-          max-width 180ms var(--bento-easing-standard),
-          width 180ms var(--bento-easing-standard),
-          flex-basis 180ms var(--bento-easing-standard),
-          margin 180ms var(--bento-easing-standard);
+        transition: opacity 120ms var(--bento-easing-standard);
       }
 
       /* Legacy host-owned panel containers are positioned for
@@ -3688,6 +3671,7 @@
   // run so a stale snapshot can never leak across reconciles.
   let __bentoPendingFlip = null;
   let __bentoPendingNavFlip = null;
+  let __bentoPendingCloseGapFlip = null;
 
   function createPanelSplitter() {
     // XUL <splitter> element — only XUL element type that XUL
@@ -4952,6 +4936,90 @@
     });
   }
 
+  function getTopLevelCloseGapFlipKey(el) {
+    if (!el) return null;
+    if (el.id === 'bento-add-panel-trailer') return 'add-panel-trailer';
+    const tabId = Number(el.dataset?.bentoPanelTabId);
+    if (!Number.isFinite(tabId)) return null;
+    return el.dataset.bentoRootNodeId || 'panel:' + tabId;
+  }
+
+  function stageTopLevelPanelCloseGapFlip(closingPanel) {
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!closingPanel || !tabpanels?.classList?.contains('bento-flat-panel-layout')) {
+      return;
+    }
+    const closingTabId = Number(closingPanel.dataset?.bentoPanelTabId);
+    if (!Number.isFinite(closingTabId)) return;
+    if (currentPanelStatusByTabId.get(closingTabId) !== 'root-panel') return;
+    if (currentSubdivisions.has(closingTabId)) return;
+
+    const closingKey = getTopLevelCloseGapFlipKey(closingPanel);
+    const snapshot = new Map();
+    const seen = new Set();
+    for (const panelEl of getOrderedPanels()) {
+      if (panelEl === closingPanel) continue;
+      const key = getTopLevelCloseGapFlipKey(panelEl);
+      if (!key || key === closingKey || seen.has(key)) continue;
+      seen.add(key);
+      snapshot.set(key, panelEl.getBoundingClientRect());
+    }
+    const trailer = document.getElementById('bento-add-panel-trailer');
+    if (trailer) {
+      const key = getTopLevelCloseGapFlipKey(trailer);
+      if (key) snapshot.set(key, trailer.getBoundingClientRect());
+    }
+    __bentoPendingCloseGapFlip = snapshot.size > 0 ? snapshot : null;
+  }
+
+  function runPendingTopLevelPanelCloseGapFlip() {
+    if (!__bentoPendingCloseGapFlip) return;
+    const snapshot = __bentoPendingCloseGapFlip;
+    __bentoPendingCloseGapFlip = null;
+    const moved = [];
+    const seen = new Set();
+    for (const panelEl of getOrderedPanels()) {
+      const key = getTopLevelCloseGapFlipKey(panelEl);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const oldRect = snapshot.get(key);
+      if (!oldRect) continue;
+      const newRect = panelEl.getBoundingClientRect();
+      const dx = oldRect.left - newRect.left;
+      if (Math.abs(dx) < 1) continue;
+      moved.push({ el: panelEl, dx });
+    }
+    const trailer = document.getElementById('bento-add-panel-trailer');
+    if (trailer) {
+      const key = getTopLevelCloseGapFlipKey(trailer);
+      const oldRect = key ? snapshot.get(key) : null;
+      if (oldRect) {
+        const newRect = trailer.getBoundingClientRect();
+        const dx = oldRect.left - newRect.left;
+        if (Math.abs(dx) >= 1) moved.push({ el: trailer, dx });
+      }
+    }
+    if (moved.length === 0) return;
+    for (const { el, dx } of moved) {
+      el.style.transition = 'none';
+      el.style.transform = 'translateX(' + dx + 'px)';
+    }
+    void window.gBrowser?.tabpanels?.offsetWidth;
+    requestAnimationFrame(() => {
+      for (const { el } of moved) {
+        el.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        el.style.transform = '';
+        const cleanup = (e) => {
+          if (e && e.propertyName !== 'transform') return;
+          el.style.transition = '';
+          el.removeEventListener('transitionend', cleanup);
+        };
+        el.addEventListener('transitionend', cleanup);
+        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+      }
+    });
+  }
+
   function syncInterPanelSplitters(tabsToRender) {
     const host = document.getElementById('bento-side-panel-host');
     if (!host || !window.gBrowser?.tabpanels) return;
@@ -5880,6 +5948,7 @@
     panel.classList.add('bento-panel--removing');
 
     setTimeout(() => {
+      stageTopLevelPanelCloseGapFlip(panel);
       for (const entry of promotedChildWidths) {
         dispatchShellAction({
           type: 'panel/setWidth',
@@ -5887,7 +5956,9 @@
           widthPx: entry.widthPx,
         });
       }
-      dispatchShellAction({ type: 'tab/close', id: tabId });
+      if (!dispatchShellAction({ type: 'tab/close', id: tabId })) {
+        __bentoPendingCloseGapFlip = null;
+      }
     }, PANEL_REMOVE_ANIMATION_MS);
   }
 
@@ -7764,6 +7835,7 @@
 
   function forceMainOnlyChromeState(gBrowser, tabpanels) {
     cancelWorkspaceFadeForMainOnly();
+    __bentoPendingCloseGapFlip = null;
     setNoSidePanelsMode(true);
     clearFlatPanelLayout(tabpanels);
     syncInterPanelSplitters([]);
@@ -10095,6 +10167,10 @@
     // FLIP-animate any cross-panel reorder that endDrag (header
     // drag) has staged. No-op when no snapshot is pending.
     runPendingPanelFlip();
+    // A plain top-level panel close fades the departing panel at its
+    // original size. After the delayed tab close reconciles the strip,
+    // slide the surviving root slots into their settled positions.
+    runPendingTopLevelPanelCloseGapFlip();
 
     // Auto-scroll to bring any freshly-added panel into view. Trigger
     // whenever a new panel id appears AND we've already reconciled

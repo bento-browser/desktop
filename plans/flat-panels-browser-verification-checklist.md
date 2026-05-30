@@ -84,19 +84,28 @@ items are easy to scan.
     - Create a top/bottom subdivision.
     - Close the top panel.
     - Expected: bottom panel becomes root panel; content does not reload; menu now shows `Subdivide panel`.
+    - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
+    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 12. **Close top with dual bottom split**
     - Create top plus two bottom split children.
     - Close the top panel.
     - Expected: both bottom children become adjacent root panels, keep widths, and keep content painted.
+    - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
+    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 13. **Close bottom child**
     - Close one bottom or split child.
     - Expected: remaining layout normalizes; no orphan chooser or blank slot remains.
+    - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
+    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 14. **Cmd+W on panels**
     - Focus a side panel, then press `Cmd+W`.
     - Expected: closes intended panel without making a panel tab the main tab or blanking layout.
+    - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
+    - Requested behavior: Closing a non-subdivided top-level panel should let surviving top-level slots transition into the closed gap after the fade.
+    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade; plain top-level panel closes now stage a transform-only close-gap FLIP for surviving root slots after the delayed close reconcile.
 
 ## Resizing
 

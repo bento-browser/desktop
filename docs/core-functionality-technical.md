@@ -338,6 +338,18 @@ Subdivision splitter resizing:
 - When promoting a child out of a closing subdivision, preserve the child's
   browser content and width. Otherwise the promoted panel can flash blank or
   resize unexpectedly.
+- Panel close animation is opacity-only. `.bento-panel--removing` must not
+  mutate width, min-width, max-width, flex, transform, or margins; otherwise the
+  outgoing panel fades while the surrounding layout resizes. Let the delayed
+  `tab/close` dispatch and the following reconcile remove the slot after the
+  fade.
+- Plain top-level panel close uses a separate transform-only close-gap FLIP.
+  `stageTopLevelPanelCloseGapFlip` snapshots the surviving root slots and the
+  add-panel trailer immediately before the delayed `tab/close` dispatch, and
+  `runPendingTopLevelPanelCloseGapFlip` consumes that snapshot after the next
+  reconcile. Keep this separate from the reorder FLIP and do not run it for
+  subdivision promotion paths; those use their own close/promotion animation
+  rules.
 
 ## Panel traversal and focus
 

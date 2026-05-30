@@ -54,7 +54,9 @@ Panels support the core Bento workflow:
 - save a useful panel target for reuse later;
 - pin important panels so they are reachable across workspace changes;
 - resize panels without disturbing the entire layout;
-- close or remove a panel without losing the rest of the workspace.
+- close or remove a panel without losing the rest of the workspace; closing
+  panels fade out without resizing neighboring panels during the exit animation,
+  then plain top-level panel slots glide closed when the panel is removed.
 
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools
