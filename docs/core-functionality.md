@@ -69,7 +69,9 @@ smaller, movable regions.
 
 At the top level, panels can flow horizontally beside the main content. A panel
 can then be subdivided so the workspace can contain smaller panels stacked or
-split within the same area. The intended layout primitives are:
+split within the same area. Panels created inside a subdivision appear at the
+subdivision's assigned size immediately, rather than starting as default-width
+root panels. The intended layout primitives are:
 
 - horizontal splits for wide and ultrawide displays;
 - vertical splits for portrait displays and stacked reference views;

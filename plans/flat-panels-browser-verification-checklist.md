@@ -61,10 +61,14 @@ items are easy to scan.
 6. **Fill chooser as single panel**
    - Click chooser `Full panel`.
    - Expected: bottom panel appears under top panel; both are live and focusable.
+   - Reported failure: `Full panel` creates the new bottom panel at the default root-panel width instead of the existing vertical group's width.
+   - Fix status: Ready for re-verification. Chooser-created subdivision children now get their flat-layout rects before enter animation and fade in without width or transform animation.
 
 7. **Fill chooser as dual split**
    - Subdivide another root panel, then click `Split panels`.
    - Expected: two bottom panels appear side-by-side under top panel.
+   - Reported failure: `Split panels` initially spawns the new panels at the default root-panel size, then transitions them to the vertical group's width.
+   - Fix status: Ready for re-verification. Chooser-created split children now get their flat-layout rects before enter animation, fade in at their final sizes, and tools no longer stamps default root-panel width onto chooser children.
 
 8. **Depth cap**
    - Open kebab menu on subdivision top, bottom, and split children.
@@ -103,9 +107,11 @@ items are easy to scan.
 14. **Cmd+W on panels**
     - Focus a side panel, then press `Cmd+W`.
     - Expected: closes intended panel without making a panel tab the main tab or blanking layout.
+    - Result: Pass. ✅ Complete
     - Requested behavior: Closing should fade the outgoing panel only; neighboring panels should not resize during the fade.
     - Requested behavior: Closing a non-subdivided top-level panel should let surviving top-level slots transition into the closed gap after the fade.
-    - Fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade; plain top-level panel closes now stage a transform-only close-gap FLIP for surviving root slots after the delayed close reconcile.
+    - Verified: User confirmed fade-only close with top-level close-gap transition is working.
+    - Fix status: Confirmed. The close-removal class animates opacity only and leaves width/flex/margins unchanged during the fade; plain top-level panel closes stage a transform-only close-gap FLIP for surviving root slots after the delayed close reconcile.
 
 ## Resizing
 
@@ -164,6 +170,8 @@ items are easy to scan.
 21. **Panel click does not select panel as main**
     - Click inside each side panel.
     - Expected: main tab remains the sidebar-selected tab; panel order does not change.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed panel click does not select panel as main.
 
 22. **Arrow key cycling**
     - Use left/right panel cycling.
@@ -174,7 +182,7 @@ items are easy to scan.
 23. **Trailer focus/add**
     - Cycle to Add-panel trailer and activate it.
     - Expected: creates a new root panel and scrolls it into view.
-    - Result: Fail.
+    - Result: Pass. ✅ Complete
     - Notes: Blocked by missing or hidden Add panels button cluster/trailer reported during manual verification.
     - Unblocked: User confirmed the Add panels button cluster is visible again.
     - Follow-up failure: Keyboard cycling reaches the Add panels button cluster, and pressing Tab then focuses into the buttons, but there is no visible focus indicator when cycling lands on the cluster.
@@ -182,7 +190,8 @@ items are easy to scan.
     - Follow-up failure: When an Add panel button is pressed, focus should move to the newly created panel.
     - Follow-up failure: Pressing Enter on a saved-panel button in the Add panels cluster creates a blank marker panel (`about:blank?bento_add_as_panel=1...`) instead of opening the saved panel URL. Mouse click opens the correct URL.
     - Verified: User confirmed saved panel buttons now open panels with the correct URL when activated from the keyboard.
-    - Fix status: Ready for re-verification. Explicit panel-add scroll targets now also become the active/focused cycle target.
+    - Verified: User confirmed trailer focus/add appears to be working.
+    - Fix status: Confirmed. Explicit panel-add scroll targets now also become the active/focused cycle target.
 
 ## Workspace And Session
 

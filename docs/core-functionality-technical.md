@@ -324,6 +324,25 @@ Subdivision splitter resizing:
 - Manual verification surface: checklist items 15 and 16, vertical and
   horizontal subdivision splitter drag.
 
+Chooser fill sizing:
+
+- Source of truth: chooser children get their width from the flat layout rect
+  computed for the vertical group or horizontal split, not from
+  `defaultPanelWidthPx`.
+- Tools path: `panelLayout/fillChooser` creates the requested tab or tabs and
+  assigns them to the workspace, but must not call `PanelStore.setWidth` with
+  the default root-panel width. A chooser child is not a new root panel.
+- Renderer path: subdivision child enter animations are collected during
+  reconcile, but run only after `applyPanelLayoutRects` has applied the final
+  flat-layout rects. They fade in without width or transform animation so the
+  first painted size is the assigned subdivision size.
+- Regression pitfall: do not run the generic root-panel enter animation for
+  `subdivision-bottom` or `split-child` panels before flat geometry is applied.
+  Its requestAnimationFrame callback can overwrite the correct rect with a
+  stale default-width measurement.
+- Manual verification surface: checklist items 6 and 7, fill chooser as single
+  panel and dual split.
+
 ### Flat layout pitfalls
 
 - Keep live panel browser containers as direct `tabpanels` children unless the

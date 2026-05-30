@@ -4748,34 +4748,44 @@
 
   function animatePanelEnter(panelEl, options = {}) {
     if (!panelEl) return;
-    const finalWidth = panelEl.getBoundingClientRect().width;
-    if (!Number.isFinite(finalWidth) || finalWidth <= 0) return;
+    const animateWidth = options.animateWidth !== false;
+    const animateTransform = options.animateTransform !== false;
+    const finalWidth = animateWidth ? panelEl.getBoundingClientRect().width : 0;
+    if (animateWidth && (!Number.isFinite(finalWidth) || finalWidth <= 0)) return;
     const clearSizingAfter = !!options.clearSizingAfter;
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
-    panelEl.style.transform = 'scale(0.98)';
-    panelEl.style.minWidth = '0';
-    panelEl.style.width = '0';
-    panelEl.style.flex = '0 0 0';
+    if (animateTransform) panelEl.style.transform = 'scale(0.98)';
+    if (animateWidth) {
+      panelEl.style.minWidth = '0';
+      panelEl.style.width = '0';
+      panelEl.style.flex = '0 0 0';
+    }
     panelEl.getBoundingClientRect();
     requestAnimationFrame(() => {
-      panelEl.style.transition =
-        'opacity 140ms var(--bento-easing-standard), ' +
-        'transform 180ms var(--bento-easing-standard), ' +
-        'width 180ms var(--bento-easing-standard), ' +
-        'min-width 180ms var(--bento-easing-standard), ' +
-        'flex-basis 180ms var(--bento-easing-standard)';
+      const transitions = ['opacity 140ms var(--bento-easing-standard)'];
+      if (animateTransform) transitions.push('transform 180ms var(--bento-easing-standard)');
+      if (animateWidth) {
+        transitions.push(
+          'width 180ms var(--bento-easing-standard)',
+          'min-width 180ms var(--bento-easing-standard)',
+          'flex-basis 180ms var(--bento-easing-standard)',
+        );
+      }
+      panelEl.style.transition = transitions.join(', ');
       panelEl.style.opacity = '1';
-      panelEl.style.transform = 'scale(1)';
-      panelEl.style.width = finalWidth + 'px';
-      panelEl.style.minWidth = finalWidth + 'px';
-      panelEl.style.flex = '0 0 ' + finalWidth + 'px';
+      if (animateTransform) panelEl.style.transform = 'scale(1)';
+      if (animateWidth) {
+        panelEl.style.width = finalWidth + 'px';
+        panelEl.style.minWidth = finalWidth + 'px';
+        panelEl.style.flex = '0 0 ' + finalWidth + 'px';
+      }
       let onTransitionEnd = null;
       const cleanup = () => {
         panelEl.style.removeProperty('transition');
         panelEl.style.removeProperty('opacity');
         panelEl.style.removeProperty('transform');
-        if (clearSizingAfter) {
+        if (animateWidth && clearSizingAfter) {
           panelEl.style.removeProperty('width');
           panelEl.style.removeProperty('min-width');
           panelEl.style.removeProperty('flex');
@@ -4784,7 +4794,9 @@
       };
       onTransitionEnd = (event) => {
         if (event.target !== panelEl) return;
-        if (event.propertyName !== 'width' && event.propertyName !== 'flex-basis') return;
+        if (animateWidth && event.propertyName !== 'width' && event.propertyName !== 'flex-basis')
+          return;
+        if (!animateWidth && event.propertyName !== 'opacity') return;
         cleanup();
       };
       panelEl.addEventListener('transitionend', onTransitionEnd);
@@ -9894,6 +9906,7 @@
     const isInitialReconcileForWorkspace = __reconciledForWorkspace !== currentWorkspaceId;
     const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
     const shouldAnimateNewPanels = newTabIds.length > 0 && !isInitialReconcileForWorkspace;
+    const pendingSubdivisionPanelEnters = [];
     for (const [i, tab] of layoutTabsToRender.entries()) {
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
@@ -9996,7 +10009,14 @@
             }, 2000);
           }
           if (shouldAnimateNewPanels && newTabIds.includes(tabId) && !skipPromotedEnter) {
-            animatePanelEnter(panelEl, { clearSizingAfter: typeof w !== 'number' });
+            const layoutStatus = currentPanelStatusByTabId.get(tabId);
+            const isSubdivisionChildEnter =
+              layoutStatus === 'subdivision-bottom' || layoutStatus === 'split-child';
+            if (isSubdivisionChildEnter) {
+              pendingSubdivisionPanelEnters.push(panelEl);
+            } else {
+              animatePanelEnter(panelEl, { clearSizingAfter: typeof w !== 'number' });
+            }
           }
         }
       }
@@ -10153,6 +10173,12 @@
     applyPanelLayoutStatusAttributes(currentPanelStatusByTabId);
     syncFlatLayoutOverlays(tabpanels, currentPanelLayoutGeometry);
     syncInterPanelSplitters(rootLayoutTabsToRender);
+    for (const panelEl of pendingSubdivisionPanelEnters) {
+      animatePanelEnter(panelEl, {
+        animateWidth: false,
+        animateTransform: false,
+      });
+    }
 
     // Refresh favicon nav strip (lives outside tabpanels; reads from
     // panels/sync payload — same data the legacy reconciler consumes).

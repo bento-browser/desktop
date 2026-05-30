@@ -795,8 +795,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           if (newTabIds.length !== expected) return;
           for (const tabId of newTabIds) {
             ctx.tabs.assignWorkspaceEagerly(tabId, wsId);
-            const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
-            if (defaultWidth > 0) ctx.panels.setWidth(tabId, defaultWidth);
           }
           if (ctx.panels.fillChooser(wsId, action.chooserId, action.mode, newTabIds)) {
             ctx.syncPanelMarkers(wsId);
