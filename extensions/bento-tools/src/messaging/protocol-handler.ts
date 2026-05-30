@@ -18,12 +18,6 @@ import { clearPanelMarker } from '../panels/SessionMarker';
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
 
-const PANEL_RESTORE_DEBUG = true;
-function restoreDebug(label: string, data: Record<string, unknown> = {}): void {
-  if (!PANEL_RESTORE_DEBUG) return;
-  console.info('[bento-restore-debug][protocol]', label, data);
-}
-
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
 // snapshot. browser.privacy.* setters return Promise<void> but reading via
 // `.get({})` returns the live value — that's the supported shape.
@@ -383,11 +377,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           await ctx.tabs.markClosing(action.id);
           const affected = ctx.panels.findWorkspacesContainingTab(action.id);
           let delayActualTabRemove = false;
-          const statuses: Record<string, string> = {};
           if (affected.length > 0) {
             for (const wsId of affected) {
               const status = ctx.panels.getPanelLayoutStatus(wsId, action.id);
-              statuses[wsId] = status;
               const promoted =
                 status === 'subdivision-top' ||
                 status === 'chooser-owner' ||
@@ -404,13 +396,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             // Cmd+Shift+T uses it to restore the tab back as a panel instead
             // of reopening it as a normal tab.
           }
-          restoreDebug('tab-close-panel-path', {
-            tabId: action.id,
-            affected,
-            statuses,
-            delayActualTabRemove,
-            markerPreservedForUndoClose: affected.length > 0,
-          });
           const delayMs = delayActualTabRemove ? 500 : 0;
           await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
         })();

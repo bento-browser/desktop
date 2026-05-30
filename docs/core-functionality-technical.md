@@ -482,6 +482,20 @@ Top-row splits and 2x2 groups:
   missing tab must not be rendered.
 - Use stable root node ids for reorder. Grouped roots are not equivalent to the
   top panel's tab id.
+- Header drag reorder should compute target slots from the pointer position
+  against stable snapped drop targets, not from the dragged panel's centre. Using
+  the dragged root's centre makes target zones scale with the width of the panel
+  being dragged, which makes the drop affordance drift away from the cursor for
+  wide panels. Header drag drop targets must collapse visible leaves by
+  `rootNodeId` and measure the root rect, otherwise split or subdivided roots can
+  expose internal child boundaries as reorder targets. For the drop indicator and
+  slot thresholds, remove the dragged source root first and compute the remaining
+  roots' collapsed post-removal positions. Live DOM rects still include the
+  source's old slot, which especially skews leftward drag affordances. Cache
+  those collapsed targets for the active drag session. Repeated reorder FLIP
+  animations can leave transient transforms on panel elements; starting a new
+  header drag should therefore settle any in-flight transform-only reorder
+  animation before painting the new drag transform.
 - When promoting a child out of a closing subdivision, preserve the child's
   browser content and width. Otherwise the promoted panel can flash blank or
   resize unexpectedly.

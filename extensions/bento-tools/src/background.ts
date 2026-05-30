@@ -18,12 +18,6 @@ import { KeyRegistry } from './keyboard/KeyRegistry';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
-const PANEL_RESTORE_DEBUG = true;
-function restoreDebug(label: string, data: Record<string, unknown> = {}): void {
-  if (!PANEL_RESTORE_DEBUG) return;
-  console.info('[bento-restore-debug][background]', label, data);
-}
-
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
@@ -253,14 +247,6 @@ async function emitPanelsSync(
   ) {
     event.scrollToPanelTabId = options.scrollToPanelTabId;
   }
-  restoreDebug('emit-panels-sync', {
-    workspaceId,
-    panelIds: valid.map((panel) => panel.tabId),
-    panelWidths: valid.map((panel) => ({ tabId: panel.tabId, widthPx: panel.widthPx })),
-    layout: event.layout,
-    panelStatusByTabId: event.panelStatusByTabId,
-    scrollToPanelTabId: event.scrollToPanelTabId,
-  });
   broadcastEvent(event);
 }
 
@@ -615,12 +601,6 @@ tabs.onDeltas((deltas) => {
             const markerWorkspaceExists = workspaces
               .snapshot()
               .workspaces.some((w) => w.id === panelMarker.workspaceId);
-            restoreDebug('created-delta-has-panel-marker', {
-              tabId: d.tab.id,
-              sourceWindowId,
-              marker: panelMarker,
-              markerWorkspaceExists,
-            });
             await tabs.unmarkClosing(d.tab.id);
             if (markerWorkspaceExists) {
               return;
@@ -628,10 +608,6 @@ tabs.onDeltas((deltas) => {
             void clearPanelMarker(d.tab.id);
           }
           if (await tabs.isClosingOrMarked(d.tab.id)) {
-            restoreDebug('created-delta-still-closing-removing-tab', {
-              tabId: d.tab.id,
-              sourceWindowId,
-            });
             await tabs.markClosing(d.tab.id);
             void browser.tabs.remove(d.tab.id).catch((err) => {
               if (!String(err).includes('Invalid tab ID')) {
@@ -910,7 +886,6 @@ function syncPanelMarkersForWorkspace(workspaceId: string): void {
   const list = panels.getVisiblePanelIds(workspaceId);
   for (const tabId of list) {
     const location = panels.getPanelRestoreLocation(workspaceId, tabId);
-    restoreDebug('sync-panel-marker', { workspaceId, tabId, location });
     void setPanelMarker(tabId, workspaceId, location);
   }
 }
@@ -955,17 +930,9 @@ async function maybeRestorePanelFromMarker(
 ): Promise<void> {
   const marker = await readPanelMarker(tabId);
   if (!marker) return;
-  restoreDebug('restore-marker-found', {
-    tabId,
-    previousNonPanelTabId,
-    marker,
-    visibleBefore: panels.getVisiblePanelIds(marker.workspaceId),
-    rootBefore: panels.getRootNodeIds(marker.workspaceId),
-  });
   await tabs.unmarkClosing(tabId);
   const workspace = workspaces.snapshot().workspaces.find((w) => w.id === marker.workspaceId);
   if (!workspace) {
-    restoreDebug('restore-marker-workspace-missing', { tabId, marker });
     void clearPanelMarker(tabId);
     return;
   }
@@ -975,15 +942,6 @@ async function maybeRestorePanelFromMarker(
   if (inserted && defaultWidth > 0) {
     panels.setWidth(tabId, defaultWidth);
   }
-  restoreDebug('restore-insert-at-location', {
-    tabId,
-    marker,
-    inserted,
-    defaultWidthPx: inserted ? defaultWidth : undefined,
-    visibleAfter: panels.getVisiblePanelIds(marker.workspaceId),
-    rootAfter: panels.getRootNodeIds(marker.workspaceId),
-    layoutStatus: panels.getPanelLayoutStatus(marker.workspaceId, tabId),
-  });
   if (inserted) {
     syncPanelMarkersForWorkspace(marker.workspaceId);
     void emitPanelsSync(marker.workspaceId);
@@ -1010,52 +968,28 @@ async function maybeRestorePanelFromMarker(
       previousNonPanelTabId !== null && previousNonPanelTabId !== tabId
         ? previousNonPanelTabId
         : workspaceFallbackTabId;
-    restoreDebug('restore-fallback-targets', {
-      tabId,
-      restoredWindowId,
-      previousNonPanelTabId,
-      workspaceFallbackTabId,
-      preferredFallbackTabId,
-    });
     if (preferredFallbackTabId === null || preferredFallbackTabId === tabId) return;
     const query =
       typeof restoredWindowId === 'number'
         ? { active: true, windowId: restoredWindowId }
         : { active: true, currentWindow: true };
     const [active] = await browser.tabs.query(query);
-    restoreDebug('restore-active-before-revert', {
-      tabId,
-      activeTabId: active?.id,
-      query,
-    });
     if (active?.id !== tabId) return;
     const reverted = await activateNonPanelTab(
       preferredFallbackTabId,
       'revert from panel restore',
       restoredWindowId,
     );
-    restoreDebug('restore-revert-attempt', {
-      tabId,
-      preferredFallbackTabId,
-      reverted,
-      restoredWindowId,
-    });
     if (
       !reverted &&
       workspaceFallbackTabId !== null &&
       workspaceFallbackTabId !== preferredFallbackTabId
     ) {
-      const fallbackReverted = await activateNonPanelTab(
+      await activateNonPanelTab(
         workspaceFallbackTabId,
         'fallback revert from panel restore',
         restoredWindowId,
       );
-      restoreDebug('restore-revert-fallback-attempt', {
-        tabId,
-        workspaceFallbackTabId,
-        fallbackReverted,
-        restoredWindowId,
-      });
     }
   } catch (err) {
     console.warn('[bento-tools] revert from panel restore failed:', err);

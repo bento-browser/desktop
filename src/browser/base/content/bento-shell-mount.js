@@ -4935,7 +4935,9 @@
         const cleanup = (e) => {
           if (e && e.propertyName !== 'transform') return;
           panelEl.style.transition = '';
-          if (isDragged) panelEl.style.zIndex = '';
+          if (isDragged && !panelEl.classList.contains('bento-panel--dragging')) {
+            panelEl.style.zIndex = '';
+          }
           panelEl.removeEventListener('transitionend', cleanup);
         };
         panelEl.addEventListener('transitionend', cleanup);
@@ -6854,6 +6856,8 @@
     let dragging = false;
     let pointerId = null;
     let indicator = null;
+    let dragDropTargets = null;
+    let dragMainDropEntry = null;
 
     function getStripContainer() {
       return document.getElementById('bento-side-panel-host');
@@ -6862,22 +6866,157 @@
     function getPanels() {
       return getOrderedPanels();
     }
-    // Side panels (excluding main) in visual order. Excludes the
-    // dragged source so target-slot math is straightforward.
-    function getDropTargets() {
-      return getPanels()
-        .filter((p) => p.dataset.bentoPanelTabId)
-        .filter((p) => p !== panelEl);
+    function getPanelRootNodeId(panel) {
+      const panelTabId = panel?.dataset?.bentoPanelTabId;
+      if (!panelTabId) return null;
+      return panel.dataset.bentoRootNodeId || 'panel:' + panelTabId;
     }
-    // targetSlot = number of non-source side panels whose midpoint
-    // is to the left of the cursor. Maps to splice index in the
-    // post-reorder side-panel array.
-    function computeTargetSlot(clientX) {
-      const targets = getDropTargets();
+    function getSourceRootNodeId() {
+      return panelEl.dataset.bentoRootNodeId || 'panel:' + tabId;
+    }
+    function viewportRectForRootNode(rootNodeId, panelEls) {
+      const host = getStripContainer();
+      const tabpanels = window.gBrowser?.tabpanels;
+      const layoutRect = currentPanelLayoutGeometry?.rootRects?.get(rootNodeId);
+      const hostLocal = layoutRect ? viewportRectForLayoutRect(tabpanels, layoutRect) : null;
+      if (host && hostLocal) {
+        const hostRect = host.getBoundingClientRect();
+        return {
+          left: hostRect.left + hostLocal.left,
+          top: hostRect.top + hostLocal.top,
+          right: hostRect.left + hostLocal.left + hostLocal.width,
+          bottom: hostRect.top + hostLocal.top + hostLocal.height,
+          width: hostLocal.width,
+          height: hostLocal.height,
+        };
+      }
+      const rects = panelEls
+        .map((el) => el.getBoundingClientRect?.())
+        .filter((rect) => rect && rect.width > 0 && rect.height > 0);
+      if (rects.length === 0) return null;
+      const left = Math.min(...rects.map((rect) => rect.left));
+      const top = Math.min(...rects.map((rect) => rect.top));
+      const right = Math.max(...rects.map((rect) => rect.right));
+      const bottom = Math.max(...rects.map((rect) => rect.bottom));
+      return { left, top, right, bottom, width: right - left, height: bottom - top };
+    }
+    function getRootDropEntries() {
+      const byRoot = new Map();
+      const orderedRootIds = [];
+      for (const p of getPanels()) {
+        const rootNodeId = getPanelRootNodeId(p);
+        if (!rootNodeId) continue;
+        if (!byRoot.has(rootNodeId)) {
+          byRoot.set(rootNodeId, []);
+          orderedRootIds.push(rootNodeId);
+        }
+        byRoot.get(rootNodeId).push(p);
+      }
+      return orderedRootIds
+        .map((rootNodeId) => ({
+          rootNodeId,
+          rect: viewportRectForRootNode(rootNodeId, byRoot.get(rootNodeId) || []),
+        }))
+        .filter((entry) => entry.rect);
+    }
+    function getMainDropEntry() {
+      const host = getStripContainer();
+      const tabpanels = window.gBrowser?.tabpanels;
+      const hostLocal = currentPanelLayoutGeometry?.mainRect
+        ? viewportRectForLayoutRect(tabpanels, currentPanelLayoutGeometry.mainRect)
+        : null;
+      if (host && hostLocal) {
+        const hostRect = host.getBoundingClientRect();
+        return {
+          rect: {
+            left: hostRect.left + hostLocal.left,
+            top: hostRect.top + hostLocal.top,
+            right: hostRect.left + hostLocal.left + hostLocal.width,
+            bottom: hostRect.top + hostLocal.top + hostLocal.height,
+            width: hostLocal.width,
+            height: hostLocal.height,
+          },
+        };
+      }
+      const main = getPanels().find((p) => p.dataset.bentoMainPanel === '1');
+      const rect = main?.getBoundingClientRect?.();
+      return rect ? { rect } : null;
+    }
+    function getFlatPanelGap() {
+      const tabpanels = window.gBrowser?.tabpanels;
+      if (!tabpanels) return 8;
+      const styles = getComputedStyle(tabpanels);
+      const columnGap = cssLengthToPx(styles.columnGap, NaN);
+      return Number.isFinite(columnGap) ? columnGap : cssLengthToPx(styles.gap, 8);
+    }
+    // Root panels (excluding main) in visual order, with the dragged source
+    // removed and the remaining roots collapsed into their post-removal
+    // positions. The live DOM still has the source occupying its old slot
+    // during drag, so using live sibling rects makes leftward drops feel
+    // offset by one source width.
+    function getCollapsedDropTargets() {
+      const entries = getRootDropEntries();
+      const sourceRootNodeId = getSourceRootNodeId();
+      const filtered = entries.filter((entry) => entry.rootNodeId !== sourceRootNodeId);
+      if (filtered.length === 0) return [];
+      const gap = getFlatPanelGap();
+      let x = entries[0]?.rect?.left ?? filtered[0].rect.left;
+      return filtered.map((entry) => {
+        const width = entry.rect.width;
+        const rect = Object.assign({}, entry.rect, {
+          left: x,
+          right: x + width,
+          width,
+        });
+        x += width + gap;
+        return Object.assign({}, entry, { rect });
+      });
+    }
+    function getActiveDropTargets() {
+      return dragDropTargets || getCollapsedDropTargets();
+    }
+    function getActiveMainDropEntry() {
+      return dragMainDropEntry || getMainDropEntry();
+    }
+    function captureDragDropGeometry() {
+      dragDropTargets = getCollapsedDropTargets();
+      dragMainDropEntry = getMainDropEntry();
+    }
+    function clearDragDropGeometry() {
+      dragDropTargets = null;
+      dragMainDropEntry = null;
+    }
+    function settleActiveHeaderDragTransforms() {
+      const panels = getPanels();
+      let changed = false;
+      for (const p of panels) {
+        const transition = p?.style?.transition || '';
+        const transform = p?.style?.transform || '';
+        if (!transform && !transition.includes('transform')) continue;
+        p.style.transition = 'none';
+        p.style.transform = '';
+        if (p !== panelEl) p.style.zIndex = '';
+        changed = true;
+      }
+      if (!changed) return;
+      void window.gBrowser?.tabpanels?.offsetWidth;
+      for (const p of panels) {
+        if (p !== panelEl && p.style.transition === 'none') {
+          p.style.removeProperty('transition');
+        }
+      }
+    }
+    // targetSlot = number of non-source root slots whose midpoint
+    // is to the left of the pointer. Maps to splice index in the
+    // post-reorder root-panel array. Use the pointer rather than the
+    // dragged panel's centre so the target zones do not scale with
+    // the width of the panel being dragged.
+    function computeTargetSlot(pointerX) {
+      const targets = getActiveDropTargets();
       let slot = 0;
       for (const t of targets) {
-        const r = t.getBoundingClientRect();
-        if (clientX > r.left + r.width / 2) slot++;
+        const r = t.rect;
+        if (pointerX > r.left + r.width / 2) slot++;
         else break;
       }
       return slot;
@@ -6893,23 +7032,24 @@
         indicator.className = 'bento-panel-drop-indicator';
         host.appendChild(indicator);
       }
-      const targets = getDropTargets();
-      const main = getPanels().find((p) => p.dataset.bentoMainPanel === '1');
+      const targets = getActiveDropTargets();
+      const main = getActiveMainDropEntry();
       const hostRect = host.getBoundingClientRect();
       let x;
       if (targets.length === 0 && main) {
         // Only main + dragged source — drop spot is just after main.
-        const r = main.getBoundingClientRect();
-        x = r.right - hostRect.left;
+        x = main.rect.right - hostRect.left;
+      } else if (targets.length === 0) {
+        return;
       } else if (slot >= targets.length) {
-        const r = targets[targets.length - 1].getBoundingClientRect();
+        const r = targets[targets.length - 1].rect;
         x = r.right - hostRect.left;
       } else if (slot === 0) {
         // Drop before the first side panel — between main and it.
-        const r = targets[0].getBoundingClientRect();
+        const r = targets[0].rect;
         x = r.left - hostRect.left;
       } else {
-        const r = targets[slot].getBoundingClientRect();
+        const r = targets[slot].rect;
         x = r.left - hostRect.left;
       }
       const indicatorWidth = 3;
@@ -6928,6 +7068,7 @@
     function startDrag() {
       if (dragging) return;
       dragging = true;
+      settleActiveHeaderDragTransforms();
       handle.classList.add('bento-panel-header-drag-handle--dragging');
       panelEl.classList.add('bento-panel--dragging');
       // Hide all inter-panel splitters for the duration of the
@@ -6964,7 +7105,7 @@
           const id = panel.dataset.bentoRootNodeId || 'panel:' + panel.dataset.bentoPanelTabId;
           if (id && !currentIds.includes(id)) currentIds.push(id);
         }
-        const sourceRootNodeId = panelEl.dataset.bentoRootNodeId || 'panel:' + tabId;
+        const sourceRootNodeId = getSourceRootNodeId();
         const filtered = currentIds.filter((id) => id !== sourceRootNodeId);
         const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
         filtered.splice(clampedSlot, 0, sourceRootNodeId);
@@ -7043,6 +7184,7 @@
       document.documentElement.style.removeProperty('user-select');
       dragging = false;
       pointerId = null;
+      clearDragDropGeometry();
     }
 
     handle.addEventListener('pointerdown', (e) => {
@@ -7050,6 +7192,7 @@
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
+      captureDragDropGeometry();
       try {
         handle.setPointerCapture(e.pointerId);
       } catch {
@@ -8508,12 +8651,6 @@
           Object.assign({ preferLivePanelWidths: true }, options),
         );
         applyPanelLayoutRects(tabpanels, currentPanelLayoutGeometry);
-        restoreDebug('live-layout-refresh-applied', {
-          workspaceId: currentWorkspaceId,
-          options,
-          geometry: geometryDebug(currentPanelLayoutGeometry),
-          orderedPanels: getOrderedPanels().map(rectDebugForPanel),
-        });
         return true;
       },
       () => {
@@ -9021,76 +9158,6 @@
   // before activating the next marker so gBrowser.#activeSplitView is cleared
   // properly. Null when no split is currently active.
   let __lastSplitViewMarker = null;
-  const PANEL_RESTORE_DEBUG = true;
-  function restoreDebug(label, data = {}) {
-    if (!PANEL_RESTORE_DEBUG) return;
-    try {
-      console.info('[bento-restore-debug][chrome]', label, data);
-    } catch {
-      // Diagnostic-only logging must not break chrome reconciliation.
-    }
-  }
-  function rectDebugForPanel(panelEl) {
-    if (!panelEl) return null;
-    const rect = panelEl.getBoundingClientRect?.();
-    return {
-      id: panelEl.id || null,
-      tabId: panelEl.dataset?.bentoPanelTabId || null,
-      rootNodeId: panelEl.dataset?.bentoRootNodeId || null,
-      isMain: panelEl.dataset?.bentoMainPanel === '1',
-      isSubPanel: panelEl.hasAttribute?.('data-bento-subpanel') || false,
-      className: String(panelEl.className || ''),
-      inline: {
-        left: panelEl.style.left || '',
-        top: panelEl.style.top || '',
-        width: panelEl.style.width || '',
-        minWidth: panelEl.style.minWidth || '',
-        maxWidth: panelEl.style.maxWidth || '',
-        height: panelEl.style.height || '',
-        minHeight: panelEl.style.minHeight || '',
-        maxHeight: panelEl.style.maxHeight || '',
-        flex: panelEl.style.flex || '',
-        order: panelEl.style.order || '',
-        transform: panelEl.style.transform || '',
-        transition: panelEl.style.transition || '',
-        opacity: panelEl.style.opacity || '',
-      },
-      rect: rect
-        ? {
-            left: Math.round(rect.left),
-            top: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          }
-        : null,
-    };
-  }
-  function geometryDebug(geometry) {
-    if (!geometry) return null;
-    const rectForLog = (rect) =>
-      rect
-        ? {
-            left: Math.round(rect.left),
-            top: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-            rootNodeId: rect.rootNodeId,
-          }
-        : null;
-    return {
-      mainRect: rectForLog(geometry.mainRect),
-      panelRects: Array.from(geometry.panelRects?.entries?.() || []).map(([tabId, rect]) => [
-        tabId,
-        rectForLog(rect),
-      ]),
-      rootRects: Array.from(geometry.rootRects?.entries?.() || []).map(([rootNodeId, rect]) => [
-        rootNodeId,
-        rectForLog(rect),
-      ]),
-      trailerRect: rectForLog(geometry.trailerRect),
-      totalWidth: Math.round(geometry.totalWidth || 0),
-    };
-  }
 
   // Marker assigned to `tab.splitview` for tabs Bento puts into the
   // split. Firefox's setSplitViewActive() in tabbox.js gates the
@@ -9719,29 +9786,6 @@
     // that's both selected and a panel doesn't appear twice.
     const subPanelIds = new Set(resolvedSubPanels.map(({ tab }) => tab.linkedPanel));
     const topLevelPanelIds = new Set(resolved.map(({ tab }) => tab.linkedPanel));
-    restoreDebug('reconcile-resolved-panels', {
-      workspaceId: currentWorkspaceId,
-      selectedTabId: getBentoTabId(gBrowser.selectedTab),
-      selectedLinkedPanel: gBrowser.selectedTab?.linkedPanel || null,
-      payloadPanels: panels.map((panel) => ({
-        tabId: panel.tabId,
-        rootNodeId: panel.rootNodeId,
-        widthPx: panel.widthPx,
-        url: panel.url,
-      })),
-      resolved: resolved.map(({ tab, payload }) => ({
-        tabId: payload?.tabId,
-        linkedPanel: tab.linkedPanel || null,
-        rootNodeId: payload?.rootNodeId,
-        widthPx: payload?.widthPx,
-      })),
-      resolvedSubPanels: resolvedSubPanels.map(({ tab, payload }) => ({
-        tabId: payload?.tabId,
-        linkedPanel: tab.linkedPanel || null,
-      })),
-      layout: currentPanelLayout,
-      statuses: Array.from(currentPanelStatusByTabId.entries()),
-    });
     let mainTab = gBrowser.selectedTab;
     if (mainTab && !materializePanelTab(mainTab, '', 'main')) {
       const replacementMain = Array.from(gBrowser.tabs).find((tab) => {
@@ -9787,12 +9831,6 @@
         );
       });
       if (replacement) {
-        restoreDebug('selected-panel-main-guard-replacing', {
-          selectedTabId: getBentoTabId(mainTab),
-          selectedLinkedPanel: mainTab.linkedPanel,
-          replacementTabId: getBentoTabId(replacement),
-          replacementLinkedPanel: replacement.linkedPanel,
-        });
         mainTab = replacement;
         try {
           gBrowser.selectedTab = replacement;
@@ -9800,12 +9838,6 @@
           // Best effort: rendering with the replacement is still better
           // than promoting a sub-panel into the main slot.
         }
-      } else {
-        restoreDebug('selected-panel-main-guard-no-replacement', {
-          selectedTabId: getBentoTabId(mainTab),
-          selectedLinkedPanel: mainTab.linkedPanel,
-          selectedIsBentoPanel,
-        });
       }
     }
     const tabsToRender = [];
@@ -10305,12 +10337,7 @@
             if (isSubdivisionChildEnter) {
               pendingSubdivisionPanelEnters.push(panelEl);
             } else {
-              pendingRootPanelEnters.push({
-                panelEl,
-                tabId,
-                layoutStatus,
-                widthFromPayload: w,
-              });
+              pendingRootPanelEnters.push(panelEl);
             }
           }
         }
@@ -10468,37 +10495,13 @@
     applyPanelLayoutStatusAttributes(currentPanelStatusByTabId);
     syncFlatLayoutOverlays(tabpanels, currentPanelLayoutGeometry);
     syncInterPanelSplitters(rootLayoutTabsToRender);
-    restoreDebug('flat-layout-applied', {
-      workspaceId: currentWorkspaceId,
-      selectedTabId: getBentoTabId(gBrowser.selectedTab),
-      selectedLinkedPanel: gBrowser.selectedTab?.linkedPanel || null,
-      newTabIds,
-      shouldAnimateNewPanels,
-      geometry: geometryDebug(currentPanelLayoutGeometry),
-      orderedPanels: getOrderedPanels().map(rectDebugForPanel),
-    });
-    for (const pendingEnter of pendingRootPanelEnters) {
-      const { panelEl, tabId, layoutStatus, widthFromPayload } = pendingEnter;
+    for (const panelEl of pendingRootPanelEnters) {
       // Flat layout is absolute-positioned; inline width is the
       // authoritative rect. Start the enter animation only after the
       // flat rects have been applied, otherwise a restored panel can
       // measure Firefox's stale split-view width and write that width
       // back over the correct geometry on the next animation frame.
-      restoreDebug('panel-enter-animation-start', {
-        tabId,
-        layoutStatus,
-        widthFromPayload,
-        panelBeforeEnter: rectDebugForPanel(panelEl),
-        geometryRect: currentPanelLayoutGeometry?.panelRects?.get(tabId) || null,
-      });
       animatePanelEnter(panelEl);
-      window.setTimeout(() => {
-        restoreDebug('panel-enter-animation-after-cleanup', {
-          tabId,
-          panelAfterEnter: rectDebugForPanel(panelEl),
-          geometryRect: currentPanelLayoutGeometry?.panelRects?.get(tabId) || null,
-        });
-      }, 300);
     }
     for (const panelEl of pendingSubdivisionPanelEnters) {
       animatePanelEnter(panelEl, {
@@ -10506,18 +10509,6 @@
         animateTransform: false,
       });
     }
-    requestAnimationFrame(() => {
-      restoreDebug('flat-layout-after-raf', {
-        workspaceId: currentWorkspaceId,
-        orderedPanels: getOrderedPanels().map(rectDebugForPanel),
-      });
-    });
-    window.setTimeout(() => {
-      restoreDebug('flat-layout-after-enter-animation', {
-        workspaceId: currentWorkspaceId,
-        orderedPanels: getOrderedPanels().map(rectDebugForPanel),
-      });
-    }, 320);
 
     // Refresh favicon nav strip (lives outside tabpanels; reads from
     // panels/sync payload — same data the legacy reconciler consumes).

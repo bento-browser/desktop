@@ -189,6 +189,14 @@ items are easy to scan.
 19. **Header drag reorder**
     - Drag a root panel header.
     - Expected: root panels reorder; vertical group moves as one root slot.
+    - Result: Pass. ✅ Complete
+    - Notes: User reported the drag-to-reorder panel affordance is not accurate and appears too far left of the actual target.
+    - Re-test: Fail. User reported it is still inaccurate, especially when reordering a panel to the left.
+    - Re-test: Improved. User reported the latest affordance behavior is better, but has not yet confirmed the item as working.
+    - Re-test: Fail. User reported that after moving a few panels, the dropzone drifts from the cursor.
+    - Re-test: Fail. User reported the drop zone appears to correspond to the width of the panel being dragged.
+    - Verified: User confirmed header drag reorder is working.
+    - Fix status: Confirmed. Header drag reorder computes the target slot from the pointer position against stable snapped root drop targets, snapshots the collapsed root drop targets for the active drag session, settles any in-flight transform-only reorder animation before the new drag starts, collapses visible leaves by root node before measuring drop targets, and computes the indicator/slot thresholds from post-removal collapsed root positions instead of live sibling rects that still include the source panel's old slot.
 
 20. **Navigator drag reorder**
     - Drag favicon/nav icon.
@@ -265,14 +273,15 @@ items are easy to scan.
     - Close a split child.
     - Press `Cmd+Shift+T`.
     - Expected: restored panel returns as a root panel near recorded root slot; no stale group is recreated.
-    - Result: Fail.
+    - Result: Pass. ✅ Complete
     - Notes: User reported `Cmd+Shift+T` brings back an actual tab instead of restoring a closed panel. This applies to both child panels and top-level panels.
     - Re-test: Fail. User reported that after closing a panel, it cannot be restored via `Cmd+Shift+T`.
     - Re-test: Fail. User reported that `Cmd+Shift+T` restores the closed panel but it appears behind another panel.
     - Re-test: Fail. User confirmed the same overlap still occurs, and the panel sizes correctly after dragging a splitter.
     - Re-test: Fail. User confirmed the panel is restored but is too large; it should restore at the configured `Default new panel width`.
-    - Diagnostic status: Temporary console diagnostics added with prefix `[bento-restore-debug]` in the tools close/restore path and chrome flat-layout reconciliation path. Remove once the fix is confirmed and recorded.
-    - Fix status: Ready for re-verification. The `tab/close` path preserves the closing panel's `bento.isPanel` session marker, restored panel tabs clear stale `bento.closingTab`, tools reselect a non-panel main tab after restore, chrome rejects selected panel tabs as main-slot candidates, flat-layout panel-enter animation preserves inline width, chrome appends any panel payload entries missing from the decoded layout before computing flat geometry, root-panel enter animation now starts only after flat rects are applied so it measures the restored panel's final strip width, and Cmd+Shift+T restore stamps the restored root panel with the settings `Default new panel width` before emitting `panels/sync`.
+    - Verified: User confirmed the restored panel behavior is working.
+    - Diagnostic status: Temporary `[bento-restore-debug]` console diagnostics removed after confirmation and technical documentation update.
+    - Fix status: Confirmed. The `tab/close` path preserves the closing panel's `bento.isPanel` session marker, restored panel tabs clear stale `bento.closingTab`, tools reselect a non-panel main tab after restore, chrome rejects selected panel tabs as main-slot candidates, flat-layout panel-enter animation preserves inline width, chrome appends any panel payload entries missing from the decoded layout before computing flat geometry, root-panel enter animation starts only after flat rects are applied so it measures the restored panel's final strip width, and Cmd+Shift+T restore stamps the restored root panel with the settings `Default new panel width` before emitting `panels/sync`.
 
 ## Persistence And Import Export
 
