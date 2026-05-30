@@ -71,6 +71,61 @@ Bento Browser is a Surfer-based Firefox 150 fork. The UI shell ships as two priv
 
 Chrome modification surface is intentionally tiny (~4 patches in M1+M2) to keep Firefox security-patch adoption fast. The architecture is documented in the plan; this file captures only the rules contributors must not violate.
 
+Architectural simplicity is a project constraint. Bento's core functionality should stay concentrated in the privileged extensions and the smallest practical Firefox core surface. Agents working on features must first ask whether the behavior can be implemented in `bento-shell`, `bento-tools`, or the existing chrome bridge before editing Firefox core. Firefox security and feature updates should remain relatively trivial because Bento touches limited, explicit Firefox core surfaces.
+
+When a feature requires iterating on Firefox core to achieve Bento functionality, record the touched vanilla Firefox surface in [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) in the same change. Future Firefox updates must review that file, call out upstream conflicts or regressions, and address them before treating the update as complete.
+
+## Active manual verification task
+
+The maintainer is manually verifying
+[plans/flat-panels-browser-verification-checklist.md](plans/flat-panels-browser-verification-checklist.md)
+against the implementation plan in
+[plans/flat-panels-layout-containers.md](plans/flat-panels-layout-containers.md).
+
+While this task is active:
+
+1. Treat the checklist file as the persistent verification state between agent sessions.
+2. Treat reported checklist failures as implementation work to fix, not just observations to record.
+3. Before fixing a new failure, read
+   [docs/core-functionality-technical.md](docs/core-functionality-technical.md)
+   for any recorded solution or pitfall that matches the failure. Try the
+   recorded solution unless the current evidence shows it is not relevant.
+4. When a recorded solution is not relevant, state the specific reason in the
+   checklist notes or technical doc instead of silently choosing a different
+   approach.
+5. When the maintainer reports a failure, leave the item incomplete, record the reported failure notes, screenshot reference, or console output under that item, then investigate and fix the behavior.
+6. When a fix lands, note that the item is ready for re-verification, but do not mark it complete until the maintainer reports that it passed or an equivalent direct runtime verification confirms the expected behavior.
+7. When the maintainer reports that an item passed, mark the relevant checklist item complete with `✅ Complete` in the checklist file and update `docs/core-functionality-technical.md` with the working solution if it is not already recorded.
+8. Do not infer completion from code state alone; only mark an item complete from an explicit manual verification result or an equivalent direct runtime verification.
+9. Preserve the checklist's `Pass / Fail / Notes / Screenshot or console output` record format.
+10. Agents may create temporary diagnostic logs or probes while debugging reported failures. Keep them scoped and clearly identifiable, and remove them once the fix is confirmed and the working solution is recorded in `docs/core-functionality-technical.md`.
+
+## Core functionality documentation
+
+[docs/core-functionality.md](docs/core-functionality.md) is the maintained source for
+Bento Browser's core functionality and UX, and may be used later for marketing
+material.
+
+[docs/core-functionality-technical.md](docs/core-functionality-technical.md) is the
+maintained technical companion for how the working core functionality is achieved
+and which pitfalls must be preserved against regressions.
+
+When adding, removing, or changing user-visible functionality:
+
+1. Update `docs/core-functionality.md` in the same change.
+2. Record new features in that document once they are implemented or intentionally committed to the product surface.
+3. Amend existing feature descriptions when behavior, wording, scope, or UX changes.
+4. Remove features from that document when they are removed from the product or no longer reflect current behavior.
+5. Keep the document factual and product-facing; do not describe implementation details unless they affect user-visible capability or UX.
+
+When adding, removing, or changing working core implementation behavior:
+
+1. Update `docs/core-functionality-technical.md` in the same change.
+2. Document the source-of-truth store, chrome bridge, renderer path, persistence path, and manual verification surface affected by the change.
+3. Record newly discovered regressions and their fixes as pitfalls in that document.
+4. For future regressions, consult the recorded solutions and pitfalls before implementing a new approach, and reuse the recorded solution unless it is demonstrably unrelated to the current failure.
+5. Remove obsolete pitfalls only when the underlying implementation no longer depends on them.
+
 ## Tale UI MCP server
 
 A project-scoped MCP server is registered in [.mcp.json](.mcp.json) pointing at Tale UI's own server at `/Users/admin/Projects/tale-ui/core/tools/mcp-server.mjs`. It exposes the `mcp__tale-ui__*` tool family used by the Tale UI consumer workflow below. **Project-scoped MCP servers require one-time user approval on first use in a fresh Claude Code session.**
@@ -209,6 +264,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 - **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from `@tale-ui/react/*` and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
 - **Per-component imports only**: `import { Button } from '@tale-ui/react/button'`. Never `from '@tale-ui/react'` (the barrel). Same rule for `@tale-ui/react-styles` and `lucide-react`.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
+- **Firefox core touchpoint log**: any feature work that changes or depends on Firefox core files, patches, prefs, or chrome internals must update [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) in the same change, including the regression checks future Firefox updates must run.
 - **Perf budgets** (CI fails on regression via [.size-limit.json](.size-limit.json)): shell cold-start JS < 135 KB gz, palette/settings/confirm cold-start JS < 130–140 KB gz (these chrome-overlay entries share the Dialog + useFirefoxTheme + useToolsPort chunks, ~115 KB gz of shared cost is structural), privacy cold-start JS < 100 KB gz (raised from 80 KB once the dashboard gained interactive Switch + ToggleButtonGroup + Banner controls — those drag react-aria-components into the shared chunk), shell CSS < 24 KB gz, bento-tools background < 30 KB gz, cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
 - **No raw design values in component CSS**: components reference Tale UI tokens (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, etc.) or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a needed value doesn't exist as a token, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired `--neutral-N-fg` token, not a raw neutral.

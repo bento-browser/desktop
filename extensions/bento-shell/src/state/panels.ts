@@ -15,35 +15,20 @@ import { create } from 'zustand';
 interface PanelsState {
   /** workspaceId → set of tabIds currently rendered as side panels. */
   byWorkspace: Map<string, Set<number>>;
-  /** Tab IDs that are sub-panels (subdivision children). Globally tracked
-   * so the sidebar tab-list filter excludes them alongside regular panels. */
-  subPanelTabIds: Set<number>;
   /** Workspaces that have received their first panels/sync this session. */
   hydratedWorkspaces: Set<string>;
-  apply: (workspaceId: string, tabIds: number[], subPanelIds?: number[]) => void;
+  apply: (workspaceId: string, tabIds: number[]) => void;
 }
 
 const EMPTY: Set<number> = new Set();
 
 export const usePanelsStore = create<PanelsState>((set) => ({
   byWorkspace: new Map(),
-  subPanelTabIds: new Set(),
   hydratedWorkspaces: new Set(),
-  apply: (workspaceId, tabIds, subPanelIds) =>
+  apply: (workspaceId, tabIds) =>
     set((state) => {
       const nextByWorkspace = new Map(state.byWorkspace);
-      const allIds = new Set(tabIds);
-      const nextSubPanelIds = new Set(state.subPanelTabIds);
-      for (const id of state.byWorkspace.get(workspaceId) ?? EMPTY) {
-        nextSubPanelIds.delete(id);
-      }
-      if (subPanelIds) {
-        for (const id of subPanelIds) {
-          allIds.add(id);
-          nextSubPanelIds.add(id);
-        }
-      }
-      nextByWorkspace.set(workspaceId, allIds);
+      nextByWorkspace.set(workspaceId, new Set(tabIds));
       let nextHydrated = state.hydratedWorkspaces;
       if (!nextHydrated.has(workspaceId)) {
         nextHydrated = new Set(nextHydrated);
@@ -52,7 +37,6 @@ export const usePanelsStore = create<PanelsState>((set) => ({
       return {
         byWorkspace: nextByWorkspace,
         hydratedWorkspaces: nextHydrated,
-        subPanelTabIds: nextSubPanelIds,
       };
     }),
 }));

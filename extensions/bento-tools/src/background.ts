@@ -9,7 +9,7 @@ import { TabRegistry } from './tabs/TabRegistry';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
-import { PanelStore, type PersistedSubdivision } from './panels/PanelStore';
+import { PanelStore } from './panels/PanelStore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { BackupStore } from './backup/BackupStore';
@@ -22,7 +22,9 @@ const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
 const settings = new SettingsStore();
 const panels = new PanelStore();
-const pinnedPanels = new PinnedPanelsStore();
+const pinnedPanels = new PinnedPanelsStore({
+  getPanelKey: (workspaceId, tabId) => panels.getPanelKey(workspaceId, tabId),
+});
 const savedPanels = new SavedPanelsStore();
 const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
 
@@ -75,8 +77,9 @@ function broadcastEvent(event: Event): void {
 // workspaces.onDeltas handler). A profile with 20 workspaces × 5 panels
 // each shouldn't pay the URL→tab matching cost up front.
 async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
-  const entries = panels.takePersistedEntries(workspaceId);
-  if (!entries || entries.length === 0) {
+  const persisted = panels.takePersistedWorkspace(workspaceId);
+  const entries = persisted?.entries;
+  if (!persisted || !entries || entries.length === 0) {
     // No panels to restore, but the workspace might still have pending
     // pinned-panel entries waiting. Drop those — the panels they
     // depended on are gone (no persistence), so the pins can't bind.
@@ -101,6 +104,7 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
   // matches a panel created mid-restore (no existing tab — see
   // tabs.create branch) also rebinds correctly.
   const urlToTabId = new Map<string, number>();
+  const panelKeyToTabId = new Map<string, number>();
   const consumed = new Set<number>();
 
   const restoreTabForUrl = async (url: string): Promise<number | null> => {
@@ -126,55 +130,25 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
     return null;
   };
 
-  const restoreSubdivisionForPanel = async (
-    parentTabId: number,
-    subdivision: PersistedSubdivision | undefined,
-  ): Promise<void> => {
-    if (!subdivision) return;
-    const created = panels.subdivide(workspaceId, parentTabId);
-    if (!created && !panels.getSubdivision(parentTabId)) return;
-
-    const expected = subdivision.mode === 'dual' ? 2 : 1;
-    const urls = subdivision.subPanelUrls.slice(0, expected);
-    const subTabIds: number[] = [];
-    for (const subUrl of urls) {
-      const subTabId = await restoreTabForUrl(subUrl);
-      if (subTabId === null) continue;
-      subTabIds.push(subTabId);
-      urlToTabId.set(subUrl, subTabId);
-    }
-
-    if (subTabIds.length > 0) {
-      const mode = subdivision.mode === 'dual' && subTabIds.length === 2 ? 'dual' : 'single';
-      panels.fillSubdivision(parentTabId, mode, mode === 'dual' ? subTabIds : [subTabIds[0]!]);
-      if (mode === 'dual' && typeof subdivision.splitRatio === 'number') {
-        panels.setSubdivisionSplitRatio(parentTabId, subdivision.splitRatio);
-      }
-    }
-    if (typeof subdivision.topHeightFraction === 'number') {
-      panels.setSubdivisionHeight(parentTabId, subdivision.topHeightFraction);
-    }
-  };
-
   for (const entry of entries) {
     const url = entry.url;
     const matchedId = await restoreTabForUrl(url);
     if (matchedId !== null) {
-      panels.add(workspaceId, matchedId);
+      panelKeyToTabId.set(entry.panelKey, matchedId);
       urlToTabId.set(url, matchedId);
       // Re-apply the persisted width so chrome's reconcile sees a width
       // in the panels/sync payload and applies it to the panel element.
       if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
         panels.setWidth(matchedId, entry.widthPx);
       }
-      await restoreSubdivisionForPanel(matchedId, entry.subdivision);
     }
   }
+  panels.restorePersistedLayout(workspaceId, persisted.layout, panelKeyToTabId);
   // Restore pinned-panel bindings for this workspace now that we know
   // which URLs map to which live tabIds. Pins whose URL doesn't match
   // any restored panel are dropped — the panel they referred to is
   // gone, so there's nothing to pin.
-  pinnedPanels.recoverTabIdsAfterPanelRestore(workspaceId, urlToTabId);
+  pinnedPanels.recoverTabIdsAfterPanelRestore(workspaceId, { panelKeyToTabId, urlToTabId });
   // Broadcast even when this workspace isn't currently active —
   // emitPanelsSync gates on activeId so the call is cheap. When the
   // workspace IS active (boot path or just-activated lazy path),
@@ -201,7 +175,7 @@ async function emitPanelsSync(
   // arrives a frame later. Chrome's title-IPC forward in
   // useToolsPort gates on activeId so only the active workspace's
   // panels reach the chrome reconciler.
-  const tabIds = panels.getPanels(workspaceId);
+  const tabIds = panels.getVisiblePanelIds(workspaceId);
   const resolved = await Promise.all(
     tabIds.map((id) =>
       browser.tabs
@@ -226,7 +200,7 @@ async function emitPanelsSync(
   const missingPanelIds = tabIds.filter((id) => !validPanelIds.has(id));
   if (missingPanelIds.length > 0) {
     for (const id of missingPanelIds) {
-      panels.promoteSubPanelsWhenRemovingParent(workspaceId, id);
+      panels.remove(workspaceId, id);
     }
     await emitPanelsSync(workspaceId, options);
     return;
@@ -241,79 +215,6 @@ async function emitPanelsSync(
   // the trailer back to its base width when the user empties the folder).
   const savedPanelCount = savedPanels.list().length;
 
-  const allSubs = panels.getAllSubdivisions();
-  const subdivisionParentIds = new Set<number>(tabIds);
-  const collectVisibleSubdivisionParents = (parentTabId: number): void => {
-    if (subdivisionParentIds.has(parentTabId)) return;
-    subdivisionParentIds.add(parentTabId);
-    const sub = allSubs.get(parentTabId);
-    if (!sub?.topClosed) return;
-    for (const subPanelTabId of sub.subPanelTabIds) {
-      if (typeof subPanelTabId === 'number' && Number.isFinite(subPanelTabId)) {
-        collectVisibleSubdivisionParents(subPanelTabId);
-      }
-    }
-  };
-  for (const parentTabId of tabIds) {
-    const sub = allSubs.get(parentTabId);
-    if (!sub?.topClosed) continue;
-    for (const subPanelTabId of sub.subPanelTabIds) {
-      if (typeof subPanelTabId === 'number' && Number.isFinite(subPanelTabId)) {
-        collectVisibleSubdivisionParents(subPanelTabId);
-      }
-    }
-  }
-  const subdivisions: Record<
-    number,
-    {
-      mode: 'single' | 'dual';
-      topHeightFraction: number;
-      subPanels: Array<{ tabId: number; url: string; favIconUrl?: string; widthPx?: number }>;
-      splitRatio?: number;
-      topClosed?: boolean;
-    }
-  > = {};
-  const missingSubPanelIds: number[] = [];
-  for (const [parentTabId, sub] of allSubs) {
-    if (!subdivisionParentIds.has(parentTabId)) continue;
-    try {
-      await browser.tabs.get(parentTabId);
-    } catch {
-      missingSubPanelIds.push(parentTabId);
-      continue;
-    }
-    const subPanels: Array<{ tabId: number; url: string; favIconUrl?: string }> = [];
-    for (const spId of sub.subPanelTabIds) {
-      try {
-        const spTab = await browser.tabs.get(spId);
-        const widthPx = panels.getWidth(spId);
-        const entry: { tabId: number; url: string; favIconUrl?: string; widthPx?: number } = {
-          tabId: spId,
-          url: spTab.url ?? '',
-          favIconUrl: spTab.favIconUrl ?? '',
-        };
-        if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
-        subPanels.push(entry);
-      } catch {
-        missingSubPanelIds.push(spId);
-      }
-    }
-    subdivisions[parentTabId] = {
-      mode: sub.mode,
-      topHeightFraction: sub.topHeightFraction,
-      subPanels,
-      splitRatio: sub.mode === 'dual' ? sub.splitRatio : undefined,
-      topClosed: sub.topClosed || undefined,
-    };
-  }
-  if (missingSubPanelIds.length > 0) {
-    for (const id of missingSubPanelIds) {
-      panels.removeSubPanelTab(id);
-    }
-    await emitPanelsSync(workspaceId, options);
-    return;
-  }
-
   const event: {
     type: 'panels/sync';
     workspaceId: string;
@@ -323,12 +224,15 @@ async function emitPanelsSync(
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
     scrollToPanelTabId?: number;
-    subdivisions?: typeof subdivisions;
+    layout: ReturnType<typeof panels.getPanelLayoutSync>;
+    panelStatusByTabId: ReturnType<typeof panels.getPanelStatusMap>;
   } = {
     type: 'panels/sync',
     workspaceId,
     panels: valid,
     savedPanelCount,
+    layout: panels.getPanelLayoutSync(workspaceId),
+    panelStatusByTabId: panels.getPanelStatusMap(workspaceId),
   };
   if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
   if (typeof stripScrollLeft === 'number' && stripScrollLeft >= 0) {
@@ -342,9 +246,6 @@ async function emitPanelsSync(
     valid.some((panel) => panel.tabId === options.scrollToPanelTabId)
   ) {
     event.scrollToPanelTabId = options.scrollToPanelTabId;
-  }
-  if (Object.keys(subdivisions).length > 0) {
-    event.subdivisions = subdivisions;
   }
   broadcastEvent(event);
 }
@@ -725,21 +626,8 @@ tabs.onDeltas((deltas) => {
     }
     if (d.kind === 'removed') {
       const affected = panels.findWorkspacesContainingTab(d.id);
-      if (affected.length === 0) {
-        const parentId = panels.removeSubPanelTab(d.id);
-        if (parentId === undefined) continue;
-        const parentWorkspaces = panels.findWorkspacesContainingPanelOrSubPanel(parentId);
-        for (const wsId of parentWorkspaces) {
-          syncPanelMarkersForWorkspace(wsId);
-        }
-        const activeId = workspaces.getActiveId();
-        if (activeId && parentWorkspaces.includes(activeId)) {
-          void emitPanelsSync(activeId);
-        }
-        continue;
-      }
       for (const wsId of affected) {
-        panels.promoteSubPanelsWhenRemovingParent(wsId, d.id);
+        panels.remove(wsId, d.id);
         // Remaining panels' indexes shifted — rewrite their markers
         // so a future Cmd+Shift+T lands at the correct slot.
         syncPanelMarkersForWorkspace(wsId);
@@ -882,18 +770,15 @@ function maybeHandleAddPanelMarker(
     return;
   }
   const sourceTabIdMatch = /[?&]bento_source_tab_id=([^&#]+)/.exec(url);
-  const sourceTabIdRaw = sourceTabIdMatch ? decodeURIComponent(sourceTabIdMatch[1]) : '';
+  const sourceTabIdRaw = sourceTabIdMatch ? decodeURIComponent(sourceTabIdMatch[1] ?? '') : '';
   let inserted = false;
   if (sourceTabIdRaw === 'main') {
     inserted = panels.insertAt(wsId, tabId, 0);
   } else if (sourceTabIdRaw) {
     const sourceTabId = Number(sourceTabIdRaw);
-    const currentPanels = panels.getPanels(wsId);
-    const sourceIndex = currentPanels.indexOf(sourceTabId);
-    const position = sourceIndex >= 0 ? sourceIndex + 1 : currentPanels.length;
-    inserted = panels.insertAt(wsId, tabId, position);
+    inserted = insertPanelAfterSource(wsId, tabId, sourceTabId);
   } else {
-    inserted = panels.add(wsId, tabId);
+    inserted = insertPanelAtEnd(wsId, tabId);
   }
   if (inserted) {
     tabs.assignWorkspaceEagerly(tabId, wsId);
@@ -987,10 +872,29 @@ void (async () => {
 // Fire-and-forget per tab — the marker writes are independent and only
 // matter at the next close→restore round-trip.
 function syncPanelMarkersForWorkspace(workspaceId: string): void {
-  const list = panels.getPanels(workspaceId);
-  list.forEach((tabId, idx) => {
-    void setPanelMarker(tabId, workspaceId, idx);
-  });
+  const list = panels.getVisiblePanelIds(workspaceId);
+  for (const tabId of list) {
+    const location = panels.getPanelRestoreLocation(workspaceId, tabId);
+    void setPanelMarker(tabId, workspaceId, location);
+  }
+}
+
+function panelInsertLocationAfterSource(workspaceId: string, sourceTabId: number | null) {
+  if (sourceTabId === null) return { rootIndex: 0 };
+  if (!Number.isFinite(sourceTabId)) {
+    return { rootIndex: panels.getRootNodeIds(workspaceId).length };
+  }
+  return panels.getPanelRestoreLocation(workspaceId, sourceTabId);
+}
+
+function insertPanelAfterSource(workspaceId: string, tabId: number, sourceTabId: number | null) {
+  const location = panelInsertLocationAfterSource(workspaceId, sourceTabId);
+  if (sourceTabId === null) return panels.insertAt(workspaceId, tabId, 0);
+  return panels.insertAtRestoreLocation(workspaceId, tabId, location);
+}
+
+function insertPanelAtEnd(workspaceId: string, tabId: number) {
+  return panels.insertAt(workspaceId, tabId, panels.getRootNodeIds(workspaceId).length);
 }
 
 async function maybeRestorePanelFromMarker(
@@ -1004,7 +908,7 @@ async function maybeRestorePanelFromMarker(
     void clearPanelMarker(tabId);
     return;
   }
-  if (panels.insertAt(marker.workspaceId, tabId, marker.position)) {
+  if (panels.insertAtRestoreLocation(marker.workspaceId, tabId, marker)) {
     syncPanelMarkersForWorkspace(marker.workspaceId);
     void emitPanelsSync(marker.workspaceId);
   }
@@ -1045,10 +949,7 @@ async function maybePromotePanelOpenerTab(
       : sourceWorkspaceIds[0];
   if (!workspaceId) return;
 
-  const sourcePanels = panels.getPanels(workspaceId);
-  const sourceIndex = sourcePanels.indexOf(tab.openerTabId);
-  const insertPosition = sourceIndex >= 0 ? sourceIndex + 1 : sourcePanels.length;
-  if (!panels.insertAt(workspaceId, tab.id, insertPosition)) return;
+  if (!insertPanelAfterSource(workspaceId, tab.id, tab.openerTabId)) return;
 
   const defaultWidth = settings.snapshot().defaultPanelWidthPx;
   if (typeof defaultWidth === 'number' && defaultWidth > 0) {

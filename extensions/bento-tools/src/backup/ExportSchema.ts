@@ -15,7 +15,7 @@ export function validateExportSchema(raw: unknown): BentoExportSchema | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
 
-  if (obj.schemaVersion !== 1) return null;
+  if (obj.schemaVersion !== 1 && obj.schemaVersion !== 2) return null;
   if (typeof obj.bentoVersion !== 'string') return null;
   if (typeof obj.exportedAt !== 'number') return null;
 
@@ -38,12 +38,30 @@ export function validateExportSchema(raw: unknown): BentoExportSchema | null {
     for (const panel of ws.panels) {
       if (!panel || typeof panel !== 'object') return null;
       if (typeof panel.url !== 'string' || !isSafeUrl(panel.url)) return null;
+      if (
+        obj.schemaVersion === 2 &&
+        'panelKey' in panel &&
+        typeof (panel as Record<string, unknown>).panelKey !== 'string'
+      )
+        return null;
     }
+    if (
+      obj.schemaVersion === 2 &&
+      'panelLayout' in ws &&
+      (typeof (ws as Record<string, unknown>).panelLayout !== 'object' ||
+        (ws as Record<string, unknown>).panelLayout === null)
+    )
+      return null;
 
     if (!Array.isArray(ws.pinnedPanels)) return null;
     for (const pp of ws.pinnedPanels) {
       if (!pp || typeof pp !== 'object') return null;
-      if (typeof pp.url !== 'string' || !isSafeUrl(pp.url)) return null;
+      const pin = pp as Record<string, unknown>;
+      if (pin.url !== undefined && (typeof pin.url !== 'string' || !isSafeUrl(pin.url))) {
+        return null;
+      }
+      if (pin.panelKey !== undefined && typeof pin.panelKey !== 'string') return null;
+      if (pin.url === undefined && pin.panelKey === undefined) return null;
       if (typeof pp.order !== 'number') return null;
     }
   }

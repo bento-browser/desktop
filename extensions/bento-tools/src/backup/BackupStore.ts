@@ -64,9 +64,8 @@ export class BackupStore {
 
     for (const ws of targetWorkspaces) {
       const wsTabs = allTabs.filter((t) => t.workspaceId === ws.id);
-      const panelTabIds = new Set(this.#ctx.panels.getPanels(ws.id));
-      const pinnedEntries = this.#ctx.pinnedPanels.entriesForWorkspace(ws.id);
-      const pinnedTabIdSet = new Set(pinnedEntries);
+      const panelTabIds = new Set(this.#ctx.panels.getVisiblePanelIds(ws.id));
+      const pinnedEntries = this.#ctx.pinnedPanels.entriesForWorkspaceDetailed(ws.id);
 
       const tabs: BentoExportSchema['workspaces'][0]['tabs'] = [];
       const tabIdToUrl = new Map<number, string>();
@@ -88,45 +87,42 @@ export class BackupStore {
         }
       }
 
-      const panels: BentoExportSchema['workspaces'][0]['panels'] = [];
-      for (const tabId of panelTabIds) {
-        try {
-          const live = await browser.tabs.get(tabId);
-          if (!live.url) continue;
-          tabIdToUrl.set(tabId, live.url);
-          const widthPx = this.#ctx.panels.getWidth(tabId);
-          const entry: BentoExportSchema['workspaces'][0]['panels'][0] = { url: live.url };
-          if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
-          const sub = this.#ctx.panels.getSubdivision(tabId);
-          if (sub) {
-            const subPanelUrls: string[] = [];
-            for (const spId of sub.subPanelTabIds) {
-              try {
-                const spLive = await browser.tabs.get(spId);
-                if (spLive.url) subPanelUrls.push(spLive.url);
-              } catch {
-                // sub-panel tab gone
-              }
-            }
-            entry.subdivision = {
-              mode: sub.mode,
-              topHeightFraction: sub.topHeightFraction,
-              subPanelUrls,
-              splitRatio: sub.mode === 'dual' ? sub.splitRatio : undefined,
-            };
+      const panelSnapshot = await this.#ctx.panels.buildPanelPersistenceSnapshot(
+        ws.id,
+        async (tabId) => {
+          try {
+            const live = await browser.tabs.get(tabId);
+            return live.url || undefined;
+          } catch {
+            return undefined;
           }
-          panels.push(entry);
-        } catch {
-          // tab gone
-        }
+        },
+      );
+      for (const entry of panelSnapshot.entries) {
+        tabIdToUrl.set(entry.tabId, entry.url);
       }
+      const panels: BentoExportSchema['workspaces'][0]['panels'] = panelSnapshot.entries.map(
+        (entry) => {
+          const panel: BentoExportSchema['workspaces'][0]['panels'][number] = {
+            panelKey: entry.panelKey,
+            url: entry.url,
+          };
+          if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
+            panel.widthPx = entry.widthPx;
+          }
+          return panel;
+        },
+      );
+      const panelKeyByTabId = new Map(
+        panelSnapshot.entries.map((entry) => [entry.tabId, entry.panelKey]),
+      );
 
       const pinnedPanels: BentoExportSchema['workspaces'][0]['pinnedPanels'] = [];
-      let order = 0;
-      for (const tabId of pinnedTabIdSet) {
-        const url = tabIdToUrl.get(tabId);
-        if (url) {
-          pinnedPanels.push({ url, order: order++ });
+      for (const entry of pinnedEntries) {
+        const panelKey = panelKeyByTabId.get(entry.tabId);
+        const url = tabIdToUrl.get(entry.tabId);
+        if (panelKey || url) {
+          pinnedPanels.push({ panelKey, url, order: entry.order });
         }
       }
 
@@ -138,6 +134,7 @@ export class BackupStore {
         createdAt: ws.createdAt,
         tabs,
         panels,
+        panelLayout: panelSnapshot.layout,
         pinnedPanels,
       });
     }
@@ -149,7 +146,7 @@ export class BackupStore {
     }));
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       bentoVersion: '0.0.0',
       exportedAt: Date.now(),
       workspaces,

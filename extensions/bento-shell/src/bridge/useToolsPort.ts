@@ -179,20 +179,9 @@ function ensureConnection(): void {
         // uiColorMode — single channel, no race.
         return;
       case 'panels/sync': {
-        const subPanelIds: number[] = [];
-        if (event.subdivisions) {
-          for (const sub of Object.values(event.subdivisions)) {
-            if (Array.isArray(sub.subPanels)) {
-              for (const sp of sub.subPanels) {
-                if (typeof sp.tabId === 'number') subPanelIds.push(sp.tabId);
-              }
-            }
-          }
-        }
         usePanelsStore.getState().apply(
           event.workspaceId,
           event.panels.map((p) => p.tabId),
-          subPanelIds,
         );
         // Forward to chrome via title-IPC, BUT only for THIS WINDOW'S
         // active workspace — the chrome reconciler renders the
@@ -236,10 +225,13 @@ function ensureConnection(): void {
               pinnedTabIdsInWorkspace?: number[];
               savedPanelCount?: number;
               scrollToPanelTabId?: number;
-              subdivisions?: typeof event.subdivisions;
+              layout: typeof event.layout;
+              panelStatusByTabId: typeof event.panelStatusByTabId;
             } = {
               workspaceId: activeId,
               panels: event.panels,
+              layout: event.layout,
+              panelStatusByTabId: event.panelStatusByTabId,
             };
             if (state.windowId !== null) {
               payload.windowId = state.windowId;
@@ -292,9 +284,6 @@ function ensureConnection(): void {
             }
             if (typeof event.scrollToPanelTabId === 'number') {
               payload.scrollToPanelTabId = event.scrollToPanelTabId;
-            }
-            if (event.subdivisions && Object.keys(event.subdivisions).length > 0) {
-              payload.subdivisions = event.subdivisions;
             }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.

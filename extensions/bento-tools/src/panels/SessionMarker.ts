@@ -16,19 +16,25 @@ const PANEL_SESSION_KEY = 'bento.isPanel';
 
 export interface PanelMarker {
   workspaceId: string;
-  position: number;
+  rootIndex: number;
+  containingRootNodeId?: string;
 }
 
 export async function setPanelMarker(
   tabId: number,
   workspaceId: string,
-  position: number,
+  marker: { rootIndex: number; containingRootNodeId?: string },
 ): Promise<void> {
   try {
     await browser.sessions.setTabValue(
       tabId,
       PANEL_SESSION_KEY,
-      JSON.stringify({ workspaceId, position }),
+      JSON.stringify({
+        version: 2,
+        workspaceId,
+        rootIndex: marker.rootIndex,
+        containingRootNodeId: marker.containingRootNodeId,
+      }),
     );
   } catch (err) {
     console.warn('[bento-tools] setPanelMarker failed:', tabId, err);
@@ -50,9 +56,19 @@ export async function readPanelMarker(tabId: number): Promise<PanelMarker | null
     if (typeof value !== 'string') return null;
     const parsed = JSON.parse(value);
     if (parsed && typeof parsed.workspaceId === 'string') {
+      if (parsed.version === 2) {
+        return {
+          workspaceId: parsed.workspaceId,
+          rootIndex: typeof parsed.rootIndex === 'number' ? parsed.rootIndex : 0,
+          containingRootNodeId:
+            typeof parsed.containingRootNodeId === 'string'
+              ? parsed.containingRootNodeId
+              : undefined,
+        };
+      }
       return {
         workspaceId: parsed.workspaceId,
-        position: typeof parsed.position === 'number' ? parsed.position : 0,
+        rootIndex: typeof parsed.position === 'number' ? parsed.position : 0,
       };
     }
     return null;

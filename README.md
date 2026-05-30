@@ -7,7 +7,9 @@ tracks upstream Firefox releases. Build orchestration is handled by
 the brand-specific URLs and installer fields. See
 [docs/maintaining-surfer.md](docs/maintaining-surfer.md) for fork maintenance.
 
-See the full project plan at [plans/bento-browser-plan.md](plans/bento-browser-plan.md).
+See the full project plan at [plans/bento-browser-plan.md](plans/bento-browser-plan.md)
+and the product-facing core functionality document at
+[docs/core-functionality.md](docs/core-functionality.md).
 
 ## Status
 
@@ -51,17 +53,17 @@ npm run brand:regen    # regenerate engine/branding from surfer.json + configs/b
 
 ## Layout
 
-| Path | Purpose |
-| --- | --- |
-| [surfer.json](surfer.json) | Surfer config (Firefox version, branding identifiers) |
-| [configs/](configs/) | Per-platform `mozconfig` fragments |
-| [branding/bento/](branding/bento/) | Bento branding assets (Phase 2) |
-| [extensions/](extensions/) | Bundled privileged extensions (Phase 3) |
-| [patches/](patches/) | Surgical Firefox source patches (Phase 4) |
-| [prefs/](prefs/) | Default pref overrides |
-| [scripts/](scripts/) | Build / release scripts |
-| [config/firefox-versions.json](config/firefox-versions.json) | Tracked upstream versions |
-| [.github/workflows/](.github/workflows/) | CI |
+| Path                                                         | Purpose                                               |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| [surfer.json](surfer.json)                                   | Surfer config (Firefox version, branding identifiers) |
+| [configs/](configs/)                                         | Per-platform `mozconfig` fragments                    |
+| [branding/bento/](branding/bento/)                           | Bento branding assets (Phase 2)                       |
+| [extensions/](extensions/)                                   | Bundled privileged extensions (Phase 3)               |
+| [patches/](patches/)                                         | Surgical Firefox source patches (Phase 4)             |
+| [prefs/](prefs/)                                             | Default pref overrides                                |
+| [scripts/](scripts/)                                         | Build / release scripts                               |
+| [config/firefox-versions.json](config/firefox-versions.json) | Tracked upstream versions                             |
+| [.github/workflows/](.github/workflows/)                     | CI                                                    |
 
 ## License
 

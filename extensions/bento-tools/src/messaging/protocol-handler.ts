@@ -255,6 +255,23 @@ async function activateNonPanelTab(
   }
 }
 
+function insertPanelAfterSource(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+  sourceTabId: number | null,
+): boolean {
+  if (sourceTabId === null) return ctx.panels.insertAt(workspaceId, tabId, 0);
+  if (!ctx.panels.containsPanel(workspaceId, sourceTabId)) {
+    return ctx.panels.insertAt(workspaceId, tabId, ctx.panels.getRootNodeIds(workspaceId).length);
+  }
+  return ctx.panels.insertAtRestoreLocation(
+    workspaceId,
+    tabId,
+    ctx.panels.getPanelRestoreLocation(workspaceId, sourceTabId),
+  );
+}
+
 export interface HandlerContext {
   tabs: TabRegistry;
   workspaces: WorkspaceStore;
@@ -362,20 +379,19 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           let delayActualTabRemove = false;
           if (affected.length > 0) {
             for (const wsId of affected) {
-              const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.id);
-              if (promoted && ctx.panels.getPanels(wsId).length > 0) {
+              const status = ctx.panels.getPanelLayoutStatus(wsId, action.id);
+              const promoted =
+                status === 'subdivision-top' ||
+                status === 'chooser-owner' ||
+                status === 'subdivision-bottom' ||
+                status === 'split-child';
+              if (ctx.panels.remove(wsId, action.id) && promoted) {
                 delayActualTabRemove = true;
               }
               ctx.syncPanelMarkers(wsId);
               ctx.emitPanelsSync(wsId);
             }
             void clearPanelMarker(action.id);
-          } else {
-            const parentId = ctx.panels.removeSubPanelTab(action.id);
-            if (parentId !== undefined) {
-              const parentWs = ctx.panels.findWorkspacesContainingPanelOrSubPanel(parentId);
-              for (const wsId of parentWs) ctx.emitPanelsSync(wsId);
-            }
           }
           const delayMs = delayActualTabRemove ? 500 : 0;
           await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
@@ -622,15 +638,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       //   not-a-panel id → append (defensive: shouldn't normally happen
       //     because the menu item only shows when the right-click was
       //     inside a known panel)
-      const currentPanels = ctx.panels.getPanels(wsId);
       let position: number;
       if (action.position === 'end') {
-        position = currentPanels.length;
+        position = ctx.panels.getRootNodeIds(wsId).length;
       } else if (action.sourceTabId === null) {
         position = 0;
       } else {
-        const idx = currentPanels.indexOf(action.sourceTabId);
-        position = idx < 0 ? currentPanels.length : idx + 1;
+        position = ctx.panels.getRootNodeIds(wsId).length;
       }
       // WebExtensions' tabs.create rejects most `about:*` URLs as "Illegal
       // URL". `about:newtab` specifically is the user's configured new-tab
@@ -650,7 +664,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             console.warn('[bento-tools] panel/openAt: tab.id not a number — bailing');
             return;
           }
-          const inserted = ctx.panels.insertAt(wsId, tab.id, position);
+          const inserted =
+            action.position === 'after' || action.position === undefined
+              ? insertPanelAfterSource(ctx, wsId, tab.id, action.sourceTabId)
+              : ctx.panels.insertAt(wsId, tab.id, position);
           if (!inserted) {
             console.warn(
               '[bento-tools] panel/openAt: insertAt returned false (tab already in panel list?) — bailing without sync',
@@ -693,10 +710,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.emitPanelsSync(wsId);
       return;
     }
-    case 'panel/reorder': {
+    case 'panelLayout/reorderRoot': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      if (ctx.panels.reorder(wsId, action.tabIds)) {
+      if (ctx.panels.reorderRootNodes(wsId, action.rootNodeIds)) {
         ctx.syncPanelMarkers(wsId);
         ctx.emitPanelsSync(wsId);
       }
@@ -726,90 +743,40 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.panels.setStripScroll(action.workspaceId, action.scrollLeft);
       return;
     }
-    case 'panel/subdivide': {
+    case 'panelLayout/subdivide': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      const panelList = ctx.panels.getPanels(wsId);
-      const isFullSlotSubPanel = ctx.panels.isFullSlotSubPanel(wsId, action.tabId);
-      if (!panelList.includes(action.tabId) && !isFullSlotSubPanel) {
-        return;
-      }
       const subdivided = ctx.panels.subdivide(wsId, action.tabId);
-      const existingSubdivision = ctx.panels.getSubdivision(action.tabId);
-      if (subdivided || existingSubdivision) {
+      if (subdivided) {
         ctx.emitPanelsSync(wsId);
       }
       return;
     }
-    case 'panel/removeSubdivision': {
+    case 'panelLayout/removeVerticalGroup': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      const victims = ctx.panels.removeSubdivision(wsId, action.tabId);
+      const victims = ctx.panels.removeVerticalGroup(wsId, action.groupId);
       for (const spId of victims) {
         void closeTabAsRemoved(ctx, spId, {
           delayMs: action.closeDelayMs,
-          label: 'panel/removeSubdivision sub-panel',
+          label: 'panelLayout/removeVerticalGroup child',
         });
       }
       ctx.emitPanelsSync(wsId);
       return;
     }
-    case 'panel/breakOutSubPanel': {
+    case 'panelLayout/breakOut': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      const result = ctx.panels.breakOutSubPanel(wsId, action.tabId);
+      const result = ctx.panels.breakOut(wsId, action.tabId);
       if (!result) return;
       ctx.syncPanelMarkers(wsId);
       ctx.emitPanelsSync(wsId, { scrollToPanelTabId: result.promotedTabId });
-      for (const parentTabId of result.removedParentTabIds) {
-        void closeTabAsRemoved(ctx, parentTabId, {
-          delayMs: 500,
-          label: 'panel/breakOutSubPanel parent',
-          clearPanelMarker: true,
-        });
-      }
       return;
     }
-    case 'panel/closeSubdivisionTop': {
+    case 'panelLayout/fillChooser': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      if (Array.isArray(action.subPanelWidths)) {
-        for (const entry of action.subPanelWidths) {
-          if (!entry || typeof entry.tabId !== 'number' || typeof entry.widthPx !== 'number') {
-            continue;
-          }
-          ctx.panels.setWidth(entry.tabId, entry.widthPx);
-        }
-      }
-      if (ctx.panels.closeSubdivisionTop(wsId, action.tabId)) {
-        ctx.emitPanelsSync(wsId);
-      }
-      return;
-    }
-    case 'panel/promoteSubdivisionParent': {
-      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
-      if (!wsId) return;
-      if (Array.isArray(action.subPanelWidths)) {
-        for (const entry of action.subPanelWidths) {
-          if (!entry || typeof entry.tabId !== 'number' || typeof entry.widthPx !== 'number') {
-            continue;
-          }
-          ctx.panels.setWidth(entry.tabId, entry.widthPx);
-        }
-      }
-      const promoted = ctx.panels.promoteSubPanelsWhenRemovingParent(wsId, action.tabId);
-      if (promoted) {
-        ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId);
-        void clearPanelMarker(action.tabId);
-      }
-      return;
-    }
-    case 'panel/setSubdivisionContent': {
-      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
-      if (!wsId) return;
-      const sub = ctx.panels.getSubdivision(action.tabId);
-      if (!sub) return;
       const expected = action.mode === 'single' ? 1 : 2;
       const urls = action.urls.slice(0, expected);
       if (urls.length !== expected) return;
@@ -826,20 +793,23 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             if (typeof tab.id === 'number') newTabIds.push(tab.id);
           }
           if (newTabIds.length !== expected) return;
-          ctx.panels.fillSubdivision(action.tabId, action.mode, newTabIds);
-          ctx.emitPanelsSync(wsId);
+          for (const tabId of newTabIds) {
+            ctx.tabs.assignWorkspaceEagerly(tabId, wsId);
+            const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+            if (defaultWidth > 0) ctx.panels.setWidth(tabId, defaultWidth);
+          }
+          if (ctx.panels.fillChooser(wsId, action.chooserId, action.mode, newTabIds)) {
+            ctx.syncPanelMarkers(wsId);
+            ctx.emitPanelsSync(wsId, { scrollToPanelTabId: newTabIds[0] });
+          }
         } catch (err) {
-          console.warn('[bento-tools] panel/setSubdivisionContent failed:', err);
+          console.warn('[bento-tools] panelLayout/fillChooser failed:', err);
         }
       })();
       return;
     }
-    case 'panel/setSubdivisionHeight': {
-      ctx.panels.setSubdivisionHeight(action.tabId, action.topHeightFraction);
-      return;
-    }
-    case 'panel/setSubdivisionSplitRatio': {
-      ctx.panels.setSubdivisionSplitRatio(action.tabId, action.splitRatio);
+    case 'panelLayout/setGroupRatio': {
+      ctx.panels.setGroupRatio(action.groupId, action.ratio);
       return;
     }
     case 'pinnedPanel/add': {

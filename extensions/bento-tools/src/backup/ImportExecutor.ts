@@ -5,6 +5,7 @@ import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
+import { migrateLegacyEntriesToPersistence } from '../panels/PanelStore';
 
 export interface ImportContext {
   workspaces: WorkspaceStore;
@@ -84,58 +85,61 @@ export async function executeImport(
       }
     }
 
-    for (const panelData of wsData.panels) {
-      let tabId = urlToTabId.get(panelData.url);
-      if (tabId === undefined) {
-        try {
-          const created = await browser.tabs.create({
-            url: panelData.url,
-            active: false,
-          });
-          if (typeof created.id !== 'number') continue;
-          await ctx.tabs.assignWorkspace(created.id, ws.id);
-          tabId = created.id;
-          summary.tabsOpened++;
-        } catch (err) {
-          console.warn('[bento-tools] import: panel tabs.create failed for', panelData.url, err);
-          continue;
-        }
+    const importedPanelData =
+      data.schemaVersion === 2 && wsData.panelLayout
+        ? {
+            entries: wsData.panels.map((panel, index) => ({
+              panelKey: panel.panelKey || `import-panel-${index}`,
+              url: panel.url,
+              widthPx: panel.widthPx,
+            })),
+            layout: wsData.panelLayout,
+          }
+        : migrateLegacyEntriesToPersistence(
+            wsData.panels.map((panel) => ({
+              url: panel.url,
+              widthPx: panel.widthPx,
+              subdivision: panel.subdivision,
+            })),
+            ws.id,
+          );
+
+    const panelKeyToTabId = new Map<string, number>();
+    const panelUrlToTabIds = new Map<string, number[]>();
+    for (const panelData of importedPanelData.entries) {
+      let tabId: number | undefined;
+      try {
+        const created = await browser.tabs.create({
+          url: panelData.url,
+          active: false,
+        });
+        if (typeof created.id !== 'number') continue;
+        await ctx.tabs.assignWorkspace(created.id, ws.id);
+        tabId = created.id;
+        summary.tabsOpened++;
+      } catch (err) {
+        console.warn('[bento-tools] import: panel tabs.create failed for', panelData.url, err);
+        continue;
       }
-      if (ctx.panels.add(ws.id, tabId)) {
-        if (typeof panelData.widthPx === 'number' && panelData.widthPx > 0) {
-          ctx.panels.setWidth(tabId, panelData.widthPx);
-        }
-        if (panelData.subdivision && Array.isArray(panelData.subdivision.subPanelUrls)) {
-          ctx.panels.subdivide(ws.id, tabId);
-          const subTabIds: number[] = [];
-          for (const spUrl of panelData.subdivision.subPanelUrls) {
-            try {
-              const spTab = await browser.tabs.create({ url: spUrl, active: false });
-              if (typeof spTab.id === 'number') subTabIds.push(spTab.id);
-            } catch {
-              // skip sub-panel tabs that fail to restore
-            }
-          }
-          if (subTabIds.length > 0) {
-            const mode =
-              panelData.subdivision.mode === 'dual' && subTabIds.length === 2
-                ? ('dual' as const)
-                : ('single' as const);
-            ctx.panels.fillSubdivision(tabId, mode, mode === 'dual' ? subTabIds : [subTabIds[0]!]);
-            if (typeof panelData.subdivision.topHeightFraction === 'number') {
-              ctx.panels.setSubdivisionHeight(tabId, panelData.subdivision.topHeightFraction);
-            }
-            if (mode === 'dual' && typeof panelData.subdivision.splitRatio === 'number') {
-              ctx.panels.setSubdivisionSplitRatio(tabId, panelData.subdivision.splitRatio);
-            }
-          }
-        }
-        summary.panelsRestored++;
+      panelKeyToTabId.set(panelData.panelKey, tabId);
+      const list = panelUrlToTabIds.get(panelData.url) ?? [];
+      list.push(tabId);
+      panelUrlToTabIds.set(panelData.url, list);
+      if (typeof panelData.widthPx === 'number' && panelData.widthPx > 0) {
+        ctx.panels.setWidth(tabId, panelData.widthPx);
       }
     }
+    ctx.panels.restorePersistedLayout(ws.id, importedPanelData.layout, panelKeyToTabId);
+    summary.panelsRestored += panelKeyToTabId.size;
 
     for (const ppData of wsData.pinnedPanels) {
-      const tabId = urlToTabId.get(ppData.url);
+      let tabId =
+        ppData.panelKey && panelKeyToTabId.has(ppData.panelKey)
+          ? panelKeyToTabId.get(ppData.panelKey)
+          : undefined;
+      if (tabId === undefined && ppData.url) {
+        tabId = panelUrlToTabIds.get(ppData.url)?.shift();
+      }
       if (tabId !== undefined) {
         ctx.pinnedPanels.add(ws.id, tabId);
       }

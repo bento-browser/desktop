@@ -1051,6 +1051,14 @@
            auto-hides; the custom one stays put. */
         scrollbar-width: none;
       }
+      #tabbrowser-tabpanels.bento-split-active.bento-flat-panel-layout {
+        display: block;
+        position: relative;
+        /* display:block ignores gap for layout, but the flat-layout
+           geometry code reads the computed gap as the authoritative
+           inter-panel spacing value. */
+        gap: var(--space-2xs);
+      }
       #tabbrowser-tabpanels.bento-split-active::-webkit-scrollbar {
         display: none;
       }
@@ -1069,6 +1077,20 @@
            margin. !important required because the upstream rule wins
            the specificity tie on source order otherwise. */
         margin: 0 !important;
+      }
+      #tabbrowser-tabpanels.bento-split-active.bento-flat-panel-layout > .split-view-panel-active {
+        position: absolute !important;
+        flex: 0 0 auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+      }
+      #bento-flat-layout-extent {
+        position: absolute !important;
+        inset-block-start: 0;
+        inset-inline-start: 0;
+        block-size: 1px !important;
+        pointer-events: none;
+        opacity: 0;
       }
       /* The real split-view panels are the visual frames. Shadows live
          on the same elements as content, so both clip together at the
@@ -1149,6 +1171,15 @@
          grid and applyTrailerWidth() flips --bento-saved-panel-overflow
          to 1 so the host widens just enough for the select. */
       #bento-add-panel-trailer {
+        width: calc(
+          (var(--space-l) * 3) +
+            (var(--space-3xs) * 2) +
+            (var(--space-xs) * 2) +
+            (
+              var(--bento-saved-panel-overflow, 0) *
+                (12rem - ((var(--space-l) * 3) + (var(--space-3xs) * 2)))
+            )
+        ) !important;
         flex: 0 0
           calc(
             (var(--space-l) * 3) +
@@ -1167,6 +1198,7 @@
         justify-content: stretch !important;
         order: 999 !important;
         box-sizing: border-box;
+        position: relative;
         margin-block: var(--space-2xs);
         padding: 0;
         background-color: transparent;
@@ -1175,6 +1207,26 @@
         color: var(--neutral-70);
         transition:
           flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard);
+      }
+      #bento-add-panel-trailer:focus,
+      #bento-add-panel-trailer:focus-within {
+        outline: none !important;
+      }
+      #bento-add-panel-trailer::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: var(--bento-focus-ring-width) solid transparent;
+        border-radius: var(--radius-m);
+        pointer-events: none;
+        z-index: 10;
+        box-sizing: border-box;
+        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+      }
+      #bento-add-panel-trailer.bento-panel--cycle-focused::after,
+      #bento-add-panel-trailer:focus::after,
+      #bento-add-panel-trailer:focus-within::after {
+        border-color: var(--color-60);
       }
       /* Inner moz-extension <browser> iframe — fills the trailer host
          so the React PanelTrailer paints edge-to-edge. The iframe owns
@@ -1657,6 +1709,29 @@
       }
       .bento-subdivision-chooser__btn:hover {
         background: var(--neutral-16) !important;
+      }
+      #bento-side-panel-host > .bento-layout-vsplitter,
+      #bento-side-panel-host > .bento-layout-hsplitter {
+        position: absolute !important;
+        z-index: 7 !important;
+        pointer-events: auto !important;
+      }
+      #bento-side-panel-host > .bento-layout-vsplitter {
+        cursor: row-resize !important;
+        min-height: 14px !important;
+        max-height: 14px !important;
+      }
+      #bento-side-panel-host > .bento-layout-hsplitter {
+        cursor: col-resize !important;
+        min-width: 14px !important;
+        max-width: 14px !important;
+      }
+      #bento-side-panel-host > .bento-layout-chooser {
+        position: absolute !important;
+        z-index: 6 !important;
+        box-sizing: border-box;
+        border-radius: var(--radius-m) !important;
+        box-shadow: var(--shadow-l);
       }
     `;
     document.documentElement.appendChild(style);
@@ -2868,17 +2943,13 @@
 
   function canSubdivideFromPanelHeader(tabId, panelEl) {
     if (!Number.isFinite(tabId) || !panelEl) return false;
-    if (panelEl.hasAttribute('data-bento-panel-tab-id')) return true;
-    return isAddressablePanelSurfaceForPanelHeader(tabId, panelEl);
+    return currentPanelStatusByTabId.get(tabId) === 'root-panel';
   }
 
   function canBreakOutFromPanelHeader(tabId, panelEl) {
-    return !!(
-      Number.isFinite(tabId) &&
-      panelEl?.hasAttribute('data-bento-subpanel') &&
-      !isAddressablePanelSurfaceForPanelHeader(tabId, panelEl) &&
-      Number.isFinite(getSubdivisionParentTabId(tabId))
-    );
+    if (!Number.isFinite(tabId) || !panelEl) return false;
+    const status = currentPanelStatusByTabId.get(tabId);
+    return status === 'subdivision-bottom' || status === 'split-child';
   }
 
   function getTopLevelSlotPanelElement(panelEl) {
@@ -3098,11 +3169,11 @@
               return;
             }
             if (itemId === 'subdivide') {
-              dispatchShellAction({ type: 'panel/subdivide', tabId });
+              dispatchShellAction({ type: 'panelLayout/subdivide', tabId });
               return;
             }
             if (itemId === 'break-out-sub-panel') {
-              dispatchShellAction({ type: 'panel/breakOutSubPanel', tabId });
+              dispatchShellAction({ type: 'panelLayout/breakOut', tabId });
               return;
             }
             if (itemId === 'save-panel') {
@@ -3641,6 +3712,11 @@
     splitter.addEventListener('pointerup', (e) => endPanelDrag(splitter, e));
     splitter.addEventListener('pointercancel', (e) => endPanelDrag(splitter, e));
     splitter.addEventListener('lostpointercapture', () => endPanelDrag(splitter, null));
+    splitter.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
     splitter.addEventListener('contextmenu', (e) => showPanelSplitterContextMenu(splitter, e));
     return splitter;
   }
@@ -3699,13 +3775,14 @@
 
   // ─── Subdivision helpers ─────────────────────────────────────────
 
-  function createVerticalSplitter(parentTabId) {
+  function createVerticalSplitter(parentTabId, groupId) {
     const splitter = document.createXULElement('splitter');
     splitter.className = 'bento-subdivision-vsplitter';
     splitter.setAttribute('resizebefore', 'none');
     splitter.setAttribute('resizeafter', 'none');
     splitter.setAttribute('flex', '0');
     splitter._bentoParentTabId = parentTabId;
+    splitter._bentoGroupId = groupId;
     splitter.addEventListener('pointerdown', (e) => startVerticalDrag(splitter, e));
     splitter.addEventListener('pointermove', (e) => onVerticalDragMove(splitter, e));
     splitter.addEventListener('pointerup', (e) => endVerticalDrag(splitter, e));
@@ -3767,19 +3844,20 @@
     const colH = d.col.getBoundingClientRect().height;
     const ratio = colH > 0 ? topH / colH : 0.5;
     dispatchShellAction({
-      type: 'panel/setSubdivisionHeight',
-      tabId: splitter._bentoParentTabId,
-      topHeightFraction: Math.max(0.2, Math.min(0.8, ratio)),
+      type: 'panelLayout/setGroupRatio',
+      groupId: splitter._bentoGroupId || splitter._bentoParentTabId,
+      ratio: Math.max(0.2, Math.min(0.8, ratio)),
     });
   }
 
-  function createHorizontalSubSplitter(parentTabId) {
+  function createHorizontalSubSplitter(parentTabId, groupId) {
     const splitter = document.createXULElement('splitter');
     splitter.className = 'bento-subdivision-hsplitter';
     splitter.setAttribute('resizebefore', 'none');
     splitter.setAttribute('resizeafter', 'none');
     splitter.setAttribute('flex', '0');
     splitter._bentoParentTabId = parentTabId;
+    splitter._bentoGroupId = groupId;
     splitter.addEventListener('pointerdown', (e) => startHSubDrag(splitter, e));
     splitter.addEventListener('pointermove', (e) => onHSubDragMove(splitter, e));
     splitter.addEventListener('pointerup', (e) => endHSubDrag(splitter, e));
@@ -3838,13 +3916,13 @@
     const bottomW = d.bottom.getBoundingClientRect().width;
     const ratio = bottomW > 0 ? leftW / bottomW : 0.5;
     dispatchShellAction({
-      type: 'panel/setSubdivisionSplitRatio',
-      tabId: splitter._bentoParentTabId,
-      splitRatio: Math.max(0.2, Math.min(0.8, ratio)),
+      type: 'panelLayout/setGroupRatio',
+      groupId: splitter._bentoGroupId || splitter._bentoParentTabId,
+      ratio: Math.max(0.2, Math.min(0.8, ratio)),
     });
   }
 
-  function createSubdivisionChooser(parentTabId) {
+  function createSubdivisionChooser(parentTabId, chooserId) {
     const HTML_NS = 'http://www.w3.org/1999/xhtml';
     const container = document.createXULElement('vbox');
     container.className = 'bento-subdivision-chooser';
@@ -3855,8 +3933,8 @@
     singleBtn.textContent = 'Full panel';
     singleBtn.addEventListener('click', () => {
       dispatchShellAction({
-        type: 'panel/setSubdivisionContent',
-        tabId: parentTabId,
+        type: 'panelLayout/fillChooser',
+        chooserId,
         mode: 'single',
         urls: [''],
       });
@@ -3867,8 +3945,8 @@
     dualBtn.textContent = 'Split panels';
     dualBtn.addEventListener('click', () => {
       dispatchShellAction({
-        type: 'panel/setSubdivisionContent',
-        tabId: parentTabId,
+        type: 'panelLayout/fillChooser',
+        chooserId,
         mode: 'dual',
         urls: ['', ''],
       });
@@ -4318,7 +4396,8 @@
 
       const vsplitter = topClosed
         ? staleVSplitter
-        : staleVSplitter || createVerticalSplitter(parentTabId);
+        : staleVSplitter || createVerticalSplitter(parentTabId, sub.id);
+      vsplitter._bentoGroupId = sub.id;
       if (vsplitter) {
         vsplitter._bentoParentTabId = parentTabId;
         if (!topClosed && vsplitter.parentNode !== parentPanel) {
@@ -4327,7 +4406,7 @@
       }
 
       if (!sub.subPanels || sub.subPanels.length === 0) {
-        const chooser = createSubdivisionChooser(parentTabId);
+        const chooser = createSubdivisionChooser(parentTabId, sub.chooserId);
         setSubdivisionFlex(chooser, isNewSubdivision ? '0 1 0' : '1 1 0');
         if (isNewSubdivision) {
           chooser.style.opacity = '0';
@@ -4412,7 +4491,9 @@
         const splitters = Array.from(
           bottom.querySelectorAll(':scope > .bento-subdivision-hsplitter'),
         );
-        const hsplitter = splitters.shift() || createHorizontalSubSplitter(parentTabId);
+        const hsplitter =
+          splitters.shift() || createHorizontalSubSplitter(parentTabId, sub.horizontalGroupId);
+        hsplitter._bentoGroupId = sub.horizontalGroupId;
         hsplitter._bentoParentTabId = parentTabId;
         for (const extraSplitter of splitters) extraSplitter.remove();
         if (bottom.parentNode !== parentPanel) {
@@ -4569,7 +4650,11 @@
     const leftPanel = document.getElementById(leftPanelId);
     if (!leftPanel) return undefined;
     if (leftPanel.dataset.bentoMainPanel === '1') return null;
-    const raw = leftPanel.dataset.bentoPanelTabId;
+    return getPanelTabIdForElement(leftPanel);
+  }
+
+  function getPanelTabIdForElement(panelEl) {
+    const raw = panelEl?.dataset?.bentoPanelTabId;
     const tabId = raw ? Number(raw) : NaN;
     return Number.isFinite(tabId) ? tabId : undefined;
   }
@@ -4582,6 +4667,7 @@
     if (!leftPanel) return;
     e.preventDefault();
     e.stopPropagation();
+    suppressPanelFocusAutoScrollForSplitterInteraction();
 
     splitter._panelDragState = {
       leftPanel,
@@ -4589,7 +4675,9 @@
       startX: e.clientX,
       startWidth: leftPanel.getBoundingClientRect().width,
       pointerId: e.pointerId,
+      tabId: getPanelTabIdForElement(leftPanel),
     };
+    leftPanel.classList.add('bento-panel-resizing');
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch (err) {
@@ -4603,6 +4691,7 @@
   function onPanelDragMove(splitter, e) {
     const drag = splitter._panelDragState;
     if (!drag || e.pointerId !== drag.pointerId) return;
+    suppressPanelFocusAutoScrollForSplitterInteraction();
     const delta = e.clientX - drag.startX;
     const minWidth = drag.isMain ? 320 : 240;
     const next = Math.max(minWidth, drag.startWidth + delta);
@@ -4612,17 +4701,28 @@
     if (drag.isMain) {
       mainPanelWidth = next;
     }
-    // Re-position splitters so they track the live panel widths.
-    // Without this the dragged splitter (and any splitters to its
-    // right) stay at their pre-drag positions and detach visually
-    // from the panel boundaries they own.
-    syncInterPanelSplitters();
+    const widthByTabId = new Map();
+    if (!drag.isMain && Number.isFinite(drag.tabId)) {
+      widthByTabId.set(drag.tabId, next);
+    }
+    const layoutRefreshed = refreshFlatPanelLayoutFromLiveState({
+      mainWidthPx: drag.isMain ? next : currentPanelLayoutGeometry?.mainRect?.width,
+      widthByTabId,
+    });
+    if (!layoutRefreshed) {
+      // Re-position splitters so they track the live panel widths.
+      // Without this the dragged splitter (and any splitters to its
+      // right) stay at their pre-drag positions and detach visually
+      // from the panel boundaries they own.
+      syncInterPanelSplitters();
+    }
   }
 
   function endPanelDrag(splitter, e) {
     const drag = splitter._panelDragState;
     if (!drag) return;
     if (e && e.pointerId !== undefined && e.pointerId !== drag.pointerId) return;
+    suppressPanelFocusAutoScrollForSplitterInteraction();
     try {
       splitter.releasePointerCapture(drag.pointerId);
     } catch {
@@ -4632,6 +4732,7 @@
     const isMain = drag.isMain;
     const leftPanel = drag.leftPanel;
     splitter._panelDragState = null;
+    leftPanel.classList.remove('bento-panel-resizing');
     splitter.classList.remove('bento-panel-splitter--dragging');
     document.documentElement.style.removeProperty('cursor');
     document.documentElement.style.removeProperty('user-select');
@@ -4859,11 +4960,21 @@
     if (tabsToRender) {
       panelIds = tabsToRender.map((t) => t.linkedPanel).filter((id) => !!id);
     } else {
-      panelIds = (tabpanels.splitViewPanels || []).filter((id) => {
+      panelIds = [];
+      const seenRootNodeIds = new Set();
+      for (const id of tabpanels.splitViewPanels || []) {
         const el = document.getElementById(id);
-        if (!el || el.hasAttribute('data-bento-subpanel')) return false;
-        return el.dataset.bentoMainPanel === '1' || !!el.dataset.bentoPanelTabId;
-      });
+        if (!el || el.hasAttribute('data-bento-subpanel')) continue;
+        if (el.dataset.bentoMainPanel === '1') {
+          panelIds.push(id);
+          continue;
+        }
+        if (!el.dataset.bentoPanelTabId) continue;
+        const rootNodeId = el.dataset.bentoRootNodeId || 'panel:' + el.dataset.bentoPanelTabId;
+        if (seenRootNodeIds.has(rootNodeId)) continue;
+        seenRootNodeIds.add(rootNodeId);
+        panelIds.push(id);
+      }
     }
 
     // Splitter count: N-1 between adjacent panel pairs, plus 1 more
@@ -4901,11 +5012,34 @@
     }
     const hostRect = host.getBoundingClientRect();
     const SPLITTER_WIDTH = 14;
+    const panelRectForSplitter = (panelEl) => {
+      if (!panelEl) return null;
+      let localRect = null;
+      if (panelEl.dataset?.bentoMainPanel === '1') {
+        localRect = currentPanelLayoutGeometry?.mainRect || null;
+      } else {
+        const rootNodeId = panelEl.dataset?.bentoRootNodeId;
+        localRect = rootNodeId ? currentPanelLayoutGeometry?.rootRects?.get(rootNodeId) : null;
+      }
+      const hostLocal = localRect ? viewportRectForLayoutRect(tabpanels, localRect) : null;
+      if (hostLocal) {
+        return {
+          left: hostRect.left + hostLocal.left,
+          top: hostRect.top + hostLocal.top,
+          right: hostRect.left + hostLocal.left + hostLocal.width,
+          bottom: hostRect.top + hostLocal.top + hostLocal.height,
+          width: hostLocal.width,
+          height: hostLocal.height,
+        };
+      }
+      return panelEl.getBoundingClientRect();
+    };
     for (let i = 0; i < desired; i++) {
       const sp = existing[i];
       const leftPanelEl = document.getElementById(panelIds[i]);
       if (!leftPanelEl) continue;
-      const lr = leftPanelEl.getBoundingClientRect();
+      const lr = panelRectForSplitter(leftPanelEl);
+      if (!lr) continue;
       // The right "neighbour" is either the next panel (for inter-
       // panel splitters) or the trailer (for the last splitter).
       // Both code paths centre on the gap between the two elements
@@ -4922,7 +5056,8 @@
       } else {
         const rightPanelEl = document.getElementById(panelIds[i + 1]);
         if (!rightPanelEl) continue;
-        const rr = rightPanelEl.getBoundingClientRect();
+        const rr = panelRectForSplitter(rightPanelEl);
+        if (!rr) continue;
         gapCentre = (lr.right + rr.left) / 2;
       }
       sp._bentoLeftPanelId = panelIds[i];
@@ -5158,6 +5293,7 @@
       left: Math.max(0, targetScrollLeft),
       behavior: 'smooth',
     });
+    if (nextIdx === 0) clearRestoredMainAutoScrollSuppression();
     setActiveByIndex(nextIdx);
     return true;
   }
@@ -5391,6 +5527,18 @@
     host.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
   }
 
+  function clearRestoredMainAutoScrollSuppression() {
+    __suppressNextMainAutoScrollForWorkspace = null;
+  }
+
+  function isRestoredMainAutoScrollSuppressed(panelEl) {
+    return !!(
+      panelEl?.dataset?.bentoMainPanel === '1' &&
+      __suppressNextMainAutoScrollForWorkspace !== null &&
+      __suppressNextMainAutoScrollForWorkspace === currentWorkspaceId
+    );
+  }
+
   function getStripScrollInsets(host) {
     if (!host) return { inlineStart: 0, inlineEnd: 0 };
     const styles = getComputedStyle(host);
@@ -5467,13 +5615,21 @@
     const DEADLINE_MS = 2000;
     const POLL_MS = 50;
     const started = Date.now();
+    let focused = false;
     const tryScroll = () => {
       const panelEl = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
       if (panelEl) {
         const rect = panelEl.getBoundingClientRect();
         const host = getStripScrollTarget();
-        const layoutReady =
-          host && rect.width > 1 && rect.height > 1 && host.scrollWidth > host.clientWidth + 1;
+        const hasPanelBox = !!host && rect.width > 1 && rect.height > 1;
+        const insets = host ? getStripScrollInsets(host) : { inlineStart: 0, inlineEnd: 0 };
+        const hostRect = host?.getBoundingClientRect?.();
+        const panelAlreadyVisible =
+          !!hostRect &&
+          rect.left >= hostRect.left + insets.inlineStart - 1 &&
+          rect.right <= hostRect.right - insets.inlineEnd + 1;
+        const hasOverflow = !!host && host.scrollWidth > host.clientWidth + 1;
+        const layoutReady = hasPanelBox && (hasOverflow || panelAlreadyVisible);
         if (!layoutReady && Date.now() - started <= DEADLINE_MS) {
           setTimeout(tryScroll, POLL_MS);
           return;
@@ -5486,12 +5642,35 @@
         } else {
           scrollPanelIntoViewFromRight(panelEl);
         }
+        if (options.focus && !focused) {
+          focused = true;
+          focusPanelCycleTarget(panelEl);
+        }
         return;
       }
       if (Date.now() - started > DEADLINE_MS) return;
       setTimeout(tryScroll, POLL_MS);
     };
     setTimeout(tryScroll, 0);
+  }
+
+  function focusPanelCycleTarget(panelEl) {
+    if (!panelEl) return false;
+    const idx = getCycleIndexForPanelElement(panelEl);
+    if (idx >= 0) {
+      currentActiveIdx = idx;
+      applyActiveMarker(idx);
+      applyPanelFocusIndicator(idx);
+    }
+    try {
+      const browserEl = getPanelTargetBrowser(panelEl);
+      if (browserEl) browserEl.focus({ preventScroll: true });
+      else panelEl.focus({ preventScroll: true });
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel cycle focus failed:', err);
+      return false;
+    }
   }
 
   // The active panel is the user's current cycle selection. Source of
@@ -5504,6 +5683,17 @@
   let panelFocusTimer = null;
   let panelNavContextMenu = null;
   const PANEL_REMOVE_ANIMATION_MS = 190;
+  const SPLITTER_FOCUS_AUTOSCROLL_SUPPRESS_MS = 900;
+  let __suppressPanelFocusAutoScrollUntil = 0;
+
+  function suppressPanelFocusAutoScrollForSplitterInteraction() {
+    __suppressPanelFocusAutoScrollUntil =
+      Date.now() + SPLITTER_FOCUS_AUTOSCROLL_SUPPRESS_MS;
+  }
+
+  function isPanelFocusAutoScrollSuppressed() {
+    return Date.now() < __suppressPanelFocusAutoScrollUntil;
+  }
 
   const SHELL_ACTION_FRAME_SCRIPT_SRC =
     '"use strict";' +
@@ -5610,7 +5800,7 @@
             subPanel,
             subdivision,
             () => {
-              dispatchShellAction({ type: 'panel/closeSubdivisionTop', tabId });
+              dispatchShellAction({ type: 'tab/close', id: tabId });
             },
             { detachBeforeDone: false },
           );
@@ -5620,11 +5810,14 @@
             subPanel,
             subdivision,
             () => {
-              dispatchShellAction({
-                type: 'panel/closeSubdivisionTop',
-                tabId,
-                subPanelWidths,
-              });
+              for (const entry of subPanelWidths) {
+                dispatchShellAction({
+                  type: 'panel/setWidth',
+                  id: entry.tabId,
+                  widthPx: entry.widthPx,
+                });
+              }
+              dispatchShellAction({ type: 'tab/close', id: tabId });
             },
             { detachBeforeDone: false },
           );
@@ -5648,7 +5841,7 @@
           panel,
           subdivision,
           () => {
-            dispatchShellAction({ type: 'panel/closeSubdivisionTop', tabId });
+            dispatchShellAction({ type: 'tab/close', id: tabId });
           },
           { detachBeforeDone: false },
         );
@@ -5661,17 +5854,24 @@
           panel,
           subdivision,
           () => {
-            dispatchShellAction({
-              type: 'panel/closeSubdivisionTop',
-              tabId,
-              subPanelWidths,
-            });
+            for (const entry of subPanelWidths) {
+              dispatchShellAction({
+                type: 'panel/setWidth',
+                id: entry.tabId,
+                widthPx: entry.widthPx,
+              });
+            }
+            dispatchShellAction({ type: 'tab/close', id: tabId });
           },
           { detachBeforeDone: false },
         );
       }
       return;
     }
+    const promotedChildWidths =
+      currentPanelStatusByTabId.get(tabId) === 'subdivision-top'
+        ? getPromotedChildWidthsForClosingTop(tabId)
+        : [];
     if (panel._bentoPanelRemoving) return;
     panel._bentoPanelRemoving = true;
 
@@ -5680,6 +5880,13 @@
     panel.classList.add('bento-panel--removing');
 
     setTimeout(() => {
+      for (const entry of promotedChildWidths) {
+        dispatchShellAction({
+          type: 'panel/setWidth',
+          id: entry.tabId,
+          widthPx: entry.widthPx,
+        });
+      }
       dispatchShellAction({ type: 'tab/close', id: tabId });
     }, PANEL_REMOVE_ANIMATION_MS);
   }
@@ -6179,7 +6386,7 @@
     }
   }
 
-  function buildSubdividedNavIcon(sub, parentFavIcon, parentTitle, onClick, tabId) {
+  function buildSubdividedNavIcon(sub, parentFavIcon, parentTitle, onClick, tabId, rootNodeId) {
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className = 'bento-panel-nav__icon bento-panel-nav__icon--subdivided';
@@ -6245,10 +6452,18 @@
     btn.addEventListener('mousedown', (e) => {
       if (e.button === 0) e.preventDefault();
     });
+    if (Number.isFinite(tabId)) {
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showPanelNavContextMenu(tabId, e.clientX, e.clientY);
+      });
+      setupNavDrag(btn, tabId, rootNodeId);
+    }
     return btn;
   }
 
-  function buildNavIcon(favIconUrl, title, onClick, tabId) {
+  function buildNavIcon(favIconUrl, title, onClick, tabId, rootNodeId) {
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className = 'bento-panel-nav__icon';
@@ -6311,7 +6526,7 @@
         e.stopPropagation();
         showPanelNavContextMenu(tabId, e.clientX, e.clientY);
       });
-      setupNavDrag(btn, tabId);
+      setupNavDrag(btn, tabId, rootNodeId);
     }
     return btn;
   }
@@ -6330,8 +6545,9 @@
   // splitter dragging already deals with).
   const NAV_DRAG_THRESHOLD_PX = 4;
 
-  function setupNavDrag(btn, tabId) {
+  function setupNavDrag(btn, tabId, rootNodeId) {
     btn.dataset.bentoNavDraggable = '1';
+    btn.dataset.bentoRootNodeId = rootNodeId || 'panel:' + tabId;
 
     let startX = 0;
     let startY = 0;
@@ -6418,12 +6634,15 @@
       if (dragging && commit && list) {
         const slot = computeTargetSlot(list, finalClientX);
         const panels = getOrderedPanels();
-        const currentIds = panels
-          .map((p) => Number(p.dataset.bentoPanelTabId))
-          .filter((n) => Number.isFinite(n));
-        const filtered = currentIds.filter((id) => id !== tabId);
+        const currentIds = [];
+        for (const panel of panels) {
+          const id = panel.dataset.bentoRootNodeId || 'panel:' + panel.dataset.bentoPanelTabId;
+          if (id && !currentIds.includes(id)) currentIds.push(id);
+        }
+        const sourceRootNodeId = rootNodeId || 'panel:' + tabId;
+        const filtered = currentIds.filter((id) => id !== sourceRootNodeId);
         const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
-        filtered.splice(clampedSlot, 0, tabId);
+        filtered.splice(clampedSlot, 0, sourceRootNodeId);
         const changed =
           filtered.length !== currentIds.length || filtered.some((id, i) => currentIds[i] !== id);
         if (changed) {
@@ -6444,7 +6663,7 @@
           }
           __bentoPendingNavFlip = navSnap;
 
-          dispatchShellAction({ type: 'panel/reorder', tabIds: filtered });
+          dispatchShellAction({ type: 'panelLayout/reorderRoot', rootNodeIds: filtered });
         }
       }
       if (list) list.classList.remove('bento-panel-nav__list--dragging');
@@ -6625,12 +6844,15 @@
       if (dragging && commit) {
         const slot = computeTargetSlot(finalClientX);
         const sidePanelEls = getPanels().filter((p) => p.dataset.bentoPanelTabId);
-        const currentIds = sidePanelEls
-          .map((p) => Number(p.dataset.bentoPanelTabId))
-          .filter((n) => Number.isFinite(n));
-        const filtered = currentIds.filter((id) => id !== tabId);
+        const currentIds = [];
+        for (const panel of sidePanelEls) {
+          const id = panel.dataset.bentoRootNodeId || 'panel:' + panel.dataset.bentoPanelTabId;
+          if (id && !currentIds.includes(id)) currentIds.push(id);
+        }
+        const sourceRootNodeId = panelEl.dataset.bentoRootNodeId || 'panel:' + tabId;
+        const filtered = currentIds.filter((id) => id !== sourceRootNodeId);
         const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
-        filtered.splice(clampedSlot, 0, tabId);
+        filtered.splice(clampedSlot, 0, sourceRootNodeId);
         const changed =
           filtered.length !== currentIds.length || filtered.some((id, i) => currentIds[i] !== id);
         if (changed) {
@@ -6664,7 +6886,7 @@
           }
           snap.__draggedTabId = tabId;
           __bentoPendingFlip = snap;
-          dispatchShellAction({ type: 'panel/reorder', tabIds: filtered });
+          dispatchShellAction({ type: 'panelLayout/reorderRoot', rootNodeIds: filtered });
           dispatched = true;
           // Don't clear the dragged panel's transform yet — the
           // FLIP runner will replace it with a counter-transform
@@ -6825,6 +7047,7 @@
     const list = document.querySelector('.bento-panel-nav__list');
     if (!list) return;
     hidePanelNavContextMenu();
+    const navPanels = uniqueRootPanels(panels);
 
     // Index existing children by their bento nav key. Skip ones already
     // mid-leave so they're not accidentally reused.
@@ -6835,9 +7058,9 @@
       if (key) existing.set(key, child);
     }
 
-    // Desired keys in order: 'main' first, then each panel tabId.
+    // Desired keys in order: 'main' first, then each root layout node id.
     const desiredKeys = ['main'];
-    for (const panel of panels) desiredKeys.push(String(panel.tabId));
+    for (const panel of navPanels) desiredKeys.push(panel.rootNodeId || 'panel:' + panel.tabId);
 
     // Build / reuse each desired icon in order, collecting which ones
     // are new (need enter animation).
@@ -6848,8 +7071,8 @@
       let btn = existing.get(key);
       if (btn) {
         // Rebuild if subdivision state changed (e.g. panel was subdivided or unsubdivided)
-        const tabId = Number(key);
-        const panelPayload = Number.isFinite(tabId) ? panels[i - 1] : null;
+        const panelPayload = key === 'main' ? null : navPanels[i - 1];
+        const tabId = Number(panelPayload?.tabId);
         const desiredSignature = panelPayload ? getPanelNavSignature(panelPayload) : key;
         const wasSub = btn.classList.contains('bento-panel-nav__icon--subdivided');
         const navInfo = panelPayload ? resolveVisiblePanelForNav(panelPayload) : null;
@@ -6870,12 +7093,13 @@
           btn = buildNavIcon(getMainTabFavicon(), 'Main panel', () => {
             const ordered = getOrderedPanels();
             const main = ordered[0] || document.getElementById('tabbrowser-tabbox');
+            clearRestoredMainAutoScrollSuppression();
             scrollPanelToLeftmost(main);
             setActiveByIndex(0);
           });
         } else {
-          const tabId = Number(key);
-          const panelPayload = panels[i - 1];
+          const panelPayload = navPanels[i - 1];
+          const tabId = Number(panelPayload?.tabId);
           const clickHandler = () => {
             const el = document.querySelector('[data-bento-panel-tab-id="' + tabId + '"]');
             if (el) scrollPanelToLeftmost(el);
@@ -6891,6 +7115,7 @@
               visiblePanel.title || panelPayload.title || 'Panel',
               clickHandler,
               tabId,
+              panelPayload.rootNodeId || key,
             );
           } else {
             btn = buildSubdividedNavIcon(
@@ -6899,6 +7124,7 @@
               visiblePanel.title || panelPayload.title || 'Panel',
               clickHandler,
               tabId,
+              panelPayload.rootNodeId || key,
             );
           }
         }
@@ -6908,7 +7134,7 @@
       }
       desiredEls.push(btn);
       if (key !== 'main') {
-        const panelPayload = panels[i - 1];
+        const panelPayload = navPanels[i - 1];
         if (panelPayload) btn.dataset.bentoNavSignature = getPanelNavSignature(panelPayload);
       }
     }
@@ -7034,6 +7260,33 @@
     const thumbLeft = (trackWidth - thumbWidth) * scrollRatio;
     thumb.style.width = thumbWidth + 'px';
     thumb.style.transform = 'translateX(' + thumbLeft + 'px)';
+  }
+
+  function preserveStripScrollDuringLiveLayout(fn, afterRestore) {
+    const host = getStripScrollTarget();
+    if (!host) {
+      const result = fn();
+      if (typeof afterRestore === 'function') afterRestore();
+      return result;
+    }
+    const scrollLeft = host.scrollLeft;
+    const token = ++__liveLayoutScrollPreserveToken;
+    __suppressStripScrollDispatch = true;
+    try {
+      const result = fn();
+      void host.scrollWidth;
+      const maxScrollLeft = Math.max(0, host.scrollWidth - host.clientWidth);
+      host.scrollLeft = Math.max(0, Math.min(maxScrollLeft, scrollLeft));
+      if (typeof afterRestore === 'function') afterRestore();
+      updateStripScrollbar();
+      return result;
+    } finally {
+      requestAnimationFrame(() => {
+        if (token === __liveLayoutScrollPreserveToken) {
+          __suppressStripScrollDispatch = false;
+        }
+      });
+    }
   }
 
   function buildStripScrollbar() {
@@ -7429,13 +7682,17 @@
       //     child renders the actual button widgets.
       //   - inline `title`: replaced by the iframe's Tale UI Tooltip.
       //   - click handler: the iframe captures mouse clicks before
-      //     they reach the vbox. The keydown handler stays because
-      //     keyboard cycle-Enter focuses the vbox (see
-      //     setActiveByIndex's trailer special-case) and the keydown
-      //     fires there directly.
+      //     they reach the vbox. The keydown handler stays only for
+      //     keyboard cycle-Enter while the OUTER vbox itself is
+      //     focused (see setActiveByIndex's trailer special-case).
+      //     When Tab moves focus into the iframe buttons, those
+      //     buttons own Enter/Space so saved-panel keyboard activation
+      //     opens the saved URL instead of falling through to blank add.
       trailer.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
+          if (document.activeElement !== trailer) return;
           e.preventDefault();
+          e.stopPropagation();
           addNewPanel();
         }
       });
@@ -7508,6 +7765,7 @@
   function forceMainOnlyChromeState(gBrowser, tabpanels) {
     cancelWorkspaceFadeForMainOnly();
     setNoSidePanelsMode(true);
+    clearFlatPanelLayout(tabpanels);
     syncInterPanelSplitters([]);
     removeAddPanelTrailer();
 
@@ -7545,9 +7803,16 @@
         if (!panelEl) continue;
         delete panelEl.dataset.bentoMainPanel;
         delete panelEl.dataset.bentoPanelTabId;
+        delete panelEl.dataset.bentoRootNodeId;
         panelEl.style.removeProperty('order');
+        panelEl.style.removeProperty('left');
+        panelEl.style.removeProperty('top');
         panelEl.style.removeProperty('width');
         panelEl.style.removeProperty('min-width');
+        panelEl.style.removeProperty('max-width');
+        panelEl.style.removeProperty('height');
+        panelEl.style.removeProperty('min-height');
+        panelEl.style.removeProperty('max-height');
         panelEl.style.removeProperty('flex');
         panelEl.classList.remove(
           'split-view-panel',
@@ -7611,6 +7876,7 @@
   // clicks should bring main back into view even if the user was
   // looking at a side panel.
   let __lastMainPanelId = null;
+  let __suppressNextMainAutoScrollForWorkspace = null;
   // Workspace ID we've successfully reconciled at least once. Compared
   // against currentWorkspaceId to detect "this is the initial hydration
   // for this workspace" (boot OR workspace switch) versus "user mutated
@@ -7622,6 +7888,782 @@
   // AND the main return path so it stays accurate across teardowns.
   let __reconciledForWorkspace = null;
   let __lastSubdivisionsSnapshot = new Map();
+
+  function sanitizePanelLayoutPayload(rawLayout, panels) {
+    const panelIds = new Set((panels || []).map((panel) => Number(panel?.tabId)));
+    const sanitizePanelNode = (node) => {
+      const tabId = Number(node?.tabId);
+      if (node?.kind !== 'panel' || !Number.isFinite(tabId) || !panelIds.has(tabId)) return null;
+      return { kind: 'panel', tabId };
+    };
+    const sanitizeBottomNode = (node) => {
+      const panel = sanitizePanelNode(node);
+      if (panel) return panel;
+      if (node?.kind === 'chooser' && typeof node.id === 'string') {
+        const ownerTabId = Number(node.ownerTabId);
+        if (!Number.isFinite(ownerTabId) || !panelIds.has(ownerTabId)) return null;
+        return { kind: 'chooser', id: node.id, ownerTabId };
+      }
+      if (node?.kind === 'group' && node.axis === 'horizontal' && typeof node.id === 'string') {
+        const children = Array.isArray(node.children) ? node.children : [];
+        const left = sanitizePanelNode(children[0]);
+        const right = sanitizePanelNode(children[1]);
+        if (!left || !right) return null;
+        return {
+          kind: 'group',
+          id: node.id,
+          axis: 'horizontal',
+          ratio: typeof node.ratio === 'number' ? node.ratio : 0.5,
+          children: [left, right],
+        };
+      }
+      return null;
+    };
+    const root = [];
+    for (const node of Array.isArray(rawLayout?.root) ? rawLayout.root : []) {
+      const panel = sanitizePanelNode(node);
+      if (panel) {
+        root.push(panel);
+        continue;
+      }
+      if (node?.kind !== 'group' || node.axis !== 'vertical' || typeof node.id !== 'string') {
+        continue;
+      }
+      const children = Array.isArray(node.children) ? node.children : [];
+      const top = sanitizePanelNode(children[0]);
+      const bottom = sanitizeBottomNode(children[1]);
+      if (!top || !bottom) continue;
+      root.push({
+        kind: 'group',
+        id: node.id,
+        axis: 'vertical',
+        ratio: typeof node.ratio === 'number' ? node.ratio : 0.5,
+        children: [top, bottom],
+      });
+    }
+    return { root };
+  }
+
+  function cssLengthToPx(value, fallback) {
+    if (typeof value !== 'string') return fallback;
+    const raw = value.trim();
+    if (!raw) return fallback;
+    const n = Number.parseFloat(raw);
+    if (!Number.isFinite(n)) return fallback;
+    if (raw.endsWith('rem') || raw.endsWith('em')) {
+      const rootSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+      return n * (Number.isFinite(rootSize) && rootSize > 0 ? rootSize : 16);
+    }
+    return n;
+  }
+
+  function tokenPx(name, fallback) {
+    return cssLengthToPx(resolveChromeToken(name), fallback);
+  }
+
+  function clampLayoutRatio(value, fallback = 0.5) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0.2, Math.min(0.8, n));
+  }
+
+  function collectLayoutLeafEntries(layout) {
+    const entries = [];
+    const visitBottom = (node, rootNodeId, role) => {
+      if (!node) return;
+      if (node.kind === 'panel') {
+        entries.push({ tabId: Number(node.tabId), rootNodeId, role });
+        return;
+      }
+      if (node.kind === 'group' && node.axis === 'horizontal') {
+        const left = node.children?.[0];
+        const right = node.children?.[1];
+        if (left?.kind === 'panel') {
+          entries.push({
+            tabId: Number(left.tabId),
+            rootNodeId,
+            role: 'split-child',
+            horizontalGroupId: node.id,
+          });
+        }
+        if (right?.kind === 'panel') {
+          entries.push({
+            tabId: Number(right.tabId),
+            rootNodeId,
+            role: 'split-child',
+            horizontalGroupId: node.id,
+          });
+        }
+      }
+    };
+
+    for (const node of layout?.root || []) {
+      if (node?.kind === 'panel') {
+        entries.push({ tabId: Number(node.tabId), rootNodeId: 'panel:' + node.tabId, role: 'root' });
+        continue;
+      }
+      if (node?.kind !== 'group' || node.axis !== 'vertical') continue;
+      const rootNodeId = node.id;
+      const top = node.children?.[0];
+      const bottom = node.children?.[1];
+      if (top?.kind === 'panel') {
+        entries.push({
+          tabId: Number(top.tabId),
+          rootNodeId,
+          role: 'subdivision-top',
+          verticalGroupId: node.id,
+        });
+      }
+      visitBottom(bottom, rootNodeId, bottom?.kind === 'panel' ? 'subdivision-bottom' : 'split-child');
+    }
+    return entries.filter((entry) => Number.isFinite(entry.tabId));
+  }
+
+  function decoratePanelsForLayout(layout, panels) {
+    const payloadByTabId = new Map((panels || []).map((panel) => [Number(panel?.tabId), panel]));
+    const entries = collectLayoutLeafEntries(layout);
+    const out = [];
+    const seen = new Set();
+    for (const entry of entries) {
+      const payload = payloadByTabId.get(entry.tabId);
+      if (!payload || seen.has(entry.tabId)) continue;
+      seen.add(entry.tabId);
+      out.push(Object.assign({}, payload, entry));
+    }
+    for (const payload of panels || []) {
+      const tabId = Number(payload?.tabId);
+      if (!Number.isFinite(tabId) || seen.has(tabId)) continue;
+      seen.add(tabId);
+      out.push(Object.assign({}, payload, { rootNodeId: 'panel:' + tabId, role: 'root' }));
+    }
+    return out;
+  }
+
+  function uniqueRootPanels(panels) {
+    const out = [];
+    const seen = new Set();
+    for (const panel of panels || []) {
+      const tabId = Number(panel?.tabId);
+      if (!Number.isFinite(tabId)) continue;
+      const rootNodeId = panel.rootNodeId || 'panel:' + tabId;
+      if (seen.has(rootNodeId)) continue;
+      seen.add(rootNodeId);
+      out.push(Object.assign({}, panel, { rootNodeId }));
+    }
+    return out;
+  }
+
+  function getTrailerLayoutWidth(trailer) {
+    if (!trailer) return 0;
+    const saved = {
+      width: trailer.style.width,
+      minWidth: trailer.style.minWidth,
+      maxWidth: trailer.style.maxWidth,
+      flex: trailer.style.flex,
+    };
+    trailer.style.removeProperty('width');
+    trailer.style.removeProperty('min-width');
+    trailer.style.removeProperty('max-width');
+    trailer.style.removeProperty('flex');
+    try {
+      const rectWidth = trailer.getBoundingClientRect?.().width || 0;
+      if (rectWidth > 0) return rectWidth;
+      const styles = getComputedStyle(trailer);
+      const styleWidth = cssLengthToPx(styles.width, 0);
+      if (styleWidth > 0) return styleWidth;
+      const minWidth = cssLengthToPx(styles.minWidth, 0);
+      if (minWidth > 0) return minWidth;
+      return currentSavedPanelCount > 8 ? 192 : 162;
+    } finally {
+      if (saved.width) trailer.style.width = saved.width;
+      else trailer.style.removeProperty('width');
+      if (saved.minWidth) trailer.style.minWidth = saved.minWidth;
+      else trailer.style.removeProperty('min-width');
+      if (saved.maxWidth) trailer.style.maxWidth = saved.maxWidth;
+      else trailer.style.removeProperty('max-width');
+      if (saved.flex) trailer.style.flex = saved.flex;
+      else trailer.style.removeProperty('flex');
+    }
+  }
+
+  function computePanelLayoutGeometry(layout, panels, tabpanels, options = {}) {
+    const widthByTabIdOverride =
+      options.widthByTabId instanceof Map ? options.widthByTabId : new Map();
+    const preferLivePanelWidths = options.preferLivePanelWidths === true;
+    const panelByTabId = new Map((panels || []).map((panel) => [Number(panel?.tabId), panel]));
+    const rootPanelById = new Map();
+    for (const panel of panels || []) {
+      const tabId = Number(panel?.tabId);
+      if (!Number.isFinite(tabId)) continue;
+      const rootNodeId = panel.rootNodeId || 'panel:' + tabId;
+      if (!rootPanelById.has(rootNodeId)) rootPanelById.set(rootNodeId, panel);
+    }
+
+    const styles = getComputedStyle(tabpanels);
+    const padLeft = cssLengthToPx(styles.paddingLeft, 8);
+    const padRight = cssLengthToPx(styles.paddingRight, 8);
+    const padTop = cssLengthToPx(styles.paddingTop, 8);
+    const padBottom = cssLengthToPx(styles.paddingBottom, 44);
+    const columnGap = cssLengthToPx(styles.columnGap, NaN);
+    const gap = Number.isFinite(columnGap) ? columnGap : cssLengthToPx(styles.gap, 8);
+    const splitterSize = 14;
+    const minPanelWidth = tokenPx('--bento-panel-min-width', 380);
+    const minMainWidth = tokenPx('--bento-main-panel-min-width', 480);
+    const viewportWidth = Math.max(0, tabpanels.clientWidth || 0);
+    const viewportHeight = Math.max(0, tabpanels.clientHeight || 0);
+    const contentHeight = Math.max(120, viewportHeight - padTop - padBottom);
+
+    const liveWidthForTabId = (tabId) => {
+      const panelEl = document.querySelector('[data-bento-panel-tab-id="' + Number(tabId) + '"]');
+      const rectWidth = panelEl?.getBoundingClientRect?.().width || 0;
+      return rectWidth > 0 ? Math.round(rectWidth) : 0;
+    };
+
+    const existingWidthForTabId = (tabId) => {
+      const overrideWidth = Number(widthByTabIdOverride.get(Number(tabId)));
+      if (Number.isFinite(overrideWidth) && overrideWidth > 0) return Math.round(overrideWidth);
+      if (preferLivePanelWidths) {
+        const liveWidth = liveWidthForTabId(tabId);
+        if (liveWidth > 0) return liveWidth;
+      }
+      const payload = panelByTabId.get(Number(tabId));
+      const payloadWidth = Number(payload?.widthPx);
+      if (Number.isFinite(payloadWidth) && payloadWidth > 0) return Math.round(payloadWidth);
+      const liveWidth = liveWidthForTabId(tabId);
+      if (liveWidth > 0) return liveWidth;
+      return minPanelWidth;
+    };
+
+    const rootWidth = (node) => {
+      if (node?.kind === 'panel') return existingWidthForTabId(node.tabId);
+      if (node?.kind === 'group' && node.axis === 'vertical') {
+        const top = node.children?.[0];
+        if (top?.kind === 'panel') return existingWidthForTabId(top.tabId);
+      }
+      return minPanelWidth;
+    };
+
+    const rootNodes = Array.isArray(layout?.root) ? layout.root : [];
+    const rootWidths = rootNodes.map(rootWidth);
+    const trailer = document.getElementById('bento-add-panel-trailer');
+    const trailerWidth = getTrailerLayoutWidth(trailer);
+    const sideGapCount = rootNodes.length + (trailer ? 1 : 0);
+    const sideWidth =
+      rootWidths.reduce((sum, width) => sum + width, 0) +
+      Math.max(0, sideGapCount) * gap +
+      trailerWidth;
+    const mainWidthOverride = Number(options.mainWidthPx);
+    const mainWidth =
+      Number.isFinite(mainWidthOverride) && mainWidthOverride > 0
+        ? Math.round(mainWidthOverride)
+        : mainPanelWidth !== null
+        ? mainPanelWidth
+        : Math.max(minMainWidth, viewportWidth - padLeft - padRight - sideWidth);
+
+    const panelRects = new Map();
+    const rootRects = new Map();
+    const splitters = [];
+    const choosers = [];
+
+    const addPanelRect = (node, rect, rootNodeId) => {
+      if (node?.kind !== 'panel') return;
+      const tabId = Number(node.tabId);
+      if (!panelByTabId.has(tabId)) return;
+      panelRects.set(tabId, Object.assign({ rootNodeId }, rect));
+    };
+
+    const layoutBottom = (node, rect, rootNodeId) => {
+      if (!node) return;
+      if (node.kind === 'panel') {
+        addPanelRect(node, rect, rootNodeId);
+        return;
+      }
+      if (node.kind === 'chooser') {
+        choosers.push({
+          id: node.id,
+          ownerTabId: Number(node.ownerTabId),
+          rect,
+        });
+        return;
+      }
+      if (node.kind === 'group' && node.axis === 'horizontal') {
+        const ratio = clampLayoutRatio(node.ratio);
+        const leftWidth = Math.max(0, (rect.width - splitterSize) * ratio);
+        const rightWidth = Math.max(0, rect.width - splitterSize - leftWidth);
+        const leftRect = {
+          left: rect.left,
+          top: rect.top,
+          width: leftWidth,
+          height: rect.height,
+        };
+        const splitterRect = {
+          left: rect.left + leftWidth,
+          top: rect.top,
+          width: splitterSize,
+          height: rect.height,
+        };
+        const rightRect = {
+          left: splitterRect.left + splitterSize,
+          top: rect.top,
+          width: rightWidth,
+          height: rect.height,
+        };
+        addPanelRect(node.children?.[0], leftRect, rootNodeId);
+        addPanelRect(node.children?.[1], rightRect, rootNodeId);
+        splitters.push({
+          axis: 'horizontal',
+          groupId: node.id,
+          rect: splitterRect,
+          groupRect: rect,
+        });
+      }
+    };
+
+    let x = padLeft;
+    const mainRect = { left: x, top: padTop, width: mainWidth, height: contentHeight };
+    x += mainWidth + gap;
+
+    for (let i = 0; i < rootNodes.length; i++) {
+      const node = rootNodes[i];
+      const width = rootWidths[i] || minPanelWidth;
+      const rootNodeId = node?.kind === 'panel' ? 'panel:' + node.tabId : node?.id;
+      const rootRect = { left: x, top: padTop, width, height: contentHeight };
+      if (rootNodeId) rootRects.set(rootNodeId, rootRect);
+      if (node?.kind === 'panel') {
+        addPanelRect(node, rootRect, rootNodeId);
+      } else if (node?.kind === 'group' && node.axis === 'vertical') {
+        const ratio = clampLayoutRatio(node.ratio);
+        const topHeight = Math.max(0, (contentHeight - splitterSize) * ratio);
+        const bottomHeight = Math.max(0, contentHeight - splitterSize - topHeight);
+        const topRect = { left: x, top: padTop, width, height: topHeight };
+        const splitterRect = {
+          left: x,
+          top: padTop + topHeight,
+          width,
+          height: splitterSize,
+        };
+        const bottomRect = {
+          left: x,
+          top: splitterRect.top + splitterSize,
+          width,
+          height: bottomHeight,
+        };
+        addPanelRect(node.children?.[0], topRect, rootNodeId);
+        layoutBottom(node.children?.[1], bottomRect, rootNodeId);
+        splitters.push({
+          axis: 'vertical',
+          groupId: node.id,
+          rect: splitterRect,
+          groupRect: rootRect,
+        });
+      }
+      x += width + gap;
+    }
+
+    const trailerRect = trailer
+      ? { left: x, top: padTop, width: trailerWidth, height: contentHeight }
+      : null;
+    const totalWidth = Math.max(viewportWidth, x + (trailer ? trailerWidth + gap : 0) + padRight);
+    return { mainRect, panelRects, rootRects, splitters, choosers, trailerRect, totalWidth };
+  }
+
+  function ensureFlatLayoutExtent(tabpanels, totalWidth) {
+    let extent = document.getElementById('bento-flat-layout-extent');
+    if (!extent) {
+      extent = document.createXULElement('hbox');
+      extent.id = 'bento-flat-layout-extent';
+      extent.setAttribute('aria-hidden', 'true');
+      tabpanels.appendChild(extent);
+    } else if (extent.parentNode !== tabpanels) {
+      tabpanels.appendChild(extent);
+    }
+    extent.style.width = Math.max(0, Math.round(totalWidth || 0)) + 'px';
+  }
+
+  function applyRectStyle(el, rect) {
+    if (!el || !rect) return;
+    el.style.left = Math.round(rect.left) + 'px';
+    el.style.top = Math.round(rect.top) + 'px';
+    el.style.width = Math.max(0, Math.round(rect.width)) + 'px';
+    el.style.minWidth = Math.max(0, Math.round(rect.width)) + 'px';
+    el.style.maxWidth = Math.max(0, Math.round(rect.width)) + 'px';
+    el.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+    el.style.minHeight = Math.max(0, Math.round(rect.height)) + 'px';
+    el.style.maxHeight = Math.max(0, Math.round(rect.height)) + 'px';
+    el.style.flex = '0 0 auto';
+  }
+
+  function applyPanelLayoutRects(tabpanels, geometry) {
+    if (!tabpanels || !geometry) return;
+    tabpanels.classList.add('bento-flat-panel-layout');
+    ensureFlatLayoutExtent(tabpanels, geometry.totalWidth);
+    const mainPanel = tabpanels.querySelector(':scope > [data-bento-main-panel]');
+    applyRectStyle(mainPanel, geometry.mainRect);
+    for (const panelEl of tabpanels.querySelectorAll(':scope > [data-bento-panel-tab-id]')) {
+      const tabId = Number(panelEl.dataset.bentoPanelTabId);
+      const rect = geometry.panelRects.get(tabId);
+      if (!rect) continue;
+      panelEl.dataset.bentoRootNodeId = rect.rootNodeId || 'panel:' + tabId;
+      applyRectStyle(panelEl, rect);
+    }
+    const trailer = document.getElementById('bento-add-panel-trailer');
+    if (trailer && geometry.trailerRect) applyRectStyle(trailer, geometry.trailerRect);
+  }
+
+  function refreshFlatPanelLayoutFromLiveState(options = {}) {
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!tabpanels?.classList?.contains('bento-flat-panel-layout')) return false;
+    return preserveStripScrollDuringLiveLayout(
+      () => {
+        currentPanelLayoutGeometry = computePanelLayoutGeometry(
+          currentPanelLayout,
+          __lastPanelsPayload,
+          tabpanels,
+          Object.assign({ preferLivePanelWidths: true }, options),
+        );
+        applyPanelLayoutRects(tabpanels, currentPanelLayoutGeometry);
+        return true;
+      },
+      () => {
+        syncFlatLayoutOverlays(tabpanels, currentPanelLayoutGeometry);
+        syncInterPanelSplitters();
+      },
+    );
+  }
+
+  function clearFlatPanelLayout(tabpanels) {
+    if (!tabpanels) return;
+    currentPanelLayoutGeometry = null;
+    tabpanels.classList.remove('bento-flat-panel-layout');
+    document.getElementById('bento-flat-layout-extent')?.remove();
+    const host = document.getElementById('bento-side-panel-host');
+    for (const el of host?.querySelectorAll?.(
+      ':scope > .bento-layout-vsplitter, :scope > .bento-layout-hsplitter, :scope > .bento-layout-chooser',
+    ) || []) {
+      el.remove();
+    }
+  }
+
+  function applyPanelLayoutStatusAttributes(statusByTabId) {
+    for (const panelEl of document.querySelectorAll('[data-bento-panel-tab-id]')) {
+      const tabId = Number(panelEl.dataset.bentoPanelTabId);
+      const status = statusByTabId?.get?.(tabId) || 'unknown';
+      panelEl.dataset.bentoPanelLayoutStatus = status;
+    }
+  }
+
+  function viewportRectForLayoutRect(tabpanels, rect) {
+    const host = document.getElementById('bento-side-panel-host');
+    if (!host || !tabpanels || !rect) return null;
+    const hostRect = host.getBoundingClientRect();
+    const tabpanelsRect = tabpanels.getBoundingClientRect();
+    return {
+      left: tabpanelsRect.left - hostRect.left - tabpanels.scrollLeft + rect.left,
+      top: tabpanelsRect.top - hostRect.top + rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  function createLayoutSplitter(axis) {
+    const splitter = document.createXULElement('splitter');
+    splitter.className =
+      axis === 'vertical'
+        ? 'bento-subdivision-vsplitter bento-layout-vsplitter'
+        : 'bento-subdivision-hsplitter bento-layout-hsplitter';
+    splitter.setAttribute('resizebefore', 'none');
+    splitter.setAttribute('resizeafter', 'none');
+    splitter.addEventListener('pointerdown', (e) => startLayoutSplitterDrag(splitter, e));
+    splitter.addEventListener('pointermove', (e) => onLayoutSplitterDrag(splitter, e));
+    splitter.addEventListener('pointerup', (e) => endLayoutSplitterDrag(splitter, e));
+    splitter.addEventListener('pointercancel', (e) => endLayoutSplitterDrag(splitter, e));
+    splitter.addEventListener('lostpointercapture', () => endLayoutSplitterDrag(splitter, null));
+    splitter.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    return splitter;
+  }
+
+  function findCurrentLayoutGroup(groupId) {
+    if (!groupId) return null;
+    const visitBottom = (node) => {
+      if (!node) return null;
+      if (node.kind === 'group') return visitGroup(node);
+      return null;
+    };
+    const visitGroup = (node) => {
+      if (!node || node.kind !== 'group') return null;
+      if (node.id === groupId) return node;
+      if (node.axis === 'vertical') return visitBottom(node.children?.[1]);
+      return null;
+    };
+    for (const node of currentPanelLayout?.root || []) {
+      const found = visitGroup(node);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function ratioFromLayoutPointer(axis, groupRect, clientX, clientY) {
+    if (!groupRect) return 0.5;
+    const splitterSize = 14;
+    const point = axis === 'vertical' ? clientY : clientX;
+    const start = axis === 'vertical' ? groupRect.top : groupRect.left;
+    const size = axis === 'vertical' ? groupRect.height : groupRect.width;
+    const usable = Math.max(1, size - splitterSize);
+    return clampLayoutRatio((point - start - splitterSize / 2) / usable);
+  }
+
+  function updateFlatLayoutOverlayPositions(tabpanels, geometry) {
+    const host = document.getElementById('bento-side-panel-host');
+    if (!host || !tabpanels || !geometry) return;
+    const hostRect = host.getBoundingClientRect();
+    for (const splitterInfo of geometry.splitters || []) {
+      const splitter = Array.from(
+        host.querySelectorAll(':scope > .bento-layout-vsplitter, :scope > .bento-layout-hsplitter'),
+      ).find((el) => el._bentoGroupId === splitterInfo.groupId);
+      if (!splitter) continue;
+      const rect = viewportRectForLayoutRect(tabpanels, splitterInfo.rect);
+      const groupRect = viewportRectForLayoutRect(tabpanels, splitterInfo.groupRect);
+      if (!rect || !groupRect) continue;
+      splitter._bentoGroupViewportRect = {
+        left: groupRect.left + hostRect.left,
+        top: groupRect.top + hostRect.top,
+        width: groupRect.width,
+        height: groupRect.height,
+      };
+      splitter.style.left = Math.round(rect.left) + 'px';
+      splitter.style.top = Math.round(rect.top) + 'px';
+      splitter.style.width = Math.max(0, Math.round(rect.width)) + 'px';
+      splitter.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+    }
+    for (const chooserInfo of geometry.choosers || []) {
+      const chooser = Array.from(host.querySelectorAll(':scope > .bento-layout-chooser')).find(
+        (el) => el._bentoChooserId === chooserInfo.id,
+      );
+      if (!chooser) continue;
+      const rect = viewportRectForLayoutRect(tabpanels, chooserInfo.rect);
+      if (!rect) continue;
+      chooser.style.left = Math.round(rect.left) + 'px';
+      chooser.style.top = Math.round(rect.top) + 'px';
+      chooser.style.width = Math.max(0, Math.round(rect.width)) + 'px';
+      chooser.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+    }
+  }
+
+  function applyLiveLayoutGroupRatio(groupId, ratio) {
+    const group = findCurrentLayoutGroup(groupId);
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!group || !tabpanels) return false;
+    return preserveStripScrollDuringLiveLayout(
+      () => {
+        group.ratio = clampLayoutRatio(ratio);
+        currentPanelLayoutGeometry = computePanelLayoutGeometry(
+          currentPanelLayout,
+          __lastPanelsPayload,
+          tabpanels,
+          {
+            mainWidthPx: currentPanelLayoutGeometry?.mainRect?.width,
+            preferLivePanelWidths: true,
+          },
+        );
+        applyPanelLayoutRects(tabpanels, currentPanelLayoutGeometry);
+        return true;
+      },
+      () => {
+        updateFlatLayoutOverlayPositions(tabpanels, currentPanelLayoutGeometry);
+        syncInterPanelSplitters();
+      },
+    );
+  }
+
+  function startLayoutSplitterDrag(splitter, e) {
+    if (e.button !== 0) return;
+    const groupRect = splitter._bentoGroupViewportRect;
+    if (!groupRect) return;
+    e.preventDefault();
+    e.stopPropagation();
+    suppressPanelFocusAutoScrollForSplitterInteraction();
+    splitter._bentoLayoutDrag = {
+      axis: splitter._bentoAxis,
+      groupId: splitter._bentoGroupId,
+      groupRect,
+      pointerId: e.pointerId,
+      lastRatio: null,
+    };
+    try {
+      splitter.setPointerCapture(e.pointerId);
+    } catch {}
+    splitter.classList.add(
+      splitter._bentoAxis === 'vertical'
+        ? 'bento-subdivision-vsplitter--dragging'
+        : 'bento-subdivision-hsplitter--dragging',
+    );
+    document.documentElement.style.setProperty(
+      'cursor',
+      splitter._bentoAxis === 'vertical' ? 'row-resize' : 'col-resize',
+      'important',
+    );
+    document.documentElement.style.setProperty('user-select', 'none', 'important');
+  }
+
+  function onLayoutSplitterDrag(splitter, e) {
+    const drag = splitter._bentoLayoutDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    suppressPanelFocusAutoScrollForSplitterInteraction();
+    const ratio = ratioFromLayoutPointer(drag.axis, drag.groupRect, e.clientX, e.clientY);
+    drag.lastRatio = ratio;
+    applyLiveLayoutGroupRatio(drag.groupId, ratio);
+  }
+
+  function endLayoutSplitterDrag(splitter, e) {
+    const drag = splitter._bentoLayoutDrag;
+    if (!drag) return;
+    if (e && e.pointerId !== undefined && e.pointerId !== drag.pointerId) return;
+    suppressPanelFocusAutoScrollForSplitterInteraction();
+    try {
+      splitter.releasePointerCapture(drag.pointerId);
+    } catch {}
+    splitter._bentoLayoutDrag = null;
+    splitter.classList.remove('bento-subdivision-vsplitter--dragging', 'bento-subdivision-hsplitter--dragging');
+    document.documentElement.style.removeProperty('cursor');
+    document.documentElement.style.removeProperty('user-select');
+    const point =
+      drag.axis === 'vertical'
+        ? (e?.clientY ?? splitter.getBoundingClientRect().top + splitter.getBoundingClientRect().height / 2)
+        : (e?.clientX ?? splitter.getBoundingClientRect().left + splitter.getBoundingClientRect().width / 2);
+    const ratio =
+      typeof drag.lastRatio === 'number'
+        ? drag.lastRatio
+        : ratioFromLayoutPointer(
+            drag.axis,
+            drag.groupRect,
+            drag.axis === 'vertical' ? 0 : point,
+            drag.axis === 'vertical' ? point : 0,
+          );
+    applyLiveLayoutGroupRatio(drag.groupId, ratio);
+    dispatchShellAction({
+      type: 'panelLayout/setGroupRatio',
+      groupId: drag.groupId,
+      ratio,
+    });
+  }
+
+  function syncFlatLayoutOverlays(tabpanels, geometry) {
+    const host = document.getElementById('bento-side-panel-host');
+    if (!host || !tabpanels || !geometry) return;
+    for (const el of host.querySelectorAll(
+      ':scope > .bento-layout-vsplitter, :scope > .bento-layout-hsplitter, :scope > .bento-layout-chooser',
+    )) {
+      el.remove();
+    }
+    for (const splitterInfo of geometry.splitters || []) {
+      const splitter = createLayoutSplitter(splitterInfo.axis);
+      splitter._bentoAxis = splitterInfo.axis;
+      splitter._bentoGroupId = splitterInfo.groupId;
+      splitter.dataset.bentoGroupId = splitterInfo.groupId;
+      splitter.dataset.bentoAxis = splitterInfo.axis;
+      const rect = viewportRectForLayoutRect(tabpanels, splitterInfo.rect);
+      const groupRect = viewportRectForLayoutRect(tabpanels, splitterInfo.groupRect);
+      if (!rect || !groupRect) continue;
+      splitter._bentoGroupViewportRect = {
+        left: groupRect.left + host.getBoundingClientRect().left,
+        top: groupRect.top + host.getBoundingClientRect().top,
+        width: groupRect.width,
+        height: groupRect.height,
+      };
+      splitter.style.left = Math.round(rect.left) + 'px';
+      splitter.style.top = Math.round(rect.top) + 'px';
+      splitter.style.width = Math.max(0, Math.round(rect.width)) + 'px';
+      splitter.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+      host.appendChild(splitter);
+    }
+    for (const chooserInfo of geometry.choosers || []) {
+      const chooser = createSubdivisionChooser(chooserInfo.ownerTabId, chooserInfo.id);
+      chooser.classList.add('bento-layout-chooser');
+      chooser._bentoChooserId = chooserInfo.id;
+      chooser.dataset.bentoChooserId = chooserInfo.id;
+      const rect = viewportRectForLayoutRect(tabpanels, chooserInfo.rect);
+      if (!rect) continue;
+      chooser.style.left = Math.round(rect.left) + 'px';
+      chooser.style.top = Math.round(rect.top) + 'px';
+      chooser.style.width = Math.max(0, Math.round(rect.width)) + 'px';
+      chooser.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+      host.appendChild(chooser);
+    }
+  }
+
+  function getPromotedChildWidthsForClosingTop(tabId) {
+    const widths = [];
+    const visit = (node) => {
+      if (!node || node.kind !== 'group' || node.axis !== 'vertical') return;
+      const top = node.children?.[0];
+      if (top?.kind !== 'panel' || Number(top.tabId) !== Number(tabId)) return;
+      const bottom = node.children?.[1];
+      const add = (panelNode) => {
+        if (panelNode?.kind !== 'panel') return;
+        const rect = currentPanelLayoutGeometry?.panelRects?.get(Number(panelNode.tabId));
+        const widthPx = rect ? Math.round(rect.width) : 0;
+        if (widthPx > 0) widths.push({ tabId: Number(panelNode.tabId), widthPx });
+      };
+      if (bottom?.kind === 'panel') add(bottom);
+      if (bottom?.kind === 'group' && bottom.axis === 'horizontal') {
+        add(bottom.children?.[0]);
+        add(bottom.children?.[1]);
+      }
+    };
+    for (const node of currentPanelLayout?.root || []) visit(node);
+    return widths;
+  }
+
+  function deriveLegacyLayoutForRenderer(layout, panels) {
+    const panelByTabId = new Map((panels || []).map((panel) => [Number(panel?.tabId), panel]));
+    const rootPanels = [];
+    const subdivisions = new Map();
+    const addRootPanel = (panelNode, rootNodeId) => {
+      const payload = panelByTabId.get(Number(panelNode?.tabId));
+      if (!payload) return null;
+      const next = Object.assign({}, payload, { rootNodeId });
+      rootPanels.push(next);
+      return next;
+    };
+    for (const node of layout?.root || []) {
+      if (node.kind === 'panel') {
+        addRootPanel(node, 'panel:' + node.tabId);
+        continue;
+      }
+      if (node.kind !== 'group' || node.axis !== 'vertical') continue;
+      const top = node.children?.[0];
+      const bottom = node.children?.[1];
+      const topPayload = addRootPanel(top, node.id);
+      if (!topPayload) continue;
+      const sub = {
+        id: node.id,
+        mode: 'single',
+        topHeightFraction: typeof node.ratio === 'number' ? node.ratio : 0.5,
+        subPanels: [],
+        splitRatio: 0.5,
+      };
+      if (bottom?.kind === 'chooser') {
+        sub.chooserId = bottom.id;
+      } else if (bottom?.kind === 'panel') {
+        const payload = panelByTabId.get(Number(bottom.tabId));
+        if (payload) sub.subPanels.push(payload);
+      } else if (bottom?.kind === 'group' && bottom.axis === 'horizontal') {
+        sub.mode = 'dual';
+        sub.horizontalGroupId = bottom.id;
+        sub.splitRatio = typeof bottom.ratio === 'number' ? bottom.ratio : 0.5;
+        for (const child of bottom.children || []) {
+          const payload = panelByTabId.get(Number(child?.tabId));
+          if (payload) sub.subPanels.push(payload);
+        }
+      }
+      subdivisions.set(Number(top.tabId), sub);
+    }
+    return { panels: rootPanels, subdivisions };
+  }
 
   function sanitizeSubdivisionPayload(rawSubdivisions) {
     const out = new Map();
@@ -8015,6 +9057,7 @@
         if (!panelEl) continue;
         delete panelEl.dataset.bentoMainPanel;
         delete panelEl.dataset.bentoPanelTabId;
+        delete panelEl.dataset.bentoRootNodeId;
         panelEl.style.removeProperty('order');
         panelEl.style.removeProperty('width');
         panelEl.style.removeProperty('min-width');
@@ -8029,6 +9072,7 @@
       // host, NOT in tabpanels (XUL deck blocks hit-testing of
       // non-panel children). syncInterPanelSplitters with no args
       // walks the now-empty splitViewPanels and clears all.
+      clearFlatPanelLayout(tabpanels);
       syncInterPanelSplitters([]);
 
       // Use Firefox's removeTabsFromSplitview to strip .split-view-
@@ -8268,7 +9312,10 @@
     // showSplitViewPanels/removal races run.
     for (const { tab, payload } of resolved) {
       const panelEl = tab.linkedPanel ? document.getElementById(tab.linkedPanel) : null;
-      if (!panelEl?.hasAttribute('data-bento-subpanel')) continue;
+      if (!panelEl) continue;
+      if (panelEl.parentNode === tabpanels && !panelEl.hasAttribute('data-bento-subpanel')) {
+        continue;
+      }
       const liveBrowser = getLivePanelBrowser(tab);
       if (liveBrowser) {
         try {
@@ -8281,12 +9328,24 @@
       }
       tabpanels.appendChild(panelEl);
       panelEl.removeAttribute('data-bento-subpanel');
-      panelEl.style.removeProperty('opacity');
-      panelEl.style.removeProperty('height');
-      panelEl.style.removeProperty('align-self');
-      panelEl.style.removeProperty('display');
-      panelEl.style.removeProperty('flex-direction');
-      panelEl.style.removeProperty('overflow');
+      panelEl.removeAttribute('data-bento-subdivision-top-closed');
+      panelEl.removeAttribute('data-bento-subdivision-survivor-subdivided');
+      for (const prop of [
+        'opacity',
+        'height',
+        'max-height',
+        'align-self',
+        'display',
+        'flex-direction',
+        'overflow',
+        'visibility',
+        'pointer-events',
+        'margin',
+        'padding',
+        'border-width',
+      ]) {
+        panelEl.style.removeProperty(prop);
+      }
       removeInjectedPanelHeader(panelEl);
       injectPanelHeaderIntoLinkedPanel(tab, payload?.url || '');
       scheduleSubPanelPaintRestore(tab, panelEl);
@@ -8411,6 +9470,16 @@
       }
     }
     const layoutTabsToRender = tabsToRender.filter((tab) => !subPanelIds.has(tab.linkedPanel));
+    const rootLayoutTabsToRender = [];
+    if (mainTab?.linkedPanel) rootLayoutTabsToRender.push(mainTab);
+    const seenRootNodeIdsForSplitters = new Set();
+    for (const { tab, payload } of resolved) {
+      const tabId = Number(payload?.tabId);
+      const rootNodeId = payload?.rootNodeId || (Number.isFinite(tabId) ? 'panel:' + tabId : null);
+      if (!rootNodeId || seenRootNodeIdsForSplitters.has(rootNodeId)) continue;
+      seenRootNodeIdsForSplitters.add(rootNodeId);
+      rootLayoutTabsToRender.push(tab);
+    }
     // Closing the last side panel can briefly leave that tab selected
     // as the main slot while it still appears in the stale panels
     // payload. After dedupe, that means there is only main to render:
@@ -8737,7 +9806,9 @@
     // would render at its default flex width and lose whatever the
     // user previously dragged it to.
     const widthByTabId = new Map();
+    const payloadByTabId = new Map();
     for (const p of panels) {
+      payloadByTabId.set(p.tabId, p);
       if (typeof p.widthPx === 'number' && p.widthPx > 0) {
         widthByTabId.set(p.tabId, p.widthPx);
       }
@@ -8827,6 +9898,8 @@
         // width when none is persisted — the panel keeps whatever it
         // had (in-flight drag width, or Firefox's flex default).
         if (tabId !== null) {
+          const payload = payloadByTabId.get(tabId);
+          panelEl.dataset.bentoRootNodeId = payload?.rootNodeId || 'panel:' + tabId;
           const w = widthByTabId.get(tabId);
           if (typeof w === 'number') {
             // Skip if a drag is currently in flight on this panel —
@@ -8896,7 +9969,7 @@
     // edge of each "left" panel. They float above tabpanels'
     // boundary regions. Repositioned on every reconcile and on
     // window resize so panel-width changes shift the splitter.
-    syncInterPanelSplitters(layoutTabsToRender);
+    syncInterPanelSplitters(rootLayoutTabsToRender);
 
     // Strip stale inline order + data attrs from departing tabs so
     // they don't leak into a future split (e.g. tab returns to the
@@ -8906,11 +9979,18 @@
       const panelEl = document.getElementById(tab.linkedPanel);
       if (!panelEl) continue;
       panelEl.style.removeProperty('order');
+      panelEl.style.removeProperty('left');
+      panelEl.style.removeProperty('top');
       panelEl.style.removeProperty('width');
       panelEl.style.removeProperty('min-width');
+      panelEl.style.removeProperty('max-width');
+      panelEl.style.removeProperty('height');
+      panelEl.style.removeProperty('min-height');
+      panelEl.style.removeProperty('max-height');
       panelEl.style.removeProperty('flex');
       delete panelEl.dataset.bentoMainPanel;
       delete panelEl.dataset.bentoPanelTabId;
+      delete panelEl.dataset.bentoRootNodeId;
       panelEl.removeAttribute('data-bento-subpanel');
       removeInjectedPanelHeader(panelEl);
     }
@@ -8971,11 +10051,12 @@
       }
     }
 
-    // Wrap subdivided panels after Firefox's split-view/remoteness work has
-    // had one macrotask to settle. Reparenting a notificationbox in the same
-    // stack as showSplitViewPanels can trip tabbrowser progress-listener
-    // teardown while the browser custom element is changing remoteness.
-    scheduleApplySubdivisions(tabpanels, currentSubdivisions, { activePanelIds });
+    // Flat layout mode keeps all live panel hosts as direct tabpanels children.
+    // Clear any legacy nested subdivision DOM left by an older runtime before
+    // applying layout-only splitters and choosers below.
+    for (const el of tabpanels.querySelectorAll('[data-bento-subdivided]')) {
+      if (activePanelIds.has(el.id)) clearSubdivisionFromPanel(el, { force: true });
+    }
 
     // Per-panel header injection. Each linkedPanel is a notificationbox;
     // we inject Bento's header (URL bar, back/forward/reload, X close,
@@ -8986,14 +10067,20 @@
       injectPanelHeaderIntoLinkedPanel(tab, payload.url || '');
     }
 
-    // Mark tabpanels with a class so CSS can switch into Bento's
-    // split-view layout (flex row + horizontal scroll). Idempotent.
-    tabpanels.classList.add('bento-split-active');
+    // Mark tabpanels with classes so CSS can switch into Bento's
+    // split-view layout and the flat logical-layout positioning mode.
+    tabpanels.classList.add('bento-split-active', 'bento-flat-panel-layout');
 
     // Ensure the Add-panel trailer is the LAST child of tabpanels.
     // Idempotent — created once, re-appended on every reconcile so
     // newly-inserted panel containers don't end up after it visually.
     ensureAddPanelTrailer(tabpanels);
+
+    currentPanelLayoutGeometry = computePanelLayoutGeometry(currentPanelLayout, panels, tabpanels);
+    applyPanelLayoutRects(tabpanels, currentPanelLayoutGeometry);
+    applyPanelLayoutStatusAttributes(currentPanelStatusByTabId);
+    syncFlatLayoutOverlays(tabpanels, currentPanelLayoutGeometry);
+    syncInterPanelSplitters(rootLayoutTabsToRender);
 
     // Refresh favicon nav strip (lives outside tabpanels; reads from
     // panels/sync payload — same data the legacy reconciler consumes).
@@ -9040,7 +10127,7 @@
       : null;
     if (explicitScrollId !== null) {
       scrolledToNewPanel = true;
-      scheduleScrollPanelTabIntoView(explicitScrollId, { reveal: 'full' });
+      scheduleScrollPanelTabIntoView(explicitScrollId, { reveal: 'full', focus: true });
     } else if (newTabIds.length > 0 && !isInitialReconcileForWorkspace) {
       const newId = newTabIds[newTabIds.length - 1];
       scrolledToNewPanel = true;
@@ -9059,14 +10146,21 @@
     //     more specific user intent, don't immediately yank back
     //   - selected tab didn't actually change (reconcile fired for
     //     an unrelated reason like a width refresh)
+    //   - the first selected-tab linkage after boot restored the strip
+    //     to a saved nonzero scroll position. That linkage is Firefox
+    //     settling chrome state, not a user request to reveal main.
     //   - the workspace has no side panels (main fills the strip,
     //     no scroll needed)
     const currentMainPanelId = window.gBrowser?.selectedTab?.linkedPanel ?? null;
     const mainChanged = currentMainPanelId !== __lastMainPanelId;
     __lastMainPanelId = currentMainPanelId;
+    const suppressImplicitMainAutoScroll =
+      __suppressNextMainAutoScrollForWorkspace !== null &&
+      __suppressNextMainAutoScrollForWorkspace === currentWorkspaceId;
     if (
       !scrolledToNewPanel &&
       mainChanged &&
+      !suppressImplicitMainAutoScroll &&
       panels.length > 0 &&
       currentMainPanelId &&
       !__workspaceSwitchSwapping
@@ -9088,6 +10182,7 @@
   function handleScrollToMainTitle() {
     const mainEl = getOrderedPanels()[0];
     if (!mainEl) return;
+    clearRestoredMainAutoScrollSuppression();
     scrollPanelToLeftmost(mainEl);
     currentActiveIdx = 0;
     applyActiveMarker(0);
@@ -9296,6 +10391,14 @@
       (e) => {
         const target = e.target;
         if (!target || typeof target.closest !== 'function') return;
+        if (
+          isPanelFocusAutoScrollSuppressed() ||
+          target.closest(
+            '.bento-panel-splitter, .bento-layout-vsplitter, .bento-layout-hsplitter',
+          )
+        ) {
+          return;
+        }
         // Add-panel trailer focus must bypass this listener: the trailer
         // has neither data-bento-* attr, so closest() walks past it up
         // to the outer #tabbrowser-tabbox (which DOES carry data-bento-
@@ -9325,6 +10428,9 @@
           return;
         }
         const stripPanelEl = getTopLevelSlotPanelElement(panelEl) || panelEl;
+        if (isRestoredMainAutoScrollSuppressed(stripPanelEl)) {
+          return;
+        }
         scrollPanelIntoViewFromRight(stripPanelEl);
         // Sync the navigator's active marker to match the panel that
         // just received focus. Without this, clicking into a panel
@@ -10001,6 +11107,7 @@
         // writes against bounding rects).
         try {
           syncInterPanelSplitters();
+          syncFlatLayoutOverlays(tp, currentPanelLayoutGeometry);
         } catch (err) {
           console.warn('[bento-shell-mount] strip scroll splitter sync failed:', err);
         }
@@ -10071,6 +11178,7 @@
     // per-window-ness is already implicit in document.title scope) but
     // we log it so a mismatched payload would be visible.
     let panels;
+    let allPanelPayloads = [];
     // Hoisted to outer scope so the fade-routing branch BELOW the
     // if/else can read it. A `const` inside the else-if would be
     // out-of-scope at the read site and throw ReferenceError on every
@@ -10078,9 +11186,19 @@
     let isWorkspaceTransition = false;
     let scrollToPanelTabId = null;
     if (Array.isArray(decoded)) {
-      panels = decoded;
+      allPanelPayloads = decoded;
+      currentPanelLayout = {
+        root: decoded
+          .map((panel) => Number(panel?.tabId))
+          .filter((tabId) => Number.isFinite(tabId))
+          .map((tabId) => ({ kind: 'panel', tabId })),
+      };
+      panels = decoratePanelsForLayout(currentPanelLayout, allPanelPayloads);
     } else if (decoded && Array.isArray(decoded.panels)) {
-      panels = decoded.panels;
+      allPanelPayloads = decoded.panels;
+      const sanitizedLayout = sanitizePanelLayoutPayload(decoded.layout, allPanelPayloads);
+      currentPanelLayout = sanitizedLayout;
+      panels = decoratePanelsForLayout(sanitizedLayout, allPanelPayloads);
       const incomingWorkspaceId =
         typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
       if (typeof decoded.windowId === 'number') {
@@ -10111,10 +11229,20 @@
       // comparison actually sees the previous value. Assigned (not
       // re-declared) so the outer-scope `let` from the top of
       // handlePanelsTitle is the binding the fade router below reads.
+      const isBootHydration = currentWorkspaceId === null && incomingWorkspaceId !== null;
       isWorkspaceTransition =
         incomingWorkspaceId !== null && currentWorkspaceId !== incomingWorkspaceId;
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
+      currentPanelStatusByTabId = new Map();
+      if (decoded.panelStatusByTabId && typeof decoded.panelStatusByTabId === 'object') {
+        for (const [tabId, status] of Object.entries(decoded.panelStatusByTabId)) {
+          const n = Number(tabId);
+          if (Number.isFinite(n) && typeof status === 'string') {
+            currentPanelStatusByTabId.set(n, status);
+          }
+        }
+      }
       // Update mainPanelWidth from persisted tools state when present.
       // Missing mainWidthPx is not authoritative: workspace-switch
       // payloads can arrive before tools has echoed the just-written
@@ -10190,7 +11318,7 @@
         currentSavedPanelCount = 0;
       }
       applyTrailerWidth(currentSavedPanelCount);
-      currentSubdivisions = sanitizeSubdivisionPayload(decoded.subdivisions);
+      currentSubdivisions = new Map();
       // Per-workspace panel-strip scroll position. Capture into the
       // module-level map keyed by workspaceId so:
       //   - Same-workspace reconciles (panel add/remove, width change)
@@ -10214,6 +11342,9 @@
       if (isWorkspaceTransition) {
         const targetScroll = stripScrollByWorkspace.get(incomingWorkspaceId);
         __pendingStripScrollRestore = typeof targetScroll === 'number' ? targetScroll : null;
+        if (isBootHydration && typeof targetScroll === 'number' && targetScroll > 0) {
+          __suppressNextMainAutoScrollForWorkspace = incomingWorkspaceId;
+        }
       }
     } else {
       return;
@@ -10495,6 +11626,7 @@
   // and skips the dispatch so we don't echo restored values back to
   // tools.
   let __suppressStripScrollDispatch = false;
+  let __liveLayoutScrollPreserveToken = 0;
   // Debounce handle for outbound panel/setStripScroll dispatches.
   // Scroll events fire continuously during a drag; coalesce to one
   // dispatch per rest. Matches the persistence DEBOUNCE_MS pattern.
@@ -10546,6 +11678,9 @@
   // in Firefox's flat tab list which would jump across workspaces).
   let currentWorkspaceId = null;
   let currentPanelTabIds = new Set();
+  let currentPanelStatusByTabId = new Map();
+  let currentPanelLayout = { root: [] };
+  let currentPanelLayoutGeometry = null;
   // Preset side-panel widths surfaced in each panel header's kebab menu.
   // Mirrored from BentoSettings.customPanelSizes via the BENTO_PANELS
   // payload — same single-channel-no-race rationale as uiColorMode /

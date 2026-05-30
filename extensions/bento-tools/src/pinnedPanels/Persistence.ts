@@ -10,7 +10,7 @@
 
 const STORAGE_KEY = 'bento.pinnedPanels';
 const BACKUP_STORAGE_KEY = 'bento.pinnedPanels.backup';
-const VERSION = 1;
+const VERSION = 2;
 const DEBOUNCE_MS = 500;
 
 interface StoredEntryV1 {
@@ -19,13 +19,23 @@ interface StoredEntryV1 {
   order: number;
 }
 
+interface StoredEntryV2 extends StoredEntryV1 {
+  panelKey?: string;
+}
+
 interface StoredShapeV1 {
   version: 1;
   entries: StoredEntryV1[];
 }
 
+interface StoredShapeV2 {
+  version: 2;
+  entries: StoredEntryV2[];
+}
+
 export interface PersistedPinnedEntry {
   workspaceId: string;
+  panelKey?: string;
   url: string;
   order: number;
 }
@@ -36,8 +46,8 @@ export interface PersistedState {
 
 function parseStored(stored: unknown): PersistedState | null {
   if (!stored || typeof stored !== 'object') return null;
-  const obj = stored as Partial<StoredShapeV1>;
-  if (obj.version !== VERSION) {
+  const obj = stored as Partial<StoredShapeV1 | StoredShapeV2>;
+  if (obj.version !== 1 && obj.version !== 2) {
     console.warn('[bento-tools] pinnedPanels: unknown version', obj.version, '— ignoring');
     return null;
   }
@@ -46,7 +56,15 @@ function parseStored(stored: unknown): PersistedState | null {
   for (const e of obj.entries) {
     if (!e || typeof e.workspaceId !== 'string' || typeof e.url !== 'string') continue;
     if (typeof e.order !== 'number' || !Number.isFinite(e.order)) continue;
-    entries.push({ workspaceId: e.workspaceId, url: e.url, order: e.order });
+    entries.push({
+      workspaceId: e.workspaceId,
+      panelKey:
+        typeof (e as StoredEntryV2).panelKey === 'string'
+          ? (e as StoredEntryV2).panelKey
+          : undefined,
+      url: e.url,
+      order: e.order,
+    });
   }
   return { entries };
 }
@@ -69,7 +87,7 @@ export async function load(): Promise<PersistedState | null> {
     return null;
   }
   if (!backup) return null;
-  const payload: StoredShapeV1 = {
+  const payload: StoredShapeV2 = {
     version: VERSION,
     entries: backup.entries,
   };
@@ -95,7 +113,7 @@ export class Persistence {
   }
 
   async #flush(state: PersistedState): Promise<void> {
-    const payload: StoredShapeV1 = {
+    const payload: StoredShapeV2 = {
       version: VERSION,
       entries: state.entries,
     };
