@@ -3,6 +3,7 @@ import type {
   PanelLayoutSync,
   PanelLayoutSyncChooserNode,
   PanelLayoutSyncHorizontalGroupNode,
+  PanelLayoutMoveTarget,
   PanelLayoutSyncPanelNode,
   PanelLayoutSyncRootNode,
 } from '@shared/protocol';
@@ -318,6 +319,62 @@ export function reorderRootNodes(layout: WorkspacePanelLayout, rootNodeIds: stri
   if (next.every((node, index) => node === layout.root[index])) return false;
   layout.root = next;
   return true;
+}
+
+export function movePanel(
+  layout: WorkspacePanelLayout,
+  tabId: number,
+  target: PanelLayoutMoveTarget,
+  ids: { horizontalGroupId?: string } = {},
+): boolean {
+  if (!Number.isFinite(tabId) || !containsPanel(layout, tabId)) return false;
+  const before = JSON.stringify(layout.root);
+  const next = cloneLayout(layout);
+  if (!removePanel(next, tabId)) return false;
+
+  if (target.type === 'root') {
+    const idx = clampIndex(target.index, next.root.length);
+    next.root.splice(idx, 0, panelNode(tabId));
+  } else if (target.type === 'chooser') {
+    if (!fillChooserWithExistingPanel(next, target.chooserId, tabId)) return false;
+  } else {
+    const horizontalGroupId = ids.horizontalGroupId;
+    if (!horizontalGroupId) return false;
+    const group = findVerticalGroupById(next, target.groupId);
+    if (!group) return false;
+    const childIndex = target.row === 'top' ? 0 : 1;
+    const existing = group.children[childIndex];
+    if (!existing || existing.kind !== 'panel') return false;
+    const moved = panelNode(tabId);
+    const current = panelNode(existing.tabId);
+    group.children[childIndex] = {
+      kind: 'group',
+      axis: 'horizontal',
+      id: horizontalGroupId,
+      ratio: 0.5,
+      children: target.position === 'before' ? [moved, current] : [current, moved],
+    };
+  }
+
+  const after = JSON.stringify(next.root);
+  if (before === after) return false;
+  layout.root = next.root;
+  return true;
+}
+
+function fillChooserWithExistingPanel(
+  layout: WorkspacePanelLayout,
+  chooserId: string,
+  tabId: number,
+): boolean {
+  for (const root of layout.root) {
+    if (root.kind !== 'group' || root.axis !== 'vertical') continue;
+    const bottom = root.children[1];
+    if (bottom.kind !== 'chooser' || bottom.id !== chooserId) continue;
+    root.children[1] = panelNode(tabId);
+    return true;
+  }
+  return false;
 }
 
 export function subdividePanel(
@@ -708,6 +765,14 @@ function findGroupById(
     if (bottom.kind === 'group' && bottom.id === groupId) return bottom;
   }
   return null;
+}
+
+function findVerticalGroupById(
+  layout: WorkspacePanelLayout,
+  groupId: string,
+): VerticalGroupNode | null {
+  const group = findGroupById(layout, groupId);
+  return group?.axis === 'vertical' ? group : null;
 }
 
 function clampIndex(position: number, length: number): number {

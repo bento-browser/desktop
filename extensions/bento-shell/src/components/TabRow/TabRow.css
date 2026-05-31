@@ -316,3 +316,28 @@
 .bento-tab-row__rename-input {
   font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family) !important;
 }
+
+/* Unlayered by design: Tale UI text/button/icon utilities are unlayered, so
+ * active-row foreground overrides must be unlayered too. Keep every foreground
+ * affordance on the accent row tied to the matching contrast token. */
+.bento-tab-row--active,
+.bento-tab-row--active .tale-text,
+.bento-tab-row--active .tale-icon,
+.bento-tab-row--active .bento-tab-row__audible,
+.bento-tab-row--active
+  .bento-tab-row__actions
+  .tale-icon-button.tale-button--ghost:not([data-disabled], [data-pending]),
+.bento-tab-row--active
+  .bento-tab-row__actions
+  .tale-icon-button.tale-button--ghost:hover:not([data-disabled], [data-pending]),
+.bento-tab-row--active
+  .bento-tab-row__actions
+  .tale-icon-button.tale-button--ghost:active:not([data-disabled], [data-pending]),
+.bento-tab-row--active
+  .bento-tab-row__actions
+  .tale-icon-button.tale-button--ghost[data-hovered]:not([data-disabled], [data-pending]),
+.bento-tab-row--active
+  .bento-tab-row__actions
+  .tale-icon-button.tale-button--ghost[data-pressed]:not([data-disabled], [data-pending]) {
+  color: var(--color-60-fg);
+}

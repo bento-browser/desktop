@@ -9,6 +9,7 @@ import {
   getRootNodeIds,
   getVisiblePanelIds,
   migrateLegacyEntriesToPersistence,
+  movePanel,
   removePanel,
   removeVerticalGroup,
   reorderRootNodes,
@@ -180,6 +181,86 @@ describe('PanelLayout', () => {
     expect(getVisiblePanelIds(layout)).toEqual([100, 102, 101, 200]);
     expect(getPanelLayoutStatus(layout, 102)).toBe('subdivision-bottom');
     expect(getPanelLayoutStatus(layout, 101)).toBe('root-panel');
+  });
+
+  it('moves a split child out to a root slot and normalizes the source row', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 110);
+    addPanel(layout, 120);
+    subdividePanel(layout, 110, { groupId: 'v110', chooserId: 'c110' });
+    fillChooser(layout, 'c110', 'dual', [111, 112], { horizontalGroupId: 'h110' });
+
+    expect(movePanel(layout, 111, { type: 'root', index: 2 })).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([110, 112, 120, 111]);
+    expect(getPanelLayoutStatus(layout, 112)).toBe('subdivision-bottom');
+    expect(getPanelLayoutStatus(layout, 111)).toBe('root-panel');
+  });
+
+  it('moves a root panel into an eligible one-panel subdivision row', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 130);
+    addPanel(layout, 140);
+    subdividePanel(layout, 130, { groupId: 'v130', chooserId: 'c130' });
+    fillChooser(layout, 'c130', 'single', [131], {});
+
+    expect(
+      movePanel(
+        layout,
+        140,
+        { type: 'horizontal', groupId: 'v130', row: 'bottom', position: 'after' },
+        {
+          horizontalGroupId: 'h130',
+        },
+      ),
+    ).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([130, 131, 140]);
+    expect(getPanelLayoutStatus(layout, 131)).toBe('split-child');
+    expect(getPanelLayoutStatus(layout, 140)).toBe('split-child');
+    expect(getRootNodeIds(layout)).toEqual(['v130']);
+  });
+
+  it('moves an existing panel into an unfilled subdivision chooser', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 170);
+    addPanel(layout, 180);
+    subdividePanel(layout, 170, { groupId: 'v170', chooserId: 'c170' });
+
+    expect(movePanel(layout, 180, { type: 'chooser', chooserId: 'c170' })).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([170, 180]);
+    expect(getPanelLayoutStatus(layout, 170)).toBe('subdivision-top');
+    expect(getPanelLayoutStatus(layout, 180)).toBe('subdivision-bottom');
+    expect(getRootNodeIds(layout)).toEqual(['v170']);
+  });
+
+  it('rejects moving a chooser owner into its own unfilled subdivision chooser', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 190);
+    subdividePanel(layout, 190, { groupId: 'v190', chooserId: 'c190' });
+
+    expect(movePanel(layout, 190, { type: 'chooser', chooserId: 'c190' })).toBe(false);
+    expect(getVisiblePanelIds(layout)).toEqual([190]);
+    expect(getPanelLayoutStatus(layout, 190)).toBe('chooser-owner');
+    expect(getRootNodeIds(layout)).toEqual(['v190']);
+  });
+
+  it('rejects moving into a subdivision row that already has two panels', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 150);
+    addPanel(layout, 160);
+    subdividePanel(layout, 150, { groupId: 'v150', chooserId: 'c150' });
+    fillChooser(layout, 'c150', 'dual', [151, 152], { horizontalGroupId: 'h150' });
+
+    expect(
+      movePanel(
+        layout,
+        160,
+        { type: 'horizontal', groupId: 'v150', row: 'bottom', position: 'after' },
+        {
+          horizontalGroupId: 'h151',
+        },
+      ),
+    ).toBe(false);
+    expect(getVisiblePanelIds(layout)).toEqual([150, 151, 152, 160]);
   });
 
   it('migrates legacy duplicate URLs and top-closed subdivisions', () => {

@@ -794,6 +794,15 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       return;
     }
+    case 'panelLayout/movePanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.movePanel(wsId, action.tabId, action.target)) {
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
     case 'panel/setWidth': {
       // Width is per-tabId — workspace ownership is informational. The
       // setter no-ops on no-change so a noisy chrome-side dispatch

@@ -99,7 +99,11 @@ If one panel in a bottom split is closed, the surviving bottom panel can be
 split again in the same row. Splitting or subdividing a panel preserves the
 current panel-strip position rather than auto-scrolling away from the user's
 current context. Breaking a panel out of a subdivision also preserves the
-current strip position.
+current strip position. Dragging a subpanel or split panel out of a subdivision
+promotes that one panel into the top-level strip, and dragging a top-level panel
+onto a one-panel subdivision row adds it beside that panel. A panel can also be
+dragged into an unconfigured subdivision area to fill that area as a full panel.
+Rows that already contain two panels do not accept another dragged panel.
 The intended layout primitives are:
 
 - horizontal splits for wide and ultrawide displays;

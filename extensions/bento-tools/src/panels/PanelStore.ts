@@ -1,4 +1,4 @@
-import type { PanelLayoutStatus } from '@shared/protocol';
+import type { PanelLayoutMoveTarget, PanelLayoutStatus } from '@shared/protocol';
 import {
   addPanel,
   breakOutPanel,
@@ -19,6 +19,7 @@ import {
   insertPanelAt,
   insertPanelAtRestoreLocation,
   migrateLegacyEntriesToPersistence,
+  movePanel,
   panelKeysForLayout,
   removePanel,
   removePanelWithDescendants,
@@ -332,6 +333,16 @@ export class PanelStore {
     if (!layout) return false;
     const changed = reorderRootNodes(layout, rootNodeIds);
     if (changed) this.#schedulePersist();
+    return changed;
+  }
+
+  movePanel(workspaceId: string, tabId: number, target: PanelLayoutMoveTarget): boolean {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    if (!layout) return false;
+    const changed = movePanel(layout, tabId, target, {
+      horizontalGroupId: target.type === 'horizontal' ? this.#newLayoutId('horizontal') : undefined,
+    });
+    if (changed) this.#flushPersist();
     return changed;
   }
 

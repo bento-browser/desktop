@@ -205,7 +205,7 @@ items are easy to scan.
 
 19. **Header drag reorder**
     - Drag a root panel header.
-    - Expected: root panels reorder; vertical group moves as one root slot.
+    - Expected: root panels reorder; dragging a subpanel or split panel can move that leaf out of the group; dragging a top-level panel onto a one-panel subdivision row creates a two-panel row; dragging a panel into an unconfigured subdivision chooser fills that area as a full panel; full two-panel rows reject additional drops.
     - Result: Pass. ✅ Complete
     - Notes: User reported the drag-to-reorder panel affordance is not accurate and appears too far left of the actual target.
     - Re-test: Fail. User reported it is still inaccurate, especially when reordering a panel to the left.
@@ -214,6 +214,12 @@ items are easy to scan.
     - Re-test: Fail. User reported the drop zone appears to correspond to the width of the panel being dragged.
     - Verified: User confirmed header drag reorder is working.
     - Fix status: Confirmed. Header drag reorder computes the target slot from the pointer position against stable snapped root drop targets, snapshots the collapsed root drop targets for the active drag session, settles any in-flight transform-only reorder animation before the new drag starts, collapses visible leaves by root node before measuring drop targets, and computes the indicator/slot thresholds from post-removal collapsed root positions instead of live sibling rects that still include the source panel's old slot.
+    - Follow-up request: Dragging a subpanel or split panel should move that panel out of its subdivision instead of moving the entire group. Dragging a top-level panel onto a one-panel top or bottom subdivision row should add it beside that panel; rows already containing two panels must reject the drop.
+    - Follow-up verified: User confirmed leaf drag-out and one-panel row insertion are working. ✅ Complete
+    - Follow-up fix status: Confirmed. Header drag now dispatches `panelLayout/movePanel` for a single visible panel leaf, computes root targets from a post-removal cloned layout, uses live row geometry for eligible one-panel row targets, and keeps full two-panel rows out of the horizontal drop target set unless the dragged source is one of that row's children.
+    - Follow-up request: Dragging a panel into an unconfigured subdivision chooser should fill that area even before the user chooses `Full panel` or `Split panels`.
+    - Follow-up verified: User confirmed dragging a panel into an unconfigured subdivision chooser is working. ✅ Complete
+    - Follow-up fix status: Confirmed. Header drag now exposes empty subdivision chooser rectangles as drop targets when they survive source-panel removal, and `panelLayout/movePanel` can replace the chooser with the dragged existing panel.
 
 20. **Navigator drag reorder**
     - Drag favicon/nav icon.

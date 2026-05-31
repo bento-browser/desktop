@@ -219,6 +219,16 @@ export type PanelLayoutStatus =
 
 export type PanelLayoutFillMode = 'single' | 'dual';
 
+export type PanelLayoutMoveTarget =
+  | { type: 'root'; index: number }
+  | { type: 'chooser'; chooserId: string }
+  | {
+      type: 'horizontal';
+      groupId: string;
+      row: 'top' | 'bottom';
+      position: 'before' | 'after';
+    };
+
 export interface PanelLayoutSync {
   root: PanelLayoutSyncRootNode[];
 }
@@ -393,6 +403,11 @@ export type Action =
   /** Replace the active workspace's root layout ordering. IDs are
    * `panel:<tabId>` for panel roots and stable group IDs for grouped roots. */
   | { type: 'panelLayout/reorderRoot'; rootNodeIds: string[] }
+  /** Move one visible panel leaf. Root targets break sub/split panels out
+   * into the root strip; horizontal targets insert a panel next to a single
+   * panel in a vertical group's top or bottom row; chooser targets fill an
+   * unconfigured subdivision area with the moved panel. */
+  | { type: 'panelLayout/movePanel'; tabId: number; target: PanelLayoutMoveTarget }
   /** Update the persisted width (in pixels) for a panel. Dispatched by
    * chrome from endPanelDrag after the user finishes resizing a panel
    * via its inter-panel splitter. Tools persists per-tabId; on next

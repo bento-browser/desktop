@@ -6929,6 +6929,8 @@
     let pointerId = null;
     let indicator = null;
     let dragDropTargets = null;
+    let dragHorizontalDropTargets = null;
+    let dragChooserDropTargets = null;
     let dragMainDropEntry = null;
 
     function getStripContainer() {
@@ -6937,59 +6939,6 @@
     // All split-view panels in visual order including main.
     function getPanels() {
       return getOrderedPanels();
-    }
-    function getPanelRootNodeId(panel) {
-      const panelTabId = panel?.dataset?.bentoPanelTabId;
-      if (!panelTabId) return null;
-      return panel.dataset.bentoRootNodeId || 'panel:' + panelTabId;
-    }
-    function getSourceRootNodeId() {
-      return panelEl.dataset.bentoRootNodeId || 'panel:' + tabId;
-    }
-    function viewportRectForRootNode(rootNodeId, panelEls) {
-      const host = getStripContainer();
-      const tabpanels = window.gBrowser?.tabpanels;
-      const layoutRect = currentPanelLayoutGeometry?.rootRects?.get(rootNodeId);
-      const hostLocal = layoutRect ? viewportRectForLayoutRect(tabpanels, layoutRect) : null;
-      if (host && hostLocal) {
-        const hostRect = host.getBoundingClientRect();
-        return {
-          left: hostRect.left + hostLocal.left,
-          top: hostRect.top + hostLocal.top,
-          right: hostRect.left + hostLocal.left + hostLocal.width,
-          bottom: hostRect.top + hostLocal.top + hostLocal.height,
-          width: hostLocal.width,
-          height: hostLocal.height,
-        };
-      }
-      const rects = panelEls
-        .map((el) => el.getBoundingClientRect?.())
-        .filter((rect) => rect && rect.width > 0 && rect.height > 0);
-      if (rects.length === 0) return null;
-      const left = Math.min(...rects.map((rect) => rect.left));
-      const top = Math.min(...rects.map((rect) => rect.top));
-      const right = Math.max(...rects.map((rect) => rect.right));
-      const bottom = Math.max(...rects.map((rect) => rect.bottom));
-      return { left, top, right, bottom, width: right - left, height: bottom - top };
-    }
-    function getRootDropEntries() {
-      const byRoot = new Map();
-      const orderedRootIds = [];
-      for (const p of getPanels()) {
-        const rootNodeId = getPanelRootNodeId(p);
-        if (!rootNodeId) continue;
-        if (!byRoot.has(rootNodeId)) {
-          byRoot.set(rootNodeId, []);
-          orderedRootIds.push(rootNodeId);
-        }
-        byRoot.get(rootNodeId).push(p);
-      }
-      return orderedRootIds
-        .map((rootNodeId) => ({
-          rootNodeId,
-          rect: viewportRectForRootNode(rootNodeId, byRoot.get(rootNodeId) || []),
-        }))
-        .filter((entry) => entry.rect);
     }
     function getMainDropEntry() {
       const host = getStripContainer();
@@ -7014,48 +6963,246 @@
       const rect = main?.getBoundingClientRect?.();
       return rect ? { rect } : null;
     }
-    function getFlatPanelGap() {
+    function viewportRectForLocalLayoutRect(rect) {
+      if (!rect) return null;
+      const host = getStripContainer();
       const tabpanels = window.gBrowser?.tabpanels;
-      if (!tabpanels) return 8;
-      const styles = getComputedStyle(tabpanels);
-      const columnGap = cssLengthToPx(styles.columnGap, NaN);
-      return Number.isFinite(columnGap) ? columnGap : cssLengthToPx(styles.gap, 8);
+      const hostLocal = viewportRectForLayoutRect(tabpanels, rect);
+      if (!host || !hostLocal) return null;
+      const hostRect = host.getBoundingClientRect();
+      return {
+        left: hostRect.left + hostLocal.left,
+        top: hostRect.top + hostLocal.top,
+        right: hostRect.left + hostLocal.left + hostLocal.width,
+        bottom: hostRect.top + hostLocal.top + hostLocal.height,
+        width: hostLocal.width,
+        height: hostLocal.height,
+      };
     }
-    // Root panels (excluding main) in visual order, with the dragged source
-    // removed and the remaining roots collapsed into their post-removal
-    // positions. The live DOM still has the source occupying its old slot
-    // during drag, so using live sibling rects makes leftward drops feel
-    // offset by one source width.
-    function getCollapsedDropTargets() {
-      const entries = getRootDropEntries();
-      const sourceRootNodeId = getSourceRootNodeId();
-      const filtered = entries.filter((entry) => entry.rootNodeId !== sourceRootNodeId);
-      if (filtered.length === 0) return [];
-      const gap = getFlatPanelGap();
-      let x = entries[0]?.rect?.left ?? filtered[0].rect.left;
-      return filtered.map((entry) => {
-        const width = entry.rect.width;
-        const rect = Object.assign({}, entry.rect, {
-          left: x,
-          right: x + width,
-          width,
-        });
-        x += width + gap;
-        return Object.assign({}, entry, { rect });
+    function cloneLayoutNode(node) {
+      if (!node) return null;
+      if (node.kind === 'panel') return { kind: 'panel', tabId: Number(node.tabId) };
+      if (node.kind === 'chooser') {
+        return { kind: 'chooser', id: node.id, ownerTabId: Number(node.ownerTabId) };
+      }
+      if (node.kind === 'group') {
+        return {
+          kind: 'group',
+          axis: node.axis,
+          id: node.id,
+          ratio: node.ratio,
+          children: (node.children || []).map(cloneLayoutNode),
+        };
+      }
+      return null;
+    }
+    function clonePanelLayoutForDrag(layout) {
+      return { root: (layout?.root || []).map(cloneLayoutNode).filter(Boolean) };
+    }
+    function horizontalCapableRemoval(node, sourceTabId) {
+      if (node?.kind === 'panel') {
+        return Number(node.tabId) === sourceTabId
+          ? { changed: true, node: null }
+          : { changed: false, node };
+      }
+      if (node?.kind !== 'group' || node.axis !== 'horizontal') {
+        return { changed: false, node };
+      }
+      const [left, right] = node.children || [];
+      if (Number(left?.tabId) === sourceTabId) return { changed: true, node: right || null };
+      if (Number(right?.tabId) === sourceTabId) return { changed: true, node: left || null };
+      return { changed: false, node };
+    }
+    function topLayoutNodeToRootNodes(node) {
+      if (!node) return [];
+      if (node.kind === 'panel') return [node];
+      if (node.kind === 'group' && node.axis === 'horizontal') return (node.children || []).slice();
+      return [];
+    }
+    function bottomLayoutNodeToRootNodes(node) {
+      if (!node || node.kind === 'chooser') return [];
+      if (node.kind === 'panel') return [node];
+      if (node.kind === 'group' && node.axis === 'horizontal') return (node.children || []).slice();
+      return [];
+    }
+    function removePanelFromLayoutRoot(node, sourceTabId) {
+      if (node?.kind === 'panel') {
+        return Number(node.tabId) === sourceTabId
+          ? { changed: true, nodes: [] }
+          : { changed: false, nodes: [node] };
+      }
+      if (node?.kind !== 'group' || node.axis !== 'vertical') {
+        return { changed: false, nodes: node ? [node] : [] };
+      }
+      const [top, bottom] = node.children || [];
+      const topRemoval = horizontalCapableRemoval(top, sourceTabId);
+      if (topRemoval.changed) {
+        if (!topRemoval.node) return { changed: true, nodes: bottomLayoutNodeToRootNodes(bottom) };
+        node.children[0] = topRemoval.node;
+        return { changed: true, nodes: [node] };
+      }
+      if (bottom?.kind === 'panel') {
+        if (Number(bottom.tabId) !== sourceTabId) return { changed: false, nodes: [node] };
+        return { changed: true, nodes: topLayoutNodeToRootNodes(top) };
+      }
+      if (bottom?.kind !== 'group' || bottom.axis !== 'horizontal') {
+        return { changed: false, nodes: [node] };
+      }
+      const [left, right] = bottom.children || [];
+      if (Number(left?.tabId) === sourceTabId) {
+        node.children[1] = right;
+        return { changed: true, nodes: [node] };
+      }
+      if (Number(right?.tabId) === sourceTabId) {
+        node.children[1] = left;
+        return { changed: true, nodes: [node] };
+      }
+      return { changed: false, nodes: [node] };
+    }
+    function removePanelFromDragLayout(layout, sourceTabId) {
+      const nextRoot = [];
+      let changed = false;
+      for (const node of layout?.root || []) {
+        const replacement = removePanelFromLayoutRoot(node, sourceTabId);
+        if (replacement.changed) changed = true;
+        nextRoot.push(...replacement.nodes);
+      }
+      if (!changed) return false;
+      layout.root = nextRoot;
+      return true;
+    }
+    function getPostRemovalDragLayout() {
+      const layout = clonePanelLayoutForDrag(currentPanelLayout);
+      if (!removePanelFromDragLayout(layout, Number(tabId))) return null;
+      return layout;
+    }
+    function getDragGeometryForLayout(layout) {
+      const tabpanels = window.gBrowser?.tabpanels;
+      if (!tabpanels || !layout) return null;
+      return computePanelLayoutGeometry(layout, __lastPanelsPayload, tabpanels, {
+        preferLivePanelWidths: true,
+        mainWidthPx: currentPanelLayoutGeometry?.mainRect?.width,
       });
+    }
+    function getRootDropEntriesForLayout(layout, geometry) {
+      if (!layout || !geometry) return [];
+      return (layout.root || [])
+        .map((node) => {
+          const rootNodeId =
+            node?.kind === 'panel' ? 'panel:' + Number(node.tabId) : node?.id || null;
+          const rect = rootNodeId
+            ? viewportRectForLocalLayoutRect(geometry.rootRects?.get(rootNodeId))
+            : null;
+          return rootNodeId && rect ? { rootNodeId, rect } : null;
+        })
+        .filter(Boolean);
+    }
+    function getVerticalGroupIdsForLayout(layout) {
+      const ids = new Set();
+      for (const node of layout?.root || []) {
+        if (node?.kind === 'group' && node.axis === 'vertical' && node.id) ids.add(node.id);
+      }
+      return ids;
+    }
+    function getChooserIdsForLayout(layout) {
+      const ids = new Set();
+      for (const node of layout?.root || []) {
+        if (node?.kind !== 'group' || node.axis !== 'vertical') continue;
+        const bottom = node.children?.[1];
+        if (bottom?.kind === 'chooser' && bottom.id) ids.add(bottom.id);
+      }
+      return ids;
+    }
+    function getHorizontalDropEntriesForCurrentLayout(allowedGroupIds) {
+      if (!currentPanelLayoutGeometry) return [];
+      const out = [];
+      const sourceTabId = Number(tabId);
+      for (const node of currentPanelLayout?.root || []) {
+        if (node?.kind !== 'group' || node.axis !== 'vertical') continue;
+        if (allowedGroupIds && !allowedGroupIds.has(node.id)) continue;
+        const addPanelRowTarget = (row, panelNode) => {
+          const rect = viewportRectForLocalLayoutRect(
+            currentPanelLayoutGeometry.panelRects?.get(Number(panelNode?.tabId)),
+          );
+          if (rect) out.push({ groupId: node.id, row, rect });
+        };
+        const addRowTarget = (row, child) => {
+          if (child?.kind === 'panel') {
+            addPanelRowTarget(row, child);
+            return;
+          }
+          if (child?.kind !== 'group' || child.axis !== 'horizontal') return;
+          const children = child.children || [];
+          const sourceIndex = children.findIndex((panel) => Number(panel?.tabId) === sourceTabId);
+          if (sourceIndex < 0) return;
+          const survivor = children[sourceIndex === 0 ? 1 : 0];
+          if (survivor) addPanelRowTarget(row, survivor);
+        };
+        addRowTarget('top', node.children?.[0]);
+        addRowTarget('bottom', node.children?.[1]);
+      }
+      return out;
+    }
+    function getChooserDropEntriesForCurrentLayout(allowedChooserIds) {
+      const out = [];
+      const allowed = allowedChooserIds instanceof Set ? allowedChooserIds : null;
+      const addEntry = (chooserId, rect) => {
+        if (!chooserId || (allowed && !allowed.has(chooserId)) || !rect) return;
+        out.push({ chooserId, rect });
+      };
+      for (const chooserInfo of currentPanelLayoutGeometry?.choosers || []) {
+        addEntry(chooserInfo.id, viewportRectForLocalLayoutRect(chooserInfo.rect));
+      }
+      if (out.length > 0) return out;
+      const host = getStripContainer();
+      if (!host) return out;
+      for (const chooser of host.querySelectorAll(':scope > .bento-layout-chooser')) {
+        addEntry(
+          chooser._bentoChooserId || chooser.dataset?.bentoChooserId,
+          chooser.getBoundingClientRect(),
+        );
+      }
+      return out;
+    }
+    // Root panels (excluding main) in visual order after removing the
+    // dragged source leaf. Computing this from a cloned layout lets
+    // sub/split-panel drags break one leaf out of a group instead of
+    // treating the whole vertical group as the source.
+    function getCollapsedDropTargets() {
+      const layout = getPostRemovalDragLayout();
+      const geometry = getDragGeometryForLayout(layout);
+      return getRootDropEntriesForLayout(layout, geometry);
     }
     function getActiveDropTargets() {
       return dragDropTargets || getCollapsedDropTargets();
+    }
+    function getActiveHorizontalDropTargets() {
+      if (dragHorizontalDropTargets) return dragHorizontalDropTargets;
+      const layout = getPostRemovalDragLayout();
+      return getHorizontalDropEntriesForCurrentLayout(getVerticalGroupIdsForLayout(layout));
+    }
+    function getActiveChooserDropTargets() {
+      if (dragChooserDropTargets) return dragChooserDropTargets;
+      const layout = getPostRemovalDragLayout();
+      return getChooserDropEntriesForCurrentLayout(getChooserIdsForLayout(layout));
     }
     function getActiveMainDropEntry() {
       return dragMainDropEntry || getMainDropEntry();
     }
     function captureDragDropGeometry() {
-      dragDropTargets = getCollapsedDropTargets();
+      const layout = getPostRemovalDragLayout();
+      const geometry = getDragGeometryForLayout(layout);
+      dragDropTargets = getRootDropEntriesForLayout(layout, geometry);
+      dragHorizontalDropTargets = getHorizontalDropEntriesForCurrentLayout(
+        getVerticalGroupIdsForLayout(layout),
+      );
+      dragChooserDropTargets = getChooserDropEntriesForCurrentLayout(getChooserIdsForLayout(layout));
       dragMainDropEntry = getMainDropEntry();
     }
     function clearDragDropGeometry() {
       dragDropTargets = null;
+      dragHorizontalDropTargets = null;
+      dragChooserDropTargets = null;
       dragMainDropEntry = null;
     }
     function settleActiveHeaderDragTransforms() {
@@ -7078,9 +7225,93 @@
         }
       }
     }
-    // targetSlot = number of non-source root slots whose midpoint
+    function findPanelLocationInLayout(layout, sourceTabId) {
+      for (let rootIndex = 0; rootIndex < (layout?.root || []).length; rootIndex++) {
+        const root = layout.root[rootIndex];
+        if (root?.kind === 'panel') {
+          if (Number(root.tabId) === sourceTabId) {
+            return { rootIndex, rootNodeId: 'panel:' + root.tabId };
+          }
+          continue;
+        }
+        if (root?.kind !== 'group' || root.axis !== 'vertical') continue;
+        const rootNodeId = root.id;
+        const top = root.children?.[0];
+        if (top?.kind === 'panel' && Number(top.tabId) === sourceTabId) {
+          return { rootIndex, rootNodeId, row: 'top', horizontalIndex: null };
+        }
+        if (top?.kind === 'group' && top.axis === 'horizontal') {
+          for (let i = 0; i < (top.children || []).length; i++) {
+            if (Number(top.children[i]?.tabId) === sourceTabId) {
+              return { rootIndex, rootNodeId, row: 'top', horizontalIndex: i };
+            }
+          }
+        }
+        const bottom = root.children?.[1];
+        if (bottom?.kind === 'panel' && Number(bottom.tabId) === sourceTabId) {
+          return { rootIndex, rootNodeId, row: 'bottom', horizontalIndex: null };
+        }
+        if (bottom?.kind === 'group' && bottom.axis === 'horizontal') {
+          for (let i = 0; i < (bottom.children || []).length; i++) {
+            if (Number(bottom.children[i]?.tabId) === sourceTabId) {
+              return { rootIndex, rootNodeId, row: 'bottom', horizontalIndex: i };
+            }
+          }
+        }
+      }
+      return null;
+    }
+    function isNoopRootMove(index) {
+      const source = findPanelLocationInLayout(currentPanelLayout, Number(tabId));
+      return source && source.rootNodeId === 'panel:' + tabId && source.rootIndex === index;
+    }
+    function isNoopHorizontalMove(target) {
+      const source = findPanelLocationInLayout(currentPanelLayout, Number(tabId));
+      if (!source || source.rootNodeId !== target.groupId || source.row !== target.row) {
+        return false;
+      }
+      if (!Number.isInteger(source.horizontalIndex)) return false;
+      return (
+        (source.horizontalIndex === 0 && target.position === 'before') ||
+        (source.horizontalIndex === 1 && target.position === 'after')
+      );
+    }
+    function getChooserDropTarget(clientX, clientY) {
+      for (const target of getActiveChooserDropTargets()) {
+        const r = target.rect;
+        if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) {
+          continue;
+        }
+        return {
+          kind: 'chooser',
+          target: { type: 'chooser', chooserId: target.chooserId },
+          rect: r,
+        };
+      }
+      return null;
+    }
+    function getHorizontalDropTarget(clientX, clientY) {
+      for (const target of getActiveHorizontalDropTargets()) {
+        const r = target.rect;
+        if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) {
+          continue;
+        }
+        return {
+          kind: 'horizontal',
+          target: {
+            type: 'horizontal',
+            groupId: target.groupId,
+            row: target.row,
+            position: clientX < r.left + r.width / 2 ? 'before' : 'after',
+          },
+          rect: r,
+        };
+      }
+      return null;
+    }
+    // targetSlot = number of post-removal root slots whose midpoint
     // is to the left of the pointer. Maps to splice index in the
-    // post-reorder root-panel array. Use the pointer rather than the
+    // post-move root-panel array. Use the pointer rather than the
     // dragged panel's centre so the target zones do not scale with
     // the width of the panel being dragged.
     function computeTargetSlot(pointerX) {
@@ -7093,10 +7324,18 @@
       }
       return slot;
     }
-    // Position a vertical bar at the boundary the panel will land
-    // at. Hosted in #bento-side-panel-host with absolute positioning,
-    // matching the inter-panel splitter pattern.
-    function placeIndicator(slot) {
+    function computeDropTarget(clientX, clientY) {
+      const chooser = getChooserDropTarget(clientX, clientY);
+      if (chooser) return chooser;
+      const horizontal = getHorizontalDropTarget(clientX, clientY);
+      if (horizontal) return horizontal;
+      const targets = getActiveDropTargets();
+      const slot = Math.max(0, Math.min(computeTargetSlot(clientX), targets.length));
+      return { kind: 'root', target: { type: 'root', index: slot }, slot };
+    }
+    // Position a drop indicator in #bento-side-panel-host using the
+    // same absolute overlay coordinate space as layout splitters.
+    function placeIndicator(drop) {
       const host = getStripContainer();
       if (!host) return;
       if (!indicator) {
@@ -7104,33 +7343,59 @@
         indicator.className = 'bento-panel-drop-indicator';
         host.appendChild(indicator);
       }
-      const targets = getActiveDropTargets();
-      const main = getActiveMainDropEntry();
       const hostRect = host.getBoundingClientRect();
-      let x;
-      if (targets.length === 0 && main) {
-        // Only main + dragged source — drop spot is just after main.
-        x = main.rect.right - hostRect.left;
-      } else if (targets.length === 0) {
+      indicator.style.position = 'absolute';
+      indicator.style.zIndex = '6';
+      if (drop?.kind === 'chooser') {
+        const r = drop.rect;
+        indicator.style.top = Math.max(0, r.top - hostRect.top) + 'px';
+        indicator.style.bottom = Math.max(0, hostRect.height - (r.bottom - hostRect.top)) + 'px';
+        indicator.style.left = Math.max(0, r.left - hostRect.left) + 'px';
+        indicator.style.width = Math.max(0, r.width) + 'px';
+        indicator.style.border = '2px solid var(--color-60)';
+        indicator.style.borderRadius = 'var(--radius-s)';
+        indicator.style.boxSizing = 'border-box';
+        indicator.style.backgroundColor = 'color-mix(in srgb, var(--color-60) 12%, transparent)';
         return;
-      } else if (slot >= targets.length) {
-        const r = targets[targets.length - 1].rect;
-        x = r.right - hostRect.left;
-      } else if (slot === 0) {
-        // Drop before the first side panel — between main and it.
-        const r = targets[0].rect;
-        x = r.left - hostRect.left;
+      }
+      indicator.style.removeProperty('border');
+      indicator.style.removeProperty('box-sizing');
+      indicator.style.removeProperty('background-color');
+      indicator.style.borderRadius = '1.5px';
+      let x;
+      let top = 0;
+      let bottom = hostRect.height;
+      if (drop?.kind === 'horizontal') {
+        const r = drop.rect;
+        x = (drop.target.position === 'before' ? r.left : r.right) - hostRect.left;
+        top = r.top - hostRect.top;
+        bottom = r.bottom - hostRect.top;
       } else {
-        const r = targets[slot].rect;
-        x = r.left - hostRect.left;
+        const targets = getActiveDropTargets();
+        const main = getActiveMainDropEntry();
+        const slot = drop?.slot || 0;
+        if (targets.length === 0 && main) {
+          // Only main + dragged source — drop spot is just after main.
+          x = main.rect.right - hostRect.left;
+        } else if (targets.length === 0) {
+          return;
+        } else if (slot >= targets.length) {
+          const r = targets[targets.length - 1].rect;
+          x = r.right - hostRect.left;
+        } else if (slot === 0) {
+          // Drop before the first side panel — between main and it.
+          const r = targets[0].rect;
+          x = r.left - hostRect.left;
+        } else {
+          const r = targets[slot].rect;
+          x = r.left - hostRect.left;
+        }
       }
       const indicatorWidth = 3;
-      indicator.style.position = 'absolute';
-      indicator.style.top = '0';
-      indicator.style.bottom = '0';
+      indicator.style.top = Math.max(0, top) + 'px';
+      indicator.style.bottom = Math.max(0, hostRect.height - bottom) + 'px';
       indicator.style.left = x - indicatorWidth / 2 + 'px';
       indicator.style.width = indicatorWidth + 'px';
-      indicator.style.zIndex = '6';
     }
     function clearIndicator() {
       if (indicator?.parentNode) indicator.parentNode.removeChild(indicator);
@@ -7167,22 +7432,17 @@
       const dx = clientX - startX;
       panelEl.style.transform = 'translateX(' + dx + 'px)';
     }
-    function endDrag(commit, finalClientX) {
+    function endDrag(commit, finalClientX, finalClientY) {
       let dispatched = false;
       if (dragging && commit) {
-        const slot = computeTargetSlot(finalClientX);
+        const drop = computeDropTarget(finalClientX, finalClientY);
         const sidePanelEls = getPanels().filter((p) => p.dataset.bentoPanelTabId);
-        const currentIds = [];
-        for (const panel of sidePanelEls) {
-          const id = panel.dataset.bentoRootNodeId || 'panel:' + panel.dataset.bentoPanelTabId;
-          if (id && !currentIds.includes(id)) currentIds.push(id);
-        }
-        const sourceRootNodeId = getSourceRootNodeId();
-        const filtered = currentIds.filter((id) => id !== sourceRootNodeId);
-        const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
-        filtered.splice(clampedSlot, 0, sourceRootNodeId);
         const changed =
-          filtered.length !== currentIds.length || filtered.some((id, i) => currentIds[i] !== id);
+          drop.kind === 'horizontal'
+            ? !isNoopHorizontalMove(drop.target)
+            : drop.kind === 'root'
+            ? !isNoopRootMove(drop.target.index)
+            : true;
         if (changed) {
           // Snapshot every visible side panel's pre-reorder rect.
           // The reconciler that runs after panels/sync arrives will
@@ -7214,7 +7474,7 @@
           }
           snap.__draggedTabId = tabId;
           __bentoPendingFlip = snap;
-          dispatchShellAction({ type: 'panelLayout/reorderRoot', rootNodeIds: filtered });
+          dispatchShellAction({ type: 'panelLayout/movePanel', tabId, target: drop.target });
           dispatched = true;
           // Don't clear the dragged panel's transform yet — the
           // FLIP runner will replace it with a counter-transform
@@ -7283,7 +7543,7 @@
         startDrag();
       }
       followCursor(e.clientX);
-      placeIndicator(computeTargetSlot(e.clientX));
+      placeIndicator(computeDropTarget(e.clientX, e.clientY));
     });
 
     function release(e, commit) {
@@ -7293,7 +7553,7 @@
       } catch {
         /* best-effort */
       }
-      endDrag(commit, e.clientX);
+      endDrag(commit, e.clientX, e.clientY);
     }
     handle.addEventListener('pointerup', (e) => release(e, true));
     handle.addEventListener('pointercancel', (e) => release(e, false));

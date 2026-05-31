@@ -62,6 +62,10 @@ The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
 current tab remains visually distinct from hover and multi-selection states.
+The foreground override for active-row text and icons must stay unlayered
+because Tale UI text, button, and icon utility styles are also unlayered; keeping
+the override only inside `@layer bento.components` lets neutral utility colors
+win.
 
 The sidebar context menu is still rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
@@ -136,6 +140,8 @@ Core panel actions are handled in
   when needed.
 - `panels/clear`: removes all panels in the active workspace.
 - `panelLayout/reorderRoot`: reorders top-level root nodes.
+- `panelLayout/movePanel`: moves one visible panel leaf to a root slot, an
+  eligible one-panel subdivision row, or an unconfigured subdivision chooser.
 - `panelLayout/subdivide`, `fillChooser`, `breakOut`, `removeVerticalGroup`,
   and `setGroupRatio`: mutate the layout tree.
 - `panel/setWidth`, `panel/setMainWidth`, and `panel/setStripScroll`: persist
@@ -557,18 +563,30 @@ Top-row splits and 2x2 groups:
   top panel's tab id.
 - Header drag reorder should compute target slots from the pointer position
   against stable snapped drop targets, not from the dragged panel's centre. Using
-  the dragged root's centre makes target zones scale with the width of the panel
+  the dragged panel's centre makes target zones scale with the width of the panel
   being dragged, which makes the drop affordance drift away from the cursor for
-  wide panels. Header drag drop targets must collapse visible leaves by
-  `rootNodeId` and measure the root rect, otherwise split or subdivided roots can
-  expose internal child boundaries as reorder targets. For the drop indicator and
-  slot thresholds, remove the dragged source root first and compute the remaining
-  roots' collapsed post-removal positions. Live DOM rects still include the
-  source's old slot, which especially skews leftward drag affordances. Cache
-  those collapsed targets for the active drag session. Repeated reorder FLIP
-  animations can leave transient transforms on panel elements; starting a new
-  header drag should therefore settle any in-flight transform-only reorder
-  animation before painting the new drag transform.
+  wide panels. Header drag now moves a single visible panel leaf, not always its
+  containing root. Chrome clones `currentPanelLayout`, removes the dragged leaf,
+  and computes root drop targets from that post-removal layout so subpanels and
+  split children can be dragged out into the top-level strip without moving the
+  whole vertical group. Horizontal row insertion targets should use live row
+  geometry so the hit zone matches the row the user is hovering, but must be
+  validated against the post-removal layout so rows in a group that would be
+  collapsed away are not offered. Rows already represented by a horizontal group
+  are full unless the dragged source is one of that row's two children; in that
+  case the survivor's live rect is a valid target for reordering the pair.
+  Empty subdivision chooser targets are collected from live chooser geometry and
+  filtered against the post-removal layout, so a panel can be dragged into an
+  unconfigured subdivision area while a chooser that disappears after removing
+  the dragged source is not offered. Dropping on a chooser dispatches
+  `panelLayout/movePanel` with a chooser target and tools replaces that chooser
+  with the existing panel as a full bottom panel.
+  Dropping on an eligible row dispatches `panelLayout/movePanel` with a
+  horizontal target and tools creates a two-panel horizontal group. Cache those
+  targets for the active drag session. Repeated reorder FLIP animations can
+  leave transient transforms on panel elements; starting a new header drag
+  should therefore settle any in-flight transform-only reorder animation before
+  painting the new drag transform.
 - When promoting a child out of a closing subdivision, preserve the child's
   browser content and width. Otherwise the promoted panel can flash blank or
   resize unexpectedly.
