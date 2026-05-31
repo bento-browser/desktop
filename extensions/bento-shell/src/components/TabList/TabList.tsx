@@ -15,7 +15,11 @@ export interface TabListProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
-  onTabContextMenu?: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
+  onTabContextMenu?: (
+    id: number,
+    event: React.MouseEvent<HTMLDivElement>,
+    selectedIds: number[],
+  ) => void;
   /** Called when the user drops a tab at a new position. The dragged tab
    * should land immediately before (`before=true`) or after (`before=false`)
    * `anchorId` in the chrome window's tab strip. Anchor-based (not
@@ -120,10 +124,16 @@ function useDelayedRemovals(
 interface TabListPaneProps {
   ids: number[];
   activeId: number | null;
-  onActivate: (id: number) => void;
+  selectedIds: Set<number>;
+  onSelectClick: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
-  onTabContextMenu?: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
+  onTabContextMenu?: (
+    id: number,
+    event: React.MouseEvent<HTMLDivElement>,
+    selectedIds: number[],
+  ) => void;
+  onSelectionContextMenu: (id: number) => number[];
   /** When defined, the pane enables HTML5 drag-and-drop reordering and
    * calls back with (id, anchorId, before) once the user drops. The
    * outgoing pane during a workspace-switch slide passes undefined so
@@ -143,10 +153,12 @@ interface TabListPaneProps {
 function TabListPane({
   ids,
   activeId,
-  onActivate,
+  selectedIds,
+  onSelectClick,
   onClose,
   onOpenInSidePanel,
   onTabContextMenu,
+  onSelectionContextMenu,
   onReorder,
   className,
 }: TabListPaneProps) {
@@ -293,6 +305,12 @@ function TabListPane({
     setDragSourceId(null);
     setDropSlot(null);
   }, []);
+  const handleRowContextMenu = useCallback(
+    (tabId: number, event: React.MouseEvent<HTMLDivElement>) => {
+      onTabContextMenu?.(tabId, event, onSelectionContextMenu(tabId));
+    },
+    [onSelectionContextMenu, onTabContextMenu],
+  );
 
   if (displayedIds.length === 0) {
     return (
@@ -337,12 +355,13 @@ function TabListPane({
               <TabRow
                 id={id}
                 active={id === activeId}
+                selected={selectedIds.has(id)}
                 removing={removing.has(id)}
                 dragging={id === dragSourceId}
-                onActivate={onActivate}
+                onActivate={onSelectClick}
                 onClose={onClose}
                 onOpenInSidePanel={onOpenInSidePanel}
-                onContextMenu={onTabContextMenu}
+                onContextMenu={onTabContextMenu ? handleRowContextMenu : undefined}
                 onDragStart={dragEnabled ? handleDragStart : undefined}
                 onDragEnd={dragEnabled ? handleDragEnd : undefined}
               />
@@ -394,6 +413,79 @@ export function TabList({
   // user. See useWorkspaceTabIds for the full rationale.
   const orderedIds = useWorkspaceTabIds(activeWorkspaceId, windowId);
   const activeId = useTabsStore((s) => s.activeId);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const lastSelectedIdRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    setSelectedIds(new Set());
+    lastSelectedIdRef.current = null;
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    const allowed = new Set(orderedIds);
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (allowed.has(id)) next.add(id);
+      }
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+    if (lastSelectedIdRef.current !== null && !allowed.has(lastSelectedIdRef.current)) {
+      lastSelectedIdRef.current = null;
+    }
+  }, [orderedIds]);
+
+  const handleSelectClick = useCallback(
+    (id: number, event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.shiftKey) {
+        event.preventDefault();
+        const targetIndex = orderedIds.indexOf(id);
+        if (targetIndex < 0) return;
+        const anchorId = lastSelectedIdRef.current;
+        const anchorIndex = anchorId === null ? -1 : orderedIds.indexOf(anchorId);
+        if (anchorIndex < 0) {
+          lastSelectedIdRef.current = id;
+          setSelectedIds(new Set([id]));
+          return;
+        }
+        const start = Math.min(anchorIndex, targetIndex);
+        const end = Math.max(anchorIndex, targetIndex);
+        setSelectedIds(new Set(orderedIds.slice(start, end + 1)));
+        return;
+      }
+
+      if (event.metaKey || event.ctrlKey) {
+        event.preventDefault();
+        lastSelectedIdRef.current = id;
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+        return;
+      }
+
+      if (selectedIds.size > 0) setSelectedIds(new Set());
+      lastSelectedIdRef.current = id;
+      onActivate(id);
+    },
+    [onActivate, orderedIds, selectedIds.size],
+  );
+
+  const handleSelectionContextMenu = useCallback(
+    (id: number): number[] => {
+      if (selectedIds.has(id) && selectedIds.size > 0) {
+        return orderedIds.filter((candidate) => selectedIds.has(candidate));
+      }
+      lastSelectedIdRef.current = id;
+      setSelectedIds(new Set([id]));
+      return [id];
+    },
+    [orderedIds, selectedIds],
+  );
   // Readiness gate: render the skeleton until BOTH stores have hydrated
   // for the active workspace. tabsStore.hydrated flips on the first
   // tabs/snapshot from bento-tools; panelsStore.hydratedWorkspaces gets
@@ -471,10 +563,12 @@ export function TabList({
           key={`out:${outgoing.wsId}`}
           ids={snapshotRef.current.get(outgoing.wsId) ?? []}
           activeId={activeId}
-          onActivate={onActivate}
+          selectedIds={selectedIds}
+          onSelectClick={handleSelectClick}
           onClose={onClose}
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
+          onSelectionContextMenu={handleSelectionContextMenu}
           className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
         />
       )}
@@ -486,10 +580,12 @@ export function TabList({
         key={`in:${activeWorkspaceId ?? 'none'}`}
         ids={orderedIds}
         activeId={activeId}
-        onActivate={onActivate}
+        selectedIds={selectedIds}
+        onSelectClick={handleSelectClick}
         onClose={onClose}
         onOpenInSidePanel={onOpenInSidePanel}
         onTabContextMenu={onTabContextMenu}
+        onSelectionContextMenu={handleSelectionContextMenu}
         // Only the steady-state incoming pane allows reorder. The
         // outgoing pane (rendered above during a workspace-switch slide)
         // is mid-animation and pointer-events:none anyway; gating here

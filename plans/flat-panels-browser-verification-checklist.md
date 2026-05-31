@@ -80,6 +80,9 @@ items are easy to scan.
    - Follow-up failure: Creating split panels in the bottom should produce one shared 2x2 vertical group when the top is split, not two separate 1x2 vertical groups.
    - Follow-up verified: User confirmed the top-row split and shared 2x2 group behavior is working. ✅ Complete
    - Fix status: Confirmed. Vertical groups now support a horizontal split in the top row as well as the bottom row, and the top panel menu exposes `Split this panel` for eligible unsplit top panels.
+   - Follow-up regression: User reported newly-created blank split panels can glitch with a flickering loader.
+   - Follow-up verified: User confirmed newly-created blank split panels no longer glitch with a flickering loader. ✅ Complete
+   - Fix status: Confirmed. Bento's default new-panel page load is now idempotent for split children: chrome does not reissue the same `moz-extension://.../new-panel` load while it is already in flight or already loaded, preventing metadata-sync reconciles from repeatedly restarting the blank panel content.
 
 8. **Depth cap**
    - Open kebab menu on subdivision top, bottom, and split children.
@@ -185,6 +188,20 @@ items are easy to scan.
 18. **Navigator grouped icon**
     - Create a vertical group and dual split.
     - Expected: navigator represents the group while it exists; no hidden or closed top panel remains after promotion.
+    - Result: Pass. ✅ Complete
+    - Notes: User reported the panel navigator does not correctly display panel and subpanel favicons for vertical subpanels or split panels, including 2x2 groups.
+    - Verified: User confirmed the grouped panel navigator favicons are working.
+    - Fix status: Confirmed. The panel navigator derives grouped favicon rows from `currentPanelLayout` instead of the legacy `currentSubdivisions` mirror, renders each vertical-group row from the actual panel/chooser/horizontal-group layout nodes, and maps cycle-focus active markers back to root-node nav entries instead of raw leaf panel indexes.
+    - Follow-up failure: User reported favicon buttons sometimes do not update after navigating a panel from its panel-header URL input.
+    - Follow-up re-test: Partially working. User confirmed favicon buttons update, but navigating to a new website can make the favicon button flicker and animate a resize as if the button is removed and re-added.
+    - Follow-up re-test: Fail. User observed the main content slot favicon button appears to cause the remaining jump when a split panel URL changes.
+    - Re-test: Fail. User confirmed any panel navigation can still unload and restore the main content slot favicon, causing movement.
+    - Follow-up verified: User confirmed panel navigation no longer unloads and restores the main content slot favicon. ✅ Complete
+    - Follow-up fix status: Confirmed. Chrome now patches the last panel navigator payload from panel-tab `TabAttrModified` events and refreshes the navigator immediately, bento-tools emits a fresh `panels/sync` when a panel tab's title or favicon metadata changes, navigator buttons now treat favicon/title changes as in-place metadata updates instead of structural changes so existing buttons do not run enter/leave resize animations, and the main-slot button is reused untouched during panel syncs instead of being routed through side-panel metadata update logic.
+    - Follow-up regression: User reported the panel navigator still jumps when split/subdivided panels are removed and when panels are split or subdivided.
+    - Follow-up re-test: Fail. User observed an extra favicon button flashing before the main content slot favicon when subdividing a panel or when removing a subdivision so the vertical group becomes a normal panel.
+    - Follow-up verified: User confirmed subdivide/remove no longer flashes an extra navigator icon before the main content slot favicon. ✅ Complete
+    - Follow-up fix status: Confirmed. Navigator button entry states now fade opacity only, navigator buttons use fixed border-box sizing, and stale replaced root icons are removed synchronously before desired buttons are reordered so structural split/subdivide/remove updates do not flash an extra icon ahead of the main slot.
 
 19. **Header drag reorder**
     - Drag a root panel header.

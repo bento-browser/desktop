@@ -55,15 +55,16 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-05-30
+- Last updated: 2026-05-31
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
   - `patches/chrome-layout/**`
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
-  visibility and geometry, and exposes the chrome-side container behavior that
-  extension code cannot perform directly.
+  visibility and geometry, renders chrome-side menu overlays for sidebar and
+  panel actions, and exposes the chrome-side container behavior that extension
+  code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
   chrome window events, and title/actor messaging paths.
@@ -74,7 +75,8 @@ Use this shape for new or changed touchpoints:
   structure, split-view implementation, browser actor messaging, or chrome event
   ordering can break panel layout, focus, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
-  `plans/flat-panels-browser-verification-checklist.md`, `node --check
+  `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
+  menus still dispatch tab and workspace actions, run `node --check
 src/browser/base/content/bento-shell-mount.js`, and the relevant extension
   typecheck/lint/build commands after any rebase.
 - Rollback or migration notes: keep fallback behavior extension-driven where

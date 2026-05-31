@@ -182,9 +182,16 @@ async function emitPanelsSync(
         .get(id)
         .then((tab) => {
           const widthPx = panels.getWidth(id);
-          const entry: { tabId: number; url: string; favIconUrl: string; widthPx?: number } = {
+          const entry: {
+            tabId: number;
+            url: string;
+            title: string;
+            favIconUrl: string;
+            widthPx?: number;
+          } = {
             tabId: id,
             url: tab.url ?? '',
+            title: tab.title ?? '',
             favIconUrl: tab.favIconUrl ?? '',
           };
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
@@ -194,7 +201,15 @@ async function emitPanelsSync(
     ),
   );
   const valid = resolved.filter(
-    (p): p is { tabId: number; url: string; favIconUrl: string; widthPx?: number } => p !== null,
+    (
+      p,
+    ): p is {
+      tabId: number;
+      url: string;
+      title: string;
+      favIconUrl: string;
+      widthPx?: number;
+    } => p !== null,
   );
   const validPanelIds = new Set(valid.map((panel) => panel.tabId));
   const missingPanelIds = tabIds.filter((id) => !validPanelIds.has(id));
@@ -561,11 +576,15 @@ const lastActiveTabByWorkspace = new Map<string, number>();
 //      workspaces session) are NOT retroactively assigned here — that
 //      would clobber a future "leave unassigned" semantic if we ever
 //      add it. The shell can backfill on demand via tab/assignWorkspace.
-//   2. When a tab is closed, remove it from any workspace's panels list
+//   2. When a panel tab's title/favicon changes, re-emit panels/sync for the
+//      owning workspace so chrome's panel navigator receives the current
+//      metadata even when the layout did not change.
+//   3. When a tab is closed, remove it from any workspace's panels list
 //      so closing a tab from the sidebar doesn't leave a stale panel
 //      pinned to a tab that no longer exists. Re-emit panels/sync if
 //      the affected workspace is active.
 tabs.onDeltas((deltas) => {
+  const panelMetadataRefreshWorkspaces = new Set<string>();
   for (const d of deltas) {
     if (d.kind === 'created') {
       // Read CURRENT in-memory state, not the delta's frozen snapshot.
@@ -635,6 +654,14 @@ tabs.onDeltas((deltas) => {
       // the separate listener has direct access.
       continue;
     }
+    if (d.kind === 'updated') {
+      if ('favIconUrl' in d.changes || 'title' in d.changes) {
+        for (const wsId of panels.findWorkspacesContainingPanelOrSubPanel(d.id)) {
+          panelMetadataRefreshWorkspaces.add(wsId);
+        }
+      }
+      continue;
+    }
     if (d.kind === 'removed') {
       const affected = panels.findWorkspacesContainingTab(d.id);
       for (const wsId of affected) {
@@ -649,6 +676,9 @@ tabs.onDeltas((deltas) => {
       }
       continue;
     }
+  }
+  for (const wsId of panelMetadataRefreshWorkspaces) {
+    void emitPanelsSync(wsId);
   }
 });
 

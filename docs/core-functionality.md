@@ -35,6 +35,13 @@ Workspaces should feel persistent. Closing Bento and reopening it should restore
 the user's active contexts without forcing them to rebuild their browser
 arrangement from memory.
 
+The sidebar tab list supports multi-selection for workspace organization.
+Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
+the selected group to move those tabs together into a newly created workspace.
+The current tab is highlighted with the active workspace accent color and its
+contrast foreground so it stands apart from neutral hover and multi-selection
+states.
+
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
 covering the window with an opaque overlay.
@@ -152,6 +159,8 @@ The intended behavior is:
 
 - visible panel controls are keyboard reachable;
 - focused panels have clear visual state;
+- grouped panel navigator icons show and refresh the favicons for visible
+  panels inside a vertical or 2x2 group;
 - panel cycling is predictable;
 - saved and pinned panels are reachable from compact controls;
 - workspace switching preserves enough layout state that returning to a

@@ -52,6 +52,33 @@ Shell-side workspace state is mirrored in
 `selectActiveIdForWindow` or `useActiveWorkspaceIdForWindow`; do not assume the
 global fallback is the active workspace for every window.
 
+Sidebar tab multi-selection lives in
+`extensions/bento-shell/src/components/TabList/TabList.tsx`. Selection is UI
+state scoped to the active rendered workspace: Cmd/Ctrl-click toggles a row,
+Shift-click selects a contiguous range, plain click activates the tab and clears
+selection, and workspace switches clear selection. `TabRow` only receives a
+`selected` visual prop; tab assignment remains tools-owned.
+The active/current sidebar tab row is styled in
+`extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
+`--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
+current tab remains visually distinct from hover and multi-selection states.
+
+The sidebar context menu is still rendered by chrome through
+`BENTO_SIDEBAR_CONTEXT_MENU` in
+`src/browser/base/content/bento-shell-mount.js`. When a selected row is
+right-clicked, the shell payload includes `tabIds`; chrome dispatches
+`tabs/moveToNewWorkspace` for the "Move selected tabs to new workspace" item or
+`tabs/assignWorkspace` for batch moves to an existing workspace.
+
+Batch tab assignment is handled in
+`extensions/bento-tools/src/messaging/protocol-handler.ts`. Tools creates the
+new workspace through inactive `WorkspaceStore.create`, assigns each selected
+tab through `TabRegistry.assignWorkspace`, activates the new workspace, removes
+stale pinned-panel bindings, and runs the same empty-source-workspace cleanup
+used by single-tab moves after the batch finishes. Creating the workspace
+inactive prevents the activation orchestrator from seeing an empty workspace and
+opening an unwanted blank tab before the moved tabs arrive.
+
 ### Workspace pitfalls
 
 - Do not render the same workspace in two windows unless the panel architecture
@@ -61,6 +88,9 @@ global fallback is the active workspace for every window.
   and SessionStore persistence live in `WorkspaceStore`.
 - Do not mutate `useWorkspacesStore` directly from React components. Dispatch a
   protocol action and let tools broadcast deltas.
+- Do not persist sidebar selection in tools or shell stores. It is transient UI
+  state for the currently rendered tab list, and hidden workspace selections
+  would make batch context-menu actions unsafe.
 
 ## Panel state and layout model
 
@@ -431,6 +461,12 @@ Chooser fill sizing:
 - Regression pitfall: generic new-panel auto-scroll in `reconcilePanels` must
   ignore new tabs whose layout status is `subdivision-bottom` or `split-child`.
   Only new root panels should trigger implicit panel-strip auto-scroll.
+- Regression pitfall: default new-panel loading for chooser-created split
+  children must be idempotent. Metadata-only `panels/sync` broadcasts can arrive
+  while a new split child is still settling; `loadDefaultNewTabInBrowser` must
+  not reissue the same Bento new-panel load when that URL is already in flight or
+  already loaded, or the panel can flicker between the loading overlay and the
+  blank/new-panel surface.
 - Manual verification surface: checklist items 6 and 7, fill chooser as single
   panel and dual split.
 
@@ -470,6 +506,43 @@ Top-row splits and 2x2 groups:
 - Manual verification surface: checklist item 7, top split plus bottom split
   creates a single 2x2 vertical group; checklist item 13, close one bottom
   split child and re-split the survivor.
+- Panel navigator grouped favicons must derive from `currentPanelLayout`, not
+  the legacy `currentSubdivisions` mirror. Flat layout keeps subdivision leaves
+  as direct `tabpanels` children and resets `currentSubdivisions`, so the
+  navigator must build each root icon from the active layout node: one row for a
+  panel child, two cells for a horizontal child, and a placeholder cell for a
+  chooser. Active marker mapping must also use root node ids; mapping cycle
+  targets by raw panel index points split-child focus at the wrong favicon when
+  one root node contains multiple visible leaves.
+- Panel navigator favicons must update on panel tab metadata changes, not just
+  on layout changes. Chrome listens for `TabAttrModified`, patches
+  `__lastPanelsPayload` for the changed panel tab, and re-runs
+  `refreshPanelNav` for an immediate local update after panel-header URL
+  navigation. Bento-tools also emits `panels/sync` when a panel tab `title` or
+  `favIconUrl` delta arrives so the canonical payload catches up and reused
+  grouped/nav buttons receive the latest favicon. Do not include `title` or
+  `favIconUrl` in the navigator structural signature; those are metadata updates
+  that must patch the existing button/image in place. Otherwise navigation
+  rebuilds the button, triggering the nav icon enter/leave width transition and
+  producing a resize flicker. While a tab is still loading, an empty favicon is
+  treated as transient and the existing favicon is retained until a new favicon
+  arrives or loading settles. The main-slot favicon is subject to the same rule:
+  panel-tab `TabAttrModified` events must not refresh the main icon, and
+  `panels/sync` must reuse the main button untouched. The main key has no
+  side-panel payload, so never route it through side-panel metadata update logic;
+  doing so makes `updatePanelNavButton` reject the null metadata and rebuild the
+  first nav button on every panel metadata sync.
+- Panel navigator structural changes must keep each button at a stable layout
+  size. Split, subdivide, promote-survivor, and remove operations can convert a
+  single-panel icon to a grouped icon or back while the panel strip is also
+  recomputing geometry. Entry states in `bento-shell-mount.js` should fade
+  opacity only and must not animate width, padding, or margin; stale replaced
+  buttons should be removed synchronously before reordering the desired buttons,
+  otherwise the old root icon can flash before the main-slot icon for one paint.
+  The nav button box itself should use border-box sizing so grouped-icon padding
+  differences do not change the outer slot. Dimensional nav animation makes the
+  navigator row jump during those layout operations even when favicon metadata is
+  patched in place.
 
 ### Flat layout pitfalls
 

@@ -21,7 +21,7 @@
     inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-inline: var(--space-2xs);
+    padding-inline: var(--space-3xs);
   }
 
   /* Empty-state version of the pane uses Column flex semantics so the

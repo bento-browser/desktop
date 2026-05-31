@@ -544,6 +544,7 @@
         width: var(--bento-panel-nav-button-size);
         height: var(--bento-panel-nav-button-size);
         padding: var(--space-3xs);
+        box-sizing: border-box;
         background: transparent;
         border: var(--bento-border-hairline) solid transparent;
         border-radius: var(--radius-s);
@@ -551,22 +552,12 @@
         flex: 0 0 auto;
         position: relative;
         overflow: hidden;
-        /* Active-marker transition uses --bento-duration-base (200ms)
-           — visible fade as the user navigates, but quick enough not
-           to feel laggy.
-           width + padding + margin transitions drive the enter/leave
-           animation when refreshPanelNav adds or removes favicons:
-           a new icon starts at the --entering state (width 0) and
-           transitions to its natural width on the next frame; a
-           removed icon gets --leaving (width 0) and is yanked from
-           the DOM after the transition. The flex parent's flex:0 0
-           auto means its own width follows the sum of its children's
-           transitioning widths — so the nav row grows / shrinks
-           smoothly without needing its own width transition. */
+        /* Active-marker and structural transitions use a fixed-size
+           button. Split/subdivide/remove operations can rebuild nav
+           icons, so enter/leave must fade only; animating width,
+           padding, or margin makes the navigator row jump while the
+           panel layout itself is changing. */
         transition:
-          width var(--bento-duration-base) var(--bento-easing-standard),
-          padding var(--bento-duration-base) var(--bento-easing-standard),
-          margin var(--bento-duration-base) var(--bento-easing-standard),
           opacity var(--bento-duration-base) var(--bento-easing-standard),
           background-color var(--bento-duration-base) var(--bento-easing-standard),
           border-color var(--bento-duration-base) var(--bento-easing-standard);
@@ -579,16 +570,10 @@
         border-color: var(--color-60);
         background-color: var(--color-3);
       }
-      /* Enter / leave states. width:0 + 0 padding makes the favicon
-         collapse to 0 layout space; transition above interpolates
-         back to natural. opacity smooths the fade. !important so
-         drag/hover state overrides during animation don't reopen the
-         button mid-flight. */
+      /* Enter / leave states are opacity-only so structural updates
+         never animate navigator button dimensions. */
       .bento-panel-nav__icon--entering,
       .bento-panel-nav__icon--leaving {
-        width: 0 !important;
-        padding-inline: 0 !important;
-        margin-inline-start: calc(-1 * var(--space-3xs));
         opacity: 0;
       }
       .bento-panel-nav__icon > img {
@@ -2623,6 +2608,17 @@
     if (isPanelPromotionContentPreserved(browserEl)) return;
     const panelNewTabUrl = moz(BENTO_PANEL_NEWTAB_PATH);
     if (!panelNewTabUrl) return;
+    const currentSpec = getBrowserCurrentSpec(browserEl);
+    if (isBentoPanelNewTabUrl(currentSpec)) return;
+    const now = Date.now();
+    if (
+      browserEl._bentoEnsuringUrl === panelNewTabUrl &&
+      Number(browserEl._bentoEnsuringDefaultNewTabUntil || 0) > now
+    ) {
+      return;
+    }
+    browserEl._bentoEnsuringUrl = panelNewTabUrl;
+    browserEl._bentoEnsuringDefaultNewTabUntil = now + 1500;
     try {
       const principal = Services.scriptSecurityManager.getSystemPrincipal();
       if (typeof browserEl.fixupAndLoadURIString === 'function') {
@@ -2801,6 +2797,7 @@
       currentUrl = '';
     }
     if (isRealPanelUrl(currentUrl)) return false;
+    if (isBentoPanelNewTabUrl(currentUrl)) return false;
     if (isRealPanelUrl(getRememberedPanelUrl(panelEl, browserEl))) return false;
     return true;
   }
@@ -5257,9 +5254,9 @@
     // panel containers inside tabpanels; including it as the final
     // cycle slot lets Right-arrow past the last panel land on it, and
     // its Enter/Space keydown handler then triggers addNewPanel.
-    // The favicon strip only renders top-level panel entries, so
-    // applyActiveMarker maps sub-panel targets back to their containing
-    // top-level panel.
+    // The favicon strip renders one entry per root layout node, so
+    // applyActiveMarker maps split/subdivision leaves back to their
+    // containing root icon.
     const targets = [];
     for (const panel of getOrderedPanels()) {
       appendPanelCycleTargets(panel, targets);
@@ -5277,11 +5274,27 @@
     return orderedPanels.find((panel) => panel.contains(target)) || null;
   }
 
+  function getPanelElementRootNodeId(panelEl) {
+    const tabId = Number(panelEl?.dataset?.bentoPanelTabId);
+    if (!Number.isFinite(tabId)) return null;
+    return panelEl.dataset.bentoRootNodeId || 'panel:' + tabId;
+  }
+
+  function getPanelNavRootNodeIds(panels = __lastPanelsPayload) {
+    return uniqueRootPanels(panels)
+      .map((panel) => panel.rootNodeId || 'panel:' + panel.tabId)
+      .filter(Boolean);
+  }
+
   function getNavIndexForCycleIndex(idx) {
     const target = getPanelCycleTargets()[idx];
     const topLevelPanel = getTopLevelPanelForCycleTarget(target);
     if (!topLevelPanel) return -1;
-    return getOrderedPanels().indexOf(topLevelPanel);
+    if (topLevelPanel.dataset?.bentoMainPanel === '1') return 0;
+    const rootNodeId = getPanelElementRootNodeId(topLevelPanel);
+    if (!rootNodeId) return -1;
+    const rootIndex = getPanelNavRootNodeIds().indexOf(rootNodeId);
+    return rootIndex >= 0 ? rootIndex + 1 : -1;
   }
 
   function getCycleIndexForPanelElement(panelEl) {
@@ -5616,6 +5629,14 @@
       return window.gBrowser?.selectedTab?.image || '';
     } catch {
       return '';
+    }
+  }
+
+  function isSelectedBrowserTab(tab) {
+    try {
+      return !!tab && window.gBrowser?.selectedTab === tab;
+    } catch {
+      return false;
     }
   }
 
@@ -6503,59 +6524,110 @@
     }
   }
 
-  function buildSubdividedNavIcon(sub, parentFavIcon, parentTitle, onClick, tabId, rootNodeId) {
+  function normalizeGroupedNavRows(rows) {
+    return (
+      Array.isArray(rows) && rows.length > 0
+        ? rows
+            .map((row) => (Array.isArray(row) ? row : []))
+            .filter((row) => row.length > 0)
+        : [[{ placeholder: true }]]
+    );
+  }
+
+  function getGroupedNavFaviconSize(rows) {
+    return rows.some((row) => row.length > 1) ? 9 : 12;
+  }
+
+  function makeGroupedNavImage(url, faviconSize) {
+    const img = document.createElementNS(HTML_NS, 'img');
+    img.src = url || '';
+    img.alt = '';
+    img.style.width = faviconSize + 'px';
+    img.style.height = faviconSize + 'px';
+    img.style.borderRadius = '2px';
+    img.style.objectFit = 'cover';
+    img.addEventListener('error', () => {
+      img.style.background = 'var(--neutral-30)';
+      img.removeAttribute('src');
+    });
+    return img;
+  }
+
+  function makeGroupedNavDot(faviconSize) {
+    const dot = document.createElementNS(HTML_NS, 'span');
+    dot.style.width = faviconSize + 'px';
+    dot.style.height = faviconSize + 'px';
+    dot.style.borderRadius = '2px';
+    dot.style.background = 'var(--neutral-30)';
+    dot.style.display = 'block';
+    return dot;
+  }
+
+  function setGroupedNavCellContent(cellEl, favIconUrl, faviconSize) {
+    if (favIconUrl === null) return;
+    const existing = cellEl.firstElementChild;
+    if (favIconUrl) {
+      if (existing?.localName === 'img') {
+        if (existing.src !== favIconUrl) existing.src = favIconUrl;
+        existing.style.background = '';
+        existing.style.width = faviconSize + 'px';
+        existing.style.height = faviconSize + 'px';
+        return;
+      }
+      cellEl.replaceChildren(makeGroupedNavImage(favIconUrl, faviconSize));
+      return;
+    }
+    if (existing?.localName === 'span') return;
+    cellEl.replaceChildren(makeGroupedNavDot(faviconSize));
+  }
+
+  function syncGroupedNavIcon(btn, rows, title) {
+    btn.title = title || 'Panel group';
+    btn.setAttribute('aria-label', btn.title);
+    const safeRows = normalizeGroupedNavRows(rows);
+    const faviconSize = getGroupedNavFaviconSize(safeRows);
+    const rowEls = Array.from(btn.querySelectorAll(':scope > .bento-nav-subdiv-row'));
+    if (rowEls.length !== safeRows.length) return false;
+    for (let rowIndex = 0; rowIndex < safeRows.length; rowIndex++) {
+      const row = safeRows[rowIndex];
+      const cellEls = Array.from(rowEls[rowIndex].children);
+      if (cellEls.length !== row.length) return false;
+      for (let cellIndex = 0; cellIndex < row.length; cellIndex++) {
+        const favIconUrl =
+          row[cellIndex]?.favIconUrl === null ? null : row[cellIndex]?.favIconUrl || '';
+        setGroupedNavCellContent(cellEls[cellIndex], favIconUrl, faviconSize);
+      }
+    }
+    return true;
+  }
+
+  function renderGroupedNavIconRows(btn, rows) {
+    const safeRows = normalizeGroupedNavRows(rows);
+    const faviconSize = getGroupedNavFaviconSize(safeRows);
+
+    for (const row of safeRows) {
+      const rowEl = document.createElementNS(HTML_NS, 'span');
+      rowEl.className = 'bento-nav-subdiv-row';
+      for (const cell of row) {
+        const cellEl = document.createElementNS(HTML_NS, 'span');
+        cellEl.appendChild(
+          cell?.favIconUrl
+            ? makeGroupedNavImage(cell.favIconUrl, faviconSize)
+            : makeGroupedNavDot(faviconSize),
+        );
+        rowEl.appendChild(cellEl);
+      }
+      btn.appendChild(rowEl);
+    }
+  }
+
+  function buildGroupedNavIcon(rows, title, onClick, tabId, rootNodeId) {
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className = 'bento-panel-nav__icon bento-panel-nav__icon--subdivided';
-    btn.title = parentTitle + ' (subdivided)';
+    btn.title = title || 'Panel group';
     btn.setAttribute('aria-label', btn.title);
-
-    const subPanels = sub.subPanels || [];
-    const isDual = subPanels.length === 2;
-    const faviconSize = isDual ? 9 : 12;
-
-    const makeImg = (url) => {
-      const img = document.createElementNS(HTML_NS, 'img');
-      img.src = url || '';
-      img.alt = '';
-      img.style.width = faviconSize + 'px';
-      img.style.height = faviconSize + 'px';
-      img.style.borderRadius = '2px';
-      img.style.objectFit = 'cover';
-      img.addEventListener('error', () => {
-        img.style.background = 'var(--neutral-30)';
-        img.removeAttribute('src');
-      });
-      return img;
-    };
-    const makeDot = () => {
-      const dot = document.createElementNS(HTML_NS, 'span');
-      dot.style.width = faviconSize + 'px';
-      dot.style.height = faviconSize + 'px';
-      dot.style.borderRadius = '2px';
-      dot.style.background = 'var(--neutral-30)';
-      dot.style.display = 'block';
-      return dot;
-    };
-
-    // Top row: parent favicon
-    const topRow = document.createElementNS(HTML_NS, 'span');
-    topRow.className = 'bento-nav-subdiv-row';
-    topRow.appendChild(parentFavIcon ? makeImg(parentFavIcon) : makeDot());
-    btn.appendChild(topRow);
-
-    // Bottom row: sub-panel favicon(s)
-    const bottomRow = document.createElementNS(HTML_NS, 'span');
-    bottomRow.className = 'bento-nav-subdiv-row';
-    if (subPanels.length === 0) {
-      bottomRow.appendChild(makeDot());
-    } else if (isDual) {
-      bottomRow.appendChild(subPanels[0].favIconUrl ? makeImg(subPanels[0].favIconUrl) : makeDot());
-      bottomRow.appendChild(subPanels[1].favIconUrl ? makeImg(subPanels[1].favIconUrl) : makeDot());
-    } else {
-      bottomRow.appendChild(subPanels[0].favIconUrl ? makeImg(subPanels[0].favIconUrl) : makeDot());
-    }
-    btn.appendChild(bottomRow);
+    renderGroupedNavIconRows(btn, rows);
 
     btn.addEventListener('click', (e) => {
       if (btn._bentoSuppressClick) {
@@ -7232,73 +7304,195 @@
     const list = document.querySelector('.bento-panel-nav__list');
     if (!list || list.children.length === 0) return;
     const mainBtn = list.children[0];
-    const fav = getMainTabFavicon();
-    while (mainBtn.firstChild) mainBtn.removeChild(mainBtn.firstChild);
-    if (fav) {
-      mainBtn.classList.remove('bento-panel-nav__icon--placeholder');
-      const img = document.createElementNS(HTML_NS, 'img');
-      img.src = fav;
-      img.alt = '';
-      img.addEventListener('error', () => {
-        img.remove();
-        mainBtn.classList.add('bento-panel-nav__icon--placeholder');
-      });
-      mainBtn.appendChild(img);
-    } else {
-      mainBtn.classList.add('bento-panel-nav__icon--placeholder');
-    }
+    const fav = getStableMainNavFavicon(mainBtn);
+    if (fav !== null) refreshNavIconImage(mainBtn, fav);
   }
 
-  function resolveVisiblePanelForNav(panelPayload) {
-    const visible = {
-      tabId: Number(panelPayload?.tabId),
+  function refreshPanelNavFromTabAttr(tab) {
+    const tabId = getBentoTabId(tab);
+    if (!Number.isFinite(tabId)) return false;
+    if (!Array.isArray(__lastPanelsPayload) || __lastPanelsPayload.length === 0) return false;
+    let favIconUrl = '';
+    try {
+      favIconUrl = tab?.image || tab?.getAttribute?.('image') || '';
+    } catch {
+      favIconUrl = '';
+    }
+    let title = '';
+    try {
+      title = tab?.label || tab?.getAttribute?.('label') || '';
+    } catch {
+      title = '';
+    }
+    let changed = false;
+    for (const panel of __lastPanelsPayload) {
+      if (Number(panel?.tabId) !== tabId) continue;
+      const retainExistingFavicon = !favIconUrl && panel.favIconUrl && isTabStillLoading(tab);
+      if (!retainExistingFavicon && (panel.favIconUrl || '') !== favIconUrl) {
+        panel.favIconUrl = favIconUrl;
+        changed = true;
+      }
+      if (title && panel.title !== title) {
+        panel.title = title;
+        changed = true;
+      }
+    }
+    if (!changed) return false;
+    refreshPanelNav(__lastPanelsPayload);
+    return true;
+  }
+
+  function refreshPanelNavOnTabAttrModified(event) {
+    const tab = event?.target;
+    if (isSelectedBrowserTab(tab)) refreshPanelNavMain();
+    refreshPanelNavFromTabAttr(tab);
+  }
+
+  function isTabStillLoading(tab) {
+    if (!tab) return false;
+    try {
+      if (tab.hasAttribute?.('busy')) return true;
+    } catch {
+      // Fall through.
+    }
+    try {
+      if (tab.linkedBrowser?.webProgress?.isLoadingDocument) return true;
+    } catch {
+      // Fall through.
+    }
+    return false;
+  }
+
+  function getTrackedTabForPanelNav(tabId) {
+    return getTrackedTabById(getBentoTabTracker(), Number(tabId));
+  }
+
+  function getStablePanelNavFavicon(tabId, incomingFavIconUrl, btn) {
+    if (incomingFavIconUrl) return incomingFavIconUrl;
+    if (!btn?.querySelector?.('img')) return '';
+    const tab = getTrackedTabForPanelNav(tabId);
+    return isTabStillLoading(tab) ? null : '';
+  }
+
+  function getStableMainNavFavicon(btn) {
+    const favIconUrl = getMainTabFavicon();
+    if (favIconUrl) return favIconUrl;
+    if (!btn?.querySelector?.('img')) return '';
+    return isTabStillLoading(window.gBrowser?.selectedTab) ? null : '';
+  }
+
+  function getLayoutRootNodeId(node) {
+    if (node?.kind === 'panel') return 'panel:' + node.tabId;
+    if (node?.kind === 'group' && node.axis === 'vertical') return node.id || null;
+    return null;
+  }
+
+  function getLayoutRootNodeForNav(rootNodeId) {
+    if (!rootNodeId) return null;
+    for (const node of currentPanelLayout?.root || []) {
+      if (getLayoutRootNodeId(node) === rootNodeId) return node;
+    }
+    return null;
+  }
+
+  function getPanelPayloadByTabIdForNav(panels) {
+    const out = new Map();
+    for (const panel of panels || []) {
+      const tabId = Number(panel?.tabId);
+      if (!Number.isFinite(tabId) || out.has(tabId)) continue;
+      out.set(tabId, panel);
+    }
+    return out;
+  }
+
+  function getPanelNavCell(panelNode, payloadByTabId) {
+    if (panelNode?.kind !== 'panel') return null;
+    const tabId = Number(panelNode.tabId);
+    if (!Number.isFinite(tabId)) return null;
+    const payload = payloadByTabId.get(tabId);
+    return {
+      tabId,
+      title: payload?.title || 'Panel',
+      favIconUrl: payload?.favIconUrl || '',
+    };
+  }
+
+  function getPanelNavRowForLayoutNode(node, payloadByTabId) {
+    if (node?.kind === 'panel') {
+      const cell = getPanelNavCell(node, payloadByTabId);
+      return cell ? [cell] : [];
+    }
+    if (node?.kind === 'group' && node.axis === 'horizontal') {
+      return (node.children || [])
+        .map((child) => getPanelNavCell(child, payloadByTabId))
+        .filter(Boolean);
+    }
+    if (node?.kind === 'chooser') {
+      return [{ placeholder: true }];
+    }
+    return [];
+  }
+
+  function getPanelNavInfo(panelPayload, payloadByTabId) {
+    const fallbackTabId = Number(panelPayload?.tabId);
+    const fallbackCell = {
+      tabId: fallbackTabId,
       title: panelPayload?.title || 'Panel',
       favIconUrl: panelPayload?.favIconUrl || '',
     };
-    const seen = new Set();
-    let currentTabId = visible.tabId;
-    while (Number.isFinite(currentTabId) && !seen.has(currentTabId)) {
-      seen.add(currentTabId);
-      const sub = currentSubdivisions.get(currentTabId);
-      if (!sub?.topClosed || sub.subPanels?.length !== 1) break;
-      const survivor = sub.subPanels[0];
-      currentTabId = Number(survivor?.tabId);
-      if (!Number.isFinite(currentTabId)) break;
-      visible.tabId = currentTabId;
-      visible.favIconUrl = survivor?.favIconUrl || visible.favIconUrl || '';
-      visible.title = survivor?.title || visible.title || 'Panel';
+    const rootNodeId = panelPayload?.rootNodeId || 'panel:' + fallbackTabId;
+    const rootNode = getLayoutRootNodeForNav(rootNodeId);
+    if (rootNode?.kind !== 'group' || rootNode.axis !== 'vertical') {
+      return {
+        rootNodeId,
+        tabId: fallbackTabId,
+        title: fallbackCell.title,
+        favIconUrl: fallbackCell.favIconUrl,
+        rows: [[fallbackCell]],
+        isGrouped: false,
+      };
     }
+
+    const rows = [
+      getPanelNavRowForLayoutNode(rootNode.children?.[0], payloadByTabId),
+      getPanelNavRowForLayoutNode(rootNode.children?.[1], payloadByTabId),
+    ].filter((row) => row.length > 0);
+    const firstPanelCell = rows.flat().find((cell) => Number.isFinite(cell?.tabId)) || fallbackCell;
     return {
-      visible,
-      subdivision: Number.isFinite(visible.tabId)
-        ? currentSubdivisions.get(visible.tabId) || null
-        : null,
+      rootNodeId,
+      tabId: Number(firstPanelCell.tabId),
+      title: firstPanelCell.title || fallbackCell.title,
+      favIconUrl: firstPanelCell.favIconUrl || fallbackCell.favIconUrl,
+      rows: rows.length > 0 ? rows : [[fallbackCell]],
+      isGrouped: rows.length > 1 || rows.some((row) => row.length > 1),
     };
   }
 
-  function getPanelNavSignature(panelPayload) {
-    const { visible, subdivision } = resolveVisiblePanelForNav(panelPayload);
-    if (!subdivision || (subdivision.topClosed && subdivision.subPanels?.length === 1)) {
-      return ['panel', visible.tabId, visible.favIconUrl].join(':');
+  function getPanelNavSignature(panelPayload, payloadByTabId) {
+    const info = getPanelNavInfo(panelPayload, payloadByTabId);
+    if (!info.isGrouped) {
+      return ['panel', info.tabId].join(':');
     }
-    const subSig = (subdivision.subPanels || [])
-      .map((sp) => [sp?.tabId, sp?.favIconUrl || ''].join('@'))
+    const rowSig = info.rows
+      .map((row) =>
+        row
+          .map((cell) =>
+            [
+              Number.isFinite(cell?.tabId) ? cell.tabId : 'placeholder',
+            ].join('@'),
+          )
+          .join(','),
+      )
       .join('|');
-    return [
-      'subdivided',
-      visible.tabId,
-      visible.favIconUrl,
-      subdivision.mode || 'single',
-      subSig,
-    ].join(':');
+    return ['grouped', info.rootNodeId, rowSig].join(':');
   }
 
   // Called from reconcilePanels with the current desired panel list.
   // Diff-based update so favicon buttons that survive a reconcile
   // (same tabId still present) are reused — that preserves their
-  // pointer-capture / drag state and lets the enter/leave width
-  // transition only fire for icons that are actually new or going
-  // away. The full innerHTML='' rebuild used previously made every
+  // pointer-capture / drag state and limits entry fade transitions
+  // to icons that are actually new. The full innerHTML='' rebuild used
+  // previously made every
   // reconcile look like every favicon was new (no animation possible)
   // and tore down drag listeners between reconciles.
   function refreshPanelNav(panels) {
@@ -7306,12 +7500,18 @@
     if (!list) return;
     hidePanelNavContextMenu();
     const navPanels = uniqueRootPanels(panels);
+    const payloadByTabId = getPanelPayloadByTabIdForNav(panels);
 
-    // Index existing children by their bento nav key. Skip ones already
-    // mid-leave so they're not accidentally reused.
+    // Index existing children by their bento nav key. Any stale
+    // mid-leave child is removed immediately: structural nav changes
+    // must not leave a temporary button ahead of the main icon for a
+    // paint, or the navigator visibly jumps.
     const existing = new Map();
     for (const child of Array.from(list.children)) {
-      if (child.dataset.bentoNavLeaving === '1') continue;
+      if (child.dataset.bentoNavLeaving === '1') {
+        child.remove();
+        continue;
+      }
       const key = child.dataset.bentoNavKey;
       if (key) existing.set(key, child);
     }
@@ -7328,17 +7528,27 @@
       const key = desiredKeys[i];
       let btn = existing.get(key);
       if (btn) {
+        if (key === 'main') {
+          existing.delete(key);
+          desiredEls.push(btn);
+          continue;
+        }
         // Rebuild if subdivision state changed (e.g. panel was subdivided or unsubdivided)
         const panelPayload = key === 'main' ? null : navPanels[i - 1];
-        const tabId = Number(panelPayload?.tabId);
-        const desiredSignature = panelPayload ? getPanelNavSignature(panelPayload) : key;
+        const desiredSignature = panelPayload
+          ? getPanelNavSignature(panelPayload, payloadByTabId)
+          : key;
         const wasSub = btn.classList.contains('bento-panel-nav__icon--subdivided');
-        const navInfo = panelPayload ? resolveVisiblePanelForNav(panelPayload) : null;
-        const subForKey = navInfo?.subdivision || null;
-        const isSub = !!subForKey && !(subForKey.topClosed && subForKey.subPanels?.length === 1);
+        const navInfo = panelPayload ? getPanelNavInfo(panelPayload, payloadByTabId) : null;
+        const isSub = !!navInfo?.isGrouped;
         const signatureChanged =
           key !== 'main' && btn.dataset.bentoNavSignature !== desiredSignature;
         if (wasSub !== isSub || signatureChanged) {
+          existing.delete(key);
+          btn.remove();
+          btn = null;
+        } else if (!updatePanelNavButton(btn, navInfo)) {
+          existing.delete(key);
           btn.remove();
           btn = null;
         } else {
@@ -7364,22 +7574,19 @@
             const idx = getCycleIndexForPanelTabId(tabId);
             setActiveByIndex(idx >= 0 ? idx : 0);
           };
-          const navInfo = resolveVisiblePanelForNav(panelPayload);
-          const visiblePanel = navInfo.visible;
-          const sub = navInfo.subdivision;
-          if (!sub || (sub.topClosed && sub.subPanels?.length === 1)) {
+          const navInfo = getPanelNavInfo(panelPayload, payloadByTabId);
+          if (!navInfo.isGrouped) {
             btn = buildNavIcon(
-              visiblePanel.favIconUrl || panelPayload.favIconUrl || '',
-              visiblePanel.title || panelPayload.title || 'Panel',
+              navInfo.favIconUrl || panelPayload.favIconUrl || '',
+              navInfo.title || panelPayload.title || 'Panel',
               clickHandler,
               tabId,
               panelPayload.rootNodeId || key,
             );
           } else {
-            btn = buildSubdividedNavIcon(
-              sub,
-              visiblePanel.favIconUrl || panelPayload.favIconUrl || '',
-              visiblePanel.title || panelPayload.title || 'Panel',
+            btn = buildGroupedNavIcon(
+              navInfo.rows,
+              (navInfo.title || panelPayload.title || 'Panel') + ' (grouped)',
               clickHandler,
               tabId,
               panelPayload.rootNodeId || key,
@@ -7393,32 +7600,29 @@
       desiredEls.push(btn);
       if (key !== 'main') {
         const panelPayload = navPanels[i - 1];
-        if (panelPayload) btn.dataset.bentoNavSignature = getPanelNavSignature(panelPayload);
+        if (panelPayload) {
+          btn.dataset.bentoNavSignature = getPanelNavSignature(panelPayload, payloadByTabId);
+        }
       }
+    }
+
+    // Remove stale icons before reordering desired buttons. This is
+    // especially important when a panel is subdivided or promoted back
+    // to a normal panel: the root nav key changes, and a delayed
+    // stale-button removal can flash an extra favicon before the main
+    // icon.
+    for (const [, el] of existing) {
+      el.remove();
     }
 
     // Re-order: appendChild moves existing children to the end, so
     // iterating in desired order yields the final order.
     for (const el of desiredEls) list.appendChild(el);
 
-    // Departing icons — animate out then remove.
-    for (const [, el] of existing) {
-      el.dataset.bentoNavLeaving = '1';
-      el.classList.add('bento-panel-nav__icon--leaving');
-      setTimeout(
-        () => {
-          el.remove();
-        },
-        // Match the transition duration in CSS; small buffer for
-        // sub-frame scheduling. --bento-duration-base is 200ms.
-        260,
-      );
-    }
-
     // Trigger enter animation on next frame so the browser commits
-    // the initial 'entering' (width:0) state before we remove the
-    // class. Without the rAF, browsers may collapse both states into
-    // one paint and skip the transition.
+    // the initial transparent state before we remove the class.
+    // Without the rAF, browsers may collapse both states into one
+    // paint and skip the transition.
     if (newEls.length > 0) {
       requestAnimationFrame(() => {
         for (const el of newEls) {
@@ -7426,12 +7630,6 @@
         }
       });
     }
-
-    // Keep the main favicon up to date (selectedTab can change without
-    // refreshPanelNav being called for tab favicons, but when it IS
-    // called we want the freshest favicon).
-    const mainBtn = desiredEls[0];
-    if (mainBtn) refreshNavIconImage(mainBtn, getMainTabFavicon());
 
     // Clamp active index to current cycle target count and re-paint
     // the marker (panel count may have decreased since the last
@@ -7441,6 +7639,26 @@
     const total = getPanelCycleTargets().length;
     if (currentActiveIdx >= total) currentActiveIdx = 0;
     applyActiveMarker(currentActiveIdx);
+  }
+
+  function updatePanelNavButton(btn, navInfo) {
+    if (!btn || !navInfo) return false;
+    if (!navInfo.isGrouped) {
+      btn.title = navInfo.title || 'Panel';
+      btn.setAttribute('aria-label', btn.title);
+      const favIconUrl = getStablePanelNavFavicon(navInfo.tabId, navInfo.favIconUrl || '', btn);
+      if (favIconUrl !== null) refreshNavIconImage(btn, favIconUrl);
+      return true;
+    }
+    const title = (navInfo.title || 'Panel') + ' (grouped)';
+    const rows = navInfo.rows.map((row) =>
+      row.map((cell) => {
+        if (!Number.isFinite(cell?.tabId)) return cell;
+        const favIconUrl = getStablePanelNavFavicon(cell.tabId, cell.favIconUrl || '', btn);
+        return favIconUrl === null ? { ...cell, favIconUrl: null } : { ...cell, favIconUrl };
+      }),
+    );
+    return syncGroupedNavIcon(btn, rows, title);
   }
 
   // Update a nav-icon button's <img> src without rebuilding the button
@@ -7764,12 +7982,13 @@
     nav.appendChild(nextBtn);
     wrap.appendChild(nav);
 
-    // Live updates: tab switches and tab attribute changes (icon, title)
-    // refresh the main panel's favicon. We deliberately do NOT update
-    // the active marker on scroll — currentActiveIdx is set only by
-    // explicit nav (click / button / key), so manual scroll doesn't
-    // override the user's selection. The custom scrollbar's thumb
-    // position DOES update on scroll though.
+    // Live updates: tab switches refresh the main favicon. Tab attribute
+    // changes also patch the last panel payload so panel nav favicons keep up
+    // with URL-bar navigation before the next panels/sync arrives. We
+    // deliberately do NOT update the active marker on scroll —
+    // currentActiveIdx is set only by explicit nav (click / button / key), so
+    // manual scroll doesn't override the user's selection. The custom
+    // scrollbar's thumb position DOES update on scroll though.
     host.addEventListener('scroll', updateStripScrollbar, { passive: true });
     // Shift+wheel panel cycling is attached to the strip CONTAINER, not
     // just the panel host — so the gesture also works when the cursor
@@ -7821,7 +8040,10 @@
     }
     if (window.gBrowser?.tabContainer) {
       window.gBrowser.tabContainer.addEventListener('TabSelect', refreshPanelNavMain);
-      window.gBrowser.tabContainer.addEventListener('TabAttrModified', refreshPanelNavMain);
+      window.gBrowser.tabContainer.addEventListener(
+        'TabAttrModified',
+        refreshPanelNavOnTabAttrModified,
+      );
     }
     // Initial paint on next tick (give layout a beat to settle).
     setTimeout(updateStripScrollbar, 0);
@@ -10648,6 +10870,19 @@
       height: Number(payload.anchor.height || 1),
     };
     const tabId = Number(payload.tabId);
+    const hasTabId =
+      payload.tabId !== null && payload.tabId !== undefined && Number.isFinite(tabId);
+    const tabIds = Array.isArray(payload.tabIds)
+      ? Array.from(
+          new Set(
+            payload.tabIds
+              .map((id) => Number(id))
+              .filter((id) => Number.isFinite(id) && Number.isInteger(id)),
+          ),
+        )
+      : hasTabId
+        ? [tabId]
+        : [];
     showChromeMenu({
       anchor,
       items: payload.items,
@@ -10656,7 +10891,7 @@
           dispatchShellAction({ type: 'tab/create' });
           return;
         }
-        if (!Number.isFinite(tabId)) return;
+        if (!hasTabId) return;
         if (itemId === 'reload-tab') {
           dispatchShellAction({ type: 'tab/reload', id: tabId });
         } else if (itemId === 'toggle-pin') {
@@ -10665,12 +10900,19 @@
           dispatchShellAction({ type: 'panel/add', id: tabId });
         } else if (itemId === 'close-tab') {
           dispatchShellAction({ type: 'tab/close', id: tabId });
+        } else if (itemId === 'move-selected-to-new-workspace') {
+          dispatchShellAction({ type: 'tabs/moveToNewWorkspace', ids: tabIds });
         } else if (typeof itemId === 'string' && itemId.startsWith('move-to-workspace:')) {
-          dispatchShellAction({
-            type: 'tab/assignWorkspace',
-            id: tabId,
-            workspaceId: itemId.slice('move-to-workspace:'.length),
-          });
+          const workspaceId = itemId.slice('move-to-workspace:'.length);
+          if (tabIds.length > 1) {
+            dispatchShellAction({ type: 'tabs/assignWorkspace', ids: tabIds, workspaceId });
+          } else {
+            dispatchShellAction({
+              type: 'tab/assignWorkspace',
+              id: tabId,
+              workspaceId,
+            });
+          }
         }
       },
     });

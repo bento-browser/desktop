@@ -14,7 +14,7 @@
     "build": "pnpm run ext:build && pnpm run import && bash scripts/surfer-env.sh build && bash scripts/sync-builtin-addon-symlinks.sh",
     "build:ui": "bash scripts/surfer-env.sh build --ui && bash scripts/sync-builtin-addon-symlinks.sh",
     "package": "bash scripts/surfer-env.sh package",
-    "lc": "bash scripts/surfer-env.sh license-check",
+    "lc": "node scripts/generate-chrome-tokens.mjs && bash scripts/surfer-env.sh license-check",
     "mach": "bash scripts/mach-raw.sh",
     "mach:build": "bash scripts/mach-raw.sh build",
     "build:full": "bash scripts/build-bento.sh",

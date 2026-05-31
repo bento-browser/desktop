@@ -323,6 +323,13 @@ export type Action =
   | { type: 'tab/closeMain'; id: number }
   | { type: 'tab/rename'; id: number; title: string }
   | { type: 'tab/assignWorkspace'; id: number; workspaceId: string }
+  /** Assign multiple existing sidebar tabs to a workspace. Used by the
+   * sidebar's multi-select context menu; tools applies the same cleanup
+   * policy as single-tab assignment after the batch finishes. */
+  | { type: 'tabs/assignWorkspace'; ids: number[]; workspaceId: string }
+  /** Create a new workspace and move the selected sidebar tabs into it.
+   * The new workspace auto-activates in the requesting window. */
+  | { type: 'tabs/moveToNewWorkspace'; ids: number[]; name?: string }
   /** Open `url` in a new tab. When `focusExisting` is set, the handler
    * first looks for a tab in the source window's active workspace whose
    * URL exactly matches `url`; if found, it activates that tab instead
@@ -562,7 +569,13 @@ export type Event =
        * the new-active tab list, leaking panel tabs into the sidebar
        * during the slide animation. */
       workspaceId: string;
-      panels: Array<{ tabId: number; url: string; favIconUrl?: string; widthPx?: number }>;
+      panels: Array<{
+        tabId: number;
+        url: string;
+        title?: string;
+        favIconUrl?: string;
+        widthPx?: number;
+      }>;
       /** Per-workspace main-panel width in CSS pixels. Undefined when the
        * user hasn't dragged the main splitter for this workspace yet —
        * chrome falls back to its default flex sizing in that case. */

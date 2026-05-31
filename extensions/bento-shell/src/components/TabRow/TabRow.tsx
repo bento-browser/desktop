@@ -27,7 +27,8 @@ export interface TabRowProps {
    * its original slot and without an explicit modifier it reads
    * identically to a stationary row. */
   dragging?: boolean;
-  onActivate: (id: number) => void;
+  selected?: boolean;
+  onActivate: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   onClose: (id: number) => void;
   /** Open this tab's URL in the chrome side panel (Bento Spaces M2-PR-3
    * foundation). Tools resolves the URL and tells chrome to reveal +
@@ -46,6 +47,7 @@ function TabRowImpl({
   active,
   removing = false,
   dragging = false,
+  selected = false,
   onActivate,
   onClose,
   onOpenInSidePanel,
@@ -100,6 +102,7 @@ function TabRowImpl({
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
+        (selected ? ' bento-tab-row--selected' : '') +
         (removing ? ' bento-tab-row--removing' : '') +
         (discarded ? ' bento-tab-row--discarded' : '') +
         (dragging ? ' bento-tab-row--dragging' : '')
@@ -127,7 +130,7 @@ function TabRowImpl({
           : undefined
       }
       onDragEnd={draggable ? () => onDragEnd?.(id) : undefined}
-      onClick={() => renaming || removing || dragging || onActivate(id)}
+      onClick={(e) => renaming || removing || dragging || onActivate(id, e)}
       onDoubleClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -233,6 +236,7 @@ export const TabRow = memo(TabRowImpl, (prev, next) => {
   return (
     prev.id === next.id &&
     prev.active === next.active &&
+    (prev.selected ?? false) === (next.selected ?? false) &&
     (prev.removing ?? false) === (next.removing ?? false) &&
     (prev.dragging ?? false) === (next.dragging ?? false) &&
     prev.onContextMenu === next.onContextMenu &&

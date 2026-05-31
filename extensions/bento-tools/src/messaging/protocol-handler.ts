@@ -139,6 +139,55 @@ function pickAvailableWorkspaceAfterDeleting(
   );
 }
 
+function nextDefaultWorkspaceName(ctx: HandlerContext): string {
+  const existing = ctx.workspaces.snapshot().workspaces;
+  const taken = new Set(existing.map((w) => w.name));
+  let idx = existing.length + 1;
+  let name = `Workspace ${idx}`;
+  while (taken.has(name)) {
+    idx += 1;
+    name = `Workspace ${idx}`;
+  }
+  return name;
+}
+
+function uniqueTabIds(ids: readonly unknown[] | undefined): number[] {
+  if (!Array.isArray(ids)) return [];
+  return Array.from(
+    new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id >= 0)),
+  );
+}
+
+async function assignTabsToWorkspace(
+  ctx: HandlerContext,
+  ids: number[],
+  workspaceId: string,
+  options: { cleanup?: boolean } = {},
+): Promise<Set<string>> {
+  if (!ctx.workspaces.has(workspaceId)) return new Set();
+  const sourceWorkspaceIds = new Set<string>();
+  const knownTabs = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+
+  for (const id of uniqueTabIds(ids)) {
+    if (!knownTabs.has(id)) continue;
+    const before = ctx.tabs.snapshot().find((t) => t.id === id);
+    if (!before || before.workspaceId === workspaceId) continue;
+    const fromWorkspaceId = before.workspaceId;
+    ctx.pinnedPanels.removeForTab(id);
+    await ctx.tabs.assignWorkspace(id, workspaceId);
+    if (fromWorkspaceId && fromWorkspaceId !== workspaceId) {
+      sourceWorkspaceIds.add(fromWorkspaceId);
+    }
+  }
+
+  if (options.cleanup !== false) {
+    for (const fromWorkspaceId of sourceWorkspaceIds) {
+      await cleanupWorkspaceAfterTabMove(ctx, -1, fromWorkspaceId, workspaceId);
+    }
+  }
+  return sourceWorkspaceIds;
+}
+
 async function cleanupWorkspaceAfterTabMove(
   ctx: HandlerContext,
   movedTabId: number,
@@ -332,16 +381,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (typeof wid === 'number' && wid >= 0) {
         let picked = ctx.workspaces.assignAvailable(wid);
         if (!picked) {
-          const existing = ctx.workspaces.snapshot().workspaces;
           // Pick "Workspace 2", "Workspace 3", … skipping names already
           // taken so a delete-and-recreate cycle doesn't collide.
-          const taken = new Set(existing.map((w) => w.name));
-          let idx = existing.length + 1;
-          let name = `Workspace ${idx}`;
-          while (taken.has(name)) {
-            idx += 1;
-            name = `Workspace ${idx}`;
-          }
+          const name = nextDefaultWorkspaceName(ctx);
           const ws = ctx.workspaces.create({ name }, wid);
           picked = ws.id;
         }
@@ -421,6 +463,36 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         await ctx.tabs.assignWorkspace(action.id, action.workspaceId);
         if (fromWorkspaceId && fromWorkspaceId !== action.workspaceId) {
           await cleanupWorkspaceAfterTabMove(ctx, action.id, fromWorkspaceId, action.workspaceId);
+        }
+      })();
+      return;
+    case 'tabs/assignWorkspace':
+      void assignTabsToWorkspace(ctx, action.ids, action.workspaceId);
+      return;
+    case 'tabs/moveToNewWorkspace':
+      void (async () => {
+        const ids = uniqueTabIds(action.ids);
+        if (ids.length === 0) return;
+        const knownTabs = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+        const movableIds = ids.filter((id) => knownTabs.has(id));
+        if (movableIds.length === 0) return;
+        const requestedName = action.name?.trim();
+        const ws = ctx.workspaces.create(
+          {
+            name:
+              requestedName && requestedName.length > 0
+                ? requestedName
+                : nextDefaultWorkspaceName(ctx),
+          },
+          ctx.sourceWindowId,
+          { activate: false },
+        );
+        const sourceWorkspaceIds = await assignTabsToWorkspace(ctx, movableIds, ws.id, {
+          cleanup: false,
+        });
+        ctx.workspaces.activate(ws.id, ctx.sourceWindowId);
+        for (const fromWorkspaceId of sourceWorkspaceIds) {
+          await cleanupWorkspaceAfterTabMove(ctx, -1, fromWorkspaceId, ws.id);
         }
       })();
       return;

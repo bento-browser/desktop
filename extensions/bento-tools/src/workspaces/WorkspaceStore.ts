@@ -121,6 +121,7 @@ export class WorkspaceStore {
   create(
     input: { name: string; themeId?: string; icon?: string },
     windowId?: number | null,
+    options: { activate?: boolean } = {},
   ): Workspace {
     const w: Workspace = {
       id: makeId(),
@@ -131,6 +132,10 @@ export class WorkspaceStore {
     };
     this.#workspaces.set(w.id, w);
     this.#enqueue({ kind: 'created', workspace: w });
+    if (options.activate === false) {
+      this.#schedulePersist();
+      return w;
+    }
     // Newly created workspaces auto-activate so the user immediately lands
     // in the workspace they just made (matches the user's "I created this
     // for a reason" intent). Per-window scoping: when the request carried

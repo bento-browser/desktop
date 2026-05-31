@@ -122,10 +122,23 @@ export function App() {
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
-  const openSidebarContextMenu = (event: React.MouseEvent, tabId: number | null) => {
+  const openSidebarContextMenu = (
+    event: React.MouseEvent,
+    tabId: number | null,
+    selectedTabIds: number[] = [],
+  ) => {
     event.preventDefault();
     const items: SidebarMenuItem[] = [{ id: 'new-tab', label: 'New tab' }];
     const tab = tabId !== null ? tabsById[tabId] : null;
+    const targetTabIds =
+      tabId === null
+        ? []
+        : Array.from(
+            new Set(
+              (selectedTabIds.length > 0 ? selectedTabIds : [tabId]).filter((id) => tabsById[id]),
+            ),
+          );
+    const isBatch = targetTabIds.length > 1;
     if (tabId !== null) {
       const panelIds = tab?.workspaceId ? panelIdsByWorkspace.get(tab.workspaceId) : undefined;
       const normalTabCount = tab
@@ -143,40 +156,54 @@ export function App() {
         return {
           id: `move-to-workspace:${workspaceId}`,
           label: workspace?.name ?? 'Untitled workspace',
-          isDisabled: tab?.workspaceId === workspaceId,
+          isDisabled: targetTabIds.every((id) => tabsById[id]?.workspaceId === workspaceId),
         };
       });
-      items.push(
-        { id: 'sep-tab-actions', kind: 'separator' },
-        { id: 'reload-tab', label: 'Reload tab' },
-        { id: 'toggle-pin', label: tab?.pinned ? 'Unpin tab' : 'Pin tab' },
-      );
-      if (normalTabCount > 1) {
-        items.push({ id: 'open-in-side-panel', label: 'Open in side panel' });
+      items.push({ id: 'sep-tab-actions', kind: 'separator' });
+      if (isBatch) {
+        items.push({
+          id: 'move-selected-to-new-workspace',
+          label: `Move ${targetTabIds.length} tabs to new workspace`,
+        });
+      } else {
+        items.push(
+          { id: 'reload-tab', label: 'Reload tab' },
+          { id: 'toggle-pin', label: tab?.pinned ? 'Unpin tab' : 'Pin tab' },
+        );
+        if (normalTabCount > 1) {
+          items.push({ id: 'open-in-side-panel', label: 'Open in side panel' });
+        }
       }
       if (workspaceItems.length > 0) {
         items.push({
           id: 'move-to-workspace',
-          label: 'Move to workspace',
+          label: isBatch ? 'Move selected tabs to workspace' : 'Move to workspace',
           items: workspaceItems,
         });
       }
-      items.push(
-        { id: 'sep-close-tab', kind: 'separator' },
-        { id: 'close-tab', label: 'Close tab' },
-      );
+      if (!isBatch) {
+        items.push(
+          { id: 'sep-close-tab', kind: 'separator' },
+          { id: 'close-tab', label: 'Close tab' },
+        );
+      }
     }
     document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
       anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
       tabId,
+      tabIds: targetTabIds,
       items,
     })}`;
   };
   const onRootContextMenu = (event: React.MouseEvent) => {
     openSidebarContextMenu(event, null);
   };
-  const onTabContextMenu = (id: number, event: React.MouseEvent<HTMLDivElement>) => {
-    openSidebarContextMenu(event, id);
+  const onTabContextMenu = (
+    id: number,
+    event: React.MouseEvent<HTMLDivElement>,
+    selectedIds: number[],
+  ) => {
+    openSidebarContextMenu(event, id, selectedIds);
   };
   const onReorder = (id: number, anchorId: number, before: boolean) => {
     // Title-IPC to chrome rather than browser.tabs.move via bento-tools.
@@ -274,7 +301,12 @@ export function App() {
   }, [sidebarCollapsed]);
 
   return (
-    <Column gap="2xs" className="bento-shell-app" onContextMenu={onRootContextMenu}>
+    <Column
+      gap="2xs"
+      className="bento-shell-app"
+      style={{ gap: 0 }}
+      onContextMenu={onRootContextMenu}
+    >
       <Row gap="xs" align="center" className="bento-shell-app__header">
         <WorkspaceSwitcher />
         {!ready && (
