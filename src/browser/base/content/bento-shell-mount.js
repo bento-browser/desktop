@@ -1656,13 +1656,43 @@
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: var(--space-s) !important;
+        gap: var(--space-xs) !important;
         flex: 1 1 auto !important;
         min-height: 0 !important;
+        padding: var(--space-s) !important;
         position: relative !important;
         background: var(--neutral-8) !important;
         border-radius: 0 0 var(--radius-m) var(--radius-m) !important;
         z-index: 1 !important;
+      }
+      .bento-subdivision-chooser__close {
+        position: absolute !important;
+        top: var(--space-2xs) !important;
+        right: var(--space-2xs) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--bento-control-size-sm) !important;
+        height: var(--bento-control-size-sm) !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: var(--radius-s) !important;
+        background: transparent !important;
+        color: var(--neutral-70) !important;
+        cursor: pointer !important;
+      }
+      .bento-subdivision-chooser__close:hover {
+        background: var(--neutral-16) !important;
+        color: var(--neutral-90) !important;
+      }
+      .bento-subdivision-chooser__primary {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--space-xs) !important;
+        flex-wrap: wrap !important;
+        max-width: 100% !important;
       }
       .bento-subdivision-chooser__btn {
         padding: var(--space-xs) var(--space-m) !important;
@@ -1677,6 +1707,64 @@
       }
       .bento-subdivision-chooser__btn:hover {
         background: var(--neutral-16) !important;
+      }
+      .bento-subdivision-chooser__saved {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: var(--space-2xs) !important;
+        max-width: min(100%, 34rem) !important;
+        max-height: 45% !important;
+        overflow: auto !important;
+      }
+      .bento-subdivision-chooser__saved-title {
+        color: var(--neutral-60) !important;
+        font-size: var(--font-size-xs) !important;
+        line-height: 1 !important;
+      }
+      .bento-subdivision-chooser__saved-grid {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)) !important;
+        gap: var(--space-2xs) !important;
+        width: 100% !important;
+      }
+      .bento-subdivision-chooser__saved-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: var(--space-2xs) !important;
+        min-width: 0 !important;
+        padding: var(--space-2xs) var(--space-xs) !important;
+        border: 1px solid var(--neutral-20) !important;
+        border-radius: var(--radius-s) !important;
+        background: var(--neutral-5) !important;
+        color: var(--neutral-80) !important;
+        cursor: pointer !important;
+        font-size: var(--font-size-xs) !important;
+        font-family: inherit !important;
+        line-height: 1.2 !important;
+      }
+      .bento-subdivision-chooser__saved-btn:hover {
+        background: var(--neutral-16) !important;
+      }
+      .bento-subdivision-chooser__saved-icon {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--bento-control-size-sm) !important;
+        height: var(--bento-control-size-sm) !important;
+        border-radius: var(--radius-xs) !important;
+        flex: 0 0 auto !important;
+        background: var(--neutral-18) !important;
+        object-fit: cover !important;
+        color: var(--neutral-70) !important;
+        font-size: var(--font-size-xs) !important;
+        font-weight: 600 !important;
+      }
+      .bento-subdivision-chooser__saved-label {
+        min-width: 0 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
       }
       #bento-side-panel-host > .bento-layout-vsplitter,
       #bento-side-panel-host > .bento-layout-hsplitter {
@@ -3941,13 +4029,29 @@
     });
   }
 
-  function createSubdivisionChooser(parentTabId, chooserId) {
-    const HTML_NS = 'http://www.w3.org/1999/xhtml';
+  function createSubdivisionChooser(parentTabId, chooserId, groupId) {
     const container = document.createXULElement('vbox');
     container.className = 'bento-subdivision-chooser';
     container.setAttribute('flex', '1');
 
+    if (groupId) {
+      const closeBtn = document.createElementNS(HTML_NS, 'button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'bento-subdivision-chooser__close';
+      closeBtn.title = 'Close subdivision';
+      closeBtn.setAttribute('aria-label', 'Close subdivision');
+      closeBtn.appendChild(makeIcon(ICONS.x, 14));
+      closeBtn.addEventListener('click', () => {
+        dispatchShellAction({ type: 'panelLayout/removeVerticalGroup', groupId });
+      });
+      container.appendChild(closeBtn);
+    }
+
+    const primary = document.createElementNS(HTML_NS, 'div');
+    primary.className = 'bento-subdivision-chooser__primary';
+
     const singleBtn = document.createElementNS(HTML_NS, 'button');
+    singleBtn.type = 'button';
     singleBtn.className = 'bento-subdivision-chooser__btn';
     singleBtn.textContent = 'Full panel';
     singleBtn.addEventListener('click', () => {
@@ -3960,6 +4064,7 @@
     });
 
     const dualBtn = document.createElementNS(HTML_NS, 'button');
+    dualBtn.type = 'button';
     dualBtn.className = 'bento-subdivision-chooser__btn';
     dualBtn.textContent = 'Split panels';
     dualBtn.addEventListener('click', () => {
@@ -3971,9 +4076,72 @@
       });
     });
 
-    container.appendChild(singleBtn);
-    container.appendChild(dualBtn);
+    primary.appendChild(singleBtn);
+    primary.appendChild(dualBtn);
+    container.appendChild(primary);
+
+    const saved = currentSavedPanelItems.slice(0, 12).filter((item) => item?.url);
+    if (saved.length > 0) {
+      const savedWrap = document.createElementNS(HTML_NS, 'div');
+      savedWrap.className = 'bento-subdivision-chooser__saved';
+
+      const title = document.createElementNS(HTML_NS, 'div');
+      title.className = 'bento-subdivision-chooser__saved-title';
+      title.textContent = 'Saved panels';
+      savedWrap.appendChild(title);
+
+      const grid = document.createElementNS(HTML_NS, 'div');
+      grid.className = 'bento-subdivision-chooser__saved-grid';
+      for (const item of saved) {
+        const btn = document.createElementNS(HTML_NS, 'button');
+        btn.type = 'button';
+        btn.className = 'bento-subdivision-chooser__saved-btn';
+        const label = (item.title || item.url || 'Saved panel').trim();
+        btn.title = label;
+        btn.setAttribute('aria-label', 'Open saved panel: ' + label);
+        if (item.favIconUrl) {
+          const img = document.createElementNS(HTML_NS, 'img');
+          img.className = 'bento-subdivision-chooser__saved-icon';
+          img.src = item.favIconUrl;
+          img.alt = '';
+          img.addEventListener(
+            'error',
+            () => {
+              img.replaceWith(createSavedPanelPlaceholder(label));
+            },
+            { once: true },
+          );
+          btn.appendChild(img);
+        } else {
+          btn.appendChild(createSavedPanelPlaceholder(label));
+        }
+        const text = document.createElementNS(HTML_NS, 'span');
+        text.className = 'bento-subdivision-chooser__saved-label';
+        text.textContent = label;
+        btn.appendChild(text);
+        btn.addEventListener('click', () => {
+          dispatchShellAction({
+            type: 'panelLayout/fillChooser',
+            chooserId,
+            mode: 'single',
+            urls: [item.url],
+          });
+        });
+        grid.appendChild(btn);
+      }
+      savedWrap.appendChild(grid);
+      container.appendChild(savedWrap);
+    }
     return container;
+  }
+
+  function createSavedPanelPlaceholder(label) {
+    const placeholder = document.createElementNS(HTML_NS, 'span');
+    placeholder.className = 'bento-subdivision-chooser__saved-icon';
+    placeholder.setAttribute('aria-hidden', 'true');
+    const first = (label || '').trim().charAt(0).toUpperCase();
+    placeholder.textContent = first || 'B';
+    return placeholder;
   }
 
   // ── In-place subdivision ──
@@ -4425,7 +4593,7 @@
       }
 
       if (!sub.subPanels || sub.subPanels.length === 0) {
-        const chooser = createSubdivisionChooser(parentTabId, sub.chooserId);
+        const chooser = createSubdivisionChooser(parentTabId, sub.chooserId, sub.id);
         setSubdivisionFlex(chooser, isNewSubdivision ? '0 1 0' : '1 1 0');
         if (isNewSubdivision) {
           chooser.style.opacity = '0';
@@ -8373,13 +8541,17 @@
   }
 
   // Add-panel trailer at the end of the strip. Idempotent — created on
-  // first call, just re-appended to keep it visually after every panel.
+  // first call, then kept mounted in place. Flat-layout geometry and the
+  // order:999 rule keep it visually after every panel without reparenting.
   // Lives inside #tabbrowser-tabpanels.bento-split-active as a flex
   // child sibling of the panel containers; does NOT register in
   // splitViewPanels (Firefox's split-view APIs would treat it as a
   // panel and try to wrap a <browser> around it). The order:999 inline
   // CSS keeps it at the visual end regardless of where Firefox's
-  // append puts it in DOM order.
+  // append puts it in DOM order. Do not move the existing trailer between
+  // reconciles: it hosts a remote extension <browser>, and reparenting that
+  // iframe can visibly blink the Add panels cluster when subdivision fills
+  // add new panel nodes.
   //
   // The visible "+" button and the per-saved-bookmark favicon buttons
   // are rendered by a React app inside a moz-extension <browser>
@@ -8456,10 +8628,12 @@
       // via document.getElementById, which silently returns null when
       // the element is still detached from the document.
     }
-    // Append to tabpanels as the LAST child every reconcile. order:999
-    // (in CSS) keeps it visually trailing regardless of DOM order.
+    // Append only when detached. The flat-layout renderer positions the
+    // trailer from computed geometry, and CSS order:999 is enough for any
+    // brief flex-layout paint before absolute rects land. Re-appending an
+    // already-mounted trailer reparents the remote iframe and can flicker.
     const wasDetached = trailer.parentNode !== tabpanels;
-    if (wasDetached || tabpanels.lastElementChild !== trailer) {
+    if (wasDetached) {
       tabpanels.appendChild(trailer);
     }
     // First-mount-only: now that the trailer + its inner <browser> are
@@ -9021,6 +9195,7 @@
         choosers.push({
           id: node.id,
           ownerTabId: Number(node.ownerTabId),
+          groupId: rootNodeId,
           rect,
         });
         return;
@@ -9394,7 +9569,11 @@
       host.appendChild(splitter);
     }
     for (const chooserInfo of geometry.choosers || []) {
-      const chooser = createSubdivisionChooser(chooserInfo.ownerTabId, chooserInfo.id);
+      const chooser = createSubdivisionChooser(
+        chooserInfo.ownerTabId,
+        chooserInfo.id,
+        chooserInfo.groupId,
+      );
       chooser.classList.add('bento-layout-chooser');
       chooser._bentoChooserId = chooserInfo.id;
       chooser.dataset.bentoChooserId = chooserInfo.id;
@@ -10967,9 +11146,9 @@
     // split-view layout and the flat logical-layout positioning mode.
     tabpanels.classList.add('bento-split-active', 'bento-flat-panel-layout');
 
-    // Ensure the Add-panel trailer is the LAST child of tabpanels.
-    // Idempotent — created once, re-appended on every reconcile so
-    // newly-inserted panel containers don't end up after it visually.
+    // Ensure the Add-panel trailer exists. It must stay mounted once created;
+    // flat-layout geometry keeps it visually trailing without reparenting its
+    // remote iframe on every panel/layout mutation.
     ensureAddPanelTrailer(tabpanels);
 
     currentPanelLayoutGeometry = computePanelLayoutGeometry(currentPanelLayout, panels, tabpanels);
@@ -12256,6 +12435,21 @@
       } else {
         currentSavedPanelCount = 0;
       }
+      if (Array.isArray(decoded.savedPanelItems)) {
+        currentSavedPanelItems = decoded.savedPanelItems
+          .map((item) => ({
+            id: String(item?.id ?? item?.url ?? ''),
+            title: String(item?.title ?? ''),
+            url: String(item?.url ?? ''),
+            favIconUrl:
+              typeof item?.favIconUrl === 'string' && item.favIconUrl.length > 0
+                ? item.favIconUrl
+                : undefined,
+          }))
+          .filter((item) => item.url.length > 0);
+      } else {
+        currentSavedPanelItems = [];
+      }
       applyTrailerWidth(currentSavedPanelCount);
       currentSubdivisions = new Map();
       // Per-workspace panel-strip scroll position. Capture into the
@@ -12645,6 +12839,7 @@
   // Add-panel trailer's flex-basis via applyTrailerWidth so the
   // inline favicon row has room to grow.
   let currentSavedPanelCount = 0;
+  let currentSavedPanelItems = [];
   let currentSubdivisions = new Map();
   const pendingPromotedSubPanelEnterSkips = new Set();
   const pendingPromotedSubPanelContentPreserves = new Set();
@@ -13211,13 +13406,17 @@
   function attachResizeRepaintPoke() {
     let timer = null;
     window.addEventListener('resize', () => {
-      // Re-sync inter-panel splitter positions immediately so they
-      // track the live resize. Cheap (just style writes), runs at
-      // the resize event's native rate.
+      // Recompute flat panel rects first so absolute-positioned panels
+      // shed stale inline heights when the window shrinks. Splitters and
+      // chooser overlays are synced by the live-layout refresh path.
       try {
-        syncInterPanelSplitters();
+        if (!refreshFlatPanelLayoutFromLiveState()) {
+          syncInterPanelSplitters();
+          updateFlatLayoutOverlayPositions(window.gBrowser?.tabpanels, currentPanelLayoutGeometry);
+          updateStripScrollbar();
+        }
       } catch (err) {
-        console.warn('[bento-shell-mount] resize splitter sync failed:', err);
+        console.warn('[bento-shell-mount] resize layout sync failed:', err);
       }
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => {

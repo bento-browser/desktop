@@ -77,6 +77,9 @@ Panels support the core Bento workflow:
 - close or remove a panel without losing the rest of the workspace; closing
   panels fade out without resizing neighboring panels during the exit animation,
   then plain top-level panel slots glide closed when the panel is removed.
+- close the last regular tab in a workspace while panels remain; Bento promotes
+  the leftmost panel into the main content slot instead of leaving the workspace
+  blank.
 - restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
   regular tab, using the configured default new-panel width.
 
@@ -95,6 +98,9 @@ split within the same area. Panels created inside a subdivision appear at the
 subdivision's assigned size immediately, rather than starting as default-width
 root panels. After creating a vertical group, the top panel can also be split
 so the workspace can form a single shared 2x2 grid instead of separate columns.
+The empty subdivision chooser offers `Full panel` and `Split panels` side by
+side, can open saved-panel bookmarks directly into the subdivision, and can be
+closed without first creating a temporary panel.
 If one panel in a bottom split is closed, the surviving bottom panel can be
 split again in the same row. Splitting or subdividing a panel preserves the
 current panel-strip position rather than auto-scrolling away from the user's
@@ -104,6 +110,8 @@ promotes that one panel into the top-level strip, and dragging a top-level panel
 onto a one-panel subdivision row adds it beside that panel. A panel can also be
 dragged into an unconfigured subdivision area to fill that area as a full panel.
 Rows that already contain two panels do not accept another dragged panel.
+When the browser window is resized, panels resize to the visible workspace
+height instead of retaining stale dimensions from the previous window size.
 The intended layout primitives are:
 
 - horizontal splits for wide and ultrawide displays;

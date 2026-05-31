@@ -394,8 +394,10 @@ export class PanelStore {
   removeVerticalGroup(workspaceId: string, groupId: string): number[] {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return [];
+    const before = JSON.stringify(layout.root);
     const victims = removeVerticalGroup(layout, groupId);
-    if (victims.length === 0) return [];
+    const changed = before !== JSON.stringify(layout.root);
+    if (!changed) return [];
     for (const victim of victims) {
       if (this.findWorkspacesContainingTab(victim).length === 0) this.#widthByTabId.delete(victim);
       this.#emitPanelRemoved(workspaceId, victim);

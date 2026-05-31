@@ -117,6 +117,19 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
   await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain' });
 }
 
+function shouldCloseTabThroughMainPromotion(ctx: HandlerContext, tabId: number): boolean {
+  const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
+  if (!tab?.active) return false;
+  if (
+    typeof ctx.sourceWindowId === 'number' &&
+    typeof tab.windowId === 'number' &&
+    tab.windowId !== ctx.sourceWindowId
+  ) {
+    return false;
+  }
+  return ctx.panels.findWorkspacesContainingTab(tabId).length === 0;
+}
+
 function pickAvailableWorkspaceAfterDeleting(
   ctx: HandlerContext,
   deletingWorkspaceId: string,
@@ -416,6 +429,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'tab/close':
       {
         void (async () => {
+          if (shouldCloseTabThroughMainPromotion(ctx, action.id)) {
+            await closeMainTabWithPanelPromotion(ctx, action.id);
+            return;
+          }
           await ctx.tabs.markClosing(action.id);
           const affected = ctx.panels.findWorkspacesContainingTab(action.id);
           let delayActualTabRemove = false;

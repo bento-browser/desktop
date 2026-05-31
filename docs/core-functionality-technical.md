@@ -210,6 +210,15 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   must not emit `scrollToPanelTabId`. Break-out is a layout normalization action,
   not a new-panel reveal; emitting an explicit scroll target left-aligns the
   promoted panel and loses the user's current strip context.
+- Closing the active final regular tab while panels remain must route through
+  `closeMainTabWithPanelPromotion`, even when the initiating action is the
+  generic sidebar/command-palette `tab/close`. Promoting only from
+  `browser.tabs.onRemoved` is too late: Firefox can briefly select a still-panel
+  tab as the fallback, chrome reconciles against stale panel payload, and the
+  workspace can stay blank until a workspace switch forces a fresh render.
+  Promote the leftmost panel out of `PanelStore`, clear its panel marker,
+  activate it as the non-panel main tab, emit `panels/sync`, then remove the old
+  main tab with the delayed close path.
 
 ## Shell to chrome bridge
 
@@ -393,6 +402,12 @@ Top-level panel resizing:
   `refreshFlatPanelLayoutFromLiveState` recomputes geometry with the live width
   override, reapplies panel rects, resyncs root splitters, and updates the strip
   scrollbar.
+- Window resize path: `attachResizeRepaintPoke` must call
+  `refreshFlatPanelLayoutFromLiveState`, not only `syncInterPanelSplitters`.
+  Flat layout writes absolute inline heights to each panel; if the browser
+  window shrinks and only splitters are resynced, panels keep their old
+  `height/minHeight/maxHeight` and extend underneath the navigator or beyond the
+  visible Bento window.
 - Working solution: keep the flat-layout computed gap at `var(--space-2xs)`.
   Do not let `.bento-flat-panel-layout` compute `gap: 0`, because geometry reads
   that value and panels will visually touch. The add-panel trailer also needs an
@@ -415,6 +430,12 @@ Add-panel trailer visibility:
   `getTrailerLayoutWidth` fallback. If either is removed, the final root
   splitter and scroll extent can miss the trailer and hide the Add panels button
   cluster.
+- Working solution: keep the existing trailer node mounted once it has been
+  appended to `tabpanels`. Flat-layout geometry and the CSS `order: 999` rule
+  keep it visually trailing without moving it in the DOM. Re-appending an
+  already-mounted trailer reparents its remote `bento-panel-trailer-frame`
+  iframe, which can make the Add panels cluster blink when subdivision fill
+  actions create new panel nodes.
 - Manual verification surface: checklist item 4, create root panels.
 
 Subdivision splitter resizing:
@@ -456,6 +477,16 @@ Chooser fill sizing:
   the default root-panel width. A chooser child is not a new root panel.
   It also must not emit `scrollToPanelTabId`; subdivision fill should preserve
   the user's current strip scroll position.
+- Chooser UI: `createSubdivisionChooser` renders the primary `Full panel` and
+  `Split panels` actions side by side, mirrors saved-panel bookmark options
+  from `panels/sync.savedPanelItems`, and fills the chooser with the clicked
+  saved URL through `panelLayout/fillChooser` in `single` mode. The chooser's
+  close button dispatches `panelLayout/removeVerticalGroup`, which promotes the
+  top child back to root without creating a temporary bottom panel.
+- Empty chooser removal pitfall: `removeVerticalGroup` can validly remove a
+  group with zero bottom victims. `PanelStore.removeVerticalGroup` must persist
+  and sync based on layout mutation, not `victims.length`, otherwise closing an
+  empty subdivision only changes in-memory state and can reappear after restart.
 - Renderer path: subdivision child enter animations are collected during
   reconcile, but run only after `applyPanelLayoutRects` has applied the final
   flat-layout rects. They fade in without width or transform animation so the

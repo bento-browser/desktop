@@ -224,6 +224,7 @@ function ensureConnection(): void {
               stripScrollLeft?: number;
               pinnedTabIdsInWorkspace?: number[];
               savedPanelCount?: number;
+              savedPanelItems?: typeof event.savedPanelItems;
               scrollToPanelTabId?: number;
               layout: typeof event.layout;
               panelStatusByTabId: typeof event.panelStatusByTabId;
@@ -281,6 +282,9 @@ function ensureConnection(): void {
             }
             if (typeof event.savedPanelCount === 'number') {
               payload.savedPanelCount = event.savedPanelCount;
+            }
+            if (Array.isArray(event.savedPanelItems)) {
+              payload.savedPanelItems = event.savedPanelItems;
             }
             if (typeof event.scrollToPanelTabId === 'number') {
               payload.scrollToPanelTabId = event.scrollToPanelTabId;

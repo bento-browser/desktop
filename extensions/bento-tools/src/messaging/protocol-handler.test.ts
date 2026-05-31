@@ -37,6 +37,7 @@ describe('protocol handler panel close', () => {
       },
       tabs: {
         get: vi.fn().mockResolvedValue({ id: 123 }),
+        update: vi.fn().mockResolvedValue({ id: 123 }),
         remove: vi.fn().mockResolvedValue(undefined),
       },
     });
@@ -54,6 +55,37 @@ describe('protocol handler panel close', () => {
     expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 123);
     expect(ctx.syncPanelMarkers).toHaveBeenCalledWith('ws-1');
     expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('promotes the leftmost panel before closing the active final sidebar tab', async () => {
+    const ctx = createCloseContext({
+      tabs: {
+        markClosing: vi.fn().mockResolvedValue(undefined),
+        snapshot: vi.fn().mockReturnValue([
+          { id: 10, windowId: 1, workspaceId: 'ws-1', active: true },
+          { id: 20, windowId: 1, workspaceId: 'ws-1', active: false },
+        ]),
+        isClosing: vi.fn().mockReturnValue(false),
+      } as unknown as HandlerContext['tabs'],
+      panels: {
+        findWorkspacesContainingTab: vi.fn((id: number) => (id === 20 ? ['ws-1'] : [])),
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+        getPanels: vi.fn().mockReturnValue([20]),
+        remove: vi.fn().mockReturnValue(true),
+        insertAt: vi.fn(),
+      } as unknown as HandlerContext['panels'],
+    });
+
+    handle({ type: 'tab/close', id: 10 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(20, { active: true });
+    });
+    expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 20);
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith(10);
+    });
   });
 });
 

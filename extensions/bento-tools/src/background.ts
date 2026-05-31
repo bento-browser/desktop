@@ -228,7 +228,8 @@ async function emitPanelsSync(
   // to size the Add-panel trailer's inline favicon row. Always include
   // when the store has initialized (zero counts matter — chrome shrinks
   // the trailer back to its base width when the user empties the folder).
-  const savedPanelCount = savedPanels.list().length;
+  const savedPanelItems = savedPanels.list();
+  const savedPanelCount = savedPanelItems.length;
 
   const event: {
     type: 'panels/sync';
@@ -238,6 +239,7 @@ async function emitPanelsSync(
     stripScrollLeft?: number;
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
+    savedPanelItems?: typeof savedPanelItems;
     scrollToPanelTabId?: number;
     layout: ReturnType<typeof panels.getPanelLayoutSync>;
     panelStatusByTabId: ReturnType<typeof panels.getPanelStatusMap>;
@@ -246,6 +248,7 @@ async function emitPanelsSync(
     workspaceId,
     panels: valid,
     savedPanelCount,
+    savedPanelItems,
     layout: panels.getPanelLayoutSync(workspaceId),
     panelStatusByTabId: panels.getPanelStatusMap(workspaceId),
   };

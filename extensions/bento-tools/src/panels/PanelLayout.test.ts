@@ -138,6 +138,17 @@ describe('PanelLayout', () => {
     expect(getRootNodeIds(layout)).toEqual(['panel:45', 'panel:46']);
   });
 
+  it('removes an unfilled subdivision chooser and promotes the top panel', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 49);
+    subdividePanel(layout, 49, { groupId: 'v49', chooserId: 'c49' });
+
+    expect(removeVerticalGroup(layout, 'v49')).toEqual([]);
+    expect(getVisiblePanelIds(layout)).toEqual([49]);
+    expect(getPanelLayoutStatus(layout, 49)).toBe('root-panel');
+    expect(getRootNodeIds(layout)).toEqual(['panel:49']);
+  });
+
   it('rejects malformed root reorder payloads', () => {
     const layout = emptyLayout();
     addPanel(layout, 60);

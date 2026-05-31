@@ -56,11 +56,14 @@ items are easy to scan.
 
 5. **Subdivide root panel**
    - Open panel kebab menu, then choose `Subdivide panel`.
-   - Expected: chooser appears below the original panel; menu no longer shows `Subdivide panel` for that top panel.
+   - Expected: chooser appears below the original panel; `Full panel` and `Split panels` appear side by side; saved-panel bookmarks are available as chooser options; the chooser can be closed with the top-right close button; menu no longer shows `Subdivide panel` for that top panel.
    - Result: Pass. ✅ Complete
    - Verified: User confirmed item 5 is working.
    - Follow-up request: Splitting or subdividing a panel should preserve the current panel-strip scroll position instead of auto-scrolling.
    - Fix status: Ready for re-verification. Subdivision-created child panels no longer request explicit scroll targets, and generic new-panel auto-scroll now ignores non-root subdivision children.
+   - Follow-up request: The empty subdivision chooser should lay out `Full panel` and `Split panels` side by side, show saved-panel bookmark options, and expose a top-right close button so the subdivision can be closed without creating a temporary panel.
+   - Follow-up fix status: Ready for re-verification. The chooser now renders side-by-side primary actions, saved-panel URL options from the `panels/sync` saved-panel snapshot, and a close button that removes the empty vertical group while preserving the top panel as a root panel.
+   - Follow-up verified: User confirmed the subdivision chooser buttons, saved-panel options, and close button are working. ✅ Complete
 
 6. **Fill chooser as single panel**
    - Click chooser `Full panel`.
@@ -183,6 +186,8 @@ items are easy to scan.
     - Verified: User confirmed resizing panels is now working and other panel widths are retained.
     - Fix status: Confirmed. Live layout recompute preserves existing live panel widths instead of replaying stale payload widths for panels not being actively resized.
 
+17a. **Browser window resize height** - Resize the Bento browser window shorter while panels are visible. - Expected: panel frames stay inside the visible browser workspace and do not extend underneath the panel navigator or beyond the window. - Result: Pass. ✅ Complete - Notes: User reported panels can stretch beyond the height of the Bento Browser window after resizing the window. - Verified: User confirmed panels stay within the visible browser workspace after window resize. ✅ Complete - Fix status: Confirmed. The window resize handler now refreshes flat panel layout geometry before syncing splitters, so absolute panel heights are recomputed from the current tabpanels viewport.
+
 ## Navigator And Reorder
 
 18. **Navigator grouped icon**
@@ -257,6 +262,9 @@ items are easy to scan.
     - Verified: User confirmed saved panel buttons now open panels with the correct URL when activated from the keyboard.
     - Verified: User confirmed trailer focus/add appears to be working.
     - Fix status: Confirmed. Explicit panel-add scroll targets now also become the active/focused cycle target.
+    - Follow-up failure: User reported the trailing Add panels button cluster flickers when choosing `Split panels` or a saved-panel option from the subdivision chooser.
+    - Follow-up fix status: Ready for re-verification. Chrome now keeps the existing Add-panel trailer mounted during panel/layout reconciles instead of re-appending its remote iframe whenever subdivision fills add new panel nodes.
+    - Follow-up verified: User confirmed the trailing Add panels cluster no longer flickers after subdivision chooser actions. ✅ Complete
 
 ## Workspace And Session
 
@@ -274,6 +282,8 @@ items are easy to scan.
     - Follow-up failure: Resizing the main content slot in one workspace also resizes it in other workspaces.
     - Follow-up verified: User confirmed workspace-scoped main content widths are working. ✅ Complete
     - Fix status: Confirmed. `panel/setMainWidth` now persists the main content width per active workspace, and chrome clears the carried main width when a workspace has no saved `mainWidthPx`.
+
+24a. **Close final tab with panels** - Create one regular workspace tab and at least one panel, then close the regular tab from the sidebar close button or command palette. - Expected: the panel adjacent to the main content slot is promoted into the main content slot immediately; the workspace does not go blank and does not require a workspace switch to repaint. - Result: Pass. ✅ Complete - Notes: User reported closing the final tab while panels remain promotes the adjacent panel only after switching workspaces away and back; the current workspace stays blank. - Verified: User confirmed closing the final tab while panels remain promotes a panel immediately and no longer blanks the workspace. ✅ Complete - Fix status: Confirmed. Generic active-tab `tab/close` actions now use the main-tab promotion path before removing the final regular tab, so the leftmost panel is promoted while the old main tab is still available and chrome does not reconcile through a stale panel fallback.
 
 25. **Strip scroll restore**
     - Create enough panels to overflow horizontally.

@@ -614,6 +614,9 @@ export type Event =
        * has no info to share (boot path before SavedPanelsStore.init
        * has finished) and chrome should treat as zero. */
       savedPanelCount?: number;
+      /** Snapshot of saved-panel bookmark options for chrome-owned surfaces
+       * outside the React shell iframe, such as the subdivision chooser. */
+      savedPanelItems?: SavedPanelEntry[];
       /** One-shot chrome scroll target for a panel that was just created
        * by an explicit user action. Used when panel creation races chrome
        * tab resolution: chrome retries until the panel element exists. */
