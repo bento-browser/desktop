@@ -207,6 +207,8 @@ items are easy to scan.
     - Follow-up re-test: Fail. User observed an extra favicon button flashing before the main content slot favicon when subdividing a panel or when removing a subdivision so the vertical group becomes a normal panel.
     - Follow-up verified: User confirmed subdivide/remove no longer flashes an extra navigator icon before the main content slot favicon. ✅ Complete
     - Follow-up fix status: Confirmed. Navigator button entry states now fade opacity only, navigator buttons use fixed border-box sizing, and stale replaced root icons are removed synchronously before desired buttons are reordered so structural split/subdivide/remove updates do not flash an extra icon ahead of the main slot.
+    - Follow-up request: Make panel navigator buttons match the small sidebar footer controls and align the navigator with the sidebar footer padding.
+    - Follow-up fix status: Ready for re-verification. Navigator buttons now use the same 24px compact control token as sidebar footer `IconButton size="sm"` controls, the navigator bar uses matching `space-2xs` padding, and grouped favicon cells are reduced to fit the fixed smaller slot without changing button dimensions.
 
 19. **Header drag reorder**
     - Drag a root panel header.

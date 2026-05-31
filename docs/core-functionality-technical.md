@@ -580,6 +580,13 @@ Top-row splits and 2x2 groups:
   differences do not change the outer slot. Dimensional nav animation makes the
   navigator row jump during those layout operations even when favicon metadata is
   patched in place.
+- Panel navigator button size should track the sidebar footer controls:
+  `--bento-panel-nav-button-size` uses `--bento-control-size-sm`, matching Tale
+  UI `IconButton size="sm"`, and `#bento-panel-nav` uses the same `space-2xs`
+  block/inline padding as `.bento-shell-app__footer`. Keep grouped favicon cells
+  small enough to fit inside that fixed 24px slot; increasing grouped favicon
+  dimensions without changing the slot causes the navigator to overflow or
+  drift out of alignment with the sidebar footer.
 
 ### Flat layout pitfalls
 

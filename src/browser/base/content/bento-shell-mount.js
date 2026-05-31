@@ -328,8 +328,8 @@
         flex-direction: column;
         flex: 1 1 0%;
         min-width: 0;
-        --bento-panel-nav-button-size: var(--space-l);
-        --bento-panel-nav-favicon-size: var(--bento-control-size-sm);
+        --bento-panel-nav-button-size: var(--bento-control-size-sm);
+        --bento-panel-nav-favicon-size: var(--bento-icon-size-sm);
         --bento-panel-nav-height: calc(
           var(--bento-panel-nav-button-size) + var(--space-xs)
         );
@@ -488,7 +488,8 @@
         align-items: center;
         justify-content: center;
         gap: var(--space-2xs);
-        padding: 0 0 var(--space-xs) 0;
+        padding-block: var(--space-2xs);
+        padding-inline: var(--space-2xs);
         box-sizing: border-box;
         min-height: var(--bento-panel-nav-height);
       }
@@ -530,8 +531,8 @@
         align-items: center;
         gap: var(--space-3xs);
         overflow-x: auto;
-        padding-block-start: var(--space-4xs);
-        margin-block-start: calc(-1 * var(--space-4xs));
+        padding-block-start: 0;
+        margin-block-start: 0;
         scrollbar-width: none;
       }
       .bento-panel-nav__list::-webkit-scrollbar {
@@ -6703,7 +6704,7 @@
   }
 
   function getGroupedNavFaviconSize(rows) {
-    return rows.some((row) => row.length > 1) ? 9 : 12;
+    return rows.length > 1 || rows.some((row) => row.length > 1) ? 8 : 14;
   }
 
   function makeGroupedNavImage(url, faviconSize) {
