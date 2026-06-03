@@ -121,6 +121,26 @@ Current persistence is version 5. It stores URL-backed `panelKey` entries plus
 the layout tree. Panel keys are derived from visible layout order when writing
 so URLs can be restored to fresh tab ids on next launch.
 
+Backup export/import uses schema v2 in
+`extensions/bento-tools/src/backup/BackupStore.ts`,
+`ImportExecutor.ts`, and `ExportSchema.ts`. A workspace export must include the
+same panel state that `PanelStore` persists for restart:
+
+- `panels[]` with durable `panelKey`, URL, and root panel `widthPx`;
+- `panelLayout` with panel keys instead of tab ids, preserving root order,
+  vertical groups, horizontal split groups, chooser nodes, and clamped ratios;
+- `mainWidthPx` for the workspace-scoped main content slot width;
+- `stripScrollLeft` for the workspace-scoped panel-strip scroll position;
+- pinned panel references by `panelKey` with URL fallback.
+
+Import creates fresh tabs, maps exported panel keys to the new tab ids, restores
+the persisted layout tree through `PanelStore.restorePersistedLayout`, and then
+applies main width, strip scroll, panel widths, and pinned-panel bindings to the
+new workspace. Do not export or import runtime tab ids; they are not durable
+across profiles or sessions. Do not treat `panelLayout` alone as the complete
+layout snapshot; workspace-level main width and strip scroll are separate
+`PanelStore` state and must travel with the backup payload.
+
 Panel session markers live in `extensions/bento-tools/src/panels/SessionMarker.ts`.
 They use `browser.sessions.setTabValue` with workspace id and restore location
 so a closed panel can be restored by Firefox's closed-tab flow and then

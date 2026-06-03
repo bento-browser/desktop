@@ -335,6 +335,14 @@ items are easy to scan.
     - Export current setup.
     - Import into a clean or disposable profile/workspace.
     - Expected: panels, `panelLayout`, widths, and pinned panel refs restore.
+    - Follow-up audit: Export/import already preserved panel keys, layout tree
+      order, subdivisions, split-panel ratios, panel widths, and pinned panel
+      key remapping. It was missing workspace-scoped main content width and
+      panel-strip scroll position.
+    - Follow-up fix status: Ready for re-verification. Schema v2 now includes
+      optional `mainWidthPx` and `stripScrollLeft`; export writes them from
+      `PanelStore`, import restores them to the newly created workspace, and
+      tool tests cover nested split/subdivision import/export.
 
 31. **Settings import preflight**
     - Import same backup through Settings UI.

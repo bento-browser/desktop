@@ -126,7 +126,7 @@ export class BackupStore {
         }
       }
 
-      workspaces.push({
+      const exportedWorkspace: BentoExportSchema['workspaces'][number] = {
         id: ws.id,
         name: ws.name,
         themeId: ws.themeId,
@@ -136,7 +136,20 @@ export class BackupStore {
         panels,
         panelLayout: panelSnapshot.layout,
         pinnedPanels,
-      });
+      };
+      const mainWidthPx = this.#ctx.panels.getMainWidth(ws.id);
+      if (typeof mainWidthPx === 'number' && Number.isFinite(mainWidthPx) && mainWidthPx > 0) {
+        exportedWorkspace.mainWidthPx = mainWidthPx;
+      }
+      const stripScrollLeft = this.#ctx.panels.getStripScroll(ws.id);
+      if (
+        typeof stripScrollLeft === 'number' &&
+        Number.isFinite(stripScrollLeft) &&
+        stripScrollLeft >= 0
+      ) {
+        exportedWorkspace.stripScrollLeft = stripScrollLeft;
+      }
+      workspaces.push(exportedWorkspace);
     }
 
     const savedPanelItems = this.#ctx.savedPanels.list();

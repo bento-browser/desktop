@@ -38,18 +38,45 @@ export function validateExportSchema(raw: unknown): BentoExportSchema | null {
     for (const panel of ws.panels) {
       if (!panel || typeof panel !== 'object') return null;
       if (typeof panel.url !== 'string' || !isSafeUrl(panel.url)) return null;
+      const panelRecord = panel as Record<string, unknown>;
       if (
         obj.schemaVersion === 2 &&
         'panelKey' in panel &&
-        typeof (panel as Record<string, unknown>).panelKey !== 'string'
+        typeof panelRecord.panelKey !== 'string'
       )
         return null;
+      if (
+        panelRecord.widthPx !== undefined &&
+        (typeof panelRecord.widthPx !== 'number' ||
+          !Number.isFinite(panelRecord.widthPx) ||
+          panelRecord.widthPx <= 0)
+      ) {
+        return null;
+      }
+    }
+    const workspaceRecord = ws as Record<string, unknown>;
+    if (
+      workspaceRecord.mainWidthPx !== undefined &&
+      (obj.schemaVersion !== 2 ||
+        typeof workspaceRecord.mainWidthPx !== 'number' ||
+        !Number.isFinite(workspaceRecord.mainWidthPx) ||
+        workspaceRecord.mainWidthPx <= 0)
+    ) {
+      return null;
+    }
+    if (
+      workspaceRecord.stripScrollLeft !== undefined &&
+      (obj.schemaVersion !== 2 ||
+        typeof workspaceRecord.stripScrollLeft !== 'number' ||
+        !Number.isFinite(workspaceRecord.stripScrollLeft) ||
+        workspaceRecord.stripScrollLeft < 0)
+    ) {
+      return null;
     }
     if (
       obj.schemaVersion === 2 &&
       'panelLayout' in ws &&
-      (typeof (ws as Record<string, unknown>).panelLayout !== 'object' ||
-        (ws as Record<string, unknown>).panelLayout === null)
+      (typeof workspaceRecord.panelLayout !== 'object' || workspaceRecord.panelLayout === null)
     )
       return null;
 

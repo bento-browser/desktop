@@ -102,6 +102,10 @@ export interface BentoExportSchema {
         splitRatio?: number;
       };
     }>;
+    /** Workspace-scoped main content slot width in CSS pixels. */
+    mainWidthPx?: number;
+    /** Workspace-scoped panel-strip horizontal scroll position in CSS pixels. */
+    stripScrollLeft?: number;
     panelLayout?: PanelLayoutExport;
     pinnedPanels: Array<{
       panelKey?: string;

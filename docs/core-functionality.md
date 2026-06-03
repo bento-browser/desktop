@@ -35,6 +35,11 @@ Workspaces should feel persistent. Closing Bento and reopening it should restore
 the user's active contexts without forcing them to rebuild their browser
 arrangement from memory.
 
+Workspace export/import and automatic backups should preserve the same browsing
+layout state as restart persistence: tabs, panels, panel order, panel widths,
+main content width, subdivisions, split-panel ratios, pinned panel references,
+saved panels, settings, and the panel-strip scroll position.
+
 The sidebar tab list supports multi-selection for workspace organization.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.

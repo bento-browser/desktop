@@ -63,6 +63,20 @@ export async function executeImport(
 
     const ws = ctx.workspaces.create({ name, themeId: wsData.themeId, icon: wsData.icon }, null);
     summary.workspacesCreated++;
+    if (
+      typeof wsData.mainWidthPx === 'number' &&
+      Number.isFinite(wsData.mainWidthPx) &&
+      wsData.mainWidthPx > 0
+    ) {
+      ctx.panels.setMainWidth(ws.id, wsData.mainWidthPx);
+    }
+    if (
+      typeof wsData.stripScrollLeft === 'number' &&
+      Number.isFinite(wsData.stripScrollLeft) &&
+      wsData.stripScrollLeft >= 0
+    ) {
+      ctx.panels.setStripScroll(ws.id, wsData.stripScrollLeft);
+    }
 
     const urlToTabId = new Map<string, number>();
 
