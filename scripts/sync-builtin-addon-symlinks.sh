@@ -25,15 +25,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Locate the deployed app bundle. macOS layout — Linux/Windows would need
-# a different path; out of scope for M1.
-APP_DIST_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/chrome/browser/builtin-addons"
 ENGINE_EXT_ROOT="engine/browser/extensions"
-
-if [ ! -d "$APP_DIST_ROOT" ]; then
-  echo "sync-symlinks: $APP_DIST_ROOT missing — nothing to do (run a full build first)"
-  exit 0
-fi
 
 sync_addon() {
   local addon="$1"
@@ -68,9 +60,6 @@ sync_addon() {
   return 0
 }
 
-sync_addon bento-shell
-sync_addon bento-tools
-
 # Bento chrome content files (registered in patches/chrome-layout/01-bento-
 # shell-mount.patch's jar.mn entry). The first full mach build creates the
 # install-time symlinks under chrome/browser/content/browser/; new chrome
@@ -78,7 +67,6 @@ sync_addon bento-tools
 # wired up the Tale UI token bridge) won't appear in the deployed app
 # until either a full rebuild OR we symlink them ourselves. Same approach
 # the addon-dist sync above uses.
-APP_CHROME_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/chrome/browser/content/browser"
 SRC_CHROME_ROOT="engine/browser/base/content"
 
 sync_chrome_file() {
@@ -108,11 +96,6 @@ sync_chrome_file() {
   return 0
 }
 
-sync_chrome_file bento-chrome-tokens.css
-sync_chrome_file bento-chrome-theme.css
-
-APP_ACTORS_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/Resources/browser/actors"
-BIN_ACTORS_ROOT="engine/obj-aarch64-apple-darwin25.4.0/dist/bin/browser/actors"
 SRC_ACTORS_ROOT="src/browser/actors"
 
 copy_content_actor() {
@@ -148,7 +131,37 @@ copy_content_actor() {
   return 0
 }
 
-copy_content_actor BentoKeyChild.sys.mjs
-copy_content_actor BentoKeyParent.sys.mjs
+found_obj_dir=0
+for OBJ_DIR in engine/obj-*; do
+  [ -d "$OBJ_DIR" ] || continue
+  found_obj_dir=1
+
+  APP_DIST_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/builtin-addons"
+  if [ ! -d "$APP_DIST_ROOT" ]; then
+    echo "sync-symlinks: $APP_DIST_ROOT missing — skipping add-ons"
+  else
+    sync_addon bento-shell
+    sync_addon bento-tools
+  fi
+
+  APP_CHROME_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/content/browser"
+  sync_chrome_file bento-chrome-tokens.css
+  sync_chrome_file bento-chrome-theme.css
+  sync_chrome_file bento-migration-host.css
+  sync_chrome_file bento-migration-host.html
+  sync_chrome_file bento-migration-host.js
+  sync_chrome_file bento-migration-wizard-bridge.css
+  sync_chrome_file bento-shell-mount.js
+
+  APP_ACTORS_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/actors"
+  BIN_ACTORS_ROOT="$OBJ_DIR/dist/bin/browser/actors"
+  copy_content_actor BentoKeyChild.sys.mjs
+  copy_content_actor BentoKeyParent.sys.mjs
+done
+
+if [ "$found_obj_dir" -eq 0 ]; then
+  echo "sync-symlinks: no engine/obj-* directories found — nothing to do (run a full build first)"
+fi
+
 echo "sync-symlinks: finished"
 exit 0

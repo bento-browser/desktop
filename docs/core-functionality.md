@@ -10,6 +10,22 @@ windows and manually arranging them with the operating system, a user can keep a
 task-specific "bento box" inside one browser window and switch to another box
 when their context changes.
 
+On first run with a fresh Bento profile, Bento shows a multi-step onboarding
+experience that uses the "Bento box" motif: workspaces, panels, browser data,
+and setup actions are presented as compartments in the same tray. Browser-data
+import is one state in that onboarding flow. Choosing import opens an embedded
+browser-data import host inside the onboarding experience.
+Regular browser imports stay in-window. Full Mozilla Firefox or Zen Browser
+profile imports use an explicit startup handoff because Firefox's profile-copy
+migrator runs before the new profile is initialized. Choosing the Firefox/Zen
+action restarts into the startup migration wizard scoped to the detected
+Firefox and Zen profiles and preselected on them, rather than a generic picker
+defaulted to another browser. This is separate from the additive Bento backup
+import flow. The first onboarding step also lets the user
+choose Bento's UI theme mode: Light, Dark, or Auto; fresh profiles default to
+Light. The onboarding overlay is not dismissed by clicking the scrim or pressing
+Esc, and the user exits it only from the final step.
+
 ## Core model
 
 ### Workspaces
@@ -54,7 +70,8 @@ covering the window with an opaque overlay.
 Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal
 scrim, but the overlay page itself should not cover the browser with an opaque
-surface.
+surface. The first-run welcome scrim covers the full chrome window, including the
+toolbar and address bar.
 
 ### Main content
 
@@ -195,7 +212,7 @@ The theme system should support:
 
 - curated accessible presets;
 - per-workspace theme selection;
-- light and dark UI modes;
+- light, dark, and Auto UI modes;
 - independent content color-scheme preference where possible;
 - user customization through token-based theme presets.
 

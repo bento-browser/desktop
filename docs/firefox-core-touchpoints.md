@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-05-31
+- Last updated: 2026-06-04
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -63,7 +63,9 @@ Use this shape for new or changed touchpoints:
   - `patches/chrome-layout/**`
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
   visibility and geometry, renders chrome-side menu overlays for sidebar and
-  panel actions, and exposes the chrome-side container behavior that extension
+  panel actions, mounts a first-run welcome toolbar scrim as a top-level
+  `mainPopupSet` panel so native toolbar/urlbar controls do not paint above the
+  welcome scrim, and exposes the chrome-side container behavior that extension
   code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
@@ -76,9 +78,10 @@ Use this shape for new or changed touchpoints:
   ordering can break panel layout, focus, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
-  menus still dispatch tab and workspace actions, run `node --check
-src/browser/base/content/bento-shell-mount.js`, and the relevant extension
-  typecheck/lint/build commands after any rebase.
+  menus still dispatch tab and workspace actions, verify first-run welcome
+  scrim covers the full chrome window including the address bar, run
+  `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
+  extension typecheck/lint/build commands after any rebase.
 - Rollback or migration notes: keep fallback behavior extension-driven where
   possible. If upstream Firefox grows a supported API for the needed panel
   operation, prefer migrating to that API and shrinking this mount.
@@ -109,6 +112,66 @@ src/browser/base/content/bento-shell-mount.js`, and the relevant extension
 - Rollback or migration notes: keep each patch small and independently skippable;
   if a Firefox update makes a patch unnecessary, remove the patch and record the
   removal here.
+
+### First-Run Browser Profile Import
+
+- Status: Active
+- Last updated: 2026-06-05
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js`
+  - `src/browser/base/content/bento-migration-host.{html,css,js}`
+  - `src/browser/base/content/bento-migration-wizard-bridge.css`
+  - `patches/core-ui/09-bento-firefox-profile-first-run-import.patch`
+- Bento functionality: the multi-step Bento onboarding overlay includes a
+  browser-data import state. When the user chooses it, chrome code opens an
+  embedded Bento chrome host that renders Firefox's reusable migration wizard for
+  ordinary in-window imports and injects Bento/Tale styling into its open shadow
+  root. Full Mozilla Firefox or macOS Zen Browser profile imports remain an
+  explicit startup handoff because those migrators copy profile databases before
+  the new Bento profile is initialized. When the user takes that explicit
+  Firefox/Zen action, chrome sets the `BENTO_MIGRATION_SCOPE=firefox-zen`
+  environment variable alongside `BENTO_RESTART_TO_MIGRATION` before restarting;
+  `MigrationWizardParent.#getMigratorAndProfiles` reads it (only while
+  `MigrationUtils.isStartupMigration` is true) and returns null for any migrator
+  key other than `firefox`/`zen`, so the post-restart startup wizard is scoped
+  to Firefox/Zen and lands preselected on them instead of defaulting to Chrome
+  and re-listing the runtime browsers. The generic fallback path (embedded
+  runtime wizard unavailable) sets the scope empty so the startup wizard still
+  offers every browser.
+- Vanilla Firefox surface touched or depended on:
+  `toolkit/xre/nsAppRunner.cpp`,
+  `browser/components/migration/FirefoxProfileMigrator.sys.mjs`,
+  `browser/components/migration/MigrationUtils.sys.mjs`,
+  `browser/components/migration/MigrationWizardParent.sys.mjs`,
+  `browser/locales/en-US/browser/migrationWizard.ftl`, and the native
+  `ProfileMigrator` / `MigrationUtils` startup and in-window migration paths.
+- Why this cannot stay extension-only: Firefox's Firefox-profile migrator is
+  startup-only and copies profile databases before normal profile initialization;
+  Bento's extension welcome overlay can offer the action, but chrome must restart
+  into startup migration to safely perform that profile-copy migration. The
+  embedded in-window wizard also needs Firefox's `MigrationWizard` JSWindowActor
+  allowlist to include Bento's chrome host URL.
+- Firefox update risk: upstream startup profile selection, `gDoMigration`
+  handling, migration wizard actor matches, migration wizard options, Fluent
+  string requirements, startup-only migrator filtering, the
+  `#getMigratorAndProfiles` filtering structure (where the Bento scope check is
+  inserted), the `firefox`/`zen` migrator key strings, or Firefox/Zen profile
+  path conventions can stop the onboarding import action from opening migration,
+  break the Firefox/Zen scoping, or make the Firefox-family migrators enumerate
+  Bento profiles.
+- Regression checks for future updates: launch Bento with no existing Bento
+  profile while Mozilla Firefox and/or macOS Zen `profiles.ini` files exist,
+  confirm Bento onboarding appears first, advance to the import state, click
+  import, confirm the embedded import host appears without closing the Bento
+  window, confirm non-startup migrators can populate in the embedded wizard, then
+  use the Firefox/Zen action and confirm Bento restarts into the native startup
+  migration wizard scoped to ONLY Firefox/Zen profiles (Chrome/Safari/CSV/HTML
+  absent) and preselected on a Firefox/Zen entry rather than Chrome. Import a
+  disposable profile, confirm onboarding resumes, and confirm copied
+  bookmarks/history/password resources are present in the new Bento profile.
+- Rollback or migration notes: removing the patch reverts Bento to vanilla
+  Firefox 150 behavior, where the Bento chrome host cannot drive the migration
+  actor and startup migration cannot be entered from Bento onboarding.
 
 ### Bento Prefs, Branding, And Build Integration
 

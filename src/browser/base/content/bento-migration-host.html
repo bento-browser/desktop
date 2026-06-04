@@ -1,0 +1,54 @@
+<!doctype html>
+<html class="tale-ui" data-color-mode="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; object-src 'none'; script-src chrome:; img-src chrome:; style-src chrome:;"
+    />
+    <title>Bento browser data import</title>
+    <script src="chrome://global/content/customElements.js"></script>
+    <script src="chrome://browser/content/bento-migration-host.js"></script>
+    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
+    <link rel="stylesheet" href="chrome://browser/content/bento-chrome-tokens.css" />
+    <link rel="stylesheet" href="chrome://browser/content/bento-migration-host.css" />
+    <script
+      src="chrome://browser/content/migration/migration-wizard-constants.mjs"
+      type="module"
+    ></script>
+    <script
+      src="chrome://browser/content/migration/migration-wizard.mjs"
+      type="module"
+    ></script>
+  </head>
+  <body>
+    <main class="bento-migration-host tale-dialog__popup tale-card tale-card--outlined tale-card--md">
+      <header class="bento-migration-host__header">
+        <span class="bento-migration-host__mark" aria-hidden="true"></span>
+        <span class="bento-migration-host__label tale-card__header">Bento import</span>
+      </header>
+      <section class="bento-migration-host__startup tale-card tale-card--filled tale-card--sm">
+        <div class="bento-migration-host__startup-copy tale-card__body">
+          <strong class="tale-card__header">Firefox and Zen profiles</strong>
+          <span class="tale-card__body">Full profile imports run before Bento starts.</span>
+        </div>
+        <button
+          id="restart-profile-import"
+          class="tale-button tale-button--primary tale-button--md"
+          type="button"
+        >
+          Import Firefox or Zen
+        </button>
+      </section>
+      <migration-wizard
+        id="wizard"
+        dialog-mode
+        selection-header-string="Import browser data"
+        selection-subheader-string="Choose a browser profile and the data Bento should copy."
+        import-button-string="Import"
+        header-font-weight="650"
+      ></migration-wizard>
+    </main>
+  </body>
+</html>

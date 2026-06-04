@@ -1,45 +1,245 @@
-/* Welcome overlay — chrome-mounted, scrim-modal sized to be readable
- * without overwhelming a fresh user. Same key-cap visual as the
- * keyboard-shortcuts dialog so users see the same affordance in two
- * places (the welcome teaches the language, the dialog reinforces it). */
+/* Welcome overlay — chrome-mounted, scrim-modal onboarding surface.
+ * The Bento motif is expressed as a tray of durable compartments rather
+ * than as a separate illustration asset. */
 @layer bento.components {
   .bento-welcome {
-    max-width: 28rem;
-    width: 100%;
+    --bento-welcome-viewport-gap: 3.2rem;
+
+    box-sizing: border-box;
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    width: min(1200px, calc(100vw - var(--bento-welcome-viewport-gap)));
+    max-width: calc(100vw - var(--bento-welcome-viewport-gap));
+    height: min(800px, calc(100vh - var(--bento-welcome-viewport-gap)));
+    max-height: calc(100vh - var(--bento-welcome-viewport-gap));
+    transform: translate(-50%, -50%);
+    overflow: auto;
+    padding: var(--space-l);
+    border-radius: var(--radius-l);
   }
 
-  .bento-welcome__head {
-    margin-block-end: var(--space-2xs);
+  .bento-welcome > .tale-column {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
-  .bento-welcome__icon {
+  .bento-welcome__topline {
+    min-height: 1.75rem;
+  }
+
+  .bento-welcome__brand-mark,
+  .bento-welcome__tray-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    flex: 0 0 auto;
     color: var(--bento-workspace-accent);
   }
 
-  .bento-welcome__tips {
-    margin-block: var(--space-s);
+  .bento-welcome__brand-mark {
+    width: 1.5rem;
+    height: 1.5rem;
   }
 
-  .bento-welcome__tip {
-    justify-content: flex-start;
+  .bento-welcome__rail {
+    flex: 0 0 auto;
   }
 
-  .bento-welcome__kbd {
+  .bento-welcome__rail-step {
     display: inline-flex;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full, 999px);
+    background-color: var(--neutral-24);
+  }
+
+  .bento-welcome__rail-step[data-active='true'] {
+    width: 1.5rem;
+    background-color: var(--bento-workspace-accent);
+  }
+
+  .bento-welcome__layout {
+    display: grid;
+    grid-template-columns: minmax(38rem, 1.15fr) minmax(28rem, 0.85fr);
+    gap: var(--space-l);
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .bento-welcome__tray {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: minmax(10rem, 1fr);
+    gap: var(--space-xs);
+    min-height: 0;
+  }
+
+  .bento-welcome__tray-cell {
+    display: flex;
+    flex-direction: column;
+    justify-content: end;
+    gap: var(--space-3xs);
+    min-width: 0;
+    padding: var(--space-s);
+    border: 1px solid var(--neutral-24);
+    border-radius: var(--radius-s);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--neutral-0) 92%, transparent), transparent),
+      var(--neutral-8);
+    overflow-wrap: anywhere;
+  }
+
+  .bento-welcome__tray-cell--hero {
+    grid-column: span 2;
+    grid-row: span 2;
+    justify-content: space-between;
+    border-color: color-mix(in srgb, var(--bento-workspace-accent) 42%, var(--neutral-24));
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--bento-workspace-accent) 16%, var(--neutral-0)),
+      var(--neutral-8)
+    );
+  }
+
+  .bento-welcome__copy {
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .bento-welcome__copy :where(.tale-dialog__title) {
+    margin: 0;
+  }
+
+  .bento-welcome__copy :where(.tale-dialog__description) {
+    margin-block-start: 0;
+  }
+
+  .bento-welcome__theme-picker {
+    margin-block-start: var(--space-xs);
+  }
+
+  .bento-welcome__theme-options {
     align-items: center;
+  }
+
+  .bento-welcome__theme-option {
+    flex: 0 0 auto;
     min-width: 8rem;
-    padding: var(--space-3xs) var(--space-2xs);
-    border-radius: var(--radius-xs);
-    background-color: var(--neutral-16);
-    color: var(--neutral-90);
-    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-    font-size: var(--font-size-xs);
-    line-height: 1;
+    justify-content: center;
     white-space: nowrap;
+  }
+
+  .bento-welcome :where(.tale-dialog__actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    justify-content: space-between;
+  }
+
+  .bento-welcome :where(.tale-dialog__actions) > .tale-row {
+    flex: 1 1 auto;
+  }
+
+  .bento-welcome :where(.bento-welcome__actions--intro) {
+    justify-content: flex-end;
+  }
+
+  @media (max-width: 980px) {
+    .bento-welcome {
+      --bento-welcome-viewport-gap: 2rem;
+
+      top: 50%;
+      left: 50%;
+      right: auto;
+      bottom: auto;
+      transform: translate(-50%, -50%);
+      padding: var(--space-m);
+    }
+
+    .bento-welcome__layout {
+      grid-template-columns: 1fr;
+    }
+
+    .bento-welcome__tray {
+      grid-auto-rows: minmax(7rem, auto);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .bento-welcome {
+      --bento-welcome-viewport-gap: 0.8rem;
+
+      top: 50%;
+      left: 50%;
+      right: auto;
+      bottom: auto;
+      transform: translate(-50%, -50%);
+      padding: var(--space-s);
+    }
+
+    .bento-welcome__topline {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .bento-welcome__tray {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .bento-welcome__tray-cell--hero {
+      grid-column: span 2;
+      grid-row: span 1;
+    }
+
+    .bento-welcome :where(.tale-dialog__actions),
+    .bento-welcome :where(.tale-dialog__actions) > .tale-row {
+      justify-content: stretch;
+    }
+
+    .bento-welcome :where(.tale-dialog__actions) .tale-button {
+      flex: 1 1 100%;
+    }
+  }
+}
+
+/* Tale UI's dialog popup sizing is unlayered. Keep this override unlayered
+ * too so Bento onboarding can take over the chrome overlay instead of
+ * inheriting the default 48rem modal width. */
+.tale-dialog__popup.bento-welcome {
+  --bento-welcome-viewport-gap: 3.2rem;
+
+  box-sizing: border-box;
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(1200px, calc(100vw - var(--bento-welcome-viewport-gap)));
+  max-width: calc(100vw - var(--bento-welcome-viewport-gap));
+  height: min(800px, calc(100vh - var(--bento-welcome-viewport-gap)));
+  max-height: calc(100vh - var(--bento-welcome-viewport-gap));
+  transform: translate(-50%, -50%);
+  overflow: auto;
+  padding: var(--space-l);
+  border-radius: var(--radius-l);
+}
+
+@media (max-width: 980px) {
+  .tale-dialog__popup.bento-welcome {
+    --bento-welcome-viewport-gap: 2rem;
+
+    padding: var(--space-m);
+  }
+}
+
+@media (max-width: 480px) {
+  .tale-dialog__popup.bento-welcome {
+    --bento-welcome-viewport-gap: 0.8rem;
+
+    padding: var(--space-s);
   }
 }

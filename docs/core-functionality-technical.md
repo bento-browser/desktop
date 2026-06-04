@@ -121,6 +121,117 @@ Current persistence is version 5. It stores URL-backed `panelKey` entries plus
 the layout tree. Panel keys are derived from visible layout order when writing
 so URLs can be restored to fresh tab ids on next launch.
 
+First-run browser-data import is handled from Bento's onboarding experience. The
+welcome overlay is a multi-step Bento-motif setup flow, and browser-data import
+is one step inside that flow. The intro step writes
+`BentoSettings.uiColorMode` from its Light, Dark, and Auto selector; Auto is
+stored as `system` and resolved by the theme/chrome flows below. Fresh profiles
+default `uiColorMode` to `light`. The sidebar frame and hidden welcome frame both
+request the overlay when the settings snapshot reports `welcomeSeen=false`;
+chrome treats `BENTO_OPEN_WELCOME` from either frame as an idempotent show
+request so cold-start title races do not suppress onboarding. The React dialog is
+controlled open, disables backdrop and keyboard dismissal, and has no first-step
+skip action; chrome also consumes Esc while welcome is visible without hiding it.
+Only the final `Start browsing` action sets `welcomeSeen=true`.
+When import is selected, the welcome page stores the next onboarding step in
+`localStorage` as `bento-welcome-step` without setting `settings.welcomeSeen=true`,
+signals `BENTO_IMPORT_BROWSER_DATA`, and advances its own step state so the user
+continues onboarding after import closes. `bento-shell-mount.js` responds by
+opening `#bento-embedded-import-frame`, an in-process chrome `browser` that loads
+`chrome://browser/content/bento-migration-host.html`. That static Bento host lives
+under `src/browser/base/content/bento-migration-host.{html,css,js}`, embeds
+Firefox's reusable `<migration-wizard>` component, loads Bento's generated
+chrome Tale token stylesheet, maps Firefox in-content wizard variables to those
+tokens, installs `bento-migration-wizard-bridge.css` into the wizard's open
+shadow root so the native selector, buttons, cards, and lists follow Tale-like
+BEM styling, mirrors the resolved chrome light/dark mode through the iframe URL,
+suppresses Esc, and signals close/restart back to chrome through
+`BENTO_CLOSE_EMBEDDED_IMPORT` and `BENTO_RESTART_EMBEDDED_IMPORT` title
+sentinels.
+`bento-shell-mount.js` imports `MigrationUtils.sys.mjs` before showing the host
+so Firefox registers the `MigrationWizard` JSWindowActor. The core patch adds
+`chrome://browser/content/bento-migration-host.html` to that actor's allowlist.
+The same patch also filters `startupOnlyMigrator` entries out of
+`MigrationWizardParent` when `MigrationUtils.isStartupMigration` is false; the
+embedded wizard must not offer Firefox/Zen as ordinary in-window imports because
+their resources copy live profile databases.
+For full Firefox/Zen profile copy, the embedded host exposes an explicit
+Firefox/Zen action that signals `BENTO_RESTART_EMBEDDED_IMPORT`.
+`bento-shell-mount.js` (`restartToBrowserImportFromWelcome`) then sets
+`BENTO_RESTART_TO_MIGRATION=1` and `BENTO_MIGRATION_SCOPE=firefox-zen` and
+restarts Bento. `patches/core-ui/09-bento-firefox-profile-first-run-import.patch`
+consumes the one-time `BENTO_RESTART_TO_MIGRATION` flag in `nsAppRunner.cpp` and
+enters Firefox's native startup migration path before user prefs and the fresh
+profile are initialized. The same patch makes
+`MigrationWizardParent.#getMigratorAndProfiles` honor `BENTO_MIGRATION_SCOPE`:
+while `MigrationUtils.isStartupMigration` is true and the scope is `firefox-zen`,
+it returns null for any migrator key other than `firefox`/`zen`, so the startup
+wizard is scoped to Firefox/Zen and lands preselected on them (the wizard
+default-selects the first list entry) instead of defaulting to Chrome and
+re-listing the runtime browsers. The generic fallback path
+(`restartToBrowserImportFromWelcome()` with no argument, used when the embedded
+runtime wizard cannot open) sets the scope empty so the startup wizard still
+offers every browser. After migration, onboarding opens again because `welcomeSeen` is
+still false and continues from the stored step when storage is available. Final
+dismiss paths clear the stored step, set `welcomeSeen=true`, and close the
+overlay.
+For local development, `scripts/sync-builtin-addon-symlinks.sh` must refresh
+every built `engine/obj-*` app bundle because `scripts/dev-launch.sh` chooses
+the newest `Bento.app`; otherwise `pnpm run dev:fresh` can launch a stale bundle
+whose built-in welcome assets do not match the current source.
+The welcome overlay browser stays mounted under `#browser` so its title-IPC
+open/close signals stay reliable. A separate `bento-welcome-toolbar-scrim`
+covers the native toolbar/urlbar strip, which otherwise paints above
+in-document overlays so the in-document `Dialog.Backdrop` can only dim the
+content area. The scrim is a `div` with `popover="manual"` appended to
+`<body>`; its UA popover layout is overridden into a top strip
+(`position: fixed; top:0; left:0; right:0; bottom:auto`) with its `height` set
+on show from the live toolbar rect (the gap above `#browser`), so it dims
+exactly the toolbar strip and never overlaps the content backdrop. Its dim is
+`background-color: var(--scrim)` — the SAME token Tale UI's `Dialog.Backdrop`
+uses (`--modal-backdrop-bg: var(--scrim)`), so the toolbar dim matches the
+content dim exactly. `showPopover()` / `hidePopover()` control top-layer
+membership; opacity drives the fade; a `resize` listener keeps the height
+aligned.
+
+Why a popover and nothing else works — the critical pitfall: `#urlbar` is
+declared with `popover="manual"` (navigator-toolbox.inc.xhtml), so the megabar
+lifts it into the **CSS top layer**. Top-layer content paints above ALL
+normal-flow content regardless of z-index, so any ordinary scrim (any
+`z-index`, whether parented in `#navigator-toolbox` or on `<body>`) dims the
+rest of the toolbar but leaves the address-bar pill bright on top. The scrim
+must itself be in the top layer; top-layer paint order is show order, so a
+popover shown during onboarding (after the urlbar's) stacks above `#urlbar`
+and finally covers it. `popover="manual"` is required (an `auto` popover would
+light-dismiss and would not coexist with the urlbar's popover).
+
+Earlier failed approaches (do NOT reintroduce): (1) a XUL `<panel>` — a native
+popup window whose `level="top"` floated the dim over OTHER windows and whose
+macOS vibrancy material stacked with the CSS dim into a too-dark band; (2) a
+plain `div` in `#navigator-toolbox` and (3) a plain `div` on `<body>` with a
+high `z-index` — both left the urlbar pill bright because z-index can't reach
+the top layer.
+
+Because Bento has a separate profile registry, the patch also makes
+`FirefoxProfileMigrator.sys.mjs` enumerate Mozilla Firefox profile registries
+directly when `AppConstants.MOZ_APP_NAME == "bento"`:
+
+- Windows: `%AppData%/Mozilla/Firefox/profiles.ini`;
+- macOS: `~/Library/Application Support/Firefox/profiles.ini`;
+- Linux: `~/.mozilla/firefox/profiles.ini`.
+
+On macOS, the same patch registers a Zen Browser migrator that reuses Firefox's
+startup-only profile-copy resources and reads
+`~/Library/Application Support/zen/profiles.ini`.
+
+The Firefox/Zen startup handoff uses Firefox's startup-only, profile-copy
+migrator. It can copy the source profile's Places database, favicons, cookies,
+passwords, form history, bookmark backups, dictionary, sync metadata, telemetry
+migration flags, and optionally session data according to Firefox's migrator
+resources. Do not open it automatically at process start and do not route it
+through Bento's Settings backup/import code; that code is additive workspace JSON
+import and has different data-loss semantics.
+
 Backup export/import uses schema v2 in
 `extensions/bento-tools/src/backup/BackupStore.ts`,
 `ImportExecutor.ts`, and `ExportSchema.ts`. A workspace export must include the
@@ -784,10 +895,18 @@ Shell theme flow:
 
 UI color mode flow:
 
-- `BentoSettings.uiColorMode` is the source for shell and chrome UI mode.
-- `useFirefoxTheme.ts` updates shell `<html data-color-mode>` and localStorage.
-- Chrome receives `uiColorMode` through `BENTO_PANELS` and applies
-  `data-color-mode` to the chrome root.
+- `BentoSettings.uiColorMode` is the source for shell and chrome UI mode. It
+  accepts `light`, `dark`, and `system`; `system` is the user-facing Auto mode.
+- `useFirefoxTheme.ts` resolves `system` against
+  `(prefers-color-scheme: dark)`, updates shell `<html data-color-mode>` with
+  the resolved `light`/`dark` value, and mirrors the stored preference to
+  localStorage for pre-React boot.
+- `public/boot.js` reads that localStorage value before CSS loads. Explicit
+  `light`/`dark` values paint directly; `system` paints from the current OS
+  preference; missing values paint the fresh-profile Light default.
+- Chrome receives `uiColorMode` through `BENTO_PANELS` and
+  `BENTO_COLOR_MODE`, resolves `system` against the same media query, and
+  applies explicit `data-color-mode` to the chrome root.
 
 Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 `bento-tools` through Firefox's content color-scheme browser setting.
@@ -798,9 +917,9 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 
 - Do not let secondary shell entries push `BENTO_THEME`; they use
   `document.title` for their own sentinels.
-- Do not re-add a `system` color mode without auditing boot CSS, localStorage,
-  settings migration, and chrome token behavior. Current settings are explicit
-  `light` or `dark`.
+- Keep Auto mode resolved to explicit `light`/`dark` on DOM roots. Tale UI's
+  runtime styling expects `data-color-mode` to carry the rendered mode; the
+  stored user preference is mirrored separately as `data-bento-color-mode-pref`.
 - Workspace themes are static scoped CSS. Do not generate runtime style elements
   for theme switching.
 - Chrome token updates require regenerating/importing the chrome stylesheet; the
@@ -825,7 +944,7 @@ When changing core functionality, manually verify at least the affected subset:
 - Vimium or another content-key extension inside a panel;
 - AMO install permission prompt from a panel;
 - Dark Reader or another content-script extension inside a panel;
-- theme switch, UI light/dark switch, and content color mode switch;
+- theme switch, UI light/dark/Auto switch, and content color mode switch;
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored.
 

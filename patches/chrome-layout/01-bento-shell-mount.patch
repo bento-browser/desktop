@@ -59,13 +59,17 @@ diff --git a/browser/base/jar.mn b/browser/base/jar.mn
 index 7eaca95f7e..947cb8549a 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
-@@ -53,6 +53,9 @@ browser.jar:
+@@ -53,6 +53,13 @@ browser.jar:
          content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
          content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
          content/browser/browser-init.js                     (content/browser-init.js)
 +        content/browser/bento-shell-mount.js                (content/bento-shell-mount.js)
 +        content/browser/bento-chrome-tokens.css             (content/bento-chrome-tokens.css)
 +        content/browser/bento-chrome-theme.css              (content/bento-chrome-theme.css)
++        content/browser/bento-migration-host.css            (content/bento-migration-host.css)
++        content/browser/bento-migration-host.html           (content/bento-migration-host.html)
++        content/browser/bento-migration-host.js             (content/bento-migration-host.js)
++        content/browser/bento-migration-wizard-bridge.css   (content/bento-migration-wizard-bridge.css)
          content/browser/browser-main.js                     (content/browser-main.js)
          content/browser/browser-menubar.js                  (content/browser-menubar.js)
          content/browser/browser-pageActions.js              (content/browser-pageActions.js)

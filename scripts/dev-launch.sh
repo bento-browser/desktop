@@ -7,8 +7,23 @@ set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit
 
-BENTO_BIN="${BENTO_BIN:-engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento}"
+if [ -z "${BENTO_BIN:-}" ]; then
+  BENTO_BIN="$(
+    find "$REPO_ROOT/engine" -maxdepth 6 \
+      -path "$REPO_ROOT/engine/obj-*/dist/Bento.app/Contents/MacOS/bento" \
+      -type f -perm -111 -print 2>/dev/null |
+      while IFS= read -r candidate; do
+        printf '%s\t%s\n' "$(stat -f '%m' "$candidate")" "$candidate"
+      done |
+      sort -nr |
+      head -n1 |
+      cut -f2-
+  )"
+fi
 PROFILE="${1:-${BENTO_DEV_PROFILE:-.bento-dev-profile}}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 
 if [ ! -x "$BENTO_BIN" ]; then
   echo "dev-launch: missing executable $BENTO_BIN; run a full build first" >&2
@@ -20,6 +35,7 @@ start_seconds="$(date +%s)"
 MOZ_PURGE_CACHES="${MOZ_PURGE_CACHES:-1}" "$BENTO_BIN" \
   --new-instance \
   --jsdebugger \
+  "$@" \
   --profile "$PROFILE"
 status=$?
 

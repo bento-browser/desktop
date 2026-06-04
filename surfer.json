@@ -27,8 +27,8 @@
       },
       "urls": {
         "homepageOverride": "https://bentobrowser.app/whatsnew?v=%VERSION%",
-        "homepageWelcome": "https://bentobrowser.app/welcome/",
-        "homepageWelcomeAdditional": "https://bentobrowser.app/privacy-policy/",
+        "homepageWelcome": "https://bentobrowser.app/welcome",
+        "homepageWelcomeAdditional": "",
         "appUpdateManual": "https://bentobrowser.app/download/",
         "appUpdateDetails": "https://bentobrowser.app/release-notes/latest/",
         "releaseNotes": "https://bentobrowser.app/whatsnew/",

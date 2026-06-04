@@ -159,11 +159,9 @@ export interface BentoSettings {
    * data-color-mode on the shell's <html> AND on the chrome window's
    * <window> root — Tale UI's _color-modes.css cascade (rewritten to
    * :root selectors by scripts/generate-chrome-tokens.mjs) does the
-   * rest. Only 'light' / 'dark' — the previous 'system' (follow-OS)
-   * option was removed in favour of explicit user choice; persisted
-   * 'system' values from older builds are migrated to 'dark' on load
-   * (see SettingsStore.init). */
-  uiColorMode: ColorModePref;
+   * rest. 'system' resolves to the current OS color scheme at render time
+   * while preserving the user-facing Auto setting. */
+  uiColorMode: UiColorModePref;
   /** Color mode hint forwarded to web content via
    * browser.browserSettings.overrideContentColorScheme. The page is
    * told to render in the chosen mode regardless of OS preference.
@@ -210,6 +208,7 @@ export interface BentoSettings {
 }
 
 export type ColorModePref = 'light' | 'dark';
+export type UiColorModePref = ColorModePref | 'system';
 
 export type SubdivisionMode = 'single' | 'dual';
 

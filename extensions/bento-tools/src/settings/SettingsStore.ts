@@ -20,10 +20,10 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   defaultWorkspaceName: 'Personal',
   commandPaletteEnabled: true,
   welcomeSeen: false,
-  // 'dark' matches the Bento brand bg; 'light' for content because most
-  // sites are designed light-bg-first. Both can be flipped from the
-  // sidebar footer toggles.
-  uiColorMode: 'dark',
+  // Fresh profiles start light; UI can also follow the OS via 'system'
+  // from onboarding or the sidebar footer. Content defaults light because
+  // most sites are designed light-bg-first.
+  uiColorMode: 'light',
   contentColorMode: 'light',
   sidebarCollapsed: false,
   defaultPanelWidthPx: 640,
@@ -67,13 +67,9 @@ export class SettingsStore {
 
   async init(): Promise<void> {
     const overrides = await load();
-    // Migration: profiles created before the 'system' color mode was
-    // removed may have it persisted. The new ColorModePref union doesn't
-    // include 'system', so leaving it would propagate an invalid value
-    // through the IPC protocol and trigger UI fallback paths. Map it to
-    // 'dark' (matches the new default) on load — the user can flip via
-    // the sidebar toggles afterwards.
-    if ((overrides.uiColorMode as string | undefined) === 'system') overrides.uiColorMode = 'dark';
+    // Content color mode stays an explicit Firefox content override.
+    // Profiles from older builds may have 'system' persisted there; map it
+    // back to the content default while allowing uiColorMode='system'.
     if ((overrides.contentColorMode as string | undefined) === 'system')
       overrides.contentColorMode = 'light';
     this.#current = { ...DEFAULT_SETTINGS, ...overrides };

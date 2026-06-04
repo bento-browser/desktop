@@ -73,6 +73,7 @@ pref("browser.contentblocking.category", "strict");
 pref("browser.aboutwelcome.enabled", false);
 pref("browser.startup.upgradeDialog.enabled", false);
 pref("browser.preferences.moreFromMozilla", false);
+pref("browser.migrate.zen.enabled", true);
 
 // --- Session restore ------------------------------------------------------
 // Restore the previous session on launch. Bento is workspaces-first and

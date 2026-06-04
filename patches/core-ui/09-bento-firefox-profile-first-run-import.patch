@@ -1,0 +1,277 @@
+diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
+index f27344a721..e5f99505fc 100644
+--- a/browser/components/migration/FirefoxProfileMigrator.sys.mjs
++++ b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
+@@ -12,6 +12,7 @@
+  */
+ 
+ import { MigrationUtils } from "resource:///modules/MigrationUtils.sys.mjs";
++import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+ 
+ import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
+ 
+@@ -58,6 +59,10 @@ export class FirefoxProfileMigrator extends MigratorBase {
+    *   - {nsIFile} rootDir - The root directory of the profile.
+    */
+   async getAllProfiles() {
++    if (AppConstants.MOZ_APP_NAME == "bento") {
++      return this.getAllMozillaFirefoxProfiles();
++    }
++
+     let allProfiles = new Map();
+     let profileService = Cc[
+       "@mozilla.org/toolkit/profile-service;1"
+@@ -81,6 +86,130 @@ export class FirefoxProfileMigrator extends MigratorBase {
+     return allProfiles;
+   }
+ 
++  /**
++   * Return profiles from Mozilla Firefox's profile registry when Bento is the
++   * running app. Bento has its own profile registry, so nsIToolkitProfileService
++   * would otherwise enumerate only Bento profiles and the startup migration
++   * wizard would not offer the user's existing Firefox profiles.
++   *
++   * @returns {Map<string, object>} A map keyed by absolute Firefox profile path.
++   */
++  getAllMozillaFirefoxProfiles() {
++    let firefoxRoot = this._getMozillaFirefoxDataRoot();
++    return this._getProfilesFromRegistry(firefoxRoot, "Firefox");
++  }
++
++  _getProfilesFromRegistry(profileRoot, sourceName) {
++    let allProfiles = new Map();
++    if (!profileRoot) {
++      return allProfiles;
++    }
++
++    let profilesIni = profileRoot.clone();
++    profilesIni.append("profiles.ini");
++    if (!profilesIni.exists() || !profilesIni.isReadable()) {
++      return allProfiles;
++    }
++
++    let parser;
++    try {
++      parser = Cc["@mozilla.org/xpcom/ini-parser-factory;1"]
++        .getService(Ci.nsIINIParserFactory)
++        .createINIParser(profilesIni);
++    } catch (ex) {
++      console.error(`Could not read ${sourceName} profiles.ini for migration`, ex);
++      return allProfiles;
++    }
++
++    let currentProfileDir = MigrationUtils.profileStartup?.directory;
++    let sections = parser.getSections();
++    while (sections.hasMore()) {
++      let section = sections.getNext();
++      if (!section.startsWith("Profile")) {
++        continue;
++      }
++
++      let name = this._safeGet(parser, section, "Name");
++      let path = this._safeGet(parser, section, "Path");
++      let isRelative = this._safeGet(parser, section, "IsRelative");
++      if (!name || !path) {
++        continue;
++      }
++
++      let rootDir = this._getProfileDirFromDescriptor(
++        profileRoot,
++        path,
++        isRelative == "1"
++      );
++      if (
++        rootDir?.exists() &&
++        rootDir.isReadable() &&
++        (!currentProfileDir || !rootDir.equals(currentProfileDir))
++      ) {
++        allProfiles.set(rootDir.path, {
++          id: rootDir.path,
++          name,
++          rootDir,
++        });
++      }
++    }
++
++    return allProfiles;
++  }
++
++  _getMozillaFirefoxDataRoot() {
++    let dir;
++    try {
++      if (AppConstants.platform == "win") {
++        dir = Services.dirsvc.get("AppData", Ci.nsIFile);
++        dir.append("Mozilla");
++        dir.append("Firefox");
++      } else if (AppConstants.platform == "macosx") {
++        dir = Services.dirsvc.get("ULibDir", Ci.nsIFile);
++        dir.append("Application Support");
++        dir.append("Firefox");
++      } else {
++        dir = Services.dirsvc.get("Home", Ci.nsIFile);
++        dir.append(".mozilla");
++        dir.append("firefox");
++      }
++    } catch (ex) {
++      console.error("Could not resolve Firefox profile root for migration", ex);
++      return null;
++    }
++
++    return dir;
++  }
++
++  _getProfileDirFromDescriptor(parentDir, descriptor, isRelative) {
++    try {
++      if (!isRelative) {
++        let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
++        file.initWithPath(descriptor);
++        return file;
++      }
++
++      let file = parentDir.clone();
++      for (let part of descriptor.split(/[\\/]+/)) {
++        if (part) {
++          file.append(part);
++        }
++      }
++      return file;
++    } catch (ex) {
++      console.error("Could not resolve Firefox profile path for migration", ex);
++      return null;
++    }
++  }
++
++  _safeGet(parser, section, key) {
++    try {
++      return parser.getString(section, key);
++    } catch {
++      return null;
++    }
++  }
++
+   async getSourceProfiles() {
+     let sorter = (a, b) => {
+       return a.name
+@@ -465,3 +594,35 @@ export class FirefoxProfileMigrator extends MigratorBase {
+     return true;
+   }
+ }
++
++export class ZenProfileMigrator extends FirefoxProfileMigrator {
++  static get key() {
++    return "zen";
++  }
++
++  static get displayNameL10nID() {
++    return "migration-wizard-migrator-display-name-zen";
++  }
++
++  async getAllProfiles() {
++    return this._getProfilesFromRegistry(this._getZenDataRoot(), "Zen Browser");
++  }
++
++  _getZenDataRoot() {
++    if (AppConstants.platform != "macosx") {
++      return null;
++    }
++
++    let dir;
++    try {
++      dir = Services.dirsvc.get("ULibDir", Ci.nsIFile);
++      dir.append("Application Support");
++      dir.append("zen");
++    } catch (ex) {
++      console.error("Could not resolve Zen profile root for migration", ex);
++      return null;
++    }
++
++    return dir;
++  }
++}
+diff --git a/browser/components/migration/MigrationUtils.sys.mjs b/browser/components/migration/MigrationUtils.sys.mjs
+index 07444c92b8..ab25e99865 100644
+--- a/browser/components/migration/MigrationUtils.sys.mjs
++++ b/browser/components/migration/MigrationUtils.sys.mjs
+@@ -57,6 +57,10 @@ const MIGRATOR_MODULES = Object.freeze({
+     moduleURI: "resource:///modules/FirefoxProfileMigrator.sys.mjs",
+     platforms: ["linux", "macosx", "win"],
+   },
++  ZenProfileMigrator: {
++    moduleURI: "resource:///modules/FirefoxProfileMigrator.sys.mjs",
++    platforms: ["macosx"],
++  },
+  FirefoxSelectableProfileMigrator: {
+    moduleURI: "resource:///modules/FirefoxSelectableProfileMigrator.sys.mjs",
+    platforms: ["linux", "macosx", "win"],
+@@ -179,6 +183,8 @@ class MigrationUtils {
+        "about:welcome?*",
+        "about:preferences",
+        "about:settings",
++        "chrome://browser/content/bento-migration-host.html",
++        "chrome://browser/content/bento-migration-host.html?*",
+        "chrome://browser/content/migration/migration-dialog-window.html",
+        "chrome://browser/content/spotlight.html",
+        "about:firefoxview",
+@@ -511,6 +515,8 @@ class MigrationUtils {
+       "Internet Explorer": "ie",
+       "Microsoft Edge": "edge",
+       Safari: "safari",
++      Zen: "zen",
++      "Zen Browser": "zen",
+       Firefox: "firefox",
+       Nightly: "firefox",
+       Opera: "opera",
+diff --git a/browser/components/migration/MigrationWizardParent.sys.mjs b/browser/components/migration/MigrationWizardParent.sys.mjs
+index 61e6502dd4..f68cd792bf 100644
+--- a/browser/components/migration/MigrationWizardParent.sys.mjs
++++ b/browser/components/migration/MigrationWizardParent.sys.mjs
+@@ -585,6 +585,17 @@ export class MigrationWizardParent extends JSWindowActorParent {
+       if (!migrator?.enabled) {
+         return null;
+       }
++      if (migrator.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
++        return null;
++      }
++      if (
++        MigrationUtils.isStartupMigration &&
++        Services.env.get("BENTO_MIGRATION_SCOPE") == "firefox-zen" &&
++        key != "firefox" &&
++        key != "zen"
++      ) {
++        return null;
++      }
+ 
+       if (!(await migrator.hasPermissions())) {
+         // If we're unable to get permissions for this migrator, then we
+diff --git a/browser/locales/en-US/browser/migrationWizard.ftl b/browser/locales/en-US/browser/migrationWizard.ftl
+index 9b8cc78a6a..19ab3e219c 100644
+--- a/browser/locales/en-US/browser/migrationWizard.ftl
++++ b/browser/locales/en-US/browser/migrationWizard.ftl
+@@ -37,6 +37,8 @@ migration-wizard-migrator-display-name-chromium-edge = Microsoft Edge
+ migration-wizard-migrator-display-name-chromium-edge-beta = Microsoft Edge Beta
+ migration-wizard-migrator-display-name-edge-legacy = Microsoft Edge Legacy
+ migration-wizard-migrator-display-name-firefox = Firefox
++# Zen Browser stores Firefox-compatible profiles on macOS.
++migration-wizard-migrator-display-name-zen = Zen Browser
+ migration-wizard-migrator-display-name-file-password-csv = Passwords from CSV file
+ migration-wizard-migrator-display-name-file-bookmarks = Bookmarks from HTML file
+ migration-wizard-migrator-display-name-ie = Microsoft Internet Explorer
+diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
+index 6d330fca12..18221cd021 100644
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -3082,6 +3082,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
+     gDoMigration = true;
+   }
+ 
++  if (EnvHasValue("BENTO_RESTART_TO_MIGRATION")) {
++    SaveToEnv("BENTO_RESTART_TO_MIGRATION=");
++    if (gAppData && gAppData->name &&
++        nsDependentCString(gAppData->name).EqualsLiteral("Bento")) {
++      gDoMigration = true;
++    }
++  }
++
+ #if defined(XP_WIN)
+   // This arg is only used to indicate to telemetry that a profile refresh
+   // (reset+migration) was requested from the uninstaller, pass this along

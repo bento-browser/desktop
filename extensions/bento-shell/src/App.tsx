@@ -20,12 +20,14 @@ import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
 import { usePanelsStore } from './state/panels';
 import { useWorkspacesStore } from './state/workspaces';
-import type { ColorModePref } from '@shared/protocol';
+import type { ColorModePref, UiColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
 // cover the whole browser window. Show/hide is owned by chrome via a key
 // binding in src/browser/base/content/bento-shell-mount.js.
+
+const UI_COLOR_MODE_ORDER: readonly UiColorModePref[] = ['light', 'dark', 'system'];
 
 function openSettings() {
   // Round-trip through bento-tools (which has reliable browser.tabs access)
@@ -84,7 +86,10 @@ export function App() {
   // First-run welcome trigger. The settings snapshot lands a moment after
   // the tools port connects; once it does and welcomeSeen=false, signal
   // chrome to show the welcome overlay (chrome-mounted, full-window scrim
-  // — implemented via the welcome.html overlay frame).
+  // — implemented via the welcome.html overlay frame). welcome.html also
+  // emits the same open signal from its own settings mirror so cold-start
+  // title races do not make first-run onboarding depend only on the
+  // sidebar frame.
   //
   // Why the retry loop: requestWelcome() sets document.title =
   // BENTO_OPEN_WELCOME_<ts>, which the chrome poll picks up. But the
@@ -221,7 +226,7 @@ export function App() {
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const contentColorMode = useSettingsStore((s) => s.current?.contentColorMode);
   const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
-  const setUiColorMode = (next: ColorModePref) =>
+  const setUiColorMode = (next: UiColorModePref) =>
     dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
   const setContentColorMode = (next: ColorModePref) =>
     dispatch({ type: 'settings/update', changes: { contentColorMode: next } });
@@ -346,7 +351,12 @@ export function App() {
         >
           <Icon icon={Command} />
         </IconButton>
-        <ColorModeCycle value={uiColorMode} onChange={setUiColorMode} surfaceLabel="Bento UI" />
+        <ColorModeCycle
+          value={uiColorMode}
+          onChange={setUiColorMode}
+          modes={UI_COLOR_MODE_ORDER}
+          surfaceLabel="Bento UI"
+        />
         <ColorModeCycle
           value={contentColorMode}
           onChange={setContentColorMode}

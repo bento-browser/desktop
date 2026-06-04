@@ -1930,6 +1930,20 @@
     setFrameSrc('bento-welcome-frame', '/dist/welcome.html');
   }
 
+  const BENTO_EMBEDDED_IMPORT_URL = 'chrome://browser/content/bento-migration-host.html';
+
+  function setBentoEmbeddedImportSrc() {
+    const frame = document.getElementById('bento-embedded-import-frame');
+    if (!frame) return;
+    const mode = document.documentElement.getAttribute('data-color-mode') === 'dark' ? 'dark' : 'light';
+    const params = new URLSearchParams({
+      source: 'welcome',
+      mode,
+      ts: String(Date.now()),
+    });
+    frame.setAttribute('src', `${BENTO_EMBEDDED_IMPORT_URL}?${params.toString()}`);
+  }
+
   function setBentoWorkspaceSwitcherSrc() {
     setFrameSrc('bento-workspace-switcher-frame', '/dist/workspace-switcher.html');
   }
@@ -1965,11 +1979,11 @@
   // a rebuild anyway. New overlays added in dev should go through this
   // factory.
   function ensureOverlayHost(opts) {
-    const { hostId, frameId, zIndex } = opts;
+    const { hostId, frameId, zIndex, remote = true } = opts;
     if (document.getElementById(hostId)) return;
     const parent = document.getElementById('browser');
     if (!parent) {
-      console.warn('[bento-shell-mount] ensureOverlayHost:', hostId, '— #browser missing');
+      console.warn('[bento-shell-mount] ensureOverlayHost:', hostId, '— parent missing');
       return;
     }
     const host = document.createXULElement('vbox');
@@ -1983,14 +1997,58 @@
     const frame = document.createXULElement('browser');
     frame.id = frameId;
     frame.setAttribute('type', 'content');
-    frame.setAttribute('remote', 'true');
-    frame.setAttribute('remoteType', 'extension');
+    if (remote) {
+      frame.setAttribute('remote', 'true');
+      frame.setAttribute('remoteType', 'extension');
+    }
     frame.setAttribute('primary', 'false');
     frame.setAttribute('flex', '1');
     frame.setAttribute('transparent', 'transparent');
-    frame.style.cssText = 'background-color: transparent; -moz-appearance: none;';
+    frame.style.cssText =
+      'background-color: transparent; -moz-appearance: none;' +
+      ' border: 0; margin: 0; padding: 0;';
     host.appendChild(frame);
     parent.appendChild(host);
+  }
+
+  function ensureWelcomeToolbarScrim() {
+    if (document.getElementById('bento-welcome-toolbar-scrim')) return;
+    // Cover the toolbar strip (back/forward, urlbar, menu) so the
+    // first-run dim is continuous from the toolbar down through the
+    // content area, which the in-document Dialog.Backdrop alone can't
+    // reach (the native toolbar paints above content overlays).
+    //
+    // The scrim MUST be a popover. #urlbar has popover="manual" — the
+    // megabar lifts it into the CSS top layer, which paints above ALL
+    // normal-flow content regardless of z-index. A plain element (any
+    // z-index, in the toolbox or on <body>) therefore dims the rest of
+    // the toolbar but leaves the address-bar pill bright on top. Top
+    // layer order is by show order, so a popover shown during onboarding
+    // (after the urlbar's) stacks above #urlbar and finally covers it.
+    //
+    // Not a XUL <panel>: a panel is a native popup window whose macOS
+    // vibrancy material stacked with the dim, and whose window `level`
+    // floated it over OTHER windows. A popover stays in this window.
+    const parent = document.body;
+    if (!parent) {
+      console.warn('[bento-shell-mount] ensureWelcomeToolbarScrim: document.body missing');
+      return;
+    }
+    const scrim = document.createElement('div');
+    scrim.id = 'bento-welcome-toolbar-scrim';
+    scrim.setAttribute('popover', 'manual');
+    // Override the UA popover layout (centered, fit-content) into a
+    // top strip. Height is set on show from the live toolbar rect.
+    // background = --scrim (neutral-100 @ 48%), the SAME token Tale UI's
+    // Dialog.Backdrop uses (--modal-backdrop-bg: var(--scrim)), so the
+    // toolbar dim matches the content dim exactly. Painted once.
+    scrim.style.cssText =
+      'position: fixed; top: 0; left: 0; right: 0; bottom: auto; width: auto;' +
+      ' height: 0; max-width: none; max-height: none; margin: 0; padding: 0;' +
+      ' border: 0; overflow: hidden; pointer-events: auto; opacity: 0;' +
+      ' background-color: var(--scrim, rgba(0, 0, 0, 0.48));' +
+      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+    parent.appendChild(scrim);
   }
 
   // Edit-workspace overlay was added in dev — go through the JS factory
@@ -2010,6 +2068,18 @@
     hostId: 'bento-welcome-host',
     frameId: 'bento-welcome-frame',
     zIndex: 99996,
+  });
+  ensureWelcomeToolbarScrim();
+
+  // Browser-data import shown from onboarding. This frame loads a chrome://
+  // Bento host that embeds Firefox's reusable <migration-wizard> component.
+  // It must run in-process so the migration JSWindowActor can attach to a
+  // built-in chrome document instead of a moz-extension content process.
+  ensureOverlayHost({
+    hostId: 'bento-embedded-import-host',
+    frameId: 'bento-embedded-import-frame',
+    zIndex: 99998,
+    remote: false,
   });
 
   // Workspace-switcher overlay. The Tale UI Menu popover would otherwise
@@ -2240,9 +2310,76 @@
   // ─── Welcome overlay (first-run) ───────────────────────────────────────
   // Same chrome-overlay pattern as confirm/palette/edit-workspace. Trigger
   // is one-shot per fresh profile: sidebar inspects settings.welcomeSeen
-  // and signals BENTO_OPEN_WELCOME_<ts>; welcome content flips the flag
-  // on dismiss so it never fires again.
+  // and signals BENTO_OPEN_WELCOME_<ts>; welcome content flips the flag only
+  // on final dismiss paths so the import step can show the embedded Firefox
+  // migration host without marking onboarding complete.
   const WELCOME_TRANSITION_MS = 180;
+
+  // The scrim is a popover strip whose height tracks the toolbar (= the
+  // gap above #browser) so it dims exactly the toolbar strip and never
+  // overlaps the content backdrop. showPopover()/hidePopover() control
+  // top-layer membership; opacity drives the fade.
+  function getWelcomeToolbarScrimHeight() {
+    const browser = document.getElementById('browser');
+    const rect = browser?.getBoundingClientRect();
+    return Math.max(0, Math.ceil(rect?.top ?? 0));
+  }
+
+  function sizeWelcomeToolbarScrim(scrim) {
+    scrim.style.height = `${getWelcomeToolbarScrimHeight()}px`;
+  }
+
+  function isWelcomeToolbarScrimOpen(scrim) {
+    try {
+      return scrim.matches(':popover-open');
+    } catch {
+      return false;
+    }
+  }
+
+  function showWelcomeToolbarScrim() {
+    const scrim = document.getElementById('bento-welcome-toolbar-scrim');
+    if (!scrim) return;
+    if (getWelcomeToolbarScrimHeight() <= 0) return;
+    scrim.style.opacity = '0';
+    sizeWelcomeToolbarScrim(scrim);
+    if (!isWelcomeToolbarScrimOpen(scrim) && typeof scrim.showPopover === 'function') {
+      try {
+        scrim.showPopover();
+      } catch (err) {
+        console.warn('[bento-shell-mount] welcome toolbar scrim showPopover failed:', err);
+        return;
+      }
+    }
+    void scrim.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      if (isWelcomeToolbarScrimOpen(scrim)) scrim.style.opacity = '1';
+    });
+  }
+
+  function hideWelcomeToolbarScrim() {
+    const scrim = document.getElementById('bento-welcome-toolbar-scrim');
+    if (!scrim) return;
+    scrim.style.opacity = '0';
+    setTimeout(() => {
+      if (scrim.style.opacity === '0' && isWelcomeToolbarScrimOpen(scrim)) {
+        try {
+          scrim.hidePopover();
+        } catch (err) {
+          console.warn('[bento-shell-mount] welcome toolbar scrim hidePopover failed:', err);
+        }
+      }
+    }, WELCOME_TRANSITION_MS);
+  }
+
+  // Keep the strip aligned to the toolbar while it's visible (window
+  // resize / DPI change can shift the toolbar height).
+  window.addEventListener('resize', () => {
+    const scrim = document.getElementById('bento-welcome-toolbar-scrim');
+    if (scrim && isWelcomeToolbarScrimOpen(scrim)) {
+      sizeWelcomeToolbarScrim(scrim);
+    }
+  });
 
   function isWelcomeVisible(host) {
     return host.style.display !== 'none';
@@ -2254,6 +2391,7 @@
       console.warn('[bento-shell-mount] showWelcome: host missing');
       return;
     }
+    showWelcomeToolbarScrim();
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -2265,6 +2403,7 @@
   function hideWelcome() {
     const host = document.getElementById('bento-welcome-host');
     if (!host) return;
+    hideWelcomeToolbarScrim();
     host.style.opacity = '0';
     setTimeout(() => {
       if (host.style.opacity === '0') {
@@ -2272,6 +2411,83 @@
         host.setAttribute('hidden', 'true');
       }
     }, WELCOME_TRANSITION_MS);
+  }
+
+  function isEmbeddedImportVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  function showEmbeddedBrowserImportFromWelcome() {
+    const host = document.getElementById('bento-embedded-import-host');
+    const frame = document.getElementById('bento-embedded-import-frame');
+    if (!host || !frame) {
+      console.warn('[bento-shell-mount] embedded import host missing; falling back to restart');
+      restartToBrowserImportFromWelcome();
+      return;
+    }
+
+    try {
+      ChromeUtils.importESModule('resource:///modules/MigrationUtils.sys.mjs');
+    } catch (err) {
+      console.warn('[bento-shell-mount] MigrationUtils import failed; falling back to restart:', err);
+      restartToBrowserImportFromWelcome();
+      return;
+    }
+
+    setBentoEmbeddedImportSrc();
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    host.style.opacity = '1';
+    setTimeout(() => frame.focus(), 0);
+  }
+
+  function hideEmbeddedBrowserImport() {
+    const host = document.getElementById('bento-embedded-import-host');
+    if (!host) return;
+    host.style.opacity = '0';
+    setTimeout(() => {
+      if (host.style.opacity === '0') {
+        host.style.display = 'none';
+        host.setAttribute('hidden', 'true');
+        const frame = document.getElementById('bento-embedded-import-frame');
+        frame?.removeAttribute('src');
+        const welcomeFrame = document.getElementById('bento-welcome-frame');
+        setTimeout(() => welcomeFrame?.focus(), 0);
+      }
+    }, WELCOME_TRANSITION_MS);
+  }
+
+  // scopeFirefoxZen=true is the explicit "Import Firefox or Zen" path: it
+  // scopes the post-restart startup wizard to Firefox/Zen so it lands
+  // preselected on them instead of defaulting to Chrome and re-listing the
+  // runtime browsers. The generic fallback path (embedded runtime wizard
+  // unavailable) passes false so the startup wizard still offers every
+  // browser, including Chrome.
+  function restartToBrowserImportFromWelcome(scopeFirefoxZen = false) {
+    hideEmbeddedBrowserImport();
+    hideWelcome();
+    try {
+      Services.env.set('BENTO_RESTART_TO_MIGRATION', '1');
+      // Read + honored by MigrationWizardParent's #getMigratorAndProfiles
+      // (only while isStartupMigration is true).
+      Services.env.set('BENTO_MIGRATION_SCOPE', scopeFirefoxZen ? 'firefox-zen' : '');
+      Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+    } catch (err) {
+      Services.env.set('BENTO_RESTART_TO_MIGRATION', '');
+      Services.env.set('BENTO_MIGRATION_SCOPE', '');
+      console.warn('[bento-shell-mount] restart to browser import failed:', err);
+      try {
+        const { MigrationUtils } = ChromeUtils.importESModule(
+          'resource:///modules/MigrationUtils.sys.mjs',
+        );
+        MigrationUtils.showMigrationWizard(window, {
+          entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.NEWTAB,
+        });
+      } catch (fallbackErr) {
+        console.warn('[bento-shell-mount] fallback migration wizard failed:', fallbackErr);
+      }
+    }
   }
 
   // ─── Generic chrome-menu overlay ───────────────────────────────────────
@@ -2355,10 +2571,15 @@
   const EDIT_WORKSPACE_CLOSE_PREFIX = 'BENTO_CLOSE_EDIT_WORKSPACE';
   // Welcome overlay (first-run). No payload — sidebar's App.tsx reads
   // settings.welcomeSeen and signals BENTO_OPEN_WELCOME_<ts> the first
-  // time it sees false; welcome content flips the flag + signals
-  // BENTO_CLOSE_WELCOME_<ts> on dismiss.
+  // time it sees false; final welcome dismiss paths flip the flag + signal
+  // BENTO_CLOSE_WELCOME_<ts>. The import action signals
+  // BENTO_IMPORT_BROWSER_DATA_<ts> without flipping the flag, which opens the
+  // embedded Firefox migration host above the still-mounted welcome flow.
   const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
   const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
+  const WELCOME_IMPORT_BROWSER_DATA_PREFIX = 'BENTO_IMPORT_BROWSER_DATA';
+  const EMBEDDED_IMPORT_CLOSE_PREFIX = 'BENTO_CLOSE_EMBEDDED_IMPORT';
+  const EMBEDDED_IMPORT_RESTART_PREFIX = 'BENTO_RESTART_EMBEDDED_IMPORT';
   // Workspace-switcher menu overlay. Anchor coords travel via
   // BroadcastChannel('bento-workspace-switcher-bus') — title is just the
   // visibility signal.
@@ -2399,11 +2620,12 @@
   // chars; timestamp ensures repeated identical states still trigger
   // the title-change poll.
   const PANELS_PREFIX = 'BENTO_PANELS:';
-  // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark>
+  // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark|system>
   // The shell sets this on settings/changed; the active BENTO_PANELS
   // payload also carries the same uiColorMode field as a self-correcting
   // backstop in case this dedicated message races with a panels/sync.
   const COLOR_MODE_PREFIX = 'BENTO_COLOR_MODE:';
+  const CHROME_DARK_QUERY = '(prefers-color-scheme: dark)';
   // Per-workspace theme IPC. Title format: BENTO_THEME:<ts>:<themeId>
   // The sidebar's useWorkspaceTheme hook (with pushChrome: true) writes
   // this on every active-workspace-theme change. We mirror it onto
@@ -2424,20 +2646,37 @@
   // identity, so dragging the currently-active (panel-marked) tab works.
   const TAB_MOVE_PREFIX = 'BENTO_TAB_MOVE:';
 
-  // Drive Tale UI's color-mode cascade in chrome by setting
+  // Drive Tale UI's color-mode cascade in chrome by setting explicit
   // data-color-mode on the chrome window's <window> root.
   // _color-modes.css selectors are rewritten from `html` to `:root` by
   // scripts/generate-chrome-tokens.mjs, so the same cascade that flips
-  // shell tokens flips chrome tokens. ColorModePref is now 'light' |
-  // 'dark' only — the previous 'system' (clear attribute, fall through
-  // to @media (prefers-color-scheme)) branch was removed in favour of
-  // explicit user choice.
+  // shell tokens flips chrome tokens. 'system' is stored as Auto but
+  // resolved here to light/dark because Tale UI expects an explicit
+  // rendered mode once the user has a persisted preference.
+  let chromeColorModePref = null;
+  function resolveChromeColorMode(mode) {
+    if (mode === 'system') {
+      if (typeof window.matchMedia !== 'function') return 'dark';
+      return window.matchMedia(CHROME_DARK_QUERY).matches ? 'dark' : 'light';
+    }
+    if (mode === 'light' || mode === 'dark') return mode;
+    return null;
+  }
   function applyChromeColorMode(mode) {
     const root = document.documentElement;
     if (!root) return;
-    if (mode === 'light' || mode === 'dark') {
-      root.setAttribute('data-color-mode', mode);
+    const resolved = resolveChromeColorMode(mode);
+    if (!resolved) return;
+    chromeColorModePref = mode;
+    if (root.getAttribute('data-color-mode') !== resolved) {
+      root.setAttribute('data-color-mode', resolved);
     }
+    root.setAttribute('data-bento-color-mode-pref', mode);
+  }
+  if (typeof window.matchMedia === 'function') {
+    window.matchMedia(CHROME_DARK_QUERY).addEventListener('change', () => {
+      if (chromeColorModePref === 'system') applyChromeColorMode('system');
+    });
   }
   function handleThemeTitle(rawTitle) {
     // Format: BENTO_THEME:<ts>:<themeId>
@@ -2457,10 +2696,8 @@
     const tail = rawTitle.slice(COLOR_MODE_PREFIX.length);
     const colonAfterTs = tail.indexOf(':');
     if (colonAfterTs < 0) return;
-    const mode = tail.slice(colonAfterTs + 1);
-    if (mode === 'light' || mode === 'dark') {
-      applyChromeColorMode(mode);
-    }
+    const mode = tail.slice(colonAfterTs + 1).trim();
+    applyChromeColorMode(mode);
   }
 
   // ─── Side panel strip (multi-panel) ────────────────────────────────────
@@ -12376,8 +12613,8 @@
       // overwrote the title before chrome polled it, the next reconcile
       // re-applies. Idempotent — applyChromeColorMode short-circuits
       // when the attribute already matches.
-      if (decoded.uiColorMode === 'light' || decoded.uiColorMode === 'dark') {
-        applyChromeColorMode(decoded.uiColorMode);
+      if (typeof decoded.uiColorMode === 'string') {
+        applyChromeColorMode(decoded.uiColorMode.trim());
       }
       if (typeof decoded.themeId === 'string' && decoded.themeId.trim().length > 0) {
         const themeId = decoded.themeId.trim();
@@ -12898,7 +13135,25 @@
         const title = welcomeFrame.contentTitle || '';
         if (title === lastSeenWelcomeTitle) return;
         lastSeenWelcomeTitle = title;
-        if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
+        if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+        else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
+        else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
+          showEmbeddedBrowserImportFromWelcome();
+        }
+      }, 200);
+    }
+
+    const embeddedImportFrame = document.getElementById('bento-embedded-import-frame');
+    if (embeddedImportFrame) {
+      let lastSeenEmbeddedImportTitle = '';
+      setInterval(() => {
+        const title = embeddedImportFrame.contentTitle || '';
+        if (title === lastSeenEmbeddedImportTitle) return;
+        lastSeenEmbeddedImportTitle = title;
+        if (title.startsWith(EMBEDDED_IMPORT_CLOSE_PREFIX)) hideEmbeddedBrowserImport();
+        else if (title.startsWith(EMBEDDED_IMPORT_RESTART_PREFIX)) {
+          restartToBrowserImportFromWelcome(true);
+        }
       }, 200);
     }
 
@@ -13026,8 +13281,9 @@
       (e) => {
         if (e.key !== 'Escape') return;
         // Stack precedence (top = highest): confirm > edit-workspace >
-        // welcome > workspace-switcher > palette. If multiple overlays
-        // are somehow open at once, dismiss the topmost first.
+        // welcome > workspace-switcher > palette. Welcome is mandatory
+        // onboarding: consume Esc there without hiding it. Other overlays
+        // keep their normal Esc dismissal.
         const confirmHost = document.getElementById('bento-confirm-host');
         if (confirmHost && isConfirmVisible(confirmHost)) {
           e.preventDefault();
@@ -13042,11 +13298,16 @@
           hideEditWorkspace();
           return;
         }
+        const embeddedImportHost = document.getElementById('bento-embedded-import-host');
+        if (embeddedImportHost && isEmbeddedImportVisible(embeddedImportHost)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
         const welcomeHost = document.getElementById('bento-welcome-host');
         if (welcomeHost && isWelcomeVisible(welcomeHost)) {
           e.preventDefault();
-          e.stopPropagation();
-          hideWelcome();
+          e.stopImmediatePropagation();
           return;
         }
         const wsSwitcherHost = document.getElementById('bento-workspace-switcher-host');
