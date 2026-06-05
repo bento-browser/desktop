@@ -45,6 +45,7 @@ import PanelRightCloseIcon from 'lucide-react/dist/esm/icons/panel-right-close';
 
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
+import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import './CommandPalette.css';
 
@@ -61,7 +62,7 @@ interface Command {
   /** Searchable / displayed label. */
   label: string;
   /** Optional grouping section header. */
-  section: 'Navigation' | 'Workspaces' | 'Tabs' | 'Actions';
+  section: 'Navigation' | 'Workspaces' | 'Tabs' | 'Panels' | 'Actions';
   /** Lucide icon — typeof an imported one to inherit LucideIcon's
    * ForwardRefExoticComponent shape that Tale UI's Icon expects. */
   icon: typeof SettingsIcon;
@@ -81,9 +82,17 @@ function useCommands(closePalette: () => void): Command[] {
   const tabs = useTabsStore(
     useShallow((s) => s.orderedIds.map((id) => s.byId[id]).filter((t) => !!t)),
   );
+  const panelsByWorkspace = usePanelsStore((s) => s.byWorkspace);
   const activeTabId = useTabsStore((s) => s.activeId);
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
+  const panelEntries = useMemo(
+    () =>
+      Array.from(panelsByWorkspace.entries()).flatMap(([workspaceId, ids]) =>
+        Array.from(ids, (id) => ({ workspaceId, id })),
+      ),
+    [panelsByWorkspace],
+  );
 
   return useMemo(() => {
     const cmds: Command[] = [];
@@ -140,8 +149,18 @@ function useCommands(closePalette: () => void): Command[] {
       },
     });
 
-    // Tabs
-    for (const t of tabs) {
+    const panelWorkspaceById = new Map<number, string>();
+    for (const entry of panelEntries) {
+      panelWorkspaceById.set(entry.id, entry.workspaceId);
+    }
+    const currentWindowTabs =
+      typeof windowId === 'number' ? tabs.filter((t) => t.windowId === windowId) : tabs;
+
+    // Tabs. Panel tabs are excluded here and listed in their own Panels
+    // section below; selecting a panel must focus its side slot, not
+    // activate it as the main content tab.
+    for (const t of currentWindowTabs) {
+      if (panelWorkspaceById.has(t.id)) continue;
       cmds.push({
         id: `tab:${t.id}`,
         label: `Tab: ${t.title || 'Untitled'}`,
@@ -149,6 +168,23 @@ function useCommands(closePalette: () => void): Command[] {
         icon: FileIcon,
         run: () => {
           dispatch({ type: 'tab/activate', id: t.id });
+          closePalette();
+        },
+      });
+    }
+
+    // Panels
+    for (const entry of panelEntries) {
+      const t = tabs.find((candidate) => candidate.id === entry.id);
+      if (!t) continue;
+      if (typeof windowId === 'number' && t.windowId !== windowId) continue;
+      cmds.push({
+        id: `panel:${entry.workspaceId}:${entry.id}`,
+        label: `Panel: ${t.title || 'Untitled'}`,
+        section: 'Panels',
+        icon: PanelRightOpenIcon,
+        run: () => {
+          dispatch({ type: 'panel/focus', workspaceId: entry.workspaceId, id: entry.id });
           closePalette();
         },
       });
@@ -223,7 +259,7 @@ function useCommands(closePalette: () => void): Command[] {
     });
 
     return cmds;
-  }, [workspaces, tabs, activeTabId, activeWorkspaceId, closePalette]);
+  }, [workspaces, tabs, panelEntries, activeTabId, activeWorkspaceId, windowId, closePalette]);
 }
 
 function groupCommands(cmds: Command[]): Map<Command['section'], Command[]> {
@@ -294,7 +330,13 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
                 <Autocomplete.Section key={section}>
                   <Autocomplete.Header>{section}</Autocomplete.Header>
                   {cmds.map((c) => (
-                    <Autocomplete.Item key={c.id} id={c.id} textValue={c.label} onAction={c.run}>
+                    <Autocomplete.Item
+                      key={c.id}
+                      id={c.id}
+                      textValue={c.label}
+                      onAction={c.run}
+                      className="bento-command-palette__item"
+                    >
                       <Icon icon={c.icon} size="sm" />
                       <Text variant="text" size="s">
                         {c.label}

@@ -189,6 +189,72 @@ describe('protocol handler batch tab workspace moves', () => {
   });
 });
 
+describe('protocol handler command palette navigation', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      sessions: {
+        removeTabValue: vi.fn().mockResolvedValue(undefined),
+      },
+      tabs: {
+        get: vi.fn().mockResolvedValue({ id: 42 }),
+        update: vi.fn().mockResolvedValue({ id: 42 }),
+      },
+      windows: {
+        update: vi.fn().mockResolvedValue({ id: 1 }),
+      },
+    });
+  });
+
+  it('activates the owning workspace before focusing a normal tab', async () => {
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi
+          .fn()
+          .mockReturnValue([{ id: 42, windowId: 1, workspaceId: 'ws-target', active: false }]),
+        isClosing: vi.fn().mockReturnValue(false),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        getActiveId: vi.fn().mockReturnValue('ws-old'),
+        activate: vi.fn().mockReturnValue('activated'),
+        findOwningWindow: vi.fn().mockReturnValue(null),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+      } as unknown as HandlerContext['panels'],
+    });
+
+    handle({ type: 'tab/activate', id: 42 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(42, { active: true });
+    });
+    expect(ctx.workspaces.activate).toHaveBeenCalledWith('ws-target', 1);
+    expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(42, 'bento.isPanel');
+  });
+
+  it('focuses a panel through panels/sync instead of activating it as the main tab', () => {
+    const ctx = createCloseContext({
+      workspaces: {
+        has: vi.fn().mockReturnValue(true),
+        findOwningWindow: vi.fn().mockReturnValue(null),
+        activate: vi.fn().mockReturnValue('noop'),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue(['ws-1']),
+      } as unknown as HandlerContext['panels'],
+    });
+
+    handle({ type: 'panel/focus', workspaceId: 'ws-1', id: 77 }, ctx);
+
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', {
+      scrollToPanelTabId: 77,
+      windowId: 1,
+    });
+  });
+});
+
 describe('protocol handler workspace updates', () => {
   it('re-emits panels sync when a workspace theme changes', () => {
     const ctx = createCloseContext({

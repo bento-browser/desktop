@@ -456,6 +456,23 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (!isPanelTab) {
         void clearPanelMarker(action.id);
       }
+      const targetTab = ctx.tabs.snapshot().find((tab) => tab.id === action.id);
+      const targetWorkspaceId = targetTab?.workspaceId;
+      if (
+        targetWorkspaceId &&
+        ctx.workspaces.getActiveId(ctx.sourceWindowId) !== targetWorkspaceId
+      ) {
+        const result = ctx.workspaces.activate(targetWorkspaceId, ctx.sourceWindowId);
+        if (result === 'conflict') {
+          const owner = ctx.workspaces.findOwningWindow(targetWorkspaceId);
+          if (owner !== null) {
+            browser.windows
+              .update(owner, { focused: true })
+              .catch((err) => console.warn('[bento-tools] tab/activate: focus owner failed:', err));
+          }
+          return;
+        }
+      }
       void activateNonPanelTab(ctx, action.id, 'tab/activate');
       return;
     }
@@ -725,6 +742,34 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         // existing markers — covers add, idempotent for the rest.
         ctx.syncPanelMarkers(wsId);
         ctx.emitPanelsSync(wsId, { scrollToPanelTabId: action.id });
+      }
+      return;
+    }
+    case 'panel/focus': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (
+        !ctx.panels.findWorkspacesContainingPanelOrSubPanel(action.id).includes(action.workspaceId)
+      ) {
+        return;
+      }
+      const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+      if (owner !== null && owner !== ctx.sourceWindowId) {
+        browser.windows
+          .update(owner, { focused: true })
+          .catch((err) => console.warn('[bento-tools] panel/focus: focus owner failed:', err));
+        return;
+      }
+      const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+      const sync = () => {
+        ctx.emitPanelsSync(action.workspaceId, {
+          scrollToPanelTabId: action.id,
+          ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+        });
+      };
+      if (result === 'activated') {
+        setTimeout(sync, 32);
+      } else {
+        sync();
       }
       return;
     }

@@ -82,6 +82,13 @@ scrim, but the overlay page itself should not cover the browser with an opaque
 surface. The first-run welcome scrim covers the full chrome window, including the
 toolbar and address bar.
 
+The command palette separates normal tabs from side panels. Choosing a tab opens
+that tab in the main content slot, switching to its workspace first when needed.
+Choosing a panel switches to the panel's workspace, scrolls the panel strip to
+that panel, and focuses the panel without moving it into the main content slot.
+The command palette search field and command rows show clear hover, focus, and
+active states so mouse and keyboard navigation both have visible feedback.
+
 ### Main content
 
 The main content area is the normal browser surface. It behaves like a regular

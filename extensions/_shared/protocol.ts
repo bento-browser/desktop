@@ -381,6 +381,11 @@ export type Action =
    * Multi-panel: each workspace can have arbitrary N panels, scrolled
    * horizontally if they overflow. */
   | { type: 'panel/add'; id: number }
+  /** Focus an existing side panel. Used by chrome-adjacent UI such as the
+   * command palette: tools activates the panel's workspace for the source
+   * window, then emits panels/sync with scrollToPanelTabId so chrome scrolls
+   * the strip and focuses that panel without demoting it into the main slot. */
+  | { type: 'panel/focus'; workspaceId: string; id: number }
   /** Open `url` in a new tab and insert it as a panel. Default
    * (`position` omitted or `'after'`): inserts immediately after the
    * source panel — `sourceTabId === null` means the right-click happened

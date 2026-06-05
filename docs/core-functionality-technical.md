@@ -409,6 +409,28 @@ workspace for its window. The payload carries:
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 
+## Command Palette
+
+`extensions/bento-shell/src/components/CommandPalette/CommandPalette.tsx` builds
+its tab and panel results from the same tab and panel mirrors used by the
+sidebar. Panel tab ids from `usePanelsStore.byWorkspace` are excluded from the
+Tabs section and listed in a separate Panels section. Normal tab results dispatch
+`tab/activate`; the tools handler activates the tab's owning workspace for the
+source window before focusing the Firefox tab. Panel results dispatch
+`panel/focus`; tools activates the panel's workspace and emits `panels/sync` with
+`scrollToPanelTabId` so chrome scrolls/focuses the side panel in place.
+
+Do not make palette panel results call `tab/activate`. A panel tab is still a
+Firefox tab internally, but activating it as the selected browser tab demotes the
+mental model: the content appears in the main slot or can be rejected by the
+panel-marker bounce logic. Panel navigation must remain a panel-strip operation.
+
+Do not return freshly-created object arrays directly from Zustand selectors in
+the palette. The palette runs in a persistent chrome overlay frame; an unstable
+external-store snapshot can spin the React tree or crash the palette frame before
+the Dialog paints. Subscribe to stable store references such as
+`usePanelsStore((s) => s.byWorkspace)` and derive object arrays with `useMemo`.
+
 ### Title IPC pitfalls
 
 - `document.title` is last-write-wins. Do not reintroduce separate title writes
