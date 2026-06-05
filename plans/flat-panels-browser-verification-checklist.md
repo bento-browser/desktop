@@ -33,16 +33,22 @@ items are easy to scan.
      ```
 
    - Expected: every visible panel has `directChild: true`; steady-state panels should not have `isSubpanel: true`.
+   - Result: Pass. ✅ Complete
+   - Verified: User confirmed item 1 is working. ✅ Complete
 
 2. **No panel reload on layout-only changes**
    - Open a panel with obvious page state, such as scroll position or form input.
    - Subdivide, fill chooser, resize splitters, and break out.
    - Expected: existing panel content/state remains intact.
+   - Result: Pass. ✅ Complete
+   - Verified: User confirmed item 2 is working. ✅ Complete
 
 3. **No blank panel or null browser errors**
    - Surface: Browser Toolbox Console.
    - Exercise panel creation, subdivision, closing, and workspace switching.
    - Expected: no repeated `linkedBrowser is null`, `showSplitViewPanels failed`, blank panel, or stale split-view errors.
+   - Result: Pass. ✅ Complete
+   - Verified: User confirmed item 3 is working. ✅ Complete
 
 ## Panel Layout
 
@@ -62,7 +68,7 @@ items are easy to scan.
    - Follow-up request: Splitting or subdividing a panel should preserve the current panel-strip scroll position instead of auto-scrolling.
    - Fix status: Ready for re-verification. Subdivision-created child panels no longer request explicit scroll targets, and generic new-panel auto-scroll now ignores non-root subdivision children.
    - Follow-up request: The empty subdivision chooser should lay out `Full panel` and `Split panels` side by side, show saved-panel bookmark options, and expose a top-right close button so the subdivision can be closed without creating a temporary panel.
-   - Follow-up fix status: Ready for re-verification. The chooser now renders side-by-side primary actions, saved-panel URL options from the `panels/sync` saved-panel snapshot, and a close button that removes the empty vertical group while preserving the top panel as a root panel.
+   - Follow-up fix status: Confirmed. The chooser now renders side-by-side primary actions, saved-panel URL options from the `panels/sync` saved-panel snapshot, and a close button that removes the empty vertical group while preserving the top panel as a root panel.
    - Follow-up verified: User confirmed the subdivision chooser buttons, saved-panel options, and close button are working. ✅ Complete
 
 6. **Fill chooser as single panel**
@@ -135,7 +141,9 @@ items are easy to scan.
     - Follow-up request: After closing one panel in a bottom split duo, the surviving bottom panel should be able to `Split this panel` again without creating a nested vertical subdivision.
     - Split survivor verified: User confirmed the survivor can be split again. ✅ Complete
     - Split survivor fix status: Confirmed. A single bottom survivor now exposes `Split this panel`, which recreates a horizontal split in the existing bottom row.
-    - Close animation fix status: Ready for re-verification. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 13 is working. ✅ Complete
+    - Close animation fix status: Confirmed. The close-removal class now animates opacity only and leaves width/flex/margins unchanged during the fade.
 
 14. **Cmd+W on panels**
     - Focus a side panel, then press `Cmd+W`.
@@ -231,6 +239,23 @@ items are easy to scan.
 20. **Navigator drag reorder**
     - Drag favicon/nav icon.
     - Expected: dispatches root-node reorder; grouped root remains grouped and moves as a unit.
+    - Result: Pass. ✅ Complete
+    - Notes: User reported dragging the panel navigator favicon buttons does not
+      reorder the panels.
+    - Fix status: Confirmed. Navigator drag now derives
+      `panelLayout/reorderRoot.rootNodeIds` from the panel navigator root-node
+      payload instead of from `getOrderedPanels()`, which includes the main
+      content slot and could send a bogus `panel:undefined` root id that caused
+      tools to reject the reorder.
+    - Verified: User confirmed dragging panel navigator favicon buttons
+      reorders panels. ✅ Complete
+    - Follow-up request: Make the first panel navigator favicon button that
+      represents the fixed main content slot more distinguishable because it
+      cannot be dragged to reorder.
+    - Follow-up fix status: Ready for re-verification. The fixed main content
+      slot button now has a dedicated neutral treatment, bottom marker, and
+      `Main content slot` accessible label while side-panel navigator buttons
+      remain the draggable reorder targets.
 
 ## Focus And Keyboard
 
@@ -265,7 +290,7 @@ items are easy to scan.
     - Verified: User confirmed trailer focus/add appears to be working.
     - Fix status: Confirmed. Explicit panel-add scroll targets now also become the active/focused cycle target.
     - Follow-up failure: User reported the trailing Add panels button cluster flickers when choosing `Split panels` or a saved-panel option from the subdivision chooser.
-    - Follow-up fix status: Ready for re-verification. Chrome now keeps the existing Add-panel trailer mounted during panel/layout reconciles instead of re-appending its remote iframe whenever subdivision fills add new panel nodes.
+    - Follow-up fix status: Confirmed. Chrome now keeps the existing Add-panel trailer mounted during panel/layout reconciles instead of re-appending its remote iframe whenever subdivision fills add new panel nodes.
     - Follow-up verified: User confirmed the trailing Add panels cluster no longer flickers after subdivision chooser actions. ✅ Complete
 
 ## Workspace And Session
@@ -274,13 +299,15 @@ items are easy to scan.
     - Create a grouped panel layout.
     - Switch workspace away and back.
     - Expected: layout and panel content remain painted.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 24 is working. ✅ Complete
     - Follow-up failure: Opening the workspace switcher menu can paint a non-transparent full-window overlay over the browser content.
-    - Fix status: Ready for re-verification. The workspace switcher overlay document now forces a transparent background after shared CSS loads, and the chrome overlay host is listed as transparent.
+    - Fix status: Confirmed. The workspace switcher overlay document now forces a transparent background after shared CSS loads, and the chrome overlay host is listed as transparent.
     - Follow-up failure: After creating a new workspace, the main content slot can remain at a prior split-view width instead of spanning the full window.
     - Follow-up verified: User confirmed new-workspace main content spans the full window. ✅ Complete
     - Fix status: Confirmed. Main-only teardown now scans for stale split-view/flat-layout artifacts before taking the already-torn-down fast path and removes all Bento rect styles/classes from tab panels.
     - Follow-up failure: Edit-workspace and command-palette modals can paint opaque full-window overlays.
-    - Fix status: Ready for re-verification. Chrome overlay documents now force transparent page backgrounds after shared CSS loads; dialog components remain responsible for their own scrims.
+    - Fix status: Confirmed. Chrome overlay documents now force transparent page backgrounds after shared CSS loads; dialog components remain responsible for their own scrims.
     - Follow-up failure: Resizing the main content slot in one workspace also resizes it in other workspaces.
     - Follow-up verified: User confirmed workspace-scoped main content widths are working. ✅ Complete
     - Fix status: Confirmed. `panel/setMainWidth` now persists the main content width per active workspace, and chrome clears the carried main width when a workspace has no saved `mainWidthPx`.
@@ -306,11 +333,13 @@ items are easy to scan.
     - Follow-up failure: After `Cmd+Q` on a `pnpm run dev` instance and
       relaunch, Bento can open in a different workspace than the one visible at
       quit.
-    - Follow-up fix status: Ready for re-verification. Single-window
+    - Follow-up fix status: Confirmed. Single-window
       per-window workspace activation now also refreshes the persisted global
       active fallback, while multi-window activations remain isolated. This lets
       relaunch fall back to the last visible workspace if Firefox does not
       restore the per-window SessionStore value.
+    - Follow-up verified: User confirmed the Cmd+Q relaunch restores the
+      expected active workspace. ✅ Complete
 
 27. **Cmd+Shift+T restore**
     - Close a split child.
@@ -352,14 +381,14 @@ items are easy to scan.
       order, subdivisions, split-panel ratios, panel widths, and pinned panel
       key remapping. It was missing workspace-scoped main content width and
       panel-strip scroll position.
-    - Follow-up fix status: Ready for re-verification. Schema v2 now includes
+    - Follow-up fix status: Confirmed. Schema v2 now includes
       optional `mainWidthPx` and `stripScrollLeft`; export writes them from
       `PanelStore`, import restores them to the newly created workspace, and
       tool tests cover nested split/subdivision import/export.
     - Follow-up failure: Importing a JSON file during `pnpm run dev` could close
       the browser when replacement import removed existing workspace tabs before
       imported tabs existed.
-    - Follow-up fix status: Ready for re-verification. Replacement import now
+    - Follow-up fix status: Confirmed. Replacement import now
       creates imported workspaces and tabs first, creates a fallback blank tab
       for an empty imported workspace, then removes the old workspaces and tabs.
     - Follow-up verified: User confirmed imports are working fine. ✅ Complete

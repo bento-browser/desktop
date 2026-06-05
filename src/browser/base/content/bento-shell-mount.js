@@ -567,9 +567,33 @@
         background-color: var(--neutral-16);
         border-color: var(--neutral-30);
       }
+      .bento-panel-nav__icon--main {
+        background-color: var(--neutral-8);
+        border-color: var(--neutral-30);
+        box-shadow: inset 0 0 0 1px var(--neutral-20);
+      }
+      .bento-panel-nav__icon--main::after {
+        content: '';
+        position: absolute;
+        inset-block-end: 3px;
+        inset-inline-start: 50%;
+        width: 10px;
+        height: 2px;
+        border-radius: 999px;
+        background-color: var(--neutral-60);
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+      .bento-panel-nav__icon--main:hover {
+        background-color: var(--neutral-12);
+        border-color: var(--neutral-40);
+      }
       .bento-panel-nav__icon--active {
         border-color: var(--color-60);
         background-color: var(--color-3);
+      }
+      .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
+        background-color: var(--color-60);
       }
       /* Enter / leave states are opacity-only so structural updates
          never animate navigator button dimensions. */
@@ -7229,11 +7253,7 @@
       if (dragging && commit && list) {
         const slot = computeTargetSlot(list, finalClientX);
         const panels = getOrderedPanels();
-        const currentIds = [];
-        for (const panel of panels) {
-          const id = panel.dataset.bentoRootNodeId || 'panel:' + panel.dataset.bentoPanelTabId;
-          if (id && !currentIds.includes(id)) currentIds.push(id);
-        }
+        const currentIds = getPanelNavRootNodeIds();
         const sourceRootNodeId = rootNodeId || 'panel:' + tabId;
         const filtered = currentIds.filter((id) => id !== sourceRootNodeId);
         const clampedSlot = Math.max(0, Math.min(slot, filtered.length));
@@ -8195,6 +8215,9 @@
       let btn = existing.get(key);
       if (btn) {
         if (key === 'main') {
+          btn.classList.add('bento-panel-nav__icon--main');
+          btn.title = 'Main content slot';
+          btn.setAttribute('aria-label', 'Main content slot');
           existing.delete(key);
           desiredEls.push(btn);
           continue;
@@ -8224,13 +8247,14 @@
       if (!btn) {
         // New icon — construct via buildNavIcon with the right handler.
         if (key === 'main') {
-          btn = buildNavIcon(getMainTabFavicon(), 'Main panel', () => {
+          btn = buildNavIcon(getMainTabFavicon(), 'Main content slot', () => {
             const ordered = getOrderedPanels();
             const main = ordered[0] || document.getElementById('tabbrowser-tabbox');
             clearRestoredMainAutoScrollSuppression();
             scrollPanelToLeftmost(main);
             setActiveByIndex(0);
           });
+          btn.classList.add('bento-panel-nav__icon--main');
         } else {
           const panelPayload = navPanels[i - 1];
           const tabId = Number(panelPayload?.tabId);

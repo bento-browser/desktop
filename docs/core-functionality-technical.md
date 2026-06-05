@@ -731,6 +731,18 @@ Top-row splits and 2x2 groups:
   small enough to fit inside that fixed 24px slot; increasing grouped favicon
   dimensions without changing the slot causes the navigator to overflow or
   drift out of alignment with the sidebar footer.
+- Panel navigator drag reorder must dispatch only layout root node ids to
+  `panelLayout/reorderRoot`. Do not derive this payload from
+  `getOrderedPanels()`: that list includes the main content slot, so it can add
+  a bogus `panel:undefined` entry and make `PanelStore.reorderRootNodes` reject
+  the reorder. Use the navigator root-node payload (`getPanelNavRootNodeIds`) so
+  the ids match `currentPanelLayout.root` exactly.
+- The first panel navigator button represents the fixed main content slot, not a
+  draggable panel. Keep `bento-panel-nav__icon--main` applied when the button is
+  created and when it is reused during navigator diffing. It should have the
+  `Main content slot` label and must not receive `data-bento-nav-draggable`;
+  side-panel buttons are the only navigator entries that participate in drag
+  reorder.
 
 ### Flat layout pitfalls
 

@@ -200,6 +200,8 @@ The intended behavior is:
 - focused panels have clear visual state;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;
+- the fixed main content slot button in the panel navigator is visually distinct
+  from draggable side-panel buttons;
 - grouped panel navigator icons show and refresh the favicons for visible
   panels inside a vertical or 2x2 group;
 - panel cycling is predictable;
