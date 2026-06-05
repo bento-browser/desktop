@@ -146,14 +146,7 @@ export class WorkspaceStore {
     if (typeof windowId === 'number') {
       this.#activeIdByWindow.set(windowId, w.id);
       this.#persistActiveForWindow(windowId, w.id);
-      // Per-window scoped: only this window foregrounds the new
-      // workspace. Other windows stay on their current active. Matches
-      // the plan's invariant "switching in window A doesn't switch
-      // window B". We do NOT update #lastGlobalActiveId here for the
-      // same reason as in activate() — a per-window choice mustn't
-      // bleed back into the global fallback, otherwise the next window
-      // to query getActiveId(N) for a brand-new N would inherit a
-      // workspace its user never asked for.
+      this.#maybeUpdateSingleWindowFallback(w.id);
       this.#enqueue({ kind: 'activated', id: w.id, windowId });
     } else {
       this.#lastGlobalActiveId = w.id;
@@ -236,12 +229,13 @@ export class WorkspaceStore {
   /** Activate `id` either globally (no windowId) or for a specific window.
    *
    * Per-window activations are isolated: window A switching to X does NOT
-   * change window B's active workspace, does NOT change the global
-   * fallback. The plan's invariant — "switching in window A doesn't
-   * switch window B" — depends on this. A brand-new window's first read
-   * of getActiveId(windowId) returns `#lastGlobalActiveId` (the most-
-   * recent persisted / globally-activated workspace) since the new
-   * window has no per-window entry yet.
+   * change window B's active workspace. When there is only one tracked
+   * window, the activation also refreshes `#lastGlobalActiveId` so a
+   * restart can fall back to the last visible workspace if Firefox does
+   * not restore the window's SessionStore value. With multiple tracked
+   * windows, the global fallback is left alone. A brand-new window's
+   * first read of getActiveId(windowId) returns `#lastGlobalActiveId`
+   * since the new window has no per-window entry yet.
    *
    * Global activations (no windowId — legacy path, tools-internal, and
    * the first-boot bootstrap) update `#lastGlobalActiveId` AND propagate
@@ -266,8 +260,7 @@ export class WorkspaceStore {
       if (owner !== null && owner !== windowId) return 'conflict';
       this.#activeIdByWindow.set(windowId, id);
       this.#persistActiveForWindow(windowId, id);
-      // Deliberately do NOT touch #lastGlobalActiveId — see method
-      // docstring. Per-window activations stay scoped to that window.
+      this.#maybeUpdateSingleWindowFallback(id);
       this.#enqueue({ kind: 'activated', id, windowId });
     } else {
       if (this.#lastGlobalActiveId === id) return 'noop';
@@ -375,6 +368,12 @@ export class WorkspaceStore {
       workspaces: Array.from(this.#workspaces.values()),
       activeId: this.#lastGlobalActiveId,
     });
+  }
+
+  #maybeUpdateSingleWindowFallback(workspaceId: string): void {
+    if (this.#activeIdByWindow.size !== 1) return;
+    if (this.#lastGlobalActiveId === workspaceId) return;
+    this.#lastGlobalActiveId = workspaceId;
   }
 
   /** Persist (or clear) a window's active workspace to SessionStore.

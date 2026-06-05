@@ -42,10 +42,14 @@ The store tracks two active-workspace concepts:
   `browser.sessions.setWindowValue`.
 
 `workspace/activate` is scoped to the requesting window when the shell dispatch
-has a `__windowId`. Bento currently enforces one workspace per window. If
-another window already owns a workspace, activation returns `conflict` and the
-handler focuses the owning window instead of rendering the same workspace in two
-windows.
+has a `__windowId`. In the single-window case, the activation also refreshes
+`#lastGlobalActiveId` so `pnpm run dev` relaunches can fall back to the
+workspace that was visible when the browser quit, even if Firefox does not
+restore that window's SessionStore value. When more than one window is tracked,
+per-window activation does not change the global fallback. Bento currently
+enforces one workspace per window. If another window already owns a workspace,
+activation returns `conflict` and the handler focuses the owning window instead
+of rendering the same workspace in two windows.
 
 Shell-side workspace state is mirrored in
 `extensions/bento-shell/src/state/workspaces.ts`. Use
@@ -89,7 +93,8 @@ opening an unwanted blank tab before the moved tabs arrive.
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
-  and SessionStore persistence live in `WorkspaceStore`.
+  single-window restart fallback, and SessionStore persistence live in
+  `WorkspaceStore`.
 - Do not mutate `useWorkspacesStore` directly from React components. Dispatch a
   protocol action and let tools broadcast deltas.
 - Do not persist sidebar selection in tools or shell stores. It is transient UI
@@ -251,6 +256,14 @@ new workspace. Do not export or import runtime tab ids; they are not durable
 across profiles or sessions. Do not treat `panelLayout` alone as the complete
 layout snapshot; workspace-level main width and strip scroll are separate
 `PanelStore` state and must travel with the backup payload.
+
+When `replaceExisting` is enabled, import must create the replacement workspaces
+and tabs before removing old workspace tabs. Removing old tabs first can close
+the only browser window during `pnpm run dev`, terminating the running Bento
+browser before the import can repopulate it. If a replacement export contains an
+empty workspace with no imported tabs or panels, create an `about:blank` tab in
+that imported workspace before removing old tabs so Firefox never observes an
+empty window.
 
 Panel session markers live in `extensions/bento-tools/src/panels/SessionMarker.ts`.
 They use `browser.sessions.setTabValue` with workspace id and restore location

@@ -227,6 +227,186 @@ describe('workspace backup import/export', () => {
     expect(addPinnedPanel).toHaveBeenCalledWith('imported-workspace', 102);
   });
 
+  it('replaces existing workspaces only after imported tabs exist', async () => {
+    const createTab = vi.fn(async (options: { url: string }) => ({
+      id: options.url === 'about:blank' ? 201 : 200,
+      url: options.url,
+      active: false,
+      pinned: false,
+    }));
+    const removeTabs = vi.fn(async () => undefined);
+    vi.stubGlobal('browser', {
+      tabs: {
+        create: createTab,
+        remove: removeTabs,
+      },
+    });
+
+    const createWorkspace = vi.fn(() => ({
+      id: 'imported-workspace',
+      name: 'Workspace 1',
+      createdAt: 456,
+    }));
+    const deleteWorkspace = vi.fn();
+    const assignWorkspace = vi.fn(async () => undefined);
+
+    const ctx = {
+      workspaces: {
+        snapshot: () => ({
+          workspaces: [{ id: 'old-workspace', name: 'Workspace 1', createdAt: 1 }],
+        }),
+        create: createWorkspace,
+        delete: deleteWorkspace,
+      },
+      tabs: {
+        snapshot: () => [
+          {
+            id: 10,
+            workspaceId: 'old-workspace',
+            title: 'Old tab',
+            pinned: false,
+          },
+        ],
+        assignWorkspace,
+      },
+      panels: {
+        setWidth: vi.fn(),
+        setMainWidth: vi.fn(),
+        setStripScroll: vi.fn(),
+        restorePersistedLayout: vi.fn(),
+      },
+      pinnedPanels: {
+        add: vi.fn(),
+      },
+      settings: {
+        update: vi.fn(),
+      },
+      savedPanels: {
+        save: vi.fn(),
+      },
+    } as unknown as ImportContext;
+
+    const data: BentoExportSchema = {
+      schemaVersion: 2,
+      bentoVersion: '0.0.0',
+      exportedAt: 789,
+      workspaces: [
+        {
+          id: 'source-workspace',
+          name: 'Workspace 1',
+          createdAt: 123,
+          tabs: [
+            {
+              url: 'https://main.example.test/',
+              title: 'Main',
+              pinned: false,
+            },
+          ],
+          panels: [],
+          panelLayout: { root: [] },
+          pinnedPanels: [],
+        },
+      ],
+      savedPanels: [],
+    };
+
+    await executeImport(
+      data,
+      { importSettings: false, importSavedPanels: false, replaceExisting: true },
+      ctx,
+    );
+
+    expect(createWorkspace).toHaveBeenCalledWith(
+      { name: 'Workspace 1', themeId: undefined, icon: undefined },
+      null,
+    );
+    expect(createTab).toHaveBeenCalledWith({
+      url: 'https://main.example.test/',
+      active: false,
+      pinned: false,
+    });
+    expect(assignWorkspace).toHaveBeenCalledWith(200, 'imported-workspace');
+    expect(removeTabs).toHaveBeenCalledWith([10]);
+    expect(deleteWorkspace).toHaveBeenCalledWith('old-workspace');
+    expect(createTab.mock.invocationCallOrder[0]).toBeLessThan(
+      removeTabs.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('creates a fallback tab before replacing with an empty workspace export', async () => {
+    const createTab = vi.fn(async () => ({
+      id: 300,
+      url: 'about:blank',
+      active: false,
+      pinned: false,
+    }));
+    const removeTabs = vi.fn(async () => undefined);
+    vi.stubGlobal('browser', {
+      tabs: {
+        create: createTab,
+        remove: removeTabs,
+      },
+    });
+
+    const assignWorkspace = vi.fn(async () => undefined);
+    const ctx = {
+      workspaces: {
+        snapshot: () => ({
+          workspaces: [{ id: 'old-workspace', name: 'Old', createdAt: 1 }],
+        }),
+        create: vi.fn(() => ({ id: 'empty-workspace', name: 'Empty', createdAt: 456 })),
+        delete: vi.fn(),
+      },
+      tabs: {
+        snapshot: () => [{ id: 10, workspaceId: 'old-workspace', title: 'Old', pinned: false }],
+        assignWorkspace,
+      },
+      panels: {
+        setWidth: vi.fn(),
+        setMainWidth: vi.fn(),
+        setStripScroll: vi.fn(),
+        restorePersistedLayout: vi.fn(),
+      },
+      pinnedPanels: {
+        add: vi.fn(),
+      },
+      settings: {
+        update: vi.fn(),
+      },
+      savedPanels: {
+        save: vi.fn(),
+      },
+    } as unknown as ImportContext;
+
+    await executeImport(
+      {
+        schemaVersion: 2,
+        bentoVersion: '0.0.0',
+        exportedAt: 789,
+        workspaces: [
+          {
+            id: 'source-workspace',
+            name: 'Empty',
+            createdAt: 123,
+            tabs: [],
+            panels: [],
+            panelLayout: { root: [] },
+            pinnedPanels: [],
+          },
+        ],
+        savedPanels: [],
+      },
+      { importSettings: false, importSavedPanels: false, replaceExisting: true },
+      ctx,
+    );
+
+    expect(createTab).toHaveBeenCalledWith({ url: 'about:blank', active: false });
+    expect(assignWorkspace).toHaveBeenCalledWith(300, 'empty-workspace');
+    expect(createTab.mock.invocationCallOrder[0]).toBeLessThan(
+      removeTabs.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('validates optional v2 workspace layout fields', () => {
     const valid: BentoExportSchema = {
       schemaVersion: 2,

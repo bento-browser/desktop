@@ -303,6 +303,14 @@ items are easy to scan.
     - Expected: v5 layout restores with same visible structure, widths, and pins.
     - Result: Pass. ✅ Complete
     - Verified: User confirmed item 26 is working.
+    - Follow-up failure: After `Cmd+Q` on a `pnpm run dev` instance and
+      relaunch, Bento can open in a different workspace than the one visible at
+      quit.
+    - Follow-up fix status: Ready for re-verification. Single-window
+      per-window workspace activation now also refreshes the persisted global
+      active fallback, while multi-window activations remain isolated. This lets
+      relaunch fall back to the last visible workspace if Firefox does not
+      restore the per-window SessionStore value.
 
 27. **Cmd+Shift+T restore**
     - Close a split child.
@@ -325,16 +333,21 @@ items are easy to scan.
     - Give them different positions and widths.
     - Restart.
     - Expected: both restore as distinct panels.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 28 appears to be working.
 
 29. **Duplicate URL pinned panels**
     - Pin one or both duplicate-URL panels.
     - Restart.
     - Expected: pins attach to intended panel entries, not just first matching URL.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed item 29 appears to be working.
 
 30. **Backup export/import v2**
     - Export current setup.
     - Import into a clean or disposable profile/workspace.
     - Expected: panels, `panelLayout`, widths, and pinned panel refs restore.
+    - Result: Pass. ✅ Complete
     - Follow-up audit: Export/import already preserved panel keys, layout tree
       order, subdivisions, split-panel ratios, panel widths, and pinned panel
       key remapping. It was missing workspace-scoped main content width and
@@ -343,10 +356,21 @@ items are easy to scan.
       optional `mainWidthPx` and `stripScrollLeft`; export writes them from
       `PanelStore`, import restores them to the newly created workspace, and
       tool tests cover nested split/subdivision import/export.
+    - Follow-up failure: Importing a JSON file during `pnpm run dev` could close
+      the browser when replacement import removed existing workspace tabs before
+      imported tabs existed.
+    - Follow-up fix status: Ready for re-verification. Replacement import now
+      creates imported workspaces and tabs first, creates a fallback blank tab
+      for an empty imported workspace, then removes the old workspaces and tabs.
+    - Follow-up verified: User confirmed imports are working fine. ✅ Complete
 
 31. **Settings import preflight**
     - Import same backup through Settings UI.
     - Expected: Settings accepts schema v2 and does not reject `panelLayout`.
+    - Result: Pass. ✅ Complete
+    - Verified: User confirmed JSON imports are working; because this path goes
+      through the Settings import UI, it also verifies the schema v2 preflight
+      accepts `panelLayout`.
 
 ## Close-Out Priority
 

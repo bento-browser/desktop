@@ -290,7 +290,7 @@ export function BackupSection() {
                       Replace all existing workspaces
                     </Text>
                     <Text variant="text" size="s" color="muted">
-                      Closes all current tabs and deletes all workspaces before importing.
+                      Imports the backup first, then removes current workspaces and tabs.
                     </Text>
                   </Column>
                   <Switch.Root isSelected={replaceExisting} onChange={setReplaceExisting}>

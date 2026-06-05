@@ -25,6 +25,26 @@ function deduplicateName(name: string, existing: Set<string>): string {
   return `${name} (${i})`;
 }
 
+async function removeWorkspacesAfterReplacement(
+  workspaces: ReturnType<WorkspaceStore['snapshot']>['workspaces'],
+  ctx: ImportContext,
+): Promise<void> {
+  for (const ws of workspaces) {
+    const tabIds = ctx.tabs
+      .snapshot()
+      .filter((t) => t.workspaceId === ws.id)
+      .map((t) => t.id);
+    if (tabIds.length > 0) {
+      try {
+        await browser.tabs.remove(tabIds);
+      } catch (err) {
+        console.warn('[bento-tools] import: tabs.remove failed for workspace', ws.name, err);
+      }
+    }
+    ctx.workspaces.delete(ws.id);
+  }
+}
+
 export async function executeImport(
   data: BentoExportSchema,
   options: ImportOptions,
@@ -37,31 +57,19 @@ export async function executeImport(
     settingsApplied: false,
   };
 
-  if (options.replaceExisting) {
-    const existing = ctx.workspaces.snapshot().workspaces;
-    for (const ws of existing) {
-      const tabIds = ctx.tabs
-        .snapshot()
-        .filter((t) => t.workspaceId === ws.id)
-        .map((t) => t.id);
-      if (tabIds.length > 0) {
-        try {
-          await browser.tabs.remove(tabIds);
-        } catch (err) {
-          console.warn('[bento-tools] import: tabs.remove failed for workspace', ws.name, err);
-        }
-      }
-      ctx.workspaces.delete(ws.id);
-    }
-  }
+  const workspacesToReplace = options.replaceExisting ? ctx.workspaces.snapshot().workspaces : [];
 
-  const existingNames = new Set(ctx.workspaces.snapshot().workspaces.map((w) => w.name));
+  const existingNames = options.replaceExisting
+    ? new Set<string>()
+    : new Set(ctx.workspaces.snapshot().workspaces.map((w) => w.name));
+  const importedWorkspaceIds: string[] = [];
 
   for (const wsData of data.workspaces) {
     const name = deduplicateName(wsData.name, existingNames);
     existingNames.add(name);
 
     const ws = ctx.workspaces.create({ name, themeId: wsData.themeId, icon: wsData.icon }, null);
+    importedWorkspaceIds.push(ws.id);
     summary.workspacesCreated++;
     if (
       typeof wsData.mainWidthPx === 'number' &&
@@ -158,6 +166,22 @@ export async function executeImport(
         ctx.pinnedPanels.add(ws.id, tabId);
       }
     }
+  }
+
+  if (options.replaceExisting && summary.tabsOpened === 0 && importedWorkspaceIds.length > 0) {
+    try {
+      const created = await browser.tabs.create({ url: 'about:blank', active: false });
+      if (typeof created.id === 'number') {
+        await ctx.tabs.assignWorkspace(created.id, importedWorkspaceIds[0]!);
+        summary.tabsOpened++;
+      }
+    } catch (err) {
+      console.warn('[bento-tools] import: fallback tab create failed:', err);
+    }
+  }
+
+  if (options.replaceExisting) {
+    await removeWorkspacesAfterReplacement(workspacesToReplace, ctx);
   }
 
   if (options.importSettings && data.settings) {
