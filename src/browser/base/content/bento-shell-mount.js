@@ -27,6 +27,30 @@
   const ADDON_ID = 'bento-shell@bento.app';
   const BENTO_PANEL_NEWTAB_PATH = '/dist/panel-newtab.html';
   const PROMOTED_PANEL_CONTENT_PRESERVE_MS = 3000;
+  const BENTO_DEFAULT_UI_COLOR_MODE = 'light';
+  const CHROME_DARK_QUERY = '(prefers-color-scheme: dark)';
+  const STARTUP_VEIL_TIMEOUT_MS = 3000;
+
+  function seedChromeColorMode() {
+    const root = document.documentElement;
+    if (!root) return;
+    // Match bento-shell/public/boot.js's fresh-profile default before
+    // chrome token/theme stylesheets load. The persisted setting still
+    // arrives through BENTO_PANELS and can flip this to dark/system, but
+    // seeding prevents new windows from painting OS-dark chrome while the
+    // sidebar iframe has already booted into Bento's default light mode.
+    if (!root.hasAttribute('data-color-mode')) {
+      root.setAttribute('data-color-mode', BENTO_DEFAULT_UI_COLOR_MODE);
+    }
+    if (!root.hasAttribute('data-theme')) {
+      root.setAttribute('data-theme', BENTO_DEFAULT_UI_COLOR_MODE);
+    }
+    if (!root.hasAttribute('data-bento-color-mode-pref')) {
+      root.setAttribute('data-bento-color-mode-pref', BENTO_DEFAULT_UI_COLOR_MODE);
+    }
+  }
+  seedChromeColorMode();
+  document.documentElement.setAttribute('bento-startup-loading', 'true');
 
   function isStaleWebProgressRemoveError(err) {
     const message = String(err?.message || err || '');
@@ -219,6 +243,131 @@
          bar (no separator); zero the border style here. */
       #navigator-toolbox {
         border-bottom-style: none !important;
+      }
+      :root[bento-startup-loading='true'] #navigator-toolbox {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #bento-startup-veil {
+        position: absolute;
+        inset: 0;
+        z-index: 2147483000;
+        display: grid;
+        grid-template-columns: minmax(48px, var(--bento-tab-strip-width-min, 220px)) 1fr;
+        min-width: 0;
+        min-height: 0;
+        background-color: var(--neutral-5);
+        color: var(--neutral-90);
+        pointer-events: auto;
+        opacity: 1;
+        transition: opacity 140ms var(--bento-easing-standard, ease);
+      }
+      #bento-startup-veil[hidden],
+      :root:not([bento-startup-loading='true']) #bento-startup-veil {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .bento-startup-veil__sidebar,
+      .bento-startup-veil__main {
+        box-sizing: border-box;
+        min-width: 0;
+        min-height: 0;
+        background-color: var(--neutral-5);
+      }
+      .bento-startup-veil__sidebar {
+        border-inline-end: 1px solid var(--neutral-16);
+        padding: var(--space-xs);
+      }
+      .bento-startup-veil__main {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-l);
+        padding: var(--space-s);
+      }
+      .bento-startup-veil__toolbar {
+        height: 32px;
+        border-radius: var(--radius-s);
+        background-color: var(--neutral-12);
+      }
+      .bento-startup-veil__content {
+        flex: 1 1 auto;
+        min-height: 0;
+        border-radius: var(--radius-m);
+        background-color: var(--neutral-8);
+        overflow: hidden;
+        position: relative;
+      }
+      .bento-startup-veil__content::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 42%;
+        width: min(34rem, 46%);
+        height: 4rem;
+        border-radius: var(--radius-s);
+        background-color: var(--neutral-14);
+        transform: translate(-50%, -50%);
+      }
+      .bento-startup-veil__content::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: calc(42% + 6.5rem);
+        width: min(28rem, 38%);
+        height: 2.8rem;
+        border-radius: var(--radius-s);
+        background-color: var(--neutral-12);
+        transform: translateX(-50%);
+      }
+      .bento-startup-veil__workspace,
+      .bento-startup-veil__row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+      }
+      .bento-startup-veil__workspace {
+        height: 3.6rem;
+        margin-block-end: var(--space-s);
+      }
+      .bento-startup-veil__rows {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-xs);
+      }
+      .bento-startup-veil__dot {
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: var(--radius-s);
+        background-color: var(--neutral-14);
+        flex: 0 0 auto;
+      }
+      .bento-startup-veil__row .bento-startup-veil__dot {
+        width: 1rem;
+        height: 1rem;
+      }
+      .bento-startup-veil__bar {
+        height: 1rem;
+        border-radius: var(--radius-xs);
+        background-color: var(--neutral-14);
+      }
+      .bento-startup-veil__workspace .bento-startup-veil__bar {
+        width: 7rem;
+      }
+      .bento-startup-veil__row .bento-startup-veil__bar {
+        width: min(12rem, 68%);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .bento-startup-veil__bar,
+        .bento-startup-veil__dot,
+        .bento-startup-veil__toolbar,
+        .bento-startup-veil__content::before,
+        .bento-startup-veil__content::after {
+          animation: bento-startup-veil-pulse 1.2s var(--bento-easing-in-out, ease-in-out) infinite;
+        }
+      }
+      @keyframes bento-startup-veil-pulse {
+        0%, 100% { opacity: 0.58; }
+        50% { opacity: 1; }
       }
       #bento-shell-splitter {
         width: 14px !important;
@@ -568,32 +717,30 @@
         border-color: var(--neutral-30);
       }
       .bento-panel-nav__icon--main {
-        background-color: var(--neutral-8);
-        border-color: var(--neutral-30);
-        box-shadow: inset 0 0 0 1px var(--neutral-20);
+        overflow: visible;
+        margin-inline-end: var(--space-xs);
       }
       .bento-panel-nav__icon--main::after {
         content: '';
         position: absolute;
-        inset-block-end: 3px;
-        inset-inline-start: 50%;
-        width: 10px;
-        height: 2px;
-        border-radius: 999px;
-        background-color: var(--neutral-60);
-        transform: translateX(-50%);
+        inset-block-start: 50%;
+        inset-inline-end: calc(-1 * var(--space-2xs));
+        width: 1px;
+        height: 16px;
+        border-radius: var(--radius-pill);
+        background-color: var(--neutral-30);
+        transform: translateY(-50%);
         pointer-events: none;
       }
       .bento-panel-nav__icon--main:hover {
         background-color: var(--neutral-12);
-        border-color: var(--neutral-40);
       }
       .bento-panel-nav__icon--active {
         border-color: var(--color-60);
         background-color: var(--color-3);
       }
       .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
-        background-color: var(--color-60);
+        background-color: var(--neutral-30);
       }
       /* Enter / leave states are opacity-only so structural updates
          never animate navigator button dimensions. */
@@ -1819,6 +1966,114 @@
   }
   injectChromeStyles();
 
+	  let __startupVeilHideTimer = null;
+	  function setStartupVeilClass(element, className) {
+	    element.setAttribute('class', className);
+	    return element;
+	  }
+
+	  function ensureStartupVeil() {
+	    if (document.getElementById('bento-startup-veil')) return;
+	    const parent = document.getElementById('browser');
+	    if (!parent) return;
+
+    const veil = document.createXULElement('vbox');
+    veil.id = 'bento-startup-veil';
+    veil.setAttribute('aria-hidden', 'true');
+
+	    const sidebar = setStartupVeilClass(
+	      document.createXULElement('vbox'),
+	      'bento-startup-veil__sidebar',
+	    );
+	    const workspace = setStartupVeilClass(
+	      document.createXULElement('hbox'),
+	      'bento-startup-veil__workspace',
+	    );
+	    const workspaceDot = setStartupVeilClass(
+	      document.createXULElement('box'),
+	      'bento-startup-veil__dot',
+	    );
+	    const workspaceBar = setStartupVeilClass(
+	      document.createXULElement('box'),
+	      'bento-startup-veil__bar',
+	    );
+	    workspace.append(workspaceDot, workspaceBar);
+	    const rows = setStartupVeilClass(
+	      document.createXULElement('vbox'),
+	      'bento-startup-veil__rows',
+	    );
+	    for (let i = 0; i < 4; i += 1) {
+	      const row = setStartupVeilClass(
+	        document.createXULElement('hbox'),
+	        'bento-startup-veil__row',
+	      );
+	      const dot = setStartupVeilClass(
+	        document.createXULElement('box'),
+	        'bento-startup-veil__dot',
+	      );
+	      const bar = setStartupVeilClass(
+	        document.createXULElement('box'),
+	        'bento-startup-veil__bar',
+	      );
+	      row.append(dot, bar);
+	      rows.appendChild(row);
+	    }
+	    sidebar.append(workspace, rows);
+
+	    const main = setStartupVeilClass(
+	      document.createXULElement('vbox'),
+	      'bento-startup-veil__main',
+	    );
+	    const toolbar = setStartupVeilClass(
+	      document.createXULElement('box'),
+	      'bento-startup-veil__toolbar',
+	    );
+	    const content = setStartupVeilClass(
+	      document.createXULElement('box'),
+	      'bento-startup-veil__content',
+	    );
+    main.append(toolbar, content);
+
+    veil.append(sidebar, main);
+    parent.appendChild(veil);
+  }
+
+  function hideStartupVeil() {
+    document.documentElement.removeAttribute('bento-startup-loading');
+    if (__startupVeilHideTimer) {
+      clearTimeout(__startupVeilHideTimer);
+      __startupVeilHideTimer = null;
+    }
+    const veil = document.getElementById('bento-startup-veil');
+    if (!veil || veil.hasAttribute('hidden')) return;
+    window.setTimeout(() => {
+      veil.setAttribute('hidden', 'true');
+      veil.remove();
+    }, 180);
+  }
+
+  function armStartupVeilFallback() {
+    if (__startupVeilHideTimer) return;
+    __startupVeilHideTimer = window.setTimeout(() => {
+      __startupVeilHideTimer = null;
+      hideStartupVeil();
+    }, STARTUP_VEIL_TIMEOUT_MS);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        ensureStartupVeil();
+        armStartupVeilFallback();
+      },
+      { once: true },
+    );
+  } else {
+    ensureStartupVeil();
+    armStartupVeilFallback();
+  }
+
   function moz(path) {
     const policy = WebExtensionPolicy.getByID(ADDON_ID);
     if (!policy) return null;
@@ -2649,16 +2904,9 @@
   // payload also carries the same uiColorMode field as a self-correcting
   // backstop in case this dedicated message races with a panels/sync.
   const COLOR_MODE_PREFIX = 'BENTO_COLOR_MODE:';
-  const CHROME_DARK_QUERY = '(prefers-color-scheme: dark)';
-  // Per-workspace theme IPC. Title format: BENTO_THEME:<ts>:<themeId>
-  // The sidebar's useWorkspaceTheme hook (with pushChrome: true) writes
-  // this on every active-workspace-theme change. We mirror it onto
-  // documentElement[data-bento-theme] so the workspace theme presets in
-  // bento-chrome-tokens.css (concatenated by generate-chrome-tokens.mjs
-  // from extensions/bento-shell/src/theme/presets/*.css) scope their
-  // overrides to the chrome window root. Boot race acknowledged in the
-  // theme plan — until the first BENTO_THEME push lands, chrome paints
-  // in the Default theme even when the workspace prefers another.
+  // Legacy per-workspace theme IPC. Current sidebar builds carry themeId
+  // inside BENTO_PANELS so it lands atomically with uiColorMode; this
+  // standalone handler remains for older shell documents and diagnostics.
   const THEME_PREFIX = 'BENTO_THEME:';
   // Sidebar drag-to-reorder. Title format:
   //   BENTO_TAB_MOVE:<ts>:<srcTabId>:<anchorTabId>:<before|after>
@@ -12564,16 +12812,17 @@
     // payload, silently aborting the reconcile.
     let isWorkspaceTransition = false;
     let scrollToPanelTabId = null;
-    if (Array.isArray(decoded)) {
-      allPanelPayloads = decoded;
-      currentPanelLayout = {
-        root: decoded
-          .map((panel) => Number(panel?.tabId))
-          .filter((tabId) => Number.isFinite(tabId))
-          .map((tabId) => ({ kind: 'panel', tabId })),
-      };
-      panels = decoratePanelsForLayout(currentPanelLayout, allPanelPayloads);
-    } else if (decoded && Array.isArray(decoded.panels)) {
+	    if (Array.isArray(decoded)) {
+	      allPanelPayloads = decoded;
+	      currentPanelLayout = {
+	        root: decoded
+	          .map((panel) => Number(panel?.tabId))
+	          .filter((tabId) => Number.isFinite(tabId))
+	          .map((tabId) => ({ kind: 'panel', tabId })),
+	      };
+	      panels = decoratePanelsForLayout(currentPanelLayout, allPanelPayloads);
+	      hideStartupVeil();
+	    } else if (decoded && Array.isArray(decoded.panels)) {
       allPanelPayloads = decoded.panels;
       const sanitizedLayout = sanitizePanelLayoutPayload(decoded.layout, allPanelPayloads);
       currentPanelLayout = sanitizedLayout;
@@ -12663,10 +12912,11 @@
       if (typeof decoded.panelCycleWraparound === 'boolean') {
         currentPanelCycleWraparound = decoded.panelCycleWraparound;
       }
-      if (typeof decoded.panelShadowsEnabled === 'boolean') {
-        applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
-      }
-      if (
+	      if (typeof decoded.panelShadowsEnabled === 'boolean') {
+	        applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
+	      }
+	      hideStartupVeil();
+	      if (
         typeof decoded.scrollToPanelTabId === 'number' &&
         Number.isInteger(decoded.scrollToPanelTabId)
       ) {

@@ -31,7 +31,7 @@ import { initToolsPort } from '../bridge/useToolsPort';
 initToolsPort();
 
 function SettingsApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   return <Settings />;
 }

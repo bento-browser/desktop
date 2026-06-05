@@ -209,7 +209,11 @@ function ensureConnection(): void {
         if (state.sidePanelTitleBridge) {
           const wsState = useWorkspacesStore.getState();
           const activeId = selectActiveIdForWindow(wsState, state.windowId);
-          if (event.workspaceId === activeId) {
+          const isTargetedAtThisWindow =
+            typeof event.windowId === 'number' &&
+            state.windowId !== null &&
+            event.windowId === state.windowId;
+          if (event.workspaceId === activeId || (isTargetedAtThisWindow && activeId === null)) {
             const payload: {
               workspaceId: string;
               panels: typeof event.panels;
@@ -229,7 +233,7 @@ function ensureConnection(): void {
               layout: typeof event.layout;
               panelStatusByTabId: typeof event.panelStatusByTabId;
             } = {
-              workspaceId: activeId,
+              workspaceId: event.workspaceId,
               panels: event.panels,
               layout: event.layout,
               panelStatusByTabId: event.panelStatusByTabId,
@@ -237,7 +241,7 @@ function ensureConnection(): void {
             if (state.windowId !== null) {
               payload.windowId = state.windowId;
             }
-            const activeWorkspace = wsState.byId[activeId];
+            const activeWorkspace = wsState.byId[event.workspaceId];
             if (activeWorkspace?.themeId) {
               payload.themeId = activeWorkspace.themeId;
             } else {
@@ -258,7 +262,11 @@ function ensureConnection(): void {
             // channel = no race with separate title writes (the
             // COLOR_MODE channel was dropped earlier for this reason).
             const cur = useSettingsStore.getState().current;
+            const bootUiColorMode =
+              document.documentElement.getAttribute('data-bento-color-mode-pref') ??
+              document.documentElement.getAttribute('data-color-mode');
             if (cur?.uiColorMode) payload.uiColorMode = cur.uiColorMode;
+            else if (bootUiColorMode) payload.uiColorMode = bootUiColorMode;
             if (typeof cur?.sidebarCollapsed === 'boolean') {
               payload.sidebarCollapsed = cur.sidebarCollapsed;
             }

@@ -20,7 +20,7 @@ import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
 import { usePanelsStore } from './state/panels';
 import { useWorkspacesStore } from './state/workspaces';
-import type { ColorModePref, UiColorModePref } from '@shared/protocol';
+import type { UiColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -77,12 +77,10 @@ export function App() {
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
   // Per-workspace theme. Mirrors the active workspace's themeId onto
   // <html data-bento-theme="..."> so the scoped theme rules in
-  // theme/presets/<id>.css apply to the shell. The sidebar is also
-  // the canonical chrome→theme messenger (pushChrome: true), so the
-  // chrome window's <window> root re-themes in lockstep — see
-  // src/browser/base/content/bento-shell-mount.js's BENTO_THEME
-  // title-IPC handler.
-  useWorkspaceTheme({ pushChrome: true });
+  // theme/presets/<id>.css apply to the shell. Chrome receives the active
+  // workspace theme through the same BENTO_PANELS payload that carries
+  // uiColorMode, so first-paint theme/color updates stay atomic.
+  useWorkspaceTheme();
   // First-run welcome trigger. The settings snapshot lands a moment after
   // the tools port connects; once it does and welcomeSeen=false, signal
   // chrome to show the welcome overlay (chrome-mounted, full-window scrim
@@ -224,12 +222,9 @@ export function App() {
     document.title = `BENTO_TAB_MOVE:${Date.now()}:${id}:${anchorId}:${before ? 'before' : 'after'}`;
   };
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
-  const contentColorMode = useSettingsStore((s) => s.current?.contentColorMode);
   const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   const setUiColorMode = (next: UiColorModePref) =>
     dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
-  const setContentColorMode = (next: ColorModePref) =>
-    dispatch({ type: 'settings/update', changes: { contentColorMode: next } });
   const toggleSidebarCollapsed = () =>
     dispatch({ type: 'settings/update', changes: { sidebarCollapsed: !sidebarCollapsed } });
 
@@ -356,11 +351,6 @@ export function App() {
           onChange={setUiColorMode}
           modes={UI_COLOR_MODE_ORDER}
           surfaceLabel="Bento UI"
-        />
-        <ColorModeCycle
-          value={contentColorMode}
-          onChange={setContentColorMode}
-          surfaceLabel="Website"
         />
         <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
           <Icon icon={Settings} />

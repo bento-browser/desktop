@@ -42,9 +42,9 @@ const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_PALETTE';
 function PaletteApp() {
   useFirefoxTheme();
   // Theme to the active workspace so the palette overlay renders with the
-  // same brand/neutral palette as the sidebar. pushChrome is OFF — only
-  // the sidebar (main.tsx) owns the BENTO_THEME title-IPC; secondary
-  // overlays writing it would clobber their own close sentinels.
+  // same brand/neutral palette as the sidebar. Chrome theme updates ride
+  // through BENTO_PANELS; overlays must not write theme title sentinels
+  // because they share document.title with their own close signals.
   useWorkspaceTheme();
   const handleClose = () => {
     const newTitle = `${CLOSE_TITLE_PREFIX}_${Date.now()}`;

@@ -275,6 +275,44 @@ export class PanelStore {
     this.#schedulePersist();
   }
 
+  parkWorkspaceWithResolvedUrls(
+    workspaceId: string,
+    resolveUrl: (tabId: number) => string | undefined,
+  ): boolean {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    if (!layout) return false;
+
+    const keys = panelKeysForLayout(layout);
+    const entries: PersistedPanelEntry[] = [];
+    const keptKeysByTabId = new Map<number, string>();
+    for (const [tabId, panelKey] of keys) {
+      const url = resolveUrl(tabId);
+      if (!url || url === 'about:blank') continue;
+      const widthPx = this.#widthByTabId.get(tabId);
+      const entry: PersistedPanelEntry = { panelKey, url };
+      if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+      entries.push(entry);
+      keptKeysByTabId.set(tabId, panelKey);
+    }
+
+    this.#layoutByWorkspace.delete(workspaceId);
+    for (const tabId of keys.keys()) {
+      this.#widthByTabId.delete(tabId);
+    }
+
+    if (entries.length > 0) {
+      this.#persistedWorkspaces.set(workspaceId, {
+        entries,
+        layout: toPersistenceLayout(layout, keptKeysByTabId),
+      });
+    } else {
+      this.#persistedWorkspaces.delete(workspaceId);
+    }
+
+    this.#flushPersist();
+    return entries.length > 0;
+  }
+
   remove(workspaceId: string, tabId: number): boolean {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
@@ -457,6 +495,7 @@ export class PanelStore {
   #schedulePersist(): void {
     this.#persistence.schedule(
       new Map(this.#layoutByWorkspace),
+      new Map(this.#persistedWorkspaces),
       new Map(this.#widthByTabId),
       new Map(this.#mainWidthByWorkspace),
       new Map(this.#stripScrollByWorkspace),
@@ -466,6 +505,7 @@ export class PanelStore {
   #flushPersist(): void {
     this.#persistence.flushNow(
       new Map(this.#layoutByWorkspace),
+      new Map(this.#persistedWorkspaces),
       new Map(this.#widthByTabId),
       new Map(this.#mainWidthByWorkspace),
       new Map(this.#stripScrollByWorkspace),

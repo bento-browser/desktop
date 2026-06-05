@@ -347,7 +347,10 @@ export interface HandlerContext {
    * broadcast a panels/sync event. Lives on background.ts (it needs
    * broadcast access + browser.tabs.get for URL resolution); the handler
    * only triggers it when panel state changes. */
-  emitPanelsSync: (workspaceId: string, options?: { scrollToPanelTabId?: number }) => void;
+  emitPanelsSync: (
+    workspaceId: string,
+    options?: { scrollToPanelTabId?: number; windowId?: number },
+  ) => void;
   /** Rewrite session markers for every panel in the workspace with
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
@@ -632,6 +635,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     case 'workspace/update':
       ctx.workspaces.update(action.id, action.changes);
+      if ('themeId' in action.changes) {
+        ctx.emitPanelsSync(action.id);
+      }
       return;
     case 'workspace/delete': {
       // Close the workspace's tabs FIRST (browser.tabs.remove is async but

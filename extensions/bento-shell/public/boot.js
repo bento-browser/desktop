@@ -8,14 +8,18 @@
 // CSP forbids inline <script>.
 (function () {
   var stored = localStorage.getItem('color-mode');
-  var mode =
-    stored === 'light' || stored === 'dark'
-      ? stored
-      : stored === 'system'
-        ? matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
+  var storedResolved = localStorage.getItem('resolved-color-mode');
+  var hasStoredResolved = storedResolved === 'light' || storedResolved === 'dark';
+  var mode = 'light';
+  if (stored === 'light' || stored === 'dark') {
+    mode = stored;
+  } else if (stored === 'system') {
+    mode = hasStoredResolved
+      ? storedResolved
+      : matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
         : 'light';
+  }
   document.documentElement.setAttribute('data-color-mode', mode);
   document.documentElement.setAttribute('data-theme', mode);
   document.documentElement.setAttribute(

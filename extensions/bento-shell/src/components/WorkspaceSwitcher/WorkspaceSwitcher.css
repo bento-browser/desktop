@@ -6,7 +6,8 @@
  * its accent through --bento-workspace-accent → --color-60 → --brand-60.
  * Each menu row tints its own avatar with that workspace's theme while
  * the active workspace's theme also propagates to <html data-bento-theme>
- * for the rest of the shell + chrome via useWorkspaceTheme. */
+ * for the rest of the shell via useWorkspaceTheme; chrome receives it
+ * through the active BENTO_PANELS payload. */
 
 /* Avatar accent override — Tale UI's .tale-avatar { background-color }
  * rule is UNLAYERED, so a @layer-wrapped rule loses regardless of

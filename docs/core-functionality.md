@@ -50,6 +50,8 @@ workspace.
 Workspaces should feel persistent. Closing Bento and reopening it should restore
 the user's active contexts without forcing them to rebuild their browser
 arrangement from memory.
+Closing a window that is showing a workspace should release that workspace for
+another window without clearing its tabs, panels, or panel layout.
 In a single-window session, relaunch should reopen on the workspace that was
 visible when Bento was quit.
 
@@ -200,8 +202,8 @@ The intended behavior is:
 - focused panels have clear visual state;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;
-- the fixed main content slot button in the panel navigator is visually distinct
-  from draggable side-panel buttons;
+- the fixed main content slot button in the panel navigator is separated from
+  draggable side-panel buttons by a divider;
 - grouped panel navigator icons show and refresh the favicons for visible
   panels inside a vertical or 2x2 group;
 - panel cycling is predictable;

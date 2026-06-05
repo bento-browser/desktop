@@ -10,6 +10,12 @@ import type { TabDelta, TabSnapshot } from '@shared/protocol';
 
 type Listener = (deltas: TabDelta[]) => void;
 
+export interface WindowClosingTabSnapshot extends TabSnapshot {
+  url?: string;
+}
+
+type WindowClosingListener = (info: { windowId: number; tabs: WindowClosingTabSnapshot[] }) => void;
+
 const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
 const CUSTOM_TITLE_SESSION_KEY = 'bento.customTitle';
 const CLOSING_TAB_SESSION_KEY = 'bento.closingTab';
@@ -27,6 +33,15 @@ function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
     loading: t.status === 'loading',
     discarded: t.discarded ?? false,
   };
+}
+
+function tabUrl(t: browser.tabs.Tab): string | undefined {
+  const pendingUrl =
+    typeof (t as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
+      ? ((t as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? '')
+      : '';
+  const url = t.url && t.url !== 'about:blank' ? t.url : pendingUrl;
+  return url || undefined;
 }
 
 async function readWorkspaceId(tabId: number): Promise<string | undefined> {
@@ -62,6 +77,9 @@ export class TabRegistry {
   #pending: TabDelta[] = [];
   #flushScheduled = false;
   #listeners = new Set<Listener>();
+  #windowClosingListeners = new Set<WindowClosingListener>();
+  #notifiedClosingWindows = new Set<number>();
+  #urlByTabId = new Map<number, string>();
   #closingTabIds = new Set<number>();
   #unmarkedClosingTabIds = new Set<number>();
   // Eager pre-assignments stashed by `assignWorkspaceEagerly` when the
@@ -116,6 +134,11 @@ export class TabRegistry {
       if (snap.id === -1) continue;
       // Set only if a concurrent onCreated didn't already insert it.
       if (!this.#tabs.has(snap.id)) this.#tabs.set(snap.id, snap);
+    }
+    for (const tab of all) {
+      if (typeof tab.id !== 'number') continue;
+      const url = tabUrl(tab);
+      if (url) this.#urlByTabId.set(tab.id, url);
     }
   }
 
@@ -311,6 +334,11 @@ export class TabRegistry {
     return () => this.#listeners.delete(listener);
   }
 
+  onWindowClosing(listener: WindowClosingListener): () => void {
+    this.#windowClosingListeners.add(listener);
+    return () => this.#windowClosingListeners.delete(listener);
+  }
+
   #onCreated = (tab: browser.tabs.Tab) => {
     const snap = toSnapshot(tab);
     if (snap.id === -1) return;
@@ -338,6 +366,8 @@ export class TabRegistry {
     if (existing?.customTitle && !snap.customTitle) {
       snap.customTitle = existing.customTitle;
     }
+    const url = tabUrl(tab);
+    if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
     this.#enqueue({ kind: 'created', tab: snap });
     // For tabs that have NEVER been hydrated (no existing entry, or
@@ -405,15 +435,42 @@ export class TabRegistry {
     if (nextLoading !== (existing.loading ?? false)) changes.loading = nextLoading;
     const nextDiscarded = tab.discarded ?? false;
     if (nextDiscarded !== (existing.discarded ?? false)) changes.discarded = nextDiscarded;
+    const url = tabUrl(tab);
+    if (url) this.#urlByTabId.set(id, url);
     if (Object.keys(changes).length === 0) return;
     Object.assign(existing, changes);
     this.#enqueue({ kind: 'updated', id, changes });
   };
 
-  #onRemoved = (id: number) => {
+  #onRemoved = (id: number, removeInfo?: browser.tabs._OnRemovedRemoveInfo) => {
+    const windowId =
+      removeInfo && typeof removeInfo.windowId === 'number' && removeInfo.windowId >= 0
+        ? removeInfo.windowId
+        : null;
+    if (
+      removeInfo?.isWindowClosing &&
+      windowId !== null &&
+      !this.#notifiedClosingWindows.has(windowId)
+    ) {
+      this.#notifiedClosingWindows.add(windowId);
+      const closingTabs = Array.from(this.#tabs.values())
+        .filter((tab) => tab.windowId === windowId)
+        .map((tab) => ({
+          ...tab,
+          url: this.#urlByTabId.get(tab.id),
+        }));
+      for (const listener of this.#windowClosingListeners) {
+        try {
+          listener({ windowId, tabs: closingTabs });
+        } catch (err) {
+          console.warn('[bento-tools] TabRegistry onWindowClosing listener threw:', err);
+        }
+      }
+    }
     this.#pendingWorkspaceAssignments.delete(id);
     this.#closingTabIds.delete(id);
     this.#unmarkedClosingTabIds.delete(id);
+    this.#urlByTabId.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };

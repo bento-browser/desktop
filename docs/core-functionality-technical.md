@@ -363,6 +363,15 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   Promote the leftmost panel out of `PanelStore`, clear its panel marker,
   activate it as the non-panel main tab, emit `panels/sync`, then remove the old
   main tab with the delayed close path.
+- Window-close teardown (`Cmd+Shift+W`) is not the same as deleting workspace
+  contents. `TabRegistry` keeps a private URL cache and emits one
+  `onWindowClosing` snapshot before it drops the closing window's tab ids.
+  `background.ts` parks sidebar tabs in `bento.parkedWorkspaceTabs` and asks
+  `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into
+  persisted URL/layout entries. Workspace activation restores parked sidebar tabs
+  before the empty-workspace newtab fallback and restores parked panels through
+  the normal `restorePanelsForWorkspace` path. Do not let removed-tab deltas or
+  `emitPanelsSync` prune closing-window panel ids before this parking step runs.
 
 ## Shell to chrome bridge
 
@@ -402,6 +411,12 @@ overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 - The shell forwards `panels/sync` to chrome only for the active workspace in
   that window. Tools may broadcast panel state for every workspace so shell
   mirrors can filter tab lists during workspace transitions.
+- Activation-triggered `panels/sync` may carry a target `windowId`. If the
+  shell has not resolved an active workspace yet, it may accept that payload for
+  the matching window even before its local workspace mirror has applied the
+  activation delta; this keeps the first chrome theme/color payload from being
+  dropped when a new window auto-creates a workspace because all existing
+  workspaces are occupied.
 
 ### Chrome overlay transparency
 
@@ -740,9 +755,10 @@ Top-row splits and 2x2 groups:
 - The first panel navigator button represents the fixed main content slot, not a
   draggable panel. Keep `bento-panel-nav__icon--main` applied when the button is
   created and when it is reused during navigator diffing. It should have the
-  `Main content slot` label and must not receive `data-bento-nav-draggable`;
-  side-panel buttons are the only navigator entries that participate in drag
-  reorder.
+  `Main content slot` label, should use a divider between itself and the
+  side-panel buttons instead of an outline/border treatment, and must not
+  receive `data-bento-nav-draggable`; side-panel buttons are the only navigator
+  entries that participate in drag reorder.
 
 ### Flat layout pitfalls
 
@@ -914,9 +930,10 @@ Shell theme flow:
 
 - `extensions/bento-shell/src/theme/useWorkspaceTheme.ts` mirrors the active
   workspace theme to `<html data-bento-theme="...">`.
-- The sidebar entry calls `useWorkspaceTheme({ pushChrome: true })`, which writes
-  `BENTO_THEME:<ts>:<themeId>`.
-- `bento-shell-mount.js` mirrors the theme id to the chrome window root.
+- `useToolsPort.ts` includes the active workspace theme id in the active
+  `BENTO_PANELS` payload.
+- `bento-shell-mount.js` mirrors that payload's theme id to the chrome window
+  root.
 
 UI color mode flow:
 
@@ -929,9 +946,27 @@ UI color mode flow:
 - `public/boot.js` reads that localStorage value before CSS loads. Explicit
   `light`/`dark` values paint directly; `system` paints from the current OS
   preference; missing values paint the fresh-profile Light default.
-- Chrome receives `uiColorMode` through `BENTO_PANELS` and
-  `BENTO_COLOR_MODE`, resolves `system` against the same media query, and
-  applies explicit `data-color-mode` to the chrome root.
+- Chrome receives `uiColorMode` through `BENTO_PANELS`, resolves `system`
+  against the same media query, and applies explicit `data-color-mode` to the
+  chrome root. If the settings mirror has not hydrated when the first targeted
+  panel sync arrives, the shell forwards the pre-React boot value from
+  `data-bento-color-mode-pref` / `data-color-mode`.
+- `bento-shell-mount.js` seeds chrome `<window data-color-mode="light">` before
+  injecting chrome token/theme stylesheets. This matches Bento's fresh-profile
+  default and prevents OS-dark chrome from flashing behind the light sidebar
+  before the first `BENTO_PANELS` payload arrives.
+- During that same startup interval, chrome sets `bento-startup-loading="true"`
+  on the root, hides the native navigator toolbox, and shows a chrome-owned
+  startup skeleton over the browser area. The skeleton is dismissed after the
+  first `BENTO_PANELS` payload applies theme/color/sidebar state, with a timeout
+  fallback so a failed sync cannot leave the window covered.
+- Auto UI mode must resolve from chrome/sidebar state, not from regular
+  extension tabs. Bento's content color-scheme override can make
+  `matchMedia('(prefers-color-scheme: dark)')` return the content preference
+  inside pages like `settings.html`, while chrome resolves Auto against the
+  actual browser/OS theme. `useFirefoxTheme` writes `resolved-color-mode` from
+  authoritative shell contexts; Settings calls it with
+  `preferStoredSystemResolution` so it follows that cached resolved value.
 
 Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 `bento-tools` through Firefox's content color-scheme browser setting.
@@ -940,8 +975,9 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 
 ### Theme pitfalls
 
-- Do not let secondary shell entries push `BENTO_THEME`; they use
-  `document.title` for their own sentinels.
+- Do not add standalone theme title writes on shell mount. Theme and
+  `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
+  theme-only title can overwrite the first panel sync before chrome polls it.
 - Keep Auto mode resolved to explicit `light`/`dark` on DOM roots. Tale UI's
   runtime styling expects `data-color-mode` to carry the rendered mode; the
   stored user preference is mirrored separately as `data-bento-color-mode-pref`.
@@ -969,7 +1005,7 @@ When changing core functionality, manually verify at least the affected subset:
 - Vimium or another content-key extension inside a panel;
 - AMO install permission prompt from a panel;
 - Dark Reader or another content-script extension inside a panel;
-- theme switch, UI light/dark/Auto switch, and content color mode switch;
+- theme switch and sidebar footer UI light/dark/Auto switch;
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored.
 

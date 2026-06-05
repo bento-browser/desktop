@@ -161,3 +161,31 @@ describe('protocol handler batch tab workspace moves', () => {
     expect(ctx.workspaces.delete).toHaveBeenCalledWith('ws-old');
   });
 });
+
+describe('protocol handler workspace updates', () => {
+  it('re-emits panels sync when a workspace theme changes', () => {
+    const ctx = createCloseContext({
+      workspaces: {
+        update: vi.fn(),
+      } as unknown as HandlerContext['workspaces'],
+    });
+
+    handle({ type: 'workspace/update', id: 'ws-1', changes: { themeId: 'teal' } }, ctx);
+
+    expect(ctx.workspaces.update).toHaveBeenCalledWith('ws-1', { themeId: 'teal' });
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('does not re-emit panels sync for non-theme workspace metadata updates', () => {
+    const ctx = createCloseContext({
+      workspaces: {
+        update: vi.fn(),
+      } as unknown as HandlerContext['workspaces'],
+    });
+
+    handle({ type: 'workspace/update', id: 'ws-1', changes: { name: 'Research' } }, ctx);
+
+    expect(ctx.workspaces.update).toHaveBeenCalledWith('ws-1', { name: 'Research' });
+    expect(ctx.emitPanelsSync).not.toHaveBeenCalled();
+  });
+});

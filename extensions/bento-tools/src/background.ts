@@ -6,6 +6,7 @@
 
 import { handle } from './messaging/protocol-handler';
 import { TabRegistry } from './tabs/TabRegistry';
+import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
@@ -61,6 +62,151 @@ function broadcastEvent(event: Event): void {
   }
 }
 
+const PARKED_WORKSPACE_TABS_STORAGE_KEY = 'bento.parkedWorkspaceTabs';
+
+interface ParkedWorkspaceTab {
+  url: string;
+  title: string;
+  customTitle?: string;
+  pinned: boolean;
+  index: number;
+}
+
+let parkedWorkspaceTabs = new Map<string, ParkedWorkspaceTab[]>();
+
+async function loadParkedWorkspaceTabs(): Promise<void> {
+  try {
+    const raw = (await browser.storage.local.get(PARKED_WORKSPACE_TABS_STORAGE_KEY)) as Record<
+      string,
+      unknown
+    >;
+    const stored = raw[PARKED_WORKSPACE_TABS_STORAGE_KEY];
+    if (!stored || typeof stored !== 'object') return;
+    const next = new Map<string, ParkedWorkspaceTab[]>();
+    for (const [workspaceId, value] of Object.entries(stored as Record<string, unknown>)) {
+      if (!Array.isArray(value)) continue;
+      const entries: ParkedWorkspaceTab[] = [];
+      for (const item of value) {
+        if (!item || typeof item !== 'object') continue;
+        const tab = item as Partial<ParkedWorkspaceTab>;
+        if (typeof tab.url !== 'string' || tab.url.length === 0) continue;
+        entries.push({
+          url: tab.url,
+          title: typeof tab.title === 'string' ? tab.title : '',
+          customTitle: typeof tab.customTitle === 'string' ? tab.customTitle : undefined,
+          pinned: tab.pinned === true,
+          index:
+            typeof tab.index === 'number' && Number.isFinite(tab.index)
+              ? tab.index
+              : entries.length,
+        });
+      }
+      if (entries.length > 0) next.set(workspaceId, entries);
+    }
+    parkedWorkspaceTabs = next;
+  } catch (err) {
+    console.warn('[bento-tools] parked workspace tabs load failed:', err);
+  }
+}
+
+function persistParkedWorkspaceTabs(): void {
+  const payload: Record<string, ParkedWorkspaceTab[]> = {};
+  for (const [workspaceId, entries] of parkedWorkspaceTabs) {
+    if (entries.length > 0) payload[workspaceId] = entries;
+  }
+  const op =
+    Object.keys(payload).length > 0
+      ? browser.storage.local.set({ [PARKED_WORKSPACE_TABS_STORAGE_KEY]: payload })
+      : browser.storage.local.remove(PARKED_WORKSPACE_TABS_STORAGE_KEY);
+  void op.catch((err) => console.warn('[bento-tools] parked workspace tabs save failed:', err));
+}
+
+function takeParkedWorkspaceTabs(workspaceId: string): ParkedWorkspaceTab[] {
+  const entries = parkedWorkspaceTabs.get(workspaceId) ?? [];
+  if (entries.length > 0) {
+    parkedWorkspaceTabs.delete(workspaceId);
+    persistParkedWorkspaceTabs();
+  }
+  return entries;
+}
+
+function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTabSnapshot[]): void {
+  const byWorkspace = new Map<string, WindowClosingTabSnapshot[]>();
+  for (const tab of closingTabs) {
+    if (!tab.workspaceId) continue;
+    const existing = byWorkspace.get(tab.workspaceId) ?? [];
+    existing.push(tab);
+    byWorkspace.set(tab.workspaceId, existing);
+  }
+
+  for (const [workspaceId, workspaceTabs] of byWorkspace) {
+    const urlByTabId = new Map<number, string>();
+    for (const tab of workspaceTabs) {
+      if (tab.url) urlByTabId.set(tab.id, tab.url);
+    }
+
+    const panelTabIds = new Set(panels.getPanels(workspaceId));
+    const parkedPanels = panels.parkWorkspaceWithResolvedUrls(workspaceId, (tabId) =>
+      urlByTabId.get(tabId),
+    );
+    const sidebarTabs = workspaceTabs
+      .filter((tab) => !panelTabIds.has(tab.id) && tab.url && tab.url !== 'about:blank')
+      .sort((a, b) => a.index - b.index)
+      .map((tab) => ({
+        url: tab.url!,
+        title: tab.title,
+        customTitle: tab.customTitle,
+        pinned: tab.pinned,
+        index: tab.index,
+      }));
+
+    const hadParkedSidebarTabs = parkedWorkspaceTabs.has(workspaceId);
+    if (sidebarTabs.length > 0) {
+      parkedWorkspaceTabs.set(workspaceId, sidebarTabs);
+    } else {
+      parkedWorkspaceTabs.delete(workspaceId);
+    }
+    if (sidebarTabs.length > 0 || parkedPanels || hadParkedSidebarTabs)
+      persistParkedWorkspaceTabs();
+  }
+
+  workspaces.forgetWindow(windowId);
+}
+
+async function restoreParkedTabsForWorkspace(
+  workspaceId: string,
+  targetWindowId: number | null,
+): Promise<boolean> {
+  const parked = takeParkedWorkspaceTabs(workspaceId).sort((a, b) => a.index - b.index);
+  if (parked.length === 0) return false;
+
+  let restored = false;
+  for (let index = 0; index < parked.length; index++) {
+    const entry = parked[index]!;
+    try {
+      const created = await browser.tabs.create({
+        url: entry.url,
+        active: index === 0,
+        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+      });
+      if (typeof created.id !== 'number') continue;
+      tabs.assignWorkspaceEagerly(created.id, workspaceId);
+      if (entry.pinned) {
+        void browser.tabs.update(created.id, { pinned: true }).catch((err) => {
+          console.warn('[bento-tools] parked tab pin restore failed:', created.id, err);
+        });
+      }
+      if (entry.customTitle) {
+        void tabs.rename(created.id, entry.customTitle);
+      }
+      restored = true;
+    } catch (err) {
+      console.warn('[bento-tools] parked tab restore failed:', entry.url, err);
+    }
+  }
+  return restored;
+}
+
 // Restore a workspace's panels from URLs persisted across the last
 // shutdown. Idempotent: takePersistedUrls clears the entry on first call,
 // so subsequent activations of the same workspace are no-ops.
@@ -76,7 +222,10 @@ function broadcastEvent(event: Event): void {
 // boot. Inactive workspaces restore on first activation (see
 // workspaces.onDeltas handler). A profile with 20 workspaces × 5 panels
 // each shouldn't pay the URL→tab matching cost up front.
-async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
+async function restorePanelsForWorkspace(
+  workspaceId: string,
+  targetWindowId: number | null = null,
+): Promise<void> {
   const persisted = panels.takePersistedWorkspace(workspaceId);
   const entries = persisted?.entries;
   if (!persisted || !entries || entries.length === 0) {
@@ -119,7 +268,11 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
     // No existing tab — open one. active:false so panel restoration
     // doesn't yank focus from the user's current tab.
     try {
-      const created = await browser.tabs.create({ url, active: false });
+      const created = await browser.tabs.create({
+        url,
+        active: false,
+        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+      });
       if (typeof created.id === 'number') {
         await tabs.assignWorkspace(created.id, workspaceId);
         return created.id;
@@ -166,7 +319,7 @@ async function restorePanelsForWorkspace(workspaceId: string): Promise<void> {
 // panels render — emitting for an inactive workspace is wasted work.
 async function emitPanelsSync(
   workspaceId: string,
-  options: { scrollToPanelTabId?: number } = {},
+  options: { scrollToPanelTabId?: number; windowId?: number } = {},
 ): Promise<void> {
   // No active-workspace gate. Sidebar's tab-list filter
   // (useWorkspaceTabIds) needs panel ids for EVERY workspace so the
@@ -234,6 +387,7 @@ async function emitPanelsSync(
   const event: {
     type: 'panels/sync';
     workspaceId: string;
+    windowId?: number;
     panels: typeof valid;
     mainWidthPx?: number;
     stripScrollLeft?: number;
@@ -253,6 +407,9 @@ async function emitPanelsSync(
     panelStatusByTabId: panels.getPanelStatusMap(workspaceId),
   };
   if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
+  if (typeof options.windowId === 'number' && options.windowId >= 0) {
+    event.windowId = options.windowId;
+  }
   if (typeof stripScrollLeft === 'number' && stripScrollLeft >= 0) {
     event.stripScrollLeft = stripScrollLeft;
   }
@@ -292,6 +449,7 @@ const bootReady = Promise.all([
   savedPanels
     .init()
     .catch((err) => console.error('[bento-tools] SavedPanelsStore init failed:', err)),
+  loadParkedWorkspaceTabs(),
 ]).then(async () => {
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
@@ -1126,6 +1284,10 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+tabs.onWindowClosing(({ windowId, tabs: closingTabs }) => {
+  parkTabsForClosingWindow(windowId, closingTabs);
+});
+
 // Release per-window workspace ownership when a chrome window closes so
 // the workspace it was displaying becomes available to other windows
 // (or to a future re-opened window). Without this, closing a window
@@ -1312,6 +1474,8 @@ async function handleWorkspaceActivation(
     }
   }
 
+  const restoredParkedTabs = await restoreParkedTabsForWorkspace(wsId, targetWindowId);
+
   // (1) Ensure the workspace has a tab and that tab is focused. Panel
   // tabs are excluded from candidates here — they live in their own
   // <browser> elements in the side strip, not the main panel, so
@@ -1329,14 +1493,19 @@ async function handleWorkspaceActivation(
   const allWsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
   const wsTabs =
     targetWindowId !== null ? allWsTabs.filter((t) => t.windowId === targetWindowId) : allWsTabs;
-  if (wsTabs.length === 0) {
-    browser.tabs
-      .create({
+  if (wsTabs.length === 0 && !restoredParkedTabs) {
+    try {
+      const created = await browser.tabs.create({
         active: true,
         ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
-      })
-      .catch((err) => console.warn('[bento-tools] newtab for empty workspace failed:', err));
-  } else if (!wsTabs.some((t) => t.active)) {
+      });
+      if (typeof created.id === 'number') {
+        tabs.assignWorkspaceEagerly(created.id, wsId);
+      }
+    } catch (err) {
+      console.warn('[bento-tools] newtab for empty workspace failed:', err);
+    }
+  } else if (wsTabs.length > 0 && !wsTabs.some((t) => t.active)) {
     // Restore the tab the user was last viewing in this workspace.
     // Falls back to the first tab when memory is empty (first
     // activation this session) or the remembered tab is gone /
@@ -1355,10 +1524,10 @@ async function handleWorkspaceActivation(
   // when restore actually had work to do.
   const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
   if (hadPersisted) {
-    void restorePanelsForWorkspace(wsId);
+    void restorePanelsForWorkspace(wsId, targetWindowId);
   } else {
     // (3) Sync panels for the now-active workspace.
-    void emitPanelsSync(wsId);
+    void emitPanelsSync(wsId, targetWindowId !== null ? { windowId: targetWindowId } : undefined);
   }
 }
 

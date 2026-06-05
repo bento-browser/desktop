@@ -587,6 +587,11 @@ export type Event =
        * the new-active tab list, leaking panel tabs into the sidebar
        * during the slide animation. */
       workspaceId: string;
+      /** Optional WebExtension windowId that this sync is intended to
+       * initialize. Used for new-window activation races where the shell
+       * has its windowId before its local workspace mirror has applied the
+       * corresponding `activated` delta. */
+      windowId?: number;
       panels: Array<{
         tabId: number;
         url: string;

@@ -181,17 +181,20 @@ export async function load(): Promise<PersistedPanels | null> {
 export class Persistence {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #pendingLayouts: Map<string, WorkspacePanelLayout> | null = null;
+  #pendingPersistedWorkspaces: Map<string, PersistedWorkspacePanels> | null = null;
   #pendingWidths: Map<number, number> | null = null;
   #pendingMainWidths: Map<string, number> | null = null;
   #pendingStripScroll: Map<string, number> | null = null;
 
   schedule(
     layouts: Map<string, WorkspacePanelLayout>,
+    persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
     widths: Map<number, number>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): void {
     this.#pendingLayouts = layouts;
+    this.#pendingPersistedWorkspaces = persistedWorkspaces;
     this.#pendingWidths = widths;
     this.#pendingMainWidths = mainWidthByWorkspace;
     this.#pendingStripScroll = stripScrollByWorkspace;
@@ -199,21 +202,36 @@ export class Persistence {
     this.#timer = setTimeout(() => {
       this.#timer = null;
       const nextLayouts = this.#pendingLayouts;
+      const nextPersistedWorkspaces = this.#pendingPersistedWorkspaces;
       const nextWidths = this.#pendingWidths;
       const nextMainWidths = this.#pendingMainWidths;
       const nextStripScroll = this.#pendingStripScroll;
       this.#pendingLayouts = null;
+      this.#pendingPersistedWorkspaces = null;
       this.#pendingWidths = null;
       this.#pendingMainWidths = null;
       this.#pendingStripScroll = null;
-      if (nextLayouts && nextWidths && nextMainWidths && nextStripScroll) {
-        void this.#flush(nextLayouts, nextWidths, nextMainWidths, nextStripScroll);
+      if (
+        nextLayouts &&
+        nextPersistedWorkspaces &&
+        nextWidths &&
+        nextMainWidths &&
+        nextStripScroll
+      ) {
+        void this.#flush(
+          nextLayouts,
+          nextPersistedWorkspaces,
+          nextWidths,
+          nextMainWidths,
+          nextStripScroll,
+        );
       }
     }, DEBOUNCE_MS);
   }
 
   flushNow(
     layouts: Map<string, WorkspacePanelLayout>,
+    persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
     widths: Map<number, number>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
@@ -223,19 +241,34 @@ export class Persistence {
       this.#timer = null;
     }
     this.#pendingLayouts = null;
+    this.#pendingPersistedWorkspaces = null;
     this.#pendingWidths = null;
     this.#pendingMainWidths = null;
     this.#pendingStripScroll = null;
-    void this.#flush(layouts, widths, mainWidthByWorkspace, stripScrollByWorkspace);
+    void this.#flush(
+      layouts,
+      persistedWorkspaces,
+      widths,
+      mainWidthByWorkspace,
+      stripScrollByWorkspace,
+    );
   }
 
   async #flush(
     layouts: Map<string, WorkspacePanelLayout>,
+    persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
     widths: Map<number, number>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): Promise<void> {
     const byWorkspace: Record<string, StoredWorkspaceV5> = {};
+    for (const [workspaceId, persisted] of persistedWorkspaces) {
+      if (persisted.entries.length === 0) continue;
+      byWorkspace[workspaceId] = {
+        entries: persisted.entries.map((entry) => ({ ...entry })),
+        panelLayout: persisted.layout,
+      };
+    }
     for (const [workspaceId, layout] of layouts) {
       const panelKeys = panelKeysForLayout(layout);
       const entries: StoredEntryV5[] = [];

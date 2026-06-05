@@ -75,31 +75,6 @@ Architectural simplicity is a project constraint. Bento's core functionality sho
 
 When a feature requires iterating on Firefox core to achieve Bento functionality, record the touched vanilla Firefox surface in [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) in the same change. Future Firefox updates must review that file, call out upstream conflicts or regressions, and address them before treating the update as complete.
 
-## Active manual verification task
-
-The maintainer is manually verifying
-[plans/flat-panels-browser-verification-checklist.md](plans/flat-panels-browser-verification-checklist.md)
-against the implementation plan in
-[plans/flat-panels-layout-containers.md](plans/flat-panels-layout-containers.md).
-
-While this task is active:
-
-1. Treat the checklist file as the persistent verification state between agent sessions.
-2. Treat reported checklist failures as implementation work to fix, not just observations to record.
-3. Before fixing a new failure, read
-   [docs/core-functionality-technical.md](docs/core-functionality-technical.md)
-   for any recorded solution or pitfall that matches the failure. Try the
-   recorded solution unless the current evidence shows it is not relevant.
-4. When a recorded solution is not relevant, state the specific reason in the
-   checklist notes or technical doc instead of silently choosing a different
-   approach.
-5. When the maintainer reports a failure, leave the item incomplete, record the reported failure notes, screenshot reference, or console output under that item, then investigate and fix the behavior.
-6. When a fix lands, note that the item is ready for re-verification, but do not mark it complete until the maintainer reports that it passed or an equivalent direct runtime verification confirms the expected behavior.
-7. When the maintainer reports that an item passed, mark the relevant checklist item complete with `✅ Complete` in the checklist file and update `docs/core-functionality-technical.md` with the working solution if it is not already recorded.
-8. Do not infer completion from code state alone; only mark an item complete from an explicit manual verification result or an equivalent direct runtime verification.
-9. Preserve the checklist's `Pass / Fail / Notes / Screenshot or console output` record format.
-10. Agents may create temporary diagnostic logs or probes while debugging reported failures. Keep them scoped and clearly identifiable, and remove them once the fix is confirmed and the working solution is recorded in `docs/core-functionality-technical.md`.
-
 ## Core functionality documentation
 
 [docs/core-functionality.md](docs/core-functionality.md) is the maintained source for

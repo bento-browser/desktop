@@ -66,7 +66,8 @@ items are easy to scan.
    - Result: Pass. ✅ Complete
    - Verified: User confirmed item 5 is working.
    - Follow-up request: Splitting or subdividing a panel should preserve the current panel-strip scroll position instead of auto-scrolling.
-   - Fix status: Ready for re-verification. Subdivision-created child panels no longer request explicit scroll targets, and generic new-panel auto-scroll now ignores non-root subdivision children.
+   - Fix status: Confirmed. Subdivision-created child panels no longer request explicit scroll targets, and generic new-panel auto-scroll now ignores non-root subdivision children.
+   - Follow-up verified: User confirmed split/subdivide preserves the current panel-strip scroll position. ✅ Complete
    - Follow-up request: The empty subdivision chooser should lay out `Full panel` and `Split panels` side by side, show saved-panel bookmark options, and expose a top-right close button so the subdivision can be closed without creating a temporary panel.
    - Follow-up fix status: Confirmed. The chooser now renders side-by-side primary actions, saved-panel URL options from the `panels/sync` saved-panel snapshot, and a close button that removes the empty vertical group while preserving the top panel as a root panel.
    - Follow-up verified: User confirmed the subdivision chooser buttons, saved-panel options, and close button are working. ✅ Complete
@@ -216,7 +217,8 @@ items are easy to scan.
     - Follow-up verified: User confirmed subdivide/remove no longer flashes an extra navigator icon before the main content slot favicon. ✅ Complete
     - Follow-up fix status: Confirmed. Navigator button entry states now fade opacity only, navigator buttons use fixed border-box sizing, and stale replaced root icons are removed synchronously before desired buttons are reordered so structural split/subdivide/remove updates do not flash an extra icon ahead of the main slot.
     - Follow-up request: Make panel navigator buttons match the small sidebar footer controls and align the navigator with the sidebar footer padding.
-    - Follow-up fix status: Ready for re-verification. Navigator buttons now use the same 24px compact control token as sidebar footer `IconButton size="sm"` controls, the navigator bar uses matching `space-2xs` padding, and grouped favicon cells are reduced to fit the fixed smaller slot without changing button dimensions.
+    - Follow-up fix status: Confirmed. Navigator buttons now use the same 24px compact control token as sidebar footer `IconButton size="sm"` controls, the navigator bar uses matching `space-2xs` padding, and grouped favicon cells are reduced to fit the fixed smaller slot without changing button dimensions.
+    - Follow-up verified: User confirmed item 18 is working. ✅ Complete
 
 19. **Header drag reorder**
     - Drag a root panel header.
@@ -252,10 +254,13 @@ items are easy to scan.
     - Follow-up request: Make the first panel navigator favicon button that
       represents the fixed main content slot more distinguishable because it
       cannot be dragged to reorder.
-    - Follow-up fix status: Ready for re-verification. The fixed main content
-      slot button now has a dedicated neutral treatment, bottom marker, and
+    - Follow-up fix status: Confirmed. The fixed main content
+      slot button now uses a divider line between itself and side-panel
+      navigator buttons instead of a button outline or border, and keeps the
       `Main content slot` accessible label while side-panel navigator buttons
       remain the draggable reorder targets.
+    - Follow-up verified: User confirmed the main content slot divider is
+      working. ✅ Complete
 
 ## Focus And Keyboard
 

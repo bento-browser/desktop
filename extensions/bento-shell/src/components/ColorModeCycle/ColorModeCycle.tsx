@@ -1,8 +1,6 @@
-// Compact color-mode cycle. Independent instances drive Bento's
-// UI mode (chrome + shell) and the browser's content-color-scheme
-// override (web pages). Both go through settings/update — bento-tools
-// persists and applies the corresponding side-effect (data-color-mode
-// attribute / browserSettings API).
+// Compact color-mode cycle. Drives Bento's UI mode (chrome + shell)
+// through settings/update; bento-tools persists it and chrome/shell apply
+// the corresponding data-color-mode attributes.
 //
 // Component name is kept as ColorModeCycle (not ColorModeToggle) to
 // avoid touching every consumer; the file lives under the same path.
@@ -35,8 +33,7 @@ export interface ColorModeCycleProps<TMode extends UiColorModePref = ColorModePr
   onChange: (next: TMode) => void;
   /** Available modes. Omit for explicit light/dark cycling. */
   modes?: readonly TMode[];
-  /** Distinguishes the two instances in the aria-label tooltip — e.g.
-   * "Bento UI" or "Website appearance". */
+  /** Surface name included in the aria-label tooltip, e.g. "Bento UI". */
   surfaceLabel: string;
 }
 
