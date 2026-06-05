@@ -180,9 +180,60 @@ async function restoreParkedTabsForWorkspace(
   const parked = takeParkedWorkspaceTabs(workspaceId).sort((a, b) => a.index - b.index);
   if (parked.length === 0) return false;
 
+  const existingUrlByTabId = new Map<number, string>();
+  const existingTabs = tabs
+    .snapshot()
+    .filter(
+      (tab) =>
+        tab.workspaceId === workspaceId &&
+        (targetWindowId === null || tab.windowId === targetWindowId),
+    )
+    .sort((a, b) => a.index - b.index);
+
+  for (const tab of existingTabs) {
+    try {
+      const live = await browser.tabs.get(tab.id);
+      const pendingUrl =
+        typeof (live as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
+          ? (live as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl
+          : undefined;
+      const url = live.url && live.url !== 'about:blank' ? live.url : pendingUrl;
+      if (url && url !== 'about:blank') existingUrlByTabId.set(tab.id, url);
+    } catch {
+      // Stale registry entries are expected during startup/session restore.
+    }
+  }
+
+  const consumedExistingTabIds = new Set<number>();
   let restored = false;
   for (let index = 0; index < parked.length; index++) {
     const entry = parked[index]!;
+    let existingTabId: number | null = null;
+    for (const [tabId, url] of existingUrlByTabId) {
+      if (consumedExistingTabIds.has(tabId)) continue;
+      if (url !== entry.url) continue;
+      existingTabId = tabId;
+      consumedExistingTabIds.add(tabId);
+      break;
+    }
+    if (existingTabId !== null) {
+      try {
+        if (index === 0 || entry.pinned) {
+          await browser.tabs.update(existingTabId, {
+            ...(index === 0 ? { active: true } : {}),
+            ...(entry.pinned ? { pinned: true } : {}),
+          });
+        }
+      } catch (err) {
+        console.warn('[bento-tools] parked tab session-restore match failed:', existingTabId, err);
+      }
+      if (entry.customTitle) {
+        void tabs.rename(existingTabId, entry.customTitle);
+      }
+      restored = true;
+      continue;
+    }
+
     try {
       const created = await browser.tabs.create({
         url: entry.url,

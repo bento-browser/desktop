@@ -66,6 +66,8 @@ workspaces and tabs.
 The sidebar tab list supports multi-selection for workspace organization.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.
+When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
+right-click menu exposes the same close-selected action.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
@@ -202,6 +204,7 @@ The intended behavior is:
 - focused panels have clear visual state;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;
+- sidebar footer icon buttons show Tale UI tooltips on hover;
 - the fixed main content slot button in the panel navigator is separated from
   draggable side-panel buttons by a divider;
 - grouped panel navigator icons show and refresh the favicons for visible

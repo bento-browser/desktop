@@ -87,6 +87,33 @@ describe('protocol handler panel close', () => {
       expect(browser.tabs.remove).toHaveBeenCalledWith(10);
     });
   });
+
+  it('closes each selected tab once for a batch close action', async () => {
+    const ctx = createCloseContext({
+      tabs: {
+        markClosing: vi.fn().mockResolvedValue(undefined),
+        snapshot: vi.fn().mockReturnValue([
+          { id: 10, windowId: 1, workspaceId: 'ws-1', active: false },
+          { id: 20, windowId: 1, workspaceId: 'ws-1', active: false },
+        ]),
+        isClosing: vi.fn().mockReturnValue(false),
+      } as unknown as HandlerContext['tabs'],
+      panels: {
+        findWorkspacesContainingTab: vi.fn().mockReturnValue([]),
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+      } as unknown as HandlerContext['panels'],
+    });
+
+    handle({ type: 'tabs/close', ids: [10, 20, 20, 999] }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith(10);
+      expect(browser.tabs.remove).toHaveBeenCalledWith(20);
+    });
+    expect(browser.tabs.remove).toHaveBeenCalledTimes(2);
+    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(10);
+    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(20);
+  });
 });
 
 describe('protocol handler batch tab workspace moves', () => {

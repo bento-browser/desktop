@@ -60,8 +60,15 @@ Sidebar tab multi-selection lives in
 `extensions/bento-shell/src/components/TabList/TabList.tsx`. Selection is UI
 state scoped to the active rendered workspace: Cmd/Ctrl-click toggles a row,
 Shift-click selects a contiguous range, plain click activates the tab and clears
-selection, and workspace switches clear selection. `TabRow` only receives a
-`selected` visual prop; tab assignment remains tools-owned.
+selection, and workspace switches clear selection. The sidebar mirrors selected
+tab ids through `BENTO_SELECTED_TABS` title IPC because Firefox's reserved
+Cmd/Ctrl+W close command is handled by chrome before the sidebar iframe can
+reliably intercept it; chrome closes the mirrored multi-selection before falling
+back to single active-tab close behavior. The mirror must only emit when a
+selection exists, or once to clear a previously mirrored selection; repeated
+empty-selection title writes can stomp `BENTO_PANELS` before chrome polls it and
+hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
+assignment remains tools-owned.
 The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
@@ -370,8 +377,11 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into
   persisted URL/layout entries. Workspace activation restores parked sidebar tabs
   before the empty-workspace newtab fallback and restores parked panels through
-  the normal `restorePanelsForWorkspace` path. Do not let removed-tab deltas or
-  `emitPanelsSync` prune closing-window panel ids before this parking step runs.
+  the normal `restorePanelsForWorkspace` path. Parked sidebar-tab restore must
+  first consume matching session-restored workspace tabs by URL before creating
+  tabs, otherwise every dev/browser relaunch can duplicate the parked tabs. Do
+  not let removed-tab deltas or `emitPanelsSync` prune closing-window panel ids
+  before this parking step runs.
 
 ## Shell to chrome bridge
 
@@ -403,6 +413,16 @@ overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 
 - `document.title` is last-write-wins. Do not reintroduce separate title writes
   for chrome-bound settings that can ride inside `BENTO_PANELS`.
+- `BENTO_PANELS` is the canonical chrome state payload for panel visibility,
+  layout, theme, color mode, sidebar collapsed state, and related active
+  workspace chrome state. Any extra sidebar title channel must be sparse: emit
+  only for a real event/state transition, never on ordinary renders, snapshots,
+  or empty steady state. A harmless-looking repeated sentinel such as an empty
+  selection payload can overwrite `BENTO_PANELS` before chrome's polling loop
+  reads it, leaving the main content visible but hiding all side panels.
+- If a title channel needs a clear/reset signal, send that reset only after the
+  channel previously sent a non-empty/non-default value. Do not continuously
+  announce "nothing selected", "closed", "default", or similar no-op state.
 - `uiColorMode` intentionally rides inside `BENTO_PANELS`; separate
   `BENTO_COLOR_MODE` writes previously raced panel sync at boot.
 - Only the sidebar entry should push workspace theme changes to chrome. Other
@@ -999,6 +1019,8 @@ When changing core functionality, manually verify at least the affected subset:
 - panel reorder with grouped and ungrouped roots;
 - subdivision create, fill, resize, break out, and remove;
 - closing main tabs while panels exist;
+- closing a sidebar multi-selection with Cmd/Ctrl+W and with the multi-select
+  context-menu item;
 - closing side panels with descendant sub-panels;
 - Cmd+Shift+T restore of a closed panel;
 - arrow-key panel traversal while content has focus;

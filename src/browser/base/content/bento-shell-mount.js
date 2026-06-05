@@ -2881,6 +2881,11 @@
   // outside its own remote <browser> bounds, so it sends a serialized
   // menu request here and chrome renders it in #bento-menu-host.
   const SIDEBAR_CONTEXT_MENU_PREFIX = 'BENTO_SIDEBAR_CONTEXT_MENU:';
+  // Sidebar multi-selection state. Cmd/Ctrl+W is a reserved chrome
+  // shortcut, so the sidebar mirrors selected tab ids here and chrome's
+  // capture listener performs the batch close before Firefox closes only
+  // the active tab.
+  const SELECTED_TABS_PREFIX = 'BENTO_SELECTED_TABS:';
   // Panel-trailer context menu request. Same title-IPC pattern as the
   // sidebar because the trailer is its own remote extension frame.
   const PANEL_TRAILER_CONTEXT_MENU_PREFIX = 'BENTO_PANEL_TRAILER_CONTEXT_MENU:';
@@ -2917,6 +2922,7 @@
   // moveTabBefore/After skip that transformation and preserve tab
   // identity, so dragging the currently-active (panel-marked) tab works.
   const TAB_MOVE_PREFIX = 'BENTO_TAB_MOVE:';
+  let currentSidebarSelectedTabIds = [];
 
   // Drive Tale UI's color-mode cascade in chrome by setting explicit
   // data-color-mode on the chrome window's <window> root.
@@ -6974,6 +6980,14 @@
       if (!isAccel) return;
       if (e.altKey || e.shiftKey) return;
       if (e.code !== 'KeyW') return;
+      if (currentSidebarSelectedTabIds.length > 1) {
+        const ids = currentSidebarSelectedTabIds.slice();
+        if (!dispatchShellAction({ type: 'tabs/close', ids })) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        currentSidebarSelectedTabIds = [];
+        return;
+      }
       const active = document.activeElement;
       if (!active || typeof active.closest !== 'function') return;
       const panel = active.closest('[data-bento-panel-tab-id]');
@@ -11796,6 +11810,28 @@
     applyFocusedPanelIndicator(mainEl);
   }
 
+  function handleSelectedTabsTitle(rawTitle) {
+    // Format: BENTO_SELECTED_TABS:<ts>:<base64-json-array>
+    const tail = rawTitle.slice(SELECTED_TABS_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return;
+    try {
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
+      currentSidebarSelectedTabIds = Array.isArray(decoded)
+        ? Array.from(
+            new Set(
+              decoded
+                .map((id) => Number(id))
+                .filter((id) => Number.isFinite(id) && Number.isInteger(id)),
+            ),
+          )
+        : [];
+    } catch (err) {
+      console.warn('[bento-shell-mount] selected tabs payload parse failed:', err);
+      currentSidebarSelectedTabIds = [];
+    }
+  }
+
   function handleSidebarContextMenuTitle(rawTitle) {
     // Format: BENTO_SIDEBAR_CONTEXT_MENU:<ts>:<base64-json>
     const tail = rawTitle.slice(SIDEBAR_CONTEXT_MENU_PREFIX.length);
@@ -11849,6 +11885,8 @@
           dispatchShellAction({ type: 'panel/add', id: tabId });
         } else if (itemId === 'close-tab') {
           dispatchShellAction({ type: 'tab/close', id: tabId });
+        } else if (itemId === 'close-selected-tabs') {
+          dispatchShellAction({ type: 'tabs/close', ids: tabIds });
         } else if (itemId === 'move-selected-to-new-workspace') {
           dispatchShellAction({ type: 'tabs/moveToNewWorkspace', ids: tabIds });
         } else if (typeof itemId === 'string' && itemId.startsWith('move-to-workspace:')) {
@@ -13532,6 +13570,7 @@
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
           else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
           else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
+          else if (title.startsWith(SELECTED_TABS_PREFIX)) handleSelectedTabsTitle(title);
           else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
             handleSidebarContextMenuTitle(title);
           } else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);

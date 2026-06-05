@@ -298,6 +298,36 @@ async function closeTabAsRemoved(
   }
 }
 
+async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<void> {
+  if (shouldCloseTabThroughMainPromotion(ctx, tabId)) {
+    await closeMainTabWithPanelPromotion(ctx, tabId);
+    return;
+  }
+  await ctx.tabs.markClosing(tabId);
+  const affected = ctx.panels.findWorkspacesContainingTab(tabId);
+  let delayActualTabRemove = false;
+  if (affected.length > 0) {
+    for (const wsId of affected) {
+      const status = ctx.panels.getPanelLayoutStatus(wsId, tabId);
+      const promoted =
+        status === 'subdivision-top' ||
+        status === 'chooser-owner' ||
+        status === 'subdivision-bottom' ||
+        status === 'split-child';
+      if (ctx.panels.remove(wsId, tabId) && promoted) {
+        delayActualTabRemove = true;
+      }
+      ctx.syncPanelMarkers(wsId);
+      ctx.emitPanelsSync(wsId);
+    }
+    // Keep the closing tab's bento.isPanel session marker in place.
+    // Firefox carries it through the closed-tab entry, and Cmd+Shift+T uses it
+    // to restore the tab back as a panel instead of reopening it as a normal tab.
+  }
+  const delayMs = delayActualTabRemove ? 500 : 0;
+  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close' });
+}
+
 async function activateNonPanelTab(
   ctx: HandlerContext,
   tabId: number,
@@ -432,36 +462,18 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'tab/close':
       {
         void (async () => {
-          if (shouldCloseTabThroughMainPromotion(ctx, action.id)) {
-            await closeMainTabWithPanelPromotion(ctx, action.id);
-            return;
-          }
-          await ctx.tabs.markClosing(action.id);
-          const affected = ctx.panels.findWorkspacesContainingTab(action.id);
-          let delayActualTabRemove = false;
-          if (affected.length > 0) {
-            for (const wsId of affected) {
-              const status = ctx.panels.getPanelLayoutStatus(wsId, action.id);
-              const promoted =
-                status === 'subdivision-top' ||
-                status === 'chooser-owner' ||
-                status === 'subdivision-bottom' ||
-                status === 'split-child';
-              if (ctx.panels.remove(wsId, action.id) && promoted) {
-                delayActualTabRemove = true;
-              }
-              ctx.syncPanelMarkers(wsId);
-              ctx.emitPanelsSync(wsId);
-            }
-            // Keep the closing tab's bento.isPanel session marker in place.
-            // Firefox carries it through the closed-tab entry, and
-            // Cmd+Shift+T uses it to restore the tab back as a panel instead
-            // of reopening it as a normal tab.
-          }
-          const delayMs = delayActualTabRemove ? 500 : 0;
-          await closeTabAsRemoved(ctx, action.id, { delayMs, label: 'tab/close' });
+          await closeTabFromSidebar(ctx, action.id);
         })();
       }
+      return;
+    case 'tabs/close':
+      void (async () => {
+        const liveIds = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+        for (const id of uniqueTabIds(action.ids)) {
+          if (!liveIds.has(id)) continue;
+          await closeTabFromSidebar(ctx, id);
+        }
+      })();
       return;
     case 'tab/closeMain':
       void closeMainTabWithPanelPromotion(ctx, action.id);

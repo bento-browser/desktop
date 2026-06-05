@@ -333,6 +333,7 @@ export type Action =
   | { type: 'tabs/requestSnapshot' }
   | { type: 'tab/activate'; id: number }
   | { type: 'tab/close'; id: number }
+  | { type: 'tabs/close'; ids: number[] }
   | { type: 'tab/closeMain'; id: number }
   | { type: 'tab/rename'; id: number; title: string }
   | { type: 'tab/assignWorkspace'; id: number; workspaceId: string }

@@ -14,6 +14,7 @@ import './TabList.css';
 export interface TabListProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
+  onCloseSelected?: (ids: number[]) => void;
   onOpenInSidePanel: (id: number) => void;
   onTabContextMenu?: (
     id: number,
@@ -40,6 +41,11 @@ const REMOVAL_ANIMATION_MS = 200;
 // has time to track the directional motion. Keep in sync with the
 // .bento-tab-list-pane--{enter,exit}-* CSS animation duration.
 const WORKSPACE_SLIDE_MS = 260;
+const SELECTED_TABS_TITLE_PREFIX = 'BENTO_SELECTED_TABS:';
+
+function encodeSelectedTabIds(ids: number[]): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(ids))));
+}
 
 // Keeps removed ids in `displayedIds` for REMOVAL_ANIMATION_MS so the row
 // can fade out before truly unmounting. Removed ids stay at their previous
@@ -393,6 +399,7 @@ function TabListPane({
 export function TabList({
   onActivate,
   onClose,
+  onCloseSelected,
   onOpenInSidePanel,
   onTabContextMenu,
   onReorder,
@@ -415,6 +422,16 @@ export function TabList({
   const activeId = useTabsStore((s) => s.activeId);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const lastSelectedIdRef = useRef<number | null>(null);
+  const mirroredSelectedTitleRef = useRef(false);
+
+  const closeSelectedTabs = useCallback(() => {
+    if (!onCloseSelected || selectedIds.size === 0) return;
+    const ids = orderedIds.filter((id) => selectedIds.has(id));
+    if (ids.length === 0) return;
+    onCloseSelected(ids);
+    setSelectedIds(new Set());
+    lastSelectedIdRef.current = null;
+  }, [onCloseSelected, orderedIds, selectedIds]);
 
   useLayoutEffect(() => {
     setSelectedIds(new Set());
@@ -436,6 +453,39 @@ export function TabList({
       lastSelectedIdRef.current = null;
     }
   }, [orderedIds]);
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName.toLowerCase();
+      if (
+        tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      const isAccel = navigator.platform.toLowerCase().includes('mac')
+        ? event.metaKey
+        : event.ctrlKey;
+      if (!isAccel || event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== 'w') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeSelectedTabs();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [closeSelectedTabs, selectedIds.size]);
+
+  useEffect(() => {
+    const ids = orderedIds.filter((id) => selectedIds.has(id));
+    if (ids.length === 0 && !mirroredSelectedTitleRef.current) return;
+    document.title = `${SELECTED_TABS_TITLE_PREFIX}${Date.now()}:${encodeSelectedTabIds(ids)}`;
+    mirroredSelectedTitleRef.current = ids.length > 0;
+  }, [orderedIds, selectedIds]);
 
   const handleSelectClick = useCallback(
     (id: number, event: React.MouseEvent<HTMLDivElement>) => {

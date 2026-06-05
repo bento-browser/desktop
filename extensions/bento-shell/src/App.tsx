@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
+import { Tooltip } from '@tale-ui/react/tooltip';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
 import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
@@ -28,6 +30,27 @@ import type { UiColorModePref } from '@shared/protocol';
 // binding in src/browser/base/content/bento-shell-mount.js.
 
 const UI_COLOR_MODE_ORDER: readonly UiColorModePref[] = ['light', 'dark', 'system'];
+
+function FooterTooltip({
+  label,
+  isDisabled = false,
+  children,
+}: {
+  label: string;
+  isDisabled?: boolean;
+  children: ReactNode;
+}) {
+  if (isDisabled) return <>{children}</>;
+  return (
+    <Tooltip.Root delay={400}>
+      {children}
+      <Tooltip.Popup placement="top" offset={8}>
+        <Tooltip.Arrow />
+        {label}
+      </Tooltip.Popup>
+    </Tooltip.Root>
+  );
+}
 
 function openSettings() {
   // Round-trip through bento-tools (which has reliable browser.tabs access)
@@ -124,6 +147,7 @@ export function App() {
     document.title = `BENTO_SCROLL_TO_MAIN_${Date.now()}`;
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
+  const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const openSidebarContextMenu = (
     event: React.MouseEvent,
@@ -188,6 +212,11 @@ export function App() {
         items.push(
           { id: 'sep-close-tab', kind: 'separator' },
           { id: 'close-tab', label: 'Close tab' },
+        );
+      } else {
+        items.push(
+          { id: 'sep-close-tabs', kind: 'separator' },
+          { id: 'close-selected-tabs', label: `Close ${targetTabIds.length} selected tabs` },
         );
       }
     }
@@ -319,6 +348,7 @@ export function App() {
       <TabList
         onActivate={onActivate}
         onClose={onClose}
+        onCloseSelected={onCloseSelected}
         onOpenInSidePanel={onOpenInSidePanel}
         onTabContextMenu={onTabContextMenu}
         onReorder={onReorder}
@@ -330,31 +360,42 @@ export function App() {
             position as the leftmost slot of the expanded horizontal row).
             That's the explicit UX requirement — clicking expand should
             land at the same cursor position as clicking collapse. */}
-        <IconButton
-          variant="ghost"
-          size="sm"
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onPress={toggleSidebarCollapsed}
+        <FooterTooltip
+          label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          isDisabled={sidebarCollapsed}
         >
-          <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
-        </IconButton>
-        <IconButton
-          variant="ghost"
-          size="sm"
-          aria-label="Open command palette (⌘⌥P)"
-          onPress={openCommandPalette}
-        >
-          <Icon icon={Command} />
-        </IconButton>
-        <ColorModeCycle
-          value={uiColorMode}
-          onChange={setUiColorMode}
-          modes={UI_COLOR_MODE_ORDER}
-          surfaceLabel="Bento UI"
-        />
-        <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
-          <Icon icon={Settings} />
-        </IconButton>
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onPress={toggleSidebarCollapsed}
+          >
+            <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
+          </IconButton>
+        </FooterTooltip>
+        <FooterTooltip label="Open command palette" isDisabled={sidebarCollapsed}>
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label="Open command palette (⌘⌥P)"
+            onPress={openCommandPalette}
+          >
+            <Icon icon={Command} />
+          </IconButton>
+        </FooterTooltip>
+        <FooterTooltip label="Color mode" isDisabled={sidebarCollapsed}>
+          <ColorModeCycle
+            value={uiColorMode}
+            onChange={setUiColorMode}
+            modes={UI_COLOR_MODE_ORDER}
+            surfaceLabel="Bento UI"
+          />
+        </FooterTooltip>
+        <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
+          <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
+            <Icon icon={Settings} />
+          </IconButton>
+        </FooterTooltip>
       </Row>
     </Column>
   );

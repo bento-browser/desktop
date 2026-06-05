@@ -33,6 +33,7 @@ import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/autocomplete';
 import '@tale-ui/react-styles/search-field';
 import '@tale-ui/react-styles/spinner';
+import '@tale-ui/react-styles/tooltip';
 
 import './theme/bento-tokens.css';
 import './theme/presets/index.css';
