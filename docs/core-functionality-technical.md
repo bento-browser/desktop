@@ -472,6 +472,11 @@ Load-bearing pitfalls:
 - Open tabs are title-filtered only because `TabSnapshot` intentionally omits
   URL for wire-size reasons. Zen-style title+URL tab matching requires a
   deliberate protocol widening.
+- New-tab submissions must create the tab inactive, eagerly assign it to
+  `ctx.workspaces.getActiveId(ctx.sourceWindowId)`, then activate it. Passing
+  `active: true` directly to `browser.tabs.create` lets Firefox fire
+  `tabs.onActivated` before Bento has written the workspace assignment, which
+  can make the tab appear in another workspace.
 - Panel rows must dispatch `panel/focus`, never `tab/activate`, for the same
   reason as command-palette panel rows.
 - Do not rely on WebExtension `search` or `omnibox` APIs for live default-engine

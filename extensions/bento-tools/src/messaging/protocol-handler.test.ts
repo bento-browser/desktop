@@ -258,6 +258,84 @@ describe('protocol handler command palette navigation', () => {
   });
 });
 
+describe('protocol handler tab creation', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        create: vi.fn().mockResolvedValue({ id: 99, windowId: 7 }),
+        update: vi.fn().mockResolvedValue({ id: 99 }),
+        query: vi.fn().mockResolvedValue([]),
+      },
+    });
+  });
+
+  it('assigns tab/openUrl to the source workspace before activating the new tab', async () => {
+    const order: string[] = [];
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi.fn().mockReturnValue([]),
+        assignWorkspaceEagerly: vi.fn(() => order.push('assign')),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        getActiveId: vi.fn().mockReturnValue('ws-current'),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        getPanels: vi.fn().mockReturnValue([]),
+      } as unknown as HandlerContext['panels'],
+      sourceWindowId: 7,
+    });
+    vi.mocked(browser.tabs.update).mockImplementation(async () => {
+      order.push('activate');
+      return { id: 99 } as browser.tabs.Tab;
+    });
+
+    handle({ type: 'tab/openUrl', url: 'https://example.com/' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(99, { active: true });
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: 'https://example.com/',
+      active: false,
+      windowId: 7,
+    });
+    expect(ctx.workspaces.getActiveId).toHaveBeenCalledWith(7);
+    expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(99, 'ws-current');
+    expect(order).toEqual(['assign', 'activate']);
+  });
+
+  it('assigns tab/create to the source workspace before activating the blank tab', async () => {
+    const order: string[] = [];
+    const ctx = createCloseContext({
+      tabs: {
+        assignWorkspaceEagerly: vi.fn(() => order.push('assign')),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        getActiveId: vi.fn().mockReturnValue('ws-current'),
+      } as unknown as HandlerContext['workspaces'],
+      sourceWindowId: 7,
+    });
+    vi.mocked(browser.tabs.update).mockImplementation(async () => {
+      order.push('activate');
+      return { id: 99 } as browser.tabs.Tab;
+    });
+
+    handle({ type: 'tab/create' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(99, { active: true });
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      windowId: 7,
+    });
+    expect(ctx.workspaces.getActiveId).toHaveBeenCalledWith(7);
+    expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(99, 'ws-current');
+    expect(order).toEqual(['assign', 'activate']);
+  });
+});
+
 describe('protocol handler workspace updates', () => {
   it('re-emits panels sync when a workspace theme changes', () => {
     const ctx = createCloseContext({

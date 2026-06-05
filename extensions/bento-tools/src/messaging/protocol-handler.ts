@@ -638,13 +638,15 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               }
             }
           }
+          const shouldActivate = action.active ?? true;
           const created = await browser.tabs.create({
             url: action.url,
-            active: action.active ?? true,
+            active: false,
             ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
           });
           if (typeof created.id !== 'number') return;
           if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
+          if (shouldActivate) await browser.tabs.update(created.id, { active: true });
         } catch (err) {
           console.warn('[bento-tools] tab/openUrl failed:', err);
         }
@@ -654,13 +656,15 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // Same windowId + eager-assign rationale as tab/openUrl above.
       void (async () => {
         try {
+          const shouldActivate = action.active ?? true;
           const created = await browser.tabs.create({
-            active: action.active ?? true,
+            active: false,
             ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
           });
           if (typeof created.id !== 'number') return;
           const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
           if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
+          if (shouldActivate) await browser.tabs.update(created.id, { active: true });
         } catch (err) {
           console.warn('[bento-tools] tab/create failed:', err);
         }
