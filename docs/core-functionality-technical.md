@@ -192,11 +192,11 @@ every built `engine/obj-*` app bundle because `scripts/dev-launch.sh` chooses
 the newest `Bento.app`; otherwise `pnpm run dev:fresh` can launch a stale bundle
 whose built-in welcome assets do not match the current source.
 The welcome overlay browser stays mounted under `#browser` so its title-IPC
-open/close signals stay reliable. A separate `bento-welcome-toolbar-scrim`
-covers the native toolbar/urlbar strip, which otherwise paints above
-in-document overlays so the in-document `Dialog.Backdrop` can only dim the
-content area. The scrim is a `div` with `popover="manual"` appended to
-`<body>`; its UA popover layout is overridden into a top strip
+open/close signals stay reliable. Bento modal overlays also share a separate
+`bento-overlay-toolbar-scrim` for the native toolbar/urlbar strip, which
+otherwise paints above in-document overlays so an in-document `Dialog.Backdrop`
+can only dim the content area. The scrim is a `div` with `popover="manual"`
+appended to `<body>`; its UA popover layout is overridden into a top strip
 (`position: fixed; top:0; left:0; right:0; bottom:auto`) with its `height` set
 on show from the live toolbar rect (the gap above `#browser`), so it dims
 exactly the toolbar strip and never overlaps the content backdrop. Its dim is
@@ -204,7 +204,9 @@ exactly the toolbar strip and never overlaps the content backdrop. Its dim is
 uses (`--modal-backdrop-bg: var(--scrim)`), so the toolbar dim matches the
 content dim exactly. `showPopover()` / `hidePopover()` control top-layer
 membership; opacity drives the fade; a `resize` listener keeps the height
-aligned.
+aligned. Ownership is reference-counted by overlay id (`palette`, `addrbar`,
+`confirm`, `edit-workspace`, `welcome`) so a stacked modal can close without
+removing the toolbar scrim that another still-visible modal needs.
 
 Why a popover and nothing else works — the critical pitfall: `#urlbar` is
 declared with `popover="manual"` (navigator-toolbox.inc.xhtml), so the megabar
@@ -213,8 +215,8 @@ normal-flow content regardless of z-index, so any ordinary scrim (any
 `z-index`, whether parented in `#navigator-toolbox` or on `<body>`) dims the
 rest of the toolbar but leaves the address-bar pill bright on top. The scrim
 must itself be in the top layer; top-layer paint order is show order, so a
-popover shown during onboarding (after the urlbar's) stacks above `#urlbar`
-and finally covers it. `popover="manual"` is required (an `auto` popover would
+popover shown when any Bento modal opens stacks above `#urlbar` and finally
+covers it. `popover="manual"` is required (an `auto` popover would
 light-dismiss and would not coexist with the urlbar's popover).
 
 Earlier failed approaches (do NOT reintroduce): (1) a XUL `<panel>` — a native
@@ -368,8 +370,11 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   tab as the fallback, chrome reconciles against stale panel payload, and the
   workspace can stay blank until a workspace switch forces a fresh render.
   Promote the leftmost panel out of `PanelStore`, clear its panel marker,
-  activate it as the non-panel main tab, emit `panels/sync`, then remove the old
-  main tab with the delayed close path.
+  eagerly assign it to the workspace as a normal tab, activate it directly with
+  `browser.tabs.update`, emit a window-scoped `panels/sync`, then remove the old
+  main tab with the delayed close path. Do not rely on
+  `TabRegistry.snapshot()` during this transition; native `tabs.onRemoved` and
+  registry removal deltas can be ordered differently.
 - Window-close teardown (`Cmd+Shift+W`) is not the same as deleting workspace
   contents. `TabRegistry` keeps a private URL cache and emits one
   `onWindowClosing` snapshot before it drops the closing window's tab ids.
@@ -431,6 +436,49 @@ external-store snapshot can spin the React tree or crash the palette frame befor
 the Dialog paints. Subscribe to stable store references such as
 `usePanelsStore((s) => s.byWorkspace)` and derive object arrays with `useMemo`.
 
+## Floating Address Bar
+
+`extensions/bento-shell/src/components/AddressBar/AddressBar.tsx` is a separate
+chrome overlay entry hosted at `address-bar.html`, mounted dynamically by
+`ensureOverlayHost` in `src/browser/base/content/bento-shell-mount.js`. The
+chrome keybinding intercepts `Cmd/Ctrl+L` and `Cmd/Ctrl+T` in capture phase,
+opens the overlay, and sends the mode to the addrbar frame through a frame
+script that posts on `BroadcastChannel('bento-addrbar-bus')` from the content
+global.
+
+The overlay uses the same shell-to-tools port as the rest of Bento. Query
+actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the
+query so the shell can discard stale async results. The tools search module
+queries all history with `browser.history.search({ startTime: 0 })`, searches
+bookmarks with `browser.bookmarks.search(query)`, filters bookmark folders out,
+dedupes by normalized URL, and ranks host-prefix matches, history recency and
+visit count, and bookmark matches. Favicons are best-effort: open tabs provide
+`TabSnapshot.favIconUrl`, but history and bookmark APIs do not return favicons.
+
+Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
+one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload;
+chrome decodes it, resolves through `Services.uriFixup` with
+`FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP | FIXUP_FLAG_FIX_SCHEME_TYPOS`, calls
+`fixupAndLoadURIString` on `gBrowser.selectedBrowser`, then hides the overlay.
+For new-tab mode, chrome resolves the same spec and dispatches `tab/openUrl` so
+bento-tools creates the tab in the source window and eagerly assigns it to the
+active workspace.
+
+Load-bearing pitfalls:
+
+- Submit writes exactly one navigate sentinel. Do not also write
+  `BENTO_CLOSE_ADDRBAR_*` in the same tick; `document.title` is last-write-wins
+  and chrome polling may only see the close sentinel.
+- Open tabs are title-filtered only because `TabSnapshot` intentionally omits
+  URL for wire-size reasons. Zen-style title+URL tab matching requires a
+  deliberate protocol widening.
+- Panel rows must dispatch `panel/focus`, never `tab/activate`, for the same
+  reason as command-palette panel rows.
+- Do not rely on WebExtension `search` or `omnibox` APIs for live default-engine
+  suggestions in this custom overlay. They can execute searches or provide
+  extension-owned keyword suggestions, but they do not expose Firefox's live
+  default-engine suggestion stream to an arbitrary React UI.
+
 ### Title IPC pitfalls
 
 - `document.title` is last-write-wins. Do not reintroduce separate title writes
@@ -480,8 +528,10 @@ Load-bearing details:
   arrive later in the shared `style.css` bundle and otherwise override plain
   transparent background declarations.
 - Do not add an app-wide surface to menu overlay roots. If an overlay needs a
-  scrim, it should be drawn by that overlay's dialog/backdrop component, not by
-  the page or chrome host background.
+  content-area scrim, it should be drawn by that overlay's dialog/backdrop
+  component, not by the page or chrome host background. If it is a modal scrim,
+  pair it with `showOverlayToolbarScrim(owner)` / `hideOverlayToolbarScrim(owner)`
+  in `bento-shell-mount.js` so the native toolbar and urlbar are dimmed too.
 
 ## Chrome panel rendering
 
@@ -561,9 +611,21 @@ The following mechanisms are load-bearing:
   artifacts: `bento-flat-panel-layout`, the flat layout extent, overlay
   splitters/choosers, Bento data attributes, split-view classes, `column`, panel
   headers, loading overlays, and inline rect styles (`left`, `width`,
-  `max-width`, `height`, `flex`, etc.). If any remain, run the full teardown.
+  `max-width`, `height`, `flex`, `display`, `position`, `visibility`, etc.). If
+  any remain, run the full teardown.
   Otherwise a newly-created or newly-activated empty workspace can show its main
   tab at an old panel width with blank space beside it.
+- When the final regular tab closes while panels remain, the promoted panel tab
+  is immediately torn down into main-only mode. Regression symptom: the sidebar
+  correctly shows the promoted panel as the sole workspace tab, but the content
+  area is blank until switching away from the workspace and back. Cause: the
+  promoted tab's notificationbox can retain flat-panel inline state
+  (`display`, `position`, `visibility`, `opacity`, `pointer-events`, etc.) and
+  browser paint flags (`blank` / `pendingpaint`) from its previous side-panel
+  role. Fix: strip inline panel state before restoring
+  `tabpanels.selectedPanel`, then force a selected-main browser repaint and
+  clear `blank`/`pendingpaint`. The workspace-switch workaround appeared to
+  fix the bug only because it ran a later full reconcile.
 
 ## Flat panel layout and subdivisions
 

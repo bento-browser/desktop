@@ -17,6 +17,7 @@ import type { BackupStore } from '../backup/BackupStore';
 import { clearPanelMarker } from '../panels/SessionMarker';
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
+import { searchAddressResults } from '../search/AddressSearch';
 
 // Read the three Bento-exposed privacy fields in parallel and broadcast a
 // snapshot. browser.privacy.* setters return Promise<void> but reading via
@@ -41,6 +42,27 @@ async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   }
 }
 
+async function activatePromotedPanelTab(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+  label: string,
+): Promise<{ ok: true; windowId?: number } | { ok: false }> {
+  if (!Number.isFinite(tabId)) return { ok: false };
+  if (ctx.tabs.isClosing(tabId)) return { ok: false };
+  ctx.tabs.assignWorkspaceEagerly(tabId, workspaceId);
+  try {
+    const live = await browser.tabs.get(tabId);
+    const windowId =
+      typeof live.windowId === 'number' && live.windowId >= 0 ? live.windowId : undefined;
+    await browser.tabs.update(tabId, { active: true });
+    return windowId !== undefined ? { ok: true, windowId } : { ok: true };
+  } catch (err) {
+    console.warn(`[bento-tools] ${label} failed:`, tabId, err);
+    return { ok: false };
+  }
+}
+
 async function promoteLeftmostPanelToTabAfterMove(
   ctx: HandlerContext,
   workspaceId: string,
@@ -54,9 +76,17 @@ async function promoteLeftmostPanelToTabAfterMove(
   await clearPanelMarker(tabId);
   ctx.syncPanelMarkers(workspaceId);
 
-  await activateNonPanelTab(ctx, tabId, 'assignWorkspace promote-panel activate');
+  const activated = await activatePromotedPanelTab(
+    ctx,
+    workspaceId,
+    tabId,
+    'assignWorkspace promote-panel activate',
+  );
 
-  ctx.emitPanelsSync(workspaceId);
+  ctx.emitPanelsSync(
+    workspaceId,
+    activated.ok && activated.windowId !== undefined ? { windowId: activated.windowId } : undefined,
+  );
 }
 
 async function promoteLeftmostPanelBeforeMainClose(
@@ -73,15 +103,23 @@ async function promoteLeftmostPanelBeforeMainClose(
   await clearPanelMarker(tabId);
   ctx.syncPanelMarkers(workspaceId);
 
-  const activated = await activateNonPanelTab(ctx, tabId, 'tab/closeMain promote-panel activate');
-  if (!activated) {
+  const activated = await activatePromotedPanelTab(
+    ctx,
+    workspaceId,
+    tabId,
+    'tab/closeMain promote-panel activate',
+  );
+  if (!activated.ok) {
     ctx.panels.insertAt(workspaceId, tabId, originalPosition);
     ctx.syncPanelMarkers(workspaceId);
     ctx.emitPanelsSync(workspaceId);
     return false;
   }
 
-  ctx.emitPanelsSync(workspaceId);
+  ctx.emitPanelsSync(
+    workspaceId,
+    activated.windowId !== undefined ? { windowId: activated.windowId } : undefined,
+  );
   return true;
 }
 
@@ -1097,6 +1135,17 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);
+      return;
+    case 'addrbar/query':
+      void (async () => {
+        try {
+          const results = await searchAddressResults(action.query, action.limit);
+          ctx.send({ type: 'addrbar/results', query: action.query, results });
+        } catch (err) {
+          console.warn('[bento-tools] addrbar/query failed:', err);
+          ctx.send({ type: 'addrbar/results', query: action.query, results: [] });
+        }
+      })();
       return;
     case 'privacy/setResistFingerprinting':
       browser.privacy.websites.resistFingerprinting

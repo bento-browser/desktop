@@ -1,0 +1,127 @@
+/* Layer-2 component: AddressBar. Mirrors CommandPalette's overlay shape
+ * while giving result rows a denser two-line address-bar layout. */
+@layer bento.components {
+  .bento-address-bar__popup {
+    width: min(64rem, 92vw);
+    max-height: min(42rem, 74vh);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-2xs);
+    gap: var(--space-2xs);
+    transform: translateY(-14vh);
+  }
+
+  .bento-address-bar__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .bento-address-bar__input {
+    width: 100%;
+    transition:
+      border-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
+      box-shadow var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
+      background-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease);
+  }
+
+  .bento-address-bar__input:hover:not(:focus) {
+    border-color: var(--neutral-40);
+    background-color: var(--neutral-8, var(--neutral-10));
+  }
+
+  .bento-address-bar__input:focus,
+  .bento-address-bar__input[data-focused] {
+    border-color: var(--color-60);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-60) 22%, transparent);
+  }
+
+  .bento-address-bar__listbox {
+    box-sizing: border-box;
+    flex: 1;
+    min-height: 0;
+    padding: 0.4rem;
+    overflow-y: auto;
+    scroll-padding-block: 0.4rem;
+  }
+
+  .bento-address-bar__item {
+    min-height: 4.6rem;
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    color: var(--neutral-90);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
+      color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
+      box-shadow var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease);
+  }
+
+  .bento-address-bar__item:hover,
+  .bento-address-bar__item[data-hovered] {
+    background-color: var(--neutral-14);
+  }
+
+  .bento-address-bar__item:focus-visible,
+  .bento-address-bar__item[data-focus-visible],
+  .bento-address-bar__item[data-focused] {
+    background-color: color-mix(in srgb, var(--color-60) 12%, var(--neutral-10));
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--color-60) 44%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--color-60) 18%, transparent);
+  }
+
+  .bento-address-bar__item:active,
+  .bento-address-bar__item[data-pressed],
+  .bento-address-bar__item[data-selected] {
+    background-color: var(--color-60);
+    color: var(--color-60-fg);
+  }
+
+  .bento-address-bar__item:active :where(.tale-text, .tale-icon),
+  .bento-address-bar__item[data-pressed] :where(.tale-text, .tale-icon),
+  .bento-address-bar__item[data-selected] :where(.tale-text, .tale-icon) {
+    color: var(--color-60-fg);
+  }
+
+  .bento-address-bar__row {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .bento-address-bar__row-text {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .bento-address-bar__row-title,
+  .bento-address-bar__row-subtitle {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bento-address-bar__favicon,
+  .bento-address-bar__glyph {
+    width: 1.8rem;
+    height: 1.8rem;
+    flex: 0 0 1.8rem;
+  }
+
+  .bento-address-bar__favicon {
+    border-radius: var(--radius-xs, 0.4rem);
+    object-fit: contain;
+  }
+
+  .bento-address-bar__glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--neutral-60);
+  }
+}

@@ -79,8 +79,8 @@ covering the window with an opaque overlay.
 Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal
 scrim, but the overlay page itself should not cover the browser with an opaque
-surface. The first-run welcome scrim covers the full chrome window, including the
-toolbar and address bar.
+surface. Bento modal scrims cover the full chrome window, including the toolbar
+and address bar.
 
 The command palette separates normal tabs from side panels. Choosing a tab opens
 that tab in the main content slot, switching to its workspace first when needed.
@@ -88,6 +88,16 @@ Choosing a panel switches to the panel's workspace, scrolls the panel strip to
 that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
 active states so mouse and keyboard navigation both have visible feedback.
+
+The floating address/search bar opens with `Cmd/Ctrl+L` for the current tab and
+`Cmd/Ctrl+T` for a new tab. It floats over the browser content without
+restyling Firefox's native address bar. Results include open normal tabs,
+open panels, history, bookmarks, and a final search/open row. Submitting a
+current-tab search or URL uses Firefox's URL fixup and default search engine.
+Submitting in new-tab mode creates the tab only after the user commits, so Esc
+does not leave an empty tab behind. Open-tab matching is title-based unless the
+tab protocol is widened to include URLs; history and bookmark rows use generic
+icons when no favicon source is available.
 
 ### Main content
 

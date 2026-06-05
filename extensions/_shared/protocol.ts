@@ -459,6 +459,7 @@ export type Action =
    * change without user action — the dashboard re-requests after any
    * write it dispatches). */
   | { type: 'privacy/requestSnapshot' }
+  | { type: 'addrbar/query'; query: string; limit?: number }
   /** Update one privacy field. Tools writes via browser.privacy.* then
    * replies with a fresh privacy/snapshot. Per-field instead of a bulk
    * patch so the protocol stays readable and the handler doesn't have to
@@ -551,6 +552,14 @@ export interface PrivacySettings {
   peerConnection: boolean;
 }
 
+export interface AddrResult {
+  kind: 'history' | 'bookmark';
+  url: string;
+  title: string;
+  favIconUrl?: string;
+  score: number;
+}
+
 export type Event =
   | { type: 'pong'; ts: number }
   | { type: 'tools/booted'; version: string }
@@ -639,6 +648,7 @@ export type Event =
       panelStatusByTabId: Record<number, PanelLayoutStatus>;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
+  | { type: 'addrbar/results'; query: string; results: AddrResult[] }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }
   | { type: 'pinnedPanels/changed'; deltas: PinnedPanelDelta[] }
   /** Full list of bookmarks in the "Saved panels" folder. Emitted on

@@ -92,6 +92,7 @@ export default defineConfig(({ mode }) => ({
         shell: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
         palette: resolve(__dirname, 'palette.html'),
+        'address-bar': resolve(__dirname, 'address-bar.html'),
         confirm: resolve(__dirname, 'confirm.html'),
         'edit-workspace': resolve(__dirname, 'edit-workspace.html'),
         'workspace-switcher': resolve(__dirname, 'workspace-switcher.html'),

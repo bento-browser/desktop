@@ -7,6 +7,7 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
       markClosing: vi.fn().mockResolvedValue(undefined),
       snapshot: vi.fn().mockReturnValue([]),
       isClosing: vi.fn().mockReturnValue(false),
+      assignWorkspaceEagerly: vi.fn(),
     },
     workspaces: {
       getActiveId: vi.fn().mockReturnValue('ws-1'),
@@ -36,7 +37,7 @@ describe('protocol handler panel close', () => {
         removeTabValue: vi.fn().mockResolvedValue(undefined),
       },
       tabs: {
-        get: vi.fn().mockResolvedValue({ id: 123 }),
+        get: vi.fn().mockResolvedValue({ id: 123, windowId: 1 }),
         update: vi.fn().mockResolvedValue({ id: 123 }),
         remove: vi.fn().mockResolvedValue(undefined),
       },
@@ -66,6 +67,7 @@ describe('protocol handler panel close', () => {
           { id: 20, windowId: 1, workspaceId: 'ws-1', active: false },
         ]),
         isClosing: vi.fn().mockReturnValue(false),
+        assignWorkspaceEagerly: vi.fn(),
       } as unknown as HandlerContext['tabs'],
       panels: {
         findWorkspacesContainingTab: vi.fn((id: number) => (id === 20 ? ['ws-1'] : [])),
@@ -82,7 +84,8 @@ describe('protocol handler panel close', () => {
       expect(browser.tabs.update).toHaveBeenCalledWith(20, { active: true });
     });
     expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 20);
-    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+    expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(20, 'ws-1');
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', { windowId: 1 });
     await vi.waitFor(() => {
       expect(browser.tabs.remove).toHaveBeenCalledWith(10);
     });

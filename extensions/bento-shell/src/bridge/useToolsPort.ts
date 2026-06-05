@@ -46,6 +46,7 @@ import { usePinnedPanelsStore } from '../state/pinnedPanels';
 import { useSavedPanelsStore } from '../state/savedPanels';
 import { usePrivacyStore } from '../state/privacy';
 import { useBackupStore } from '../state/backup';
+import { useAddressBarStore } from '../state/addressBar';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -307,6 +308,9 @@ function ensureConnection(): void {
       }
       case 'privacy/snapshot':
         usePrivacyStore.getState().apply(event.privacy);
+        return;
+      case 'addrbar/results':
+        useAddressBarStore.getState().applyResults(event.query, event.results);
         return;
       case 'pinnedPanels/snapshot':
         usePinnedPanelsStore.getState().applySnapshot(event.entries);

@@ -2197,6 +2197,10 @@
     setFrameSrc('bento-palette-frame', '/dist/palette.html');
   }
 
+  function setBentoAddrbarSrc() {
+    setFrameSrc('bento-addrbar-frame', '/dist/address-bar.html');
+  }
+
   function setBentoConfirmSrc() {
     setFrameSrc('bento-confirm-frame', '/dist/confirm.html');
   }
@@ -2290,31 +2294,33 @@
     parent.appendChild(host);
   }
 
-  function ensureWelcomeToolbarScrim() {
-    if (document.getElementById('bento-welcome-toolbar-scrim')) return;
-    // Cover the toolbar strip (back/forward, urlbar, menu) so the
-    // first-run dim is continuous from the toolbar down through the
-    // content area, which the in-document Dialog.Backdrop alone can't
-    // reach (the native toolbar paints above content overlays).
+  const activeToolbarScrimOwners = new Set();
+
+  function ensureOverlayToolbarScrim() {
+    if (document.getElementById('bento-overlay-toolbar-scrim')) return;
+    // Cover the toolbar strip (back/forward, urlbar, menu) so modal dims are
+    // continuous from the toolbar down through the content area. The overlay
+    // frames live under #browser, so their in-document Dialog.Backdrop cannot
+    // reach the native toolbar.
     //
     // The scrim MUST be a popover. #urlbar has popover="manual" — the
     // megabar lifts it into the CSS top layer, which paints above ALL
     // normal-flow content regardless of z-index. A plain element (any
     // z-index, in the toolbox or on <body>) therefore dims the rest of
     // the toolbar but leaves the address-bar pill bright on top. Top
-    // layer order is by show order, so a popover shown during onboarding
-    // (after the urlbar's) stacks above #urlbar and finally covers it.
+    // layer order is by show order, so a popover shown when a Bento modal
+    // opens stacks above #urlbar and finally covers it.
     //
     // Not a XUL <panel>: a panel is a native popup window whose macOS
     // vibrancy material stacked with the dim, and whose window `level`
     // floated it over OTHER windows. A popover stays in this window.
     const parent = document.body;
     if (!parent) {
-      console.warn('[bento-shell-mount] ensureWelcomeToolbarScrim: document.body missing');
+      console.warn('[bento-shell-mount] ensureOverlayToolbarScrim: document.body missing');
       return;
     }
     const scrim = document.createElement('div');
-    scrim.id = 'bento-welcome-toolbar-scrim';
+    scrim.id = 'bento-overlay-toolbar-scrim';
     scrim.setAttribute('popover', 'manual');
     // Override the UA popover layout (centered, fit-content) into a
     // top strip. Height is set on show from the live toolbar rect.
@@ -2348,7 +2354,7 @@
     frameId: 'bento-welcome-frame',
     zIndex: 99996,
   });
-  ensureWelcomeToolbarScrim();
+  ensureOverlayToolbarScrim();
 
   // Browser-data import shown from onboarding. This frame loads a chrome://
   // Bento host that embeds Firefox's reusable <migration-wizard> component.
@@ -2374,6 +2380,14 @@
     hostId: 'bento-workspace-switcher-host',
     frameId: 'bento-workspace-switcher-frame',
     zIndex: 99995,
+  });
+
+  // Floating address/search bar overlay. New overlays use the JS factory
+  // so dev reloads pick them up without requiring a browser.xhtml rebuild.
+  ensureOverlayHost({
+    hostId: 'bento-addrbar-host',
+    frameId: 'bento-addrbar-frame',
+    zIndex: 99999,
   });
   // Pre-warm: keep the host laid out (display:flex) from chrome init so
   // window.screenLeft inside the overlay frame is accurate from the
@@ -2427,6 +2441,7 @@
       console.warn('[bento-shell-mount] showPalette: bento-palette-host missing');
       return;
     }
+    showOverlayToolbarScrim('palette');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     // Force a layout pass so the browser registers display:flex BEFORE we
@@ -2440,7 +2455,11 @@
 
   function hidePalette() {
     const host = document.getElementById('bento-palette-host');
-    if (!host) return;
+    if (!host) {
+      hideOverlayToolbarScrim('palette');
+      return;
+    }
+    hideOverlayToolbarScrim('palette');
     host.style.opacity = '0';
     setTimeout(() => {
       // Only commit display:none if still hidden — guards against a
@@ -2464,6 +2483,51 @@
     else showPalette();
   }
 
+  // ─── Floating address/search bar overlay ──────────────────────────────
+
+  let currentAddrbarMode = 'current';
+
+  function isAddrbarVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  function showAddrbar(mode) {
+    currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
+    const paletteHost = document.getElementById('bento-palette-host');
+    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+    const host = document.getElementById('bento-addrbar-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showAddrbar: bento-addrbar-host missing');
+      return;
+    }
+    showOverlayToolbarScrim('addrbar');
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    host.style.opacity = '1';
+    const frame = document.getElementById('bento-addrbar-frame');
+    setTimeout(() => {
+      frame?.focus();
+      dispatchAddrbarOpen(currentAddrbarMode);
+    }, 0);
+  }
+
+  function hideAddrbar() {
+    const host = document.getElementById('bento-addrbar-host');
+    if (!host) {
+      hideOverlayToolbarScrim('addrbar');
+      return;
+    }
+    hideOverlayToolbarScrim('addrbar');
+    host.style.opacity = '0';
+    setTimeout(() => {
+      if (host.style.opacity === '0') {
+        host.style.display = 'none';
+        host.setAttribute('hidden', 'true');
+      }
+    }, PALETTE_TRANSITION_MS);
+  }
+
   // ─── Confirm overlay (workspace delete, etc.) ──────────────────────────
   // Same chrome-overlay pattern as the palette: a transparent <browser>
   // sized to fill the window hosts the AlertDialog, so confirm modals are
@@ -2483,6 +2547,7 @@
       console.warn('[bento-shell-mount] showConfirm: bento-confirm-host missing');
       return;
     }
+    showOverlayToolbarScrim('confirm');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -2493,7 +2558,11 @@
 
   function hideConfirm() {
     const host = document.getElementById('bento-confirm-host');
-    if (!host) return;
+    if (!host) {
+      hideOverlayToolbarScrim('confirm');
+      return;
+    }
+    hideOverlayToolbarScrim('confirm');
     host.style.opacity = '0';
     setTimeout(() => {
       if (host.style.opacity === '0') {
@@ -2519,6 +2588,7 @@
       console.warn('[bento-shell-mount] showEditWorkspace: host missing');
       return;
     }
+    showOverlayToolbarScrim('edit-workspace');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -2529,7 +2599,11 @@
 
   function hideEditWorkspace() {
     const host = document.getElementById('bento-edit-workspace-host');
-    if (!host) return;
+    if (!host) {
+      hideOverlayToolbarScrim('edit-workspace');
+      return;
+    }
+    hideOverlayToolbarScrim('edit-workspace');
     host.style.opacity = '0';
     setTimeout(() => {
       if (host.style.opacity === '0') {
@@ -2598,17 +2672,17 @@
   // gap above #browser) so it dims exactly the toolbar strip and never
   // overlaps the content backdrop. showPopover()/hidePopover() control
   // top-layer membership; opacity drives the fade.
-  function getWelcomeToolbarScrimHeight() {
+  function getOverlayToolbarScrimHeight() {
     const browser = document.getElementById('browser');
     const rect = browser?.getBoundingClientRect();
     return Math.max(0, Math.ceil(rect?.top ?? 0));
   }
 
-  function sizeWelcomeToolbarScrim(scrim) {
-    scrim.style.height = `${getWelcomeToolbarScrimHeight()}px`;
+  function sizeOverlayToolbarScrim(scrim) {
+    scrim.style.height = `${getOverlayToolbarScrimHeight()}px`;
   }
 
-  function isWelcomeToolbarScrimOpen(scrim) {
+  function isOverlayToolbarScrimOpen(scrim) {
     try {
       return scrim.matches(':popover-open');
     } catch {
@@ -2616,36 +2690,49 @@
     }
   }
 
-  function showWelcomeToolbarScrim() {
-    const scrim = document.getElementById('bento-welcome-toolbar-scrim');
+  function showOverlayToolbarScrim(owner) {
+    activeToolbarScrimOwners.add(owner);
+    const scrim = document.getElementById('bento-overlay-toolbar-scrim');
     if (!scrim) return;
-    if (getWelcomeToolbarScrimHeight() <= 0) return;
+    if (getOverlayToolbarScrimHeight() <= 0) return;
     scrim.style.opacity = '0';
-    sizeWelcomeToolbarScrim(scrim);
-    if (!isWelcomeToolbarScrimOpen(scrim) && typeof scrim.showPopover === 'function') {
+    sizeOverlayToolbarScrim(scrim);
+    if (!isOverlayToolbarScrimOpen(scrim) && typeof scrim.showPopover === 'function') {
       try {
         scrim.showPopover();
       } catch (err) {
-        console.warn('[bento-shell-mount] welcome toolbar scrim showPopover failed:', err);
+        console.warn('[bento-shell-mount] overlay toolbar scrim showPopover failed:', err);
         return;
       }
     }
     void scrim.getBoundingClientRect();
     requestAnimationFrame(() => {
-      if (isWelcomeToolbarScrimOpen(scrim)) scrim.style.opacity = '1';
+      if (isOverlayToolbarScrimOpen(scrim) && activeToolbarScrimOwners.size > 0) {
+        scrim.style.opacity = '1';
+      }
     });
   }
 
-  function hideWelcomeToolbarScrim() {
-    const scrim = document.getElementById('bento-welcome-toolbar-scrim');
+  function hideOverlayToolbarScrim(owner) {
+    activeToolbarScrimOwners.delete(owner);
+    const scrim = document.getElementById('bento-overlay-toolbar-scrim');
     if (!scrim) return;
+    if (activeToolbarScrimOwners.size > 0) {
+      sizeOverlayToolbarScrim(scrim);
+      scrim.style.opacity = '1';
+      return;
+    }
     scrim.style.opacity = '0';
     setTimeout(() => {
-      if (scrim.style.opacity === '0' && isWelcomeToolbarScrimOpen(scrim)) {
+      if (
+        activeToolbarScrimOwners.size === 0 &&
+        scrim.style.opacity === '0' &&
+        isOverlayToolbarScrimOpen(scrim)
+      ) {
         try {
           scrim.hidePopover();
         } catch (err) {
-          console.warn('[bento-shell-mount] welcome toolbar scrim hidePopover failed:', err);
+          console.warn('[bento-shell-mount] overlay toolbar scrim hidePopover failed:', err);
         }
       }
     }, WELCOME_TRANSITION_MS);
@@ -2654,9 +2741,9 @@
   // Keep the strip aligned to the toolbar while it's visible (window
   // resize / DPI change can shift the toolbar height).
   window.addEventListener('resize', () => {
-    const scrim = document.getElementById('bento-welcome-toolbar-scrim');
-    if (scrim && isWelcomeToolbarScrimOpen(scrim)) {
-      sizeWelcomeToolbarScrim(scrim);
+    const scrim = document.getElementById('bento-overlay-toolbar-scrim');
+    if (scrim && isOverlayToolbarScrimOpen(scrim)) {
+      sizeOverlayToolbarScrim(scrim);
     }
   });
 
@@ -2670,7 +2757,7 @@
       console.warn('[bento-shell-mount] showWelcome: host missing');
       return;
     }
-    showWelcomeToolbarScrim();
+    showOverlayToolbarScrim('welcome');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -2682,7 +2769,7 @@
   function hideWelcome() {
     const host = document.getElementById('bento-welcome-host');
     if (!host) return;
-    hideWelcomeToolbarScrim();
+    hideOverlayToolbarScrim('welcome');
     host.style.opacity = '0';
     setTimeout(() => {
       if (host.style.opacity === '0') {
@@ -2839,6 +2926,8 @@
   // changes — same value twice would be silent.
   const PALETTE_OPEN_PREFIX = 'BENTO_OPEN_PALETTE';
   const PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_PALETTE';
+  const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
+  const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
   // Same pattern for the confirm overlay (workspace deletion, etc.). The
   // confirm payload itself travels via BroadcastChannel('bento-confirm-bus')
   // — the title is just the visibility signal.
@@ -3204,6 +3293,74 @@
       }
     } catch (err) {
       console.warn('[bento-shell-mount] panel header load failed:', err);
+    }
+  }
+
+  function decodeAddrbarPayload(payload) {
+    const binary = atob(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  }
+
+  function resolveAddrbarSpec(value) {
+    const flags =
+      Services.uriFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP |
+      Services.uriFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS;
+    const info = Services.uriFixup.getFixupURIInfo(value, flags);
+    return info.preferredURI?.spec || null;
+  }
+
+  function handleAddrbarNavigateTitle(title) {
+    const colon = title.indexOf(':');
+    if (colon < 0) {
+      hideAddrbar();
+      return;
+    }
+    let value = '';
+    try {
+      value = decodeAddrbarPayload(title.slice(colon + 1)).trim();
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar decode failed:', err);
+      hideAddrbar();
+      return;
+    }
+    if (!value) {
+      hideAddrbar();
+      return;
+    }
+
+    try {
+      if (currentAddrbarMode === 'newTab') {
+        const spec = resolveAddrbarSpec(value);
+        if (spec) dispatchShellAction({ type: 'tab/openUrl', url: spec });
+        hideAddrbar();
+        return;
+      }
+
+      const browserEl = window.gBrowser?.selectedBrowser;
+      if (!browserEl) {
+        hideAddrbar();
+        return;
+      }
+      const spec = resolveAddrbarSpec(value);
+      if (!spec) {
+        hideAddrbar();
+        return;
+      }
+      const principal = Services.scriptSecurityManager.getSystemPrincipal();
+      if (typeof browserEl.fixupAndLoadURIString === 'function') {
+        browserEl.fixupAndLoadURIString(spec, { triggeringPrincipal: principal });
+      } else {
+        const uri = Services.io.newURI(spec);
+        browserEl.loadURI(uri, { triggeringPrincipal: principal });
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar navigation failed:', err);
+    } finally {
+      hideAddrbar();
     }
   }
 
@@ -6527,6 +6684,20 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(SHELL_ACTION_FRAME_SCRIPT_SRC);
 
+  const ADDRBAR_OPEN_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoAddrbarOpen", function(msg) {' +
+    '  try {' +
+    '    var mode = msg.data && msg.data.mode === "newTab" ? "newTab" : "current";' +
+    '    var channel = new content.BroadcastChannel("bento-addrbar-bus");' +
+    '    channel.postMessage({ kind: "open", mode: mode });' +
+    '    channel.close();' +
+    '  } catch (e) {}' +
+    '});';
+  const ADDRBAR_OPEN_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(ADDRBAR_OPEN_FRAME_SCRIPT_SRC);
+
   const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoPanelTrailerCycleFocus", function(msg) {' +
@@ -6578,6 +6749,24 @@
       return true;
     } catch (err) {
       console.warn('[bento-shell-mount] shell action dispatch failed:', err);
+      return false;
+    }
+  }
+
+  function dispatchAddrbarOpen(mode) {
+    const frame = document.getElementById('bento-addrbar-frame');
+    if (!frame) return false;
+    try {
+      const mm = frame.messageManager;
+      if (!mm || typeof mm.sendAsyncMessage !== 'function') return false;
+      if (!frame._bentoAddrbarOpenScriptLoaded && typeof mm.loadFrameScript === 'function') {
+        mm.loadFrameScript(ADDRBAR_OPEN_FRAME_SCRIPT_URL, true);
+        frame._bentoAddrbarOpenScriptLoaded = true;
+      }
+      mm.sendAsyncMessage('BentoAddrbarOpen', { mode });
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar open dispatch failed:', err);
       return false;
     }
   }
@@ -9231,8 +9420,6 @@
       tabpanels.removeAttribute('splitview');
     }
 
-    restoreSelectedMainBrowser(gBrowser, tabpanels, 'force main-only');
-
     if (gBrowser?.tabs) {
       for (const tab of gBrowser.tabs) {
         if (tab.splitview && tab.splitview.kind === BENTO_SPLIT_KIND) {
@@ -9253,6 +9440,18 @@
         panelEl.style.removeProperty('min-height');
         panelEl.style.removeProperty('max-height');
         panelEl.style.removeProperty('flex');
+        panelEl.style.removeProperty('display');
+        panelEl.style.removeProperty('flex-direction');
+        panelEl.style.removeProperty('overflow');
+        panelEl.style.removeProperty('position');
+        panelEl.style.removeProperty('opacity');
+        panelEl.style.removeProperty('visibility');
+        panelEl.style.removeProperty('pointer-events');
+        panelEl.style.removeProperty('margin');
+        panelEl.style.removeProperty('padding');
+        panelEl.style.removeProperty('border-width');
+        panelEl.style.removeProperty('transform');
+        panelEl.style.removeProperty('transition');
         panelEl.classList.remove(
           'split-view-panel',
           'split-view-panel-active',
@@ -9266,6 +9465,8 @@
         }
       }
     }
+
+    restoreSelectedMainBrowser(gBrowser, tabpanels, 'force main-only');
 
     if (__lastSplitViewMarker) {
       try {
@@ -12404,17 +12605,54 @@
     delete panelEl.__bentoLoadingListener;
   }
 
+  function forceSelectedMainPanelPaint(tab, panelEl, browserEl) {
+    if (!tab || !panelEl || !browserEl) return;
+    panelEl.removeAttribute('hidden');
+    panelEl.removeAttribute('collapsed');
+    panelEl.style.removeProperty('display');
+    panelEl.style.removeProperty('opacity');
+    panelEl.style.removeProperty('visibility');
+    panelEl.style.removeProperty('pointer-events');
+    panelEl.style.removeProperty('-moz-subtree-hidden-only-visually');
+
+    const browserContainer = panelEl.querySelector?.(':scope > .browserContainer') || null;
+    const browserStack =
+      panelEl.querySelector?.(':scope > .browserContainer > .browserStack') ||
+      panelEl.querySelector?.(':scope > .browserStack') ||
+      null;
+    for (const el of [browserContainer, browserStack, browserEl]) {
+      if (!el) continue;
+      el.removeAttribute?.('hidden');
+      el.removeAttribute?.('collapsed');
+      el.style.removeProperty('display');
+      el.style.removeProperty('opacity');
+      el.style.removeProperty('visibility');
+      el.style.removeProperty('pointer-events');
+      el.style.removeProperty('-moz-subtree-hidden-only-visually');
+    }
+    browserEl.removeAttribute('blank');
+    browserEl.removeAttribute('pendingpaint');
+    try {
+      browserEl.preserveLayers?.(true);
+      browserEl.renderLayers = true;
+      browserEl.docShellIsActive = true;
+    } catch {
+      // Best-effort repaint after split-view teardown.
+    }
+  }
+
   function restoreSelectedMainBrowser(gBrowser, tabpanels, context) {
     try {
       const selectedTab = gBrowser?.selectedTab;
-      const selectedPanel = document.getElementById(gBrowser?.selectedTab?.linkedPanel);
+      const selectedPanel = selectedTab?.linkedPanel
+        ? document.getElementById(selectedTab.linkedPanel)
+        : null;
       if (selectedPanel && tabpanels) {
         tabpanels.selectedPanel = selectedPanel;
       }
-      const selectedBrowser = getLivePanelBrowser(gBrowser?.selectedTab);
+      const selectedBrowser = getLivePanelBrowser(selectedTab);
       if (selectedBrowser) {
-        selectedBrowser.preserveLayers(true);
-        selectedBrowser.docShellIsActive = true;
+        forceSelectedMainPanelPaint(selectedTab, selectedPanel, selectedBrowser);
       }
       scheduleSelectedMainBrowserRepaint(gBrowser, tabpanels, selectedTab, context);
     } catch (err) {
@@ -12434,7 +12672,8 @@
         }
         const browserEl = getLivePanelBrowser(expectedTab);
         if (!browserEl) return;
-        browserEl.preserveLayers(true);
+        forceSelectedMainPanelPaint(expectedTab, selectedPanel, browserEl);
+        browserEl.preserveLayers?.(true);
         browserEl.docShellIsActive = false;
         browserEl.docShellIsActive = true;
       } catch (err) {
@@ -13418,6 +13657,18 @@
       }, 200);
     }
 
+    const addrbarFrame = document.getElementById('bento-addrbar-frame');
+    if (addrbarFrame) {
+      let lastSeenAddrbarTitle = '';
+      setInterval(() => {
+        const title = addrbarFrame.contentTitle || '';
+        if (title === lastSeenAddrbarTitle) return;
+        lastSeenAddrbarTitle = title;
+        if (title.startsWith(ADDRBAR_CLOSE_PREFIX)) hideAddrbar();
+        else if (title.startsWith(ADDRBAR_NAVIGATE_PREFIX)) handleAddrbarNavigateTitle(title);
+      }, 60);
+    }
+
     const confirmFrame = document.getElementById('bento-confirm-frame');
     if (confirmFrame) {
       let lastSeenConfirmTitle = '';
@@ -13630,6 +13881,13 @@
           hideWorkspaceSwitcher();
           return;
         }
+        const addrbarHost = document.getElementById('bento-addrbar-host');
+        if (addrbarHost && isAddrbarVisible(addrbarHost)) {
+          e.preventDefault();
+          e.stopPropagation();
+          hideAddrbar();
+          return;
+        }
         const host = document.getElementById('bento-palette-host');
         if (!host || !isPaletteVisible(host)) return;
         e.preventDefault();
@@ -13659,6 +13917,22 @@
         e.preventDefault();
         e.stopPropagation();
         togglePalette();
+      },
+      true,
+    );
+  }
+
+  function attachAddrbarKeybinding() {
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        const accel = navigator.platform.toLowerCase().includes('mac') ? e.metaKey : e.ctrlKey;
+        if (!accel || e.altKey || e.shiftKey) return;
+        if (e.code !== 'KeyL' && e.code !== 'KeyT') return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        showAddrbar(e.code === 'KeyT' ? 'newTab' : 'current');
       },
       true,
     );
@@ -13894,6 +14168,7 @@
         const ids = [
           'bento-shell-frame',
           'bento-palette-frame',
+          'bento-addrbar-frame',
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
           'bento-welcome-frame',
@@ -13911,6 +14186,7 @@
             frame.removeAttribute('src');
             if (id === 'bento-shell-frame') setBentoShellSrc();
             else if (id === 'bento-palette-frame') setBentoPaletteSrc();
+            else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
             else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
@@ -13931,6 +14207,7 @@
 
   setBentoShellSrc();
   setBentoPaletteSrc();
+  setBentoAddrbarSrc();
   setBentoConfirmSrc();
   setBentoEditWorkspaceSrc();
   setBentoWelcomeSrc();
@@ -14192,6 +14469,7 @@
 
   configureSidePanelOnce();
   attachReloadListener();
+  attachAddrbarKeybinding();
   attachPaletteKeybinding();
   attachPaletteEscListener();
   attachPaletteCloseListener();

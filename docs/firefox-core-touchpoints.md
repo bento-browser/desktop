@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-04
+- Last updated: 2026-06-06
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -63,10 +63,11 @@ Use this shape for new or changed touchpoints:
   - `patches/chrome-layout/**`
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
   visibility and geometry, renders chrome-side menu overlays for sidebar and
-  panel actions, mounts a first-run welcome toolbar scrim as a top-level
-  `mainPopupSet` panel so native toolbar/urlbar controls do not paint above the
-  welcome scrim, and exposes the chrome-side container behavior that extension
-  code cannot perform directly.
+  panel actions, opens the floating address/search bar on `Cmd/Ctrl+L` and
+  `Cmd/Ctrl+T`, routes submitted address/search text through Firefox URI fixup,
+  mounts a shared modal toolbar scrim as a top-layer manual popover so native
+  toolbar/urlbar controls do not paint above Bento modal scrims, and exposes the
+  chrome-side container behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
   chrome window events, and title/actor messaging paths.
@@ -74,12 +75,17 @@ Use this shape for new or changed touchpoints:
   reparent, size, or reconcile Firefox browser panels inside the chrome document
   without a small chrome-side mount and bridge.
 - Firefox update risk: upstream changes to `browser.xhtml`, tabbrowser panel
-  structure, split-view implementation, browser actor messaging, or chrome event
-  ordering can break panel layout, focus, or visibility.
+  structure, split-view implementation, browser actor messaging, URI fixup, or
+  chrome event ordering can break panel layout, focus, overlay shortcuts,
+  address/search navigation, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
-  menus still dispatch tab and workspace actions, verify first-run welcome
-  scrim covers the full chrome window including the address bar, run
+  menus still dispatch tab and workspace actions, verify `Cmd/Ctrl+L` and
+  `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
+  handling, verify `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default
+  search-engine submissions, verify command palette, floating address bar,
+  edit-workspace, confirm, and first-run welcome scrims cover the full chrome
+  window including the address bar, run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase.
 - Rollback or migration notes: keep fallback behavior extension-driven where

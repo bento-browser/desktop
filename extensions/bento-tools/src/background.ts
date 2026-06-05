@@ -1352,6 +1352,7 @@ browser.windows.onRemoved.addListener((windowId) => {
 });
 
 async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Promise<void> {
+  const originalPosition = panels.getPanels(workspaceId).indexOf(tabId);
   if (!panels.remove(workspaceId, tabId)) return;
 
   // Clear the panel session marker BEFORE activation. onActivated treats
@@ -1359,13 +1360,29 @@ async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Pr
   // non-panel tab; in the last-sidebar-tab-close path that fallback is
   // the tab being closed, so promotion can lose the race.
   await clearPanelMarker(tabId);
+  tabs.assignWorkspaceEagerly(tabId, workspaceId);
   rememberLastActiveNonPanelTab(tabId);
 
   syncPanelMarkersForWorkspace(workspaceId);
 
-  await activateNonPanelTab(tabId, 'promote-panel activate');
+  let promotedWindowId: number | undefined;
+  try {
+    const live = await browser.tabs.get(tabId);
+    promotedWindowId =
+      typeof live.windowId === 'number' && live.windowId >= 0 ? live.windowId : undefined;
+    await browser.tabs.update(tabId, { active: true });
+  } catch (err) {
+    console.warn('[bento-tools] promote-panel activate failed:', err);
+    panels.insertAt(workspaceId, tabId, originalPosition >= 0 ? originalPosition : 0);
+    syncPanelMarkersForWorkspace(workspaceId);
+    void emitPanelsSync(workspaceId);
+    return;
+  }
 
-  void emitPanelsSync(workspaceId);
+  void emitPanelsSync(
+    workspaceId,
+    promotedWindowId !== undefined ? { windowId: promotedWindowId } : undefined,
+  );
 }
 
 // When the last tab in a window's ACTIVE workspace is closed, close the
