@@ -276,15 +276,16 @@ the live browser settings no longer exactly match Standard, Enhanced, or
 Hardened.
 
 Settings includes a privacy level selector, default search engine selector, and
-advanced privacy controls for the main browser-level levers. Settings also
-shows the benefits and caveats for Standard, Enhanced, and Hardened so users can
-compare compatibility impact before switching. The first-run onboarding privacy
-step shows a compact benefit/caveat explanation for the selected level. The
-search choices shown in onboarding and Settings are Firefox's currently visible
-search engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding
-search step adds supporting text that calls out visible privacy-oriented search
-engines when Firefox exposes them. Bento bundles uBlock Origin enabled by
-default and leaves it removable/disableable by the user.
+advanced privacy controls for the main browser-level levers. Settings displays
+the current protection level in the Privacy card header and shows the benefits
+and caveats for Standard, Enhanced, and Hardened so users can compare
+compatibility impact before switching. The first-run onboarding privacy step
+shows a compact benefit/caveat explanation for the selected level. The search
+choices shown in onboarding and Settings are Firefox's currently visible search
+engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding search
+step adds supporting text that calls out visible privacy-oriented search engines
+when Firefox exposes them. Bento bundles uBlock Origin enabled by default and
+leaves it removable/disableable by the user.
 
 ## Design principles
 

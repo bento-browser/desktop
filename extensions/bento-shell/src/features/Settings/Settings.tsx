@@ -405,6 +405,11 @@ export function Settings() {
               Bento disables telemetry, sponsored content, crash reporting, studies, remote
               suggestions, and speculative connections by default.
             </Text>
+            {privacy ? (
+              <Text variant="label" size="s" color="accent">
+                Current protection level: {privacyLevelLabel(privacy.protectionLevel)}
+              </Text>
+            ) : null}
           </Column>
         </Card.Header>
         <Card.Body>
@@ -439,7 +444,8 @@ export function Settings() {
                   ))}
                 </ToggleButtonGroup>
                 <Text variant="text" size="s" color="muted">
-                  Current state: {privacyLevelLabel(privacy.protectionLevel)}
+                  Select Standard, Enhanced, or Hardened to apply that preset. Bento shows Custom
+                  when live settings differ from every preset.
                 </Text>
                 <ProtectionLevelDetailList current={privacy.protectionLevel} />
               </Column>
