@@ -6,9 +6,27 @@
  * the same viewport while one slides off and the other slides on. In the
  * steady state only the incoming pane is rendered. */
 @layer bento.components {
+  .bento-tab-list {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  /* Section subtitle. Matches the PinnedPanels heading so pinned tab
+     labels and pinned panel labels occupy the same sidebar track. */
+  .bento-tab-list__heading {
+    flex-shrink: 0;
+    padding-inline: var(--space-2xs);
+    padding-block-start: var(--space-3xs);
+    padding-block-end: var(--space-2xs);
+    margin-inline: var(--space-3xs);
+  }
+
   .bento-tab-list-stage {
     position: relative;
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     contain: strict;
   }
@@ -36,6 +54,14 @@
     width: 100%;
   }
 
+  html[data-bento-collapsed='true'] .bento-tab-list__heading {
+    display: none;
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list__row--after-pinned::before {
+    display: none;
+  }
+
   .bento-tab-list__row {
     position: absolute;
     top: 0;
@@ -55,6 +81,18 @@
        positions rather than transitioning across them. Only data
        reorders (where the same id moves between slots) animate. */
     transition: transform var(--bento-duration-base) var(--bento-easing-standard);
+  }
+
+  .bento-tab-list__row--after-pinned::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--space-2xs);
+    right: var(--space-2xs);
+    height: var(--bento-border-hairline);
+    background-color: var(--bento-border-color-subtle);
+    pointer-events: none;
+    z-index: 1;
   }
 
   /* Reduced motion: skip the slide. The drop indicator's instant

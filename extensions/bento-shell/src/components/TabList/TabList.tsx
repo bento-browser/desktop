@@ -129,6 +129,7 @@ function useDelayedRemovals(
 
 interface TabListPaneProps {
   ids: number[];
+  tabsById: ReturnType<typeof useTabsStore.getState>['byId'];
   activeId: number | null;
   selectedIds: Set<number>;
   onSelectClick: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
@@ -158,6 +159,7 @@ interface TabListPaneProps {
 // its own — the entire pane just slides off.
 function TabListPane({
   ids,
+  tabsById,
   activeId,
   selectedIds,
   onSelectClick,
@@ -329,6 +331,15 @@ function TabListPane({
   }
 
   const dragEnabled = onReorder !== undefined;
+  let sawPinnedTab = false;
+  const dividerBeforeId =
+    displayedIds.find((id) => {
+      if (tabsById[id]?.pinned === true) {
+        sawPinnedTab = true;
+        return false;
+      }
+      return sawPinnedTab;
+    }) ?? null;
 
   return (
     <div
@@ -355,7 +366,11 @@ function TabListPane({
           return (
             <div
               key={id}
-              className="bento-tab-list__row"
+              className={
+                id === dividerBeforeId
+                  ? 'bento-tab-list__row bento-tab-list__row--after-pinned'
+                  : 'bento-tab-list__row'
+              }
               style={{ transform: `translateY(${vi.start}px)`, height: `${vi.size}px` }}
             >
               <TabRow
@@ -413,6 +428,7 @@ export function TabList({
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const workspaceOrder = useWorkspacesStore((s) => s.orderedIds);
+  const tabsById = useTabsStore((s) => s.byId);
   // Pass windowId so the filter ALSO restricts to tabs in this window's
   // gBrowser — cross-window tabs from another window with the same
   // workspaceId aren't actionable here (clicking them activates them in
@@ -597,19 +613,47 @@ export function TabList({
 
   const incomingClass =
     'bento-tab-list-pane' + (outgoing ? ` bento-tab-list-pane--enter-${outgoing.direction}` : '');
+  const hasPinnedTabs = orderedIds.some((id) => tabsById[id]?.pinned === true);
 
   if (!ready) {
     return <TabListSkeleton />;
   }
 
   return (
-    <div className="bento-tab-list-stage">
-      {outgoing && (
+    <div className="bento-tab-list">
+      {hasPinnedTabs && (
+        <div className="bento-tab-list__heading">
+          <Text variant="text" size="xs" color="muted">
+            Pinned tabs
+          </Text>
+        </div>
+      )}
+      <div className="bento-tab-list-stage">
+        {outgoing && (
+          <TabListPane
+            // Re-key by outgoing wsId so consecutive workspace switches each
+            // remount the pane and cleanly re-trigger the exit animation.
+            key={`out:${outgoing.wsId}`}
+            ids={snapshotRef.current.get(outgoing.wsId) ?? []}
+            tabsById={tabsById}
+            activeId={activeId}
+            selectedIds={selectedIds}
+            onSelectClick={handleSelectClick}
+            onClose={onClose}
+            onOpenInSidePanel={onOpenInSidePanel}
+            onTabContextMenu={onTabContextMenu}
+            onSelectionContextMenu={handleSelectionContextMenu}
+            className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
+          />
+        )}
         <TabListPane
-          // Re-key by outgoing wsId so consecutive workspace switches each
-          // remount the pane and cleanly re-trigger the exit animation.
-          key={`out:${outgoing.wsId}`}
-          ids={snapshotRef.current.get(outgoing.wsId) ?? []}
+          // Re-key when activeWorkspaceId changes so the incoming pane mounts
+          // fresh — important for the virtualizer to recompute its window
+          // against the new ids without carrying scroll position from the
+          // departed workspace.
+          key={`in:${activeWorkspaceId ?? 'none'}`}
+          ids={orderedIds}
+          tabsById={tabsById}
           activeId={activeId}
           selectedIds={selectedIds}
           onSelectClick={handleSelectClick}
@@ -617,30 +661,14 @@ export function TabList({
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
           onSelectionContextMenu={handleSelectionContextMenu}
-          className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
+          // Only the steady-state incoming pane allows reorder. The
+          // outgoing pane (rendered above during a workspace-switch slide)
+          // is mid-animation and pointer-events:none anyway; gating here
+          // also keeps `dragging` state from leaking between pane mounts.
+          onReorder={onReorder}
+          className={incomingClass}
         />
-      )}
-      <TabListPane
-        // Re-key when activeWorkspaceId changes so the incoming pane mounts
-        // fresh — important for the virtualizer to recompute its window
-        // against the new ids without carrying scroll position from the
-        // departed workspace.
-        key={`in:${activeWorkspaceId ?? 'none'}`}
-        ids={orderedIds}
-        activeId={activeId}
-        selectedIds={selectedIds}
-        onSelectClick={handleSelectClick}
-        onClose={onClose}
-        onOpenInSidePanel={onOpenInSidePanel}
-        onTabContextMenu={onTabContextMenu}
-        onSelectionContextMenu={handleSelectionContextMenu}
-        // Only the steady-state incoming pane allows reorder. The
-        // outgoing pane (rendered above during a workspace-switch slide)
-        // is mid-animation and pointer-events:none anyway; gating here
-        // also keeps `dragging` state from leaking between pane mounts.
-        onReorder={onReorder}
-        className={incomingClass}
-      />
+      </div>
     </div>
   );
 }

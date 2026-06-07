@@ -75,6 +75,9 @@ tabs can be converted into side panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
+When a workspace contains pinned regular tabs, the sidebar labels that group as
+`Pinned tabs` above the tab rows and separates it from regular tabs with a
+divider.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow.
 

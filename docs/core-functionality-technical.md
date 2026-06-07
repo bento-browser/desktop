@@ -151,6 +151,13 @@ The foreground override for active-row text and icons must stay unlayered
 because Tale UI text, button, and icon utility styles are also unlayered; keeping
 the override only inside `@layer bento.components` lets neutral utility colors
 win.
+`extensions/bento-shell/src/components/TabList/TabList.tsx` renders a `Pinned tabs`
+heading when the active workspace's filtered sidebar tab ids include at least
+one `TabSnapshot.pinned` tab. The heading is outside the virtualized pane so
+row height, selection, drag-reorder, and workspace-switch slide math remain
+unchanged. `TabListPane` marks the first regular row after a pinned run with
+`bento-tab-list__row--after-pinned`, and `TabList.css` paints that row's top
+divider. Collapsed sidebar mode hides both the heading and divider.
 
 The sidebar context menu is still rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
