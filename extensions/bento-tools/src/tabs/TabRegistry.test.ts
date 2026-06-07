@@ -13,7 +13,7 @@ describe('TabRegistry closing markers', () => {
     });
   });
 
-  it('can clear the closing marker when a closed panel is restored', async () => {
+  it('can clear the closing marker when a closed tab is restored', async () => {
     const tabs = new TabRegistry();
 
     await tabs.markClosing(123);

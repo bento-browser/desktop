@@ -403,12 +403,14 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `Cmd+Shift+T` can route the restored tab through
   `maybeRestorePanelFromMarker`. Clear the marker only when the tab stays open
   as a normal tab, such as `panel/remove` or explicit panel promotion.
-- A user-restored panel tab can also carry Bento's `bento.closingTab` marker
-  from the original close path. Clear that closing marker before assignment or
+- A user-restored tab can carry Bento's `bento.closingTab` marker from the
+  original close path because Firefox preserves WebExtension session values
+  through closed-tab restore. Clear that closing marker before assignment or
   panel insertion. Otherwise the created-tab workspace backfill guard treats the
-  restored tab as still closing and removes it again before panel restore wins.
-  `TabRegistry.unmarkClosing` must also suppress stale async hydration reads
-  that may have observed the old marker before it was removed.
+  restored tab as still closing and removes it again. This applies to normal
+  tabs as well as panels. `TabRegistry.unmarkClosing` must also suppress stale
+  async hydration reads that may have observed the old marker before it was
+  removed.
 - Firefox activates the restored tab during `Cmd+Shift+T`. After restoring a
   marked panel, switch selection back to the captured prior non-panel tab, or to
   another non-panel tab in the same workspace/window if the captured value is

@@ -850,13 +850,13 @@ tabs.onDeltas((deltas) => {
             void clearPanelMarker(d.tab.id);
           }
           if (await tabs.isClosingOrMarked(d.tab.id)) {
-            await tabs.markClosing(d.tab.id);
-            void browser.tabs.remove(d.tab.id).catch((err) => {
-              if (!String(err).includes('Invalid tab ID')) {
-                console.warn('[bento-tools] closing restored tab failed:', d.tab.id, err);
-              }
-            });
-            return;
+            // Firefox preserves WebExtension session values through the
+            // close -> Cmd+Shift+T undo-close path. Bento's close path marks
+            // tabs as closing so stale live tabs can be swept at boot, but a
+            // newly-created tab with that marker is the user's explicit
+            // restore request. Consume the marker and let the normal
+            // workspace assignment below run.
+            await tabs.unmarkClosing(d.tab.id);
           }
           const sessionWs = await browser.sessions
             .getTabValue(d.tab.id, 'bento.workspaceId')
