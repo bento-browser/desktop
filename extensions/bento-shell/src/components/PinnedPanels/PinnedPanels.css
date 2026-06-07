@@ -1,45 +1,74 @@
 /* Layer-2 component: PinnedPanels.
  *
- * Rows reuse the .bento-tab-row BEM class set so the two sidebar
- * sections (pinned panels + tab list) are visually identical by
- * construction. This file only owns the section wrapper — the section
- * divider, internal max-height + scroll for many pins, the heading,
- * and the per-row height that TabList otherwise sets via its
- * virtualizer.
+ * Favicon-only secondary rail for reusable pinned panel URLs. The normal
+ * sidebar column owns workspace, tabs, and footer controls; this rail is a
+ * separate surface to its left and disappears in collapsed-sidebar mode.
  */
 @layer bento.components {
   .bento-pinned-panels {
-    flex-shrink: 0;
-    max-height: 40vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 var(--bento-pinned-panels-rail-width);
+    width: var(--bento-pinned-panels-rail-width);
+    min-width: var(--bento-pinned-panels-rail-width);
+    max-width: var(--bento-pinned-panels-rail-width);
+    gap: var(--space-2xs);
+    box-sizing: border-box;
+    height: 100%;
+    padding-block: var(--space-3xs);
+    padding-inline: 0;
     overflow-y: auto;
-    /* Matches .bento-shell-app__header and .bento-tab-list-pane so
-     * workspace switcher, pinned rows, and tab rows share one inset. */
-    padding-inline: var(--space-2xs);
-    padding-block-end: var(--space-2xs);
-    margin-block-end: 0;
-    border-bottom: var(--bento-border-hairline) solid var(--bento-border-color-subtle);
+    overflow-x: hidden;
+    background-color: var(--neutral-10);
+    border-right: var(--bento-border-hairline) solid var(--bento-border-color-subtle);
   }
 
-  /* Section subtitle. padding-inline matches .bento-tab-row's internal
-   * start-padding (var(--space-2xs)) so the label sits in the same
-   * horizontal track as the row favicons. */
-  .bento-pinned-panels__heading {
-    padding-inline: var(--space-2xs);
-    padding-block-start: var(--space-3xs);
-    padding-block-end: var(--space-2xs);
+  .bento-pinned-panels__button.tale-icon-button {
+    width: var(--bento-pinned-panels-button-size);
+    height: var(--bento-pinned-panels-button-size);
+    min-width: var(--bento-pinned-panels-button-size);
+    min-height: var(--bento-pinned-panels-button-size);
+    padding: 0;
   }
 
-  /* TabList rows get their height from the virtualizer's row wrapper
-   * (which sets inline `height: ${vi.size}px` on each item). PinnedPanels
-   * doesn't virtualize, so each row needs an explicit height — .bento-tab-row
-   * itself is `height: 100%` and would collapse without a sized parent. */
-  .bento-pinned-panels__row {
-    height: var(--bento-tab-row-height);
+  .bento-pinned-panels__favicon {
+    width: var(--bento-pinned-panels-favicon-size);
+    height: var(--bento-pinned-panels-favicon-size);
+    border-radius: var(--radius-2xs);
+    display: block;
   }
 
-  /* Collapsed rail: hide the subtitle so only the favicon-only rows
-   * remain (matching how TabRow hides its title text in the same mode). */
-  html[data-bento-collapsed='true'] .bento-pinned-panels__heading {
+  .bento-pinned-panels__favicon--placeholder {
+    background-color: var(--neutral-30);
+  }
+
+  html[data-bento-collapsed='true'] .bento-pinned-panels {
     display: none;
   }
+}
+
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:hover:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:active:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true'][data-hovered]:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true'][data-pressed]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  background-color: var(--color-60);
+  border-color: var(--color-60);
+  color: var(--color-60-fg);
 }

@@ -34,6 +34,15 @@ async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   }
 }
 
+function getTabLoadUrl(tab: browser.tabs.Tab): string | null {
+  const pendingUrl =
+    typeof (tab as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
+      ? ((tab as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? '')
+      : '';
+  const url = tab.url && tab.url !== 'about:blank' ? tab.url : pendingUrl;
+  return url && url !== 'about:blank' ? url : null;
+}
+
 async function activatePromotedPanelTab(
   ctx: HandlerContext,
   workspaceId: string,
@@ -216,7 +225,6 @@ async function assignTabsToWorkspace(
     const before = ctx.tabs.snapshot().find((t) => t.id === id);
     if (!before || before.workspaceId === workspaceId) continue;
     const fromWorkspaceId = before.workspaceId;
-    ctx.pinnedPanels.removeForTab(id);
     await ctx.tabs.assignWorkspace(id, workspaceId);
     if (fromWorkspaceId && fromWorkspaceId !== workspaceId) {
       sourceWorkspaceIds.add(fromWorkspaceId);
@@ -538,7 +546,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void (async () => {
         const before = ctx.tabs.snapshot().find((t) => t.id === action.id);
         const fromWorkspaceId = before?.workspaceId;
-        ctx.pinnedPanels.removeForTab(action.id);
         await ctx.tabs.assignWorkspace(action.id, action.workspaceId);
         if (fromWorkspaceId && fromWorkspaceId !== action.workspaceId) {
           await cleanupWorkspaceAfterTabMove(ctx, action.id, fromWorkspaceId, action.workspaceId);
@@ -890,6 +897,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.emitPanelsSync(wsId);
       return;
     }
+    case 'panel/focusedChanged':
+      ctx.send({
+        type: 'panel/focusedChanged',
+        tabId: action.tabId,
+        ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+      });
+      return;
     case 'panels/clear': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
@@ -1079,19 +1093,128 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           .includes(action.workspaceId)
       )
         return;
-      if (ctx.pinnedPanels.add(action.workspaceId, action.tabId)) {
-        // Re-emit panels/sync for the affected workspace so chrome's
-        // kebab menu (which reads pinnedTabIdsInWorkspace from the
-        // payload) picks up the new state on its next open. Active-
-        // workspace-only filtering happens in the shell mirror.
-        ctx.emitPanelsSync(action.workspaceId);
-      }
+      void (async () => {
+        const metadata: { url?: string; title?: string; favIconUrl?: string } = {};
+        try {
+          const tab = await browser.tabs.get(action.tabId);
+          metadata.url = getTabLoadUrl(tab) ?? undefined;
+          metadata.title = tab.title;
+          metadata.favIconUrl = tab.favIconUrl;
+        } catch {
+          // Validation above already confirmed the panel binding exists.
+          // If the tab disappears before metadata capture, add() still
+          // no-ops or persists later from the URL it can resolve.
+        }
+        if (ctx.pinnedPanels.add(action.workspaceId, action.tabId, metadata)) {
+          // Re-emit panels/sync for the affected workspace so chrome's
+          // kebab menu (which reads pinnedTabIdsInWorkspace from the
+          // payload) picks up the new state on its next open. Active-
+          // workspace-only filtering happens in the shell mirror.
+          ctx.emitPanelsSync(action.workspaceId);
+        }
+      })();
       return;
     }
     case 'pinnedPanel/remove': {
       if (ctx.pinnedPanels.remove(action.workspaceId, action.tabId)) {
         ctx.emitPanelsSync(action.workspaceId);
       }
+      return;
+    }
+    case 'pinnedPanel/open': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      const entry = ctx.pinnedPanels.get(action.workspaceId, action.tabId);
+      if (!entry) return;
+      void (async () => {
+        try {
+          const panelExists = ctx.panels
+            .findWorkspacesContainingPanelOrSubPanel(action.tabId)
+            .includes(action.workspaceId);
+          if (panelExists) {
+            try {
+              await browser.tabs.get(action.tabId);
+              const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+              if (owner !== null && owner !== ctx.sourceWindowId) {
+                await browser.windows.update(owner, { focused: true });
+                return;
+              }
+              const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+              const sync = () => {
+                ctx.emitPanelsSync(action.workspaceId, {
+                  scrollToPanelTabId: action.tabId,
+                  ...(typeof ctx.sourceWindowId === 'number'
+                    ? { windowId: ctx.sourceWindowId }
+                    : {}),
+                });
+              };
+              if (result === 'activated') setTimeout(sync, 32);
+              else sync();
+              return;
+            } catch {
+              // Stale pin: fall through and recreate from the persisted URL.
+            }
+          }
+
+          const url = entry.url;
+          if (!url) return;
+          const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+          if (owner !== null && owner !== ctx.sourceWindowId) {
+            await browser.windows.update(owner, { focused: true });
+            return;
+          }
+          ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+          const isDefaultNewTab = url === 'about:newtab';
+          const tab = await browser.tabs.create({
+            ...(isDefaultNewTab ? {} : { url }),
+            active: false,
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof tab.id !== 'number') return;
+          ctx.tabs.assignWorkspaceEagerly(tab.id, action.workspaceId);
+          if (
+            !ctx.panels.insertAt(
+              action.workspaceId,
+              tab.id,
+              ctx.panels.getRootNodeIds(action.workspaceId).length,
+            )
+          ) {
+            return;
+          }
+          ctx.pinnedPanels.rebindTabId(action.workspaceId, action.tabId, tab.id, {
+            url,
+            title: entry.title,
+            favIconUrl: entry.favIconUrl,
+          });
+          const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+          if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
+          ctx.syncPanelMarkers(action.workspaceId);
+          ctx.emitPanelsSync(action.workspaceId, { scrollToPanelTabId: tab.id });
+        } catch (err) {
+          console.warn('[bento-tools] pinnedPanel/open failed:', err);
+        }
+      })();
+      return;
+    }
+    case 'pinnedPanel/close': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (!ctx.pinnedPanels.has(action.workspaceId, action.tabId)) return;
+      if (
+        !ctx.panels
+          .findWorkspacesContainingPanelOrSubPanel(action.tabId)
+          .includes(action.workspaceId)
+      ) {
+        return;
+      }
+      void (async () => {
+        await ctx.tabs.markClosing(action.tabId);
+        const subVictims = ctx.panels.removeWithSubPanels(action.workspaceId, action.tabId);
+        for (const spId of subVictims) {
+          void closeTabAsRemoved(ctx, spId, { label: 'pinnedPanel/close sub-panel' });
+        }
+        ctx.syncPanelMarkers(action.workspaceId);
+        ctx.emitPanelsSync(action.workspaceId);
+        removeMarkedTabWithRetries(action.tabId, 'pinnedPanel/close');
+      })();
       return;
     }
     case 'pinnedPanel/activate': {

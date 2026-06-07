@@ -47,6 +47,7 @@ import { useSavedPanelsStore } from '../state/savedPanels';
 import { usePrivacyStore } from '../state/privacy';
 import { useBackupStore } from '../state/backup';
 import { useAddressBarStore } from '../state/addressBar';
+import { usePanelFocusStore } from '../state/panelFocus';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -311,6 +312,16 @@ function ensureConnection(): void {
         return;
       case 'addrbar/results':
         useAddressBarStore.getState().applyResults(event.query, event.results);
+        return;
+      case 'panel/focusedChanged':
+        if (
+          typeof event.windowId === 'number' &&
+          state.windowId !== null &&
+          event.windowId !== state.windowId
+        ) {
+          return;
+        }
+        usePanelFocusStore.getState().apply(event.tabId);
         return;
       case 'pinnedPanels/snapshot':
         usePinnedPanelsStore.getState().applySnapshot(event.entries);

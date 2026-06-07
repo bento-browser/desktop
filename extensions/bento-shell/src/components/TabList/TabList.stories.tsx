@@ -9,6 +9,12 @@ import { seedPanelsHydrated } from '../../state/__fixtures__/panels';
 import { useTabsStore } from '../../state/tabs';
 
 const noop = () => {};
+const defaultTabListProps = {
+  onActivate: noop,
+  onClose: noop,
+  onCreateTab: noop,
+  onOpenInSidePanel: noop,
+};
 
 function SidebarFrame({
   children,
@@ -53,7 +59,7 @@ export const Empty = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -64,7 +70,7 @@ export const FewTabs = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -77,7 +83,7 @@ export const TwentyTabs = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -90,7 +96,7 @@ export const VirtualizationStress = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -103,7 +109,7 @@ export const HugeStress = () => {
   }, []);
   return (
     <SidebarFrame>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -116,7 +122,7 @@ export const NarrowSidebar = () => {
   }, []);
   return (
     <SidebarFrame width={200}>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -129,7 +135,7 @@ export const WideSidebar = () => {
   }, []);
   return (
     <SidebarFrame width={500}>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -143,7 +149,7 @@ export const Collapsed = () => {
   useCollapsedAttribute(true);
   return (
     <SidebarFrame width={64}>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -160,7 +166,7 @@ export const CollapsedMany = () => {
   useCollapsedAttribute(true);
   return (
     <SidebarFrame width={64}>
-      <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+      <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
 };
@@ -204,7 +210,7 @@ export const DragReorder = () => {
   return (
     <div style={{ display: 'flex', gap: 16 }}>
       <SidebarFrame>
-        <TabList onActivate={noop} onClose={noop} onOpenInSidePanel={noop} onReorder={onReorder} />
+        <TabList {...defaultTabListProps} onReorder={onReorder} />
       </SidebarFrame>
       <div style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--neutral-70)' }}>
         <div style={{ marginBottom: 8 }}>Drag any row to reorder. Recent dispatches:</div>

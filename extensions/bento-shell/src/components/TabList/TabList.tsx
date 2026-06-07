@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { Button } from '@tale-ui/react/button';
 import { Column } from '@tale-ui/react/column';
+import { Icon } from '@tale-ui/react/icon';
 import { Text } from '@tale-ui/react/text';
+import Plus from 'lucide-react/dist/esm/icons/plus';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
@@ -15,6 +18,7 @@ export interface TabListProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onCloseSelected?: (ids: number[]) => void;
+  onCreateTab: () => void;
   onOpenInSidePanel: (id: number) => void;
   onTabContextMenu?: (
     id: number,
@@ -415,6 +419,7 @@ export function TabList({
   onActivate,
   onClose,
   onCloseSelected,
+  onCreateTab,
   onOpenInSidePanel,
   onTabContextMenu,
   onReorder,
@@ -621,6 +626,17 @@ export function TabList({
 
   return (
     <div className="bento-tab-list">
+      <div className="bento-tab-list__new-tab">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="bento-tab-list__new-tab-button"
+          onPress={onCreateTab}
+        >
+          <Icon icon={Plus} size="sm" />
+          New tab
+        </Button>
+      </div>
       {hasPinnedTabs && (
         <div className="bento-tab-list__heading">
           <Text variant="text" size="xs" color="muted">

@@ -1,7 +1,8 @@
 // Source-of-truth store for pinned panel bindings. Pinned panels are
 // GLOBAL across workspaces (every workspace's sidebar sees the same list);
-// each entry is keyed by `(workspaceId, tabId)` and refers to a panel
-// binding owned by PanelStore. At most one pin per binding.
+// each entry starts keyed by `(workspaceId, tabId)` and refers to a panel
+// binding owned by PanelStore. If the panel/tab is later closed, the pin
+// remains URL-backed and can be rebound to a replacement tab when opened.
 //
 // Persistence: tab IDs aren't stable across browser restarts, so the
 // in-memory store keeps tabIds (efficient runtime) but the persistence
@@ -19,6 +20,8 @@ interface PendingPersistedEntry {
   panelKey?: string;
   url: string;
   order: number;
+  title?: string;
+  favIconUrl?: string;
 }
 
 interface PinnedPanelsStoreOptions {
@@ -36,6 +39,7 @@ export class PinnedPanelsStore {
    * boot restorer (background.ts) consumes from here as each workspace's
    * panels finish restoring — see `recoverTabIdsAfterPanelRestore`. */
   #pendingByWorkspace = new Map<string, PendingPersistedEntry[]>();
+  #nextSyntheticTabId = -1;
   #pending: PinnedPanelDelta[] = [];
   #flushScheduled = false;
   #listeners = new Set<Listener>();
@@ -58,6 +62,8 @@ export class PinnedPanelsStore {
         panelKey: e.panelKey,
         url: e.url,
         order: e.order,
+        title: e.title,
+        favIconUrl: e.favIconUrl,
       });
       this.#pendingByWorkspace.set(e.workspaceId, list);
     }
@@ -83,7 +89,7 @@ export class PinnedPanelsStore {
       if (entry.workspaceId === workspaceId) out.push(entry);
     }
     out.sort((a, b) => a.order - b.order);
-    return out.map((e) => e.tabId);
+    return out.map((e) => e.tabId).filter((tabId) => tabId >= 0);
   }
 
   entriesForWorkspaceDetailed(workspaceId: string): PinnedPanelEntry[] {
@@ -96,23 +102,85 @@ export class PinnedPanelsStore {
     return this.#byKey.has(this.#key(workspaceId, tabId));
   }
 
+  get(workspaceId: string, tabId: number): PinnedPanelEntry | undefined {
+    return this.#byKey.get(this.#key(workspaceId, tabId));
+  }
+
   /** Append a pin. No-op (returns false) if `(workspaceId, tabId)` is
    * already pinned. Validation that the tab is actually a panel in that
    * workspace lives in the protocol handler — keeping it out here makes
    * the boot restorer's "I already know this URL matched a real panel"
    * path cheap. */
-  add(workspaceId: string, tabId: number): boolean {
+  add(
+    workspaceId: string,
+    tabId: number,
+    metadata: Pick<PinnedPanelEntry, 'url' | 'title' | 'favIconUrl'> = {},
+  ): boolean {
     const key = this.#key(workspaceId, tabId);
     if (this.#byKey.has(key)) return false;
     const entry: PinnedPanelEntry = {
       workspaceId,
       tabId,
       order: this.#nextOrder++,
+      ...metadata,
     };
     this.#byKey.set(key, entry);
     this.#enqueue({ kind: 'added', entry });
     this.#schedulePersist();
     return true;
+  }
+
+  rebindTabId(
+    workspaceId: string,
+    oldTabId: number,
+    newTabId: number,
+    metadata: Pick<PinnedPanelEntry, 'url' | 'title' | 'favIconUrl'> = {},
+  ): boolean {
+    const oldKey = this.#key(workspaceId, oldTabId);
+    const existing = this.#byKey.get(oldKey);
+    if (!existing) return false;
+    const newKey = this.#key(workspaceId, newTabId);
+    const next: PinnedPanelEntry = {
+      ...existing,
+      ...metadata,
+      workspaceId,
+      tabId: newTabId,
+    };
+    this.#byKey.delete(oldKey);
+    this.#byKey.set(newKey, next);
+    this.#enqueue({ kind: 'removed', workspaceId, tabId: oldTabId });
+    this.#enqueue({ kind: 'added', entry: next });
+    this.#schedulePersist();
+    return true;
+  }
+
+  updateMetadataForTab(
+    tabId: number,
+    metadata: Pick<PinnedPanelEntry, 'title' | 'favIconUrl'>,
+  ): boolean {
+    let changed = false;
+    for (const [key, entry] of Array.from(this.#byKey.entries())) {
+      if (entry.tabId !== tabId) continue;
+      const next: PinnedPanelEntry = { ...entry };
+      if (metadata.title && metadata.title !== entry.title) next.title = metadata.title;
+      if (metadata.favIconUrl && metadata.favIconUrl !== entry.favIconUrl) {
+        next.favIconUrl = metadata.favIconUrl;
+      }
+      if (next.title === entry.title && next.favIconUrl === entry.favIconUrl) continue;
+      this.#byKey.set(key, next);
+      this.#enqueue({
+        kind: 'updated',
+        workspaceId: entry.workspaceId,
+        tabId,
+        changes: {
+          title: next.title,
+          favIconUrl: next.favIconUrl,
+        },
+      });
+      changed = true;
+    }
+    if (changed) this.#schedulePersist();
+    return changed;
   }
 
   /** Remove a single pin. Returns true when something was removed. */
@@ -144,11 +212,9 @@ export class PinnedPanelsStore {
     return removed;
   }
 
-  /** Drop every pin pointing at this tabId (across all workspaces). Used
-   * when the tab is closed — covers CMD+W, panel-header X, and external
-   * tab closures. A single tab can in principle be pinned in multiple
-   * workspaces (panels.findWorkspacesContainingTab can return >1 entry
-   * historically), so we sweep all of them. */
+  /** Explicitly drop every pin pointing at this tabId. Normal tab/panel
+   * closure intentionally does NOT call this: pinned rail entries survive
+   * closure and can be removed only from the pinned rail context menu. */
   removeForTab(tabId: number): boolean {
     let removed = false;
     for (const [key, entry] of Array.from(this.#byKey.entries())) {
@@ -162,11 +228,9 @@ export class PinnedPanelsStore {
   }
 
   /** After PanelStore has restored a workspace's panels and the caller has
-   * built a URL → tabId map, materialize any persisted pins for that
-   * workspace into live entries. Pending entries that don't match a live
-   * panel URL are dropped (the panel itself didn't survive the restart,
-   * so there's nothing to pin to). Idempotent: removes the workspace from
-   * the hold-pen after consuming. */
+   * built a URL → tabId map, materialize persisted pins for that workspace.
+   * Entries that no longer match a live panel remain as URL-backed pins
+   * with synthetic negative tab ids until the user opens them. */
   recoverTabIdsAfterPanelRestore(
     workspaceId: string,
     restored:
@@ -189,16 +253,20 @@ export class PinnedPanelsStore {
       const tabId =
         (entry.panelKey ? panelKeyToTabId.get(entry.panelKey) : undefined) ??
         urlToTabId.get(entry.url);
-      if (typeof tabId !== 'number' || consumed.has(tabId)) continue;
-      const key = this.#key(workspaceId, tabId);
+      const materializedTabId =
+        typeof tabId === 'number' && !consumed.has(tabId) ? tabId : this.#nextSyntheticTabId--;
+      if (typeof tabId === 'number') consumed.add(tabId);
+      const key = this.#key(workspaceId, materializedTabId);
       if (this.#byKey.has(key)) continue;
       const live: PinnedPanelEntry = {
         workspaceId,
-        tabId,
+        tabId: materializedTabId,
         order: entry.order,
+        url: entry.url,
+        title: entry.title,
+        favIconUrl: entry.favIconUrl,
       };
       this.#byKey.set(key, live);
-      consumed.add(tabId);
       this.#enqueue({ kind: 'added', entry: live });
       dirty = true;
     }
@@ -241,18 +309,26 @@ export class PinnedPanelsStore {
     for (const entry of snapshot) {
       try {
         const tab = await browser.tabs.get(entry.tabId);
-        const url = tab.url;
+        const url = tab.url || entry.url;
         if (!url || url === 'about:blank') continue;
         resolved.push({
           workspaceId: entry.workspaceId,
           panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),
           url,
           order: entry.order,
+          title: tab.title || entry.title,
+          favIconUrl: tab.favIconUrl || entry.favIconUrl,
         });
       } catch {
-        // Tab gone between enqueue and resolve — drop silently. The
-        // tabs.onRemoved sweep in background.ts will fire its own
-        // remove() shortly with a delta.
+        if (!entry.url || entry.url === 'about:blank') continue;
+        resolved.push({
+          workspaceId: entry.workspaceId,
+          panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),
+          url: entry.url,
+          order: entry.order,
+          title: entry.title,
+          favIconUrl: entry.favIconUrl,
+        });
       }
     }
     this.#persistence.schedule({ entries: resolved });

@@ -924,45 +924,42 @@ tabs.onDeltas((deltas) => {
       lastActiveTabByWorkspace.set(tab.workspaceId, d.id);
       continue;
     }
+    if (d.kind === 'updated') {
+      if (
+        !('favIconUrl' in d.changes) &&
+        !('title' in d.changes) &&
+        !('customTitle' in d.changes)
+      ) {
+        continue;
+      }
+      const tab = tabs.snapshot().find((t) => t.id === d.id);
+      if (!tab) continue;
+      pinnedPanels.updateMetadataForTab(d.id, {
+        title: tab.customTitle || tab.title,
+        favIconUrl: tab.favIconUrl,
+      });
+      continue;
+    }
     if (d.kind === 'removed') {
       for (const [wsId, tabId] of lastActiveTabByWorkspace) {
         if (tabId === d.id) lastActiveTabByWorkspace.delete(wsId);
       }
-      // Drop any pin pointing at the gone tab. Covers CMD+W, the
-      // panel-header X (which dispatches tab/close), the auto-promote-
-      // leftmost-panel path (tab still exists but its panel binding
-      // is gone — covered separately via panels.onPanelRemoved below),
-      // and any external close. Pin's workspaceId is implicit in
-      // `removeForTab` walking every entry.
-      pinnedPanels.removeForTab(d.id);
       continue;
     }
   }
 });
 
-// Pin auto-cleanup: when a panel binding ceases to exist, the pin that
-// referenced it has nothing to point at. PanelStore.onPanelRemoved fires
-// from panels.remove + panels.removeWorkspace (which the leftmost-
-// promote-on-empty path at the bottom of background.ts also routes
-// through), so this single listener covers every panel-lifecycle path
-// without duplicating cleanup at four call sites.
+// Track recently removed panel tab ids for restore/reconcile guards. Pins
+// intentionally survive panel and tab closure; users remove pinned rail
+// entries explicitly from the rail context menu.
 const recentlyRemovedPanelTabIds = new Set<number>();
 panels.onPanelRemoved((workspaceId, tabId) => {
   recentlyRemovedPanelTabIds.add(tabId);
   setTimeout(() => recentlyRemovedPanelTabIds.delete(tabId), 5000);
-  if (pinnedPanels.remove(workspaceId, tabId)) {
-    // Re-emit so the kebab menu's Pin/Unpin label catches up. Active-
-    // workspace gating happens at the shell mirror; broadcasting for any
-    // workspace whose pin set changed is cheap (no chrome side effects
-    // when the workspaceId doesn't match this window's active).
-    void emitPanelsSync(workspaceId);
-  }
 });
 
-// Drop pins for a deleted workspace. closeTabs: true would have already
-// fired tabs/removed deltas (and the tab handler above sweeps tab-keyed
-// pins); closeTabs: false leaves the tabs around but the pin's anchor
-// is the binding, not the tab — drop it either way.
+// Drop pins for a deleted workspace. A pin is workspace-scoped, so deleting
+// the workspace removes the only context in which the pin can be restored.
 workspaces.onDeltas((deltas) => {
   for (const d of deltas) {
     if (d.kind === 'removed') pinnedPanels.removeForWorkspace(d.id);

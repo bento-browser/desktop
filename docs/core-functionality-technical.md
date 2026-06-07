@@ -143,6 +143,11 @@ selection exists, or once to clear a previously mirrored selection; repeated
 empty-selection title writes can stomp `BENTO_PANELS` before chrome polls it and
 hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
 assignment remains tools-owned.
+`TabList` also renders the visible `New tab` button above the virtualized pane.
+The button dispatches the existing `tab/create` action from `App.tsx`, so tab
+creation stays tools-owned and uses the same active-window and active-workspace
+assignment path as other new-tab entry points. Collapsed sidebar mode hides the
+button because the rail is favicon-only.
 The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
@@ -1072,12 +1077,12 @@ otherwise the first click in chrome, the address bar, or browser content can
 reinterpret Firefox's settled main-browser focus as intent to reveal the main
 slot and yank the strip back to the left.
 
-Pinned panel activation is a two-part flow:
-
-1. React dispatches `pinnedPanel/activate`, which activates the workspace but
-   does not select the panel tab as main.
-2. React also writes `BENTO_FOCUS_PANEL:<ts>:<tabId>`. Chrome retries scroll and
-   focus until the panel exists after workspace reconcile.
+Pinned-panel rail activation dispatches `pinnedPanel/open`. Tools first checks
+whether the pinned panel still exists; if so, it activates the owning workspace
+and emits `scrollToPanelTabId` so chrome scrolls and focuses that exact panel.
+If the panel/tab was closed, the pin remains URL-backed, tools recreates the
+panel in the owning workspace, rebinds the pin to the replacement tab id, and
+then emits `scrollToPanelTabId`.
 
 ### Traversal pitfalls
 
@@ -1098,11 +1103,20 @@ Pinned panel activation is a two-part flow:
 
 ## Panel widgets, saved panels, and pinned panels
 
-Pinned panels are global sidebar shortcuts backed by
+Pinned panels are global shortcuts rendered as a favicon-only secondary rail to
+the left of the normal sidebar column. They are backed by
 `extensions/bento-tools/src/pinnedPanels/PinnedPanelsStore.ts`. Runtime identity
-is `(workspaceId, tabId)`, but persistence stores URLs and optional panel keys
-because tab ids do not survive restart. Boot restore remaps persisted entries to
-live tab ids after panels have been restored for each workspace.
+is `(workspaceId, tabId)` while the backing tab exists; after closure, entries
+remain URL-backed and may temporarily use synthetic negative tab ids until the
+user opens them again. Persistence stores URLs and optional panel keys because
+tab ids do not survive restart. Boot restore remaps persisted entries to live
+tab ids when possible and otherwise keeps them as URL-backed rail entries.
+Pinned entries also persist last-known title and favicon metadata; tab metadata
+updates refresh pinned entries before closure so the rail favicon remains stable
+when the panel is closed and later reopened.
+Chrome dispatches `panel/focusedChanged` when the focused side-panel tab id
+changes. The shell mirrors that event into `usePanelFocusStore`, and the pinned
+rail applies the `color-60` tonal treatment to the matching pinned-panel button.
 
 Saved panels are bookmarks in a managed "Saved panels" folder under Firefox's
 "Other Bookmarks" root. The store is
@@ -1119,8 +1133,15 @@ and `components/PanelTrailer`. It runs inside the chrome-mounted
 - Do not call Places APIs from shell or chrome UI for saved panels. The
   `SavedPanelsStore` owns bookmarks interaction.
 - Do not persist pinned panels by tab id only. Use URL and panel key remapping.
-- Pinned panel rows must use `pinnedPanel/activate` plus `BENTO_FOCUS_PANEL`;
+- Pinned-panel rail clicks dispatch `pinnedPanel/open`, which focuses the
+  specific pinned panel if it still exists and recreates/rebinds it from the
+  stored URL only when it does not. Do not activate the pinned tab directly;
   direct tab activation breaks the main/panel distinction.
+- `pinnedPanel/close` marks the backing tab as closing before removing the panel
+  binding, then closes that tab. It must not use the normal `panel/remove`
+  demotion path, because that exposes the closed pinned panel as a sidebar tab.
+- Ordinary panel and tab closure must not remove pins; pinned rail entries are
+  removed only by `pinnedPanel/remove` from the rail context menu.
 - The saved-panel favicon row cannot rely on `page-icon:` URLs from the
   trailer iframe. `SavedPanelsStore` filters privileged favicon URLs and uses
   placeholders when needed.

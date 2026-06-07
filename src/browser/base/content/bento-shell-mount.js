@@ -6659,6 +6659,7 @@
   // scroll to leftmost (end of strip), and would also confuse the
   // "press next again to advance further" semantic.
   let currentActiveIdx = 0;
+  let currentFocusedPanelTabId = null;
   let panelFocusTimer = null;
   let panelNavContextMenu = null;
   const PANEL_REMOVE_ANIMATION_MS = 190;
@@ -7361,6 +7362,14 @@
   }
 
   function applyFocusedPanelIndicator(panelEl) {
+    const rawFocusedTabId = panelEl?.getAttribute?.('data-bento-panel-tab-id');
+    const focusedTabId =
+      rawFocusedTabId !== undefined && rawFocusedTabId !== null ? Number(rawFocusedTabId) : null;
+    const nextFocusedTabId = Number.isInteger(focusedTabId) ? focusedTabId : null;
+    if (currentFocusedPanelTabId !== nextFocusedTabId) {
+      currentFocusedPanelTabId = nextFocusedTabId;
+      dispatchShellAction({ type: 'panel/focusedChanged', tabId: nextFocusedTabId });
+    }
     const targets = getPanelFocusIndicatorTargets();
     for (const target of targets) {
       target.classList.toggle('bento-panel--focused', target === panelEl);
@@ -12072,12 +12081,37 @@
       : hasTabId
         ? [tabId]
         : [];
+    const pinnedPanel =
+      payload.pinnedPanel &&
+      typeof payload.pinnedPanel.workspaceId === 'string' &&
+      Number.isFinite(Number(payload.pinnedPanel.tabId))
+        ? {
+            workspaceId: payload.pinnedPanel.workspaceId,
+            tabId: Number(payload.pinnedPanel.tabId),
+          }
+        : null;
     showChromeMenu({
       anchor,
       items: payload.items,
       onSelect: (itemId) => {
         if (itemId === 'new-tab') {
           dispatchShellAction({ type: 'tab/create' });
+          return;
+        }
+        if (pinnedPanel && itemId === 'pinned-panel-remove') {
+          dispatchShellAction({
+            type: 'pinnedPanel/remove',
+            workspaceId: pinnedPanel.workspaceId,
+            tabId: pinnedPanel.tabId,
+          });
+          return;
+        }
+        if (pinnedPanel && itemId === 'pinned-panel-close') {
+          dispatchShellAction({
+            type: 'pinnedPanel/close',
+            workspaceId: pinnedPanel.workspaceId,
+            tabId: pinnedPanel.tabId,
+          });
           return;
         }
         if (!hasTabId) return;

@@ -430,6 +430,10 @@ export type Action =
   /** Remove a tab from the active workspace's panels. Tab itself
    * stays open in the sidebar list — only the panel binding goes away. */
   | { type: 'panel/remove'; id: number }
+  /** Chrome-side focused panel changed. Used by the sidebar rail to mirror
+   * the focused panel state onto pinned-panel favicon buttons. `null`
+   * means no side panel is focused. */
+  | { type: 'panel/focusedChanged'; tabId: number | null }
   /** Remove ALL panels from the active workspace (e.g., footer "close
    * side panel" button). */
   | { type: 'panels/clear' }
@@ -502,19 +506,24 @@ export type Action =
   | { type: 'privacy/setNetworkPrediction'; enabled: boolean }
   | { type: 'privacy/setPeerConnection'; enabled: boolean }
   /** Pin a panel binding `(workspaceId, tabId)` to the global Pinned panels
-   * sidebar section. Validated against the live panel set — tools no-ops
-   * when the tab isn't currently a panel in that workspace, or when the
-   * binding is already pinned. Pins persist across launches via URL, and
-   * are auto-removed when the binding ceases to exist (tab closed,
-   * panel/remove, workspace deleted, tab/assignWorkspace). */
+   * rail. Validated against the live panel set — tools no-ops when the
+   * tab isn't currently a panel in that workspace, or when the binding is
+   * already pinned. Pins persist by URL and survive panel/tab closure;
+   * users remove them explicitly from the pinned rail context menu. */
   | { type: 'pinnedPanel/add'; workspaceId: string; tabId: number }
   /** Unpin a binding. Used by both the sidebar X button and the kebab
    * "Unpin this panel" item — the underlying panel/tab stays open. */
   | { type: 'pinnedPanel/remove'; workspaceId: string; tabId: number }
-  /** Click on a sidebar pin row: switch to the pin's workspace (focusing
-   * the owning chrome window on cross-window conflict) AND activate the
-   * pinned panel's tab. See background.ts handleWorkspaceActivation for
-   * the activation-override race coordination. */
+  /** Click on a pinned-panel rail button: focus the specific pinned panel
+   * if it still exists, otherwise recreate that panel from the pin's URL
+   * and rebind the pin to the replacement tab. */
+  | { type: 'pinnedPanel/open'; workspaceId: string; tabId: number }
+  /** Close the panel surface for a pinned binding but keep the pin. This
+   * removes only the side-panel binding; the underlying tab remains open
+   * so the pin can still resolve a URL for future opens. */
+  | { type: 'pinnedPanel/close'; workspaceId: string; tabId: number }
+  /** Legacy focus action for callers that need to switch to the workspace
+   * that owns the pinned binding and focus the existing panel. */
   | { type: 'pinnedPanel/activate'; workspaceId: string; tabId: number }
   | { type: 'pinnedPanels/requestSnapshot' }
   /** Bookmark the panel's URL into the "Saved panels" folder under
@@ -553,13 +562,18 @@ export interface SavedPanelEntry {
   favIconUrl?: string;
 }
 
-/** A pinned-panel entry. Identity is `(workspaceId, tabId)` — at most one
- * pin per binding. `order` is append-on-add and stable across renames /
- * restarts; the shell renders pins in ascending `order`. */
+/** A pinned-panel entry. Identity is `(workspaceId, tabId)` while the
+ * backing tab exists. If the tab has been closed, `tabId` can be a
+ * synthetic negative id until the user opens the pin and tools rebinds it
+ * to a replacement tab. `order` is append-on-add and stable across
+ * rebinds/restarts; the shell renders pins in ascending `order`. */
 export interface PinnedPanelEntry {
   workspaceId: string;
   tabId: number;
   order: number;
+  url?: string;
+  title?: string;
+  favIconUrl?: string;
 }
 
 /** Pinned-panel delta. `reordered` is currently unused (drag-to-reorder is
@@ -567,6 +581,7 @@ export interface PinnedPanelEntry {
  * widened later. */
 export type PinnedPanelDelta =
   | { kind: 'added'; entry: PinnedPanelEntry }
+  | { kind: 'updated'; workspaceId: string; tabId: number; changes: Partial<PinnedPanelEntry> }
   | { kind: 'removed'; workspaceId: string; tabId: number }
   | { kind: 'reordered'; entries: PinnedPanelEntry[] };
 
@@ -691,6 +706,7 @@ export type Event =
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
   | { type: 'addrbar/results'; query: string; results: AddrResult[] }
+  | { type: 'panel/focusedChanged'; tabId: number | null; windowId?: number }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }
   | { type: 'pinnedPanels/changed'; deltas: PinnedPanelDelta[] }
   /** Full list of bookmarks in the "Saved panels" folder. Emitted on

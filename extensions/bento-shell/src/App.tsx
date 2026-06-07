@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
@@ -145,6 +144,7 @@ export function App() {
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
+  const onCreateTab = () => dispatch({ type: 'tab/create' });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const openSidebarContextMenu = (
     event: React.MouseEvent,
@@ -316,73 +316,71 @@ export function App() {
   }, [sidebarCollapsed]);
 
   return (
-    <Column
-      gap="2xs"
-      className="bento-shell-app"
-      style={{ gap: 0 }}
-      onContextMenu={onRootContextMenu}
-    >
-      <Row gap="xs" align="center" className="bento-shell-app__header">
-        <WorkspaceSwitcher />
-        {!ready && (
-          <Text variant="text" size="xs" color="muted">
-            connecting…
-          </Text>
-        )}
-      </Row>
+    <div className="bento-shell-app" onContextMenu={onRootContextMenu}>
       <PinnedPanels />
-      <TabList
-        onActivate={onActivate}
-        onClose={onClose}
-        onCloseSelected={onCloseSelected}
-        onOpenInSidePanel={onOpenInSidePanel}
-        onTabContextMenu={onTabContextMenu}
-        onReorder={onReorder}
-      />
-      <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">
-        {/* Collapse/expand toggle. DOM order matters: this is the FIRST
-            child so flex-direction:column-reverse in collapsed mode pins
-            it to the bottom of the vertical stack (= same on-screen
-            position as the leftmost slot of the expanded horizontal row).
-            That's the explicit UX requirement — clicking expand should
-            land at the same cursor position as clicking collapse. */}
-        <FooterTooltip
-          label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          isDisabled={sidebarCollapsed}
-        >
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onPress={toggleSidebarCollapsed}
+      <div className="bento-shell-app__main">
+        <Row gap="xs" align="center" className="bento-shell-app__header">
+          <WorkspaceSwitcher />
+          {!ready && (
+            <Text variant="text" size="xs" color="muted">
+              connecting…
+            </Text>
+          )}
+        </Row>
+        <TabList
+          onActivate={onActivate}
+          onClose={onClose}
+          onCloseSelected={onCloseSelected}
+          onCreateTab={onCreateTab}
+          onOpenInSidePanel={onOpenInSidePanel}
+          onTabContextMenu={onTabContextMenu}
+          onReorder={onReorder}
+        />
+        <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">
+          {/* Collapse/expand toggle. DOM order matters: this is the FIRST
+              child so flex-direction:column-reverse in collapsed mode pins
+              it to the bottom of the vertical stack (= same on-screen
+              position as the leftmost slot of the expanded horizontal row).
+              That's the explicit UX requirement — clicking expand should
+              land at the same cursor position as clicking collapse. */}
+          <FooterTooltip
+            label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            isDisabled={sidebarCollapsed}
           >
-            <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
-          </IconButton>
-        </FooterTooltip>
-        <FooterTooltip label="Open command palette" isDisabled={sidebarCollapsed}>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label="Open command palette (⌘⌥P)"
-            onPress={openCommandPalette}
-          >
-            <Icon icon={Command} />
-          </IconButton>
-        </FooterTooltip>
-        <FooterTooltip label="Color mode" isDisabled={sidebarCollapsed}>
-          <ColorModeCycle
-            value={uiColorMode}
-            onChange={setUiColorMode}
-            modes={UI_COLOR_MODE_ORDER}
-            surfaceLabel="Bento UI"
-          />
-        </FooterTooltip>
-        <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
-          <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
-            <Icon icon={Settings} />
-          </IconButton>
-        </FooterTooltip>
-      </Row>
-    </Column>
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              onPress={toggleSidebarCollapsed}
+            >
+              <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
+            </IconButton>
+          </FooterTooltip>
+          <FooterTooltip label="Open command palette" isDisabled={sidebarCollapsed}>
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label="Open command palette (⌘⌥P)"
+              onPress={openCommandPalette}
+            >
+              <Icon icon={Command} />
+            </IconButton>
+          </FooterTooltip>
+          <FooterTooltip label="Color mode" isDisabled={sidebarCollapsed}>
+            <ColorModeCycle
+              value={uiColorMode}
+              onChange={setUiColorMode}
+              modes={UI_COLOR_MODE_ORDER}
+              surfaceLabel="Bento UI"
+            />
+          </FooterTooltip>
+          <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
+            <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
+              <Icon icon={Settings} />
+            </IconButton>
+          </FooterTooltip>
+        </Row>
+      </div>
+    </div>
   );
 }

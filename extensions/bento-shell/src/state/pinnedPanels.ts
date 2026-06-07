@@ -51,6 +51,13 @@ export const usePinnedPanelsStore = create<PinnedPanelsState>((set) => ({
             }
             break;
           }
+          case 'updated': {
+            next = next.map((e) =>
+              e.workspaceId === d.workspaceId && e.tabId === d.tabId ? { ...e, ...d.changes } : e,
+            );
+            changed = true;
+            break;
+          }
           case 'reordered':
             next = d.entries;
             changed = true;

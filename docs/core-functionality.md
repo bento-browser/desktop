@@ -66,6 +66,8 @@ workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
 
 The sidebar tab list supports multi-selection for workspace organization.
+The top of the tab list exposes a `New tab` button with a plus icon for opening
+a fresh tab in the active workspace.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
@@ -213,7 +215,7 @@ The user should be able to keep related pages visible in one Bento window:
 - reference material in one or more panels;
 - communication or monitoring tools in narrow panels;
 - saved panels available from the panel trailer;
-- pinned panels reachable from the sidebar.
+- pinned panels reachable from a favicon rail beside the sidebar tabs.
 
 The browser should handle panel placement, persistence, and traversal so the
 operating system window manager is not the main productivity tool.
@@ -236,7 +238,7 @@ The intended behavior is:
 - grouped panel navigator icons show and refresh the favicons for visible
   panels inside a vertical or 2x2 group;
 - panel cycling is predictable;
-- saved and pinned panels are reachable from compact controls;
+- saved panels and pinned-panel rail buttons are reachable from compact controls;
 - workspace switching preserves enough layout state that returning to a
   workspace feels immediate;
 - restored panel-strip scroll position remains stable until the user explicitly
