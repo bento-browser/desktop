@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useId, useRef, useState } from 'react';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
@@ -66,6 +66,8 @@ function TabRowImpl({
   const lastSeenRef = useRef<TabSnapshot | undefined>(liveTab);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
+  const convertToPanelDescriptionId = useId();
+  const closeTabDescriptionId = useId();
   if (liveTab) lastSeenRef.current = liveTab;
   const tab = liveTab ?? lastSeenRef.current;
   if (!tab) return null;
@@ -74,6 +76,8 @@ function TabRowImpl({
   const discarded = tab.discarded ?? false;
   const audible = tab.audible;
   const displayTitle = tab.customTitle || tab.title || 'Untitled';
+  const convertToPanelLabel = 'Convert to panel';
+  const closeTabLabel = 'Close tab';
 
   const draggable = onDragStart !== undefined;
 
@@ -211,18 +215,35 @@ function TabRowImpl({
          * panel would leave the main panel empty. Hide the affordance so the
          * action can't be requested in the first place. */}
         {!active && (
+          <span className="bento-tab-row__action-tooltip" title={convertToPanelLabel}>
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label={convertToPanelLabel}
+              aria-describedby={convertToPanelDescriptionId}
+              onPress={() => onOpenInSidePanel(id)}
+            >
+              <Icon icon={PanelRightOpen} />
+            </IconButton>
+            <span id={convertToPanelDescriptionId} className="bento-tab-row__sr-only">
+              Convert this tab into a side panel
+            </span>
+          </span>
+        )}
+        <span className="bento-tab-row__action-tooltip" title={closeTabLabel}>
           <IconButton
             variant="ghost"
             size="sm"
-            aria-label="Open in side panel"
-            onPress={() => onOpenInSidePanel(id)}
+            aria-label={closeTabLabel}
+            aria-describedby={closeTabDescriptionId}
+            onPress={() => onClose(id)}
           >
-            <Icon icon={PanelRightOpen} />
+            <Icon icon={X} />
           </IconButton>
-        )}
-        <IconButton variant="ghost" size="sm" aria-label="Close tab" onPress={() => onClose(id)}>
-          <Icon icon={X} />
-        </IconButton>
+          <span id={closeTabDescriptionId} className="bento-tab-row__sr-only">
+            Close this tab
+          </span>
+        </span>
       </div>
     </div>
   );

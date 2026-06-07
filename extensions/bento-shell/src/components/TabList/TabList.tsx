@@ -530,8 +530,6 @@ export function TabList({
       if (selectedIds.has(id) && selectedIds.size > 0) {
         return orderedIds.filter((candidate) => selectedIds.has(candidate));
       }
-      lastSelectedIdRef.current = id;
-      setSelectedIds(new Set([id]));
       return [id];
     },
     [orderedIds, selectedIds],

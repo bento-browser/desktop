@@ -1,7 +1,6 @@
 /*
- * Default — explicit re-declaration of Tale UI's stock brand palette
- * (the values @tale-ui/core's _colors.css publishes on :root) scoped
- * to [data-bento-theme="default"].
+ * Default — Bento's repo-local default workspace theme scoped to
+ * [data-bento-theme="default"].
  *
  * Why this exists even though "default" means "no overrides": CSS
  * custom-property inheritance lets ancestors leak through. When a
@@ -11,16 +10,14 @@
  * put on the document root. Result: Default workspaces visually
  * mirror the active theme instead of identifying as their own thing.
  *
- * This file pins the Default theme's --brand-* to Tale UI's stock
- * values so any element with `data-bento-theme="default"` shows the
- * Default look regardless of the document-root theme. Only --brand-*
- * is re-declared — neutrals stay on bento-tokens.css's cool-neutral
- * pinning, which is the Bento default and applies via :root
- * inheritance as before.
+ * This file pins the Default theme's --brand-* so any element with
+ * `data-bento-theme="default"` shows the Default look regardless of
+ * the document-root theme. Only --brand-* is re-declared today —
+ * neutrals stay on bento-tokens.css's cool-neutral pinning, which is
+ * the Bento default and applies via :root inheritance as before.
  *
- * If Tale UI changes its --brand-* values upstream, the hardcoded
- * values here drift. Resync against @tale-ui/core's _colors.css
- * (search for `--brand-60:`) when bumping the Tale UI version.
+ * Regenerate this file from Tale UI Scale with:
+ *   pnpm theme:import default <scale.css>
  */
 
 [data-bento-theme='default'] {

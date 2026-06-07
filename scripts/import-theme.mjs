@@ -4,7 +4,6 @@
  *
  * Usage:
  *   pnpm theme:import <id> <path-to-scale.css> [--name "Display Name"]
- *                                              [--description "..."]
  *
  * The Scale app
  * (/Users/admin/Projects/tale-ui/core/playground/scale) emits canonical
@@ -29,9 +28,10 @@
  * picks up the new theme too:
  *   pnpm run import   # invokes scripts/generate-chrome-tokens.mjs
  *
- * Idempotent: re-running with the same <id> overwrites the .css file but
- * leaves index.css / index.ts unchanged (the @import + metadata entry
- * already exist).
+ * Idempotent: re-running with the same non-default <id> overwrites the
+ * .css file but leaves index.css / index.ts unchanged (the @import +
+ * metadata entry already exist). Re-running with <id> `default`
+ * overwrites default.css and refreshes Default's swatch metadata.
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -46,9 +46,9 @@ function usage(extra) {
   if (extra) console.error('import-theme: ' + extra + '\n');
   console.error('Usage:');
   console.error('  pnpm theme:import <id> <path-to-scale.css> [--name "Display Name"]');
-  console.error('                                             [--description "..."]');
   console.error('');
   console.error('  <id> must be lowercase kebab-case (matches /^[a-z][a-z0-9-]*$/).');
+  console.error('  Use <id> "default" to replace Bento\'s repo-local Default preset.');
   process.exit(1);
 }
 
@@ -57,7 +57,7 @@ function parseArgs(argv) {
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--name' || a === '--description') {
+    if (a === '--name') {
       const v = argv[i + 1];
       if (v === undefined) usage(a + ' needs a value');
       flags[a.slice(2)] = v;
@@ -80,11 +80,9 @@ const inputPath = resolve(process.cwd(), positional[1]);
 if (!/^[a-z][a-z0-9-]*$/.test(id)) {
   usage('<id> must match /^[a-z][a-z0-9-]*$/ (got: ' + JSON.stringify(id) + ')');
 }
-if (id === 'default') usage('"default" is reserved — it represents the no-override state.');
 if (!existsSync(inputPath)) usage('input file not found: ' + inputPath);
 
 const name = flags.name || id.charAt(0).toUpperCase() + id.slice(1);
-const description = flags.description;
 
 const raw = readFileSync(inputPath, 'utf-8');
 
@@ -213,7 +211,31 @@ if (indexCss.includes(importLine)) {
 const indexTsPath = resolve(PRESETS_DIR, 'index.ts');
 const indexTs = readFileSync(indexTsPath, 'utf-8');
 if (new RegExp(`id:\\s*['"]${id}['"]`).test(indexTs)) {
-  console.log('import-theme: BENTO_THEMES already has id:', id);
+  if (id === 'default') {
+    const idMatch = indexTs.match(/id:\s*['"]default['"]/);
+    const objectStart = idMatch ? indexTs.lastIndexOf('\n  {', idMatch.index) : -1;
+    const objectEnd = idMatch ? indexTs.indexOf('\n  },', idMatch.index) : -1;
+    if (!idMatch || objectStart < 0 || objectEnd < 0) {
+      console.error('import-theme: could not locate Default metadata object in index.ts');
+    } else {
+      const before = indexTs.slice(0, objectStart);
+      const after = indexTs.slice(objectEnd + '\n  },'.length);
+      const currentObject = indexTs.slice(objectStart, objectEnd + '\n  },'.length);
+      const currentName = currentObject.match(/name:\s*(['"])(.*?)\1/)?.[2] || 'Default';
+      const entryLines = [
+        '  {',
+        "    id: 'default',",
+        `    name: '${(flags.name || currentName).replace(/'/g, "\\'")}',`,
+      ];
+      entryLines.push(`    brand60: '${brand60}',`);
+      entryLines.push(`    neutral20: '${neutral20}',`);
+      entryLines.push('  },');
+      writeFileSync(indexTsPath, before + '\n' + entryLines.join('\n') + after);
+      console.log('import-theme: refreshed Default metadata in', indexTsPath);
+    }
+  } else {
+    console.log('import-theme: BENTO_THEMES already has id:', id);
+  }
 } else {
   // Find the closing `];` of `BENTO_THEMES: BentoThemeMeta[] = [ … ];`.
   // The array spans multiple lines and contains object literals; we look
@@ -234,9 +256,6 @@ if (new RegExp(`id:\\s*['"]${id}['"]`).test(indexTs)) {
         `    id: '${id}',`,
         `    name: '${name.replace(/'/g, "\\'")}',`,
       ];
-      if (description) {
-        entryLines.push(`    description: '${description.replace(/'/g, "\\'")}',`);
-      }
       entryLines.push(`    brand60: '${brand60}',`);
       entryLines.push(`    neutral20: '${neutral20}',`);
       entryLines.push('  },');

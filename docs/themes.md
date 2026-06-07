@@ -16,7 +16,10 @@ troubleshoot.
 - A **theme** is a CSS file at `extensions/bento-shell/src/theme/presets/<id>.css`
   whose rules are all scoped by `[data-bento-theme="<id>"]`.
 - A **workspace** stores a `themeId` string (`extensions/_shared/protocol.ts`).
-  Undefined means "use the Default theme."
+  Undefined means "use the Default theme" (`default`).
+- The **Default theme** is repo-local too:
+  `extensions/bento-shell/src/theme/presets/default.css`. Updating it
+  does not require changing Tale UI upstream.
 - `useWorkspaceTheme()` mirrors the active workspace's `themeId` onto
   `<html data-bento-theme="…">` in every shell document. The sidebar
   also pushes it to the Firefox chrome window via the `BENTO_THEME:`
@@ -98,20 +101,18 @@ html[data-color-mode="dark"] .tale-ui,
 From the bento-browser repo root:
 
 ```sh
-pnpm theme:import <id> <path-to-scale.css> [--name "Display Name"] \
-                                           [--description "..."]
+pnpm theme:import <id> <path-to-scale.css> [--name "Display Name"]
 ```
 
 Example:
 
 ```sh
 pnpm theme:import sunset ~/Desktop/sunset.css \
-  --name "Sunset" \
-  --description "Warm orange brand on dusk-purple neutrals."
+  --name "Sunset"
 ```
 
-`<id>` must be lowercase kebab-case (`/^[a-z][a-z0-9-]*$/`) and must
-not be `"default"` (reserved).
+`<id>` must be lowercase kebab-case (`/^[a-z][a-z0-9-]*$/`). Use
+`default` when you want to replace Bento's built-in Default theme.
 
 The script ([scripts/import-theme.mjs](../scripts/import-theme.mjs))
 does three things:
@@ -129,13 +130,31 @@ does three things:
    to add `@import './<id>.css';`, alphabetically sorted.
 
 3. **Patches** `extensions/bento-shell/src/theme/presets/index.ts` to
-   append a `BentoThemeMeta` entry to the `BENTO_THEMES` array. The
-   entry's `brand60` is parsed from the Scale CSS's `--brand-60`
+   append a `BentoThemeMeta` entry to the `BENTO_THEMES` array. For
+   `default`, the existing Default metadata entry is refreshed instead.
+   The entry's `brand60` is parsed from the Scale CSS's `--brand-60`
    declaration — that's the hex the picker swatch and the workspace
    switcher avatar paint.
 
-Re-running with the same `<id>` overwrites the `.css` file but leaves
-`index.css` / `index.ts` unchanged (the script is idempotent).
+Re-running with the same non-default `<id>` overwrites the `.css` file
+but leaves `index.css` / `index.ts` unchanged (the script is
+idempotent). Re-running with `default` overwrites `default.css` and
+refreshes the Default theme's swatch metadata.
+
+### Updating the Default theme
+
+Default is not a Tale UI upstream edit. Generate CSS in Scale, then run:
+
+```sh
+pnpm theme:import default ~/Desktop/default.css \
+  --name "Default"
+```
+
+That regenerates `extensions/bento-shell/src/theme/presets/default.css`
+with `[data-bento-theme="default"]` selectors and updates the first
+`BENTO_THEMES` entry's `brand60` / `neutral20` values. Workspaces with
+`themeId` unset, cleared, or explicitly set to `default` will use this
+theme.
 
 After importing:
 
@@ -259,7 +278,6 @@ Then patch `index.css` and `index.ts` manually:
 {
   id: '<id>',
   name: '<Display Name>',
-  description: '…',
   brand60: '#abcdef',   // must match --brand-60 above
 },
 ```

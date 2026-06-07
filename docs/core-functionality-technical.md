@@ -84,6 +84,12 @@ The sidebar context menu is still rendered by chrome through
 right-clicked, the shell payload includes `tabIds`; chrome dispatches
 `tabs/moveToNewWorkspace` for the "Move selected tabs to new workspace" item or
 `tabs/assignWorkspace` for batch moves to an existing workspace.
+Right-clicking an unselected row does not mutate sidebar selection, because
+doing so emits `BENTO_SELECTED_TABS` and can overwrite the context-menu title IPC
+before chrome polls it.
+For single rows, the shell includes "Close tab" and includes "Convert to panel"
+only when the target row is not the active tab; chrome dispatches `tab/close` or
+`panel/add` for those items.
 
 Batch tab assignment is handled in
 `extensions/bento-tools/src/messaging/protocol-handler.ts`. Tools creates the

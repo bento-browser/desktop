@@ -15,12 +15,11 @@ import { TabList } from './components/TabList/TabList';
 import { PinnedPanels } from './components/PinnedPanels/PinnedPanels';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
-import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
+import { dispatch, useToolsReady } from './bridge/useToolsPort';
 import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
-import { usePanelsStore } from './state/panels';
 import { useWorkspacesStore } from './state/workspaces';
 import type { UiColorModePref } from '@shared/protocol';
 
@@ -92,10 +91,8 @@ function encodeSidebarMenuPayload(payload: object): string {
 
 export function App() {
   const ready = useToolsReady();
-  const windowId = useCurrentWindowId();
   const tabsById = useTabsStore((s) => s.byId);
-  const orderedTabIds = useTabsStore((s) => s.orderedIds);
-  const panelIdsByWorkspace = usePanelsStore((s) => s.byWorkspace);
+  const activeTabId = useTabsStore((s) => s.activeId);
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
   // Per-workspace theme. Mirrors the active workspace's themeId onto
@@ -167,17 +164,6 @@ export function App() {
           );
     const isBatch = targetTabIds.length > 1;
     if (tabId !== null) {
-      const panelIds = tab?.workspaceId ? panelIdsByWorkspace.get(tab.workspaceId) : undefined;
-      const normalTabCount = tab
-        ? orderedTabIds.reduce((count, id) => {
-            const candidate = tabsById[id];
-            if (!candidate) return count;
-            if (candidate.workspaceId !== tab.workspaceId) return count;
-            if (typeof windowId === 'number' && candidate.windowId !== windowId) return count;
-            if (panelIds?.has(id)) return count;
-            return count + 1;
-          }, 0)
-        : 0;
       const workspaceItems = workspaceIds.map((workspaceId) => {
         const workspace = workspacesById[workspaceId];
         return {
@@ -197,8 +183,8 @@ export function App() {
           { id: 'reload-tab', label: 'Reload tab' },
           { id: 'toggle-pin', label: tab?.pinned ? 'Unpin tab' : 'Pin tab' },
         );
-        if (normalTabCount > 1) {
-          items.push({ id: 'open-in-side-panel', label: 'Open in side panel' });
+        if (tabId !== activeTabId) {
+          items.push({ id: 'open-in-side-panel', label: 'Convert to panel' });
         }
       }
       if (workspaceItems.length > 0) {
