@@ -582,6 +582,9 @@
         box-shadow: var(--shadow-l);
         overflow: visible;
       }
+      #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
+        box-shadow: none;
+      }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
          panel strip and the favicon navigator. Track + thumb both
@@ -13636,6 +13639,9 @@
 
   function applyChromePanelShadowsEnabled(enabled) {
     window.gBrowser?.tabpanels?.classList.toggle('bento-panel-shadows-disabled', !enabled);
+    document
+      .getElementById('bento-strip-container')
+      ?.classList.toggle('bento-panel-shadows-disabled', !enabled);
   }
 
   function attachPaletteCloseListener() {

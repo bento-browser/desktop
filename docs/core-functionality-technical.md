@@ -500,6 +500,11 @@ workspace for its window. The payload carries:
 - saved panel count;
 - optional panel id to scroll into view.
 
+The panel shadow setting toggles `bento-panel-shadows-disabled` on both
+`gBrowser.tabpanels` and `#bento-strip-container`. Split-view panels read the
+class from `tabpanels`; the no-side-panels, tabs-only main content slot reads it
+from the strip container because its shadow is applied outside `tabpanels`.
+
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 
