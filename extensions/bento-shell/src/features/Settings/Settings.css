@@ -33,4 +33,30 @@
     width: 18rem;
     flex: 0 0 auto;
   }
+
+  .bento-settings__privacy-levels {
+    width: max-content;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .bento-settings__advanced-privacy {
+    padding-block-start: var(--space-m);
+  }
+
+  .bento-settings__protection-details {
+    padding-block-start: var(--space-m);
+  }
+
+  .bento-settings__protection-detail {
+    padding: var(--space-s);
+    border: 1px solid var(--neutral-24);
+    border-radius: var(--radius-s);
+    background-color: var(--neutral-6);
+  }
+
+  .bento-settings__protection-detail[data-active='true'] {
+    border-color: color-mix(in srgb, var(--bento-workspace-accent) 46%, var(--neutral-24));
+    background-color: color-mix(in srgb, var(--bento-workspace-accent) 9%, var(--neutral-6));
+  }
 }

@@ -1,4 +1,13 @@
 {
-  "extensions/**/*.{ts,tsx,js,jsx,mjs}": ["eslint --fix", "prettier --write"],
-  "*.{json,md,yaml,yml,css}": ["prettier --write"]
+  "{extensions/_shared,extensions/bento-shell,extensions/bento-tools}/**/*.{ts,tsx,js,jsx,mjs}": [
+    "eslint --fix",
+    "prettier --write"
+  ],
+  "{docs,extensions/_shared,extensions/bento-shell,extensions/bento-tools}/**/*.{json,md,yaml,yml,css}": [
+    "prettier --write"
+  ],
+  ".lintstagedrc.json": ["prettier --write"],
+  "package.json": ["prettier --write"],
+  "pnpm-lock.yaml": ["prettier --write"],
+  "pnpm-workspace.yaml": ["prettier --write"]
 }

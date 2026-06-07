@@ -122,6 +122,22 @@
     margin-block-start: var(--space-xs);
   }
 
+  .bento-welcome__choice {
+    margin-block-start: var(--space-xs);
+    max-width: 28rem;
+  }
+
+  .bento-welcome__choice :where(.tale-toggle-button-group) {
+    flex-wrap: wrap;
+  }
+
+  .bento-welcome__privacy-summary {
+    padding: var(--space-s);
+    border: 1px solid var(--neutral-24);
+    border-radius: var(--radius-s);
+    background-color: var(--neutral-6);
+  }
+
   .bento-welcome__theme-options {
     align-items: center;
   }

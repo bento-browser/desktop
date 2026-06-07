@@ -16,6 +16,10 @@ import { Card } from '@tale-ui/react/card';
 import { Switch } from '@tale-ui/react/switch';
 import { NumberField } from '@tale-ui/react/number-field';
 import { TextField } from '@tale-ui/react/text-field';
+import { Select } from '@tale-ui/react/select';
+import { Disclosure } from '@tale-ui/react/disclosure';
+import { ToggleButtonGroup } from '@tale-ui/react/toggle-group';
+import { ToggleButton } from '@tale-ui/react/toggle-button';
 import { Button } from '@tale-ui/react/button';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Column } from '@tale-ui/react/column';
@@ -27,6 +31,13 @@ import Keyboard from 'lucide-react/dist/esm/icons/keyboard';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
+import type {
+  PrivacyAdvancedKey,
+  PrivacyProtectionLevel,
+  SearchEngineId,
+  SelectablePrivacyProtectionLevel,
+} from '@shared/protocol';
+import { PRIVACY_LEVELS, PRIVACY_LEVEL_DETAILS, privacyLevelLabel } from '@shared/privacy-levels';
 import { useSettingsStore } from '../../state/settings';
 import { usePrivacyStore } from '../../state/privacy';
 import { dispatch, initToolsPort } from '../../bridge/useToolsPort';
@@ -39,6 +50,99 @@ function update<K extends keyof import('@shared/protocol').BentoSettings>(
   value: import('@shared/protocol').BentoSettings[K],
 ) {
   dispatch({ type: 'settings/update', changes: { [key]: value } });
+}
+
+function firstSelectedKey(keys: unknown): string | null {
+  if (keys === 'all') return null;
+  if (!(keys instanceof Set)) return null;
+  const first = Array.from(keys)[0];
+  return typeof first === 'string' ? first : null;
+}
+
+function advancedBoolean(key: PrivacyAdvancedKey, value: boolean, label: string, detail: string) {
+  return (
+    <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <Column gap="3xs" style={{ flex: 1 }}>
+        <Text>{label}</Text>
+        <Text variant="text" size="s" color="muted">
+          {detail}
+        </Text>
+      </Column>
+      <Switch.Root
+        isSelected={value}
+        onChange={(next) => dispatch({ type: 'privacy/setAdvanced', key, value: next })}
+        aria-label={label}
+      >
+        <Switch.Thumb />
+      </Switch.Root>
+    </Row>
+  );
+}
+
+function ProtectionLevelDetailList({ current }: { current: PrivacyProtectionLevel }) {
+  return (
+    <Disclosure.Root>
+      <Disclosure.Trigger>Protection level details</Disclosure.Trigger>
+      <Disclosure.Panel>
+        <Column gap="m" className="bento-settings__protection-details">
+          {PRIVACY_LEVELS.map((level) => {
+            const detail = PRIVACY_LEVEL_DETAILS[level.id];
+            return (
+              <Column
+                gap="xs"
+                className="bento-settings__protection-detail"
+                data-active={current === level.id ? 'true' : undefined}
+                key={level.id}
+              >
+                <Row style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <Text variant="label" size="m">
+                    {detail.label}
+                  </Text>
+                  {current === level.id ? (
+                    <Text variant="label" size="s" color="accent">
+                      Current
+                    </Text>
+                  ) : null}
+                </Row>
+                <Text variant="text" size="s" color="muted">
+                  {detail.bestFor}
+                </Text>
+                <Column gap="2xs">
+                  <Text variant="label" size="s">
+                    Benefits
+                  </Text>
+                  {detail.benefits.map((benefit) => (
+                    <Text variant="text" size="s" color="muted" key={benefit}>
+                      - {benefit}
+                    </Text>
+                  ))}
+                </Column>
+                <Column gap="2xs">
+                  <Text variant="label" size="s">
+                    Caveats
+                  </Text>
+                  {detail.caveats.map((caveat) => (
+                    <Text variant="text" size="s" color="muted" key={caveat}>
+                      - {caveat}
+                    </Text>
+                  ))}
+                </Column>
+              </Column>
+            );
+          })}
+          <Column gap="2xs" className="bento-settings__protection-detail">
+            <Text variant="label" size="m">
+              Custom
+            </Text>
+            <Text variant="text" size="s" color="muted">
+              Bento shows Custom when live privacy settings no longer exactly match Standard,
+              Enhanced, or Hardened. Your manual settings stay in place until you select a preset.
+            </Text>
+          </Column>
+        </Column>
+      </Disclosure.Panel>
+    </Disclosure.Root>
+  );
 }
 
 export function Settings() {
@@ -298,11 +402,8 @@ export function Settings() {
               Privacy
             </Text>
             <Text variant="text" size="s" color="muted">
-              Bento ships with telemetry, sponsored content, crash reporting, studies, and Mozilla
-              service promos disabled by default. Tracking protection runs at &lsquo;strict&rsquo;.
-              Use Firefox&rsquo;s Settings (about:preferences#privacy) for tracking protection,
-              clearing browsing data, and the full preference list. The three controls below are
-              prefs Firefox doesn&rsquo;t expose in its UI.
+              Bento disables telemetry, sponsored content, crash reporting, studies, remote
+              suggestions, and speculative connections by default.
             </Text>
           </Column>
         </Card.Header>
@@ -312,57 +413,195 @@ export function Settings() {
               Loading privacy settings…
             </Text>
           ) : (
-            <Column gap="m">
-              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <Column gap="3xs" style={{ flex: 1 }}>
-                  <Text>Resist fingerprinting</Text>
-                  <Text variant="text" size="s" color="muted">
-                    Spoof browser characteristics to make tracking by fingerprint harder. May break
-                    some sites.
-                  </Text>
-                </Column>
-                <Switch.Root
-                  isSelected={privacy.resistFingerprinting}
-                  onChange={(v) =>
-                    dispatch({ type: 'privacy/setResistFingerprinting', enabled: v })
-                  }
-                  aria-label="Resist fingerprinting"
+            <Column gap="l">
+              <Column gap="xs">
+                <Text variant="label" size="s" color="muted">
+                  Protection level
+                </Text>
+                <ToggleButtonGroup
+                  aria-label="Privacy protection level"
+                  selectionMode="single"
+                  selectedKeys={new Set([privacy.protectionLevel])}
+                  onSelectionChange={(keys) => {
+                    const next = firstSelectedKey(keys);
+                    if (!next || next === 'custom') return;
+                    dispatch({
+                      type: 'privacy/setProtectionLevel',
+                      level: next as SelectablePrivacyProtectionLevel,
+                    });
+                  }}
+                  className="bento-settings__privacy-levels"
                 >
-                  <Switch.Thumb />
-                </Switch.Root>
-              </Row>
-              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <Column gap="3xs" style={{ flex: 1 }}>
-                  <Text>Network prediction</Text>
-                  <Text variant="text" size="s" color="muted">
-                    DNS / TCP prefetching for hovered links. Faster loads, but contacts servers you
-                    didn&rsquo;t click.
-                  </Text>
-                </Column>
-                <Switch.Root
-                  isSelected={privacy.networkPrediction}
-                  onChange={(v) => dispatch({ type: 'privacy/setNetworkPrediction', enabled: v })}
-                  aria-label="Network prediction"
-                >
-                  <Switch.Thumb />
-                </Switch.Root>
-              </Row>
-              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <Column gap="3xs" style={{ flex: 1 }}>
-                  <Text>WebRTC peer connections</Text>
-                  <Text variant="text" size="s" color="muted">
-                    Required for video calls and some real-time apps. Off plugs the WebRTC IP-leak
-                    vector but breaks Meet, Discord call, etc.
-                  </Text>
-                </Column>
-                <Switch.Root
-                  isSelected={privacy.peerConnection}
-                  onChange={(v) => dispatch({ type: 'privacy/setPeerConnection', enabled: v })}
-                  aria-label="WebRTC peer connections"
-                >
-                  <Switch.Thumb />
-                </Switch.Root>
-              </Row>
+                  {PRIVACY_LEVELS.map((level) => (
+                    <ToggleButton id={level.id} key={level.id} size="md">
+                      {level.label}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+                <Text variant="text" size="s" color="muted">
+                  Current state: {privacyLevelLabel(privacy.protectionLevel)}
+                </Text>
+                <ProtectionLevelDetailList current={privacy.protectionLevel} />
+              </Column>
+
+              <Select.Root
+                placeholder="Select search engine"
+                selectedKey={privacy.defaultSearchEngine}
+                onSelectionChange={(key) => {
+                  if (typeof key !== 'string') return;
+                  dispatch({ type: 'privacy/setDefaultSearchEngine', id: key as SearchEngineId });
+                }}
+              >
+                <Select.Label>Default search engine</Select.Label>
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Icon />
+                </Select.Trigger>
+                <Select.Popover>
+                  <Select.ListBox>
+                    {privacy.availableSearchEngines.map((engine) => (
+                      <Select.Item id={engine.id} textValue={engine.name} key={engine.id}>
+                        {engine.name}
+                      </Select.Item>
+                    ))}
+                  </Select.ListBox>
+                </Select.Popover>
+              </Select.Root>
+
+              <Disclosure.Root>
+                <Disclosure.Trigger>Advanced privacy controls</Disclosure.Trigger>
+                <Disclosure.Panel>
+                  <Column gap="m" className="bento-settings__advanced-privacy">
+                    {advancedBoolean(
+                      'safeBrowsingEnabled',
+                      privacy.safeBrowsingEnabled,
+                      'Local Safe Browsing checks',
+                      'Checks phishing, malware, and download blocklists. Remote download checks stay off in Standard and Enhanced.',
+                    )}
+                    {advancedBoolean(
+                      'resistFingerprinting',
+                      privacy.resistFingerprinting,
+                      'Resist fingerprinting',
+                      'Spoofs browser characteristics. This improves anti-fingerprinting but can break some sites.',
+                    )}
+                    {advancedBoolean(
+                      'letterboxing',
+                      privacy.letterboxing,
+                      'Letterboxing',
+                      'Rounds the content viewport size while resist fingerprinting is active.',
+                    )}
+                    {advancedBoolean(
+                      'networkPrediction',
+                      privacy.networkPrediction,
+                      'Network prediction',
+                      'DNS, TCP, and link prefetching. Faster loads can contact servers before a click.',
+                    )}
+                    {advancedBoolean(
+                      'peerConnection',
+                      privacy.peerConnection,
+                      'WebRTC peer connections',
+                      'Required for video calls and some real-time apps. Turning this off blocks that surface.',
+                    )}
+                    <Select.Root
+                      placeholder="Select WebRTC policy"
+                      selectedKey={privacy.webRTCIPHandlingPolicy}
+                      onSelectionChange={(key) => {
+                        if (typeof key !== 'string') return;
+                        dispatch({
+                          type: 'privacy/setAdvanced',
+                          key: 'webRTCIPHandlingPolicy',
+                          value: key,
+                        });
+                      }}
+                    >
+                      <Select.Label>WebRTC IP handling</Select.Label>
+                      <Select.Trigger>
+                        <Select.Value />
+                        <Select.Icon />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <Select.ListBox>
+                          <Select.Item id="default" textValue="Default">
+                            Default
+                          </Select.Item>
+                          <Select.Item
+                            id="disable_non_proxied_udp"
+                            textValue="Disable non-proxied UDP"
+                          >
+                            Disable non-proxied UDP
+                          </Select.Item>
+                        </Select.ListBox>
+                      </Select.Popover>
+                    </Select.Root>
+                    <Select.Root
+                      placeholder="Select HTTPS-only mode"
+                      selectedKey={privacy.httpsOnlyMode}
+                      onSelectionChange={(key) => {
+                        if (typeof key !== 'string') return;
+                        dispatch({ type: 'privacy/setAdvanced', key: 'httpsOnlyMode', value: key });
+                      }}
+                    >
+                      <Select.Label>HTTPS-only mode</Select.Label>
+                      <Select.Trigger>
+                        <Select.Value />
+                        <Select.Icon />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <Select.ListBox>
+                          <Select.Item id="never" textValue="Off">
+                            Off
+                          </Select.Item>
+                          <Select.Item id="always" textValue="All windows">
+                            All windows
+                          </Select.Item>
+                        </Select.ListBox>
+                      </Select.Popover>
+                    </Select.Root>
+                    {advancedBoolean(
+                      'drmEnabled',
+                      privacy.drmEnabled,
+                      'DRM protected content',
+                      'Allows Widevine-protected streaming sites to play.',
+                    )}
+                    {advancedBoolean(
+                      'diskCacheEnabled',
+                      privacy.diskCacheEnabled,
+                      'Disk cache',
+                      'Stores cached page resources on disk for faster repeat loads.',
+                    )}
+                    {advancedBoolean(
+                      'webglEnabled',
+                      privacy.webglEnabled,
+                      'WebGL',
+                      'Required by many maps, games, design tools, and 3D demos.',
+                    )}
+                    {advancedBoolean(
+                      'webgpuEnabled',
+                      privacy.webgpuEnabled,
+                      'WebGPU',
+                      'Newer graphics and compute API used by some advanced web apps.',
+                    )}
+                    {advancedBoolean(
+                      'passwordSavingEnabled',
+                      privacy.passwordSavingEnabled,
+                      'Password saving',
+                      'Allows Firefox password manager prompts and saved logins.',
+                    )}
+                    {advancedBoolean(
+                      'formHistoryEnabled',
+                      privacy.formHistoryEnabled,
+                      'Form history',
+                      'Stores non-password form entries for autocomplete.',
+                    )}
+                    {advancedBoolean(
+                      'sanitizeOnShutdown',
+                      privacy.sanitizeOnShutdown,
+                      'Clear cookies and cache on shutdown',
+                      'Clears cookies, offline site data, and cache when Bento closes.',
+                    )}
+                  </Column>
+                </Disclosure.Panel>
+              </Disclosure.Root>
             </Column>
           )}
         </Card.Body>

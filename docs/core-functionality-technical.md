@@ -28,6 +28,80 @@ dispatches `Action` messages through `extensions/bento-shell/src/bridge/useTools
 `bento-tools` mutates stores and broadcasts `Event` payloads back. Shell Zustand
 stores are mirrors only.
 
+## Privacy And Search Implementation
+
+Privacy preset metadata, selectable level ids, browser privacy values, and
+allowlisted pref maps live in
+`extensions/_shared/privacy-levels.ts`. The wire contract lives in
+`extensions/_shared/protocol.ts`: `privacy/setProtectionLevel`,
+`privacy/setAdvanced`, `privacy/setDefaultSearchEngine`, and
+`privacy/snapshot`.
+
+`extensions/bento-tools/src/privacy/ProtectionLevels.ts` is the tools-side
+runtime implementation. It applies preset `browser.privacy.*` values through the
+standard WebExtension privacy API and applies non-WebExtension prefs through the
+privileged `browser.bentoPrivacy` experiment. It reads the live browser snapshot,
+compares it with the preset maps, and reports `custom` when any preset value
+differs. Advanced settings dispatch the same path and then emit a fresh
+`privacy/snapshot`.
+
+`extensions/bento-tools/experiments/bento-privacy/` exposes the minimal
+privileged surface that normal WebExtension APIs cannot provide:
+
+- allowlisted pref reads/writes/clears;
+- visible Firefox search engine discovery;
+- default search engine reads/writes through Firefox `SearchService`.
+
+The experiment rejects prefs outside its static allowlist. Search writes use
+`SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
+set the private default to the same engine when separate private search is not
+enabled. Search provider ids, ordering, availability, and display names come
+from Firefox `SearchService.getVisibleEngines()`.
+
+`SettingsStore` is version 2. Defaults are
+`privacyProtectionLevel: 'standard'` and `defaultSearchEngine: 'ddg'`.
+Migrated v1 profiles receive those default fields in the settings snapshot but
+do not have an explicit stored override. On tools boot, `background.ts` applies
+the stored privacy preset or stored default search engine only when
+`SettingsStore.hasOverride(...)` says the user explicitly stored that setting.
+Fresh-profile browser defaults therefore come from `prefs/bento.js` and the
+search config dumps rather than from an unconditional startup rewrite.
+
+Settings UI in `extensions/bento-shell/src/features/Settings/Settings.tsx`
+mirrors the live privacy snapshot. The level selector uses Tale UI
+`ToggleButtonGroup` with `selectionMode`, `selectedKeys`, and
+`onSelectionChange`. The search selector uses `Select.Root` with
+`selectedKey/onSelectionChange`. Advanced controls use `Disclosure` and
+settings-row `Switch.Root` controls. The full protection-level benefit/caveat
+comparison rendered in Settings comes from `PRIVACY_LEVEL_DETAILS`.
+
+Onboarding in `extensions/bento-shell/src/welcome/main.tsx` adds privacy and
+search steps after browser-data import. Those steps dispatch the same privacy
+actions as Settings, render compact selected-level benefit/caveat copy from
+`PRIVACY_LEVEL_DETAILS`, and still leave `welcomeSeen=false` until final
+onboarding completion.
+
+uBlock Origin is bundled as a third built-in extension under
+`extensions/ublock-origin/`. Its provenance and update notes are recorded in
+that folder's README. `.bento-runtime-entries.json` lists the extra top-level
+uBO runtime folders/files that Surfer must copy; the default Bento extension copy
+filter is still used for extensions without that file.
+
+### Privacy Pitfalls
+
+- Do not add arbitrary prefs to the experiment API. Additions must be explicit
+  in both `privacy-levels.ts` and `experiments/bento-privacy/api.js`.
+- Do not auto-apply Standard on every boot. That would overwrite users who
+  changed Firefox privacy prefs outside Bento before Bento had stored an
+  explicit level.
+- Do not reintroduce a Bento search engine allowlist unless Bento intentionally
+  returns to a curated-provider model. Settings and onboarding should follow
+  Firefox's visible search engine list.
+- Do not lock uBlock Origin with enterprise policy. Bento ships it enabled but
+  user-disableable/removable.
+- Do not move experiment files under `src/`; Surfer copies only top-level
+  `experiments/` into the built-in extension.
+
 ## Workspace implementation
 
 Workspace metadata lives in `extensions/bento-tools/src/workspaces/WorkspaceStore.ts`.

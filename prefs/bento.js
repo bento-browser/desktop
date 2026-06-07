@@ -68,6 +68,38 @@ pref("network.allow-experiments", false);
 // Dashboard or Firefox's about:preferences#privacy. Bento Tools mirrors
 // this via browser.privacy.websites.trackingProtectionMode = "always".
 pref("browser.contentblocking.category", "strict");
+pref("privacy.globalprivacycontrol.enabled", true);
+pref("privacy.globalprivacycontrol.pbmode.enabled", true);
+pref("privacy.query_stripping.enabled", true);
+pref("privacy.query_stripping.enabled.pbmode", true);
+pref("network.cookie.cookieBehavior", 5);
+pref("network.cookie.cookieBehavior.pbmode", 5);
+
+// --- Network privacy defaults -------------------------------------------
+pref("network.prefetch-next", false);
+pref("network.dns.disablePrefetch", true);
+pref("network.http.speculative-parallel-limit", 0);
+pref("browser.places.speculativeConnect.enabled", false);
+pref("network.trr.mode", 5);
+pref("browser.search.suggest.enabled", false);
+pref("browser.urlbar.suggest.searches", false);
+
+// Keep HTTPS-only as an Enhanced/Hardened feature rather than a Standard
+// default so HTTP-only intranet and device-admin pages keep working.
+pref("dom.security.https_only_mode", false);
+pref("dom.security.https_only_mode_pbm", false);
+
+// Local Safe Browsing checks stay on in Standard, but remote download
+// lookups are disabled. Hardened can turn the local checks off too.
+pref("browser.safebrowsing.malware.enabled", true);
+pref("browser.safebrowsing.phishing.enabled", true);
+pref("browser.safebrowsing.downloads.enabled", true);
+pref("browser.safebrowsing.downloads.remote.enabled", false);
+
+// Hide remote/AI browser surfaces unless Bento explicitly ships and
+// documents one.
+pref("browser.ml.enable", false);
+pref("browser.ml.chat.enabled", false);
 
 // --- First-run / onboarding noise ----------------------------------------
 pref("browser.aboutwelcome.enabled", false);

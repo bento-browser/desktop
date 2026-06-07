@@ -24,6 +24,8 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   autoBackupEnabled: true,
   autoBackupIntervalMinutes: 30,
   autoBackupMaxCount: 5,
+  privacyProtectionLevel: 'standard',
+  defaultSearchEngine: 'ddg',
 };
 
 export function seedDefault(): void {

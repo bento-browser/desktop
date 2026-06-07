@@ -10,7 +10,7 @@
 import type { BentoSettings } from '@shared/protocol';
 
 const STORAGE_KEY = 'bento.settings';
-const VERSION = 1;
+const VERSION = 2;
 const DEBOUNCE_MS = 250;
 
 export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
@@ -33,6 +33,8 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   autoBackupEnabled: true,
   autoBackupIntervalMinutes: 30,
   autoBackupMaxCount: 5,
+  privacyProtectionLevel: 'standard',
+  defaultSearchEngine: 'ddg',
 });
 
 interface StoredShape {
@@ -43,30 +45,39 @@ interface StoredShape {
 
 type Listener = (settings: BentoSettings) => void;
 
-async function load(): Promise<Partial<BentoSettings>> {
+async function load(): Promise<{
+  overrides: Partial<BentoSettings>;
+  overrideKeys: Set<keyof BentoSettings>;
+}> {
   try {
     const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
     const stored = raw[STORAGE_KEY] as StoredShape | undefined;
-    if (!stored || typeof stored !== 'object') return {};
-    if (stored.version !== VERSION) {
+    if (!stored || typeof stored !== 'object') return { overrides: {}, overrideKeys: new Set() };
+    if (stored.version !== 1 && stored.version !== VERSION) {
       console.warn('[bento-tools] settings: unknown version', stored.version, '— ignoring');
-      return {};
+      return { overrides: {}, overrideKeys: new Set() };
     }
-    return stored.overrides ?? {};
+    const overrides = stored.overrides ?? {};
+    return {
+      overrides,
+      overrideKeys: new Set(Object.keys(overrides) as Array<keyof BentoSettings>),
+    };
   } catch (err) {
     console.error('[bento-tools] settings: load failed', err);
-    return {};
+    return { overrides: {}, overrideKeys: new Set() };
   }
 }
 
 export class SettingsStore {
   #current: BentoSettings = { ...DEFAULT_SETTINGS };
   #listeners = new Set<Listener>();
+  #overrideKeys = new Set<keyof BentoSettings>();
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
   #pendingOverrides: Partial<BentoSettings> | null = null;
 
   async init(): Promise<void> {
-    const overrides = await load();
+    const { overrides, overrideKeys } = await load();
+    this.#overrideKeys = overrideKeys;
     // Content color mode stays an explicit Firefox content override.
     // Profiles from older builds may have 'system' persisted there; map it
     // back to the content default while allowing uiColorMode='system'.
@@ -84,6 +95,10 @@ export class SettingsStore {
     return () => this.#listeners.delete(listener);
   }
 
+  hasOverride(key: keyof BentoSettings): boolean {
+    return this.#overrideKeys.has(key);
+  }
+
   /** Merge `changes` into current settings + persist + broadcast. No-op if
    * nothing actually changed (referential check on each field). */
   update(changes: Partial<BentoSettings>): void {
@@ -97,6 +112,7 @@ export class SettingsStore {
       // The cast is necessary because TS can't narrow value to the exact
       // field's type when iterating heterogeneous keys.
       (next as Record<keyof BentoSettings, unknown>)[key] = value;
+      this.#overrideKeys.add(key);
       dirty = true;
     }
     if (!dirty) return;
@@ -108,6 +124,7 @@ export class SettingsStore {
   /** Restore all settings to defaults. */
   reset(): void {
     this.#current = { ...DEFAULT_SETTINGS };
+    this.#overrideKeys.clear();
     this.#schedulePersist();
     this.#broadcast();
   }
@@ -129,6 +146,7 @@ export class SettingsStore {
         (overrides as Record<keyof BentoSettings, unknown>)[key] = value;
       }
     }
+    this.#overrideKeys = new Set(Object.keys(overrides) as Array<keyof BentoSettings>);
     this.#pendingOverrides = overrides;
     if (this.#saveTimer) return;
     this.#saveTimer = setTimeout(() => {

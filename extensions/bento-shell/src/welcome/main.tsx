@@ -23,6 +23,9 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog } from '@tale-ui/react/dialog';
 import { Button } from '@tale-ui/react/button';
+import { Select } from '@tale-ui/react/select';
+import { ToggleButtonGroup } from '@tale-ui/react/toggle-group';
+import { ToggleButton } from '@tale-ui/react/toggle-button';
 import { Text } from '@tale-ui/react/text';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
@@ -35,15 +38,24 @@ import Grid3X3 from 'lucide-react/dist/esm/icons/grid-3x3';
 import Monitor from 'lucide-react/dist/esm/icons/monitor';
 import Moon from 'lucide-react/dist/esm/icons/moon';
 import PanelsTopLeft from 'lucide-react/dist/esm/icons/panels-top-left';
+import Search from 'lucide-react/dist/esm/icons/search';
+import Shield from 'lucide-react/dist/esm/icons/shield';
 import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
 import Sun from 'lucide-react/dist/esm/icons/sun';
 import Workflow from 'lucide-react/dist/esm/icons/workflow';
-import type { UiColorModePref } from '@shared/protocol';
+import type {
+  SearchEngineId,
+  SelectablePrivacyProtectionLevel,
+  UiColorModePref,
+} from '@shared/protocol';
+import { PRIVACY_LEVELS, PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 
 import '@tale-ui/core';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/button';
+import '@tale-ui/react-styles/select';
+import '@tale-ui/react-styles/toggle-button';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/icon';
@@ -61,6 +73,7 @@ import {
   WELCOME_IMPORT_BROWSER_DATA_PREFIX,
 } from '../bridge/useWelcome';
 import { useSettingsStore } from '../state/settings';
+import { usePrivacyStore } from '../state/privacy';
 import './welcome.css';
 
 initToolsPort();
@@ -90,7 +103,7 @@ type ThemeModeOption = {
   icon: typeof Sun;
 };
 type OnboardingStep = {
-  id: 'intro' | 'import' | 'workspaces' | 'panels' | 'finish';
+  id: 'intro' | 'import' | 'privacy' | 'search' | 'workspaces' | 'panels' | 'finish';
   eyebrow: string;
   title: string;
   description: string;
@@ -133,6 +146,34 @@ const ONBOARDING_STEPS: readonly OnboardingStep[] = [
       ['History', 'Recent trails'],
       ['Passwords', 'Logins'],
       ['Profiles', 'Firefox and Zen'],
+    ],
+  },
+  {
+    id: 'privacy',
+    eyebrow: 'Privacy',
+    title: 'Choose a protection level',
+    description:
+      "Standard is Bento's compatibility-first default. Enhanced and Hardened add stricter browser protections.",
+    icon: Shield,
+    boxes: [
+      ['Standard', 'Compatibility-first'],
+      ['Enhanced', 'HTTPS-only and RFP'],
+      ['Hardened', 'Reduced persistence'],
+      ['Custom', 'Detected later in Settings'],
+    ],
+  },
+  {
+    id: 'search',
+    eyebrow: 'Search',
+    title: 'Choose default search',
+    description:
+      'Fresh profiles start with DuckDuckGo. You can switch to any visible Firefox search engine now or later.',
+    icon: Search,
+    boxes: [
+      ['Default', 'DuckDuckGo'],
+      ['Providers', 'Firefox visible engines'],
+      ['Names', 'From SearchService'],
+      ['Settings', 'Change later'],
     ],
   },
   {
@@ -304,16 +345,163 @@ function ThemeModePicker({
   );
 }
 
+function firstSelectedKey(keys: unknown): string | null {
+  if (keys === 'all') return null;
+  if (!(keys instanceof Set)) return null;
+  const first = Array.from(keys)[0];
+  return typeof first === 'string' ? first : null;
+}
+
+function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel | undefined }) {
+  const current = value ?? 'standard';
+  const detail = PRIVACY_LEVEL_DETAILS[current];
+
+  return (
+    <Column gap="xs" className="bento-welcome__choice">
+      <ToggleButtonGroup
+        aria-label="Privacy protection level"
+        selectionMode="single"
+        selectedKeys={new Set([current])}
+        onSelectionChange={(keys) => {
+          const next = firstSelectedKey(keys);
+          if (!next) return;
+          dispatch({
+            type: 'privacy/setProtectionLevel',
+            level: next as SelectablePrivacyProtectionLevel,
+          });
+        }}
+      >
+        {PRIVACY_LEVELS.map((level) => (
+          <ToggleButton id={level.id} key={level.id} size="md">
+            {level.label}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+      <Column gap="2xs" className="bento-welcome__privacy-summary">
+        <Text variant="label" size="s">
+          {detail.label}
+        </Text>
+        <Text variant="text" size="s" color="muted">
+          {detail.bestFor}
+        </Text>
+        <Text variant="text" size="s" color="muted">
+          Benefit: {detail.benefits[0]}
+        </Text>
+        <Text variant="text" size="s" color="muted">
+          Caveat: {detail.caveats[0]}
+        </Text>
+      </Column>
+    </Column>
+  );
+}
+
+const PRIVACY_ORIENTED_SEARCH_MATCHERS = [
+  'duckduckgo',
+  'ddg',
+  'qwant',
+  'ecosia',
+  'startpage',
+  'brave',
+] as const;
+
+function isPrivacyOrientedSearchEngine(engine: { id: string; name: string }) {
+  const haystack = `${engine.id} ${engine.name}`.toLowerCase();
+  return PRIVACY_ORIENTED_SEARCH_MATCHERS.some((matcher) => haystack.includes(matcher));
+}
+
+function SearchPrivacyRecommendation({
+  availableSearchEngines,
+}: {
+  availableSearchEngines: readonly { id: SearchEngineId; name: string }[];
+}) {
+  if (availableSearchEngines.length === 0) {
+    return (
+      <Text variant="text" size="s" color="muted">
+        Loading Firefox search engines…
+      </Text>
+    );
+  }
+
+  const recommended = availableSearchEngines.filter(isPrivacyOrientedSearchEngine);
+  if (recommended.length === 0) {
+    return (
+      <Text variant="text" size="s" color="muted">
+        For privacy, prefer a provider with minimal profiling and clear retention limits. Bento uses
+        Firefox&rsquo;s visible search engines without adding its own provider list.
+      </Text>
+    );
+  }
+
+  const names = recommended.map((engine) => engine.name).join(', ');
+  return (
+    <Text variant="text" size="s" color="muted">
+      Recommended for privacy: {names}. These are generally better choices when you want less search
+      profiling; choose another engine when account integration or result preference matters more.
+    </Text>
+  );
+}
+
+function SearchEnginePicker({
+  value,
+  availableSearchEngines,
+}: {
+  value: SearchEngineId | undefined;
+  availableSearchEngines: readonly { id: SearchEngineId; name: string }[];
+}) {
+  const [optimisticValue, setOptimisticValue] = useState<SearchEngineId | undefined>();
+  const selectedKey = optimisticValue ?? value ?? 'ddg';
+
+  useEffect(() => {
+    setOptimisticValue(undefined);
+  }, [value]);
+
+  return (
+    <Column gap="xs" className="bento-welcome__choice">
+      <Select.Root
+        placeholder="Select search engine"
+        selectedKey={selectedKey}
+        onSelectionChange={(key) => {
+          if (typeof key !== 'string') return;
+          const next = key as SearchEngineId;
+          setOptimisticValue(next);
+          dispatch({ type: 'privacy/setDefaultSearchEngine', id: next });
+        }}
+      >
+        <Select.Label>Default search engine</Select.Label>
+        <Select.Trigger>
+          <Select.Value />
+          <Select.Icon />
+        </Select.Trigger>
+        <Select.Popover>
+          <Select.ListBox>
+            {availableSearchEngines.map((engine) => (
+              <Select.Item id={engine.id} textValue={engine.name} key={engine.id}>
+                {engine.name}
+              </Select.Item>
+            ))}
+          </Select.ListBox>
+        </Select.Popover>
+      </Select.Root>
+      <SearchPrivacyRecommendation availableSearchEngines={availableSearchEngines} />
+    </Column>
+  );
+}
+
 function WelcomeApp() {
   useFirefoxTheme();
   useWorkspaceTheme();
   const welcomeSeen = useSettingsStore((s) => s.current?.welcomeSeen);
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
+  const privacyProtectionLevel = useSettingsStore((s) => s.current?.privacyProtectionLevel);
+  const defaultSearchEngine = useSettingsStore((s) => s.current?.defaultSearchEngine);
+  const privacy = usePrivacyStore((s) => s.settings);
   const [stepIndex, setStepIndex] = useState(readStoredStep);
   const hasRequestedOpenRef = useRef(false);
   const activeStep = ONBOARDING_STEPS[stepIndex] ?? ONBOARDING_STEPS[0]!;
   const isIntro = stepIndex === 0;
   const isImport = activeStep.id === 'import';
+  const isPrivacy = activeStep.id === 'privacy';
+  const isSearch = activeStep.id === 'search';
   const isFinish = stepIndex === ONBOARDING_STEPS.length - 1;
 
   const setUiColorMode = (next: UiColorModePref) =>
@@ -329,6 +517,12 @@ function WelcomeApp() {
     if (isFinish) {
       close();
       return;
+    }
+    if (isPrivacy) {
+      dispatch({
+        type: 'privacy/setProtectionLevel',
+        level: privacyProtectionLevel ?? 'standard',
+      });
     }
     setStep(stepIndex + 1);
   };
@@ -348,6 +542,10 @@ function WelcomeApp() {
     hasRequestedOpenRef.current = true;
     requestWelcome();
   }, [welcomeSeen]);
+
+  useEffect(() => {
+    dispatch({ type: 'privacy/requestSnapshot' });
+  }, []);
 
   return (
     <Dialog.Root isOpen={true}>
@@ -376,6 +574,13 @@ function WelcomeApp() {
                 <Dialog.Title>{activeStep.title}</Dialog.Title>
                 <Dialog.Description>{activeStep.description}</Dialog.Description>
                 {isIntro ? <ThemeModePicker value={uiColorMode} onChange={setUiColorMode} /> : null}
+                {isPrivacy ? <PrivacyLevelPicker value={privacyProtectionLevel} /> : null}
+                {isSearch ? (
+                  <SearchEnginePicker
+                    value={privacy?.defaultSearchEngine ?? defaultSearchEngine}
+                    availableSearchEngines={privacy?.availableSearchEngines ?? []}
+                  />
+                ) : null}
               </Column>
             </div>
           </Column>

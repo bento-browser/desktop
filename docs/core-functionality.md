@@ -21,10 +21,12 @@ migrator runs before the new profile is initialized. Choosing the Firefox/Zen
 action restarts into the startup migration wizard scoped to the detected
 Firefox and Zen profiles and preselected on them, rather than a generic picker
 defaulted to another browser. This is separate from the additive Bento backup
-import flow. The first onboarding step also lets the user
-choose Bento's UI theme mode: Light, Dark, or Auto; fresh profiles default to
-Light. The onboarding overlay is not dismissed by clicking the scrim or pressing
-Esc, and the user exits it only from the final step.
+import flow. The first onboarding step also lets the user choose Bento's UI
+theme mode: Light, Dark, or Auto; fresh profiles default to Light. After import,
+onboarding asks for a privacy protection level and default search engine. Fresh
+profiles default to Standard privacy and DuckDuckGo search. The onboarding
+overlay is not dismissed by clicking the scrim or pressing Esc, and the user
+exits it only from the final step.
 
 ## Core model
 
@@ -250,6 +252,37 @@ The theme system should support:
 The goal is not decorative skinning alone. Themes should help users recognize
 the active workspace quickly and make long-lived browsing contexts comfortable
 to use.
+
+### Privacy And Search
+
+Bento exposes privacy as a first-class browser setting instead of hiding it
+behind `about:config`. The selectable protection levels are:
+
+- Standard: compatibility-first Bento defaults with strict Firefox tracking
+  protection, tracker-cookie partitioning, Global Privacy Control, query
+  stripping, remote search suggestions off, speculative networking off, local
+  Safe Browsing checks on, remote download checks off, uBlock Origin enabled,
+  and DuckDuckGo as the fresh-profile search default.
+- Enhanced: Standard plus HTTPS-only mode, resist fingerprinting, and tighter
+  WebRTC IP handling.
+- Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
+  disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
+  Browsing off, and cookies/site data/cache cleared on shutdown.
+
+Custom is a detected state, not a selectable preset. Bento shows Custom when
+the live browser settings no longer exactly match Standard, Enhanced, or
+Hardened.
+
+Settings includes a privacy level selector, default search engine selector, and
+advanced privacy controls for the main browser-level levers. Settings also
+shows the benefits and caveats for Standard, Enhanced, and Hardened so users can
+compare compatibility impact before switching. The first-run onboarding privacy
+step shows a compact benefit/caveat explanation for the selected level. The
+search choices shown in onboarding and Settings are Firefox's currently visible
+search engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding
+search step adds supporting text that calls out visible privacy-oriented search
+engines when Firefox exposes them. Bento bundles uBlock Origin enabled by
+default and leaves it removable/disableable by the user.
 
 ## Design principles
 

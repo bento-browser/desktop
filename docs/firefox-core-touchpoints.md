@@ -182,25 +182,73 @@ Use this shape for new or changed touchpoints:
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-05-30
+- Last updated: 2026-06-07
 - Files or patches:
   - `prefs/bento.js`
+  - `engine/services/settings/dumps/main/search-config-v2.json`
+  - `engine/third_party/application-services/components/remote_settings/dumps/main/search-config-v2.json`
   - `surfer.json`
   - `configs/**`
   - `patches/experiments/**`
-- Bento functionality: applies Bento defaults, branding, build configuration,
-  and temporary Firefox-source build guards needed by the local Surfer-based
-  fork.
+- Bento functionality: applies Bento defaults, DuckDuckGo fresh-profile search,
+  Firefox-visible search options for Bento onboarding and Settings, branding,
+  build configuration, and temporary Firefox-source build guards needed by the
+  local Surfer-based fork. Privacy defaults include strict
+  tracking protection, tracker-cookie partitioning, Global Privacy Control,
+  query stripping, speculative networking off, remote search suggestions off,
+  local Safe Browsing on, remote Safe Browsing download checks off, DoH disabled,
+  and AI/remote suggestion surfaces disabled.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
-  branding import paths, build configuration, and patched build/runtime behavior
-  covered by `patches/experiments`.
+  search service Remote Settings dumps, branding import paths, build
+  configuration, and patched build/runtime behavior covered by
+  `patches/experiments`.
 - Why this cannot stay extension-only: prefs, branding, and build behavior are
-  consumed before or outside the privileged extension runtime.
-- Firefox update risk: upstream pref renames, branding layout changes, build
-  system changes, or obsolete temporary patches can silently stop applying or
-  block security update rebases.
+  consumed before or outside the privileged extension runtime. Fresh-profile
+  default search is resolved by Firefox search configuration before Bento's
+  extension UI can safely mutate it.
+- Firefox update risk: upstream pref renames, search config schema changes,
+  branding layout changes, build system changes, or obsolete temporary patches
+  can silently stop applying or block security update rebases.
 - Regression checks for future updates: run `npm run build`, confirm
   `scripts/append-prefs.sh` still appends `prefs/bento.js`, inspect branding in
-  the built app, and re-evaluate whether each experiment patch is still needed.
+  the built app, confirm fresh-profile omnibar search uses DuckDuckGo, inspect
+  `about:config` for the Standard privacy defaults, confirm Firefox-visible
+  search engines can be selected as default search in onboarding and Settings,
+  and re-evaluate whether each experiment patch is still needed.
 - Rollback or migration notes: remove temporary experiment patches as soon as
   upstream or Surfer no longer requires them.
+
+### Built-In Extension Copy Surface
+
+- Status: Active
+- Last updated: 2026-06-07
+- Files or patches:
+  - `/Users/admin/Projects/surfer/src/commands/patches/extensions-copy.ts`
+  - `extensions/ublock-origin/.bento-runtime-entries.json`
+  - `extensions/bento-tools/experiments/bento-privacy/**`
+- Bento functionality: packages Bento's privileged built-in extensions and the
+  bundled uBlock Origin extension into Firefox's `builtin-addons/` runtime
+  location. The Surfer copy step now lets an extension declare a per-extension
+  runtime entry list so uBlock Origin keeps its required `js/`, `css/`, `lib/`,
+  `assets/`, locale, and HTML entry files without broadening the copy surface of
+  Bento's own source-based extensions.
+- Vanilla Firefox surface touched or depended on: Firefox built-in add-on
+  loading from `browser/extensions`, generated `jar.mn`, generated per-extension
+  `moz.build`, and `browser/extensions/moz.build` registration.
+- Why this cannot stay extension-only: built-in add-ons must be copied into
+  Firefox's source tree before the Firefox build packages them; normal runtime
+  WebExtension installation cannot provide Bento's bundled default add-ons.
+- Firefox update risk: upstream changes to built-in add-on packaging, jar
+  manifest handling, add-on manifest validation, or Firefox's extension
+  bootstrap rules can stop bento-tools, bento-shell, or uBlock Origin from
+  loading.
+- Regression checks for future updates: run `pnpm run ext:build` and
+  `pnpm run import`, confirm `engine/browser/extensions/bento-tools/jar.mn`
+  includes `experiments/bento-privacy`, confirm
+  `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
+  `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
+  shows Bento Tools, Bento Shell, and uBlock Origin.
+- Rollback or migration notes: if uBlock Origin is removed, remove
+  `extensions/ublock-origin/` and its runtime-entry file. If Surfer upstream
+  adopts a native equivalent, migrate to that and remove Bento-specific copy
+  handling.

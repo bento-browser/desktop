@@ -16,6 +16,7 @@ import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { BackupStore } from './backup/BackupStore';
 import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
+import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
@@ -508,6 +509,16 @@ const bootReady = Promise.all([
   // via settings.onChange below. Fire-and-forget: if the API errors
   // (rare), the user can re-toggle to retry.
   void applyContentColorMode(settings.snapshot().contentColorMode);
+  if (settings.hasOverride('privacyProtectionLevel')) {
+    void applyPrivacyLevel(settings.snapshot().privacyProtectionLevel).catch((err) =>
+      console.warn('[bento-tools] boot privacy level apply failed:', err),
+    );
+  }
+  if (settings.hasOverride('defaultSearchEngine')) {
+    void setDefaultSearchEngine(settings.snapshot().defaultSearchEngine).catch((err) =>
+      console.warn('[bento-tools] boot default search apply failed:', err),
+    );
+  }
   let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;
   let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
     settings.snapshot().sidebarCollapsed;

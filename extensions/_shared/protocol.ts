@@ -205,10 +205,34 @@ export interface BentoSettings {
   autoBackupIntervalMinutes: number;
   /** Maximum number of automatic backups to retain (FIFO). */
   autoBackupMaxCount: number;
+  /** Bento privacy preset selected by the user. `custom` is computed in the
+   * live privacy snapshot and is never stored here. */
+  privacyProtectionLevel: SelectablePrivacyProtectionLevel;
+  /** Default search engine id for the fresh-profile search bundle. */
+  defaultSearchEngine: SearchEngineId;
 }
 
 export type ColorModePref = 'light' | 'dark';
 export type UiColorModePref = ColorModePref | 'system';
+export type PrivacyProtectionLevel = 'standard' | 'enhanced' | 'hardened' | 'custom';
+export type SelectablePrivacyProtectionLevel = Exclude<PrivacyProtectionLevel, 'custom'>;
+export type SearchEngineId = string;
+export type PrivacyAdvancedKey =
+  | 'safeBrowsingEnabled'
+  | 'drmEnabled'
+  | 'sanitizeOnShutdown'
+  | 'resistFingerprinting'
+  | 'letterboxing'
+  | 'networkPrediction'
+  | 'peerConnection'
+  | 'webRTCIPHandlingPolicy'
+  | 'httpsOnlyMode'
+  | 'searchSuggestionsEnabled'
+  | 'diskCacheEnabled'
+  | 'webglEnabled'
+  | 'webgpuEnabled'
+  | 'passwordSavingEnabled'
+  | 'formHistoryEnabled';
 
 export type SubdivisionMode = 'single' | 'dual';
 
@@ -459,6 +483,9 @@ export type Action =
    * change without user action — the dashboard re-requests after any
    * write it dispatches). */
   | { type: 'privacy/requestSnapshot' }
+  | { type: 'privacy/setProtectionLevel'; level: SelectablePrivacyProtectionLevel }
+  | { type: 'privacy/setAdvanced'; key: PrivacyAdvancedKey; value: boolean | string }
+  | { type: 'privacy/setDefaultSearchEngine'; id: SearchEngineId }
   | { type: 'addrbar/query'; query: string; limit?: number }
   /** Update one privacy field. Tools writes via browser.privacy.* then
    * replies with a fresh privacy/snapshot. Per-field instead of a bulk
@@ -547,9 +574,24 @@ export type PinnedPanelDelta =
  * browser.privacy.* and refreshed after every privacy/set* action.
  * Only fields that have a Bento-side toggle. */
 export interface PrivacySettings {
+  protectionLevel: PrivacyProtectionLevel;
+  defaultSearchEngine: SearchEngineId;
+  availableSearchEngines: Array<{ id: SearchEngineId; name: string; isDefault: boolean }>;
+  safeBrowsingEnabled: boolean;
+  drmEnabled: boolean;
+  sanitizeOnShutdown: boolean;
   resistFingerprinting: boolean;
+  letterboxing: boolean;
   networkPrediction: boolean;
   peerConnection: boolean;
+  webRTCIPHandlingPolicy: string;
+  httpsOnlyMode: string;
+  searchSuggestionsEnabled: boolean;
+  diskCacheEnabled: boolean;
+  webglEnabled: boolean;
+  webgpuEnabled: boolean;
+  passwordSavingEnabled: boolean;
+  formHistoryEnabled: boolean;
 }
 
 export interface AddrResult {

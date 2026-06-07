@@ -1,0 +1,63 @@
+[
+  {
+    "namespace": "bentoPrivacy",
+    "functions": [
+      {
+        "name": "getPrefs",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "names",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        ]
+      },
+      {
+        "name": "setPrefs",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "values",
+            "type": "object",
+            "additionalProperties": {
+              "choices": [{ "type": "boolean" }, { "type": "integer" }, { "type": "string" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "clearPrefs",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "names",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        ]
+      },
+      {
+        "name": "getSearchEngines",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
+        "name": "getDefaultSearchEngine",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
+        "name": "setDefaultSearchEngine",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "id", "type": "string" }]
+      }
+    ]
+  }
+]

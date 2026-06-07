@@ -6,7 +6,7 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
-import type { Action, Event, PrivacySettings, WireAction } from '@shared/protocol';
+import type { Action, Event, WireAction } from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
@@ -18,24 +18,16 @@ import { clearPanelMarker } from '../panels/SessionMarker';
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
 import { searchAddressResults } from '../search/AddressSearch';
+import {
+  applyAdvancedSetting,
+  applyPrivacyLevel,
+  readPrivacySnapshot,
+  setDefaultSearchEngine,
+} from '../privacy/ProtectionLevels';
 
-// Read the three Bento-exposed privacy fields in parallel and broadcast a
-// snapshot. browser.privacy.* setters return Promise<void> but reading via
-// `.get({})` returns the live value — that's the supported shape.
-// Tracking protection is intentionally excluded — Firefox's own
-// about:preferences#privacy is the source of truth for that pref.
 async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   try {
-    const [rfp, np, pc] = await Promise.all([
-      browser.privacy.websites.resistFingerprinting.get({}),
-      browser.privacy.network.networkPredictionEnabled.get({}),
-      browser.privacy.network.peerConnectionEnabled.get({}),
-    ]);
-    const privacy: PrivacySettings = {
-      resistFingerprinting: rfp.value as boolean,
-      networkPrediction: np.value as boolean,
-      peerConnection: pc.value as boolean,
-    };
+    const privacy = await readPrivacySnapshot();
     ctx.send({ type: 'privacy/snapshot', privacy });
   } catch (err) {
     console.warn('[bento-tools] emitPrivacySnapshot failed:', err);
@@ -768,6 +760,12 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     case 'settings/reset':
       ctx.settings.reset();
+      void applyPrivacyLevel(ctx.settings.snapshot().privacyProtectionLevel)
+        .catch((err) => console.warn('[bento-tools] settings/reset privacy apply failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      void setDefaultSearchEngine(ctx.settings.snapshot().defaultSearchEngine)
+        .catch((err) => console.warn('[bento-tools] settings/reset search apply failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'panel/add': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
@@ -1140,6 +1138,23 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);
       return;
+    case 'privacy/setProtectionLevel':
+      void applyPrivacyLevel(action.level)
+        .then(() => ctx.settings.update({ privacyProtectionLevel: action.level }))
+        .catch((err) => console.warn('[bento-tools] privacy/setProtectionLevel failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setAdvanced':
+      void applyAdvancedSetting(action.key, action.value)
+        .catch((err) => console.warn('[bento-tools] privacy/setAdvanced failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setDefaultSearchEngine':
+      void setDefaultSearchEngine(action.id)
+        .then(() => ctx.settings.update({ defaultSearchEngine: action.id }))
+        .catch((err) => console.warn('[bento-tools] privacy/setDefaultSearchEngine failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
     case 'addrbar/query':
       void (async () => {
         try {
@@ -1152,20 +1167,17 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       })();
       return;
     case 'privacy/setResistFingerprinting':
-      browser.privacy.websites.resistFingerprinting
-        .set({ value: action.enabled })
+      applyAdvancedSetting('resistFingerprinting', action.enabled)
         .catch((err) => console.warn('[bento-tools] privacy/setResistFingerprinting failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setNetworkPrediction':
-      browser.privacy.network.networkPredictionEnabled
-        .set({ value: action.enabled })
+      applyAdvancedSetting('networkPrediction', action.enabled)
         .catch((err) => console.warn('[bento-tools] privacy/setNetworkPrediction failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setPeerConnection':
-      browser.privacy.network.peerConnectionEnabled
-        .set({ value: action.enabled })
+      applyAdvancedSetting('peerConnection', action.enabled)
         .catch((err) => console.warn('[bento-tools] privacy/setPeerConnection failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
