@@ -3,12 +3,21 @@
 @layer bento.components {
   .bento-address-bar__popup {
     width: min(64rem, 92vw);
-    max-height: min(42rem, 74vh);
+    height: min(42rem, 74vh);
     display: flex;
     flex-direction: column;
     padding: var(--space-2xs);
     gap: var(--space-2xs);
+    overflow: hidden;
     transform: translateY(-14vh);
+  }
+
+  .bento-address-bar__autocomplete {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: var(--space-2xs);
   }
 
   .bento-address-bar__sr-only {

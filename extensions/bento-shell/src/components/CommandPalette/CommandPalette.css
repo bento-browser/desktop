@@ -4,10 +4,19 @@
 @layer bento.components {
   .bento-command-palette__popup {
     width: min(60rem, 90vw);
-    max-height: min(48rem, 80vh);
+    height: min(48rem, 80vh);
     display: flex;
     flex-direction: column;
     padding: var(--space-2xs);
+    gap: var(--space-2xs);
+    overflow: hidden;
+  }
+
+  .bento-command-palette__autocomplete {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
     gap: var(--space-2xs);
   }
 

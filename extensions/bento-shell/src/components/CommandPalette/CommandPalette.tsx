@@ -318,34 +318,39 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
             <span className="bento-command-palette__sr-only">Command palette</span>
           </Dialog.Title>
           <Autocomplete.Root filter={contains}>
-            <Autocomplete.SearchField aria-label="Search commands">
-              <Autocomplete.Input
-                placeholder="Type a command, tab, or workspace…"
-                className="bento-command-palette__input"
-                autoFocus
-              />
-            </Autocomplete.SearchField>
-            <Autocomplete.ListBox aria-label="Commands" className="bento-command-palette__listbox">
-              {Array.from(grouped.entries()).map(([section, cmds]) => (
-                <Autocomplete.Section key={section}>
-                  <Autocomplete.Header>{section}</Autocomplete.Header>
-                  {cmds.map((c) => (
-                    <Autocomplete.Item
-                      key={c.id}
-                      id={c.id}
-                      textValue={c.label}
-                      onAction={c.run}
-                      className="bento-command-palette__item"
-                    >
-                      <Icon icon={c.icon} size="sm" />
-                      <Text variant="text" size="s">
-                        {c.label}
-                      </Text>
-                    </Autocomplete.Item>
-                  ))}
-                </Autocomplete.Section>
-              ))}
-            </Autocomplete.ListBox>
+            <div className="bento-command-palette__autocomplete">
+              <Autocomplete.SearchField aria-label="Search commands">
+                <Autocomplete.Input
+                  placeholder="Type a command, tab, or workspace…"
+                  className="bento-command-palette__input"
+                  autoFocus
+                />
+              </Autocomplete.SearchField>
+              <Autocomplete.ListBox
+                aria-label="Commands"
+                className="bento-command-palette__listbox"
+              >
+                {Array.from(grouped.entries()).map(([section, cmds]) => (
+                  <Autocomplete.Section key={section}>
+                    <Autocomplete.Header>{section}</Autocomplete.Header>
+                    {cmds.map((c) => (
+                      <Autocomplete.Item
+                        key={c.id}
+                        id={c.id}
+                        textValue={c.label}
+                        onAction={c.run}
+                        className="bento-command-palette__item"
+                      >
+                        <Icon icon={c.icon} size="sm" />
+                        <Text variant="text" size="s">
+                          {c.label}
+                        </Text>
+                      </Autocomplete.Item>
+                    ))}
+                  </Autocomplete.Section>
+                ))}
+              </Autocomplete.ListBox>
+            </div>
           </Autocomplete.Root>
         </Dialog.Popup>
       </Dialog.Backdrop>

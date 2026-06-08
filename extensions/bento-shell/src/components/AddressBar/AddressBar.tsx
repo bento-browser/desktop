@@ -259,81 +259,83 @@ export default function AddressBar({
         <Dialog.Popup className="bento-address-bar__popup">
           <Dialog.Title className="bento-address-bar__sr-only">Address bar</Dialog.Title>
           <Autocomplete.Root key={openVersion} filter={contains}>
-            <Autocomplete.SearchField aria-label="Search or enter address">
-              <Autocomplete.Input
-                placeholder="Search or enter address"
-                className="bento-address-bar__input"
-                autoFocus
-                defaultValue={initialQuery}
-                onInput={(event) => setQuery(event.currentTarget.value)}
-              />
-            </Autocomplete.SearchField>
-            <Autocomplete.ListBox
-              aria-label="Address bar results"
-              className="bento-address-bar__listbox"
-            >
-              {tabRows.length > 0 ? (
-                <Autocomplete.Section>
-                  <Autocomplete.Header>Open Tabs</Autocomplete.Header>
-                  {tabRows.map((row) => (
+            <div className="bento-address-bar__autocomplete">
+              <Autocomplete.SearchField aria-label="Search or enter address">
+                <Autocomplete.Input
+                  placeholder="Search or enter address"
+                  className="bento-address-bar__input"
+                  autoFocus
+                  defaultValue={initialQuery}
+                  onInput={(event) => setQuery(event.currentTarget.value)}
+                />
+              </Autocomplete.SearchField>
+              <Autocomplete.ListBox
+                aria-label="Address bar results"
+                className="bento-address-bar__listbox"
+              >
+                {tabRows.length > 0 ? (
+                  <Autocomplete.Section>
+                    <Autocomplete.Header>Open Tabs</Autocomplete.Header>
+                    {tabRows.map((row) => (
+                      <Autocomplete.Item
+                        key={row.id}
+                        id={row.id}
+                        textValue={row.textValue}
+                        onAction={() => runRow(row)}
+                        className="bento-address-bar__item"
+                      >
+                        <ResultRow row={row} />
+                      </Autocomplete.Item>
+                    ))}
+                  </Autocomplete.Section>
+                ) : null}
+                {panelRows.length > 0 ? (
+                  <Autocomplete.Section>
+                    <Autocomplete.Header>Open Panels</Autocomplete.Header>
+                    {panelRows.map((row) => (
+                      <Autocomplete.Item
+                        key={row.id}
+                        id={row.id}
+                        textValue={row.textValue}
+                        onAction={() => runRow(row)}
+                        className="bento-address-bar__item"
+                      >
+                        <ResultRow row={row} />
+                      </Autocomplete.Item>
+                    ))}
+                  </Autocomplete.Section>
+                ) : null}
+                {asyncRows.length > 0 ? (
+                  <Autocomplete.Section>
+                    <Autocomplete.Header>History &amp; Bookmarks</Autocomplete.Header>
+                    {asyncRows.map((row) => (
+                      <Autocomplete.Item
+                        key={row.id}
+                        id={row.id}
+                        textValue={query}
+                        onAction={() => runRow(row)}
+                        className="bento-address-bar__item"
+                      >
+                        <ResultRow row={row} />
+                      </Autocomplete.Item>
+                    ))}
+                  </Autocomplete.Section>
+                ) : null}
+                {syntheticRow ? (
+                  <Autocomplete.Section>
+                    <Autocomplete.Header>Search</Autocomplete.Header>
                     <Autocomplete.Item
-                      key={row.id}
-                      id={row.id}
-                      textValue={row.textValue}
-                      onAction={() => runRow(row)}
+                      id={syntheticRow.id}
+                      textValue={syntheticRow.textValue}
+                      onAction={() => runRow(syntheticRow)}
                       className="bento-address-bar__item"
                     >
-                      <ResultRow row={row} />
+                      <ResultRow row={syntheticRow} />
                     </Autocomplete.Item>
-                  ))}
-                </Autocomplete.Section>
-              ) : null}
-              {panelRows.length > 0 ? (
-                <Autocomplete.Section>
-                  <Autocomplete.Header>Open Panels</Autocomplete.Header>
-                  {panelRows.map((row) => (
-                    <Autocomplete.Item
-                      key={row.id}
-                      id={row.id}
-                      textValue={row.textValue}
-                      onAction={() => runRow(row)}
-                      className="bento-address-bar__item"
-                    >
-                      <ResultRow row={row} />
-                    </Autocomplete.Item>
-                  ))}
-                </Autocomplete.Section>
-              ) : null}
-              {asyncRows.length > 0 ? (
-                <Autocomplete.Section>
-                  <Autocomplete.Header>History &amp; Bookmarks</Autocomplete.Header>
-                  {asyncRows.map((row) => (
-                    <Autocomplete.Item
-                      key={row.id}
-                      id={row.id}
-                      textValue={query}
-                      onAction={() => runRow(row)}
-                      className="bento-address-bar__item"
-                    >
-                      <ResultRow row={row} />
-                    </Autocomplete.Item>
-                  ))}
-                </Autocomplete.Section>
-              ) : null}
-              {syntheticRow ? (
-                <Autocomplete.Section>
-                  <Autocomplete.Header>Search</Autocomplete.Header>
-                  <Autocomplete.Item
-                    id={syntheticRow.id}
-                    textValue={syntheticRow.textValue}
-                    onAction={() => runRow(syntheticRow)}
-                    className="bento-address-bar__item"
-                  >
-                    <ResultRow row={syntheticRow} />
-                  </Autocomplete.Item>
-                </Autocomplete.Section>
-              ) : null}
-            </Autocomplete.ListBox>
+                  </Autocomplete.Section>
+                ) : null}
+              </Autocomplete.ListBox>
+            </div>
           </Autocomplete.Root>
         </Dialog.Popup>
       </Dialog.Backdrop>
