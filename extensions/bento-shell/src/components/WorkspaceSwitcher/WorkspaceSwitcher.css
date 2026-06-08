@@ -55,6 +55,15 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   pointer-events: none;
 }
 
+/* Trigger label optical centering. Tale UI typography utilities are
+ * unlayered, so keep this unlayered too; otherwise .text--body-s keeps
+ * its 1.5 line-height and the glyphs sit high next to the avatar. */
+.tale-text.bento-workspace-switcher__trigger-name {
+  line-height: 1;
+  position: relative;
+  top: 1px;
+}
+
 /* Cap the menu popup so it sits exactly under the trigger's outer width.
  * Tale UI's .tale-menu__popup defaults to `min-width: 16rem;
  * max-width: 32rem; width: max-content` — a long "Delete <very long

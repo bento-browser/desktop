@@ -20,7 +20,7 @@
     padding-inline: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    background-color: var(--neutral-14);
+    background-color: var(--bento-pinned-panels-bg, var(--neutral-14));
     border-right: var(--bento-border-hairline) solid var(--bento-sidebar-divider-color);
   }
 
