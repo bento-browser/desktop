@@ -45,7 +45,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const OUT_PATH = resolve(REPO_ROOT, 'src/browser/base/content/bento-chrome-tokens.css');
 
-// Resolve Tale UI's CSS source dir. Two scenarios:
+// Resolve Tale UI's CSS source dir. Scenarios:
 //   1. Dev (.pnpmfile.cjs rewrites @tale-ui/core to a `link:` of the local
 //      sibling checkout): node_modules/@tale-ui/core/ is a symlink to
 //      ../tale-ui/core/packages/css/. src/ is right there inside it.
@@ -53,17 +53,20 @@ const OUT_PATH = resolve(REPO_ROOT, 'src/browser/base/content/bento-chrome-token
 //      is a real install of the published package. The src/ directory
 //      ships in the npm tarball (Tale UI's package.json points main /
 //      style at src/index.css so the source files are part of "files").
-// Both layouts have node_modules/@tale-ui/core/src/. We walk node_modules
-// directly rather than using require.resolve('@tale-ui/core/package.json')
-// because Node's exports gating blocks deep manifest imports unless the
-// package explicitly lists "./package.json" in exports — Tale UI doesn't.
+// We prefer the bento-shell workspace install because it is the actual
+// consumer of @tale-ui/core. Root node_modules can be a stale hoisted copy
+// when the workspace package is linked to the local Tale UI checkout.
+// We walk node_modules directly rather than using
+// require.resolve('@tale-ui/core/package.json') because Node's exports
+// gating blocks deep manifest imports unless the package explicitly lists
+// "./package.json" in exports — Tale UI doesn't.
 function findTaleUiCss() {
   const candidates = [
-    // Workspace root, where pnpm with node-linker=hoisted places it.
-    resolve(REPO_ROOT, 'node_modules', '@tale-ui', 'core', 'src'),
-    // Per-workspace fallback (older pnpm layouts, or when the root install
-    // hoists differently).
+    // The shell's concrete dependency. In dev this should be the local link;
+    // in release it will be the npm package.
     resolve(REPO_ROOT, 'extensions', 'bento-shell', 'node_modules', '@tale-ui', 'core', 'src'),
+    // Workspace root fallback, where pnpm with node-linker=hoisted may place it.
+    resolve(REPO_ROOT, 'node_modules', '@tale-ui', 'core', 'src'),
     // Last-resort sibling checkout — pre-pnpm-install state, or scripts
     // run before any install.
     resolve(REPO_ROOT, '..', 'tale-ui', 'core', 'packages', 'css', 'src'),

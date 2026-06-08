@@ -30,7 +30,7 @@ import Plus from 'lucide-react/dist/esm/icons/plus';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
-import '@tale-ui/core';
+import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/menu';

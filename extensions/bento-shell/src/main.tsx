@@ -12,7 +12,7 @@ performance.mark('bento.boot');
 // Without this loaded, tokens like --neutral-90 don't have values and
 // dark-mode selectors don't apply. Per-component @tale-ui/react-styles
 // imports use these tokens but don't define them.
-import '@tale-ui/core';
+import '@tale-ui/core/src';
 
 // Tale UI shared primitives — provides the dropdown popup background,
 // dropdown item layout, separator, etc. Per-component CSS files (menu, select,

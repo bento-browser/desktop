@@ -4,7 +4,7 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@tale-ui/core';
+import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/column';

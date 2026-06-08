@@ -1,4 +1,4 @@
-import '@tale-ui/core';
+import '@tale-ui/core/src';
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';

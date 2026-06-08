@@ -34,7 +34,7 @@ import { ColorSwatch } from '@tale-ui/react/color-swatch';
 // implementation into the bundle.
 import type { Color } from 'react-aria-components';
 
-import '@tale-ui/core';
+import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/button';

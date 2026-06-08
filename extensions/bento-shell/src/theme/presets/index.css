@@ -45,13 +45,12 @@
 
 /* Light-mode fg overrides — requires class="tale-ui" on <html> */
 
-:where(html:not([data-color-mode='dark'])) .tale-ui,
-.light .tale-ui {
+html[data-bento-theme='default']:not([data-color-mode='dark']).tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='default']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-100);
   }
 }
@@ -73,18 +72,18 @@
   --neutral-default-40: #bab4af;
   --neutral-default-50: #9e9792;
   --neutral-default-60: #79716b;
-  --neutral-default-70: #625c56;
-  --neutral-default-80: #4c4743;
-  --neutral-default-82: #48433f;
-  --neutral-default-84: #443f3b;
-  --neutral-default-86: #403b37;
-  --neutral-default-88: #3c3734;
-  --neutral-default-90: #383330;
-  --neutral-default-92: #342f2c;
-  --neutral-default-94: #302c29;
-  --neutral-default-96: #2c2825;
-  --neutral-default-98: #282422;
-  --neutral-default-100: #24211e;
+  --neutral-default-70: #655e58;
+  --neutral-default-80: #514b47;
+  --neutral-default-82: #4d4743;
+  --neutral-default-84: #494440;
+  --neutral-default-86: #45403c;
+  --neutral-default-88: #413d39;
+  --neutral-default-90: #3e3936;
+  --neutral-default-92: #3a3632;
+  --neutral-default-94: #36322f;
+  --neutral-default-96: #332f2c;
+  --neutral-default-98: #2f2b28;
+  --neutral-default-100: #2c2825;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -99,10 +98,10 @@
   --brand-40: #cfae80;
   --brand-50: #b78f52;
   --brand-60: #936400; /* BASE */
-  --brand-70: #795514;
-  --brand-80: #61461b;
-  --brand-90: #48371d;
-  --brand-100: #32291d;
+  --brand-70: #785415;
+  --brand-80: #5e441c;
+  --brand-90: #44351d;
+  --brand-100: #2d261c;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -134,18 +133,18 @@ html[data-bento-theme='antique'][data-color-mode='dark'].tale-ui {
   --neutral-default-40: #cfae80;
   --neutral-default-50: #b78f52;
   --neutral-default-60: #936400;
-  --neutral-default-70: #795514;
-  --neutral-default-80: #61461b;
-  --neutral-default-82: #5c421c;
-  --neutral-default-84: #57401c;
-  --neutral-default-86: #523d1d;
-  --neutral-default-88: #4d3a1d;
-  --neutral-default-90: #48371d;
-  --neutral-default-92: #44341e;
-  --neutral-default-94: #3f311d;
-  --neutral-default-96: #3a2f1d;
-  --neutral-default-98: #362c1d;
-  --neutral-default-100: #32291d;
+  --neutral-default-70: #785415;
+  --neutral-default-80: #5e441c;
+  --neutral-default-82: #58411c;
+  --neutral-default-84: #533e1d;
+  --neutral-default-86: #4e3b1d;
+  --neutral-default-88: #49381e;
+  --neutral-default-90: #44351d;
+  --neutral-default-92: #40321e;
+  --neutral-default-94: #3a2f1d;
+  --neutral-default-96: #362c1d;
+  --neutral-default-98: #31291d;
+  --neutral-default-100: #2d261c;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -160,21 +159,20 @@ html[data-bento-theme='antique'][data-color-mode='dark'].tale-ui {
   --brand-40: #90c080;
   --brand-50: #68a552;
   --brand-60: #317d00; /* BASE */
-  --brand-70: #2d6415;
-  --brand-80: #294c1b;
-  --brand-90: #22351c;
-  --brand-100: #1e1e1e;
+  --brand-70: #2e6714;
+  --brand-80: #2a511b;
+  --brand-90: #253c1c;
+  --brand-100: #20271b;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='forest'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='forest']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -196,18 +194,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #90c080;
   --neutral-default-50: #68a552;
   --neutral-default-60: #317d00;
-  --neutral-default-70: #2d6415;
-  --neutral-default-80: #294c1b;
-  --neutral-default-82: #27471b;
-  --neutral-default-84: #27431c;
-  --neutral-default-86: #263e1d;
-  --neutral-default-88: #243a1c;
-  --neutral-default-90: #22351c;
-  --neutral-default-92: #22311c;
-  --neutral-default-94: #1f2c1b;
-  --neutral-default-96: #20271b;
-  --neutral-default-98: #1c241b;
-  --neutral-default-100: #1e1e1e;
+  --neutral-default-70: #2e6714;
+  --neutral-default-80: #2a511b;
+  --neutral-default-82: #294d1b;
+  --neutral-default-84: #28481b;
+  --neutral-default-86: #27451c;
+  --neutral-default-88: #26401c;
+  --neutral-default-90: #253c1c;
+  --neutral-default-92: #23381c;
+  --neutral-default-94: #23341c;
+  --neutral-default-96: #22301c;
+  --neutral-default-98: #1f2c1b;
+  --neutral-default-100: #20271b;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -222,10 +220,10 @@ html[data-color-mode='dark'] .tale-ui,
   --brand-40: #d9a4b1;
   --brand-50: #c18192;
   --brand-60: #9b5267; /* BASE */
-  --brand-70: #814656;
-  --brand-80: #683947;
-  --brand-90: #4f2e37;
-  --brand-100: #392127;
+  --brand-70: #7f4555;
+  --brand-80: #653845;
+  --brand-90: #4c2b34;
+  --brand-100: #351f26;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -257,18 +255,18 @@ html[data-bento-theme='mauve'][data-color-mode='dark'].tale-ui {
   --neutral-default-40: #d9a4b1;
   --neutral-default-50: #c18192;
   --neutral-default-60: #9b5267;
-  --neutral-default-70: #814656;
-  --neutral-default-80: #683947;
-  --neutral-default-82: #633744;
-  --neutral-default-84: #5e3541;
-  --neutral-default-86: #59323d;
-  --neutral-default-88: #54303a;
-  --neutral-default-90: #4f2e37;
-  --neutral-default-92: #4b2c34;
-  --neutral-default-94: #472931;
-  --neutral-default-96: #42272e;
-  --neutral-default-98: #3d252a;
-  --neutral-default-100: #392127;
+  --neutral-default-70: #7f4555;
+  --neutral-default-80: #653845;
+  --neutral-default-82: #603541;
+  --neutral-default-84: #5b333d;
+  --neutral-default-86: #56303a;
+  --neutral-default-88: #512e37;
+  --neutral-default-90: #4c2b34;
+  --neutral-default-92: #472932;
+  --neutral-default-94: #42272e;
+  --neutral-default-96: #3c252a;
+  --neutral-default-98: #382128;
+  --neutral-default-100: #351f26;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -283,10 +281,10 @@ html[data-bento-theme='mauve'][data-color-mode='dark'].tale-ui {
   --brand-40: #86c0ac;
   --brand-50: #58a58d;
   --brand-60: #007e64; /* BASE */
-  --brand-70: #166854;
-  --brand-80: #1e5445;
-  --brand-90: #204037;
-  --brand-100: #1e2d27;
+  --brand-70: #176753;
+  --brand-80: #1e5243;
+  --brand-90: #1f3c33;
+  --brand-100: #1d2825;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -318,18 +316,18 @@ html[data-bento-theme='mountain-meadow'][data-color-mode='dark'].tale-ui {
   --neutral-default-40: #86c0ac;
   --neutral-default-50: #58a58d;
   --neutral-default-60: #007e64;
-  --neutral-default-70: #166854;
-  --neutral-default-80: #1e5445;
-  --neutral-default-82: #1f4f41;
-  --neutral-default-84: #1f4c3f;
-  --neutral-default-86: #1f483c;
-  --neutral-default-88: #1f4438;
-  --neutral-default-90: #204037;
-  --neutral-default-92: #203c33;
-  --neutral-default-94: #1f3930;
-  --neutral-default-96: #1e342d;
-  --neutral-default-98: #1e312a;
-  --neutral-default-100: #1e2d27;
+  --neutral-default-70: #176753;
+  --neutral-default-80: #1e5243;
+  --neutral-default-82: #1f4d40;
+  --neutral-default-84: #20493d;
+  --neutral-default-86: #204539;
+  --neutral-default-88: #204138;
+  --neutral-default-90: #1f3c33;
+  --neutral-default-92: #1f3930;
+  --neutral-default-94: #1e342d;
+  --neutral-default-96: #1f302b;
+  --neutral-default-98: #1e2d27;
+  --neutral-default-100: #1d2825;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -344,10 +342,10 @@ html[data-bento-theme='mountain-meadow'][data-color-mode='dark'].tale-ui {
   --brand-40: #fd909e;
   --brand-50: #ec6379;
   --brand-60: #c60648; /* BASE */
-  --brand-70: #a2193e;
-  --brand-80: #7f2135;
-  --brand-90: #5e222b;
-  --brand-100: #3d1f22;
+  --brand-70: #a01a3e;
+  --brand-80: #7b2134;
+  --brand-90: #57222a;
+  --brand-100: #361e20;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -379,18 +377,18 @@ html[data-bento-theme='rosewater'][data-color-mode='dark'].tale-ui {
   --neutral-default-40: #fd909e;
   --neutral-default-50: #ec6379;
   --neutral-default-60: #c60648;
-  --neutral-default-70: #a2193e;
-  --neutral-default-80: #7f2135;
-  --neutral-default-82: #782133;
-  --neutral-default-84: #712232;
-  --neutral-default-86: #6b222f;
-  --neutral-default-88: #64222e;
-  --neutral-default-90: #5e222b;
-  --neutral-default-92: #56212a;
-  --neutral-default-94: #502128;
-  --neutral-default-96: #492126;
-  --neutral-default-98: #432025;
-  --neutral-default-100: #3d1f22;
+  --neutral-default-70: #a01a3e;
+  --neutral-default-80: #7b2134;
+  --neutral-default-82: #742131;
+  --neutral-default-84: #6d2230;
+  --neutral-default-86: #65222e;
+  --neutral-default-88: #5e222c;
+  --neutral-default-90: #57222a;
+  --neutral-default-92: #512128;
+  --neutral-default-94: #492126;
+  --neutral-default-96: #432023;
+  --neutral-default-98: #3c1f22;
+  --neutral-default-100: #361e20;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -405,10 +403,10 @@ html[data-bento-theme='rosewater'][data-color-mode='dark'].tale-ui {
   --brand-40: #8cbbca;
   --brand-50: #629fb2;
   --brand-60: #25778d; /* BASE */
-  --brand-70: #236375;
-  --brand-80: #20515e;
-  --brand-90: #1f3e47;
-  --brand-100: #1e2c32;
+  --brand-70: #236274;
+  --brand-80: #1f4f5c;
+  --brand-90: #1f3b43;
+  --brand-100: #1d282c;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -440,18 +438,18 @@ html[data-bento-theme='teal'][data-color-mode='dark'].tale-ui {
   --neutral-default-40: #8cbbca;
   --neutral-default-50: #629fb2;
   --neutral-default-60: #25778d;
-  --neutral-default-70: #236375;
-  --neutral-default-80: #20515e;
-  --neutral-default-82: #1f4d5a;
-  --neutral-default-84: #1f4955;
-  --neutral-default-86: #204651;
-  --neutral-default-88: #1f414b;
-  --neutral-default-90: #1f3e47;
-  --neutral-default-92: #203a43;
-  --neutral-default-94: #1f373f;
-  --neutral-default-96: #1f333a;
-  --neutral-default-98: #1e3034;
-  --neutral-default-100: #1e2c32;
+  --neutral-default-70: #236274;
+  --neutral-default-80: #1f4f5c;
+  --neutral-default-82: #1e4a57;
+  --neutral-default-84: #1f4753;
+  --neutral-default-86: #1f424d;
+  --neutral-default-88: #203f49;
+  --neutral-default-90: #1f3b43;
+  --neutral-default-92: #1f373e;
+  --neutral-default-94: #1f333a;
+  --neutral-default-96: #1e2f35;
+  --neutral-default-98: #1d2b30;
+  --neutral-default-100: #1d282c;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -466,10 +464,10 @@ html[data-bento-theme='teal'][data-color-mode='dark'].tale-ui {
   --brand-40: #e4a081;
   --brand-50: #ce7a52;
   --brand-60: #a64300; /* BASE */
-  --brand-70: #873b11;
-  --brand-80: #6a3317;
-  --brand-90: #4f2b1a;
-  --brand-100: #34221a;
+  --brand-70: #863b12;
+  --brand-80: #673319;
+  --brand-90: #4a291a;
+  --brand-100: #2d201a;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -501,18 +499,18 @@ html[data-bento-theme='terracotta'][data-color-mode='dark'].tale-ui {
   --neutral-default-40: #e4a081;
   --neutral-default-50: #ce7a52;
   --neutral-default-60: #a64300;
-  --neutral-default-70: #873b11;
-  --neutral-default-80: #6a3317;
-  --neutral-default-82: #653118;
-  --neutral-default-84: #5f3019;
-  --neutral-default-86: #5a2e1a;
-  --neutral-default-88: #542c1a;
-  --neutral-default-90: #4f2b1a;
-  --neutral-default-92: #49291a;
-  --neutral-default-94: #44271a;
-  --neutral-default-96: #3e261a;
-  --neutral-default-98: #39241a;
-  --neutral-default-100: #34221a;
+  --neutral-default-70: #863b12;
+  --neutral-default-80: #673319;
+  --neutral-default-82: #613019;
+  --neutral-default-84: #5c2f1a;
+  --neutral-default-86: #562d1a;
+  --neutral-default-88: #502b1a;
+  --neutral-default-90: #4a291a;
+  --neutral-default-92: #44281a;
+  --neutral-default-94: #3e261a;
+  --neutral-default-96: #39241a;
+  --neutral-default-98: #33221a;
+  --neutral-default-100: #2d201a;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
