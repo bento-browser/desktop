@@ -244,9 +244,16 @@ controlled open, disables backdrop and keyboard dismissal, and has no first-step
 skip action; chrome also consumes Esc while welcome is visible without hiding it.
 Only the final `Start browsing` action sets `welcomeSeen=true`.
 When import is selected, the welcome page stores the next onboarding step in
-`localStorage` as `bento-welcome-step` without setting `settings.welcomeSeen=true`,
-signals `BENTO_IMPORT_BROWSER_DATA`, and advances its own step state so the user
-continues onboarding after import closes. `bento-shell-mount.js` responds by
+`browser.storage.local` as `bento-welcome-step` without setting
+`settings.welcomeSeen=true`, waits for that write before signaling
+`BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>`, and advances its own step state so
+the user continues onboarding after import closes. The localStorage mirror is
+only a development fallback because the extension `moz-extension://` origin can
+change across the restart-to-startup-migration path. The chrome frame loader also
+carries the next step through `BENTO_WELCOME_STEP` during the native restart and
+passes it back to `welcome.html` as the `#bentoWelcomeStep` hash value, so the
+post-import step survives Firefox's startup migrator even if extension-origin
+storage was invalidated. `bento-shell-mount.js` responds by
 opening `#bento-embedded-import-frame`, an in-process chrome `browser` that loads
 `chrome://browser/content/bento-migration-host.html`. That static Bento host lives
 under `src/browser/base/content/bento-migration-host.{html,css,js}`, embeds
@@ -268,11 +275,12 @@ their resources copy live profile databases.
 For full Firefox/Zen profile copy, the embedded host exposes an explicit
 Firefox/Zen action that signals `BENTO_RESTART_EMBEDDED_IMPORT`.
 `bento-shell-mount.js` (`restartToBrowserImportFromWelcome`) then sets
-`BENTO_RESTART_TO_MIGRATION=1` and `BENTO_MIGRATION_SCOPE=firefox-zen` and
-restarts Bento. `patches/core-ui/09-bento-firefox-profile-first-run-import.patch`
-consumes the one-time `BENTO_RESTART_TO_MIGRATION` flag in `nsAppRunner.cpp` and
-enters Firefox's native startup migration path before user prefs and the fresh
-profile are initialized. The same patch makes
+`BENTO_RESTART_TO_MIGRATION=1`, `BENTO_MIGRATION_SCOPE=firefox-zen`, and
+`BENTO_WELCOME_STEP=<nextStep>` and restarts Bento.
+`patches/core-ui/09-bento-firefox-profile-first-run-import.patch` consumes the
+one-time `BENTO_RESTART_TO_MIGRATION` flag in `nsAppRunner.cpp` and enters
+Firefox's native startup migration path before user prefs and the fresh profile
+are initialized. The same patch makes
 `MigrationWizardParent.#getMigratorAndProfiles` honor `BENTO_MIGRATION_SCOPE`:
 while `MigrationUtils.isStartupMigration` is true and the scope is `firefox-zen`,
 it returns null for any migrator key other than `firefox`/`zen`, so the startup
@@ -281,10 +289,13 @@ default-selects the first list entry) instead of defaulting to Chrome and
 re-listing the runtime browsers. The generic fallback path
 (`restartToBrowserImportFromWelcome()` with no argument, used when the embedded
 runtime wizard cannot open) sets the scope empty so the startup wizard still
-offers every browser. After migration, onboarding opens again because `welcomeSeen` is
-still false and continues from the stored step when storage is available. Final
-dismiss paths clear the stored step, set `welcomeSeen=true`, and close the
-overlay.
+offers every browser. After migration, onboarding opens again because
+`welcomeSeen` is still false and continues from the stored step. For the
+startup-migration path, the authoritative resume source is the
+`#bentoWelcomeStep` hash that chrome stamps onto the welcome frame after reading
+`BENTO_WELCOME_STEP`; `browser.storage.local` and localStorage are secondary
+resume stores. Final dismiss paths clear the stored step, set `welcomeSeen=true`,
+and close the overlay.
 For local development, `scripts/sync-builtin-addon-symlinks.sh` must refresh
 every built `engine/obj-*` app bundle because `scripts/dev-launch.sh` chooses
 the newest `Bento.app`; otherwise `pnpm run dev:fresh` can launch a stale bundle
@@ -340,9 +351,94 @@ The Firefox/Zen startup handoff uses Firefox's startup-only, profile-copy
 migrator. It can copy the source profile's Places database, favicons, cookies,
 passwords, form history, bookmark backups, dictionary, sync metadata, telemetry
 migration flags, and optionally session data according to Firefox's migrator
-resources. Do not open it automatically at process start and do not route it
-through Bento's Settings backup/import code; that code is additive workspace JSON
-import and has different data-loss semantics.
+resources. For Zen specifically, Bento adds a `SESSION` migration resource that
+reads `zen-sessions.jsonlz4` (falling back to
+`zen-sessions-backup/clean.jsonlz4`), converts Zen `spaces` to Bento workspace
+metadata, writes a fresh compressed `sessionstore.jsonlz4` in the target profile
+with `IOUtils.writeJSON(..., { compress: true })`, and, when a browser window is
+already open, calls `SessionStore.setBrowserState()` so the tabs appear
+immediately after the wizard finishes instead of waiting for a second restart.
+Do not call `SessionMigration.writeState()` for this path; Firefox's
+`SessionMigration.sys.mjs` does not export that helper and the session resource
+will fail with a warning in the import results.
+Converted tabs carry Bento's WebExtension session keys:
+`extension:bento-tools@bento.app:bento.workspaceId` on each tab,
+`extension:bento-tools@bento.app:bento.activeWorkspaceId` on the restored
+window, and `extension:bento-tools@bento.app:bento.importedWorkspaces` on the
+window. `WorkspaceStore` consumes `bento.importedWorkspaces` at boot and can
+adopt it later from live restored window session data; when the only existing
+workspace is the untouched first-run "Personal" default, the imported Zen spaces
+replace that default before being persisted through normal `bento.workspaces`
+storage. `background.ts` retries WebExtension session-value reads for
+session-restored tabs before assigning workspace fallback state, because
+`tabs.onCreated` can fire before restored `extData` is readable. Zen `pinned`
+tabs are imported as pinned Bento tabs. Zen `zenEssential` tabs are imported as
+panel tabs by writing `extension:bento-tools@bento.app:bento.isPanel` plus
+`extension:bento-tools@bento.app:bento.importPinnedPanel` on the restored tab;
+the `bento.isPanel` marker also carries `pinnedPanel: true` so pinning does not
+depend on a second session key racing in. `background.ts` consumes that marker
+when `readPanelMarkerWithRetries()` restores the panel and immediately adds the
+tab to `PinnedPanelsStore`. It also scans already-present tabs with
+`bento.isPanel` markers during boot before the stale-marker sweep, because a
+live `SessionStore.setBrowserState()` import can create tabs before
+`bento-tools` has registered its `tabs.onCreated` listener. The same migrator
+overrides
+Firefox/Zen `brandImage` while running as Bento to use macOS `moz-icon://`
+URLs for installed app bundles (`/Applications` and `~/Applications`) instead
+of Bento's own `chrome://branding` icon. The migration wizard must quote those
+dynamic URLs when assigning CSS `url(...)` values for the dropdown and selected
+source icons; unquoted `moz-icon://file:///...?...` values can render as blank
+icons. `FirefoxProfileMigrator.getSourceProfiles()` also filters the enumerated
+Firefox/Zen profiles through `getMigrateData()` before returning them so empty
+registry entries such as unused `default` profiles are not shown as disabled
+dead selections. Do not open the Firefox/Zen handoff
+automatically at process start and do not route it through Bento's Settings
+backup/import code; that code is additive workspace JSON import and has
+different data-loss semantics.
+
+Confirmed Firefox/Zen import regression fix, 2026-06-09: if the wizard shows
+blank Firefox/Zen icons, offers disabled `default` profile rows, or completes
+with a warning next to `Windows and tabs` while Bento opens into only the empty
+first-run `Personal` workspace, keep the fix in three places. First,
+`FirefoxProfileMigrator.getSourceProfiles()` must filter profile registry rows
+with `getMigrateData(profile)` so empty profile folders never become selectable
+wizard options. Second, Firefox and Zen `brandImage` values must resolve to
+installed macOS app bundle icons through `moz-icon://` URLs built from
+`nsIFileProtocolHandler.getURLSpecFromActualFile()`, and the migration wizard
+must quote those URLs when assigning `style.content` or `backgroundImage`.
+Third, the Zen `SESSION` resource must write the converted Firefox session with
+`IOUtils.writeJSON(targetPath, bentoState, { compress: true })` and then call
+`SessionStore.setBrowserState(JSON.stringify(bentoState))` for live restore.
+Using the non-exported `SessionMigration.writeState()` helper is the known
+failure mode behind the `Windows and tabs` warning. The Bento extension side
+must also keep the restored session markers: `bento.importedWorkspaces` for Zen
+spaces, `bento.workspaceId` for tab ownership, `bento.isPanel` for essentials,
+`bento.isPanel.pinnedPanel` and `bento.importPinnedPanel` so essential tabs
+become pinned panels after `background.ts` consumes the restored marker. Boot
+must scan existing marker-bearing tabs before clearing stale markers; relying
+only on `tabs.onCreated` misses live-restored import tabs when `SessionStore`
+creates them before the background script is ready. That scan must batch retry
+all candidate tabs per attempt; do not call `readPanelMarkerWithRetries()` once
+per tab in series. A large Zen profile can have hundreds of tabs, and serialized
+per-tab retry waits block `bootReady`, leaving the sidebar stuck at
+`Connecting...` while content tabs are already visible.
+
+Confirmed welcome resume regression fix, 2026-06-09: after a successful Zen
+startup import, Bento can restore the Zen tabs/workspaces correctly while the
+welcome overlay still opens on the first "Welcome to Bento" step. The failed
+approach was storage-only resume (`localStorage`, then `browser.storage.local`):
+Firefox's startup migrator can change or invalidate the extension origin/storage
+seen by the post-migration welcome frame. Keep all three resume layers. First,
+`welcome/main.tsx` stores `bento-welcome-step` and sends
+`BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>` so chrome knows the exact next step.
+Second, `bento-shell-mount.js` copies that step into `BENTO_WELCOME_STEP` before
+`Services.startup.quit(... eRestart)`. Third, after restart, chrome consumes
+`BENTO_WELCOME_STEP`, clears it, and loads the welcome frame with
+`#bentoWelcomeStep=<nextStep>`. The welcome page must read that hash before
+extension storage and persist it back into storage for later non-restart
+navigation. Do not remove the hash path just because `browser.storage.local`
+exists; the hash is the piece that survived the confirmed `pnpm run dev:fresh`
+Zen import path.
 
 Backup export/import uses schema v2 in
 `extensions/bento-tools/src/backup/BackupStore.ts`,

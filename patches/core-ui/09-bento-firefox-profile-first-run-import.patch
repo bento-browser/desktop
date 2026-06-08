@@ -4,12 +4,69 @@ index f27344a721..e5f99505fc 100644
 +++ b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 @@ -12,6 +12,7 @@
   */
- 
+
  import { MigrationUtils } from "resource:///modules/MigrationUtils.sys.mjs";
 +import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
- 
+
  import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
- 
+
+@@ -24,5 +25,40 @@ ChromeUtils.defineESModuleGetters(lazy, {
+   SessionMigration: "resource:///modules/sessionstore/SessionMigration.sys.mjs",
++  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+ });
++
++function getInstalledMacAppIconURL(bundleNames) {
++  if (AppConstants.platform != "macosx") {
++    return null;
++  }
++
++  let roots = ["/Applications"];
++  try {
++    let home = Services.dirsvc.get("Home", Ci.nsIFile);
++    let userApplications = home.clone();
++    userApplications.append("Applications");
++    roots.push(userApplications.path);
++  } catch {
++    // The system Applications folder is still worth checking.
++  }
++
++  for (let root of roots) {
++    for (let bundleName of bundleNames) {
++      try {
++        let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
++        file.initWithPath(`${root}/${bundleName}`);
++        if (file.exists() && file.isDirectory()) {
++          let fileHandler = Services.io
++            .getProtocolHandler("file")
++            .QueryInterface(Ci.nsIFileProtocolHandler);
++          return `moz-icon://${fileHandler.getURLSpecFromActualFile(file)}?size=32`;
++        }
++      } catch {
++        // Try the next known bundle name/location.
++      }
++    }
++  }
++  return null;
++}
+
+ /**
+  * Firefox profile migrator. Currently, this class only does "pave over"
+@@ -43,6 +74,15 @@ export class FirefoxProfileMigrator extends MigratorBase {
+   }
+
+   static get brandImage() {
++    if (AppConstants.MOZ_APP_NAME == "bento") {
++      return (
++        getInstalledMacAppIconURL([
++          "Firefox.app",
++          "Firefox Developer Edition.app",
++          "Firefox Nightly.app",
++        ]) ?? "chrome://global/skin/icons/defaultFavicon.svg"
++      );
++    }
+     return "chrome://branding/content/icon128.png";
+   }
+
 @@ -58,6 +59,10 @@ export class FirefoxProfileMigrator extends MigratorBase {
     *   - {nsIFile} rootDir - The root directory of the profile.
     */
@@ -24,7 +81,7 @@ index f27344a721..e5f99505fc 100644
 @@ -81,6 +86,130 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return allProfiles;
    }
- 
+
 +  /**
 +   * Return profiles from Mozilla Firefox's profile registry when Bento is the
 +   * running app. Bento has its own profile registry, so nsIToolkitProfileService
@@ -152,7 +209,29 @@ index f27344a721..e5f99505fc 100644
    async getSourceProfiles() {
      let sorter = (a, b) => {
        return a.name
-@@ -465,3 +594,35 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -89,13 +262,19 @@ export class FirefoxProfileMigrator extends MigratorBase {
+     };
+
+     let profiles = await this.getAllProfiles();
+-
+-    return [...profiles.values()]
++    let sourceProfiles = [...profiles.values()]
+       .map(p => ({
+         id: p.id,
+         name: p.name,
+       }))
+       .sort(sorter);
++    let profilesWithResources = [];
++    for (let profile of sourceProfiles) {
++      if (await this.getMigrateData(profile)) {
++        profilesWithResources.push(profile);
++      }
++    }
++    return profilesWithResources;
+   }
+
+   _getFileObject(dir, fileName) {
+@@ -465,3 +644,309 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return true;
    }
  }
@@ -166,8 +245,66 @@ index f27344a721..e5f99505fc 100644
 +    return "migration-wizard-migrator-display-name-zen";
 +  }
 +
++  static get brandImage() {
++    return (
++      getInstalledMacAppIconURL(["Zen.app", "Zen Browser.app"]) ??
++      "chrome://global/skin/icons/defaultFavicon.svg"
++    );
++  }
++
 +  async getAllProfiles() {
 +    return this._getProfilesFromRegistry(this._getZenDataRoot(), "Zen Browser");
++  }
++
++  getResourcesInternal(sourceProfileDir, currentProfileDir) {
++    let resources = super.getResourcesInternal(sourceProfileDir, currentProfileDir);
++    let zenSessionFile = this._getZenSessionFile(sourceProfileDir);
++    if (!zenSessionFile) {
++      return resources;
++    }
++
++    let types = MigrationUtils.resourceTypes;
++    resources.push({
++      name: "zen-session",
++      type: types.SESSION,
++      migrate: async aCallback => {
++        try {
++          let zenState = await IOUtils.readJSON(zenSessionFile.path, {
++            decompress: true,
++          });
++          let bentoState = this._convertZenSessionToFirefoxSession(zenState);
++          if (!bentoState) {
++            aCallback(true);
++            return;
++          }
++
++          let targetPath = PathUtils.join(
++            currentProfileDir.path,
++            "sessionstore.jsonlz4"
++          );
++          await IOUtils.writeJSON(targetPath, bentoState, {
++            compress: true,
++            tmpPath: `${targetPath}.tmp`,
++          });
++          let liveRestored = await this._restoreZenSessionToLiveBrowser(
++            bentoState
++          );
++          if (!liveRestored) {
++            Services.prefs.setBoolPref(
++              "browser.sessionstore.resume_session_once",
++              true
++            );
++            this._savePrefsToProfile(currentProfileDir);
++          }
++          aCallback(true);
++        } catch (ex) {
++          console.error("Could not import Zen session data", ex);
++          aCallback(false);
++        }
++      },
++    });
++
++    return resources;
 +  }
 +
 +  _getZenDataRoot() {
@@ -186,6 +323,222 @@ index f27344a721..e5f99505fc 100644
 +    }
 +
 +    return dir;
++  }
++
++  _getZenSessionFile(profileDir) {
++    let primary = this._getFileObject(profileDir, "zen-sessions.jsonlz4");
++    if (primary) {
++      return primary;
++    }
++
++    let backupDir = this._getFileObject(profileDir, "zen-sessions-backup");
++    if (!backupDir?.isDirectory()) {
++      return null;
++    }
++    let backup = backupDir.clone();
++    backup.append("clean.jsonlz4");
++    return backup.exists() && backup.isReadable() ? backup : null;
++  }
++
++  async _restoreZenSessionToLiveBrowser(bentoState) {
++    if (!Services.wm.getMostRecentWindow("navigator:browser")) {
++      return false;
++    }
++    try {
++      await lazy.SessionStore.promiseInitialized;
++      lazy.SessionStore.setBrowserState(JSON.stringify(bentoState));
++      if (
++        Services.prefs.prefHasUserValue(
++          "browser.sessionstore.resume_session_once"
++        )
++      ) {
++        Services.prefs.clearUserPref("browser.sessionstore.resume_session_once");
++      }
++      return true;
++    } catch (ex) {
++      console.error("Could not restore Zen session into live browser", ex);
++      return false;
++    }
++  }
++
++  _savePrefsToProfile(profileDir) {
++    let newPrefsFile = profileDir.clone();
++    newPrefsFile.append("prefs.js");
++    Services.prefs.savePrefFile(newPrefsFile);
++  }
++
++  _convertZenSessionToFirefoxSession(zenState) {
++    if (!zenState || typeof zenState != "object") {
++      return null;
++    }
++
++    let zenSpaces = Array.isArray(zenState.spaces) ? zenState.spaces : [];
++    let zenTabs = Array.isArray(zenState.tabs) ? zenState.tabs : [];
++    let now = Date.now();
++    let workspaceByZenId = new Map();
++    let importedWorkspaces = [];
++
++    for (let i = 0; i < zenSpaces.length; i++) {
++      let space = zenSpaces[i];
++      if (!space || typeof space != "object") {
++        continue;
++      }
++      let id =
++        typeof space.uuid == "string" && space.uuid
++          ? space.uuid
++          : `zen-imported-space-${i + 1}`;
++      let name =
++        typeof space.name == "string" && space.name.trim()
++          ? space.name.trim()
++          : `Space ${i + 1}`;
++      let workspace = { id, name, createdAt: now + importedWorkspaces.length };
++      if (typeof space.icon == "string" && space.icon.trim()) {
++        workspace.icon = space.icon.trim();
++      }
++      workspaceByZenId.set(id, workspace);
++      importedWorkspaces.push(workspace);
++    }
++
++    let defaultWorkspace =
++      importedWorkspaces[0] ??
++      {
++        id: "zen-imported-space-1",
++        name: "Zen",
++        createdAt: now,
++      };
++    if (!importedWorkspaces.length) {
++      importedWorkspaces.push(defaultWorkspace);
++    }
++
++    let tabsByWorkspace = new Map(importedWorkspaces.map(w => [w.id, []]));
++    for (let tab of zenTabs) {
++      let converted = this._convertZenTab(tab);
++      if (!converted) {
++        continue;
++      }
++      let workspaceId =
++        typeof tab.zenWorkspace == "string" && workspaceByZenId.has(tab.zenWorkspace)
++          ? tab.zenWorkspace
++          : defaultWorkspace.id;
++      converted.extData = {
++        "extension:bento-tools@bento.app:bento.workspaceId":
++          JSON.stringify(workspaceId),
++      };
++      if (converted.__zenEssential) {
++        converted.extData["extension:bento-tools@bento.app:bento.isPanel"] =
++          JSON.stringify(
++            JSON.stringify({
++              version: 2,
++              workspaceId,
++              rootIndex: tabsByWorkspace.get(workspaceId)?.length ?? 0,
++              pinnedPanel: true,
++            })
++          );
++        converted.extData[
++          "extension:bento-tools@bento.app:bento.importPinnedPanel"
++        ] = JSON.stringify(true);
++      }
++      tabsByWorkspace.get(workspaceId)?.push(converted);
++    }
++
++    let firefoxTabs = [];
++    for (let workspace of importedWorkspaces) {
++      let workspaceTabs = tabsByWorkspace.get(workspace.id) ?? [];
++      workspaceTabs.sort((a, b) => {
++        if (a.pinned != b.pinned) {
++          return a.pinned ? -1 : 1;
++        }
++        return (a.__zenIndex ?? 0) - (b.__zenIndex ?? 0);
++      });
++      for (let tab of workspaceTabs) {
++        delete tab.__zenIndex;
++        delete tab.__zenEssential;
++        firefoxTabs.push(tab);
++      }
++    }
++
++    if (!firefoxTabs.length) {
++      return null;
++    }
++
++    let activeWorkspaceId =
++      importedWorkspaces.find(w => (tabsByWorkspace.get(w.id) ?? []).length > 0)
++        ?.id ?? importedWorkspaces[0].id;
++    let selected =
++      firefoxTabs.findIndex(
++        tab =>
++          !tab.pinned &&
++          !tab.extData?.["extension:bento-tools@bento.app:bento.isPanel"]
++      ) +
++        1 ||
++      firefoxTabs.findIndex(tab => !tab.pinned) + 1 ||
++      1;
++
++    return {
++      version: ["sessionrestore", 1],
++      windows: [
++        {
++          tabs: firefoxTabs,
++          selected,
++          _closedTabs: [],
++          extData: {
++            "extension:bento-tools@bento.app:bento.activeWorkspaceId":
++              JSON.stringify(activeWorkspaceId),
++            "extension:bento-tools@bento.app:bento.importedWorkspaces":
++              JSON.stringify(importedWorkspaces),
++          },
++        },
++      ],
++      selectedWindow: 1,
++      _closedWindows: [],
++      session: {
++        lastUpdate: now,
++        startTime: now,
++        recentCrashes: 0,
++      },
++    };
++  }
++
++  _convertZenTab(tab) {
++    if (!tab || typeof tab != "object" || tab.hidden === true) {
++      return null;
++    }
++    let entries = Array.isArray(tab.entries) ? tab.entries : [];
++    if (!entries.length) {
++      return null;
++    }
++    let index =
++      typeof tab.index == "number" && tab.index > 0 && tab.index <= entries.length
++        ? Math.floor(tab.index)
++        : entries.length;
++    let entry = entries[index - 1];
++    let url = entry?.url;
++    if (typeof url != "string" || !url || url == "about:blank") {
++      return null;
++    }
++
++    return {
++      entries,
++      index,
++      pinned: tab.pinned === true && tab.zenEssential !== true,
++      userContextId:
++        typeof tab.userContextId == "number" && tab.userContextId >= 0
++          ? tab.userContextId
++          : 0,
++      lastAccessed:
++        typeof tab.lastAccessed == "number" && Number.isFinite(tab.lastAccessed)
++          ? tab.lastAccessed
++          : Date.now(),
++      attributes:
++        tab.attributes && typeof tab.attributes == "object"
++          ? tab.attributes
++          : {},
++      __zenIndex:
++        typeof tab.index == "number" && Number.isFinite(tab.index)
++          ? tab.index
++          : 0,
++      __zenEssential: tab.zenEssential === true,
++    };
 +  }
 +}
 diff --git a/browser/components/migration/MigrationUtils.sys.mjs b/browser/components/migration/MigrationUtils.sys.mjs
@@ -240,9 +593,55 @@ index 61e6502dd4..f68cd792bf 100644
 +      ) {
 +        return null;
 +      }
- 
+
        if (!(await migrator.hasPermissions())) {
          // If we're unable to get permissions for this migrator, then we
+diff --git a/browser/components/migration/content/migration-wizard.mjs b/browser/components/migration/content/migration-wizard.mjs
+index 7095b32269..0f34b31fd9 100644
+--- a/browser/components/migration/content/migration-wizard.mjs
++++ b/browser/components/migration/content/migration-wizard.mjs
+@@ -104,6 +104,9 @@ export class MigrationWizard extends HTMLElement {
+                 <label id="payment-methods" class="resource-type-label" data-resource-type="PAYMENT_METHODS">
+                   <input type="checkbox"/><span data-l10n-id="migration-payment-methods-option-label"></span>
+                 </label>
++                <label id="session" class="resource-type-label" data-resource-type="SESSION">
++                  <input type="checkbox"/><span data-l10n-id="migration-session-option-label"></span>
++                </label>
+               </fieldset>
+             </details>
+
+@@ -502,11 +505,11 @@ export class MigrationWizard extends HTMLElement {
+     if (panelItem.brandImage) {
+       this.#browserProfileSelector.querySelector(
+         ".migrator-icon"
+-      ).style.content = `url(${panelItem.brandImage})`;
++      ).style.content = `url("${panelItem.brandImage}")`;
+     } else {
+       this.#browserProfileSelector.querySelector(
+         ".migrator-icon"
+-      ).style.content = "url(chrome://global/skin/icons/defaultFavicon.svg)";
++      ).style.content = 'url("chrome://global/skin/icons/defaultFavicon.svg")';
+     }
+
+     let key = panelItem.getAttribute("key");
+@@ -665,7 +668,7 @@ export class MigrationWizard extends HTMLElement {
+
+       let button = opt.shadowRoot.querySelector("button");
+       if (migrator.brandImage) {
+-        button.style.backgroundImage = `url(${migrator.brandImage})`;
++        button.style.backgroundImage = `url("${migrator.brandImage}")`;
+       }
+
+       if (migrator.profile) {
+@@ -1264,6 +1264,8 @@ class MigrationWizard extends HTMLElement {
+         "migration-list-autofill-label",
+       [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PAYMENT_METHODS]:
+         "migration-list-payment-methods-label",
++      [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.SESSION]:
++        "migration-session-option-label",
+     };
+
+     if (MigrationWizardConstants.USES_FAVORITES.includes(key)) {
 diff --git a/browser/locales/en-US/browser/migrationWizard.ftl b/browser/locales/en-US/browser/migrationWizard.ftl
 index 9b8cc78a6a..19ab3e219c 100644
 --- a/browser/locales/en-US/browser/migrationWizard.ftl
@@ -263,7 +662,7 @@ index 6d330fca12..18221cd021 100644
 @@ -3082,6 +3082,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
      gDoMigration = true;
    }
- 
+
 +  if (EnvHasValue("BENTO_RESTART_TO_MIGRATION")) {
 +    SaveToEnv("BENTO_RESTART_TO_MIGRATION=");
 +    if (gAppData && gAppData->name &&

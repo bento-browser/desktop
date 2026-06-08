@@ -19,6 +19,7 @@
     "mach:build": "bash scripts/mach-raw.sh build",
     "build:full": "bash scripts/build-bento.sh",
     "build:release": "bash scripts/build-release.sh",
+    "firefox:sync": "bash scripts/sync-firefox-upstream.sh",
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
     "dev:fresh": "pnpm run ext:build && pnpm run import && bash scripts/dev-launch.sh $(mktemp -d)",

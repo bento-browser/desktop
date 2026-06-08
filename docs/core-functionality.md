@@ -20,13 +20,18 @@ profile imports use an explicit startup handoff because Firefox's profile-copy
 migrator runs before the new profile is initialized. Choosing the Firefox/Zen
 action restarts into the startup migration wizard scoped to the detected
 Firefox and Zen profiles and preselected on them, rather than a generic picker
-defaulted to another browser. This is separate from the additive Bento backup
-import flow. The first onboarding step also lets the user choose Bento's UI
-theme mode: Light, Dark, or Auto; fresh profiles default to Light. After import,
-onboarding asks for a privacy protection level and default search engine. Fresh
-profiles default to Standard privacy and DuckDuckGo search. The onboarding
-overlay is not dismissed by clicking the scrim or pressing Esc, and the user
-exits it only from the final step.
+defaulted to another browser. Empty Firefox/Zen profile entries with no
+migratable resources are not offered. Zen imports also translate Zen spaces into
+Bento workspaces and restore Zen tabs through Bento's workspace-aware session
+restore as the import completes. Zen pinned tabs become pinned Bento tabs. Zen
+essential tabs become pinned Bento panels. This is separate from the additive
+Bento backup import flow. The first
+onboarding step also lets the user choose Bento's UI theme mode: Light, Dark, or
+Auto; fresh profiles default to Light. After import, onboarding asks for a
+privacy protection level and default search engine. Fresh profiles default to
+Standard privacy and DuckDuckGo search. The onboarding overlay is not dismissed
+by clicking the scrim or pressing Esc, and the user exits it only from the final
+step.
 
 ## Core model
 

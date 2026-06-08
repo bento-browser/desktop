@@ -14,5 +14,6 @@ contributor-facing guides.
 
 - [Workspace themes](themes.md)
 - [Chrome tokens](chrome-tokens.md)
+- [Implementing Firefox patches](firefox-patches.md)
 - [Firefox core touchpoints](firefox-core-touchpoints.md)
 - [Maintaining Surfer](maintaining-surfer.md)

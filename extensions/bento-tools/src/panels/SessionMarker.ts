@@ -13,11 +13,13 @@
 // Mirrors the TabRegistry's WORKSPACE_SESSION_KEY pattern.
 
 const PANEL_SESSION_KEY = 'bento.isPanel';
+const SESSION_READ_RETRY_DELAY_MS = 50;
 
 export interface PanelMarker {
   workspaceId: string;
   rootIndex: number;
   containingRootNodeId?: string;
+  pinnedPanel?: boolean;
 }
 
 export async function setPanelMarker(
@@ -64,6 +66,7 @@ export async function readPanelMarker(tabId: number): Promise<PanelMarker | null
             typeof parsed.containingRootNodeId === 'string'
               ? parsed.containingRootNodeId
               : undefined,
+          pinnedPanel: parsed.pinnedPanel === true,
         };
       }
       return {
@@ -75,4 +78,18 @@ export async function readPanelMarker(tabId: number): Promise<PanelMarker | null
   } catch {
     return null;
   }
+}
+
+export async function readPanelMarkerWithRetries(
+  tabId: number,
+  attempts = 8,
+): Promise<PanelMarker | null> {
+  for (let i = 0; i < attempts; i++) {
+    const marker = await readPanelMarker(tabId);
+    if (marker) return marker;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, SESSION_READ_RETRY_DELAY_MS));
+    }
+  }
+  return null;
 }

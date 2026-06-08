@@ -15,6 +15,7 @@
     "scripts": ["dist/assets/background.js"],
     "persistent": true
   },
+  "permissions": ["storage"],
   "web_accessible_resources": [
     "dist/index.html",
     "dist/settings.html",

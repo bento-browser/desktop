@@ -14,7 +14,12 @@ import { PanelStore } from './panels/PanelStore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { BackupStore } from './backup/BackupStore';
-import { clearPanelMarker, readPanelMarker, setPanelMarker } from './panels/SessionMarker';
+import {
+  clearPanelMarker,
+  readPanelMarker,
+  readPanelMarkerWithRetries,
+  setPanelMarker,
+} from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, WireAction } from '@shared/protocol';
@@ -64,6 +69,8 @@ function broadcastEvent(event: Event): void {
 }
 
 const PARKED_WORKSPACE_TABS_STORAGE_KEY = 'bento.parkedWorkspaceTabs';
+const IMPORT_PINNED_PANEL_SESSION_KEY = 'bento.importPinnedPanel';
+const SESSION_READ_RETRY_DELAY_MS = 50;
 
 interface ParkedWorkspaceTab {
   url: string;
@@ -74,6 +81,21 @@ interface ParkedWorkspaceTab {
 }
 
 let parkedWorkspaceTabs = new Map<string, ParkedWorkspaceTab[]>();
+
+async function readTabSessionValueWithRetries(
+  tabId: number,
+  key: string,
+  attempts = 8,
+): Promise<unknown> {
+  for (let i = 0; i < attempts; i++) {
+    const value = await browser.sessions.getTabValue(tabId, key).catch(() => undefined);
+    if (value !== undefined) return value;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, SESSION_READ_RETRY_DELAY_MS));
+    }
+  }
+  return undefined;
+}
 
 async function loadParkedWorkspaceTabs(): Promise<void> {
   try {
@@ -363,6 +385,111 @@ async function restorePanelsForWorkspace(
   // bootReady await) can race ahead and the panels/sync gets dropped
   // when the addon-upgrade-mid-init kills the bg port.
   await emitPanelsSync(workspaceId);
+}
+
+async function restorePanelsFromSessionMarkersAtBoot(): Promise<Set<string>> {
+  const restoredWorkspaceIds = new Set<string>();
+  const candidateTabs = tabs
+    .snapshot()
+    .filter(
+      (tab) => !tabs.isClosing(tab.id) && panels.findWorkspacesContainingTab(tab.id).length === 0,
+    );
+  const markedTabs = await readPanelMarkersForTabsWithRetries(candidateTabs);
+
+  markedTabs.sort((a, b) => {
+    const byWorkspace = a.marker.workspaceId.localeCompare(b.marker.workspaceId);
+    if (byWorkspace) return byWorkspace;
+    const byRootIndex = a.marker.rootIndex - b.marker.rootIndex;
+    if (byRootIndex) return byRootIndex;
+    return a.tab.index - b.tab.index;
+  });
+
+  for (const { tab, marker } of markedTabs) {
+    const restoredTab = await browser.tabs.get(tab.id).catch(() => null);
+    const restoredWindowId =
+      typeof restoredTab?.windowId === 'number' && restoredTab.windowId >= 0
+        ? restoredTab.windowId
+        : null;
+    if (!workspaces.has(marker.workspaceId)) {
+      await workspaces
+        .adoptImportedWorkspacesFromSession(restoredWindowId)
+        .catch((err) => console.warn('[bento-tools] imported workspace adoption failed:', err));
+    }
+    const workspace = workspaces.snapshot().workspaces.find((w) => w.id === marker.workspaceId);
+    if (!workspace) {
+      void clearPanelMarker(tab.id);
+      continue;
+    }
+
+    tabs.assignWorkspaceEagerly(tab.id, marker.workspaceId);
+    const alreadyPanel = panels.findWorkspacesContainingTab(tab.id).includes(marker.workspaceId);
+    const inserted =
+      alreadyPanel || panels.insertAtRestoreLocation(marker.workspaceId, tab.id, marker);
+    if (!inserted) continue;
+
+    const defaultWidth = settings.snapshot().defaultPanelWidthPx;
+    if (!alreadyPanel && defaultWidth > 0) {
+      panels.setWidth(tab.id, defaultWidth);
+    }
+
+    const importedPinMarker = await readTabSessionValueWithRetries(
+      tab.id,
+      IMPORT_PINNED_PANEL_SESSION_KEY,
+    );
+    if (marker.pinnedPanel === true || importedPinMarker === true) {
+      pinnedPanels.add(marker.workspaceId, tab.id);
+    }
+    if (importedPinMarker !== undefined) {
+      void browser.sessions
+        .removeTabValue(tab.id, IMPORT_PINNED_PANEL_SESSION_KEY)
+        .catch((err) =>
+          console.warn('[bento-tools] imported pinned-panel marker cleanup failed:', err),
+        );
+    }
+    restoredWorkspaceIds.add(marker.workspaceId);
+  }
+
+  for (const workspaceId of restoredWorkspaceIds) {
+    syncPanelMarkersForWorkspace(workspaceId);
+    await emitPanelsSync(workspaceId);
+  }
+
+  return restoredWorkspaceIds;
+}
+
+async function readPanelMarkersForTabsWithRetries(
+  candidateTabs: Array<ReturnType<TabRegistry['snapshot']>[number]>,
+  attempts = 8,
+): Promise<
+  Array<{
+    tab: ReturnType<TabRegistry['snapshot']>[number];
+    marker: NonNullable<Awaited<ReturnType<typeof readPanelMarker>>>;
+  }>
+> {
+  const remaining = new Map(candidateTabs.map((tab) => [tab.id, tab]));
+  const markedTabs: Array<{
+    tab: ReturnType<TabRegistry['snapshot']>[number];
+    marker: NonNullable<Awaited<ReturnType<typeof readPanelMarker>>>;
+  }> = [];
+
+  for (let i = 0; i < attempts && remaining.size > 0; i++) {
+    const reads = await Promise.all(
+      Array.from(remaining.values()).map(async (tab) => ({
+        tab,
+        marker: await readPanelMarker(tab.id),
+      })),
+    );
+    for (const { tab, marker } of reads) {
+      if (!marker) continue;
+      remaining.delete(tab.id);
+      markedTabs.push({ tab, marker });
+    }
+    if (remaining.size > 0 && i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, SESSION_READ_RETRY_DELAY_MS));
+    }
+  }
+
+  return markedTabs;
 }
 
 // Resolve a workspace's panel tabIds to {tabId, url} entries and broadcast
@@ -721,6 +848,12 @@ const bootReady = Promise.all([
       tabs.setWorkspaceInMemory(tab.id, wsId);
     }
   }
+  // Zen import can live-restore tabs with bento.isPanel markers before
+  // bento-tools has registered its tabs.onCreated listener. Promote
+  // those already-present tabs into PanelStore here; otherwise the stale
+  // marker sweep below would clear the markers and essentials would stay
+  // as ordinary workspace tabs instead of pinned panels.
+  await restorePanelsFromSessionMarkersAtBoot();
   // Ensure Firefox's selectedTab belongs to the active workspace.
   // SessionStore restores whichever tab was last selected at shutdown,
   // which may be in a workspace OTHER than the one bento-tools considers
@@ -861,10 +994,15 @@ tabs.onDeltas((deltas) => {
             // workspace assignment below run.
             await tabs.unmarkClosing(d.tab.id);
           }
-          const sessionWs = await browser.sessions
-            .getTabValue(d.tab.id, 'bento.workspaceId')
-            .catch(() => null);
+          const sessionWs = await readTabSessionValueWithRetries(d.tab.id, 'bento.workspaceId');
           if (sessionWs && typeof sessionWs === 'string') {
+            if (!workspaces.has(sessionWs)) {
+              await workspaces
+                .adoptImportedWorkspacesFromSession(sourceWindowId)
+                .catch((err) =>
+                  console.warn('[bento-tools] imported workspace adoption failed:', err),
+                );
+            }
             tabs.setWorkspaceInMemory(d.tab.id, sessionWs);
             return;
           }
@@ -1181,8 +1319,23 @@ async function maybeRestorePanelFromMarker(
   tabId: number,
   previousNonPanelTabId: number | null,
 ): Promise<void> {
-  const marker = await readPanelMarker(tabId);
+  const marker = await readPanelMarkerWithRetries(tabId);
   if (!marker) return;
+  const restoredTab = await browser.tabs.get(tabId).catch(() => null);
+  const restoredWindowId =
+    typeof restoredTab?.windowId === 'number' && restoredTab.windowId >= 0
+      ? restoredTab.windowId
+      : null;
+  if (!workspaces.has(marker.workspaceId)) {
+    await workspaces
+      .adoptImportedWorkspacesFromSession(restoredWindowId)
+      .catch((err) => console.warn('[bento-tools] imported workspace adoption failed:', err));
+  }
+  const importedPinMarker = await readTabSessionValueWithRetries(
+    tabId,
+    IMPORT_PINNED_PANEL_SESSION_KEY,
+  );
+  const shouldPinImportedPanel = marker.pinnedPanel === true || importedPinMarker === true;
   await tabs.unmarkClosing(tabId);
   const workspace = workspaces.snapshot().workspaces.find((w) => w.id === marker.workspaceId);
   if (!workspace) {
@@ -1196,6 +1349,14 @@ async function maybeRestorePanelFromMarker(
     panels.setWidth(tabId, defaultWidth);
   }
   if (inserted) {
+    if (shouldPinImportedPanel) {
+      pinnedPanels.add(marker.workspaceId, tabId);
+      void browser.sessions
+        .removeTabValue(tabId, IMPORT_PINNED_PANEL_SESSION_KEY)
+        .catch((err) =>
+          console.warn('[bento-tools] imported pinned-panel marker cleanup failed:', err),
+        );
+    }
     syncPanelMarkersForWorkspace(marker.workspaceId);
     void emitPanelsSync(marker.workspaceId);
   }
@@ -1207,15 +1368,10 @@ async function maybeRestorePanelFromMarker(
   // module-level lastActiveNonPanelTabId because SessionStore hasn't
   // restored the marker yet at activation time.
   try {
-    const restoredTab = await browser.tabs.get(tabId).catch(() => null);
-    const restoredWindowId =
-      typeof restoredTab?.windowId === 'number' && restoredTab.windowId >= 0
-        ? restoredTab.windowId
-        : undefined;
     const workspaceFallbackTabId = findNonPanelTabForWorkspace(
       marker.workspaceId,
       tabId,
-      restoredWindowId,
+      restoredWindowId ?? undefined,
     );
     const preferredFallbackTabId =
       previousNonPanelTabId !== null && previousNonPanelTabId !== tabId
@@ -1223,7 +1379,7 @@ async function maybeRestorePanelFromMarker(
         : workspaceFallbackTabId;
     if (preferredFallbackTabId === null || preferredFallbackTabId === tabId) return;
     const query =
-      typeof restoredWindowId === 'number'
+      restoredWindowId !== null
         ? { active: true, windowId: restoredWindowId }
         : { active: true, currentWindow: true };
     const [active] = await browser.tabs.query(query);
@@ -1231,7 +1387,7 @@ async function maybeRestorePanelFromMarker(
     const reverted = await activateNonPanelTab(
       preferredFallbackTabId,
       'revert from panel restore',
-      restoredWindowId,
+      restoredWindowId ?? undefined,
     );
     if (
       !reverted &&
@@ -1241,7 +1397,7 @@ async function maybeRestorePanelFromMarker(
       await activateNonPanelTab(
         workspaceFallbackTabId,
         'fallback revert from panel restore',
-        restoredWindowId,
+        restoredWindowId ?? undefined,
       );
     }
   } catch (err) {

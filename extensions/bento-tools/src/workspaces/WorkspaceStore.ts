@@ -18,6 +18,14 @@ const DEFAULT_WORKSPACE_NAME = 'Personal';
 // workspace assignment uses setTabValue. Restored by background.ts's boot
 // sequence (Phase G.1) before any backfill runs.
 const ACTIVE_WORKSPACE_SESSION_KEY = 'bento.activeWorkspaceId';
+const IMPORTED_WORKSPACES_SESSION_KEY = 'bento.importedWorkspaces';
+
+interface ImportedWorkspace {
+  id: string;
+  name: string;
+  icon?: string;
+  createdAt?: number;
+}
 
 function makeId(): string {
   // crypto.randomUUID is available in Firefox 95+; Bento targets 150.
@@ -54,6 +62,8 @@ export class WorkspaceStore {
         persisted.activeId && this.#workspaces.has(persisted.activeId)
           ? persisted.activeId
           : (persisted.workspaces[0]?.id ?? null);
+    } else if (await this.adoptImportedWorkspacesFromSession()) {
+      // adoptImportedWorkspacesFromSession persists the imported set.
     } else {
       // First boot — bootstrap with one default workspace.
       const w: Workspace = {
@@ -65,6 +75,114 @@ export class WorkspaceStore {
       this.#lastGlobalActiveId = w.id;
       this.#schedulePersist();
     }
+  }
+
+  async adoptImportedWorkspacesFromSession(windowId?: number | null): Promise<string | null> {
+    let imported: unknown;
+    let selectedWindowId: number | null = null;
+    try {
+      const windowIds: number[] = [];
+      if (typeof windowId === 'number') windowIds.push(windowId);
+      const wins = await browser.windows.getAll();
+      for (const win of wins) {
+        if (typeof win.id !== 'number') continue;
+        if (windowIds.includes(win.id)) continue;
+        windowIds.push(win.id);
+      }
+      for (const id of windowIds) {
+        imported = await browser.sessions
+          .getWindowValue(id, IMPORTED_WORKSPACES_SESSION_KEY)
+          .catch(() => undefined);
+        if (Array.isArray(imported)) {
+          selectedWindowId = id;
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn('[bento-tools] imported workspace adoption failed:', err);
+      return null;
+    }
+    if (!Array.isArray(imported)) return null;
+
+    const parsed: Workspace[] = [];
+    const createdAtBase = Date.now();
+    for (const item of imported) {
+      if (!item || typeof item !== 'object') continue;
+      const candidate = item as ImportedWorkspace;
+      const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : makeId();
+      const name =
+        typeof candidate.name === 'string' && candidate.name.trim()
+          ? candidate.name.trim()
+          : DEFAULT_WORKSPACE_NAME;
+      const workspace: Workspace = {
+        id,
+        name,
+        createdAt:
+          typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt)
+            ? candidate.createdAt
+            : createdAtBase + this.#workspaces.size,
+      };
+      if (typeof candidate.icon === 'string' && candidate.icon.trim()) {
+        workspace.icon = candidate.icon.trim();
+      }
+      parsed.push(workspace);
+    }
+    if (parsed.length === 0) return null;
+
+    if (this.#shouldReplaceDefaultWorkspace()) {
+      for (const id of this.#workspaces.keys()) {
+        this.#enqueue({ kind: 'removed', id });
+      }
+      this.#workspaces.clear();
+      this.#activeIdByWindow.clear();
+      this.#lastGlobalActiveId = null;
+    }
+
+    for (const workspace of parsed) {
+      if (this.#workspaces.has(workspace.id)) continue;
+      this.#workspaces.set(workspace.id, workspace);
+      this.#enqueue({ kind: 'created', workspace });
+    }
+
+    if (this.#workspaces.size === 0) return null;
+
+    let savedActiveId: unknown;
+    if (selectedWindowId !== null) {
+      savedActiveId = await browser.sessions
+        .getWindowValue(selectedWindowId, ACTIVE_WORKSPACE_SESSION_KEY)
+        .catch(() => undefined);
+    }
+    const activeId =
+      typeof savedActiveId === 'string' && this.#workspaces.has(savedActiveId)
+        ? savedActiveId
+        : parsed.find((w) => this.#workspaces.has(w.id))?.id;
+    if (!activeId) return null;
+
+    this.#lastGlobalActiveId = activeId;
+    if (selectedWindowId !== null) {
+      this.#activeIdByWindow.set(selectedWindowId, activeId);
+      this.#persistActiveForWindow(selectedWindowId, activeId);
+      this.#enqueue({ kind: 'activated', id: activeId, windowId: selectedWindowId });
+      void browser.sessions
+        .removeWindowValue(selectedWindowId, IMPORTED_WORKSPACES_SESSION_KEY)
+        .catch((err) =>
+          console.warn('[bento-tools] imported workspace marker cleanup failed:', err),
+        );
+    } else {
+      this.#enqueue({ kind: 'activated', id: activeId });
+    }
+    this.#schedulePersist();
+    return activeId;
+  }
+
+  #shouldReplaceDefaultWorkspace(): boolean {
+    if (this.#workspaces.size !== 1) return false;
+    const only = this.#workspaces.values().next().value as Workspace | undefined;
+    if (!only) return false;
+    if (Array.from(this.#activeIdByWindow.values()).some((id) => id !== only.id)) {
+      return false;
+    }
+    return only.name === DEFAULT_WORKSPACE_NAME && !only.themeId && !only.icon;
   }
 
   snapshot(): {

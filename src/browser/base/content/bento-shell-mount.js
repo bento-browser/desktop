@@ -26,6 +26,11 @@
 
   const ADDON_ID = 'bento-shell@bento.app';
   const BENTO_PANEL_NEWTAB_PATH = '/dist/panel-newtab.html';
+  const BENTO_WELCOME_STEP_ENV = 'BENTO_WELCOME_STEP';
+  // Current post-import onboarding step. The welcome page also includes the
+  // exact next step in its title signal; this is only a compatibility fallback.
+  const BENTO_WELCOME_POST_IMPORT_STEP = '2';
+  const BENTO_WELCOME_RESUME_HASH_KEY = 'bentoWelcomeStep';
   const PROMOTED_PANEL_CONTENT_PRESERVE_MS = 3000;
   const BENTO_DEFAULT_UI_COLOR_MODE = 'light';
   const CHROME_DARK_QUERY = '(prefers-color-scheme: dark)';
@@ -2190,12 +2195,12 @@
   // — degraded but still functional (matches pre-A.1 behaviour).
   const SET_FRAME_SRC_MAX_RETRIES = 20; // ~1s @ 50ms
 
-  function setFrameSrc(frameId, path, attempt) {
+  function setFrameSrc(frameId, path, attempt, extraHashParams) {
     const tries = typeof attempt === 'number' ? attempt : 0;
     const url = moz(path);
     if (!url) {
       // Extension hasn't loaded yet; try again on the next tick.
-      setTimeout(() => setFrameSrc(frameId, path, tries + 1), 50);
+      setTimeout(() => setFrameSrc(frameId, path, tries + 1, extraHashParams), 50);
       return;
     }
     const frame = document.getElementById(frameId);
@@ -2204,7 +2209,7 @@
     if (windowId === null && tries < SET_FRAME_SRC_MAX_RETRIES) {
       // Not yet — retry shortly. Capped via SET_FRAME_SRC_MAX_RETRIES so
       // a permanently-missing windowTracker doesn't loop forever.
-      setTimeout(() => setFrameSrc(frameId, path, tries + 1), 50);
+      setTimeout(() => setFrameSrc(frameId, path, tries + 1, extraHashParams), 50);
       return;
     }
     // Stamp the windowId as a URL HASH (not a query string). Hashes are
@@ -2217,7 +2222,15 @@
     // documents — symptom: shells stuck on "connecting…" with skeleton
     // rendering, because the channel can't cross BCG boundaries even
     // within the same origin. The hash form sidesteps that entirely.
-    const finalUrl = windowId !== null ? url + '#bentoWindowId=' + windowId : url;
+    const hashParams = new URLSearchParams();
+    if (windowId !== null) hashParams.set('bentoWindowId', String(windowId));
+    for (const [key, value] of Object.entries(extraHashParams || {})) {
+      if (value !== null && value !== undefined && value !== '') {
+        hashParams.set(key, String(value));
+      }
+    }
+    const hash = hashParams.toString();
+    const finalUrl = hash ? url + '#' + hash : url;
     if (windowId === null) {
       console.warn(
         '[bento-shell-mount] setFrameSrc(' +
@@ -2260,8 +2273,47 @@
     setFrameSrc('bento-edit-workspace-frame', '/dist/edit-workspace.html');
   }
 
+  let __bentoWelcomeResumeStep;
+  let __bentoPendingWelcomeResumeStep = BENTO_WELCOME_POST_IMPORT_STEP;
+  function takeBentoWelcomeResumeStep() {
+    if (__bentoWelcomeResumeStep !== undefined) return __bentoWelcomeResumeStep;
+
+    __bentoWelcomeResumeStep = null;
+    try {
+      const raw = Services.env.get(BENTO_WELCOME_STEP_ENV);
+      Services.env.set(BENTO_WELCOME_STEP_ENV, '');
+      const step = Number.parseInt(raw || '', 10);
+      if (Number.isInteger(step) && step >= 0) {
+        __bentoWelcomeResumeStep = String(step);
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] failed to read Bento welcome resume step:', err);
+    }
+
+    return __bentoWelcomeResumeStep;
+  }
+
+  function parseWelcomeImportResumeStep(title) {
+    if (!title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX + '_')) {
+      return BENTO_WELCOME_POST_IMPORT_STEP;
+    }
+
+    const suffix = title.slice(WELCOME_IMPORT_BROWSER_DATA_PREFIX.length + 1);
+    const parts = suffix.split('_');
+    if (parts.length < 2) return BENTO_WELCOME_POST_IMPORT_STEP;
+
+    const step = Number.parseInt(parts[0] || '', 10);
+    return Number.isInteger(step) && step >= 0 ? String(step) : BENTO_WELCOME_POST_IMPORT_STEP;
+  }
+
   function setBentoWelcomeSrc() {
-    setFrameSrc('bento-welcome-frame', '/dist/welcome.html');
+    const resumeStep = takeBentoWelcomeResumeStep();
+    setFrameSrc(
+      'bento-welcome-frame',
+      '/dist/welcome.html',
+      undefined,
+      resumeStep ? { [BENTO_WELCOME_RESUME_HASH_KEY]: resumeStep } : undefined,
+    );
   }
 
   const BENTO_EMBEDDED_IMPORT_URL = 'chrome://browser/content/bento-migration-host.html';
@@ -2889,10 +2941,12 @@
       // Read + honored by MigrationWizardParent's #getMigratorAndProfiles
       // (only while isStartupMigration is true).
       Services.env.set('BENTO_MIGRATION_SCOPE', scopeFirefoxZen ? 'firefox-zen' : '');
+      Services.env.set(BENTO_WELCOME_STEP_ENV, __bentoPendingWelcomeResumeStep);
       Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
     } catch (err) {
       Services.env.set('BENTO_RESTART_TO_MIGRATION', '');
       Services.env.set('BENTO_MIGRATION_SCOPE', '');
+      Services.env.set(BENTO_WELCOME_STEP_ENV, '');
       console.warn('[bento-shell-mount] restart to browser import failed:', err);
       try {
         const { MigrationUtils } = ChromeUtils.importESModule(
@@ -2992,8 +3046,9 @@
   // settings.welcomeSeen and signals BENTO_OPEN_WELCOME_<ts> the first
   // time it sees false; final welcome dismiss paths flip the flag + signal
   // BENTO_CLOSE_WELCOME_<ts>. The import action signals
-  // BENTO_IMPORT_BROWSER_DATA_<ts> without flipping the flag, which opens the
-  // embedded Firefox migration host above the still-mounted welcome flow.
+  // BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts> without flipping the flag, which
+  // opens the embedded Firefox migration host above the still-mounted welcome
+  // flow.
   const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
   const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
   const WELCOME_IMPORT_BROWSER_DATA_PREFIX = 'BENTO_IMPORT_BROWSER_DATA';
@@ -13883,6 +13938,7 @@
         if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
         else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
         else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
+          __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(title);
           showEmbeddedBrowserImportFromWelcome();
         }
       }, 200);

@@ -13,8 +13,9 @@
 //     document.title = BENTO_CLOSE_WELCOME_<ts>. Esc and backdrop clicks
 //     are intentionally disabled so first-run onboarding must be completed.
 //   - Browser-data import is an onboarding state, not a final dismissal:
-//     it stores the next onboarding step, signals chrome to open the
-//     embedded Firefox migration host, and leaves onboarding mounted.
+//     it stores the next onboarding step in extension storage, signals
+//     chrome to open the embedded Firefox migration host, and leaves
+//     onboarding mounted.
 //   - Dialog stays mounted with isOpen=true permanently — visibility is
 //     purely a chrome concern (same pattern as the other overlays). React
 //     state inside this page never tracks open/closed.
@@ -95,6 +96,7 @@ const TIPS: Array<{ shortcut: string; description: string }> = [
 ];
 
 const WELCOME_STEP_STORAGE_KEY = 'bento-welcome-step';
+const WELCOME_STEP_HASH_KEY = 'bentoWelcomeStep';
 
 type BentoBox = readonly [string, string];
 type ThemeModeOption = {
@@ -217,19 +219,74 @@ const ONBOARDING_STEPS: readonly OnboardingStep[] = [
 
 type StepIndex = number;
 
-function readStoredStep(): StepIndex {
+function parseStoredStep(value: unknown): StepIndex | null {
+  const stored =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+
+  if (Number.isInteger(stored) && stored >= 0 && stored < ONBOARDING_STEPS.length) {
+    return stored;
+  }
+
+  return null;
+}
+
+async function readExtensionStoredStep(): Promise<StepIndex | null> {
+  if (typeof browser === 'undefined' || !browser.storage?.local) return null;
+
   try {
-    const stored = Number.parseInt(localStorage.getItem(WELCOME_STEP_STORAGE_KEY) ?? '0', 10);
-    if (Number.isFinite(stored) && stored >= 0 && stored < ONBOARDING_STEPS.length) {
-      return stored;
-    }
+    const raw = (await browser.storage.local.get(WELCOME_STEP_STORAGE_KEY)) as Record<
+      string,
+      unknown
+    >;
+    return parseStoredStep(raw[WELCOME_STEP_STORAGE_KEY]);
+  } catch {
+    return null;
+  }
+}
+
+async function readStoredStep(): Promise<StepIndex> {
+  const hashStoredStep = readHashStoredStep();
+  if (hashStoredStep !== null) {
+    void storeStep(hashStoredStep);
+    return hashStoredStep;
+  }
+
+  const extensionStoredStep = await readExtensionStoredStep();
+  if (extensionStoredStep !== null) return extensionStoredStep;
+
+  try {
+    const localStoredStep = parseStoredStep(localStorage.getItem(WELCOME_STEP_STORAGE_KEY));
+    if (localStoredStep !== null) return localStoredStep;
   } catch {
     // Ignore storage failures; first-run onboarding can still start at the beginning.
   }
+
   return 0;
 }
 
-function storeStep(step: StepIndex) {
+function readHashStoredStep(): StepIndex | null {
+  try {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    const params = new URLSearchParams(hash);
+    return parseStoredStep(params.get(WELCOME_STEP_HASH_KEY));
+  } catch {
+    return null;
+  }
+}
+
+async function storeStep(step: StepIndex): Promise<void> {
+  try {
+    if (typeof browser !== 'undefined' && browser.storage?.local) {
+      await browser.storage.local.set({ [WELCOME_STEP_STORAGE_KEY]: step });
+    }
+  } catch {
+    // Mirror to localStorage below for development shells without extension storage.
+  }
+
   try {
     localStorage.setItem(WELCOME_STEP_STORAGE_KEY, String(step));
   } catch {
@@ -237,7 +294,15 @@ function storeStep(step: StepIndex) {
   }
 }
 
-function clearStoredStep() {
+async function clearStoredStep(): Promise<void> {
+  try {
+    if (typeof browser !== 'undefined' && browser.storage?.local) {
+      await browser.storage.local.remove(WELCOME_STEP_STORAGE_KEY);
+    }
+  } catch {
+    // Non-critical cleanup.
+  }
+
   try {
     localStorage.removeItem(WELCOME_STEP_STORAGE_KEY);
   } catch {
@@ -251,14 +316,14 @@ function close() {
   // Tools-side persistence is debounced 250ms but the in-memory snapshot
   // updates synchronously, so a fresh shell connection picks up
   // welcomeSeen=true immediately.
-  clearStoredStep();
+  void clearStoredStep();
   dispatch({ type: 'settings/update', changes: { welcomeSeen: true } });
   document.title = `${WELCOME_CLOSE_PREFIX}_${Date.now()}`;
 }
 
-function importBrowserData(nextStep: StepIndex) {
-  storeStep(nextStep);
-  document.title = `${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${Date.now()}`;
+async function importBrowserData(nextStep: StepIndex): Promise<void> {
+  await storeStep(nextStep);
+  document.title = `${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${nextStep}_${Date.now()}`;
 }
 
 function BentoTray({
@@ -495,7 +560,8 @@ function WelcomeApp() {
   const privacyProtectionLevel = useSettingsStore((s) => s.current?.privacyProtectionLevel);
   const defaultSearchEngine = useSettingsStore((s) => s.current?.defaultSearchEngine);
   const privacy = usePrivacyStore((s) => s.settings);
-  const [stepIndex, setStepIndex] = useState(readStoredStep);
+  const [stepIndex, setStepIndex] = useState<StepIndex>(0);
+  const [hasLoadedStoredStep, setHasLoadedStoredStep] = useState(false);
   const hasRequestedOpenRef = useRef(false);
   const activeStep = ONBOARDING_STEPS[stepIndex] ?? ONBOARDING_STEPS[0]!;
   const isIntro = stepIndex === 0;
@@ -509,7 +575,7 @@ function WelcomeApp() {
 
   const setStep = (nextStep: StepIndex) => {
     const clamped = Math.max(0, Math.min(nextStep, ONBOARDING_STEPS.length - 1));
-    storeStep(clamped);
+    void storeStep(clamped);
     setStepIndex(clamped);
   };
 
@@ -533,9 +599,23 @@ function WelcomeApp() {
 
   const startBrowserDataImport = () => {
     const followingStep = Math.min(stepIndex + 1, ONBOARDING_STEPS.length - 1);
-    importBrowserData(followingStep);
-    setStep(followingStep);
+    setStepIndex(followingStep);
+    void importBrowserData(followingStep);
   };
+
+  useEffect(() => {
+    let isActive = true;
+
+    void readStoredStep().then((storedStep) => {
+      if (!isActive) return;
+      setStepIndex(storedStep);
+      setHasLoadedStoredStep(true);
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (welcomeSeen !== false || hasRequestedOpenRef.current) return;
@@ -546,6 +626,8 @@ function WelcomeApp() {
   useEffect(() => {
     dispatch({ type: 'privacy/requestSnapshot' });
   }, []);
+
+  if (!hasLoadedStoredStep) return null;
 
   return (
     <Dialog.Root isOpen={true}>

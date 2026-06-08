@@ -15,10 +15,10 @@
 //   - Welcome content dispatches settings/update {welcomeSeen: true} only
 //     from final dismiss paths, then sets its own document.title =
 //     BENTO_CLOSE_WELCOME_<ts> for chrome to hide.
-//   - The import action stores the next onboarding step in the welcome page,
-//     uses BENTO_IMPORT_BROWSER_DATA_<ts>, and lets chrome show the embedded
-//     Firefox migration host above the still-mounted onboarding flow. It does
-//     not mark welcomeSeen=true.
+//   - The import action stores the next onboarding step in extension storage,
+//     uses BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>, and lets chrome show the
+//     embedded Firefox migration host above the still-mounted onboarding flow.
+//     It does not mark welcomeSeen=true.
 //
 // No BroadcastChannel needed — the welcome carries no payload, just a
 // visibility signal.
