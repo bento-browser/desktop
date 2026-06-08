@@ -1,0 +1,60 @@
+:root {
+  --brand-5: #f5f9f4;
+  --brand-10: #eff6ed;
+  --brand-20: #d2e7cb;
+  --brand-30: #b3d6a8;
+  --brand-40: #90c080;
+  --brand-50: #68a552;
+  --brand-60: #317d00; /* BASE */
+  --brand-70: #2d6415;
+  --brand-80: #294c1b;
+  --brand-90: #22351c;
+  --brand-100: #1e1e1e;
+}
+
+/* Dark-mode fg overrides — requires class="tale-ui" on <html> */
+
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
+  --color-50-fg: var(--color-5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
+    --color-50-fg: var(--color-5);
+  }
+}
+
+:root {
+  --neutral-default: var(--neutral-default-60);
+  --neutral-default-5: #f5f9f4;
+  --neutral-default-10: #eff6ed;
+  --neutral-default-12: #eaf4e7;
+  --neutral-default-14: #e4f0e0;
+  --neutral-default-16: #deedd9;
+  --neutral-default-18: #d8ead2;
+  --neutral-default-20: #d2e7cb;
+  --neutral-default-22: #cce4c4;
+  --neutral-default-24: #c6e1bd;
+  --neutral-default-26: #c0ddb6;
+  --neutral-default-28: #bad9af;
+  --neutral-default-30: #b3d6a8;
+  --neutral-default-40: #90c080;
+  --neutral-default-50: #68a552;
+  --neutral-default-60: #317d00;
+  --neutral-default-70: #2d6415;
+  --neutral-default-80: #294c1b;
+  --neutral-default-82: #27471b;
+  --neutral-default-84: #27431c;
+  --neutral-default-86: #263e1d;
+  --neutral-default-88: #243a1c;
+  --neutral-default-90: #22351c;
+  --neutral-default-92: #22311c;
+  --neutral-default-94: #1f2c1b;
+  --neutral-default-96: #20271b;
+  --neutral-default-98: #1c241b;
+  --neutral-default-100: #1e1e1e;
+  --display-color: var(--neutral-default-90);
+  --text-color: var(--neutral-default-90);
+  --mono-color: var(--neutral-default-90);
+}

@@ -612,13 +612,13 @@
         left: 0;
         height: 100%;
         min-width: var(--bento-scrollbar-thumb-min-width);
-        background-color: var(--neutral-30);
+        background-color: var(--neutral-80);
         border-radius: var(--bento-scrollbar-radius);
         cursor: grab;
         transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
       }
       .bento-strip-scrollbar__thumb:hover {
-        background-color: var(--neutral-50);
+        background-color: var(--neutral-80);
       }
       .bento-strip-scrollbar__thumb--dragging,
       .bento-strip-scrollbar__thumb--dragging:hover {

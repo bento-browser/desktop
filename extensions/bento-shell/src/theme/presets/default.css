@@ -20,16 +20,63 @@
  *   pnpm theme:import default <scale.css>
  */
 
-[data-bento-theme='default'] {
-  --brand-5: #e6f0f0;
-  --brand-10: #cce1e1;
-  --brand-20: #a4c7c9;
-  --brand-30: #7badb1;
-  --brand-40: #539198;
-  --brand-50: #2b7580;
+:root {
+  --brand-5: #f2f9fb;
+  --brand-10: #dde9ed;
+  --brand-20: #b4cad1;
+  --brand-30: #8cacb6;
+  --brand-40: #648f9b;
+  --brand-50: #3b7381;
   --brand-60: #025768; /* BASE */
-  --brand-70: #02485b;
-  --brand-80: #023b4e;
-  --brand-90: #012e41;
-  --brand-100: #012334;
+  --brand-70: #004958;
+  --brand-80: #003b48;
+  --brand-90: #002e39;
+  --brand-100: #00222a;
+}
+
+/* Light-mode fg overrides — requires class="tale-ui" on <html> */
+
+:where(html:not([data-color-mode='dark'])) .tale-ui,
+.light .tale-ui {
+  --color-50-fg: var(--color-5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
+    --color-50-fg: var(--color-100);
+  }
+}
+
+:root {
+  --neutral-default: var(--neutral-default-60);
+  --neutral-default-5: #faf7f5;
+  --neutral-default-10: #f6f3f1;
+  --neutral-default-12: #f3f0ed;
+  --neutral-default-14: #efece9;
+  --neutral-default-16: #ece8e5;
+  --neutral-default-18: #e8e4e2;
+  --neutral-default-20: #e5e1dd;
+  --neutral-default-22: #e1ddd9;
+  --neutral-default-24: #ddd9d5;
+  --neutral-default-26: #d9d4d1;
+  --neutral-default-28: #d5d0cc;
+  --neutral-default-30: #d1ccc8;
+  --neutral-default-40: #bab4af;
+  --neutral-default-50: #9e9792;
+  --neutral-default-60: #79716b;
+  --neutral-default-70: #625c56;
+  --neutral-default-80: #4c4743;
+  --neutral-default-82: #48433f;
+  --neutral-default-84: #443f3b;
+  --neutral-default-86: #403b37;
+  --neutral-default-88: #3c3734;
+  --neutral-default-90: #383330;
+  --neutral-default-92: #342f2c;
+  --neutral-default-94: #302c29;
+  --neutral-default-96: #2c2825;
+  --neutral-default-98: #282422;
+  --neutral-default-100: #24211e;
+  --display-color: var(--neutral-default-90);
+  --text-color: var(--neutral-default-90);
+  --mono-color: var(--neutral-default-90);
 }

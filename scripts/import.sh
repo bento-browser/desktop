@@ -19,6 +19,7 @@ run_step() {
   fi
 }
 
+run_step "sync theme presets" node scripts/sync-theme-presets.mjs
 run_step "generate chrome tokens" node scripts/generate-chrome-tokens.mjs
 run_step "reset engine patches" bash scripts/reset-engine-patches.sh
 run_step "surfer import" bash scripts/surfer-env.sh import

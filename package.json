@@ -14,7 +14,7 @@
     "build": "pnpm run ext:build && pnpm run import && bash scripts/surfer-env.sh build && bash scripts/sync-builtin-addon-symlinks.sh",
     "build:ui": "bash scripts/surfer-env.sh build --ui && bash scripts/sync-builtin-addon-symlinks.sh",
     "package": "bash scripts/surfer-env.sh package",
-    "lc": "node scripts/generate-chrome-tokens.mjs && bash scripts/surfer-env.sh license-check",
+    "lc": "pnpm run theme:sync && node scripts/generate-chrome-tokens.mjs && bash scripts/surfer-env.sh license-check",
     "mach": "bash scripts/mach-raw.sh",
     "mach:build": "bash scripts/mach-raw.sh build",
     "build:full": "bash scripts/build-bento.sh",
@@ -27,10 +27,11 @@
     "shell:sync": "pnpm run shell:build && bash scripts/sync-shell.sh",
     "shell:ladle": "pnpm --filter @bento/shell ladle:serve",
     "tools:build": "pnpm --filter @bento/tools build",
-    "ext:build": "pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
+    "ext:build": "pnpm run theme:sync && pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
     "size": "pnpm run ext:build && size-limit",
     "size:check": "size-limit",
-    "theme:import": "node scripts/import-theme.mjs"
+    "theme:import": "node scripts/import-theme.mjs && node scripts/sync-theme-presets.mjs",
+    "theme:sync": "node scripts/sync-theme-presets.mjs"
   },
   "devDependencies": {
     "@bento-browser/surfer": "github:Bento-Browser/surfer#358ca0418217c59fb659acd05ce7996682105147",

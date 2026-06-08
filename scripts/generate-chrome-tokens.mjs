@@ -37,7 +37,7 @@
  *     corners would be twice as round as the rest of the UI.
  */
 
-import { readFileSync, writeFileSync, statSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -193,32 +193,28 @@ const bentoSection = bentoTokensContent
     '\n'
   : '';
 
-// Workspace theme presets. Each preset file is canonical Scale CSS scoped
-// by `[data-bento-theme="<id>"]`. Loading them into chrome's stylesheet
-// means switching a workspace's theme (which sets `data-bento-theme` on
-// the chrome `<window>` element via the BENTO_THEME title-IPC handler in
-// bento-shell-mount.js) re-skins the chrome UI for free — same source of
-// truth as the shell, no per-surface theme rendering.
+// Workspace theme presets. scripts/sync-theme-presets.mjs compiles raw
+// Scale CSS files from theme/presets/*.css into this generated index.css,
+// scoped by `[data-bento-theme="<id>"]`. Loading the compiled output into
+// chrome's stylesheet means switching a workspace's theme (which sets
+// `data-bento-theme` on the chrome `<window>` element via the BENTO_THEME
+// title-IPC handler in bento-shell-mount.js) re-skins the chrome UI from
+// the same compiled source as the shell.
 //
 // Foreground-override selectors (`html[data-bento-theme="<id>"]…
 // .tale-ui`) won't match in chrome because chrome's documentElement
 // doesn't carry the `.tale-ui` class — accepted no-op, fg overrides are
 // shell-only (chrome doesn't use Tale UI components).
-const PRESETS_DIR = resolve(
+const PRESETS_INDEX_PATH = resolve(
   REPO_ROOT,
-  'extensions/bento-shell/src/theme/presets',
+  'extensions/bento-shell/src/theme/presets/index.css',
 );
 let presetsSection = '';
 try {
-  const entries = existsSync(PRESETS_DIR) ? readdirSync(PRESETS_DIR) : [];
-  const presetFiles = entries
-    .filter((name) => name.endsWith('.css') && name !== 'index.css')
-    .sort();
-  for (const file of presetFiles) {
-    const path = resolve(PRESETS_DIR, file);
-    const content = readFileSync(path, 'utf-8');
-    presetsSection +=
-      `\n/* ─── from extensions/bento-shell/src/theme/presets/${file} ─── */\n` +
+  if (existsSync(PRESETS_INDEX_PATH)) {
+    const content = readFileSync(PRESETS_INDEX_PATH, 'utf-8');
+    presetsSection =
+      '\n/* ─── from extensions/bento-shell/src/theme/presets/index.css ─── */\n' +
       rewriteHtmlToRoot(content.trimEnd()) +
       '\n';
   }

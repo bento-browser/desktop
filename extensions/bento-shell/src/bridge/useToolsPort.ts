@@ -244,11 +244,7 @@ function ensureConnection(): void {
               payload.windowId = state.windowId;
             }
             const activeWorkspace = wsState.byId[event.workspaceId];
-            if (activeWorkspace?.themeId) {
-              payload.themeId = activeWorkspace.themeId;
-            } else {
-              payload.themeId = 'default';
-            }
+            payload.themeId = event.themeId ?? activeWorkspace?.themeId ?? 'default';
             if (typeof event.mainWidthPx === 'number') {
               payload.mainWidthPx = event.mainWidthPx;
             }

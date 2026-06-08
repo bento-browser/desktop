@@ -664,6 +664,11 @@ export type Event =
        * has its windowId before its local workspace mirror has applied the
        * corresponding `activated` delta. */
       windowId?: number;
+      /** Active theme for this workspace at the moment tools emitted the
+       * sync. Carried from tools' authoritative workspace store so chrome
+       * does not depend on the shell mirror having applied the matching
+       * workspaces/changed delta first. */
+      themeId?: string;
       panels: Array<{
         tabId: number;
         url: string;

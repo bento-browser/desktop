@@ -427,6 +427,7 @@ async function emitPanelsSync(
   }
   const mainWidthPx = panels.getMainWidth(workspaceId);
   const stripScrollLeft = panels.getStripScroll(workspaceId);
+  const themeId = workspaces.snapshot().workspaces.find((w) => w.id === workspaceId)?.themeId;
   const pinnedTabIdsInWorkspace = pinnedPanels.entriesForWorkspace(workspaceId);
   // Saved-panel count is GLOBAL (not workspace-scoped) but rides on this
   // event because chrome already polls BENTO_PANELS and needs the count
@@ -440,6 +441,7 @@ async function emitPanelsSync(
     type: 'panels/sync';
     workspaceId: string;
     windowId?: number;
+    themeId?: string;
     panels: typeof valid;
     mainWidthPx?: number;
     stripScrollLeft?: number;
@@ -452,6 +454,7 @@ async function emitPanelsSync(
   } = {
     type: 'panels/sync',
     workspaceId,
+    themeId: themeId || 'default',
     panels: valid,
     savedPanelCount,
     savedPanelItems,
