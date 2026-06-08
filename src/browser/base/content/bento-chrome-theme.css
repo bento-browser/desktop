@@ -151,10 +151,18 @@
     background-color: transparent !important;
   }
   #navigator-toolbox,
-  #nav-bar,
-  #PersonalToolbar,
   #TabsToolbar {
     background-color: var(--neutral-5) !important;
+    background-image: none !important;
+    color: var(--neutral-90) !important;
+  }
+  #nav-bar {
+    background-color: var(--neutral-18) !important;
+    background-image: none !important;
+    color: var(--neutral-90) !important;
+  }
+  #PersonalToolbar {
+    background-color: var(--neutral-14) !important;
     background-image: none !important;
     color: var(--neutral-90) !important;
   }

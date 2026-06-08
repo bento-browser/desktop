@@ -13,12 +13,11 @@
   .bento-shell-app {
     display: flex;
     flex-direction: row;
+    box-sizing: border-box;
+    border-inline-end: 1px solid var(--bento-sidebar-divider-color);
     background-color: transparent;
     color: var(--neutral-90);
     overflow: hidden;
-    --bento-pinned-panels-button-size: var(--space-l);
-    --bento-pinned-panels-favicon-size: var(--bento-control-size-sm);
-    --bento-pinned-panels-rail-width: var(--bento-pinned-panels-button-size);
   }
 
   .bento-shell-app__main {

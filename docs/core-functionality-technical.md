@@ -150,9 +150,9 @@ assignment path as other new-tab entry points. Collapsed sidebar mode keeps the
 button visible as a square icon-only control. Its slot and the favicon-only tab
 rows keep the same `--bento-tab-row-height` as expanded mode so toggling the
 sidebar does not shift the tab list vertically. The collapsed host width is
-`--bento-tab-strip-width-collapsed`, which aliases `--bento-tab-row-height`, so
-the rail grows or shrinks with the square tab controls instead of adding side
-padding.
+`--bento-tab-strip-width-collapsed`, which aliases
+`--bento-pinned-panels-rail-width`, so the collapsed sidebar matches the
+favicon-only pinned-panel rail width.
 The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser

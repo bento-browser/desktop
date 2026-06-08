@@ -235,14 +235,14 @@
          edge.
          !important needed for width + min-width because XUL chrome
          CSS sets defaults for <splitter> that win otherwise. */
-      /* Remove the chrome-content separator line under the URL bar.
+      /* Draw the top-toolbar/content separator with Bento's divider
+         color so the edge above the panel strip matches the sidebar.
          Firefox's content-area.css applies
            #navigator-toolbox { border-bottom: 0.01px solid ... }
          which renders as a 1px hairline between the toolbar and the
-         content area. Bento wants the panels flush against the URL
-         bar (no separator); zero the border style here. */
+         content area; override the color and stable width here. */
       #navigator-toolbox {
-        border-bottom-style: none !important;
+        border-bottom: 1px solid var(--bento-sidebar-divider-color) !important;
       }
       :root[bento-startup-loading='true'] #navigator-toolbox {
         opacity: 0;
@@ -587,9 +587,9 @@
       }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
-         panel strip and the favicon navigator. Track + thumb both
-         drawn from neutral tokens; thumb uses the workspace accent
-         while being dragged so the user knows it's active. */
+         panel strip and the favicon navigator. A divider-colored rail
+         sits behind the thumb so it lines up visually with the
+         sidebar footer divider. */
       #bento-strip-scrollbar {
         position: absolute;
         left: var(--space-2xs);
@@ -598,18 +598,25 @@
         z-index: 20;
         height: var(--bento-scrollbar-thickness);
         margin: 0;
-        /* No track bg — the scrollbar sits in the row below the
-           panels where direct panel shadows can extend into the
-           scrollport's internal clearance. The thumb has its own bg,
-           so the scrollbar remains usable as a floating-thumb
-           scrollbar. */
         border-radius: var(--bento-scrollbar-radius);
         cursor: pointer;
+      }
+      #bento-strip-scrollbar::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        background-color: var(--bento-sidebar-divider-color);
+        transform: translateY(-50%);
+        pointer-events: none;
       }
       .bento-strip-scrollbar__thumb {
         position: absolute;
         top: 0;
         left: 0;
+        z-index: 1;
         height: 100%;
         min-width: var(--bento-scrollbar-thumb-min-width);
         background-color: var(--neutral-80);
@@ -1181,9 +1188,9 @@
         flex-direction: row;
         align-items: stretch;
         gap: var(--space-2xs);
-        padding-block-start: var(--space-2xs);
+        padding-block-start: var(--space-3xs);
         padding-block-end: calc(var(--bento-strip-controls-height) + var(--space-2xs));
-        padding-inline-start: var(--space-2xs);
+        padding-inline-start: var(--space-3xs);
         padding-inline-end: var(--space-2xs);
         overflow-x: scroll;
         overflow-y: hidden;
