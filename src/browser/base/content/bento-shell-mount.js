@@ -205,17 +205,16 @@
   function injectChromeStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      /* Consistent chrome gaps. The single source of truth for the
-         spacing between a panel and the window edge / address bar /
-         neighbour panel. All margins, padding, and splitter widths
-         that contribute to chrome rhythm reference this:
-           --space-2xs ≈ 6.4px at 62.5%-root rendering
-         The chrome-tokens generator (scripts/generate-chrome-tokens.mjs)
-         pulls Tale UI's spacing tokens into chrome, so --space-2xs is
-         defined here just like it is in the bento-shell extension. */
+      /* Consistent chrome gaps and splitter slots. Panel boundaries all
+         reserve --bento-splitter-hit-size; the visible indicator is a
+         centered half-length capsule inside that hit target. */
       :root {
         --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-30);
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
+        --bento-splitter-hit-size: 14px;
+        --bento-splitter-hit-half: 7px;
+        --bento-splitter-indicator-radius: 3px;
+        --bento-panel-gap: var(--bento-splitter-hit-size);
       }
 
       /* Inline sidebar: no padding around the frame, no rounded
@@ -374,10 +373,10 @@
         50% { opacity: 1; }
       }
       #bento-shell-splitter {
-        width: 14px !important;
-        min-width: 14px !important;
-        max-width: 14px !important;
-        margin-inline: -7px;
+        width: var(--bento-splitter-hit-size) !important;
+        min-width: var(--bento-splitter-hit-size) !important;
+        max-width: var(--bento-splitter-hit-size) !important;
+        margin-inline: calc(-1 * var(--bento-splitter-hit-half));
         cursor: col-resize;
         border: 0 !important;
         padding: 0 !important;
@@ -391,17 +390,26 @@
         position: absolute;
         top: 0;
         bottom: 0;
-        width: 14px;
+        width: var(--bento-splitter-hit-size);
         cursor: col-resize;
         pointer-events: auto;
         z-index: 4;
-        background-image: linear-gradient(
-          to right,
-          transparent calc(50% - 2.5px),
-          var(--color-60) calc(50% - 2.5px),
-          var(--color-60) calc(50% + 2.5px),
-          transparent calc(50% + 2.5px)
-        );
+        background-image:
+          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+          linear-gradient(
+            to right,
+            transparent calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+            transparent calc(50% + var(--bento-splitter-indicator-radius))
+          ),
+          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size:
+          100% 100%,
+          100% 50%,
+          100% 100%;
         opacity: 0;
         transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
       }
@@ -439,7 +447,7 @@
       }
       #bento-shell-splitter.bento-sidebar-collapsed {
         /* visibility:hidden (NOT display:none) so the splitter still
-           occupies its var(--space-2xs) width — that's what creates
+           occupies its --bento-splitter-hit-size slot — that's what creates
            the visible gap between the sidebar and the main content
            slot. Without the reserved width, the gap collapses to 0
            and the rail looks pasted against the panel area. The
@@ -1180,7 +1188,7 @@
         /* No background fill — chrome bg shows through directly so
            there's no surface discrepancy. Panels are cards lifted
            via box-shadow over that same chrome bg.
-           display:flex + gap:var(--space-2xs) is the single source of
+           display:flex + gap:var(--bento-panel-gap) is the single source of
            truth for inter-panel spacing — Firefox's content-area.css
            sets margin-left: 5px on .split-view-panel-active children
            with higher specificity than our previous margin attempt,
@@ -1191,7 +1199,7 @@
         display: flex;
         flex-direction: row;
         align-items: stretch;
-        gap: var(--space-2xs);
+        gap: var(--bento-panel-gap);
         padding-block-start: var(--space-3xs);
         padding-block-end: calc(var(--bento-strip-controls-height) + var(--space-2xs));
         padding-inline-start: var(--space-3xs);
@@ -1212,7 +1220,7 @@
         /* display:block ignores gap for layout, but the flat-layout
            geometry code reads the computed gap as the authoritative
            inter-panel spacing value. */
-        gap: var(--space-2xs);
+        gap: var(--bento-panel-gap);
       }
       #tabbrowser-tabpanels.bento-split-active::-webkit-scrollbar {
         display: none;
@@ -1443,33 +1451,42 @@
          regardless of element type or position). Positioned
          absolutely at the right edge of each "left" panel via
          syncInterPanelSplitters in JS.
-         Visual: a fixed-width accent line at the centre of a 14px grab
-         zone, drawn via background linear-gradient (XUL splitter
+         Visual: a fixed-width, half-length accent line at the centre of
+         a consistent grab zone, drawn via background linear-gradient (XUL splitter
          elements ignore ::before pseudo-elements, so element-side
          CSS is the only path). Hover/drag changes opacity only; the
          hit target and painted bar do not resize, so panel boundaries
          do not visually jump under the cursor. */
       #bento-side-panel-host > .bento-panel-splitter {
         cursor: col-resize;
-        width: 14px !important;
-        min-width: 14px !important;
-        max-width: 14px !important;
+        width: var(--bento-splitter-hit-size) !important;
+        min-width: var(--bento-splitter-hit-size) !important;
+        max-width: var(--bento-splitter-hit-size) !important;
         box-sizing: border-box;
         border: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
         appearance: none;
         /* Invisible at rest and visible on hover/drag. The splitter is
-           always the same 14px hit target with the same fixed-width
+           always the same hit target with the same fixed-width
            painted bar; only opacity changes, so there is no apparent
            growth/shrink animation under the cursor. */
-        background-image: linear-gradient(
-          to right,
-          transparent calc(50% - 2.5px),
-          var(--color-60) calc(50% - 2.5px),
-          var(--color-60) calc(50% + 2.5px),
-          transparent calc(50% + 2.5px)
-        );
+        background-image:
+          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+          linear-gradient(
+            to right,
+            transparent calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+            transparent calc(50% + var(--bento-splitter-indicator-radius))
+          ),
+          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size:
+          100% 100%,
+          100% 50%,
+          100% 100%;
         opacity: 0;
         transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
       }
@@ -1662,19 +1679,28 @@
       }
       .bento-subdivision-vsplitter {
         cursor: row-resize !important;
-        flex: 0 0 14px !important;
-        min-height: 14px !important;
-        max-height: 14px !important;
+        flex: 0 0 var(--bento-splitter-hit-size) !important;
+        min-height: var(--bento-splitter-hit-size) !important;
+        max-height: var(--bento-splitter-hit-size) !important;
         appearance: none !important;
         border: 0 !important;
         background-color: transparent !important;
-        background-image: linear-gradient(
-          to bottom,
-          transparent calc(50% - 2.5px),
-          var(--color-60) calc(50% - 2.5px),
-          var(--color-60) calc(50% + 2.5px),
-          transparent calc(50% + 2.5px)
-        ) !important;
+        background-image:
+          radial-gradient(circle at 25% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+          linear-gradient(
+            to bottom,
+            transparent calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+            transparent calc(50% + var(--bento-splitter-indicator-radius))
+          ),
+          radial-gradient(circle at 75% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-size:
+          100% 100%,
+          50% 100%,
+          100% 100% !important;
         opacity: 0 !important;
         transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
         position: relative !important;
@@ -1811,22 +1837,31 @@
       }
       .bento-subdivision-hsplitter {
         cursor: col-resize !important;
-        flex: 0 0 14px !important;
-        min-width: 14px !important;
-        max-width: 14px !important;
+        flex: 0 0 var(--bento-splitter-hit-size) !important;
+        min-width: var(--bento-splitter-hit-size) !important;
+        max-width: var(--bento-splitter-hit-size) !important;
         box-sizing: border-box !important;
         appearance: none !important;
         border: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
         background-color: transparent !important;
-        background-image: linear-gradient(
-          to right,
-          transparent calc(50% - 2.5px),
-          var(--color-60) calc(50% - 2.5px),
-          var(--color-60) calc(50% + 2.5px),
-          transparent calc(50% + 2.5px)
-        ) !important;
+        background-image:
+          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+          linear-gradient(
+            to right,
+            transparent calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+            transparent calc(50% + var(--bento-splitter-indicator-radius))
+          ),
+          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-size:
+          100% 100%,
+          100% 50%,
+          100% 100% !important;
         opacity: 0 !important;
         transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
         position: relative !important;
@@ -1961,13 +1996,13 @@
       }
       #bento-side-panel-host > .bento-layout-vsplitter {
         cursor: row-resize !important;
-        min-height: 14px !important;
-        max-height: 14px !important;
+        min-height: var(--bento-splitter-hit-size) !important;
+        max-height: var(--bento-splitter-hit-size) !important;
       }
       #bento-side-panel-host > .bento-layout-hsplitter {
         cursor: col-resize !important;
-        min-width: 14px !important;
-        max-width: 14px !important;
+        min-width: var(--bento-splitter-hit-size) !important;
+        max-width: var(--bento-splitter-hit-size) !important;
       }
       #bento-side-panel-host > .bento-layout-chooser {
         position: absolute !important;
@@ -4693,7 +4728,7 @@
     const d = splitter._vDragState;
     if (!d || e.pointerId !== d.pointerId) return;
     const delta = e.clientY - d.startY;
-    const splitterH = splitter.getBoundingClientRect().height || 14;
+    const splitterH = splitter.getBoundingClientRect().height || panelSplitterSizePx();
     const usable = d.colHeight - splitterH;
     const minH = usable * 0.2;
     const next = Math.max(minH, Math.min(usable - minH, d.startHeight + delta));
@@ -4765,7 +4800,7 @@
     const d = splitter._hSubDragState;
     if (!d || e.pointerId !== d.pointerId) return;
     const delta = e.clientX - d.startX;
-    const splitterW = 14;
+    const splitterW = splitter.getBoundingClientRect().width || panelSplitterSizePx();
     const usable = d.bottomWidth - splitterW;
     const minW = usable * 0.2;
     const next = Math.max(minW, Math.min(usable - minW, d.startWidth + delta));
@@ -5539,7 +5574,7 @@
             parentPanel.querySelector(':scope > browser');
           if (currentContent) {
             const headerH = headerEl?.getBoundingClientRect().height || 0;
-            const splitterH = vsplitter?.getBoundingClientRect().height || 14;
+            const splitterH = vsplitter?.getBoundingClientRect().height || panelSplitterSizePx();
             const availableH = Math.max(
               0,
               parentPanel.getBoundingClientRect().height - headerH - splitterH,
@@ -6060,7 +6095,7 @@
       return;
     }
     const hostRect = host.getBoundingClientRect();
-    const SPLITTER_WIDTH = 14;
+    const splitterWidth = panelSplitterSizePx();
     const panelRectForSplitter = (panelEl) => {
       if (!panelEl) return null;
       let localRect = null;
@@ -6113,10 +6148,10 @@
       sp.style.position = 'absolute';
       sp.style.top = lr.top - hostRect.top + 'px';
       sp.style.height = lr.height + 'px';
-      sp.style.left = gapCentre - hostRect.left - SPLITTER_WIDTH / 2 + 'px';
-      sp.style.width = SPLITTER_WIDTH + 'px';
-      sp.style.minWidth = SPLITTER_WIDTH + 'px';
-      sp.style.maxWidth = SPLITTER_WIDTH + 'px';
+      sp.style.left = gapCentre - hostRect.left - splitterWidth / 2 + 'px';
+      sp.style.width = splitterWidth + 'px';
+      sp.style.minWidth = splitterWidth + 'px';
+      sp.style.maxWidth = splitterWidth + 'px';
       sp.style.zIndex = '5';
     }
     // Re-observe after positioning so the next layout commit
@@ -7169,7 +7204,7 @@
         setSubdivisionFlex(panelEl, '0 0 ' + panelEl.getBoundingClientRect().width + 'px');
       }
       for (const splitter of splitters) {
-        const splitterW = splitter.getBoundingClientRect().width || 14;
+        const splitterW = splitter.getBoundingClientRect().width || panelSplitterSizePx();
         setSubdivisionFlex(splitter, '0 0 ' + splitterW + 'px');
         splitter.style.setProperty('min-width', splitterW + 'px', 'important');
         splitter.style.setProperty('max-width', splitterW + 'px', 'important');
@@ -9728,6 +9763,10 @@
     return cssLengthToPx(resolveChromeToken(name), fallback);
   }
 
+  function panelSplitterSizePx() {
+    return tokenPx('--bento-splitter-hit-size', 14);
+  }
+
   function clampLayoutRatio(value, fallback = 0.5) {
     const n = Number(value);
     if (!Number.isFinite(n)) return fallback;
@@ -9878,7 +9917,7 @@
     const padBottom = cssLengthToPx(styles.paddingBottom, 44);
     const columnGap = cssLengthToPx(styles.columnGap, NaN);
     const gap = Number.isFinite(columnGap) ? columnGap : cssLengthToPx(styles.gap, 8);
-    const splitterSize = 14;
+    const splitterSize = panelSplitterSizePx();
     const minPanelWidth = tokenPx('--bento-panel-min-width', 380);
     const minMainWidth = tokenPx('--bento-main-panel-min-width', 480);
     const viewportWidth = Math.max(0, tabpanels.clientWidth || 0);
@@ -10221,7 +10260,7 @@
 
   function ratioFromLayoutPointer(axis, groupRect, clientX, clientY) {
     if (!groupRect) return 0.5;
-    const splitterSize = 14;
+    const splitterSize = panelSplitterSizePx();
     const point = axis === 'vertical' ? clientY : clientX;
     const start = axis === 'vertical' ? groupRect.top : groupRect.left;
     const size = axis === 'vertical' ? groupRect.height : groupRect.width;

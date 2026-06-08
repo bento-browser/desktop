@@ -99,21 +99,20 @@
   --brand-40: #cfae80;
   --brand-50: #b78f52;
   --brand-60: #936400; /* BASE */
-  --brand-70: #755216;
-  --brand-80: #58411c;
-  --brand-90: #3c2f1d;
-  --brand-100: #202020;
+  --brand-70: #795514;
+  --brand-80: #61461b;
+  --brand-90: #48371d;
+  --brand-100: #32291d;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='antique'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='antique']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -135,18 +134,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #cfae80;
   --neutral-default-50: #b78f52;
   --neutral-default-60: #936400;
-  --neutral-default-70: #755216;
-  --neutral-default-80: #58411c;
-  --neutral-default-82: #533d1d;
-  --neutral-default-84: #4c3a1d;
-  --neutral-default-86: #48361d;
-  --neutral-default-88: #41331d;
-  --neutral-default-90: #3c2f1d;
-  --neutral-default-92: #362d1d;
-  --neutral-default-94: #32291d;
-  --neutral-default-96: #2d261c;
-  --neutral-default-98: #27231c;
-  --neutral-default-100: #202020;
+  --neutral-default-70: #795514;
+  --neutral-default-80: #61461b;
+  --neutral-default-82: #5c421c;
+  --neutral-default-84: #57401c;
+  --neutral-default-86: #523d1d;
+  --neutral-default-88: #4d3a1d;
+  --neutral-default-90: #48371d;
+  --neutral-default-92: #44341e;
+  --neutral-default-94: #3f311d;
+  --neutral-default-96: #3a2f1d;
+  --neutral-default-98: #362c1d;
+  --neutral-default-100: #32291d;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -223,21 +222,20 @@ html[data-color-mode='dark'] .tale-ui,
   --brand-40: #d9a4b1;
   --brand-50: #c18192;
   --brand-60: #9b5267; /* BASE */
-  --brand-70: #7c4454;
-  --brand-80: #5f3541;
-  --brand-90: #442730;
-  --brand-100: #271c1a;
+  --brand-70: #814656;
+  --brand-80: #683947;
+  --brand-90: #4f2e37;
+  --brand-100: #392127;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='mauve'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='mauve']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -259,18 +257,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #d9a4b1;
   --neutral-default-50: #c18192;
   --neutral-default-60: #9b5267;
-  --neutral-default-70: #7c4454;
-  --neutral-default-80: #5f3541;
-  --neutral-default-82: #5a323d;
-  --neutral-default-84: #543039;
-  --neutral-default-86: #4e2d35;
-  --neutral-default-88: #492a33;
-  --neutral-default-90: #442730;
-  --neutral-default-92: #3e252b;
-  --neutral-default-94: #392127;
-  --neutral-default-96: #351f26;
-  --neutral-default-98: #2e1d22;
-  --neutral-default-100: #271c1a;
+  --neutral-default-70: #814656;
+  --neutral-default-80: #683947;
+  --neutral-default-82: #633744;
+  --neutral-default-84: #5e3541;
+  --neutral-default-86: #59323d;
+  --neutral-default-88: #54303a;
+  --neutral-default-90: #4f2e37;
+  --neutral-default-92: #4b2c34;
+  --neutral-default-94: #472931;
+  --neutral-default-96: #42272e;
+  --neutral-default-98: #3d252a;
+  --neutral-default-100: #392127;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -285,21 +283,20 @@ html[data-color-mode='dark'] .tale-ui,
   --brand-40: #86c0ac;
   --brand-50: #58a58d;
   --brand-60: #007e64; /* BASE */
-  --brand-70: #196551;
-  --brand-80: #1f4d40;
-  --brand-90: #20362f;
-  --brand-100: #1f1f1f;
+  --brand-70: #166854;
+  --brand-80: #1e5445;
+  --brand-90: #204037;
+  --brand-100: #1e2d27;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='mountain-meadow'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='mountain-meadow']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -321,18 +318,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #86c0ac;
   --neutral-default-50: #58a58d;
   --neutral-default-60: #007e64;
-  --neutral-default-70: #196551;
-  --neutral-default-80: #1f4d40;
-  --neutral-default-82: #1f483c;
-  --neutral-default-84: #204339;
-  --neutral-default-86: #1f3f34;
-  --neutral-default-88: #1f3a32;
-  --neutral-default-90: #20362f;
-  --neutral-default-92: #1f312c;
-  --neutral-default-94: #1e2d27;
-  --neutral-default-96: #1d2825;
-  --neutral-default-98: #1d2424;
-  --neutral-default-100: #1f1f1f;
+  --neutral-default-70: #166854;
+  --neutral-default-80: #1e5445;
+  --neutral-default-82: #1f4f41;
+  --neutral-default-84: #1f4c3f;
+  --neutral-default-86: #1f483c;
+  --neutral-default-88: #1f4438;
+  --neutral-default-90: #204037;
+  --neutral-default-92: #203c33;
+  --neutral-default-94: #1f3930;
+  --neutral-default-96: #1e342d;
+  --neutral-default-98: #1e312a;
+  --neutral-default-100: #1e2d27;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -347,21 +344,20 @@ html[data-color-mode='dark'] .tale-ui,
   --brand-40: #fd909e;
   --brand-50: #ec6379;
   --brand-60: #c60648; /* BASE */
-  --brand-70: #9c1c3d;
-  --brand-80: #742232;
-  --brand-90: #4c2126;
-  --brand-100: #261c1a;
+  --brand-70: #a2193e;
+  --brand-80: #7f2135;
+  --brand-90: #5e222b;
+  --brand-100: #3d1f22;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='rosewater'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='rosewater']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -383,18 +379,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #fd909e;
   --neutral-default-50: #ec6379;
   --neutral-default-60: #c60648;
-  --neutral-default-70: #9c1c3d;
-  --neutral-default-80: #742232;
-  --neutral-default-82: #6b222f;
-  --neutral-default-84: #63222d;
-  --neutral-default-86: #5b222b;
-  --neutral-default-88: #53212a;
-  --neutral-default-90: #4c2126;
-  --neutral-default-92: #442025;
-  --neutral-default-94: #3d1f22;
-  --neutral-default-96: #361e20;
-  --neutral-default-98: #2e1d1a;
-  --neutral-default-100: #261c1a;
+  --neutral-default-70: #a2193e;
+  --neutral-default-80: #7f2135;
+  --neutral-default-82: #782133;
+  --neutral-default-84: #712232;
+  --neutral-default-86: #6b222f;
+  --neutral-default-88: #64222e;
+  --neutral-default-90: #5e222b;
+  --neutral-default-92: #56212a;
+  --neutral-default-94: #502128;
+  --neutral-default-96: #492126;
+  --neutral-default-98: #432025;
+  --neutral-default-100: #3d1f22;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -409,21 +405,20 @@ html[data-color-mode='dark'] .tale-ui,
   --brand-40: #8cbbca;
   --brand-50: #629fb2;
   --brand-60: #25778d; /* BASE */
-  --brand-70: #236071;
-  --brand-80: #1f4a57;
-  --brand-90: #1f343b;
-  --brand-100: #1f1f1f;
+  --brand-70: #236375;
+  --brand-80: #20515e;
+  --brand-90: #1f3e47;
+  --brand-100: #1e2c32;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='teal'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='teal']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -445,18 +440,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #8cbbca;
   --neutral-default-50: #629fb2;
   --neutral-default-60: #25778d;
-  --neutral-default-70: #236071;
-  --neutral-default-80: #1f4a57;
-  --neutral-default-82: #1f4651;
-  --neutral-default-84: #1f414c;
-  --neutral-default-86: #1f3d46;
-  --neutral-default-88: #1f3940;
-  --neutral-default-90: #1f343b;
-  --neutral-default-92: #1f3036;
-  --neutral-default-94: #1e2c32;
-  --neutral-default-96: #1d282c;
-  --neutral-default-98: #1c2428;
-  --neutral-default-100: #1f1f1f;
+  --neutral-default-70: #236375;
+  --neutral-default-80: #20515e;
+  --neutral-default-82: #1f4d5a;
+  --neutral-default-84: #1f4955;
+  --neutral-default-86: #204651;
+  --neutral-default-88: #1f414b;
+  --neutral-default-90: #1f3e47;
+  --neutral-default-92: #203a43;
+  --neutral-default-94: #1f373f;
+  --neutral-default-96: #1f333a;
+  --neutral-default-98: #1e3034;
+  --neutral-default-100: #1e2c32;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -471,21 +466,20 @@ html[data-color-mode='dark'] .tale-ui,
   --brand-40: #e4a081;
   --brand-50: #ce7a52;
   --brand-60: #a64300; /* BASE */
-  --brand-70: #833a13;
-  --brand-80: #613019;
-  --brand-90: #40261a;
-  --brand-100: #241a18;
+  --brand-70: #873b11;
+  --brand-80: #6a3317;
+  --brand-90: #4f2b1a;
+  --brand-100: #34221a;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-color-mode='dark'] .tale-ui,
-.dark .tale-ui {
+html[data-bento-theme='terracotta'][data-color-mode='dark'].tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='terracotta']:not([data-color-mode='light']).tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -507,18 +501,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #e4a081;
   --neutral-default-50: #ce7a52;
   --neutral-default-60: #a64300;
-  --neutral-default-70: #833a13;
-  --neutral-default-80: #613019;
-  --neutral-default-82: #5a2e19;
-  --neutral-default-84: #542d1a;
-  --neutral-default-86: #4d2a1a;
-  --neutral-default-88: #47281b;
-  --neutral-default-90: #40261a;
-  --neutral-default-92: #3b241a;
-  --neutral-default-94: #34221a;
-  --neutral-default-96: #2d201a;
-  --neutral-default-98: #2b1b19;
-  --neutral-default-100: #241a18;
+  --neutral-default-70: #873b11;
+  --neutral-default-80: #6a3317;
+  --neutral-default-82: #653118;
+  --neutral-default-84: #5f3019;
+  --neutral-default-86: #5a2e1a;
+  --neutral-default-88: #542c1a;
+  --neutral-default-90: #4f2b1a;
+  --neutral-default-92: #49291a;
+  --neutral-default-94: #44271a;
+  --neutral-default-96: #3e261a;
+  --neutral-default-98: #39241a;
+  --neutral-default-100: #34221a;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);

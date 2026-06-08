@@ -6,10 +6,10 @@
   --brand-40: #d9a4b1;
   --brand-50: #c18192;
   --brand-60: #9b5267; /* BASE */
-  --brand-70: #7c4454;
-  --brand-80: #5f3541;
-  --brand-90: #442730;
-  --brand-100: #271c1a;
+  --brand-70: #814656;
+  --brand-80: #683947;
+  --brand-90: #4f2e37;
+  --brand-100: #392127;
 }
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
@@ -42,18 +42,18 @@ html[data-color-mode='dark'] .tale-ui,
   --neutral-default-40: #d9a4b1;
   --neutral-default-50: #c18192;
   --neutral-default-60: #9b5267;
-  --neutral-default-70: #7c4454;
-  --neutral-default-80: #5f3541;
-  --neutral-default-82: #5a323d;
-  --neutral-default-84: #543039;
-  --neutral-default-86: #4e2d35;
-  --neutral-default-88: #492a33;
-  --neutral-default-90: #442730;
-  --neutral-default-92: #3e252b;
-  --neutral-default-94: #392127;
-  --neutral-default-96: #351f26;
-  --neutral-default-98: #2e1d22;
-  --neutral-default-100: #271c1a;
+  --neutral-default-70: #814656;
+  --neutral-default-80: #683947;
+  --neutral-default-82: #633744;
+  --neutral-default-84: #5e3541;
+  --neutral-default-86: #59323d;
+  --neutral-default-88: #54303a;
+  --neutral-default-90: #4f2e37;
+  --neutral-default-92: #4b2c34;
+  --neutral-default-94: #472931;
+  --neutral-default-96: #42272e;
+  --neutral-default-98: #3d252a;
+  --neutral-default-100: #392127;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
