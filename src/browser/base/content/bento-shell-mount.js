@@ -584,6 +584,7 @@
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
         overflow-x: hidden;
+        padding-block-start: var(--space-3xs);
         padding-block-end: var(--space-2xs);
         padding-inline-start: var(--space-2xs);
         padding-inline-end: var(--space-2xs);
