@@ -163,7 +163,11 @@ export async function executeImport(
         tabId = panelUrlToTabIds.get(ppData.url)?.shift();
       }
       if (tabId !== undefined) {
-        ctx.pinnedPanels.add(ws.id, tabId);
+        if (typeof ppData.widthPx === 'number' && ppData.widthPx > 0) {
+          ctx.pinnedPanels.add(ws.id, tabId, { widthPx: Math.round(ppData.widthPx) });
+        } else {
+          ctx.pinnedPanels.add(ws.id, tabId);
+        }
       }
     }
   }

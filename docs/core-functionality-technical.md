@@ -1082,7 +1082,9 @@ whether the pinned panel still exists; if so, it activates the owning workspace
 and emits `scrollToPanelTabId` so chrome scrolls and focuses that exact panel.
 If the panel/tab was closed, the pin remains URL-backed, tools recreates the
 panel in the owning workspace, rebinds the pin to the replacement tab id, and
-then emits `scrollToPanelTabId`.
+then emits `scrollToPanelTabId`. Recreated pinned panels use the pin's
+remembered `widthPx` when present, falling back to the normal default new-panel
+width only for older pins without width metadata.
 
 ### Traversal pitfalls
 
@@ -1111,9 +1113,11 @@ remain URL-backed and may temporarily use synthetic negative tab ids until the
 user opens them again. Persistence stores URLs and optional panel keys because
 tab ids do not survive restart. Boot restore remaps persisted entries to live
 tab ids when possible and otherwise keeps them as URL-backed rail entries.
-Pinned entries also persist last-known title and favicon metadata; tab metadata
-updates refresh pinned entries before closure so the rail favicon remains stable
-when the panel is closed and later reopened.
+Pinned entries also persist last-known title, favicon, and panel-width metadata;
+tab metadata updates refresh pinned entries before closure so the rail favicon
+remains stable when the panel is closed and later reopened. `panel/setWidth`
+updates the pinned entry for any matching live pin so a resized pinned panel
+reopens at the latest user-chosen width.
 Chrome dispatches `panel/focusedChanged` when the focused side-panel tab id
 changes. The shell mirrors that event into `usePanelFocusStore`, and the pinned
 rail applies the `color-60` tonal treatment to the matching pinned-panel button.

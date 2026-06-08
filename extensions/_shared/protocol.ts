@@ -111,6 +111,7 @@ export interface BentoExportSchema {
       panelKey?: string;
       url?: string;
       order: number;
+      widthPx?: number;
     }>;
   }>;
   settings?: Partial<BentoSettings>;
@@ -519,8 +520,8 @@ export type Action =
    * and rebind the pin to the replacement tab. */
   | { type: 'pinnedPanel/open'; workspaceId: string; tabId: number }
   /** Close the panel surface for a pinned binding but keep the pin. This
-   * removes only the side-panel binding; the underlying tab remains open
-   * so the pin can still resolve a URL for future opens. */
+   * removes the side-panel binding and backing tab without removing the
+   * pinned rail entry. */
   | { type: 'pinnedPanel/close'; workspaceId: string; tabId: number }
   /** Legacy focus action for callers that need to switch to the workspace
    * that owns the pinned binding and focus the existing panel. */
@@ -574,6 +575,7 @@ export interface PinnedPanelEntry {
   url?: string;
   title?: string;
   favIconUrl?: string;
+  widthPx?: number;
 }
 
 /** Pinned-panel delta. `reordered` is currently unused (drag-to-reorder is

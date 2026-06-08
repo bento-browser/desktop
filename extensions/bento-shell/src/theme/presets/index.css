@@ -45,12 +45,13 @@
 
 /* Light-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='default']:not([data-color-mode='dark']).tale-ui {
+:where(html:not([data-color-mode='dark'])) .tale-ui,
+.light .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='default']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-100);
   }
 }
@@ -106,12 +107,13 @@ html[data-bento-theme='default']:not([data-color-mode='dark']).tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='antique'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='antique']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -167,12 +169,13 @@ html[data-bento-theme='antique'][data-color-mode='dark'].tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='forest'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='forest']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -228,12 +231,13 @@ html[data-bento-theme='forest'][data-color-mode='dark'].tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='mauve'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='mauve']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -289,12 +293,13 @@ html[data-bento-theme='mauve'][data-color-mode='dark'].tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='mountain-meadow'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='mountain-meadow']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -350,12 +355,13 @@ html[data-bento-theme='mountain-meadow'][data-color-mode='dark'].tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='rosewater'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='rosewater']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -411,12 +417,13 @@ html[data-bento-theme='rosewater'][data-color-mode='dark'].tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='teal'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='teal']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }
@@ -472,12 +479,13 @@ html[data-bento-theme='teal'][data-color-mode='dark'].tale-ui {
 
 /* Dark-mode fg overrides — requires class="tale-ui" on <html> */
 
-html[data-bento-theme='terracotta'][data-color-mode='dark'].tale-ui {
+html[data-color-mode='dark'] .tale-ui,
+.dark .tale-ui {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='terracotta']:not([data-color-mode='light']).tale-ui {
+  :where(html:not([data-color-mode='light'])) .tale-ui {
     --color-50-fg: var(--color-5);
   }
 }

@@ -10,7 +10,7 @@
 
 const STORAGE_KEY = 'bento.pinnedPanels';
 const BACKUP_STORAGE_KEY = 'bento.pinnedPanels.backup';
-const VERSION = 3;
+const VERSION = 4;
 const DEBOUNCE_MS = 500;
 
 interface StoredEntryV1 {
@@ -28,6 +28,10 @@ interface StoredEntryV3 extends StoredEntryV2 {
   favIconUrl?: string;
 }
 
+interface StoredEntryV4 extends StoredEntryV3 {
+  widthPx?: number;
+}
+
 interface StoredShapeV1 {
   version: 1;
   entries: StoredEntryV1[];
@@ -43,6 +47,11 @@ interface StoredShapeV3 {
   entries: StoredEntryV3[];
 }
 
+interface StoredShapeV4 {
+  version: 4;
+  entries: StoredEntryV4[];
+}
+
 export interface PersistedPinnedEntry {
   workspaceId: string;
   panelKey?: string;
@@ -50,6 +59,7 @@ export interface PersistedPinnedEntry {
   order: number;
   title?: string;
   favIconUrl?: string;
+  widthPx?: number;
 }
 
 export interface PersistedState {
@@ -58,8 +68,8 @@ export interface PersistedState {
 
 function parseStored(stored: unknown): PersistedState | null {
   if (!stored || typeof stored !== 'object') return null;
-  const obj = stored as Partial<StoredShapeV1 | StoredShapeV2 | StoredShapeV3>;
-  if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3) {
+  const obj = stored as Partial<StoredShapeV1 | StoredShapeV2 | StoredShapeV3 | StoredShapeV4>;
+  if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3 && obj.version !== 4) {
     console.warn('[bento-tools] pinnedPanels: unknown version', obj.version, '— ignoring');
     return null;
   }
@@ -68,6 +78,7 @@ function parseStored(stored: unknown): PersistedState | null {
   for (const e of obj.entries) {
     if (!e || typeof e.workspaceId !== 'string' || typeof e.url !== 'string') continue;
     if (typeof e.order !== 'number' || !Number.isFinite(e.order)) continue;
+    const widthPx = (e as StoredEntryV4).widthPx;
     entries.push({
       workspaceId: e.workspaceId,
       panelKey:
@@ -81,6 +92,10 @@ function parseStored(stored: unknown): PersistedState | null {
       favIconUrl:
         typeof (e as StoredEntryV3).favIconUrl === 'string'
           ? (e as StoredEntryV3).favIconUrl
+          : undefined,
+      widthPx:
+        typeof widthPx === 'number' && Number.isFinite(widthPx) && widthPx > 0
+          ? Math.round(widthPx)
           : undefined,
     });
   }
@@ -105,7 +120,7 @@ export async function load(): Promise<PersistedState | null> {
     return null;
   }
   if (!backup) return null;
-  const payload: StoredShapeV3 = {
+  const payload: StoredShapeV4 = {
     version: VERSION,
     entries: backup.entries,
   };
@@ -131,7 +146,7 @@ export class Persistence {
   }
 
   async #flush(state: PersistedState): Promise<void> {
-    const payload: StoredShapeV3 = {
+    const payload: StoredShapeV4 = {
       version: VERSION,
       entries: state.entries,
     };

@@ -90,6 +90,12 @@ export function validateExportSchema(raw: unknown): BentoExportSchema | null {
       if (pin.panelKey !== undefined && typeof pin.panelKey !== 'string') return null;
       if (pin.url === undefined && pin.panelKey === undefined) return null;
       if (typeof pp.order !== 'number') return null;
+      if (
+        pin.widthPx !== undefined &&
+        (typeof pin.widthPx !== 'number' || !Number.isFinite(pin.widthPx) || pin.widthPx <= 0)
+      ) {
+        return null;
+      }
     }
   }
 

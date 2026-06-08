@@ -59,8 +59,9 @@ visible when Bento was quit.
 
 Workspace export/import and automatic backups should preserve the same browsing
 layout state as restart persistence: tabs, panels, panel order, panel widths,
-main content width, subdivisions, split-panel ratios, pinned panel references,
-saved panels, settings, and the panel-strip scroll position.
+main content width, subdivisions, split-panel ratios, pinned panel references
+including their remembered widths, saved panels, settings, and the panel-strip
+scroll position.
 Replacement import should keep the browser window alive while it swaps the
 workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
@@ -215,7 +216,8 @@ The user should be able to keep related pages visible in one Bento window:
 - reference material in one or more panels;
 - communication or monitoring tools in narrow panels;
 - saved panels available from the panel trailer;
-- pinned panels reachable from a favicon rail beside the sidebar tabs.
+- pinned panels reachable from a favicon rail beside the sidebar tabs, reopening
+  at their remembered width after they have been closed.
 
 The browser should handle panel placement, persistence, and traversal so the
 operating system window manager is not the main productivity tool.

@@ -122,7 +122,15 @@ export class BackupStore {
         const panelKey = panelKeyByTabId.get(entry.tabId);
         const url = tabIdToUrl.get(entry.tabId);
         if (panelKey || url) {
-          pinnedPanels.push({ panelKey, url, order: entry.order });
+          const pin: BentoExportSchema['workspaces'][0]['pinnedPanels'][number] = {
+            panelKey,
+            url,
+            order: entry.order,
+          };
+          if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
+            pin.widthPx = entry.widthPx;
+          }
+          pinnedPanels.push(pin);
         }
       }
 

@@ -946,6 +946,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // element, and a sync round-trip would clobber the in-flight
       // layout with stale values from the broadcast.
       ctx.panels.setWidth(action.id, action.widthPx);
+      ctx.pinnedPanels.updateWidthForTab(action.id, action.widthPx);
       return;
     }
     case 'panel/setMainWidth': {
@@ -1094,7 +1095,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       )
         return;
       void (async () => {
-        const metadata: { url?: string; title?: string; favIconUrl?: string } = {};
+        const metadata: { url?: string; title?: string; favIconUrl?: string; widthPx?: number } =
+          {};
+        const widthPx = ctx.panels.getWidth(action.tabId);
+        if (typeof widthPx === 'number' && widthPx > 0) metadata.widthPx = widthPx;
         try {
           const tab = await browser.tabs.get(action.tabId);
           metadata.url = getTabLoadUrl(tab) ?? undefined;
@@ -1184,9 +1188,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             url,
             title: entry.title,
             favIconUrl: entry.favIconUrl,
+            widthPx: entry.widthPx,
           });
-          const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
-          if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
+          const widthPx =
+            typeof entry.widthPx === 'number' && entry.widthPx > 0
+              ? entry.widthPx
+              : ctx.settings.snapshot().defaultPanelWidthPx;
+          if (widthPx > 0) ctx.panels.setWidth(tab.id, widthPx);
           ctx.syncPanelMarkers(action.workspaceId);
           ctx.emitPanelsSync(action.workspaceId, { scrollToPanelTabId: tab.id });
         } catch (err) {

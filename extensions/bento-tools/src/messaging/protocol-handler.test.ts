@@ -186,8 +186,7 @@ describe('protocol handler batch tab workspace moves', () => {
     expect(ctx.workspaces.activate).toHaveBeenCalledWith('ws-new', 1);
     expect(assignWorkspace).toHaveBeenNthCalledWith(1, 1, 'ws-new');
     expect(assignWorkspace).toHaveBeenNthCalledWith(2, 2, 'ws-new');
-    expect(ctx.pinnedPanels.removeForTab).toHaveBeenCalledWith(1);
-    expect(ctx.pinnedPanels.removeForTab).toHaveBeenCalledWith(2);
+    expect(ctx.pinnedPanels.removeForTab).not.toHaveBeenCalled();
     expect(ctx.workspaces.delete).toHaveBeenCalledWith('ws-old');
   });
 });

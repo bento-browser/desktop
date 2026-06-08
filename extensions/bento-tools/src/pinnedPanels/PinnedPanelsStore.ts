@@ -22,6 +22,7 @@ interface PendingPersistedEntry {
   order: number;
   title?: string;
   favIconUrl?: string;
+  widthPx?: number;
 }
 
 interface PinnedPanelsStoreOptions {
@@ -64,6 +65,7 @@ export class PinnedPanelsStore {
         order: e.order,
         title: e.title,
         favIconUrl: e.favIconUrl,
+        widthPx: e.widthPx,
       });
       this.#pendingByWorkspace.set(e.workspaceId, list);
     }
@@ -114,7 +116,7 @@ export class PinnedPanelsStore {
   add(
     workspaceId: string,
     tabId: number,
-    metadata: Pick<PinnedPanelEntry, 'url' | 'title' | 'favIconUrl'> = {},
+    metadata: Pick<PinnedPanelEntry, 'url' | 'title' | 'favIconUrl' | 'widthPx'> = {},
   ): boolean {
     const key = this.#key(workspaceId, tabId);
     if (this.#byKey.has(key)) return false;
@@ -134,7 +136,7 @@ export class PinnedPanelsStore {
     workspaceId: string,
     oldTabId: number,
     newTabId: number,
-    metadata: Pick<PinnedPanelEntry, 'url' | 'title' | 'favIconUrl'> = {},
+    metadata: Pick<PinnedPanelEntry, 'url' | 'title' | 'favIconUrl' | 'widthPx'> = {},
   ): boolean {
     const oldKey = this.#key(workspaceId, oldTabId);
     const existing = this.#byKey.get(oldKey);
@@ -176,6 +178,26 @@ export class PinnedPanelsStore {
           title: next.title,
           favIconUrl: next.favIconUrl,
         },
+      });
+      changed = true;
+    }
+    if (changed) this.#schedulePersist();
+    return changed;
+  }
+
+  updateWidthForTab(tabId: number, widthPx: number): boolean {
+    if (!Number.isFinite(widthPx) || widthPx <= 0) return false;
+    const rounded = Math.round(widthPx);
+    let changed = false;
+    for (const [key, entry] of Array.from(this.#byKey.entries())) {
+      if (entry.tabId !== tabId || entry.widthPx === rounded) continue;
+      const next: PinnedPanelEntry = { ...entry, widthPx: rounded };
+      this.#byKey.set(key, next);
+      this.#enqueue({
+        kind: 'updated',
+        workspaceId: entry.workspaceId,
+        tabId,
+        changes: { widthPx: rounded },
       });
       changed = true;
     }
@@ -265,6 +287,7 @@ export class PinnedPanelsStore {
         url: entry.url,
         title: entry.title,
         favIconUrl: entry.favIconUrl,
+        widthPx: entry.widthPx,
       };
       this.#byKey.set(key, live);
       this.#enqueue({ kind: 'added', entry: live });
@@ -318,6 +341,7 @@ export class PinnedPanelsStore {
           order: entry.order,
           title: tab.title || entry.title,
           favIconUrl: tab.favIconUrl || entry.favIconUrl,
+          widthPx: entry.widthPx,
         });
       } catch {
         if (!entry.url || entry.url === 'about:blank') continue;
@@ -328,6 +352,7 @@ export class PinnedPanelsStore {
           order: entry.order,
           title: entry.title,
           favIconUrl: entry.favIconUrl,
+          widthPx: entry.widthPx,
         });
       }
     }
