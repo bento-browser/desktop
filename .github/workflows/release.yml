@@ -25,11 +25,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 = Apple Silicon (aarch64) — matches the Bento dev target.
+        # macos-26 = Apple Silicon (aarch64) with Xcode 26.x / macOS SDK 26.x.
+        # Firefox 150+ configure rejects the older macOS 14 SDK as too old.
         # windows-latest = Windows Server 2022 x86_64.
         # Linux builds aren't part of the M1 release surface but the
         # build-release.sh script handles them locally if needed.
-        os: [macos-14, windows-latest]
+        os: [macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180 # Firefox builds run 30–60 min on hosted runners; pad for cold caches.
     steps:

@@ -9975,7 +9975,7 @@
     const gap = Number.isFinite(columnGap) ? columnGap : cssLengthToPx(styles.gap, 8);
     const splitterSize = panelSplitterSizePx();
     const minPanelWidth = tokenPx('--bento-panel-min-width', 380);
-    const minMainWidth = tokenPx('--bento-main-panel-min-width', 480);
+    const minMainWidth = tokenPx('--bento-main-panel-min-width', 640);
     const viewportWidth = Math.max(0, tabpanels.clientWidth || 0);
     const viewportHeight = Math.max(0, tabpanels.clientHeight || 0);
     const contentHeight = Math.max(120, viewportHeight - padTop - padBottom);
@@ -13409,6 +13409,12 @@
       if (typeof decoded.sidebarCollapsed === 'boolean') {
         applyChromeSidebarCollapsed(decoded.sidebarCollapsed);
       }
+      // Default panel width also drives the unresized main slot's minimum
+      // width. This keeps fresh workspaces with many spawned panels from
+      // squeezing tab content below the user's normal panel size.
+      if (typeof decoded.defaultPanelWidthPx === 'number') {
+        applyChromeDefaultPanelWidth(decoded.defaultPanelWidthPx);
+      }
       // Custom panel sizes (kebab menu presets). Filter to finite
       // positive integers up front so the menu doesn't have to defend
       // against malformed entries on every open. Missing key leaves
@@ -13422,11 +13428,11 @@
       if (typeof decoded.panelCycleWraparound === 'boolean') {
         currentPanelCycleWraparound = decoded.panelCycleWraparound;
       }
-	      if (typeof decoded.panelShadowsEnabled === 'boolean') {
-	        applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
-	      }
-	      hideStartupVeil();
-	      if (
+      if (typeof decoded.panelShadowsEnabled === 'boolean') {
+        applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
+      }
+      hideStartupVeil();
+      if (
         typeof decoded.scrollToPanelTabId === 'number' &&
         Number.isInteger(decoded.scrollToPanelTabId)
       ) {
@@ -13837,6 +13843,14 @@
   let currentPanelStatusByTabId = new Map();
   let currentPanelLayout = { root: [] };
   let currentPanelLayoutGeometry = null;
+  function applyChromeDefaultPanelWidth(widthPx) {
+    const n = Number(widthPx);
+    if (!Number.isFinite(n) || n <= 0) return;
+    document.documentElement?.style.setProperty(
+      '--bento-main-panel-min-width',
+      Math.round(n) + 'px',
+    );
+  }
   // Preset side-panel widths surfaced in each panel header's kebab menu.
   // Mirrored from BentoSettings.customPanelSizes via the BENTO_PANELS
   // payload — same single-channel-no-race rationale as uiColorMode /

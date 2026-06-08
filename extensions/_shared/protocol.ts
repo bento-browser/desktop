@@ -175,11 +175,12 @@ export interface BentoSettings {
    * the same screen position so the cursor doesn't have to move). */
   sidebarCollapsed: boolean;
   /** Default width (CSS pixels) applied to a newly-added panel before
-   * the user has dragged its splitter. Persists per panel after the
-   * first drag (PanelStore.setWidth). 640 is wide enough for most
-   * sites' content without horizontally squishing them yet narrow
-   * enough that 2-3 panels fit comfortably on a typical 1440px+
-   * viewport. */
+   * the user has dragged its splitter. Also used as the default minimum
+   * width for an unresized main content slot while side panels consume
+   * space. Persists per side panel after the first drag
+   * (PanelStore.setWidth). 640 is wide enough for most sites' content
+   * without horizontally squishing them yet narrow enough that 2-3
+   * panels fit comfortably on a typical 1440px+ viewport. */
   defaultPanelWidthPx: number;
   /** Preset widths (CSS pixels) surfaced in each side panel header's
    * kebab menu. Clicking a preset resizes only the panel whose menu is
@@ -682,6 +683,11 @@ export type Event =
        * user hasn't dragged the main splitter for this workspace yet —
        * chrome falls back to its default flex sizing in that case. */
       mainWidthPx?: number;
+      /** Current Bento Settings default panel width. Chrome mirrors this
+       * into the main content slot's minimum width so a fresh workspace
+       * with many spawned panels keeps a normal tab-content width instead
+       * of shrinking to the low chrome fallback. */
+      defaultPanelWidthPx?: number;
       /** Per-workspace horizontal scroll position of the chrome panel
        * strip in CSS pixels. Chrome restores tabpanels.scrollLeft to
        * this value after the workspace-switch reconcile. Undefined

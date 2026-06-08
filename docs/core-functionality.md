@@ -52,7 +52,9 @@ Each workspace owns:
 
 The main content slot width is also workspace-specific. Resizing the main
 content area in one workspace should not resize the main content area in another
-workspace.
+workspace. Until a workspace has its own resized main width, the main content
+slot keeps at least the configured default new-panel width while side panels are
+added.
 
 Workspaces should feel persistent. Closing Bento and reopening it should restore
 the user's active contexts without forcing them to rebuild their browser

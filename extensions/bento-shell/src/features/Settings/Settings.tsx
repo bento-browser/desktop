@@ -296,8 +296,8 @@ export function Settings() {
                 <NumberField.Increment />
               </NumberField.Group>
               <NumberField.Description>
-                Width applied to new panels before you drag their splitter. Existing panels keep
-                their stored widths.
+                Width applied to new panels before you drag their splitter. Also used as the minimum
+                main content width in fresh panel layouts. Existing panels keep their stored widths.
               </NumberField.Description>
             </NumberField.Root>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>

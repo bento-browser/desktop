@@ -74,7 +74,7 @@
 
     /* Bento Spaces panel layout */
     --bento-panel-min-width: 240px;
-    --bento-main-panel-min-width: 320px;
+    --bento-main-panel-min-width: 640px;
 
     /* Brand background. Matches the chrome's --toolbox-bgcolor and
        window background. The top address toolbar is a separate neutral-14

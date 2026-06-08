@@ -600,6 +600,7 @@ workspace for its window. The payload carries:
 - UI color mode;
 - sidebar collapsed state;
 - custom panel sizes;
+- default panel width, mirrored into the main content slot minimum width;
 - panel cycle wraparound setting;
 - panel shadow setting;
 - persisted strip scroll;
@@ -865,7 +866,10 @@ Top-level panel resizing:
   dispatching window and stores the width in `mainWidthByWorkspace`. A
   `panels/sync` payload without `mainWidthPx` is authoritative for that
   workspace and chrome must clear `mainPanelWidth` to return to default flex
-  sizing. Do not use a global or profile-wide fallback for new workspaces.
+  sizing. That default flex sizing still uses `defaultPanelWidthPx` from Bento
+  Settings as the main slot minimum width so fresh workspaces do not squeeze tab
+  content below the normal panel size as panels are spawned. Do not use a global
+  or profile-wide persisted main-width fallback for new workspaces.
 - Renderer path: flat layout uses absolute rects from
   `computePanelLayoutGeometry`. During pointer movement,
   `refreshFlatPanelLayoutFromLiveState` recomputes geometry with the live width

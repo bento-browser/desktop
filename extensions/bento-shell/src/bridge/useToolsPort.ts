@@ -222,6 +222,7 @@ function ensureConnection(): void {
               windowId?: number;
               themeId?: string;
               mainWidthPx?: number;
+              defaultPanelWidthPx?: number;
               uiColorMode?: string;
               sidebarCollapsed?: boolean;
               customPanelSizes?: number[];
@@ -256,9 +257,11 @@ function ensureConnection(): void {
             // channel. uiColorMode flips Tale UI tokens on the chrome
             // window root; sidebarCollapsed toggles the narrow-rail
             // class on #bento-shell-host; customPanelSizes populates
-            // each side panel header's kebab "more" menu. Single
-            // channel = no race with separate title writes (the
-            // COLOR_MODE channel was dropped earlier for this reason).
+            // each side panel header's kebab "more" menu; and
+            // defaultPanelWidthPx sets the main slot's default minimum
+            // width. Single channel = no race with separate title
+            // writes (the COLOR_MODE channel was dropped earlier for
+            // this reason).
             const cur = useSettingsStore.getState().current;
             const bootUiColorMode =
               document.documentElement.getAttribute('data-bento-color-mode-pref') ??
@@ -270,6 +273,11 @@ function ensureConnection(): void {
             }
             if (Array.isArray(cur?.customPanelSizes)) {
               payload.customPanelSizes = cur.customPanelSizes;
+            }
+            if (typeof event.defaultPanelWidthPx === 'number') {
+              payload.defaultPanelWidthPx = event.defaultPanelWidthPx;
+            } else if (typeof cur?.defaultPanelWidthPx === 'number') {
+              payload.defaultPanelWidthPx = cur.defaultPanelWidthPx;
             }
             if (typeof cur?.panelCycleWraparound === 'boolean') {
               payload.panelCycleWraparound = cur.panelCycleWraparound;

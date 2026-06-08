@@ -553,6 +553,7 @@ async function emitPanelsSync(
     return;
   }
   const mainWidthPx = panels.getMainWidth(workspaceId);
+  const defaultPanelWidthPx = settings.snapshot().defaultPanelWidthPx;
   const stripScrollLeft = panels.getStripScroll(workspaceId);
   const themeId = workspaces.snapshot().workspaces.find((w) => w.id === workspaceId)?.themeId;
   const pinnedTabIdsInWorkspace = pinnedPanels.entriesForWorkspace(workspaceId);
@@ -571,6 +572,7 @@ async function emitPanelsSync(
     themeId?: string;
     panels: typeof valid;
     mainWidthPx?: number;
+    defaultPanelWidthPx?: number;
     stripScrollLeft?: number;
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
@@ -589,6 +591,9 @@ async function emitPanelsSync(
     panelStatusByTabId: panels.getPanelStatusMap(workspaceId),
   };
   if (typeof mainWidthPx === 'number' && mainWidthPx > 0) event.mainWidthPx = mainWidthPx;
+  if (typeof defaultPanelWidthPx === 'number' && defaultPanelWidthPx > 0) {
+    event.defaultPanelWidthPx = Math.round(defaultPanelWidthPx);
+  }
   if (typeof options.windowId === 'number' && options.windowId >= 0) {
     event.windowId = options.windowId;
   }
@@ -653,6 +658,8 @@ const bootReady = Promise.all([
   let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
     settings.snapshot().sidebarCollapsed;
   let lastCustomPanelSizesKey: string = JSON.stringify(settings.snapshot().customPanelSizes ?? []);
+  let lastDefaultPanelWidthPx: BentoSettings['defaultPanelWidthPx'] =
+    settings.snapshot().defaultPanelWidthPx;
   let lastPanelCycleWraparound: BentoSettings['panelCycleWraparound'] =
     settings.snapshot().panelCycleWraparound;
   let lastPanelShadowsEnabled: BentoSettings['panelShadowsEnabled'] =
@@ -661,8 +668,9 @@ const bootReady = Promise.all([
     void applyContentColorMode(next.contentColorMode);
     // Re-fire panels/sync for every active workspace whenever a
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
-    // customPanelSizes, panelCycleWraparound, panelShadowsEnabled) so chrome picks up the
-    // new value via the BENTO_PANELS title (which carries those
+    // customPanelSizes, defaultPanelWidthPx, panelCycleWraparound,
+    // panelShadowsEnabled) so chrome picks up the new value via the
+    // BENTO_PANELS title (which carries those
     // fields in its payload). The shell no longer writes dedicated
     // title channels for these — they raced BENTO_PANELS via
     // document.title and the shell would lose the panels message at
@@ -686,14 +694,23 @@ const bootReady = Promise.all([
     // dispatch creates a new array reference).
     const sizesKey = JSON.stringify(next.customPanelSizes ?? []);
     const sizesChanged = sizesKey !== lastCustomPanelSizesKey;
+    const defaultPanelWidthChanged = next.defaultPanelWidthPx !== lastDefaultPanelWidthPx;
     const wraparoundChanged = next.panelCycleWraparound !== lastPanelCycleWraparound;
     const shadowsChanged = next.panelShadowsEnabled !== lastPanelShadowsEnabled;
     if (colorChanged) lastUiColorMode = next.uiColorMode;
     if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
     if (sizesChanged) lastCustomPanelSizesKey = sizesKey;
+    if (defaultPanelWidthChanged) lastDefaultPanelWidthPx = next.defaultPanelWidthPx;
     if (wraparoundChanged) lastPanelCycleWraparound = next.panelCycleWraparound;
     if (shadowsChanged) lastPanelShadowsEnabled = next.panelShadowsEnabled;
-    if (colorChanged || collapsedChanged || sizesChanged || wraparoundChanged || shadowsChanged) {
+    if (
+      colorChanged ||
+      collapsedChanged ||
+      sizesChanged ||
+      defaultPanelWidthChanged ||
+      wraparoundChanged ||
+      shadowsChanged
+    ) {
       const targets = new Set<string>();
       const globalActive = workspaces.getActiveId();
       if (globalActive) targets.add(globalActive);
