@@ -1,11 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 /* global customElements */
 (function () {
   'use strict';
 
   const CLOSE_PREFIX = 'BENTO_CLOSE_EMBEDDED_IMPORT';
   const RESTART_PREFIX = 'BENTO_RESTART_EMBEDDED_IMPORT';
-  const WIZARD_BRIDGE_STYLESHEET =
-    'chrome://browser/content/bento-migration-wizard-bridge.css';
+  const WIZARD_BRIDGE_STYLESHEET = 'chrome://browser/content/bento-migration-wizard-bridge.css';
 
   function applyColorModeFromQuery() {
     const params = new URLSearchParams(location.search);
@@ -101,9 +104,7 @@
     wizard.addEventListener('MigrationWizard:Close', signalClose);
     document.addEventListener('keydown', suppressEscape, true);
 
-    document
-      .getElementById('restart-profile-import')
-      ?.addEventListener('click', signalRestart);
+    document.getElementById('restart-profile-import')?.addEventListener('click', signalRestart);
 
     customElements
       .whenDefined('migration-wizard')

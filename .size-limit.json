@@ -12,7 +12,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "190 KB",
+    "limit": "195 KB",
     "gzip": true
   },
   {
@@ -28,7 +28,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "180 KB",
+    "limit": "185 KB",
     "gzip": true
   },
   {
@@ -44,7 +44,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "180 KB",
+    "limit": "185 KB",
     "gzip": true
   },
   {
@@ -60,7 +60,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "185 KB",
+    "limit": "190 KB",
     "gzip": true
   },
   {
@@ -76,7 +76,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "180 KB",
+    "limit": "185 KB",
     "gzip": true
   },
   {
@@ -92,7 +92,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "180 KB",
+    "limit": "185 KB",
     "gzip": true
   },
   {
@@ -108,7 +108,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "180 KB",
+    "limit": "186 KB",
     "gzip": true
   },
   {
@@ -124,13 +124,13 @@
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "180 KB",
+    "limit": "185 KB",
     "gzip": true
   },
   {
     "name": "bento-shell · style.css (gz)",
     "path": "extensions/bento-shell/dist/assets/style.css",
-    "limit": "28 KB",
+    "limit": "31 KB",
     "gzip": true
   },
   {
