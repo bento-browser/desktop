@@ -50,6 +50,7 @@ html[data-bento-collapsed='true'] .tale-icon.bento-workspace-switcher__chevron {
   display: none;
 }
 html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-name {
+  display: none;
   opacity: 0;
   pointer-events: none;
 }
@@ -86,6 +87,20 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   max-width: 100%;
   box-sizing: border-box;
   justify-content: flex-start;
+}
+
+html[data-bento-collapsed='true']
+  .tale-button.tale-menu__trigger.bento-workspace-switcher__trigger {
+  width: var(--bento-tab-row-height);
+  min-width: var(--bento-tab-row-height);
+  max-width: var(--bento-tab-row-height);
+  height: var(--bento-tab-row-height);
+  min-height: var(--bento-tab-row-height);
+  aspect-ratio: 1 / 1;
+  align-items: center;
+  justify-content: center;
+  margin-inline: auto;
+  padding: 0;
 }
 
 @layer bento.components {
@@ -137,17 +152,18 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
     transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
   }
 
-  /* Collapsed sidebar — drift the avatar toward the centre of the
-     rail by animating padding-inline rather than snapping
-     justify-content. The Tale UI Avatar size sm is 2.4rem; centring
-     it in the 4rem rail needs (4 - 2.4) / 2 = 0.8rem each side, but
-     the trigger sits inside the header which already adds inset, so
-     0.4rem here lands the avatar near visually centred without
-     over-shooting. The trigger-name and chevron are hidden via the
-     unlayered rule above (a layered display:none would lose to Tale
-     UI's unlayered .tale-icon / .tale-text defaults). */
+  /* Collapsed sidebar — same square control size as the collapsed tab
+     rows. The trigger-name and chevron are hidden via the unlayered
+     rule above (a layered display:none would lose to Tale UI's
+     unlayered .tale-icon / .tale-text defaults). */
   html[data-bento-collapsed='true'] .bento-workspace-switcher__trigger {
-    padding-inline: 0.4rem;
+    width: var(--bento-tab-row-height);
+    min-width: var(--bento-tab-row-height);
+    height: var(--bento-tab-row-height);
+    min-height: var(--bento-tab-row-height);
+    aspect-ratio: 1 / 1;
+    justify-content: center;
+    padding: 0;
   }
 
   .bento-workspace-switcher__chevron {

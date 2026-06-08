@@ -296,27 +296,26 @@
   }
 
   /* ─── Collapsed sidebar — favicon-only ──────────────────────────
-   * Drift the favicon toward the centre of the 4rem rail by animating
-   * padding-inline rather than swapping the grid template + justify-
-   * content (which would snap discretely). The title (1fr column)
-   * naturally collapses to 0 width as the host shrinks, and its
-   * opacity fades — so visually only the favicon remains, drifting
-   * smoothly to its centred position over the same 200ms as the host
-   * width transition.
-   *
-   * Padding math: the favicon is --bento-favicon-size (1.6rem). To
-   * centre it in the 4rem rail, padding = (4 - 1.6) / 2 = 1.2rem on
-   * each side. The favicon visually overflows its 1rem grid column
-   * by 0.6rem — that's fine, the title column it overlaps has
-   * opacity:0.
+   * Keep the row slot identical to expanded mode, but make the visible
+   * control square inside that slot. The virtualizer still measures
+   * --bento-tab-row-height, so collapse/expand does not move rows
+   * vertically.
    *
    * Audio/actions snap via display:none — they're hover-state, not
    * always-visible, so a fade is wasted there and keeping them in
    * the layout would push other rows around. */
   html[data-bento-collapsed='true'] .bento-tab-row {
-    padding-inline: 1.2rem;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    width: var(--bento-tab-row-height);
+    min-width: var(--bento-tab-row-height);
+    height: var(--bento-tab-row-height);
+    min-height: var(--bento-tab-row-height);
+    aspect-ratio: 1 / 1;
+    padding-inline: 0;
   }
   html[data-bento-collapsed='true'] .bento-tab-row > .tale-text {
+    display: none;
     opacity: 0;
     pointer-events: none;
   }

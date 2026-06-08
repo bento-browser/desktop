@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@tale-ui/react/button';
-import { Column } from '@tale-ui/react/column';
 import { Icon } from '@tale-ui/react/icon';
-import { Text } from '@tale-ui/react/text';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
@@ -136,6 +134,7 @@ interface TabListPaneProps {
   tabsById: ReturnType<typeof useTabsStore.getState>['byId'];
   activeId: number | null;
   selectedIds: Set<number>;
+  onCreateTab: () => void;
   onSelectClick: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
@@ -166,6 +165,7 @@ function TabListPane({
   tabsById,
   activeId,
   selectedIds,
+  onCreateTab,
   onSelectClick,
   onClose,
   onOpenInSidePanel,
@@ -212,11 +212,17 @@ function TabListPane({
   }, []);
 
   const virtualizer = useVirtualizer({
-    count: displayedIds.length,
+    count: displayedIds.length + 1,
     getScrollElement: () => parentRef.current,
     estimateSize: useCallback(() => rowHeight, [rowHeight]),
     overscan: 5,
   });
+  const firstRegularIndex = displayedIds.findIndex((id) => tabsById[id]?.pinned !== true);
+  const newTabSlot = firstRegularIndex === -1 ? displayedIds.length : firstRegularIndex;
+  const visualSlotToTabSlot = useCallback(
+    (visualSlot: number): number => (visualSlot > newTabSlot ? visualSlot - 1 : visualSlot),
+    [newTabSlot],
+  );
 
   // Translate the pointer's y position into a drop slot (0..displayedIds.length).
   // Reads the viewport's scrollable coords, divides by the measured row
@@ -229,7 +235,7 @@ function TabListPane({
       if (!el || rowHeight <= 0) return null;
       const rect = el.getBoundingClientRect();
       const relY = clientY - rect.top + el.scrollTop;
-      const len = displayedIds.length;
+      const len = displayedIds.length + 1;
       if (len === 0) return 0;
       let slot = Math.round(relY / rowHeight);
       if (slot < 0) slot = 0;
@@ -304,7 +310,7 @@ function TabListPane({
     setDropSlot(null);
     setDragSourceId(null);
     if (slot === null || !onReorder) return;
-    const anchor = resolveAnchor(sourceId, slot);
+    const anchor = resolveAnchor(sourceId, visualSlotToTabSlot(slot));
     if (anchor === null || anchor.anchorId === sourceId) return;
     onReorder(sourceId, anchor.anchorId, anchor.before);
   };
@@ -324,26 +330,8 @@ function TabListPane({
     [onSelectionContextMenu, onTabContextMenu],
   );
 
-  if (displayedIds.length === 0) {
-    return (
-      <Column gap="xs" align="center" className={`${className} bento-tab-list-pane--empty`}>
-        <Text variant="text" size="s" color="muted">
-          No tabs yet
-        </Text>
-      </Column>
-    );
-  }
-
   const dragEnabled = onReorder !== undefined;
-  let sawPinnedTab = false;
-  const dividerBeforeId =
-    displayedIds.find((id) => {
-      if (tabsById[id]?.pinned === true) {
-        sawPinnedTab = true;
-        return false;
-      }
-      return sawPinnedTab;
-    }) ?? null;
+  const showPinnedDivider = newTabSlot > 0;
 
   return (
     <div
@@ -365,16 +353,38 @@ function TabListPane({
           />
         )}
         {virtualizer.getVirtualItems().map((vi) => {
-          const id = displayedIds[vi.index];
+          if (vi.index === newTabSlot) {
+            return (
+              <div
+                key="new-tab"
+                className={
+                  showPinnedDivider
+                    ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned'
+                    : 'bento-tab-list__row bento-tab-list__row--new-tab'
+                }
+                style={{ transform: `translateY(${vi.start}px)`, height: `${vi.size}px` }}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="bento-tab-list__new-tab-button"
+                  aria-label="New tab"
+                  onPress={onCreateTab}
+                >
+                  <Icon icon={Plus} size="sm" />
+                  <span className="bento-tab-list__new-tab-label">New tab</span>
+                </Button>
+              </div>
+            );
+          }
+
+          const idIndex = vi.index < newTabSlot ? vi.index : vi.index - 1;
+          const id = displayedIds[idIndex];
           if (id === undefined) return null;
           return (
             <div
               key={id}
-              className={
-                id === dividerBeforeId
-                  ? 'bento-tab-list__row bento-tab-list__row--after-pinned'
-                  : 'bento-tab-list__row'
-              }
+              className="bento-tab-list__row"
               style={{ transform: `translateY(${vi.start}px)`, height: `${vi.size}px` }}
             >
               <TabRow
@@ -618,7 +628,6 @@ export function TabList({
 
   const incomingClass =
     'bento-tab-list-pane' + (outgoing ? ` bento-tab-list-pane--enter-${outgoing.direction}` : '');
-  const hasPinnedTabs = orderedIds.some((id) => tabsById[id]?.pinned === true);
 
   if (!ready) {
     return <TabListSkeleton />;
@@ -626,24 +635,6 @@ export function TabList({
 
   return (
     <div className="bento-tab-list">
-      <div className="bento-tab-list__new-tab">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="bento-tab-list__new-tab-button"
-          onPress={onCreateTab}
-        >
-          <Icon icon={Plus} size="sm" />
-          New tab
-        </Button>
-      </div>
-      {hasPinnedTabs && (
-        <div className="bento-tab-list__heading">
-          <Text variant="text" size="xs" color="muted">
-            Pinned tabs
-          </Text>
-        </div>
-      )}
       <div className="bento-tab-list-stage">
         {outgoing && (
           <TabListPane
@@ -654,6 +645,7 @@ export function TabList({
             tabsById={tabsById}
             activeId={activeId}
             selectedIds={selectedIds}
+            onCreateTab={onCreateTab}
             onSelectClick={handleSelectClick}
             onClose={onClose}
             onOpenInSidePanel={onOpenInSidePanel}
@@ -672,6 +664,7 @@ export function TabList({
           tabsById={tabsById}
           activeId={activeId}
           selectedIds={selectedIds}
+          onCreateTab={onCreateTab}
           onSelectClick={handleSelectClick}
           onClose={onClose}
           onOpenInSidePanel={onOpenInSidePanel}

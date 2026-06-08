@@ -67,8 +67,9 @@ workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
 
 The sidebar tab list supports multi-selection for workspace organization.
-The top of the tab list exposes a `New tab` button with a plus icon for opening
-a fresh tab in the active workspace.
+The tab list exposes a `New tab` button with a plus icon for opening a fresh tab
+in the active workspace. When pinned tabs exist, the button appears below the
+pinned run and above regular tabs.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
@@ -78,9 +79,9 @@ tabs can be converted into side panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
-When a workspace contains pinned regular tabs, the sidebar labels that group as
-`Pinned tabs` above the tab rows and separates it from regular tabs with a
-divider.
+When a workspace contains pinned regular tabs, the sidebar separates that group
+from the new-tab control and regular tabs with a divider instead of a text
+subheading.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow.
 
@@ -232,6 +233,7 @@ The intended behavior is:
 
 - visible panel controls are keyboard reachable;
 - focused panels have clear visual state;
+- the sidebar's new-tab control remains reachable when the sidebar is collapsed;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;
 - sidebar footer icon buttons show Tale UI tooltips on hover;

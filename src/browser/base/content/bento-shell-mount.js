@@ -275,7 +275,7 @@
         background-color: var(--neutral-5);
       }
       .bento-startup-veil__sidebar {
-        border-inline-end: 1px solid var(--neutral-16);
+        border-inline-end: 1px solid var(--bento-sidebar-divider-color);
         padding: var(--space-xs);
       }
       .bento-startup-veil__main {

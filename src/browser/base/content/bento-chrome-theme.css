@@ -104,7 +104,7 @@
      * for completeness in case any code path reveals it. */
     --sidebar-background-color: var(--neutral-10) !important;
     --sidebar-text-color: var(--neutral-90) !important;
-    --sidebar-border-color: var(--neutral-22) !important;
+    --sidebar-border-color: var(--bento-sidebar-divider-color) !important;
 
     /* ─── Popup panels (app menu, downloads, extensions, account) ─ */
     --arrowpanel-background: var(--neutral-10) !important;

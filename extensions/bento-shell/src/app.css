@@ -34,25 +34,21 @@
   .bento-shell-app__header {
     padding-block: var(--space-3xs);
     padding-inline: var(--space-3xs);
-    border-bottom: 1px solid var(--bento-border-color-subtle);
-    /* Animate padding so the workspace-switcher trigger's effective
-       width drifts smoothly during collapse/expand instead of snapping
-       to the new header inner-width. Matches the chrome host's 200ms
-       width transition. */
-    transition: padding var(--bento-duration-base) var(--bento-easing-standard);
+    border-bottom: 1px solid var(--bento-sidebar-divider-color);
+    /* Keep padding identical in expanded and collapsed modes so the
+       header's vertical rhythm does not shift during sidebar toggles. */
   }
 
   .bento-shell-app__footer {
     padding-block: var(--space-2xs);
     padding-inline: var(--space-2xs);
-    border-top: 1px solid var(--bento-border-color-subtle);
+    border-top: 1px solid var(--bento-sidebar-divider-color);
     justify-content: flex-end;
   }
 
-  /* Header gets compact padding so the workspace switcher avatar
-     still fits in the rail. */
-  html[data-bento-collapsed='true'] .bento-shell-app__header {
-    padding-inline: var(--space-2xs);
+  html[data-bento-collapsed='true'] .bento-shell-app__header,
+  html[data-bento-collapsed='true'] .bento-shell-app__footer {
+    padding-inline: 0;
   }
 }
 
@@ -90,7 +86,7 @@ html[data-bento-collapsed='true'] .tale-row.bento-shell-app__footer {
      way to override them without prop-drilling sidebarCollapsed
      down to change the prop at React level. Same reason applied
      to justify-content and flex-direction below. */
-  align-items: flex-start !important;
+  align-items: center !important;
   justify-content: flex-start !important;
   gap: var(--space-2xs);
 }

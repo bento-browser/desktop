@@ -13,24 +13,6 @@
     flex-direction: column;
   }
 
-  .bento-tab-list__new-tab {
-    box-sizing: border-box;
-    flex-shrink: 0;
-    height: var(--bento-tab-row-height);
-    padding-inline: var(--space-3xs);
-    padding-block: 0;
-  }
-
-  /* Section subtitle. Matches the PinnedPanels heading so pinned tab
-     labels and pinned panel labels occupy the same sidebar track. */
-  .bento-tab-list__heading {
-    flex-shrink: 0;
-    padding-inline: var(--space-2xs);
-    padding-block-start: var(--space-3xs);
-    padding-block-end: var(--space-2xs);
-    margin-inline: var(--space-3xs);
-  }
-
   .bento-tab-list-stage {
     position: relative;
     flex: 1;
@@ -50,6 +32,10 @@
     padding-inline: var(--space-3xs);
   }
 
+  html[data-bento-collapsed='true'] .bento-tab-list-pane {
+    padding-inline: 0;
+  }
+
   /* Empty-state version of the pane uses Column flex semantics so the
      "No tabs yet" message centers without an extra wrapper. */
   .bento-tab-list-pane--empty {
@@ -60,18 +46,6 @@
   .bento-tab-list__viewport {
     position: relative;
     width: 100%;
-  }
-
-  html[data-bento-collapsed='true'] .bento-tab-list__heading {
-    display: none;
-  }
-
-  html[data-bento-collapsed='true'] .bento-tab-list__new-tab {
-    display: none;
-  }
-
-  html[data-bento-collapsed='true'] .bento-tab-list__row--after-pinned::before {
-    display: none;
   }
 
   .bento-tab-list__row {
@@ -102,9 +76,18 @@
     left: var(--space-2xs);
     right: var(--space-2xs);
     height: var(--bento-border-hairline);
-    background-color: var(--bento-border-color-subtle);
+    background-color: var(--bento-sidebar-divider-color);
     pointer-events: none;
     z-index: 1;
+  }
+
+  .bento-tab-list__row--new-tab {
+    box-sizing: border-box;
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list__row {
+    display: flex;
+    justify-content: center;
   }
 
   /* Reduced motion: skip the slide. The drop indicator's instant
@@ -229,4 +212,18 @@
   height: 100%;
   min-height: 0;
   justify-content: flex-start;
+}
+
+html[data-bento-collapsed='true'] .bento-tab-list__new-tab-button {
+  width: var(--bento-tab-row-height);
+  min-width: var(--bento-tab-row-height);
+  height: var(--bento-tab-row-height);
+  min-height: var(--bento-tab-row-height);
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  justify-content: center;
+}
+
+html[data-bento-collapsed='true'] .bento-tab-list__new-tab-label {
+  display: none;
 }

@@ -146,8 +146,13 @@ assignment remains tools-owned.
 `TabList` also renders the visible `New tab` button above the virtualized pane.
 The button dispatches the existing `tab/create` action from `App.tsx`, so tab
 creation stays tools-owned and uses the same active-window and active-workspace
-assignment path as other new-tab entry points. Collapsed sidebar mode hides the
-button because the rail is favicon-only.
+assignment path as other new-tab entry points. Collapsed sidebar mode keeps the
+button visible as a square icon-only control. Its slot and the favicon-only tab
+rows keep the same `--bento-tab-row-height` as expanded mode so toggling the
+sidebar does not shift the tab list vertically. The collapsed host width is
+`--bento-tab-strip-width-collapsed`, which aliases `--bento-tab-row-height`, so
+the rail grows or shrinks with the square tab controls instead of adding side
+padding.
 The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
@@ -156,13 +161,14 @@ The foreground override for active-row text and icons must stay unlayered
 because Tale UI text, button, and icon utility styles are also unlayered; keeping
 the override only inside `@layer bento.components` lets neutral utility colors
 win.
-`extensions/bento-shell/src/components/TabList/TabList.tsx` renders a `Pinned tabs`
-heading when the active workspace's filtered sidebar tab ids include at least
-one `TabSnapshot.pinned` tab. The heading is outside the virtualized pane so
-row height, selection, drag-reorder, and workspace-switch slide math remain
-unchanged. `TabListPane` marks the first regular row after a pinned run with
+`extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the new-tab
+row into the virtualized pane after the pinned run and before regular tabs. When
+the active workspace's filtered sidebar tab ids include at least one
+`TabSnapshot.pinned` tab, `TabListPane` marks that inserted new-tab row with
 `bento-tab-list__row--after-pinned`, and `TabList.css` paints that row's top
-divider. Collapsed sidebar mode hides both the heading and divider.
+divider. The divider occupies no layout height, so collapse/expand keeps row
+positions stable while still separating pinned tabs from the new-tab and regular
+tab section.
 
 The sidebar context menu is still rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
