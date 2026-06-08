@@ -213,6 +213,10 @@
          The chrome-tokens generator (scripts/generate-chrome-tokens.mjs)
          pulls Tale UI's spacing tokens into chrome, so --space-2xs is
          defined here just like it is in the bento-shell extension. */
+      :root {
+        --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-30);
+        --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
+      }
 
       /* Inline sidebar: no padding around the frame, no rounded
          corners on the frame. Edges flush with the window so the
@@ -579,11 +583,11 @@
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
         border-radius: var(--radius-m);
         background-color: var(--neutral-5);
-        box-shadow: var(--shadow-l);
+        box-shadow: var(--bento-panel-frame-shadow);
         overflow: visible;
       }
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
-        box-shadow: none;
+        box-shadow: var(--bento-panel-frame-outline-shadow);
       }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
@@ -1250,7 +1254,7 @@
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
         border-radius: var(--radius-m);
         background-color: var(--neutral-5);
-        box-shadow: var(--shadow-l);
+        box-shadow: var(--bento-panel-frame-shadow);
         box-sizing: border-box;
         border: 0;
         overflow: visible;
@@ -1258,7 +1262,7 @@
       }
       #tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-panel-tab-id] {
-        box-shadow: none;
+        box-shadow: var(--bento-panel-frame-outline-shadow);
       }
       /* The browser fills whatever vertical space the header doesn't. */
       #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
@@ -1615,7 +1619,7 @@
       }
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-top-closed] {
         background-color: var(--neutral-5) !important;
-        box-shadow: var(--shadow-l) !important;
+        box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-survivor-subdivided] {
@@ -1635,7 +1639,7 @@
       [data-bento-subdivided] > [data-bento-subpanel]:not([data-bento-subdivided]),
       .bento-subdivision-bottom > [data-bento-subpanel] {
         background-color: var(--neutral-5) !important;
-        box-shadow: var(--shadow-l) !important;
+        box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
       .bento-subdivision-bottom > [data-bento-subpanel][data-bento-subdivided] {
@@ -1740,7 +1744,7 @@
         align-self: stretch !important;
         margin: 0 !important;
         background-color: var(--neutral-5) !important;
-        box-shadow: var(--shadow-l) !important;
+        box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
       [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .bento-panel-header {
@@ -1757,7 +1761,7 @@
       }
       [data-bento-subpanel][data-bento-subdivision-top-closed] > [data-bento-subpanel]:not([data-bento-subdivided]) {
         background-color: var(--neutral-5) !important;
-        box-shadow: var(--shadow-l) !important;
+        box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
       [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] {
