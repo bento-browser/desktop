@@ -129,16 +129,11 @@
   }
 
   /* ─── Unified chrome surface ──────────────────────────────────────
-   * Bento's sidebar, the navigator-toolbox (URL bar area), and the
-   * chrome window background are all the same neutral-5 surface so
-   * they read as one continuous chrome surface. body uses
-   * --toolbox-bgcolor (= neutral-5 above) by default; navigator-
-   * toolbox normally inherits / is transparent — set both to neutral-
-   * 5 explicitly here to guarantee they match. The Bento sidebar
-   * host was previously transparent; switching to neutral-5 makes
-   * it match the rest instead of showing whatever happens to be
-   * painted behind it. Overlay hosts (palette, confirm, etc.) stay
-   * transparent — they're modal scrims, not chrome surfaces. */
+   * Bento's sidebar and the chrome window background use the neutral-5
+   * brand surface. The top address toolbar uses neutral-14 to match the
+   * pinned panels rail while keeping the hidden titlebar/toolbox surface
+   * separate. Overlay hosts (palette, confirm, etc.) stay transparent —
+   * they're modal scrims, not chrome surfaces. */
   #bento-shell-host {
     background-color: var(--neutral-5) !important;
   }
@@ -157,7 +152,7 @@
     color: var(--neutral-90) !important;
   }
   #nav-bar {
-    background-color: var(--neutral-18) !important;
+    background-color: var(--neutral-14) !important;
     background-image: none !important;
     color: var(--neutral-90) !important;
   }
