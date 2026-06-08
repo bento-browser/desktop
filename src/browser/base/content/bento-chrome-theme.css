@@ -78,7 +78,7 @@
     --color-accent-primary: var(--color-60) !important;
 
     /* ─── URL bar field (#urlbar) ──────────────────────────────────── */
-    --toolbar-field-background-color: var(--neutral-14) !important;
+    --toolbar-field-background-color: var(--neutral-5) !important;
     --toolbar-field-color: var(--neutral-90) !important;
     --toolbar-field-border-color: transparent !important;
     --toolbar-field-focus-background-color: var(--neutral-12) !important;
