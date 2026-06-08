@@ -68,6 +68,16 @@ export class PinnedPanelsStore {
         widthPx: e.widthPx,
       });
       this.#pendingByWorkspace.set(e.workspaceId, list);
+      const tabId = this.#nextSyntheticTabId--;
+      this.#byKey.set(this.#key(e.workspaceId, tabId), {
+        workspaceId: e.workspaceId,
+        tabId,
+        order: e.order,
+        url: e.url,
+        title: e.title,
+        favIconUrl: e.favIconUrl,
+        widthPx: e.widthPx,
+      });
     }
     this.#nextOrder = maxOrder + 1;
   }
@@ -275,11 +285,12 @@ export class PinnedPanelsStore {
       const tabId =
         (entry.panelKey ? panelKeyToTabId.get(entry.panelKey) : undefined) ??
         urlToTabId.get(entry.url);
-      const materializedTabId =
-        typeof tabId === 'number' && !consumed.has(tabId) ? tabId : this.#nextSyntheticTabId--;
-      if (typeof tabId === 'number') consumed.add(tabId);
+      const matchedTabId = typeof tabId === 'number' && !consumed.has(tabId) ? tabId : undefined;
+      const placeholder = this.#findSyntheticEntry(workspaceId, entry);
+      const materializedTabId = matchedTabId ?? placeholder?.tabId ?? this.#nextSyntheticTabId--;
+      if (matchedTabId !== undefined) consumed.add(matchedTabId);
+      if (placeholder && materializedTabId === placeholder.tabId) continue;
       const key = this.#key(workspaceId, materializedTabId);
-      if (this.#byKey.has(key)) continue;
       const live: PinnedPanelEntry = {
         workspaceId,
         tabId: materializedTabId,
@@ -289,6 +300,13 @@ export class PinnedPanelsStore {
         favIconUrl: entry.favIconUrl,
         widthPx: entry.widthPx,
       };
+      if (placeholder) {
+        const oldKey = this.#key(workspaceId, placeholder.tabId);
+        this.#byKey.delete(oldKey);
+        this.#enqueue({ kind: 'removed', workspaceId, tabId: placeholder.tabId });
+      } else if (this.#byKey.has(key)) {
+        continue;
+      }
       this.#byKey.set(key, live);
       this.#enqueue({ kind: 'added', entry: live });
       dirty = true;
@@ -298,6 +316,20 @@ export class PinnedPanelsStore {
 
   #key(workspaceId: string, tabId: number): string {
     return workspaceId + '\u0000' + tabId;
+  }
+
+  #findSyntheticEntry(
+    workspaceId: string,
+    pending: Pick<PendingPersistedEntry, 'order' | 'url'>,
+  ): PinnedPanelEntry | undefined {
+    for (const entry of this.#byKey.values()) {
+      if (entry.workspaceId !== workspaceId) continue;
+      if (entry.tabId >= 0) continue;
+      if (entry.order !== pending.order) continue;
+      if (entry.url !== pending.url) continue;
+      return entry;
+    }
+    return undefined;
   }
 
   #enqueue(delta: PinnedPanelDelta): void {

@@ -1119,6 +1119,11 @@ remain URL-backed and may temporarily use synthetic negative tab ids until the
 user opens them again. Persistence stores URLs and optional panel keys because
 tab ids do not survive restart. Boot restore remaps persisted entries to live
 tab ids when possible and otherwise keeps them as URL-backed rail entries.
+Because inactive workspaces restore panels lazily, `PinnedPanelsStore.init`
+materializes every persisted pin as a synthetic URL-backed entry immediately;
+the global pinned rail must not wait for each workspace's first activation.
+When a workspace later runs `recoverTabIdsAfterPanelRestore`, the matching
+synthetic entry is replaced with the restored live tab id.
 Pinned entries also persist last-known title, favicon, and panel-width metadata;
 tab metadata updates refresh pinned entries before closure so the rail favicon
 remains stable when the panel is closed and later reopened. `panel/setWidth`
