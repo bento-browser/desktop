@@ -6,7 +6,7 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
-import type { Action, Event, WireAction } from '@shared/protocol';
+import type { Action, Event, PinnedPanelEntry, WireAction } from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
@@ -41,6 +41,16 @@ function getTabLoadUrl(tab: browser.tabs.Tab): string | null {
       : '';
   const url = tab.url && tab.url !== 'about:blank' ? tab.url : pendingUrl;
   return url && url !== 'about:blank' ? url : null;
+}
+
+const pinnedPanelOpenInFlight = new Set<string>();
+
+function pinnedPanelOpenKey(workspaceId: string, entry: PinnedPanelEntry): string {
+  return `${workspaceId}\u0000${entry.order}\u0000${entry.url ?? entry.tabId}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function activatePromotedPanelTab(
@@ -1129,23 +1139,27 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (!ctx.workspaces.has(action.workspaceId)) return;
       const entry = ctx.pinnedPanels.get(action.workspaceId, action.tabId);
       if (!entry) return;
+      const openKey = pinnedPanelOpenKey(action.workspaceId, entry);
+      if (pinnedPanelOpenInFlight.has(openKey)) return;
+      pinnedPanelOpenInFlight.add(openKey);
       void (async () => {
         try {
-          const panelExists = ctx.panels
-            .findWorkspacesContainingPanelOrSubPanel(action.tabId)
-            .includes(action.workspaceId);
-          if (panelExists) {
+          const focusExistingPanel = async (tabId: number): Promise<boolean> => {
+            const panelExists = ctx.panels
+              .findWorkspacesContainingPanelOrSubPanel(tabId)
+              .includes(action.workspaceId);
+            if (!panelExists) return false;
             try {
-              await browser.tabs.get(action.tabId);
+              await browser.tabs.get(tabId);
               const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
               if (owner !== null && owner !== ctx.sourceWindowId) {
                 await browser.windows.update(owner, { focused: true });
-                return;
+                return true;
               }
               const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
               const sync = () => {
                 ctx.emitPanelsSync(action.workspaceId, {
-                  scrollToPanelTabId: action.tabId,
+                  scrollToPanelTabId: tabId,
                   ...(typeof ctx.sourceWindowId === 'number'
                     ? { windowId: ctx.sourceWindowId }
                     : {}),
@@ -1153,10 +1167,14 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               };
               if (result === 'activated') setTimeout(sync, 32);
               else sync();
-              return;
+              return true;
             } catch {
-              // Stale pin: fall through and recreate from the persisted URL.
+              return false;
             }
+          };
+
+          if (await focusExistingPanel(action.tabId)) {
+            return;
           }
 
           const url = entry.url;
@@ -1166,7 +1184,16 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             await browser.windows.update(owner, { focused: true });
             return;
           }
-          ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+          const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+          if (result === 'activated' && action.tabId < 0) {
+            await delay(250);
+            const rebound = ctx.pinnedPanels.findByStableIdentity(action.workspaceId, entry);
+            if (rebound && rebound.tabId !== action.tabId) {
+              if (await focusExistingPanel(rebound.tabId)) {
+                return;
+              }
+            }
+          }
           const isDefaultNewTab = url === 'about:newtab';
           const tab = await browser.tabs.create({
             ...(isDefaultNewTab ? {} : { url }),
@@ -1199,6 +1226,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           ctx.emitPanelsSync(action.workspaceId, { scrollToPanelTabId: tab.id });
         } catch (err) {
           console.warn('[bento-tools] pinnedPanel/open failed:', err);
+        } finally {
+          pinnedPanelOpenInFlight.delete(openKey);
         }
       })();
       return;

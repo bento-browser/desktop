@@ -118,6 +118,21 @@ export class PinnedPanelsStore {
     return this.#byKey.get(this.#key(workspaceId, tabId));
   }
 
+  findByStableIdentity(
+    workspaceId: string,
+    identity: Pick<PinnedPanelEntry, 'tabId' | 'order' | 'url'>,
+  ): PinnedPanelEntry | undefined {
+    const byKey = this.get(workspaceId, identity.tabId);
+    if (byKey) return byKey;
+    for (const entry of this.#byKey.values()) {
+      if (entry.workspaceId !== workspaceId) continue;
+      if (entry.order !== identity.order) continue;
+      if (entry.url !== identity.url) continue;
+      return entry;
+    }
+    return undefined;
+  }
+
   /** Append a pin. No-op (returns false) if `(workspaceId, tabId)` is
    * already pinned. Validation that the tab is actually a panel in that
    * workspace lives in the protocol handler — keeping it out here makes

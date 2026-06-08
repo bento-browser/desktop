@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handle, type HandlerContext } from './protocol-handler';
 
 function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
@@ -250,6 +250,118 @@ describe('protocol handler command palette navigation', () => {
     handle({ type: 'panel/focus', workspaceId: 'ws-1', id: 77 }, ctx);
 
     expect(browser.tabs.update).not.toHaveBeenCalled();
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', {
+      scrollToPanelTabId: 77,
+      windowId: 1,
+    });
+  });
+});
+
+describe('protocol handler pinned panels', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        create: vi.fn().mockResolvedValue({ id: 88, windowId: 1 }),
+        get: vi.fn().mockRejectedValue(new Error('stale synthetic pin')),
+      },
+      windows: {
+        update: vi.fn().mockResolvedValue({ id: 1 }),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('coalesces repeated opens for the same URL-backed pin', async () => {
+    const ctx = createCloseContext({
+      tabs: {
+        assignWorkspaceEagerly: vi.fn(),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        has: vi.fn().mockReturnValue(true),
+        findOwningWindow: vi.fn().mockReturnValue(null),
+        activate: vi.fn().mockReturnValue('noop'),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+        getRootNodeIds: vi.fn().mockReturnValue([]),
+        insertAt: vi.fn().mockReturnValue(true),
+        setWidth: vi.fn(),
+      } as unknown as HandlerContext['panels'],
+      pinnedPanels: {
+        get: vi.fn().mockReturnValue({
+          workspaceId: 'ws-1',
+          tabId: -1,
+          order: 0,
+          url: 'https://panel.example.test/',
+          title: 'Panel',
+        }),
+        rebindTabId: vi.fn().mockReturnValue(true),
+      } as unknown as HandlerContext['pinnedPanels'],
+      settings: {
+        snapshot: vi.fn().mockReturnValue({ defaultPanelWidthPx: 360 }),
+      } as unknown as HandlerContext['settings'],
+    });
+
+    handle({ type: 'pinnedPanel/open', workspaceId: 'ws-1', tabId: -1 }, ctx);
+    handle({ type: 'pinnedPanel/open', workspaceId: 'ws-1', tabId: -1 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.create).toHaveBeenCalledTimes(1);
+    });
+    expect(ctx.panels.insertAt).toHaveBeenCalledTimes(1);
+    expect(ctx.pinnedPanels.rebindTabId).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a lazily restored pinned panel instead of creating a duplicate', async () => {
+    vi.useFakeTimers();
+    vi.mocked(browser.tabs.get).mockImplementation(async (tabId: number) => {
+      if (tabId === 77) return { id: 77 } as browser.tabs.Tab;
+      throw new Error('stale synthetic pin');
+    });
+    const entry = {
+      workspaceId: 'ws-1',
+      tabId: -1,
+      order: 0,
+      url: 'https://panel.example.test/',
+      title: 'Panel',
+    };
+    const ctx = createCloseContext({
+      tabs: {
+        assignWorkspaceEagerly: vi.fn(),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        has: vi.fn().mockReturnValue(true),
+        findOwningWindow: vi.fn().mockReturnValue(null),
+        activate: vi.fn().mockReturnValue('activated'),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        findWorkspacesContainingPanelOrSubPanel: vi.fn((tabId: number) =>
+          tabId === 77 ? ['ws-1'] : [],
+        ),
+        getRootNodeIds: vi.fn().mockReturnValue([]),
+        insertAt: vi.fn().mockReturnValue(true),
+        setWidth: vi.fn(),
+      } as unknown as HandlerContext['panels'],
+      pinnedPanels: {
+        get: vi.fn().mockReturnValue(entry),
+        findByStableIdentity: vi.fn().mockReturnValue({ ...entry, tabId: 77 }),
+        rebindTabId: vi.fn().mockReturnValue(true),
+      } as unknown as HandlerContext['pinnedPanels'],
+      settings: {
+        snapshot: vi.fn().mockReturnValue({ defaultPanelWidthPx: 360 }),
+      } as unknown as HandlerContext['settings'],
+    });
+
+    handle({ type: 'pinnedPanel/open', workspaceId: 'ws-1', tabId: -1 }, ctx);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(browser.tabs.create).not.toHaveBeenCalled();
+    expect(ctx.panels.insertAt).not.toHaveBeenCalled();
+    expect(ctx.pinnedPanels.rebindTabId).not.toHaveBeenCalled();
     expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', {
       scrollToPanelTabId: 77,
       windowId: 1,

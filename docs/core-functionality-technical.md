@@ -775,12 +775,13 @@ Top-level panel resizing:
   `refreshFlatPanelLayoutFromLiveState` recomputes geometry with the live width
   override, reapplies panel rects, resyncs root splitters, and updates the strip
   scrollbar.
-- Window resize path: `attachResizeRepaintPoke` must call
-  `refreshFlatPanelLayoutFromLiveState`, not only `syncInterPanelSplitters`.
-  Flat layout writes absolute inline heights to each panel; if the browser
-  window shrinks and only splitters are resynced, panels keep their old
-  `height/minHeight/maxHeight` and extend underneath the navigator or beyond the
-  visible Bento window.
+- Workspace height resize path: `attachResizeRepaintPoke` and the
+  `tabpanels` `ResizeObserver` must call `refreshFlatPanelLayoutFromLiveState`,
+  not only `syncInterPanelSplitters`. Flat layout writes absolute inline heights
+  to each panel; if the browser window shrinks, or chrome height changes because
+  the bookmarks toolbar is toggled, and only splitters are resynced, panels keep
+  their old `height/minHeight/maxHeight` and extend underneath the navigator or
+  beyond the visible Bento window.
 - Working solution: keep the flat-layout computed gap at `var(--space-2xs)`.
   Do not let `.bento-flat-panel-layout` compute `gap: 0`, because geometry reads
   that value and panels will visually touch. The add-panel trailer also needs an
@@ -1124,11 +1125,20 @@ materializes every persisted pin as a synthetic URL-backed entry immediately;
 the global pinned rail must not wait for each workspace's first activation.
 When a workspace later runs `recoverTabIdsAfterPanelRestore`, the matching
 synthetic entry is replaced with the restored live tab id.
+`pinnedPanel/open` is single-flight per current `(workspaceId, tabId)` identity;
+repeated clicks before an async URL-backed open finishes must not create
+duplicate panel tabs or duplicate rail entries. For synthetic URL-backed pins
+in lazily-restored workspaces, the handler activates the workspace, waits
+briefly for panel restore to rebind the pin, then focuses the restored panel
+instead of creating a second panel for the same URL.
 Pinned entries also persist last-known title, favicon, and panel-width metadata;
 tab metadata updates refresh pinned entries before closure so the rail favicon
 remains stable when the panel is closed and later reopened. `panel/setWidth`
 updates the pinned entry for any matching live pin so a resized pinned panel
 reopens at the latest user-chosen width.
+Each side-panel header exposes a pin icon that dispatches `pinnedPanel/add` or
+`pinnedPanel/remove` and mirrors the active workspace's
+`pinnedTabIdsInWorkspace` set with a filled icon state.
 Chrome dispatches `panel/focusedChanged` when the focused side-panel tab id
 changes. The shell mirrors that event into `usePanelFocusStore`, and the pinned
 rail applies the `color-60` tonal treatment to the matching pinned-panel button.
@@ -1138,6 +1148,10 @@ Saved panels are bookmarks in a managed "Saved panels" folder under Firefox's
 `extensions/bento-tools/src/saved-panels/SavedPanelsStore.ts`. It creates or
 adopts the folder, dedupes by URL, mirrors bookmark changes, and broadcasts
 snapshots to the panel trailer.
+The side-panel header bookmark icon is separate from Saved panels: it toggles
+normal Firefox bookmark records for the current panel URL, fills when that URL
+has a non-Saved-panels bookmark, and leaves the managed "Saved panels" folder
+untouched when removing normal bookmarks.
 
 The visible panel trailer is rendered by `extensions/bento-shell/src/panel-trailer/main.tsx`
 and `components/PanelTrailer`. It runs inside the chrome-mounted
@@ -1152,6 +1166,13 @@ and `components/PanelTrailer`. It runs inside the chrome-mounted
   specific pinned panel if it still exists and recreates/rebinds it from the
   stored URL only when it does not. Do not activate the pinned tab directly;
   direct tab activation breaks the main/panel distinction.
+- Relaunch + double-click regression: after `pnpm run dev` relaunch, inactive
+  workspace pins are initially synthetic URL-backed entries while panel restore
+  is still lazy. `pinnedPanel/open` must be single-flight by stable pin identity
+  (`workspaceId`, `order`, URL/tab id fallback), activate the workspace, wait
+  for lazy restore to rebind the pin, and focus the restored panel when present.
+  Creating from URL immediately after activation duplicates both the panel strip
+  entry and the pinned rail entry.
 - `pinnedPanel/close` marks the backing tab as closing before removing the panel
   binding, then closes that tab. It must not use the normal `panel/remove`
   demotion path, because that exposes the closed pinned panel as a sidebar tab.

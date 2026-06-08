@@ -132,6 +132,7 @@ Panels support the core Bento workflow:
 - open a link or URL directly into a new panel;
 - create a blank panel from the trailer at the end of the panel strip and move
   focus to it;
+- bookmark the current panel URL from the panel header;
 - save a useful panel target for reuse later;
 - pin important panels so they are reachable across workspace changes;
 - resize panels without disturbing the entire layout;
@@ -171,8 +172,9 @@ promotes that one panel into the top-level strip, and dragging a top-level panel
 onto a one-panel subdivision row adds it beside that panel. A panel can also be
 dragged into an unconfigured subdivision area to fill that area as a full panel.
 Rows that already contain two panels do not accept another dragged panel.
-When the browser window is resized, panels resize to the visible workspace
-height instead of retaining stale dimensions from the previous window size.
+When the browser window is resized or the bookmarks toolbar is toggled, panels
+resize to the visible workspace height instead of retaining stale dimensions
+from the previous chrome size.
 The intended layout primitives are:
 
 - horizontal splits for wide and ultrawide displays;

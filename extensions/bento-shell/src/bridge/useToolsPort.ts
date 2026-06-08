@@ -278,7 +278,7 @@ function ensureConnection(): void {
               payload.panelShadowsEnabled = cur.panelShadowsEnabled;
             }
             // Pinned-panel set for THIS workspace (Set.has(tabId) drives
-            // the kebab menu's Pin/Unpin label) and the global count of
+            // the chrome panel-header pin button state) and the global count of
             // bookmarks in the "Saved panels" folder (chrome reads this
             // to size the Add-panel trailer's inline favicon row). Both
             // ride on this single chrome-bound channel — tools is the

@@ -975,7 +975,7 @@
       }
 
       /* Per-panel header: compact urlbar (back/fwd/reload, URL input,
-         star). All sizing via Bento/Tale UI tokens — no raw values. */
+         bookmark / pin). All sizing via Bento/Tale UI tokens — no raw values. */
       .bento-panel-header {
         display: flex;
         flex-direction: row;
@@ -989,11 +989,11 @@
         box-sizing: border-box;
       }
       /* Header controls — drag handle (leftmost), back / forward /
-         reload, then star / close / more on the right. All share the
+         reload, then bookmark / pin / close / more on the right. All share the
          same 24×24 icon-button shape, default colour, hover, focus,
          and icon size; only the cursor and "engaged" state vary by
          role (grab/grabbing on the drag handle, filled-icon on the
-         bookmark star). This shared rule is the single source of
+         active bookmark and pin buttons). This shared rule is the single source of
          truth — per-element rules below override only the bits that
          genuinely differ. */
       .bento-panel-header-drag-handle,
@@ -1026,7 +1026,7 @@
          equals stroke-width. At stroke-width 2 in a 24-unit
          viewBox displayed at 14px, each dot is only ~1.17px —
          a fraction of the ink the continuous-stroke icons put
-         on screen (chevrons, refresh, star, close), so the dot
+         on screen (chevrons, refresh, bookmark, pin, close), so the dot
          icons read as "disabled" even at the same currentColor.
          Bumping the stroke compensates so all header icons hit
          the same optical weight. */
@@ -1060,7 +1060,8 @@
         background-color: var(--neutral-16);
         color: var(--color-60);
       }
-      /* Bookmark star: filled outline when the current URL is in
+      /* Bookmark and pin buttons: filled outline when active. Bookmark state
+         tracks whether the current URL is in
          the bookmarks DB. Fill uses currentColor so the icon picks
          up whatever default / hover colour the shared rule sets. */
       .bento-panel-header-button--active > svg {
@@ -3081,7 +3082,7 @@
   //
   // Each panel container is a vbox of [bento-panel-header, <browser>].
   // The header carries back/forward/reload buttons, an inline URL input,
-  // and a star button (bookmarks). The header's URL input is the canonical
+  // and bookmark / pin buttons. The header's URL input is the canonical
   // place to navigate the panel — the chrome's main URL bar always
   // reflects the active tab in the main content area.
   //
@@ -3120,7 +3121,8 @@
     chevronLeft: 'm15 18-6-6 6-6',
     chevronRight: 'm9 18 6-6-6-6',
     rotate: 'M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.74 2.74L3 8 M3 3v5h5',
-    star: 'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z',
+    bookmark: 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z',
+    pin: 'M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 2-2V4H6v1a2 2 0 0 0 2 2h1z',
     plus: 'M12 5v14 M5 12h14',
     x: 'M18 6 6 18 M6 6l12 12',
     // grip-vertical: 2×3 dot grid — drag-to-reorder affordance.
@@ -3566,18 +3568,90 @@
     return true;
   }
 
-  // Insert a bookmark (silent — no dialog) at the unfiled "Other Bookmarks"
-  // root and visually mark the star as filled. Already-bookmarked URLs
-  // get inserted again (Firefox allows duplicate bookmarks); de-dupe is
-  // a future enhancement.
-  function bookmarkPanelPage(browserEl, starBtn) {
+  function getPlacesUtils() {
+    const { PlacesUtils } = ChromeUtils.importESModule(
+      'resource://gre/modules/PlacesUtils.sys.mjs',
+    );
+    return PlacesUtils;
+  }
+
+  async function getSavedPanelsFolderGuid(PlacesUtils) {
+    try {
+      const list = [];
+      await PlacesUtils.bookmarks.fetch(
+        { parentGuid: PlacesUtils.bookmarks.unfiledGuid },
+        (item) => {
+          if (item?.guid) list.push(item);
+        },
+      );
+      const folder = list.find(
+        (item) =>
+          item?.type === PlacesUtils.bookmarks.TYPE_FOLDER && item.title === 'Saved panels',
+      );
+      return folder?.guid || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function getBookmarksForUrl(PlacesUtils, url) {
+    const matches = [];
+    await PlacesUtils.bookmarks.fetch({ url }, (bookmark) => {
+      if (bookmark?.guid) matches.push(bookmark);
+    });
+    return matches;
+  }
+
+  function setPanelBookmarkButtonState(bookmarkBtn, isBookmarked) {
+    if (!bookmarkBtn) return;
+    const title = isBookmarked ? 'Remove bookmark' : 'Bookmark page';
+    bookmarkBtn.title = title;
+    bookmarkBtn.setAttribute('aria-label', title);
+    bookmarkBtn.classList.toggle('bento-panel-header-button--active', isBookmarked);
+  }
+
+  async function updatePanelBookmarkButtonState(browserEl, bookmarkBtn) {
+    if (!bookmarkBtn) return;
+    let uri;
+    try {
+      uri = browserEl.currentURI;
+    } catch {
+      setPanelBookmarkButtonState(bookmarkBtn, false);
+      return;
+    }
+    if (!uri || !isRealPanelUrl(uri.spec)) {
+      setPanelBookmarkButtonState(bookmarkBtn, false);
+      return;
+    }
+    try {
+      const spec = uri.spec;
+      const PlacesUtils = getPlacesUtils();
+      const bookmarks = await getBookmarksForUrl(PlacesUtils, spec);
+      const savedPanelsFolderGuid = await getSavedPanelsFolderGuid(PlacesUtils);
+      try {
+        if (browserEl.currentURI?.spec !== spec) return;
+      } catch {
+        return;
+      }
+      const hasRegularBookmark = bookmarks.some(
+        (bookmark) => bookmark.parentGuid !== savedPanelsFolderGuid,
+      );
+      setPanelBookmarkButtonState(bookmarkBtn, hasRegularBookmark);
+    } catch (err) {
+      console.warn('[bento-shell-mount] bookmark state lookup failed:', err);
+    }
+  }
+
+  // Toggle a Firefox bookmark for the panel URL. This is separate from
+  // Bento's managed "Saved panels" folder: Save panel still owns that list.
+  async function togglePanelPageBookmark(browserEl, bookmarkBtn) {
     let uri;
     try {
       uri = browserEl.currentURI;
     } catch {
       return;
     }
-    if (!uri || !uri.spec) return;
+    if (!uri || !isRealPanelUrl(uri.spec)) return;
     let title;
     try {
       title = browserEl.contentTitle || uri.spec;
@@ -3585,29 +3659,50 @@
       title = uri.spec;
     }
     try {
-      const { PlacesUtils } = ChromeUtils.importESModule(
-        'resource://gre/modules/PlacesUtils.sys.mjs',
+      const PlacesUtils = getPlacesUtils();
+      const bookmarks = await getBookmarksForUrl(PlacesUtils, uri.spec);
+      const savedPanelsFolderGuid = await getSavedPanelsFolderGuid(PlacesUtils);
+      const removableBookmarks = bookmarks.filter(
+        (bookmark) => bookmark.parentGuid !== savedPanelsFolderGuid,
       );
-      PlacesUtils.bookmarks
-        .insert({
+      if (removableBookmarks.length > 0) {
+        await Promise.all(
+          removableBookmarks.map((bookmark) => PlacesUtils.bookmarks.remove(bookmark.guid)),
+        );
+        setPanelBookmarkButtonState(bookmarkBtn, false);
+      } else {
+        await PlacesUtils.bookmarks.insert({
           parentGuid: PlacesUtils.bookmarks.unfiledGuid,
           url: uri.spec,
           title,
-        })
-        .then(() => {
-          if (starBtn) starBtn.classList.add('bento-panel-header-button--active');
-        })
-        .catch((err) => {
-          console.warn('[bento-shell-mount] bookmark insert failed:', err);
         });
+        setPanelBookmarkButtonState(bookmarkBtn, true);
+      }
     } catch (err) {
-      console.warn('[bento-shell-mount] bookmark module load failed:', err);
+      console.warn('[bento-shell-mount] bookmark toggle failed:', err);
     }
   }
 
+  function setPanelPinButtonState(pinBtn, tabId) {
+    if (!pinBtn || !Number.isFinite(tabId)) return;
+    const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
+    const title = isPinned ? 'Unpin this panel' : 'Pin this panel';
+    pinBtn.title = title;
+    pinBtn.setAttribute('aria-label', title);
+    pinBtn.classList.toggle('bento-panel-header-button--active', isPinned);
+  }
+
+  function updatePanelHeaderPinButtons() {
+    document.querySelectorAll('.bento-panel-header-button--pin').forEach((pinBtn) => {
+      const rawTabId = pinBtn.getAttribute('data-bento-panel-pin-tab-id');
+      const tabId = Number(rawTabId);
+      setPanelPinButtonState(pinBtn, tabId);
+    });
+  }
+
   // Build the header above each panel: back / forward / reload / URL
-  // input / star. Wires a progress listener on the panel browser so the
-  // URL stays in sync as the user navigates inside it.
+  // input / bookmark / pin. Wires a progress listener on the panel browser so
+  // the URL stays in sync as the user navigates inside it.
   //
   // initialUrl pre-populates the URL input synchronously, so the user
   // sees the correct URL the moment the panel appears — the progress
@@ -3835,9 +3930,25 @@
       }
     });
 
-    const starBtn = makeHeaderButton('Bookmark page', ICONS.star, () => {
-      bookmarkPanelPage(getActionBrowser(), starBtn);
+    const bookmarkBtn = makeHeaderButton('Bookmark page', ICONS.bookmark, () => {
+      togglePanelPageBookmark(getActionBrowser(), bookmarkBtn);
     });
+
+    let pinBtn = null;
+    if (Number.isFinite(tabId)) {
+      pinBtn = makeHeaderButton('Pin this panel', ICONS.pin, () => {
+        if (!currentWorkspaceId) return;
+        const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
+        dispatchShellAction({
+          type: isPinned ? 'pinnedPanel/remove' : 'pinnedPanel/add',
+          workspaceId: currentWorkspaceId,
+          tabId,
+        });
+      });
+      pinBtn.classList.add('bento-panel-header-button--pin');
+      pinBtn.setAttribute('data-bento-panel-pin-tab-id', String(tabId));
+      setPanelPinButtonState(pinBtn, tabId);
+    }
 
     // Close button: dispatches tab/close (NOT panel/remove). Closing a
     // side panel closes its underlying tab entirely — the tab does not
@@ -3878,19 +3989,6 @@
                   isDisabled: true,
                 },
               ];
-        // Pin/Unpin item leads the menu. Label flips based on whether
-        // THIS panel is currently in the active workspace's pin set —
-        // BENTO_PANELS payload's `pinnedTabIdsInWorkspace` keeps
-        // currentPinnedTabIdsInWorkspace in sync. Resolving the
-        // workspaceId at click time (not menu-build time) is fine
-        // here: both the menu open and the dispatch happen on the
-        // chrome event loop, no async gap during which
-        // currentWorkspaceId could shift.
-        const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
-        const pinItem = {
-          id: isPinned ? 'unpin' : 'pin',
-          label: isPinned ? 'Unpin this panel' : 'Pin this panel',
-        };
         // Size presets nest under a "Custom panel widths" submenu so
         // the menu has room for new top-level actions — `items.items`
         // makes ChromeMenu.tsx render a SubmenuTrigger via
@@ -3913,7 +4011,6 @@
           ...(canBreakOut ? [{ id: 'break-out-sub-panel', label: 'Break out this panel' }] : []),
         ];
         const items = [
-          pinItem,
           { id: 'custom-widths', label: 'Custom panel widths', items: sizeItems },
           ...subdivisionItems,
           { id: 'sep-save-panel', kind: 'separator' },
@@ -3924,24 +4021,6 @@
           items,
           onSelect: (itemId) => {
             if (typeof itemId !== 'string') return;
-            if (itemId === 'pin') {
-              if (!currentWorkspaceId) return;
-              dispatchShellAction({
-                type: 'pinnedPanel/add',
-                workspaceId: currentWorkspaceId,
-                tabId,
-              });
-              return;
-            }
-            if (itemId === 'unpin') {
-              if (!currentWorkspaceId) return;
-              dispatchShellAction({
-                type: 'pinnedPanel/remove',
-                workspaceId: currentWorkspaceId,
-                tabId,
-              });
-              return;
-            }
             if (itemId === 'subdivide') {
               dispatchShellAction({ type: 'panelLayout/subdivide', tabId });
               return;
@@ -3961,13 +4040,9 @@
             if (itemId === 'save-panel') {
               // Read the panel's current URL + title and dispatch to
               // bento-tools — SavedPanelsStore owns the find-or-create
-              // folder + dedupe + insert path. Chrome avoids touching
-              // PlacesUtils directly here (the star button at
-              // bookmarkPanelPage still does, but that's a different
-              // folder + a precedent we are NOT extending — bookmarks
-              // mutated from chrome would bypass tools' list mirror
-              // and the trailer iframe would lag until the next manual
-              // refresh).
+              // folder + dedupe + insert path. Keep this separate from
+              // the header bookmark button, which toggles normal Firefox
+              // bookmarks for the current panel URL.
               const innerBrowser = getHeaderActionBrowser(panelEl, browserEl);
               if (!innerBrowser) return;
               let uri;
@@ -4029,7 +4104,8 @@
     header.appendChild(forwardBtn);
     header.appendChild(reloadBtn);
     header.appendChild(urlInput);
-    header.appendChild(starBtn);
+    header.appendChild(bookmarkBtn);
+    if (pinBtn) header.appendChild(pinBtn);
     if (closeBtn) header.appendChild(closeBtn);
     if (moreBtn) header.appendChild(moreBtn);
 
@@ -4067,6 +4143,7 @@
         else backBtn.setAttribute('disabled', 'true');
         if (actionBrowser?.canGoForward) forwardBtn.removeAttribute('disabled');
         else forwardBtn.setAttribute('disabled', 'true');
+        updatePanelBookmarkButtonState(actionBrowser, bookmarkBtn);
       } catch {
         // Browser not yet attached — refresh again on next tick.
       }
@@ -13040,6 +13117,16 @@
     // (see setupPanelNavigator). One-time setup.
     const tp = window.gBrowser.tabpanels;
     if (tp && !tp.__bentoStripScrollWired) {
+      const syncStripViewportLayout = () => {
+        try {
+          if (!refreshFlatPanelLayoutFromLiveState()) {
+            syncInterPanelSplitters();
+            syncFlatLayoutOverlays(tp, currentPanelLayoutGeometry);
+          }
+        } catch (err) {
+          console.warn('[bento-shell-mount] strip viewport layout sync failed:', err);
+        }
+      };
       const onStripChange = () => {
         updateStripScrollbar();
         // Re-position inter-panel splitters — scroll shifts the
@@ -13082,7 +13169,10 @@
       };
       tp.addEventListener('scroll', onStripChange, { passive: true });
       if (window.ResizeObserver) {
-        const ro = new ResizeObserver(onStripChange);
+        const ro = new ResizeObserver(() => {
+          syncStripViewportLayout();
+          updateStripScrollbar();
+        });
         ro.observe(tp);
       }
       tp.__bentoStripScrollWired = true;
@@ -13237,8 +13327,8 @@
         scrollToPanelTabId = decoded.scrollToPanelTabId;
       }
       // Pinned-panel tabIds for the incoming workspace. Workspace-
-      // filtered upstream so a Set.has(tabId) is enough to pick the
-      // Pin/Unpin label in the kebab menu. Missing key means the
+      // filtered upstream so a Set.has(tabId) is enough to sync each
+      // panel header pin button. Missing key means the
       // workspace has no pins (tools omits the field when the array
       // is empty); reset the local mirror accordingly so a workspace
       // switch from a pinned workspace into an unpinned one doesn't
@@ -13250,6 +13340,7 @@
       } else {
         currentPinnedTabIdsInWorkspace = new Set();
       }
+      updatePanelHeaderPinButtons();
       // Saved-panel count drives the Add-panel trailer's flex-basis
       // so the inline favicon row has room to render. Global (not
       // workspace-scoped) but rides on this payload because chrome
@@ -13654,7 +13745,7 @@
   let currentPanelCycleWraparound = false;
   // Pinned-panel tabIds for THIS WINDOW's active workspace, mirrored
   // from BENTO_PANELS payload's `pinnedTabIdsInWorkspace` field. The
-  // kebab menu reads this to pick the Pin/Unpin label without having
+  // panel header pin button reads this to pick its filled state without having
   // to round-trip a fresh query through bento-tools. Workspace-
   // filtered upstream (tools only includes the active workspace's
   // pin subset) so a Set.has(tabId) lookup is enough — no global pin
