@@ -7,6 +7,8 @@
  * steady state only the incoming pane is rendered. */
 @layer bento.components {
   .bento-tab-list {
+    --bento-tab-list-row-gap: var(--space-4xs);
+
     display: flex;
     flex: 1;
     min-height: 0;
@@ -101,9 +103,7 @@
 
   /* Drop indicator: a 2px horizontal bar painted between rows during a
      reorder drag. translateY positions it at the gap between slot N-1
-     and slot N (slot * row-height). Centre via translateY(-50%) so the
-     bar straddles the gap symmetrically rather than sitting flush with
-     the row below it. Workspace accent so the cue matches the active
+     and slot N. Workspace accent so the cue matches the active
      workspace's identity. */
   .bento-tab-list__drop-indicator {
     position: absolute;

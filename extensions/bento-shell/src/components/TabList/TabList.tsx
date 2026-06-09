@@ -177,6 +177,8 @@ function TabListPane({
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
   const parentRef = useRef<HTMLDivElement>(null);
   const [rowHeight, setRowHeight] = useState(ROW_HEIGHT_FALLBACK);
+  const [rowGap, setRowGap] = useState(0);
+  const rowSlotSize = rowHeight + rowGap;
   // Drag source — the tab id the user is currently grabbing, or null.
   // Removed-but-fading rows in displayedIds keep their slot; locking the
   // source id (not its filtered index) means the indicator math stays
@@ -190,33 +192,45 @@ function TabListPane({
 
   // Persistent probe + ResizeObserver. Vite injects CSS asynchronously in
   // dev, so a one-shot read can race the stylesheet and fall back. Watching
-  // a live probe means we pick up the real height as soon as the var
-  // resolves — and again if it ever changes (theme swap, HMR, etc.).
+  // live probes means we pick up the real row height and gap as soon as
+  // the vars resolve — and again if either changes (theme swap, HMR, etc.).
   useEffect(() => {
     if (!parentRef.current) return;
-    const probe = document.createElement('div');
-    probe.style.cssText =
+    const rowProbe = document.createElement('div');
+    rowProbe.style.cssText =
       'position:absolute;visibility:hidden;pointer-events:none;width:0;height:var(--bento-tab-row-height);';
-    parentRef.current.appendChild(probe);
+    const gapProbe = document.createElement('div');
+    gapProbe.style.cssText =
+      'position:absolute;visibility:hidden;pointer-events:none;width:0;height:var(--bento-tab-list-row-gap);';
+    parentRef.current.append(rowProbe, gapProbe);
     const update = () => {
-      const px = probe.offsetHeight;
-      if (px > 0) setRowHeight(px);
+      const nextRowHeight = rowProbe.getBoundingClientRect().height;
+      const nextRowGap = gapProbe.getBoundingClientRect().height;
+      if (nextRowHeight > 0) setRowHeight(nextRowHeight);
+      if (nextRowGap >= 0) setRowGap(nextRowGap);
     };
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(probe);
+    ro.observe(rowProbe);
+    ro.observe(gapProbe);
     return () => {
       ro.disconnect();
-      probe.remove();
+      rowProbe.remove();
+      gapProbe.remove();
     };
   }, []);
 
   const virtualizer = useVirtualizer({
     count: displayedIds.length + 1,
     getScrollElement: () => parentRef.current,
-    estimateSize: useCallback(() => rowHeight, [rowHeight]),
+    estimateSize: useCallback(() => rowSlotSize, [rowSlotSize]),
     overscan: 5,
   });
+
+  useLayoutEffect(() => {
+    virtualizer.measure();
+  }, [rowSlotSize, virtualizer]);
+
   const firstRegularIndex = displayedIds.findIndex((id) => tabsById[id]?.pinned !== true);
   const newTabSlot = firstRegularIndex === -1 ? displayedIds.length : firstRegularIndex;
   const visualSlotToTabSlot = useCallback(
@@ -226,23 +240,23 @@ function TabListPane({
 
   // Translate the pointer's y position into a drop slot (0..displayedIds.length).
   // Reads the viewport's scrollable coords, divides by the measured row
-  // height, then rounds toward the nearest gap (top-half = insert above,
+  // slot size, then rounds toward the nearest gap (top-half = insert above,
   // bottom-half = insert below). Returns null if the geometry isn't ready
   // or the pointer is outside the viewport bounds.
   const computeDropSlot = useCallback(
     (clientY: number): number | null => {
       const el = parentRef.current;
-      if (!el || rowHeight <= 0) return null;
+      if (!el || rowSlotSize <= 0) return null;
       const rect = el.getBoundingClientRect();
       const relY = clientY - rect.top + el.scrollTop;
       const len = displayedIds.length + 1;
       if (len === 0) return 0;
-      let slot = Math.round(relY / rowHeight);
+      let slot = Math.round(relY / rowSlotSize);
       if (slot < 0) slot = 0;
       if (slot > len) slot = len;
       return slot;
     },
-    [rowHeight, displayedIds.length],
+    [rowSlotSize, displayedIds.length],
   );
 
   // Resolve the dragged tab's drop position to an anchor tab + side.
@@ -332,6 +346,7 @@ function TabListPane({
 
   const dragEnabled = onReorder !== undefined;
   const showPinnedDivider = newTabSlot > 0;
+  const dropIndicatorY = dropSlot === null ? 0 : Math.max(0, dropSlot * rowSlotSize - rowGap / 2);
 
   return (
     <div
@@ -348,7 +363,7 @@ function TabListPane({
         {dropSlot !== null && dragSourceId !== null && (
           <div
             className="bento-tab-list__drop-indicator"
-            style={{ transform: `translateY(${dropSlot * rowHeight}px)` }}
+            style={{ transform: `translateY(${dropIndicatorY}px)` }}
             aria-hidden="true"
           />
         )}
@@ -362,7 +377,7 @@ function TabListPane({
                     ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned'
                     : 'bento-tab-list__row bento-tab-list__row--new-tab'
                 }
-                style={{ transform: `translateY(${vi.start}px)`, height: `${vi.size}px` }}
+                style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
               >
                 <Button
                   variant="ghost"
@@ -385,7 +400,7 @@ function TabListPane({
             <div
               key={id}
               className="bento-tab-list__row"
-              style={{ transform: `translateY(${vi.start}px)`, height: `${vi.size}px` }}
+              style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
             >
               <TabRow
                 id={id}
