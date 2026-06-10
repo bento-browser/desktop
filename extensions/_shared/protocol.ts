@@ -481,6 +481,10 @@ export type Action =
    * via its inter-panel splitter. Tools persists per-tabId; on next
    * launch the width is re-applied during reconcile. */
   | { type: 'panel/setWidth'; id: number; widthPx: number }
+  /** Update whether a panel's chrome header is hidden. TabId-keyed like
+   * panel/setWidth, and intentionally no sync echo because chrome applies
+   * the attribute optimistically at click time. */
+  | { type: 'panel/setHeaderHidden'; id: number; hidden: boolean }
   /** Update the persisted width (in pixels) for the main content slot.
    * Dispatched by chrome from endPanelDrag when the user resizes the
    * main slot. Tools scopes the write to the active workspace for the
@@ -711,6 +715,7 @@ export type Event =
         audible?: boolean;
         muted?: boolean;
         widthPx?: number;
+        headerHidden?: boolean;
       }>;
       /** Per-workspace main-panel width in CSS pixels. Undefined when the
        * user hasn't dragged the main splitter for this workspace yet —

@@ -36,6 +36,7 @@ interface StoredEntryV5 {
   panelKey: string;
   url: string;
   widthPx?: number;
+  headerHidden?: boolean;
 }
 
 interface StoredWorkspaceV5 {
@@ -183,6 +184,7 @@ export class Persistence {
   #pendingLayouts: Map<string, WorkspacePanelLayout> | null = null;
   #pendingPersistedWorkspaces: Map<string, PersistedWorkspacePanels> | null = null;
   #pendingWidths: Map<number, number> | null = null;
+  #pendingHeaderHidden: Map<number, true> | null = null;
   #pendingMainWidths: Map<string, number> | null = null;
   #pendingStripScroll: Map<string, number> | null = null;
 
@@ -190,12 +192,14 @@ export class Persistence {
     layouts: Map<string, WorkspacePanelLayout>,
     persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
     widths: Map<number, number>,
+    headerHiddenByTabId: Map<number, true>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): void {
     this.#pendingLayouts = layouts;
     this.#pendingPersistedWorkspaces = persistedWorkspaces;
     this.#pendingWidths = widths;
+    this.#pendingHeaderHidden = headerHiddenByTabId;
     this.#pendingMainWidths = mainWidthByWorkspace;
     this.#pendingStripScroll = stripScrollByWorkspace;
     if (this.#timer) return;
@@ -204,17 +208,20 @@ export class Persistence {
       const nextLayouts = this.#pendingLayouts;
       const nextPersistedWorkspaces = this.#pendingPersistedWorkspaces;
       const nextWidths = this.#pendingWidths;
+      const nextHeaderHidden = this.#pendingHeaderHidden;
       const nextMainWidths = this.#pendingMainWidths;
       const nextStripScroll = this.#pendingStripScroll;
       this.#pendingLayouts = null;
       this.#pendingPersistedWorkspaces = null;
       this.#pendingWidths = null;
+      this.#pendingHeaderHidden = null;
       this.#pendingMainWidths = null;
       this.#pendingStripScroll = null;
       if (
         nextLayouts &&
         nextPersistedWorkspaces &&
         nextWidths &&
+        nextHeaderHidden &&
         nextMainWidths &&
         nextStripScroll
       ) {
@@ -222,6 +229,7 @@ export class Persistence {
           nextLayouts,
           nextPersistedWorkspaces,
           nextWidths,
+          nextHeaderHidden,
           nextMainWidths,
           nextStripScroll,
         );
@@ -233,6 +241,7 @@ export class Persistence {
     layouts: Map<string, WorkspacePanelLayout>,
     persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
     widths: Map<number, number>,
+    headerHiddenByTabId: Map<number, true>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): void {
@@ -243,12 +252,14 @@ export class Persistence {
     this.#pendingLayouts = null;
     this.#pendingPersistedWorkspaces = null;
     this.#pendingWidths = null;
+    this.#pendingHeaderHidden = null;
     this.#pendingMainWidths = null;
     this.#pendingStripScroll = null;
     void this.#flush(
       layouts,
       persistedWorkspaces,
       widths,
+      headerHiddenByTabId,
       mainWidthByWorkspace,
       stripScrollByWorkspace,
     );
@@ -258,6 +269,7 @@ export class Persistence {
     layouts: Map<string, WorkspacePanelLayout>,
     persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
     widths: Map<number, number>,
+    headerHiddenByTabId: Map<number, true>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
   ): Promise<void> {
@@ -285,6 +297,7 @@ export class Persistence {
           const entry: StoredEntryV5 = { panelKey, url };
           const widthPx = widths.get(tabId);
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+          if (headerHiddenByTabId.has(tabId)) entry.headerHidden = true;
           entries.push(entry);
           keptKeysByTabId.set(tabId, panelKey);
         } catch {
@@ -351,6 +364,7 @@ function parseStoredEntriesV5(raw: unknown): PersistedPanelEntry[] {
     if (typeof obj.panelKey !== 'string' || typeof obj.url !== 'string') continue;
     const next: PersistedPanelEntry = { panelKey: obj.panelKey, url: obj.url };
     if (typeof obj.widthPx === 'number' && obj.widthPx > 0) next.widthPx = obj.widthPx;
+    if (obj.headerHidden === true) next.headerHidden = true;
     entries.push(next);
   }
   return entries;

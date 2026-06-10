@@ -561,9 +561,12 @@ Core panel actions are handled in
 - `panel/setWidth`, `panel/setMainWidth`, and `panel/setStripScroll`: persist
   chrome-measured layout state without broadcasting an immediate
   `panels/sync`.
+- `panel/setHeaderHidden`: persists a per-tabId side-panel or sub-panel header
+  hidden flag without broadcasting an immediate `panels/sync`; chrome already
+  toggled the live `data-bento-header-hidden` attribute.
 
 `emitPanelsSync` in `extensions/bento-tools/src/background.ts` resolves live tab
-ids to `{ tabId, url, favIconUrl, widthPx }`, includes `layout`,
+ids to `{ tabId, url, favIconUrl, widthPx, headerHidden }`, includes `layout`,
 `panelStatusByTabId`, workspace-scoped main width, strip scroll, pinned tab
 ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
 `panels/sync`.
@@ -575,6 +578,9 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
 - Do not emit `panels/sync` after every width write. Chrome already applied the
   live width inline; a sync round-trip can clobber an in-flight drag with stale
   persisted values.
+- Do not emit `panels/sync` after every header-hidden write. Chrome already
+  applied the live `data-bento-header-hidden` attribute; tools only persists,
+  and later sync payloads carry `headerHidden` back.
 - Do not use tab ids as durable storage identifiers. Persist URLs plus
   `panelKey`; tab ids are runtime-only.
 - Keep panel markers synced after add, remove, reorder, and restore. Closed-tab
@@ -995,6 +1001,28 @@ Top-level panel resizing:
   moving. Subdivision ratio changes also preserve the current main rect width
   while recomputing the group geometry.
 - Manual verification surface: checklist item 17, root panel width resize.
+
+Panel header hiding:
+
+- Source of truth: `PanelStore.#headerHiddenByTabId` persists side-panel and
+  sub-panel header visibility keyed by tab id. `StoredEntryV5.headerHidden`
+  stores only `true`; missing, false, or malformed values load as absent. No
+  storage version bump is required.
+- Chrome bridge: `panel/setHeaderHidden` writes the store and does not trigger a
+  sync echo. `panels/sync.panels[]` carries `headerHidden` so chrome can restore
+  the flag after restart or workspace switch.
+- Renderer path: the flat-layout reconciler's per-resolved-panel header
+  injection loop toggles `data-bento-header-hidden` from each payload. Do not
+  put this in legacy `applySubdivisions`; flat layout keeps subdivision leaves
+  as direct `tabpanels` children and resets `currentSubdivisions`.
+- Restore path: `restorePanelsForWorkspace` reapplies `headerHidden` after
+  matching persisted entries to live tab ids, alongside persisted panel widths.
+- Header hide must use `max-height` collapse without `!important`.
+  `forcePanelHeaderInteractiveState` stamps inline-important opacity and
+  visibility on injected headers, and top-closed subdivision CSS must keep
+  precedence when both states apply.
+- Departing-panel cleanup must remove `data-bento-header-hidden`; otherwise a
+  recycled tab panel can leak a stale hidden-header state into another layout.
 
 Add-panel trailer visibility:
 

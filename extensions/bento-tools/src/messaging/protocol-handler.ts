@@ -1029,6 +1029,12 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.pinnedPanels.updateWidthForTab(action.id, action.widthPx);
       return;
     }
+    case 'panel/setHeaderHidden': {
+      // Same no-echo rule as panel/setWidth: chrome already applied the
+      // live hidden state to the panel element.
+      ctx.panels.setHeaderHidden(action.id, action.hidden);
+      return;
+    }
     case 'panel/setMainWidth': {
       // Main content slot width is workspace-scoped. Same no-emit-after-set
       // reasoning as panel/setWidth — chrome already has the live width on

@@ -1016,8 +1016,31 @@
         background-color: var(--neutral-16);
         border-bottom: var(--bento-border-hairline) solid var(--neutral-16);
         flex: 0 0 auto;
+        max-height: var(--bento-panel-header-height);
         min-height: var(--bento-panel-header-height);
+        overflow: hidden;
         box-sizing: border-box;
+        transition:
+          max-height var(--bento-duration-base) var(--bento-easing-snappy),
+          min-height var(--bento-duration-base) var(--bento-easing-snappy),
+          padding var(--bento-duration-base) var(--bento-easing-snappy),
+          border-bottom-width var(--bento-duration-base) var(--bento-easing-snappy);
+      }
+      /* Header hiding uses height collapse, not opacity/visibility:
+         forcePanelHeaderInteractiveState stamps inline-important values
+         for those properties. No !important here so subdivision top-
+         closed rules keep precedence when both states apply. */
+      [data-bento-header-hidden] > .bento-panel-header {
+        max-height: 0;
+        min-height: 0;
+        padding-block: 0;
+        border-bottom-width: 0;
+        overflow: hidden;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bento-panel-header {
+          transition: none;
+        }
       }
       /* Chrome-side translation of Tale UI IconButton
          variant="ghost" size="sm". These controls cannot render the
@@ -1167,6 +1190,65 @@
       }
       [data-bento-subpanel] > .bento-panel-loading-overlay {
         inset-block-start: var(--bento-panel-header-height);
+      }
+      [data-bento-header-hidden] > .bento-panel-loading-overlay {
+        inset-block-start: 0;
+      }
+      .bento-panel-header-restore {
+        display: none;
+        position: absolute;
+        top: var(--space-3xs);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 12;
+        width: 64px;
+        height: 16px;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin: 0;
+        appearance: none;
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+      }
+      [data-bento-header-hidden] > .bento-panel-header-restore {
+        display: flex;
+      }
+      [data-bento-subdivision-top-closed] > .bento-panel-header-restore {
+        display: none !important;
+      }
+      .bento-panel-header-restore__pill {
+        display: block;
+        width: 44px;
+        height: 3px;
+        border-radius: 3px;
+        /* Fixed mid-dark grey is intentional: neutral tokens flip with
+           color mode, but this handle must stay legible on black and
+           white page content as well as light and dark chrome themes. */
+        background-color: rgba(92, 92, 98, 0.3);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.28),
+          0 1px 4px rgba(0, 0, 0, 0.45);
+        transition:
+          width var(--bento-duration-fast) var(--bento-easing-standard),
+          height var(--bento-duration-fast) var(--bento-easing-standard),
+          background-color var(--bento-duration-fast) var(--bento-easing-standard),
+          box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
+      }
+      .bento-panel-header-restore:hover > .bento-panel-header-restore__pill {
+        width: 56px;
+        height: 4px;
+        background-color: rgba(128, 128, 136, 1);
+      }
+      .bento-panel-header-restore:focus-visible {
+        outline: none;
+      }
+      .bento-panel-header-restore:focus-visible > .bento-panel-header-restore__pill {
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.28),
+          0 1px 4px rgba(0, 0, 0, 0.45),
+          0 0 0 3px var(--focus-ring-color);
       }
       .bento-panel-loading-overlay .tale-spinner {
         display: inline-flex;
@@ -4219,6 +4301,7 @@
         const items = [
           { id: 'custom-widths', label: 'Custom panel widths', items: sizeItems },
           ...subdivisionItems,
+          { id: 'hide-header', label: 'Hide header' },
           { id: 'sep-save-panel', kind: 'separator' },
           { id: 'save-panel', label: 'Save panel' },
         ];
@@ -4241,6 +4324,10 @@
             }
             if (itemId === 'break-out-sub-panel') {
               dispatchShellAction({ type: 'panelLayout/breakOut', tabId });
+              return;
+            }
+            if (itemId === 'hide-header') {
+              setPanelHeaderHidden(panelEl, Number(tabId), true);
               return;
             }
             if (itemId === 'save-panel') {
@@ -7726,6 +7813,20 @@
       updateStripScrollbar();
     }, 260);
     dispatchShellAction({ type: 'panel/setWidth', id: tabId, widthPx: px });
+  }
+
+  function setPanelHeaderHidden(panelEl, tabId, hidden) {
+    if (!panelEl) return;
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId)) return;
+    if (hidden) {
+      panelEl.setAttribute('data-bento-header-hidden', '1');
+      currentHeaderHiddenTabIds.add(numericTabId);
+    } else {
+      panelEl.removeAttribute('data-bento-header-hidden');
+      currentHeaderHiddenTabIds.delete(numericTabId);
+    }
+    dispatchShellAction({ type: 'panel/setHeaderHidden', id: numericTabId, hidden: !!hidden });
   }
 
   function applyActiveMarker(idx) {
@@ -12107,6 +12208,7 @@
       if (i === 0) {
         panelEl.dataset.bentoMainPanel = '1';
         delete panelEl.dataset.bentoPanelTabId;
+        panelEl.removeAttribute('data-bento-header-hidden');
         removeInjectedPanelHeader(panelEl);
         // Apply the active workspace's main-panel width every reconcile.
         // Only paints when the user has dragged the main splitter in this
@@ -12266,6 +12368,7 @@
       delete panelEl.dataset.bentoMainPanel;
       delete panelEl.dataset.bentoPanelTabId;
       delete panelEl.dataset.bentoRootNodeId;
+      panelEl.removeAttribute('data-bento-header-hidden');
       panelEl.removeAttribute('data-bento-subpanel');
       removeInjectedPanelHeader(panelEl);
     }
@@ -12340,6 +12443,17 @@
     // skips panels that already have a header.
     for (const { tab, payload } of resolved) {
       injectPanelHeaderIntoLinkedPanel(tab, payload.url || '');
+      const panelEl = document.getElementById(tab.linkedPanel);
+      if (panelEl && !panelEl.dataset.bentoMainPanel) {
+        const tabId = Number(payload.tabId);
+        if (payload.headerHidden === true) {
+          panelEl.setAttribute('data-bento-header-hidden', '1');
+          if (Number.isFinite(tabId)) currentHeaderHiddenTabIds.add(tabId);
+        } else {
+          panelEl.removeAttribute('data-bento-header-hidden');
+          if (Number.isFinite(tabId)) currentHeaderHiddenTabIds.delete(tabId);
+        }
+      }
     }
 
     // Mark tabpanels with classes so CSS can switch into Bento's
@@ -13085,6 +13199,7 @@
           forcePanelHeaderInteractiveState(existingHeader);
         }
         ensurePanelLoadingOverlay(panelEl, tab.linkedBrowser);
+        ensureHeaderRestoreHandle(panelEl, numericTabId);
         return; // already injected
       }
     }
@@ -13099,7 +13214,33 @@
     // insert header as the first child so it visually sits above content.
     panelEl.insertBefore(header, panelEl.firstChild);
     ensurePanelLoadingOverlay(panelEl, tab.linkedBrowser);
+    ensureHeaderRestoreHandle(panelEl, numericTabId);
     setupHeaderDrag(header, panelEl, tabId);
+  }
+
+  function ensureHeaderRestoreHandle(panelEl, tabId) {
+    if (!panelEl) return null;
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId)) return null;
+    let handle = panelEl.querySelector(':scope > .bento-panel-header-restore');
+    if (handle) {
+      handle.dataset.bentoPanelHeaderRestoreTabId = String(numericTabId);
+      return handle;
+    }
+    handle = document.createElementNS(HTML_NS, 'button');
+    handle.type = 'button';
+    handle.className = 'bento-panel-header-restore';
+    handle.setAttribute('aria-label', 'Show panel header');
+    handle.dataset.bentoPanelHeaderRestoreTabId = String(numericTabId);
+    const pill = document.createElementNS(HTML_NS, 'span');
+    pill.className = 'bento-panel-header-restore__pill';
+    handle.appendChild(pill);
+    handle.addEventListener('click', () => {
+      const liveTabId = Number(handle.dataset.bentoPanelHeaderRestoreTabId);
+      setPanelHeaderHidden(panelEl, liveTabId, false);
+    });
+    panelEl.appendChild(handle);
+    return handle;
   }
 
   function removePanelHeaderElement(header) {
@@ -13122,6 +13263,8 @@
     if (header) removePanelHeaderElement(header);
     const overlay = panelEl.querySelector(':scope > .bento-panel-loading-overlay');
     if (overlay) overlay.remove();
+    const restoreHandle = panelEl.querySelector(':scope > .bento-panel-header-restore');
+    if (restoreHandle) restoreHandle.remove();
     if (panelEl.__bentoLoadingBrowser && panelEl.__bentoLoadingListener) {
       try {
         panelEl.__bentoLoadingBrowser.removeProgressListener(panelEl.__bentoLoadingListener);
@@ -13649,6 +13792,7 @@
 	        });
 	      }
 	      updatePanelHeaderAudioButtons();
+	      currentHeaderHiddenTabIds = new Set();
 	      hideStartupVeil();
 	    } else if (decoded && Array.isArray(decoded.panels)) {
       allPanelPayloads = decoded.panels;
@@ -13691,6 +13835,7 @@
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
       currentPanelAudioByTabId = new Map();
+      currentHeaderHiddenTabIds = new Set();
       for (const panel of allPanelPayloads) {
         const tabId = Number(panel?.tabId);
         if (!Number.isFinite(tabId)) continue;
@@ -13698,6 +13843,7 @@
           audible: panel?.audible === true,
           muted: panel?.muted === true,
         });
+        if (panel?.headerHidden === true) currentHeaderHiddenTabIds.add(tabId);
       }
       updatePanelHeaderAudioButtons();
       currentPanelStatusByTabId = new Map();
@@ -14170,6 +14316,7 @@
   let currentPanelTabIds = new Set();
   let currentPanelStatusByTabId = new Map();
   let currentPanelAudioByTabId = new Map();
+  let currentHeaderHiddenTabIds = new Set();
   let currentPanelLayout = { root: [] };
   let currentPanelLayoutGeometry = null;
   function applyChromeDefaultPanelWidth(widthPx) {

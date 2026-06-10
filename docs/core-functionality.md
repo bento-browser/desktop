@@ -167,6 +167,11 @@ Panels support the core Bento workflow:
 - restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
   regular tab, using the configured default new-panel width.
 
+Side-panel and sub-panel headers can be hidden per panel from the header's
+`...` menu. Hidden headers are restored from a small grey handle at the panel's
+top center. This state persists across workspace switches and restarts. The main
+content slot does not expose this header action.
+
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools
 visible beside the page they are actively using.

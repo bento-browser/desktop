@@ -74,7 +74,8 @@ Use this shape for new or changed touchpoints:
   that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
-  chrome window events, frame focus, and title/actor messaging paths.
+  chrome window events, frame focus, title/actor messaging paths, and injected
+  side-panel header/restore-handle chrome elements.
 - Why this cannot stay extension-only: privileged extension UI cannot directly
   reparent, size, or reconcile Firefox browser panels inside the chrome document
   without a small chrome-side mount and bridge.
@@ -94,7 +95,9 @@ Use this shape for new or changed touchpoints:
   verify command palette, floating address bar, edit-workspace, confirm, and
   first-run welcome scrims cover the full chrome window including the address
   bar, verify sidebar tab and folder `Rename` context-menu actions focus the
-  inline field and select its text for immediate typing, run
+  inline field and select its text for immediate typing, verify side-panel and
+  sub-panel header hiding/restoration still works from the panel header menu and
+  the restore handle while main-panel headers stay unavailable, run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase.
 - Rollback or migration notes: keep fallback behavior extension-driven where

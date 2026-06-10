@@ -94,7 +94,13 @@ export interface PanelPersistenceWorkspaceLayout {
 }
 
 export interface PanelPersistenceSnapshot {
-  entries: Array<{ panelKey: string; tabId: number; url: string; widthPx?: number }>;
+  entries: Array<{
+    panelKey: string;
+    tabId: number;
+    url: string;
+    widthPx?: number;
+    headerHidden?: boolean;
+  }>;
   layout: PanelPersistenceWorkspaceLayout;
 }
 
@@ -110,7 +116,7 @@ export interface LegacyPersistedPanelEntry {
 }
 
 export interface LegacyMigrationResult {
-  entries: Array<{ panelKey: string; url: string; widthPx?: number }>;
+  entries: Array<{ panelKey: string; url: string; widthPx?: number; headerHidden?: boolean }>;
   layout: PanelPersistenceWorkspaceLayout;
 }
 

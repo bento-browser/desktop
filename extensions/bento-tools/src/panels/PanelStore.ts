@@ -45,6 +45,7 @@ export interface PersistedPanelEntry {
   panelKey: string;
   url: string;
   widthPx?: number;
+  headerHidden?: boolean;
 }
 
 export interface PersistedWorkspacePanels {
@@ -59,6 +60,7 @@ export interface BreakOutPanelResult {
 export class PanelStore {
   #layoutByWorkspace = new Map<string, WorkspacePanelLayout>();
   #widthByTabId = new Map<number, number>();
+  #headerHiddenByTabId = new Map<number, true>();
   #mainWidthByWorkspace = new Map<string, number>();
   #stripScrollByWorkspace = new Map<string, number>();
   #persistence = new Persistence();
@@ -120,6 +122,19 @@ export class PanelStore {
     const rounded = Math.round(widthPx);
     if (this.#widthByTabId.get(tabId) === rounded) return;
     this.#widthByTabId.set(tabId, rounded);
+    this.#flushPersist();
+  }
+
+  getHeaderHidden(tabId: number): boolean {
+    return this.#headerHiddenByTabId.has(tabId);
+  }
+
+  setHeaderHidden(tabId: number, hidden: boolean): void {
+    if (!Number.isFinite(tabId)) return;
+    const currentlyHidden = this.#headerHiddenByTabId.has(tabId);
+    if (hidden === currentlyHidden) return;
+    if (hidden) this.#headerHiddenByTabId.set(tabId, true);
+    else this.#headerHiddenByTabId.delete(tabId);
     this.#flushPersist();
   }
 
@@ -225,8 +240,10 @@ export class PanelStore {
       const url = await resolveUrl(tabId);
       if (!url || url === 'about:blank') continue;
       const widthPx = this.#widthByTabId.get(tabId);
+      const headerHidden = this.#headerHiddenByTabId.has(tabId);
       const entry: PanelPersistenceSnapshot['entries'][number] = { panelKey, tabId, url };
       if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+      if (headerHidden) entry.headerHidden = true;
       entries.push(entry);
     }
     const keptKeys = new Map(entries.map((entry) => [entry.tabId, entry.panelKey]));
@@ -289,8 +306,10 @@ export class PanelStore {
       const url = resolveUrl(tabId);
       if (!url || url === 'about:blank') continue;
       const widthPx = this.#widthByTabId.get(tabId);
+      const headerHidden = this.#headerHiddenByTabId.has(tabId);
       const entry: PersistedPanelEntry = { panelKey, url };
       if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+      if (headerHidden) entry.headerHidden = true;
       entries.push(entry);
       keptKeysByTabId.set(tabId, panelKey);
     }
@@ -298,6 +317,7 @@ export class PanelStore {
     this.#layoutByWorkspace.delete(workspaceId);
     for (const tabId of keys.keys()) {
       this.#widthByTabId.delete(tabId);
+      this.#headerHiddenByTabId.delete(tabId);
     }
 
     if (entries.length > 0) {
@@ -321,6 +341,7 @@ export class PanelStore {
     if (layout.root.length === 0) this.#layoutByWorkspace.delete(workspaceId);
     if (this.findWorkspacesContainingTab(tabId).length === 0) {
       this.#widthByTabId.delete(tabId);
+      this.#headerHiddenByTabId.delete(tabId);
     }
     this.#schedulePersist();
     this.#emitPanelRemoved(workspaceId, tabId);
@@ -335,10 +356,12 @@ export class PanelStore {
     if (layout.root.length === 0) this.#layoutByWorkspace.delete(workspaceId);
     if (this.findWorkspacesContainingTab(tabId).length === 0) {
       this.#widthByTabId.delete(tabId);
+      this.#headerHiddenByTabId.delete(tabId);
     }
     for (const victim of victims) {
       if (this.findWorkspacesContainingTab(victim).length === 0) {
         this.#widthByTabId.delete(victim);
+        this.#headerHiddenByTabId.delete(victim);
       }
       this.#emitPanelRemoved(workspaceId, victim);
     }
@@ -359,7 +382,10 @@ export class PanelStore {
     const victims = layout ? removeWorkspace(layout) : [];
     this.#layoutByWorkspace.delete(workspaceId);
     for (const tabId of victims) {
-      if (this.findWorkspacesContainingTab(tabId).length === 0) this.#widthByTabId.delete(tabId);
+      if (this.findWorkspacesContainingTab(tabId).length === 0) {
+        this.#widthByTabId.delete(tabId);
+        this.#headerHiddenByTabId.delete(tabId);
+      }
       this.#emitPanelRemoved(workspaceId, tabId);
     }
     this.#schedulePersist();
@@ -437,7 +463,10 @@ export class PanelStore {
     const changed = before !== JSON.stringify(layout.root);
     if (!changed) return [];
     for (const victim of victims) {
-      if (this.findWorkspacesContainingTab(victim).length === 0) this.#widthByTabId.delete(victim);
+      if (this.findWorkspacesContainingTab(victim).length === 0) {
+        this.#widthByTabId.delete(victim);
+        this.#headerHiddenByTabId.delete(victim);
+      }
       this.#emitPanelRemoved(workspaceId, victim);
     }
     this.#schedulePersist();
@@ -497,6 +526,7 @@ export class PanelStore {
       new Map(this.#layoutByWorkspace),
       new Map(this.#persistedWorkspaces),
       new Map(this.#widthByTabId),
+      new Map(this.#headerHiddenByTabId),
       new Map(this.#mainWidthByWorkspace),
       new Map(this.#stripScrollByWorkspace),
     );
@@ -507,6 +537,7 @@ export class PanelStore {
       new Map(this.#layoutByWorkspace),
       new Map(this.#persistedWorkspaces),
       new Map(this.#widthByTabId),
+      new Map(this.#headerHiddenByTabId),
       new Map(this.#mainWidthByWorkspace),
       new Map(this.#stripScrollByWorkspace),
     );

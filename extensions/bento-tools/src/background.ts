@@ -379,6 +379,9 @@ async function restorePanelsForWorkspace(
       if (typeof entry.widthPx === 'number' && entry.widthPx > 0) {
         panels.setWidth(matchedId, entry.widthPx);
       }
+      if (entry.headerHidden === true) {
+        panels.setHeaderHidden(matchedId, true);
+      }
     }
   }
   panels.restorePersistedLayout(workspaceId, persisted.layout, panelKeyToTabId);
@@ -533,6 +536,7 @@ async function emitPanelsSync(
             audible: boolean;
             muted: boolean;
             widthPx?: number;
+            headerHidden?: boolean;
           } = {
             tabId: id,
             url: tab.url ?? '',
@@ -542,6 +546,7 @@ async function emitPanelsSync(
             muted: tab.mutedInfo?.muted ?? false,
           };
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
+          if (panels.getHeaderHidden(id)) entry.headerHidden = true;
           return entry;
         })
         .catch(() => null),
@@ -558,6 +563,7 @@ async function emitPanelsSync(
       audible: boolean;
       muted: boolean;
       widthPx?: number;
+      headerHidden?: boolean;
     } => p !== null,
   );
   const validPanelIds = new Set(valid.map((panel) => panel.tabId));
