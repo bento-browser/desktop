@@ -968,7 +968,10 @@
       [data-bento-panel-tab-id]:focus-within,
       [data-bento-subpanel],
       [data-bento-subpanel]:focus,
-      [data-bento-subpanel]:focus-within {
+      [data-bento-subpanel]:focus-within,
+      .bento-subdivision-chooser,
+      .bento-subdivision-chooser:focus,
+      .bento-subdivision-chooser:focus-within {
         outline: none !important;
       }
       /* Firefox's content-area.css paints "outline: var(--focus-outline)"
@@ -2036,6 +2039,22 @@
         box-sizing: border-box;
         border-radius: var(--radius-m) !important;
         box-shadow: var(--bento-panel-frame-shadow);
+      }
+      .bento-subdivision-chooser::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: var(--bento-focus-ring-width) solid transparent;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 10;
+        box-sizing: border-box;
+        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+      }
+      .bento-subdivision-chooser.bento-panel--focused::after,
+      .bento-subdivision-chooser.bento-panel--cycle-focused::after,
+      .bento-subdivision-chooser:focus-within::after {
+        border-color: var(--color-60);
       }
     `;
     document.documentElement.appendChild(style);
@@ -4940,6 +4959,15 @@
     const container = document.createXULElement('vbox');
     container.className = 'bento-subdivision-chooser';
     container.setAttribute('flex', '1');
+    container.setAttribute('tabindex', '-1');
+    container.setAttribute('data-bento-chooser-id', chooserId);
+    container.setAttribute('data-bento-owner-tab-id', String(parentTabId));
+    container.addEventListener('mousedown', (e) => {
+      if (e.button === 0 && e.target === container) {
+        e.preventDefault();
+        focusPanelCycleTarget(container);
+      }
+    });
 
     if (groupId) {
       const closeBtn = document.createElementNS(HTML_NS, 'button');
@@ -6308,11 +6336,88 @@
     return out;
   }
 
+  function getSubdivisionChooserForPanel(panelEl) {
+    if (!panelEl) return null;
+    const localChooser = panelEl.querySelector(':scope > .bento-subdivision-chooser');
+    if (localChooser) return localChooser;
+
+    const tabId = Number(panelEl.dataset?.bentoPanelTabId);
+    if (!Number.isFinite(tabId)) return null;
+    const host = document.getElementById('bento-side-panel-host');
+    if (!host) return null;
+    return (
+      Array.from(host.querySelectorAll(':scope > .bento-layout-chooser')).find(
+        (chooser) => Number(chooser.getAttribute('data-bento-owner-tab-id')) === tabId,
+      ) || null
+    );
+  }
+
+  function getOwningPanelForSubdivisionChooser(chooser) {
+    if (!chooser) return null;
+    const localOwner = chooser.closest('[data-bento-subdivided]');
+    if (localOwner) return getTopLevelSlotPanelElement(localOwner) || localOwner;
+
+    const ownerTabId = Number(chooser.getAttribute('data-bento-owner-tab-id'));
+    if (!Number.isFinite(ownerTabId)) return null;
+    return document.querySelector('[data-bento-panel-tab-id="' + ownerTabId + '"]');
+  }
+
+  function getPanelCycleTargetForTabId(tabId) {
+    const id = Number(tabId);
+    if (!Number.isFinite(id)) return null;
+    return document.querySelector('[data-bento-panel-tab-id="' + id + '"]');
+  }
+
+  function getPanelCycleChooserTarget(chooserId) {
+    if (!chooserId) return null;
+    const id = String(chooserId);
+    return (
+      Array.from(document.querySelectorAll('.bento-subdivision-chooser')).find(
+        (chooser) => chooser.isConnected && chooser.getAttribute('data-bento-chooser-id') === id,
+      ) || null
+    );
+  }
+
+  function appendLayoutCycleTargets(node, out) {
+    if (!node) return;
+    if (node.kind === 'panel') {
+      const panelEl = getPanelCycleTargetForTabId(node.tabId);
+      if (panelEl) out.push(panelEl);
+      return;
+    }
+    if (node.kind === 'chooser') {
+      const chooser = getPanelCycleChooserTarget(node.id);
+      if (chooser) out.push(chooser);
+      return;
+    }
+    if (node.kind !== 'group') return;
+    appendLayoutCycleTargets(node.children?.[0], out);
+    appendLayoutCycleTargets(node.children?.[1], out);
+  }
+
+  function getFlatLayoutPanelCycleTargets() {
+    const tabpanels = window.gBrowser?.tabpanels;
+    if (!tabpanels?.classList.contains('bento-flat-panel-layout')) return [];
+    if (!Array.isArray(currentPanelLayout?.root) || currentPanelLayout.root.length === 0) return [];
+
+    const targets = [];
+    const mainPanel =
+      getOrderedPanels().find((panel) => panel.dataset?.bentoMainPanel === '1') || getOrderedPanels()[0];
+    if (mainPanel) targets.push(mainPanel);
+    for (const node of currentPanelLayout.root) {
+      appendLayoutCycleTargets(node, targets);
+    }
+    return targets.filter((target, index, list) => target && list.indexOf(target) === index);
+  }
+
   function appendPanelCycleTargets(panelEl, out) {
     if (!panelEl) return;
     const topClosed = panelEl.hasAttribute('data-bento-subdivision-top-closed');
     if (!topClosed) out.push(panelEl);
     if (!panelEl.hasAttribute('data-bento-subdivided')) return;
+
+    const chooser = getSubdivisionChooserForPanel(panelEl);
+    if (chooser) out.push(chooser);
 
     const bottom = panelEl.querySelector(':scope > .bento-subdivision-bottom');
     const subPanels = bottom
@@ -6332,9 +6437,12 @@
     // The favicon strip renders one entry per root layout node, so
     // applyActiveMarker maps split/subdivision leaves back to their
     // containing root icon.
-    const targets = [];
-    for (const panel of getOrderedPanels()) {
-      appendPanelCycleTargets(panel, targets);
+    let targets = getFlatLayoutPanelCycleTargets();
+    if (targets.length === 0) {
+      targets = [];
+      for (const panel of getOrderedPanels()) {
+        appendPanelCycleTargets(panel, targets);
+      }
     }
     if (targets.length === 0) return targets;
     const trailer = document.getElementById('bento-add-panel-trailer');
@@ -6344,6 +6452,9 @@
 
   function getTopLevelPanelForCycleTarget(target) {
     if (!target || target.id === 'bento-add-panel-trailer') return null;
+    if (target.classList?.contains('bento-subdivision-chooser')) {
+      return getOwningPanelForSubdivisionChooser(target);
+    }
     const orderedPanels = getOrderedPanels();
     if (orderedPanels.includes(target)) return target;
     return orderedPanels.find((panel) => panel.contains(target)) || null;
@@ -6414,6 +6525,12 @@
         if (!subPanel.isConnected) continue;
         if (subPanel.hasAttribute('data-bento-subdivision-top-closed')) continue;
         add(subPanel);
+      }
+      for (const chooser of Array.from(
+        document.querySelectorAll('.bento-subdivision-chooser'),
+      )) {
+        if (!chooser.isConnected) continue;
+        add(chooser);
       }
     }
     return out;
@@ -10562,7 +10679,8 @@
       );
       chooser.classList.add('bento-layout-chooser');
       chooser._bentoChooserId = chooserInfo.id;
-      chooser.dataset.bentoChooserId = chooserInfo.id;
+      chooser.setAttribute('data-bento-chooser-id', chooserInfo.id);
+      chooser.setAttribute('data-bento-owner-tab-id', String(chooserInfo.ownerTabId));
       const rect = viewportRectForLayoutRect(tabpanels, chooserInfo.rect);
       if (!rect) continue;
       chooser.style.left = Math.round(rect.left) + 'px';
@@ -12567,7 +12685,7 @@
         // wrapper depth Firefox introduces between <browser> and the
         // panel container.
         const panelEl = target.closest(
-          '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+          '.bento-subdivision-chooser, [data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
         );
         if (!panelEl) {
           applyFocusedPanelIndicator(null);
@@ -12579,7 +12697,10 @@
           applyFocusedPanelIndicator(null);
           return;
         }
-        const stripPanelEl = getTopLevelSlotPanelElement(panelEl) || panelEl;
+        const stripPanelEl =
+          panelEl.classList?.contains('bento-subdivision-chooser')
+            ? getOwningPanelForSubdivisionChooser(panelEl) || panelEl
+            : getTopLevelSlotPanelElement(panelEl) || panelEl;
         if (isRestoredMainAutoScrollSuppressed(stripPanelEl)) {
           return;
         }
@@ -14679,7 +14800,7 @@
         if (!target || typeof target.closest !== 'function') return;
         if (target.closest('#bento-add-panel-trailer')) return;
         const container = target.closest(
-          '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+          '.bento-subdivision-chooser, [data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
         );
         if (!container) return;
         const idx = getCycleIndexForPanelElement(container);

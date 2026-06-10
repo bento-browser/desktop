@@ -633,6 +633,22 @@ the absolute layout chooser wrapper
 `#bento-side-panel-host > .bento-layout-chooser`. The chooser wrapper is the
 surface shown after `Subdivide panel`; if it uses `var(--shadow-l)` directly,
 the bottom chooser area keeps a drop shadow even when Panel shadows is off.
+The same chooser is focusable and participates in panel cycling. It receives the
+same `bento-panel--focused` / `bento-panel--cycle-focused` classes as panel
+containers and paints its ring through `.bento-subdivision-chooser::after`.
+Flat-layout chooser overlays are stamped with `data-bento-chooser-id` and
+`data-bento-owner-tab-id` so focus and the bottom navigator marker can map the
+overlay back to its owning top-level panel.
+
+Chooser cycling fix: arrow-key cycling, Shift-wheel cycling, and the content-key
+bridge all call `navigatePanels()`, which reads `getPanelCycleTargets()`. In
+flat layout, that target list must be built from `currentPanelLayout` via
+`getFlatLayoutPanelCycleTargets()` / `appendLayoutCycleTargets()` rather than
+from `data-bento-subdivided`. Flat layout intentionally clears nested
+subdivision DOM and renders choosers as absolute `.bento-layout-chooser`
+overlays, so DOM subdivision attributes are not a reliable source for chooser
+cycle targets. If this regresses, the visual focus ring may exist, but Left/Right
+and Shift-wheel will skip the chooser entirely.
 
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
