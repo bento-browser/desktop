@@ -6289,6 +6289,12 @@
       sp.style.minWidth = splitterWidth + 'px';
       sp.style.maxWidth = splitterWidth + 'px';
       sp.style.zIndex = '5';
+      setSidebarOccludedOverlayState(sp, {
+        left: gapCentre - splitterWidth / 2,
+        top: lr.top,
+        right: gapCentre + splitterWidth / 2,
+        bottom: lr.top + lr.height,
+      });
     }
     // Re-observe after positioning so the next layout commit
     // triggers a re-sync. Observe both the left AND right panel
@@ -10454,6 +10460,29 @@
     };
   }
 
+  function rectOverlapsBentoSidebar(rect) {
+    const sidebar = document.getElementById('bento-shell-host');
+    if (!sidebar || !rect) return false;
+    const sidebarRect = sidebar.getBoundingClientRect();
+    return (
+      rect.left < sidebarRect.right &&
+      rect.right > sidebarRect.left &&
+      rect.top < sidebarRect.bottom &&
+      rect.bottom > sidebarRect.top
+    );
+  }
+
+  function setSidebarOccludedOverlayState(el, viewportRect) {
+    const occluded = rectOverlapsBentoSidebar(viewportRect);
+    if (occluded) {
+      el.style.setProperty('pointer-events', 'none', 'important');
+      el.style.visibility = 'hidden';
+    } else {
+      el.style.removeProperty('pointer-events');
+      el.style.removeProperty('visibility');
+    }
+  }
+
   function createLayoutSplitter(axis) {
     const splitter = document.createXULElement('splitter');
     splitter.className =
@@ -10529,6 +10558,12 @@
       splitter.style.top = Math.round(rect.top) + 'px';
       splitter.style.width = Math.max(0, Math.round(rect.width)) + 'px';
       splitter.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+      setSidebarOccludedOverlayState(splitter, {
+        left: hostRect.left + rect.left,
+        top: hostRect.top + rect.top,
+        right: hostRect.left + rect.left + rect.width,
+        bottom: hostRect.top + rect.top + rect.height,
+      });
     }
     for (const chooserInfo of geometry.choosers || []) {
       const chooser = Array.from(host.querySelectorAll(':scope > .bento-layout-chooser')).find(
@@ -10669,6 +10704,13 @@
       splitter.style.top = Math.round(rect.top) + 'px';
       splitter.style.width = Math.max(0, Math.round(rect.width)) + 'px';
       splitter.style.height = Math.max(0, Math.round(rect.height)) + 'px';
+      const hostRect = host.getBoundingClientRect();
+      setSidebarOccludedOverlayState(splitter, {
+        left: hostRect.left + rect.left,
+        top: hostRect.top + rect.top,
+        right: hostRect.left + rect.left + rect.width,
+        bottom: hostRect.top + rect.top + rect.height,
+      });
       host.appendChild(splitter);
     }
     for (const chooserInfo of geometry.choosers || []) {
