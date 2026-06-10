@@ -13,13 +13,14 @@ const defaultTabListProps = {
   onActivate: noop,
   onClose: noop,
   onCreateTab: noop,
+  onCreatePanel: noop,
   onOpenInSidePanel: noop,
 };
 
 function SidebarFrame({
   children,
   height = 600,
-  width = 240,
+  width = 300,
 }: {
   children: React.ReactNode;
   height?: number;

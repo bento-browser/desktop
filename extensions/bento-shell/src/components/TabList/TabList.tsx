@@ -2,11 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@tale-ui/react/button';
 import { Icon } from '@tale-ui/react/icon';
+import PanelRight from 'lucide-react/dist/esm/icons/panel-right';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
+import { useSettingsStore } from '../../state/settings';
 import { useCurrentWindowId } from '../../bridge/useToolsPort';
 import { TabRow } from '../TabRow/TabRow';
 import { TabListSkeleton } from './TabListSkeleton';
@@ -17,6 +19,7 @@ export interface TabListProps {
   onClose: (id: number) => void;
   onCloseSelected?: (ids: number[]) => void;
   onCreateTab: () => void;
+  onCreatePanel: () => void;
   onOpenInSidePanel: (id: number) => void;
   onTabContextMenu?: (
     id: number,
@@ -135,6 +138,7 @@ interface TabListPaneProps {
   activeId: number | null;
   selectedIds: Set<number>;
   onCreateTab: () => void;
+  onCreatePanel: () => void;
   onSelectClick: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
@@ -150,6 +154,7 @@ interface TabListPaneProps {
    * its rows aren't grabbable while sliding off (it is also
    * pointer-events:none in CSS, but the prop gate is clearer). */
   onReorder?: (id: number, anchorId: number, before: boolean) => void;
+  isCollapsed: boolean;
   className: string;
 }
 
@@ -166,12 +171,14 @@ function TabListPane({
   activeId,
   selectedIds,
   onCreateTab,
+  onCreatePanel,
   onSelectClick,
   onClose,
   onOpenInSidePanel,
   onTabContextMenu,
   onSelectionContextMenu,
   onReorder,
+  isCollapsed,
   className,
 }: TabListPaneProps) {
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
@@ -220,8 +227,12 @@ function TabListPane({
     };
   }, []);
 
+  const firstRegularIndex = displayedIds.findIndex((id) => tabsById[id]?.pinned !== true);
+  const newTabSlot = firstRegularIndex === -1 ? displayedIds.length : firstRegularIndex;
+  const actionSlotCount = isCollapsed ? 2 : 1;
+  const newPanelSlot = newTabSlot + 1;
   const virtualizer = useVirtualizer({
-    count: displayedIds.length + 1,
+    count: displayedIds.length + actionSlotCount,
     getScrollElement: () => parentRef.current,
     estimateSize: useCallback(() => rowSlotSize, [rowSlotSize]),
     overscan: 5,
@@ -229,13 +240,12 @@ function TabListPane({
 
   useLayoutEffect(() => {
     virtualizer.measure();
-  }, [rowSlotSize, virtualizer]);
+  }, [rowSlotSize, actionSlotCount, virtualizer]);
 
-  const firstRegularIndex = displayedIds.findIndex((id) => tabsById[id]?.pinned !== true);
-  const newTabSlot = firstRegularIndex === -1 ? displayedIds.length : firstRegularIndex;
   const visualSlotToTabSlot = useCallback(
-    (visualSlot: number): number => (visualSlot > newTabSlot ? visualSlot - 1 : visualSlot),
-    [newTabSlot],
+    (visualSlot: number): number =>
+      visualSlot > newTabSlot ? Math.max(newTabSlot, visualSlot - actionSlotCount) : visualSlot,
+    [actionSlotCount, newTabSlot],
   );
 
   // Translate the pointer's y position into a drop slot (0..displayedIds.length).
@@ -249,14 +259,14 @@ function TabListPane({
       if (!el || rowSlotSize <= 0) return null;
       const rect = el.getBoundingClientRect();
       const relY = clientY - rect.top + el.scrollTop;
-      const len = displayedIds.length + 1;
+      const len = displayedIds.length + actionSlotCount;
       if (len === 0) return 0;
       let slot = Math.round(relY / rowSlotSize);
       if (slot < 0) slot = 0;
       if (slot > len) slot = len;
       return slot;
     },
-    [rowSlotSize, displayedIds.length],
+    [actionSlotCount, rowSlotSize, displayedIds.length],
   );
 
   // Resolve the dragged tab's drop position to an anchor tab + side.
@@ -379,21 +389,58 @@ function TabListPane({
                 }
                 style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
               >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="bento-tab-list__new-tab-button"
-                  aria-label="New tab"
-                  onPress={onCreateTab}
-                >
-                  <Icon icon={Plus} size="sm" />
-                  <span className="bento-tab-list__new-tab-label">New tab</span>
-                </Button>
+                <div className="bento-tab-list__new-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="bento-tab-list__new-action-button"
+                    aria-label="New tab"
+                    onPress={onCreateTab}
+                  >
+                    <Icon icon={Plus} size="sm" />
+                    <span className="bento-tab-list__new-action-label">New tab</span>
+                  </Button>
+                  {!isCollapsed && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="bento-tab-list__new-action-button"
+                      aria-label="New panel"
+                      onPress={onCreatePanel}
+                    >
+                      <Icon icon={PanelRight} size="sm" />
+                      <span className="bento-tab-list__new-action-label">New panel</span>
+                    </Button>
+                  )}
+                </div>
               </div>
             );
           }
 
-          const idIndex = vi.index < newTabSlot ? vi.index : vi.index - 1;
+          if (isCollapsed && vi.index === newPanelSlot) {
+            return (
+              <div
+                key="new-panel"
+                className="bento-tab-list__row bento-tab-list__row--new-tab"
+                style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+              >
+                <div className="bento-tab-list__new-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="bento-tab-list__new-action-button"
+                    aria-label="New panel"
+                    onPress={onCreatePanel}
+                  >
+                    <Icon icon={PanelRight} size="sm" />
+                    <span className="bento-tab-list__new-action-label">New panel</span>
+                  </Button>
+                </div>
+              </div>
+            );
+          }
+
+          const idIndex = vi.index < newTabSlot ? vi.index : vi.index - actionSlotCount;
           const id = displayedIds[idIndex];
           if (id === undefined) return null;
           return (
@@ -445,6 +492,7 @@ export function TabList({
   onClose,
   onCloseSelected,
   onCreateTab,
+  onCreatePanel,
   onOpenInSidePanel,
   onTabContextMenu,
   onReorder,
@@ -459,6 +507,7 @@ export function TabList({
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const workspaceOrder = useWorkspacesStore((s) => s.orderedIds);
   const tabsById = useTabsStore((s) => s.byId);
+  const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   // Pass windowId so the filter ALSO restricts to tabs in this window's
   // gBrowser — cross-window tabs from another window with the same
   // workspaceId aren't actionable here (clicking them activates them in
@@ -661,11 +710,13 @@ export function TabList({
             activeId={activeId}
             selectedIds={selectedIds}
             onCreateTab={onCreateTab}
+            onCreatePanel={onCreatePanel}
             onSelectClick={handleSelectClick}
             onClose={onClose}
             onOpenInSidePanel={onOpenInSidePanel}
             onTabContextMenu={onTabContextMenu}
             onSelectionContextMenu={handleSelectionContextMenu}
+            isCollapsed={sidebarCollapsed}
             className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
           />
         )}
@@ -680,11 +731,13 @@ export function TabList({
           activeId={activeId}
           selectedIds={selectedIds}
           onCreateTab={onCreateTab}
+          onCreatePanel={onCreatePanel}
           onSelectClick={handleSelectClick}
           onClose={onClose}
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
           onSelectionContextMenu={handleSelectionContextMenu}
+          isCollapsed={sidebarCollapsed}
           // Only the steady-state incoming pane allows reorder. The
           // outgoing pane (rendered above during a workspace-switch slide)
           // is mid-animation and pointer-events:none anyway; gating here

@@ -36,8 +36,8 @@ diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/compo
 index 2643e1a2aa..b7d12c8cde 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -10366,11 +10366,12 @@ var TabContextMenu = {
-       contextUpdateNote.hidden = true;
+@@ -10461,11 +10461,12 @@ var TabContextMenu = {
+       contextEditNote.hidden = true;
      }
  
 -    // Split View

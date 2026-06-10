@@ -10,8 +10,8 @@ index d58fcdf998..a1b1b1b100 100644
 +<hbox flex="1" id="browser" style="position: relative;">
 +  <vbox id="bento-shell-host"
 +        persist="width"
-+        width="240"
-+        style="min-width: 200px; max-width: 600px;">
++        width="300"
++        style="width: 300px; min-width: 200px; max-width: 600px;">
 +    <browser id="bento-shell-frame"
 +             type="content"
 +             remote="true"

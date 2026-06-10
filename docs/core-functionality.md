@@ -74,9 +74,9 @@ workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
 
 The sidebar tab list supports multi-selection for workspace organization.
-The tab list exposes a `New tab` button with a plus icon for opening a fresh tab
-in the active workspace. When pinned tabs exist, the button appears below the
-pinned run and above regular tabs.
+The tab list exposes `New tab` and `New panel` buttons for opening fresh regular
+tabs and blank panels in the active workspace. When pinned tabs exist, these
+controls appear below the pinned run and above regular tabs.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
@@ -137,6 +137,7 @@ Panels support the core Bento workflow:
 
 - promote an existing tab into a panel;
 - open a link or URL directly into a new panel;
+- create a blank panel from the sidebar tab list;
 - create a blank panel from the trailer at the end of the panel strip and move
   focus to it;
 - bookmark the current panel URL from the panel header;

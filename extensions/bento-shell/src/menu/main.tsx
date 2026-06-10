@@ -36,7 +36,10 @@ import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
+import { initToolsPort } from '../bridge/useToolsPort';
 import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
+
+initToolsPort();
 
 function MenuApp() {
   useFirefoxTheme();

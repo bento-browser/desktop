@@ -145,6 +145,8 @@ export function App() {
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
   const onCreateTab = () => dispatch({ type: 'tab/create' });
+  const onCreatePanel = () =>
+    dispatch({ type: 'panel/openAt', url: 'about:newtab', sourceTabId: null, position: 'end' });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const openSidebarContextMenu = (
     event: React.MouseEvent,
@@ -332,6 +334,7 @@ export function App() {
           onClose={onClose}
           onCloseSelected={onCloseSelected}
           onCreateTab={onCreateTab}
+          onCreatePanel={onCreatePanel}
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
           onReorder={onReorder}

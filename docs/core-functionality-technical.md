@@ -143,13 +143,16 @@ selection exists, or once to clear a previously mirrored selection; repeated
 empty-selection title writes can stomp `BENTO_PANELS` before chrome polls it and
 hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
 assignment remains tools-owned.
-`TabList` also renders the visible `New tab` button above the virtualized pane.
-The button dispatches the existing `tab/create` action from `App.tsx`, so tab
-creation stays tools-owned and uses the same active-window and active-workspace
-assignment path as other new-tab entry points. Collapsed sidebar mode keeps the
-button visible as a square icon-only control. Its slot and the favicon-only tab
-rows keep the same `--bento-tab-row-height` as expanded mode so toggling the
-sidebar does not shift the tab list vertically. The collapsed host width is
+`TabList` also renders the visible `New tab` and `New panel` buttons above the
+virtualized pane. `New tab` dispatches the existing `tab/create` action from
+`App.tsx`; `New panel` dispatches `panel/openAt` with `about:newtab`,
+`sourceTabId: null`, and `position: 'end'`. Tab and panel creation stay
+tools-owned and use the same active-window and active-workspace assignment paths
+as other entry points. Collapsed sidebar mode keeps the controls visible as
+square icon-only buttons in separate virtual rows so they do not crowd the
+collapsed rail. Each action row and each favicon-only tab row keeps the same
+`--bento-tab-row-height` as expanded mode so toggling the sidebar keeps row
+geometry predictable. The collapsed host width is
 `--bento-tab-strip-width-collapsed`, which aliases
 `--bento-pinned-panels-rail-width`, so the collapsed sidebar matches the
 favicon-only pinned-panel rail width.
@@ -612,6 +615,17 @@ The panel shadow setting toggles `bento-panel-shadows-disabled` on both
 `gBrowser.tabpanels` and `#bento-strip-container`. Split-view panels read the
 class from `tabpanels`; the no-side-panels, tabs-only main content slot reads it
 from the strip container because its shadow is applied outside `tabpanels`.
+The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.js`
+inside `injectChromeStyles()`. `:root` defines
+`--bento-panel-frame-outline-shadow` and `--bento-panel-frame-shadow`; the
+disabled class overrides `--bento-panel-frame-shadow` to the outline-only value.
+All panel-like chrome surfaces that should respect the setting must use
+`var(--bento-panel-frame-shadow)` rather than `var(--shadow-l)` directly.
+This includes ordinary split-view panel frames, subdivided-panel descendants, and
+the absolute layout chooser wrapper
+`#bento-side-panel-host > .bento-layout-chooser`. The chooser wrapper is the
+surface shown after `Subdivide panel`; if it uses `var(--shadow-l)` directly,
+the bottom chooser area keeps a drop shadow even when Panel shadows is off.
 
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
@@ -875,6 +889,12 @@ Top-level panel resizing:
   `refreshFlatPanelLayoutFromLiveState` recomputes geometry with the live width
   override, reapplies panel rects, resyncs root splitters, and updates the strip
   scrollbar.
+- Menu preset width path: header "Custom panel widths" actions must use the
+  same live flat-layout refresh as splitter drags after writing the target
+  panel's inline width. Persisting `panel/setWidth` alone does not emit an
+  immediate `panels/sync`; if chrome skips the live refresh, neighbouring panel
+  rects, root splitters, and the strip scroll extent remain aligned to the old
+  width until a later reconcile.
 - Workspace height resize path: `attachResizeRepaintPoke` and the
   `tabpanels` `ResizeObserver` must call `refreshFlatPanelLayoutFromLiveState`,
   not only `syncInterPanelSplitters`. Flat layout writes absolute inline heights
@@ -1345,6 +1365,15 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
   for theme switching.
 - Chrome token updates require regenerating/importing the chrome stylesheet; the
   shell CSS bundle alone is not enough.
+- Firefox notification bars (`notification-message`, including the popup-blocked
+  banner) are `moz-message-bar`/infobar custom elements with shadow-root CSS.
+  `bento-chrome-theme.css` can theme their host and inherited custom properties,
+  but it cannot directly remove the default left gradient stripe inside
+  `infobar.css`. Keep `patches/core-ui/10-bento-infobar-accent-token.patch` in
+  place: it makes the stripe read `--info-bar-accent-background`, and Bento sets
+  that token to `none` while using an inverted neutral scheme
+  (`--neutral-90` background, `--neutral-5` text/icon, light neutral action
+  buttons) so notification bars pop against both light and dark chrome.
 
 ## Manual regression areas
 

@@ -81,6 +81,14 @@ if (!release) {
   throw new Error('config/firefox-versions.json has no release channel');
 }
 
+// Surfer builds non-"release" brands from version.candidate when it differs
+// from version.version. Bento's active dev brand is "bento", so keep candidate
+// aligned with release during this sync unless a future workflow explicitly
+// opts into candidate builds.
+surfer.version.candidate = surfer.version.version;
+surfer.version.candidateBuild = 1;
+fs.writeFileSync('surfer.json', `${JSON.stringify(surfer, null, 2)}\n`);
+
 release.version = surfer.version.version;
 release.surferConfig = 'surfer.json';
 fs.writeFileSync(versionsPath, `${JSON.stringify(versions, null, 2)}\n`);

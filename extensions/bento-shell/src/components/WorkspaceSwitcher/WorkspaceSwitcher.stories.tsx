@@ -12,7 +12,7 @@ import {
 import { makeTab } from '../../state/__fixtures__/tabs';
 import { useTabsStore } from '../../state/tabs';
 
-function HeaderFrame({ children, width = 240 }: { children: React.ReactNode; width?: number }) {
+function HeaderFrame({ children, width = 300 }: { children: React.ReactNode; width?: number }) {
   return (
     <div
       style={{

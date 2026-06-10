@@ -14,7 +14,7 @@ import { markToolsBootedForStory } from './state/__fixtures__/bus';
 import { useSettingsStore } from './state/settings';
 import type { Action } from '@shared/protocol';
 
-function ShellFrame({ children, width = 240 }: { children: React.ReactNode; width?: number }) {
+function ShellFrame({ children, width = 300 }: { children: React.ReactNode; width?: number }) {
   // Match the real shell's host frame: fixed-width column on a brand-bg
   // canvas. The collapsed stories pass width=64 (= 4rem at 16px root) to
   // mirror chrome's narrow-rail width applied via #bento-shell-host.
@@ -134,7 +134,7 @@ export const CollapseToggle = () => {
   const collapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   useCollapsedAttribute(collapsed);
   return (
-    <ShellFrame width={collapsed ? 64 : 240}>
+    <ShellFrame width={collapsed ? 64 : 300}>
       <App />
     </ShellFrame>
   );

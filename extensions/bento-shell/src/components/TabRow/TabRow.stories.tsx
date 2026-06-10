@@ -21,7 +21,7 @@ function SidebarFrame({
   return (
     <div
       style={{
-        width: collapsed ? 64 : 240,
+        width: collapsed ? 64 : 300,
         backgroundColor: 'var(--bento-brand-bg)',
         padding: collapsed ? 0 : 'var(--space-xs)',
       }}

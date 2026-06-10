@@ -55,11 +55,13 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-06
+- Last updated: 2026-06-10
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
+  - `engine/toolkit/content/widgets/infobar.css`
+  - `patches/core-ui/10-bento-infobar-accent-token.patch`
   - `patches/chrome-layout/**`
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
   visibility and geometry, renders chrome-side menu overlays for sidebar and
@@ -83,9 +85,13 @@ Use this shape for new or changed touchpoints:
   menus still dispatch tab and workspace actions, verify `Cmd/Ctrl+L` and
   `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
   handling, verify `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default
-  search-engine submissions, verify command palette, floating address bar,
-  edit-workspace, confirm, and first-run welcome scrims cover the full chrome
-  window including the address bar, run
+  search-engine submissions, verify native URL bar inset controls and the
+  search-mode switcher popup inherit Bento token colors in light and dark modes,
+  verify notification bars such as the popup-blocked banner inherit Bento token
+  colors in light and dark modes,
+  verify command palette, floating address bar, edit-workspace, confirm, and
+  first-run welcome scrims cover the full chrome window including the address
+  bar, run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase.
 - Rollback or migration notes: keep fallback behavior extension-driven where

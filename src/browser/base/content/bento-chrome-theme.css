@@ -22,10 +22,11 @@
  *   - URL bar field + focus state + inset boxes
  *   - titlebar / toolbox background
  *   - window accent (lwtheme baseline)
+ *   - notification bars
  *
  * NOT covered (deliberate — separate iteration):
  *   - scrollbars
- *   - find-in-page bar / notification bar
+ *   - find-in-page bar
  *   - devtools chrome
  *
  * Tale UI tokens flip with data-color-mode (set on chrome <window> by
@@ -86,8 +87,15 @@
     --toolbar-field-focus-border-color: var(--color-60) !important;
 
     /* URL bar inset boxes — the small affordances inside the URL bar
-     * (security indicator, identity icon, page actions). They sit on
-     * top of the field background, so they need slightly more contrast. */
+     * (security indicator, identity icon, search-mode switcher, page
+     * actions). They sit on top of the field background, so they need
+     * slightly more contrast. Firefox 150 uses the longer
+     * --urlbar-box-background-color names; keep the shorter aliases for
+     * compatibility with older chrome CSS. */
+    --urlbar-box-background-color: var(--neutral-16) !important;
+    --urlbar-box-background-color-focus: var(--neutral-18) !important;
+    --urlbar-box-background-color-hover: var(--neutral-18) !important;
+    --urlbar-box-background-color-active: var(--neutral-20) !important;
     --urlbar-box-bgcolor: var(--neutral-16) !important;
     --urlbar-box-focus-bgcolor: var(--neutral-18) !important;
     --urlbar-box-hover-bgcolor: var(--neutral-18) !important;
@@ -123,6 +131,17 @@
     --panel-banner-item-background-color: var(--neutral-12) !important;
     --panel-banner-item-hover-bgcolor: var(--neutral-16) !important;
     --panel-banner-item-active-bgcolor: var(--neutral-20) !important;
+
+    /* ─── Notification bars (popup blocked, captive portal, etc.) ─── */
+    --info-bar-accent-background: none !important;
+    --info-bar-background-color-configurable: var(--neutral-90) !important;
+    --info-bar-background-color: var(--neutral-90) !important;
+    --info-bar-text-color: var(--neutral-5) !important;
+    --message-bar-background-color: var(--neutral-90) !important;
+    --message-bar-border-color: var(--neutral-80) !important;
+    --message-bar-border-radius: var(--radius-s) !important;
+    --message-bar-icon-color: var(--neutral-5) !important;
+    --message-bar-text-color: var(--neutral-5) !important;
 
     /* Focus ring color used by toolbar buttons + URL bar focus. */
     --focus-outline-color: var(--color-60) !important;
@@ -165,6 +184,66 @@
     background-color: var(--neutral-5) !important;
   }
 
+  notification-message {
+    --info-bar-accent-background: none !important;
+    --info-bar-background-color-configurable: var(--neutral-90) !important;
+    --info-bar-background-color: var(--neutral-90) !important;
+    --info-bar-text-color: var(--neutral-5) !important;
+    --message-bar-background-color: var(--neutral-90) !important;
+    --message-bar-border-color: var(--neutral-80) !important;
+    --message-bar-border-radius: var(--radius-s) !important;
+    --message-bar-icon-color: var(--neutral-5) !important;
+    --message-bar-text-color: var(--neutral-5) !important;
+    --button-background-color: var(--neutral-5) !important;
+    --button-background-color-hover: var(--neutral-10) !important;
+    --button-background-color-active: var(--neutral-16) !important;
+    --button-background-color-ghost: transparent !important;
+    --button-background-color-ghost-hover: var(--neutral-80) !important;
+    --button-background-color-ghost-active: var(--neutral-70) !important;
+    --button-border-color: transparent !important;
+    --button-border-color-hover: transparent !important;
+    --button-border-color-active: transparent !important;
+    --button-border-color-ghost: transparent !important;
+    --button-border-color-ghost-hover: transparent !important;
+    --button-border-color-ghost-active: transparent !important;
+    --button-text-color: var(--neutral-90) !important;
+    --button-text-color-hover: var(--neutral-90) !important;
+    --button-text-color-active: var(--neutral-90) !important;
+    --button-text-color-ghost: var(--neutral-5) !important;
+    --button-text-color-ghost-hover: var(--neutral-5) !important;
+    --button-text-color-ghost-active: var(--neutral-5) !important;
+    color: var(--neutral-5) !important;
+    border-inline-start: none !important;
+    box-shadow: var(--shadow-s) !important;
+  }
+
+  notification-message button.notification-button {
+    color: var(--neutral-90) !important;
+    background-color: var(--neutral-5) !important;
+    border-color: transparent !important;
+  }
+
+  notification-message button.notification-button:not([disabled]):hover {
+    color: var(--neutral-90) !important;
+    background-color: var(--neutral-10) !important;
+    border-color: transparent !important;
+  }
+
+  notification-message button.notification-button:not([disabled]):hover:active,
+  notification-message button.notification-button[open] {
+    color: var(--neutral-90) !important;
+    background-color: var(--neutral-16) !important;
+    border-color: transparent !important;
+  }
+
+  notification-message .notification-link {
+    color: var(--neutral-5) !important;
+  }
+
+  notification-message .notification-link:hover {
+    color: var(--neutral-10) !important;
+  }
+
   /* ─── macOS arrow-panel background fix ─────────────────────────
    * popup.css sets --panel-background: none on all menupopup/panel
    * elements on macOS so the native NSVisualEffectView renders the
@@ -179,6 +258,49 @@
     --panel-color: var(--arrowpanel-color) !important;
     --panel-border-color: var(--arrowpanel-border-color) !important;
     --panel-border-radius: var(--arrowpanel-border-radius) !important;
+  }
+
+  /* The URL bar search-engine menu is a toolbar menupopup, not an arrow
+   * panel. On macOS Firefox gives ordinary menupopups native transparent
+   * backgrounds, so it otherwise renders as a dark vibrancy popup with
+   * light-mode text. Pin it to the same token family as Bento's arrow
+   * panels. */
+  .searchmode-switcher-panel {
+    appearance: none !important;
+    background-color: transparent !important;
+    color: var(--arrowpanel-color) !important;
+    --panel-background: var(--arrowpanel-background) !important;
+    --panel-color: var(--arrowpanel-color) !important;
+    --panel-border-color: var(--arrowpanel-border-color) !important;
+    --panel-border-radius: var(--arrowpanel-border-radius) !important;
+    --panel-shadow: var(--shadow-l) !important;
+    --panel-list-background-color: var(--arrowpanel-background) !important;
+    --panel-list-color: var(--arrowpanel-color) !important;
+    --panel-list-border-color: var(--arrowpanel-border-color) !important;
+    --panel-list-border-radius: var(--arrowpanel-border-radius) !important;
+    --panel-list-box-shadow: none !important;
+    --menuitem-border-radius: var(--arrowpanel-menuitem-border-radius) !important;
+    --button-background-color-hover: var(--arrowpanel-dimmed) !important;
+    --button-background-color-active: var(--arrowpanel-dimmed-further) !important;
+    --button-text-color-hover: var(--neutral-90) !important;
+    --button-text-color-active: var(--neutral-90) !important;
+    --button-text-color-disabled: var(--neutral-50) !important;
+    --text-color-deemphasized: var(--neutral-70) !important;
+  }
+
+  .searchmode-switcher-panel::part(content) {
+    background: var(--arrowpanel-background) !important;
+    color: var(--arrowpanel-color) !important;
+    border-color: var(--arrowpanel-border-color) !important;
+    border-radius: var(--arrowpanel-border-radius) !important;
+    box-shadow: var(--shadow-l) !important;
+  }
+
+  .searchmode-switcher-panel > .searchmode-switcher-panel-list {
+    background-color: var(--arrowpanel-background) !important;
+    color: var(--arrowpanel-color) !important;
+    border-color: var(--arrowpanel-border-color) !important;
+    box-shadow: none !important;
   }
 
   ::selection {

@@ -1,0 +1,16 @@
+diff --git a/toolkit/content/widgets/infobar.css b/toolkit/content/widgets/infobar.css
+index fa0bb5fca4..cc37c70640 100644
+--- a/toolkit/content/widgets/infobar.css
++++ b/toolkit/content/widgets/infobar.css
+@@ -58,7 +58,10 @@
+     color: var(--info-bar-text-color);
+ 
+     &::before {
+-      background-image: linear-gradient(0deg, #9059ff 0%, #ff4aa2 52.08%, #ffbd4f 100%);
++      background-image: var(
++        --info-bar-accent-background,
++        linear-gradient(0deg, #9059ff 0%, #ff4aa2 52.08%, #ffbd4f 100%)
++      );
+     }
+   }
+ }

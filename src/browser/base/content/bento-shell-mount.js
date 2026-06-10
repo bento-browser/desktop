@@ -221,6 +221,10 @@
         --bento-splitter-indicator-radius: 3px;
         --bento-panel-gap: var(--bento-splitter-hit-size);
       }
+      #tabbrowser-tabpanels.bento-panel-shadows-disabled,
+      #bento-strip-container.bento-panel-shadows-disabled {
+        --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
+      }
 
       /* Inline sidebar: no padding around the frame, no rounded
          corners on the frame. Edges flush with the window so the
@@ -426,12 +430,11 @@
         display: none;
       }
 
-      /* Sidebar dimensions. The chrome patch ships inline
-         'min-width: 200px; max-width: 600px' on #bento-shell-host
-         (so the sidebar still renders sensibly if our stylesheet
-         hasn't loaded yet); we override both via !important here
-         from --bento-tab-strip-width-min/-max so the bounds become
-         tunable from bento-tokens.css without a patch rebuild.
+      /* Sidebar dimensions. The chrome patch ships inline width/min/max
+         on #bento-shell-host (so the sidebar still renders sensibly if
+         our stylesheet hasn't loaded yet); we override the bounds via
+         !important here from --bento-tab-strip-width-min/-max so they
+         become tunable from bento-tokens.css without a patch rebuild.
          Collapsed pins width/min/max to --bento-tab-strip-width-
          collapsed and hides the splitter — there's nothing to
          resize when the rail is at its minimum. The width
@@ -2015,7 +2018,7 @@
         z-index: 6 !important;
         box-sizing: border-box;
         border-radius: var(--radius-m) !important;
-        box-shadow: var(--shadow-l);
+        box-shadow: var(--bento-panel-frame-shadow);
       }
     `;
     document.documentElement.appendChild(style);
@@ -3294,6 +3297,36 @@
     const host = document.getElementById('bento-side-panel-host');
     if (!host) return;
     host.style.cssText = '';
+  }
+
+  const BENTO_EXPANDED_SIDEBAR_DEFAULT_WIDTH = 300;
+  const BENTO_LEGACY_EXPANDED_SIDEBAR_DEFAULT_WIDTH = 240;
+
+  function hasPersistedSidebarWidth(host) {
+    try {
+      return Services.xulStore.hasValue(host.ownerDocument.documentURI, host.id, 'width');
+    } catch (err) {
+      console.warn('[bento-shell-mount] xulStore width lookup failed:', err);
+      return true;
+    }
+  }
+
+  function normalizeInitialSidebarWidth() {
+    const host = document.getElementById('bento-shell-host');
+    if (!host || host.classList.contains('bento-sidebar-collapsed')) return;
+    if (hasPersistedSidebarWidth(host)) return;
+
+    const attrWidth = Number(host.getAttribute('width'));
+    const currentWidth = Math.round(host.getBoundingClientRect().width);
+    const isLegacyDefault =
+      attrWidth === BENTO_LEGACY_EXPANDED_SIDEBAR_DEFAULT_WIDTH ||
+      currentWidth === BENTO_LEGACY_EXPANDED_SIDEBAR_DEFAULT_WIDTH;
+
+    if (!isLegacyDefault && attrWidth === BENTO_EXPANDED_SIDEBAR_DEFAULT_WIDTH) return;
+
+    const width = String(BENTO_EXPANDED_SIDEBAR_DEFAULT_WIDTH);
+    host.setAttribute('width', width);
+    host.style.width = width + 'px';
   }
 
   function attachSidebarSplitterFeedback() {
@@ -7449,8 +7482,9 @@
   // avoid clobbering live drag layouts, so the persisted value only
   // re-applies on a future unrelated reconcile. Without the inline
   // write the panel would visually stay at its old width until then.
-  // The shared ResizeObserver re-syncs inter-panel splitters on the
-  // next layout commit.
+  // Flat layout also needs the same geometry refresh used during
+  // splitter drags; otherwise neighbouring panels, overlay splitters,
+  // and the strip scroll extent keep the old slot positions.
   function applyPanelWidth(panelEl, widthPx) {
     if (!panelEl) return;
     if (!Number.isFinite(widthPx) || widthPx <= 0) return;
@@ -7482,6 +7516,19 @@
     targetPanelEl.style.width = px + 'px';
     targetPanelEl.style.minWidth = px + 'px';
     targetPanelEl.style.flex = '0 0 ' + px + 'px';
+    const widthByTabId = new Map([[tabId, px]]);
+    const layoutRefreshed = refreshFlatPanelLayoutFromLiveState({
+      mainWidthPx: currentPanelLayoutGeometry?.mainRect?.width,
+      widthByTabId,
+    });
+    if (!layoutRefreshed) {
+      syncInterPanelSplitters();
+      updateStripScrollbar();
+    }
+    window.setTimeout(() => {
+      syncInterPanelSplitters();
+      updateStripScrollbar();
+    }, 260);
     dispatchShellAction({ type: 'panel/setWidth', id: tabId, widthPx: px });
   }
 
@@ -13800,7 +13847,7 @@
     if (!host) return;
     // First apply at boot: skip the CSS width transition so the
     // persisted state paints at its target width immediately. Without
-    // this the user sees the sidebar mount at 240px (the patch's inline
+    // this the user sees the sidebar mount at 300px (the patch's inline
     // width) and animate to 4rem once the title-IPC arrives — reads as
     // a flash. Subsequent toggles get the transition for the smooth
     // collapse/expand UX.
@@ -14482,6 +14529,7 @@
       return;
     }
     configureSidePanelStrip();
+    normalizeInitialSidebarWidth();
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
