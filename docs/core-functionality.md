@@ -89,6 +89,8 @@ states.
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.
+When a side panel is playing audio, its panel header shows the same mute control
+after the refresh button and before the address field.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the new-tab control and regular tabs with a divider instead of a text
 subheading.

@@ -3263,6 +3263,9 @@
     chevronRight: 'm9 18 6-6-6-6',
     rotate: 'M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.74 2.74L3 8 M3 3v5h5',
     bookmark: 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z',
+    volume2:
+      'M11 5 6 9H2v6h4l5 4V5z M15.54 8.46a5 5 0 0 1 0 7.07 M19.07 4.93a10 10 0 0 1 0 14.14',
+    volumeX: 'M11 5 6 9H2v6h4l5 4V5z M22 9l-6 6 M16 9l6 6',
     pin: 'M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 2-2V4H6v1a2 2 0 0 0 2 2h1z',
     plus: 'M12 5v14 M5 12h14',
     x: 'M18 6 6 18 M6 6l12 12',
@@ -3872,6 +3875,28 @@
     });
   }
 
+  function setPanelAudioButtonState(audioBtn, tabId) {
+    if (!audioBtn || !Number.isFinite(tabId)) return;
+    const state = currentPanelAudioByTabId.get(tabId);
+    const audible = state?.audible === true;
+    const muted = state?.muted === true;
+    const visible = audible || muted;
+    const title = muted ? 'Unmute panel' : 'Mute panel';
+    audioBtn.hidden = !visible;
+    audioBtn.title = title;
+    audioBtn.setAttribute('aria-label', title);
+    audioBtn.classList.toggle('bento-panel-header-button--active', muted);
+    audioBtn.replaceChildren(makeIcon(muted ? ICONS.volumeX : ICONS.volume2));
+  }
+
+  function updatePanelHeaderAudioButtons() {
+    document.querySelectorAll('.bento-panel-header-button--audio').forEach((audioBtn) => {
+      const rawTabId = audioBtn.getAttribute('data-bento-panel-audio-tab-id');
+      const tabId = Number(rawTabId);
+      setPanelAudioButtonState(audioBtn, tabId);
+    });
+  }
+
   // Build the header above each panel: back / forward / reload / URL
   // input / bookmark / pin. Wires a progress listener on the panel browser so
   // the URL stays in sync as the user navigates inside it.
@@ -4040,6 +4065,15 @@
       );
       reloadPanelBrowser(getActionBrowser(), panelEl, initialUrl);
     });
+    let audioBtn = null;
+    if (Number.isFinite(tabId)) {
+      audioBtn = makeHeaderButton('Mute panel', ICONS.volume2, () => {
+        dispatchShellAction({ type: 'tab/toggleMuted', id: tabId });
+      });
+      audioBtn.classList.add('bento-panel-header-button--audio');
+      audioBtn.setAttribute('data-bento-panel-audio-tab-id', String(tabId));
+      setPanelAudioButtonState(audioBtn, tabId);
+    }
 
     const urlInput = document.createElementNS(HTML_NS, 'input');
     urlInput.type = 'text';
@@ -4276,6 +4310,7 @@
     header.appendChild(backBtn);
     header.appendChild(forwardBtn);
     header.appendChild(reloadBtn);
+    if (audioBtn) header.appendChild(audioBtn);
     header.appendChild(urlInput);
     header.appendChild(bookmarkBtn);
     if (pinBtn) header.appendChild(pinBtn);
@@ -4317,6 +4352,7 @@
         if (actionBrowser?.canGoForward) forwardBtn.removeAttribute('disabled');
         else forwardBtn.setAttribute('disabled', 'true');
         updatePanelBookmarkButtonState(actionBrowser, bookmarkBtn);
+        if (audioBtn) setPanelAudioButtonState(audioBtn, tabId);
       } catch {
         // Browser not yet attached — refresh again on next tick.
       }
@@ -13560,6 +13596,16 @@
 	          .map((tabId) => ({ kind: 'panel', tabId })),
 	      };
 	      panels = decoratePanelsForLayout(currentPanelLayout, allPanelPayloads);
+	      currentPanelAudioByTabId = new Map();
+	      for (const panel of allPanelPayloads) {
+	        const tabId = Number(panel?.tabId);
+	        if (!Number.isFinite(tabId)) continue;
+	        currentPanelAudioByTabId.set(tabId, {
+	          audible: panel?.audible === true,
+	          muted: panel?.muted === true,
+	        });
+	      }
+	      updatePanelHeaderAudioButtons();
 	      hideStartupVeil();
 	    } else if (decoded && Array.isArray(decoded.panels)) {
       allPanelPayloads = decoded.panels;
@@ -13601,6 +13647,16 @@
         incomingWorkspaceId !== null && currentWorkspaceId !== incomingWorkspaceId;
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
+      currentPanelAudioByTabId = new Map();
+      for (const panel of allPanelPayloads) {
+        const tabId = Number(panel?.tabId);
+        if (!Number.isFinite(tabId)) continue;
+        currentPanelAudioByTabId.set(tabId, {
+          audible: panel?.audible === true,
+          muted: panel?.muted === true,
+        });
+      }
+      updatePanelHeaderAudioButtons();
       currentPanelStatusByTabId = new Map();
       if (decoded.panelStatusByTabId && typeof decoded.panelStatusByTabId === 'object') {
         for (const [tabId, status] of Object.entries(decoded.panelStatusByTabId)) {
@@ -14070,6 +14126,7 @@
   let currentWorkspaceId = null;
   let currentPanelTabIds = new Set();
   let currentPanelStatusByTabId = new Map();
+  let currentPanelAudioByTabId = new Map();
   let currentPanelLayout = { root: [] };
   let currentPanelLayoutGeometry = null;
   function applyChromeDefaultPanelWidth(widthPx) {

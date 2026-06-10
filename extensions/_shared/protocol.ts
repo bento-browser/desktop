@@ -681,6 +681,8 @@ export type Event =
         url: string;
         title?: string;
         favIconUrl?: string;
+        audible?: boolean;
+        muted?: boolean;
         widthPx?: number;
       }>;
       /** Per-workspace main-panel width in CSS pixels. Undefined when the

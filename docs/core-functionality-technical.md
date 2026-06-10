@@ -171,6 +171,11 @@ Sidebar audio controls are driven by `TabSnapshot.audible` and
 applies the mutation with `browser.tabs.update({ muted })`. Keep muted separate
 from audible because muted media tabs must remain unmutable from the sidebar
 even after Firefox stops reporting them as audible.
+Panel-header audio controls use the same source state and action path. Tools
+adds `audible` and `muted` to each `panels/sync` panel entry and re-emits
+`panels/sync` when a panel tab's audio state changes; the shell forwards that
+through `BENTO_PANELS`, and `bento-shell-mount.js` mirrors it in
+`currentPanelAudioByTabId` for the chrome-injected header button beside Reload.
 `extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the new-tab
 row into the virtualized pane after the pinned run and before regular tabs. When
 the active workspace's filtered sidebar tab ids include at least one

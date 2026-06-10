@@ -519,12 +519,16 @@ async function emitPanelsSync(
             url: string;
             title: string;
             favIconUrl: string;
+            audible: boolean;
+            muted: boolean;
             widthPx?: number;
           } = {
             tabId: id,
             url: tab.url ?? '',
             title: tab.title ?? '',
             favIconUrl: tab.favIconUrl ?? '',
+            audible: tab.audible ?? false,
+            muted: tab.mutedInfo?.muted ?? false,
           };
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
           return entry;
@@ -540,6 +544,8 @@ async function emitPanelsSync(
       url: string;
       title: string;
       favIconUrl: string;
+      audible: boolean;
+      muted: boolean;
       widthPx?: number;
     } => p !== null,
   );
@@ -952,8 +958,8 @@ const lastActiveTabByWorkspace = new Map<string, number>();
 //      workspaces session) are NOT retroactively assigned here — that
 //      would clobber a future "leave unassigned" semantic if we ever
 //      add it. The shell can backfill on demand via tab/assignWorkspace.
-//   2. When a panel tab's title/favicon changes, re-emit panels/sync for the
-//      owning workspace so chrome's panel navigator receives the current
+//   2. When a panel tab's title/favicon/audio state changes, re-emit
+//      panels/sync for the owning workspace so chrome receives the current
 //      metadata even when the layout did not change.
 //   3. When a tab is closed, remove it from any workspace's panels list
 //      so closing a tab from the sidebar doesn't leave a stale panel
@@ -1036,7 +1042,12 @@ tabs.onDeltas((deltas) => {
       continue;
     }
     if (d.kind === 'updated') {
-      if ('favIconUrl' in d.changes || 'title' in d.changes) {
+      if (
+        'favIconUrl' in d.changes ||
+        'title' in d.changes ||
+        'audible' in d.changes ||
+        'muted' in d.changes
+      ) {
         for (const wsId of panels.findWorkspacesContainingPanelOrSubPanel(d.id)) {
           panelMetadataRefreshWorkspaces.add(wsId);
         }
