@@ -4310,10 +4310,10 @@
     header.appendChild(backBtn);
     header.appendChild(forwardBtn);
     header.appendChild(reloadBtn);
-    if (audioBtn) header.appendChild(audioBtn);
     header.appendChild(urlInput);
     header.appendChild(bookmarkBtn);
     if (pinBtn) header.appendChild(pinBtn);
+    if (audioBtn) header.appendChild(audioBtn);
     if (closeBtn) header.appendChild(closeBtn);
     if (moreBtn) header.appendChild(moreBtn);
 
