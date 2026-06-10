@@ -119,6 +119,28 @@ describe('protocol handler panel close', () => {
   });
 });
 
+describe('protocol handler tab mute controls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        get: vi.fn().mockResolvedValue({ id: 123, mutedInfo: { muted: false } }),
+        update: vi.fn().mockResolvedValue({ id: 123, mutedInfo: { muted: true } }),
+      },
+    });
+  });
+
+  it('toggles the tab muted state from the live Firefox tab state', async () => {
+    const ctx = createCloseContext();
+
+    handle({ type: 'tab/toggleMuted', id: 123 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(123, { muted: true });
+    });
+  });
+});
+
 describe('protocol handler batch tab workspace moves', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

@@ -164,6 +164,13 @@ The foreground override for active-row text and icons must stay unlayered
 because Tale UI text, button, and icon utility styles are also unlayered; keeping
 the override only inside `@layer bento.components` lets neutral utility colors
 win.
+Sidebar audio controls are driven by `TabSnapshot.audible` and
+`TabSnapshot.muted` from `extensions/bento-tools/src/tabs/TabRegistry.ts`.
+`TabRow` renders the speaker button when either flag is true and dispatches
+`tab/toggleMuted`; `extensions/bento-tools/src/messaging/protocol-handler.ts`
+applies the mutation with `browser.tabs.update({ muted })`. Keep muted separate
+from audible because muted media tabs must remain unmutable from the sidebar
+even after Firefox stops reporting them as audible.
 `extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the new-tab
 row into the virtualized pane after the pinned run and before regular tabs. When
 the active workspace's filtered sidebar tab ids include at least one

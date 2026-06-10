@@ -43,6 +43,7 @@ export function makeTab(overrides: Partial<TabSnapshot> & { id: number }): TabSn
     active: false,
     pinned: false,
     audible: false,
+    muted: false,
     ...rest,
   };
 }

@@ -20,6 +20,9 @@ export interface TabSnapshot {
   active: boolean;
   pinned: boolean;
   audible: boolean;
+  /** True when Firefox has muted this tab. Kept separate from `audible`
+   * because muted media tabs must still expose the unmute affordance. */
+  muted: boolean;
   /** True while the tab is loading (browser.tabs status === 'loading').
    * Surfaces the throbber on the sidebar tab row. */
   loading?: boolean;
@@ -385,6 +388,7 @@ export type Action =
   | { type: 'tab/create'; active?: boolean }
   | { type: 'tab/reload'; id: number; bypassCache?: boolean }
   | { type: 'tab/togglePin'; id: number }
+  | { type: 'tab/toggleMuted'; id: number }
   | { type: 'workspaces/requestSnapshot' }
   | { type: 'workspace/create'; name: string; themeId?: string; icon?: string }
   | { type: 'workspace/rename'; id: string; name: string }

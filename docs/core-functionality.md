@@ -86,6 +86,9 @@ tabs can be converted into side panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
+When a regular sidebar tab is playing audio, the row shows a speaker button
+before the favicon. Clicking it mutes the tab; muted media tabs keep the button
+so the user can unmute them from the sidebar.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the new-tab control and regular tabs with a divider instead of a text
 subheading.

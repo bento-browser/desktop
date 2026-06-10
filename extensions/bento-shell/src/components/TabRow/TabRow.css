@@ -1,16 +1,12 @@
-/* Layer-2 component: TabRow. 2-column grid (favicon | title) so the title
- * always uses the full available space. Hover actions are absolutely
- * positioned over the title's right edge — they appear on hover/active
- * but never reserve grid space (which would force the title to truncate
- * earlier even when buttons are invisible). */
+/* Layer-2 component: TabRow. Default grid is favicon | title; audible/muted
+ * rows insert a compact speaker control before the favicon. Hover actions are
+ * absolutely positioned over the title's right edge — they appear on
+ * hover/active but never reserve grid space (which would force the title to
+ * truncate earlier even when buttons are invisible). */
 @layer bento.components {
   .bento-tab-row {
     display: grid;
-    /* favicon | title | optional audible badge. The audible column is
-       0 when no badge is rendered — the column only stretches when the
-       child exists, so non-audible rows keep the original 2-column
-       layout exactly. */
-    grid-template-columns: 1rem minmax(0, 1fr) auto;
+    grid-template-columns: 1rem minmax(0, 1fr);
     position: relative;
     align-items: center;
     gap: var(--space-xs);
@@ -131,17 +127,24 @@
     opacity: 0.7;
   }
 
-  /* Audible badge sits in the third grid column. Always visible (status,
-     not action). Hover/active states flow over the top via the actions
-     overlay. */
-  .bento-tab-row__audible {
+  .bento-tab-row--has-audio-control {
+    grid-template-columns: 1rem minmax(0, 1fr);
+    padding-inline-start: calc(var(--space-s) + var(--bento-favicon-size));
+  }
+
+  .bento-tab-row__audio-control {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    color: var(--neutral-70);
-    padding-inline-end: var(--space-2xs);
+    justify-content: flex-start;
+    width: calc(var(--space-s) + var(--bento-favicon-size));
+    height: var(--bento-tab-row-height);
   }
-  .bento-tab-row--active .bento-tab-row__audible {
+
+  .bento-tab-row--active .bento-tab-row__audio-control .tale-icon-button {
     color: var(--color-60-fg);
   }
 
@@ -319,7 +322,7 @@
     opacity: 0;
     pointer-events: none;
   }
-  html[data-bento-collapsed='true'] .bento-tab-row__audible,
+  html[data-bento-collapsed='true'] .bento-tab-row__audio-control,
   html[data-bento-collapsed='true'] .bento-tab-row__actions {
     display: none;
   }
@@ -338,7 +341,7 @@
 .bento-tab-row--active,
 .bento-tab-row--active .tale-text,
 .bento-tab-row--active .tale-icon,
-.bento-tab-row--active .bento-tab-row__audible,
+.bento-tab-row--active .bento-tab-row__audio-control .tale-icon-button,
 .bento-tab-row--active
   .bento-tab-row__actions
   .tale-icon-button.tale-button--ghost:not([data-disabled], [data-pending]),

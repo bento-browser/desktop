@@ -30,6 +30,7 @@ function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
     active: t.active,
     pinned: t.pinned,
     audible: t.audible ?? false,
+    muted: t.mutedInfo?.muted ?? false,
     loading: t.status === 'loading',
     discarded: t.discarded ?? false,
   };
@@ -430,6 +431,9 @@ export class TabRegistry {
     if (liveTitle !== existing.title) changes.title = liveTitle;
     if (tab.favIconUrl !== existing.favIconUrl) changes.favIconUrl = tab.favIconUrl;
     if ((tab.audible ?? false) !== existing.audible) changes.audible = tab.audible ?? false;
+    if ((tab.mutedInfo?.muted ?? false) !== existing.muted) {
+      changes.muted = tab.mutedInfo?.muted ?? false;
+    }
     if (tab.pinned !== existing.pinned) changes.pinned = tab.pinned;
     const nextLoading = tab.status === 'loading';
     if (nextLoading !== (existing.loading ?? false)) changes.loading = nextLoading;

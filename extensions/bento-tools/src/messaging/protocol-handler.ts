@@ -690,6 +690,12 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         .then((tab) => browser.tabs.update(action.id, { pinned: !tab.pinned }))
         .catch((err) => console.warn('[bento-tools] tab/togglePin failed:', err));
       return;
+    case 'tab/toggleMuted':
+      browser.tabs
+        .get(action.id)
+        .then((tab) => browser.tabs.update(action.id, { muted: !(tab.mutedInfo?.muted ?? false) }))
+        .catch((err) => console.warn('[bento-tools] tab/toggleMuted failed:', err));
+      return;
     case 'workspaces/requestSnapshot': {
       const snap = ctx.workspaces.snapshot();
       ctx.send({

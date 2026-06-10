@@ -150,6 +150,17 @@ export const Audible = () => {
   );
 };
 
+export const Muted = () => {
+  useEffect(() => {
+    seedSingle(makeTab({ id: 1, active: false, muted: true }));
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabRow id={1} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+    </SidebarFrame>
+  );
+};
+
 export const PerformanceMatrix = () => {
   useEffect(() => {
     // Seed five rows with id-keyed combinations so each row reads from a
@@ -161,7 +172,8 @@ export const PerformanceMatrix = () => {
       makeTab({ id: 11, active: false, loading: true }),
       makeTab({ id: 12, active: false, discarded: true }),
       makeTab({ id: 13, active: false, audible: true }),
-      makeTab({ id: 14, active: false, audible: true, discarded: true }),
+      makeTab({ id: 14, active: false, muted: true }),
+      makeTab({ id: 15, active: false, audible: true, discarded: true }),
     ];
     // Lazy import to avoid a top-of-file dep just for stories.
     void import('../../state/tabs').then((m) => m.useTabsStore.getState().applySnapshot(tabs));
@@ -174,12 +186,13 @@ export const PerformanceMatrix = () => {
         <TabRow id={12} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
         <TabRow id={13} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
         <TabRow id={14} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
+        <TabRow id={15} active={false} onActivate={noop} onClose={noop} onOpenInSidePanel={noop} />
       </div>
     </SidebarFrame>
   );
 };
 
-PerformanceMatrix.storyName = 'Performance matrix (idle / loading / discarded / audible)';
+PerformanceMatrix.storyName = 'Performance matrix (idle / loading / discarded / audible / muted)';
 
 export const Collapsed = () => {
   useEffect(() => {

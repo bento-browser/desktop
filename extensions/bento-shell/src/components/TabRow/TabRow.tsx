@@ -7,6 +7,7 @@ import { Spinner } from '@tale-ui/react/spinner';
 import X from 'lucide-react/dist/esm/icons/x';
 import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
 import Volume2 from 'lucide-react/dist/esm/icons/volume-2';
+import VolumeX from 'lucide-react/dist/esm/icons/volume-x';
 import type { TabSnapshot } from '@shared/protocol';
 
 import { dispatch } from '../../bridge/useToolsPort';
@@ -75,9 +76,12 @@ function TabRowImpl({
   const loading = tab.loading ?? false;
   const discarded = tab.discarded ?? false;
   const audible = tab.audible;
+  const muted = tab.muted ?? false;
+  const showAudioControl = audible || muted;
   const displayTitle = tab.customTitle || tab.title || 'Untitled';
   const convertToPanelLabel = 'Convert to panel';
   const closeTabLabel = 'Close tab';
+  const audioLabel = muted ? 'Unmute tab' : 'Mute tab';
 
   const draggable = onDragStart !== undefined;
 
@@ -109,6 +113,8 @@ function TabRowImpl({
         (selected ? ' bento-tab-row--selected' : '') +
         (removing ? ' bento-tab-row--removing' : '') +
         (discarded ? ' bento-tab-row--discarded' : '') +
+        (showAudioControl ? ' bento-tab-row--has-audio-control' : '') +
+        (muted ? ' bento-tab-row--muted' : '') +
         (dragging ? ' bento-tab-row--dragging' : '')
       }
       draggable={draggable && !renaming}
@@ -164,6 +170,26 @@ function TabRowImpl({
             : displayTitle
       }
     >
+      {showAudioControl && (
+        <span
+          className="bento-tab-row__audio-control"
+          title={audioLabel}
+          draggable={false}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onDragStart={(e) => e.stopPropagation()}
+        >
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={audioLabel}
+            onPress={() => dispatch({ type: 'tab/toggleMuted', id })}
+          >
+            <Icon icon={muted ? VolumeX : Volume2} />
+          </IconButton>
+        </span>
+      )}
       {/* Loading wins the favicon slot — the throbber is the cue Firefox
        * users expect to mean "fetching". Discarded only dims the favicon
        * (handled via the row modifier in CSS). */}
@@ -200,15 +226,6 @@ function TabRowImpl({
         <Text variant="text" size="s" color={active ? 'default' : 'muted'}>
           {displayTitle}
         </Text>
-      )}
-      {/* Audible indicator sits outside the actions container so it stays
-       * visible at rest (not just on hover). Hover/active reveal the action
-       * buttons over the top, which is the right priority — controls beat
-       * status. */}
-      {audible && (
-        <span className="bento-tab-row__audible" aria-label="Playing audio">
-          <Icon icon={Volume2} size="sm" />
-        </span>
       )}
       <div className="bento-tab-row__actions">
         {/* The active tab renders into the main panel — moving it to a side
@@ -250,7 +267,7 @@ function TabRowImpl({
 }
 
 export const TabRow = memo(TabRowImpl, (prev, next) => {
-  // Tab content (title/favicon/loading/discarded/audible) reaches TabRowImpl
+  // Tab content (title/favicon/loading/discarded/audio) reaches TabRowImpl
   // via the useTab(id) selector — its store subscription rerenders the row
   // when those fields shift, so the memo comparator only needs to gate the
   // direct props.

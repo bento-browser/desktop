@@ -1892,7 +1892,7 @@
         min-height: 0 !important;
         padding: var(--space-s) !important;
         position: relative !important;
-        background: var(--neutral-8) !important;
+        background: var(--neutral-12) !important;
         border-radius: 0 0 var(--radius-m) var(--radius-m) !important;
         z-index: 1 !important;
       }
