@@ -7085,6 +7085,8 @@
     '"use strict";' +
     'addMessageListener("BentoShellAction", function(msg) {' +
     '  try {' +
+    '    var actionType = msg.data && msg.data.type;' +
+    '    if (typeof actionType === "string" && actionType.indexOf("ui/") === 0) content.focus();' +
     '    var channel = new content.BroadcastChannel("bento-shell-bus");' +
     '    channel.postMessage({ kind: "action", action: msg.data });' +
     '    channel.close();' +
@@ -12551,6 +12553,8 @@
             tabId: Number(payload.pinnedPanel.tabId),
           }
         : null;
+    const folderId = typeof payload.folderId === 'string' ? payload.folderId : null;
+    const newFolderId = typeof payload.newFolderId === 'string' ? payload.newFolderId : null;
     showChromeMenu({
       anchor,
       items: payload.items,
@@ -12575,9 +12579,19 @@
           });
           return;
         }
+        if (folderId && itemId === 'rename-folder') {
+          dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'folder', id: folderId } });
+          return;
+        }
+        if (folderId && itemId === 'delete-folder') {
+          dispatchShellAction({ type: 'tabFolder/delete', id: folderId });
+          return;
+        }
         if (!hasTabId) return;
         if (itemId === 'reload-tab') {
           dispatchShellAction({ type: 'tab/reload', id: tabId });
+        } else if (itemId === 'rename-tab') {
+          dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'tab', id: tabId } });
         } else if (itemId === 'toggle-pin') {
           dispatchShellAction({ type: 'tab/togglePin', id: tabId });
         } else if (itemId === 'open-in-side-panel') {
@@ -12599,6 +12613,19 @@
               workspaceId,
             });
           }
+        } else if (itemId === 'move-to-folder:new') {
+          const id =
+            newFolderId ||
+            (typeof crypto !== 'undefined' && crypto.randomUUID
+              ? crypto.randomUUID()
+              : String(Date.now()));
+          dispatchShellAction({ type: 'tabFolder/create', id, tabIds });
+          dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'folder', id } });
+        } else if (itemId === 'move-to-folder:none') {
+          dispatchShellAction({ type: 'tabs/setFolder', ids: tabIds, folderId: null });
+        } else if (typeof itemId === 'string' && itemId.startsWith('move-to-folder:')) {
+          const targetFolderId = itemId.slice('move-to-folder:'.length);
+          dispatchShellAction({ type: 'tabs/setFolder', ids: tabIds, folderId: targetFolderId });
         }
       },
     });

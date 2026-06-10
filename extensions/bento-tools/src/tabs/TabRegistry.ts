@@ -17,6 +17,7 @@ export interface WindowClosingTabSnapshot extends TabSnapshot {
 type WindowClosingListener = (info: { windowId: number; tabs: WindowClosingTabSnapshot[] }) => void;
 
 const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
+const FOLDER_SESSION_KEY = 'bento.folderId';
 const CUSTOM_TITLE_SESSION_KEY = 'bento.customTitle';
 const CLOSING_TAB_SESSION_KEY = 'bento.closingTab';
 
@@ -48,6 +49,15 @@ function tabUrl(t: browser.tabs.Tab): string | undefined {
 async function readWorkspaceId(tabId: number): Promise<string | undefined> {
   try {
     const value = await browser.sessions.getTabValue(tabId, WORKSPACE_SESSION_KEY);
+    return typeof value === 'string' ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readFolderId(tabId: number): Promise<string | undefined> {
+  try {
+    const value = await browser.sessions.getTabValue(tabId, FOLDER_SESSION_KEY);
     return typeof value === 'string' ? value : undefined;
   } catch {
     return undefined;
@@ -117,8 +127,9 @@ export class TabRegistry {
       all.map(async (t) => {
         const snap = toSnapshot(t);
         if (snap.id === -1) return snap;
-        const [workspaceId, customTitle, closing] = await Promise.all([
+        const [workspaceId, folderId, customTitle, closing] = await Promise.all([
           readWorkspaceId(snap.id),
+          readFolderId(snap.id),
           readCustomTitle(snap.id),
           readClosingTab(snap.id),
         ]);
@@ -126,6 +137,7 @@ export class TabRegistry {
           this.#closingTabIds.add(snap.id);
         } else {
           snap.workspaceId = workspaceId;
+          snap.folderId = folderId;
         }
         snap.customTitle = customTitle;
         return snap;
@@ -157,24 +169,37 @@ export class TabRegistry {
       ids.map(async (id) => ({
         id,
         ws: await readWorkspaceId(id),
+        folderId: await readFolderId(id),
         closing: await readClosingTab(id),
       })),
     );
-    for (const { id, ws, closing } of results) {
+    for (const { id, ws, folderId, closing } of results) {
       const tab = this.#tabs.get(id);
       if (!tab) continue;
+      const changes: Partial<TabSnapshot> = {};
       if (closing && !this.#unmarkedClosingTabIds.has(id)) {
         this.#closingTabIds.add(id);
         if (tab.workspaceId !== undefined) {
           delete tab.workspaceId;
-          this.#enqueue({ kind: 'updated', id, changes: { workspaceId: undefined } });
+          changes.workspaceId = undefined;
         }
+        if (tab.folderId !== undefined) {
+          delete tab.folderId;
+          changes.folderId = undefined;
+        }
+        if (Object.keys(changes).length > 0) this.#enqueue({ kind: 'updated', id, changes });
         continue;
       }
-      if (!ws) continue;
-      if (tab.workspaceId === ws) continue;
-      tab.workspaceId = ws;
-      this.#enqueue({ kind: 'updated', id, changes: { workspaceId: ws } });
+      if (ws && tab.workspaceId !== ws) {
+        tab.workspaceId = ws;
+        changes.workspaceId = ws;
+      }
+      if (folderId !== tab.folderId) {
+        if (folderId) tab.folderId = folderId;
+        else delete tab.folderId;
+        changes.folderId = folderId;
+      }
+      if (Object.keys(changes).length > 0) this.#enqueue({ kind: 'updated', id, changes });
     }
   }
 
@@ -192,7 +217,39 @@ export class TabRegistry {
       return;
     }
     tab.workspaceId = workspaceId;
-    this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
+    const changes: Partial<TabSnapshot> = { workspaceId };
+    if (tab.folderId !== undefined) {
+      try {
+        await browser.sessions.removeTabValue(id, FOLDER_SESSION_KEY);
+      } catch {
+        // Missing folderId is already the desired persisted state.
+      }
+      delete tab.folderId;
+      changes.folderId = undefined;
+    }
+    this.#enqueue({ kind: 'updated', id, changes });
+  }
+
+  async setFolder(id: number, folderId: string | null): Promise<void> {
+    const tab = this.#tabs.get(id);
+    if (!tab || this.#closingTabIds.has(id)) return;
+    const next = folderId ?? undefined;
+    if (tab.folderId === next) return;
+    try {
+      if (folderId === null) {
+        await browser.sessions.removeTabValue(id, FOLDER_SESSION_KEY);
+      } else {
+        await browser.sessions.setTabValue(id, FOLDER_SESSION_KEY, folderId);
+      }
+    } catch (err) {
+      if (folderId !== null) {
+        console.warn('[bento-tools] sessions.setTabValue folder failed:', id, err);
+        return;
+      }
+    }
+    if (next === undefined) delete tab.folderId;
+    else tab.folderId = next;
+    this.#enqueue({ kind: 'updated', id, changes: { folderId: next } });
   }
 
   /** Set or clear Bento's sidebar display name for a tab. This does not
@@ -300,7 +357,12 @@ export class TabRegistry {
     const tab = this.#tabs.get(id);
     if (tab?.workspaceId !== undefined) {
       delete tab.workspaceId;
-      this.#enqueue({ kind: 'updated', id, changes: { workspaceId: undefined } });
+      const changes: Partial<TabSnapshot> = { workspaceId: undefined };
+      if (tab.folderId !== undefined) {
+        delete tab.folderId;
+        changes.folderId = undefined;
+      }
+      this.#enqueue({ kind: 'updated', id, changes });
     }
 
     const ignoreInvalidTab = (err: unknown) => {
@@ -311,6 +373,7 @@ export class TabRegistry {
     await Promise.all([
       browser.sessions.setTabValue(id, CLOSING_TAB_SESSION_KEY, '1').catch(ignoreInvalidTab),
       browser.sessions.removeTabValue(id, WORKSPACE_SESSION_KEY).catch(ignoreInvalidTab),
+      browser.sessions.removeTabValue(id, FOLDER_SESSION_KEY).catch(ignoreInvalidTab),
     ]);
   }
 
@@ -367,6 +430,9 @@ export class TabRegistry {
     if (existing?.customTitle && !snap.customTitle) {
       snap.customTitle = existing.customTitle;
     }
+    if (existing?.folderId && !snap.folderId) {
+      snap.folderId = existing.folderId;
+    }
     const url = tabUrl(tab);
     if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
@@ -382,8 +448,9 @@ export class TabRegistry {
   };
 
   async #hydrateOne(id: number): Promise<void> {
-    const [ws, customTitle, closing] = await Promise.all([
+    const [ws, folderId, customTitle, closing] = await Promise.all([
       readWorkspaceId(id),
+      readFolderId(id),
       readCustomTitle(id),
       readClosingTab(id),
     ]);
@@ -396,9 +463,18 @@ export class TabRegistry {
         delete tab.workspaceId;
         changes.workspaceId = undefined;
       }
+      if (tab.folderId !== undefined) {
+        delete tab.folderId;
+        changes.folderId = undefined;
+      }
     } else if (ws && tab.workspaceId !== ws) {
       tab.workspaceId = ws;
       changes.workspaceId = ws;
+    }
+    if (!closing && folderId !== tab.folderId) {
+      if (folderId) tab.folderId = folderId;
+      else delete tab.folderId;
+      changes.folderId = folderId;
     }
     if (customTitle && tab.customTitle !== customTitle) {
       tab.customTitle = customTitle;

@@ -1,0 +1,86 @@
+@layer bento.components {
+  .bento-folder-row {
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-xs);
+    box-sizing: border-box;
+    height: 100%;
+    padding-inline: var(--space-2xs) 0;
+    border-radius: var(--radius-s);
+    color: var(--neutral-90);
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    transition:
+      background-color var(--bento-duration-fast) var(--bento-easing-standard),
+      opacity var(--bento-duration-base) var(--bento-easing-standard);
+  }
+
+  .bento-folder-row:hover {
+    background-color: var(--bento-surface-hover);
+  }
+
+  .bento-folder-row--dragging {
+    opacity: 0.4;
+  }
+
+  .bento-folder-row__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--bento-favicon-size);
+    height: var(--bento-favicon-size);
+    color: var(--color-60);
+  }
+
+  .bento-folder-row > .tale-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    font-size: var(--bento-tab-row-font-size);
+    line-height: 1;
+    margin: 0;
+    position: relative;
+    top: 2px;
+  }
+
+  .bento-folder-row__rename-input {
+    min-width: 0;
+    width: 100%;
+    height: calc(var(--bento-tab-row-height) - var(--space-3xs));
+    padding: 0 var(--space-3xs);
+    background-color: var(--neutral-5);
+    border: var(--bento-border-hairline) solid var(--color-60);
+    border-radius: var(--radius-s);
+    color: var(--neutral-90);
+    font-family: var(--text-font-family);
+    font-size: var(--bento-tab-row-font-size);
+    font-weight: var(--text-font-weight);
+    letter-spacing: var(--text-letter-spacing);
+    line-height: 1;
+    outline: none;
+    box-sizing: border-box;
+    user-select: text;
+    -moz-user-select: text;
+  }
+
+  :root[data-bento-collapsed='true'] .bento-folder-row {
+    grid-template-columns: 1rem;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  :root[data-bento-collapsed='true'] .bento-folder-row > .tale-text,
+  :root[data-bento-collapsed='true'] .bento-folder-row__rename-input {
+    display: none;
+  }
+}
+
+/* Unlayered by design: raw form controls and Tale UI utilities are
+ * unlayered, so this must be unlayered too or the rename input can keep
+ * browser/input typography instead of matching the sidebar row label. */
+.bento-folder-row__rename-input {
+  font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family) !important;
+}

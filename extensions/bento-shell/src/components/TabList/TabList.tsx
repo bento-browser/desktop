@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@tale-ui/react/button';
 import { Icon } from '@tale-ui/react/icon';
@@ -9,9 +9,12 @@ import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
 import { useSettingsStore } from '../../state/settings';
-import { useCurrentWindowId } from '../../bridge/useToolsPort';
+import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
+import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders';
 import { TabRow } from '../TabRow/TabRow';
+import { FolderRow } from '../FolderRow/FolderRow';
 import { TabListSkeleton } from './TabListSkeleton';
+import { buildDisplayRows, flattenTabOrder, pruneSelection, rowKey } from './displayRows';
 import './TabList.css';
 
 export interface TabListProps {
@@ -26,6 +29,7 @@ export interface TabListProps {
     event: React.MouseEvent<HTMLDivElement>,
     selectedIds: number[],
   ) => void;
+  onFolderContextMenu?: (id: string, event: React.MouseEvent<HTMLDivElement>) => void;
   /** Called when the user drops a tab at a new position. The dragged tab
    * should land immediately before (`before=true`) or after (`before=false`)
    * `anchorId` in the chrome window's tab strip. Anchor-based (not
@@ -133,6 +137,7 @@ function useDelayedRemovals(
 }
 
 interface TabListPaneProps {
+  workspaceId: string | null;
   ids: number[];
   tabsById: ReturnType<typeof useTabsStore.getState>['byId'];
   activeId: number | null;
@@ -147,6 +152,7 @@ interface TabListPaneProps {
     event: React.MouseEvent<HTMLDivElement>,
     selectedIds: number[],
   ) => void;
+  onFolderContextMenu?: (id: string, event: React.MouseEvent<HTMLDivElement>) => void;
   onSelectionContextMenu: (id: number) => number[];
   /** When defined, the pane enables HTML5 drag-and-drop reordering and
    * calls back with (id, anchorId, before) once the user drops. The
@@ -166,6 +172,7 @@ interface TabListPaneProps {
 // from its parent and naturally won't trigger any per-tab animations of
 // its own — the entire pane just slides off.
 function TabListPane({
+  workspaceId,
   ids,
   tabsById,
   activeId,
@@ -176,12 +183,14 @@ function TabListPane({
   onClose,
   onOpenInSidePanel,
   onTabContextMenu,
+  onFolderContextMenu,
   onSelectionContextMenu,
   onReorder,
   isCollapsed,
   className,
 }: TabListPaneProps) {
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
+  const folders = useWorkspaceFolders(workspaceId);
   const parentRef = useRef<HTMLDivElement>(null);
   const [rowHeight, setRowHeight] = useState(ROW_HEIGHT_FALLBACK);
   const [rowGap, setRowGap] = useState(0);
@@ -191,6 +200,7 @@ function TabListPane({
   // source id (not its filtered index) means the indicator math stays
   // correct even if a fade-out and the drag overlap.
   const [dragSourceId, setDragSourceId] = useState<number | null>(null);
+  const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
   // means "drop at end"). Null when the cursor isn't over a valid drop
@@ -227,12 +237,16 @@ function TabListPane({
     };
   }, []);
 
-  const firstRegularIndex = displayedIds.findIndex((id) => tabsById[id]?.pinned !== true);
-  const newTabSlot = firstRegularIndex === -1 ? displayedIds.length : firstRegularIndex;
-  const actionSlotCount = isCollapsed ? 2 : 1;
-  const newPanelSlot = newTabSlot + 1;
+  const rows = useMemo(
+    () =>
+      buildDisplayRows(displayedIds, tabsById, folders, activeId, {
+        isCollapsed,
+        forceCollapsedFolders: dragFolderId !== null,
+      }),
+    [activeId, displayedIds, dragFolderId, folders, isCollapsed, tabsById],
+  );
   const virtualizer = useVirtualizer({
-    count: displayedIds.length + actionSlotCount,
+    count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: useCallback(() => rowSlotSize, [rowSlotSize]),
     overscan: 5,
@@ -240,13 +254,7 @@ function TabListPane({
 
   useLayoutEffect(() => {
     virtualizer.measure();
-  }, [rowSlotSize, actionSlotCount, virtualizer]);
-
-  const visualSlotToTabSlot = useCallback(
-    (visualSlot: number): number =>
-      visualSlot > newTabSlot ? Math.max(newTabSlot, visualSlot - actionSlotCount) : visualSlot,
-    [actionSlotCount, newTabSlot],
-  );
+  }, [rowSlotSize, rows.length, virtualizer]);
 
   // Translate the pointer's y position into a drop slot (0..displayedIds.length).
   // Reads the viewport's scrollable coords, divides by the measured row
@@ -259,14 +267,14 @@ function TabListPane({
       if (!el || rowSlotSize <= 0) return null;
       const rect = el.getBoundingClientRect();
       const relY = clientY - rect.top + el.scrollTop;
-      const len = displayedIds.length + actionSlotCount;
+      const len = rows.length;
       if (len === 0) return 0;
       let slot = Math.round(relY / rowSlotSize);
       if (slot < 0) slot = 0;
       if (slot > len) slot = len;
       return slot;
     },
-    [actionSlotCount, rowSlotSize, displayedIds.length],
+    [rowSlotSize, rows.length],
   );
 
   // Resolve the dragged tab's drop position to an anchor tab + side.
@@ -289,10 +297,13 @@ function TabListPane({
     (sourceId: number, hoverSlot: number): { anchorId: number; before: boolean } | null => {
       const srcSlot = displayedIds.indexOf(sourceId);
       if (srcSlot < 0) return null;
-      // Position in the source-removed displayed list (0..len-1 = slot
-      // after that index; len = drop at end).
-      const slotInRemoved = hoverSlot <= srcSlot ? hoverSlot : hoverSlot - 1;
-      const without = displayedIds.filter((id) => id !== sourceId);
+      const tabRows = rows.filter((row) => row.kind === 'tab');
+      const rowTabOrder = tabRows.map((row) => row.id);
+      const rowSrcSlot = rowTabOrder.indexOf(sourceId);
+      if (rowSrcSlot < 0) return null;
+      const tabSlot = rows.slice(0, hoverSlot).filter((row) => row.kind === 'tab').length;
+      const slotInRemoved = tabSlot <= rowSrcSlot ? tabSlot : tabSlot - 1;
+      const without = rowTabOrder.filter((id) => id !== sourceId);
       if (without.length === 0) return null;
       if (slotInRemoved >= without.length) {
         const anchor = without[without.length - 1];
@@ -303,11 +314,11 @@ function TabListPane({
       if (anchor === undefined) return null;
       return { anchorId: anchor, before: true };
     },
-    [displayedIds],
+    [displayedIds, rows],
   );
 
   const onPaneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (dragSourceId === null) return;
+    if (dragSourceId === null && dragFolderId === null) return;
     // preventDefault opts this element in as a drop target — without it
     // Firefox blocks the drop and the cursor shows a "not allowed"
     // icon. dropEffect='move' mirrors the effectAllowed we set in
@@ -327,24 +338,50 @@ function TabListPane({
   };
 
   const onPaneDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    if (dragSourceId === null) return;
+    if (dragSourceId === null && dragFolderId === null) return;
     e.preventDefault();
     const slot = computeDropSlot(e.clientY);
     const sourceId = dragSourceId;
+    const sourceFolderId = dragFolderId;
     setDropSlot(null);
     setDragSourceId(null);
-    if (slot === null || !onReorder) return;
-    const anchor = resolveAnchor(sourceId, visualSlotToTabSlot(slot));
+    setDragFolderId(null);
+    if (slot === null) return;
+    if (sourceFolderId !== null && workspaceId) {
+      const folderRows = rows
+        .map((row) => (row.kind === 'folder' ? row.folderId : null))
+        .filter((id): id is string => id !== null);
+      const from = folderRows.indexOf(sourceFolderId);
+      if (from < 0) return;
+      const target = rows.slice(0, slot).filter((row) => row.kind === 'folder').length;
+      const without = folderRows.filter((id) => id !== sourceFolderId);
+      without.splice(Math.max(0, Math.min(target, without.length)), 0, sourceFolderId);
+      dispatch({ type: 'tabFolder/reorder', workspaceId, orderedIds: without });
+      return;
+    }
+    if (sourceId === null || !onReorder) return;
+    const anchor = resolveAnchor(sourceId, slot);
     if (anchor === null || anchor.anchorId === sourceId) return;
     onReorder(sourceId, anchor.anchorId, anchor.before);
   };
 
   const handleDragStart = useCallback((id: number) => {
     setDragSourceId(id);
+    setDragFolderId(null);
     setDropSlot(null);
   }, []);
   const handleDragEnd = useCallback(() => {
     setDragSourceId(null);
+    setDragFolderId(null);
+    setDropSlot(null);
+  }, []);
+  const handleFolderDragStart = useCallback((id: string) => {
+    setDragFolderId(id);
+    setDragSourceId(null);
+    setDropSlot(null);
+  }, []);
+  const handleFolderDragEnd = useCallback(() => {
+    setDragFolderId(null);
     setDropSlot(null);
   }, []);
   const handleRowContextMenu = useCallback(
@@ -354,8 +391,7 @@ function TabListPane({
     [onSelectionContextMenu, onTabContextMenu],
   );
 
-  const dragEnabled = onReorder !== undefined;
-  const showPinnedDivider = newTabSlot > 0;
+  const dragEnabled = onReorder !== undefined || workspaceId !== null;
   const dropIndicatorY = dropSlot === null ? 0 : Math.max(0, dropSlot * rowSlotSize - rowGap / 2);
 
   return (
@@ -370,7 +406,7 @@ function TabListPane({
         className="bento-tab-list__viewport"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
       >
-        {dropSlot !== null && dragSourceId !== null && (
+        {dropSlot !== null && (dragSourceId !== null || dragFolderId !== null) && (
           <div
             className="bento-tab-list__drop-indicator"
             style={{ transform: `translateY(${dropIndicatorY}px)` }}
@@ -378,12 +414,14 @@ function TabListPane({
           />
         )}
         {virtualizer.getVirtualItems().map((vi) => {
-          if (vi.index === newTabSlot) {
+          const row = rows[vi.index];
+          if (!row) return null;
+          if (row.kind === 'new-tab') {
             return (
               <div
-                key="new-tab"
+                key={rowKey(row)}
                 className={
-                  showPinnedDivider
+                  row.afterPinnedSection
                     ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned'
                     : 'bento-tab-list__row bento-tab-list__row--new-tab'
                 }
@@ -417,10 +455,10 @@ function TabListPane({
             );
           }
 
-          if (isCollapsed && vi.index === newPanelSlot) {
+          if (row.kind === 'new-panel') {
             return (
               <div
-                key="new-panel"
+                key={rowKey(row)}
                 className="bento-tab-list__row bento-tab-list__row--new-tab"
                 style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
               >
@@ -440,12 +478,31 @@ function TabListPane({
             );
           }
 
-          const idIndex = vi.index < newTabSlot ? vi.index : vi.index - actionSlotCount;
-          const id = displayedIds[idIndex];
+          if (row.kind === 'folder') {
+            const folder = folders.find((candidate) => candidate.id === row.folderId);
+            if (!folder) return null;
+            return (
+              <div
+                key={rowKey(row)}
+                className="bento-tab-list__row"
+                style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+              >
+                <FolderRow
+                  folder={folder}
+                  dragging={row.folderId === dragFolderId}
+                  onContextMenu={onFolderContextMenu}
+                  onDragStart={handleFolderDragStart}
+                  onDragEnd={handleFolderDragEnd}
+                />
+              </div>
+            );
+          }
+
+          const id = row.kind === 'tab' || row.kind === 'peek' ? row.id : undefined;
           if (id === undefined) return null;
           return (
             <div
-              key={id}
+              key={rowKey(row)}
               className="bento-tab-list__row"
               style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
             >
@@ -455,12 +512,13 @@ function TabListPane({
                 selected={selectedIds.has(id)}
                 removing={removing.has(id)}
                 dragging={id === dragSourceId}
+                indent={row.kind === 'peek' || row.indent}
                 onActivate={onSelectClick}
                 onClose={onClose}
                 onOpenInSidePanel={onOpenInSidePanel}
                 onContextMenu={onTabContextMenu ? handleRowContextMenu : undefined}
-                onDragStart={dragEnabled ? handleDragStart : undefined}
-                onDragEnd={dragEnabled ? handleDragEnd : undefined}
+                onDragStart={dragEnabled && row.kind === 'tab' ? handleDragStart : undefined}
+                onDragEnd={dragEnabled && row.kind === 'tab' ? handleDragEnd : undefined}
               />
             </div>
           );
@@ -495,6 +553,7 @@ export function TabList({
   onCreatePanel,
   onOpenInSidePanel,
   onTabContextMenu,
+  onFolderContextMenu,
   onReorder,
 }: TabListProps) {
   // Per-window active workspace (phase A.3): each chrome window's TabList
@@ -515,18 +574,27 @@ export function TabList({
   // user. See useWorkspaceTabIds for the full rationale.
   const orderedIds = useWorkspaceTabIds(activeWorkspaceId, windowId);
   const activeId = useTabsStore((s) => s.activeId);
+  const folders = useWorkspaceFolders(activeWorkspaceId);
+  const visualRows = useMemo(
+    () =>
+      buildDisplayRows(orderedIds, tabsById, folders, activeId, {
+        isCollapsed: sidebarCollapsed,
+      }),
+    [activeId, folders, orderedIds, sidebarCollapsed, tabsById],
+  );
+  const visualTabOrder = useMemo(() => flattenTabOrder(visualRows), [visualRows]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const lastSelectedIdRef = useRef<number | null>(null);
   const mirroredSelectedTitleRef = useRef(false);
 
   const closeSelectedTabs = useCallback(() => {
     if (!onCloseSelected || selectedIds.size === 0) return;
-    const ids = orderedIds.filter((id) => selectedIds.has(id));
+    const ids = visualTabOrder.filter((id) => selectedIds.has(id));
     if (ids.length === 0) return;
     onCloseSelected(ids);
     setSelectedIds(new Set());
     lastSelectedIdRef.current = null;
-  }, [onCloseSelected, orderedIds, selectedIds]);
+  }, [onCloseSelected, selectedIds, visualTabOrder]);
 
   useLayoutEffect(() => {
     setSelectedIds(new Set());
@@ -534,20 +602,16 @@ export function TabList({
   }, [activeWorkspaceId]);
 
   useEffect(() => {
-    const allowed = new Set(orderedIds);
     setSelectedIds((prev) => {
       if (prev.size === 0) return prev;
-      const next = new Set<number>();
-      for (const id of prev) {
-        if (allowed.has(id)) next.add(id);
-      }
+      const next = pruneSelection(prev, visualTabOrder);
       if (next.size === prev.size) return prev;
       return next;
     });
-    if (lastSelectedIdRef.current !== null && !allowed.has(lastSelectedIdRef.current)) {
+    if (lastSelectedIdRef.current !== null && !visualTabOrder.includes(lastSelectedIdRef.current)) {
       lastSelectedIdRef.current = null;
     }
-  }, [orderedIds]);
+  }, [visualTabOrder]);
 
   useEffect(() => {
     if (selectedIds.size === 0) return;
@@ -576,20 +640,20 @@ export function TabList({
   }, [closeSelectedTabs, selectedIds.size]);
 
   useEffect(() => {
-    const ids = orderedIds.filter((id) => selectedIds.has(id));
+    const ids = visualTabOrder.filter((id) => selectedIds.has(id));
     if (ids.length === 0 && !mirroredSelectedTitleRef.current) return;
     document.title = `${SELECTED_TABS_TITLE_PREFIX}${Date.now()}:${encodeSelectedTabIds(ids)}`;
     mirroredSelectedTitleRef.current = ids.length > 0;
-  }, [orderedIds, selectedIds]);
+  }, [selectedIds, visualTabOrder]);
 
   const handleSelectClick = useCallback(
     (id: number, event: React.MouseEvent<HTMLDivElement>) => {
       if (event.shiftKey) {
         event.preventDefault();
-        const targetIndex = orderedIds.indexOf(id);
+        const targetIndex = visualTabOrder.indexOf(id);
         if (targetIndex < 0) return;
         const anchorId = lastSelectedIdRef.current;
-        const anchorIndex = anchorId === null ? -1 : orderedIds.indexOf(anchorId);
+        const anchorIndex = anchorId === null ? -1 : visualTabOrder.indexOf(anchorId);
         if (anchorIndex < 0) {
           lastSelectedIdRef.current = id;
           setSelectedIds(new Set([id]));
@@ -597,7 +661,7 @@ export function TabList({
         }
         const start = Math.min(anchorIndex, targetIndex);
         const end = Math.max(anchorIndex, targetIndex);
-        setSelectedIds(new Set(orderedIds.slice(start, end + 1)));
+        setSelectedIds(new Set(visualTabOrder.slice(start, end + 1)));
         return;
       }
 
@@ -617,17 +681,17 @@ export function TabList({
       lastSelectedIdRef.current = id;
       onActivate(id);
     },
-    [onActivate, orderedIds, selectedIds.size],
+    [onActivate, selectedIds.size, visualTabOrder],
   );
 
   const handleSelectionContextMenu = useCallback(
     (id: number): number[] => {
       if (selectedIds.has(id) && selectedIds.size > 0) {
-        return orderedIds.filter((candidate) => selectedIds.has(candidate));
+        return visualTabOrder.filter((candidate) => selectedIds.has(candidate));
       }
       return [id];
     },
-    [orderedIds, selectedIds],
+    [selectedIds, visualTabOrder],
   );
   // Readiness gate: render the skeleton until BOTH stores have hydrated
   // for the active workspace. tabsStore.hydrated flips on the first
@@ -644,7 +708,8 @@ export function TabList({
   const activePanelsHydrated = usePanelsStore((s) =>
     activeWorkspaceId ? s.hydratedWorkspaces.has(activeWorkspaceId) : false,
   );
-  const ready = tabsHydrated && activePanelsHydrated;
+  const foldersHydrated = useTabFoldersStore((s) => s.hydrated);
+  const ready = tabsHydrated && activePanelsHydrated && foldersHydrated;
 
   // Per-workspace ids snapshot, kept across renders so the outgoing pane
   // during a slide can render the workspace it represents (the store has
@@ -705,6 +770,7 @@ export function TabList({
             // Re-key by outgoing wsId so consecutive workspace switches each
             // remount the pane and cleanly re-trigger the exit animation.
             key={`out:${outgoing.wsId}`}
+            workspaceId={outgoing.wsId}
             ids={snapshotRef.current.get(outgoing.wsId) ?? []}
             tabsById={tabsById}
             activeId={activeId}
@@ -715,6 +781,7 @@ export function TabList({
             onClose={onClose}
             onOpenInSidePanel={onOpenInSidePanel}
             onTabContextMenu={onTabContextMenu}
+            onFolderContextMenu={onFolderContextMenu}
             onSelectionContextMenu={handleSelectionContextMenu}
             isCollapsed={sidebarCollapsed}
             className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
@@ -726,6 +793,7 @@ export function TabList({
           // against the new ids without carrying scroll position from the
           // departed workspace.
           key={`in:${activeWorkspaceId ?? 'none'}`}
+          workspaceId={activeWorkspaceId}
           ids={orderedIds}
           tabsById={tabsById}
           activeId={activeId}
@@ -736,6 +804,7 @@ export function TabList({
           onClose={onClose}
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
+          onFolderContextMenu={onFolderContextMenu}
           onSelectionContextMenu={handleSelectionContextMenu}
           isCollapsed={sidebarCollapsed}
           // Only the steady-state incoming pane allows reorder. The

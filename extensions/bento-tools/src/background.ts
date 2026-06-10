@@ -12,6 +12,7 @@ import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
+import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { BackupStore } from './backup/BackupStore';
 import {
@@ -32,8 +33,18 @@ const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore({
   getPanelKey: (workspaceId, tabId) => panels.getPanelKey(workspaceId, tabId),
 });
+const tabFolders = new TabFolderStore();
 const savedPanels = new SavedPanelsStore();
 const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
+
+async function sweepStaleFolderIds(): Promise<void> {
+  const snapshot = tabs.snapshot();
+  for (const tab of snapshot) {
+    if (!tab.folderId) continue;
+    if (tabFolders.has(tab.folderId)) continue;
+    await tabs.setFolder(tab.id, null);
+  }
+}
 
 // Push contentColorMode to Firefox's prefers-color-scheme content
 // override. Tracked separately from uiColorMode (which only affects
@@ -639,6 +650,7 @@ const bootReady = Promise.all([
   pinnedPanels
     .init()
     .catch((err) => console.error('[bento-tools] PinnedPanelsStore init failed:', err)),
+  tabFolders.init().catch((err) => console.error('[bento-tools] TabFolderStore init failed:', err)),
   savedPanels
     .init()
     .catch((err) => console.error('[bento-tools] SavedPanelsStore init failed:', err)),
@@ -660,6 +672,7 @@ const bootReady = Promise.all([
       console.warn('[bento-tools] boot default search apply failed:', err),
     );
   }
+  await sweepStaleFolderIds();
   let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;
   let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
     settings.snapshot().sidebarCollapsed;
@@ -969,6 +982,9 @@ tabs.onDeltas((deltas) => {
   const panelMetadataRefreshWorkspaces = new Set<string>();
   for (const d of deltas) {
     if (d.kind === 'created') {
+      if (d.tab.folderId && !tabFolders.has(d.tab.folderId)) {
+        void tabs.setFolder(d.tab.id, null);
+      }
       // Read CURRENT in-memory state, not the delta's frozen snapshot.
       // Two paths can race:
       //   - SessionStore-restored tabs: TabRegistry.#hydrateOne is
@@ -1042,6 +1058,10 @@ tabs.onDeltas((deltas) => {
       continue;
     }
     if (d.kind === 'updated') {
+      if ('folderId' in d.changes && d.changes.folderId && !tabFolders.has(d.changes.folderId)) {
+        void tabs.setFolder(d.id, null);
+        continue;
+      }
       if (
         'favIconUrl' in d.changes ||
         'title' in d.changes ||
@@ -1131,7 +1151,16 @@ panels.onPanelRemoved((workspaceId, tabId) => {
 // the workspace removes the only context in which the pin can be restored.
 workspaces.onDeltas((deltas) => {
   for (const d of deltas) {
-    if (d.kind === 'removed') pinnedPanels.removeForWorkspace(d.id);
+    if (d.kind === 'removed') {
+      pinnedPanels.removeForWorkspace(d.id);
+      const removed = tabFolders.removeForWorkspace(d.id);
+      if (removed.length > 0) {
+        const removedIds = new Set(removed.map((folder) => folder.id));
+        for (const tab of tabs.snapshot()) {
+          if (tab.folderId && removedIds.has(tab.folderId)) void tabs.setFolder(tab.id, null);
+        }
+      }
+    }
   }
 });
 
@@ -1840,6 +1869,9 @@ browser.runtime.onConnectExternal.addListener((port) => {
   const unsubPinnedPanels = pinnedPanels.onDeltas((deltas) => {
     send({ type: 'pinnedPanels/changed', deltas });
   });
+  const unsubTabFolders = tabFolders.onDeltas((deltas) => {
+    send({ type: 'tabFolders/changed', deltas });
+  });
 
   port.onMessage.addListener((message: object) => {
     const wireAction = message as WireAction;
@@ -1858,6 +1890,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       settings,
       panels,
       pinnedPanels,
+      tabFolders,
       savedPanels,
       backup,
       send,
@@ -1873,6 +1906,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     unsubWorkspaces();
     unsubSettings();
     unsubPinnedPanels();
+    unsubTabFolders();
   });
 
   // Wait for bento-tools' init + restore + sweep chain to complete
@@ -1894,6 +1928,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     });
     send({ type: 'settings/snapshot', settings: settings.snapshot() });
     send({ type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
+    send({ type: 'tabFolders/snapshot', folders: tabFolders.snapshot() });
     send({ type: 'savedPanels/snapshot', items: savedPanels.list() });
     // Replay panels for EVERY workspace so a freshly mounted shell can
     // pre-populate its per-workspace panelsStore. Without this, the

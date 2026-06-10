@@ -93,7 +93,7 @@ channel.addEventListener('message', (msg) => {
     // these intentionally; treat anything matching the prefix as
     // bus-only.
     const actionType = (data.action as { type?: string } | undefined)?.type;
-    if (actionType === 'menu/open') return;
+    if (actionType === 'menu/open' || actionType?.startsWith('ui/')) return;
     if (!toolsPort) {
       console.warn('[bento-shell] action dropped — tools port not connected:', actionType);
       return;

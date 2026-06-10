@@ -53,6 +53,11 @@
     opacity: 0;
   }
 
+  .bento-tab-row--indented {
+    margin-inline-start: var(--bento-tab-folder-indent);
+    width: calc(100% - var(--bento-tab-folder-indent));
+  }
+
   .bento-tab-row:hover {
     background-color: var(--bento-surface-hover);
   }
@@ -316,6 +321,7 @@
     min-height: var(--bento-tab-row-height);
     aspect-ratio: 1 / 1;
     padding-inline: 0;
+    margin-inline-start: 0;
   }
   html[data-bento-collapsed='true'] .bento-tab-row > .tale-text {
     display: none;
@@ -333,6 +339,8 @@
  * browser/input typography instead of matching the sidebar row label. */
 .bento-tab-row__rename-input {
   font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family) !important;
+  color: var(--neutral-90) !important;
+  caret-color: var(--neutral-90);
 }
 
 /* Unlayered by design: Tale UI text/button/icon utilities are unlayered, so

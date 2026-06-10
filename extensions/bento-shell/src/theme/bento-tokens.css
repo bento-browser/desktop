@@ -65,6 +65,7 @@
        values that the !important overrides there clobber. */
     --bento-tab-row-height: 3.2rem;
     --bento-tab-row-font-size: var(--text-xs-font-size);
+    --bento-tab-folder-indent: var(--space-l);
     --bento-pinned-panels-button-size: var(--space-l);
     --bento-pinned-panels-favicon-size: var(--bento-control-size-sm);
     --bento-pinned-panels-rail-width: var(--bento-pinned-panels-button-size);

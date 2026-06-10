@@ -213,6 +213,97 @@ describe('protocol handler batch tab workspace moves', () => {
   });
 });
 
+describe('protocol handler tab folders', () => {
+  it('creates a folder in the active workspace and assigns only valid normal tabs', async () => {
+    const setFolder = vi.fn().mockResolvedValue(undefined);
+    const create = vi.fn(() => ({
+      id: 'folder-1',
+      workspaceId: 'ws-1',
+      name: 'New folder',
+      order: 0,
+      collapsed: false,
+      createdAt: 1,
+    }));
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => [
+          { id: 1, workspaceId: 'ws-1', pinned: false },
+          { id: 2, workspaceId: 'ws-1', pinned: true },
+          { id: 3, workspaceId: 'ws-2', pinned: false },
+        ]),
+        setFolder,
+      },
+      workspaces: {
+        getActiveId: vi.fn(() => 'ws-1'),
+      },
+      settings: {},
+      panels: {},
+      pinnedPanels: {},
+      tabFolders: {
+        create,
+      },
+      savedPanels: {},
+      backup: {},
+      send: vi.fn(),
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+      sourceWindowId: 1,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'tabFolder/create', id: 'folder-1', tabIds: [1, 2, 3] }, ctx);
+
+    await vi.waitFor(() => {
+      expect(setFolder).toHaveBeenCalledTimes(1);
+    });
+    expect(create).toHaveBeenCalledWith({
+      id: 'folder-1',
+      workspaceId: 'ws-1',
+      name: undefined,
+    });
+    expect(setFolder).toHaveBeenCalledWith(1, 'folder-1');
+  });
+
+  it('deleting a folder clears live tab memberships', async () => {
+    const setFolder = vi.fn().mockResolvedValue(undefined);
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => [
+          { id: 1, folderId: 'folder-1' },
+          { id: 2, folderId: 'folder-2' },
+        ]),
+        setFolder,
+      },
+      workspaces: {},
+      settings: {},
+      panels: {},
+      pinnedPanels: {},
+      tabFolders: {
+        delete: vi.fn(() => ({
+          id: 'folder-1',
+          workspaceId: 'ws-1',
+          name: 'Folder',
+          order: 0,
+          collapsed: false,
+          createdAt: 1,
+        })),
+      },
+      savedPanels: {},
+      backup: {},
+      send: vi.fn(),
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+      sourceWindowId: 1,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'tabFolder/delete', id: 'folder-1' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(setFolder).toHaveBeenCalledWith(1, null);
+    });
+    expect(setFolder).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('protocol handler command palette navigation', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

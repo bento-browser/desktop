@@ -43,6 +43,7 @@ import { selectActiveIdForWindow, useWorkspacesStore } from '../state/workspaces
 import { useSettingsStore } from '../state/settings';
 import { usePanelsStore } from '../state/panels';
 import { usePinnedPanelsStore } from '../state/pinnedPanels';
+import { useTabFoldersStore } from '../state/tabFolders';
 import { useSavedPanelsStore } from '../state/savedPanels';
 import { usePrivacyStore } from '../state/privacy';
 import { useBackupStore } from '../state/backup';
@@ -149,6 +150,7 @@ function ensureConnection(): void {
         dispatch({ type: 'workspaces/requestSnapshot' });
         dispatch({ type: 'settings/requestSnapshot' });
         dispatch({ type: 'pinnedPanels/requestSnapshot' });
+        dispatch({ type: 'tabFolders/requestSnapshot' });
         dispatch({ type: 'savedPanels/requestSnapshot' });
         return;
       case 'tabs/snapshot':
@@ -333,6 +335,12 @@ function ensureConnection(): void {
         return;
       case 'pinnedPanels/changed':
         usePinnedPanelsStore.getState().applyDeltas(event.deltas);
+        return;
+      case 'tabFolders/snapshot':
+        useTabFoldersStore.getState().applySnapshot(event.folders);
+        return;
+      case 'tabFolders/changed':
+        useTabFoldersStore.getState().applyDeltas(event.deltas);
         return;
       case 'savedPanels/snapshot':
         useSavedPanelsStore.getState().apply(event.items);

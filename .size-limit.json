@@ -12,7 +12,7 @@
       "!extensions/bento-shell/dist/assets/menu.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
-    "limit": "195 KB",
+    "limit": "196 KB",
     "gzip": true
   },
   {

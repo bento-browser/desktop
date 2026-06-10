@@ -1,4 +1,4 @@
-import { memo, useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useRef, useState } from 'react';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
@@ -12,6 +12,7 @@ import type { TabSnapshot } from '@shared/protocol';
 
 import { dispatch } from '../../bridge/useToolsPort';
 import { useTab } from '../../state/tabs';
+import { useUiStore } from '../../state/ui';
 import './TabRow.css';
 
 export interface TabRowProps {
@@ -28,6 +29,7 @@ export interface TabRowProps {
    * its original slot and without an explicit modifier it reads
    * identically to a stationary row. */
   dragging?: boolean;
+  indent?: boolean;
   selected?: boolean;
   onActivate: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   onClose: (id: number) => void;
@@ -48,6 +50,7 @@ function TabRowImpl({
   active,
   removing = false,
   dragging = false,
+  indent = false,
   selected = false,
   onActivate,
   onClose,
@@ -67,6 +70,8 @@ function TabRowImpl({
   const lastSeenRef = useRef<TabSnapshot | undefined>(liveTab);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
+  const renameRequest = useUiStore((state) => state.renameRequest);
+  const clearRenameRequest = useUiStore((state) => state.clearRenameRequest);
   const convertToPanelDescriptionId = useId();
   const closeTabDescriptionId = useId();
   if (liveTab) lastSeenRef.current = liveTab;
@@ -105,6 +110,15 @@ function TabRowImpl({
     setRenaming(false);
   };
 
+  useEffect(() => {
+    if (renameRequest?.kind !== 'tab' || renameRequest.id !== id) return;
+    if (!removing && !dragging) {
+      setDraftTitle(displayTitle);
+      setRenaming(true);
+    }
+    clearRenameRequest();
+  }, [clearRenameRequest, displayTitle, dragging, id, removing, renameRequest]);
+
   return (
     <div
       className={
@@ -115,7 +129,8 @@ function TabRowImpl({
         (discarded ? ' bento-tab-row--discarded' : '') +
         (showAudioControl ? ' bento-tab-row--has-audio-control' : '') +
         (muted ? ' bento-tab-row--muted' : '') +
-        (dragging ? ' bento-tab-row--dragging' : '')
+        (dragging ? ' bento-tab-row--dragging' : '') +
+        (indent ? ' bento-tab-row--indented' : '')
       }
       draggable={draggable && !renaming}
       onDragStart={
@@ -277,6 +292,7 @@ export const TabRow = memo(TabRowImpl, (prev, next) => {
     (prev.selected ?? false) === (next.selected ?? false) &&
     (prev.removing ?? false) === (next.removing ?? false) &&
     (prev.dragging ?? false) === (next.dragging ?? false) &&
+    (prev.indent ?? false) === (next.indent ?? false) &&
     prev.onContextMenu === next.onContextMenu &&
     prev.onDragStart === next.onDragStart &&
     prev.onDragEnd === next.onDragEnd

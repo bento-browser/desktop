@@ -14,12 +14,14 @@ import { TabList } from './components/TabList/TabList';
 import { PinnedPanels } from './components/PinnedPanels/PinnedPanels';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
-import { dispatch, useToolsReady } from './bridge/useToolsPort';
+import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
 import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
-import { useWorkspacesStore } from './state/workspaces';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from './state/workspaces';
+import { useWorkspaceFolders } from './state/tabFolders';
+import { useUiStore } from './state/ui';
 import type { UiColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
@@ -90,8 +92,11 @@ function encodeSidebarMenuPayload(payload: object): string {
 
 export function App() {
   const ready = useToolsReady();
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const tabsById = useTabsStore((s) => s.byId);
   const activeTabId = useTabsStore((s) => s.activeId);
+  const folders = useWorkspaceFolders(activeWorkspaceId);
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
   // Per-workspace theme. Mirrors the active workspace's themeId onto
@@ -132,6 +137,23 @@ export function App() {
     return () => clearInterval(handle);
   }, [welcomeShouldShow]);
 
+  useEffect(() => {
+    const channel = new BroadcastChannel('bento-shell-bus');
+    channel.addEventListener('message', (message) => {
+      const data = message.data;
+      if (!data || data.kind !== 'action') return;
+      const action = data.action as { type?: string; target?: unknown };
+      if (action.type !== 'ui/renameRequest') return;
+      const target = action.target as { kind?: unknown; id?: unknown };
+      if (target?.kind === 'tab' && typeof target.id === 'number') {
+        useUiStore.getState().requestRename({ kind: 'tab', id: target.id });
+      } else if (target?.kind === 'folder' && typeof target.id === 'string') {
+        useUiStore.getState().requestRename({ kind: 'folder', id: target.id });
+      }
+    });
+    return () => channel.close();
+  }, []);
+
   const onActivate = (id: number) => {
     dispatch({ type: 'tab/activate', id });
     // Signal chrome to scroll the panel strip back to the main slot.
@@ -152,9 +174,24 @@ export function App() {
     event: React.MouseEvent,
     tabId: number | null,
     selectedTabIds: number[] = [],
+    folderId?: string,
   ) => {
     event.preventDefault();
     const items: SidebarMenuItem[] = [{ id: 'new-tab', label: 'New tab' }];
+    if (folderId) {
+      items.push(
+        { id: 'sep-folder-actions', kind: 'separator' },
+        { id: 'rename-folder', label: 'Rename folder' },
+        { id: 'delete-folder', label: 'Delete folder' },
+      );
+      document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+        anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
+        tabId: null,
+        folderId,
+        items,
+      })}`;
+      return;
+    }
     const tab = tabId !== null ? tabsById[tabId] : null;
     const targetTabIds =
       tabId === null
@@ -166,6 +203,14 @@ export function App() {
           );
     const isBatch = targetTabIds.length > 1;
     if (tabId !== null) {
+      const folderItems = folders.map((folder) => ({
+        id: `move-to-folder:${folder.id}`,
+        label: folder.name,
+        isDisabled: targetTabIds.every((id) => tabsById[id]?.folderId === folder.id),
+      }));
+      const anyTargetInFolder = targetTabIds.some((id) => tabsById[id]?.folderId);
+      const allTargetsPinned =
+        targetTabIds.length > 0 && targetTabIds.every((id) => tabsById[id]?.pinned);
       const workspaceItems = workspaceIds.map((workspaceId) => {
         const workspace = workspacesById[workspaceId];
         return {
@@ -175,6 +220,7 @@ export function App() {
         };
       });
       items.push({ id: 'sep-tab-actions', kind: 'separator' });
+      if (!isBatch) items.push({ id: 'rename-tab', label: 'Rename tab' });
       if (isBatch) {
         items.push({
           id: 'move-selected-to-new-workspace',
@@ -196,6 +242,22 @@ export function App() {
           items: workspaceItems,
         });
       }
+      if (!allTargetsPinned) {
+        items.push({
+          id: 'move-to-folder',
+          label: isBatch ? 'Move selected tabs to folder' : 'Move to folder',
+          items: [
+            ...folderItems,
+            ...(folderItems.length > 0
+              ? [{ id: 'sep-move-to-folder-new', kind: 'separator' as const }]
+              : []),
+            { id: 'move-to-folder:new', label: 'New folder' },
+            ...(anyTargetInFolder
+              ? [{ id: 'move-to-folder:none', label: 'Remove from folder' }]
+              : []),
+          ],
+        });
+      }
       if (!isBatch) {
         items.push(
           { id: 'sep-close-tab', kind: 'separator' },
@@ -212,6 +274,7 @@ export function App() {
       anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
       tabId,
       tabIds: targetTabIds,
+      newFolderId: crypto.randomUUID(),
       items,
     })}`;
   };
@@ -224,6 +287,9 @@ export function App() {
     selectedIds: number[],
   ) => {
     openSidebarContextMenu(event, id, selectedIds);
+  };
+  const onFolderContextMenu = (id: string, event: React.MouseEvent<HTMLDivElement>) => {
+    openSidebarContextMenu(event, null, [], id);
   };
   const onReorder = (id: number, anchorId: number, before: boolean) => {
     // Title-IPC to chrome rather than browser.tabs.move via bento-tools.
@@ -337,6 +403,7 @@ export function App() {
           onCreatePanel={onCreatePanel}
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
+          onFolderContextMenu={onFolderContextMenu}
           onReorder={onReorder}
         />
         <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">

@@ -12,6 +12,7 @@ import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
+import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BackupStore } from '../backup/BackupStore';
 import { clearPanelMarker } from '../panels/SessionMarker';
@@ -418,6 +419,7 @@ export interface HandlerContext {
   settings: SettingsStore;
   panels: PanelStore;
   pinnedPanels: PinnedPanelsStore;
+  tabFolders: TabFolderStore;
   savedPanels: SavedPanelsStore;
   backup: BackupStore;
   send: (event: Event) => void;
@@ -486,6 +488,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     }
     case 'tabs/requestSnapshot':
       ctx.send({ type: 'tabs/snapshot', tabs: ctx.tabs.snapshot() });
+      return;
+    case 'tabFolders/requestSnapshot':
+      ctx.send({ type: 'tabFolders/snapshot', folders: ctx.tabFolders.snapshot() });
       return;
     case 'tab/activate': {
       // Clear stale `bento.isPanel` marker if this tab isn't currently a
@@ -565,6 +570,65 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'tabs/assignWorkspace':
       void assignTabsToWorkspace(ctx, action.ids, action.workspaceId);
       return;
+    case 'tabFolder/create': {
+      const workspaceId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!workspaceId) return;
+      const folderId =
+        action.id && action.id.trim().length > 0
+          ? action.id
+          : typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const folder = ctx.tabFolders.create({ id: folderId, workspaceId, name: action.name });
+      const tabIds = uniqueTabIds(action.tabIds);
+      const snapshot = ctx.tabs.snapshot();
+      void (async () => {
+        for (const id of tabIds) {
+          const tab = snapshot.find((t) => t.id === id);
+          if (!tab || tab.pinned || tab.workspaceId !== workspaceId) continue;
+          await ctx.tabs.setFolder(id, folder.id);
+        }
+      })();
+      return;
+    }
+    case 'tabFolder/rename':
+      ctx.tabFolders.rename(action.id, action.name);
+      return;
+    case 'tabFolder/setCollapsed':
+      ctx.tabFolders.setCollapsed(action.id, action.collapsed);
+      return;
+    case 'tabFolder/reorder':
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      ctx.tabFolders.reorder(action.workspaceId, action.orderedIds);
+      return;
+    case 'tabFolder/delete': {
+      const removed = ctx.tabFolders.delete(action.id);
+      if (!removed) return;
+      const matching = ctx.tabs.snapshot().filter((tab) => tab.folderId === action.id);
+      void (async () => {
+        for (const tab of matching) {
+          await ctx.tabs.setFolder(tab.id, null);
+        }
+      })();
+      return;
+    }
+    case 'tabs/setFolder': {
+      const ids = uniqueTabIds(action.ids);
+      if (ids.length === 0) return;
+      const snapshot = ctx.tabs.snapshot();
+      const folder =
+        action.folderId === null ? null : (ctx.tabFolders.get(action.folderId) ?? undefined);
+      if (folder === undefined) return;
+      void (async () => {
+        for (const id of ids) {
+          const tab = snapshot.find((t) => t.id === id);
+          if (!tab || tab.pinned) continue;
+          if (folder && tab.workspaceId !== folder.workspaceId) continue;
+          await ctx.tabs.setFolder(id, folder ? folder.id : null);
+        }
+      })();
+      return;
+    }
     case 'tabs/moveToNewWorkspace':
       void (async () => {
         const ids = uniqueTabIds(action.ids);

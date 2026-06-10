@@ -77,12 +77,21 @@ The sidebar tab list supports multi-selection for workspace organization.
 The tab list exposes `New tab` and `New panel` buttons for opening fresh regular
 tabs and blank panels in the active workspace. When pinned tabs exist, these
 controls appear below the pinned run and above regular tabs.
+Workspace tabs can be grouped into collapsible tab folders from the sidebar
+context menu. Folders live below pinned tabs and above the regular tab section,
+can be renamed, deleted, collapsed, expanded, and reordered among themselves,
+and persist across restarts. Tabs inside folders remain normal unpinned Firefox
+tabs. Folder names are not directly editable by clicking the row; rename starts
+from the folder context menu and opens an inline field that is immediately ready
+for typing. Deleting a folder returns its member tabs to the regular section.
+When the active tab is inside a collapsed folder, Bento shows that active tab as
+a single peek row beneath the folder.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
 right-click menu exposes the same close-selected action.
 Right-clicking a single sidebar tab exposes close-tab actions, and inactive
-tabs can be converted into side panels from the same menu.
+tabs can be renamed or converted into side panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.

@@ -198,6 +198,42 @@ For single rows, the shell includes "Close tab" and includes "Convert to panel"
 only when the target row is not the active tab; chrome dispatches `tab/close` or
 `panel/add` for those items.
 
+Tab folders are workspace-scoped metadata in
+`extensions/bento-tools/src/tabFolders/TabFolderStore.ts`, persisted through
+`extensions/bento-tools/src/tabFolders/Persistence.ts` under
+`browser.storage.local` key `bento.tabFolders` with a single backup slot.
+Membership is stored on tabs with the `bento.folderId` sessions key in
+`TabRegistry`, so closing a tab removes its membership without mutating folder
+metadata. The wire protocol adds `TabSnapshot.folderId`, `TabFolder`,
+`tabFolders/snapshot`, `tabFolders/changed`, `tabFolder/*` actions, and
+`tabs/setFolder`. Moving a tab to another workspace clears folder membership in
+the same tab delta as the workspace change.
+
+The shell mirrors folder metadata in
+`extensions/bento-shell/src/state/tabFolders.ts`. `TabList` builds a single
+virtualized display-row list with
+`extensions/bento-shell/src/components/TabList/displayRows.ts`: pinned tabs,
+folder rows and visible folder members, action rows, then regular tabs. Stale or
+foreign `folderId` values render as regular tabs because the row builder only
+honors folder ids present in the active workspace's folder set. Collapsed
+folders hide members except for the active member peek row. Sidebar selection,
+Shift-range selection, close-selected, and the `BENTO_SELECTED_TABS` mirror use
+the flattened visible tab order so hidden folder members cannot be acted on.
+
+Folder and tab rename context-menu requests are `ui/renameRequest` bus actions
+consumed by `extensions/bento-shell/src/state/ui.ts`; they must not be
+forwarded to bento-tools. The shell background therefore treats `menu/open` and
+all `ui/*` actions as bus-only. Chrome receives tab and folder context menus via
+`BENTO_SIDEBAR_CONTEXT_MENU` in
+`src/browser/base/content/bento-shell-mount.js`. Folder-only menu items must be
+handled before the `hasTabId` guard because folder menus intentionally carry no
+tab id. Rename requests initiated from the native chrome context menu must also
+move focus back into the sidebar frame before broadcasting on
+`bento-shell-bus`; `BENTO_SHELL_ACTION` frame script calls `content.focus()` for
+`ui/*` actions so the shell's inline rename input can focus and select its text.
+The folder row then retries `input.focus()`/`input.select()` briefly after
+entering rename mode to cover React commit and browser focus timing.
+
 Batch tab assignment is handled in
 `extensions/bento-tools/src/messaging/protocol-handler.ts`. Tools creates the
 new workspace through inactive `WorkspaceStore.create`, assigns each selected
@@ -220,6 +256,22 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not persist sidebar selection in tools or shell stores. It is transient UI
   state for the currently rendered tab list, and hidden workspace selections
   would make batch context-menu actions unsafe.
+- Do not reorder folders with `BENTO_TAB_MOVE`, `browser.tabs.move`, or
+  Firefox tab-strip APIs. Folder order is storage-backed metadata and only moves
+  through `tabFolder/reorder`.
+- Do not treat a stale `bento.folderId` as authoritative in the renderer. If
+  the folder metadata is absent from the current workspace, render the tab as a
+  regular tab.
+- Do not split workspace moves and folder clearing into separate tab deltas.
+  Cross-workspace moves must clear folder membership atomically with the
+  workspace change.
+- Do not handle folder context-menu actions after the chrome handler's
+  `hasTabId` guard; folder menus have no tab id by design.
+- Do not rely on the inline rename component alone for focus after native
+  context-menu commands. Chrome can keep focus outside the sidebar frame, which
+  leaves only a visual outline on the folder row and prevents immediate typing.
+  Keep the chrome bridge's `content.focus()` handoff for `ui/*` actions and the
+  shell-side retry/select logic together.
 
 ## Panel state and layout model
 

@@ -33,6 +33,10 @@ export interface TabSnapshot {
   /** Workspace this tab belongs to. Undefined during the brief window between
    * tab creation and tools assigning it to the active workspace. */
   workspaceId?: string;
+  /** Optional workspace-scoped tab folder membership. Folder metadata is
+   * mirrored separately through tabFolders/* events; membership rides tab
+   * deltas so tab closure automatically drops the binding. */
+  folderId?: string;
 }
 
 export type TabDelta =
@@ -68,6 +72,20 @@ export type WorkspaceDelta =
    * id to `activeIdByWindow[windowId]` when present, otherwise to the
    * fallback `activeId` field. */
   | { kind: 'activated'; id: string; windowId?: number };
+
+export interface TabFolder {
+  id: string;
+  workspaceId: string;
+  name: string;
+  order: number;
+  collapsed: boolean;
+  createdAt: number;
+}
+
+export type TabFolderDelta =
+  | { kind: 'created'; folder: TabFolder }
+  | { kind: 'updated'; id: string; changes: Partial<TabFolder> }
+  | { kind: 'removed'; id: string };
 
 /** User-configurable Bento settings. Persisted in storage.local; defaults
  * mirror the values declared in prefs/bento.js (the latter remain the source
@@ -360,6 +378,7 @@ export type Action =
    * envelope (see WireAction). */
   | { type: 'shell/hello'; windowId: number }
   | { type: 'tabs/requestSnapshot' }
+  | { type: 'tabFolders/requestSnapshot' }
   | { type: 'tab/activate'; id: number }
   | { type: 'tab/close'; id: number }
   | { type: 'tabs/close'; ids: number[] }
@@ -370,6 +389,12 @@ export type Action =
    * sidebar's multi-select context menu; tools applies the same cleanup
    * policy as single-tab assignment after the batch finishes. */
   | { type: 'tabs/assignWorkspace'; ids: number[]; workspaceId: string }
+  | { type: 'tabFolder/create'; id?: string; name?: string; tabIds: number[] }
+  | { type: 'tabFolder/rename'; id: string; name: string }
+  | { type: 'tabFolder/delete'; id: string }
+  | { type: 'tabFolder/setCollapsed'; id: string; collapsed: boolean }
+  | { type: 'tabFolder/reorder'; workspaceId: string; orderedIds: string[] }
+  | { type: 'tabs/setFolder'; ids: number[]; folderId: string | null }
   /** Create a new workspace and move the selected sidebar tabs into it.
    * The new workspace auto-activates in the requesting window. */
   | { type: 'tabs/moveToNewWorkspace'; ids: number[]; name?: string }
@@ -629,6 +654,8 @@ export type Event =
   | { type: 'tools/booted'; version: string }
   | { type: 'tabs/snapshot'; tabs: TabSnapshot[] }
   | { type: 'tabs/changed'; deltas: TabDelta[] }
+  | { type: 'tabFolders/snapshot'; folders: TabFolder[] }
+  | { type: 'tabFolders/changed'; deltas: TabFolderDelta[] }
   | {
       type: 'workspaces/snapshot';
       workspaces: Workspace[];
