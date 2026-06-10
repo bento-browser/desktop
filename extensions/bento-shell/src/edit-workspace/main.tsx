@@ -61,7 +61,7 @@ import './edit-workspace.css';
 initToolsPort();
 
 function EditWorkspaceApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const [payload, setPayload] = useState<EditWorkspacePayload | null>(null);
   const [draftName, setDraftName] = useState('');

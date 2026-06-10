@@ -42,7 +42,7 @@ import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
 initToolsPort();
 
 function MenuApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const [payload, setPayload] = useState<ChromeMenuOpenPayload | null>(null);
   // react-aria's Menu fires onAction (our onSelect) FIRST, then closes the

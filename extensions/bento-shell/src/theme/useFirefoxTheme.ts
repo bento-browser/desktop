@@ -21,6 +21,8 @@ import { useSettingsStore } from '../state/settings';
 const STORAGE_KEY = 'color-mode';
 const RESOLVED_STORAGE_KEY = 'resolved-color-mode';
 const DARK_QUERY = '(prefers-color-scheme: dark)';
+const CHANNEL_NAME = 'bento-shell-bus';
+const RESOLVED_MODE_KIND = 'resolved-color-mode';
 
 interface FirefoxThemeOptions {
   preferStoredSystemResolution?: boolean;
@@ -51,6 +53,13 @@ function applyMode(mode: UiColorModePref, options: FirefoxThemeOptions = {}): 'l
   return resolved;
 }
 
+function publishResolvedMode(mode: UiColorModePref, resolved: 'light' | 'dark'): void {
+  if (typeof BroadcastChannel === 'undefined') return;
+  const channel = new BroadcastChannel(CHANNEL_NAME);
+  channel.postMessage({ kind: RESOLVED_MODE_KIND, mode, resolved });
+  channel.close();
+}
+
 export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const preferStoredSystemResolution = options.preferStoredSystemResolution === true;
@@ -64,6 +73,7 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
     localStorage.setItem(STORAGE_KEY, uiColorMode);
     if (!preferStoredSystemResolution || uiColorMode !== 'system') {
       localStorage.setItem(RESOLVED_STORAGE_KEY, resolved);
+      publishResolvedMode(uiColorMode, resolved);
     }
 
     if (uiColorMode !== 'system') return;
@@ -72,9 +82,49 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
       const nextResolved = applyMode('system', { preferStoredSystemResolution });
       if (!preferStoredSystemResolution) {
         localStorage.setItem(RESOLVED_STORAGE_KEY, nextResolved);
+        publishResolvedMode('system', nextResolved);
       }
     };
     media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
+
+    let channel: BroadcastChannel | null = null;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { kind?: unknown; resolved?: unknown } | null;
+      if (
+        !preferStoredSystemResolution ||
+        !data ||
+        data.kind !== RESOLVED_MODE_KIND ||
+        (data.resolved !== 'light' && data.resolved !== 'dark')
+      ) {
+        return;
+      }
+      localStorage.setItem(RESOLVED_STORAGE_KEY, data.resolved);
+      applyMode('system', { preferStoredSystemResolution: true });
+    };
+    if (preferStoredSystemResolution && typeof BroadcastChannel !== 'undefined') {
+      channel = new BroadcastChannel(CHANNEL_NAME);
+      channel.addEventListener('message', onMessage);
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (
+        !preferStoredSystemResolution ||
+        event.key !== RESOLVED_STORAGE_KEY ||
+        (event.newValue !== 'light' && event.newValue !== 'dark')
+      ) {
+        return;
+      }
+      applyMode('system', { preferStoredSystemResolution: true });
+    };
+    if (preferStoredSystemResolution) window.addEventListener('storage', onStorage);
+
+    return () => {
+      media.removeEventListener('change', onChange);
+      if (channel) {
+        channel.removeEventListener('message', onMessage);
+        channel.close();
+      }
+      if (preferStoredSystemResolution) window.removeEventListener('storage', onStorage);
+    };
   }, [preferStoredSystemResolution, uiColorMode]);
 }

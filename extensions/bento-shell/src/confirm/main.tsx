@@ -42,7 +42,7 @@ import {
 initToolsPort();
 
 function ConfirmApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   // Last-received payload — chrome shows this overlay only after a payload
   // is broadcast, but we initialize null and treat absent payload as a

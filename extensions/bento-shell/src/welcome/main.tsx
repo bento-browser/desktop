@@ -553,7 +553,7 @@ function SearchEnginePicker({
 }
 
 function WelcomeApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const welcomeSeen = useSettingsStore((s) => s.current?.welcomeSeen);
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);

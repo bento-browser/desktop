@@ -31,7 +31,7 @@ import {
 initToolsPort();
 
 function AddressBarApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const [mode, setMode] = useState<AddrbarMode>('current');
   const [openVersion, setOpenVersion] = useState(0);

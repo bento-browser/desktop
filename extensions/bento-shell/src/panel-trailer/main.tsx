@@ -64,7 +64,7 @@ function openPanelTrailerContextMenu(event: MouseEvent) {
 }
 
 function PanelTrailerApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const items = useSavedPanelsStore((s) => s.items);
   return <PanelTrailer items={items} onAddBlank={onAddBlank} onOpenSaved={onOpenSaved} />;

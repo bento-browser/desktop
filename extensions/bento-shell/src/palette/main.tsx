@@ -40,7 +40,7 @@ initToolsPort();
 const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_PALETTE';
 
 function PaletteApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   // Theme to the active workspace so the palette overlay renders with the
   // same brand/neutral palette as the sidebar. Chrome theme updates ride
   // through BENTO_PANELS; overlays must not write theme title sentinels

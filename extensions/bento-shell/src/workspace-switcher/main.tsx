@@ -92,7 +92,7 @@ function workspaceInitial(name: string): string {
 }
 
 function WorkspaceSwitcherOverlayApp() {
-  useFirefoxTheme();
+  useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   // Per-window active workspace (phase A.3). The chrome window that owns
