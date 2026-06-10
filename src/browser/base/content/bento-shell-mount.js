@@ -4442,6 +4442,21 @@
     }
   }
 
+  function syncPanelLoadingOverlayGeometry(panelEl, overlay) {
+    if (!panelEl || !overlay || panelEl.hasAttribute('data-bento-subdivision-top-closed')) return;
+    const headerEl = panelEl.querySelector(':scope > .bento-panel-header');
+    if (!headerEl) {
+      overlay.style.removeProperty('inset-block-start');
+      return;
+    }
+    const headerH = Math.ceil(headerEl.getBoundingClientRect().height || 0);
+    if (headerH > 0) {
+      overlay.style.insetBlockStart = headerH + 'px';
+    } else {
+      overlay.style.removeProperty('inset-block-start');
+    }
+  }
+
   function ensurePanelLoadingOverlay(panelEl, browserEl) {
     if (!panelEl || !browserEl) return;
     let overlay = panelEl.querySelector(':scope > .bento-panel-loading-overlay');
@@ -4451,6 +4466,7 @@
     }
 
     const setVisible = (visible) => {
+      syncPanelLoadingOverlayGeometry(panelEl, overlay);
       overlay.hidden = !visible;
       overlay.toggleAttribute('data-bento-visible', visible);
     };
