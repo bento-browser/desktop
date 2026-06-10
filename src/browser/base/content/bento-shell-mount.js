@@ -1016,36 +1016,67 @@
         min-height: var(--bento-panel-header-height);
         box-sizing: border-box;
       }
-      /* Header controls — drag handle (leftmost), back / forward /
-         reload, then bookmark / pin / close / more on the right. All share the
-         same 24×24 icon-button shape, default colour, hover, focus,
-         and icon size; only the cursor and "engaged" state vary by
-         role (grab/grabbing on the drag handle, filled-icon on the
-         active bookmark and pin buttons). This shared rule is the single source of
-         truth — per-element rules below override only the bits that
-         genuinely differ. */
-      .bento-panel-header-drag-handle,
-      .bento-panel-header-button {
+      /* Chrome-side translation of Tale UI IconButton
+         variant="ghost" size="sm". These controls cannot render the
+         React component because they live in browser chrome, but they
+         carry the same BEM classes and mirror the same interactive
+         states with native pseudo-classes plus React-Aria-compatible
+         data-state selectors. */
+      .bento-panel-header .tale-icon-button.tale-button {
+        position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: var(--space-3xs);
         width: var(--bento-control-size-sm);
         height: var(--bento-control-size-sm);
+        min-width: var(--bento-control-size-sm);
+        min-height: var(--bento-control-size-sm);
+        box-sizing: border-box;
         padding: 0;
+        margin: 0;
+        appearance: none;
         background-color: transparent;
-        border: none;
+        border: 1px solid transparent;
         border-radius: var(--radius-s);
-        color: var(--neutral-70);
+        color: var(--neutral-80);
         cursor: pointer;
         flex: 0 0 auto;
+        line-height: 1;
+        outline: none;
+        user-select: none;
         transition:
           background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard);
+          border-color var(--bento-duration-fast) var(--bento-easing-standard),
+          color var(--bento-duration-fast) var(--bento-easing-standard),
+          box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
       }
-      .bento-panel-header-drag-handle > svg,
-      .bento-panel-header-button > svg {
-        width: var(--bento-icon-size-xs);
-        height: var(--bento-icon-size-xs);
+      .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
+        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
+        color: var(--neutral-90);
+      }
+      .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
+        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
+      }
+      .bento-panel-header .tale-icon-button.tale-button:focus-visible,
+      .bento-panel-header .tale-icon-button.tale-button[data-focus-visible] {
+        box-shadow:
+          0 0 0 2px var(--neutral-100),
+          0 0 0 4px var(--focus-ring-color);
+      }
+      .bento-panel-header .tale-icon-button.tale-button[disabled],
+      .bento-panel-header .tale-icon-button.tale-button[data-disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .bento-panel-header .tale-icon-button.tale-button[data-pending] {
+        cursor: default;
+      }
+      .bento-panel-header .tale-icon-button > svg {
+        width: var(--bento-icon-size-sm);
+        height: var(--bento-icon-size-sm);
         pointer-events: none;
       }
       /* Dot-pattern icons (grip-vertical on the drag handle,
@@ -1062,20 +1093,6 @@
       .bento-panel-header-button--more > svg {
         stroke-width: 3.5;
       }
-      .bento-panel-header-drag-handle:hover,
-      .bento-panel-header-button:hover:not([disabled]) {
-        background-color: var(--neutral-16);
-        color: var(--neutral-90);
-      }
-      .bento-panel-header-drag-handle:focus-visible,
-      .bento-panel-header-button:focus-visible {
-        outline: var(--bento-focus-ring-width) solid var(--color-60);
-        outline-offset: -1px;
-      }
-      .bento-panel-header-button[disabled] {
-        opacity: 0.4;
-        cursor: default;
-      }
       /* Drag handle: behaves as a button (role='button') but is
          operated by pointer drag, not click — override the default
          pointer cursor with grab / grabbing. */
@@ -1085,7 +1102,7 @@
       }
       .bento-panel-header-drag-handle--dragging {
         cursor: grabbing;
-        background-color: var(--neutral-16);
+        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
         color: var(--color-60);
       }
       /* Bookmark and pin buttons: filled outline when active. Bookmark state
@@ -3258,7 +3275,8 @@
   function makeHeaderButton(title, iconD, onClick) {
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
-    btn.className = 'bento-panel-header-button';
+    btn.className =
+      'tale-button tale-button--ghost tale-icon-button tale-icon-button--sm bento-panel-header-button';
     btn.title = title;
     btn.setAttribute('aria-label', title);
     btn.appendChild(makeIcon(iconD));
@@ -4229,7 +4247,8 @@
     // it would break Bento's selected-tab-is-main model — see
     // setupHeaderDrag's early return).
     const dragHandle = document.createXULElement('hbox');
-    dragHandle.className = 'bento-panel-header-drag-handle';
+    dragHandle.className =
+      'tale-button tale-button--ghost tale-icon-button tale-icon-button--sm bento-panel-header-drag-handle';
     dragHandle.setAttribute('role', 'button');
     dragHandle.setAttribute('aria-label', 'Drag to reorder panel');
     dragHandle.appendChild(makeIcon(ICONS.gripVertical));

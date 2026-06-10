@@ -139,6 +139,29 @@ That regenerates the chrome-side token stylesheet so Firefox chrome can consume
 the same Tale UI and Bento variables as the extension shell. The chrome pipeline
 is documented in [chrome-tokens.md](chrome-tokens.md).
 
+## Chrome-side Tale translations
+
+Some browser chrome surfaces cannot render React components, but still mirror
+Tale UI component classes and states so they remain visually aligned with the
+extension shell.
+
+Current translations:
+
+- `IconButton variant="ghost" size="sm"`:
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
+  applies `tale-button tale-button--ghost tale-icon-button
+tale-icon-button--sm` to panel-header controls and defines a scoped
+  chrome-safe CSS translation for hover, pressed, focus-visible, disabled, and
+  pending states.
+- `Button size="md"` with `primary` / `neutral` variants:
+  [bento-migration-host.js](../src/browser/base/content/bento-migration-host.js)
+  maps embedded migration wizard buttons to `tale-button` classes, with the
+  matching chrome-host CSS in
+  [bento-migration-host.css](../src/browser/base/content/bento-migration-host.css).
+
+When adding a new chrome-side translation, list it here with the React
+component, variant, size, and chrome files that own the class/state mapping.
+
 ## New component checklist
 
 - Read the Tale UI component `.d.ts` example and docs before writing JSX.
