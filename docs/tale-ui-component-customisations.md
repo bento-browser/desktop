@@ -158,9 +158,34 @@ tale-icon-button--sm` to panel-header controls and defines a scoped
   maps embedded migration wizard buttons to `tale-button` classes, with the
   matching chrome-host CSS in
   [bento-migration-host.css](../src/browser/base/content/bento-migration-host.css).
+- `Card` with `outlined` / `filled` and `sm` / `md` classes:
+  [bento-migration-host.html](../src/browser/base/content/bento-migration-host.html)
+  and [bento-migration-host.js](../src/browser/base/content/bento-migration-host.js)
+  apply `tale-card` classes to the static import host and embedded wizard
+  summary card, with the chrome-host CSS in
+  [bento-migration-host.css](../src/browser/base/content/bento-migration-host.css).
 
 When adding a new chrome-side translation, list it here with the React
 component, variant, size, and chrome files that own the class/state mapping.
+
+Chrome also has Bento-only widgets that use Tale/Bento tokens but are not
+translations of React components. Keep them documented as chrome widgets rather
+than adding Tale class names unless they intentionally mirror a Tale component:
+
+- Startup veil skeleton: `bento-startup-veil*` in
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js).
+- Strip scrollbar: `bento-strip-scrollbar*` in
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js).
+- Panel navigator and its fallback context menu: `bento-panel-nav*` in
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js).
+- Panel header URL input and loading overlay: `bento-panel-header-url` and
+  `bento-panel-loading-overlay` in
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js).
+- Panel, subdivision, and flat-layout splitters/choosers:
+  `bento-panel-splitter*`, `bento-subdivision-*`, and `bento-layout-*` in
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js).
+- Migration wizard chrome-element bridge styles:
+  [bento-migration-wizard-bridge.css](../src/browser/base/content/bento-migration-wizard-bridge.css).
 
 ## New component checklist
 
