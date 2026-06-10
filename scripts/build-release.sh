@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bento Browser — release build pipeline.
 #
-# Produces a distributable installer (.dmg on macOS, .zip of installer on
+# Produces distributable installers (.dmg on macOS, .exe and .zip on
 # Windows) into release-out/ at the repo root. Used both locally
 # (sanity-check before tagging) and by .github/workflows/release.yml.
 #
@@ -156,8 +156,16 @@ case "$PLATFORM" in
     ;;
   windows)
     # On Windows mach package produces an installer .exe and a .zip.
-    # Prefer .zip for the unsigned developer-preview path — users who
-    # trust the source can extract and run without installer-trust prompts.
+    # Keep both: the .exe is the normal installer, while the .zip gives
+    # unsigned developer-preview users an extract-and-run option.
+    EXE="$(find engine/obj-*/dist/install -name '*.exe' 2>/dev/null | head -n1)"
+    if [ -z "$EXE" ]; then
+      EXE="$(find engine/obj-*/dist -name '*.exe' 2>/dev/null | head -n1)"
+    fi
+    if [ -z "$EXE" ]; then
+      echo "build-release: no .exe found under engine/obj-*/dist" >&2
+      exit 1
+    fi
     ZIP="$(find engine/obj-*/dist/install -name '*.zip' 2>/dev/null | head -n1)"
     if [ -z "$ZIP" ]; then
       ZIP="$(find engine/obj-*/dist -name 'bento-*.zip' 2>/dev/null | head -n1)"
@@ -166,9 +174,13 @@ case "$PLATFORM" in
       echo "build-release: no .zip found under engine/obj-*/dist" >&2
       exit 1
     fi
-    OUT="$OUT_DIR/Bento-$VERSION-windows.zip"
-    cp "$ZIP" "$OUT"
-    echo "build-release: produced $OUT"
+    EXE_OUT="$OUT_DIR/Bento-$VERSION-windows.exe"
+    ZIP_OUT="$OUT_DIR/Bento-$VERSION-windows.zip"
+    cp "$EXE" "$EXE_OUT"
+    cp "$ZIP" "$ZIP_OUT"
+    OUT="$EXE_OUT and $ZIP_OUT"
+    echo "build-release: produced $EXE_OUT"
+    echo "build-release: produced $ZIP_OUT"
     ;;
   linux)
     # Mach on Linux produces a .tar.bz2 (or .tar.xz on newer Firefox).
