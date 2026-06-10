@@ -8,8 +8,10 @@ import {
   getPanelRestoreLocation,
   getRootNodeIds,
   getVisiblePanelIds,
+  findOrphanedDevtoolsLinks,
   migrateLegacyEntriesToPersistence,
   movePanel,
+  normalizeDevtoolsAdjacency,
   removePanel,
   removeVerticalGroup,
   reorderRootNodes,
@@ -302,6 +304,82 @@ describe('PanelLayout', () => {
       { kind: 'panel', panelKey: 'ws-panel-0' },
       { kind: 'panel', panelKey: 'ws-panel-1' },
       { kind: 'panel', panelKey: 'ws-panel-2' },
+    ]);
+  });
+
+  it('normalizes devtools panels next to their caller root', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 1);
+    addPanel(layout, 2);
+    addPanel(layout, 3);
+    addPanel(layout, 99);
+
+    expect(
+      normalizeDevtoolsAdjacency(layout, [
+        { devtoolsTabId: 99, callerTabId: 1, inspectedTabId: 1 },
+      ]),
+    ).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([1, 99, 2, 3]);
+  });
+
+  it('preserves valid immediate-left devtools adjacency', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 1);
+    addPanel(layout, 99);
+    addPanel(layout, 2);
+    reorderRootNodes(layout, ['panel:1', 'panel:99', 'panel:2']);
+
+    expect(
+      normalizeDevtoolsAdjacency(layout, [
+        { devtoolsTabId: 99, callerTabId: 2, inspectedTabId: 2 },
+      ]),
+    ).toBe(false);
+    expect(getVisiblePanelIds(layout)).toEqual([1, 99, 2]);
+  });
+
+  it('normalizes main-content devtools panels to root index zero', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 1);
+    addPanel(layout, 99);
+
+    expect(
+      normalizeDevtoolsAdjacency(layout, [
+        { devtoolsTabId: 99, callerTabId: null, inspectedTabId: 42 },
+      ]),
+    ).toBe(true);
+    expect(getVisiblePanelIds(layout)).toEqual([99, 1]);
+  });
+
+  it('places devtools beside the caller containing root when caller is grouped', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 1);
+    addPanel(layout, 2);
+    addPanel(layout, 99);
+    subdividePanel(layout, 1, { groupId: 'v1', chooserId: 'c1' });
+    fillChooser(layout, 'c1', 'single', [3], {});
+
+    expect(
+      normalizeDevtoolsAdjacency(layout, [
+        { devtoolsTabId: 99, callerTabId: 3, inspectedTabId: 3 },
+      ]),
+    ).toBe(true);
+    expect(getRootNodeIds(layout)).toEqual(['v1', 'panel:99', 'panel:2']);
+  });
+
+  it('finds orphaned devtools links for missing devtools or missing callers', () => {
+    const layout = emptyLayout();
+    addPanel(layout, 1);
+    addPanel(layout, 99);
+
+    expect(
+      findOrphanedDevtoolsLinks(layout, [
+        { devtoolsTabId: 99, callerTabId: 1, inspectedTabId: 1 },
+        { devtoolsTabId: 100, callerTabId: 1, inspectedTabId: 1 },
+        { devtoolsTabId: 99, callerTabId: 2, inspectedTabId: 2 },
+      ]),
+    ).toEqual([
+      { devtoolsTabId: 100, callerTabId: 1, inspectedTabId: 1 },
+      { devtoolsTabId: 99, callerTabId: 2, inspectedTabId: 2 },
     ]);
   });
 });

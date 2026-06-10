@@ -1605,6 +1605,18 @@
       #bento-side-panel-host > .bento-panel-splitter--dragging {
         opacity: 1;
       }
+      #bento-side-panel-host > .bento-panel-splitter--devtools-link {
+        opacity: 1;
+        background-image:
+          linear-gradient(
+            to right,
+            transparent calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+            transparent calc(50% + var(--bento-splitter-indicator-radius))
+          );
+        background-size: 100% 100%;
+      }
       /* Hide every inter-panel splitter while a panel header is
          being dragged. Splitters are absolute-positioned overlays
          anchored to the layout positions of the panels they
@@ -4092,6 +4104,39 @@
     return Number.isFinite(tabId) ? tabId : null;
   }
 
+  function getDevtoolsPartnerElement(panelEl) {
+    const slot = getTopLevelSlotPanelElement(panelEl);
+    if (!slot) return null;
+    if (slot.dataset?.bentoDevtoolsFor) {
+      const caller = slot.dataset.bentoDevtoolsFor;
+      if (caller === 'main') return document.querySelector('[data-bento-main-panel="1"]');
+      return document.querySelector(`[data-bento-panel-tab-id="${CSS.escape(caller)}"]`);
+    }
+    const tabId = getTopLevelSlotTabId(slot);
+    const link = Array.from(currentDevtoolsLinkByTabId.values()).find(
+      (candidate) => candidate.callerTabId === tabId,
+    );
+    if (link) {
+      return document.querySelector(
+        `[data-bento-panel-tab-id="${CSS.escape(String(link.devtoolsTabId))}"]`,
+      );
+    }
+    if (slot.dataset?.bentoMainPanel === '1' && currentMainDevtoolsLink) {
+      return document.querySelector(
+        `[data-bento-panel-tab-id="${CSS.escape(String(currentMainDevtoolsLink.devtoolsTabId))}"]`,
+      );
+    }
+    return null;
+  }
+
+  function areDevtoolsPairPanelElements(leftPanelEl, rightPanelEl) {
+    if (!leftPanelEl || !rightPanelEl) return false;
+    return (
+      getDevtoolsPartnerElement(leftPanelEl) === rightPanelEl ||
+      getDevtoolsPartnerElement(rightPanelEl) === leftPanelEl
+    );
+  }
+
   function getResizableSlotWidth(panelEl) {
     if (!panelEl) return 0;
     if (panelEl.dataset?.bentoMainPanel === '1') {
@@ -4284,20 +4329,26 @@
         // "Save panel" sits as a sibling below a separator; clicking
         // dispatches `savedPanels/save` and bento-tools inserts the
         // bookmark into the "Saved panels" folder (de-dupes silently).
-        const canSubdivide = canSubdivideFromPanelHeader(tabId, panelEl);
-        const canSplitTopPanel = canSplitTopPanelFromPanelHeader(tabId, panelEl);
-        const canSplitBottomPanel = canSplitBottomPanelFromPanelHeader(tabId, panelEl);
-        const canBreakOut = canBreakOutFromPanelHeader(tabId, panelEl);
-        const subdivisionItems = [
-          ...(canSubdivide && !currentSubdivisions.has(tabId)
-            ? [{ id: 'subdivide', label: 'Subdivide panel' }]
-            : []),
-          ...(canSplitTopPanel ? [{ id: 'split-top-panel', label: 'Split this panel' }] : []),
-          ...(canSplitBottomPanel
-            ? [{ id: 'split-bottom-panel', label: 'Split this panel' }]
-            : []),
-          ...(canBreakOut ? [{ id: 'break-out-sub-panel', label: 'Break out this panel' }] : []),
-        ];
+        const isDevtoolsPanel = panelEl.hasAttribute('data-bento-devtools-for');
+        const canSubdivide = !isDevtoolsPanel && canSubdivideFromPanelHeader(tabId, panelEl);
+        const canSplitTopPanel = !isDevtoolsPanel && canSplitTopPanelFromPanelHeader(tabId, panelEl);
+        const canSplitBottomPanel =
+          !isDevtoolsPanel && canSplitBottomPanelFromPanelHeader(tabId, panelEl);
+        const canBreakOut = !isDevtoolsPanel && canBreakOutFromPanelHeader(tabId, panelEl);
+        const subdivisionItems = isDevtoolsPanel
+          ? []
+          : [
+              ...(canSubdivide && !currentSubdivisions.has(tabId)
+                ? [{ id: 'subdivide', label: 'Subdivide panel' }]
+                : []),
+              ...(canSplitTopPanel ? [{ id: 'split-top-panel', label: 'Split this panel' }] : []),
+              ...(canSplitBottomPanel
+                ? [{ id: 'split-bottom-panel', label: 'Split this panel' }]
+                : []),
+              ...(canBreakOut
+                ? [{ id: 'break-out-sub-panel', label: 'Break out this panel' }]
+                : []),
+            ];
         const items = [
           { id: 'custom-widths', label: 'Custom panel widths', items: sizeItems },
           ...subdivisionItems,
@@ -6412,12 +6463,17 @@
         if (!trailer) continue;
         const tr = trailer.getBoundingClientRect();
         gapCentre = (lr.right + tr.left) / 2;
+        sp.classList.remove('bento-panel-splitter--devtools-link');
       } else {
         const rightPanelEl = document.getElementById(panelIds[i + 1]);
         if (!rightPanelEl) continue;
         const rr = panelRectForSplitter(rightPanelEl);
         if (!rr) continue;
         gapCentre = (lr.right + rr.left) / 2;
+        sp.classList.toggle(
+          'bento-panel-splitter--devtools-link',
+          areDevtoolsPairPanelElements(leftPanelEl, rightPanelEl),
+        );
       }
       sp._bentoLeftPanelId = panelIds[i];
       sp.style.position = 'absolute';
@@ -7852,6 +7908,8 @@
     if (idx < 0 || idx >= targets.length) return;
     const target = targets[idx];
     target.classList.add('bento-panel--cycle-focused');
+    const partner = getDevtoolsPartnerElement(target);
+    if (partner) partner.classList.add('bento-panel--cycle-focused');
     if (target.hasAttribute?.('data-bento-subdivided')) {
       applySubdividedTopFocusIndicator(target);
     }
@@ -7860,6 +7918,7 @@
     if (panelFocusTimer) clearTimeout(panelFocusTimer);
     panelFocusTimer = setTimeout(() => {
       target.classList.remove('bento-panel--cycle-focused');
+      partner?.classList?.remove('bento-panel--cycle-focused');
       if (!target.classList.contains('bento-panel--focused')) {
         target.classList.remove('bento-subdivision-top--focused');
       }
@@ -7894,8 +7953,9 @@
       dispatchShellAction({ type: 'panel/focusedChanged', tabId: nextFocusedTabId });
     }
     const targets = getPanelFocusIndicatorTargets();
+    const partner = getDevtoolsPartnerElement(panelEl);
     for (const target of targets) {
-      target.classList.toggle('bento-panel--focused', target === panelEl);
+      target.classList.toggle('bento-panel--focused', target === panelEl || target === partner);
       target.classList.remove('bento-subdivision-top--focused');
     }
     if (panelEl?.hasAttribute?.('data-bento-subdivided')) {
@@ -12208,6 +12268,7 @@
       if (i === 0) {
         panelEl.dataset.bentoMainPanel = '1';
         delete panelEl.dataset.bentoPanelTabId;
+        delete panelEl.dataset.bentoDevtoolsFor;
         panelEl.removeAttribute('data-bento-header-hidden');
         removeInjectedPanelHeader(panelEl);
         // Apply the active workspace's main-panel width every reconcile.
@@ -12270,6 +12331,13 @@
         if (tabId !== null) {
           const payload = payloadByTabId.get(tabId);
           panelEl.dataset.bentoRootNodeId = payload?.rootNodeId || 'panel:' + tabId;
+          const devtoolsLink = currentDevtoolsLinkByTabId.get(tabId);
+          if (devtoolsLink) {
+            panelEl.dataset.bentoDevtoolsFor =
+              devtoolsLink.callerTabId === null ? 'main' : String(devtoolsLink.callerTabId);
+          } else {
+            delete panelEl.dataset.bentoDevtoolsFor;
+          }
           const w = widthByTabId.get(tabId);
           if (typeof w === 'number') {
             // Skip if a drag is currently in flight on this panel —
@@ -13061,6 +13129,206 @@
   }
   installOpenInNewPanelMenuItem();
 
+  function getDevToolsShim() {
+    try {
+      const mod = ChromeUtils.importESModule(
+        'chrome://devtools-startup/content/DevToolsShim.sys.mjs',
+      );
+      return mod.DevToolsShim || null;
+    } catch (err) {
+      console.warn('[bento-shell-mount] DevToolsShim import failed:', err);
+      return null;
+    }
+  }
+
+  async function selectNodeInToolbox(toolbox, tool, domReference) {
+    if (!toolbox || !domReference) return;
+    try {
+      if (tool === 'accessibility') {
+        await toolbox.selectTool('accessibility');
+        const inspectorFront = await toolbox.commands.client.mainRoot.getFront('inspector');
+        const nodeFront =
+          await inspectorFront.getNodeActorFromContentDomReference(domReference);
+        const panel = toolbox.getCurrentPanel?.();
+        if (nodeFront && panel?.selectAccessibleForNode) {
+          await panel.selectAccessibleForNode(nodeFront, 'browser-context-menu');
+        }
+        return;
+      }
+      const inspector = await toolbox.selectTool('inspector');
+      const inspectorFront = toolbox.commands?.targetCommand?.targetFront?.inspectorFront;
+      const front =
+        inspectorFront || (await toolbox.commands.client.mainRoot.getFront('inspector'));
+      const nodeFront = await front.getNodeActorFromContentDomReference(domReference);
+      if (nodeFront) {
+        inspector.selection.setNodeFront(nodeFront, { reason: 'browser-context-menu' });
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] selectNodeInToolbox failed:', err);
+    }
+  }
+
+  function matchingLivePageToolbox(browserId) {
+    const shim = getDevToolsShim();
+    const toolboxes = shim?.getToolboxes?.();
+    if (!toolboxes) return null;
+    for (const toolbox of toolboxes) {
+      try {
+        if (toolbox?.isDestroying?.()) continue;
+        if (toolbox?.hostType !== 'page') continue;
+        const descriptor = toolbox.commands?.descriptorFront;
+        if (descriptor?.browserId === browserId) return toolbox;
+      } catch {
+        // Ignore half-destroyed toolboxes.
+      }
+    }
+    return null;
+  }
+
+  function closeDevtoolsPanelTab(tabId) {
+    if (!Number.isFinite(tabId)) return;
+    dispatchShellAction({ type: 'tab/close', id: tabId });
+  }
+
+  function openDevtoolsPanelFor({ browser, browserId, callerTabId, inspectedTabId, domReference, tool }) {
+    const pairKey = `${callerTabId === null ? 'main' : callerTabId}:${inspectedTabId}`;
+    const existingDevtoolsTabId = currentDevtoolsTabIdByPairKey.get(pairKey);
+    if (Number.isFinite(existingDevtoolsTabId)) {
+      const toolbox = matchingLivePageToolbox(browserId);
+      if (toolbox) {
+        void selectNodeInToolbox(toolbox, tool, domReference);
+        if (currentWorkspaceId) {
+          dispatchShellAction({
+            type: 'panel/focus',
+            workspaceId: currentWorkspaceId,
+            id: existingDevtoolsTabId,
+          });
+        }
+        return;
+      }
+    }
+    if (
+      callerTabId === null &&
+      currentMainDevtoolsLink &&
+      currentMainDevtoolsLink.inspectedTabId !== inspectedTabId
+    ) {
+      closeDevtoolsPanelTab(currentMainDevtoolsLink.devtoolsTabId);
+    }
+
+    const shim = getDevToolsShim();
+    const url =
+      'about:devtools-toolbox?type=tab&id=' +
+      encodeURIComponent(String(browserId)) +
+      '&tool=' +
+      encodeURIComponent(tool);
+    let timeoutId = null;
+    const onReady = (event, maybeToolbox) => {
+      try {
+        const toolbox = maybeToolbox || event;
+        const descriptor = toolbox?.commands?.descriptorFront;
+        if (toolbox?.hostType !== 'page' || descriptor?.browserId !== browserId) return;
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        shim?.off?.('toolbox-ready', onReady);
+        void selectNodeInToolbox(toolbox, tool, domReference);
+      } catch (err) {
+        console.warn('[bento-shell-mount] toolbox-ready handling failed:', err);
+      }
+    };
+    shim?.on?.('toolbox-ready', onReady);
+    timeoutId = setTimeout(() => shim?.off?.('toolbox-ready', onReady), 30000);
+    try {
+      const tab = gBrowser.addTrustedTab(url, { skipAnimation: true });
+      const tabId = getBentoTabId(tab);
+      if (!Number.isFinite(tabId)) return;
+      dispatchShellAction({
+        type: 'panel/addDevtools',
+        tabId,
+        forTabId: callerTabId,
+        inspectedTabId,
+      });
+    } catch (err) {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      shim?.off?.('toolbox-ready', onReady);
+      console.warn('[bento-shell-mount] openDevtoolsPanelFor failed:', err);
+    }
+  }
+
+  function installInspectInPanelMenuItems() {
+    const menu = document.getElementById('contentAreaContextMenu');
+    if (!menu || document.getElementById('bento-context-inspect-in-panel')) return;
+
+    function findSourcePanel() {
+      const browser = typeof gContextMenu !== 'undefined' ? gContextMenu?.browser : null;
+      if (!browser) return null;
+      return browser.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
+    }
+
+    const inspectItem = document.createXULElement('menuitem');
+    inspectItem.id = 'bento-context-inspect-in-panel';
+    inspectItem.setAttribute('label', 'Inspect in Panel');
+    inspectItem.hidden = true;
+    const inspectAnchor = document.getElementById('context-inspect');
+    if (inspectAnchor?.nextSibling) menu.insertBefore(inspectItem, inspectAnchor.nextSibling);
+    else menu.appendChild(inspectItem);
+
+    const a11yItem = document.createXULElement('menuitem');
+    a11yItem.id = 'bento-context-inspect-a11y-in-panel';
+    a11yItem.setAttribute('label', 'Inspect Accessibility Properties in Panel');
+    a11yItem.hidden = true;
+    const a11yAnchor = document.getElementById('context-inspect-a11y');
+    if (a11yAnchor?.nextSibling) menu.insertBefore(a11yItem, a11yAnchor.nextSibling);
+    else menu.appendChild(a11yItem);
+
+    const updateVisibility = () => {
+      try {
+        const source = findSourcePanel();
+        const canShow = !!source && !source.dataset.bentoDevtoolsFor;
+        const stockInspect = document.getElementById('context-inspect');
+        const stockA11y = document.getElementById('context-inspect-a11y');
+        inspectItem.hidden = !canShow || !stockInspect || stockInspect.hidden;
+        a11yItem.hidden = !canShow || !stockA11y || stockA11y.hidden;
+      } catch {
+        inspectItem.hidden = true;
+        a11yItem.hidden = true;
+      }
+    };
+    const attachPopupShowingListener = () => {
+      menu.addEventListener('popupshowing', updateVisibility);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attachPopupShowingListener, { once: true });
+    } else {
+      attachPopupShowingListener();
+    }
+
+    const command = (tool) => {
+      try {
+        const browser = gContextMenu?.browser;
+        const browserId = browser?.browserId;
+        const source = findSourcePanel();
+        if (!browser || !Number.isFinite(browserId) || !source) return;
+        const callerTabId = source.dataset.bentoPanelTabId
+          ? Number(source.dataset.bentoPanelTabId)
+          : null;
+        const inspectedTabId = getBentoTabId(gBrowser.getTabForBrowser(browser));
+        if (!Number.isFinite(inspectedTabId)) return;
+        openDevtoolsPanelFor({
+          browser,
+          browserId,
+          callerTabId,
+          inspectedTabId,
+          domReference: gContextMenu?.targetIdentifier,
+          tool,
+        });
+      } catch (err) {
+        console.warn('[bento-shell-mount] Inspect in Panel command failed:', err);
+      }
+    };
+    inspectItem.addEventListener('command', () => command('inspector'));
+    a11yItem.addEventListener('command', () => command('accessibility'));
+  }
+  installInspectInPanelMenuItems();
+
   // ─── "Open in new panel" places context-menu item ──────────────────────
   // Mirrors installOpenInNewPanelMenuItem but for the bookmark / history /
   // sidebar Places menu (#placesContext). Right-click a bookmark on the
@@ -13782,6 +14050,9 @@
 	          .map((tabId) => ({ kind: 'panel', tabId })),
 	      };
 	      panels = decoratePanelsForLayout(currentPanelLayout, allPanelPayloads);
+	      currentDevtoolsLinkByTabId = new Map();
+	      currentDevtoolsTabIdByPairKey = new Map();
+	      currentMainDevtoolsLink = null;
 	      currentPanelAudioByTabId = new Map();
 	      for (const panel of allPanelPayloads) {
 	        const tabId = Number(panel?.tabId);
@@ -13834,6 +14105,26 @@
         incomingWorkspaceId !== null && currentWorkspaceId !== incomingWorkspaceId;
       currentWorkspaceId = incomingWorkspaceId;
       currentPanelTabIds = new Set(panels.map((p) => p.tabId));
+      currentDevtoolsLinkByTabId = new Map();
+      currentDevtoolsTabIdByPairKey = new Map();
+      currentMainDevtoolsLink = null;
+      if (Array.isArray(decoded.devtoolsPairs)) {
+        for (const rawLink of decoded.devtoolsPairs) {
+          const devtoolsTabId = Number(rawLink?.devtoolsTabId);
+          const inspectedTabId = Number(rawLink?.inspectedTabId);
+          const callerTabId =
+            rawLink?.callerTabId === null ? null : Number(rawLink?.callerTabId);
+          if (!Number.isFinite(devtoolsTabId) || !Number.isFinite(inspectedTabId)) continue;
+          if (callerTabId !== null && !Number.isFinite(callerTabId)) continue;
+          const link = { devtoolsTabId, callerTabId, inspectedTabId };
+          currentDevtoolsLinkByTabId.set(devtoolsTabId, link);
+          currentDevtoolsTabIdByPairKey.set(
+            `${callerTabId === null ? 'main' : callerTabId}:${inspectedTabId}`,
+            devtoolsTabId,
+          );
+          if (callerTabId === null) currentMainDevtoolsLink = link;
+        }
+      }
       currentPanelAudioByTabId = new Map();
       currentHeaderHiddenTabIds = new Set();
       for (const panel of allPanelPayloads) {
@@ -14317,6 +14608,9 @@
   let currentPanelStatusByTabId = new Map();
   let currentPanelAudioByTabId = new Map();
   let currentHeaderHiddenTabIds = new Set();
+  let currentDevtoolsLinkByTabId = new Map();
+  let currentDevtoolsTabIdByPairKey = new Map();
+  let currentMainDevtoolsLink = null;
   let currentPanelLayout = { root: [] };
   let currentPanelLayoutGeometry = null;
   function applyChromeDefaultPanelWidth(widthPx) {

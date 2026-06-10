@@ -70,12 +70,20 @@ Use this shape for new or changed touchpoints:
   address/search bar on `Cmd/Ctrl+L` and `Cmd/Ctrl+T`, routes submitted
   address/search text through Firefox URI fixup, mounts a shared modal toolbar
   scrim as a top-layer manual popover so native toolbar/urlbar controls do not
-  paint above Bento modal scrims, and exposes the chrome-side container behavior
-  that extension code cannot perform directly.
+  paint above Bento modal scrims, opens Firefox DevTools toolboxes in trusted
+  Bento panels from content context-menu inspect commands, and exposes the
+  chrome-side container behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
-  chrome window events, frame focus, title/actor messaging paths, and injected
-  side-panel header/restore-handle chrome elements.
+  chrome window events, frame focus, title/actor messaging paths,
+  `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
+  `DevToolsShim.getToolboxes()`, the
+  `about:devtools-toolbox?type=tab&id=<browserId>&tool=<tool>` URL contract,
+  `gContextMenu.targetIdentifier`, `toolbox.commands.descriptorFront.browserId`,
+  `toolbox.selectTool`, inspector front
+  `getNodeActorFromContentDomReference`, inspector selection `setNodeFront`,
+  accessibility-panel `selectAccessibleForNode`, and injected side-panel
+  header/restore-handle chrome elements.
 - Why this cannot stay extension-only: privileged extension UI cannot directly
   reparent, size, or reconcile Firefox browser panels inside the chrome document
   without a small chrome-side mount and bridge.
@@ -97,7 +105,14 @@ Use this shape for new or changed touchpoints:
   bar, verify sidebar tab and folder `Rename` context-menu actions focus the
   inline field and select its text for immediate typing, verify side-panel and
   sub-panel header hiding/restoration still works from the panel header menu and
-  the restore handle while main-panel headers stay unavailable, run
+  the restore handle while main-panel headers stay unavailable, verify
+  `Inspect in Panel` and `Inspect Accessibility Properties in Panel` appear only
+  when the corresponding stock Firefox context-menu item appears, open a
+  page-hosted DevTools toolbox in an adjacent Bento panel, select the clicked
+  node, coexist with the stock docked toolbox, reuse the existing pair for the
+  same caller and inspected tab, replace the single main-content pair when a
+  different main tab is inspected, and close ephemeral toolbox tabs on caller
+  removal, inspected-tab closure, and restart, run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase.
 - Rollback or migration notes: keep fallback behavior extension-driven where

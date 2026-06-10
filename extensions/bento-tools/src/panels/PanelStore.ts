@@ -9,6 +9,7 @@ import {
   cloneLayout,
   containsPanel,
   emptyLayout,
+  findOrphanedDevtoolsLinks,
   fillChooser,
   fromPersistenceLayout,
   getPanelLayoutStatus,
@@ -16,10 +17,12 @@ import {
   getPanelStatusMap,
   getRootNodeIds,
   getVisiblePanelIds,
+  insertDevtoolsPanel,
   insertPanelAt,
   insertPanelAtRestoreLocation,
   migrateLegacyEntriesToPersistence,
   movePanel,
+  normalizeDevtoolsAdjacency,
   panelKeysForLayout,
   removePanel,
   removePanelWithDescendants,
@@ -36,6 +39,7 @@ import {
   type PanelPersistenceWorkspaceLayout,
   type PanelRestoreLocation,
   type WorkspacePanelLayout,
+  type DevtoolsLink,
 } from './PanelLayout';
 import { Persistence, load } from './Persistence';
 
@@ -63,6 +67,7 @@ export class PanelStore {
   #headerHiddenByTabId = new Map<number, true>();
   #mainWidthByWorkspace = new Map<string, number>();
   #stripScrollByWorkspace = new Map<string, number>();
+  #devtoolsLinksByWorkspace = new Map<string, DevtoolsLink[]>();
   #persistence = new Persistence();
   #persistedWorkspaces = new Map<string, PersistedWorkspacePanels>();
   #panelRemovedListeners = new Set<PanelRemovedListener>();
@@ -176,6 +181,49 @@ export class PanelStore {
     return toSyncLayout(workspaceId ? this.#layoutByWorkspace.get(workspaceId) : undefined);
   }
 
+  getDevtoolsLinks(workspaceId: string | null): DevtoolsLink[] {
+    if (!workspaceId) return [];
+    return (this.#devtoolsLinksByWorkspace.get(workspaceId) ?? []).map((link) => ({ ...link }));
+  }
+
+  isDevtoolsPanel(workspaceId: string | null, tabId: number): boolean {
+    if (!workspaceId) return false;
+    return (this.#devtoolsLinksByWorkspace.get(workspaceId) ?? []).some(
+      (link) => link.devtoolsTabId === tabId,
+    );
+  }
+
+  findDevtoolsLink(
+    workspaceId: string | null,
+    callerTabId: number | null,
+    inspectedTabId: number,
+  ): DevtoolsLink | undefined {
+    if (!workspaceId) return undefined;
+    const link = (this.#devtoolsLinksByWorkspace.get(workspaceId) ?? []).find(
+      (candidate) =>
+        candidate.callerTabId === callerTabId && candidate.inspectedTabId === inspectedTabId,
+    );
+    return link ? { ...link } : undefined;
+  }
+
+  findMainDevtoolsLink(workspaceId: string | null): DevtoolsLink | undefined {
+    if (!workspaceId) return undefined;
+    const link = (this.#devtoolsLinksByWorkspace.get(workspaceId) ?? []).find(
+      (candidate) => candidate.callerTabId === null,
+    );
+    return link ? { ...link } : undefined;
+  }
+
+  findLinksForInspectedTab(tabId: number): DevtoolsLink[] {
+    const out: DevtoolsLink[] = [];
+    for (const links of this.#devtoolsLinksByWorkspace.values()) {
+      for (const link of links) {
+        if (link.inspectedTabId === tabId) out.push({ ...link });
+      }
+    }
+    return out;
+  }
+
   getVisiblePanelIds(workspaceId: string | null): number[] {
     if (!workspaceId) return [];
     return getVisiblePanelIds(this.#layoutByWorkspace.get(workspaceId));
@@ -234,7 +282,7 @@ export class PanelStore {
     resolveUrl: (tabId: number) => Promise<string | undefined>,
   ): Promise<PanelPersistenceSnapshot> {
     const layout = this.#layoutByWorkspace.get(workspaceId);
-    const keys = panelKeysForLayout(layout);
+    const keys = this.#panelKeysForPersistence(workspaceId, layout);
     const entries: PanelPersistenceSnapshot['entries'] = [];
     for (const [tabId, panelKey] of keys) {
       const url = await resolveUrl(tabId);
@@ -256,14 +304,20 @@ export class PanelStore {
   add(workspaceId: string, tabId: number): boolean {
     const layout = this.#layoutForMutation(workspaceId);
     const changed = addPanel(layout, tabId);
-    if (changed) this.#schedulePersist();
+    if (changed) {
+      this.#normalizeDevtools(workspaceId);
+      this.#schedulePersist();
+    }
     return changed;
   }
 
   insertAt(workspaceId: string, tabId: number, position: number): boolean {
     const layout = this.#layoutForMutation(workspaceId);
     const changed = insertPanelAt(layout, tabId, position);
-    if (changed) this.#schedulePersist();
+    if (changed) {
+      this.#normalizeDevtools(workspaceId);
+      this.#schedulePersist();
+    }
     return changed;
   }
 
@@ -274,8 +328,34 @@ export class PanelStore {
   ): boolean {
     const layout = this.#layoutForMutation(workspaceId);
     const changed = insertPanelAtRestoreLocation(layout, tabId, location);
-    if (changed) this.#schedulePersist();
+    if (changed) {
+      this.#normalizeDevtools(workspaceId);
+      this.#schedulePersist();
+    }
     return changed;
+  }
+
+  addDevtoolsPanel(
+    workspaceId: string,
+    tabId: number,
+    callerTabId: number | null,
+    inspectedTabId: number,
+  ): boolean {
+    if (!Number.isFinite(tabId) || !Number.isFinite(inspectedTabId)) return false;
+    if (callerTabId !== null && !this.containsPanel(workspaceId, callerTabId)) return false;
+    const existing = this.findDevtoolsLink(workspaceId, callerTabId, inspectedTabId);
+    if (existing) return existing.devtoolsTabId === tabId;
+    const layout = this.#layoutForMutation(workspaceId);
+    const changed = insertDevtoolsPanel(layout, tabId, callerTabId);
+    if (!changed) return false;
+    this.#devtoolsLinksForMutation(workspaceId).push({
+      devtoolsTabId: tabId,
+      callerTabId,
+      inspectedTabId,
+    });
+    this.#normalizeDevtools(workspaceId);
+    this.#schedulePersist();
+    return true;
   }
 
   restorePersistedLayout(
@@ -299,7 +379,7 @@ export class PanelStore {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
 
-    const keys = panelKeysForLayout(layout);
+    const keys = this.#panelKeysForPersistence(workspaceId, layout);
     const entries: PersistedPanelEntry[] = [];
     const keptKeysByTabId = new Map<number, string>();
     for (const [tabId, panelKey] of keys) {
@@ -336,8 +416,10 @@ export class PanelStore {
   remove(workspaceId: string, tabId: number): boolean {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
+    const wasDevtools = this.isDevtoolsPanel(workspaceId, tabId);
     const changed = removePanel(layout, tabId);
     if (!changed) return false;
+    if (wasDevtools) this.#removeDevtoolsLinksForDevtoolsTab(workspaceId, tabId);
     if (layout.root.length === 0) this.#layoutByWorkspace.delete(workspaceId);
     if (this.findWorkspacesContainingTab(tabId).length === 0) {
       this.#widthByTabId.delete(tabId);
@@ -352,7 +434,9 @@ export class PanelStore {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return [];
     if (!containsPanel(layout, tabId)) return [];
+    const wasDevtools = this.isDevtoolsPanel(workspaceId, tabId);
     const victims = removePanelWithDescendants(layout, tabId);
+    if (wasDevtools) this.#removeDevtoolsLinksForDevtoolsTab(workspaceId, tabId);
     if (layout.root.length === 0) this.#layoutByWorkspace.delete(workspaceId);
     if (this.findWorkspacesContainingTab(tabId).length === 0) {
       this.#widthByTabId.delete(tabId);
@@ -362,6 +446,9 @@ export class PanelStore {
       if (this.findWorkspacesContainingTab(victim).length === 0) {
         this.#widthByTabId.delete(victim);
         this.#headerHiddenByTabId.delete(victim);
+      }
+      if (this.isDevtoolsPanel(workspaceId, victim)) {
+        this.#removeDevtoolsLinksForDevtoolsTab(workspaceId, victim);
       }
       this.#emitPanelRemoved(workspaceId, victim);
     }
@@ -381,6 +468,7 @@ export class PanelStore {
     }
     const victims = layout ? removeWorkspace(layout) : [];
     this.#layoutByWorkspace.delete(workspaceId);
+    this.#devtoolsLinksByWorkspace.delete(workspaceId);
     for (const tabId of victims) {
       if (this.findWorkspacesContainingTab(tabId).length === 0) {
         this.#widthByTabId.delete(tabId);
@@ -396,21 +484,29 @@ export class PanelStore {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
     const changed = reorderRootNodes(layout, rootNodeIds);
-    if (changed) this.#schedulePersist();
+    if (changed) {
+      this.#normalizeDevtools(workspaceId);
+      this.#schedulePersist();
+    }
     return changed;
   }
 
   movePanel(workspaceId: string, tabId: number, target: PanelLayoutMoveTarget): boolean {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
+    if (this.isDevtoolsPanel(workspaceId, tabId) && target.type !== 'root') return false;
     const changed = movePanel(layout, tabId, target, {
       horizontalGroupId: target.type === 'horizontal' ? this.#newLayoutId('horizontal') : undefined,
     });
-    if (changed) this.#flushPersist();
+    if (changed) {
+      this.#normalizeDevtools(workspaceId);
+      this.#flushPersist();
+    }
     return changed;
   }
 
   subdivide(workspaceId: string, tabId: number): boolean {
+    if (this.isDevtoolsPanel(workspaceId, tabId)) return false;
     const layout = this.#layoutForMutation(workspaceId);
     const changed = subdividePanel(layout, tabId, {
       groupId: this.#newLayoutId('vertical'),
@@ -423,6 +519,7 @@ export class PanelStore {
   splitTopPanel(workspaceId: string, tabId: number, newTabId: number): boolean {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
+    if (this.isDevtoolsPanel(workspaceId, tabId)) return false;
     const changed = splitTopPanel(layout, tabId, newTabId, {
       horizontalGroupId: this.#newLayoutId('horizontal'),
     });
@@ -433,6 +530,7 @@ export class PanelStore {
   splitBottomPanel(workspaceId: string, tabId: number, newTabId: number): boolean {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
+    if (this.isDevtoolsPanel(workspaceId, tabId)) return false;
     const changed = splitBottomPanel(layout, tabId, newTabId, {
       horizontalGroupId: this.#newLayoutId('horizontal'),
     });
@@ -448,6 +546,7 @@ export class PanelStore {
   ): boolean {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return false;
+    if (tabIds.some((tabId) => this.isDevtoolsPanel(workspaceId, tabId))) return false;
     const changed = fillChooser(layout, chooserId, mode, tabIds, {
       horizontalGroupId: mode === 'dual' ? this.#newLayoutId('horizontal') : undefined,
     });
@@ -462,10 +561,14 @@ export class PanelStore {
     const victims = removeVerticalGroup(layout, groupId);
     const changed = before !== JSON.stringify(layout.root);
     if (!changed) return [];
+    this.#normalizeDevtools(workspaceId);
     for (const victim of victims) {
       if (this.findWorkspacesContainingTab(victim).length === 0) {
         this.#widthByTabId.delete(victim);
         this.#headerHiddenByTabId.delete(victim);
+      }
+      if (this.isDevtoolsPanel(workspaceId, victim)) {
+        this.#removeDevtoolsLinksForDevtoolsTab(workspaceId, victim);
       }
       this.#emitPanelRemoved(workspaceId, victim);
     }
@@ -476,10 +579,35 @@ export class PanelStore {
   breakOut(workspaceId: string, tabId: number): BreakOutPanelResult | undefined {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     if (!layout) return undefined;
+    if (this.isDevtoolsPanel(workspaceId, tabId)) return undefined;
     const result = breakOutPanel(layout, tabId);
     if (!result) return undefined;
+    this.#normalizeDevtools(workspaceId);
     this.#schedulePersist();
     return { promotedTabId: result.promotedTabId };
+  }
+
+  takeOrphanedDevtoolsTabs(workspaceId: string): Set<number> {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    const links = this.#devtoolsLinksByWorkspace.get(workspaceId) ?? [];
+    const orphans = findOrphanedDevtoolsLinks(layout, links);
+    const tabsToClose = new Set<number>();
+    if (orphans.length === 0) return tabsToClose;
+    for (const link of orphans) {
+      tabsToClose.add(link.devtoolsTabId);
+      if (layout) removePanel(layout, link.devtoolsTabId);
+    }
+    const orphanIds = new Set(orphans.map((link) => link.devtoolsTabId));
+    const kept = links.filter((link) => !orphanIds.has(link.devtoolsTabId));
+    if (kept.length > 0) this.#devtoolsLinksByWorkspace.set(workspaceId, kept);
+    else this.#devtoolsLinksByWorkspace.delete(workspaceId);
+    if (layout?.root.length === 0) this.#layoutByWorkspace.delete(workspaceId);
+    for (const tabId of tabsToClose) {
+      this.#widthByTabId.delete(tabId);
+      this.#headerHiddenByTabId.delete(tabId);
+    }
+    this.#schedulePersist();
+    return tabsToClose;
   }
 
   setGroupRatio(groupId: string, ratio: number): void {
@@ -512,6 +640,42 @@ export class PanelStore {
     const created = emptyLayout();
     this.#layoutByWorkspace.set(workspaceId, created);
     return created;
+  }
+
+  #devtoolsLinksForMutation(workspaceId: string): DevtoolsLink[] {
+    let links = this.#devtoolsLinksByWorkspace.get(workspaceId);
+    if (!links) {
+      links = [];
+      this.#devtoolsLinksByWorkspace.set(workspaceId, links);
+    }
+    return links;
+  }
+
+  #normalizeDevtools(workspaceId: string): boolean {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    const links = this.#devtoolsLinksByWorkspace.get(workspaceId);
+    if (!layout || !links || links.length === 0) return false;
+    return normalizeDevtoolsAdjacency(layout, links);
+  }
+
+  #removeDevtoolsLinksForDevtoolsTab(workspaceId: string, tabId: number): void {
+    const links = this.#devtoolsLinksByWorkspace.get(workspaceId);
+    if (!links || links.length === 0) return;
+    const kept = links.filter((link) => link.devtoolsTabId !== tabId);
+    if (kept.length === links.length) return;
+    if (kept.length > 0) this.#devtoolsLinksByWorkspace.set(workspaceId, kept);
+    else this.#devtoolsLinksByWorkspace.delete(workspaceId);
+  }
+
+  #panelKeysForPersistence(
+    workspaceId: string,
+    layout: WorkspacePanelLayout | undefined,
+  ): Map<number, string> {
+    const keys = panelKeysForLayout(layout);
+    for (const link of this.#devtoolsLinksByWorkspace.get(workspaceId) ?? []) {
+      keys.delete(link.devtoolsTabId);
+    }
+    return keys;
   }
 
   #newLayoutId(kind: string): string {

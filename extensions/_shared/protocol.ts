@@ -283,6 +283,12 @@ export interface PanelLayoutSync {
   root: PanelLayoutSyncRootNode[];
 }
 
+export interface DevtoolsPanelLinkSync {
+  devtoolsTabId: number;
+  callerTabId: number | null;
+  inspectedTabId: number;
+}
+
 export type PanelLayoutSyncRootNode = PanelLayoutSyncPanelNode | PanelLayoutSyncVerticalGroupNode;
 
 export type PanelLayoutSyncVerticalTopNode =
@@ -436,6 +442,7 @@ export type Action =
    * Multi-panel: each workspace can have arbitrary N panels, scrolled
    * horizontally if they overflow. */
   | { type: 'panel/add'; id: number }
+  | { type: 'panel/addDevtools'; tabId: number; forTabId: number | null; inspectedTabId: number }
   /** Focus an existing side panel. Used by chrome-adjacent UI such as the
    * command palette: tools activates the panel's workspace for the source
    * window, then emits panels/sync with scrollToPanelTabId so chrome scrolls
@@ -748,6 +755,7 @@ export type Event =
       /** Snapshot of saved-panel bookmark options for chrome-owned surfaces
        * outside the React shell iframe, such as the subdivision chooser. */
       savedPanelItems?: SavedPanelEntry[];
+      devtoolsPairs?: DevtoolsPanelLinkSync[];
       /** One-shot chrome scroll target for a panel that was just created
        * by an explicit user action. Used when panel creation races chrome
        * tab resolution: chrome retries until the panel element exists. */

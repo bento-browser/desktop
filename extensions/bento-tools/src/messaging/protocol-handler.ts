@@ -15,7 +15,11 @@ import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BackupStore } from '../backup/BackupStore';
-import { clearPanelMarker } from '../panels/SessionMarker';
+import {
+  clearDevtoolsPanelMarker,
+  clearPanelMarker,
+  setDevtoolsPanelMarker,
+} from '../panels/SessionMarker';
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
 import { searchAddressResults } from '../search/AddressSearch';
@@ -338,12 +342,24 @@ async function closeTabAsRemoved(
   options: { delayMs?: number; label?: string; clearPanelMarker?: boolean } = {},
 ): Promise<void> {
   await ctx.tabs.markClosing(tabId);
-  if (options.clearPanelMarker) void clearPanelMarker(tabId);
+  if (options.clearPanelMarker) {
+    void clearPanelMarker(tabId);
+    void clearDevtoolsPanelMarker(tabId);
+  }
   const start = () => removeMarkedTabWithRetries(tabId, options.label ?? 'tab/close');
   if (typeof options.delayMs === 'number' && options.delayMs > 0) {
     setTimeout(start, options.delayMs);
   } else {
     start();
+  }
+}
+
+function closeDevtoolsTabs(ctx: HandlerContext, tabIds: Set<number>, label: string): void {
+  for (const tabId of tabIds) {
+    void closeTabAsRemoved(ctx, tabId, {
+      label,
+      clearPanelMarker: true,
+    });
   }
 }
 
@@ -872,6 +888,19 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       return;
     }
+    case 'panel/addDevtools': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.addDevtoolsPanel(wsId, action.tabId, action.forTabId, action.inspectedTabId)) {
+        ctx.tabs.assignWorkspaceEagerly(action.tabId, wsId);
+        void setDevtoolsPanelMarker(action.tabId);
+        const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+        if (defaultWidth > 0) ctx.panels.setWidth(action.tabId, defaultWidth);
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId, { scrollToPanelTabId: action.tabId });
+      }
+      return;
+    }
     case 'panel/focus': {
       if (!ctx.workspaces.has(action.workspaceId)) return;
       if (
@@ -968,10 +997,23 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'panel/remove': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
+      if (ctx.panels.isDevtoolsPanel(wsId, action.id)) {
+        if (ctx.panels.remove(wsId, action.id)) {
+          void clearPanelMarker(action.id);
+          void closeTabAsRemoved(ctx, action.id, {
+            label: 'panel/remove devtools',
+            clearPanelMarker: true,
+          });
+          ctx.syncPanelMarkers(wsId);
+          ctx.emitPanelsSync(wsId);
+        }
+        return;
+      }
       const subVictims = ctx.panels.removeWithSubPanels(wsId, action.id);
       for (const spId of subVictims) {
         void closeTabAsRemoved(ctx, spId, { label: 'panel/remove sub-panel' });
       }
+      closeDevtoolsTabs(ctx, ctx.panels.takeOrphanedDevtoolsTabs(wsId), 'panel/remove devtools');
       void clearPanelMarker(action.id);
       ctx.syncPanelMarkers(wsId);
       ctx.emitPanelsSync(wsId);
@@ -989,13 +1031,17 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (!wsId) return;
       const current = ctx.panels.getPanels(wsId);
       if (current.length === 0) return;
+      const devtoolsTabsToClose = new Set<number>();
       for (const id of current) {
+        if (ctx.panels.isDevtoolsPanel(wsId, id)) devtoolsTabsToClose.add(id);
         const subVictims = ctx.panels.removeWithSubPanels(wsId, id);
         for (const spId of subVictims) {
           void closeTabAsRemoved(ctx, spId, { label: 'panels/clear sub-panel' });
         }
         void clearPanelMarker(id);
       }
+      for (const id of ctx.panels.takeOrphanedDevtoolsTabs(wsId)) devtoolsTabsToClose.add(id);
+      closeDevtoolsTabs(ctx, devtoolsTabsToClose, 'panels/clear devtools');
       ctx.emitPanelsSync(wsId);
       return;
     }

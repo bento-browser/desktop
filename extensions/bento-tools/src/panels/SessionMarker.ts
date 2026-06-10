@@ -13,6 +13,7 @@
 // Mirrors the TabRegistry's WORKSPACE_SESSION_KEY pattern.
 
 const PANEL_SESSION_KEY = 'bento.isPanel';
+const DEVTOOLS_PANEL_SESSION_KEY = 'bento.isDevtoolsPanel';
 const SESSION_READ_RETRY_DELAY_MS = 50;
 
 export interface PanelMarker {
@@ -49,6 +50,31 @@ export async function clearPanelMarker(tabId: number): Promise<void> {
   } catch {
     // removeTabValue throws if the key isn't set — safe to ignore;
     // the goal (no marker present) is satisfied either way.
+  }
+}
+
+export async function setDevtoolsPanelMarker(tabId: number): Promise<void> {
+  try {
+    await browser.sessions.setTabValue(tabId, DEVTOOLS_PANEL_SESSION_KEY, '1');
+  } catch (err) {
+    console.warn('[bento-tools] setDevtoolsPanelMarker failed:', tabId, err);
+  }
+}
+
+export async function clearDevtoolsPanelMarker(tabId: number): Promise<void> {
+  try {
+    await browser.sessions.removeTabValue(tabId, DEVTOOLS_PANEL_SESSION_KEY);
+  } catch {
+    // Desired end state is no marker.
+  }
+}
+
+export async function readDevtoolsPanelMarker(tabId: number): Promise<boolean> {
+  try {
+    const value = await browser.sessions.getTabValue(tabId, DEVTOOLS_PANEL_SESSION_KEY);
+    return value !== undefined && value !== null;
+  } catch {
+    return false;
   }
 }
 

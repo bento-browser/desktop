@@ -103,3 +103,83 @@ describe('PanelStore headerHidden', () => {
     expect(store.getHeaderHidden(2)).toBe(false);
   });
 });
+
+describe('PanelStore devtools panels', () => {
+  beforeEach(() => {
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({})),
+          set: vi.fn(async () => undefined),
+          remove: vi.fn(async () => undefined),
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('inserts devtools panels adjacent to callers and normalizes after reorder', () => {
+    const store = new PanelStore();
+    store.add('ws', 1);
+    store.add('ws', 2);
+
+    expect(store.addDevtoolsPanel('ws', 99, 1, 1)).toBe(true);
+    expect(store.getVisiblePanelIds('ws')).toEqual([1, 99, 2]);
+
+    expect(store.reorderRootNodes('ws', ['panel:2', 'panel:99', 'panel:1'])).toBe(true);
+    expect(store.getVisiblePanelIds('ws')).toEqual([2, 99, 1]);
+  });
+
+  it('rejects non-root moves and layout mutations for devtools panels', () => {
+    const store = new PanelStore();
+    store.add('ws', 1);
+    store.subdivide('ws', 1);
+    const ids = subdivisionIds(store);
+    store.fillChooser('ws', ids.chooserId, 'single', [2]);
+    store.addDevtoolsPanel('ws', 99, 2, 2);
+
+    expect(store.movePanel('ws', 99, { type: 'chooser', chooserId: ids.chooserId })).toBe(false);
+    expect(store.subdivide('ws', 99)).toBe(false);
+    expect(store.splitTopPanel('ws', 99, 100)).toBe(false);
+    expect(store.splitBottomPanel('ws', 99, 100)).toBe(false);
+  });
+
+  it('excludes devtools panels from persistence snapshots', async () => {
+    const store = new PanelStore();
+    store.add('ws', 1);
+    store.addDevtoolsPanel('ws', 99, 1, 1);
+
+    await expect(
+      store.buildPanelPersistenceSnapshot('ws', async (tabId) => `https://${tabId}.test/`),
+    ).resolves.toMatchObject({
+      entries: [{ panelKey: 'panel-0', tabId: 1, url: 'https://1.test/' }],
+      layout: { root: [{ kind: 'panel', panelKey: 'panel-0' }] },
+    });
+  });
+
+  it('returns orphaned devtools tabs once when a caller is removed', () => {
+    const store = new PanelStore();
+    store.add('ws', 1);
+    store.addDevtoolsPanel('ws', 99, 1, 1);
+
+    expect(store.removeWithSubPanels('ws', 1)).toEqual([]);
+    expect(store.takeOrphanedDevtoolsTabs('ws')).toEqual(new Set([99]));
+    expect(store.takeOrphanedDevtoolsTabs('ws')).toEqual(new Set());
+  });
+
+  it('tracks main devtools links independently by inspected tab', () => {
+    const store = new PanelStore();
+
+    expect(store.addDevtoolsPanel('ws', 99, null, 10)).toBe(true);
+    expect(store.findMainDevtoolsLink('ws')).toEqual({
+      devtoolsTabId: 99,
+      callerTabId: null,
+      inspectedTabId: 10,
+    });
+    expect(store.findDevtoolsLink('ws', null, 10)?.devtoolsTabId).toBe(99);
+    expect(store.findDevtoolsLink('ws', null, 11)).toBeUndefined();
+  });
+});

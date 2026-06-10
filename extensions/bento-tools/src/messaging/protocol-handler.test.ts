@@ -141,6 +141,43 @@ describe('protocol handler tab mute controls', () => {
   });
 });
 
+describe('protocol handler devtools panels', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      sessions: {
+        setTabValue: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+  });
+
+  it('adds a trusted devtools tab as an ephemeral panel', async () => {
+    const ctx = createCloseContext({
+      settings: {
+        snapshot: vi.fn().mockReturnValue({ defaultPanelWidthPx: 640 }),
+      } as unknown as HandlerContext['settings'],
+      panels: {
+        addDevtoolsPanel: vi.fn().mockReturnValue(true),
+        setWidth: vi.fn(),
+      } as unknown as HandlerContext['panels'],
+      tabs: {
+        assignWorkspaceEagerly: vi.fn(),
+      } as unknown as HandlerContext['tabs'],
+    });
+
+    handle({ type: 'panel/addDevtools', tabId: 99, forTabId: 1, inspectedTabId: 1 }, ctx);
+
+    expect(ctx.panels.addDevtoolsPanel).toHaveBeenCalledWith('ws-1', 99, 1, 1);
+    expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(99, 'ws-1');
+    expect(ctx.panels.setWidth).toHaveBeenCalledWith(99, 640);
+    expect(ctx.syncPanelMarkers).toHaveBeenCalledWith('ws-1');
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', { scrollToPanelTabId: 99 });
+    await vi.waitFor(() => {
+      expect(browser.sessions.setTabValue).toHaveBeenCalledWith(99, 'bento.isDevtoolsPanel', '1');
+    });
+  });
+});
+
 describe('protocol handler batch tab workspace moves', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

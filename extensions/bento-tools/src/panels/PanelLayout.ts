@@ -17,6 +17,12 @@ export interface PanelLeafNode {
   tabId: number;
 }
 
+export interface DevtoolsLink {
+  devtoolsTabId: number;
+  callerTabId: number | null;
+  inspectedTabId: number;
+}
+
 export interface VerticalGroupNode {
   kind: 'group';
   axis: 'vertical';
@@ -250,6 +256,19 @@ export function insertPanelAt(
   return true;
 }
 
+export function insertDevtoolsPanel(
+  layout: WorkspacePanelLayout,
+  tabId: number,
+  callerTabId: number | null,
+): boolean {
+  if (!Number.isFinite(tabId) || containsPanel(layout, tabId)) return false;
+  const callerIndex = callerTabId === null ? -1 : findRootIndexContaining(layout, callerTabId);
+  const position =
+    callerTabId === null ? 0 : callerIndex >= 0 ? callerIndex + 1 : layout.root.length;
+  layout.root.splice(clampIndex(position, layout.root.length), 0, panelNode(tabId));
+  return true;
+}
+
 export function insertPanelAtRestoreLocation(
   layout: WorkspacePanelLayout,
   tabId: number,
@@ -325,6 +344,56 @@ export function reorderRootNodes(layout: WorkspacePanelLayout, rootNodeIds: stri
   if (next.every((node, index) => node === layout.root[index])) return false;
   layout.root = next;
   return true;
+}
+
+export function normalizeDevtoolsAdjacency(
+  layout: WorkspacePanelLayout,
+  links: readonly DevtoolsLink[],
+): boolean {
+  let changed = false;
+  for (const link of links) {
+    if (!Number.isFinite(link.devtoolsTabId)) continue;
+    const devtoolsIndex = findRootLeafIndex(layout, link.devtoolsTabId);
+    const containedIndex = findRootIndexContaining(layout, link.devtoolsTabId);
+    if (containedIndex < 0) continue;
+
+    const callerIndex =
+      link.callerTabId === null ? -1 : findRootIndexContaining(layout, link.callerTabId);
+    if (link.callerTabId !== null && callerIndex < 0) continue;
+
+    const isRootLeaf = devtoolsIndex >= 0;
+    if (isRootLeaf) {
+      if (link.callerTabId === null) {
+        if (devtoolsIndex === 0) continue;
+      } else if (devtoolsIndex === callerIndex - 1 || devtoolsIndex === callerIndex + 1) {
+        continue;
+      }
+    }
+
+    removePanel(layout, link.devtoolsTabId);
+    const nextCallerIndex =
+      link.callerTabId === null ? -1 : findRootIndexContaining(layout, link.callerTabId);
+    if (link.callerTabId !== null && nextCallerIndex < 0) {
+      changed = true;
+      continue;
+    }
+    const position = link.callerTabId === null ? 0 : nextCallerIndex + 1;
+    layout.root.splice(clampIndex(position, layout.root.length), 0, panelNode(link.devtoolsTabId));
+    changed = true;
+  }
+  return changed;
+}
+
+export function findOrphanedDevtoolsLinks(
+  layout: WorkspacePanelLayout | undefined,
+  links: readonly DevtoolsLink[],
+): DevtoolsLink[] {
+  if (!layout) return [...links];
+  return links.filter((link) => {
+    if (!containsPanel(layout, link.devtoolsTabId)) return true;
+    if (link.callerTabId === null) return false;
+    return !containsPanel(layout, link.callerTabId);
+  });
 }
 
 export function movePanel(
@@ -756,6 +825,10 @@ function findRootIndexContaining(layout: WorkspacePanelLayout, tabId: number): n
     if (ids.includes(tabId)) return i;
   }
   return -1;
+}
+
+function findRootLeafIndex(layout: WorkspacePanelLayout, tabId: number): number {
+  return layout.root.findIndex((node) => node.kind === 'panel' && node.tabId === tabId);
 }
 
 function findGroupById(

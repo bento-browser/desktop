@@ -16,10 +16,13 @@ import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
 import { BackupStore } from './backup/BackupStore';
 import {
+  clearDevtoolsPanelMarker,
   clearPanelMarker,
+  readDevtoolsPanelMarker,
   readPanelMarker,
   readPanelMarkerWithRetries,
   setPanelMarker,
+  setDevtoolsPanelMarker,
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
@@ -43,6 +46,35 @@ async function sweepStaleFolderIds(): Promise<void> {
     if (!tab.folderId) continue;
     if (tabFolders.has(tab.folderId)) continue;
     await tabs.setFolder(tab.id, null);
+  }
+}
+
+async function sweepRestoredDevtoolsPanels(): Promise<void> {
+  const liveTabs = await browser.tabs.query({});
+  for (const tab of liveTabs) {
+    if (typeof tab.id !== 'number') continue;
+    const isDevtoolsUrl = tab.url?.startsWith('about:devtools-toolbox');
+    const hasMarker = await readDevtoolsPanelMarker(tab.id);
+    if (!isDevtoolsUrl && !hasMarker) continue;
+    await tabs.markClosing(tab.id);
+    void clearPanelMarker(tab.id);
+    void clearDevtoolsPanelMarker(tab.id);
+    browser.tabs
+      .remove(tab.id)
+      .catch((err) =>
+        console.warn('[bento-tools] restored devtools panel sweep failed:', tab.id, err),
+      );
+  }
+}
+
+function closeDevtoolsPanelTabs(tabIds: Iterable<number>, label: string): void {
+  for (const tabId of new Set(tabIds)) {
+    void tabs.markClosing(tabId);
+    void clearPanelMarker(tabId);
+    void clearDevtoolsPanelMarker(tabId);
+    browser.tabs
+      .remove(tabId)
+      .catch((err) => console.warn(`[bento-tools] ${label} failed:`, tabId, err));
   }
 }
 
@@ -600,6 +632,7 @@ async function emitPanelsSync(
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
     savedPanelItems?: typeof savedPanelItems;
+    devtoolsPairs?: ReturnType<typeof panels.getDevtoolsLinks>;
     scrollToPanelTabId?: number;
     layout: ReturnType<typeof panels.getPanelLayoutSync>;
     panelStatusByTabId: ReturnType<typeof panels.getPanelStatusMap>;
@@ -610,6 +643,7 @@ async function emitPanelsSync(
     panels: valid,
     savedPanelCount,
     savedPanelItems,
+    devtoolsPairs: panels.getDevtoolsLinks(workspaceId),
     layout: panels.getPanelLayoutSync(workspaceId),
     panelStatusByTabId: panels.getPanelStatusMap(workspaceId),
   };
@@ -895,6 +929,7 @@ const bootReady = Promise.all([
   // those already-present tabs into PanelStore here; otherwise the stale
   // marker sweep below would clear the markers and essentials would stay
   // as ordinary workspace tabs instead of pinned panels.
+  await sweepRestoredDevtoolsPanels();
   await restorePanelsFromSessionMarkersAtBoot();
   // Ensure Firefox's selectedTab belongs to the active workspace.
   // SessionStore restores whichever tab was last selected at shutdown,
@@ -1081,9 +1116,20 @@ tabs.onDeltas((deltas) => {
       continue;
     }
     if (d.kind === 'removed') {
+      closeDevtoolsPanelTabs(
+        panels.findLinksForInspectedTab(d.id).map((link) => link.devtoolsTabId),
+        'inspected-tab devtools close',
+      );
       const affected = panels.findWorkspacesContainingTab(d.id);
       for (const wsId of affected) {
+        const wasDevtools = panels.isDevtoolsPanel(wsId, d.id);
         panels.remove(wsId, d.id);
+        if (!wasDevtools) {
+          closeDevtoolsPanelTabs(
+            panels.takeOrphanedDevtoolsTabs(wsId),
+            'panel-removed devtools close',
+          );
+        }
         // Remaining panels' indexes shifted — rewrite their markers
         // so a future Cmd+Shift+T lands at the correct slot.
         syncPanelMarkersForWorkspace(wsId);
@@ -1339,6 +1385,12 @@ void (async () => {
 function syncPanelMarkersForWorkspace(workspaceId: string): void {
   const list = panels.getVisiblePanelIds(workspaceId);
   for (const tabId of list) {
+    if (panels.isDevtoolsPanel(workspaceId, tabId)) {
+      void clearPanelMarker(tabId);
+      void setDevtoolsPanelMarker(tabId);
+      continue;
+    }
+    void clearDevtoolsPanelMarker(tabId);
     const location = panels.getPanelRestoreLocation(workspaceId, tabId);
     void setPanelMarker(tabId, workspaceId, location);
   }
