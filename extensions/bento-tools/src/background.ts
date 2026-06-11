@@ -40,6 +40,33 @@ const tabFolders = new TabFolderStore();
 const savedPanels = new SavedPanelsStore();
 const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
 
+const preferredActivationTabByWorkspace = new Map<string, number>();
+
+function preferredActivationKey(workspaceId: string, windowId: number | null): string {
+  return `${windowId ?? 'global'}:${workspaceId}`;
+}
+
+function preferWorkspaceActivationTab(
+  workspaceId: string,
+  tabId: number,
+  windowId?: number | null,
+): void {
+  preferredActivationTabByWorkspace.set(
+    preferredActivationKey(workspaceId, typeof windowId === 'number' ? windowId : null),
+    tabId,
+  );
+}
+
+function takePreferredWorkspaceActivationTab(
+  workspaceId: string,
+  windowId: number | null,
+): number | undefined {
+  const key = preferredActivationKey(workspaceId, windowId);
+  const tabId = preferredActivationTabByWorkspace.get(key);
+  preferredActivationTabByWorkspace.delete(key);
+  return tabId;
+}
+
 async function sweepStaleFolderIds(): Promise<void> {
   const snapshot = tabs.snapshot();
   for (const tab of snapshot) {
@@ -1849,6 +1876,7 @@ async function handleWorkspaceActivation(
   const allWsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
   const wsTabs =
     targetWindowId !== null ? allWsTabs.filter((t) => t.windowId === targetWindowId) : allWsTabs;
+  const preferred = takePreferredWorkspaceActivationTab(wsId, targetWindowId);
   if (wsTabs.length === 0 && !restoredParkedTabs) {
     try {
       const created = await browser.tabs.create({
@@ -1869,7 +1897,9 @@ async function handleWorkspaceActivation(
     // cases so the wsTabs[0] branch fires.
     const remembered = lastActiveTabByWorkspace.get(wsId);
     const target =
-      (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) || wsTabs[0]!;
+      (preferred !== undefined && wsTabs.find((t) => t.id === preferred)) ||
+      (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) ||
+      wsTabs[0]!;
     void activateNonPanelTab(target.id, 'activate workspace tab', target.windowId);
   }
 
@@ -1960,6 +1990,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       send,
       emitPanelsSync,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
+      preferWorkspaceActivationTab,
       sourceWindowId,
     });
   });

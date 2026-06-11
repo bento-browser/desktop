@@ -906,15 +906,18 @@ export function TabList({
     [selectedIds, visualTabOrder],
   );
 
-  const handleRunSearchResult = useCallback((result: TabListSearchResult) => {
-    if (result.kind === 'panel') {
-      dispatch({ type: 'panel/focus', workspaceId: result.workspaceId, id: result.id });
-    } else {
-      dispatch({ type: 'tab/activate', id: result.id });
-    }
-    setSearchOpen(false);
-    setSearchQuery('');
-  }, []);
+  const handleRunSearchResult = useCallback(
+    (result: TabListSearchResult) => {
+      if (result.kind === 'panel') {
+        dispatch({ type: 'panel/focus', workspaceId: result.workspaceId, id: result.id });
+      } else {
+        onActivate(result.id);
+      }
+      setSearchOpen(false);
+      setSearchQuery('');
+    },
+    [onActivate],
+  );
 
   const handleCloseSearch = useCallback(() => {
     setSearchOpen(false);

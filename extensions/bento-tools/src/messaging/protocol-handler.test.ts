@@ -24,6 +24,7 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
     send: vi.fn(),
     emitPanelsSync: vi.fn(),
     syncPanelMarkers: vi.fn(),
+    preferWorkspaceActivationTab: vi.fn(),
     sourceWindowId: 1,
     ...overrides,
   } as unknown as HandlerContext;
@@ -521,6 +522,7 @@ describe('protocol handler command palette navigation', () => {
       expect(browser.tabs.update).toHaveBeenCalledWith(42, { active: true });
     });
     expect(ctx.workspaces.activate).toHaveBeenCalledWith('ws-target', 1);
+    expect(ctx.preferWorkspaceActivationTab).toHaveBeenCalledWith('ws-target', 42, 1);
     expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(42, 'bento.isPanel');
   });
 

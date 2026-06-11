@@ -452,6 +452,15 @@ export interface HandlerContext {
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
   syncPanelMarkers: (workspaceId: string) => void;
+  /** Prefer this tab when the workspace activation side effect chooses
+   * the main-slot tab for a just-activated workspace. Used by cross-
+   * workspace tab activation so the activation fallback does not restore
+   * the workspace's previously-active tab over the explicit target. */
+  preferWorkspaceActivationTab: (
+    workspaceId: string,
+    tabId: number,
+    windowId?: number | null,
+  ) => void;
   /** WebExtension windowId of the chrome window whose shell document
    * dispatched the current action. Plumbed via the WireAction `__windowId`
    * envelope. Null for actions that arrived before the shell document
@@ -541,6 +550,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               .catch((err) => console.warn('[bento-tools] tab/activate: focus owner failed:', err));
           }
           return;
+        }
+        if (result === 'activated') {
+          ctx.preferWorkspaceActivationTab(targetWorkspaceId, action.id, ctx.sourceWindowId);
         }
       }
       void activateNonPanelTab(ctx, action.id, 'tab/activate');

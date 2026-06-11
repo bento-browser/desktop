@@ -880,13 +880,31 @@ field plus matching results. This avoids leaving tabs, folders, pinned sections,
 or creation controls visible behind the filtering surface. Clearing the field
 returns the pane to the normal virtualized row path.
 
-Selecting a regular-tab result dispatches `tab/activate`, which lets
-`bento-tools` switch to the target workspace before activating the tab. Selecting
-a panel result dispatches `panel/focus` with the result workspace id so the panel
-strip scroll/focus path stays the source of truth. The result marker color comes
-from the generated workspace theme metadata in
+Selecting a regular-tab result calls `TabList`'s normal `onActivate` prop so it
+uses the same tools dispatch and chrome scroll-to-main sentinel as a visible
+sidebar tab row. Selecting a panel result dispatches `panel/focus` with the
+result workspace id so the panel strip scroll/focus path stays the source of
+truth. The result marker color comes from the generated workspace theme metadata in
 `extensions/bento-shell/src/theme/presets/index.ts`; the active document theme
 must not be mutated to preview search results.
+
+Cross-workspace tab result activation depends on a tools-side preferred-tab
+handoff. `protocol-handler.ts` records the explicitly requested tab through
+`preferWorkspaceActivationTab()` after `WorkspaceStore.activate()` succeeds.
+`background.ts` consumes that preference inside `handleWorkspaceActivation()`
+before falling back to `lastActiveTabByWorkspace` or the first workspace tab.
+
+Load-bearing pitfall: do not remove this handoff or replace sidebar-search tab
+selection with a bare `tab/activate` dispatch that bypasses `TabList.onActivate`.
+Cross-workspace activation emits a workspace `activated` delta, and the
+background workspace-activation handler may run its "restore the workspace's
+last visible tab" fallback in the same turn as the explicit tab activation. If
+the search result is a tab inside a folder in another workspace, that fallback
+can otherwise reactivate an unrelated non-folder tab from the destination
+workspace, leaving the requested folder tab selected in state but not visible in
+the main content slot. Regression check: put a tab inside a folder in workspace
+B, search for it from workspace A, click the result, and confirm workspace B
+opens with that exact folder member in the main content slot.
 
 ## Floating Address Bar
 
