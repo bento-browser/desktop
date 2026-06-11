@@ -124,8 +124,11 @@ The command palette search field and command rows show clear hover, focus, and
 active states so mouse and keyboard navigation both have visible feedback.
 
 The floating address/search bar opens with `Cmd/Ctrl+L` for the current tab and
-`Cmd/Ctrl+T` for a new tab. It floats over the browser content without
-restyling Firefox's native address bar. Results include open normal tabs,
+`Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top address field
+also opens the same floating address/search bar in current-tab mode instead of
+showing Firefox's native suggestion dropdown. Empty input shows recent history.
+It floats over the browser content without restyling Firefox's native address
+bar. Results include open normal tabs,
 open panels, history, bookmarks, and a final search/open row. Submitting a
 current-tab search or URL uses Firefox's URL fixup and default search engine.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc

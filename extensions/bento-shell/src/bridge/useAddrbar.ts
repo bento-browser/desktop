@@ -7,6 +7,7 @@ export const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
 interface OpenMessage {
   kind: 'open';
   mode: AddrbarMode;
+  initialQuery?: string;
 }
 
 type BusMessage = OpenMessage;
@@ -35,12 +36,14 @@ export function signalAddrbarNavigate(value: string): void {
   document.title = `${ADDRBAR_NAVIGATE_PREFIX}_${Date.now()}:${encodeTitlePayload(value)}`;
 }
 
-export function subscribeToAddrbarOpenRequests(handler: (mode: AddrbarMode) => void): () => void {
+export function subscribeToAddrbarOpenRequests(
+  handler: (mode: AddrbarMode, initialQuery?: string) => void,
+): () => void {
   const ch = bus();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'open') handler(data.mode);
+    if (data?.kind === 'open') handler(data.mode, data.initialQuery);
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

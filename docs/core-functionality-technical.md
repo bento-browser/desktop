@@ -122,6 +122,31 @@ restart.
   are ephemeral and their pinned bindings must be refused, removed on close, and
   filtered from storage.
 
+## Floating Address Bar Implementation
+
+`src/browser/base/content/bento-shell-mount.js` owns address overlay visibility.
+`Cmd/Ctrl+L` opens it in current-tab mode, `Cmd/Ctrl+T` opens it in new-tab mode,
+and focus or pointer entry on Firefox's native `#urlbar-input` is intercepted in
+the parent chrome window so Firefox's native suggestions popup is closed and the
+Bento overlay opens instead. Open requests can pass an `initialQuery` through
+the `bento-addrbar-bus` payload; native top-urlbar clicks currently use an empty
+query so the overlay shows recent history.
+
+The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
+initial query with the open version and passes it to
+`components/AddressBar/AddressBar.tsx`, which remounts the Autocomplete root per
+open so the input default value and selected text reset predictably.
+`extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
+recent-history request using `browser.history.search({ text: '', startTime: 0 })`.
+
+### Floating Address Bar Pitfalls
+
+- Keep native top-urlbar interception in chrome, not in the extension frame; the
+  Firefox suggestions popup is created by parent chrome urlbar code before the
+  remote Bento overlay can react.
+- Do not create a blank tab for native-urlbar clicks. They are current-tab
+  edits; only explicit new-tab mode should defer tab creation until commit.
+
 ## Privacy And Search Implementation
 
 Privacy preset metadata, selectable level ids, browser privacy values, and
@@ -1371,7 +1396,7 @@ stays on the outer XUL `vbox` so Enter/Space creates a blank panel.
 `bento-shell-mount.js` uses `.bento-panel--focused` and
 `.bento-panel--cycle-focused` as the source of truth for visible panel focus.
 Those classes paint both the existing panel ring and the focused panel header's
-`--color-60` background/`--color-60-fg` icon treatment. DevTools/content
+`--color-20` background/`--color-20-fg` icon treatment. DevTools/content
 partner panels receive the same classes through `getDevtoolsFocusPartnerElement`,
 so focusing either side of a pair highlights both headers as well as both rings.
 

@@ -75,7 +75,8 @@ Use this shape for new or changed touchpoints:
   chrome-side container behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
-  chrome window events, frame focus, title/actor messaging paths,
+  chrome window events, native `#urlbar-input` pointer/focus events,
+  `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
   `DevToolsShim.getToolboxes()`, the
   `about:devtools-toolbox?type=tab&id=<browserId>&tool=<tool>` URL contract,
@@ -95,8 +96,11 @@ Use this shape for new or changed touchpoints:
   `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
   menus still dispatch tab and workspace actions, verify `Cmd/Ctrl+L` and
   `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
-  handling, verify `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default
-  search-engine submissions, verify native URL bar inset controls and the
+  handling, verify clicking into Firefox's native top address input opens the
+  same Bento floating address bar with recent history suggestions and does not
+  leave the native urlbar suggestions dropdown open, verify
+  `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default search-engine
+  submissions, verify native URL bar inset controls and the
   search-mode switcher popup inherit Bento token colors in light and dark modes,
   verify notification bars such as the popup-blocked banner inherit Bento token
   colors in light and dark modes,

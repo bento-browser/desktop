@@ -210,10 +210,6 @@ export default function AddressBar({
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (!trimmed) {
-      useAddressBarStore.getState().clear();
-      return;
-    }
     const timer = window.setTimeout(() => {
       dispatch({ type: 'addrbar/query', query: trimmed, limit: 8 });
     }, 120);

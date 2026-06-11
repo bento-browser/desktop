@@ -78,9 +78,27 @@ export async function searchAddressResults(
   limit = DEFAULT_LIMIT,
 ): Promise<AddrResult[]> {
   const trimmed = query.trim();
-  if (!trimmed) return [];
   const maxResults = Math.max(1, Math.min(limit, 20));
   const byUrl = new Map<string, AddrResult>();
+
+  if (!trimmed) {
+    const historyItems = await browser.history.search({
+      text: '',
+      startTime: 0,
+      maxResults,
+    });
+
+    return historyItems
+      .filter((item) => !!item.url)
+      .map((item) => ({
+        kind: 'history',
+        url: item.url!,
+        title: titleForUrl(item.title, item.url!),
+        score: historyScore('', item),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults);
+  }
 
   const [historyItems, bookmarkNodes] = await Promise.all([
     browser.history.search({

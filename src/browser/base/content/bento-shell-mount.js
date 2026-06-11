@@ -1002,26 +1002,26 @@
       }
       .bento-panel--focused > .bento-panel-header,
       .bento-panel--cycle-focused > .bento-panel-header {
-        background-color: var(--color-60);
-        border-bottom-color: var(--color-60);
+        background-color: var(--color-20);
+        border-bottom-color: var(--color-20);
       }
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button,
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button {
-        color: var(--color-60-fg);
+        color: var(--color-20-fg);
       }
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--color-60-fg) 14%, transparent);
-        color: var(--color-60-fg);
+        background-color: color-mix(in srgb, var(--color-20-fg) 14%, transparent);
+        color: var(--color-20-fg);
       }
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--color-60-fg) 20%, transparent);
-        color: var(--color-60-fg);
+        background-color: color-mix(in srgb, var(--color-20-fg) 20%, transparent);
+        color: var(--color-20-fg);
       }
       #bento-side-panel-host > [data-bento-panel-tab-id] > browser {
         flex: 1 1 auto;
@@ -2761,7 +2761,7 @@
     return host.style.display !== 'none';
   }
 
-  function showAddrbar(mode) {
+  function showAddrbar(mode, initialQuery = '') {
     currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
     const paletteHost = document.getElementById('bento-palette-host');
     if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
@@ -2778,7 +2778,7 @@
     const frame = document.getElementById('bento-addrbar-frame');
     setTimeout(() => {
       frame?.focus();
-      dispatchAddrbarOpen(currentAddrbarMode);
+      dispatchAddrbarOpen(currentAddrbarMode, initialQuery);
     }, 0);
   }
 
@@ -7429,8 +7429,9 @@
     'addMessageListener("BentoAddrbarOpen", function(msg) {' +
     '  try {' +
     '    var mode = msg.data && msg.data.mode === "newTab" ? "newTab" : "current";' +
+    '    var initialQuery = msg.data && typeof msg.data.initialQuery === "string" ? msg.data.initialQuery : "";' +
     '    var channel = new content.BroadcastChannel("bento-addrbar-bus");' +
-    '    channel.postMessage({ kind: "open", mode: mode });' +
+    '    channel.postMessage({ kind: "open", mode: mode, initialQuery: initialQuery });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
@@ -7493,7 +7494,7 @@
     }
   }
 
-  function dispatchAddrbarOpen(mode) {
+  function dispatchAddrbarOpen(mode, initialQuery = '') {
     const frame = document.getElementById('bento-addrbar-frame');
     if (!frame) return false;
     try {
@@ -7503,7 +7504,7 @@
         mm.loadFrameScript(ADDRBAR_OPEN_FRAME_SCRIPT_URL, true);
         frame._bentoAddrbarOpenScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoAddrbarOpen', { mode });
+      mm.sendAsyncMessage('BentoAddrbarOpen', { mode, initialQuery });
       return true;
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar open dispatch failed:', err);
@@ -15150,6 +15151,43 @@
     );
   }
 
+  function closeNativeUrlbarPopup() {
+    try {
+      window.gURLBar?.view?.close?.();
+    } catch {
+      /* best effort: Firefox urlbar internals vary across versions */
+    }
+  }
+
+  function attachTopUrlbarModalListener() {
+    const input = document.getElementById('urlbar-input');
+    if (!input) {
+      if (document.readyState !== 'complete') {
+        const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+        window.addEventListener(evt, attachTopUrlbarModalListener, { once: true });
+      }
+      return;
+    }
+    if (input.getAttribute('data-bento-addrbar-modal-attached') === '1') return;
+    input.setAttribute('data-bento-addrbar-modal-attached', '1');
+
+    let lastOpenAt = 0;
+    const openFromNativeUrlbar = (event) => {
+      const now = Date.now();
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+      if (now - lastOpenAt < 180) return;
+      lastOpenAt = now;
+      closeNativeUrlbarPopup();
+      input.blur?.();
+      showAddrbar('current', '');
+    };
+
+    input.addEventListener('pointerdown', openFromNativeUrlbar, true);
+    input.addEventListener('focus', openFromNativeUrlbar, true);
+  }
+
   // ─── Cmd/Ctrl+1..9 → activate Nth tab in active workspace ──────────────
   //
   // Firefox's default Cmd+1..9 picks the Nth tab in gBrowser.tabs (a flat
@@ -15683,6 +15721,7 @@
   configureSidePanelOnce();
   attachReloadListener();
   attachAddrbarKeybinding();
+  attachTopUrlbarModalListener();
   attachPaletteKeybinding();
   attachPaletteEscListener();
   attachPaletteCloseListener();

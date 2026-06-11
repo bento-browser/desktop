@@ -34,16 +34,25 @@ function AddressBarApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const [mode, setMode] = useState<AddrbarMode>('current');
+  const [initialQuery, setInitialQuery] = useState('');
   const [openVersion, setOpenVersion] = useState(0);
 
   useEffect(() => {
-    return subscribeToAddrbarOpenRequests((nextMode) => {
+    return subscribeToAddrbarOpenRequests((nextMode, nextInitialQuery = '') => {
       setMode(nextMode);
+      setInitialQuery(nextInitialQuery);
       setOpenVersion((version) => version + 1);
     });
   }, []);
 
-  return <AddressBar onClose={signalAddrbarClose} mode={mode} openVersion={openVersion} />;
+  return (
+    <AddressBar
+      onClose={signalAddrbarClose}
+      mode={mode}
+      openVersion={openVersion}
+      initialQuery={initialQuery}
+    />
+  );
 }
 
 const container = document.getElementById('root');
