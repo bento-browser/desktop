@@ -54,12 +54,27 @@ field through `BENTO_PANELS`; chrome mirrors it into
 `data-bento-devtools-for` attributes, pair lookup maps, paired focus rings, and
 the always-visible connector splitter.
 
+The connector is an inter-panel splitter with DevTools-specific paint, not a
+separate overlay. The splitter element must remain full-height so the boundary
+continues to resize normally. `syncInterPanelSplitters` keeps the full-height
+hit target and writes `--bento-devtools-link-top` /
+`--bento-devtools-link-height` CSS variables so only the visible horizontal
+connector is short and centered. For callers inside a subdivided root,
+`getViewportPanelRectForTabId` first reads the exact sub-panel DOM
+`getBoundingClientRect()` before falling back to stored layout geometry; this is
+what centers the connector on the linked sub-panel rather than on the containing
+root panel. The splitter resize observer also watches linked caller sub-panels
+so subdivision height changes recalculate the connector position.
+
 Normalization is tools-owned. `normalizeDevtoolsAdjacency` keeps a DevTools
 panel as a root-level leaf immediately left or right of the caller's containing
 root node. A valid immediate-left position is preserved; otherwise the panel is
 snapped to the right of the caller. Main-content DevTools panels always snap to
 root index 0. DevTools panels cannot be subdivided, split, moved into chooser
-or horizontal group targets, or filled into subdivision choosers.
+or horizontal group targets, or filled into subdivision choosers. Chrome drag
+handling also suppresses chooser and horizontal drop targets while dragging a
+DevTools panel, leaving only root-level drops; this prevents a DevTools panel
+from being offered a non-root drop that tools will later reject.
 
 Lifecycle cleanup is intentionally idempotent. Removing or demoting a caller
 panel or closing the inspected tab makes `takeOrphanedDevtoolsTabs` return a
@@ -80,6 +95,13 @@ normal panel marker from DevTools tabs, and boot sweeps restored
   normalization must run after root-order mutations so all entry points converge.
 - Do not attempt to open `about:devtools-toolbox` from `bento-tools`; only
   chrome can create the trusted tab.
+- Do not shrink the actual inter-panel splitter to draw the DevTools connector.
+  Use CSS variables to move the painted connector inside the full-height
+  splitter; otherwise only the short indicator remains draggable and the
+  boundary feels stuck.
+- Do not center subdivided-panel connectors from root layout geometry. Use the
+  linked caller sub-panel's live DOM rect when available, and observe that
+  sub-panel for resizes.
 
 ## Privacy And Search Implementation
 

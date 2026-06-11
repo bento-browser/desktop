@@ -1608,14 +1608,23 @@
       #bento-side-panel-host > .bento-panel-splitter--devtools-link {
         opacity: 1;
         background-image:
+          radial-gradient(circle at 0 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
           linear-gradient(
-            to right,
+            to bottom,
             transparent calc(50% - var(--bento-splitter-indicator-radius)),
             var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
             var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
             transparent calc(50% + var(--bento-splitter-indicator-radius))
-          );
-        background-size: 100% 100%;
+          ),
+          radial-gradient(circle at 100% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+        background-position:
+          center var(--bento-devtools-link-top, center),
+          center var(--bento-devtools-link-top, center),
+          center var(--bento-devtools-link-top, center);
+        background-size:
+          100% var(--bento-devtools-link-height, 32px),
+          100% var(--bento-devtools-link-height, 32px),
+          100% var(--bento-devtools-link-height, 32px);
       }
       /* Hide every inter-panel splitter while a panel header is
          being dragged. Splitters are absolute-positioned overlays
@@ -4104,17 +4113,60 @@
     return Number.isFinite(tabId) ? tabId : null;
   }
 
+  function layoutNodeContainsTabId(node, tabId) {
+    if (!node || !Number.isFinite(tabId)) return false;
+    if (node.kind === 'panel') return Number(node.tabId) === tabId;
+    if (node.kind === 'chooser') return false;
+    return (node.children || []).some((child) => layoutNodeContainsTabId(child, tabId));
+  }
+
+  function getRootNodeIdContainingTabId(tabId) {
+    if (!Number.isFinite(tabId)) return null;
+    for (const root of currentPanelLayout?.root || []) {
+      if (!layoutNodeContainsTabId(root, tabId)) continue;
+      return root.kind === 'panel' ? 'panel:' + Number(root.tabId) : root.id || null;
+    }
+    return null;
+  }
+
+  function getTopLevelPanelElementForTabId(tabId) {
+    if (!Number.isFinite(tabId)) return null;
+    const exact = document.querySelector(`[data-bento-panel-tab-id="${CSS.escape(String(tabId))}"]`);
+    if (exact && !exact.hasAttribute('data-bento-subpanel')) return exact;
+    const rootNodeId = getRootNodeIdContainingTabId(tabId);
+    if (!rootNodeId) return null;
+    return document.querySelector(`[data-bento-root-node-id="${CSS.escape(rootNodeId)}"]`);
+  }
+
+  function getPanelElementForTabId(tabId) {
+    if (!Number.isFinite(tabId)) return null;
+    return document.querySelector(`[data-bento-panel-tab-id="${CSS.escape(String(tabId))}"]`);
+  }
+
+  function getViewportPanelRectForTabId(tabId) {
+    if (!Number.isFinite(tabId)) return null;
+    const panelEl = getPanelElementForTabId(tabId);
+    const panelRect = panelEl?.getBoundingClientRect?.();
+    if (panelRect && panelRect.width > 0 && panelRect.height > 0) return panelRect;
+    const localRect = currentPanelLayoutGeometry?.panelRects?.get(tabId);
+    if (!localRect) return null;
+    return viewportRectForLocalLayoutRect(localRect);
+  }
+
   function getDevtoolsPartnerElement(panelEl) {
     const slot = getTopLevelSlotPanelElement(panelEl);
     if (!slot) return null;
     if (slot.dataset?.bentoDevtoolsFor) {
       const caller = slot.dataset.bentoDevtoolsFor;
       if (caller === 'main') return document.querySelector('[data-bento-main-panel="1"]');
-      return document.querySelector(`[data-bento-panel-tab-id="${CSS.escape(caller)}"]`);
+      return getTopLevelPanelElementForTabId(Number(caller));
     }
     const tabId = getTopLevelSlotTabId(slot);
+    const rootNodeId = slot.dataset?.bentoRootNodeId || getRootNodeIdContainingTabId(tabId);
     const link = Array.from(currentDevtoolsLinkByTabId.values()).find(
-      (candidate) => candidate.callerTabId === tabId,
+      (candidate) =>
+        candidate.callerTabId === tabId ||
+        getRootNodeIdContainingTabId(candidate.callerTabId) === rootNodeId,
     );
     if (link) {
       return document.querySelector(
@@ -4135,6 +4187,35 @@
       getDevtoolsPartnerElement(leftPanelEl) === rightPanelEl ||
       getDevtoolsPartnerElement(rightPanelEl) === leftPanelEl
     );
+  }
+
+  function getDevtoolsLinkForPanelPair(leftPanelEl, rightPanelEl) {
+    const leftDevtoolsFor = leftPanelEl?.dataset?.bentoDevtoolsFor;
+    const rightDevtoolsFor = rightPanelEl?.dataset?.bentoDevtoolsFor;
+    const leftRootNodeId =
+      leftPanelEl?.dataset?.bentoMainPanel === '1'
+        ? 'main'
+        : leftPanelEl?.dataset?.bentoRootNodeId ||
+          getRootNodeIdContainingTabId(getTopLevelSlotTabId(leftPanelEl));
+    const rightRootNodeId =
+      rightPanelEl?.dataset?.bentoMainPanel === '1'
+        ? 'main'
+        : rightPanelEl?.dataset?.bentoRootNodeId ||
+          getRootNodeIdContainingTabId(getTopLevelSlotTabId(rightPanelEl));
+
+    if (leftDevtoolsFor) {
+      const link = currentDevtoolsLinkByTabId.get(getTopLevelSlotTabId(leftPanelEl));
+      const callerRootNodeId =
+        link?.callerTabId === null ? 'main' : getRootNodeIdContainingTabId(link?.callerTabId);
+      if (link && callerRootNodeId === rightRootNodeId) return link;
+    }
+    if (rightDevtoolsFor) {
+      const link = currentDevtoolsLinkByTabId.get(getTopLevelSlotTabId(rightPanelEl));
+      const callerRootNodeId =
+        link?.callerTabId === null ? 'main' : getRootNodeIdContainingTabId(link?.callerTabId);
+      if (link && callerRootNodeId === leftRootNodeId) return link;
+    }
+    return null;
   }
 
   function getResizableSlotWidth(panelEl) {
@@ -6459,6 +6540,10 @@
       // tracks the last panel naturally — no clamp needed.
       const isLastSplitter = i === panelIds.length - 1;
       let gapCentre;
+      let splitterTop = lr.top;
+      let splitterHeight = lr.height;
+      let devtoolsLinkTop = null;
+      let devtoolsLinkHeight = null;
       if (isLastSplitter) {
         if (!trailer) continue;
         const tr = trailer.getBoundingClientRect();
@@ -6470,25 +6555,55 @@
         const rr = panelRectForSplitter(rightPanelEl);
         if (!rr) continue;
         gapCentre = (lr.right + rr.left) / 2;
-        sp.classList.toggle(
-          'bento-panel-splitter--devtools-link',
-          areDevtoolsPairPanelElements(leftPanelEl, rightPanelEl),
-        );
+        const devtoolsLink = getDevtoolsLinkForPanelPair(leftPanelEl, rightPanelEl);
+        const isDevtoolsLink = !!devtoolsLink;
+        sp.classList.toggle('bento-panel-splitter--devtools-link', isDevtoolsLink);
+        if (isDevtoolsLink) {
+          const callerRect =
+            devtoolsLink.callerTabId === null
+              ? null
+              : getViewportPanelRectForTabId(devtoolsLink.callerTabId);
+          const devtoolsRect = leftPanelEl.dataset?.bentoDevtoolsFor ? lr : rr;
+          const contentRect = callerRect || (leftPanelEl.dataset?.bentoDevtoolsFor ? rr : lr);
+          const overlapTop = Math.max(contentRect.top, devtoolsRect.top);
+          const overlapBottom = Math.min(contentRect.bottom, devtoolsRect.bottom);
+          const overlapHeight =
+            overlapBottom > overlapTop
+              ? overlapBottom - overlapTop
+              : Math.min(contentRect.height, devtoolsRect.height);
+          const centreY = callerRect
+            ? callerRect.top + callerRect.height / 2
+            : overlapBottom > overlapTop
+              ? overlapTop + overlapHeight / 2
+              : contentRect.top + contentRect.height / 2;
+          devtoolsLinkHeight = Math.max(
+            panelSplitterSizePx(),
+            Math.min(overlapHeight, panelSplitterSizePx() * 4),
+          );
+          devtoolsLinkTop = centreY - splitterTop - devtoolsLinkHeight / 2;
+        }
       }
       sp._bentoLeftPanelId = panelIds[i];
       sp.style.position = 'absolute';
-      sp.style.top = lr.top - hostRect.top + 'px';
-      sp.style.height = lr.height + 'px';
+      sp.style.top = splitterTop - hostRect.top + 'px';
+      sp.style.height = splitterHeight + 'px';
       sp.style.left = gapCentre - hostRect.left - splitterWidth / 2 + 'px';
       sp.style.width = splitterWidth + 'px';
       sp.style.minWidth = splitterWidth + 'px';
       sp.style.maxWidth = splitterWidth + 'px';
       sp.style.zIndex = '5';
+      if (devtoolsLinkTop !== null && devtoolsLinkHeight !== null) {
+        sp.style.setProperty('--bento-devtools-link-top', devtoolsLinkTop + 'px');
+        sp.style.setProperty('--bento-devtools-link-height', devtoolsLinkHeight + 'px');
+      } else {
+        sp.style.removeProperty('--bento-devtools-link-top');
+        sp.style.removeProperty('--bento-devtools-link-height');
+      }
       setSidebarOccludedOverlayState(sp, {
         left: gapCentre - splitterWidth / 2,
-        top: lr.top,
+        top: splitterTop,
         right: gapCentre + splitterWidth / 2,
-        bottom: lr.top + lr.height,
+        bottom: splitterTop + splitterHeight,
       });
     }
     // Re-observe after positioning so the next layout commit
@@ -6496,9 +6611,19 @@
     // of every boundary plus the right edge of the last panel,
     // so any width change in any panel re-fires.
     if (__bentoSplitterRO) {
+      const observed = new Set();
       for (const id of panelIds) {
         const el = document.getElementById(id);
-        if (el) __bentoSplitterRO.observe(el);
+        if (!el || observed.has(el)) continue;
+        observed.add(el);
+        __bentoSplitterRO.observe(el);
+      }
+      for (const link of currentDevtoolsLinkByTabId.values()) {
+        if (link?.callerTabId === null) continue;
+        const el = getPanelElementForTabId(link?.callerTabId);
+        if (!el || observed.has(el)) continue;
+        observed.add(el);
+        __bentoSplitterRO.observe(el);
       }
     }
   }
@@ -8404,6 +8529,7 @@
     let dragHorizontalDropTargets = null;
     let dragChooserDropTargets = null;
     let dragMainDropEntry = null;
+    const sourceIsDevtoolsPanel = panelEl.hasAttribute('data-bento-devtools-for');
 
     function getStripContainer() {
       return document.getElementById('bento-side-panel-host');
@@ -8665,10 +8791,12 @@
       const layout = getPostRemovalDragLayout();
       const geometry = getDragGeometryForLayout(layout);
       dragDropTargets = getRootDropEntriesForLayout(layout, geometry);
-      dragHorizontalDropTargets = getHorizontalDropEntriesForCurrentLayout(
-        getVerticalGroupIdsForLayout(layout),
-      );
-      dragChooserDropTargets = getChooserDropEntriesForCurrentLayout(getChooserIdsForLayout(layout));
+      dragHorizontalDropTargets = sourceIsDevtoolsPanel
+        ? []
+        : getHorizontalDropEntriesForCurrentLayout(getVerticalGroupIdsForLayout(layout));
+      dragChooserDropTargets = sourceIsDevtoolsPanel
+        ? []
+        : getChooserDropEntriesForCurrentLayout(getChooserIdsForLayout(layout));
       dragMainDropEntry = getMainDropEntry();
     }
     function clearDragDropGeometry() {
@@ -8797,10 +8925,12 @@
       return slot;
     }
     function computeDropTarget(clientX, clientY) {
-      const chooser = getChooserDropTarget(clientX, clientY);
-      if (chooser) return chooser;
-      const horizontal = getHorizontalDropTarget(clientX, clientY);
-      if (horizontal) return horizontal;
+      if (!sourceIsDevtoolsPanel) {
+        const chooser = getChooserDropTarget(clientX, clientY);
+        if (chooser) return chooser;
+        const horizontal = getHorizontalDropTarget(clientX, clientY);
+        if (horizontal) return horizontal;
+      }
       const targets = getActiveDropTargets();
       const slot = Math.max(0, Math.min(computeTargetSlot(clientX), targets.length));
       return { kind: 'root', target: { type: 'root', index: slot }, slot };

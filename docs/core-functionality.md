@@ -178,11 +178,13 @@ Right-clicking page content in the main slot or in a side panel exposes
 DevTools in a new Bento panel immediately adjacent to the inspected surface. The
 DevTools panel stays paired with its caller: moving the caller moves the
 DevTools panel back beside it, the splitter between them is always highlighted,
-and focusing either side shows the focus ring on both. Reusing the command for
-the same caller and inspected tab focuses the existing DevTools panel instead of
-creating another one. DevTools panels are ephemeral: they are closed when the
-caller panel is removed, when the inspected tab is closed, or across browser
-restart, and they are not saved in workspace panel persistence.
+and focusing either side shows the focus ring on both. When the caller is inside
+a subdivided panel, the connector sits at that sub-panel's vertical midpoint
+rather than at the midpoint of the containing root panel. Reusing the command
+for the same caller and inspected tab focuses the existing DevTools panel
+instead of creating another one. DevTools panels are ephemeral: they are closed
+when the caller panel is removed, when the inspected tab is closed, or across
+browser restart, and they are not saved in workspace panel persistence.
 
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools

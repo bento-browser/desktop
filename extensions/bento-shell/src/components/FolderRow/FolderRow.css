@@ -1,7 +1,7 @@
 @layer bento.components {
   .bento-folder-row {
     display: grid;
-    grid-template-columns: 1rem minmax(0, 1fr);
+    grid-template-columns: var(--bento-favicon-size) minmax(0, 1fr);
     align-items: center;
     gap: var(--space-xs);
     box-sizing: border-box;
@@ -32,6 +32,11 @@
     width: var(--bento-favicon-size);
     height: var(--bento-favicon-size);
     color: var(--color-60);
+  }
+
+  .bento-folder-row__icon .tale-icon {
+    width: var(--bento-favicon-size);
+    height: var(--bento-favicon-size);
   }
 
   .bento-folder-row > .tale-text {
@@ -67,8 +72,13 @@
   }
 
   :root[data-bento-collapsed='true'] .bento-folder-row {
-    grid-template-columns: 1rem;
-    justify-content: center;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    width: var(--bento-tab-row-height);
+    min-width: var(--bento-tab-row-height);
+    height: var(--bento-tab-row-height);
+    min-height: var(--bento-tab-row-height);
+    aspect-ratio: 1 / 1;
     padding-inline: 0;
   }
 
