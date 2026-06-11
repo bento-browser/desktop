@@ -65,6 +65,12 @@ connector is short and centered. For callers inside a subdivided root,
 what centers the connector on the linked sub-panel rather than on the containing
 root panel. The splitter resize observer also watches linked caller sub-panels
 so subdivision height changes recalculate the connector position.
+Focus pairing deliberately uses a different resolver. Connector and adjacency
+logic may resolve a sub-panel to its containing root because DevTools panels
+live as root-level leaves, but focus rings must pair only the exact
+`callerTabId` with its DevTools tab. `getDevtoolsFocusPartnerElement` handles
+that exact match so focusing a sibling panel in the same subdivision does not
+light the DevTools panel.
 
 Normalization is tools-owned. `normalizeDevtoolsAdjacency` keeps a DevTools
 panel as a root-level leaf immediately left or right of the caller's containing
@@ -108,6 +114,9 @@ restart.
 - Do not center subdivided-panel connectors from root layout geometry. Use the
   linked caller sub-panel's live DOM rect when available, and observe that
   sub-panel for resizes.
+- Do not reuse the root-level DevTools partner resolver for focus rings.
+  Root-level matching is needed for adjacency across subdivided roots; focus
+  indicators must match the exact linked caller tab id.
 - Do not apply normal pinned-panel persistence semantics to DevTools panels.
   Normal pinned panels intentionally survive panel/tab closure; DevTools panels
   are ephemeral and their pinned bindings must be refused, removed on close, and

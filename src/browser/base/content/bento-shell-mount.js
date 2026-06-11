@@ -4181,6 +4181,34 @@
     return null;
   }
 
+  function getDevtoolsFocusPartnerElement(panelEl) {
+    if (!panelEl) return null;
+    if (panelEl.dataset?.bentoMainPanel === '1') {
+      if (!currentMainDevtoolsLink) return null;
+      return document.querySelector(
+        `[data-bento-panel-tab-id="${CSS.escape(String(currentMainDevtoolsLink.devtoolsTabId))}"]`,
+      );
+    }
+
+    const tabId = Number(panelEl.dataset?.bentoPanelTabId);
+    if (!Number.isFinite(tabId)) return null;
+    const devtoolsLink = currentDevtoolsLinkByTabId.get(tabId);
+    if (devtoolsLink) {
+      if (devtoolsLink.callerTabId === null) {
+        return document.querySelector('[data-bento-main-panel="1"]');
+      }
+      return getPanelElementForTabId(devtoolsLink.callerTabId);
+    }
+
+    const link = Array.from(currentDevtoolsLinkByTabId.values()).find(
+      (candidate) => candidate.callerTabId === tabId,
+    );
+    if (!link) return null;
+    return document.querySelector(
+      `[data-bento-panel-tab-id="${CSS.escape(String(link.devtoolsTabId))}"]`,
+    );
+  }
+
   function areDevtoolsPairPanelElements(leftPanelEl, rightPanelEl) {
     if (!leftPanelEl || !rightPanelEl) return false;
     return (
@@ -8040,7 +8068,7 @@
     if (idx < 0 || idx >= targets.length) return;
     const target = targets[idx];
     target.classList.add('bento-panel--cycle-focused');
-    const partner = getDevtoolsPartnerElement(target);
+    const partner = getDevtoolsFocusPartnerElement(target);
     if (partner) partner.classList.add('bento-panel--cycle-focused');
     if (target.hasAttribute?.('data-bento-subdivided')) {
       applySubdividedTopFocusIndicator(target);
@@ -8085,7 +8113,7 @@
       dispatchShellAction({ type: 'panel/focusedChanged', tabId: nextFocusedTabId });
     }
     const targets = getPanelFocusIndicatorTargets();
-    const partner = getDevtoolsPartnerElement(panelEl);
+    const partner = getDevtoolsFocusPartnerElement(panelEl);
     for (const target of targets) {
       target.classList.toggle('bento-panel--focused', target === panelEl || target === partner);
       target.classList.remove('bento-subdivision-top--focused');
