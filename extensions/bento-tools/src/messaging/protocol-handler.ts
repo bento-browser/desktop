@@ -356,6 +356,7 @@ async function closeTabAsRemoved(
 
 function closeDevtoolsTabs(ctx: HandlerContext, tabIds: Set<number>, label: string): void {
   for (const tabId of tabIds) {
+    ctx.pinnedPanels.removeForTab(tabId);
     void closeTabAsRemoved(ctx, tabId, {
       label,
       clearPanelMarker: true,
@@ -999,6 +1000,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (!wsId) return;
       if (ctx.panels.isDevtoolsPanel(wsId, action.id)) {
         if (ctx.panels.remove(wsId, action.id)) {
+          ctx.pinnedPanels.removeForTab(action.id);
           void clearPanelMarker(action.id);
           void closeTabAsRemoved(ctx, action.id, {
             label: 'panel/remove devtools',
@@ -1226,6 +1228,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           .includes(action.workspaceId)
       )
         return;
+      if (ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId)) return;
       void (async () => {
         const metadata: { url?: string; title?: string; favIconUrl?: string; widthPx?: number } =
           {};
@@ -1366,6 +1369,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       void (async () => {
         await ctx.tabs.markClosing(action.tabId);
+        if (ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId)) {
+          ctx.pinnedPanels.removeForTab(action.tabId);
+        }
         const subVictims = ctx.panels.removeWithSubPanels(action.workspaceId, action.tabId);
         for (const spId of subVictims) {
           void closeTabAsRemoved(ctx, spId, { label: 'pinnedPanel/close sub-panel' });

@@ -58,6 +58,28 @@ describe('protocol handler panel close', () => {
     expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
   });
 
+  it('removes pinned-panel bindings when a DevTools panel is removed', async () => {
+    const removeForTab = vi.fn();
+    const ctx = createCloseContext({
+      panels: {
+        isDevtoolsPanel: vi.fn().mockReturnValue(true),
+        remove: vi.fn().mockReturnValue(true),
+      } as unknown as HandlerContext['panels'],
+      pinnedPanels: {
+        removeForTab,
+      } as unknown as HandlerContext['pinnedPanels'],
+    });
+
+    handle({ type: 'panel/remove', id: 123 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith(123);
+    });
+    expect(removeForTab).toHaveBeenCalledWith(123);
+    expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 123);
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+  });
+
   it('promotes the leftmost panel before closing the active final sidebar tab', async () => {
     const ctx = createCloseContext({
       tabs: {
@@ -338,6 +360,56 @@ describe('protocol handler tab folders', () => {
       expect(setFolder).toHaveBeenCalledWith(1, null);
     });
     expect(setFolder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('protocol handler pinned panels', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        get: vi.fn().mockResolvedValue({
+          id: 99,
+          url: 'about:devtools-toolbox?type=tab&id=10&tool=inspector',
+          title: 'DevTools',
+        }),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('does not add a pinned-panel binding for DevTools panels', async () => {
+    const add = vi.fn();
+    const ctx = {
+      workspaces: {
+        has: vi.fn().mockReturnValue(true),
+      },
+      panels: {
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue(['ws-1']),
+        isDevtoolsPanel: vi.fn().mockReturnValue(true),
+      },
+      pinnedPanels: {
+        add,
+      },
+      tabs: {},
+      settings: {},
+      tabFolders: {},
+      savedPanels: {},
+      backup: {},
+      send: vi.fn(),
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+      sourceWindowId: 1,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'pinnedPanel/add', workspaceId: 'ws-1', tabId: 99 }, ctx);
+
+    await Promise.resolve();
+    expect(add).not.toHaveBeenCalled();
+    expect(ctx.emitPanelsSync).not.toHaveBeenCalled();
   });
 });
 

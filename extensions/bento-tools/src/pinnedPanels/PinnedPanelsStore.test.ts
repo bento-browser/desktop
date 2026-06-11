@@ -27,6 +27,13 @@ describe('PinnedPanelsStore', () => {
                   order: 1,
                   title: 'B',
                 },
+                {
+                  workspaceId: 'ws-a',
+                  panelKey: 'devtools-panel',
+                  url: 'about:devtools-toolbox?type=tab&id=123&tool=inspector',
+                  order: 2,
+                  title: 'DevTools',
+                },
               ],
             },
           })),
@@ -67,6 +74,9 @@ describe('PinnedPanelsStore', () => {
       }),
     ]);
     expect(store.entries().every((entry) => entry.tabId < 0)).toBe(true);
+    expect(store.entries().some((entry) => entry.url?.startsWith('about:devtools-toolbox'))).toBe(
+      false,
+    );
 
     store.recoverTabIdsAfterPanelRestore('ws-b', {
       panelKeyToTabId: new Map([['panel-b', 42]]),

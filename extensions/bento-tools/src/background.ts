@@ -57,6 +57,7 @@ async function sweepRestoredDevtoolsPanels(): Promise<void> {
     const hasMarker = await readDevtoolsPanelMarker(tab.id);
     if (!isDevtoolsUrl && !hasMarker) continue;
     await tabs.markClosing(tab.id);
+    pinnedPanels.removeForTab(tab.id);
     void clearPanelMarker(tab.id);
     void clearDevtoolsPanelMarker(tab.id);
     browser.tabs
@@ -70,6 +71,7 @@ async function sweepRestoredDevtoolsPanels(): Promise<void> {
 function closeDevtoolsPanelTabs(tabIds: Iterable<number>, label: string): void {
   for (const tabId of new Set(tabIds)) {
     void tabs.markClosing(tabId);
+    pinnedPanels.removeForTab(tabId);
     void clearPanelMarker(tabId);
     void clearDevtoolsPanelMarker(tabId);
     browser.tabs
@@ -482,7 +484,8 @@ async function restorePanelsFromSessionMarkersAtBoot(): Promise<Set<string>> {
       tab.id,
       IMPORT_PINNED_PANEL_SESSION_KEY,
     );
-    if (marker.pinnedPanel === true || importedPinMarker === true) {
+    const hasDevtoolsMarker = await readDevtoolsPanelMarker(tab.id);
+    if ((marker.pinnedPanel === true || importedPinMarker === true) && !hasDevtoolsMarker) {
       pinnedPanels.add(marker.workspaceId, tab.id);
     }
     if (importedPinMarker !== undefined) {
@@ -1124,6 +1127,7 @@ tabs.onDeltas((deltas) => {
       for (const wsId of affected) {
         const wasDevtools = panels.isDevtoolsPanel(wsId, d.id);
         panels.remove(wsId, d.id);
+        if (wasDevtools) pinnedPanels.removeForTab(d.id);
         if (!wasDevtools) {
           closeDevtoolsPanelTabs(
             panels.takeOrphanedDevtoolsTabs(wsId),
@@ -1450,7 +1454,9 @@ async function maybeRestorePanelFromMarker(
     tabId,
     IMPORT_PINNED_PANEL_SESSION_KEY,
   );
-  const shouldPinImportedPanel = marker.pinnedPanel === true || importedPinMarker === true;
+  const hasDevtoolsMarker = await readDevtoolsPanelMarker(tabId);
+  const shouldPinImportedPanel =
+    (marker.pinnedPanel === true || importedPinMarker === true) && !hasDevtoolsMarker;
   await tabs.unmarkClosing(tabId);
   const workspace = workspaces.snapshot().workspaces.find((w) => w.id === marker.workspaceId);
   if (!workspace) {

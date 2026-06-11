@@ -66,6 +66,11 @@ export interface PersistedState {
   entries: PersistedPinnedEntry[];
 }
 
+export function isPersistablePinnedPanelUrl(url: string | undefined): url is string {
+  if (!url || url === 'about:blank') return false;
+  return !url.startsWith('about:devtools-toolbox');
+}
+
 function parseStored(stored: unknown): PersistedState | null {
   if (!stored || typeof stored !== 'object') return null;
   const obj = stored as Partial<StoredShapeV1 | StoredShapeV2 | StoredShapeV3 | StoredShapeV4>;
@@ -77,6 +82,7 @@ function parseStored(stored: unknown): PersistedState | null {
   const entries: PersistedPinnedEntry[] = [];
   for (const e of obj.entries) {
     if (!e || typeof e.workspaceId !== 'string' || typeof e.url !== 'string') continue;
+    if (!isPersistablePinnedPanelUrl(e.url)) continue;
     if (typeof e.order !== 'number' || !Number.isFinite(e.order)) continue;
     const widthPx = (e as StoredEntryV4).widthPx;
     entries.push({

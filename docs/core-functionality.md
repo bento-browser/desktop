@@ -184,7 +184,8 @@ rather than at the midpoint of the containing root panel. Reusing the command
 for the same caller and inspected tab focuses the existing DevTools panel
 instead of creating another one. DevTools panels are ephemeral: they are closed
 when the caller panel is removed, when the inspected tab is closed, or across
-browser restart, and they are not saved in workspace panel persistence.
+browser restart, and they are not saved in workspace panel persistence or the
+pinned panels rail.
 
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools

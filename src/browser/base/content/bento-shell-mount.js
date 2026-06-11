@@ -4349,9 +4349,16 @@
     });
 
     let pinBtn = null;
-    if (Number.isFinite(tabId)) {
+    if (Number.isFinite(tabId) && !currentDevtoolsLinkByTabId.has(tabId)) {
       pinBtn = makeHeaderButton('Pin this panel', ICONS.pin, () => {
         if (!currentWorkspaceId) return;
+        const panelEl = pinBtn.closest?.('[data-bento-panel-tab-id], [data-bento-subpanel]');
+        if (
+          currentDevtoolsLinkByTabId.has(tabId) ||
+          panelEl?.hasAttribute?.('data-bento-devtools-for')
+        ) {
+          return;
+        }
         const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
         dispatchShellAction({
           type: isPinned ? 'pinnedPanel/remove' : 'pinnedPanel/add',

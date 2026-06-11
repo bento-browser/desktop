@@ -11,7 +11,12 @@
 // per-workspace as each workspace's panels are restored.
 
 import type { PinnedPanelDelta, PinnedPanelEntry } from '@shared/protocol';
-import { Persistence, type PersistedPinnedEntry, load } from './Persistence';
+import {
+  Persistence,
+  isPersistablePinnedPanelUrl,
+  type PersistedPinnedEntry,
+  load,
+} from './Persistence';
 
 type Listener = (deltas: PinnedPanelDelta[]) => void;
 
@@ -380,7 +385,7 @@ export class PinnedPanelsStore {
       try {
         const tab = await browser.tabs.get(entry.tabId);
         const url = tab.url || entry.url;
-        if (!url || url === 'about:blank') continue;
+        if (!isPersistablePinnedPanelUrl(url)) continue;
         resolved.push({
           workspaceId: entry.workspaceId,
           panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),
@@ -391,7 +396,7 @@ export class PinnedPanelsStore {
           widthPx: entry.widthPx,
         });
       } catch {
-        if (!entry.url || entry.url === 'about:blank') continue;
+        if (!isPersistablePinnedPanelUrl(entry.url)) continue;
         resolved.push({
           workspaceId: entry.workspaceId,
           panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),

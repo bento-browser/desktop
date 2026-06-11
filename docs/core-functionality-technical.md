@@ -83,6 +83,12 @@ drops only its link and does not affect the caller. Session markers use
 `bento.isDevtoolsPanel` separately from `bento.isPanel`; marker sync clears the
 normal panel marker from DevTools tabs, and boot sweeps restored
 `about:devtools-toolbox` tabs or tabs carrying the DevTools marker.
+Pinned-panel bindings remain persistent for normal panels, but not for DevTools
+panels. Chrome hides and guards the panel-header pin button for DevTools panels,
+`pinnedPanel/add` refuses DevTools panel ids, DevTools close/sweep paths call
+`PinnedPanelsStore.removeForTab`, and pinned-panel persistence filters
+`about:devtools-toolbox` URLs on load and save so old bad pins do not survive a
+restart.
 
 ### DevTools In Panel Pitfalls
 
@@ -102,6 +108,10 @@ normal panel marker from DevTools tabs, and boot sweeps restored
 - Do not center subdivided-panel connectors from root layout geometry. Use the
   linked caller sub-panel's live DOM rect when available, and observe that
   sub-panel for resizes.
+- Do not apply normal pinned-panel persistence semantics to DevTools panels.
+  Normal pinned panels intentionally survive panel/tab closure; DevTools panels
+  are ephemeral and their pinned bindings must be refused, removed on close, and
+  filtered from storage.
 
 ## Privacy And Search Implementation
 
