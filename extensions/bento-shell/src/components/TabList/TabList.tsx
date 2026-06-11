@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@tale-ui/react/button';
 import { Icon } from '@tale-ui/react/icon';
+import { IconButton } from '@tale-ui/react/icon-button';
 import PanelRight from 'lucide-react/dist/esm/icons/panel-right';
 import Plus from 'lucide-react/dist/esm/icons/plus';
+import Search from 'lucide-react/dist/esm/icons/search';
+import X from 'lucide-react/dist/esm/icons/x';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
@@ -15,6 +19,7 @@ import { TabRow } from '../TabRow/TabRow';
 import { FolderRow } from '../FolderRow/FolderRow';
 import { TabListSkeleton } from './TabListSkeleton';
 import { buildDisplayRows, flattenTabOrder, pruneSelection, rowKey } from './displayRows';
+import { getThemeMeta } from '../../theme/presets';
 import './TabList.css';
 
 export interface TabListProps {
@@ -51,6 +56,17 @@ const REMOVAL_ANIMATION_MS = 200;
 // .bento-tab-list-pane--{enter,exit}-* CSS animation duration.
 const WORKSPACE_SLIDE_MS = 260;
 const SELECTED_TABS_TITLE_PREFIX = 'BENTO_SELECTED_TABS:';
+
+interface TabListSearchResult {
+  id: number;
+  kind: 'tab' | 'panel';
+  title: string;
+  favIconUrl?: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceIcon: string;
+  workspaceThemeColor: string;
+}
 
 function encodeSelectedTabIds(ids: number[]): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(ids))));
@@ -162,6 +178,13 @@ interface TabListPaneProps {
   onReorder?: (id: number, anchorId: number, before: boolean) => void;
   isCollapsed: boolean;
   className: string;
+  searchOpen: boolean;
+  searchQuery: string;
+  searchResults: TabListSearchResult[];
+  onOpenSearch: () => void;
+  onCloseSearch: () => void;
+  onSearchQueryChange: (value: string) => void;
+  onRunSearchResult: (result: TabListSearchResult) => void;
 }
 
 // One scrollable, virtualized tab list. The TabList stage composes one
@@ -188,6 +211,13 @@ function TabListPane({
   onReorder,
   isCollapsed,
   className,
+  searchOpen,
+  searchQuery,
+  searchResults,
+  onOpenSearch,
+  onCloseSearch,
+  onSearchQueryChange,
+  onRunSearchResult,
 }: TabListPaneProps) {
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
   const folders = useWorkspaceFolders(workspaceId);
@@ -201,6 +231,7 @@ function TabListPane({
   // correct even if a fade-out and the drag overlap.
   const [dragSourceId, setDragSourceId] = useState<number | null>(null);
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
   // means "drop at end"). Null when the cursor isn't over a valid drop
@@ -393,6 +424,129 @@ function TabListPane({
 
   const dragEnabled = onReorder !== undefined || workspaceId !== null;
   const dropIndicatorY = dropSlot === null ? 0 : Math.max(0, dropSlot * rowSlotSize - rowGap / 2);
+  const searchFiltering = searchOpen && searchQuery.trim().length > 0;
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, [searchOpen]);
+
+  useLayoutEffect(() => {
+    if (!searchOpen) return;
+    searchInputRef.current?.focus();
+  }, [searchFiltering, searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen || searchQuery.trim().length > 0) return;
+    const closeIfOutsideSearch = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      const searchRoot = searchInputRef.current?.closest('.bento-tab-list-search');
+      if (searchRoot?.contains(target)) return;
+      onCloseSearch();
+    };
+    const closeOnWindowBlur = () => onCloseSearch();
+    document.addEventListener('pointerdown', closeIfOutsideSearch, true);
+    window.addEventListener('blur', closeOnWindowBlur);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutsideSearch, true);
+      window.removeEventListener('blur', closeOnWindowBlur);
+    };
+  }, [onCloseSearch, searchOpen, searchQuery]);
+
+  const renderSearchButton = () => (
+    <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
+      <IconButton
+        variant="ghost"
+        size="sm"
+        className="bento-tab-list__search-button"
+        aria-label="Search tabs and panels"
+        onPress={onOpenSearch}
+      >
+        <Icon icon={Search} size="sm" />
+      </IconButton>
+    </span>
+  );
+
+  const renderSearchOverlay = (filtering = false) => (
+    <div
+      className={'bento-tab-list-search' + (filtering ? ' bento-tab-list-search--filtering' : '')}
+      onBlur={(e) => {
+        const nextFocus = e.relatedTarget as Node | null;
+        if (nextFocus && e.currentTarget.contains(nextFocus)) return;
+        if (searchQuery.trim().length === 0) onCloseSearch();
+      }}
+    >
+      <div className="bento-tab-list-search__field-row">
+        <Icon icon={Search} size="sm" className="bento-tab-list-search__field-icon" />
+        <input
+          ref={searchInputRef}
+          className="bento-tab-list-search__input"
+          value={searchQuery}
+          placeholder="Search tabs and panels"
+          onChange={(e) => onSearchQueryChange(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onCloseSearch();
+            }
+            if (e.key === 'Enter' && searchResults[0]) {
+              e.preventDefault();
+              onRunSearchResult(searchResults[0]);
+            }
+          }}
+        />
+        <IconButton
+          variant="ghost"
+          size="sm"
+          className="bento-tab-list-search__clear-button"
+          aria-label="Clear search"
+          onPress={() => {
+            onSearchQueryChange('');
+            searchInputRef.current?.focus();
+          }}
+        >
+          <Icon icon={X} size="sm" />
+        </IconButton>
+      </div>
+      {searchQuery.trim().length > 0 && (
+        <div className="bento-tab-list-search__results">
+          {searchResults.map((result) => {
+            const style = {
+              '--bento-search-result-accent': result.workspaceThemeColor,
+            } as CSSProperties;
+            return (
+              <Button
+                key={`${result.kind}:${result.workspaceId}:${result.id}`}
+                variant="ghost"
+                size="sm"
+                className="bento-tab-list-search__result"
+                style={style}
+                aria-label={`${result.kind === 'panel' ? 'Panel' : 'Tab'}: ${result.title} in ${
+                  result.workspaceName
+                }`}
+                onPress={() => onRunSearchResult(result)}
+              >
+                <span className="bento-tab-list-search__workspace-avatar" aria-hidden="true">
+                  {result.workspaceIcon}
+                </span>
+                {result.favIconUrl ? (
+                  <img className="bento-tab-list-search__favicon" src={result.favIconUrl} alt="" />
+                ) : (
+                  <span className="bento-tab-list-search__favicon bento-tab-list-search__favicon--placeholder" />
+                )}
+                <span className="bento-tab-list-search__title">{result.title}</span>
+                <span className="bento-tab-list-search__kind">
+                  {result.kind === 'panel' ? 'Panel' : 'Tab'}
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -404,7 +558,7 @@ function TabListPane({
     >
       <div
         className="bento-tab-list__viewport"
-        style={{ height: `${virtualizer.getTotalSize()}px` }}
+        style={{ height: searchFiltering ? '100%' : `${virtualizer.getTotalSize()}px` }}
       >
         {dropSlot !== null && (dragSourceId !== null || dragFolderId !== null) && (
           <div
@@ -413,32 +567,65 @@ function TabListPane({
             aria-hidden="true"
           />
         )}
-        {virtualizer.getVirtualItems().map((vi) => {
-          const row = rows[vi.index];
-          if (!row) return null;
-          if (row.kind === 'new-tab') {
-            return (
-              <div
-                key={rowKey(row)}
-                className={
-                  row.afterPinnedSection
-                    ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned'
-                    : 'bento-tab-list__row bento-tab-list__row--new-tab'
-                }
-                style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-              >
-                <div className="bento-tab-list__new-actions">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="bento-tab-list__new-action-button"
-                    aria-label="New tab"
-                    onPress={onCreateTab}
-                  >
-                    <Icon icon={Plus} size="sm" />
-                    <span className="bento-tab-list__new-action-label">New tab</span>
-                  </Button>
-                  {!isCollapsed && (
+        {searchFiltering && renderSearchOverlay(true)}
+        {!searchFiltering &&
+          virtualizer.getVirtualItems().map((vi) => {
+            const row = rows[vi.index];
+            if (!row) return null;
+            if (row.kind === 'new-tab') {
+              return (
+                <div
+                  key={rowKey(row)}
+                  className={
+                    row.afterPinnedSection
+                      ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned' +
+                        (searchOpen ? ' bento-tab-list__row--search-open' : '')
+                      : 'bento-tab-list__row bento-tab-list__row--new-tab' +
+                        (searchOpen ? ' bento-tab-list__row--search-open' : '')
+                  }
+                  style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                >
+                  <div className="bento-tab-list__new-actions">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="bento-tab-list__new-action-button"
+                      aria-label="New tab"
+                      onPress={onCreateTab}
+                    >
+                      <Icon icon={Plus} size="sm" />
+                      <span className="bento-tab-list__new-action-label">New tab</span>
+                    </Button>
+                    {!isCollapsed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="bento-tab-list__new-action-button"
+                        aria-label="New panel"
+                        onPress={onCreatePanel}
+                      >
+                        <Icon icon={PanelRight} size="sm" />
+                        <span className="bento-tab-list__new-action-label">New panel</span>
+                      </Button>
+                    )}
+                    {renderSearchButton()}
+                    {searchOpen && renderSearchOverlay()}
+                  </div>
+                </div>
+              );
+            }
+
+            if (row.kind === 'new-panel') {
+              return (
+                <div
+                  key={rowKey(row)}
+                  className={
+                    'bento-tab-list__row bento-tab-list__row--new-tab' +
+                    (searchOpen ? ' bento-tab-list__row--search-open' : '')
+                  }
+                  style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                >
+                  <div className="bento-tab-list__new-actions">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -449,80 +636,58 @@ function TabListPane({
                       <Icon icon={PanelRight} size="sm" />
                       <span className="bento-tab-list__new-action-label">New panel</span>
                     </Button>
-                  )}
+                    {renderSearchButton()}
+                    {searchOpen && renderSearchOverlay()}
+                  </div>
                 </div>
-              </div>
-            );
-          }
+              );
+            }
 
-          if (row.kind === 'new-panel') {
-            return (
-              <div
-                key={rowKey(row)}
-                className="bento-tab-list__row bento-tab-list__row--new-tab"
-                style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-              >
-                <div className="bento-tab-list__new-actions">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="bento-tab-list__new-action-button"
-                    aria-label="New panel"
-                    onPress={onCreatePanel}
-                  >
-                    <Icon icon={PanelRight} size="sm" />
-                    <span className="bento-tab-list__new-action-label">New panel</span>
-                  </Button>
+            if (row.kind === 'folder') {
+              const folder = folders.find((candidate) => candidate.id === row.folderId);
+              if (!folder) return null;
+              return (
+                <div
+                  key={rowKey(row)}
+                  className="bento-tab-list__row"
+                  style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                >
+                  <FolderRow
+                    folder={folder}
+                    dragging={row.folderId === dragFolderId}
+                    onContextMenu={onFolderContextMenu}
+                    onDragStart={handleFolderDragStart}
+                    onDragEnd={handleFolderDragEnd}
+                  />
                 </div>
-              </div>
-            );
-          }
+              );
+            }
 
-          if (row.kind === 'folder') {
-            const folder = folders.find((candidate) => candidate.id === row.folderId);
-            if (!folder) return null;
+            const id = row.kind === 'tab' || row.kind === 'peek' ? row.id : undefined;
+            if (id === undefined) return null;
             return (
               <div
                 key={rowKey(row)}
                 className="bento-tab-list__row"
                 style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
               >
-                <FolderRow
-                  folder={folder}
-                  dragging={row.folderId === dragFolderId}
-                  onContextMenu={onFolderContextMenu}
-                  onDragStart={handleFolderDragStart}
-                  onDragEnd={handleFolderDragEnd}
+                <TabRow
+                  id={id}
+                  active={id === activeId}
+                  selected={selectedIds.has(id)}
+                  removing={removing.has(id)}
+                  dragging={id === dragSourceId}
+                  indent={row.kind === 'peek' || row.indent}
+                  onActivate={onSelectClick}
+                  onClose={onClose}
+                  onOpenInSidePanel={onOpenInSidePanel}
+                  onContextMenu={onTabContextMenu ? handleRowContextMenu : undefined}
+                  onDragStart={dragEnabled && row.kind === 'tab' ? handleDragStart : undefined}
+                  onDragEnd={dragEnabled && row.kind === 'tab' ? handleDragEnd : undefined}
                 />
               </div>
             );
-          }
-
-          const id = row.kind === 'tab' || row.kind === 'peek' ? row.id : undefined;
-          if (id === undefined) return null;
-          return (
-            <div
-              key={rowKey(row)}
-              className="bento-tab-list__row"
-              style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-            >
-              <TabRow
-                id={id}
-                active={id === activeId}
-                selected={selectedIds.has(id)}
-                removing={removing.has(id)}
-                dragging={id === dragSourceId}
-                indent={row.kind === 'peek' || row.indent}
-                onActivate={onSelectClick}
-                onClose={onClose}
-                onOpenInSidePanel={onOpenInSidePanel}
-                onContextMenu={onTabContextMenu ? handleRowContextMenu : undefined}
-                onDragStart={dragEnabled && row.kind === 'tab' ? handleDragStart : undefined}
-                onDragEnd={dragEnabled && row.kind === 'tab' ? handleDragEnd : undefined}
-              />
-            </div>
-          );
-        })}
+          })}
       </div>
     </div>
   );
@@ -565,7 +730,9 @@ export function TabList({
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const workspaceOrder = useWorkspacesStore((s) => s.orderedIds);
+  const workspacesById = useWorkspacesStore((s) => s.byId);
   const tabsById = useTabsStore((s) => s.byId);
+  const panelsByWorkspace = usePanelsStore((s) => s.byWorkspace);
   const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   // Pass windowId so the filter ALSO restricts to tabs in this window's
   // gBrowser — cross-window tabs from another window with the same
@@ -584,8 +751,53 @@ export function TabList({
   );
   const visualTabOrder = useMemo(() => flattenTabOrder(visualRows), [visualRows]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const lastSelectedIdRef = useRef<number | null>(null);
   const mirroredSelectedTitleRef = useRef(false);
+
+  const searchResults = useMemo<TabListSearchResult[]>(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (query.length === 0) return [];
+
+    const workspaceRank = new Map(workspaceOrder.map((id, index) => [id, index]));
+    const panelWorkspaceById = new Map<number, string>();
+    for (const [workspaceId, ids] of panelsByWorkspace.entries()) {
+      for (const id of ids) panelWorkspaceById.set(id, workspaceId);
+    }
+
+    return Object.values(tabsById)
+      .flatMap((tab): TabListSearchResult[] => {
+        const title = tab.customTitle || tab.title || 'Untitled';
+        if (!title.toLocaleLowerCase().includes(query)) return [];
+        const panelWorkspaceId = panelWorkspaceById.get(tab.id);
+        const workspaceId = panelWorkspaceId ?? tab.workspaceId;
+        if (!workspaceId) return [];
+        const workspace = workspacesById[workspaceId];
+        if (!workspace) return [];
+        const theme = getThemeMeta(workspace.themeId);
+        return [
+          {
+            id: tab.id,
+            kind: panelWorkspaceId ? 'panel' : 'tab',
+            title,
+            favIconUrl: tab.favIconUrl,
+            workspaceId,
+            workspaceName: workspace.name,
+            workspaceIcon: workspace.icon || workspace.name.trim().slice(0, 1).toUpperCase() || '?',
+            workspaceThemeColor: theme.brand60,
+          },
+        ];
+      })
+      .sort((a, b) => {
+        const workspaceDelta =
+          (workspaceRank.get(a.workspaceId) ?? Number.MAX_SAFE_INTEGER) -
+          (workspaceRank.get(b.workspaceId) ?? Number.MAX_SAFE_INTEGER);
+        if (workspaceDelta !== 0) return workspaceDelta;
+        return (tabsById[a.id]?.index ?? 0) - (tabsById[b.id]?.index ?? 0);
+      })
+      .slice(0, 50);
+  }, [panelsByWorkspace, searchQuery, tabsById, workspaceOrder, workspacesById]);
 
   const closeSelectedTabs = useCallback(() => {
     if (!onCloseSelected || selectedIds.size === 0) return;
@@ -693,6 +905,21 @@ export function TabList({
     },
     [selectedIds, visualTabOrder],
   );
+
+  const handleRunSearchResult = useCallback((result: TabListSearchResult) => {
+    if (result.kind === 'panel') {
+      dispatch({ type: 'panel/focus', workspaceId: result.workspaceId, id: result.id });
+    } else {
+      dispatch({ type: 'tab/activate', id: result.id });
+    }
+    setSearchOpen(false);
+    setSearchQuery('');
+  }, []);
+
+  const handleCloseSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+  }, []);
   // Readiness gate: render the skeleton until BOTH stores have hydrated
   // for the active workspace. tabsStore.hydrated flips on the first
   // tabs/snapshot from bento-tools; panelsStore.hydratedWorkspaces gets
@@ -785,6 +1012,13 @@ export function TabList({
             onSelectionContextMenu={handleSelectionContextMenu}
             isCollapsed={sidebarCollapsed}
             className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
+            searchOpen={false}
+            searchQuery=""
+            searchResults={[]}
+            onOpenSearch={() => undefined}
+            onCloseSearch={() => undefined}
+            onSearchQueryChange={() => undefined}
+            onRunSearchResult={() => undefined}
           />
         )}
         <TabListPane
@@ -813,6 +1047,13 @@ export function TabList({
           // also keeps `dragging` state from leaking between pane mounts.
           onReorder={onReorder}
           className={incomingClass}
+          searchOpen={searchOpen}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onOpenSearch={() => setSearchOpen(true)}
+          onCloseSearch={handleCloseSearch}
+          onSearchQueryChange={setSearchQuery}
+          onRunSearchResult={handleRunSearchResult}
         />
       </div>
     </div>

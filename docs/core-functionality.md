@@ -75,8 +75,16 @@ workspaces and tabs.
 
 The sidebar tab list supports multi-selection for workspace organization.
 The tab list exposes `New tab` and `New panel` buttons for opening fresh regular
-tabs and blank panels in the active workspace. When pinned tabs exist, these
-controls appear below the pinned run and above regular tabs.
+tabs and blank panels in the active workspace. A search icon beside those
+controls expands into a sidebar search field over the action row. Typing filters
+open tabs and side panels by title across all workspaces. The field has a clear
+button. While a query is active, the sidebar shows only the search field and
+matching result rows; normal tabs, folders, pinned sections, and creation
+controls are hidden until the query is cleared or search closes. Results use the
+same row footprint as sidebar tabs, identify each result's workspace with its
+workspace icon or initial, tint the workspace marker with that workspace's theme,
+and selecting a result switches to that tab or focuses that panel. When pinned
+tabs exist, these controls appear below the pinned run and above regular tabs.
 Workspace tabs can be grouped into collapsible tab folders from the sidebar
 context menu. Folders live below pinned tabs and above the regular tab section,
 can be renamed, deleted, collapsed, expanded, and reordered among themselves,

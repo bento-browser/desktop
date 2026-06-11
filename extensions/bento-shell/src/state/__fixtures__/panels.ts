@@ -11,3 +11,9 @@ export function seedPanelsHydrated(workspaceIds: string[]): void {
     usePanelsStore.getState().apply(id, []);
   }
 }
+
+export function seedPanelsByWorkspace(panelsByWorkspace: Record<string, number[]>): void {
+  for (const [workspaceId, tabIds] of Object.entries(panelsByWorkspace)) {
+    usePanelsStore.getState().apply(workspaceId, tabIds);
+  }
+}

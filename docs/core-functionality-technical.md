@@ -863,6 +863,31 @@ external-store snapshot can spin the React tree or crash the palette frame befor
 the Dialog paints. Subscribe to stable store references such as
 `usePanelsStore((s) => s.byWorkspace)` and derive object arrays with `useMemo`.
 
+## Sidebar Tab And Panel Search
+
+`extensions/bento-shell/src/components/TabList/TabList.tsx` owns the inline
+sidebar search field shown from the action row beside `New tab` and `New panel`.
+The result set is derived locally from the shell mirrors: `useTabsStore` provides
+all tab snapshots, `usePanelsStore((s) => s.byWorkspace)` classifies panel tab
+ids by workspace, and `useWorkspacesStore` supplies workspace order, icons, and
+theme ids. The search is title-only because `TabSnapshot` is the stable sidebar
+contract; do not add URL matching here unless the sidebar UX is intentionally
+widened.
+
+When `searchOpen` is true and the trimmed query is non-empty, `TabListPane`
+skips rendering the normal virtualized display rows and renders only the search
+field plus matching results. This avoids leaving tabs, folders, pinned sections,
+or creation controls visible behind the filtering surface. Clearing the field
+returns the pane to the normal virtualized row path.
+
+Selecting a regular-tab result dispatches `tab/activate`, which lets
+`bento-tools` switch to the target workspace before activating the tab. Selecting
+a panel result dispatches `panel/focus` with the result workspace id so the panel
+strip scroll/focus path stays the source of truth. The result marker color comes
+from the generated workspace theme metadata in
+`extensions/bento-shell/src/theme/presets/index.ts`; the active document theme
+must not be mutated to preview search results.
+
 ## Floating Address Bar
 
 `extensions/bento-shell/src/components/AddressBar/AddressBar.tsx` is a separate

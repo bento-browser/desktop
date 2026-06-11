@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import { TabList } from './TabList';
 import { seedEmpty, seedTabs, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
-import { seedPanelsHydrated } from '../../state/__fixtures__/panels';
+import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
+import { useWorkspacesStore } from '../../state/workspaces';
 import { useTabsStore } from '../../state/tabs';
 
 const noop = () => {};
@@ -222,3 +223,38 @@ export const DragReorder = () => {
 };
 
 DragReorder.storyName = 'Drag to reorder (interactive)';
+
+export const CrossWorkspaceSearch = () => {
+  useEffect(() => {
+    seedDefaultWorkspaces();
+    useWorkspacesStore.getState().applySnapshot(
+      [
+        { id: 'w-personal', name: 'Personal', icon: 'P', createdAt: 1 },
+        { id: 'w-work', name: 'Work', icon: 'W', themeId: 'teal', createdAt: 2 },
+        { id: 'w-side', name: 'Side project', icon: 'S', themeId: 'terracotta', createdAt: 3 },
+      ],
+      'w-personal',
+      {},
+    );
+    const tabs = seedTabsAcrossWorkspaces(
+      [
+        { workspaceId: 'w-personal', count: 5 },
+        { workspaceId: 'w-work', count: 5 },
+        { workspaceId: 'w-side', count: 5 },
+      ],
+      'w-personal',
+    );
+    seedPanelsByWorkspace({
+      'w-personal': [tabs[2]?.id].filter((id): id is number => typeof id === 'number'),
+      'w-work': [tabs[6]?.id].filter((id): id is number => typeof id === 'number'),
+      'w-side': [tabs[11]?.id].filter((id): id is number => typeof id === 'number'),
+    });
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabList {...defaultTabListProps} />
+    </SidebarFrame>
+  );
+};
+
+CrossWorkspaceSearch.storyName = 'Cross-workspace search';
