@@ -178,14 +178,14 @@ Right-clicking page content in the main slot or in a side panel exposes
 DevTools in a new Bento panel immediately adjacent to the inspected surface. The
 DevTools panel stays paired with its caller: moving the caller moves the
 DevTools panel back beside it, the splitter between them is always highlighted,
-and focusing either side shows the focus ring on both. When the caller is inside
-a subdivided panel, the connector sits at that sub-panel's vertical midpoint
-rather than at the midpoint of the containing root panel. Reusing the command
-for the same caller and inspected tab focuses the existing DevTools panel
-instead of creating another one. DevTools panels are ephemeral: they are closed
-when the caller panel is removed, when the inspected tab is closed, or across
-browser restart, and they are not saved in workspace panel persistence or the
-pinned panels rail.
+and focusing either side shows the focus ring and active header styling on both.
+When the caller is inside a subdivided panel, the connector sits at that
+sub-panel's vertical midpoint rather than at the midpoint of the containing root
+panel. Reusing the command for the same caller and inspected tab focuses the
+existing DevTools panel instead of creating another one. DevTools panels are
+ephemeral: they are closed when the caller panel is removed, when the inspected
+tab is closed, or across browser restart, and they are not saved in workspace
+panel persistence or the pinned panels rail.
 
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools
@@ -276,7 +276,8 @@ targets, and pinned panels without relying only on precise pointer movement.
 The intended behavior is:
 
 - visible panel controls are keyboard reachable;
-- focused panels have clear visual state;
+- focused panels have clear visual state through a persistent ring and active
+  header colour;
 - the sidebar's new-tab control remains reachable when the sidebar is collapsed;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;

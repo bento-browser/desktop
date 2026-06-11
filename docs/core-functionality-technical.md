@@ -1368,6 +1368,13 @@ keyboard extensions like Vimium still receive normal content key events.
 chrome notificationbox. The add-panel trailer is the exception: cycle focus
 stays on the outer XUL `vbox` so Enter/Space creates a blank panel.
 
+`bento-shell-mount.js` uses `.bento-panel--focused` and
+`.bento-panel--cycle-focused` as the source of truth for visible panel focus.
+Those classes paint both the existing panel ring and the focused panel header's
+`--color-60` background/`--color-60-fg` icon treatment. DevTools/content
+partner panels receive the same classes through `getDevtoolsFocusPartnerElement`,
+so focusing either side of a pair highlights both headers as well as both rings.
+
 Arrow-key and Shift-wheel traversal must use minimal reveal scrolling. If the
 next cycle target is already fully visible, the strip should not scroll. When
 the target reaches an edge, call `scrollPanelIntoViewFromRight` so the strip

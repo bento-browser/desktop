@@ -1000,6 +1000,29 @@
       #bento-side-panel-host > .bento-panel--cycle-focused::after {
         border-color: var(--color-60);
       }
+      .bento-panel--focused > .bento-panel-header,
+      .bento-panel--cycle-focused > .bento-panel-header {
+        background-color: var(--color-60);
+        border-bottom-color: var(--color-60);
+      }
+      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button,
+      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button {
+        color: var(--color-60-fg);
+      }
+      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
+        background-color: color-mix(in srgb, var(--color-60-fg) 14%, transparent);
+        color: var(--color-60-fg);
+      }
+      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
+        background-color: color-mix(in srgb, var(--color-60-fg) 20%, transparent);
+        color: var(--color-60-fg);
+      }
       #bento-side-panel-host > [data-bento-panel-tab-id] > browser {
         flex: 1 1 auto;
         min-height: 0;
@@ -1021,9 +1044,11 @@
         overflow: hidden;
         box-sizing: border-box;
         transition:
+          background-color var(--bento-duration-base) var(--bento-easing-standard),
           max-height var(--bento-duration-base) var(--bento-easing-snappy),
           min-height var(--bento-duration-base) var(--bento-easing-snappy),
           padding var(--bento-duration-base) var(--bento-easing-snappy),
+          border-bottom-color var(--bento-duration-base) var(--bento-easing-standard),
           border-bottom-width var(--bento-duration-base) var(--bento-easing-snappy);
       }
       /* Header hiding uses height collapse, not opacity/visibility:
