@@ -361,6 +361,73 @@ describe('protocol handler tab folders', () => {
     });
     expect(setFolder).toHaveBeenCalledTimes(1);
   });
+
+  it('moves a folder and its member tabs to another workspace', async () => {
+    const assignWorkspace = vi.fn().mockResolvedValue(undefined);
+    const moveToWorkspace = vi.fn(() => ({
+      id: 'folder-1',
+      workspaceId: 'ws-2',
+      name: 'Folder',
+      order: 0,
+      collapsed: false,
+      createdAt: 1,
+    }));
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => [
+          { id: 1, workspaceId: 'ws-1', folderId: 'folder-1', pinned: false },
+          { id: 2, workspaceId: 'ws-1', folderId: 'folder-1', pinned: true },
+          { id: 3, workspaceId: 'ws-1', folderId: 'folder-2', pinned: false },
+        ]),
+        assignWorkspace,
+      },
+      workspaces: {
+        has: vi.fn((id: string) => id === 'ws-1' || id === 'ws-2'),
+        getActiveId: vi.fn(() => 'ws-1'),
+        snapshot: vi.fn(() => ({
+          workspaces: [
+            { id: 'ws-1', name: 'One', createdAt: 1 },
+            { id: 'ws-2', name: 'Two', createdAt: 2 },
+          ],
+          activeId: 'ws-1',
+          activeIdByWindow: { 1: 'ws-1' },
+        })),
+        forgetWindow: vi.fn(),
+        delete: vi.fn(),
+        activate: vi.fn(() => 'activated'),
+      },
+      settings: {},
+      panels: {
+        getPanels: vi.fn(() => []),
+      },
+      pinnedPanels: {},
+      tabFolders: {
+        get: vi.fn(() => ({
+          id: 'folder-1',
+          workspaceId: 'ws-1',
+          name: 'Folder',
+          order: 0,
+          collapsed: false,
+          createdAt: 1,
+        })),
+        moveToWorkspace,
+      },
+      savedPanels: {},
+      backup: {},
+      send: vi.fn(),
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+      sourceWindowId: 1,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'tabFolder/assignWorkspace', id: 'folder-1', workspaceId: 'ws-2' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(moveToWorkspace).toHaveBeenCalledWith('folder-1', 'ws-2');
+    });
+    expect(assignWorkspace).toHaveBeenCalledTimes(1);
+    expect(assignWorkspace).toHaveBeenCalledWith(1, 'ws-2', { preserveFolderId: 'folder-1' });
+  });
 });
 
 describe('protocol handler pinned panels', () => {

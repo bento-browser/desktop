@@ -205,20 +205,32 @@ export class TabRegistry {
 
   /** Assign (or reassign) a tab to a workspace. Persists via sessions API and
    * emits an `updated` delta so the shell mirror picks it up. */
-  async assignWorkspace(id: number, workspaceId: string): Promise<void> {
+  async assignWorkspace(
+    id: number,
+    workspaceId: string,
+    options: { preserveFolderId?: string } = {},
+  ): Promise<void> {
     if (this.#closingTabIds.has(id)) return;
     const tab = this.#tabs.get(id);
     if (!tab) return;
-    if (tab.workspaceId === workspaceId) return;
+    if (tab.workspaceId === workspaceId && tab.folderId === options.preserveFolderId) return;
     try {
       await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
+      if (options.preserveFolderId) {
+        await browser.sessions.setTabValue(id, FOLDER_SESSION_KEY, options.preserveFolderId);
+      }
     } catch (err) {
       console.warn('[bento-tools] sessions.setTabValue failed:', id, err);
       return;
     }
     tab.workspaceId = workspaceId;
     const changes: Partial<TabSnapshot> = { workspaceId };
-    if (tab.folderId !== undefined) {
+    if (options.preserveFolderId) {
+      if (tab.folderId !== options.preserveFolderId) {
+        tab.folderId = options.preserveFolderId;
+        changes.folderId = options.preserveFolderId;
+      }
+    } else if (tab.folderId !== undefined) {
       try {
         await browser.sessions.removeTabValue(id, FOLDER_SESSION_KEY);
       } catch {

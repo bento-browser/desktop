@@ -12960,6 +12960,18 @@
           dispatchShellAction({ type: 'tabFolder/delete', id: folderId });
           return;
         }
+        if (
+          folderId &&
+          typeof itemId === 'string' &&
+          itemId.startsWith('move-folder-to-workspace:')
+        ) {
+          dispatchShellAction({
+            type: 'tabFolder/assignWorkspace',
+            id: folderId,
+            workspaceId: itemId.slice('move-folder-to-workspace:'.length),
+          });
+          return;
+        }
         if (!hasTabId) return;
         if (itemId === 'reload-tab') {
           dispatchShellAction({ type: 'tab/reload', id: tabId });
@@ -15141,7 +15153,7 @@
       (e) => {
         const accel = navigator.platform.toLowerCase().includes('mac') ? e.metaKey : e.ctrlKey;
         if (!accel || e.altKey || e.shiftKey) return;
-        if (e.code !== 'KeyL' && e.code !== 'KeyT') return;
+        if (e.code !== 'KeyE' && e.code !== 'KeyL' && e.code !== 'KeyT') return;
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
@@ -15587,6 +15599,9 @@
       const dir = e?.detail?.direction;
       if (dir !== 1 && dir !== -1) return;
       navigatePanels(dir);
+    });
+    window.addEventListener('BentoKey:AddrbarOpen', () => {
+      showAddrbar('current');
     });
   }
 

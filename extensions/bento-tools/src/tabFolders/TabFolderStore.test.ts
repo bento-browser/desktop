@@ -38,4 +38,20 @@ describe('TabFolderStore', () => {
     expect(seen.length).toBeGreaterThan(0);
     vi.useRealTimers();
   });
+
+  it('moves a folder to the end of another workspace', async () => {
+    mockStorage();
+    const store = new TabFolderStore();
+    await store.init();
+
+    store.create({ id: 'a', workspaceId: 'ws-1', name: 'A' });
+    store.create({ id: 'b', workspaceId: 'ws-2', name: 'B' });
+    store.create({ id: 'c', workspaceId: 'ws-2', name: 'C' });
+
+    const moved = store.moveToWorkspace('a', 'ws-2');
+
+    expect(moved).toMatchObject({ id: 'a', workspaceId: 'ws-2', order: 2 });
+    expect(store.foldersForWorkspace('ws-1')).toEqual([]);
+    expect(store.foldersForWorkspace('ws-2').map((folder) => folder.id)).toEqual(['b', 'c', 'a']);
+  });
 });

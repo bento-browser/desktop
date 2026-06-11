@@ -618,6 +618,28 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (!ctx.workspaces.has(action.workspaceId)) return;
       ctx.tabFolders.reorder(action.workspaceId, action.orderedIds);
       return;
+    case 'tabFolder/assignWorkspace': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      const folder = ctx.tabFolders.get(action.id);
+      if (!folder || folder.workspaceId === action.workspaceId) return;
+      const memberIds = ctx.tabs
+        .snapshot()
+        .filter((tab) => tab.folderId === folder.id && !tab.pinned)
+        .map((tab) => tab.id);
+      const fromWorkspaceId = folder.workspaceId;
+      void (async () => {
+        for (const id of memberIds) {
+          const before = ctx.tabs.snapshot().find((tab) => tab.id === id);
+          if (!before || before.workspaceId === action.workspaceId) continue;
+          await ctx.tabs.assignWorkspace(id, action.workspaceId, { preserveFolderId: folder.id });
+        }
+        const moved = ctx.tabFolders.moveToWorkspace(folder.id, action.workspaceId);
+        if (moved) {
+          await cleanupWorkspaceAfterTabMove(ctx, -1, fromWorkspaceId, action.workspaceId);
+        }
+      })();
+      return;
+    }
     case 'tabFolder/delete': {
       const removed = ctx.tabFolders.delete(action.id);
       if (!removed) return;

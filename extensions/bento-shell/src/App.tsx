@@ -179,9 +179,23 @@ export function App() {
     event.preventDefault();
     const items: SidebarMenuItem[] = [{ id: 'new-tab', label: 'New tab' }];
     if (folderId) {
+      const folder = folders.find((candidate) => candidate.id === folderId);
+      const folderWorkspaceItems = workspaceIds.map((workspaceId) => {
+        const workspace = workspacesById[workspaceId];
+        return {
+          id: `move-folder-to-workspace:${workspaceId}`,
+          label: workspace?.name ?? 'Untitled workspace',
+          isDisabled: folder?.workspaceId === workspaceId,
+        };
+      });
       items.push(
         { id: 'sep-folder-actions', kind: 'separator' },
         { id: 'rename-folder', label: 'Rename folder' },
+        {
+          id: 'move-folder-to-workspace',
+          label: 'Move folder to workspace',
+          items: folderWorkspaceItems,
+        },
         { id: 'delete-folder', label: 'Delete folder' },
       );
       document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({

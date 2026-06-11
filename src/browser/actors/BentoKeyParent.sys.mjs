@@ -13,10 +13,14 @@
 
 export class BentoKeyParent extends JSWindowActorParent {
   receiveMessage(message) {
-    if (message.name !== 'BentoKey:Cycle') return;
+    if (message.name !== 'BentoKey:Cycle' && message.name !== 'BentoKey:AddrbarOpen') return;
     const win = this.browsingContext.topChromeWindow;
     if (!win) return;
     try {
+      if (message.name === 'BentoKey:AddrbarOpen') {
+        win.dispatchEvent(new win.CustomEvent('BentoKey:AddrbarOpen'));
+        return;
+      }
       win.dispatchEvent(
         new win.CustomEvent('BentoKey:Cycle', {
           detail: { direction: message.data.direction },

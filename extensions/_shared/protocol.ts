@@ -400,6 +400,7 @@ export type Action =
   | { type: 'tabFolder/delete'; id: string }
   | { type: 'tabFolder/setCollapsed'; id: string; collapsed: boolean }
   | { type: 'tabFolder/reorder'; workspaceId: string; orderedIds: string[] }
+  | { type: 'tabFolder/assignWorkspace'; id: string; workspaceId: string }
   | { type: 'tabs/setFolder'; ids: number[]; folderId: string | null }
   /** Create a new workspace and move the selected sidebar tabs into it.
    * The new workspace auto-activates in the requesting window. */

@@ -158,6 +158,11 @@ tale-icon-button--sm` to panel-header controls and defines a scoped
   maps embedded migration wizard buttons to `tale-button` classes, with the
   matching chrome-host CSS in
   [bento-migration-host.css](../src/browser/base/content/bento-migration-host.css).
+- ASRouter `menu-message` default-browser nudge:
+  [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css)
+  scopes inherited custom properties on `#appMenu-menu-message > menu-message`
+  so the upstream shadow-DOM component uses Tale UI neutral, accent, foreground,
+  and button tokens instead of Firefox's default information banner colours.
 - `Card` with `outlined` / `filled` and `sm` / `md` classes:
   [bento-migration-host.html](../src/browser/base/content/bento-migration-host.html)
   and [bento-migration-host.js](../src/browser/base/content/bento-migration-host.js)

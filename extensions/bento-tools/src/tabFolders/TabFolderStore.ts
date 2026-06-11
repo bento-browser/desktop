@@ -107,6 +107,18 @@ export class TabFolderStore {
     return changed;
   }
 
+  moveToWorkspace(id: string, workspaceId: string): TabFolder | undefined {
+    const folder = this.#byId.get(id);
+    if (!folder || folder.workspaceId === workspaceId) return undefined;
+    const siblings = this.foldersForWorkspace(workspaceId);
+    const order = siblings.reduce((max, candidate) => Math.max(max, candidate.order), -1) + 1;
+    const next = { ...folder, workspaceId, order };
+    this.#byId.set(id, next);
+    this.#enqueue({ kind: 'updated', id, changes: { workspaceId, order } });
+    this.#schedulePersist();
+    return next;
+  }
+
   removeForWorkspace(workspaceId: string): TabFolder[] {
     const removed: TabFolder[] = [];
     for (const [id, folder] of Array.from(this.#byId.entries())) {

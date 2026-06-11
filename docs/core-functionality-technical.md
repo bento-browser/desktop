@@ -326,7 +326,10 @@ Membership is stored on tabs with the `bento.folderId` sessions key in
 metadata. The wire protocol adds `TabSnapshot.folderId`, `TabFolder`,
 `tabFolders/snapshot`, `tabFolders/changed`, `tabFolder/*` actions, and
 `tabs/setFolder`. Moving a tab to another workspace clears folder membership in
-the same tab delta as the workspace change.
+the same tab delta as the workspace change. Moving a whole folder uses
+`tabFolder/assignWorkspace`: tools updates each member tab's workspace while
+preserving that folder id, then moves the folder metadata to the target
+workspace at the end of that workspace's folder order.
 
 The shell mirrors folder metadata in
 `extensions/bento-shell/src/state/tabFolders.ts`. `TabList` builds a single
@@ -384,6 +387,9 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not split workspace moves and folder clearing into separate tab deltas.
   Cross-workspace moves must clear folder membership atomically with the
   workspace change.
+- Do not move folder member tabs with the default `tab/assignWorkspace` path.
+  Folder moves must preserve `bento.folderId` while changing workspace id, then
+  move the folder metadata to the target workspace.
 - Do not handle folder context-menu actions after the chrome handler's
   `hasTabId` guard; folder menus have no tab id by design.
 - Do not rely on the inline rename component alone for focus after native
@@ -862,10 +868,12 @@ the Dialog paints. Subscribe to stable store references such as
 `extensions/bento-shell/src/components/AddressBar/AddressBar.tsx` is a separate
 chrome overlay entry hosted at `address-bar.html`, mounted dynamically by
 `ensureOverlayHost` in `src/browser/base/content/bento-shell-mount.js`. The
-chrome keybinding intercepts `Cmd/Ctrl+L` and `Cmd/Ctrl+T` in capture phase,
-opens the overlay, and sends the mode to the addrbar frame through a frame
-script that posts on `BroadcastChannel('bento-addrbar-bus')` from the content
-global.
+chrome keybinding intercepts `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and `Cmd/Ctrl+T` in
+capture phase, opens the overlay, and sends the mode to the addrbar frame
+through a frame script that posts on `BroadcastChannel('bento-addrbar-bus')`
+from the content global. `Cmd/Ctrl+E` is also forwarded by the `BentoKey`
+content actor so the current-tab address dialog opens while web content owns
+focus.
 
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
 actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the

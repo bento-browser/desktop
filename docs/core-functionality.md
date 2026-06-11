@@ -80,10 +80,11 @@ controls appear below the pinned run and above regular tabs.
 Workspace tabs can be grouped into collapsible tab folders from the sidebar
 context menu. Folders live below pinned tabs and above the regular tab section,
 can be renamed, deleted, collapsed, expanded, and reordered among themselves,
-and persist across restarts. Tabs inside folders remain normal unpinned Firefox
-tabs. Folder names are not directly editable by clicking the row; rename starts
-from the folder context menu and opens an inline field that is immediately ready
-for typing. Deleting a folder returns its member tabs to the regular section.
+can be moved to another workspace from their context menu, and persist across
+restarts. Tabs inside folders remain normal unpinned Firefox tabs. Folder names
+are not directly editable by clicking the row; rename starts from the folder
+context menu and opens an inline field that is immediately ready for typing.
+Deleting a folder returns its member tabs to the regular section.
 When the active tab is inside a collapsed folder, Bento shows that active tab as
 a single peek row beneath the folder.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
@@ -123,12 +124,12 @@ that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
 active states so mouse and keyboard navigation both have visible feedback.
 
-The floating address/search bar opens with `Cmd/Ctrl+L` for the current tab and
-`Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top address field
-also opens the same floating address/search bar in current-tab mode instead of
-showing Firefox's native suggestion dropdown. Empty input shows recent history.
-It floats over the browser content without restyling Firefox's native address
-bar. Results include open normal tabs,
+The floating address/search bar opens with `Cmd/Ctrl+L` or `Cmd/Ctrl+E` for the
+current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
+address field also opens the same floating address/search bar in current-tab
+mode instead of showing Firefox's native suggestion dropdown. Empty input shows
+recent history. It floats over the browser content without restyling Firefox's
+native address bar. Results include open normal tabs,
 open panels, history, bookmarks, and a final search/open row. Submitting a
 current-tab search or URL uses Firefox's URL fixup and default search engine.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc

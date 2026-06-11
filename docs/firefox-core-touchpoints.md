@@ -94,7 +94,8 @@ Use this shape for new or changed touchpoints:
   overlay shortcuts, address/search navigation, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
-  menus still dispatch tab and workspace actions, verify `Cmd/Ctrl+L` and
+  menus still dispatch tab, folder, and workspace actions including moving a
+  folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and
   `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
   handling, verify clicking into Firefox's native top address input opens the
   same Bento floating address bar with recent history suggestions and does not

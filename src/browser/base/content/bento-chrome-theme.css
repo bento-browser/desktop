@@ -244,6 +244,33 @@
     color: var(--neutral-10) !important;
   }
 
+  /* ASRouter's app-menu default-browser nudge renders inside a shadow DOM
+   * menu-message element. Theme it through inherited custom properties so
+   * the upstream component can keep its structure while Bento supplies Tale
+   * UI token colours. */
+  #appMenu-menu-message > menu-message {
+    --background-color-information: var(--neutral-12) !important;
+    --text-color: var(--neutral-90) !important;
+    --button-background-color-primary: var(--color-60) !important;
+    --button-background-color-primary-hover: var(--color-50) !important;
+    --button-background-color-primary-active: var(--color-40) !important;
+    --button-border-color-primary: transparent !important;
+    --button-border-color-primary-hover: transparent !important;
+    --button-border-color-primary-active: transparent !important;
+    --button-text-color-primary: var(--color-60-fg) !important;
+    --button-text-color-primary-hover: var(--color-50-fg) !important;
+    --button-text-color-primary-active: var(--color-40-fg) !important;
+    --button-background-color-ghost: transparent !important;
+    --button-background-color-ghost-hover: var(--neutral-16) !important;
+    --button-background-color-ghost-active: var(--neutral-20) !important;
+    --button-border-color-ghost: transparent !important;
+    --button-border-color-ghost-hover: transparent !important;
+    --button-border-color-ghost-active: transparent !important;
+    --button-text-color-ghost: var(--neutral-70) !important;
+    --button-text-color-ghost-hover: var(--neutral-90) !important;
+    --button-text-color-ghost-active: var(--neutral-90) !important;
+  }
+
   /* ─── macOS arrow-panel background fix ─────────────────────────
    * popup.css sets --panel-background: none on all menupopup/panel
    * elements on macOS so the native NSVisualEffectView renders the

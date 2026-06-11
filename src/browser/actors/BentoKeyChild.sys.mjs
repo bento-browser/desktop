@@ -6,18 +6,19 @@
 //
 // Lives in every web content document (one instance per BrowsingContext,
 // see registerWindowActor in bento-shell-mount.js). Forwards a small
-// allowlist of chrome-bound keys (currently ArrowLeft / ArrowRight for
-// panel cycling) back to chrome via the parent actor, so panel
+// allowlist of chrome-bound keys (ArrowLeft / ArrowRight for panel
+// cycling, Cmd/Ctrl+E for the floating address bar) back to chrome, so panel
 // navigation works while content has focus — without this, focus has
 // to sit on the chrome panel container, which prevents page-bound
 // keyboard extensions (Vimium, Surfingkeys, etc.) from receiving any
 // keys.
 //
 // Filters:
-//   - Modifier keys (alt/ctrl/meta/shift) → never forward; chrome's
-//     own accelerator handlers cover modified shortcuts.
+//   - Modifier keys on panel cycling → never forward; chrome's own
+//     accelerator handlers cover modified shortcuts.
 //   - Form / editable targets (input, textarea, contenteditable,
-//     role=textbox) → never forward; the user is typing.
+//     role=textbox) → never forward for unmodified panel cycling; browser
+//     accelerators still win.
 //   - Already-defaultPrevented events → never forward; some page
 //     handler claimed the key.
 
@@ -37,6 +38,16 @@ export class BentoKeyChild extends JSWindowActorChild {
   handleEvent(event) {
     if (event.type !== 'keydown') return;
     if (event.defaultPrevented) return;
+    if (!event.altKey && !event.shiftKey && event.code === 'KeyE') {
+      const accel = event.metaKey || event.ctrlKey;
+      const extraModifier = event.metaKey && event.ctrlKey;
+      if (accel && !extraModifier) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.sendAsyncMessage('BentoKey:AddrbarOpen');
+        return;
+      }
+    }
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (!FORWARDED_KEYS.has(event.key)) return;
     if (isEditableTarget(event.composedTarget ?? event.target)) return;
