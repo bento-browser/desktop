@@ -1432,13 +1432,16 @@ Panel traversal is split between chrome focus tracking and a JSWindowActor pair:
 
 - `src/browser/actors/BentoKeyChild.sys.mjs` listens in content documents.
 - `src/browser/actors/BentoKeyParent.sys.mjs` dispatches a chrome
-  `BentoKey:Cycle` event.
+  `BentoKey:Cycle` or `BentoKey:PanelHistory` event.
 - `bento-shell-mount.js` registers the actor with `ChromeUtils.registerWindowActor`
-  and handles the custom event by calling the private `navigatePanels` closure.
+  and handles the custom events by calling the private `navigatePanels` closure
+  or the focused panel browser's `goBack()` / `goForward()` methods.
 
-The actor forwards only unmodified `ArrowLeft` and `ArrowRight`, skips editable
-targets, and skips already-handled events. Other page keys pass through so
-keyboard extensions like Vimium still receive normal content key events.
+The actor forwards unmodified `ArrowLeft` and `ArrowRight` for panel cycling and
+`Cmd/Ctrl+ArrowLeft` / `Cmd/Ctrl+ArrowRight` for panel-local history navigation.
+It skips editable targets and already-handled events. Other page keys pass
+through so keyboard extensions like Vimium still receive normal content key
+events.
 
 `setActiveByIndex` focuses the panel's `<browser>` for panel targets, not the
 chrome notificationbox. The add-panel trailer is the exception: cycle focus

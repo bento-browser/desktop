@@ -7,15 +7,16 @@
 // Lives in every web content document (one instance per BrowsingContext,
 // see registerWindowActor in bento-shell-mount.js). Forwards a small
 // allowlist of chrome-bound keys (ArrowLeft / ArrowRight for panel
-// cycling, Cmd/Ctrl+E for the floating address bar) back to chrome, so panel
-// navigation works while content has focus — without this, focus has
-// to sit on the chrome panel container, which prevents page-bound
+// cycling, Cmd/Ctrl+Left/Right for panel history, Cmd/Ctrl+E for the
+// floating address bar) back to chrome, so panel navigation works while
+// content has focus — without this, focus has to sit on the chrome panel
+// container, which prevents page-bound
 // keyboard extensions (Vimium, Surfingkeys, etc.) from receiving any
 // keys.
 //
 // Filters:
-//   - Modifier keys on panel cycling → never forward; chrome's own
-//     accelerator handlers cover modified shortcuts.
+//   - Modifier keys on panel cycling → never forward; modified
+//     ArrowLeft/Right are reserved for panel-local history navigation.
 //   - Form / editable targets (input, textarea, contenteditable,
 //     role=textbox) → never forward for unmodified panel cycling; browser
 //     accelerators still win.
@@ -45,6 +46,19 @@ export class BentoKeyChild extends JSWindowActorChild {
         event.preventDefault();
         event.stopPropagation();
         this.sendAsyncMessage('BentoKey:AddrbarOpen');
+        return;
+      }
+    }
+    if (!event.altKey && !event.shiftKey && FORWARDED_KEYS.has(event.key)) {
+      const accel = event.metaKey || event.ctrlKey;
+      const extraModifier = event.metaKey && event.ctrlKey;
+      if (accel && !extraModifier) {
+        if (isEditableTarget(event.composedTarget ?? event.target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.sendAsyncMessage('BentoKey:PanelHistory', {
+          direction: event.key === 'ArrowRight' ? 1 : -1,
+        });
         return;
       }
     }

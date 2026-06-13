@@ -366,7 +366,9 @@ as incidental UI state.
 
 Panel content should behave like normal browser content. Extensions, page state,
 keyboard behavior, history, media, and developer tools should work as close to
-regular tabs as possible.
+regular tabs as possible. When focus is inside panel content, `Cmd/Ctrl+Left`
+and `Cmd/Ctrl+Right` navigate backward and forward in that panel's own page
+history unless focus is inside an editable field.
 
 ### Layout should scale with display shape
 

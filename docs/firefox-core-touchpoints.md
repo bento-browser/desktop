@@ -100,6 +100,9 @@ Use this shape for new or changed touchpoints:
   handling, verify clicking into Firefox's native top address input opens the
   same Bento floating address bar with recent history suggestions and does not
   leave the native urlbar suggestions dropdown open, verify
+  `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
+  navigate that panel's own history without moving panel focus and without
+  stealing cursor movement from editable fields, verify
   `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default search-engine
   submissions, verify native URL bar inset controls and the
   search-mode switcher popup inherit Bento token colors in light and dark modes,

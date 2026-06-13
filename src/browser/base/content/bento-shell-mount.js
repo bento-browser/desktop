@@ -6895,6 +6895,44 @@
     );
   }
 
+  function isEditableChromeTarget(target) {
+    if (!target) return false;
+    const tag = target.localName;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+    if (target.isContentEditable) return true;
+    return !!target.closest?.(
+      '#urlbar, #searchbar, [role="textbox"], [role="searchbox"], [role="combobox"]',
+    );
+  }
+
+  function getFocusedPanelHistoryBrowser() {
+    const active = document.activeElement;
+    if (!active || isEditableChromeTarget(active)) return null;
+    if (active.localName === 'browser') return active;
+    const panel = active.closest?.(
+      '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+    );
+    return panel ? getPanelTargetBrowser(panel) : null;
+  }
+
+  function navigateFocusedPanelHistory(direction) {
+    const browser = getFocusedPanelHistoryBrowser();
+    if (!browser) return false;
+    try {
+      if (direction < 0) {
+        if (browser.canGoBack) browser.goBack();
+      } else if (direction > 0) {
+        if (browser.canGoForward) browser.goForward();
+      } else {
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel history navigation failed:', err);
+      return false;
+    }
+  }
+
   function getPanelFocusIndicatorTargets() {
     const out = [];
     const seen = new Set();
@@ -7004,6 +7042,19 @@
   }
 
   window.addEventListener('keydown', (e) => {
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      !e.altKey &&
+      !e.shiftKey &&
+      !(e.metaKey && e.ctrlKey) &&
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+    ) {
+      if (navigateFocusedPanelHistory(e.key === 'ArrowRight' ? 1 : -1)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (!shouldHandlePanelArrowKey(e.target)) return;
 
@@ -15605,6 +15656,11 @@
       const dir = e?.detail?.direction;
       if (dir !== 1 && dir !== -1) return;
       navigatePanels(dir);
+    });
+    window.addEventListener('BentoKey:PanelHistory', (e) => {
+      const dir = e?.detail?.direction;
+      if (dir !== 1 && dir !== -1) return;
+      navigateFocusedPanelHistory(dir);
     });
     window.addEventListener('BentoKey:AddrbarOpen', () => {
       showAddrbar('current');
