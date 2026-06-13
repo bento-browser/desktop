@@ -162,10 +162,11 @@ workspace can have as many panels as the user needs.
 Panels support the core Bento workflow:
 
 - promote an existing tab into a panel;
-- open a link or URL directly into a new panel;
+- open a link or URL directly into a new panel and focus it without snapping it
+  to the left edge when it fits in the visible strip;
 - create a blank panel from the sidebar tab list;
-- create a blank panel from the trailer at the end of the panel strip and move
-  focus to it;
+- create a blank panel from the trailer at the end of the panel strip, move
+  focus to it, and reveal it from the right when it fits in the visible strip;
 - bookmark the current panel URL from the panel header;
 - save a useful panel target for reuse later;
 - pin important panels so they are reachable across workspace changes;

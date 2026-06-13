@@ -194,7 +194,10 @@ describe('protocol handler devtools panels', () => {
     expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(99, 'ws-1');
     expect(ctx.panels.setWidth).toHaveBeenCalledWith(99, 640);
     expect(ctx.syncPanelMarkers).toHaveBeenCalledWith('ws-1');
-    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', { scrollToPanelTabId: 99 });
+    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1', {
+      scrollToPanelTabId: 99,
+      scrollToPanelReveal: 'right-edge',
+    });
     await vi.waitFor(() => {
       expect(browser.sessions.setTabValue).toHaveBeenCalledWith(99, 'bento.isDevtoolsPanel', '1');
     });

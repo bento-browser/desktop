@@ -12793,7 +12793,10 @@
       : null;
     if (explicitScrollId !== null) {
       scrolledToNewPanel = true;
-      scheduleScrollPanelTabIntoView(explicitScrollId, { reveal: 'full', focus: true });
+      scheduleScrollPanelTabIntoView(explicitScrollId, {
+        reveal: options.scrollToPanelReveal === 'right-edge' ? 'right-edge' : 'full',
+        focus: true,
+      });
     } else if (newTabIds.length > 0 && !isInitialReconcileForWorkspace) {
       const newRootId = [...newTabIds]
         .reverse()
@@ -14244,6 +14247,7 @@
     // payload, silently aborting the reconcile.
     let isWorkspaceTransition = false;
     let scrollToPanelTabId = null;
+    let scrollToPanelReveal = 'full';
 	    if (Array.isArray(decoded)) {
 	      allPanelPayloads = decoded;
 	      currentPanelLayout = {
@@ -14405,6 +14409,8 @@
         Number.isInteger(decoded.scrollToPanelTabId)
       ) {
         scrollToPanelTabId = decoded.scrollToPanelTabId;
+        scrollToPanelReveal =
+          decoded.scrollToPanelReveal === 'right-edge' ? 'right-edge' : 'full';
       }
       // Pinned-panel tabIds for the incoming workspace. Workspace-
       // filtered upstream so a Set.has(tabId) is enough to sync each
@@ -14491,12 +14497,12 @@
       // navigator / main content all swap instantly while only the
       // React sidebar slides — the asymmetric motion reads as a
       // visual glitch even though each individual swap is correct.
-      performWorkspaceSwitchFade(panels, { scrollToPanelTabId });
+      performWorkspaceSwitchFade(panels, { scrollToPanelTabId, scrollToPanelReveal });
     } else if (!isWorkspaceTransition && canFastPathTopClosedSubdivision(panels)) {
       fastPathTopClosedSubdivision(panels);
       applyPendingStripScrollRestore();
     } else {
-      reconcilePanels(panels, { scrollToPanelTabId });
+      reconcilePanels(panels, { scrollToPanelTabId, scrollToPanelReveal });
       applyPendingStripScrollRestore();
     }
   }

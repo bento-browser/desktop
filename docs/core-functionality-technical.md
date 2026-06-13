@@ -1498,6 +1498,14 @@ then emits `scrollToPanelTabId`. Recreated pinned panels use the pin's
 remembered `widthPx` when present, falling back to the normal default new-panel
 width only for older pins without width metadata.
 
+Panel creation flows (`panel/add`, `panel/openAt`, and the chrome add-panel
+marker path) emit `scrollToPanelReveal: 'right-edge'` with `scrollToPanelTabId`.
+Chrome still focuses the new panel, but reveals it with the same minimal-scroll
+path as panel cycling: if the new panel fits in the visible strip, its right
+edge lands against the strip's right edge instead of snapping the panel's left
+edge next to the sidebar. Wider-than-visible panels fall back to left-edge
+alignment so the header and start of the content remain usable.
+
 ### Traversal pitfalls
 
 - Do not focus chrome panel containers as the normal traversal target. Content

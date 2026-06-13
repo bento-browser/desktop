@@ -761,6 +761,11 @@ export type Event =
        * by an explicit user action. Used when panel creation races chrome
        * tab resolution: chrome retries until the panel element exists. */
       scrollToPanelTabId?: number;
+      /** How chrome should reveal `scrollToPanelTabId`. `full` aligns the
+       * panel's left edge for explicit focus targets. `right-edge` keeps
+       * creation flows visually adjacent to the source panel by nudging the
+       * new panel's right edge into view. */
+      scrollToPanelReveal?: 'full' | 'right-edge';
       layout: PanelLayoutSync;
       panelStatusByTabId: Record<number, PanelLayoutStatus>;
     }

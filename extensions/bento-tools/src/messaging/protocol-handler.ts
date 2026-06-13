@@ -446,7 +446,11 @@ export interface HandlerContext {
    * only triggers it when panel state changes. */
   emitPanelsSync: (
     workspaceId: string,
-    options?: { scrollToPanelTabId?: number; windowId?: number },
+    options?: {
+      scrollToPanelTabId?: number;
+      scrollToPanelReveal?: 'full' | 'right-edge';
+      windowId?: number;
+    },
   ) => void;
   /** Rewrite session markers for every panel in the workspace with
    * their current indexes. Call after any mutation that changes panel
@@ -919,7 +923,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         // panels.getPanels at the last index) plus refreshes any
         // existing markers — covers add, idempotent for the rest.
         ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId, { scrollToPanelTabId: action.id });
+        ctx.emitPanelsSync(wsId, {
+          scrollToPanelTabId: action.id,
+          scrollToPanelReveal: 'right-edge',
+        });
       }
       return;
     }
@@ -932,7 +939,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
         if (defaultWidth > 0) ctx.panels.setWidth(action.tabId, defaultWidth);
         ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId, { scrollToPanelTabId: action.tabId });
+        ctx.emitPanelsSync(wsId, {
+          scrollToPanelTabId: action.tabId,
+          scrollToPanelReveal: 'right-edge',
+        });
       }
       return;
     }
@@ -1024,7 +1034,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
           if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
           ctx.syncPanelMarkers(wsId);
-          ctx.emitPanelsSync(wsId, { scrollToPanelTabId: tab.id });
+          ctx.emitPanelsSync(wsId, {
+            scrollToPanelTabId: tab.id,
+            scrollToPanelReveal: 'right-edge',
+          });
         })
         .catch((err) => console.warn('[bento-tools] panel/openAt failed:', err));
       return;

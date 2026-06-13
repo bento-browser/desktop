@@ -574,7 +574,11 @@ async function readPanelMarkersForTabsWithRetries(
 // panels render — emitting for an inactive workspace is wasted work.
 async function emitPanelsSync(
   workspaceId: string,
-  options: { scrollToPanelTabId?: number; windowId?: number } = {},
+  options: {
+    scrollToPanelTabId?: number;
+    scrollToPanelReveal?: 'full' | 'right-edge';
+    windowId?: number;
+  } = {},
 ): Promise<void> {
   // No active-workspace gate. Sidebar's tab-list filter
   // (useWorkspaceTabIds) needs panel ids for EVERY workspace so the
@@ -664,6 +668,7 @@ async function emitPanelsSync(
     savedPanelItems?: typeof savedPanelItems;
     devtoolsPairs?: ReturnType<typeof panels.getDevtoolsLinks>;
     scrollToPanelTabId?: number;
+    scrollToPanelReveal?: 'full' | 'right-edge';
     layout: ReturnType<typeof panels.getPanelLayoutSync>;
     panelStatusByTabId: ReturnType<typeof panels.getPanelStatusMap>;
   } = {
@@ -695,6 +700,9 @@ async function emitPanelsSync(
     valid.some((panel) => panel.tabId === options.scrollToPanelTabId)
   ) {
     event.scrollToPanelTabId = options.scrollToPanelTabId;
+    if (options.scrollToPanelReveal === 'right-edge') {
+      event.scrollToPanelReveal = 'right-edge';
+    }
   }
   broadcastEvent(event);
 }
@@ -1332,7 +1340,10 @@ function maybeHandleAddPanelMarker(
     const defaultWidth = settings.snapshot().defaultPanelWidthPx;
     if (defaultWidth > 0) panels.setWidth(tabId, defaultWidth);
     syncPanelMarkersForWorkspace(wsId);
-    void emitPanelsSync(wsId, { scrollToPanelTabId: tabId });
+    void emitPanelsSync(wsId, {
+      scrollToPanelTabId: tabId,
+      scrollToPanelReveal: 'right-edge',
+    });
   } else {
     console.warn('[bento-tools] add-as-panel: panel insert returned false');
   }

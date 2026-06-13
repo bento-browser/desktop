@@ -236,6 +236,7 @@ function ensureConnection(): void {
               savedPanelItems?: typeof event.savedPanelItems;
               devtoolsPairs?: typeof event.devtoolsPairs;
               scrollToPanelTabId?: number;
+              scrollToPanelReveal?: 'full' | 'right-edge';
               layout: typeof event.layout;
               panelStatusByTabId: typeof event.panelStatusByTabId;
             } = {
@@ -309,6 +310,9 @@ function ensureConnection(): void {
             }
             if (typeof event.scrollToPanelTabId === 'number') {
               payload.scrollToPanelTabId = event.scrollToPanelTabId;
+              if (event.scrollToPanelReveal === 'right-edge') {
+                payload.scrollToPanelReveal = 'right-edge';
+              }
             }
             const json = JSON.stringify(payload);
             // btoa needs latin1; encodeURIComponent first to handle multibyte.
