@@ -264,7 +264,9 @@ hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
 assignment remains tools-owned.
 `TabList` also renders the visible `New tab` and `New panel` buttons above the
 virtualized pane. `New tab` dispatches the existing `tab/create` action from
-`App.tsx`; `New panel` dispatches `panel/openAt` with `about:newtab`,
+`App.tsx`; `tab/create` may also carry a Firefox tab-strip `index` when a
+context-menu command needs a specific insertion point. `New panel` dispatches
+`panel/openAt` with `about:newtab`,
 `sourceTabId: null`, and `position: 'end'`. Tab and panel creation stay
 tools-owned and use the same active-window and active-workspace assignment paths
 as other entry points. Collapsed sidebar mode keeps the controls visible as
@@ -313,9 +315,14 @@ right-clicked, the shell payload includes `tabIds`; chrome dispatches
 Right-clicking an unselected row does not mutate sidebar selection, because
 doing so emits `BENTO_SELECTED_TABS` and can overwrite the context-menu title IPC
 before chrome polls it.
-For single rows, the shell includes "Close tab" and includes "Convert to panel"
-only when the target row is not the active tab; chrome dispatches `tab/close` or
-`panel/add` for those items.
+For single rows, the shell includes "New Tab Below" with the clicked row's
+`TabSnapshot.index`, includes "Mute tab" or "Unmute tab" from
+`TabSnapshot.muted`, includes "Close tab", and includes "Convert to panel" only
+when the target row is not the active tab. Chrome dispatches `tab/create` with
+`index + 1`, `tab/toggleMuted`, `tab/close`, or `panel/add` for those items.
+Bento-tools passes a valid `tab/create.index` to `browser.tabs.create` while
+preserving the same source-window and eager workspace assignment used by other
+blank-tab creation paths.
 
 Tab folders are workspace-scoped metadata in
 `extensions/bento-tools/src/tabFolders/TabFolderStore.ts`, persisted through

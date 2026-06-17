@@ -669,6 +669,7 @@ describe('protocol handler tab creation', () => {
     vi.stubGlobal('browser', {
       tabs: {
         create: vi.fn().mockResolvedValue({ id: 99, windowId: 7 }),
+        move: vi.fn().mockResolvedValue([{ id: 99 }]),
         update: vi.fn().mockResolvedValue({ id: 99 }),
         query: vi.fn().mockResolvedValue([]),
       },
@@ -738,6 +739,32 @@ describe('protocol handler tab creation', () => {
     expect(ctx.workspaces.getActiveId).toHaveBeenCalledWith(7);
     expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(99, 'ws-current');
     expect(order).toEqual(['assign', 'activate']);
+  });
+
+  it('moves indexed tab/create into place before activating', async () => {
+    const order: string[] = [];
+    const ctx = createCloseContext({ sourceWindowId: 7 });
+    vi.mocked(browser.tabs.move).mockImplementation(async () => {
+      order.push('move');
+      return [{ id: 99 }] as browser.tabs.Tab[];
+    });
+    vi.mocked(browser.tabs.update).mockImplementation(async () => {
+      order.push('activate');
+      return { id: 99 } as browser.tabs.Tab;
+    });
+
+    handle({ type: 'tab/create', index: 4 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(99, { active: true });
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      index: 4,
+      windowId: 7,
+    });
+    expect(browser.tabs.move).toHaveBeenCalledWith(99, { index: 4 });
+    expect(order).toEqual(['move', 'activate']);
   });
 });
 

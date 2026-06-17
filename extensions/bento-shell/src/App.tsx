@@ -234,6 +234,7 @@ export function App() {
         };
       });
       items.push({ id: 'sep-tab-actions', kind: 'separator' });
+      if (!isBatch) items.push({ id: 'new-tab-below', label: 'New Tab Below' });
       if (!isBatch) items.push({ id: 'rename-tab', label: 'Rename tab' });
       if (isBatch) {
         items.push({
@@ -243,6 +244,7 @@ export function App() {
       } else {
         items.push(
           { id: 'reload-tab', label: 'Reload tab' },
+          { id: 'toggle-muted', label: tab?.muted ? 'Unmute tab' : 'Mute tab' },
           { id: 'toggle-pin', label: tab?.pinned ? 'Unpin tab' : 'Pin tab' },
         );
         if (tabId !== activeTabId) {
@@ -287,6 +289,7 @@ export function App() {
     document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
       anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
       tabId,
+      tabIndex: tab?.index,
       tabIds: targetTabIds,
       newFolderId: crypto.randomUUID(),
       items,

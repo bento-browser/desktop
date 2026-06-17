@@ -13240,6 +13240,7 @@
     const tabId = Number(payload.tabId);
     const hasTabId =
       payload.tabId !== null && payload.tabId !== undefined && Number.isFinite(tabId);
+    const tabIndex = Number(payload.tabIndex);
     const tabIds = Array.isArray(payload.tabIds)
       ? Array.from(
           new Set(
@@ -13268,6 +13269,15 @@
       onSelect: (itemId) => {
         if (itemId === 'new-tab') {
           dispatchShellAction({ type: 'tab/create' });
+          return;
+        }
+        if (hasTabId && itemId === 'new-tab-below') {
+          dispatchShellAction({
+            type: 'tab/create',
+            ...(Number.isFinite(tabIndex) && Number.isInteger(tabIndex) && tabIndex >= 0
+              ? { index: tabIndex + 1 }
+              : {}),
+          });
           return;
         }
         if (pinnedPanel && itemId === 'pinned-panel-remove') {
@@ -13311,6 +13321,8 @@
           dispatchShellAction({ type: 'tab/reload', id: tabId });
         } else if (itemId === 'rename-tab') {
           dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'tab', id: tabId } });
+        } else if (itemId === 'toggle-muted') {
+          dispatchShellAction({ type: 'tab/toggleMuted', id: tabId });
         } else if (itemId === 'toggle-pin') {
           dispatchShellAction({ type: 'tab/togglePin', id: tabId });
         } else if (itemId === 'open-in-side-panel') {

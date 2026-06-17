@@ -416,8 +416,10 @@ export type Action =
    * about:home, or whatever the pref points at). Uses
    * browser.tabs.create({active: true}) — no explicit URL — which avoids
    * the AboutNewTabRedirector startup-race noise that hits when chrome
-   * tries to resolve about:newtab before activity-stream is ready. */
-  | { type: 'tab/create'; active?: boolean }
+   * tries to resolve about:newtab before activity-stream is ready.
+   * `index` is a Firefox tab-strip index, used by the sidebar context
+   * menu's "New Tab Below" command to insert after the clicked row. */
+  | { type: 'tab/create'; active?: boolean; index?: number }
   | { type: 'tab/reload'; id: number; bypassCache?: boolean }
   | { type: 'tab/togglePin'; id: number }
   | { type: 'tab/toggleMuted'; id: number }

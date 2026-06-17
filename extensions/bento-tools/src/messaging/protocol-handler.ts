@@ -831,11 +831,24 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void (async () => {
         try {
           const shouldActivate = action.active ?? true;
+          const index =
+            typeof action.index === 'number' &&
+            Number.isFinite(action.index) &&
+            Number.isInteger(action.index) &&
+            action.index >= 0
+              ? action.index
+              : undefined;
           const created = await browser.tabs.create({
             active: false,
+            ...(index !== undefined ? { index } : {}),
             ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
           });
           if (typeof created.id !== 'number') return;
+          if (index !== undefined) {
+            await browser.tabs.move(created.id, { index }).catch((err) => {
+              console.warn('[bento-tools] tab/create move-to-index failed:', err);
+            });
+          }
           const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
           if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
           if (shouldActivate) await browser.tabs.update(created.id, { active: true });

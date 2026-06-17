@@ -99,8 +99,10 @@ Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-clic
 the selected group to move those tabs together into a newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
 right-click menu exposes the same close-selected action.
-Right-clicking a single sidebar tab exposes close-tab actions, and inactive
-tabs can be renamed or converted into side panels from the same menu.
+Right-clicking a single sidebar tab exposes tab actions, including creating a
+new tab immediately below the clicked tab and muting or unmuting the tab. Tabs
+can also be closed, and inactive tabs can be renamed or converted into side
+panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
