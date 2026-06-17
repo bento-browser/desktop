@@ -86,6 +86,14 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   max-width: calc(100vw - 2 * var(--space-s));
 }
 
+/* Menu item labels must inherit the Menu.Item foreground. Tale UI's
+ * typography utilities are unlayered and set their own color, so this
+ * override must also stay unlayered; otherwise @layer bento.components
+ * loses regardless of specificity. */
+.bento-workspace-switcher__popover .tale-text.bento-workspace-switcher__item-name {
+  color: inherit;
+}
+
 /* Menu.Trigger renders a real button. The trigger uses Tale UI neutral
  * button classes for its visual frame; Bento only controls the sidebar
  * layout constraints here. */
