@@ -164,6 +164,132 @@ describe('protocol handler tab mute controls', () => {
   });
 });
 
+describe('protocol handler tab pin controls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        get: vi.fn().mockResolvedValue({ id: 123, pinned: false }),
+        update: vi.fn().mockResolvedValue({ id: 123, pinned: true }),
+      },
+    });
+  });
+
+  it('sets pinned state explicitly and clears folder membership', async () => {
+    const setFolder = vi.fn().mockResolvedValue(undefined);
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi
+          .fn()
+          .mockReturnValue([
+            { id: 123, windowId: 1, workspaceId: 'ws-1', pinned: false, folderId: 'folder-1' },
+          ]),
+        setFolder,
+      } as unknown as HandlerContext['tabs'],
+    });
+
+    handle({ type: 'tab/setPinned', id: 123, pinned: true }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(123, { pinned: true });
+    });
+    expect(setFolder).toHaveBeenCalledWith(123, null);
+  });
+
+  it('routes toggle pin through the same folder-clearing path', async () => {
+    const setFolder = vi.fn().mockResolvedValue(undefined);
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi
+          .fn()
+          .mockReturnValue([
+            { id: 123, windowId: 1, workspaceId: 'ws-1', pinned: false, folderId: 'folder-1' },
+          ]),
+        setFolder,
+      } as unknown as HandlerContext['tabs'],
+    });
+
+    handle({ type: 'tab/togglePin', id: 123 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(123, { pinned: true });
+    });
+    expect(setFolder).toHaveBeenCalledWith(123, null);
+  });
+});
+
+describe('protocol handler tab unload controls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        get: vi.fn().mockResolvedValue({ id: 123, active: false, discarded: false }),
+        discard: vi.fn().mockResolvedValue({ id: 123, discarded: true }),
+      },
+    });
+  });
+
+  it('discards an inactive loaded tab', async () => {
+    const ctx = createCloseContext();
+
+    handle({ type: 'tab/unload', id: 123 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.discard).toHaveBeenCalledWith(123);
+    });
+  });
+
+  it('does not discard active or already discarded tabs', async () => {
+    vi.mocked(browser.tabs.get).mockResolvedValueOnce({
+      id: 123,
+      active: true,
+      discarded: false,
+    } as browser.tabs.Tab);
+    const ctx = createCloseContext();
+
+    handle({ type: 'tab/unload', id: 123 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.get).toHaveBeenCalledWith(123);
+    });
+    expect(browser.tabs.discard).not.toHaveBeenCalled();
+
+    vi.mocked(browser.tabs.get).mockResolvedValueOnce({
+      id: 123,
+      active: false,
+      discarded: true,
+    } as browser.tabs.Tab);
+
+    handle({ type: 'tab/unload', id: 123 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.get).toHaveBeenCalledTimes(2);
+    });
+    expect(browser.tabs.discard).not.toHaveBeenCalled();
+  });
+});
+
+describe('protocol handler tab reopen controls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      sessions: {
+        restore: vi.fn().mockResolvedValue({}),
+      },
+    });
+  });
+
+  it('restores the most recently closed session entry', async () => {
+    const ctx = createCloseContext();
+
+    handle({ type: 'tab/reopenClosed' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.sessions.restore).toHaveBeenCalledWith();
+    });
+  });
+});
+
 describe('protocol handler devtools panels', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -431,6 +557,48 @@ describe('protocol handler tab folders', () => {
     });
     expect(assignWorkspace).toHaveBeenCalledTimes(1);
     expect(assignWorkspace).toHaveBeenCalledWith(1, 'ws-2', { preserveFolderId: 'folder-1' });
+  });
+
+  it('demotes a pinned tab before assigning it to a folder', async () => {
+    vi.stubGlobal('browser', {
+      tabs: {
+        update: vi.fn().mockResolvedValue({ id: 1, pinned: false }),
+      },
+    });
+    const setFolder = vi.fn().mockResolvedValue(undefined);
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => [{ id: 1, workspaceId: 'ws-1', pinned: true }]),
+        setFolder,
+      },
+      workspaces: {},
+      settings: {},
+      panels: {},
+      pinnedPanels: {},
+      tabFolders: {
+        get: vi.fn(() => ({
+          id: 'folder-1',
+          workspaceId: 'ws-1',
+          name: 'Folder',
+          order: 0,
+          collapsed: false,
+          createdAt: 1,
+        })),
+      },
+      savedPanels: {},
+      backup: {},
+      send: vi.fn(),
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+      sourceWindowId: 1,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'tabs/setFolder', ids: [1], folderId: 'folder-1' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(setFolder).toHaveBeenCalledWith(1, 'folder-1');
+    });
+    expect(browser.tabs.update).toHaveBeenCalledWith(1, { pinned: false });
   });
 });
 

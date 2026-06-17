@@ -11,6 +11,7 @@ import './FolderRow.css';
 export interface FolderRowProps {
   folder: TabFolder;
   dragging?: boolean;
+  dropTarget?: boolean;
   onContextMenu?: (id: string, event: React.MouseEvent<HTMLDivElement>) => void;
   onDragStart?: (id: string) => void;
   onDragEnd?: (id: string) => void;
@@ -19,6 +20,7 @@ export interface FolderRowProps {
 function FolderRowImpl({
   folder,
   dragging = false,
+  dropTarget = false,
   onContextMenu,
   onDragStart,
   onDragEnd,
@@ -77,7 +79,11 @@ function FolderRowImpl({
 
   return (
     <div
-      className={'bento-folder-row' + (dragging ? ' bento-folder-row--dragging' : '')}
+      className={
+        'bento-folder-row' +
+        (dragging ? ' bento-folder-row--dragging' : '') +
+        (dropTarget ? ' bento-folder-row--drop-target' : '')
+      }
       draggable={draggable && !renaming}
       title={folder.name}
       onDragStart={

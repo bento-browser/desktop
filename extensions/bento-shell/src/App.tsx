@@ -174,10 +174,15 @@ export function App() {
     event: React.MouseEvent,
     tabId: number | null,
     selectedTabIds: number[] = [],
+    visualTabOrder: number[] = [],
     folderId?: string,
   ) => {
     event.preventDefault();
-    const items: SidebarMenuItem[] = [{ id: 'new-tab', label: 'New tab' }];
+    const items: SidebarMenuItem[] = [
+      { id: 'new-tab', label: 'New tab' },
+      { id: 'reopen-closed-tab', label: 'Reopen closed tab' },
+      { id: 'select-all-tabs', label: 'Select all tabs' },
+    ];
     if (folderId) {
       const folder = folders.find((candidate) => candidate.id === folderId);
       const folderWorkspaceItems = workspaceIds.map((workspaceId) => {
@@ -216,6 +221,9 @@ export function App() {
             ),
           );
     const isBatch = targetTabIds.length > 1;
+    let closeTabsAboveIds: number[] = [];
+    let closeTabsBelowIds: number[] = [];
+    let closeOtherTabIds: number[] = [];
     if (tabId !== null) {
       const folderItems = folders.map((folder) => ({
         id: `move-to-folder:${folder.id}`,
@@ -233,8 +241,14 @@ export function App() {
           isDisabled: targetTabIds.every((id) => tabsById[id]?.workspaceId === workspaceId),
         };
       });
+      const tabOrderIndex = visualTabOrder.indexOf(tabId);
+      closeTabsAboveIds = tabOrderIndex >= 0 ? visualTabOrder.slice(0, tabOrderIndex) : [];
+      closeTabsBelowIds = tabOrderIndex >= 0 ? visualTabOrder.slice(tabOrderIndex + 1) : [];
+      closeOtherTabIds = visualTabOrder.filter(
+        (id) => id !== tabId && tabsById[id] && !tabsById[id].pinned,
+      );
       items.push({ id: 'sep-tab-actions', kind: 'separator' });
-      if (!isBatch) items.push({ id: 'new-tab-below', label: 'New Tab Below' });
+      if (!isBatch) items.push({ id: 'new-tab-below', label: 'New tab below' });
       if (!isBatch) items.push({ id: 'rename-tab', label: 'Rename tab' });
       if (isBatch) {
         items.push({
@@ -244,6 +258,11 @@ export function App() {
       } else {
         items.push(
           { id: 'reload-tab', label: 'Reload tab' },
+          {
+            id: 'unload-tab',
+            label: 'Unload tab',
+            isDisabled: Boolean(tab?.active || tab?.discarded),
+          },
           { id: 'toggle-muted', label: tab?.muted ? 'Unmute tab' : 'Mute tab' },
           { id: 'toggle-pin', label: tab?.pinned ? 'Unpin tab' : 'Pin tab' },
         );
@@ -277,6 +296,27 @@ export function App() {
       if (!isBatch) {
         items.push(
           { id: 'sep-close-tab', kind: 'separator' },
+          {
+            id: 'close-multiple-tabs',
+            label: 'Close multiple tabs',
+            items: [
+              {
+                id: 'close-tabs-above',
+                label: 'Close tabs above',
+                isDisabled: closeTabsAboveIds.length === 0,
+              },
+              {
+                id: 'close-tabs-below',
+                label: 'Close tabs below',
+                isDisabled: closeTabsBelowIds.length === 0,
+              },
+              {
+                id: 'close-other-tabs',
+                label: 'Close other tabs',
+                isDisabled: closeOtherTabIds.length === 0,
+              },
+            ],
+          },
           { id: 'close-tab', label: 'Close tab' },
         );
       } else {
@@ -291,6 +331,14 @@ export function App() {
       tabId,
       tabIndex: tab?.index,
       tabIds: targetTabIds,
+      closeMultipleTabIds:
+        tabId !== null && !isBatch
+          ? {
+              above: closeTabsAboveIds,
+              below: closeTabsBelowIds,
+              other: closeOtherTabIds,
+            }
+          : undefined,
       newFolderId: crypto.randomUUID(),
       items,
     })}`;
@@ -302,11 +350,12 @@ export function App() {
     id: number,
     event: React.MouseEvent<HTMLDivElement>,
     selectedIds: number[],
+    visualTabOrder: number[],
   ) => {
-    openSidebarContextMenu(event, id, selectedIds);
+    openSidebarContextMenu(event, id, selectedIds, visualTabOrder);
   };
   const onFolderContextMenu = (id: string, event: React.MouseEvent<HTMLDivElement>) => {
-    openSidebarContextMenu(event, null, [], id);
+    openSidebarContextMenu(event, null, [], [], id);
   };
   const onReorder = (id: number, anchorId: number, before: boolean) => {
     // Title-IPC to chrome rather than browser.tabs.move via bento-tools.

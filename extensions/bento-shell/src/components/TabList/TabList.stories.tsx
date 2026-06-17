@@ -2,10 +2,12 @@
 // main perf check before touching the real browser.
 
 import { useEffect, useState } from 'react';
+import type { Action, TabSnapshot } from '@shared/protocol';
 import { TabList } from './TabList';
 import { seedEmpty, seedTabs, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
+import { makeFolder, seedTabFolders } from '../../state/__fixtures__/tabFolders';
 import { useWorkspacesStore } from '../../state/workspaces';
 import { useTabsStore } from '../../state/tabs';
 
@@ -187,8 +189,67 @@ export const DragReorder = () => {
   const [log, setLog] = useState<string[]>([]);
   useEffect(() => {
     seedDefaultWorkspaces();
-    seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 8 }], 'w-personal');
+    const tabs = seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 8 }], 'w-personal');
+    useTabsStore.getState().applySnapshot(
+      tabs.map((tab) => {
+        if (tab.id === 1) return { ...tab, pinned: true };
+        if (tab.id === 2 || tab.id === 3) return { ...tab, folderId: 'folder-research' };
+        return tab;
+      }),
+    );
+    seedTabFolders([
+      makeFolder({
+        id: 'folder-research',
+        workspaceId: 'w-personal',
+        name: 'Research',
+        order: 0,
+      }),
+    ]);
     seedPanelsHydrated(['w-personal']);
+
+    const channel = new BroadcastChannel('bento-shell-bus');
+    channel.addEventListener('message', (message) => {
+      const data = message.data;
+      if (!data || data.kind !== 'action') return;
+      const action = data.action as Action;
+      if (action.type === 'tab/setPinned') {
+        setLog((prev) =>
+          [`tab/setPinned { id: ${action.id}, pinned: ${action.pinned} }`, ...prev].slice(0, 6),
+        );
+        const state = useTabsStore.getState();
+        const next = Object.values(state.byId)
+          .sort((a, b) => a.index - b.index)
+          .map((tab): TabSnapshot => {
+            if (tab.id !== action.id) return tab;
+            const updated: TabSnapshot = { ...tab, pinned: action.pinned };
+            delete updated.folderId;
+            return updated;
+          });
+        state.applySnapshot(next);
+      } else if (action.type === 'tabs/setFolder') {
+        setLog((prev) =>
+          [
+            `tabs/setFolder { ids: [${action.ids.join(', ')}], folderId: ${
+              action.folderId ?? 'null'
+            } }`,
+            ...prev,
+          ].slice(0, 6),
+        );
+        const ids = new Set(action.ids);
+        const state = useTabsStore.getState();
+        const next = Object.values(state.byId)
+          .sort((a, b) => a.index - b.index)
+          .map((tab): TabSnapshot => {
+            if (!ids.has(tab.id)) return tab;
+            const updated: TabSnapshot = { ...tab, pinned: false };
+            if (action.folderId) updated.folderId = action.folderId;
+            else delete updated.folderId;
+            return updated;
+          });
+        state.applySnapshot(next);
+      }
+    });
+    return () => channel.close();
   }, []);
   const onReorder = (id: number, anchorId: number, before: boolean) => {
     setLog((prev) =>
@@ -215,14 +276,16 @@ export const DragReorder = () => {
         <TabList {...defaultTabListProps} onReorder={onReorder} />
       </SidebarFrame>
       <div style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--neutral-70)' }}>
-        <div style={{ marginBottom: 8 }}>Drag any row to reorder. Recent dispatches:</div>
+        <div style={{ marginBottom: 8 }}>
+          Drag rows to reorder, pin at the top, or drop onto Research. Recent dispatches:
+        </div>
         {log.length === 0 ? <div>(none yet)</div> : log.map((l, i) => <div key={i}>{l}</div>)}
       </div>
     </div>
   );
 };
 
-DragReorder.storyName = 'Drag to reorder (interactive)';
+DragReorder.storyName = 'Drag reorder, pin, and folder drops (interactive)';
 
 export const CrossWorkspaceSearch = () => {
   useEffect(() => {

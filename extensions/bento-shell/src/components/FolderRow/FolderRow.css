@@ -25,6 +25,21 @@
     opacity: 0.4;
   }
 
+  .bento-folder-row--drop-target {
+    background-color: color-mix(in srgb, var(--bento-workspace-accent) 16%, transparent);
+    box-shadow:
+      inset 3px 0 0 var(--bento-workspace-accent),
+      inset 0 0 0 1px color-mix(in srgb, var(--bento-workspace-accent) 36%, transparent);
+  }
+
+  .bento-folder-row--drop-target:hover {
+    background-color: color-mix(
+      in srgb,
+      var(--bento-workspace-accent) 20%,
+      var(--bento-surface-hover)
+    );
+  }
+
   .bento-folder-row__icon {
     display: inline-flex;
     align-items: center;

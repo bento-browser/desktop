@@ -401,6 +401,9 @@ export type Action =
   | { type: 'tabFolder/setCollapsed'; id: string; collapsed: boolean }
   | { type: 'tabFolder/reorder'; workspaceId: string; orderedIds: string[] }
   | { type: 'tabFolder/assignWorkspace'; id: string; workspaceId: string }
+  /** Assign tabs to a folder, or clear folder membership. Folder members
+   * are always normal unpinned tabs; tools demotes pinned sources before
+   * applying a non-null folder target. */
   | { type: 'tabs/setFolder'; ids: number[]; folderId: string | null }
   /** Create a new workspace and move the selected sidebar tabs into it.
    * The new workspace auto-activates in the requesting window. */
@@ -412,15 +415,20 @@ export type Action =
    * Settings, Privacy) where re-opening the button should bring the
    * existing tab forward rather than stack duplicates. */
   | { type: 'tab/openUrl'; url: string; active?: boolean; focusExisting?: boolean }
+  /** Restore the most recently closed tab/window entry using Firefox's
+   * SessionStore-backed WebExtension sessions API. */
+  | { type: 'tab/reopenClosed' }
   /** Open a new tab at the user's configured new-tab page (about:newtab,
    * about:home, or whatever the pref points at). Uses
    * browser.tabs.create({active: true}) — no explicit URL — which avoids
    * the AboutNewTabRedirector startup-race noise that hits when chrome
    * tries to resolve about:newtab before activity-stream is ready.
    * `index` is a Firefox tab-strip index, used by the sidebar context
-   * menu's "New Tab Below" command to insert after the clicked row. */
+   * menu's "New tab below" command to insert after the clicked row. */
   | { type: 'tab/create'; active?: boolean; index?: number }
   | { type: 'tab/reload'; id: number; bypassCache?: boolean }
+  | { type: 'tab/unload'; id: number }
+  | { type: 'tab/setPinned'; id: number; pinned: boolean }
   | { type: 'tab/togglePin'; id: number }
   | { type: 'tab/toggleMuted'; id: number }
   | { type: 'workspaces/requestSnapshot' }

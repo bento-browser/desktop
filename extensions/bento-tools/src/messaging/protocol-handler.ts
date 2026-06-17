@@ -58,6 +58,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function setTabPinned(ctx: HandlerContext, tabId: number, pinned: boolean): Promise<void> {
+  const before = ctx.tabs.snapshot().find((tab) => tab.id === tabId);
+  try {
+    if (before?.pinned !== pinned) {
+      await browser.tabs.update(tabId, { pinned });
+    }
+    if (before?.folderId !== undefined) {
+      await ctx.tabs.setFolder(tabId, null);
+    }
+  } catch (err) {
+    console.warn('[bento-tools] tab/setPinned failed:', err);
+  }
+}
+
 async function activatePromotedPanelTab(
   ctx: HandlerContext,
   workspaceId: string,
@@ -723,8 +737,16 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void (async () => {
         for (const id of ids) {
           const tab = snapshot.find((t) => t.id === id);
-          if (!tab || tab.pinned) continue;
+          if (!tab) continue;
           if (folder && tab.workspaceId !== folder.workspaceId) continue;
+          if (folder && tab.pinned) {
+            try {
+              await browser.tabs.update(id, { pinned: false });
+            } catch (err) {
+              console.warn('[bento-tools] tabs/setFolder unpin failed:', id, err);
+              continue;
+            }
+          }
           await ctx.tabs.setFolder(id, folder ? folder.id : null);
         }
       })();
@@ -826,6 +848,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         }
       })();
       return;
+    case 'tab/reopenClosed':
+      browser.sessions
+        .restore()
+        .catch((err) => console.warn('[bento-tools] tab/reopenClosed failed:', err));
+      return;
     case 'tab/create':
       // Same windowId + eager-assign rationale as tab/openUrl above.
       void (async () => {
@@ -862,11 +889,29 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         .reload(action.id, { bypassCache: action.bypassCache ?? false })
         .catch((err) => console.warn('[bento-tools] tab/reload failed:', err));
       return;
+    case 'tab/unload':
+      void (async () => {
+        try {
+          const tab = await browser.tabs.get(action.id);
+          if (tab.active || tab.discarded) return;
+          await browser.tabs.discard(action.id);
+        } catch (err) {
+          console.warn('[bento-tools] tab/unload failed:', err);
+        }
+      })();
+      return;
+    case 'tab/setPinned':
+      void setTabPinned(ctx, action.id, action.pinned);
+      return;
     case 'tab/togglePin':
-      browser.tabs
-        .get(action.id)
-        .then((tab) => browser.tabs.update(action.id, { pinned: !tab.pinned }))
-        .catch((err) => console.warn('[bento-tools] tab/togglePin failed:', err));
+      void (async () => {
+        try {
+          const tab = await browser.tabs.get(action.id);
+          await setTabPinned(ctx, action.id, !tab.pinned);
+        } catch (err) {
+          console.warn('[bento-tools] tab/togglePin failed:', err);
+        }
+      })();
       return;
     case 'tab/toggleMuted':
       browser.tabs

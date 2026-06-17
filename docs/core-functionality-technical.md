@@ -306,23 +306,48 @@ divider. The divider occupies no layout height, so collapse/expand keeps row
 positions stable while still separating pinned tabs from the new-tab and regular
 tab section.
 
+Sidebar drag handling in `TabListPane` classifies tab drops before falling back
+to anchor-based reordering. A drop in slot `0` or within the current pinned run
+dispatches `tab/setPinned` with `pinned: true`; dropping a pinned tab outside
+that run dispatches `tab/setPinned` with `pinned: false`. `bento-tools` owns the
+actual mutation in `extensions/bento-tools/src/messaging/protocol-handler.ts`,
+where `tab/setPinned` calls `browser.tabs.update({ pinned })` and clears any
+stale `bento.folderId` membership through `TabRegistry.setFolder`.
+
 The sidebar context menu is still rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
 `src/browser/base/content/bento-shell-mount.js`. When a selected row is
 right-clicked, the shell payload includes `tabIds`; chrome dispatches
 `tabs/moveToNewWorkspace` for the "Move selected tabs to new workspace" item or
 `tabs/assignWorkspace` for batch moves to an existing workspace.
+All sidebar context menus include "Reopen closed tab". Chrome dispatches
+`tab/reopenClosed`, and bento-tools calls `browser.sessions.restore()` with no
+session id so Firefox restores the most recent closed session entry. Existing
+TabRegistry and panel-marker listeners classify the restored tab or panel after
+SessionStore recreates it.
+All sidebar context menus also include "Select all tabs". Chrome dispatches the
+bus-only `ui/selectAllTabs` action; `TabList` consumes it directly and selects
+the current `visualTabOrder`, so selection remains transient shell UI state and
+continues to mirror through `BENTO_SELECTED_TABS`.
 Right-clicking an unselected row does not mutate sidebar selection, because
 doing so emits `BENTO_SELECTED_TABS` and can overwrite the context-menu title IPC
 before chrome polls it.
-For single rows, the shell includes "New Tab Below" with the clicked row's
+For single rows, the shell includes "New tab below" with the clicked row's
 `TabSnapshot.index`, includes "Mute tab" or "Unmute tab" from
-`TabSnapshot.muted`, includes "Close tab", and includes "Convert to panel" only
-when the target row is not the active tab. Chrome dispatches `tab/create` with
-`index + 1`, `tab/toggleMuted`, `tab/close`, or `panel/add` for those items.
-Bento-tools passes a valid `tab/create.index` to `browser.tabs.create` while
-preserving the same source-window and eager workspace assignment used by other
-blank-tab creation paths.
+`TabSnapshot.muted`, includes "Unload tab" disabled when `TabSnapshot.active` or
+`TabSnapshot.discarded` is true, includes a "Close multiple tabs" submenu,
+includes "Close tab", and includes "Convert to panel" only when the target row
+is not the active tab. `TabList` passes its current `visualTabOrder` into the
+context menu payload so "Close tabs above" and "Close tabs below" match the
+visible sidebar order. "Close other tabs" precomputes every non-pinned tab
+except the clicked tab. Chrome dispatches `tab/create` with `index + 1`,
+`tab/toggleMuted`, `tab/unload`, `tabs/close`, `tab/close`, or `panel/add` for
+those items. Bento-tools passes a valid `tab/create.index` to
+`browser.tabs.create` while preserving the same source-window and eager
+workspace assignment used by other blank-tab creation paths. `tab/unload`
+re-reads the live Firefox tab and calls `browser.tabs.discard` only if the tab is
+still inactive and not already discarded; the resulting `discarded` delta flows
+back through `TabRegistry`.
 
 Tab folders are workspace-scoped metadata in
 `extensions/bento-tools/src/tabFolders/TabFolderStore.ts`, persisted through
@@ -337,6 +362,13 @@ the same tab delta as the workspace change. Moving a whole folder uses
 `tabFolder/assignWorkspace`: tools updates each member tab's workspace while
 preserving that folder id, then moves the folder metadata to the target
 workspace at the end of that workspace's folder order.
+
+Folder drops use the same `tabs/setFolder` action as the context menu. The shell
+marks folder rows as drop targets and dispatches the folder id when a tab is
+dropped on a folder row or into that folder's visible block. Tools validates the
+folder workspace, demotes pinned sources with `browser.tabs.update({ pinned: false })`,
+then writes `bento.folderId` through `TabRegistry.setFolder`. Dropping a folder
+member outside its folder block dispatches `tabs/setFolder` with `folderId: null`.
 
 The shell mirrors folder metadata in
 `extensions/bento-shell/src/state/tabFolders.ts`. `TabList` builds a single
@@ -388,6 +420,9 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not reorder folders with `BENTO_TAB_MOVE`, `browser.tabs.move`, or
   Firefox tab-strip APIs. Folder order is storage-backed metadata and only moves
   through `tabFolder/reorder`.
+- Do not implement sidebar pin/folder drag by mutating shell stores directly.
+  Drops must dispatch `tab/setPinned` or `tabs/setFolder` so Firefox pinned state
+  and `bento.folderId` session persistence remain authoritative.
 - Do not treat a stale `bento.folderId` as authoritative in the renderer. If
   the folder metadata is absent from the current workspace, render the tab as a
   regular tab.

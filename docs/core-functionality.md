@@ -93,16 +93,25 @@ restarts. Tabs inside folders remain normal unpinned Firefox tabs. Folder names
 are not directly editable by clicking the row; rename starts from the folder
 context menu and opens an inline field that is immediately ready for typing.
 Deleting a folder returns its member tabs to the regular section.
+Dragging a normal tab into the pinned run pins it; dragging a pinned tab below
+that run unpins it. Dragging a tab onto a folder places it in that folder; pinned
+tabs dragged onto folders are first converted back into normal tabs.
 When the active tab is inside a collapsed folder, Bento shows that active tab as
 a single peek row beneath the folder.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
 the selected group to move those tabs together into a newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
 right-click menu exposes the same close-selected action.
+Right-clicking the sidebar exposes "Select all tabs", which selects every
+regular tab in the active workspace's sidebar list.
+Right-clicking the sidebar exposes "Reopen closed tab", which restores the most
+recently closed tab through Firefox's recently closed tabs flow.
 Right-clicking a single sidebar tab exposes tab actions, including creating a
-new tab immediately below the clicked tab and muting or unmuting the tab. Tabs
-can also be closed, and inactive tabs can be renamed or converted into side
-panels from the same menu.
+new tab immediately below the clicked tab, unloading an inactive loaded tab,
+and muting or unmuting the tab. Tabs can also be closed individually, or closed
+in groups with Close tabs above, Close tabs below, and Close other tabs. Close
+other tabs preserves pinned tabs and the clicked tab. Inactive tabs can be
+renamed or converted into side panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
@@ -115,7 +124,7 @@ When a workspace contains pinned regular tabs, the sidebar separates that group
 from the new-tab control and regular tabs with a divider instead of a text
 subheading.
 Recently closed regular tabs should reopen with Firefox's standard
-`Cmd+Shift+T` flow.
+`Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
 
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than

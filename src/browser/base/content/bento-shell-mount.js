@@ -13252,6 +13252,24 @@
       : hasTabId
         ? [tabId]
         : [];
+    const parseTabIds = (value) =>
+      Array.isArray(value)
+        ? Array.from(
+            new Set(
+              value
+                .map((id) => Number(id))
+                .filter((id) => Number.isFinite(id) && Number.isInteger(id)),
+            ),
+          )
+        : [];
+    const closeMultipleTabIds =
+      payload.closeMultipleTabIds && typeof payload.closeMultipleTabIds === 'object'
+        ? {
+            above: parseTabIds(payload.closeMultipleTabIds.above),
+            below: parseTabIds(payload.closeMultipleTabIds.below),
+            other: parseTabIds(payload.closeMultipleTabIds.other),
+          }
+        : { above: [], below: [], other: [] };
     const pinnedPanel =
       payload.pinnedPanel &&
       typeof payload.pinnedPanel.workspaceId === 'string' &&
@@ -13269,6 +13287,14 @@
       onSelect: (itemId) => {
         if (itemId === 'new-tab') {
           dispatchShellAction({ type: 'tab/create' });
+          return;
+        }
+        if (itemId === 'reopen-closed-tab') {
+          dispatchShellAction({ type: 'tab/reopenClosed' });
+          return;
+        }
+        if (itemId === 'select-all-tabs') {
+          dispatchShellAction({ type: 'ui/selectAllTabs' });
           return;
         }
         if (hasTabId && itemId === 'new-tab-below') {
@@ -13319,6 +13345,8 @@
         if (!hasTabId) return;
         if (itemId === 'reload-tab') {
           dispatchShellAction({ type: 'tab/reload', id: tabId });
+        } else if (itemId === 'unload-tab') {
+          dispatchShellAction({ type: 'tab/unload', id: tabId });
         } else if (itemId === 'rename-tab') {
           dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'tab', id: tabId } });
         } else if (itemId === 'toggle-muted') {
@@ -13329,6 +13357,12 @@
           dispatchShellAction({ type: 'panel/add', id: tabId });
         } else if (itemId === 'close-tab') {
           dispatchShellAction({ type: 'tab/close', id: tabId });
+        } else if (itemId === 'close-tabs-above') {
+          dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.above });
+        } else if (itemId === 'close-tabs-below') {
+          dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.below });
+        } else if (itemId === 'close-other-tabs') {
+          dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.other });
         } else if (itemId === 'close-selected-tabs') {
           dispatchShellAction({ type: 'tabs/close', ids: tabIds });
         } else if (itemId === 'move-selected-to-new-workspace') {
