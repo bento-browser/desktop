@@ -1568,7 +1568,10 @@ Chrome still focuses the new panel, but reveals it with the same minimal-scroll
 path as panel cycling: if the new panel fits in the visible strip, its right
 edge lands against the strip's right edge instead of snapping the panel's left
 edge next to the sidebar. Wider-than-visible panels fall back to left-edge
-alignment so the header and start of the content remain usable.
+alignment so the header and start of the content remain usable. The scheduled
+reveal must retry until the target panel is fully visible; a one-shot
+right-edge scroll can be clamped against stale `scrollWidth` while a saved-panel
+or blank add-panel insertion is still settling.
 
 ### Traversal pitfalls
 

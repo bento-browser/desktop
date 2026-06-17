@@ -7661,11 +7661,11 @@
         }
         if (options.reveal === 'full') {
           scrollPanelFullyIntoView(panelEl);
-          if (!isPanelFullyVisible(panelEl) && Date.now() - started <= DEADLINE_MS) {
-            setTimeout(tryScroll, 120);
-          }
         } else {
           scrollPanelIntoViewFromRight(panelEl);
+        }
+        if (!isPanelFullyVisible(panelEl) && Date.now() - started <= DEADLINE_MS) {
+          setTimeout(tryScroll, 120);
         }
         if (options.focus && !focused) {
           focused = true;
