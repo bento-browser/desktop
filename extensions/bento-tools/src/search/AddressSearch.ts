@@ -90,12 +90,14 @@ export async function searchAddressResults(
 
     return historyItems
       .filter((item) => !!item.url)
-      .map((item) => ({
-        kind: 'history',
-        url: item.url!,
-        title: titleForUrl(item.title, item.url!),
-        score: historyScore('', item),
-      }))
+      .map(
+        (item): AddrResult => ({
+          kind: 'history',
+          url: item.url!,
+          title: titleForUrl(item.title, item.url!),
+          score: historyScore('', item),
+        }),
+      )
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
   }

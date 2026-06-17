@@ -430,6 +430,52 @@ function insertPanelAfterSource(
   );
 }
 
+async function createInactiveTab(
+  ctx: HandlerContext,
+  url: string | null | undefined,
+): Promise<number | null> {
+  const tab = await browser.tabs.create({
+    ...(!url || url === 'about:newtab' ? {} : { url }),
+    active: false,
+    ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+  });
+  return typeof tab.id === 'number' ? tab.id : null;
+}
+
+function finishAddedPanel(ctx: HandlerContext, workspaceId: string, tabId: number): void {
+  const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+  if (defaultWidth > 0) ctx.panels.setWidth(tabId, defaultWidth);
+  ctx.syncPanelMarkers(workspaceId);
+  ctx.emitPanelsSync(workspaceId, {
+    scrollToPanelTabId: tabId,
+    scrollToPanelReveal: 'right-edge',
+  });
+}
+
+async function splitPanel(
+  ctx: HandlerContext,
+  workspaceId: string,
+  sourceTabId: number,
+  url: string | undefined,
+  operation: 'splitTopPanel' | 'splitBottomPanel',
+): Promise<void> {
+  try {
+    const tabId = await createInactiveTab(ctx, url);
+    if (tabId === null) return;
+    ctx.tabs.assignWorkspaceEagerly(tabId, workspaceId);
+    const split =
+      operation === 'splitTopPanel'
+        ? ctx.panels.splitTopPanel(workspaceId, sourceTabId, tabId)
+        : ctx.panels.splitBottomPanel(workspaceId, sourceTabId, tabId);
+    if (split) {
+      ctx.syncPanelMarkers(workspaceId);
+      ctx.emitPanelsSync(workspaceId);
+    }
+  } catch (err) {
+    console.warn(`[bento-tools] panelLayout/${operation} failed:`, err);
+  }
+}
+
 export interface HandlerContext {
   tabs: TabRegistry;
   workspaces: WorkspaceStore;
@@ -917,16 +963,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         // at the user's preferred size on first paint. Same logic in
         // background.ts maybeHandleAddPanelMarker for the chrome-side
         // "Add panel" button path.
-        const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
-        if (defaultWidth > 0) ctx.panels.setWidth(action.id, defaultWidth);
         // syncPanelMarkers writes the new tab's marker (it's now in
         // panels.getPanels at the last index) plus refreshes any
         // existing markers — covers add, idempotent for the rest.
-        ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId, {
-          scrollToPanelTabId: action.id,
-          scrollToPanelReveal: 'right-edge',
-        });
+        finishAddedPanel(ctx, wsId, action.id);
       }
       return;
     }
@@ -936,13 +976,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (ctx.panels.addDevtoolsPanel(wsId, action.tabId, action.forTabId, action.inspectedTabId)) {
         ctx.tabs.assignWorkspaceEagerly(action.tabId, wsId);
         void setDevtoolsPanelMarker(action.tabId);
-        const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
-        if (defaultWidth > 0) ctx.panels.setWidth(action.tabId, defaultWidth);
-        ctx.syncPanelMarkers(wsId);
-        ctx.emitPanelsSync(wsId, {
-          scrollToPanelTabId: action.tabId,
-          scrollToPanelReveal: 'right-edge',
-        });
+        finishAddedPanel(ctx, wsId, action.tabId);
       }
       return;
     }
@@ -1002,44 +1036,32 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       } else {
         position = ctx.panels.getRootNodeIds(wsId).length;
       }
-      // WebExtensions' tabs.create rejects most `about:*` URLs as "Illegal
-      // URL". `about:newtab` specifically is the user's configured new-tab
-      // page; tabs.create with NO `url` field resolves to it via Firefox's
-      // AboutNewTabRedirector. Treat that string as a sentinel meaning
-      // "the default new tab page" and omit `url` accordingly. Same
-      // workaround the `tab/create` action already uses.
-      const isDefaultNewTab = !action.url || action.url === 'about:newtab';
-      browser.tabs
-        .create({
-          ...(isDefaultNewTab ? {} : { url: action.url }),
-          active: false,
-          ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
-        })
-        .then((tab) => {
-          if (typeof tab.id !== 'number') {
+      void (async () => {
+        try {
+          // createInactiveTab treats `about:newtab` as the user's configured
+          // new-tab page by omitting the URL, avoiding tabs.create's illegal
+          // URL rejection for most about:* pages.
+          const tabId = await createInactiveTab(ctx, action.url);
+          if (tabId === null) {
             console.warn('[bento-tools] panel/openAt: tab.id not a number — bailing');
             return;
           }
           const inserted =
             action.position === 'after' || action.position === undefined
-              ? insertPanelAfterSource(ctx, wsId, tab.id, action.sourceTabId)
-              : ctx.panels.insertAt(wsId, tab.id, position);
+              ? insertPanelAfterSource(ctx, wsId, tabId, action.sourceTabId)
+              : ctx.panels.insertAt(wsId, tabId, position);
           if (!inserted) {
             console.warn(
               '[bento-tools] panel/openAt: insertAt returned false (tab already in panel list?) — bailing without sync',
             );
             return;
           }
-          ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
-          const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
-          if (defaultWidth > 0) ctx.panels.setWidth(tab.id, defaultWidth);
-          ctx.syncPanelMarkers(wsId);
-          ctx.emitPanelsSync(wsId, {
-            scrollToPanelTabId: tab.id,
-            scrollToPanelReveal: 'right-edge',
-          });
-        })
-        .catch((err) => console.warn('[bento-tools] panel/openAt failed:', err));
+          ctx.tabs.assignWorkspaceEagerly(tabId, wsId);
+          finishAddedPanel(ctx, wsId, tabId);
+        } catch (err) {
+          console.warn('[bento-tools] panel/openAt failed:', err);
+        }
+      })();
       return;
     }
     case 'panel/remove': {
@@ -1158,48 +1180,14 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       if (!ctx.panels.canSplitTopPanel(wsId, action.tabId)) return;
-      void (async () => {
-        try {
-          const isDefaultNewTab = !action.url || action.url === 'about:newtab';
-          const tab = await browser.tabs.create({
-            ...(isDefaultNewTab ? {} : { url: action.url }),
-            active: false,
-            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
-          });
-          if (typeof tab.id !== 'number') return;
-          ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
-          if (ctx.panels.splitTopPanel(wsId, action.tabId, tab.id)) {
-            ctx.syncPanelMarkers(wsId);
-            ctx.emitPanelsSync(wsId);
-          }
-        } catch (err) {
-          console.warn('[bento-tools] panelLayout/splitTopPanel failed:', err);
-        }
-      })();
+      void splitPanel(ctx, wsId, action.tabId, action.url, 'splitTopPanel');
       return;
     }
     case 'panelLayout/splitBottomPanel': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
       if (!ctx.panels.canSplitBottomPanel(wsId, action.tabId)) return;
-      void (async () => {
-        try {
-          const isDefaultNewTab = !action.url || action.url === 'about:newtab';
-          const tab = await browser.tabs.create({
-            ...(isDefaultNewTab ? {} : { url: action.url }),
-            active: false,
-            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
-          });
-          if (typeof tab.id !== 'number') return;
-          ctx.tabs.assignWorkspaceEagerly(tab.id, wsId);
-          if (ctx.panels.splitBottomPanel(wsId, action.tabId, tab.id)) {
-            ctx.syncPanelMarkers(wsId);
-            ctx.emitPanelsSync(wsId);
-          }
-        } catch (err) {
-          console.warn('[bento-tools] panelLayout/splitBottomPanel failed:', err);
-        }
-      })();
+      void splitPanel(ctx, wsId, action.tabId, action.url, 'splitBottomPanel');
       return;
     }
     case 'panelLayout/removeVerticalGroup': {
@@ -1234,13 +1222,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         try {
           const newTabIds: number[] = [];
           for (const url of urls) {
-            const isDefaultNewTab = !url || url === 'about:newtab';
-            const tab = await browser.tabs.create({
-              ...(isDefaultNewTab ? {} : { url }),
-              active: false,
-              ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
-            });
-            if (typeof tab.id === 'number') newTabIds.push(tab.id);
+            const tabId = await createInactiveTab(ctx, url);
+            if (tabId !== null) newTabIds.push(tabId);
           }
           if (newTabIds.length !== expected) return;
           for (const tabId of newTabIds) {
@@ -1366,24 +1349,19 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               }
             }
           }
-          const isDefaultNewTab = url === 'about:newtab';
-          const tab = await browser.tabs.create({
-            ...(isDefaultNewTab ? {} : { url }),
-            active: false,
-            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
-          });
-          if (typeof tab.id !== 'number') return;
-          ctx.tabs.assignWorkspaceEagerly(tab.id, action.workspaceId);
+          const tabId = await createInactiveTab(ctx, url);
+          if (tabId === null) return;
+          ctx.tabs.assignWorkspaceEagerly(tabId, action.workspaceId);
           if (
             !ctx.panels.insertAt(
               action.workspaceId,
-              tab.id,
+              tabId,
               ctx.panels.getRootNodeIds(action.workspaceId).length,
             )
           ) {
             return;
           }
-          ctx.pinnedPanels.rebindTabId(action.workspaceId, action.tabId, tab.id, {
+          ctx.pinnedPanels.rebindTabId(action.workspaceId, action.tabId, tabId, {
             url,
             title: entry.title,
             favIconUrl: entry.favIconUrl,
@@ -1393,9 +1371,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             typeof entry.widthPx === 'number' && entry.widthPx > 0
               ? entry.widthPx
               : ctx.settings.snapshot().defaultPanelWidthPx;
-          if (widthPx > 0) ctx.panels.setWidth(tab.id, widthPx);
+          if (widthPx > 0) ctx.panels.setWidth(tabId, widthPx);
           ctx.syncPanelMarkers(action.workspaceId);
-          ctx.emitPanelsSync(action.workspaceId, { scrollToPanelTabId: tab.id });
+          ctx.emitPanelsSync(action.workspaceId, { scrollToPanelTabId: tabId });
         } catch (err) {
           console.warn('[bento-tools] pinnedPanel/open failed:', err);
         } finally {
@@ -1500,21 +1478,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           ctx.send({ type: 'addrbar/results', query: action.query, results: [] });
         }
       })();
-      return;
-    case 'privacy/setResistFingerprinting':
-      applyAdvancedSetting('resistFingerprinting', action.enabled)
-        .catch((err) => console.warn('[bento-tools] privacy/setResistFingerprinting failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
-      return;
-    case 'privacy/setNetworkPrediction':
-      applyAdvancedSetting('networkPrediction', action.enabled)
-        .catch((err) => console.warn('[bento-tools] privacy/setNetworkPrediction failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
-      return;
-    case 'privacy/setPeerConnection':
-      applyAdvancedSetting('peerConnection', action.enabled)
-        .catch((err) => console.warn('[bento-tools] privacy/setPeerConnection failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'backup/export':
       void (async () => {

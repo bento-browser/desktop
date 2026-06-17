@@ -10,6 +10,9 @@
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "196 KB",
@@ -26,6 +29,9 @@
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "185 KB",
@@ -42,6 +48,9 @@
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "185 KB",
@@ -58,6 +67,9 @@
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "190 KB",
@@ -74,6 +86,9 @@
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "185 KB",
@@ -90,6 +105,9 @@
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "185 KB",
@@ -106,6 +124,9 @@
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/menu.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "186 KB",
@@ -122,6 +143,9 @@
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
+      "!extensions/bento-shell/dist/assets/workspace-switcher.js",
+      "!extensions/bento-shell/dist/assets/panel-trailer.js",
+      "!extensions/bento-shell/dist/assets/panel-newtab.js",
       "!extensions/bento-shell/dist/assets/background.js"
     ],
     "limit": "185 KB",

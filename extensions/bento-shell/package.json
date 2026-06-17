@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b --noEmit && vite build && pnpm run build:background",
-    "build:background": "esbuild src/background.ts --bundle --outfile=dist/assets/background.js --format=iife --target=firefox128 --minify",
+    "build:background": "node ../../scripts/build-extension-background.mjs src/background.ts dist/assets/background.js",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",

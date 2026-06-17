@@ -534,20 +534,6 @@ export type Action =
   | { type: 'privacy/setAdvanced'; key: PrivacyAdvancedKey; value: boolean | string }
   | { type: 'privacy/setDefaultSearchEngine'; id: SearchEngineId }
   | { type: 'addrbar/query'; query: string; limit?: number }
-  /** Update one privacy field. Tools writes via browser.privacy.* then
-   * replies with a fresh privacy/snapshot. Per-field instead of a bulk
-   * patch so the protocol stays readable and the handler doesn't have to
-   * partial-update around invalid combinations.
-   *
-   * Tracking protection (browser.privacy.websites.trackingProtectionMode) and
-   * browsing-data clearing live in Firefox's about:preferences#privacy,
-   * not in Bento — those are first-party Firefox surfaces and duplicating
-   * them in the Bento UI was just visual indirection. The three controls
-   * below are the prefs Firefox does NOT expose in its preferences UI
-   * (about:config only); Bento exposes them in Settings → Privacy. */
-  | { type: 'privacy/setResistFingerprinting'; enabled: boolean }
-  | { type: 'privacy/setNetworkPrediction'; enabled: boolean }
-  | { type: 'privacy/setPeerConnection'; enabled: boolean }
   /** Pin a panel binding `(workspaceId, tabId)` to the global Pinned panels
    * rail. Validated against the live panel set — tools no-ops when the
    * tab isn't currently a panel in that workspace, or when the binding is
@@ -722,6 +708,9 @@ export type Event =
         favIconUrl?: string;
         audible?: boolean;
         muted?: boolean;
+        /** True when Firefox has unloaded the panel's backing tab. Chrome
+         * dims the panel frame and its navigator icon until the tab wakes. */
+        discarded?: boolean;
         widthPx?: number;
         headerHidden?: boolean;
       }>;

@@ -1341,6 +1341,12 @@ Top-row splits and 2x2 groups:
   side-panel payload, so never route it through side-panel metadata update logic;
   doing so makes `updatePanelNavButton` reject the null metadata and rebuild the
   first nav button on every panel metadata sync.
+- Sleeping panel visuals ride the same metadata path. `panels/sync` includes
+  each panel tab's `discarded` state, `background.ts` re-emits panel sync when a
+  panel tab's discarded flag changes, and `bento-shell-mount.js` toggles
+  `.bento-panel--discarded` plus `.bento-panel-nav__icon--discarded` without
+  changing navigator structure. Grouped navigator cells also receive a per-cell
+  dimming class so subdivided groups can show which contained panel is asleep.
 - Panel navigator structural changes must keep each button at a stable layout
   size. Split, subdivide, promote-survivor, and remove operations can convert a
   single-panel icon to a grouped icon or back while the panel strip is also
@@ -1555,6 +1561,12 @@ reopens at the latest user-chosen width.
 Each side-panel header exposes a pin icon that dispatches `pinnedPanel/add` or
 `pinnedPanel/remove` and mirrors the active workspace's
 `pinnedTabIdsInWorkspace` set with a filled icon state.
+`background.ts` also listens to `PinnedPanelsStore` deltas and calls
+`browser.tabs.update(tabId, { pinned: true })` for added live pinned panels and
+`{ pinned: false }` when a live pinned-panel binding is explicitly removed.
+This keeps backing Firefox tabs protected by the tab sleep policy. Synthetic
+URL-backed pinned-panel entries use negative tab ids and are ignored until they
+rebind to a live panel tab.
 Chrome dispatches `panel/focusedChanged` when the focused side-panel tab id
 changes. The shell mirrors that event into `usePanelFocusStore`, and the pinned
 rail applies the `color-60` tonal treatment to the matching pinned-panel button.
@@ -1594,6 +1606,9 @@ and `components/PanelTrailer`. It runs inside the chrome-mounted
   demotion path, because that exposes the closed pinned panel as a sidebar tab.
 - Ordinary panel and tab closure must not remove pins; pinned rail entries are
   removed only by `pinnedPanel/remove` from the rail context menu.
+- Keep backing Firefox tab pinning coupled to `PinnedPanelsStore` deltas, not
+  only the direct add/remove handlers, so restore, import, and URL-backed
+  reopen paths receive the same sleep protection.
 - The saved-panel favicon row cannot rely on `page-icon:` URLs from the
   trailer iframe. `SavedPanelsStore` filters privileged favicon URLs and uses
   placeholders when needed.

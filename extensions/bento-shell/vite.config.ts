@@ -33,6 +33,10 @@ function stripCrossOrigin(): Plugin {
 export default defineConfig(({ mode }) => ({
   plugins: [react({ jsxRuntime: 'automatic' }), stripCrossOrigin()],
 
+  ...(process.env.BENTO_RELEASE === '1'
+    ? { esbuild: { drop: ['console', 'debugger'] as const } }
+    : {}),
+
   resolve: {
     alias: {
       '@shared': resolve(__dirname, '../_shared'),

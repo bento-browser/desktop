@@ -26,7 +26,7 @@ import {
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
-import type { BentoSettings, Event, WireAction } from '@shared/protocol';
+import type { BentoSettings, Event, PinnedPanelDelta, WireAction } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 
 const tabs = new TabRegistry();
@@ -39,6 +39,28 @@ const pinnedPanels = new PinnedPanelsStore({
 const tabFolders = new TabFolderStore();
 const savedPanels = new SavedPanelsStore();
 const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
+
+function setPinnedPanelTabPinned(tabId: number, pinned: boolean, label: string): void {
+  if (!Number.isFinite(tabId) || tabId < 0) return;
+  void browser.tabs.update(tabId, { pinned }).catch((err) => {
+    if (String(err).includes('Invalid tab ID')) return;
+    console.warn(`[bento-tools] ${label} failed:`, tabId, err);
+  });
+}
+
+function syncUnderlyingPinnedPanelTabs(deltas: PinnedPanelDelta[]): void {
+  for (const delta of deltas) {
+    if (delta.kind === 'added') {
+      setPinnedPanelTabPinned(delta.entry.tabId, true, 'pinned-panel tab pin');
+      continue;
+    }
+    if (delta.kind === 'removed') {
+      setPinnedPanelTabPinned(delta.tabId, false, 'pinned-panel tab unpin');
+    }
+  }
+}
+
+pinnedPanels.onDeltas(syncUnderlyingPinnedPanelTabs);
 
 const preferredActivationTabByWorkspace = new Map<string, number>();
 
@@ -601,6 +623,7 @@ async function emitPanelsSync(
             favIconUrl: string;
             audible: boolean;
             muted: boolean;
+            discarded: boolean;
             widthPx?: number;
             headerHidden?: boolean;
           } = {
@@ -610,6 +633,7 @@ async function emitPanelsSync(
             favIconUrl: tab.favIconUrl ?? '',
             audible: tab.audible ?? false,
             muted: tab.mutedInfo?.muted ?? false,
+            discarded: tab.discarded ?? false,
           };
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
           if (panels.getHeaderHidden(id)) entry.headerHidden = true;
@@ -628,6 +652,7 @@ async function emitPanelsSync(
       favIconUrl: string;
       audible: boolean;
       muted: boolean;
+      discarded: boolean;
       widthPx?: number;
       headerHidden?: boolean;
     } => p !== null,
@@ -1145,7 +1170,8 @@ tabs.onDeltas((deltas) => {
         'favIconUrl' in d.changes ||
         'title' in d.changes ||
         'audible' in d.changes ||
-        'muted' in d.changes
+        'muted' in d.changes ||
+        'discarded' in d.changes
       ) {
         for (const wsId of panels.findWorkspacesContainingPanelOrSubPanel(d.id)) {
           panelMetadataRefreshWorkspaces.add(wsId);

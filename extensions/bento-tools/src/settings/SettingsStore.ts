@@ -16,7 +16,7 @@ const DEBOUNCE_MS = 250;
 export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
-  tabSleepKeepAlivePerWorkspace: 10,
+  tabSleepKeepAlivePerWorkspace: 3,
   defaultWorkspaceName: 'Personal',
   commandPaletteEnabled: true,
   welcomeSeen: false,

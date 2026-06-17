@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Bento Browser tools — privileged background extension. Tab management, keyboard registry, workspace persistence.",
   "scripts": {
-    "build": "esbuild src/background.ts --bundle --outfile=dist/background.js --format=iife --target=firefox128 --minify",
+    "build": "node ../../scripts/build-extension-background.mjs src/background.ts dist/background.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
     "test": "vitest run"

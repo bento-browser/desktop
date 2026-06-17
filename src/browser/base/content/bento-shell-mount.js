@@ -770,6 +770,14 @@
         border-color: var(--color-60);
         background-color: var(--color-3);
       }
+      .bento-panel-nav__icon--discarded {
+        opacity: 0.55;
+        filter: grayscale(0.55);
+      }
+      .bento-panel-nav__icon--discarded.bento-panel-nav__icon--active,
+      .bento-panel-nav__icon--discarded:hover {
+        opacity: 0.75;
+      }
       .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
         background-color: var(--neutral-30);
       }
@@ -932,6 +940,10 @@
         flex: 0 0 auto;
         min-width: var(--bento-panel-min-width);
         background-color: var(--neutral-5);
+      }
+      .bento-panel--discarded {
+        opacity: 0.68;
+        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
       }
       /* Close-panel animation. Fade only: keep the panel's current
          layout size while it exits, then let the post-close reconcile
@@ -1786,6 +1798,10 @@
       .bento-panel-nav__icon--subdivided img {
         display: block;
         pointer-events: none;
+      }
+      .bento-nav-subdiv-cell--discarded {
+        opacity: 0.55;
+        filter: grayscale(0.55);
       }
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivided] {
         background-color: transparent !important;
@@ -8276,6 +8292,10 @@
     return dot;
   }
 
+  function setGroupedNavCellState(cellEl, discarded) {
+    cellEl.classList.toggle('bento-nav-subdiv-cell--discarded', discarded === true);
+  }
+
   function setGroupedNavCellContent(cellEl, favIconUrl, faviconSize) {
     if (favIconUrl === null) return;
     const existing = cellEl.firstElementChild;
@@ -8306,6 +8326,7 @@
       const cellEls = Array.from(rowEls[rowIndex].children);
       if (cellEls.length !== row.length) return false;
       for (let cellIndex = 0; cellIndex < row.length; cellIndex++) {
+        setGroupedNavCellState(cellEls[cellIndex], row[cellIndex]?.discarded === true);
         const favIconUrl =
           row[cellIndex]?.favIconUrl === null ? null : row[cellIndex]?.favIconUrl || '';
         setGroupedNavCellContent(cellEls[cellIndex], favIconUrl, faviconSize);
@@ -8323,6 +8344,7 @@
       rowEl.className = 'bento-nav-subdiv-row';
       for (const cell of row) {
         const cellEl = document.createElementNS(HTML_NS, 'span');
+        setGroupedNavCellState(cellEl, cell?.discarded === true);
         cellEl.appendChild(
           cell?.favIconUrl
             ? makeGroupedNavImage(cell.favIconUrl, faviconSize)
@@ -9388,6 +9410,7 @@
       tabId,
       title: payload?.title || 'Panel',
       favIconUrl: payload?.favIconUrl || '',
+      discarded: payload?.discarded === true,
     };
   }
 
@@ -9413,6 +9436,7 @@
       tabId: fallbackTabId,
       title: panelPayload?.title || 'Panel',
       favIconUrl: panelPayload?.favIconUrl || '',
+      discarded: panelPayload?.discarded === true,
     };
     const rootNodeId = panelPayload?.rootNodeId || 'panel:' + fallbackTabId;
     const rootNode = getLayoutRootNodeForNav(rootNodeId);
@@ -9422,6 +9446,7 @@
         tabId: fallbackTabId,
         title: fallbackCell.title,
         favIconUrl: fallbackCell.favIconUrl,
+        discarded: fallbackCell.discarded,
         rows: [[fallbackCell]],
         isGrouped: false,
       };
@@ -9437,9 +9462,14 @@
       tabId: Number(firstPanelCell.tabId),
       title: firstPanelCell.title || fallbackCell.title,
       favIconUrl: firstPanelCell.favIconUrl || fallbackCell.favIconUrl,
+      discarded: rows.flat().some((cell) => cell?.discarded === true),
       rows: rows.length > 0 ? rows : [[fallbackCell]],
       isGrouped: rows.length > 1 || rows.some((row) => row.length > 1),
     };
+  }
+
+  function syncPanelNavDiscardedClass(btn, navInfo) {
+    btn.classList.toggle('bento-panel-nav__icon--discarded', navInfo?.discarded === true);
   }
 
   function getPanelNavSignature(panelPayload, payloadByTabId) {
@@ -9561,6 +9591,7 @@
               tabId,
               panelPayload.rootNodeId || key,
             );
+            syncPanelNavDiscardedClass(btn, navInfo);
           } else {
             btn = buildGroupedNavIcon(
               navInfo.rows,
@@ -9569,6 +9600,7 @@
               tabId,
               panelPayload.rootNodeId || key,
             );
+            syncPanelNavDiscardedClass(btn, navInfo);
           }
         }
         btn.dataset.bentoNavKey = key;
@@ -9621,6 +9653,7 @@
 
   function updatePanelNavButton(btn, navInfo) {
     if (!btn || !navInfo) return false;
+    syncPanelNavDiscardedClass(btn, navInfo);
     if (!navInfo.isGrouped) {
       btn.title = navInfo.title || 'Panel';
       btn.setAttribute('aria-label', btn.title);
@@ -12511,6 +12544,7 @@
         panelEl.dataset.bentoMainPanel = '1';
         delete panelEl.dataset.bentoPanelTabId;
         delete panelEl.dataset.bentoDevtoolsFor;
+        panelEl.classList.remove('bento-panel--discarded');
         panelEl.removeAttribute('data-bento-header-hidden');
         removeInjectedPanelHeader(panelEl);
         // Apply the active workspace's main-panel width every reconcile.
@@ -12572,6 +12606,7 @@
         // had (in-flight drag width, or Firefox's flex default).
         if (tabId !== null) {
           const payload = payloadByTabId.get(tabId);
+          panelEl.classList.toggle('bento-panel--discarded', payload?.discarded === true);
           panelEl.dataset.bentoRootNodeId = payload?.rootNodeId || 'panel:' + tabId;
           const devtoolsLink = currentDevtoolsLinkByTabId.get(tabId);
           if (devtoolsLink) {

@@ -169,7 +169,9 @@ Panels support the core Bento workflow:
   focus to it, and reveal it from the right when it fits in the visible strip;
 - bookmark the current panel URL from the panel header;
 - save a useful panel target for reuse later;
-- pin important panels so they are reachable across workspace changes;
+- pin important panels so they are reachable across workspace changes; their
+  backing Firefox tabs are also pinned while the panel pin exists, so idle-tab
+  sleep keeps them loaded.
 - resize panels without disturbing the entire layout;
 - close or remove a panel without losing the rest of the workspace; closing
   panels fade out without resizing neighboring panels during the exit animation,
@@ -299,6 +301,8 @@ The intended behavior is:
   draggable side-panel buttons by a divider;
 - grouped panel navigator icons show and refresh the favicons for visible
   panels inside a vertical or 2x2 group;
+- sleeping panels appear dimmed in the panel strip and their panel navigator
+  buttons are dimmed until the backing tab wakes;
 - panel cycling is predictable;
 - saved panels and pinned-panel rail buttons are reachable from compact controls;
 - workspace switching preserves enough layout state that returning to a
