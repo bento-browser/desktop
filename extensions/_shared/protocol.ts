@@ -212,11 +212,11 @@ export interface BentoSettings {
    * cover narrow chat / standard reading / wide research / near-full-
    * width split-screen breakpoints. */
   customPanelSizes: number[];
-  /** Wrap Left/Right arrow panel cycling at the ends of the strip. When
-   * false (default), pressing Right at the Add-panel trailer (or Left at
-   * the main panel) is a no-op — cycling clamps at the endpoints. When
-   * true, Right at the trailer wraps back to the main panel and Left at
-   * the main panel wraps forward to the trailer. */
+  /** Wrap Cmd/Ctrl+Shift+Left/Right panel cycling at the ends of the strip. When
+   * false (default), pressing the Right shortcut at the Add-panel trailer (or
+   * the Left shortcut at the main panel) is a no-op — cycling clamps at the
+   * endpoints. When true, Right at the trailer wraps back to the main panel and
+   * Left at the main panel wraps forward to the trailer. */
   panelCycleWraparound: boolean;
   /** Render outer box shadows around split-view panels. Enabled by
    * default; disabling removes the chrome-side shadow proxy elements for

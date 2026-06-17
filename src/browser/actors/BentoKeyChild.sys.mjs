@@ -6,8 +6,8 @@
 //
 // Lives in every web content document (one instance per BrowsingContext,
 // see registerWindowActor in bento-shell-mount.js). Forwards a small
-// allowlist of chrome-bound keys (ArrowLeft / ArrowRight for panel
-// cycling, Cmd/Ctrl+Left/Right for panel history, Cmd/Ctrl+E for the
+// allowlist of chrome-bound keys (Cmd/Ctrl+Shift+ArrowLeft/Right for panel
+// cycling, Cmd/Ctrl+ArrowLeft/Right for panel history, Cmd/Ctrl+E for the
 // floating address bar) back to chrome, so panel navigation works while
 // content has focus — without this, focus has to sit on the chrome panel
 // container, which prevents page-bound
@@ -15,11 +15,11 @@
 // keys.
 //
 // Filters:
-//   - Modifier keys on panel cycling → never forward; modified
-//     ArrowLeft/Right are reserved for panel-local history navigation.
+//   - Plain ArrowLeft/Right stay in content for video scrubbing and page-local
+//     keyboard behavior.
 //   - Form / editable targets (input, textarea, contenteditable,
-//     role=textbox) → never forward for unmodified panel cycling; browser
-//     accelerators still win.
+//     role=textbox) → never forward for panel cycling or history; text
+//     selection stays editable.
 //   - Already-defaultPrevented events → never forward; some page
 //     handler claimed the key.
 
@@ -49,27 +49,24 @@ export class BentoKeyChild extends JSWindowActorChild {
         return;
       }
     }
-    if (!event.altKey && !event.shiftKey && FORWARDED_KEYS.has(event.key)) {
+    if (!event.altKey && FORWARDED_KEYS.has(event.key)) {
       const accel = event.metaKey || event.ctrlKey;
       const extraModifier = event.metaKey && event.ctrlKey;
       if (accel && !extraModifier) {
         if (isEditableTarget(event.composedTarget ?? event.target)) return;
         event.preventDefault();
         event.stopPropagation();
-        this.sendAsyncMessage('BentoKey:PanelHistory', {
-          direction: event.key === 'ArrowRight' ? 1 : -1,
-        });
+        if (event.shiftKey) {
+          this.sendAsyncMessage('BentoKey:Cycle', {
+            direction: event.key === 'ArrowRight' ? 1 : -1,
+          });
+        } else {
+          this.sendAsyncMessage('BentoKey:PanelHistory', {
+            direction: event.key === 'ArrowRight' ? 1 : -1,
+          });
+        }
         return;
       }
     }
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (!FORWARDED_KEYS.has(event.key)) return;
-    if (isEditableTarget(event.composedTarget ?? event.target)) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    this.sendAsyncMessage('BentoKey:Cycle', {
-      direction: event.key === 'ArrowRight' ? 1 : -1,
-    });
   }
 }

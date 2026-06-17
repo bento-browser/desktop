@@ -48,7 +48,12 @@ const GROUPS: ShortcutGroup[] = [
   {
     title: 'Panels',
     entries: [
-      { combo: '←  /  →', description: 'Cycle focus between panels' },
+      {
+        combo: IS_MAC
+          ? `${MOD}${SHIFT}← / ${MOD}${SHIFT}→`
+          : `${MOD}+${SHIFT}+← / ${MOD}+${SHIFT}+→`,
+        description: 'Cycle focus between panels',
+      },
       { combo: 'Esc', description: 'Close the active overlay' },
     ],
   },

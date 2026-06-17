@@ -305,7 +305,7 @@ The intended behavior is:
   panels inside a vertical or 2x2 group;
 - sleeping panels appear dimmed in the panel strip and their panel navigator
   buttons are dimmed until the backing tab wakes;
-- panel cycling is predictable;
+- panel cycling with `Cmd/Ctrl+Shift+Left` and `Cmd/Ctrl+Shift+Right` is predictable;
 - saved panels and pinned-panel rail buttons are reachable from compact controls;
 - workspace switching preserves enough layout state that returning to a
   workspace feels immediate;
@@ -374,7 +374,8 @@ Panel content should behave like normal browser content. Extensions, page state,
 keyboard behavior, history, media, and developer tools should work as close to
 regular tabs as possible. When focus is inside panel content, `Cmd/Ctrl+Left`
 and `Cmd/Ctrl+Right` navigate backward and forward in that panel's own page
-history unless focus is inside an editable field.
+history unless focus is inside an editable field. Plain Left/Right arrow keys
+remain available to page content, including video scrubbing.
 
 ### Layout should scale with display shape
 

@@ -302,16 +302,16 @@ export function Settings() {
             </NumberField.Root>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Column gap="3xs" style={{ flex: 1 }}>
-                <Text>Wrap arrow-key cycling at the ends</Text>
+                <Text>Wrap panel shortcut cycling at the ends</Text>
                 <Text variant="text" size="s" color="muted">
-                  When on, pressing the Right arrow past the Add-panel button cycles back to the
-                  main content slot. When off, the Add-panel button is the rightmost stop.
+                  When on, Cmd/Ctrl+Shift+Right past the Add-panel button cycles back to the main
+                  content slot. When off, the Add-panel button is the rightmost stop.
                 </Text>
               </Column>
               <Switch.Root
                 isSelected={settings.panelCycleWraparound}
                 onChange={(v) => update('panelCycleWraparound', v)}
-                aria-label="Wrap arrow-key cycling at the ends"
+                aria-label="Wrap panel shortcut cycling at the ends"
               >
                 <Switch.Thumb />
               </Switch.Root>

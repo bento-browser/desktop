@@ -84,15 +84,20 @@ const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.toLowerCas
 // what users see printed on their keyboard.
 const MOD = IS_MAC ? '⌘' : 'Ctrl';
 const ALT = IS_MAC ? '⌥' : 'Alt';
+const SHIFT = IS_MAC ? '⇧' : 'Shift';
+const PANEL_CYCLE_SHORTCUT = IS_MAC
+  ? `${MOD}${SHIFT}← / ${MOD}${SHIFT}→`
+  : `${MOD}+${SHIFT}+← / ${MOD}+${SHIFT}+→`;
 
 // Tip rows — kept in sync with ShortcutsDialog and the chrome bindings.
 // Workspaces: bento-tools manifest binds Ctrl+Alt+N → workspace-N.
 // Palette: bento-shell-mount.js binds Cmd/Ctrl+Alt+P.
+// Panel cycle: bento-shell-mount.js binds Cmd/Ctrl+Shift+Left/Right.
 const TIPS: Array<{ shortcut: string; description: string }> = [
   { shortcut: `${MOD}${ALT}1-${MOD}${ALT}9`, description: 'Switch workspaces' },
   { shortcut: `${MOD}${ALT}P`, description: 'Open the command palette' },
   { shortcut: 'Tab panel icon', description: 'Pin a tab as a side panel' },
-  { shortcut: 'Left / Right', description: 'Cycle between panels' },
+  { shortcut: PANEL_CYCLE_SHORTCUT, description: 'Cycle between panels' },
 ];
 
 const WELCOME_STEP_STORAGE_KEY = 'bento-welcome-step';

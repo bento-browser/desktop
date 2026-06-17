@@ -828,15 +828,15 @@ Flat-layout chooser overlays are stamped with `data-bento-chooser-id` and
 `data-bento-owner-tab-id` so focus and the bottom navigator marker can map the
 overlay back to its owning top-level panel.
 
-Chooser cycling fix: arrow-key cycling, Shift-wheel cycling, and the content-key
-bridge all call `navigatePanels()`, which reads `getPanelCycleTargets()`. In
+Chooser cycling fix: Cmd/Ctrl+Shift+arrow cycling, Shift-wheel cycling, and the
+content-key bridge all call `navigatePanels()`, which reads `getPanelCycleTargets()`. In
 flat layout, that target list must be built from `currentPanelLayout` via
 `getFlatLayoutPanelCycleTargets()` / `appendLayoutCycleTargets()` rather than
 from `data-bento-subdivided`. Flat layout intentionally clears nested
 subdivision DOM and renders choosers as absolute `.bento-layout-chooser`
 overlays, so DOM subdivision attributes are not a reliable source for chooser
-cycle targets. If this regresses, the visual focus ring may exist, but Left/Right
-and Shift-wheel will skip the chooser entirely.
+cycle targets. If this regresses, the visual focus ring may exist, but
+Cmd/Ctrl+Shift+Left/Right and Shift-wheel will skip the chooser entirely.
 
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
@@ -1443,9 +1443,11 @@ Panel traversal is split between chrome focus tracking and a JSWindowActor pair:
   and handles the custom events by calling the private `navigatePanels` closure
   or the focused panel browser's `goBack()` / `goForward()` methods.
 
-The actor forwards unmodified `ArrowLeft` and `ArrowRight` for panel cycling and
-`Cmd/Ctrl+ArrowLeft` / `Cmd/Ctrl+ArrowRight` for panel-local history navigation.
-It skips editable targets and already-handled events. Other page keys pass
+The actor forwards `Cmd/Ctrl+Shift+ArrowLeft` and
+`Cmd/Ctrl+Shift+ArrowRight` for panel cycling and `Cmd/Ctrl+ArrowLeft` /
+`Cmd/Ctrl+ArrowRight` for panel-local history navigation. It skips editable
+targets and already-handled events. Plain Left/Right arrows stay in content for
+video scrubbing and page-local keyboard behavior. Other page keys pass
 through so keyboard extensions like Vimium still receive normal content key
 events.
 
@@ -1471,14 +1473,14 @@ Those classes paint both the existing panel ring and the focused panel header's
 partner panels receive the same classes through `getDevtoolsFocusPartnerElement`,
 so focusing either side of a pair highlights both headers as well as both rings.
 
-Arrow-key and Shift-wheel traversal must use minimal reveal scrolling. If the
-next cycle target is already fully visible, the strip should not scroll. When
-the target reaches an edge, call `scrollPanelIntoViewFromRight` so the strip
-only nudges enough to reveal the target instead of snapping the target to the
-leftmost slot. Navigator favicon clicks are the explicit left-align affordance
-and still use `scrollPanelToLeftmost`.
+Cmd/Ctrl+Shift+arrow and Shift-wheel traversal must use minimal reveal
+scrolling. If the next cycle target is already fully visible, the strip should
+not scroll. When the target reaches an edge, call `scrollPanelIntoViewFromRight`
+so the strip only nudges enough to reveal the target instead of snapping the
+target to the leftmost slot. Navigator favicon clicks are the explicit
+left-align affordance and still use `scrollPanelToLeftmost`.
 
-The `Wrap arrow-key cycling at the ends` setting applies to arrow-key
+The `Wrap panel shortcut cycling at the ends` setting applies to shortcut
 traversal only. Shift-wheel panel cycling must always clamp at the first and
 last cycle targets; do not let scroll gestures loop back to the start or end.
 When the Add-panel trailer receives focus, both the `focusin` auto-scroll
@@ -1530,13 +1532,14 @@ alignment so the header and start of the content remain usable.
 
 - Do not focus chrome panel containers as the normal traversal target. Content
   key extensions need DOM focus inside the page.
-- Do not use `scrollPanelToLeftmost` for arrow-key or Shift-wheel traversal.
+- Do not use `scrollPanelToLeftmost` for shortcut or Shift-wheel traversal.
   That makes focus appear locked to the left edge and hides visible context.
-- Do not let Shift-wheel traversal inherit arrow-key wraparound. Pass
+- Do not let Shift-wheel traversal inherit shortcut wraparound. Pass
   `allowWrap: false` when scroll gestures call `navigatePanels`.
 - Do not let trailer focus update `currentActiveIdx` through ancestor
   `data-bento-main-panel` lookup.
-- Do not forward arrow keys from editable targets in the actor.
+- Do not forward plain arrow keys, or panel shortcuts from editable targets, in
+  the actor.
 - Do not activate a pinned panel by setting `gBrowser.selectedTab` to the panel
   tab. That relocates the panel into the main slot.
 - The actor files must live under `src/browser/actors/` and be registered into
@@ -1714,7 +1717,8 @@ When changing core functionality, manually verify at least the affected subset:
   context-menu item;
 - closing side panels with descendant sub-panels;
 - Cmd+Shift+T restore of a closed panel;
-- arrow-key panel traversal while content has focus;
+- Cmd/Ctrl+Shift+arrow panel traversal while content has focus, and plain
+  Left/Right arrow behavior inside page content;
 - Vimium or another content-key extension inside a panel;
 - AMO install permission prompt from a panel;
 - Dark Reader or another content-script extension inside a panel;

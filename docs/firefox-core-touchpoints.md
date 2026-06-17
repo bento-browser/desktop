@@ -105,7 +105,10 @@ Use this shape for new or changed touchpoints:
   leave the native urlbar suggestions dropdown open, verify
   `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
   navigate that panel's own history without moving panel focus and without
-  stealing cursor movement from editable fields, verify right-clicking a side
+  stealing cursor movement from editable fields, verify
+  `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels while
+  plain Left/Right arrows still reach side-panel content such as videos, verify
+  right-clicking a side
   panel or sub-panel header Back or Forward button shows that panel's own
   previous, current, and next session-history entries and selecting an entry
   navigates that panel rather than the main tab, verify

@@ -4613,7 +4613,7 @@
     });
     // After Enter (navigate) or Escape (cancel), put DOM focus back on
     // the panel container so the Up/Down content-scroll handler and the
-    // Left/Right cycle handler keep working. Without this, focus lands
+    // keyboard cycle handler keep working. Without this, focus lands
     // on document body after blur, and arrow keys do nothing until the
     // user clicks back into the panel.
     function returnFocusToPanel() {
@@ -6946,24 +6946,22 @@
     }
   }
 
-  // ─── Arrow-key panel navigation ────────────────────────────────────────
-  // Left / Right arrow keys cycle through panels — main + each side
+  // ─── Shortcut panel navigation ─────────────────────────────────────────
+  // Cmd/Ctrl+Shift+Left / Right cycles through panels: main + each side
   // panel's flattened subdivision targets, then the Add-panel trailer
-  // when present. The "current" item
-  // advances from the user's explicit selection; pressing Right scrolls
-  // the next item into view, Left scrolls the previous one. Stops at the
-  // ends (no wraparound).
+  // when present. The "current" item advances from the user's explicit
+  // selection; pressing the Right shortcut scrolls the next item into view,
+  // Left scrolls the previous one. Stops at the ends unless wraparound is on.
   //
   // Suppressed when focus is inside any input / textarea / contenteditable
-  // (URL bars, form fields, etc.) so the keys still move the text caret.
-  // Arrow keys pressed inside a remote content browser don't bubble to
-  // chrome — the content process consumes them — so webpages keep
-  // their arrow-key behaviour for free.
+  // (URL bars, form fields, etc.) so the shortcut does not steal text
+  // selection. Plain Left / Right arrows are intentionally left to content
+  // for media scrubbing and page-specific keyboard behavior.
   function getOrderedPanels() {
     // Panels live as notificationbox children of gBrowser.tabpanels,
     // in tabpanels.splitViewPanels order. The reconciler stamps
     // data-bento-main-panel / data-bento-panel-tab-id on each panel
-    // container so downstream code (drag-reorder, arrow-key cycling,
+    // container so downstream code (drag-reorder, shortcut cycling,
     // Esc-to-blur) reads tabIds. When tabpanels isn't yet in split-
     // active mode (boot, or no panels in the active workspace), the
     // ordered list is empty.
@@ -7076,7 +7074,7 @@
     // Cycle targets = ordered panels + the Add-panel trailer (when
     // present). The trailer is a focusable XUL vbox sibling of the
     // panel containers inside tabpanels; including it as the final
-    // cycle slot lets Right-arrow past the last panel land on it, and
+    // cycle slot lets the Right shortcut past the last panel land on it, and
     // its Enter/Space keydown handler then triggers addNewPanel.
     // The favicon strip renders one entry per root layout node, so
     // applyActiveMarker maps split/subdivision leaves back to their
@@ -7221,7 +7219,7 @@
   function shouldHandlePanelArrowKey(target) {
     // Bail when arrow keys belong to a text widget or chrome navigation
     // surface that has its own meaning for ←/→. Without these guards the
-    // panel cycler steals letter-by-letter cursor movement in the
+    // panel handlers steal caret movement or text selection in the
     // Firefox URL bar / search bar / panel header URL input, and menu
     // navigation in <menupopup>/<menubar>.
     //
@@ -7278,9 +7276,9 @@
     // selection.
     //
     // Endpoint behaviour: clamp by default; wrap when the caller allows
-    // it and the user has opted into arrow-key wraparound via Settings.
+    // it and the user has opted into shortcut wraparound via Settings.
     // Shift-wheel traversal passes allowWrap:false because scroll
-    // cycling should stop at the ends regardless of that arrow-key
+    // cycling should stop at the ends regardless of that keyboard shortcut
     // setting.
     let nextIdx;
     const allowWrap = options.allowWrap !== false;
@@ -7300,12 +7298,13 @@
   }
 
   window.addEventListener('keydown', (e) => {
+    const isPanelArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+    const hasSingleAccel = (e.metaKey || e.ctrlKey) && !(e.metaKey && e.ctrlKey);
     if (
-      (e.metaKey || e.ctrlKey) &&
+      hasSingleAccel &&
       !e.altKey &&
       !e.shiftKey &&
-      !(e.metaKey && e.ctrlKey) &&
-      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      isPanelArrow
     ) {
       if (navigateFocusedPanelHistory(e.key === 'ArrowRight' ? 1 : -1)) {
         e.preventDefault();
@@ -7313,21 +7312,25 @@
       }
       return;
     }
+
+    if (hasSingleAccel && e.shiftKey && !e.altKey && isPanelArrow) {
+      if (!shouldHandlePanelArrowKey(e.target)) return;
+      // When focus lives inside a content <browser>, the BentoKey child actor
+      // owns Cmd/Ctrl+Shift+Left/Right. It forwards to chrome only when the
+      // inner content target is non-editable, so in-page text selection and
+      // plain media scrubbing stay with the page.
+      if (document.activeElement?.localName === 'browser') return;
+      e.preventDefault();
+      navigatePanels(e.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
+
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (!shouldHandlePanelArrowKey(e.target)) return;
 
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      // When focus lives inside a content <browser>, the BentoKey
-      // child actor owns Left/Right: it forwards to chrome only when
-      // the inner content target is non-editable, so a Wikipedia
-      // search input (or any in-page text field) keeps caret motion.
-      // shouldHandlePanelArrowKey can't see across the process
-      // boundary — document.activeElement reports the <browser>
-      // element, not the inner input — so bail here unconditionally
-      // when content has focus.
-      if (document.activeElement?.localName === 'browser') return;
-      e.preventDefault();
-      navigatePanels(e.key === 'ArrowRight' ? 1 : -1);
+      // Plain Left/Right belong to content. This avoids stealing video
+      // scrubbing and page-local horizontal navigation.
       return;
     }
 
@@ -7339,13 +7342,13 @@
     // We can't simply move keyboard focus to the panel's <browser>
     // element to let the content's natural arrow-key handling take
     // over: with focus in content (a remote process), the chrome
-    // keydown listener on `window` no longer sees Left/Right key
+    // keydown listener on `window` no longer sees shortcut key
     // events, breaking cycling. Instead, use the chrome command
     // dispatcher's cmd_scrollLine{Up,Down} which routes scroll
     // commands across the multi-process boundary to whichever
     // browser is currently focused. Brief focus shuffle: focus the
     // browser to direct the command at it, dispatch, then restore
-    // focus to the container so Left/Right cycling keeps working.
+    // focus to the container so shortcut cycling keeps working.
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const target = e.target;
       const isPanelContainer = !!(
@@ -7474,7 +7477,7 @@
   });
 
   // ESC inside a panel returns focus to the panel container itself,
-  // letting the user resume arrow-key cycling. Skipped while any of
+  // letting the user resume keyboard shortcut cycling. Skipped while any of
   // the chrome overlays (palette / confirm / edit-workspace) is open
   // — those have their own ESC dismiss handlers (see
   // attachPaletteEscListener) which run earlier in capture phase
@@ -8470,10 +8473,10 @@
     // (Vimium j/k, Surfingkeys, etc.) only work when their content
     // document has DOM focus; before the BentoKey content actor
     // landed we focused the chrome notificationbox here instead,
-    // which made Left/Right cycling work but blocked all other
-    // page-bound keys. Now Left/Right is forwarded back to chrome
-    // via the actor (see attachContentKeyBridgeListener), so we
-    // can keep content-focused as the default.
+    // which made panel cycling work but blocked all other page-bound
+    // keys. Now the cycling shortcut is forwarded back to chrome via
+    // the actor (see attachContentKeyBridgeListener), so we can keep
+    // content-focused as the default.
     //
     // Add-trailer target → focus the outer vbox (NOT its inner
     // panel-trailer-frame iframe). The trailer hosts a moz-extension
@@ -10101,7 +10104,7 @@
   // horizontal strip scrolling. Trackpads emit many tiny wheel events;
   // mouse wheels emit fewer, larger line/page events. Normalize both and
   // advance one panel per threshold crossed, reusing navigatePanels so
-  // the active marker, focus ring, and edge behavior match arrow keys.
+  // the active marker, focus ring, and edge behavior match the keyboard shortcut.
   // A short gesture lock also captures momentum tail events whose
   // shiftKey can drop before the wheel burst has fully ended.
   const PANEL_WHEEL_STEP_PX = 32;
@@ -12735,11 +12738,11 @@
     //
     // Also stamp the data-bento-main-panel / data-bento-panel-tab-id
     // attributes the legacy parallel-browser renderer used to set —
-    // downstream code (getOrderedPanels, navigatePanels arrow-cycle,
+    // downstream code (getOrderedPanels, navigatePanels keyboard cycle,
     // setupNavDrag drag-reorder, the Esc-to-blur handler) reads these
     // to identify panels and recover tabIds. Without them, drag-
     // reorder dispatches a bogus single-element panels list (which
-    // PanelStore.reorder rejects on length mismatch) and arrow-key
+    // PanelStore.reorder rejects on length mismatch) and keyboard
     // cycling has no targets to walk through.
     // Panels at even orders (0, 2, 4, ...) so splitters can slot in
     // at odd orders (1, 3, 5, ...) between them. The splitter has
@@ -15166,7 +15169,7 @@
   // includes it (settings store default is [320, 480, 768, 1280]).
   let currentCustomPanelSizes = [];
   // BentoSettings.panelCycleWraparound mirrored via the same payload.
-  // When true, Left/Right arrow cycling wraps past the Add-panel
+  // When true, Cmd/Ctrl+Shift+Left/Right cycling wraps past the Add-panel
   // trailer back to the main panel (and vice versa). Default false:
   // cycling clamps at the endpoints.
   let currentPanelCycleWraparound = false;
@@ -15884,7 +15887,8 @@
 
   // Content-key bridge — register the BentoKey JSWindowActor pair
   // (BentoKeyChild + BentoKeyParent in the same content directory)
-  // ONCE per process. Without this, panel cycling (Left/Right) only
+  // ONCE per process. Without this, panel cycling
+  // (Cmd/Ctrl+Shift+Left/Right) only
   // works while focus is on the chrome panel container, which keeps
   // content from receiving any keys — breaking page-bound keyboard
   // extensions (Vimium j/k, Surfingkeys, etc.) inside panels.
@@ -15913,7 +15917,7 @@
         // at before the navigate-away setTimeout fires. Without these the
         // actor doesn't attach inside the panel's <browser>, and since the
         // chrome-side keydown handler bails when activeElement is <browser>
-        // (delegating to the actor), Left/Right cycling appears to "stop"
+        // (delegating to the actor), shortcut cycling appears to "stop"
         // whenever the focused panel is on one of these URLs.
         matches: ['*://*/*', 'file:///*', 'moz-extension://*/*', 'about:newtab', 'about:blank'],
       });
