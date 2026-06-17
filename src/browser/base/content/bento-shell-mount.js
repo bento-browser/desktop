@@ -3450,6 +3450,246 @@
     return btn;
   }
 
+  let panelHistoryPopup = null;
+
+  function getNavigatorString(name, fallback) {
+    try {
+      if (typeof gNavigatorBundle !== 'undefined') {
+        return gNavigatorBundle.getString(name);
+      }
+    } catch {
+      // Fall through to the local label.
+    }
+    return fallback;
+  }
+
+  function getTabForPanelHistoryBrowser(browserEl) {
+    try {
+      return window.gBrowser?.getTabForBrowser?.(browserEl) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearPanelHistoryPopup() {
+    if (!panelHistoryPopup) return;
+    const popup = panelHistoryPopup;
+    panelHistoryPopup = null;
+    try {
+      popup.hidePopup?.();
+    } catch {
+      // Popup may already be closed.
+    }
+    popup.remove();
+  }
+
+  function ensurePanelHistoryPopup(browserEl, tab) {
+    clearPanelHistoryPopup();
+    const popup = document.createXULElement('menupopup');
+    popup.setAttribute('context', '');
+    popup._bentoPanelHistoryBrowser = browserEl;
+    popup._bentoPanelHistoryTab = tab;
+
+    popup.addEventListener('DOMMenuItemActive', (event) => {
+      if (event.target.hasAttribute('checked')) return;
+      try {
+        XULBrowserWindow.setOverLink(event.target.getAttribute('uri') || '');
+      } catch {
+        // Status text is best effort.
+      }
+    });
+    popup.addEventListener('DOMMenuItemInactive', () => {
+      try {
+        XULBrowserWindow.setOverLink('');
+      } catch {
+        // Status text is best effort.
+      }
+    });
+    popup.addEventListener('command', (event) => {
+      navigatePanelHistoryFromMenu(popup, event);
+      event.stopPropagation();
+    });
+    popup.addEventListener('popuphidden', () => {
+      try {
+        XULBrowserWindow.setOverLink('');
+      } catch {
+        // Status text is best effort.
+      }
+      if (panelHistoryPopup === popup) panelHistoryPopup = null;
+      popup.remove();
+    });
+
+    const popupSet = document.getElementById('mainPopupSet') || document.documentElement;
+    popupSet.appendChild(popup);
+    panelHistoryPopup = popup;
+    return popup;
+  }
+
+  function appendPanelHistoryItem(popup, entry, index, currentIndex, ssInParent, tooltips) {
+    const uri = ssInParent ? entry?.URI?.spec || '' : entry?.url || entry?.URI?.spec || '';
+    if (!uri) return;
+
+    const item = document.createXULElement('menuitem');
+    item.setAttribute('uri', uri);
+    item.setAttribute('label', entry?.title || uri);
+    item.setAttribute('index', index);
+    item.setAttribute('historyindex', index - currentIndex);
+
+    if (index !== currentIndex) {
+      item.style.setProperty('--menuitem-icon', 'url(page-icon:' + CSS.escape(uri) + ')');
+    }
+
+    if (index < currentIndex) {
+      item.className = 'unified-nav-back menuitem-iconic menuitem-with-favicon';
+      item.setAttribute('tooltiptext', tooltips.back);
+    } else if (index === currentIndex) {
+      item.setAttribute('type', 'radio');
+      item.setAttribute('checked', 'true');
+      item.className = 'unified-nav-current';
+      item.setAttribute('tooltiptext', tooltips.current);
+    } else {
+      item.className = 'unified-nav-forward menuitem-iconic menuitem-with-favicon';
+      item.setAttribute('tooltiptext', tooltips.forward);
+    }
+
+    popup.appendChild(item);
+  }
+
+  function fillPanelHistoryPopup(popup, browserEl, sessionHistory, ssInParent) {
+    while (popup.firstChild) popup.firstChild.remove();
+
+    const count = ssInParent ? sessionHistory?.count || 0 : sessionHistory?.entries?.length || 0;
+    if (count <= 1) return false;
+
+    const MAX_HISTORY_MENU_ITEMS = 15;
+    const currentIndex = Number(sessionHistory.index) || 0;
+    const halfLength = Math.floor(MAX_HISTORY_MENU_ITEMS / 2);
+    let start = Math.max(currentIndex - halfLength, 0);
+    const end = Math.min(
+      start === 0 ? MAX_HISTORY_MENU_ITEMS : currentIndex + halfLength + 1,
+      count,
+    );
+    if (end === count) start = Math.max(count - MAX_HISTORY_MENU_ITEMS, 0);
+
+    const tooltips = {
+      back: getNavigatorString('tabHistory.goBack', 'Go back'),
+      current: getNavigatorString('tabHistory.reloadCurrent', 'Reload current page'),
+      forward: getNavigatorString('tabHistory.goForward', 'Go forward'),
+    };
+
+    for (let index = end - 1; index >= start; index -= 1) {
+      const entry = ssInParent
+        ? sessionHistory.getEntryAtIndex(index)
+        : sessionHistory.entries[index];
+      if (
+        BrowserUtils.navigationRequireUserInteraction &&
+        entry?.hasUserInteraction === false &&
+        index !== end - 1 &&
+        index !== currentIndex
+      ) {
+        continue;
+      }
+      appendPanelHistoryItem(popup, entry, index, currentIndex, ssInParent, tooltips);
+    }
+
+    popup._bentoPanelHistoryBrowser = browserEl;
+    return popup.children.length > 0;
+  }
+
+  function openPanelHistoryPopupAtEvent(popup, anchor, event) {
+    if (Number.isFinite(event?.screenX) && Number.isFinite(event?.screenY)) {
+      popup.openPopupAtScreen(event.screenX, event.screenY, true, event);
+      return;
+    }
+    popup.openPopup(anchor, 'after_start', 0, 0, true, false, event);
+  }
+
+  function showPanelHistoryPopup(browserEl, anchor, event) {
+    const tab = getTabForPanelHistoryBrowser(browserEl);
+    const popup = ensurePanelHistoryPopup(browserEl, tab);
+    let opened = false;
+
+    const openIfPopulated = (sessionHistory, ssInParent) => {
+      if (!popup.isConnected || panelHistoryPopup !== popup) return;
+      if (!fillPanelHistoryPopup(popup, browserEl, sessionHistory, ssInParent)) {
+        if (opened) popup.hidePopup();
+        return;
+      }
+      if (!opened) {
+        opened = true;
+        openPanelHistoryPopupAtEvent(popup, anchor, event);
+      }
+    };
+
+    const liveHistory = browserEl?.browsingContext?.sessionHistory;
+    if (liveHistory?.count) {
+      openIfPopulated(liveHistory, true);
+      if (!opened) clearPanelHistoryPopup();
+      return;
+    }
+
+    const SessionStore = getSessionStore();
+    if (!SessionStore || !tab) {
+      clearPanelHistoryPopup();
+      return;
+    }
+    const snapshot = SessionStore.getSessionHistory(tab, (nextHistory) => {
+      openIfPopulated(nextHistory, false);
+    });
+    openIfPopulated(snapshot, false);
+    if (!opened && (!snapshot || (snapshot.entries?.length || 0) <= 1)) {
+      clearPanelHistoryPopup();
+    }
+  }
+
+  function navigatePanelHistoryFromMenu(popup, event) {
+    const index = Number(event.target?.getAttribute?.('index'));
+    if (!Number.isInteger(index)) return false;
+
+    const browserEl = popup._bentoPanelHistoryBrowser;
+    if (!browserEl?.isConnected) return false;
+
+    let where = 'current';
+    try {
+      where = BrowserUtils.whereToOpenLink(event);
+    } catch {
+      where = 'current';
+    }
+
+    if (where === 'current') {
+      try {
+        browserEl.gotoIndex(index);
+        return true;
+      } catch (err) {
+        console.warn('[bento-shell-mount] panel history gotoIndex failed:', err);
+        return false;
+      }
+    }
+
+    const historyIndex = Number(event.target.getAttribute('historyindex'));
+    const tab = popup._bentoPanelHistoryTab || getTabForPanelHistoryBrowser(browserEl);
+    if (!tab || !Number.isFinite(historyIndex) || typeof duplicateTabIn !== 'function') {
+      return false;
+    }
+    try {
+      duplicateTabIn(tab, where, historyIndex);
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel history duplicate failed:', err);
+      return false;
+    }
+  }
+
+  function attachPanelHistoryContextMenu(button, getBrowser) {
+    button.addEventListener('contextmenu', (event) => {
+      const actionBrowser = getBrowser();
+      if (!actionBrowser) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showPanelHistoryPopup(actionBrowser, button, event);
+    });
+  }
+
   // Move the main tab content (#tabbrowser-tabbox) into the strip as
   // its first child. The strip becomes the entire content area right
   // of the sidebar — main + side panels + Add-panel button share one
@@ -4336,6 +4576,8 @@
         console.warn('[bento-shell-mount] panel goForward failed:', e);
       }
     });
+    attachPanelHistoryContextMenu(backBtn, getActionBrowser);
+    attachPanelHistoryContextMenu(forwardBtn, getActionBrowser);
     const reloadBtn = makeHeaderButton('Reload', ICONS.rotate, () => {
       const panelEl = header.closest?.(
         '[data-bento-main-panel], [data-bento-panel-tab-id], [data-bento-subpanel]',

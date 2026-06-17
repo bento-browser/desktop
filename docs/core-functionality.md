@@ -168,6 +168,8 @@ Panels support the core Bento workflow:
 - create a blank panel from the trailer at the end of the panel strip, move
   focus to it, and reveal it from the right when it fits in the visible strip;
 - bookmark the current panel URL from the panel header;
+- right-click the panel header Back or Forward buttons to show that panel's
+  previous, current, and next page-history entries;
 - save a useful panel target for reuse later;
 - pin important panels so they are reachable across workspace changes; their
   backing Firefox tabs are also pinned while the panel pin exists, so idle-tab

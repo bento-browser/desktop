@@ -1449,6 +1449,17 @@ It skips editable targets and already-handled events. Other page keys pass
 through so keyboard extensions like Vimium still receive normal content key
 events.
 
+Panel header Back and Forward buttons left-click the target panel browser's
+`goBack()` / `goForward()` methods. Their right-click menu is built in
+`bento-shell-mount.js` from that same browser's
+`browsingContext.sessionHistory`, falling back to
+`SessionStore.getSessionHistory(tab, callback)` when parent-process session
+history is not populated. Menu commands call `browser.gotoIndex(index)` for the
+panel browser. Do not call Firefox's stock `FillHistoryMenu` or
+`BrowserCommands.gotoHistoryIndex` for this surface: both are hard-wired to
+`gBrowser.selectedBrowser` / `gBrowser.selectedTab` and would show or navigate
+the main tab instead of the panel.
+
 `setActiveByIndex` focuses the panel's `<browser>` for panel targets, not the
 chrome notificationbox. The add-panel trailer is the exception: cycle focus
 stays on the outer XUL `vbox` so Enter/Space creates a blank panel.

@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-11
+- Last updated: 2026-06-17
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -71,12 +71,15 @@ Use this shape for new or changed touchpoints:
   address/search text through Firefox URI fixup, mounts a shared modal toolbar
   scrim as a top-layer manual popover so native toolbar/urlbar controls do not
   paint above Bento modal scrims, opens Firefox DevTools toolboxes in trusted
-  Bento panels from content context-menu inspect commands, and exposes the
+  Bento panels from content context-menu inspect commands, renders panel-scoped
+  Back/Forward session-history popups from panel headers, and exposes the
   chrome-side container behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
   chrome window events, native `#urlbar-input` pointer/focus events,
   `gURLBar.view.close()`, frame focus, title/actor messaging paths,
+  `browsingContext.sessionHistory`, `SessionStore.getSessionHistory`,
+  browser `gotoIndex()`,
   `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
   `DevToolsShim.getToolboxes()`, the
   `about:devtools-toolbox?type=tab&id=<browserId>&tool=<tool>` URL contract,
@@ -102,7 +105,10 @@ Use this shape for new or changed touchpoints:
   leave the native urlbar suggestions dropdown open, verify
   `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
   navigate that panel's own history without moving panel focus and without
-  stealing cursor movement from editable fields, verify
+  stealing cursor movement from editable fields, verify right-clicking a side
+  panel or sub-panel header Back or Forward button shows that panel's own
+  previous, current, and next session-history entries and selecting an entry
+  navigates that panel rather than the main tab, verify
   `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default search-engine
   submissions, verify native URL bar inset controls and the
   search-mode switcher popup inherit Bento token colors in light and dark modes,
