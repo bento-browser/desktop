@@ -1,25 +1,121 @@
-/* Layer-2 component: AddressBar. Mirrors CommandPalette's overlay shape
- * while giving result rows a denser two-line address-bar layout. */
+/* Layer-2 component: AddressBar. Uses Tale UI's translucent CommandPalette
+ * recipe for input, groups, result rows, and empty state. Bento only
+ * constrains the chrome overlay frame and favicon sizing. */
+
+/* Tale UI CommandPalette CSS is unlayered, so these narrow unlayered
+ * selectors intentionally beat its popup/listbox sizing rules. */
+.tale-command-palette__backdrop.bento-address-bar__backdrop {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.tale-command-palette__popup.bento-address-bar__popup {
+  width: min(var(--bento-address-bar-width), var(--bento-address-bar-max-inline));
+  height: min(var(--bento-address-bar-height), var(--bento-address-bar-max-block));
+  max-height: min(var(--bento-address-bar-height), var(--bento-address-bar-max-block));
+  transform: translateX(-50%);
+  transition: opacity 0.18s ease;
+}
+
+.tale-command-palette__popup.bento-address-bar__popup[data-entering],
+.tale-command-palette__popup.bento-address-bar__popup[data-exiting] {
+  transform: translateX(-50%);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background-color: color-mix(in srgb, var(--neutral-5) 84%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__search-field,
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__chips {
+  background-color: transparent;
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-hovered] {
+  background-color: var(--bento-surface-hover);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-focused] {
+  background-color: color-mix(in srgb, var(--neutral-90) 12%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-pressed] {
+  background-color: var(--bento-surface-active);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-selected] {
+  background-color: color-mix(in srgb, var(--color-60) 14%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-hovered][data-selected] {
+  background-color: color-mix(in srgb, var(--color-60) 18%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-focused][data-selected] {
+  background-color: color-mix(in srgb, var(--color-60) 20%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-pressed][data-selected] {
+  background-color: color-mix(in srgb, var(--color-60) 24%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__clear[data-hovered],
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__chip-remove:hover {
+  background-color: var(--bento-surface-hover);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__clear[data-pressed] {
+  background-color: var(--bento-surface-active);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__chip,
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__shortcut-key {
+  background-color: color-mix(in srgb, var(--neutral-90) 7%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-hovered]
+  .tale-command-palette__shortcut-key,
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-focused]
+  .tale-command-palette__shortcut-key {
+  background-color: color-mix(in srgb, var(--neutral-90) 12%, transparent);
+}
+
+.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup
+  .tale-command-palette__item[data-selected]
+  .tale-command-palette__shortcut-key {
+  background-color: color-mix(in srgb, var(--color-60) 16%, transparent);
+}
+
+.tale-command-palette__dialog.bento-address-bar__dialog,
+.tale-command-palette__content.bento-address-bar__content,
+.tale-command-palette__listbox.bento-address-bar__listbox {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tale-command-palette__listbox.bento-address-bar__listbox {
+  max-height: none;
+}
+
 @layer bento.components {
-  .bento-address-bar__popup {
-    width: min(64rem, 92vw);
-    height: min(42rem, 74vh);
-    display: flex;
-    flex-direction: column;
-    padding: var(--space-2xs);
-    gap: var(--space-2xs);
-    overflow: hidden;
-    transform: translateY(-14vh);
-  }
-
-  .bento-address-bar__autocomplete {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    gap: var(--space-2xs);
-  }
-
   .bento-address-bar__sr-only {
     position: absolute;
     width: 1px;
@@ -29,108 +125,9 @@
     white-space: nowrap;
   }
 
-  .bento-address-bar__input {
-    width: 100%;
-    transition:
-      border-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      box-shadow var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      background-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease);
-  }
-
-  .bento-address-bar__input:hover:not(:focus) {
-    border-color: var(--neutral-40);
-    background-color: var(--neutral-8, var(--neutral-10));
-  }
-
-  .bento-address-bar__input:focus,
-  .bento-address-bar__input[data-focused] {
-    border-color: var(--color-60);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-60) 22%, transparent);
-  }
-
-  .bento-address-bar__listbox {
-    box-sizing: border-box;
-    flex: 1;
-    min-height: 0;
-    padding: 0.4rem;
-    overflow-y: auto;
-    scroll-padding-block: 0.4rem;
-  }
-
-  .bento-address-bar__item {
-    min-height: 4.6rem;
-    padding: var(--space-2xs) var(--space-xs);
-    border-radius: var(--radius-s);
-    color: var(--neutral-90);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      box-shadow var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease);
-  }
-
-  .bento-address-bar__item:hover,
-  .bento-address-bar__item[data-hovered] {
-    background-color: var(--neutral-14);
-  }
-
-  .bento-address-bar__item:focus-visible,
-  .bento-address-bar__item[data-focus-visible],
-  .bento-address-bar__item[data-focused] {
-    background-color: color-mix(in srgb, var(--color-60) 12%, var(--neutral-10));
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--color-60) 44%, transparent),
-      0 0 0 3px color-mix(in srgb, var(--color-60) 18%, transparent);
-  }
-
-  .bento-address-bar__item:active,
-  .bento-address-bar__item[data-pressed],
-  .bento-address-bar__item[data-selected] {
-    background-color: var(--color-60);
-    color: var(--color-60-fg);
-  }
-
-  .bento-address-bar__item:active :where(.tale-text, .tale-icon),
-  .bento-address-bar__item[data-pressed] :where(.tale-text, .tale-icon),
-  .bento-address-bar__item[data-selected] :where(.tale-text, .tale-icon) {
-    color: var(--color-60-fg);
-  }
-
-  .bento-address-bar__row {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .bento-address-bar__row-text {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .bento-address-bar__row-title,
-  .bento-address-bar__row-subtitle {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .bento-address-bar__favicon,
-  .bento-address-bar__glyph {
-    width: 1.8rem;
-    height: 1.8rem;
-    flex: 0 0 1.8rem;
-  }
-
   .bento-address-bar__favicon {
-    border-radius: var(--radius-xs, 0.4rem);
+    width: var(--bento-address-bar-favicon-size);
+    height: var(--bento-address-bar-favicon-size);
     object-fit: contain;
-  }
-
-  .bento-address-bar__glyph {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--neutral-60);
   }
 }

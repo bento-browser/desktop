@@ -134,14 +134,18 @@ Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal
 scrim, but the overlay page itself should not cover the browser with an opaque
 surface. Bento modal scrims cover the full chrome window, including the toolbar
-and address bar.
+and address bar. The floating address/search bar is not a modal scrim; it leaves
+the native toolbar visible while blurring only the content behind its palette
+surface.
 
 The command palette separates normal tabs from side panels. Choosing a tab opens
 that tab in the main content slot, switching to its workspace first when needed.
 Choosing a panel switches to the panel's workspace, scrolls the panel strip to
 that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
-active states so mouse and keyboard navigation both have visible feedback.
+active states so mouse and keyboard navigation both have visible feedback. Rows
+include command titles, supporting descriptions, icons, and contextual metadata
+such as current/active markers or workspace shortcut hints where applicable.
 
 The floating address/search bar opens with `Cmd/Ctrl+L` or `Cmd/Ctrl+E` for the
 current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
@@ -152,7 +156,9 @@ native address bar. Results include open normal tabs,
 open panels, history, bookmarks, and a final search/open row. Submitting a
 current-tab search or URL uses Firefox's URL fixup and default search engine.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
-does not leave an empty tab behind. Open-tab matching is title-based unless the
+does not leave an empty tab behind. Results use the same command-palette row
+treatment as Bento's command palette on a translucent, backdrop-blurred surface.
+Open-tab matching is title-based unless the
 tab protocol is widened to include URLs; history and bookmark rows use generic
 icons when no favicon source is available.
 

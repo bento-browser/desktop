@@ -20,6 +20,7 @@ import '@tale-ui/react-styles/avatar';
 import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/autocomplete';
 import '@tale-ui/react-styles/search-field';
+import '@tale-ui/react-styles/command-palette';
 import '@tale-ui/react-styles/card';
 import '@tale-ui/react-styles/switch';
 import '@tale-ui/react-styles/number-field';

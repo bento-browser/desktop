@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-17
+- Last updated: 2026-06-21
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -70,8 +70,12 @@ Use this shape for new or changed touchpoints:
   address/search bar on `Cmd/Ctrl+L` and `Cmd/Ctrl+T`, routes submitted
   address/search text through Firefox URI fixup, mounts a shared modal toolbar
   scrim as a top-layer manual popover so native toolbar/urlbar controls do not
-  paint above Bento modal scrims, opens Firefox DevTools toolboxes in trusted
-  Bento panels from content context-menu inspect commands, renders panel-scoped
+  paint above Bento modal scrims, leaves that toolbar scrim disabled for the
+  floating address bar, paints a clipped blurred snapshot behind the floating
+  address bar because the extension frame cannot reliably blur parent
+  chrome/content pixels with `backdrop-filter`,
+  opens Firefox DevTools toolboxes in trusted Bento panels from content
+  context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, and exposes the
   chrome-side container behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
@@ -117,10 +121,13 @@ Use this shape for new or changed touchpoints:
   search-mode switcher popup inherit Bento token colors in light and dark modes,
   verify notification bars such as the popup-blocked banner inherit Bento token
   colors in light and dark modes,
-  verify command palette, floating address bar, edit-workspace, confirm, and
-  first-run welcome scrims cover the full chrome window including the address
-  bar, verify sidebar tab and folder `Rename` context-menu actions focus the
-  inline field and select its text for immediate typing, verify side-panel and
+  verify command palette, edit-workspace, confirm, and first-run welcome scrims
+  cover the full chrome window including the address bar, verify the floating
+  address bar does not dim the native toolbar/address bar, visibly blurs only
+  the page/sidebar content directly behind its translucent command surface, and
+  does not change shadow size after opening, verify sidebar tab and folder
+  `Rename` context-menu actions focus the inline field and select its text for
+  immediate typing, verify side-panel and
   sub-panel header hiding/restoration still works from the panel header menu and
   the restore handle while main-panel headers stay unavailable, verify
   `Inspect in Panel` and `Inspect Accessibility Properties in Panel` appear only

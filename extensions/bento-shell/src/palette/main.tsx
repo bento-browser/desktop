@@ -12,13 +12,10 @@ import { createRoot } from 'react-dom/client';
 
 import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/column';
-import '@tale-ui/react-styles/row';
+import '@tale-ui/react-styles/button';
+import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/dialog';
-import '@tale-ui/react-styles/autocomplete';
-import '@tale-ui/react-styles/search-field';
+import '@tale-ui/react-styles/command-palette';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';

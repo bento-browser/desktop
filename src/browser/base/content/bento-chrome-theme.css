@@ -145,6 +145,7 @@
 
     /* Focus ring color used by toolbar buttons + URL bar focus. */
     --focus-outline-color: var(--color-60) !important;
+    --bento-address-bar-frost-blur: 18px !important;
   }
 
   /* ─── Unified chrome surface ──────────────────────────────────────
@@ -158,11 +159,35 @@
   }
   #bento-side-panel-host,
   #bento-palette-host,
+  #bento-addrbar-host,
   #bento-confirm-host,
   #bento-edit-workspace-host,
   #bento-welcome-host,
   #bento-workspace-switcher-host {
     background-color: transparent !important;
+  }
+
+  #bento-addrbar-frost {
+    position: absolute;
+    z-index: 0;
+    overflow: hidden;
+    border-radius: var(--radius-l);
+    pointer-events: none;
+  }
+  #bento-addrbar-frost[hidden] {
+    display: none !important;
+  }
+  #bento-addrbar-frost-image {
+    position: absolute;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    filter: blur(var(--bento-address-bar-frost-blur)) saturate(1.12);
+    transform: scale(1.02);
+    transform-origin: center;
+  }
+  #bento-addrbar-frame {
+    position: relative;
+    z-index: 1;
   }
   #navigator-toolbox,
   #TabsToolbar {

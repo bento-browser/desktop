@@ -85,6 +85,15 @@
 
     /* Component dimensions */
     --bento-favicon-size: 1.6rem;
+    --bento-command-palette-width: 60rem;
+    --bento-command-palette-height: 48rem;
+    --bento-command-palette-max-inline: 90vw;
+    --bento-command-palette-max-block: 80vh;
+    --bento-address-bar-width: 64rem;
+    --bento-address-bar-height: 42rem;
+    --bento-address-bar-max-inline: 92vw;
+    --bento-address-bar-max-block: 74vh;
+    --bento-address-bar-favicon-size: 1.8rem;
 
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay

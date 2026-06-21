@@ -1,25 +1,26 @@
-/* Layer-2 component: CommandPalette. Sized constraints + scrollable listbox.
- * Tale UI's Dialog.Popup centers itself; we just constrain width and shape
- * the inner listbox so long command lists don't overflow the viewport. */
+/* Layer-2 component: CommandPalette. Most visuals come from Tale UI's
+ * CommandPalette recipe; Bento only constrains the chrome overlay frame. */
+
+/* Tale UI component CSS is unlayered, so these narrow unlayered selectors
+ * intentionally beat its popup/listbox sizing rules. */
+.tale-command-palette__popup.bento-command-palette__popup {
+  width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
+  height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
+  max-height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
+}
+
+.tale-command-palette__dialog.bento-command-palette__dialog,
+.tale-command-palette__content.bento-command-palette__content,
+.tale-command-palette__listbox.bento-command-palette__listbox {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tale-command-palette__listbox.bento-command-palette__listbox {
+  max-height: none;
+}
+
 @layer bento.components {
-  .bento-command-palette__popup {
-    width: min(60rem, 90vw);
-    height: min(48rem, 80vh);
-    display: flex;
-    flex-direction: column;
-    padding: var(--space-2xs);
-    gap: var(--space-2xs);
-    overflow: hidden;
-  }
-
-  .bento-command-palette__autocomplete {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    gap: var(--space-2xs);
-  }
-
   .bento-command-palette__sr-only {
     position: absolute;
     width: 1px;
@@ -27,78 +28,5 @@
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
-  }
-
-  .bento-command-palette__input {
-    /* SearchField primitive provides field padding; we just want the
-       input to fill the available width inside the popup. */
-    width: 100%;
-    transition:
-      border-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      box-shadow var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      background-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease);
-  }
-
-  .bento-command-palette__input:hover:not(:focus) {
-    border-color: var(--neutral-40);
-    background-color: var(--neutral-8, var(--neutral-10));
-  }
-
-  .bento-command-palette__input:focus,
-  .bento-command-palette__input[data-focused] {
-    border-color: var(--color-60);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-60) 22%, transparent);
-  }
-
-  .bento-command-palette__listbox {
-    box-sizing: border-box;
-    flex: 1;
-    min-height: 0;
-    padding: 0.4rem;
-    overflow-y: auto;
-    scroll-padding-block: 0.4rem;
-  }
-
-  .bento-command-palette__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2xs);
-    min-height: 3.6rem;
-    padding: var(--space-2xs) var(--space-xs);
-    border-radius: var(--radius-s);
-    color: var(--neutral-90);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      color var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease),
-      box-shadow var(--bento-duration-fast, 120ms) var(--bento-easing-standard, ease);
-  }
-
-  .bento-command-palette__item:hover,
-  .bento-command-palette__item[data-hovered] {
-    background-color: var(--neutral-14);
-  }
-
-  .bento-command-palette__item:focus-visible,
-  .bento-command-palette__item[data-focus-visible],
-  .bento-command-palette__item[data-focused] {
-    background-color: color-mix(in srgb, var(--color-60) 12%, var(--neutral-10));
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--color-60) 44%, transparent),
-      0 0 0 3px color-mix(in srgb, var(--color-60) 18%, transparent);
-  }
-
-  .bento-command-palette__item:active,
-  .bento-command-palette__item[data-pressed],
-  .bento-command-palette__item[data-selected] {
-    background-color: var(--color-60);
-    color: var(--color-60-fg);
-  }
-
-  .bento-command-palette__item:active :where(.tale-text, .tale-icon),
-  .bento-command-palette__item[data-pressed] :where(.tale-text, .tale-icon),
-  .bento-command-palette__item[data-selected] :where(.tale-text, .tale-icon) {
-    color: var(--color-60-fg);
   }
 }

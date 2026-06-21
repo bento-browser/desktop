@@ -112,6 +112,25 @@ When a Bento rule has to override those styles, keep that rule outside
 
 Existing examples:
 
+- [CommandPalette.css](../extensions/bento-shell/src/components/CommandPalette/CommandPalette.css)
+  uses narrow unlayered selectors for the Tale UI `CommandPalette` popup and
+  listbox sizing because `@tale-ui/react-styles/command-palette` is unlayered.
+  The dimensions come from `--bento-command-palette-*` tokens.
+- [AddressBar.css](../extensions/bento-shell/src/components/AddressBar/AddressBar.css)
+  uses the same override pattern for the floating address/new-tab palette's
+  translucent `CommandPalette` surface, with dimensions from
+  `--bento-address-bar-*` tokens. It disables the address palette's local
+  `backdrop-filter` and enter/exit transform overrides; the actual clipped
+  page/sidebar blur behind the transparent chrome frame comes from the
+  chrome-owned `#bento-addrbar-frost` snapshot layer in
+  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) and
+  [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css).
+  The snapshot must be prepared before the overlay fades in so the popup shadow
+  does not visually resize after opening. Its search-field wrapper stays
+  transparent so it does not stack another color-mix layer over the popup
+  surface, and its hover/focus/pressed/selected states use translucent
+  `color-mix(..., transparent)` or `--bento-surface-*` layers rather than solid
+  neutral/accent fills.
 - [WorkspaceSwitcher.css](../extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.css)
   uses unlayered rules for Avatar, Menu popup, trigger label, and icon/text
   overrides that must beat Tale UI defaults.

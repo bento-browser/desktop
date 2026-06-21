@@ -44,7 +44,7 @@ KEEP=(
   "bookmarkbackups"
   # Tabs / sessions
   "sessionstore.jsonlz4"
-  "sessionstore-backups"
+  "sessionstore-backups" # runtime crash-recovery files are pruned below
   "sessionCheckpoints.json"
   # Cookies + permissions
   "cookies.sqlite"
@@ -144,5 +144,19 @@ done <"$DELETE_LIST"
 # properly" prompt from a previous Ctrl+C.
 rm -f "$PROFILE/.startup-incomplete"
 rm -f "$PROFILE/.parentlock"
+
+# Runtime recovery files are crash snapshots. This script clears crash markers,
+# so keeping those snapshots can replay stale tabs on each dev launch. Clean
+# shutdown sessions still restore from sessionstore.jsonlz4.
+rm -f "$PROFILE/sessionstore-backups/recovery.jsonlz4"
+rm -f "$PROFILE/sessionstore-backups/recovery.baklz4"
+
+# If there is no clean shutdown session, do not fall back to an older backup.
+# That old backup can keep resurrecting tabs the user already removed during a
+# later interrupted dev run.
+if [ ! -f "$PROFILE/sessionstore.jsonlz4" ]; then
+  rm -f "$PROFILE/sessionstore-backups/previous.jsonlz4"
+  rm -f "$PROFILE/sessionCheckpoints.json"
+fi
 
 echo "dev-profile-clean: kept ${#KEEP[@]} entries, wiped the rest from $PROFILE"

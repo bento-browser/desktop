@@ -1,12 +1,12 @@
 // Layer-2 component: floating address/search bar.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Dialog } from '@tale-ui/react/dialog';
-import { Autocomplete } from '@tale-ui/react/autocomplete';
-import { Row } from '@tale-ui/react/row';
-import { Column } from '@tale-ui/react/column';
-import { Text } from '@tale-ui/react/text';
+import {
+  CommandPalette,
+  useCommandPalette,
+  type CommandPaletteCommand,
+} from '@tale-ui/react/command-palette';
 import { Icon } from '@tale-ui/react/icon';
 import { Image } from '@tale-ui/react/image';
 
@@ -33,21 +33,16 @@ export interface AddressBarProps {
 
 type RowKind = 'tab' | 'panel' | 'history' | 'bookmark' | 'synthetic';
 
-interface AddressRow {
+interface AddressRow extends CommandPaletteCommand {
   id: string;
   kind: RowKind;
   title: string;
   subtitle: string;
-  textValue: string;
+  group: 'Open Tabs' | 'Open Panels' | 'History & Bookmarks' | 'Search';
   tabId?: number;
   workspaceId?: string;
   url?: string;
   favIconUrl?: string;
-}
-
-function contains(text: string, search: string): boolean {
-  if (!search) return true;
-  return text.toLowerCase().includes(search.toLowerCase());
 }
 
 function isUrlLike(query: string): boolean {
@@ -66,7 +61,8 @@ function resultToRow(result: AddrResult): AddressRow {
     kind: result.kind,
     title: result.title || result.url,
     subtitle: resultSubtitle(result),
-    textValue: result.title || result.url,
+    group: 'History & Bookmarks',
+    keywords: [result.url],
     url: result.url,
     favIconUrl: result.favIconUrl,
   };
@@ -87,7 +83,7 @@ function rowIcon(kind: RowKind) {
   }
 }
 
-function RowGlyph({ row }: { row: AddressRow }) {
+function ResultIcon({ row }: { row: AddressRow }) {
   if (row.favIconUrl) {
     return (
       <Image
@@ -96,32 +92,28 @@ function RowGlyph({ row }: { row: AddressRow }) {
         alt=""
         radius="sm"
         fit="contain"
-        width={18}
-        height={18}
       />
     );
   }
-  return (
-    <Row className="bento-address-bar__glyph" align="center" justify="center" aria-hidden="true">
-      <Icon icon={rowIcon(row.kind)} size="sm" />
-    </Row>
-  );
+  return <Icon icon={rowIcon(row.kind)} size="sm" />;
 }
 
 function ResultRow({ row }: { row: AddressRow }) {
   return (
-    <Row gap="xs" align="center" className="bento-address-bar__row">
-      <RowGlyph row={row} />
-      <Column gap="4xs" className="bento-address-bar__row-text">
-        <Text variant="label" size="s" className="bento-address-bar__row-title">
-          {row.title}
-        </Text>
-        <Text variant="text" size="xs" color="muted" className="bento-address-bar__row-subtitle">
-          {row.subtitle}
-        </Text>
-      </Column>
-    </Row>
+    <>
+      <CommandPalette.ItemIcon>
+        <ResultIcon row={row} />
+      </CommandPalette.ItemIcon>
+      <CommandPalette.ItemContent>
+        <CommandPalette.ItemTitle>{row.title}</CommandPalette.ItemTitle>
+        <CommandPalette.ItemDescription>{row.subtitle}</CommandPalette.ItemDescription>
+      </CommandPalette.ItemContent>
+    </>
   );
+}
+
+function rowTextValue(row: AddressRow): string {
+  return [row.title, row.subtitle, row.group, row.url].filter(Boolean).join(' ');
 }
 
 export default function AddressBar({
@@ -158,7 +150,8 @@ export default function AddressBar({
         kind: 'tab',
         title: tab.title || 'Untitled',
         subtitle: 'Switch to Tab',
-        textValue: tab.title || 'Untitled',
+        group: 'Open Tabs',
+        keywords: ['tab', tab.title || 'Untitled'],
         tabId: tab.id,
         favIconUrl: tab.favIconUrl,
       }));
@@ -175,7 +168,8 @@ export default function AddressBar({
         kind: 'panel',
         title: tab.title || 'Untitled',
         subtitle: 'Focus Panel',
-        textValue: tab.title || 'Untitled',
+        group: 'Open Panels',
+        keywords: ['panel', tab.title || 'Untitled'],
         tabId: tab.id,
         workspaceId,
         favIconUrl: tab.favIconUrl,
@@ -198,10 +192,39 @@ export default function AddressBar({
       kind: 'synthetic',
       title: open ? `Open ${trimmed}` : `Search for ${trimmed}`,
       subtitle: mode === 'newTab' ? 'Open in new tab' : 'Open in current tab',
-      textValue: trimmed,
+      group: 'Search',
+      keywords: [trimmed],
       url: trimmed,
     };
   }, [mode, query]);
+
+  const runRow = useCallback(
+    (row: AddressRow) => {
+      if (row.kind === 'tab' && typeof row.tabId === 'number') {
+        dispatch({ type: 'tab/activate', id: row.tabId });
+        onClose();
+        return;
+      }
+      if (row.kind === 'panel' && typeof row.tabId === 'number' && row.workspaceId) {
+        dispatch({ type: 'panel/focus', workspaceId: row.workspaceId, id: row.tabId });
+        onClose();
+        return;
+      }
+      if (row.url) {
+        signalAddrbarNavigate(row.url);
+      }
+    },
+    [onClose],
+  );
+
+  const rows = useMemo<AddressRow[]>(() => {
+    return [...tabRows, ...panelRows, ...asyncRows, ...(syntheticRow ? [syntheticRow] : [])].map(
+      (row) => ({
+        ...row,
+        action: () => runRow(row),
+      }),
+    );
+  }, [asyncRows, panelRows, runRow, syntheticRow, tabRows]);
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -228,113 +251,77 @@ export default function AddressBar({
     return () => window.removeEventListener('focus', focusSearch);
   }, [openVersion]);
 
-  const runRow = (row: AddressRow) => {
-    if (row.kind === 'tab' && typeof row.tabId === 'number') {
-      dispatch({ type: 'tab/activate', id: row.tabId });
-      onClose();
-      return;
-    }
-    if (row.kind === 'panel' && typeof row.tabId === 'number' && row.workspaceId) {
-      dispatch({ type: 'panel/focus', workspaceId: row.workspaceId, id: row.tabId });
-      onClose();
-      return;
-    }
-    if (row.url) {
-      signalAddrbarNavigate(row.url);
-    }
-  };
+  const palette = useCommandPalette<AddressRow>({
+    commands: rows,
+    query,
+    onQueryChange: setQuery,
+    closeOnSelect: false,
+    sort: () => 0,
+  });
 
   return (
-    <Dialog.Root
-      isOpen={true}
+    <CommandPalette.Root
+      open={true}
+      size="lg"
+      closeOnSelect={false}
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
     >
-      <Dialog.Backdrop isDismissable>
-        <Dialog.Popup className="bento-address-bar__popup">
-          <Dialog.Title className="bento-address-bar__sr-only">Address bar</Dialog.Title>
-          <Autocomplete.Root key={openVersion} filter={contains}>
-            <div className="bento-address-bar__autocomplete">
-              <Autocomplete.SearchField aria-label="Search or enter address">
-                <Autocomplete.Input
-                  placeholder="Search or enter address"
-                  className="bento-address-bar__input"
-                  autoFocus
-                  defaultValue={initialQuery}
-                  onInput={(event) => setQuery(event.currentTarget.value)}
-                />
-              </Autocomplete.SearchField>
-              <Autocomplete.ListBox
-                aria-label="Address bar results"
-                className="bento-address-bar__listbox"
-              >
-                {tabRows.length > 0 ? (
-                  <Autocomplete.Section>
-                    <Autocomplete.Header>Open Tabs</Autocomplete.Header>
-                    {tabRows.map((row) => (
-                      <Autocomplete.Item
-                        key={row.id}
-                        id={row.id}
-                        textValue={row.textValue}
-                        onAction={() => runRow(row)}
-                        className="bento-address-bar__item"
-                      >
-                        <ResultRow row={row} />
-                      </Autocomplete.Item>
-                    ))}
-                  </Autocomplete.Section>
-                ) : null}
-                {panelRows.length > 0 ? (
-                  <Autocomplete.Section>
-                    <Autocomplete.Header>Open Panels</Autocomplete.Header>
-                    {panelRows.map((row) => (
-                      <Autocomplete.Item
-                        key={row.id}
-                        id={row.id}
-                        textValue={row.textValue}
-                        onAction={() => runRow(row)}
-                        className="bento-address-bar__item"
-                      >
-                        <ResultRow row={row} />
-                      </Autocomplete.Item>
-                    ))}
-                  </Autocomplete.Section>
-                ) : null}
-                {asyncRows.length > 0 ? (
-                  <Autocomplete.Section>
-                    <Autocomplete.Header>History &amp; Bookmarks</Autocomplete.Header>
-                    {asyncRows.map((row) => (
-                      <Autocomplete.Item
-                        key={row.id}
-                        id={row.id}
-                        textValue={query}
-                        onAction={() => runRow(row)}
-                        className="bento-address-bar__item"
-                      >
-                        <ResultRow row={row} />
-                      </Autocomplete.Item>
-                    ))}
-                  </Autocomplete.Section>
-                ) : null}
-                {syntheticRow ? (
-                  <Autocomplete.Section>
-                    <Autocomplete.Header>Search</Autocomplete.Header>
-                    <Autocomplete.Item
-                      id={syntheticRow.id}
-                      textValue={syntheticRow.textValue}
-                      onAction={() => runRow(syntheticRow)}
-                      className="bento-address-bar__item"
+      <CommandPalette.Backdrop
+        isDismissable
+        className="tale-command-palette__backdrop--transparent bento-address-bar__backdrop"
+      >
+        <CommandPalette.Popup
+          aria-label="Address bar"
+          className="bento-address-bar__dialog"
+          modalProps={{
+            className: 'tale-command-palette__popup--translucent bento-address-bar__popup',
+          }}
+        >
+          <CommandPalette.Title className="bento-address-bar__sr-only">
+            Address bar
+          </CommandPalette.Title>
+          <CommandPalette.Content
+            key={openVersion}
+            className="bento-address-bar__content"
+            inputValue={palette.query}
+            onInputChange={palette.setQuery}
+          >
+            <CommandPalette.SearchField aria-label="Search or enter address">
+              <CommandPalette.Input
+                placeholder="Search or enter address"
+                className="bento-address-bar__input"
+                autoFocus
+              />
+              <CommandPalette.ClearButton aria-label="Clear search" />
+            </CommandPalette.SearchField>
+            <CommandPalette.ListBox
+              aria-label="Address bar results"
+              className="bento-address-bar__listbox"
+            >
+              {palette.groupedCommands.map((group) => (
+                <CommandPalette.Section key={group.id}>
+                  <CommandPalette.SectionHeader>{group.title}</CommandPalette.SectionHeader>
+                  {group.commands.map((row) => (
+                    <CommandPalette.Item
+                      key={row.id}
+                      command={row}
+                      textValue={rowTextValue(row)}
+                      onAction={() => void palette.runCommand(row)}
                     >
-                      <ResultRow row={syntheticRow} />
-                    </Autocomplete.Item>
-                  </Autocomplete.Section>
-                ) : null}
-              </Autocomplete.ListBox>
-            </div>
-          </Autocomplete.Root>
-        </Dialog.Popup>
-      </Dialog.Backdrop>
-    </Dialog.Root>
+                      <ResultRow row={row} />
+                    </CommandPalette.Item>
+                  ))}
+                </CommandPalette.Section>
+              ))}
+            </CommandPalette.ListBox>
+            {palette.filteredCommands.length === 0 ? (
+              <CommandPalette.Empty>No matching results.</CommandPalette.Empty>
+            ) : null}
+          </CommandPalette.Content>
+        </CommandPalette.Popup>
+      </CommandPalette.Backdrop>
+    </CommandPalette.Root>
   );
 }

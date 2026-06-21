@@ -134,10 +134,20 @@ query so the overlay shows recent history.
 
 The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
 initial query with the open version and passes it to
-`components/AddressBar/AddressBar.tsx`, which remounts the Autocomplete root per
-open so the input default value and selected text reset predictably.
+`components/AddressBar/AddressBar.tsx`, which controls Tale UI's
+`CommandPalette` input with the query state and keys the palette content by open
+version so selected text resets predictably.
 `extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
 recent-history request using `browser.history.search({ text: '', startTime: 0 })`.
+The address palette keeps Tale UI's translucent `CommandPalette` surface colors,
+but Bento disables the popup/backdrop-local `backdrop-filter` rules for this
+chrome-mounted overlay. The real page/sidebar blur comes from a chrome-owned
+`#bento-addrbar-frost` layer: `bento-shell-mount.js` captures the exact popup
+rectangle plus bleed from the visible chrome/content surface, paints that
+snapshot behind the transparent address-bar frame, and clips the blurred bitmap
+to the command palette bounds before fading the overlay in. The extension frame
+is a compositor boundary and cannot reliably blur the parent chrome pixels
+behind it with `backdrop-filter`.
 
 ### Floating Address Bar Pitfalls
 
@@ -146,6 +156,20 @@ recent-history request using `browser.history.search({ text: '', startTime: 0 })
   remote Bento overlay can react.
 - Do not create a blank tab for native-urlbar clicks. They are current-tab
   edits; only explicit new-tab mode should defer tab creation until commit.
+- Do not rely only on CSS inside `address-bar.html` for the frosted backdrop.
+  The frame can show parent chrome pixels through transparency, but its internal
+  `backdrop-filter` does not reliably blur those parent pixels. Keep the
+  clipped `#bento-addrbar-frost` snapshot layer in `bento-shell-mount.js` and
+  its paint/clip rules in `src/browser/base/content/bento-chrome-theme.css`;
+  do not blur the whole `#tabbrowser-tabpanels`, sidebar frame, or strip.
+- Do not reveal `#bento-addrbar-frost` after the palette is already visible.
+  Late insertion changes the translucent surface under the popup and reads as
+  the command palette shadow shrinking after open. Prepare the clipped snapshot
+  first, then fade in the address overlay.
+- Do not let the address palette inherit Tale UI's popup enter/exit transform or
+  local `backdrop-filter`. The popup itself owns the real `box-shadow`; animating
+  a filtered, transformed translucent popup changes compositor bounds and makes
+  that shadow look larger during open/close.
 
 ## Privacy And Search Implementation
 
@@ -547,9 +571,11 @@ exactly the toolbar strip and never overlaps the content backdrop. Its dim is
 uses (`--modal-backdrop-bg: var(--scrim)`), so the toolbar dim matches the
 content dim exactly. `showPopover()` / `hidePopover()` control top-layer
 membership; opacity drives the fade; a `resize` listener keeps the height
-aligned. Ownership is reference-counted by overlay id (`palette`, `addrbar`,
-`confirm`, `edit-workspace`, `welcome`) so a stacked modal can close without
-removing the toolbar scrim that another still-visible modal needs.
+aligned. Ownership is reference-counted by overlay id (`palette`, `confirm`,
+`edit-workspace`, `welcome`) so a stacked modal can close without removing the
+toolbar scrim that another still-visible modal needs. The floating address bar
+does not own this toolbar scrim; its translucent palette leaves the native
+toolbar visible and only blurs the content area behind the palette bounds.
 
 Why a popover and nothing else works — the critical pitfall: `#urlbar` is
 declared with `popover="manual"` (navigator-toolbox.inc.xhtml), so the megabar
@@ -887,12 +913,14 @@ overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 
 `extensions/bento-shell/src/components/CommandPalette/CommandPalette.tsx` builds
 its tab and panel results from the same tab and panel mirrors used by the
-sidebar. Panel tab ids from `usePanelsStore.byWorkspace` are excluded from the
-Tabs section and listed in a separate Panels section. Normal tab results dispatch
-`tab/activate`; the tools handler activates the tab's owning workspace for the
-source window before focusing the Firefox tab. Panel results dispatch
-`panel/focus`; tools activates the panel's workspace and emits `panels/sync` with
-`scrollToPanelTabId` so chrome scrolls/focuses the side panel in place.
+sidebar, then renders them through Tale UI's `CommandPalette` recipe and
+`useCommandPalette` filtering/grouping hook. Panel tab ids from
+`usePanelsStore.byWorkspace` are excluded from the Tabs section and listed in a
+separate Panels section. Normal tab results dispatch `tab/activate`; the tools
+handler activates the tab's owning workspace for the source window before
+focusing the Firefox tab. Panel results dispatch `panel/focus`; tools activates
+the panel's workspace and emits `panels/sync` with `scrollToPanelTabId` so chrome
+scrolls/focuses the side panel in place.
 
 Do not make palette panel results call `tab/activate`. A panel tab is still a
 Firefox tab internally, but activating it as the selected browser tab demotes the
@@ -902,8 +930,12 @@ panel-marker bounce logic. Panel navigation must remain a panel-strip operation.
 Do not return freshly-created object arrays directly from Zustand selectors in
 the palette. The palette runs in a persistent chrome overlay frame; an unstable
 external-store snapshot can spin the React tree or crash the palette frame before
-the Dialog paints. Subscribe to stable store references such as
+the overlay paints. Subscribe to stable store references such as
 `usePanelsStore((s) => s.byWorkspace)` and derive object arrays with `useMemo`.
+
+Palette command records carry Tale UI `title`, `subtitle`, `keywords`, `group`,
+`shortcut`, and `action` fields. Do not add URL matching to the palette unless
+`TabSnapshot` intentionally widens beyond its compact no-URL wire payload.
 
 ## Sidebar Tab And Panel Search
 
@@ -968,6 +1000,10 @@ bookmarks with `browser.bookmarks.search(query)`, filters bookmark folders out,
 dedupes by normalized URL, and ranks host-prefix matches, history recency and
 visit count, and bookmark matches. Favicons are best-effort: open tabs provide
 `TabSnapshot.favIconUrl`, but history and bookmark APIs do not return favicons.
+The React overlay renders the local tab/panel rows, async history/bookmark rows,
+and synthetic search/open row through Tale UI's `CommandPalette` recipe and
+`useCommandPalette` hook. Sorting is disabled so the groups keep Bento's fixed
+order: open tabs, panels, history/bookmarks, then search/open.
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
 one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload;
