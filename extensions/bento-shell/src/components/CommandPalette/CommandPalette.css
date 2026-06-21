@@ -6,7 +6,6 @@
 .tale-command-palette__popup.bento-command-palette__popup {
   width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
   height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
-  max-height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
 .tale-command-palette__dialog.bento-command-palette__dialog,

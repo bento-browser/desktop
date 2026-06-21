@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-21
+- Last updated: 2026-06-22
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -71,9 +71,9 @@ Use this shape for new or changed touchpoints:
   address/search text through Firefox URI fixup, mounts a shared modal toolbar
   scrim as a top-layer manual popover so native toolbar/urlbar controls do not
   paint above Bento modal scrims, leaves that toolbar scrim disabled for the
-  floating address bar, paints a clipped blurred snapshot behind the floating
-  address bar because the extension frame cannot reliably blur parent
-  chrome/content pixels with `backdrop-filter`,
+  floating address bar, paints a clipped chrome-side blurred bitmap behind the
+  floating address bar because the extension frame cannot reliably blur parent
+  chrome/content pixels with its own `backdrop-filter`,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, and exposes the
@@ -124,7 +124,10 @@ Use this shape for new or changed touchpoints:
   verify command palette, edit-workspace, confirm, and first-run welcome scrims
   cover the full chrome window including the address bar, verify the floating
   address bar does not dim the native toolbar/address bar, visibly blurs only
-  the page/sidebar content directly behind its translucent command surface, and
+  the page/sidebar content directly behind its translucent command surface, uses
+  the current workspace's visible surface on the first native-urlbar `focus`
+  open after creating a new workspace, rejects the command-palette-close
+  workspace/tab/browser surface before taking that first frost snapshot, and
   does not change shadow size after opening, verify sidebar tab and folder
   `Rename` context-menu actions focus the inline field and select its text for
   immediate typing, verify side-panel and

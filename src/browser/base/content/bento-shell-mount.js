@@ -2678,8 +2678,8 @@
 
   // The remote extension frame can be transparent, but its internal
   // backdrop-filter does not reliably blur parent chrome/content pixels.
-  // This clipped chrome-side layer supplies the frosted pixels only under
-  // the Tale UI command-palette surface.
+  // This clipped chrome-side sibling supplies a frosted bitmap surface only
+  // under the Tale UI command-palette bounds.
   function ensureAddrbarFrostLayer() {
     const host = document.getElementById('bento-addrbar-host');
     const frame = document.getElementById('bento-addrbar-frame');
@@ -2693,8 +2693,11 @@
       layer = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
       layer.id = 'bento-addrbar-frost';
       layer.setAttribute('hidden', 'true');
+    }
 
-      const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+    let image = layer.querySelector('#bento-addrbar-frost-image');
+    if (!image) {
+      image = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
       image.id = 'bento-addrbar-frost-image';
       layer.appendChild(image);
     }
@@ -2755,6 +2758,8 @@
   // CSS transition runs.
 
   const PALETTE_TRANSITION_MS = 180; // matches inline transition duration
+  let lastPaletteHideAt = 0;
+  let lastPaletteHideSurfaceIdentity = null;
 
   function showPalette() {
     const host = document.getElementById('bento-palette-host');
@@ -2775,6 +2780,8 @@
   }
 
   function hidePalette() {
+    lastPaletteHideAt = Date.now();
+    lastPaletteHideSurfaceIdentity = getAddrbarSurfaceIdentity();
     const host = document.getElementById('bento-palette-host');
     if (!host) {
       hideOverlayToolbarScrim('palette');
@@ -2807,7 +2814,7 @@
   // ─── Floating address/search bar overlay ──────────────────────────────
 
   let currentAddrbarMode = 'current';
-  let addrbarFrostCaptureId = 0;
+  let addrbarOpenRequestId = 0;
 
   const ADDRBAR_POPUP_WIDTH_PX = 640;
   const ADDRBAR_POPUP_HEIGHT_PX = 420;
@@ -2815,9 +2822,98 @@
   const ADDRBAR_POPUP_MAX_BLOCK_RATIO = 0.74;
   const ADDRBAR_POPUP_TOP_RATIO = 0.12;
   const ADDRBAR_FROST_BLEED_PX = 32;
+  const ADDRBAR_NATIVE_FOCUS_AFTER_PALETTE_WINDOW_MS = 1200;
+  const ADDRBAR_NATIVE_FOCUS_READY_TIMEOUT_MS = 1200;
 
   function isAddrbarVisible(host) {
     return host.style.display !== 'none';
+  }
+
+  function getAddrbarSurfaceIdentity() {
+    const selectedTab = window.gBrowser?.selectedTab || null;
+    const selectedBrowser = getLivePanelBrowser(selectedTab) || window.gBrowser?.selectedBrowser || null;
+    return {
+      currentWorkspaceId: currentWorkspaceId || null,
+      selectedWorkspaceId: selectedTabWorkspaceId(selectedTab),
+      selectedTab,
+      selectedBrowser,
+    };
+  }
+
+  function isSameAddrbarSurfaceIdentity(a, b) {
+    if (!a || !b) return false;
+    return (
+      a.currentWorkspaceId === b.currentWorkspaceId &&
+      a.selectedWorkspaceId === b.selectedWorkspaceId &&
+      a.selectedTab === b.selectedTab &&
+      a.selectedBrowser === b.selectedBrowser
+    );
+  }
+
+  function waitForNextAddrbarPaint(timeoutMs = 120) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('MozAfterPaint', onPaint, true);
+        resolve();
+      };
+      const onPaint = () => finish();
+      window.addEventListener('MozAfterPaint', onPaint, true);
+      window.requestAnimationFrame(() => window.setTimeout(finish, timeoutMs));
+    });
+  }
+
+  function isAddrbarWorkspaceSurfaceReady(options = {}) {
+    const stripContainer = document.getElementById('bento-strip-container');
+    const tabpanels = window.gBrowser?.tabpanels;
+
+    for (const el of [stripContainer, tabpanels]) {
+      if (
+        el?.classList?.contains('bento-workspace-switching') ||
+        el?.classList?.contains('bento-workspace-stabilizing')
+      ) {
+        return false;
+      }
+    }
+
+    if (tabpanels?.hasAttribute?.('pendingpaint')) return false;
+
+    const surfaceIdentity = getAddrbarSurfaceIdentity();
+    if (
+      options.rejectSurfaceIdentity &&
+      isSameAddrbarSurfaceIdentity(surfaceIdentity, options.rejectSurfaceIdentity)
+    ) {
+      return false;
+    }
+
+    const selectedTab = surfaceIdentity.selectedTab;
+    const selectedWorkspaceId = surfaceIdentity.selectedWorkspaceId;
+    if (currentWorkspaceId && selectedWorkspaceId !== currentWorkspaceId) return false;
+
+    const selectedBrowser = surfaceIdentity.selectedBrowser;
+    if (selectedBrowser?.hasAttribute?.('pendingpaint')) return false;
+    if (selectedBrowser?.hasAttribute?.('blank')) return false;
+
+    return true;
+  }
+
+  async function waitForAddrbarNativeSurfaceReady(options = {}) {
+    const deadline = Date.now() + ADDRBAR_NATIVE_FOCUS_READY_TIMEOUT_MS;
+    let stablePaints = 0;
+
+    do {
+      await waitForNextAddrbarPaint();
+      if (isAddrbarWorkspaceSurfaceReady(options)) {
+        stablePaints += 1;
+        if (stablePaints >= 2) return true;
+      } else {
+        stablePaints = 0;
+      }
+    } while (Date.now() < deadline);
+
+    return false;
   }
 
   function intersectRects(a, b) {
@@ -2885,36 +2981,39 @@
   }
 
   function getAddrbarSnapshotBrowsers(sourceRect) {
-    const selector = [
-      '#bento-shell-frame',
-      '#tabbrowser-tabpanels browser',
-      '#bento-side-panel-host browser',
-    ].join(',');
     const browsers = [];
     const seen = new Set();
 
-    for (const browser of document.querySelectorAll(selector)) {
-      if (seen.has(browser)) continue;
+    const addCandidate = (browser) => {
+      if (!browser) return;
+      if (seen.has(browser)) return;
       seen.add(browser);
-      if (browser.id === 'bento-addrbar-frame') continue;
-      if (browser.closest('#bento-addrbar-host')) continue;
-      if (browser.hidden || browser.hasAttribute('hidden')) continue;
+      if (browser.id === 'bento-addrbar-frame') return;
+      if (browser.closest('#bento-addrbar-host')) return;
+      if (browser.hidden || browser.hasAttribute('hidden')) return;
 
       const rect = browser.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (rect.width <= 0 || rect.height <= 0) return;
 
       const style = getComputedStyle(browser);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-        continue;
+        return;
       }
 
       const intersection = intersectRects(
         { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
         sourceRect,
       );
-      if (!intersection) continue;
+      if (!intersection) return;
 
       browsers.push({ browser, rect, intersection });
+    };
+
+    addCandidate(document.getElementById('bento-shell-frame'));
+    addCandidate(getLivePanelBrowser(window.gBrowser?.selectedTab) || window.gBrowser?.selectedBrowser);
+
+    for (const browser of document.querySelectorAll('#bento-side-panel-host browser')) {
+      addCandidate(browser);
     }
 
     return browsers;
@@ -2928,7 +3027,7 @@
     canvas.height = Math.max(1, Math.ceil(sourceRect.height * scale));
 
     const context = canvas.getContext('2d');
-    if (!context) return null;
+    if (!context || typeof context.drawWindow !== 'function') return null;
 
     context.save();
     context.scale(scale, scale);
@@ -2938,20 +3037,20 @@
       (context.DRAWWINDOW_USE_WIDGET_LAYERS || 0) |
       (context.DRAWWINDOW_ASYNC_DECODE_IMAGES || 0);
 
-    if (typeof context.drawWindow === 'function') {
-      try {
-        context.drawWindow(
-          window,
-          sourceRect.left,
-          sourceRect.top,
-          sourceRect.width,
-          sourceRect.height,
-          'rgba(0,0,0,0)',
-          flags,
-        );
-      } catch (err) {
-        console.warn('[bento-shell-mount] addrbar frost chrome snapshot failed:', err);
-      }
+    try {
+      context.drawWindow(
+        window,
+        sourceRect.left,
+        sourceRect.top,
+        sourceRect.width,
+        sourceRect.height,
+        'rgba(0,0,0,0)',
+        flags,
+      );
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar frost chrome snapshot failed:', err);
+      context.restore();
+      return null;
     }
 
     const browserSnapshots = await Promise.all(
@@ -3018,31 +3117,22 @@
       return true;
     }
 
-    const captureId = ++addrbarFrostCaptureId;
     positionAddrbarFrostLayer(layer, metrics);
-
-    try {
-      const dataUrl = await captureAddrbarFrostSnapshot(metrics);
-      if (captureId !== addrbarFrostCaptureId) return false;
-      if (!dataUrl) {
-        clearAddrbarFrostLayer();
-        return true;
-      }
-
-      const image = layer.querySelector('#bento-addrbar-frost-image');
-      if (!image) return true;
-      image.style.backgroundImage = `url("${dataUrl}")`;
-      layer.removeAttribute('hidden');
-      return true;
-    } catch (err) {
-      if (captureId !== addrbarFrostCaptureId) return false;
-      console.warn('[bento-shell-mount] addrbar frost snapshot failed:', err);
+    const dataUrl = await captureAddrbarFrostSnapshot(metrics);
+    if (!dataUrl) {
       clearAddrbarFrostLayer();
       return true;
     }
+
+    const image = layer.querySelector('#bento-addrbar-frost-image');
+    if (!image) return true;
+    image.style.backgroundImage = `url("${dataUrl}")`;
+    layer.removeAttribute('hidden');
+    return true;
   }
 
-  async function showAddrbar(mode, initialQuery = '') {
+  async function showAddrbar(mode, initialQuery = '', options = {}) {
+    const openRequestId = ++addrbarOpenRequestId;
     currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
     const paletteHost = document.getElementById('bento-palette-host');
     if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
@@ -3051,8 +3141,31 @@
       console.warn('[bento-shell-mount] showAddrbar: bento-addrbar-host missing');
       return;
     }
-    const shouldShow = await updateAddrbarFrostLayer(host);
-    if (!shouldShow) return;
+
+    let canCaptureFrost = true;
+    const recentPaletteHide =
+      Date.now() - lastPaletteHideAt < ADDRBAR_NATIVE_FOCUS_AFTER_PALETTE_WINDOW_MS;
+    const nativeFocusAfterPalette =
+      options.fromNativeUrlbar === true &&
+      options.nativeUrlbarEventType === 'focus' &&
+      recentPaletteHide;
+    const readinessOptions = nativeFocusAfterPalette
+      ? { rejectSurfaceIdentity: lastPaletteHideSurfaceIdentity }
+      : {};
+    if (
+      options.fromNativeUrlbar === true &&
+      (nativeFocusAfterPalette || !isAddrbarWorkspaceSurfaceReady(readinessOptions))
+    ) {
+      canCaptureFrost = await waitForAddrbarNativeSurfaceReady(readinessOptions);
+      if (openRequestId !== addrbarOpenRequestId) return;
+    }
+
+    if (!canCaptureFrost) {
+      clearAddrbarFrostLayer();
+    }
+
+    const shouldShow = canCaptureFrost ? await updateAddrbarFrostLayer(host) : true;
+    if (openRequestId !== addrbarOpenRequestId || !shouldShow) return;
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -3065,13 +3178,12 @@
   }
 
   function hideAddrbar() {
+    addrbarOpenRequestId += 1;
     const host = document.getElementById('bento-addrbar-host');
     if (!host) {
-      addrbarFrostCaptureId += 1;
       clearAddrbarFrostLayer();
       return;
     }
-    addrbarFrostCaptureId += 1;
     host.style.opacity = '0';
     setTimeout(() => {
       if (host.style.opacity === '0') {
@@ -15844,7 +15956,7 @@
       lastOpenAt = now;
       closeNativeUrlbarPopup();
       input.blur?.();
-      showAddrbar('current', '');
+      showAddrbar('current', '', { fromNativeUrlbar: true, nativeUrlbarEventType: event.type });
     };
 
     input.addEventListener('pointerdown', openFromNativeUrlbar, true);

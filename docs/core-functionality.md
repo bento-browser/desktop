@@ -158,6 +158,8 @@ current-tab search or URL uses Firefox's URL fixup and default search engine.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
 does not leave an empty tab behind. Results use the same command-palette row
 treatment as Bento's command palette on a translucent, backdrop-blurred surface.
+When the bar opens immediately after a workspace or tab change, the blurred
+surface reflects the currently visible workspace rather than a previous one.
 Open-tab matching is title-based unless the
 tab protocol is widened to include URLs; history and bookmark rows use generic
 icons when no favicon source is available.

@@ -85,15 +85,7 @@ function rowIcon(kind: RowKind) {
 
 function ResultIcon({ row }: { row: AddressRow }) {
   if (row.favIconUrl) {
-    return (
-      <Image
-        className="bento-address-bar__favicon"
-        src={row.favIconUrl}
-        alt=""
-        radius="sm"
-        fit="contain"
-      />
-    );
+    return <Image className="bento-address-bar__favicon" src={row.favIconUrl} alt="" />;
   }
   return <Icon icon={rowIcon(row.kind)} size="sm" />;
 }

@@ -142,12 +142,12 @@ recent-history request using `browser.history.search({ text: '', startTime: 0 })
 The address palette keeps Tale UI's translucent `CommandPalette` surface colors,
 but Bento disables the popup/backdrop-local `backdrop-filter` rules for this
 chrome-mounted overlay. The real page/sidebar blur comes from a chrome-owned
-`#bento-addrbar-frost` layer: `bento-shell-mount.js` captures the exact popup
-rectangle plus bleed from the visible chrome/content surface, paints that
-snapshot behind the transparent address-bar frame, and clips the blurred bitmap
-to the command palette bounds before fading the overlay in. The extension frame
-is a compositor boundary and cannot reliably blur the parent chrome pixels
-behind it with `backdrop-filter`.
+`#bento-addrbar-frost` layer: `bento-shell-mount.js` captures the visible chrome
+window plus the explicit current remote browser surfaces, then
+`src/browser/base/content/bento-chrome-theme.css` blurs that clipped bitmap under
+the transparent address-bar frame. The extension frame is a compositor boundary
+and cannot reliably blur the parent chrome pixels behind it with its own
+`backdrop-filter`.
 
 ### Floating Address Bar Pitfalls
 
@@ -159,17 +159,47 @@ behind it with `backdrop-filter`.
 - Do not rely only on CSS inside `address-bar.html` for the frosted backdrop.
   The frame can show parent chrome pixels through transparency, but its internal
   `backdrop-filter` does not reliably blur those parent pixels. Keep the
-  clipped `#bento-addrbar-frost` snapshot layer in `bento-shell-mount.js` and
-  its paint/clip rules in `src/browser/base/content/bento-chrome-theme.css`;
-  do not blur the whole `#tabbrowser-tabpanels`, sidebar frame, or strip.
+  clipped chrome-side `#bento-addrbar-frost` layer in `bento-shell-mount.js` and
+  its paint/clip rules in `src/browser/base/content/bento-chrome-theme.css`; do
+  not blur the whole `#tabbrowser-tabpanels`, sidebar frame, or strip.
 - Do not reveal `#bento-addrbar-frost` after the palette is already visible.
   Late insertion changes the translucent surface under the popup and reads as
-  the command palette shadow shrinking after open. Prepare the clipped snapshot
+  the command palette shadow shrinking after open. Prepare the clipped bitmap
   first, then fade in the address overlay.
+- Do not use broad remote `browser.drawSnapshot` queries or delayed recaptures
+  for this blur. Creating an empty workspace opens a fresh Firefox new tab and
+  focuses the native urlbar, and Firefox can retain previous-tab layers for
+  inactive tabpanel browsers during that handoff. The candidate list must stay
+  explicit: Bento sidebar frame, `gBrowser.selectedBrowser`, and visible
+  side-panel browsers. The palette should not reveal first and patch the frost
+  layer seconds later.
+- Native-urlbar opens that immediately follow a command-palette workspace action
+  must wait for the selected workspace/tab/browser surface to leave Bento's
+  `bento-workspace-switching` / `bento-workspace-stabilizing` state and produce
+  stable paints before capturing the frost bitmap. If that readiness gate times
+  out, show the palette without frost rather than capturing a retained previous
+  workspace layer.
+- The new-workspace handoff fix depends on remembering the surface identity
+  when the command palette hides: current Bento workspace ID, selected tab's
+  workspace ID, selected tab object, and selected browser object. A native
+  top-urlbar `focus` event that arrives immediately afterward must reject that
+  same surface identity, then wait for stable `MozAfterPaint` cycles, no
+  `pendingpaint` / `blank` marker on the selected browser, and a selected-tab
+  workspace ID matching `currentWorkspaceId` before snapshotting. Do not replace
+  this with a delayed recapture after the address palette is already visible.
 - Do not let the address palette inherit Tale UI's popup enter/exit transform or
   local `backdrop-filter`. The popup itself owns the real `box-shadow`; animating
   a filtered, transformed translucent popup changes compositor bounds and makes
   that shadow look larger during open/close.
+- Keep the address palette's translucent state layers translucent. Tale UI
+  component upgrades may change CommandPalette hover, focus, pressed, selected,
+  clear-button, chip, or shortcut-key state backgrounds. For this chrome overlay,
+  those states must stay as transparent overlays; solid state fills read as
+  opaque rectangles when the palette sits above dark page or panel content.
+- Keep the CommandPalette search-field and chip container backgrounds
+  transparent in the address palette. They sit on top of the already translucent
+  popup surface, so adding another translucent fill creates a darker opaque band
+  across the top of the palette.
 
 ## Privacy And Search Implementation
 

@@ -122,10 +122,10 @@ Existing examples:
   `--bento-address-bar-*` tokens. It disables the address palette's local
   `backdrop-filter` and enter/exit transform overrides; the actual clipped
   page/sidebar blur behind the transparent chrome frame comes from the
-  chrome-owned `#bento-addrbar-frost` snapshot layer in
+  chrome-owned `#bento-addrbar-frost` bitmap layer in
   [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) and
   [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css).
-  The snapshot must be prepared before the overlay fades in so the popup shadow
+  The bitmap must be captured before the overlay fades in so the popup shadow
   does not visually resize after opening. Its search-field wrapper stays
   transparent so it does not stack another color-mix layer over the popup
   surface, and its hover/focus/pressed/selected states use translucent
@@ -139,6 +139,77 @@ Existing examples:
   the correct contrast tokens.
 - [TabList.css](../extensions/bento-shell/src/components/TabList/TabList.css)
   has an unlayered alignment override for Tale UI button defaults.
+
+## Component drift register
+
+This section records intentional Bento drift from upstream Tale UI component
+recipes. Treat these entries as upgrade notes: when bumping Tale UI, compare the
+upstream component CSS/API against the drift below before deleting local rules.
+
+### CommandPalette translucent address palette
+
+Upstream base: Tale UI `CommandPalette` and the
+`tale-command-palette__popup--translucent` recipe.
+
+Bento owners:
+
+- [AddressBar.tsx](../extensions/bento-shell/src/components/AddressBar/AddressBar.tsx)
+  composes the floating address/new-tab palette with Tale UI's
+  `CommandPalette`.
+- [AddressBar.css](../extensions/bento-shell/src/components/AddressBar/AddressBar.css)
+  owns the local CommandPalette drift.
+- [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) and
+  [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css)
+  own the chrome-side frost proxy behind the transparent extension frame.
+
+Current drift:
+
+- Bento disables the palette-local `backdrop-filter` on the Tale UI backdrop and
+  popup. A WebExtension overlay frame can show parent chrome pixels through
+  transparency, but its internal backdrop filter cannot reliably blur those
+  parent pixels. The blur is instead supplied by chrome's clipped
+  `#bento-addrbar-frost` bitmap. The capture may use targeted remote
+  `browser.drawSnapshot` calls for the sidebar frame, `gBrowser.selectedBrowser`,
+  and visible side-panel browsers only. Do not use broad tabpanel queries or
+  delayed bitmap recaptures for this surface; during new-workspace handoff
+  Firefox can return retained previous-tab layers, which creates stale blur and
+  distracting late updates. Native top-urlbar opens after workspace creation
+  wait for the new workspace surface to stabilize before the first capture; on a
+  timeout, prefer no frost to a previous-workspace frost. The working guard
+  records the palette-close surface identity and rejects that same
+  workspace/tab/browser identity on immediate native-urlbar `focus` opens before
+  snapshotting.
+- Bento disables Tale UI's popup enter/exit transform for this surface. The real
+  `box-shadow` stays on the CommandPalette popup; transforming a filtered
+  translucent popup changes compositor bounds and makes the shadow appear to grow
+  and shrink during open/close.
+- Bento uses a stronger translucent popup surface
+  `color-mix(in srgb, var(--neutral-5) 84%, transparent)` so text remains
+  readable over dark page or panel content. The search-field and chip containers
+  stay transparent so they do not stack a second translucent layer over the
+  popup.
+- Bento overrides translucent item, clear-button, chip, and shortcut-key states
+  to remain translucent. Hover, focus, pressed, selected, and selected-combined
+  states must use `color-mix(..., transparent)` or `--bento-surface-*` overlays,
+  not solid neutral/accent fills.
+- Address result favicons use Tale UI `Image` but are fully styled by
+  `AddressBar.css`; this overlay intentionally does not import the global
+  `@tale-ui/react-styles/image` stylesheet.
+
+Regression checks:
+
+- Open the address/new-tab palette over dark page content and hover rows. The
+  row state should read as a translucent wash, not a solid rectangle.
+- The top browser toolbar must not receive a modal scrim when the address/new-tab
+  palette opens.
+- Only the content directly behind the command palette bounds should blur; the
+  whole Bento UI must not blur.
+- Create a new workspace and let the auto-created new tab focus the address
+  palette. The blurred pixels inside the palette should come from the new
+  workspace/new-tab surface, not the previously active workspace.
+- The popup shadow must not visibly resize during open or dismiss.
+- The search field area must not look like an extra opaque band stacked on top of
+  the popup surface.
 
 ## Themes and chrome
 

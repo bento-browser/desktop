@@ -7,7 +7,6 @@ import { createRoot } from 'react-dom/client';
 import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/image';
 import '@tale-ui/react-styles/command-palette';
 
 import '../theme/bento-tokens.css';

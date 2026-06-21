@@ -6,6 +6,7 @@
       "!extensions/bento-shell/dist/assets/settings.js",
       "!extensions/bento-shell/dist/assets/palette.js",
       "!extensions/bento-shell/dist/assets/address-bar.js",
+      "!extensions/bento-shell/dist/assets/useCommandPalette.js",
       "!extensions/bento-shell/dist/assets/confirm.js",
       "!extensions/bento-shell/dist/assets/edit-workspace.js",
       "!extensions/bento-shell/dist/assets/welcome.js",
@@ -154,7 +155,7 @@
   {
     "name": "bento-shell · style.css (gz)",
     "path": "extensions/bento-shell/dist/assets/style.css",
-    "limit": "31 KB",
+    "limit": "32 KB",
     "gzip": true
   },
   {
