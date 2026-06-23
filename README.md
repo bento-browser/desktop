@@ -7,14 +7,15 @@ tracks upstream Firefox releases. Build orchestration is handled by
 the brand-specific URLs and installer fields. See
 [docs/maintaining-surfer.md](docs/maintaining-surfer.md) for fork maintenance.
 
-See the full project plan at [plans/bento-browser-plan.md](plans/bento-browser-plan.md)
-and the product-facing core functionality document at
-[docs/core-functionality.md](docs/core-functionality.md).
+See [docs/core-functionality.md](docs/core-functionality.md) for the
+product-facing core functionality model and
+[docs/core-functionality-technical.md](docs/core-functionality-technical.md)
+for the implementation map.
 
 ## Status
 
-Phase 0–1 scaffold. The repo skeleton, Surfer config, and build scripts are in
-place. No branding, extensions, or patches yet.
+Pre-v0.1.0 development. Builds and release tooling exist for maintainer
+iteration; public distribution is not enabled yet.
 
 ## Prerequisites
 

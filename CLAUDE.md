@@ -1,6 +1,10 @@
 # CLAUDE.md — Bento Browser
 
-Reference docs: see [plans/bento-browser-features.md](plans/bento-browser-features.md) for the product vision and `~/.claude/plans/i-have-created-a-precious-star.md` for the implementation plan and architecture rationale.
+Reference docs: see [docs/core-functionality.md](docs/core-functionality.md)
+for the product vision, [docs/core-functionality-technical.md](docs/core-functionality-technical.md)
+for the implementation model and regression pitfalls, and
+[docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) for
+Firefox core surfaces Bento modifies or depends on.
 
 ## Conversations with the user
 

@@ -35,12 +35,13 @@ Thumbs.db
 .mcp.local.json
 .mcp.*.local.json
 .codex-mcp/
+.agentic-loop/
 
 # Release artifacts (built by scripts/build-release.sh / .github/workflows/release.yml)
 release-out/
 
 # Plans
-# plans/
+plans/
 
 # Bugs
 # bugs/
