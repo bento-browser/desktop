@@ -954,6 +954,19 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         .reload(action.id, { bypassCache: action.bypassCache ?? false })
         .catch((err) => console.warn('[bento-tools] tab/reload failed:', err));
       return;
+    case 'tabs/reload':
+      void (async () => {
+        const liveIds = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+        for (const id of uniqueTabIds(action.ids)) {
+          if (!liveIds.has(id)) continue;
+          try {
+            await browser.tabs.reload(id, { bypassCache: action.bypassCache ?? false });
+          } catch (err) {
+            console.warn('[bento-tools] tabs/reload failed:', id, err);
+          }
+        }
+      })();
+      return;
     case 'tab/unload':
       void (async () => {
         try {

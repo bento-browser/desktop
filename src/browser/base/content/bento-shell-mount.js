@@ -14261,6 +14261,8 @@
           dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.below });
         } else if (itemId === 'close-other-tabs') {
           dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.other });
+        } else if (itemId === 'reload-selected-tabs') {
+          dispatchShellAction({ type: 'tabs/reload', ids: tabIds });
         } else if (itemId === 'close-selected-tabs') {
           dispatchShellAction({ type: 'tabs/close', ids: tabIds });
         } else if (itemId === 'move-selected-to-new-workspace') {

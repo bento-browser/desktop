@@ -260,10 +260,13 @@ export function App() {
       if (!isBatch) items.push({ id: 'new-tab-below', label: 'New tab below' });
       if (!isBatch) items.push({ id: 'rename-tab', label: 'Rename tab' });
       if (isBatch) {
-        items.push({
-          id: 'move-selected-to-new-workspace',
-          label: `Move ${targetTabIds.length} tabs to new workspace`,
-        });
+        items.push(
+          { id: 'reload-selected-tabs', label: `Reload ${targetTabIds.length} tabs` },
+          {
+            id: 'move-selected-to-new-workspace',
+            label: `Move ${targetTabIds.length} tabs to new workspace`,
+          },
+        );
       } else {
         items.push(
           { id: 'reload-tab', label: 'Reload tab' },

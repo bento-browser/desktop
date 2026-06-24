@@ -131,7 +131,8 @@ tabs dragged onto folders are first converted back into normal tabs.
 When the active tab is inside a collapsed folder, Bento shows that active tab as
 a single peek row beneath the folder.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
-the selected group to move those tabs together into a newly created workspace.
+the selected group to reload those tabs together or move them together into a
+newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
 right-click menu exposes the same close-selected action.
 Right-clicking the sidebar exposes "Select all tabs", which selects every

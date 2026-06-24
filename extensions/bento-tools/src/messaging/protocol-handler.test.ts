@@ -142,6 +142,36 @@ describe('protocol handler panel close', () => {
   });
 });
 
+describe('protocol handler tab reload controls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        reload: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+  });
+
+  it('reloads each selected live tab once for a batch reload action', async () => {
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi.fn().mockReturnValue([
+          { id: 10, windowId: 1, workspaceId: 'ws-1', active: false },
+          { id: 20, windowId: 1, workspaceId: 'ws-1', active: false },
+        ]),
+      } as unknown as HandlerContext['tabs'],
+    });
+
+    handle({ type: 'tabs/reload', ids: [10, 20, 20, 999] }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.reload).toHaveBeenCalledWith(10, { bypassCache: false });
+      expect(browser.tabs.reload).toHaveBeenCalledWith(20, { bypassCache: false });
+    });
+    expect(browser.tabs.reload).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('protocol handler tab mute controls', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

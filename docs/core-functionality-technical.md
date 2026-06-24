@@ -436,8 +436,9 @@ The sidebar context menu is still rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
 `src/browser/base/content/bento-shell-mount.js`. When a selected row is
 right-clicked, the shell payload includes `tabIds`; chrome dispatches
-`tabs/moveToNewWorkspace` for the "Move selected tabs to new workspace" item or
-`tabs/assignWorkspace` for batch moves to an existing workspace.
+`tabs/reload` for "Reload X tabs", `tabs/moveToNewWorkspace` for the "Move
+selected tabs to new workspace" item, or `tabs/assignWorkspace` for batch moves
+to an existing workspace.
 All sidebar context menus include "Reopen closed tab". Chrome dispatches
 `tab/reopenClosed`, and bento-tools calls `browser.sessions.restore()` with no
 session id so Firefox restores the most recent closed session entry. Existing
