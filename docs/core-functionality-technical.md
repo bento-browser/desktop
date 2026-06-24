@@ -136,7 +136,12 @@ The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
 initial query with the open version and passes it to
 `components/AddressBar/AddressBar.tsx`, which controls Tale UI's
 `CommandPalette` input with the query state and keys the palette content by open
-version so selected text resets predictably.
+version so selected text resets predictably. The entry dispatches
+`searchEngines/requestSnapshot` on mount and on every open; `bento-tools`
+answers with `searchEngines/snapshot`, which
+`extensions/bento-shell/src/state/searchEngines.ts` mirrors for the address
+palette only. This path does not use `privacy/setDefaultSearchEngine` and never
+mutates Bento Settings or Firefox's default search engine.
 `extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
 recent-history request using `browser.history.search({ text: '', startTime: 0 })`.
 The address palette keeps Tale UI's translucent `CommandPalette` surface colors,
@@ -148,6 +153,25 @@ window plus the explicit current remote browser surfaces, then
 the transparent address-bar frame. The extension frame is a compositor boundary
 and cannot reliably blur the parent chrome pixels behind it with its own
 `backdrop-filter`.
+
+`TabSnapshot.url` is part of the shared tab wire payload. `TabRegistry`
+populates it from `tab.url` or `pendingUrl`, emits URL update deltas, and emits
+URL-clearing deltas when Firefox no longer exposes a usable URL for the tab. The
+address palette does not build open tab/panel rows while `query.trim()` is
+empty. After typing, `components/AddressBar/openRows.ts` matches active
+workspace rows by `customTitle || title || 'Untitled'` and normalized URL text
+with protocol and leading `www.` removed, restricts rows to the source window,
+classifies panels from `panelsByWorkspace.get(activeWorkspaceId)` only, ranks
+prefix matches before substring matches, preserves tab order within equal rank,
+and caps combined open-tab/open-panel rows to eight.
+
+The one-shot search-engine picker is local UI state. Each open resets selection
+to the latest mirrored default and clears the dirty flag. A late
+`searchEngines/snapshot` updates the selection only while the current open is
+still clean; after the user chooses an engine, later snapshots for that open
+must not overwrite the choice. Selecting the default engine after a non-default
+choice clears the effective override because navigation sends an engine id only
+when the selected id differs from the current default.
 
 ### Floating Address Bar Pitfalls
 
@@ -212,6 +236,11 @@ and cannot reliably blur the parent chrome pixels behind it with its own
   transparent in the address palette. They sit on top of the already translucent
   popup surface, so adding another translucent fill creates a darker opaque band
   across the top of the palette.
+- Keep address-palette search-engine state separate from privacy settings. The
+  picker is a one-shot override for submitted non-URL searches only.
+- Keep the picker dirty flag tied to `openVersion`. Late search-engine snapshots
+  must not reset a user-selected engine before submit, and each new open must
+  reset to Firefox's current default.
 
 ## Privacy And Search Implementation
 
@@ -259,6 +288,11 @@ mirrors the live privacy snapshot. The level selector uses Tale UI
 `selectedKey/onSelectionChange`. Advanced controls use `Disclosure` and
 settings-row `Switch.Root` controls. The full protection-level benefit/caveat
 comparison rendered in Settings comes from `PRIVACY_LEVEL_DETAILS`.
+
+The address palette reads the same visible-engine data through the narrow
+`searchEngines/requestSnapshot` / `searchEngines/snapshot` protocol. That mirror
+exists only for the one-shot search picker and never dispatches
+`privacy/setDefaultSearchEngine`.
 
 Onboarding in `extensions/bento-shell/src/welcome/main.tsx` adds privacy and
 search steps after browser-data import. Those steps dispatch the same privacy
@@ -1200,8 +1234,9 @@ the overlay paints. Subscribe to stable store references such as
 `usePanelsStore((s) => s.byWorkspace)` and derive object arrays with `useMemo`.
 
 Palette command records carry Tale UI `title`, `subtitle`, `keywords`, `group`,
-`shortcut`, and `action` fields. Do not add URL matching to the palette unless
-`TabSnapshot` intentionally widens beyond its compact no-URL wire payload.
+`shortcut`, and `action` fields. The full command palette remains title-oriented
+even though `TabSnapshot.url` exists for address autocomplete; do not add URL
+matching here unless the command-palette UX is intentionally widened.
 
 ## Sidebar Tab And Panel Search
 
@@ -1210,9 +1245,8 @@ sidebar search field shown from the action row beside `New tab` and `New panel`.
 The result set is derived locally from the shell mirrors: `useTabsStore` provides
 all tab snapshots, `usePanelsStore((s) => s.byWorkspace)` classifies panel tab
 ids by workspace, and `useWorkspacesStore` supplies workspace order, icons, and
-theme ids. The search is title-only because `TabSnapshot` is the stable sidebar
-contract; do not add URL matching here unless the sidebar UX is intentionally
-widened.
+theme ids. The search is title-only by sidebar UX choice; do not add URL
+matching here unless that surface is intentionally widened.
 
 When `searchOpen` is true and the trimmed query is non-empty, `TabListPane`
 skips rendering the normal virtualized display rows and renders only the search
@@ -1266,34 +1300,53 @@ bookmarks with `browser.bookmarks.search(query)`, filters bookmark folders out,
 dedupes by normalized URL, and ranks host-prefix matches, history recency and
 visit count, and bookmark matches. Favicons are best-effort: open tabs provide
 `TabSnapshot.favIconUrl`, but history and bookmark APIs do not return favicons.
-The React overlay renders the active workspace's local tab/panel rows, async
+The React overlay renders typed-only active-workspace tab/panel rows, async
 history/bookmark rows, and synthetic search/open row through Tale UI's
 `CommandPalette` recipe and `useCommandPalette` hook. Sorting is disabled so the
 groups keep Bento's fixed order: open tabs, panels, history/bookmarks, then
-search/open.
+search/open. Empty query preserves recent-history results but returns no
+open-tab/open-panel rows.
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
-one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload;
-chrome decodes it, resolves through `Services.uriFixup` with
-`FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP | FIXUP_FLAG_FIX_SCHEME_TYPOS`, calls
-`fixupAndLoadURIString` on `gBrowser.selectedBrowser`, then hides the overlay.
-For new-tab mode, chrome resolves the same spec and dispatches `tab/openUrl` so
-bento-tools creates the tab in the source window and eagerly assigns it to the
-active workspace.
+one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload.
+Legacy callers may still encode a plain string. New address-palette submissions
+encode JSON shaped like `{ value, searchEngineId? }`; chrome decodes either
+shape, validates `searchEngineId`, and resolves through `Services.uriFixup` with
+`FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP | FIXUP_FLAG_FIX_SCHEME_TYPOS` by default. If
+the payload carries an engine id and the value is not URL-like, chrome
+initializes Firefox `SearchService`, calls
+`SearchService.getEngineById(id).getSubmission(value).uri.spec`, and loads that
+one URL without mutating the default search engine. Any import, lookup, or
+submission failure falls back to the existing URI-fixup route. For new-tab mode,
+chrome dispatches `tab/openUrl` with the resolved spec so bento-tools creates
+the tab in the source window and eagerly assigns it to the active workspace.
+After a successful current-tab or new-tab submission, chrome schedules
+`scrollPanelToLeftmost` for the main panel and clears restored-main auto-scroll
+suppression so the panel strip reveals the main content slot even if the user
+submitted while viewing side panels.
 
 Load-bearing pitfalls:
 
 - Submit writes exactly one navigate sentinel. Do not also write
   `BENTO_CLOSE_ADDRBAR_*` in the same tick; `document.title` is last-write-wins
   and chrome polling may only see the close sentinel.
-- Open tabs are title-filtered only because `TabSnapshot` intentionally omits
-  URL for wire-size reasons. Zen-style title+URL tab matching requires a
-  deliberate protocol widening.
+- Do not remove the explicit main-slot reveal after submit. Current-tab address
+  loads do not necessarily change `gBrowser.selectedTab`, so the reconcile-time
+  selected-tab auto-scroll path may not run.
+- Do not rebuild open tab/panel rows for empty address input. Empty input should
+  keep recent-history behavior but must not eagerly walk every open tab/panel to
+  construct autocomplete rows.
+- Do not drop `TabSnapshot.url` from normal snapshots/deltas without removing
+  URL autocomplete from the address palette. URL-clearing deltas are required so
+  blank/internal placeholder transitions do not leave stale URL matches.
 - Open tab and panel rows must be filtered by `useActiveWorkspaceIdForWindow`
   and the source `windowId`. The full command palette can list cross-workspace
   tabs because it labels workspace context and `tab/activate` switches
   workspaces first; the floating address bar is a browser-surface replacement
   and should not show inactive workspace tabs as local open tabs.
+- Panel classification must use only the active workspace panel id set. A tab id
+  that is a panel in another workspace must still be treated as a normal tab for
+  this workspace's address autocomplete.
 - New-tab submissions must create the tab inactive, eagerly assign it to
   `ctx.workspaces.getActiveId(ctx.sourceWindowId)`, then activate it. Passing
   `active: true` directly to `browser.tabs.create` lets Firefox fire
@@ -1301,6 +1354,9 @@ Load-bearing pitfalls:
   can make the tab appear in another workspace.
 - Panel rows must dispatch `panel/focus`, never `tab/activate`, for the same
   reason as command-palette panel rows.
+- Do not route the one-shot address picker through
+  `privacy/setDefaultSearchEngine`, `SettingsStore`, or any Firefox default
+  search mutation. It only affects the submitted non-URL search.
 - Do not rely on WebExtension `search` or `omnibox` APIs for live default-engine
   suggestions in this custom overlay. They can execute searches or provide
   extension-owned keyword suggestions, but they do not expose Firefox's live

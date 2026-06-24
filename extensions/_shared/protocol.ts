@@ -7,7 +7,7 @@
 
 export const SHELL_TOOLS_PORT = 'bento-shell<->bento-tools';
 
-/** Compact tab payload sent over the wire (§6.5: no `url` until tooltip-needed). */
+/** Compact tab payload sent over the wire. */
 export interface TabSnapshot {
   id: number;
   windowId: number;
@@ -16,6 +16,9 @@ export interface TabSnapshot {
    * the page title; the live browser title remains in `title`. */
   customTitle?: string;
   title: string;
+  /** Current tab URL, when Firefox exposes one. May be absent for blank,
+   * internal placeholder, or still-resolving tabs. */
+  url?: string;
   favIconUrl?: string;
   active: boolean;
   pinned: boolean;
@@ -240,6 +243,15 @@ export type UiColorModePref = ColorModePref | 'system';
 export type PrivacyProtectionLevel = 'standard' | 'enhanced' | 'hardened' | 'custom';
 export type SelectablePrivacyProtectionLevel = Exclude<PrivacyProtectionLevel, 'custom'>;
 export type SearchEngineId = string;
+export interface SearchEngineChoice {
+  id: SearchEngineId;
+  name: string;
+  isDefault: boolean;
+}
+export interface SearchEnginesSnapshot {
+  defaultSearchEngine: SearchEngineId;
+  availableSearchEngines: SearchEngineChoice[];
+}
 export type PrivacyAdvancedKey =
   | 'safeBrowsingEnabled'
   | 'drmEnabled'
@@ -543,6 +555,7 @@ export type Action =
   | { type: 'privacy/setProtectionLevel'; level: SelectablePrivacyProtectionLevel }
   | { type: 'privacy/setAdvanced'; key: PrivacyAdvancedKey; value: boolean | string }
   | { type: 'privacy/setDefaultSearchEngine'; id: SearchEngineId }
+  | { type: 'searchEngines/requestSnapshot' }
   | { type: 'addrbar/query'; query: string; limit?: number }
   /** Pin a panel binding `(workspaceId, tabId)` to the global Pinned panels
    * rail. Validated against the live panel set — tools no-ops when the
@@ -640,7 +653,7 @@ export type PinnedPanelDelta =
 export interface PrivacySettings {
   protectionLevel: PrivacyProtectionLevel;
   defaultSearchEngine: SearchEngineId;
-  availableSearchEngines: Array<{ id: SearchEngineId; name: string; isDefault: boolean }>;
+  availableSearchEngines: SearchEngineChoice[];
   safeBrowsingEnabled: boolean;
   drmEnabled: boolean;
   sanitizeOnShutdown: boolean;
@@ -664,6 +677,11 @@ export interface AddrResult {
   title: string;
   favIconUrl?: string;
   score: number;
+}
+
+export interface AddrbarNavigatePayload {
+  value: string;
+  searchEngineId?: SearchEngineId;
 }
 
 export type ExternalMergeSourceKind =
@@ -837,6 +855,7 @@ export type Event =
       panelStatusByTabId: Record<number, PanelLayoutStatus>;
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
+  | { type: 'searchEngines/snapshot'; snapshot: SearchEnginesSnapshot }
   | { type: 'addrbar/results'; query: string; results: AddrResult[] }
   | { type: 'panel/focusedChanged'; tabId: number | null; windowId?: number }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }

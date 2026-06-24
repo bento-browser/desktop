@@ -269,6 +269,64 @@ describe('protocol handler tab unload controls', () => {
   });
 });
 
+describe('protocol handler search engine snapshots', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends searchEngines/snapshot for searchEngines/requestSnapshot', async () => {
+    vi.stubGlobal('browser', {
+      bentoPrivacy: {
+        getSearchEngines: vi.fn().mockResolvedValue([
+          { id: 'ddg', name: 'DuckDuckGo', isDefault: true },
+          { id: 'google', name: 'Google', isDefault: false },
+        ]),
+        getDefaultSearchEngine: vi.fn().mockResolvedValue('ddg'),
+      },
+    });
+    const ctx = createCloseContext();
+
+    handle({ type: 'searchEngines/requestSnapshot' }, ctx);
+
+    await vi.waitFor(() => {
+      expect(ctx.send).toHaveBeenCalledWith({
+        type: 'searchEngines/snapshot',
+        snapshot: {
+          defaultSearchEngine: 'ddg',
+          availableSearchEngines: [
+            { id: 'ddg', name: 'DuckDuckGo', isDefault: true },
+            { id: 'google', name: 'Google', isDefault: false },
+          ],
+        },
+      });
+    });
+  });
+
+  it('sends a disabled snapshot when search engine reads fail', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('browser', {
+      bentoPrivacy: {
+        getSearchEngines: vi.fn().mockRejectedValue(new Error('search unavailable')),
+        getDefaultSearchEngine: vi.fn().mockResolvedValue('ddg'),
+      },
+    });
+    const ctx = createCloseContext();
+
+    try {
+      handle({ type: 'searchEngines/requestSnapshot' }, ctx);
+
+      await vi.waitFor(() => {
+        expect(ctx.send).toHaveBeenCalledWith({
+          type: 'searchEngines/snapshot',
+          snapshot: { defaultSearchEngine: '', availableSearchEngines: [] },
+        });
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('protocol handler tab reopen controls', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

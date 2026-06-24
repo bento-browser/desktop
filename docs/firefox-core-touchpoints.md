@@ -68,12 +68,15 @@ Use this shape for new or changed touchpoints:
   panel actions, hands focus back to the sidebar frame for chrome-originated
   shell UI actions such as inline tab/folder rename, opens the floating
   address/search bar on `Cmd/Ctrl+L` and `Cmd/Ctrl+T`, routes submitted
-  address/search text through Firefox URI fixup, mounts a shared modal toolbar
-  scrim as a top-layer manual popover so native toolbar/urlbar controls do not
-  paint above Bento modal scrims, leaves that toolbar scrim disabled for the
-  floating address bar, paints a clipped chrome-side blurred bitmap behind the
-  floating address bar because the extension frame cannot reliably blur parent
-  chrome/content pixels with its own `backdrop-filter`, opens the manual
+  address/search text through Firefox URI fixup, resolves one-shot
+  address-palette non-default search-engine submissions through Firefox
+  `SearchService` without changing the default engine, reveals the main content
+  slot after committed address/search submissions, mounts a shared modal
+  toolbar scrim as a top-layer manual popover so native toolbar/urlbar controls
+  do not paint above Bento modal scrims, leaves that toolbar scrim disabled for
+  the floating address bar, paints a clipped chrome-side blurred bitmap behind
+  the floating address bar because the extension frame cannot reliably blur
+  parent chrome/content pixels with its own `backdrop-filter`, opens the manual
   browser-session merge palette from the sidebar footer in a persistent
   chrome-hosted overlay frame, delivers open/close lifecycle nonces into that
   extension frame,
@@ -88,6 +91,8 @@ Use this shape for new or changed touchpoints:
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
   chrome `<browser>.loadURI()` with system principals for Bento extension-frame
   entries,
+  `SearchService.sys.mjs`, `SearchService.promiseInitialized`,
+  `SearchService.getEngineById`, search-engine `getSubmission().uri.spec`,
   `browsingContext.sessionHistory`, `SessionStore.getSessionHistory`,
   browser `gotoIndex()`,
   `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
@@ -105,7 +110,7 @@ Use this shape for new or changed touchpoints:
   structure, split-view implementation, browser actor messaging, URI fixup, or
   chrome event ordering can break panel layout, focus, inline sidebar rename,
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
-  navigation, or visibility.
+  navigation, one-shot search-engine resolution, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -126,7 +131,14 @@ Use this shape for new or changed touchpoints:
   previous, current, and next session-history entries and selecting an entry
   navigates that panel rather than the main tab, verify
   `FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP` still resolves default search-engine
-  submissions, verify native URL bar inset controls and the
+  submissions, verify selecting a non-default engine in the floating address
+  palette sends only that submitted non-URL search to the selected engine,
+  verify URL-like input ignores the selected one-shot engine, verify the picker
+  resets to Firefox's current default on the next open and does not mutate Bento
+  Settings/default search, verify engine lookup/submission failures fall back to
+  URI fixup, verify submitting a floating-address search while the panel strip
+  is scrolled to side panels reveals the main content slot, verify native URL bar
+  inset controls and the
   search-mode switcher popup inherit Bento token colors in light and dark modes,
   verify notification bars such as the popup-blocked banner inherit Bento token
   colors in light and dark modes,

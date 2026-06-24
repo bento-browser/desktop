@@ -10,15 +10,32 @@ import {
   seedEmptyAddressBarResults,
 } from '../../state/__fixtures__/addressBarResults';
 import { usePanelsStore } from '../../state/panels';
+import { useSearchEnginesStore } from '../../state/searchEngines';
 import { useTabsStore } from '../../state/tabs';
 
 const noop = () => {};
+
+function seedSearchEngines(longName = false) {
+  useSearchEnginesStore.getState().apply({
+    defaultSearchEngine: 'ddg',
+    availableSearchEngines: [
+      { id: 'ddg', name: 'DuckDuckGo', isDefault: true },
+      {
+        id: 'google',
+        name: longName ? 'Google Search with a Very Long Search Engine Display Name' : 'Google',
+        isDefault: false,
+      },
+      { id: 'bing', name: 'Bing', isDefault: false },
+    ],
+  });
+}
 
 function seedBase(query = 'bento') {
   seedMany();
   seedTabsAcrossWorkspaces([{ workspaceId: 'w-work', count: 6 }], 'w-work');
   usePanelsStore.getState().apply('w-work', [3]);
   seedAddressBarResults(query);
+  seedSearchEngines();
 }
 
 export const Empty = () => {
@@ -27,6 +44,7 @@ export const Empty = () => {
     useTabsStore.getState().applySnapshot([]);
     usePanelsStore.getState().apply('w-work', []);
     seedEmptyAddressBarResults();
+    seedSearchEngines();
   }, []);
   return <AddressBar onClose={noop} mode="current" />;
 };
@@ -59,12 +77,14 @@ export const LongTitle = () => {
         id: 1,
         workspaceId: 'w-work',
         active: true,
+        url: 'https://example.com/a-very-long-open-tab-title',
         title:
           'A Very Long Open Tab Title That Should Definitely Get Truncated With An Ellipsis In The Floating Address Bar Result Row',
       }),
     ]);
     usePanelsStore.getState().apply('w-work', []);
     seedAddressBarResults('long');
+    seedSearchEngines(true);
   }, []);
   return <AddressBar onClose={noop} mode="current" initialQuery="long" />;
 };

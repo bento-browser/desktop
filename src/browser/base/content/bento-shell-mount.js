@@ -4403,6 +4403,20 @@
     return new TextDecoder().decode(bytes);
   }
 
+  function parseAddrbarNavigatePayload(encodedPayload) {
+    const decoded = decodeAddrbarPayload(encodedPayload).trim();
+    if (!decoded.startsWith('{')) {
+      return { value: decoded };
+    }
+    const parsed = JSON.parse(decoded);
+    const value = typeof parsed?.value === 'string' ? parsed.value.trim() : '';
+    const searchEngineId =
+      typeof parsed?.searchEngineId === 'string' && parsed.searchEngineId.trim()
+        ? parsed.searchEngineId.trim()
+        : undefined;
+    return searchEngineId ? { value, searchEngineId } : { value };
+  }
+
   function resolveAddrbarSpec(value) {
     const flags =
       Services.uriFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP |
@@ -4411,29 +4425,82 @@
     return info.preferredURI?.spec || null;
   }
 
-  function handleAddrbarNavigateTitle(title) {
+  function isAddrbarUrlLike(value) {
+    const trimmed = String(value || '').trim();
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return true;
+    return /^[^\s]+\.[^\s]+$/.test(trimmed);
+  }
+
+  let addrbarSearchService = null;
+  function getAddrbarSearchService() {
+    if (addrbarSearchService) return addrbarSearchService;
+    try {
+      const mod = ChromeUtils.importESModule(
+        'moz-src:///toolkit/components/search/SearchService.sys.mjs',
+      );
+      addrbarSearchService = mod.SearchService || null;
+    } catch (err) {
+      console.warn('[bento-shell-mount] SearchService import failed:', err);
+      addrbarSearchService = null;
+    }
+    return addrbarSearchService;
+  }
+
+  async function resolveAddrbarSearchSpec(value, searchEngineId) {
+    if (typeof searchEngineId !== 'string' || !searchEngineId.trim()) return null;
+    const SearchService = getAddrbarSearchService();
+    if (!SearchService) return null;
+    await SearchService.promiseInitialized;
+    const engine = SearchService.getEngineById(searchEngineId);
+    const submission = engine?.getSubmission?.(value);
+    return submission?.uri?.spec || null;
+  }
+
+  function scheduleScrollMainPanelIntoViewForAddrbar() {
+    clearRestoredMainAutoScrollSuppression();
+    setTimeout(() => {
+      const mainEl =
+        getOrderedPanels()[0] || document.querySelector('[data-bento-main-panel="1"]');
+      if (mainEl) scrollPanelToLeftmost(mainEl);
+    }, 0);
+  }
+
+  async function handleAddrbarNavigateTitle(title) {
     const colon = title.indexOf(':');
     if (colon < 0) {
       hideAddrbar();
       return;
     }
-    let value = '';
+    let payload;
     try {
-      value = decodeAddrbarPayload(title.slice(colon + 1)).trim();
+      payload = parseAddrbarNavigatePayload(title.slice(colon + 1));
     } catch (err) {
-      console.warn('[bento-shell-mount] addrbar decode failed:', err);
+      console.warn('[bento-shell-mount] addrbar payload decode failed:', err);
       hideAddrbar();
       return;
     }
+    const value = payload.value.trim();
     if (!value) {
       hideAddrbar();
       return;
     }
 
     try {
+      let spec = null;
+      if (payload.searchEngineId && !isAddrbarUrlLike(value)) {
+        try {
+          spec = await resolveAddrbarSearchSpec(value, payload.searchEngineId);
+        } catch (err) {
+          console.warn('[bento-shell-mount] addrbar search engine resolution failed:', err);
+        }
+      }
+      if (!spec) spec = resolveAddrbarSpec(value);
+
       if (currentAddrbarMode === 'newTab') {
-        const spec = resolveAddrbarSpec(value);
-        if (spec) dispatchShellAction({ type: 'tab/openUrl', url: spec });
+        if (spec) {
+          dispatchShellAction({ type: 'tab/openUrl', url: spec });
+          scheduleScrollMainPanelIntoViewForAddrbar();
+        }
         hideAddrbar();
         return;
       }
@@ -4443,7 +4510,6 @@
         hideAddrbar();
         return;
       }
-      const spec = resolveAddrbarSpec(value);
       if (!spec) {
         hideAddrbar();
         return;
@@ -4455,6 +4521,7 @@
         const uri = Services.io.newURI(spec);
         browserEl.loadURI(uri, { triggeringPrincipal: principal });
       }
+      scheduleScrollMainPanelIntoViewForAddrbar();
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar navigation failed:', err);
     } finally {

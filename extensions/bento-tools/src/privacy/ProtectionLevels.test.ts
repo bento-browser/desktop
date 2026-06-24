@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALLOWED_PRIVACY_PREFS, PRIVACY_PRESETS } from '@shared/privacy-levels';
-import { detectPrivacyLevelFromSnapshot } from './ProtectionLevels';
+import { detectPrivacyLevelFromSnapshot, readSearchEnginesSnapshot } from './ProtectionLevels';
 
 describe('privacy protection levels', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('includes the expected Standard browser privacy settings and prefs', () => {
     expect(PRIVACY_PRESETS.standard.browserPrivacy['websites.trackingProtectionMode']).toBe(
       'always',
@@ -42,5 +46,45 @@ describe('privacy protection levels', () => {
         expect(allowed.has(pref), pref).toBe(true);
       }
     }
+  });
+
+  it('reads the current default and visible search engines', async () => {
+    vi.stubGlobal('browser', {
+      bentoPrivacy: {
+        getSearchEngines: vi.fn().mockResolvedValue([
+          { id: 'ddg', name: 'DuckDuckGo', isDefault: false },
+          { id: 'google', name: 'Google', isDefault: true },
+        ]),
+        getDefaultSearchEngine: vi.fn().mockResolvedValue('google'),
+      },
+    });
+
+    await expect(readSearchEnginesSnapshot()).resolves.toEqual({
+      defaultSearchEngine: 'google',
+      availableSearchEngines: [
+        { id: 'ddg', name: 'DuckDuckGo', isDefault: false },
+        { id: 'google', name: 'Google', isDefault: true },
+      ],
+    });
+  });
+
+  it('falls back to ddg when default search engine is empty', async () => {
+    vi.stubGlobal('browser', {
+      bentoPrivacy: {
+        getSearchEngines: vi.fn().mockResolvedValue([
+          { id: 'ddg', name: 'DuckDuckGo', isDefault: false },
+          { id: 'google', name: 'Google', isDefault: true },
+        ]),
+        getDefaultSearchEngine: vi.fn().mockResolvedValue(''),
+      },
+    });
+
+    await expect(readSearchEnginesSnapshot()).resolves.toEqual({
+      defaultSearchEngine: 'ddg',
+      availableSearchEngines: [
+        { id: 'ddg', name: 'DuckDuckGo', isDefault: true },
+        { id: 'google', name: 'Google', isDefault: false },
+      ],
+    });
   });
 });

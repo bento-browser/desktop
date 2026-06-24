@@ -405,10 +405,14 @@ async function restorePanelsForWorkspace(
   }
   // Tabs eligible for matching: this workspace's existing tabs.
   const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === workspaceId);
-  // Need the URL too. TabSnapshot omits it (perf §6.5) so re-fetch via
-  // browser.tabs.get for the candidates only.
+  // TabSnapshot normally carries the URL. Keep a live fallback for any candidate
+  // whose URL is unavailable in the snapshot.
   const tabUrls = new Map<number, string>();
   for (const t of wsTabs) {
+    if (t.url) {
+      tabUrls.set(t.id, t.url);
+      continue;
+    }
     try {
       const live = await browser.tabs.get(t.id);
       if (live.url) tabUrls.set(t.id, live.url);
@@ -1142,12 +1146,10 @@ tabs.onDeltas((deltas) => {
           if (wsId) void tabs.assignWorkspace(d.tab.id, wsId);
         })();
       }
-      // URL-marker check moved to a dedicated browser.tabs.onCreated
-      // listener (below). TabRegistry's TabSnapshot intentionally
-      // omits `url` per §6.5 of the perf budget ("no url until
-      // tooltip-needed"), so we can't see the marker URL from this
-      // delta. The native WebExtension Tab object includes url, so
-      // the separate listener has direct access.
+      // URL-marker check stays in a dedicated browser.tabs.onCreated listener
+      // below. TabSnapshot carries url when available for shell mirrors, but
+      // the native WebExtension Tab object is still the earliest source for
+      // this marker flow.
       continue;
     }
     if (d.kind === 'updated') {

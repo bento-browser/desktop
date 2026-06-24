@@ -27,6 +27,7 @@ function toSnapshot(t: browser.tabs.Tab): TabSnapshot {
     windowId: t.windowId ?? -1,
     index: t.index,
     title: t.title ?? '',
+    url: tabUrl(t),
     favIconUrl: t.favIconUrl,
     active: t.active,
     pinned: t.pinned,
@@ -521,7 +522,10 @@ export class TabRegistry {
     if (existing?.folderId && !snap.folderId) {
       snap.folderId = existing.folderId;
     }
-    const url = tabUrl(tab);
+    if (existing?.url && !snap.url) {
+      snap.url = existing.url;
+    }
+    const url = snap.url;
     if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
     this.#enqueue({ kind: 'created', tab: snap });
@@ -579,7 +583,9 @@ export class TabRegistry {
     const existing = this.#tabs.get(id);
     if (!existing) {
       // Defensive: treat as create if we missed it
-      const snap = toSnapshot(tab);
+      const snap = { ...toSnapshot(tab), id };
+      const url = snap.url;
+      if (url) this.#urlByTabId.set(id, url);
       this.#tabs.set(id, snap);
       this.#enqueue({ kind: 'created', tab: snap });
       return;
@@ -603,10 +609,21 @@ export class TabRegistry {
     if (nextLoading !== (existing.loading ?? false)) changes.loading = nextLoading;
     const nextDiscarded = tab.discarded ?? false;
     if (nextDiscarded !== (existing.discarded ?? false)) changes.discarded = nextDiscarded;
-    const url = tabUrl(tab);
-    if (url) this.#urlByTabId.set(id, url);
+    const nextUrl = tabUrl(tab);
+    if (nextUrl) this.#urlByTabId.set(id, nextUrl);
+    if (nextUrl !== existing.url) {
+      if (nextUrl) {
+        changes.url = nextUrl;
+      } else if (existing.url !== undefined) {
+        changes.url = undefined;
+        this.#urlByTabId.delete(id);
+      }
+    }
     if (Object.keys(changes).length === 0) return;
     Object.assign(existing, changes);
+    if ('url' in changes && changes.url === undefined) {
+      delete existing.url;
+    }
     this.#enqueue({ kind: 'updated', id, changes });
   };
 

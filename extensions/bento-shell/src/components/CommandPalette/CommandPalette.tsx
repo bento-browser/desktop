@@ -13,7 +13,7 @@
 // Commands are computed from current tabs + workspaces + a static list. No
 // persistence — command history is a future enhancement.
 
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import {
   CommandPalette as TaleCommandPalette,
   useCommandPalette,
@@ -316,6 +316,26 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
     close,
   });
   const footerText = resultLabel(palette.filteredCommands.length);
+  const handleInputKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (
+        event.key !== 'Enter' ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.nativeEvent.isComposing
+      ) {
+        return;
+      }
+      const command = palette.filteredCommands[0];
+      if (!command) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void palette.runCommand(command);
+    },
+    [palette],
+  );
 
   // Refocus the search input every time the chrome process focuses the
   // palette frame. Because the palette stays mounted between opens (no
@@ -366,6 +386,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
                 placeholder="Type a command, tab, or workspace…"
                 className="bento-command-palette__input"
                 autoFocus
+                onKeyDown={handleInputKeyDown}
               />
               <TaleCommandPalette.ClearButton aria-label="Clear search" />
             </TaleCommandPalette.SearchField>

@@ -48,6 +48,7 @@ import { useSavedPanelsStore } from '../state/savedPanels';
 import { usePrivacyStore } from '../state/privacy';
 import { useBackupStore } from '../state/backup';
 import { useAddressBarStore } from '../state/addressBar';
+import { useSearchEnginesStore } from '../state/searchEngines';
 import { usePanelFocusStore } from '../state/panelFocus';
 import { useExternalMergeStore } from '../state/externalMerge';
 
@@ -325,6 +326,9 @@ function ensureConnection(): void {
       }
       case 'privacy/snapshot':
         usePrivacyStore.getState().apply(event.privacy);
+        return;
+      case 'searchEngines/snapshot':
+        useSearchEnginesStore.getState().apply(event.snapshot);
         return;
       case 'addrbar/results':
         useAddressBarStore.getState().applyResults(event.query, event.results);

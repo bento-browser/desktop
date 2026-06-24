@@ -34,6 +34,10 @@ The runtime search setter is privileged because `browser.search` cannot set the
 default engine. Bento uses a bento-tools WebExtension experiment that calls
 Firefox `SearchService` by engine id.
 
+The floating address/search palette may use a selected engine for one submitted
+non-URL search. That picker does not call the default search setter and does not
+change Settings or Firefox's default engine.
+
 ## Runtime Control
 
 The shared preset model lives in `extensions/_shared/privacy-levels.ts`.

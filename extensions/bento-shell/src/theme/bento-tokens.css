@@ -101,6 +101,7 @@
     --bento-address-bar-max-inline: 92vw;
     --bento-address-bar-max-block: 74vh;
     --bento-address-bar-favicon-size: 1.8rem;
+    --bento-address-bar-engine-width: 14rem;
 
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay

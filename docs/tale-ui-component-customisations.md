@@ -155,13 +155,14 @@ upstream component CSS/API against the drift below before deleting local rules.
 ### CommandPalette translucent address palette
 
 Upstream base: Tale UI `CommandPalette` and the
-`tale-command-palette__popup--translucent` recipe.
+`tale-command-palette__popup--translucent` recipe, plus Tale UI `Select` for
+the one-shot search-engine picker.
 
 Bento owners:
 
 - [AddressBar.tsx](../extensions/bento-shell/src/components/AddressBar/AddressBar.tsx)
   composes the floating address/new-tab palette with Tale UI's
-  `CommandPalette`.
+  `CommandPalette`, `Row`, and `Select`.
 - [AddressBar.css](../extensions/bento-shell/src/components/AddressBar/AddressBar.css)
   owns the local CommandPalette drift.
 - [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) and
@@ -198,6 +199,21 @@ Current drift:
   to remain translucent. Hover, focus, pressed, selected, and selected-combined
   states must use `color-mix(..., transparent)` or `--bento-surface-*` overlays,
   not solid neutral/accent fills.
+- Bento renders the address palette clear affordance as
+  `CommandPalette.ClearButton` with `tale-button tale-button--ghost
+tale-button--sm` classes and visible `Clear` text. Keep it as the
+  CommandPalette clear part so it preserves Tale UI's field-clearing behavior;
+  do not nest a separate `Button` inside it.
+- Bento wraps the input and search-engine `Select` trigger in a compact `Row`.
+  The row owns the toolbar padding and divider while the inner
+  `CommandPalette.SearchField` remains flush, avoiding a doubled search-field
+  inset around the picker trigger.
+- Bento constrains the address-palette search-engine `Select` with
+  `--bento-address-bar-engine-width`, makes the trigger fill that stable slot,
+  and truncates the selected engine label. This prevents long engine names from
+  resizing or occluding the CommandPalette input.
+- Bento gives the Select popover a slightly stronger translucent neutral surface
+  so it remains legible when opened over dark page or panel content.
 - Address result favicons use Tale UI `Image` but are fully styled by
   `AddressBar.css`; this overlay intentionally does not import the global
   `@tale-ui/react-styles/image` stylesheet.
@@ -216,6 +232,9 @@ Regression checks:
 - The popup shadow must not visibly resize during open or dismiss.
 - The search field area must not look like an extra opaque band stacked on top of
   the popup surface.
+- Long search-engine names should truncate inside the picker trigger and must
+  not push into the address input. The picker popover should remain readable over
+  dark content.
 
 ## Themes and chrome
 

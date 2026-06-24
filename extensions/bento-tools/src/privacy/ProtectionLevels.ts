@@ -2,6 +2,7 @@ import type {
   PrivacyAdvancedKey,
   PrivacyProtectionLevel,
   PrivacySettings,
+  SearchEnginesSnapshot,
   SearchEngineId,
   SelectablePrivacyProtectionLevel,
 } from '@shared/protocol';
@@ -136,22 +137,35 @@ export async function detectPrivacyLevel(): Promise<PrivacyProtectionLevel> {
   return detectPrivacyLevelFromSnapshot(browserPrivacy, prefs);
 }
 
-export async function readPrivacySnapshot(): Promise<PrivacySettings> {
-  const [browserPrivacy, prefs, engines, defaultSearchEngine] = await Promise.all([
-    readBrowserPrivacySnapshot(),
-    readPrefSnapshot(),
+export async function readSearchEnginesSnapshot(): Promise<SearchEnginesSnapshot> {
+  const [engines, defaultSearchEngine] = await Promise.all([
     browser.bentoPrivacy.getSearchEngines(),
     browser.bentoPrivacy.getDefaultSearchEngine(),
   ]);
-  const safeBrowsingEnabled = SAFE_BROWSING_PREFS.every((pref) => boolPref(prefs, pref));
   const detectedDefault =
     typeof defaultSearchEngine === 'string' && defaultSearchEngine.length > 0
       ? defaultSearchEngine
       : 'ddg';
   return {
-    protectionLevel: detectPrivacyLevelFromSnapshot(browserPrivacy, prefs),
     defaultSearchEngine: detectedDefault,
-    availableSearchEngines: engines,
+    availableSearchEngines: engines.map((engine) => ({
+      ...engine,
+      isDefault: engine.id === detectedDefault,
+    })),
+  };
+}
+
+export async function readPrivacySnapshot(): Promise<PrivacySettings> {
+  const [browserPrivacy, prefs, searchEngines] = await Promise.all([
+    readBrowserPrivacySnapshot(),
+    readPrefSnapshot(),
+    readSearchEnginesSnapshot(),
+  ]);
+  const safeBrowsingEnabled = SAFE_BROWSING_PREFS.every((pref) => boolPref(prefs, pref));
+  return {
+    protectionLevel: detectPrivacyLevelFromSnapshot(browserPrivacy, prefs),
+    defaultSearchEngine: searchEngines.defaultSearchEngine,
+    availableSearchEngines: searchEngines.availableSearchEngines,
     safeBrowsingEnabled,
     drmEnabled: boolPref(prefs, 'media.eme.enabled'),
     sanitizeOnShutdown: boolPref(prefs, 'privacy.sanitize.sanitizeOnShutdown'),

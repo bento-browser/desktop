@@ -1,6 +1,6 @@
 // Layer-2 component: floating address/search bar.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type Key, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 import {
   CommandPalette,
@@ -9,6 +9,8 @@ import {
 } from '@tale-ui/react/command-palette';
 import { Icon } from '@tale-ui/react/icon';
 import { Image } from '@tale-ui/react/image';
+import { Row } from '@tale-ui/react/row';
+import { Select } from '@tale-ui/react/select';
 
 import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import ClockIcon from 'lucide-react/dist/esm/icons/clock';
@@ -21,8 +23,11 @@ import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { signalAddrbarNavigate, type AddrbarMode } from '../../bridge/useAddrbar';
 import { useAddressBarStore } from '../../state/addressBar';
 import { usePanelsStore } from '../../state/panels';
+import { useSearchEnginesStore } from '../../state/searchEngines';
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow } from '../../state/workspaces';
+import { applyDefaultEngineIfClean, chooseEngine, resetEngineSelection } from './engineSelection';
+import { buildOpenRows, type OpenAddressRowKind } from './openRows';
 import './AddressBar.css';
 
 export interface AddressBarProps {
@@ -32,7 +37,7 @@ export interface AddressBarProps {
   initialQuery?: string;
 }
 
-type RowKind = 'tab' | 'panel' | 'history' | 'bookmark' | 'synthetic';
+type RowKind = OpenAddressRowKind | 'history' | 'bookmark' | 'synthetic';
 
 interface AddressRow extends CommandPaletteCommand {
   id: string;
@@ -116,64 +121,37 @@ export default function AddressBar({
   initialQuery = '',
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
+  const [engineSelection, setEngineSelection] = useState(() => resetEngineSelection(null));
+  const { selectedSearchEngineId, engineSelectionDirty } = engineSelection;
   const windowId = useCurrentWindowId();
-  const tabs = useTabsStore(
-    useShallow((s) => s.orderedIds.map((id) => s.byId[id]).filter((tab) => !!tab)),
-  );
+  const tabsById = useTabsStore((s) => s.byId);
+  const orderedIds = useTabsStore((s) => s.orderedIds);
   const panelsByWorkspace = usePanelsStore((s) => s.byWorkspace);
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const resultQuery = useAddressBarStore((s) => s.query);
   const serverResults = useAddressBarStore((s) => s.results);
+  const { defaultSearchEngine, availableSearchEngines, searchEnginesHydrated } =
+    useSearchEnginesStore(
+      useShallow((s) => ({
+        defaultSearchEngine: s.defaultSearchEngine,
+        availableSearchEngines: s.availableSearchEngines,
+        searchEnginesHydrated: s.hydrated,
+      })),
+    );
 
-  const panelInfoByTabId = useMemo(() => {
-    const out = new Map<number, string>();
-    for (const [workspaceId, ids] of panelsByWorkspace.entries()) {
-      for (const id of ids) out.set(id, workspaceId);
-    }
-    return out;
-  }, [panelsByWorkspace]);
-
-  const tabRows = useMemo<AddressRow[]>(() => {
-    if (!activeWorkspaceId) return [];
-    return tabs
-      .filter((tab) => {
-        if (typeof windowId === 'number' && tab.windowId !== windowId) return false;
-        if (tab.workspaceId !== activeWorkspaceId) return false;
-        return !panelInfoByTabId.has(tab.id);
-      })
-      .map((tab) => ({
-        id: `tab:${tab.id}`,
-        kind: 'tab',
-        title: tab.title || 'Untitled',
-        subtitle: 'Switch to Tab',
-        group: 'Open Tabs',
-        keywords: ['tab', tab.title || 'Untitled'],
-        tabId: tab.id,
-        favIconUrl: tab.favIconUrl,
-      }));
-  }, [activeWorkspaceId, tabs, panelInfoByTabId, windowId]);
-
-  const panelRows = useMemo<AddressRow[]>(() => {
-    if (!activeWorkspaceId) return [];
-    const rows: AddressRow[] = [];
-    for (const tab of tabs) {
-      if (typeof windowId === 'number' && tab.windowId !== windowId) continue;
-      const workspaceId = panelInfoByTabId.get(tab.id);
-      if (workspaceId !== activeWorkspaceId) continue;
-      rows.push({
-        id: `panel:${workspaceId}:${tab.id}`,
-        kind: 'panel',
-        title: tab.title || 'Untitled',
-        subtitle: 'Focus Panel',
-        group: 'Open Panels',
-        keywords: ['panel', tab.title || 'Untitled'],
-        tabId: tab.id,
-        workspaceId,
-        favIconUrl: tab.favIconUrl,
-      });
-    }
-    return rows;
-  }, [activeWorkspaceId, tabs, panelInfoByTabId, windowId]);
+  const openRows = useMemo<AddressRow[]>(
+    () =>
+      buildOpenRows({
+        query,
+        tabsById,
+        orderedIds,
+        panelsByWorkspace,
+        activeWorkspaceId,
+        windowId,
+        limit: 8,
+      }),
+    [activeWorkspaceId, orderedIds, panelsByWorkspace, query, tabsById, windowId],
+  );
 
   const asyncRows = useMemo<AddressRow[]>(() => {
     if (resultQuery !== query) return [];
@@ -208,25 +186,39 @@ export default function AddressBar({
         return;
       }
       if (row.url) {
-        signalAddrbarNavigate(row.url);
+        const searchEngineId =
+          row.kind === 'synthetic' &&
+          !isUrlLike(row.url) &&
+          engineSelectionDirty &&
+          selectedSearchEngineId &&
+          selectedSearchEngineId !== defaultSearchEngine
+            ? selectedSearchEngineId
+            : undefined;
+        signalAddrbarNavigate(searchEngineId ? { value: row.url, searchEngineId } : row.url);
       }
     },
-    [onClose],
+    [defaultSearchEngine, engineSelectionDirty, onClose, selectedSearchEngineId],
   );
 
   const rows = useMemo<AddressRow[]>(() => {
-    return [...tabRows, ...panelRows, ...asyncRows, ...(syntheticRow ? [syntheticRow] : [])].map(
-      (row) => ({
-        ...row,
-        action: () => runRow(row),
-      }),
-    );
-  }, [asyncRows, panelRows, runRow, syntheticRow, tabRows]);
+    return [...openRows, ...asyncRows, ...(syntheticRow ? [syntheticRow] : [])].map((row) => ({
+      ...row,
+      action: () => runRow(row),
+    }));
+  }, [asyncRows, openRows, runRow, syntheticRow]);
 
   useEffect(() => {
     setQuery(initialQuery);
     if (!initialQuery) useAddressBarStore.getState().clear();
   }, [initialQuery, openVersion]);
+
+  useEffect(() => {
+    setEngineSelection(resetEngineSelection(defaultSearchEngine));
+  }, [openVersion]);
+
+  useEffect(() => {
+    setEngineSelection((state) => applyDefaultEngineIfClean(state, defaultSearchEngine));
+  }, [defaultSearchEngine]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -255,6 +247,34 @@ export default function AddressBar({
     closeOnSelect: false,
     sort: () => 0,
   });
+
+  const enginePickerDisabled = !searchEnginesHydrated || availableSearchEngines.length === 0;
+  const handleSearchEngineChange = useCallback((key: Key | null) => {
+    const next = typeof key === 'string' || typeof key === 'number' ? String(key) : null;
+    setEngineSelection((state) => chooseEngine(state, next));
+  }, []);
+
+  const handleInputKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (
+        event.key !== 'Enter' ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.nativeEvent.isComposing
+      ) {
+        return;
+      }
+      const submitRow =
+        rows.find((row) => row.kind === 'synthetic') ?? palette.filteredCommands[0] ?? null;
+      if (!submitRow) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void palette.runCommand(submitRow);
+    },
+    [palette, rows],
+  );
 
   return (
     <CommandPalette.Root
@@ -285,14 +305,48 @@ export default function AddressBar({
             inputValue={palette.query}
             onInputChange={palette.setQuery}
           >
-            <CommandPalette.SearchField aria-label="Search or enter address">
-              <CommandPalette.Input
-                placeholder="Search or enter address"
-                className="bento-address-bar__input"
-                autoFocus
-              />
-              <CommandPalette.ClearButton aria-label="Clear search" />
-            </CommandPalette.SearchField>
+            <Row gap="xs" align="center" className="bento-address-bar__toolbar">
+              <CommandPalette.SearchField
+                aria-label="Search or enter address"
+                className="bento-address-bar__search-field"
+              >
+                <CommandPalette.Input
+                  placeholder="Search or enter address"
+                  className="bento-address-bar__input"
+                  autoFocus
+                  onKeyDown={handleInputKeyDown}
+                />
+                <CommandPalette.ClearButton
+                  aria-label="Clear search"
+                  className="tale-button tale-button--ghost tale-button--sm bento-address-bar__clear-button"
+                >
+                  Clear
+                </CommandPalette.ClearButton>
+              </CommandPalette.SearchField>
+              <Select.Root
+                size="sm"
+                placeholder="Search"
+                selectedKey={selectedSearchEngineId}
+                onSelectionChange={handleSearchEngineChange}
+                isDisabled={enginePickerDisabled}
+                className="bento-address-bar__engine-select"
+              >
+                <Select.Label className="bento-address-bar__sr-only">Search engine</Select.Label>
+                <Select.Trigger className="bento-address-bar__engine-trigger">
+                  <Select.Value />
+                  <Select.Icon />
+                </Select.Trigger>
+                <Select.Popover className="bento-address-bar__engine-popover">
+                  <Select.ListBox>
+                    {availableSearchEngines.map((engine) => (
+                      <Select.Item key={engine.id} id={engine.id} textValue={engine.name}>
+                        {engine.name}
+                      </Select.Item>
+                    ))}
+                  </Select.ListBox>
+                </Select.Popover>
+              </Select.Root>
+            </Row>
             <CommandPalette.ListBox
               aria-label="Address bar results"
               className="bento-address-bar__listbox"
@@ -313,7 +367,7 @@ export default function AddressBar({
                 </CommandPalette.Section>
               ))}
             </CommandPalette.ListBox>
-            {palette.filteredCommands.length === 0 ? (
+            {query.trim().length > 0 && palette.filteredCommands.length === 0 ? (
               <CommandPalette.Empty>No matching results.</CommandPalette.Empty>
             ) : null}
           </CommandPalette.Content>

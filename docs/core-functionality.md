@@ -187,18 +187,25 @@ The floating address/search bar opens with `Cmd/Ctrl+L` or `Cmd/Ctrl+E` for the
 current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
 address field also opens the same floating address/search bar in current-tab
 mode instead of showing Firefox's native suggestion dropdown. Empty input shows
-recent history. It floats over the browser content without restyling Firefox's
-native address bar. Results include open normal tabs and panels from the active
-workspace, history, bookmarks, and a final search/open row. Submitting a
-current-tab search or URL uses Firefox's URL fixup and default search engine.
+recent history and does not compute or show open tab or panel autocomplete rows.
+It floats over the browser content without restyling Firefox's native address
+bar. After the user types, results include capped matches for open normal tabs
+and panels from the active workspace by title or URL, plus history, bookmarks,
+and a final search/open row. The palette includes a one-shot search-engine
+picker initialized from Firefox's current default engine each time it opens.
+Choosing another engine affects only the submitted non-URL search and does not
+change Bento Settings or Firefox's default search engine. Submitting a URL-like
+value ignores the one-shot picker and continues through Firefox URL fixup.
+Successful address or search submissions reveal the main content slot if the
+panel strip was scrolled over side panels, because the submitted load targets
+the main tab surface.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
 does not leave an empty tab behind. Results use the same command-palette row
 treatment as Bento's command palette on a translucent, backdrop-blurred surface.
 When the bar opens immediately after a workspace or tab change, the blurred
 surface reflects the currently visible workspace rather than a previous one.
-Open-tab matching is title-based unless the
-tab protocol is widened to include URLs; history and bookmark rows use generic
-icons when no favicon source is available.
+History and bookmark rows use generic icons when no favicon source is
+available.
 
 ### Main content
 

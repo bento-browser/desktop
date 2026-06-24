@@ -33,6 +33,7 @@ import {
   applyAdvancedSetting,
   applyPrivacyLevel,
   readPrivacySnapshot,
+  readSearchEnginesSnapshot,
   setDefaultSearchEngine,
 } from '../privacy/ProtectionLevels';
 import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
@@ -55,6 +56,19 @@ async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
     ctx.send({ type: 'privacy/snapshot', privacy });
   } catch (err) {
     console.warn('[bento-tools] emitPrivacySnapshot failed:', err);
+  }
+}
+
+async function emitSearchEnginesSnapshot(ctx: HandlerContext): Promise<void> {
+  try {
+    const snapshot = await readSearchEnginesSnapshot();
+    ctx.send({ type: 'searchEngines/snapshot', snapshot });
+  } catch (err) {
+    console.warn('[bento-tools] emitSearchEnginesSnapshot failed:', err);
+    ctx.send({
+      type: 'searchEngines/snapshot',
+      snapshot: { defaultSearchEngine: '', availableSearchEngines: [] },
+    });
   }
 }
 
@@ -848,10 +862,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           // focusExisting: if a tab with this URL already lives in the
           // source workspace, activate it instead of stacking a
           // duplicate. Used for singleton internal pages (Settings,
-          // Privacy). TabSnapshot doesn't carry `url` (§6.5 perf
-          // budget), so cross-reference workspace-membership from the
-          // registry with the URL from browser.tabs.query. Panel tabs
-          // are excluded because activating them as the main tab fires
+          // Privacy). Cross-reference workspace membership from the
+          // registry with a live browser.tabs.query URL match. Panel
+          // tabs are excluded because activating them as the main tab fires
           // the panel-revert path in onActivated (background.ts) —
           // briefly activates the panel then snaps back to the last
           // non-panel tab, which the user reads as the click being
@@ -1560,6 +1573,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     case 'privacy/requestSnapshot':
       void emitPrivacySnapshot(ctx);
+      return;
+    case 'searchEngines/requestSnapshot':
+      void emitSearchEnginesSnapshot(ctx);
       return;
     case 'privacy/setProtectionLevel':
       void applyPrivacyLevel(action.level)
