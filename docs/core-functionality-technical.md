@@ -404,6 +404,16 @@ adds `audible` and `muted` to each `panels/sync` panel entry and re-emits
 `panels/sync` when a panel tab's audio state changes; the shell forwards that
 through `BENTO_PANELS`, and `bento-shell-mount.js` mirrors it in
 `currentPanelAudioByTabId` for the chrome-injected header button beside Reload.
+The bottom panel navigator also consumes the same panel metadata. Normal and
+grouped side-panel nav buttons toggle `.bento-panel-nav__icon--audible` and
+their Lucide music-note particle overlay when any contained panel is
+`audible && !muted`; this must stay a metadata update on reused nav buttons,
+not a navigator structural signature input. The emitter must stop creating new
+notes when audio stops while letting already-emitted finite particles finish
+their fade-out; do not remove the particle layer abruptly for normal audio-off
+updates. The particle layer is parented to `#bento-panel-nav`, not inside each
+favicon button or `.bento-panel-nav__list`, because the favicon list is a
+horizontal scroll container and clips child overflow.
 `extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the New menu
 row into the virtualized pane after the pinned run and before regular tabs. That
 Tale UI menu exposes the New tab and New panel actions from the same row in both

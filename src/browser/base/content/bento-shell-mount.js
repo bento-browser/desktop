@@ -785,6 +785,76 @@
       .bento-panel-nav__icon--discarded:hover {
         opacity: 0.75;
       }
+      .bento-panel-nav__icon--audible,
+      .bento-panel-nav__icon--has-audio-particles {
+        overflow: visible;
+      }
+      .bento-panel-nav__audio-particles {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: visible;
+        z-index: 30;
+      }
+      .bento-panel-nav__audio-particle {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 10px;
+        height: 10px;
+        color: var(--color-70);
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, -50%) translate(0, 0) scale(0.54);
+        animation: bento-panel-nav-music-particle 1500ms linear forwards;
+        will-change: opacity, transform;
+      }
+      .bento-panel-nav__audio-particle--1 {
+        width: 9px;
+        height: 9px;
+        --bento-panel-nav-music-x: -6px;
+        --bento-panel-nav-music-y: -7px;
+        --bento-panel-nav-music-rotation: -12deg;
+      }
+      .bento-panel-nav__audio-particle--2 {
+        width: 8px;
+        height: 8px;
+        --bento-panel-nav-music-x: 5px;
+        --bento-panel-nav-music-y: -8px;
+        --bento-panel-nav-music-rotation: 10deg;
+      }
+      .bento-panel-nav__audio-particle--3 {
+        width: 10px;
+        height: 10px;
+        --bento-panel-nav-music-x: 8px;
+        --bento-panel-nav-music-y: -5px;
+        --bento-panel-nav-music-rotation: 16deg;
+      }
+      @keyframes bento-panel-nav-music-particle {
+        0% {
+          opacity: 0;
+          transform: translate(-50%, -50%) translate(0, 0) scale(0.54) rotate(0deg);
+        }
+        12% {
+          opacity: 0.9;
+        }
+        68% {
+          opacity: 0.55;
+        }
+        100% {
+          opacity: 0;
+          transform:
+            translate(-50%, -50%)
+            translate(var(--bento-panel-nav-music-x), var(--bento-panel-nav-music-y))
+            scale(1)
+            rotate(var(--bento-panel-nav-music-rotation));
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bento-panel-nav__audio-particle {
+          animation-duration: 1100ms;
+        }
+      }
       .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
         background-color: var(--neutral-30);
       }
@@ -3954,6 +4024,35 @@
     moreVertical: 'M12 5a1 1 0 1 0 0 0 M12 12a1 1 0 1 0 0 0 M12 19a1 1 0 1 0 0 0',
   };
 
+  const MUSIC_PARTICLE_ICONS = [
+    {
+      className: 'bento-panel-nav__audio-particle--1',
+      shapes: [
+        ['circle', { cx: '8', cy: '18', r: '4' }],
+        ['path', { d: 'M12 18V2l7 4' }],
+      ],
+    },
+    {
+      className: 'bento-panel-nav__audio-particle--2',
+      shapes: [
+        ['circle', { cx: '12', cy: '18', r: '4' }],
+        ['path', { d: 'M16 18V2' }],
+      ],
+    },
+    {
+      className: 'bento-panel-nav__audio-particle--3',
+      shapes: [
+        ['path', { d: 'M9 18V5l12-2v13' }],
+        ['path', { d: 'm9 9 12-2' }],
+        ['circle', { cx: '6', cy: '18', r: '3' }],
+        ['circle', { cx: '18', cy: '16', r: '3' }],
+      ],
+    },
+  ];
+  const PANEL_NAV_AUDIO_EMIT_INTERVAL_MS = 540;
+  const PANEL_NAV_AUDIO_PARTICLE_TTL_MS = 1800;
+  let nextPanelNavAudioOwnerId = 1;
+
   function makeIcon(d, size) {
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -3970,6 +4069,147 @@
     path.setAttribute('d', d);
     svg.appendChild(path);
     return svg;
+  }
+
+  function makeMusicParticleIcon(iconDef) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('bento-panel-nav__audio-particle', iconDef.className);
+    for (const [tag, attrs] of iconDef.shapes) {
+      const shape = document.createElementNS(SVG_NS, tag);
+      for (const [name, value] of Object.entries(attrs)) {
+        shape.setAttribute(name, value);
+      }
+      svg.appendChild(shape);
+    }
+    return svg;
+  }
+
+  function getPanelNavAudioOwnerId(btn) {
+    if (!btn) return '';
+    if (!btn.__bentoPanelNavAudioOwnerId) {
+      btn.__bentoPanelNavAudioOwnerId = String(nextPanelNavAudioOwnerId++);
+    }
+    return btn.__bentoPanelNavAudioOwnerId;
+  }
+
+  function getExistingPanelNavAudioParticlesRoot() {
+    return document.querySelector('#bento-panel-nav > .bento-panel-nav__audio-particles');
+  }
+
+  function getPanelNavAudioParticlesRoot() {
+    const nav = document.getElementById('bento-panel-nav');
+    if (!nav) return null;
+    let particles = nav.querySelector(':scope > .bento-panel-nav__audio-particles');
+    if (particles) return particles;
+    particles = document.createElementNS(HTML_NS, 'span');
+    particles.className = 'bento-panel-nav__audio-particles';
+    particles.setAttribute('aria-hidden', 'true');
+    nav.appendChild(particles);
+    return particles;
+  }
+
+  function hasPanelNavAudioParticlesForButton(btn, root) {
+    const ownerId = btn?.__bentoPanelNavAudioOwnerId;
+    if (!ownerId || !root) return false;
+    return Array.from(root.children).some(
+      (child) => child.getAttribute('data-bento-audio-owner') === ownerId,
+    );
+  }
+
+  function cleanupPanelNavAudioParticles(btn) {
+    if (!btn) return;
+    const particlesRoot = getExistingPanelNavAudioParticlesRoot();
+    if (
+      btn.__bentoPanelNavAudioEmitter ||
+      hasPanelNavAudioParticlesForButton(btn, particlesRoot)
+    ) {
+      return;
+    }
+    btn.classList.remove('bento-panel-nav__icon--has-audio-particles');
+    if (particlesRoot && particlesRoot.childElementCount === 0) particlesRoot.remove();
+  }
+
+  function removePanelNavAudioParticlesForButton(btn) {
+    if (!btn) return;
+    const ownerId = btn.__bentoPanelNavAudioOwnerId;
+    const particlesRoot = getExistingPanelNavAudioParticlesRoot();
+    if (ownerId && particlesRoot) {
+      for (const child of Array.from(particlesRoot.children)) {
+        if (child.getAttribute('data-bento-audio-owner') === ownerId) child.remove();
+      }
+      if (particlesRoot.childElementCount === 0) particlesRoot.remove();
+    }
+    btn.classList.remove('bento-panel-nav__icon--has-audio-particles');
+  }
+
+  function emitPanelNavAudioParticle(btn) {
+    if (!btn?.isConnected) return;
+    const particlesRoot = getPanelNavAudioParticlesRoot();
+    const navRect = document.getElementById('bento-panel-nav')?.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    if (!particlesRoot || !navRect || btnRect.width <= 0 || btnRect.height <= 0) return;
+    const iconIndex = btn.__bentoPanelNavAudioParticleIndex || 0;
+    const iconDef = MUSIC_PARTICLE_ICONS[iconIndex % MUSIC_PARTICLE_ICONS.length];
+    btn.__bentoPanelNavAudioParticleIndex = iconIndex + 1;
+    const particle = makeMusicParticleIcon(iconDef);
+    particle.setAttribute('data-bento-audio-owner', getPanelNavAudioOwnerId(btn));
+    particle.style.left = Math.round(btnRect.right - navRect.left - 3) + 'px';
+    particle.style.top = Math.round(btnRect.top - navRect.top + 4) + 'px';
+    btn.classList.add('bento-panel-nav__icon--has-audio-particles');
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      particle.remove();
+      cleanupPanelNavAudioParticles(btn);
+    };
+    particle.addEventListener('animationend', cleanup, { once: true });
+    particlesRoot.appendChild(particle);
+    window.setTimeout(cleanup, PANEL_NAV_AUDIO_PARTICLE_TTL_MS);
+  }
+
+  function startPanelNavAudioEmitter(btn) {
+    if (!btn) return;
+    btn.classList.add('bento-panel-nav__icon--audible');
+    if (btn.__bentoPanelNavAudioEmitter) return;
+    btn.__bentoPanelNavAudioEmitter = window.setInterval(() => {
+      if (!btn.isConnected) {
+        stopPanelNavAudioEmitter(btn, { removeParticles: true });
+        return;
+      }
+      emitPanelNavAudioParticle(btn);
+    }, PANEL_NAV_AUDIO_EMIT_INTERVAL_MS);
+    emitPanelNavAudioParticle(btn);
+  }
+
+  function stopPanelNavAudioEmitter(btn, options = {}) {
+    if (!btn) return;
+    if (btn.__bentoPanelNavAudioEmitter) {
+      window.clearInterval(btn.__bentoPanelNavAudioEmitter);
+      btn.__bentoPanelNavAudioEmitter = null;
+    }
+    btn.classList.remove('bento-panel-nav__icon--audible');
+    if (options.removeParticles) {
+      removePanelNavAudioParticlesForButton(btn);
+      return;
+    }
+    cleanupPanelNavAudioParticles(btn);
+  }
+
+  function syncPanelNavAudioParticles(btn, audioPlaying) {
+    if (!btn) return;
+    if (audioPlaying === true) {
+      startPanelNavAudioEmitter(btn);
+    } else {
+      stopPanelNavAudioEmitter(btn);
+    }
   }
 
   function makeHeaderButton(title, iconD, onClick) {
@@ -10299,6 +10539,7 @@
       title: payload?.title || 'Panel',
       favIconUrl: payload?.favIconUrl || '',
       discarded: payload?.discarded === true,
+      audioPlaying: payload?.audible === true && payload?.muted !== true,
     };
   }
 
@@ -10325,6 +10566,7 @@
       title: panelPayload?.title || 'Panel',
       favIconUrl: panelPayload?.favIconUrl || '',
       discarded: panelPayload?.discarded === true,
+      audioPlaying: panelPayload?.audible === true && panelPayload?.muted !== true,
     };
     const rootNodeId = panelPayload?.rootNodeId || 'panel:' + fallbackTabId;
     const rootNode = getLayoutRootNodeForNav(rootNodeId);
@@ -10335,6 +10577,7 @@
         title: fallbackCell.title,
         favIconUrl: fallbackCell.favIconUrl,
         discarded: fallbackCell.discarded,
+        audioPlaying: fallbackCell.audioPlaying,
         rows: [[fallbackCell]],
         isGrouped: false,
       };
@@ -10351,6 +10594,7 @@
       title: firstPanelCell.title || fallbackCell.title,
       favIconUrl: firstPanelCell.favIconUrl || fallbackCell.favIconUrl,
       discarded: rows.flat().some((cell) => cell?.discarded === true),
+      audioPlaying: rows.flat().some((cell) => cell?.audioPlaying === true),
       rows: rows.length > 0 ? rows : [[fallbackCell]],
       isGrouped: rows.length > 1 || rows.some((row) => row.length > 1),
     };
@@ -10358,6 +10602,10 @@
 
   function syncPanelNavDiscardedClass(btn, navInfo) {
     btn.classList.toggle('bento-panel-nav__icon--discarded', navInfo?.discarded === true);
+  }
+
+  function syncPanelNavAudioClass(btn, navInfo) {
+    syncPanelNavAudioParticles(btn, navInfo?.audioPlaying === true);
   }
 
   function getPanelNavSignature(panelPayload, payloadByTabId) {
@@ -10401,6 +10649,7 @@
     const existing = new Map();
     for (const child of Array.from(list.children)) {
       if (child.dataset.bentoNavLeaving === '1') {
+        stopPanelNavAudioEmitter(child, { removeParticles: true });
         child.remove();
         continue;
       }
@@ -10440,10 +10689,12 @@
           key !== 'main' && btn.dataset.bentoNavSignature !== desiredSignature;
         if (wasSub !== isSub || signatureChanged) {
           existing.delete(key);
+          stopPanelNavAudioEmitter(btn, { removeParticles: true });
           btn.remove();
           btn = null;
         } else if (!updatePanelNavButton(btn, navInfo)) {
           existing.delete(key);
+          stopPanelNavAudioEmitter(btn, { removeParticles: true });
           btn.remove();
           btn = null;
         } else {
@@ -10480,6 +10731,7 @@
               panelPayload.rootNodeId || key,
             );
             syncPanelNavDiscardedClass(btn, navInfo);
+            syncPanelNavAudioClass(btn, navInfo);
           } else {
             btn = buildGroupedNavIcon(
               navInfo.rows,
@@ -10489,6 +10741,7 @@
               panelPayload.rootNodeId || key,
             );
             syncPanelNavDiscardedClass(btn, navInfo);
+            syncPanelNavAudioClass(btn, navInfo);
           }
         }
         btn.dataset.bentoNavKey = key;
@@ -10510,6 +10763,7 @@
     // stale-button removal can flash an extra favicon before the main
     // icon.
     for (const [, el] of existing) {
+      stopPanelNavAudioEmitter(el, { removeParticles: true });
       el.remove();
     }
 
@@ -10542,6 +10796,7 @@
   function updatePanelNavButton(btn, navInfo) {
     if (!btn || !navInfo) return false;
     syncPanelNavDiscardedClass(btn, navInfo);
+    syncPanelNavAudioClass(btn, navInfo);
     if (!navInfo.isGrouped) {
       btn.title = navInfo.title || 'Panel';
       btn.setAttribute('aria-label', btn.title);
