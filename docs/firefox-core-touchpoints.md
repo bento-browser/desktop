@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-22
+- Last updated: 2026-06-23
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -73,7 +73,10 @@ Use this shape for new or changed touchpoints:
   paint above Bento modal scrims, leaves that toolbar scrim disabled for the
   floating address bar, paints a clipped chrome-side blurred bitmap behind the
   floating address bar because the extension frame cannot reliably blur parent
-  chrome/content pixels with its own `backdrop-filter`,
+  chrome/content pixels with its own `backdrop-filter`, opens the manual
+  browser-session merge palette from the sidebar footer in a persistent
+  chrome-hosted overlay frame, delivers open/close lifecycle nonces into that
+  extension frame,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, and exposes the
@@ -82,6 +85,7 @@ Use this shape for new or changed touchpoints:
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
   chrome window events, native `#urlbar-input` pointer/focus events,
   `gURLBar.view.close()`, frame focus, title/actor messaging paths,
+  chrome-hosted extension frame lifecycle messaging through `messageManager`,
   `browsingContext.sessionHistory`, `SessionStore.getSessionHistory`,
   browser `gotoIndex()`,
   `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
@@ -98,7 +102,8 @@ Use this shape for new or changed touchpoints:
 - Firefox update risk: upstream changes to `browser.xhtml`, tabbrowser panel
   structure, split-view implementation, browser actor messaging, URI fixup, or
   chrome event ordering can break panel layout, focus, inline sidebar rename,
-  overlay shortcuts, address/search navigation, or visibility.
+  overlay shortcuts, merge-palette lifecycle dispatch, address/search
+  navigation, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
   menus still dispatch tab, folder, and workspace actions including moving a
@@ -121,8 +126,11 @@ Use this shape for new or changed touchpoints:
   search-mode switcher popup inherit Bento token colors in light and dark modes,
   verify notification bars such as the popup-blocked banner inherit Bento token
   colors in light and dark modes,
-  verify command palette, edit-workspace, confirm, and first-run welcome scrims
-  cover the full chrome window including the address bar, verify the floating
+  verify command palette, manual browser-session merge, edit-workspace, confirm,
+  and first-run welcome scrims cover the full chrome window including the address
+  bar, verify the sidebar footer merge action opens the merge palette, refreshes
+  sources on every open, closes on Esc or close action, and never leaves the
+  command palette and merge palette visible at the same time, verify the floating
   address bar does not dim the native toolbar/address bar, visibly blurs only
   the page/sidebar content directly behind its translucent command surface, uses
   the current workspace's visible surface on the first native-urlbar `focus`

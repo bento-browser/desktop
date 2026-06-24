@@ -28,6 +28,14 @@ The following rules apply to all responses:
 16. Notify the user when documents or older messages become truncated.
 17. Flag uncertainty or potential conflict rather than performing states that can't be verified.
 
+## Plan files
+
+All plan artifacts MUST be written under the repo's `plans/` directory. The
+`plans/` directory is intentionally gitignored and plans are meant to stay
+untracked; they are local-development artifacts only. Do not put working plans
+in `docs/` or any other tracked documentation directory unless the user
+explicitly asks for a tracked document.
+
 ## Backticks inside JS template literals
 
 When writing CSS/HTML inside a JS template literal (a backtick string), **never use backticks in the embedded content** — they terminate the template literal early and produce confusing TS/JS syntax errors that are easy to misdiagnose. This has happened repeatedly in [src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js) where chrome CSS is injected via a `style.textContent = ...` template literal.

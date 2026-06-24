@@ -309,10 +309,10 @@ export class TabRegistry {
    * with the preceding 'created' delta in the same rAF flush — the
    * shell mirror sees workspaceId on the new tab in the first broadcast
    * instead of "tab briefly orphaned until a follow-up batch lands".
-   * Persists via browser.sessions.setTabValue in the background; if
-   * persistence fails, the in-memory + shell state stays consistent and
-   * the next launch picks up the active-workspace fallback (same
-   * failure mode as a session.set that lost its write).
+   * Persists via browser.sessions.setTabValue after the synchronous state
+   * update. Callers that need restart durability before reporting success can
+   * await the returned boolean; callers that only need first-paint freshness
+   * can ignore it.
    *
    * If the tab isn't yet in #tabs (Firefox can resolve tabs.create
    * BEFORE dispatching onCreated), stash the assignment so the next
@@ -321,21 +321,26 @@ export class TabRegistry {
    *
    * Distinct from assignWorkspace: that one awaits setTabValue before
    * emitting (strict fail-closed semantics for explicit user re-
-   * assignment). This one favours first-paint UI freshness, which is
+   * assignment). This one updates memory before awaiting persistence, which is
    * what tab-creation handlers actually need. */
-  assignWorkspaceEagerly(id: number, workspaceId: string): void {
-    if (this.#closingTabIds.has(id)) return;
+  async assignWorkspaceEagerly(id: number, workspaceId: string): Promise<boolean> {
+    if (this.#closingTabIds.has(id)) return false;
     const tab = this.#tabs.get(id);
     if (tab) {
-      if (tab.workspaceId === workspaceId) return;
-      tab.workspaceId = workspaceId;
-      this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
+      if (tab.workspaceId !== workspaceId) {
+        tab.workspaceId = workspaceId;
+        this.#enqueue({ kind: 'updated', id, changes: { workspaceId } });
+      }
     } else {
       this.#pendingWorkspaceAssignments.set(id, workspaceId);
     }
-    void browser.sessions
-      .setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId)
-      .catch((err) => console.warn('[bento-tools] sessions.setTabValue (eager) failed:', id, err));
+    try {
+      await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
+      return true;
+    } catch (err) {
+      console.warn('[bento-tools] sessions.setTabValue (eager) failed:', id, err);
+      return false;
+    }
   }
 
   isClosing(id: number): boolean {

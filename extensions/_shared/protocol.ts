@@ -590,7 +590,9 @@ export type Action =
    * as backup/import. */
   | { type: 'backup/restore'; backupId: string }
   /** Delete a stored auto-backup by id. */
-  | { type: 'backup/delete'; backupId: string };
+  | { type: 'backup/delete'; backupId: string }
+  | { type: 'externalMerge/requestSources'; requestId: string }
+  | { type: 'externalMerge/merge'; sourceId: string; operationId: string };
 
 /** One entry in the "Saved panels" bookmark folder. `id` is the Firefox
  * bookmark id; `title` and `url` come straight from browser.bookmarks. */
@@ -656,6 +658,46 @@ export interface AddrResult {
   favIconUrl?: string;
   score: number;
 }
+
+export type ExternalMergeSourceKind =
+  | 'firefox'
+  | 'zen'
+  | 'chrome'
+  | 'chromium'
+  | 'brave'
+  | 'edge'
+  | 'opera'
+  | 'vivaldi';
+
+export interface ExternalMergeSource {
+  id: string;
+  kind: ExternalMergeSourceKind;
+  browserName: string;
+  profileName: string;
+  lastModified: number;
+  windowCount: number;
+  tabCount: number;
+  groupCount: number;
+  unavailableReason?: string;
+}
+
+export interface ExternalMergeSummary {
+  sourceId: string;
+  workspacesCreated: number;
+  foldersCreated: number;
+  tabsOpened: number;
+  pinnedTabsOpened: number;
+  skippedDuplicates: number;
+  skippedUnsupportedUrls: number;
+  failedTabs: number;
+}
+
+export type ExternalMergeErrorCode =
+  | 'busy'
+  | 'unreadable'
+  | 'unsupported-session'
+  | 'unknown-source'
+  | 'no-importable-tabs';
 
 export type Event =
   | { type: 'pong'; ts: number }
@@ -782,7 +824,34 @@ export type Event =
   | { type: 'backup/exportReady'; json: string; filename: string }
   | { type: 'backup/importComplete'; summary: ImportSummary }
   | { type: 'backup/importError'; message: string }
-  | { type: 'backup/list'; backups: BackupListEntry[] };
+  | { type: 'backup/list'; backups: BackupListEntry[] }
+  | {
+      type: 'externalMerge/sources';
+      requestId: string;
+      windowId: number | null;
+      sources: ExternalMergeSource[];
+    }
+  | {
+      type: 'externalMerge/started';
+      operationId: string;
+      windowId: number | null;
+      sourceId: string;
+    }
+  | {
+      type: 'externalMerge/complete';
+      operationId: string;
+      windowId: number | null;
+      summary: ExternalMergeSummary;
+    }
+  | {
+      type: 'externalMerge/error';
+      requestId?: string;
+      operationId?: string;
+      windowId: number | null;
+      sourceId?: string;
+      code?: ExternalMergeErrorCode;
+      message: string;
+    };
 
 /** Wire-level envelope around an Action: the action itself plus an
  * optional routing field that bento-shell's dispatcher stamps with the

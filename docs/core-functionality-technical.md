@@ -553,6 +553,13 @@ BEM styling, mirrors the resolved chrome light/dark mode through the iframe URL,
 suppresses Esc, and signals close/restart back to chrome through
 `BENTO_CLOSE_EMBEDDED_IMPORT` and `BENTO_RESTART_EMBEDDED_IMPORT` title
 sentinels.
+Regular Chrome/Chromium imports in this embedded wizard use Firefox's native
+runtime migrators and are separate from Bento's manual browser-session merge.
+Those migrators import supported browser data through Firefox's migration layer;
+they do not depend on `bentoExternalSessions` or Bento's Chromium persisted
+session-file parser. A Chrome row marked unavailable in the manual merge palette
+therefore does not by itself indicate that the settings/onboarding Chrome import
+is unavailable.
 `bento-shell-mount.js` imports `MigrationUtils.sys.mjs` before showing the host
 so Firefox registers the `MigrationWizard` JSWindowActor. The core patch adds
 `chrome://browser/content/bento-migration-host.html` to that actor's allowlist.
@@ -685,6 +692,147 @@ dead selections. Do not open the Firefox/Zen handoff
 automatically at process start and do not route it through Bento's Settings
 backup/import code; that code is additive workspace JSON import and has
 different data-loss semantics.
+
+## Manual Browser Session Merge
+
+Manual browser-session merge is a runtime additive import, separate from the
+startup Firefox/Zen profile-copy migrator. The user opens it from the sidebar
+footer, which signals `BENTO_OPEN_MERGE_PALETTE_<timestamp>` to
+`src/browser/base/content/bento-shell-mount.js`. Chrome shows the
+`bento-merge-palette-host` overlay, keeps `merge-palette.html` mounted between
+opens, and sends an open nonce into the extension frame with
+`messageManager.sendAsyncMessage("BentoMergePaletteLifecycle", ...)`. The frame
+script posts that nonce on `BroadcastChannel("bento-merge-palette")`, and the
+React entry dispatches a fresh `externalMerge/requestSources` for every open.
+React mount is not the refresh boundary. The palette search row also exposes a
+refresh button that dispatches a new `externalMerge/requestSources` request
+through the same store path while keeping the current source rows visible until
+the replacement response arrives; refresh is disabled while a merge operation is
+active. While `activeOperationId` is set, the shell renders a spinner status row
+inside the command palette naming the source being imported, in addition to
+disabling the source rows and footer refresh affordance.
+
+`extensions/bento-tools/experiments/bento-external-sessions/` is the privileged
+source reader. It discovers Firefox profiles from the Mozilla Firefox
+`profiles.ini`, Zen profiles from macOS `~/Library/Application Support/zen`, and
+Chromium-family profile roots for Chrome, Chromium, Brave, Edge, Opera, and
+Vivaldi. Firefox and Zen discovery must also scan both the profile root and its
+`Profiles/` child directly. macOS app/privacy behavior can make registry-based
+discovery differ from direct directory reads, and both Firefox and Zen store real
+profiles below `Profiles/<profile-id>`. It returns opaque source ids,
+browser/profile labels, and modified times only. It reads Firefox/Zen `jsonlz4`
+snapshots as decoded JSON strings and Chromium session files as base64 bytes. It
+does not return absolute paths, and unreadable or stale source ids produce
+sanitized errors.
+
+Chromium discovery and Chromium snapshot reads are intentionally separate
+operations. Discovery uses directory traversal plus `IOUtils.stat()` to find
+`Sessions/Session_*` and `Sessions/Tabs_*` files and compute the "saved x
+minutes ago" age from file metadata. Snapshot loading later calls
+`IOUtils.read()` for the file bytes, with an `nsIFileInputStream`/`NetUtil`
+fallback for Chromium session files. On macOS those can fail independently:
+Bento can see that Chrome session files exist and have fresh mtimes while still
+being denied byte reads for every file. In that case the source remains visible
+as disabled with "Session files visible, but unreadable"; when the parent reader
+can classify the failure, a sanitized category such as "permission denied",
+"file locked", or "file missing" is appended without exposing local paths. If
+the error does not map to a known category, the row may show sanitized Gecko
+error names/results such as `NotAllowedError:0x80520015`; these tokens are for
+debugging and must not include local paths. Do not interpret the fresh saved age
+as proof that the manual merge reader can parse Chrome.
+Chromium session payloads are binary; encode them with code that runs in the
+privileged parent-extension context rather than relying on DOM globals such as
+`btoa`, which may be absent even though the same code path can list and read
+the files.
+
+Parsing is bundled in `extensions/bento-tools/src/externalMerge/`, not in the
+experiment parent script. `normalizeExternalSession()` converts raw snapshots to
+a browser-neutral shape of source metadata, optional native workspaces, windows,
+tabs, and tab groups. Firefox normalization imports only open `windows`, selects
+only each tab's current `entries[index - 1]` entry, and excludes private/hidden
+tabs and windows. Zen normalization maps spaces to native workspaces and applies
+the same live visible-tab filtering. Chromium normalization uses a dedicated
+persisted-session parser. For modern `SNSS` session files, it reconstructs live
+tabs from Chromium session commands, using `SetTabWindow`, tab/window close,
+selected-navigation, and navigation-update records; it must not count every URL
+string in `Session_*` or `Tabs_*` files, because those files also contain
+history entries, stale rotated records, and closed tab data. When grouped
+Chromium metadata is detected but cannot be safely mapped, the source is
+reported as an unsupported session rather than silently importing grouped tabs
+as ungrouped.
+Confirmed Chrome tab-count regression fix, 2026-06-24: if Chrome shows a source
+such as "1 window - 164 tabs" while the visible Chrome profile has only a small
+number of live tabs, the parser is probably counting raw URL strings from
+`Tabs_*`/rotated session files instead of reconstructing live tabs from `SNSS`
+commands. Keep the explicit parser regression test that feeds stale URL strings
+beside a newer `Session_*` command log; the expected count is one selected live
+navigation per surviving live tab, not one tab per URL string.
+
+`loadExternalMergeSources()` calls the experiment's `listCandidates()`, reads
+each candidate snapshot, normalizes it in bundled tools code, and derives the
+shell-visible `ExternalMergeSource` counts from importable live windows, tabs,
+and groups. Empty, corrupt, unreadable, private-only, or unsupported candidates
+remain visible as disabled source rows with a sanitized reason, even when other
+sources are mergeable. Do not drop failed candidates only because a readable
+Firefox or Zen source exists; users still need to see that Chrome was found but
+could not be read. Confirmed mixed-result regression fix, 2026-06-24: the merge
+palette must show mergeable Firefox/Zen rows and a disabled Chrome row together
+when Chromium session discovery succeeds but session file reads fail.
+
+Merge execution lives in
+`extensions/bento-tools/src/externalMerge/ExternalMergeExecutor.ts`. It builds a
+normalized URL set from Bento-owned tabs plus panel tab ids, using live URLs from
+`browser.tabs.query({})`. URL normalization lowercases protocol/host, removes
+default ports, preserves path/query/hash, maps supported source new-tab URLs to
+`about:newtab`, and rejects invalid, `javascript:`, `data:`, and unsupported
+browser-internal schemes. Duplicates are skipped against existing Bento state
+and earlier tabs in the same merge. If filtering leaves no importable tabs, the
+executor throws `ExternalMergeError("no-importable-tabs", ...)` before creating
+workspaces so duplicate-only sources produce a visible no-op message instead of
+an apparent hung import. Tab creation is also bounded by a timeout; if Firefox
+or another source produces a valid plan but WebExtension tab creation never
+resolves, the executor removes the temporary empty workspace and reports a
+visible no-op failure instead of leaving the palette in a permanent merging
+state.
+Confirmed Firefox manual-merge hang fix, 2026-06-24: a Firefox source can list
+and normalize correctly but leave the merge palette open if a WebExtension tab
+operation never resolves. Do not await the final imported-tab focus update, and
+keep the timeout around `browser.tabs.create()` so valid Firefox snapshots either
+finish with a visible summary or fail with a visible no-op error.
+
+The executor creates a Bento workspace only when at least one source tab
+survives filtering. Native source workspaces/spaces become one Bento workspace
+each; otherwise each source window becomes one workspace. Workspace names use
+`<Browser>: <Workspace name>` or `<Browser>: <Profile name> Window <n>` and the
+same collision behavior as backup import (`name`, `name (imported)`, then
+numeric suffix). Workspaces are created with `{ activate: false }` until all
+tabs/folders are created. Tabs are opened inactive in the requesting window when
+known, assigned to the workspace through `TabRegistry.assignWorkspaceEagerly`,
+and pinned tabs are pinned with `browser.tabs.update` as a backstop. The
+executor must await the eager assignment's `browser.sessions.setTabValue`
+completion before counting a tab as imported; if the workspace marker cannot be
+persisted, the created tab is removed and the temporary workspace is discarded
+when no other tabs imported. This keeps imported workspaces from relaunching as
+empty workspaces containing only a fallback new tab. Source tab groups become
+`TabFolderStore` folders only for non-pinned imported members; pinned group
+members stay pinned and un-foldered. At the end, the first imported workspace
+activates in the requesting window and the first non-pinned imported tab
+receives focus, falling back to the first imported tab.
+Confirmed restart-persistence regression fix, 2026-06-24: if workspaces created
+by manual Chrome/Firefox/Zen merge survive a dev relaunch but their imported
+tabs disappear and each workspace contains only a new tab, the merge executor is
+probably reporting success before `bento.workspaceId` session values are
+durable. Keep `TabRegistry.assignWorkspaceEagerly()` returning an awaitable
+persistence result and keep the executor's wait before incrementing
+`tabsOpened`.
+
+All merge protocol events carry correlation fields. Source-list replies echo
+`requestId` and `windowId`; merge lifecycle replies echo `operationId`,
+`windowId`, and source metadata where needed. `bento-shell` filters events for
+other windows and stale request/operation ids before mutating
+`state/externalMerge.ts`. `protocol-handler.ts` also has a module-scoped global
+in-flight guard that rejects duplicate or cross-window merge attempts with
+`code: "busy"` before any `readSnapshot()` or executor work starts.
 
 Confirmed Firefox/Zen import regression fix, 2026-06-09: if the wizard shows
 blank Firefox/Zen icons, offers disabled `default` profile rows, or completes

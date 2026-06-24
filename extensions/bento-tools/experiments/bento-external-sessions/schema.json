@@ -1,0 +1,19 @@
+[
+  {
+    "namespace": "bentoExternalSessions",
+    "functions": [
+      {
+        "name": "listCandidates",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
+        "name": "readSnapshot",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "sourceId", "type": "string" }]
+      }
+    ]
+  }
+]

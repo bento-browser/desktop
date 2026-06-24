@@ -2444,6 +2444,10 @@
     setFrameSrc('bento-palette-frame', '/dist/palette.html');
   }
 
+  function setBentoMergePaletteSrc() {
+    setFrameSrc('bento-merge-palette-frame', '/dist/merge-palette.html');
+  }
+
   function setBentoAddrbarSrc() {
     setFrameSrc('bento-addrbar-frame', '/dist/address-bar.html');
   }
@@ -2626,6 +2630,12 @@
   // rather than waiting for a full build to inline its <vbox> into the
   // deployed browser.xhtml.
   ensureOverlayHost({
+    hostId: 'bento-merge-palette-host',
+    frameId: 'bento-merge-palette-frame',
+    zIndex: 99997,
+  });
+
+  ensureOverlayHost({
     hostId: 'bento-edit-workspace-host',
     frameId: 'bento-edit-workspace-frame',
     zIndex: 99997,
@@ -2762,6 +2772,8 @@
   let lastPaletteHideSurfaceIdentity = null;
 
   function showPalette() {
+    const mergeHost = document.getElementById('bento-merge-palette-host');
+    if (mergeHost && isMergePaletteVisible(mergeHost)) hideMergePalette();
     const host = document.getElementById('bento-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showPalette: bento-palette-host missing');
@@ -2809,6 +2821,67 @@
     }
     if (isPaletteVisible(host)) hidePalette();
     else showPalette();
+  }
+
+  const MERGE_PALETTE_TRANSITION_MS = 180;
+  let mergePaletteOpenSeq = 0;
+
+  function nextMergePaletteNonce(kind) {
+    mergePaletteOpenSeq += 1;
+    return `${kind}-${Date.now()}-${mergePaletteOpenSeq}`;
+  }
+
+  function isMergePaletteVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  function showMergePalette() {
+    const paletteHost = document.getElementById('bento-palette-host');
+    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+    const host = document.getElementById('bento-merge-palette-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showMergePalette: bento-merge-palette-host missing');
+      return;
+    }
+    showOverlayToolbarScrim('merge-palette');
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    host.style.opacity = '1';
+    const frame = document.getElementById('bento-merge-palette-frame');
+    const nonce = nextMergePaletteNonce('open');
+    dispatchMergePaletteLifecycle('open', nonce);
+    setTimeout(() => frame?.focus(), 0);
+  }
+
+  function hideMergePalette() {
+    const host = document.getElementById('bento-merge-palette-host');
+    const nonce = nextMergePaletteNonce('close');
+    dispatchMergePaletteLifecycle('close', nonce);
+    if (!host) {
+      hideOverlayToolbarScrim('merge-palette');
+      return;
+    }
+    hideOverlayToolbarScrim('merge-palette');
+    host.style.opacity = '0';
+    setTimeout(() => {
+      if (host.style.opacity === '0') {
+        host.style.display = 'none';
+        host.setAttribute('hidden', 'true');
+      }
+    }, MERGE_PALETTE_TRANSITION_MS);
+  }
+
+  function toggleMergePalette() {
+    const host = document.getElementById('bento-merge-palette-host');
+    if (!host) {
+      console.warn(
+        '[bento-shell-mount] toggleMergePalette: bento-merge-palette-host missing - patch may not be applied',
+      );
+      return;
+    }
+    if (isMergePaletteVisible(host)) hideMergePalette();
+    else showMergePalette();
   }
 
   // ─── Floating address/search bar overlay ──────────────────────────────
@@ -3594,6 +3667,8 @@
   // changes — same value twice would be silent.
   const PALETTE_OPEN_PREFIX = 'BENTO_OPEN_PALETTE';
   const PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_PALETTE';
+  const MERGE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_MERGE_PALETTE';
+  const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
   const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
   // Same pattern for the confirm overlay (workspace deletion, etc.). The
@@ -8131,6 +8206,21 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(ADDRBAR_OPEN_FRAME_SCRIPT_SRC);
 
+  const MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoMergePaletteLifecycle", function(msg) {' +
+    '  try {' +
+    '    var type = msg.data && msg.data.type === "close" ? "close" : "open";' +
+    '    var nonce = msg.data && typeof msg.data.nonce === "string" ? msg.data.nonce : String(Date.now());' +
+    '    var channel = new content.BroadcastChannel("bento-merge-palette");' +
+    '    channel.postMessage({ type: type, nonce: nonce });' +
+    '    channel.close();' +
+    '  } catch (e) {}' +
+    '});';
+  const MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC);
+
   const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoPanelTrailerCycleFocus", function(msg) {' +
@@ -8200,6 +8290,33 @@
       return true;
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar open dispatch failed:', err);
+      return false;
+    }
+  }
+
+  function dispatchMergePaletteLifecycle(type, nonce, attempt = 0) {
+    const frame = document.getElementById('bento-merge-palette-frame');
+    if (!frame) return false;
+    try {
+      const mm = frame.messageManager;
+      if (!mm || typeof mm.sendAsyncMessage !== 'function') {
+        if (attempt < 10) {
+          setTimeout(() => dispatchMergePaletteLifecycle(type, nonce, attempt + 1), 100);
+        }
+        return false;
+      }
+      if (!frame._bentoMergePaletteLifecycleScriptLoaded && typeof mm.loadFrameScript === 'function') {
+        mm.loadFrameScript(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL, true);
+        frame._bentoMergePaletteLifecycleScriptLoaded = true;
+      }
+      mm.sendAsyncMessage('BentoMergePaletteLifecycle', { type, nonce });
+      return true;
+    } catch (err) {
+      if (attempt < 10) {
+        setTimeout(() => dispatchMergePaletteLifecycle(type, nonce, attempt + 1), 100);
+      } else {
+        console.warn('[bento-shell-mount] merge palette lifecycle dispatch failed:', err);
+      }
       return false;
     }
   }
@@ -15644,6 +15761,17 @@
       }, 200);
     }
 
+    const mergePaletteFrame = document.getElementById('bento-merge-palette-frame');
+    if (mergePaletteFrame) {
+      let lastSeenMergePaletteTitle = '';
+      setInterval(() => {
+        const title = mergePaletteFrame.contentTitle || '';
+        if (title === lastSeenMergePaletteTitle) return;
+        lastSeenMergePaletteTitle = title;
+        if (title.startsWith(MERGE_PALETTE_CLOSE_PREFIX)) hideMergePalette();
+      }, 200);
+    }
+
     const addrbarFrame = document.getElementById('bento-addrbar-frame');
     if (addrbarFrame) {
       let lastSeenAddrbarTitle = '';
@@ -15804,6 +15932,7 @@
         if (title !== lastSeenShellTitle) {
           lastSeenShellTitle = title;
           if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
+          else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
           else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
           else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
@@ -15874,6 +16003,13 @@
           e.preventDefault();
           e.stopPropagation();
           hideAddrbar();
+          return;
+        }
+        const mergeHost = document.getElementById('bento-merge-palette-host');
+        if (mergeHost && isMergePaletteVisible(mergeHost)) {
+          e.preventDefault();
+          e.stopPropagation();
+          hideMergePalette();
           return;
         }
         const host = document.getElementById('bento-palette-host');
@@ -16193,6 +16329,7 @@
         const ids = [
           'bento-shell-frame',
           'bento-palette-frame',
+          'bento-merge-palette-frame',
           'bento-addrbar-frame',
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
@@ -16211,6 +16348,7 @@
             frame.removeAttribute('src');
             if (id === 'bento-shell-frame') setBentoShellSrc();
             else if (id === 'bento-palette-frame') setBentoPaletteSrc();
+            else if (id === 'bento-merge-palette-frame') setBentoMergePaletteSrc();
             else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
@@ -16232,6 +16370,7 @@
 
   setBentoShellSrc();
   setBentoPaletteSrc();
+  setBentoMergePaletteSrc();
   setBentoAddrbarSrc();
   setBentoConfirmSrc();
   setBentoEditWorkspaceSrc();

@@ -7,6 +7,7 @@ import { Icon } from '@tale-ui/react/icon';
 import { Tooltip } from '@tale-ui/react/tooltip';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
+import Merge from 'lucide-react/dist/esm/icons/merge';
 import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 
@@ -75,6 +76,11 @@ function openCommandPalette() {
   // Timestamp suffix ensures successive presses always fire the event
   // (no change = no event).
   const newTitle = `BENTO_OPEN_PALETTE_${Date.now()}`;
+  document.title = newTitle;
+}
+
+function openMergePalette() {
+  const newTitle = `BENTO_OPEN_MERGE_PALETTE_${Date.now()}`;
   document.title = newTitle;
 }
 
@@ -500,6 +506,16 @@ export function App() {
               onPress={openCommandPalette}
             >
               <Icon icon={Command} />
+            </IconButton>
+          </FooterTooltip>
+          <FooterTooltip label="Merge browser session" isDisabled={sidebarCollapsed}>
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label="Merge browser session"
+              onPress={openMergePalette}
+            >
+              <Icon icon={Merge} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Color mode" isDisabled={sidebarCollapsed}>

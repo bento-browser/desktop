@@ -6,7 +6,13 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
-import type { Action, Event, PinnedPanelEntry, WireAction } from '@shared/protocol';
+import type {
+  Action,
+  Event,
+  ExternalMergeErrorCode,
+  PinnedPanelEntry,
+  WireAction,
+} from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
@@ -29,6 +35,12 @@ import {
   readPrivacySnapshot,
   setDefaultSearchEngine,
 } from '../privacy/ProtectionLevels';
+import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
+import { loadExternalMergeSources } from '../externalMerge/loadExternalMergeSources';
+import { normalizeExternalSession } from '../externalMerge/normalizeExternalSession';
+import { externalMergeErrorCode, type ExternalSessionSnapshot } from '../externalMerge/sourceTypes';
+
+let externalMergeInFlightOperationId: string | null = null;
 
 async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   try {
@@ -37,6 +49,24 @@ async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   } catch (err) {
     console.warn('[bento-tools] emitPrivacySnapshot failed:', err);
   }
+}
+
+function externalMergeMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (!message || message.includes('/') || message.includes('\\')) {
+    return 'Browser session merge failed.';
+  }
+  return message;
+}
+
+function externalMergeCode(err: unknown): ExternalMergeErrorCode | undefined {
+  const explicit = externalMergeErrorCode(err);
+  if (explicit) return explicit;
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  if (message.includes('unknown')) return 'unknown-source';
+  if (message.includes('unreadable')) return 'unreadable';
+  if (message.includes('unsupported')) return 'unsupported-session';
+  return undefined;
 }
 
 function getTabLoadUrl(tab: browser.tabs.Tab): string | null {
@@ -1534,6 +1564,77 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         } catch (err) {
           console.warn('[bento-tools] addrbar/query failed:', err);
           ctx.send({ type: 'addrbar/results', query: action.query, results: [] });
+        }
+      })();
+      return;
+    case 'externalMerge/requestSources':
+      void (async () => {
+        try {
+          const sources = await loadExternalMergeSources();
+          ctx.send({
+            type: 'externalMerge/sources',
+            requestId: action.requestId,
+            windowId: ctx.sourceWindowId,
+            sources,
+          });
+        } catch (err) {
+          console.warn('[bento-tools] externalMerge/requestSources failed:', err);
+          ctx.send({
+            type: 'externalMerge/error',
+            requestId: action.requestId,
+            windowId: ctx.sourceWindowId,
+            code: externalMergeCode(err),
+            message: externalMergeMessage(err),
+          });
+        }
+      })();
+      return;
+    case 'externalMerge/merge':
+      if (externalMergeInFlightOperationId !== null) {
+        ctx.send({
+          type: 'externalMerge/error',
+          operationId: action.operationId,
+          windowId: ctx.sourceWindowId,
+          sourceId: action.sourceId,
+          code: 'busy',
+          message: 'Another browser session merge is already running.',
+        });
+        return;
+      }
+      externalMergeInFlightOperationId = action.operationId;
+      ctx.send({
+        type: 'externalMerge/started',
+        operationId: action.operationId,
+        windowId: ctx.sourceWindowId,
+        sourceId: action.sourceId,
+      });
+      void (async () => {
+        try {
+          const snapshot = (await browser.bentoExternalSessions.readSnapshot(
+            action.sourceId,
+          )) as ExternalSessionSnapshot;
+          const session = normalizeExternalSession(snapshot);
+          const summary = await executeExternalMerge(session, ctx);
+          ctx.send({
+            type: 'externalMerge/complete',
+            operationId: action.operationId,
+            windowId: ctx.sourceWindowId,
+            summary,
+          });
+        } catch (err) {
+          console.warn('[bento-tools] externalMerge/merge failed:', err);
+          ctx.send({
+            type: 'externalMerge/error',
+            operationId: action.operationId,
+            windowId: ctx.sourceWindowId,
+            sourceId: action.sourceId,
+            code: externalMergeCode(err),
+            message: externalMergeMessage(err),
+          });
+        } finally {
+          if (externalMergeInFlightOperationId === action.operationId) {
+            externalMergeInFlightOperationId = null;
+          }
         }
       })();
       return;

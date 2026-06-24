@@ -963,3 +963,80 @@ describe('protocol handler workspace updates', () => {
     expect(ctx.emitPanelsSync).not.toHaveBeenCalled();
   });
 });
+
+describe('protocol handler external merge', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects duplicate merge operations before reading another snapshot', async () => {
+    let resolveSnapshot!: (value: unknown) => void;
+    const snapshotPromise = new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    });
+    vi.stubGlobal('browser', {
+      bentoExternalSessions: {
+        readSnapshot: vi.fn(() => snapshotPromise),
+      },
+      tabs: {
+        query: vi.fn(async () => []),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: vi.fn(),
+        activate: vi.fn(() => 'noop'),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        getPanels: vi.fn(() => []),
+      } as unknown as HandlerContext['panels'],
+      tabFolders: {
+        create: vi.fn(),
+      } as unknown as HandlerContext['tabFolders'],
+      send: vi.fn(),
+      sourceWindowId: 5,
+    });
+
+    handle({ type: 'externalMerge/merge', sourceId: 'source-1', operationId: 'op-1' }, ctx);
+    handle({ type: 'externalMerge/merge', sourceId: 'source-1', operationId: 'op-2' }, ctx);
+
+    expect(browser.bentoExternalSessions.readSnapshot).toHaveBeenCalledTimes(1);
+    expect(ctx.send).toHaveBeenCalledWith({
+      type: 'externalMerge/error',
+      operationId: 'op-2',
+      windowId: 5,
+      sourceId: 'source-1',
+      code: 'busy',
+      message: 'Another browser session merge is already running.',
+    });
+
+    resolveSnapshot({
+      sourceId: 'source-1',
+      kind: 'firefox',
+      browserName: 'Firefox',
+      profileName: 'Default',
+      lastModified: 1,
+      capturedAt: 1,
+      format: 'firefox-json',
+      json: JSON.stringify({ windows: [] }),
+    });
+
+    await vi.waitFor(() => {
+      expect(ctx.send).toHaveBeenCalledWith({
+        type: 'externalMerge/error',
+        operationId: 'op-1',
+        windowId: 5,
+        sourceId: 'source-1',
+        code: 'no-importable-tabs',
+        message: 'Firefox did not contain any importable tabs.',
+      });
+    });
+  });
+});

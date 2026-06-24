@@ -24,14 +24,33 @@ defaulted to another browser. Empty Firefox/Zen profile entries with no
 migratable resources are not offered. Zen imports also translate Zen spaces into
 Bento workspaces and restore Zen tabs through Bento's workspace-aware session
 restore as the import completes. Zen pinned tabs become pinned Bento tabs. Zen
-essential tabs become pinned Bento panels. This is separate from the additive
-Bento backup import flow. The first
+essential tabs become pinned Bento panels. Chrome and other regular browser
+imports in this flow use Firefox's native migration wizard and are separate from
+the additive Bento backup import flow. The first
 onboarding step also lets the user choose Bento's UI theme mode: Light, Dark, or
 Auto; fresh profiles default to Light. After import, onboarding asks for a
 privacy protection level and default search engine. Fresh profiles default to
 Standard privacy and DuckDuckGo search. The onboarding overlay is not dismissed
 by clicking the scrim or pressing Esc, and the user exits it only from the final
 step.
+
+The sidebar footer also exposes a manual "Merge browser session" action. This
+is a runtime, additive, one-way merge from another browser profile's latest
+persisted session snapshot. Bento does not sync with or write to the external
+profile. It imports mergeable open tabs into new Bento workspaces, maps source
+tab groups to Bento tab folders when the source format exposes them, preserves
+pinned tabs as pinned tabs, skips URLs already open in Bento, and activates the
+first imported workspace when the merge completes. Imported workspaces use
+Bento's normal restart persistence, so their tabs remain assigned to those
+workspaces after relaunch. If Bento finds a browser profile but cannot read or
+import its session snapshot, the profile remains in the merge picker as an
+unavailable row instead of disappearing, including when other browser sessions
+are mergeable. The merge picker includes a refresh button so the user can
+rescan browser session snapshots without closing and reopening the picker. If
+every tab from a selected source is already open in Bento, the picker reports
+that no new tabs were imported instead of silently doing nothing. While an
+import is running, the picker shows an in-progress loading row naming the source
+being imported.
 
 ## Core model
 

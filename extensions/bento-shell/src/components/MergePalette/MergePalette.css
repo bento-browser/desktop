@@ -1,0 +1,72 @@
+/* Layer-2 component: MergePalette. Uses Tale UI CommandPalette visuals; Bento
+ * only constrains the chrome overlay frame and status row alignment. */
+
+.tale-command-palette__popup.bento-merge-palette__popup {
+  width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
+  height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
+}
+
+.tale-command-palette__dialog.bento-merge-palette__dialog,
+.tale-command-palette__content.bento-merge-palette__content,
+.tale-command-palette__listbox.bento-merge-palette__listbox {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tale-command-palette__listbox.bento-merge-palette__listbox {
+  max-height: none;
+}
+
+.bento-merge-palette__refresh {
+  flex: 0 0 auto;
+  margin-inline-end: var(--space-xs);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item {
+  align-items: flex-start;
+  min-height: auto;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-content {
+  min-width: 0;
+  white-space: normal;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-title,
+.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-description {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-meta {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  margin-top: var(--space-4xs);
+}
+
+@layer bento.components {
+  .bento-merge-palette__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .bento-merge-palette__status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+}

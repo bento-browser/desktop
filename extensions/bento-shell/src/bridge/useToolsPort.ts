@@ -49,6 +49,7 @@ import { usePrivacyStore } from '../state/privacy';
 import { useBackupStore } from '../state/backup';
 import { useAddressBarStore } from '../state/addressBar';
 import { usePanelFocusStore } from '../state/panelFocus';
+import { useExternalMergeStore } from '../state/externalMerge';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -368,6 +369,18 @@ function ensureConnection(): void {
         return;
       case 'backup/list':
         useBackupStore.getState().apply(event.backups);
+        return;
+      case 'externalMerge/sources':
+        useExternalMergeStore.getState().applySources(event, state.windowId);
+        return;
+      case 'externalMerge/started':
+        useExternalMergeStore.getState().applyStarted(event, state.windowId);
+        return;
+      case 'externalMerge/complete':
+        useExternalMergeStore.getState().applyComplete(event, state.windowId);
+        return;
+      case 'externalMerge/error':
+        useExternalMergeStore.getState().applyError(event, state.windowId);
         return;
       case 'pong':
         return;
