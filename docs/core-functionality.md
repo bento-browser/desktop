@@ -38,7 +38,7 @@ The sidebar footer also exposes a manual "Merge browser session" action. This
 is a runtime, additive, one-way merge from another browser profile's latest
 persisted session snapshot. Bento does not sync with or write to the external
 profile. It imports mergeable open tabs into new Bento workspaces, maps source
-tab groups to Bento tab folders when the source format exposes them, preserves
+tab groups or tab folders to Bento tab folders when the source format exposes them, preserves
 pinned tabs as pinned tabs, skips URLs already open in Bento, and activates the
 first imported workspace when the merge completes. Imported workspaces use
 Bento's normal restart persistence, so their tabs remain assigned to those
@@ -50,7 +50,11 @@ rescan browser session snapshots without closing and reopening the picker. If
 every tab from a selected source is already open in Bento, the picker reports
 that no new tabs were imported instead of silently doing nothing. While an
 import is running, the picker shows an in-progress loading row naming the source
-being imported.
+being imported with an indeterminate progress loader and a Cancel button.
+Cancel stops the remaining import work without rolling back tabs that were
+already opened. Selecting a source does not close the picker; it stays open
+through progress, success, or error until the user dismisses it with the Close
+button, backdrop, or chrome close control.
 
 ## Core model
 
@@ -148,6 +152,10 @@ Recently closed regular tabs should reopen with Firefox's standard
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
 covering the window with an opaque overlay.
+It also exposes "Edit all workspaces", which opens a workspace-only command
+palette where every workspace can be searched, renamed, re-iconed, re-themed,
+activated, created, or deleted from one view. Deleting a non-empty workspace
+uses Bento's confirmation dialog before closing its tabs.
 
 Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal

@@ -120,6 +120,44 @@ describe('external merge session parsers', () => {
     expect(session.windows[0]!.tabs[0]!.active).toBe(true);
   });
 
+  it('maps Zen folder membership from Firefox-style and Zen folder fields', () => {
+    const session = normalizeExternalSession({
+      sourceId: 'zen-default',
+      kind: 'zen',
+      browserName: 'Zen Browser',
+      profileName: 'Default',
+      lastModified: 100,
+      capturedAt: 200,
+      format: 'zen-json',
+      json: JSON.stringify({
+        spaces: [{ uuid: 'space-a', name: 'Space A' }],
+        tabGroups: [{ groupId: 7, name: 'Numeric Folder', index: 0 }],
+        folders: [{ folderId: 'folder-object', name: 'Object Folder', index: 1 }],
+        tabs: [
+          {
+            zenWorkspace: 'space-a',
+            entries: [{ url: 'https://numeric.example/', title: 'Numeric' }],
+            extData: { tabGroupId: 7 },
+            index: 1,
+          },
+          {
+            zenWorkspace: 'space-a',
+            entries: [{ url: 'https://object.example/', title: 'Object' }],
+            folder: { folderId: 'folder-object' },
+            index: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(session.windows).toHaveLength(1);
+    expect(session.windows[0]!.groups).toEqual([
+      { id: '7', name: 'Numeric Folder', index: 0 },
+      { id: 'folder-object', name: 'Object Folder', index: 1 },
+    ]);
+    expect(session.windows[0]!.tabs.map((tab) => tab.groupId)).toEqual(['7', 'folder-object']);
+  });
+
   it('extracts Chromium session URLs and rejects grouped sessions', () => {
     const plain = btoa('xxxx https://one.example/\u0000yyyy https://two.example/path');
     const session = normalizeExternalSession({

@@ -26,6 +26,13 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function asId(value: unknown): string | undefined {
+  const text = asString(value);
+  if (text) return text;
+  const numeric = asNumber(value);
+  return numeric !== undefined ? String(numeric) : undefined;
+}
+
 function selectedEntry(tab: JsonRecord): JsonRecord | null {
   const entries = asArray(tab.entries);
   if (entries.length === 0) return null;
@@ -40,18 +47,61 @@ function isPrivateLike(record: JsonRecord | null): boolean {
   return record.private === true || record.isPrivate === true || record.incognito === true;
 }
 
+function groupIdFromRecord(record: JsonRecord | null): string | undefined {
+  if (!record) return undefined;
+  return (
+    asId(record.id) ??
+    asId(record.groupId) ??
+    asId(record.tabGroupId) ??
+    asId(record.folderId) ??
+    asId(record.uuid)
+  );
+}
+
+function groupIdForTab(tab: JsonRecord): string | undefined {
+  return (
+    asId(tab.groupId) ??
+    asId(tab.tabGroupId) ??
+    asId(tab.group) ??
+    groupIdFromRecord(asRecord(tab.group)) ??
+    asId(asRecord(tab.extData)?.tabGroupId) ??
+    asId(asRecord(tab.extData)?.groupId) ??
+    asId(tab.folderId) ??
+    asId(tab.folder) ??
+    groupIdFromRecord(asRecord(tab.folder)) ??
+    asId(tab.zenFolderId) ??
+    asId(tab.zenFolder) ??
+    groupIdFromRecord(asRecord(tab.zenFolder)) ??
+    asId(tab.zenTabFolderId) ??
+    asId(tab.zenTabFolder) ??
+    groupIdFromRecord(asRecord(tab.zenTabFolder))
+  );
+}
+
 function parseGroups(root: JsonRecord): NormalizedExternalTabGroup[] {
+  const rawGroups = [
+    ...asArray(root.groups),
+    ...asArray(root.tabGroups),
+    ...asArray(root.tabgroups),
+    ...asArray(root.folders),
+    ...asArray(root.tabFolders),
+    ...asArray(root.tabfolders),
+  ];
   const groups: NormalizedExternalTabGroup[] = [];
   const seen = new Set<string>();
-  asArray(root.groups).forEach((rawGroup, index) => {
+  rawGroups.forEach((rawGroup, index) => {
     const record = asRecord(rawGroup);
     if (!record) return;
-    const id = asString(record.id) ?? asString(record.groupId) ?? String(index + 1);
+    const id = groupIdFromRecord(record) ?? String(index + 1);
     if (seen.has(id)) return;
     seen.add(id);
     const group: NormalizedExternalTabGroup = {
       id,
-      name: asString(record.name) ?? asString(record.title) ?? `Group ${index + 1}`,
+      name:
+        asString(record.name) ??
+        asString(record.title) ??
+        asString(record.label) ??
+        `Group ${index + 1}`,
       index: asNumber(record.index) ?? index,
     };
     if (typeof record.collapsed === 'boolean') group.collapsed = record.collapsed;
@@ -143,7 +193,7 @@ export function parseZenSession(snapshot: ZenExternalSessionSnapshot): Normalize
       active: tab.active === true || tab._zenIsActiveTab === true,
       pinned: tab.pinned === true || tab.zenEssential === true,
     };
-    const groupId = asString(tab.groupId) ?? asString(tab.group);
+    const groupId = groupIdForTab(tab);
     if (groupId) normalizedTab.groupId = groupId;
     tabsByWorkspaceId.get(workspaceId)?.push(normalizedTab);
   });

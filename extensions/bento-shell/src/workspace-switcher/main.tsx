@@ -28,6 +28,7 @@ import { Icon } from '@tale-ui/react/icon';
 import Check from 'lucide-react/dist/esm/icons/check';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
+import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
 import '@tale-ui/core/src';
@@ -44,6 +45,7 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
 import { requestConfirm } from '../bridge/useConfirm';
 import { requestEditWorkspace } from '../bridge/useEditWorkspace';
+import { requestWorkspacePalette } from '../bridge/useWorkspacePalette';
 import {
   WORKSPACE_SWITCHER_CLOSE_PREFIX,
   subscribeToWorkspaceSwitcherRequests,
@@ -61,6 +63,7 @@ import '../components/WorkspaceSwitcher/WorkspaceSwitcher.css';
 initToolsPort();
 
 const NEW_WORKSPACE_KEY = '__new__';
+const EDIT_ALL_WORKSPACES_KEY = '__edit_all__';
 const EDIT_WORKSPACE_KEY = '__edit__';
 const DELETE_WORKSPACE_KEY = '__delete__';
 const SMALL_MENU_CLASS = 'tale-menu__popup--sm';
@@ -169,6 +172,10 @@ function WorkspaceSwitcherOverlayApp() {
       icon: active.icon,
     });
   }
+  function onRequestEditAll() {
+    forwardingRef.current = true;
+    requestWorkspacePalette();
+  }
   function onRequestDelete() {
     if (!canDelete || !active) return;
     if (tabCount === 0) {
@@ -258,6 +265,16 @@ function WorkspaceSwitcherOverlayApp() {
             <Icon icon={Plus} size="sm" />
             <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
               New workspace
+            </Text>
+          </Menu.Item>
+          <Menu.Item
+            id={EDIT_ALL_WORKSPACES_KEY}
+            textValue="Edit all workspaces"
+            onAction={onRequestEditAll}
+          >
+            <Icon icon={SlidersHorizontal} size="sm" />
+            <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+              Edit all workspaces
             </Text>
           </Menu.Item>
           {canEdit ? (

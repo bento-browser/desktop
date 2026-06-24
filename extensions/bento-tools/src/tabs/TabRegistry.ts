@@ -102,6 +102,7 @@ export class TabRegistry {
   // emitted 'created' delta already carries workspaceId — avoids any
   // shell-side "tab briefly orphaned" frame.
   #pendingWorkspaceAssignments = new Map<number, string>();
+  #pendingFolderAssignments = new Map<number, string>();
 
   async init(): Promise<void> {
     // Register listeners FIRST so we don't miss tabs created during the
@@ -264,6 +265,30 @@ export class TabRegistry {
     this.#enqueue({ kind: 'updated', id, changes: { folderId: next } });
   }
 
+  /** Eager folder assignment for handler-created tabs. Mirrors
+   * assignWorkspaceEagerly's tabs.create race handling so callers can persist
+   * folder membership even when Firefox resolves tabs.create before
+   * tabs.onCreated has populated #tabs. */
+  async assignFolderEagerly(id: number, folderId: string): Promise<boolean> {
+    if (this.#closingTabIds.has(id)) return false;
+    const tab = this.#tabs.get(id);
+    if (tab) {
+      if (tab.folderId !== folderId) {
+        tab.folderId = folderId;
+        this.#enqueue({ kind: 'updated', id, changes: { folderId } });
+      }
+    } else {
+      this.#pendingFolderAssignments.set(id, folderId);
+    }
+    try {
+      await browser.sessions.setTabValue(id, FOLDER_SESSION_KEY, folderId);
+      return true;
+    } catch (err) {
+      console.warn('[bento-tools] sessions.setTabValue folder (eager) failed:', id, err);
+      return false;
+    }
+  }
+
   /** Set or clear Bento's sidebar display name for a tab. This does not
    * call browser.tabs.update({ title }) because Firefox tab titles are
    * page-owned; Bento stores a per-tab override in SessionStore instead. */
@@ -370,6 +395,7 @@ export class TabRegistry {
     this.#unmarkedClosingTabIds.delete(id);
     this.#closingTabIds.add(id);
     this.#pendingWorkspaceAssignments.delete(id);
+    this.#pendingFolderAssignments.delete(id);
 
     const tab = this.#tabs.get(id);
     if (tab?.workspaceId !== undefined) {
@@ -432,6 +458,11 @@ export class TabRegistry {
     if (pending) {
       snap.workspaceId = pending;
       this.#pendingWorkspaceAssignments.delete(snap.id);
+    }
+    const pendingFolderId = this.#pendingFolderAssignments.get(snap.id);
+    if (pendingFolderId) {
+      snap.folderId = pendingFolderId;
+      this.#pendingFolderAssignments.delete(snap.id);
     }
     // Preserve any workspaceId we've already hydrated for this tab.
     // SessionStore-restored tabs can fire onCreated AFTER init's query
@@ -565,6 +596,7 @@ export class TabRegistry {
       }
     }
     this.#pendingWorkspaceAssignments.delete(id);
+    this.#pendingFolderAssignments.delete(id);
     this.#closingTabIds.delete(id);
     this.#unmarkedClosingTabIds.delete(id);
     this.#urlByTabId.delete(id);

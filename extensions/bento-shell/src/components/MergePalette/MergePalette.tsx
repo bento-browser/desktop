@@ -4,9 +4,10 @@ import {
   useCommandPalette,
   type CommandPaletteCommand,
 } from '@tale-ui/react/command-palette';
+import { Button } from '@tale-ui/react/button';
 import { Icon } from '@tale-ui/react/icon';
 import { IconButton } from '@tale-ui/react/icon-button';
-import { Spinner } from '@tale-ui/react/spinner';
+import { ProgressBar } from '@tale-ui/react/progress-bar';
 import MergeIcon from 'lucide-react/dist/esm/icons/merge';
 import GlobeIcon from 'lucide-react/dist/esm/icons/globe';
 import AlertCircleIcon from 'lucide-react/dist/esm/icons/alert-circle';
@@ -125,16 +126,14 @@ export function MergePalette({ onClose }: MergePaletteProps) {
   const refreshSources = () => {
     useExternalMergeStore.getState().refreshSources(dispatch);
   };
+  const cancelMerge = () => {
+    useExternalMergeStore.getState().cancelMerge(dispatch);
+  };
   const palette = useCommandPalette<MergeCommand>({
     commands,
     close,
+    closeOnSelect: false,
   });
-
-  useEffect(() => {
-    if (!summary) return;
-    const handle = window.setTimeout(close, 1400);
-    return () => window.clearTimeout(handle);
-  }, [summary]);
 
   useEffect(() => {
     const focusSearch = () => {
@@ -217,6 +216,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                       command={command}
                       textValue={commandTextValue(command)}
                       isDisabled={!!activeOperationId || command.unavailable}
+                      closeOnSelect={false}
                       onAction={() => void palette.runCommand(command)}
                     >
                       <TaleCommandPalette.ItemIcon>{command.icon}</TaleCommandPalette.ItemIcon>
@@ -238,8 +238,28 @@ export function MergePalette({ onClose }: MergePaletteProps) {
               </TaleCommandPalette.LoadMoreItem>
             ) : null}
             {activeOperationId ? (
-              <TaleCommandPalette.LoadMoreItem className="bento-merge-palette__status">
-                <Spinner size="sm" label="Importing browser session" /> {importStatus}
+              <TaleCommandPalette.LoadMoreItem className="bento-merge-palette__loader-item">
+                <div className="bento-merge-palette__loader-content">
+                  <ProgressBar.Root
+                    isIndeterminate
+                    minValue={0}
+                    maxValue={100}
+                    className="bento-merge-palette__loader"
+                  >
+                    <ProgressBar.Label>{importStatus}</ProgressBar.Label>
+                    <ProgressBar.Track>
+                      <ProgressBar.Indicator />
+                    </ProgressBar.Track>
+                  </ProgressBar.Root>
+                  <Button
+                    variant="neutral"
+                    size="sm"
+                    className="bento-merge-palette__cancel-button"
+                    onPress={cancelMerge}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </TaleCommandPalette.LoadMoreItem>
             ) : null}
             {!loadingSources && error ? (
@@ -257,7 +277,17 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 No mergeable browser sessions found.
               </TaleCommandPalette.Empty>
             ) : null}
-            <TaleCommandPalette.Footer>{footerText}</TaleCommandPalette.Footer>
+            <TaleCommandPalette.Footer className="bento-merge-palette__footer">
+              <span className="bento-merge-palette__footer-text">{footerText}</span>
+              <Button
+                variant="neutral"
+                size="sm"
+                className="bento-merge-palette__close-button"
+                onPress={close}
+              >
+                Close
+              </Button>
+            </TaleCommandPalette.Footer>
           </TaleCommandPalette.Content>
         </TaleCommandPalette.Popup>
       </TaleCommandPalette.Backdrop>

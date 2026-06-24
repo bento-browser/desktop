@@ -27,7 +27,12 @@ interface CreatedTab {
   tabId: number;
 }
 
+interface ExecuteExternalMergeOptions {
+  signal?: AbortSignal;
+}
+
 const TAB_CREATE_TIMEOUT_MS = 8000;
+const CANCELLED_MESSAGE = 'Browser session merge was cancelled.';
 
 function deduplicateName(name: string, existing: Set<string>): string {
   if (!existing.has(name)) return name;
@@ -207,6 +212,18 @@ function tabOpenFailureMessage(session: NormalizedExternalSession): string {
   return `${label} tabs could not be opened in Bento.`;
 }
 
+function cancellationError(): ExternalMergeError {
+  return new ExternalMergeError('cancelled', CANCELLED_MESSAGE);
+}
+
+function isCancelled(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (isCancelled(signal)) throw cancellationError();
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const handle = setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -261,6 +278,7 @@ async function createImportedTab(
 export async function executeExternalMerge(
   session: NormalizedExternalSession,
   ctx: HandlerContext,
+  options: ExecuteExternalMergeOptions = {},
 ): Promise<ExternalMergeSummary> {
   const summary: ExternalMergeSummary = {
     sourceId: session.sourceId,
@@ -274,24 +292,39 @@ export async function executeExternalMerge(
   };
 
   const seenUrls = await existingNormalizedUrls(ctx);
+  throwIfCancelled(options.signal);
   const existingNames = new Set(
     ctx.workspaces.snapshot().workspaces.map((workspace) => workspace.name),
   );
   const plans = buildPlans(session, existingNames, seenUrls, summary);
+  throwIfCancelled(options.signal);
   if (plans.length === 0) {
     throw new ExternalMergeError('no-importable-tabs', noImportableTabsMessage(session, summary));
   }
   const importedWorkspaceIds: string[] = [];
   let firstFocusableTabId: number | null = null;
   let firstCreatedTabId: number | null = null;
+  let cancelRequested = false;
 
-  for (const plan of plans) {
+  for (let planIndex = 0; planIndex < plans.length; planIndex++) {
+    const plan = plans[planIndex]!;
+    if (isCancelled(options.signal)) {
+      cancelRequested = true;
+      break;
+    }
+
     const workspace = ctx.workspaces.create({ name: plan.workspaceName }, ctx.sourceWindowId, {
       activate: false,
     });
 
     const createdTabs: CreatedTab[] = [];
-    for (const tab of plan.tabs) {
+    for (let tabIndex = 0; tabIndex < plan.tabs.length; tabIndex++) {
+      if (isCancelled(options.signal)) {
+        cancelRequested = true;
+        break;
+      }
+
+      const tab = plan.tabs[tabIndex]!;
       try {
         const tabId = await createImportedTab(ctx, workspace, tab);
         if (tabId === null) {
@@ -307,10 +340,16 @@ export async function executeExternalMerge(
         summary.failedTabs++;
         console.warn('[bento-tools] externalMerge: tabs.create failed:', err);
       }
+
+      if (tabIndex < plan.tabs.length - 1 && isCancelled(options.signal)) {
+        cancelRequested = true;
+        break;
+      }
     }
 
     if (createdTabs.length === 0) {
       ctx.workspaces.delete(workspace.id);
+      if (cancelRequested) break;
       continue;
     }
 
@@ -327,11 +366,27 @@ export async function executeExternalMerge(
         workspaceId: workspace.id,
         name: group.name,
       });
-      summary.foldersCreated++;
+      let assignedMembers = 0;
       for (const member of members) {
-        await ctx.tabs.setFolder(member.tabId, folder.id);
+        const assigned = await ctx.tabs.assignFolderEagerly(member.tabId, folder.id);
+        if (assigned) assignedMembers++;
+      }
+      if (assignedMembers > 0) {
+        summary.foldersCreated++;
+      } else {
+        ctx.tabFolders.delete(folder.id);
       }
     }
+
+    if (cancelRequested) break;
+    if (planIndex < plans.length - 1 && isCancelled(options.signal)) {
+      cancelRequested = true;
+      break;
+    }
+  }
+
+  if (cancelRequested) {
+    throw cancellationError();
   }
 
   if (summary.tabsOpened === 0 && summary.failedTabs > 0) {

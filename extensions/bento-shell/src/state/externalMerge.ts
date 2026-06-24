@@ -28,6 +28,7 @@ interface ExternalMergeState {
   refreshSources: (dispatch: DispatchAction) => boolean;
   handleClose: () => void;
   startMerge: (sourceId: string, dispatch: DispatchAction) => boolean;
+  cancelMerge: (dispatch: DispatchAction) => boolean;
   applySources: (
     event: { requestId: string; windowId: number | null; sources: ExternalMergeSource[] },
     currentWindowId: number | null,
@@ -129,6 +130,13 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
       error: null,
     });
     dispatch({ type: 'externalMerge/merge', sourceId, operationId });
+    return true;
+  },
+
+  cancelMerge: (dispatch) => {
+    const operationId = get().activeOperationId;
+    if (!operationId) return false;
+    dispatch({ type: 'externalMerge/cancel', operationId });
     return true;
   },
 

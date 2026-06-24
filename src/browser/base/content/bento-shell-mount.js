@@ -2444,6 +2444,10 @@
     setFrameSrc('bento-palette-frame', '/dist/palette.html');
   }
 
+  function setBentoWorkspacePaletteSrc() {
+    setFrameSrc('bento-workspace-palette-frame', '/dist/workspace-palette.html');
+  }
+
   function setBentoMergePaletteSrc() {
     setFrameSrc('bento-merge-palette-frame', '/dist/merge-palette.html');
   }
@@ -2636,6 +2640,12 @@
   });
 
   ensureOverlayHost({
+    hostId: 'bento-workspace-palette-host',
+    frameId: 'bento-workspace-palette-frame',
+    zIndex: 99997,
+  });
+
+  ensureOverlayHost({
     hostId: 'bento-edit-workspace-host',
     frameId: 'bento-edit-workspace-frame',
     zIndex: 99997,
@@ -2821,6 +2831,46 @@
     }
     if (isPaletteVisible(host)) hidePalette();
     else showPalette();
+  }
+
+  // ─── Workspace palette overlay ────────────────────────────────────────
+  const WORKSPACE_PALETTE_TRANSITION_MS = 180;
+
+  function isWorkspacePaletteVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  function showWorkspacePalette() {
+    const paletteHost = document.getElementById('bento-palette-host');
+    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+    const host = document.getElementById('bento-workspace-palette-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showWorkspacePalette: host missing');
+      return;
+    }
+    showOverlayToolbarScrim('workspace-palette');
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    host.style.opacity = '1';
+    const frame = document.getElementById('bento-workspace-palette-frame');
+    setTimeout(() => frame?.focus(), 0);
+  }
+
+  function hideWorkspacePalette() {
+    const host = document.getElementById('bento-workspace-palette-host');
+    if (!host) {
+      hideOverlayToolbarScrim('workspace-palette');
+      return;
+    }
+    hideOverlayToolbarScrim('workspace-palette');
+    host.style.opacity = '0';
+    setTimeout(() => {
+      if (host.style.opacity === '0') {
+        host.style.display = 'none';
+        host.setAttribute('hidden', 'true');
+      }
+    }, WORKSPACE_PALETTE_TRANSITION_MS);
   }
 
   const MERGE_PALETTE_TRANSITION_MS = 180;
@@ -3667,6 +3717,8 @@
   // changes — same value twice would be silent.
   const PALETTE_OPEN_PREFIX = 'BENTO_OPEN_PALETTE';
   const PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_PALETTE';
+  const WORKSPACE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_PALETTE';
+  const WORKSPACE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_PALETTE';
   const MERGE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_MERGE_PALETTE';
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
@@ -15772,6 +15824,21 @@
       }, 200);
     }
 
+    const workspacePaletteFrame = document.getElementById('bento-workspace-palette-frame');
+    if (workspacePaletteFrame) {
+      let lastSeenWorkspacePaletteTitle = '';
+      setInterval(() => {
+        const title = workspacePaletteFrame.contentTitle || '';
+        if (title === lastSeenWorkspacePaletteTitle) return;
+        lastSeenWorkspacePaletteTitle = title;
+        if (title.startsWith(WORKSPACE_PALETTE_CLOSE_PREFIX)) {
+          hideWorkspacePalette();
+        } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+          showConfirm();
+        }
+      }, 200);
+    }
+
     const addrbarFrame = document.getElementById('bento-addrbar-frame');
     if (addrbarFrame) {
       let lastSeenAddrbarTitle = '';
@@ -15897,6 +15964,9 @@
           // destructive-confirm modal. Same swap as edit above.
           hideWorkspaceSwitcher();
           showConfirm();
+        } else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) {
+          hideWorkspaceSwitcher();
+          showWorkspacePalette();
         }
       }, 200);
     }
@@ -15932,6 +16002,7 @@
         if (title !== lastSeenShellTitle) {
           lastSeenShellTitle = title;
           if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
+          else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
           else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
           else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
@@ -15962,7 +16033,8 @@
       (e) => {
         if (e.key !== 'Escape') return;
         // Stack precedence (top = highest): confirm > edit-workspace >
-        // welcome > workspace-switcher > palette. Welcome is mandatory
+        // workspace palette > welcome > workspace-switcher > palette.
+        // Welcome is mandatory
         // onboarding: consume Esc there without hiding it. Other overlays
         // keep their normal Esc dismissal.
         const confirmHost = document.getElementById('bento-confirm-host');
@@ -15977,6 +16049,13 @@
           e.preventDefault();
           e.stopPropagation();
           hideEditWorkspace();
+          return;
+        }
+        const workspacePaletteHost = document.getElementById('bento-workspace-palette-host');
+        if (workspacePaletteHost && isWorkspacePaletteVisible(workspacePaletteHost)) {
+          e.preventDefault();
+          e.stopPropagation();
+          hideWorkspacePalette();
           return;
         }
         const embeddedImportHost = document.getElementById('bento-embedded-import-host');
@@ -16329,6 +16408,7 @@
         const ids = [
           'bento-shell-frame',
           'bento-palette-frame',
+          'bento-workspace-palette-frame',
           'bento-merge-palette-frame',
           'bento-addrbar-frame',
           'bento-confirm-frame',
@@ -16348,6 +16428,7 @@
             frame.removeAttribute('src');
             if (id === 'bento-shell-frame') setBentoShellSrc();
             else if (id === 'bento-palette-frame') setBentoPaletteSrc();
+            else if (id === 'bento-workspace-palette-frame') setBentoWorkspacePaletteSrc();
             else if (id === 'bento-merge-palette-frame') setBentoMergePaletteSrc();
             else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
@@ -16370,6 +16451,7 @@
 
   setBentoShellSrc();
   setBentoPaletteSrc();
+  setBentoWorkspacePaletteSrc();
   setBentoMergePaletteSrc();
   setBentoAddrbarSrc();
   setBentoConfirmSrc();

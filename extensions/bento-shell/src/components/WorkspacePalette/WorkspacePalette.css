@@ -1,0 +1,102 @@
+/* Layer-2 component: WorkspacePalette. Uses Tale UI CommandPalette visuals
+ * with inline workspace editing controls. */
+
+.tale-command-palette__popup.bento-workspace-palette__popup {
+  width: min(var(--bento-workspace-palette-width), var(--bento-workspace-palette-max-inline));
+  height: min(var(--bento-workspace-palette-height), var(--bento-workspace-palette-max-block));
+}
+
+.tale-command-palette__dialog.bento-workspace-palette__dialog,
+.tale-command-palette__content.bento-workspace-palette__content {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tale-column.bento-workspace-palette__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-xs);
+}
+
+.tale-row.bento-workspace-palette__row,
+.tale-row.bento-workspace-palette__heading-row {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--bento-workspace-palette-icon-field-width)
+    minmax(var(--bento-workspace-palette-theme-picker-min-width), auto)
+    auto
+    auto;
+  min-width: var(--bento-workspace-palette-row-min-width);
+  align-items: center;
+}
+
+.tale-row.bento-workspace-palette__row {
+  padding: var(--space-xs);
+  background-color: var(--neutral-10);
+  border: 1px solid var(--neutral-20);
+  border-radius: var(--radius-s);
+}
+
+.tale-row.bento-workspace-palette__name-cell {
+  min-width: 0;
+}
+
+.bento-workspace-palette__name-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bento-workspace-palette__icon-field {
+  width: var(--bento-workspace-palette-icon-field-width);
+}
+
+.bento-workspace-palette__field-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.bento-workspace-palette__icon-input {
+  text-align: center;
+}
+
+.bento-workspace-palette__theme-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  min-width: var(--bento-workspace-palette-theme-picker-min-width);
+}
+
+.tale-command-palette__popup.bento-workspace-palette__popup .bento-workspace-palette__footer {
+  align-items: center;
+}
+
+.bento-workspace-palette__footer-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bento-workspace-palette__new-button {
+  flex: 0 0 auto;
+}
+
+@layer bento.components {
+  .bento-workspace-palette__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .bento-workspace-palette__heading-row {
+    padding-inline: var(--space-xs);
+  }
+
+  .bento-workspace-palette__name-cell {
+    min-width: 0;
+  }
+}

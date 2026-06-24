@@ -1039,4 +1039,50 @@ describe('protocol handler external merge', () => {
       });
     });
   });
+
+  it('cancels the active external merge operation', async () => {
+    let resolveSnapshot!: (value: unknown) => void;
+    const snapshotPromise = new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    });
+    vi.stubGlobal('browser', {
+      bentoExternalSessions: {
+        readSnapshot: vi.fn(() => snapshotPromise),
+      },
+      tabs: {
+        query: vi.fn(async () => []),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const ctx = createCloseContext({
+      send: vi.fn(),
+      sourceWindowId: 5,
+    });
+
+    handle({ type: 'externalMerge/merge', sourceId: 'source-1', operationId: 'op-1' }, ctx);
+    handle({ type: 'externalMerge/cancel', operationId: 'op-1' }, ctx);
+
+    expect(ctx.send).toHaveBeenCalledWith({
+      type: 'externalMerge/error',
+      operationId: 'op-1',
+      windowId: 5,
+      code: 'cancelled',
+      message: 'Browser session merge was cancelled.',
+    });
+
+    resolveSnapshot({
+      sourceId: 'source-1',
+      kind: 'firefox',
+      browserName: 'Firefox',
+      profileName: 'Default',
+      lastModified: 1,
+      capturedAt: 1,
+      format: 'firefox-json',
+      json: JSON.stringify({ windows: [] }),
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 });

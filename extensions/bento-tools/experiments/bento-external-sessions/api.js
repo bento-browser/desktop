@@ -251,12 +251,64 @@
         name: space?.name,
       })),
       groups: asArray(data?.groups).map((group, index) => ({
-        id: group?.id ?? group?.groupId ?? String(index + 1),
+        id:
+          group?.id ??
+          group?.groupId ??
+          group?.tabGroupId ??
+          group?.folderId ??
+          group?.uuid ??
+          String(index + 1),
         groupId: group?.groupId,
+        tabGroupId: group?.tabGroupId,
+        folderId: group?.folderId,
+        uuid: group?.uuid,
         name: group?.name,
         title: group?.title,
+        label: group?.label,
         index: group?.index ?? index,
         collapsed: group?.collapsed,
+      })),
+      tabGroups: asArray(data?.tabGroups).map((group, index) => ({
+        id:
+          group?.id ??
+          group?.groupId ??
+          group?.tabGroupId ??
+          group?.folderId ??
+          group?.uuid ??
+          String(index + 1),
+        groupId: group?.groupId,
+        tabGroupId: group?.tabGroupId,
+        folderId: group?.folderId,
+        uuid: group?.uuid,
+        name: group?.name,
+        title: group?.title,
+        label: group?.label,
+        index: group?.index ?? index,
+        collapsed: group?.collapsed,
+      })),
+      folders: asArray(data?.folders).map((folder, index) => ({
+        id: folder?.id ?? folder?.folderId ?? folder?.groupId ?? folder?.uuid ?? String(index + 1),
+        folderId: folder?.folderId,
+        groupId: folder?.groupId,
+        tabGroupId: folder?.tabGroupId,
+        uuid: folder?.uuid,
+        name: folder?.name,
+        title: folder?.title,
+        label: folder?.label,
+        index: folder?.index ?? index,
+        collapsed: folder?.collapsed,
+      })),
+      tabFolders: asArray(data?.tabFolders).map((folder, index) => ({
+        id: folder?.id ?? folder?.folderId ?? folder?.groupId ?? folder?.uuid ?? String(index + 1),
+        folderId: folder?.folderId,
+        groupId: folder?.groupId,
+        tabGroupId: folder?.tabGroupId,
+        uuid: folder?.uuid,
+        name: folder?.name,
+        title: folder?.title,
+        label: folder?.label,
+        index: folder?.index ?? index,
+        collapsed: folder?.collapsed,
       })),
       tabs: asArray(data?.tabs).map((tab) => ({
         entries: [compactEntry(selectedEntry(tab))].filter(Boolean),
@@ -264,7 +316,14 @@
         hidden: tab?.hidden,
         pinned: tab?.pinned,
         groupId: tab?.groupId,
+        tabGroupId: tab?.tabGroupId,
         group: tab?.group,
+        folderId: tab?.folderId,
+        folder: tab?.folder,
+        zenFolderId: tab?.zenFolderId,
+        zenFolder: tab?.zenFolder,
+        zenTabFolderId: tab?.zenTabFolderId,
+        zenTabFolder: tab?.zenTabFolder,
         zenWorkspace: tab?.zenWorkspace,
         zenEssential: tab?.zenEssential,
         _zenIsActiveTab: tab?._zenIsActiveTab,
@@ -272,6 +331,17 @@
         isPrivate: tab?.isPrivate,
         private: tab?.private,
         incognito: tab?.incognito,
+        extData:
+          tab?.extData && typeof tab.extData === 'object'
+            ? {
+                private: tab.extData.private,
+                tabGroupId: tab.extData.tabGroupId,
+                groupId: tab.extData.groupId,
+                folderId: tab.extData.folderId,
+                zenFolderId: tab.extData.zenFolderId,
+                zenTabFolderId: tab.extData.zenTabFolderId,
+              }
+            : undefined,
       })),
     };
   }

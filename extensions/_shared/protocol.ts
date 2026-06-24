@@ -592,7 +592,8 @@ export type Action =
   /** Delete a stored auto-backup by id. */
   | { type: 'backup/delete'; backupId: string }
   | { type: 'externalMerge/requestSources'; requestId: string }
-  | { type: 'externalMerge/merge'; sourceId: string; operationId: string };
+  | { type: 'externalMerge/merge'; sourceId: string; operationId: string }
+  | { type: 'externalMerge/cancel'; operationId: string };
 
 /** One entry in the "Saved panels" bookmark folder. `id` is the Firefox
  * bookmark id; `title` and `url` come straight from browser.bookmarks. */
@@ -694,6 +695,7 @@ export interface ExternalMergeSummary {
 
 export type ExternalMergeErrorCode =
   | 'busy'
+  | 'cancelled'
   | 'unreadable'
   | 'unsupported-session'
   | 'unknown-source'

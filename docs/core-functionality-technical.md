@@ -302,6 +302,13 @@ Shell-side workspace state is mirrored in
 `extensions/bento-shell/src/state/workspaces.ts`. Use
 `selectActiveIdForWindow` or `useActiveWorkspaceIdForWindow`; do not assume the
 global fallback is the active workspace for every window.
+Single-workspace editing uses `edit-workspace.html`; all-workspace management
+uses `workspace-palette.html`, opened from the workspace switcher through the
+`useWorkspacePalette` title sentinel. The workspace palette is a
+chrome-mounted `CommandPalette` frame that reads `useWorkspacesStore`,
+dispatches `workspace/update`, `workspace/activate`, `workspace/create`, and
+`workspace/delete`, and keeps non-empty delete confirmation in the normal
+confirm overlay above the still-mounted manager.
 
 Sidebar tab multi-selection lives in
 `extensions/bento-shell/src/components/TabList/TabList.tsx`. Selection is UI
@@ -609,10 +616,11 @@ uses (`--modal-backdrop-bg: var(--scrim)`), so the toolbar dim matches the
 content dim exactly. `showPopover()` / `hidePopover()` control top-layer
 membership; opacity drives the fade; a `resize` listener keeps the height
 aligned. Ownership is reference-counted by overlay id (`palette`, `confirm`,
-`edit-workspace`, `welcome`) so a stacked modal can close without removing the
-toolbar scrim that another still-visible modal needs. The floating address bar
-does not own this toolbar scrim; its translucent palette leaves the native
-toolbar visible and only blurs the content area behind the palette bounds.
+`edit-workspace`, `workspace-palette`, `welcome`) so a stacked modal can close
+without removing the toolbar scrim that another still-visible modal needs. The
+floating address bar does not own this toolbar scrim; its translucent palette
+leaves the native toolbar visible and only blurs the content area behind the
+palette bounds.
 
 Why a popover and nothing else works — the critical pitfall: `#urlbar` is
 declared with `popover="manual"` (navigator-toolbox.inc.xhtml), so the megabar
@@ -708,9 +716,16 @@ React mount is not the refresh boundary. The palette search row also exposes a
 refresh button that dispatches a new `externalMerge/requestSources` request
 through the same store path while keeping the current source rows visible until
 the replacement response arrives; refresh is disabled while a merge operation is
-active. While `activeOperationId` is set, the shell renders a spinner status row
-inside the command palette naming the source being imported, in addition to
-disabling the source rows and footer refresh affordance.
+active. While `activeOperationId` is set, the shell renders a Tale UI
+indeterminate `ProgressBar` loader inside the command palette naming the source
+being imported, in addition to disabling the source rows and footer refresh
+affordance. The loader row includes a Cancel button that dispatches
+`externalMerge/cancel` for the active `operationId`; the footer exposes a
+visible Close button that hides the palette without cancelling an active merge.
+Source rows use `closeOnSelect={false}`, the `useCommandPalette` hook is also
+configured with `closeOnSelect: false`, and merge completion does not start an
+auto-close timer; only the Close button, backdrop dismissal, or chrome close
+lifecycle should hide the palette.
 
 `extensions/bento-tools/experiments/bento-external-sessions/` is the privileged
 source reader. It discovers Firefox profiles from the Mozilla Firefox
@@ -751,15 +766,18 @@ a browser-neutral shape of source metadata, optional native workspaces, windows,
 tabs, and tab groups. Firefox normalization imports only open `windows`, selects
 only each tab's current `entries[index - 1]` entry, and excludes private/hidden
 tabs and windows. Zen normalization maps spaces to native workspaces and applies
-the same live visible-tab filtering. Chromium normalization uses a dedicated
-persisted-session parser. For modern `SNSS` session files, it reconstructs live
-tabs from Chromium session commands, using `SetTabWindow`, tab/window close,
-selected-navigation, and navigation-update records; it must not count every URL
-string in `Session_*` or `Tabs_*` files, because those files also contain
-history entries, stale rotated records, and closed tab data. When grouped
-Chromium metadata is detected but cannot be safely mapped, the source is
-reported as an unsupported session rather than silently importing grouped tabs
-as ungrouped.
+the same live visible-tab filtering. Zen tab folder membership can appear as
+Firefox-style `extData.tabGroupId`, object-shaped `group` / `folder` fields,
+numeric ids, or Zen-specific folder fields, so the reader must preserve those
+fields and the parser must normalize them to the same string id used by the
+group definition. Chromium normalization uses a dedicated persisted-session
+parser. For modern `SNSS` session files, it reconstructs live tabs from Chromium
+session commands, using `SetTabWindow`, tab/window close, selected-navigation,
+and navigation-update records; it must not count every URL string in
+`Session_*` or `Tabs_*` files, because those files also contain history entries,
+stale rotated records, and closed tab data. When grouped Chromium metadata is
+detected but cannot be safely mapped, the source is reported as an unsupported
+session rather than silently importing grouped tabs as ungrouped.
 Confirmed Chrome tab-count regression fix, 2026-06-24: if Chrome shows a source
 such as "1 window - 164 tabs" while the visible Chrome profile has only a small
 number of live tabs, the parser is probably counting raw URL strings from
@@ -815,9 +833,13 @@ persisted, the created tab is removed and the temporary workspace is discarded
 when no other tabs imported. This keeps imported workspaces from relaunching as
 empty workspaces containing only a fallback new tab. Source tab groups become
 `TabFolderStore` folders only for non-pinned imported members; pinned group
-members stay pinned and un-foldered. At the end, the first imported workspace
-activates in the requesting window and the first non-pinned imported tab
-receives focus, falling back to the first imported tab.
+members stay pinned and un-foldered. Folder assignment uses
+`TabRegistry.assignFolderEagerly()` rather than `setFolder()` because
+`browser.tabs.create()` can resolve before `tabs.onCreated` has populated the
+registry. If no member can persist the folder marker, the empty imported folder
+is deleted. At the end, the first imported workspace activates in the requesting
+window and the first non-pinned imported tab receives focus, falling back to the
+first imported tab.
 Confirmed restart-persistence regression fix, 2026-06-24: if workspaces created
 by manual Chrome/Firefox/Zen merge survive a dev relaunch but their imported
 tabs disappear and each workspace contains only a new tab, the merge executor is
@@ -825,6 +847,13 @@ probably reporting success before `bento.workspaceId` session values are
 durable. Keep `TabRegistry.assignWorkspaceEagerly()` returning an awaitable
 persistence result and keep the executor's wait before incrementing
 `tabsOpened`.
+Cancellation is cooperative and operation-scoped. `protocol-handler.ts` owns the
+single in-flight `AbortController`, reports `ExternalMergeError("cancelled",
+...)` immediately when `externalMerge/cancel` matches the active operation, and
+passes the signal into `executeExternalMerge()`. The executor checks that signal
+before creating new workspaces and between tab creations. It does not roll back
+tabs already opened and assigned to a workspace; cancellation stops remaining
+work and avoids activating/focusing the partial import as a completed merge.
 
 All merge protocol events carry correlation fields. Source-list replies echo
 `requestId` and `windowId`; merge lifecycle replies echo `operationId`,
@@ -1254,8 +1283,9 @@ Load-bearing details:
   `vbox` and `<browser>` backgrounds. Static or theme-owned overlay hosts must
   also be listed as transparent in `bento-chrome-theme.css`.
 - Chrome overlay HTML entries, including `workspace-switcher.html`,
-  `palette.html`, `edit-workspace.html`, `confirm.html`, `welcome.html`, and
-  `panel-trailer.html`, must force `html`, `body`, and `#root` to
+  `workspace-palette.html`, `palette.html`, `edit-workspace.html`,
+  `confirm.html`, `welcome.html`, and `panel-trailer.html`, must force `html`,
+  `body`, and `#root` to
   `background: transparent !important`. The shell build uses
   `cssCodeSplit: false`, so unrelated entry CSS such as `panel-newtab.css` can
   arrive later in the shared `style.css` bundle and otherwise override plain

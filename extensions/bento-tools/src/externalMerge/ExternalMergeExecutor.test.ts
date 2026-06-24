@@ -25,7 +25,7 @@ describe('executeExternalMerge', () => {
       createdAt: Date.now(),
     }));
     const assignWorkspaceEagerly = vi.fn(async () => true);
-    const setFolder = vi.fn().mockResolvedValue(undefined);
+    const assignFolderEagerly = vi.fn().mockResolvedValue(true);
     const folderCreate = vi.fn(() => ({
       id: 'folder-1',
       workspaceId: 'imported-workspace',
@@ -39,7 +39,7 @@ describe('executeExternalMerge', () => {
       tabs: {
         snapshot: vi.fn(() => [{ id: 1, workspaceId: 'ws-existing' }]),
         assignWorkspaceEagerly,
-        setFolder,
+        assignFolderEagerly,
         rename: vi.fn(),
       },
       workspaces: {
@@ -126,8 +126,8 @@ describe('executeExternalMerge', () => {
       workspaceId: 'imported-workspace',
       name: 'Research',
     });
-    expect(setFolder).toHaveBeenCalledTimes(1);
-    expect(setFolder).toHaveBeenCalledWith(101, 'folder-1');
+    expect(assignFolderEagerly).toHaveBeenCalledTimes(1);
+    expect(assignFolderEagerly).toHaveBeenCalledWith(101, 'folder-1');
     expect(activate).toHaveBeenCalledWith('imported-workspace', 7);
     expect(browser.tabs.update).toHaveBeenCalledWith(101, { active: true });
     expect(summary).toMatchObject({
@@ -138,6 +138,94 @@ describe('executeExternalMerge', () => {
       skippedDuplicates: 1,
       skippedUnsupportedUrls: 1,
       failedTabs: 0,
+    });
+  });
+
+  it('discards imported folders when no member can be assigned to the folder', async () => {
+    vi.stubGlobal('browser', {
+      tabs: {
+        query: vi.fn(async () => []),
+        create: vi.fn(async () => ({ id: 100 })),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const deleteFolder = vi.fn();
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(async () => true),
+        assignFolderEagerly: vi.fn(async () => false),
+        rename: vi.fn(),
+      },
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: vi.fn(() => ({
+          id: 'imported-workspace',
+          name: 'Zen Browser: Space A',
+          createdAt: 1,
+        })),
+        activate: vi.fn(() => 'activated'),
+      },
+      panels: {
+        getPanels: vi.fn(() => []),
+      },
+      tabFolders: {
+        create: vi.fn(() => ({
+          id: 'folder-1',
+          workspaceId: 'imported-workspace',
+          name: 'Research',
+          order: 0,
+          collapsed: false,
+          createdAt: 1,
+        })),
+        delete: deleteFolder,
+      },
+      sourceWindowId: 7,
+    } as unknown as HandlerContext;
+
+    const summary = await executeExternalMerge(
+      {
+        sourceId: 'zen-default',
+        kind: 'zen',
+        browserName: 'Zen Browser',
+        profileName: 'Default',
+        capturedAt: 1,
+        lastModified: 1,
+        workspaces: [{ id: 'space-a', name: 'Space A', windowIds: ['zen-window-space-a'] }],
+        windows: [
+          {
+            id: 'zen-window-space-a',
+            workspaceId: 'space-a',
+            active: true,
+            groups: [{ id: 'group-1', name: 'Research', index: 0 }],
+            tabs: [
+              {
+                id: 'tab-1',
+                url: 'https://research.example/',
+                title: 'Research',
+                index: 0,
+                active: true,
+                pinned: false,
+                groupId: 'group-1',
+              },
+            ],
+          },
+        ],
+      },
+      ctx,
+    );
+
+    expect(ctx.tabFolders.create).toHaveBeenCalledWith({
+      id: expect.any(String),
+      workspaceId: 'imported-workspace',
+      name: 'Research',
+    });
+    expect(ctx.tabs.assignFolderEagerly).toHaveBeenCalledWith(100, 'folder-1');
+    expect(deleteFolder).toHaveBeenCalledWith('folder-1');
+    expect(summary).toMatchObject({
+      tabsOpened: 1,
+      foldersCreated: 0,
     });
   });
 
@@ -302,6 +390,97 @@ describe('executeExternalMerge', () => {
 
     expect(browser.tabs.remove).toHaveBeenCalledWith(100);
     expect(deleteWorkspace).toHaveBeenCalledWith('imported-workspace');
+    expect(ctx.workspaces.activate).not.toHaveBeenCalled();
+  });
+
+  it('stops importing after cancellation without rolling back already-created tabs', async () => {
+    const controller = new AbortController();
+    let nextTabId = 100;
+    vi.stubGlobal('browser', {
+      tabs: {
+        query: vi.fn(async () => []),
+        create: vi.fn(async () => {
+          const id = nextTabId++;
+          controller.abort();
+          return { id };
+        }),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const deleteWorkspace = vi.fn();
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(async () => true),
+        setFolder: vi.fn(),
+        rename: vi.fn(),
+      },
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: vi.fn(() => ({
+          id: 'imported-workspace',
+          name: 'Chrome: Default Window 1',
+          createdAt: 1,
+        })),
+        delete: deleteWorkspace,
+        activate: vi.fn(() => 'activated'),
+      },
+      panels: {
+        getPanels: vi.fn(() => []),
+      },
+      tabFolders: {
+        create: vi.fn(),
+      },
+      sourceWindowId: 7,
+    } as unknown as HandlerContext;
+
+    await expect(
+      executeExternalMerge(
+        {
+          sourceId: 'chrome-default',
+          kind: 'chrome',
+          browserName: 'Chrome',
+          profileName: 'Default',
+          capturedAt: 1,
+          lastModified: 1,
+          windows: [
+            {
+              id: 'window-1',
+              active: true,
+              groups: [],
+              tabs: [
+                {
+                  id: 'tab-1',
+                  url: 'https://first.example/',
+                  title: 'First',
+                  index: 0,
+                  active: false,
+                  pinned: false,
+                },
+                {
+                  id: 'tab-2',
+                  url: 'https://second.example/',
+                  title: 'Second',
+                  index: 1,
+                  active: true,
+                  pinned: false,
+                },
+              ],
+            },
+          ],
+        },
+        ctx,
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({
+      code: 'cancelled',
+      message: 'Browser session merge was cancelled.',
+    });
+
+    expect(browser.tabs.create).toHaveBeenCalledTimes(1);
+    expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(100, 'imported-workspace');
+    expect(deleteWorkspace).not.toHaveBeenCalled();
     expect(ctx.workspaces.activate).not.toHaveBeenCalled();
   });
 

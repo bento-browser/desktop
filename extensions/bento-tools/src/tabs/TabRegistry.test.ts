@@ -49,4 +49,28 @@ describe('TabRegistry closing markers', () => {
       warn.mockRestore();
     }
   });
+
+  it('reports whether eager folder assignment persisted to the session store', async () => {
+    const tabs = new TabRegistry();
+
+    await expect(tabs.assignFolderEagerly(456, 'folder-imported')).resolves.toBe(true);
+
+    expect(browser.sessions.setTabValue).toHaveBeenCalledWith(
+      456,
+      'bento.folderId',
+      'folder-imported',
+    );
+  });
+
+  it('returns false when eager folder assignment cannot persist', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.mocked(browser.sessions.setTabValue).mockRejectedValueOnce(new Error('write failed'));
+    const tabs = new TabRegistry();
+
+    try {
+      await expect(tabs.assignFolderEagerly(456, 'folder-imported')).resolves.toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

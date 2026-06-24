@@ -38,9 +38,16 @@ import {
 import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
 import { loadExternalMergeSources } from '../externalMerge/loadExternalMergeSources';
 import { normalizeExternalSession } from '../externalMerge/normalizeExternalSession';
-import { externalMergeErrorCode, type ExternalSessionSnapshot } from '../externalMerge/sourceTypes';
+import {
+  ExternalMergeError,
+  externalMergeErrorCode,
+  type ExternalSessionSnapshot,
+} from '../externalMerge/sourceTypes';
 
 let externalMergeInFlightOperationId: string | null = null;
+let externalMergeAbortController: AbortController | null = null;
+let externalMergeCancelSentOperationId: string | null = null;
+const EXTERNAL_MERGE_CANCELLED_MESSAGE = 'Browser session merge was cancelled.';
 
 async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
   try {
@@ -67,6 +74,14 @@ function externalMergeCode(err: unknown): ExternalMergeErrorCode | undefined {
   if (message.includes('unreadable')) return 'unreadable';
   if (message.includes('unsupported')) return 'unsupported-session';
   return undefined;
+}
+
+function externalMergeCancellationError(): ExternalMergeError {
+  return new ExternalMergeError('cancelled', EXTERNAL_MERGE_CANCELLED_MESSAGE);
+}
+
+function throwIfExternalMergeCancelled(signal: AbortSignal): void {
+  if (signal.aborted) throw externalMergeCancellationError();
 }
 
 function getTabLoadUrl(tab: browser.tabs.Tab): string | null {
@@ -1602,6 +1617,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         return;
       }
       externalMergeInFlightOperationId = action.operationId;
+      externalMergeAbortController = new AbortController();
+      externalMergeCancelSentOperationId = null;
       ctx.send({
         type: 'externalMerge/started',
         operationId: action.operationId,
@@ -1609,12 +1626,18 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         sourceId: action.sourceId,
       });
       void (async () => {
+        const abortController = externalMergeAbortController!;
         try {
           const snapshot = (await browser.bentoExternalSessions.readSnapshot(
             action.sourceId,
           )) as ExternalSessionSnapshot;
+          throwIfExternalMergeCancelled(abortController.signal);
           const session = normalizeExternalSession(snapshot);
-          const summary = await executeExternalMerge(session, ctx);
+          throwIfExternalMergeCancelled(abortController.signal);
+          const summary = await executeExternalMerge(session, ctx, {
+            signal: abortController.signal,
+          });
+          throwIfExternalMergeCancelled(abortController.signal);
           ctx.send({
             type: 'externalMerge/complete',
             operationId: action.operationId,
@@ -1622,21 +1645,43 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             summary,
           });
         } catch (err) {
-          console.warn('[bento-tools] externalMerge/merge failed:', err);
-          ctx.send({
-            type: 'externalMerge/error',
-            operationId: action.operationId,
-            windowId: ctx.sourceWindowId,
-            sourceId: action.sourceId,
-            code: externalMergeCode(err),
-            message: externalMergeMessage(err),
-          });
+          const code = externalMergeCode(err);
+          const alreadySentCancel =
+            code === 'cancelled' && externalMergeCancelSentOperationId === action.operationId;
+          if (!alreadySentCancel) {
+            if (code !== 'cancelled') {
+              console.warn('[bento-tools] externalMerge/merge failed:', err);
+            }
+            ctx.send({
+              type: 'externalMerge/error',
+              operationId: action.operationId,
+              windowId: ctx.sourceWindowId,
+              sourceId: action.sourceId,
+              code,
+              message: externalMergeMessage(err),
+            });
+          }
         } finally {
           if (externalMergeInFlightOperationId === action.operationId) {
             externalMergeInFlightOperationId = null;
+            externalMergeAbortController = null;
+            externalMergeCancelSentOperationId = null;
           }
         }
       })();
+      return;
+    case 'externalMerge/cancel':
+      if (externalMergeInFlightOperationId !== action.operationId) return;
+      externalMergeAbortController?.abort();
+      if (externalMergeCancelSentOperationId === action.operationId) return;
+      externalMergeCancelSentOperationId = action.operationId;
+      ctx.send({
+        type: 'externalMerge/error',
+        operationId: action.operationId,
+        windowId: ctx.sourceWindowId,
+        code: 'cancelled',
+        message: EXTERNAL_MERGE_CANCELLED_MESSAGE,
+      });
       return;
     case 'backup/export':
       void (async () => {

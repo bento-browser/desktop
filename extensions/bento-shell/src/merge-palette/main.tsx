@@ -10,7 +10,7 @@ import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/spinner';
+import '@tale-ui/react-styles/progress-bar';
 import '@tale-ui/react-styles/command-palette';
 
 import '../theme/bento-tokens.css';

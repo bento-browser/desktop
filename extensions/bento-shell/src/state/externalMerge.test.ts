@@ -78,6 +78,21 @@ describe('external merge shell store', () => {
     expect(useExternalMergeStore.getState().activeSourceId).toBe('source-1');
   });
 
+  it('dispatches cancel for the active merge operation only', () => {
+    const dispatch = vi.fn();
+    expect(useExternalMergeStore.getState().cancelMerge(dispatch)).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+
+    expect(useExternalMergeStore.getState().startMerge('source-1', dispatch)).toBe(true);
+    const operationId = useExternalMergeStore.getState().activeOperationId!;
+
+    expect(useExternalMergeStore.getState().cancelMerge(dispatch)).toBe(true);
+    expect(dispatch).toHaveBeenLastCalledWith({
+      type: 'externalMerge/cancel',
+      operationId,
+    });
+  });
+
   it('refreshes sources without clearing visible rows and blocks refresh while merging', () => {
     const dispatch = vi.fn();
     const existingSource = {

@@ -89,6 +89,13 @@
     --bento-command-palette-height: 48rem;
     --bento-command-palette-max-inline: 90vw;
     --bento-command-palette-max-block: 80vh;
+    --bento-workspace-palette-width: 76rem;
+    --bento-workspace-palette-height: 56rem;
+    --bento-workspace-palette-max-inline: 94vw;
+    --bento-workspace-palette-max-block: 84vh;
+    --bento-workspace-palette-row-min-width: 68rem;
+    --bento-workspace-palette-icon-field-width: 6rem;
+    --bento-workspace-palette-theme-picker-min-width: 20rem;
     --bento-address-bar-width: 64rem;
     --bento-address-bar-height: 42rem;
     --bento-address-bar-max-inline: 92vw;
