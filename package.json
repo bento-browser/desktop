@@ -34,8 +34,8 @@
     "shell:ladle": "pnpm --filter @bento/shell ladle:serve",
     "tools:build": "pnpm --filter @bento/tools build",
     "ext:build": "pnpm run theme:sync && pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
-    "size": "pnpm run ext:build && size-limit",
-    "size:check": "size-limit",
+    "size": "pnpm run ext:build && pnpm run size:check",
+    "size:check": "node scripts/check-size-budgets.mjs",
     "theme:import": "node scripts/import-theme.mjs && node scripts/sync-theme-presets.mjs",
     "theme:sync": "node scripts/sync-theme-presets.mjs"
   },

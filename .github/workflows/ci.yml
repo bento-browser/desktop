@@ -104,9 +104,11 @@ jobs:
           BENTO_RELEASE: '1'
         run: pnpm run ext:build
 
-      - name: Size budget (size-limit)
-        # Fails the job if any bundle breaches the limits in .size-limit.json.
-        # Per §6.1 perf budgets in the implementation plan.
+      - name: Size budget
+        # Fails the job if any bundle breaches its graph-aware JS budget or
+        # direct file budget. JS entry budgets live in
+        # scripts/check-size-budgets.mjs; CSS/background budgets live in
+        # .size-limit.json.
         run: pnpm run size:check
 
   surfer-smoke:
