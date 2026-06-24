@@ -1,5 +1,14 @@
+From a62b622c33deb899322b0a6476f2768dfc269bb6 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:41 +1000
+Subject: [PATCH] Use Bento accent token for infobars
+
+---
+ toolkit/content/widgets/infobar.css | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
 diff --git a/toolkit/content/widgets/infobar.css b/toolkit/content/widgets/infobar.css
-index fa0bb5fca4..cc37c70640 100644
+index fa0bb5fca4a669981d5c22fcba137c874dea8241..cc37c706407b50d523d1d18695862fa9e2a40bb8 100644
 --- a/toolkit/content/widgets/infobar.css
 +++ b/toolkit/content/widgets/infobar.css
 @@ -58,7 +58,10 @@
@@ -14,3 +23,6 @@ index fa0bb5fca4..cc37c70640 100644
      }
    }
  }
+-- 
+2.50.1 (Apple Git-155)
+

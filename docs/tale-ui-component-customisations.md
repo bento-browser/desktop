@@ -131,6 +131,12 @@ Existing examples:
   surface, and its hover/focus/pressed/selected states use translucent
   `color-mix(..., transparent)` or `--bento-surface-*` layers rather than solid
   neutral/accent fills.
+- [MergePalette.css](../extensions/bento-shell/src/components/MergePalette/MergePalette.css)
+  uses a scoped unlayered `CommandPalette` override for the active import
+  overlay. The overlay is positioned inside the popup, covers the search,
+  source list, footer, and close control with an opaque token-backed surface,
+  and leaves only the in-progress `ProgressBar` plus Close and Cancel actions
+  visible.
 - [WorkspaceSwitcher.css](../extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.css)
   uses unlayered rules for Avatar, Menu popup, trigger label, and icon/text
   overrides that must beat Tale UI defaults.

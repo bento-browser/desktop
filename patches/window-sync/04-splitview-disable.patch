@@ -1,8 +1,19 @@
+From f30805617460947449072e143779fbf934f8d5fd Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:47 +1000
+Subject: [PATCH] Disable Firefox split view
+
+---
+ browser/base/content/nsContextMenu.sys.mjs          |  8 +++++---
+ browser/components/tabbrowser/content/tab.js        |  4 +++-
+ browser/components/tabbrowser/content/tabbrowser.js | 11 ++++++-----
+ 3 files changed, 14 insertions(+), 9 deletions(-)
+
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index 5ee0ee4246..acf18f8280 100644
+index b2eb53b7b2fc10e2c64cb0d217d876d0d890f4c3..391c38d57c4c956d08b4a7f88f03f2513b17ef2a 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -495,9 +495,11 @@ export class nsContextMenu {
+@@ -498,9 +498,11 @@ export class nsContextMenu {
      let showContainers =
        Services.prefs.getBoolPref("privacy.userContext.enabled") &&
        lazy.ContextualIdentityService.getPublicIdentities().length;
@@ -15,13 +26,13 @@ index 5ee0ee4246..acf18f8280 100644
 +    // link context menu's "Open in Split View" entry point.
 +    let showSplitViews = false;
      let currentTabInSplitView = !!window.gBrowser?.selectedTab?.splitview;
+     let showSmartWindow = lazy.AIWindow.isAIWindowEnabled();
      this.showItem("context-openlink", shouldShow && !isWindowPrivate);
-     this.showItem(
 diff --git a/browser/components/tabbrowser/content/tab.js b/browser/components/tabbrowser/content/tab.js
-index 2e02bad1a7..6c00aeb907 100644
+index 8f2ebf3a0bd4e2af01cf41024b16bd491e8ed961..2acf461892f3538aec8f624c791ea12782b37a72 100644
 --- a/browser/components/tabbrowser/content/tab.js
 +++ b/browser/components/tabbrowser/content/tab.js
-@@ -606,7 +606,9 @@
+@@ -604,7 +604,9 @@
            !event.target.classList.contains("tab-audio-button") &&
            !this.selected &&
            !gBrowser.selectedTab.hidden &&
@@ -33,10 +44,10 @@ index 2e02bad1a7..6c00aeb907 100644
            !gBrowser.selectedTab.splitview &&
            !this.pinned &&
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 2643e1a2aa..b7d12c8cde 100644
+index 0ce66ad8f24171bd8c48aa6552f31166a3c63057..88e31fecf179d13ac5a7c6b023cba17bd89dda61 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -10461,11 +10461,12 @@ var TabContextMenu = {
+@@ -10537,11 +10537,12 @@ var TabContextMenu = {
        contextEditNote.hidden = true;
      }
  
@@ -54,3 +65,6 @@ index 2643e1a2aa..b7d12c8cde 100644
      let contextMoveTabToNewSplitView = document.getElementById(
        "context_moveTabToSplitView"
      );
+-- 
+2.50.1 (Apple Git-155)
+

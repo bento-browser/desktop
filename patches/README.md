@@ -1,19 +1,35 @@
 # patches/
 
-Surgical patches applied to the Firefox source tree by Surfer, for changes
-that cannot be expressed via prefs, branding, or bundled extensions.
-Implemented in **Phase 4** of the project plan.
+Surgical Firefox patches applied by Surfer for changes that cannot be expressed
+via prefs, branding, or bundled extensions.
 
-Apply order:
-1. `core-ui/` — URL bar, toolbars, menu items
-2. `chrome-layout/` — window structure, panes, new containers
-3. `experiments/` — temporary or high-risk patches
+Patch files are generated from the repo-owned commit stack described by
+[`series.json`](./series.json). Keep the files under `patches/**/*.patch`:
+Surfer still consumes that compatibility surface directly with `git apply`.
 
-Patch format: `git format-patch` style files (`.patch`). Keep each patch small,
-single-feature, and well-named so it can be skipped or rebased independently.
+`series.json` is the source of truth for patch identity, subject, base Firefox
+version, base tree, and repository patch order. The manifest order must match
+Surfer's current `tiny-glob('**/*.patch', { cwd: 'patches' })` order; the helper
+checks this instead of relying on a documented folder order.
 
-Patches are re-validated and likely re-applied for every Firefox version bump
-([config/firefox-versions.json](../config/firefox-versions.json)).
+Patch format: mail-style `git format-patch` output containing `diff --git`
+sections. Surfer compatibility is validated by replaying the full manifest
+series sequentially on a clean Firefox base with Surfer-equivalent
+`git apply --ignore-space-change --ignore-whitespace --verbose` arguments.
+
+Primary commands:
+
+```sh
+pnpm run firefox:patches:check
+pnpm run firefox:patches:materialize
+pnpm run firefox:patches:rebase
+pnpm run firefox:patches:export
+```
+
+Patches are revalidated for every Firefox version bump
+([config/firefox-versions.json](../config/firefox-versions.json)). If the
+manifest base version does not match `surfer.json`, `pnpm run import` fails
+before mutating `engine/`.
 
 See [docs/firefox-patches.md](../docs/firefox-patches.md) for the full
 developer workflow, including adding a new patch and syncing to the latest

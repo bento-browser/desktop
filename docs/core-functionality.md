@@ -38,23 +38,32 @@ The sidebar footer also exposes a manual "Merge browser session" action. This
 is a runtime, additive, one-way merge from another browser profile's latest
 persisted session snapshot. Bento does not sync with or write to the external
 profile. It imports mergeable open tabs into new Bento workspaces, maps source
-tab groups or tab folders to Bento tab folders when the source format exposes them, preserves
-pinned tabs as pinned tabs, skips URLs already open in Bento, and activates the
-first imported workspace when the merge completes. Imported workspaces use
+tab groups or tab folders to Bento tab folders when the source format exposes
+them, creates those imported folders collapsed, preserves pinned tabs as pinned
+tabs, skips URLs already open in Bento, and activates the first imported
+workspace when the merge completes. Imported
+workspaces use
 Bento's normal restart persistence, so their tabs remain assigned to those
 workspaces after relaunch. If Bento finds a browser profile but cannot read or
 import its session snapshot, the profile remains in the merge picker as an
 unavailable row instead of disappearing, including when other browser sessions
 are mergeable. The merge picker includes a refresh button so the user can
-rescan browser session snapshots without closing and reopening the picker. If
-every tab from a selected source is already open in Bento, the picker reports
-that no new tabs were imported instead of silently doing nothing. While an
-import is running, the picker shows an in-progress loading row naming the source
-being imported with an indeterminate progress loader and a Cancel button.
+rescan browser session snapshots without closing and reopening the picker.
+Readable sources can be expanded to show importable spaces or windows. Each
+space/window starts with its tab preview collapsed; expanding it shows up to 10
+tab titles and URLs plus an "X more tabs" count, and it can be imported on its
+own instead of importing the whole browser session. If every tab from a selected
+source, space, or window is already open in Bento, the picker reports that no
+new tabs were imported instead of silently doing nothing. While an import is
+running, the picker covers the command palette with an opaque in-palette
+progress view naming the source being imported, an indeterminate loader, and a
+Cancel button. The progress view also has a Close button that hides the picker
+without cancelling the active import.
 Cancel stops the remaining import work without rolling back tabs that were
 already opened. Selecting a source does not close the picker; it stays open
-through progress, success, or error until the user dismisses it with the Close
-button, backdrop, or chrome close control.
+through progress, success, or error. During progress the in-palette Close and
+Cancel buttons are the visible actions. After progress completes, the user can
+dismiss the picker with the Close button, backdrop, or chrome close control.
 
 ## Core model
 
@@ -144,7 +153,7 @@ so the user can unmute them from the sidebar.
 When a side panel is playing audio, its panel header shows the same mute control
 after the refresh button and before the address field.
 When a workspace contains pinned regular tabs, the sidebar separates that group
-from the new-tab control and regular tabs with a divider instead of a text
+from the New menu and regular tabs with a divider instead of a text
 subheading.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
@@ -179,8 +188,8 @@ current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
 address field also opens the same floating address/search bar in current-tab
 mode instead of showing Firefox's native suggestion dropdown. Empty input shows
 recent history. It floats over the browser content without restyling Firefox's
-native address bar. Results include open normal tabs,
-open panels, history, bookmarks, and a final search/open row. Submitting a
+native address bar. Results include open normal tabs and panels from the active
+workspace, history, bookmarks, and a final search/open row. Submitting a
 current-tab search or URL uses Firefox's URL fixup and default search engine.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
 does not leave an empty tab behind. Results use the same command-palette row
@@ -341,7 +350,7 @@ The intended behavior is:
 - visible panel controls are keyboard reachable;
 - focused panels have clear visual state through a persistent ring and active
   header colour;
-- the sidebar's new-tab control remains reachable when the sidebar is collapsed;
+- the sidebar's New menu remains reachable when the sidebar is collapsed;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;
 - sidebar footer icon buttons show Tale UI tooltips on hover;

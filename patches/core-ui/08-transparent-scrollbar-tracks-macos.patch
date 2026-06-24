@@ -1,5 +1,14 @@
+From 18d9d8619875f872d6c850811dad63d3cbe7f105 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:38 +1000
+Subject: [PATCH] Use transparent scrollbar tracks on macOS
+
+---
+ widget/ScrollbarDrawingCocoa.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
 diff --git a/widget/ScrollbarDrawingCocoa.cpp b/widget/ScrollbarDrawingCocoa.cpp
-index f57d683a3d..ed77584ab5 100644
+index f0dff9276f9880034c800413c4afc2400136b35a..0d7d54bb0a7fe2a4857d7e7a1b548679a471f89a 100644
 --- a/widget/ScrollbarDrawingCocoa.cpp
 +++ b/widget/ScrollbarDrawingCocoa.cpp
 @@ -390,6 +390,10 @@ void ScrollbarDrawingCocoa::DoPaintScrollbar(
@@ -13,3 +22,6 @@ index f57d683a3d..ed77584ab5 100644
    // Paint our track.
    const auto color = ComputeScrollbarTrackColor(aFrame, aStyle, aColors);
    ThemeDrawing::FillRect(aPaintData, aRect, color);
+-- 
+2.50.1 (Apple Git-155)
+

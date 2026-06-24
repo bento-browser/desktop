@@ -1,7 +1,17 @@
+From 3a6af6cec7fd883f8e725e030a2b563cf20d86fa Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:37 +1000
+Subject: [PATCH] Reserve Firefox save page key for Bento
+
+---
+ browser/base/content/browser-sets.inc.xhtml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
 diff --git a/browser/base/content/browser-sets.inc.xhtml b/browser/base/content/browser-sets.inc.xhtml
+index 65ee617216d8a69f29b06fb48078f53a42bd9da7..da7c96db409ddb743afd6a405d03a1535335a213 100644
 --- a/browser/base/content/browser-sets.inc.xhtml
 +++ b/browser/base/content/browser-sets.inc.xhtml
-@@ -176,7 +176,7 @@
+@@ -179,7 +179,7 @@
           command="Tools:Downloads"/>
      <key id="key_openAddons" data-l10n-id="addons-shortcut" command="Tools:Addons" modifiers="accel,shift"/>
      <key id="openFileKb" data-l10n-id="file-open-shortcut" command="Browser:OpenFile"  modifiers="accel"/>
@@ -10,3 +20,6 @@ diff --git a/browser/base/content/browser-sets.inc.xhtml b/browser/base/content/
      <key id="printKb" data-l10n-id="print-shortcut" command="cmd_print"  modifiers="accel"/>
      <key id="key_close" data-l10n-id="close-shortcut" command="cmd_close" modifiers="accel" reserved="true"/>
      <key id="key_closeWindow" data-l10n-id="close-shortcut" command="cmd_closeWindow" modifiers="accel,shift" reserved="true"/>
+-- 
+2.50.1 (Apple Git-155)
+

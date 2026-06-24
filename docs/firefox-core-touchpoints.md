@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-23
+- Last updated: 2026-06-24
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -86,6 +86,8 @@ Use this shape for new or changed touchpoints:
   chrome window events, native `#urlbar-input` pointer/focus events,
   `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
+  chrome `<browser>.loadURI()` with system principals for Bento extension-frame
+  entries,
   `browsingContext.sessionHistory`, `SessionStore.getSessionHistory`,
   browser `gotoIndex()`,
   `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
@@ -105,8 +107,10 @@ Use this shape for new or changed touchpoints:
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
-  `plans/flat-panels-browser-verification-checklist.md`, verify sidebar context
-  menus still dispatch tab, folder, and workspace actions including moving a
+  `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
+  with no side panels clips page content inside the rounded main content frame
+  corners, verify sidebar context menus still dispatch tab, folder, and
+  workspace actions including moving a
   folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and
   `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
   handling, verify clicking into Firefox's native top address input opens the

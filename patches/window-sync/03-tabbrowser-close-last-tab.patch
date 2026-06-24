@@ -1,8 +1,17 @@
+From bb333da85faa6a1ee622a85a75e18f00ff323143 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:46 +1000
+Subject: [PATCH] Preserve Bento behavior when closing the last tab
+
+---
+ .../components/tabbrowser/content/tabbrowser.js  | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 2643e1a2aa..9093af5576 100644
+index 8557b933f6579b8508e103f7939ea7c9ec298576..0ce66ad8f24171bd8c48aa6552f31166a3c63057 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -5469,11 +5469,16 @@
+@@ -5550,11 +5550,16 @@
          telemetrySource,
        } = {}
      ) {
@@ -22,7 +31,7 @@ index 2643e1a2aa..9093af5576 100644
        ) {
          window.closeWindow(
            true,
-@@ -5791,8 +5796,9 @@
+@@ -5872,8 +5877,9 @@
          closeWindow =
            closeWindowWithLastTab != null
              ? closeWindowWithLastTab
@@ -34,3 +43,6 @@ index 2643e1a2aa..9093af5576 100644
  
          if (closeWindow) {
            // We've already called beforeunload on all the relevant tabs if we get here,
+-- 
+2.50.1 (Apple Git-155)
+

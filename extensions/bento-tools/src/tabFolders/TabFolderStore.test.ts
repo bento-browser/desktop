@@ -27,6 +27,7 @@ describe('TabFolderStore', () => {
     const a = store.create({ id: 'a', workspaceId: 'ws-1', name: 'A' });
     const b = store.create({ id: 'b', workspaceId: 'ws-1', name: 'B' });
     expect(a.order).toBe(0);
+    expect(a.collapsed).toBe(false);
     expect(b.order).toBe(1);
     expect(store.rename('a', 'Renamed')).toBe(true);
     expect(store.setCollapsed('a', true)).toBe(true);
@@ -37,6 +38,22 @@ describe('TabFolderStore', () => {
     vi.runOnlyPendingTimers();
     expect(seen.length).toBeGreaterThan(0);
     vi.useRealTimers();
+  });
+
+  it('allows callers to create a folder already collapsed', async () => {
+    mockStorage();
+    const store = new TabFolderStore();
+    await store.init();
+
+    const folder = store.create({
+      id: 'collapsed-folder',
+      workspaceId: 'ws-1',
+      name: 'Collapsed',
+      collapsed: true,
+    });
+
+    expect(folder.collapsed).toBe(true);
+    expect(store.get('collapsed-folder')?.collapsed).toBe(true);
   });
 
   it('moves a folder to the end of another workspace', async () => {

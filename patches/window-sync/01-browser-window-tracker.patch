@@ -1,5 +1,14 @@
+From 81798259b35e52bd6c0ed2c0a3bdb80dd5f60a25 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:43 +1000
+Subject: [PATCH] Track Bento browser windows
+
+---
+ browser/modules/BrowserWindowTracker.sys.mjs | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
 diff --git a/browser/modules/BrowserWindowTracker.sys.mjs b/browser/modules/BrowserWindowTracker.sys.mjs
-index 9aecab66d8..fcb74e6518 100644
+index 7e2f1d2b9ca10bd48fa1a0cd1f175a99b4169b90..237c1058d4aaa0b03871f6f600409c7946648a77 100644
 --- a/browser/modules/BrowserWindowTracker.sys.mjs
 +++ b/browser/modules/BrowserWindowTracker.sys.mjs
 @@ -330,6 +330,7 @@ export const BrowserWindowTracker = {
@@ -22,3 +31,6 @@ index 9aecab66d8..fcb74e6518 100644
      this.registerOpeningWindow(win, isPrivate);
  
      win.addEventListener(
+-- 
+2.50.1 (Apple Git-155)
+

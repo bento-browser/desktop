@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "base": {
+    "product": "firefox",
+    "version": "152.0.2",
+    "tree": "0ffbbf0c27e40224e0e27a6ef3f98bc9b63257c6"
+  },
+  "series": [
+    {
+      "path": "patches/chrome-layout/01-bento-shell-mount.patch",
+      "id": "bento-shell-mount",
+      "subject": "Add Bento shell mount to browser chrome"
+    },
+    {
+      "path": "patches/chrome-layout/02-bento-side-panel.patch",
+      "id": "bento-side-panel",
+      "subject": "Add Bento side panel host"
+    },
+    {
+      "path": "patches/chrome-layout/04-bento-key-actors.patch",
+      "id": "bento-key-actors",
+      "subject": "Register Bento key actors"
+    },
+    {
+      "path": "patches/core-ui/02-hide-native-tabs.patch",
+      "id": "hide-native-tabs",
+      "subject": "Hide native Firefox tabs"
+    },
+    {
+      "path": "patches/core-ui/03-bento-product-locales.patch",
+      "id": "bento-product-locales",
+      "subject": "Set Bento product locale strings"
+    },
+    {
+      "path": "patches/core-ui/04-inspect-panel-browser.patch",
+      "id": "inspect-panel-browser",
+      "subject": "Support inspecting panel browsers"
+    },
+    {
+      "path": "patches/core-ui/05-devtools-focustab-skip-panel.patch",
+      "id": "devtools-focustab-skip-panel",
+      "subject": "Skip Bento panel browsers in DevTools focusTab"
+    },
+    {
+      "path": "patches/core-ui/06-framefocus-skip-panel.patch",
+      "id": "framefocus-skip-panel",
+      "subject": "Skip Bento panel browsers in frame focus"
+    },
+    {
+      "path": "patches/core-ui/07-key-savepage-reserved.patch",
+      "id": "key-savepage-reserved",
+      "subject": "Reserve Firefox save page key for Bento"
+    },
+    {
+      "path": "patches/core-ui/08-transparent-scrollbar-tracks-macos.patch",
+      "id": "transparent-scrollbar-tracks-macos",
+      "subject": "Use transparent scrollbar tracks on macOS"
+    },
+    {
+      "path": "patches/core-ui/09-bento-firefox-profile-first-run-import.patch",
+      "id": "bento-firefox-profile-first-run-import",
+      "subject": "Import Firefox profile data on first Bento run"
+    },
+    {
+      "path": "patches/core-ui/10-bento-infobar-accent-token.patch",
+      "id": "bento-infobar-accent-token",
+      "subject": "Use Bento accent token for infobars"
+    },
+    {
+      "path": "patches/experiments/01-mach-build-hang-guards.patch",
+      "id": "mach-build-hang-guards",
+      "subject": "Add mach build hang guards"
+    },
+    {
+      "path": "patches/window-sync/01-browser-window-tracker.patch",
+      "id": "browser-window-tracker",
+      "subject": "Track Bento browser windows"
+    },
+    {
+      "path": "patches/window-sync/02-tabbrowser-bento-sync.patch",
+      "id": "tabbrowser-bento-sync",
+      "subject": "Synchronize tabbrowser state with Bento"
+    },
+    {
+      "path": "patches/window-sync/03-tabbrowser-close-last-tab.patch",
+      "id": "tabbrowser-close-last-tab",
+      "subject": "Preserve Bento behavior when closing the last tab"
+    },
+    {
+      "path": "patches/window-sync/04-splitview-disable.patch",
+      "id": "splitview-disable",
+      "subject": "Disable Firefox split view"
+    }
+  ],
+  "format": "git-format-patch"
+}

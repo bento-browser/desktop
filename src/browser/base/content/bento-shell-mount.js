@@ -601,10 +601,17 @@
         border-radius: var(--radius-m);
         background-color: var(--neutral-5);
         box-shadow: var(--bento-panel-frame-shadow);
-        overflow: visible;
+        overflow: clip;
       }
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
         box-shadow: var(--bento-panel-frame-outline-shadow);
+      }
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserContainer,
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserStack,
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] browser {
+        border-radius: var(--radius-m);
+        overflow: clip;
       }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
@@ -2378,6 +2385,30 @@
   // — degraded but still functional (matches pre-A.1 behaviour).
   const SET_FRAME_SRC_MAX_RETRIES = 20; // ~1s @ 50ms
 
+  function getBentoSystemPrincipal() {
+    try {
+      return Services.scriptSecurityManager.getSystemPrincipal();
+    } catch {
+      return null;
+    }
+  }
+
+  function navigateChromeFrame(frame, finalUrl) {
+    const principal = getBentoSystemPrincipal();
+    if (typeof frame.loadURI === 'function' && principal) {
+      try {
+        frame.loadURI(Services.io.newURI(finalUrl), { triggeringPrincipal: principal });
+        return;
+      } catch (err) {
+        console.warn('[bento-shell-mount] loadURI failed for', frame.id, err);
+      }
+    }
+    // setAttribute('src') works before a chrome <browser>'s webNavigation
+    // is initialized. Keep it as the compatibility fallback for early
+    // browser.xhtml parse and older Firefox builds.
+    frame.setAttribute('src', finalUrl);
+  }
+
   function setFrameSrc(frameId, path, attempt, extraHashParams) {
     const tries = typeof attempt === 'number' ? attempt : 0;
     const url = moz(path);
@@ -2423,11 +2454,7 @@
           ' retries; loading without hash (single-window fallback).',
       );
     }
-    // setAttribute('src') works even before the <browser>'s webNavigation
-    // is initialized; the loadURI APIs throw in that window. Stay with
-    // setAttribute — the chrome process forwards the URL to the extension
-    // content process when ready.
-    frame.setAttribute('src', finalUrl);
+    navigateChromeFrame(frame, finalUrl);
   }
 
   function setBentoShellSrc() {
@@ -16150,8 +16177,9 @@
   }
 
   function attachTopUrlbarModalListener() {
+    const urlbar = document.getElementById('urlbar');
     const input = document.getElementById('urlbar-input');
-    if (!input) {
+    if (!urlbar || !input) {
       if (document.readyState !== 'complete') {
         const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
         window.addEventListener(evt, attachTopUrlbarModalListener, { once: true });
@@ -16162,19 +16190,41 @@
     input.setAttribute('data-bento-addrbar-modal-attached', '1');
 
     let lastOpenAt = 0;
+    let suppressTimer = 0;
+    const suppressNativeUrlbarView = () => {
+      const root = document.documentElement;
+      root.setAttribute('bento-native-urlbar-intercepting', 'true');
+      closeNativeUrlbarPopup();
+      requestAnimationFrame(closeNativeUrlbarPopup);
+      window.clearTimeout(suppressTimer);
+      suppressTimer = window.setTimeout(() => {
+        root.removeAttribute('bento-native-urlbar-intercepting');
+      }, 650);
+    };
+    const isNativeUrlbarTarget = (event) => {
+      const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+      if (path.includes(urlbar) || path.includes(input)) return true;
+      const target = event.target;
+      return !!target?.closest?.('#urlbar, #urlbar-container');
+    };
     const openFromNativeUrlbar = (event) => {
-      const now = Date.now();
+      if (!isNativeUrlbarTarget(event)) return;
       event.preventDefault();
       event.stopPropagation();
       if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+      suppressNativeUrlbarView();
+      input.blur?.();
+
+      const now = Date.now();
       if (now - lastOpenAt < 180) return;
       lastOpenAt = now;
-      closeNativeUrlbarPopup();
-      input.blur?.();
       showAddrbar('current', '', { fromNativeUrlbar: true, nativeUrlbarEventType: event.type });
     };
 
-    input.addEventListener('pointerdown', openFromNativeUrlbar, true);
+    window.addEventListener('pointerdown', openFromNativeUrlbar, true);
+    window.addEventListener('mousedown', openFromNativeUrlbar, true);
+    window.addEventListener('click', openFromNativeUrlbar, true);
+    window.addEventListener('focusin', openFromNativeUrlbar, true);
     input.addEventListener('focus', openFromNativeUrlbar, true);
   }
 

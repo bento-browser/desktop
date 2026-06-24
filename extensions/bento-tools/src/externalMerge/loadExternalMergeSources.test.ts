@@ -48,6 +48,23 @@ describe('loadExternalMergeSources', () => {
         windowCount: 1,
         tabCount: 1,
         groupCount: 0,
+        targets: [
+          {
+            id: 'window:firefox-window-1',
+            kind: 'window',
+            name: 'Window 1',
+            windowCount: 1,
+            tabCount: 1,
+            groupCount: 0,
+            previewTabs: [
+              {
+                title: 'Example',
+                url: 'https://example.com/',
+                active: true,
+              },
+            ],
+          },
+        ],
       },
     ]);
   });
@@ -152,6 +169,23 @@ describe('loadExternalMergeSources', () => {
         windowCount: 1,
         tabCount: 1,
         groupCount: 0,
+        targets: [
+          {
+            id: 'window:firefox-window-1',
+            kind: 'window',
+            name: 'Window 1',
+            windowCount: 1,
+            tabCount: 1,
+            groupCount: 0,
+            previewTabs: [
+              {
+                title: 'Example',
+                url: 'https://example.com/',
+                active: true,
+              },
+            ],
+          },
+        ],
       },
     ]);
   });

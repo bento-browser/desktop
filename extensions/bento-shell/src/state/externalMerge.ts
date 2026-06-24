@@ -27,7 +27,7 @@ interface ExternalMergeState {
   requestSourcesForOpen: (nonce: string, dispatch: DispatchAction) => void;
   refreshSources: (dispatch: DispatchAction) => boolean;
   handleClose: () => void;
-  startMerge: (sourceId: string, dispatch: DispatchAction) => boolean;
+  startMerge: (sourceId: string, dispatch: DispatchAction, targetIds?: string[]) => boolean;
   cancelMerge: (dispatch: DispatchAction) => boolean;
   applySources: (
     event: { requestId: string; windowId: number | null; sources: ExternalMergeSource[] },
@@ -120,16 +120,22 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
     });
   },
 
-  startMerge: (sourceId, dispatch) => {
+  startMerge: (sourceId, dispatch, targetIds) => {
     if (get().activeOperationId) return false;
     const operationId = makeId('external-merge-operation');
+    const selectedTargetIds = targetIds?.filter(Boolean) ?? [];
     set({
       activeOperationId: operationId,
       activeSourceId: sourceId,
       summary: null,
       error: null,
     });
-    dispatch({ type: 'externalMerge/merge', sourceId, operationId });
+    dispatch({
+      type: 'externalMerge/merge',
+      sourceId,
+      operationId,
+      ...(selectedTargetIds.length > 0 ? { targetIds: selectedTargetIds } : {}),
+    });
     return true;
   },
 
@@ -148,8 +154,13 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
 
   applyStarted: (event, currentWindowId) => {
     if (!isForCurrentWindow(event.windowId, currentWindowId)) return;
-    if (event.operationId !== get().activeOperationId) return;
-    set({ activeSourceId: event.sourceId, error: null });
+    const activeOperationId = get().activeOperationId;
+    if (activeOperationId && event.operationId !== activeOperationId) return;
+    set({
+      activeOperationId: event.operationId,
+      activeSourceId: event.sourceId,
+      error: null,
+    });
   },
 
   applyComplete: (event, currentWindowId) => {

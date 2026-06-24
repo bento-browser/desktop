@@ -80,10 +80,16 @@
 
     /* ─── URL bar field (#urlbar) ──────────────────────────────────── */
     --toolbar-field-background-color: var(--neutral-5) !important;
+    --toolbar-field-background-color-focus: var(--neutral-12) !important;
+    --toolbar-field-bgcolor: var(--neutral-5) !important;
     --toolbar-field-color: var(--neutral-90) !important;
+    --toolbar-field-text-color: var(--neutral-90) !important;
     --toolbar-field-border-color: transparent !important;
+    --toolbar-field-border-color-focus: var(--color-60) !important;
     --toolbar-field-focus-background-color: var(--neutral-12) !important;
+    --toolbar-field-focus-bgcolor: var(--neutral-12) !important;
     --toolbar-field-focus-color: var(--neutral-90) !important;
+    --toolbar-field-text-color-focus: var(--neutral-90) !important;
     --toolbar-field-focus-border-color: var(--color-60) !important;
 
     /* URL bar inset boxes — the small affordances inside the URL bar
@@ -208,6 +214,41 @@
   }
   body {
     background-color: var(--neutral-5) !important;
+  }
+  #browser,
+  #appcontent,
+  #tabbrowser-tabbox,
+  #tabbrowser-tabpanels {
+    background-color: var(--neutral-5) !important;
+  }
+  #urlbar-background,
+  #searchbar {
+    background-color: var(--toolbar-field-background-color) !important;
+    color: var(--toolbar-field-text-color) !important;
+    border-color: var(--toolbar-field-border-color) !important;
+  }
+  #urlbar,
+  .urlbar,
+  #urlbar-input,
+  .urlbar-input,
+  #urlbar-scheme,
+  .searchbar-textbox {
+    color: var(--toolbar-field-text-color) !important;
+  }
+  #urlbar:is([focused], [open]),
+  .urlbar:is([focused], [open]),
+  #urlbar:is([focused], [open]) #urlbar-input,
+  .urlbar:is([focused], [open]) .urlbar-input {
+    color: var(--toolbar-field-text-color-focus) !important;
+  }
+  #urlbar:is([focused], [open]) > #urlbar-background,
+  #urlbar:is([focused], [open]) > .urlbar-background {
+    background-color: var(--toolbar-field-background-color-focus) !important;
+  }
+  :root[bento-native-urlbar-intercepting='true'] #urlbar > .urlbarView {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
   }
 
   notification-message {

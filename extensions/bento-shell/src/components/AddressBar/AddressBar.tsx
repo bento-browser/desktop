@@ -22,6 +22,7 @@ import { signalAddrbarNavigate, type AddrbarMode } from '../../bridge/useAddrbar
 import { useAddressBarStore } from '../../state/addressBar';
 import { usePanelsStore } from '../../state/panels';
 import { useTabsStore } from '../../state/tabs';
+import { useActiveWorkspaceIdForWindow } from '../../state/workspaces';
 import './AddressBar.css';
 
 export interface AddressBarProps {
@@ -120,6 +121,7 @@ export default function AddressBar({
     useShallow((s) => s.orderedIds.map((id) => s.byId[id]).filter((tab) => !!tab)),
   );
   const panelsByWorkspace = usePanelsStore((s) => s.byWorkspace);
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const resultQuery = useAddressBarStore((s) => s.query);
   const serverResults = useAddressBarStore((s) => s.results);
 
@@ -132,9 +134,11 @@ export default function AddressBar({
   }, [panelsByWorkspace]);
 
   const tabRows = useMemo<AddressRow[]>(() => {
+    if (!activeWorkspaceId) return [];
     return tabs
       .filter((tab) => {
         if (typeof windowId === 'number' && tab.windowId !== windowId) return false;
+        if (tab.workspaceId !== activeWorkspaceId) return false;
         return !panelInfoByTabId.has(tab.id);
       })
       .map((tab) => ({
@@ -147,14 +151,15 @@ export default function AddressBar({
         tabId: tab.id,
         favIconUrl: tab.favIconUrl,
       }));
-  }, [tabs, panelInfoByTabId, windowId]);
+  }, [activeWorkspaceId, tabs, panelInfoByTabId, windowId]);
 
   const panelRows = useMemo<AddressRow[]>(() => {
+    if (!activeWorkspaceId) return [];
     const rows: AddressRow[] = [];
     for (const tab of tabs) {
       if (typeof windowId === 'number' && tab.windowId !== windowId) continue;
       const workspaceId = panelInfoByTabId.get(tab.id);
-      if (!workspaceId) continue;
+      if (workspaceId !== activeWorkspaceId) continue;
       rows.push({
         id: `panel:${workspaceId}:${tab.id}`,
         kind: 'panel',
@@ -168,7 +173,7 @@ export default function AddressBar({
       });
     }
     return rows;
-  }, [tabs, panelInfoByTabId, windowId]);
+  }, [activeWorkspaceId, tabs, panelInfoByTabId, windowId]);
 
   const asyncRows = useMemo<AddressRow[]>(() => {
     if (resultQuery !== query) return [];

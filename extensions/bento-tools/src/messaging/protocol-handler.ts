@@ -545,6 +545,9 @@ export interface HandlerContext {
   savedPanels: SavedPanelsStore;
   backup: BackupStore;
   send: (event: Event) => void;
+  /** Broadcast cross-document UI events to every connected shell document.
+   * Falls back to `send` in tests and non-background callers. */
+  broadcast?: (event: Event) => void;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
    * broadcast access + browser.tabs.get for URL resolution); the handler
@@ -581,6 +584,10 @@ export interface HandlerContext {
    * fall back to legacy single-window behaviour when null so this stays
    * additive. */
   sourceWindowId: number | null;
+}
+
+function emitToShellDocuments(ctx: HandlerContext, event: Event): void {
+  (ctx.broadcast ?? ctx.send)(event);
 }
 
 export function handle(wireAction: WireAction, ctx: HandlerContext): void {
@@ -1619,7 +1626,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       externalMergeInFlightOperationId = action.operationId;
       externalMergeAbortController = new AbortController();
       externalMergeCancelSentOperationId = null;
-      ctx.send({
+      emitToShellDocuments(ctx, {
         type: 'externalMerge/started',
         operationId: action.operationId,
         windowId: ctx.sourceWindowId,
@@ -1636,9 +1643,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           throwIfExternalMergeCancelled(abortController.signal);
           const summary = await executeExternalMerge(session, ctx, {
             signal: abortController.signal,
+            targetIds: action.targetIds,
           });
           throwIfExternalMergeCancelled(abortController.signal);
-          ctx.send({
+          emitToShellDocuments(ctx, {
             type: 'externalMerge/complete',
             operationId: action.operationId,
             windowId: ctx.sourceWindowId,
@@ -1652,7 +1660,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             if (code !== 'cancelled') {
               console.warn('[bento-tools] externalMerge/merge failed:', err);
             }
-            ctx.send({
+            emitToShellDocuments(ctx, {
               type: 'externalMerge/error',
               operationId: action.operationId,
               windowId: ctx.sourceWindowId,
@@ -1675,7 +1683,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       externalMergeAbortController?.abort();
       if (externalMergeCancelSentOperationId === action.operationId) return;
       externalMergeCancelSentOperationId = action.operationId;
-      ctx.send({
+      emitToShellDocuments(ctx, {
         type: 'externalMerge/error',
         operationId: action.operationId,
         windowId: ctx.sourceWindowId,

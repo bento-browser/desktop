@@ -38,7 +38,7 @@ describe('buildDisplayRows', () => {
       tabs,
       [folder({ id: 'f-1', order: 0 }), folder({ id: 'f-2', order: 1 })],
       null,
-      { isCollapsed: false },
+      {},
     );
     expect(rows).toEqual([
       { kind: 'tab', id: 1, indent: false },
@@ -61,13 +61,12 @@ describe('buildDisplayRows', () => {
       tabs,
       [folder({ id: 'f-1', order: 0, collapsed: true })],
       2,
-      { isCollapsed: true },
+      {},
     );
     expect(rows).toEqual([
       { kind: 'folder', folderId: 'f-1' },
       { kind: 'peek', id: 2, folderId: 'f-1' },
       { kind: 'new-tab', afterPinnedSection: true },
-      { kind: 'new-panel' },
     ]);
   });
 
@@ -76,11 +75,7 @@ describe('buildDisplayRows', () => {
       1: tab({ id: 1, index: 0, pinned: true, folderId: 'f-1' }),
       2: tab({ id: 2, index: 1, folderId: 'missing' }),
     };
-    expect(
-      buildDisplayRows([1, 2], tabs, [folder({ id: 'f-1', order: 0 })], null, {
-        isCollapsed: false,
-      }),
-    ).toEqual([
+    expect(buildDisplayRows([1, 2], tabs, [folder({ id: 'f-1', order: 0 })], null, {})).toEqual([
       { kind: 'tab', id: 1, indent: false },
       { kind: 'folder', folderId: 'f-1' },
       { kind: 'new-tab', afterPinnedSection: true },

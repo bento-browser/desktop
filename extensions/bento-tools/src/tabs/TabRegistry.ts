@@ -83,6 +83,41 @@ async function readClosingTab(tabId: number): Promise<boolean> {
   }
 }
 
+function delay(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readSessionMetadata(tabId: number): Promise<{
+  workspaceId?: string;
+  folderId?: string;
+  closing: boolean;
+}> {
+  const [workspaceId, folderId, closing] = await Promise.all([
+    readWorkspaceId(tabId),
+    readFolderId(tabId),
+    readClosingTab(tabId),
+  ]);
+  return { workspaceId, folderId, closing };
+}
+
+async function readSessionMetadataWithRetries(
+  tabId: number,
+  attempts: number,
+  delayMs: number,
+): Promise<{
+  workspaceId?: string;
+  folderId?: string;
+  closing: boolean;
+}> {
+  let latest = await readSessionMetadata(tabId);
+  for (let i = 1; i < attempts && !latest.workspaceId && !latest.folderId && !latest.closing; i++) {
+    await delay(delayMs);
+    latest = await readSessionMetadata(tabId);
+  }
+  return latest;
+}
+
 export class TabRegistry {
   #tabs = new Map<number, TabSnapshot>();
   #pending: TabDelta[] = [];
@@ -164,15 +199,20 @@ export class TabRegistry {
    * registry with workspaceId=undefined, the boot-time backfill clobbers
    * them by assigning to the active workspace, and tabs leak across
    * workspace boundaries. */
-  async hydrateWorkspaceIds(): Promise<void> {
+  async hydrateWorkspaceIds(options: { attempts?: number; delayMs?: number } = {}): Promise<void> {
+    const attempts = Math.max(1, options.attempts ?? 8);
+    const delayMs = Math.max(0, options.delayMs ?? 100);
     const ids = Array.from(this.#tabs.keys());
     const results = await Promise.all(
-      ids.map(async (id) => ({
-        id,
-        ws: await readWorkspaceId(id),
-        folderId: await readFolderId(id),
-        closing: await readClosingTab(id),
-      })),
+      ids.map(async (id) => {
+        const metadata = await readSessionMetadataWithRetries(id, attempts, delayMs);
+        return {
+          id,
+          ws: metadata.workspaceId,
+          folderId: metadata.folderId,
+          closing: metadata.closing,
+        };
+      }),
     );
     for (const { id, ws, folderId, closing } of results) {
       const tab = this.#tabs.get(id);

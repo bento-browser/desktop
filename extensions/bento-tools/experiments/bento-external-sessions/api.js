@@ -170,6 +170,111 @@
     return Array.isArray(value) ? value : [];
   }
 
+  function asCollection(value) {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== 'object') return [];
+    return Object.entries(value).map(([key, raw]) => {
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const record = { ...raw };
+        if (
+          record.id === undefined &&
+          record.uuid === undefined &&
+          record.groupId === undefined &&
+          record.tabGroupId === undefined &&
+          record.folderId === undefined
+        ) {
+          record.id = key;
+        }
+        return record;
+      }
+      return { id: key, value: raw };
+    });
+  }
+
+  function compactMemberRefs(value) {
+    return asCollection(value)
+      .map((member) => {
+        if (member && typeof member === 'object' && !Array.isArray(member)) {
+          const out = {};
+          for (const key of [
+            'id',
+            'uuid',
+            'tabId',
+            'tabID',
+            'tabUuid',
+            'tabUUID',
+            'zenTabId',
+            'zenTabID',
+          ]) {
+            if (member[key] !== undefined) out[key] = member[key];
+          }
+          return Object.keys(out).length > 0 ? out : null;
+        }
+        return member;
+      })
+      .filter((member) => member !== null && member !== undefined);
+  }
+
+  function compactGroupLike(group, index) {
+    return {
+      id:
+        group?.id ??
+        group?.groupId ??
+        group?.tabGroupId ??
+        group?.folderId ??
+        group?.folderUUID ??
+        group?.folderUuid ??
+        group?.uuid ??
+        String(index + 1),
+      groupId: group?.groupId,
+      tabGroupId: group?.tabGroupId,
+      folderId: group?.folderId,
+      folderUUID: group?.folderUUID,
+      folderUuid: group?.folderUuid,
+      uuid: group?.uuid,
+      name: group?.name,
+      title: group?.title,
+      label: group?.label,
+      index: group?.index ?? group?.order ?? index,
+      collapsed: group?.collapsed,
+      tabs: compactMemberRefs(group?.tabs),
+      tabIds: compactMemberRefs(group?.tabIds),
+      tabIDs: compactMemberRefs(group?.tabIDs),
+      tabUuids: compactMemberRefs(group?.tabUuids),
+      tabUUIDs: compactMemberRefs(group?.tabUUIDs),
+      children: compactMemberRefs(group?.children),
+      childIds: compactMemberRefs(group?.childIds),
+      items: compactMemberRefs(group?.items),
+    };
+  }
+
+  function compactExtData(extData) {
+    if (typeof extData === 'string' && extData.trim().startsWith('{')) return extData;
+    if (!extData || typeof extData !== 'object' || Array.isArray(extData)) return undefined;
+    const out = {};
+    for (const key of [
+      'private',
+      'tabGroupId',
+      'groupId',
+      'folderId',
+      'folder',
+      'folderUUID',
+      'folderUuid',
+      'tabFolderId',
+      'tabFolder',
+      'zenFolderId',
+      'zenFolder',
+      'zenFolderUUID',
+      'zenFolderUuid',
+      'zenTabFolderId',
+      'zenTabFolder',
+      'zenWorkspace',
+    ]) {
+      if (extData[key] !== undefined) out[key] = extData[key];
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
   function selectedEntry(tab) {
     const entries = asArray(tab?.entries);
     if (entries.length === 0) return null;
@@ -243,74 +348,39 @@
   }
 
   function compactZenSession(data) {
+    const windows = asCollection(data?.windows).map((window) => ({
+      groups: asCollection(window?.groups).map(compactGroupLike),
+      tabGroups: asCollection(window?.tabGroups).map(compactGroupLike),
+      folders: asCollection(window?.folders).map(compactGroupLike),
+      tabFolders: asCollection(window?.tabFolders).map(compactGroupLike),
+    }));
     return {
       lastCollected: data?.lastCollected,
-      spaces: asArray(data?.spaces).map((space) => ({
+      spaces: asCollection(data?.spaces).map((space) => ({
         uuid: space?.uuid,
         id: space?.id,
         name: space?.name,
+        groups: asCollection(space?.groups).map(compactGroupLike),
+        tabGroups: asCollection(space?.tabGroups).map(compactGroupLike),
+        folders: asCollection(space?.folders).map(compactGroupLike),
+        tabFolders: asCollection(space?.tabFolders).map(compactGroupLike),
       })),
-      groups: asArray(data?.groups).map((group, index) => ({
-        id:
-          group?.id ??
-          group?.groupId ??
-          group?.tabGroupId ??
-          group?.folderId ??
-          group?.uuid ??
-          String(index + 1),
-        groupId: group?.groupId,
-        tabGroupId: group?.tabGroupId,
-        folderId: group?.folderId,
-        uuid: group?.uuid,
-        name: group?.name,
-        title: group?.title,
-        label: group?.label,
-        index: group?.index ?? index,
-        collapsed: group?.collapsed,
-      })),
-      tabGroups: asArray(data?.tabGroups).map((group, index) => ({
-        id:
-          group?.id ??
-          group?.groupId ??
-          group?.tabGroupId ??
-          group?.folderId ??
-          group?.uuid ??
-          String(index + 1),
-        groupId: group?.groupId,
-        tabGroupId: group?.tabGroupId,
-        folderId: group?.folderId,
-        uuid: group?.uuid,
-        name: group?.name,
-        title: group?.title,
-        label: group?.label,
-        index: group?.index ?? index,
-        collapsed: group?.collapsed,
-      })),
-      folders: asArray(data?.folders).map((folder, index) => ({
-        id: folder?.id ?? folder?.folderId ?? folder?.groupId ?? folder?.uuid ?? String(index + 1),
-        folderId: folder?.folderId,
-        groupId: folder?.groupId,
-        tabGroupId: folder?.tabGroupId,
-        uuid: folder?.uuid,
-        name: folder?.name,
-        title: folder?.title,
-        label: folder?.label,
-        index: folder?.index ?? index,
-        collapsed: folder?.collapsed,
-      })),
-      tabFolders: asArray(data?.tabFolders).map((folder, index) => ({
-        id: folder?.id ?? folder?.folderId ?? folder?.groupId ?? folder?.uuid ?? String(index + 1),
-        folderId: folder?.folderId,
-        groupId: folder?.groupId,
-        tabGroupId: folder?.tabGroupId,
-        uuid: folder?.uuid,
-        name: folder?.name,
-        title: folder?.title,
-        label: folder?.label,
-        index: folder?.index ?? index,
-        collapsed: folder?.collapsed,
-      })),
-      tabs: asArray(data?.tabs).map((tab) => ({
+      windows,
+      groups: asCollection(data?.groups).map(compactGroupLike),
+      tabGroups: asCollection(data?.tabGroups).map(compactGroupLike),
+      folders: asCollection(data?.folders).map(compactGroupLike),
+      tabFolders: asCollection(data?.tabFolders).map(compactGroupLike),
+      zenFolders: asCollection(data?.zenFolders).map(compactGroupLike),
+      zenTabFolders: asCollection(data?.zenTabFolders).map(compactGroupLike),
+      tabs: asCollection(data?.tabs).map((tab) => ({
+        id: tab?.id,
+        uuid: tab?.uuid,
+        tabId: tab?.tabId,
+        tabID: tab?.tabID,
+        tabUuid: tab?.tabUuid,
+        tabUUID: tab?.tabUUID,
+        zenTabId: tab?.zenTabId,
+        zenTabID: tab?.zenTabID,
         entries: [compactEntry(selectedEntry(tab))].filter(Boolean),
         index: 1,
         hidden: tab?.hidden,
@@ -320,8 +390,14 @@
         group: tab?.group,
         folderId: tab?.folderId,
         folder: tab?.folder,
+        folderUUID: tab?.folderUUID,
+        folderUuid: tab?.folderUuid,
+        tabFolderId: tab?.tabFolderId,
+        tabFolder: tab?.tabFolder,
         zenFolderId: tab?.zenFolderId,
         zenFolder: tab?.zenFolder,
+        zenFolderUUID: tab?.zenFolderUUID,
+        zenFolderUuid: tab?.zenFolderUuid,
         zenTabFolderId: tab?.zenTabFolderId,
         zenTabFolder: tab?.zenTabFolder,
         zenWorkspace: tab?.zenWorkspace,
@@ -331,17 +407,7 @@
         isPrivate: tab?.isPrivate,
         private: tab?.private,
         incognito: tab?.incognito,
-        extData:
-          tab?.extData && typeof tab.extData === 'object'
-            ? {
-                private: tab.extData.private,
-                tabGroupId: tab.extData.tabGroupId,
-                groupId: tab.extData.groupId,
-                folderId: tab.extData.folderId,
-                zenFolderId: tab.extData.zenFolderId,
-                zenTabFolderId: tab.extData.zenTabFolderId,
-              }
-            : undefined,
+        extData: compactExtData(tab?.extData),
       })),
     };
   }

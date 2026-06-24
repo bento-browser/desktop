@@ -592,7 +592,13 @@ export type Action =
   /** Delete a stored auto-backup by id. */
   | { type: 'backup/delete'; backupId: string }
   | { type: 'externalMerge/requestSources'; requestId: string }
-  | { type: 'externalMerge/merge'; sourceId: string; operationId: string }
+  | {
+      type: 'externalMerge/merge';
+      sourceId: string;
+      operationId: string;
+      /** Optional source-space/window ids. Omit to import the whole source. */
+      targetIds?: string[];
+    }
   | { type: 'externalMerge/cancel'; operationId: string };
 
 /** One entry in the "Saved panels" bookmark folder. `id` is the Firefox
@@ -670,6 +676,23 @@ export type ExternalMergeSourceKind =
   | 'opera'
   | 'vivaldi';
 
+export interface ExternalMergeTabPreview {
+  title: string;
+  url: string;
+  pinned?: boolean;
+  active?: boolean;
+}
+
+export interface ExternalMergeImportTarget {
+  id: string;
+  kind: 'workspace' | 'window';
+  name: string;
+  windowCount: number;
+  tabCount: number;
+  groupCount: number;
+  previewTabs: ExternalMergeTabPreview[];
+}
+
 export interface ExternalMergeSource {
   id: string;
   kind: ExternalMergeSourceKind;
@@ -679,6 +702,7 @@ export interface ExternalMergeSource {
   windowCount: number;
   tabCount: number;
   groupCount: number;
+  targets?: ExternalMergeImportTarget[];
   unavailableReason?: string;
 }
 

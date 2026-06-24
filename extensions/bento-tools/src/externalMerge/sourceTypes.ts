@@ -79,6 +79,14 @@ export interface NormalizedExternalSession {
   windows: NormalizedExternalWindow[];
 }
 
+export function externalWorkspaceTargetId(workspaceId: string): string {
+  return `workspace:${workspaceId}`;
+}
+
+export function externalWindowTargetId(windowId: string): string {
+  return `window:${windowId}`;
+}
+
 export class ExternalMergeError extends Error {
   code: ExternalMergeErrorCode;
 

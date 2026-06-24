@@ -1,8 +1,17 @@
+From c9db437b009abee3e94480d32ece1861a0a353f7 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:45 +1000
+Subject: [PATCH] Synchronize tabbrowser state with Bento
+
+---
+ .../tabbrowser/content/tabbrowser.js          | 41 +++++++++++++++----
+ 1 file changed, 34 insertions(+), 7 deletions(-)
+
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 2643e1a2aa..26295769cc 100644
+index 528e93314832dfa99730ab8ad55afec5a1074c51..8557b933f6579b8508e103f7939ea7c9ec298576 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -4104,6 +4104,12 @@
+@@ -4179,6 +4179,12 @@
        if (userContextId == null && openerTab) {
          userContextId = openerTab.getAttribute("usercontextid") || 0;
        }
@@ -15,7 +24,7 @@ index 2643e1a2aa..26295769cc 100644
  
        if (!noInitialLabel) {
          if (isBlankPageURL(uriString)) {
-@@ -6290,8 +6296,17 @@
+@@ -6365,8 +6371,17 @@
      /**
       * @returns {boolean}
       *   False if swapping isn't permitted, true otherwise.
@@ -34,7 +43,7 @@ index 2643e1a2aa..26295769cc 100644
        // Do not allow transfering a private tab to a non-private window
        // and vice versa.
        if (
-@@ -6344,7 +6359,10 @@
+@@ -6419,7 +6434,10 @@
        // First, start teardown of the other browser.  Make sure to not
        // fire the beforeunload event in the process.  Close the other
        // window if this was its last tab.
@@ -45,36 +54,36 @@ index 2643e1a2aa..26295769cc 100644
          !remoteBrowser._beginRemoveTab(aOtherTab, {
            adoptedByTab: aOurTab,
            closeWindowWithLastTab: true,
-@@ -6356,7 +6374,7 @@
+@@ -6431,7 +6449,7 @@
        // If this is the last tab of the window, hide the window
        // immediately without animation before the docshell swap, to avoid
        // about:blank being painted.
 -      let [closeWindow] = aOtherTab._endRemoveArgs;
 +      let [closeWindow] = bentoCloseOther ? aOtherTab._endRemoveArgs : [false];
        if (closeWindow) {
-         let win = aOtherTab.ownerGlobal;
+         let win = aOtherTab.documentGlobal;
          win.windowUtils.suppressAnimation(true);
-@@ -6483,11 +6501,14 @@
+@@ -6564,11 +6582,14 @@
          });
        }
  
 -      // Finish tearing down the tab that's going away.
 -      if (closeWindow) {
--        aOtherTab.ownerGlobal.close();
+-        aOtherTab.documentGlobal.close();
 -      } else {
 -        remoteBrowser._endRemoveTab(aOtherTab);
 +      // Finish tearing down the tab that's going away. Bento: skip when
 +      // bentoCloseOther is false (the source twin survives the swap).
 +      if (bentoCloseOther) {
 +        if (closeWindow) {
-+          aOtherTab.ownerGlobal.close();
++          aOtherTab.documentGlobal.close();
 +        } else {
 +          remoteBrowser._endRemoveTab(aOtherTab);
 +        }
        }
  
        this.setTabTitle(aOurTab);
-@@ -6770,6 +6791,11 @@
+@@ -6851,6 +6872,11 @@
        // tell a new window to take the "dropped" tab
        let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
        args.appendElement(aTab.splitview ?? aTab);
@@ -86,7 +95,7 @@ index 2643e1a2aa..26295769cc 100644
        return BrowserWindowTracker.openWindow({
          private: PrivateBrowsingUtils.isWindowPrivate(window),
          features: Object.entries(aOptions)
-@@ -6777,6 +6803,7 @@
+@@ -6858,6 +6884,7 @@
            .join(","),
          openerWindow: window,
          args,
@@ -94,3 +103,6 @@ index 2643e1a2aa..26295769cc 100644
        });
      }
  
+-- 
+2.50.1 (Apple Git-155)
+

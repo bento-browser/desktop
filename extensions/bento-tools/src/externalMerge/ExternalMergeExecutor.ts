@@ -7,7 +7,11 @@ import type {
   NormalizedExternalWindow,
   NormalizedExternalWorkspace,
 } from './sourceTypes';
-import { ExternalMergeError } from './sourceTypes';
+import {
+  ExternalMergeError,
+  externalWindowTargetId,
+  externalWorkspaceTargetId,
+} from './sourceTypes';
 import { normalizeExternalUrl } from './urlNormalization';
 
 interface ImportableTab {
@@ -29,6 +33,7 @@ interface CreatedTab {
 
 interface ExecuteExternalMergeOptions {
   signal?: AbortSignal;
+  targetIds?: string[];
 }
 
 const TAB_CREATE_TIMEOUT_MS = 8000;
@@ -100,6 +105,7 @@ function buildPlans(
   takenNames: Set<string>,
   seenUrls: Set<string>,
   summary: ExternalMergeSummary,
+  targetIds?: ReadonlySet<string>,
 ): ImportPlan[] {
   const plans: ImportPlan[] = [];
   const nativeWorkspaces = workspacesById(session);
@@ -116,6 +122,8 @@ function buildPlans(
 
   if (nativeWorkspaceWindows.size > 0) {
     for (const [workspaceId, windows] of nativeWorkspaceWindows) {
+      const targetId = externalWorkspaceTargetId(workspaceId);
+      if (targetIds && !targetIds.has(targetId)) continue;
       const workspace = nativeWorkspaces.get(workspaceId)!;
       const mergedWindow: NormalizedExternalWindow = {
         id: `workspace-${workspaceId}`,
@@ -139,6 +147,8 @@ function buildPlans(
   }
 
   session.windows.forEach((window, index) => {
+    const targetId = externalWindowTargetId(window.id);
+    if (targetIds && !targetIds.has(targetId)) return;
     const tabs = filterImportableTabs(session, window.tabs, seenUrls, summary);
     if (tabs.length === 0) return;
     const workspaceName = deduplicateName(fallbackWindowName(session, window, index), takenNames);
@@ -296,7 +306,9 @@ export async function executeExternalMerge(
   const existingNames = new Set(
     ctx.workspaces.snapshot().workspaces.map((workspace) => workspace.name),
   );
-  const plans = buildPlans(session, existingNames, seenUrls, summary);
+  const targetIds =
+    options.targetIds && options.targetIds.length > 0 ? new Set(options.targetIds) : undefined;
+  const plans = buildPlans(session, existingNames, seenUrls, summary, targetIds);
   throwIfCancelled(options.signal);
   if (plans.length === 0) {
     throw new ExternalMergeError('no-importable-tabs', noImportableTabsMessage(session, summary));
@@ -365,6 +377,7 @@ export async function executeExternalMerge(
         id: makeFolderId(),
         workspaceId: workspace.id,
         name: group.name,
+        collapsed: true,
       });
       let assignedMembers = 0;
       for (const member of members) {

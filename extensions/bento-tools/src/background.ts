@@ -869,22 +869,11 @@ const bootReady = Promise.all([
   // its own per-window workspace.
   const wsId = workspaces.getActiveId(null);
 
-  // Backfill: any tab that hydrated WITHOUT a workspaceId (fresh profile,
-  // tabs from a pre-workspaces session, or tabs Firefox restored before
-  // bento-tools attached its session listener) gets assigned to the active
-  // workspace for ITS WINDOW. At cold boot, per-window state is empty so
-  // every getActiveId(windowId) falls back to #lastGlobalActiveId — same
-  // result as the pre-A.2 single-active behaviour. The per-window read
-  // matters after a session has been running (windows have activated
-  // their own workspaces) and the user opens an additional tab via a
-  // path that bypasses the runtime onCreated listener (rare; defensive).
-  for (const tab of tabs.snapshot()) {
-    if (tabs.isClosing(tab.id)) continue;
-    if (tab.workspaceId) continue;
-    const tabWindowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
-    const wsForTab = workspaces.getActiveId(tabWindowId);
-    if (wsForTab) void tabs.assignWorkspace(tab.id, wsForTab);
-  }
+  // Do not backfill restored tabs before SessionStore tab extData has settled.
+  // A pre-settle persistent write can overwrite a restored `bento.workspaceId`
+  // with the active workspace id, which makes imported workspaces come back
+  // empty on the next launch. The only boot backfill now happens after the
+  // settle wait + hydrate retries below, and it is intentionally in-memory.
   // Wait for SessionStore restoration to settle. Firefox's session
   // restore fires browser.tabs.onCreated for each restored tab AFTER
   // bento-tools' init promise resolves (browserStartupPromise resolves
@@ -2025,6 +2014,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
       savedPanels,
       backup,
       send,
+      broadcast: broadcastEvent,
       emitPanelsSync,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
       preferWorkspaceActivationTab,

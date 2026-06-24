@@ -21,6 +21,7 @@ run_step() {
 
 run_step "sync theme presets" node scripts/sync-theme-presets.mjs
 run_step "generate chrome tokens" node scripts/generate-chrome-tokens.mjs
+run_step "check Firefox patch stack" node scripts/firefox-patch-stack.mjs check --for-import
 run_step "reset engine patches" bash scripts/reset-engine-patches.sh
 run_step "surfer import" bash scripts/surfer-env.sh import
 run_step "append prefs" bash scripts/append-prefs.sh

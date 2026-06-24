@@ -4,11 +4,9 @@ export type DisplayRow =
   | { kind: 'tab'; id: number; indent: boolean }
   | { kind: 'folder'; folderId: string }
   | { kind: 'peek'; id: number; folderId: string }
-  | { kind: 'new-tab'; afterPinnedSection: boolean }
-  | { kind: 'new-panel' };
+  | { kind: 'new-tab'; afterPinnedSection: boolean };
 
 interface BuildOptions {
-  isCollapsed: boolean;
   forceCollapsedFolders?: boolean;
 }
 
@@ -53,7 +51,6 @@ export function buildDisplayRows(
   }
 
   rows.push({ kind: 'new-tab', afterPinnedSection: rows.length > 0 });
-  if (options.isCollapsed) rows.push({ kind: 'new-panel' });
   rows.push(...regularRows);
   return rows;
 }
@@ -76,8 +73,6 @@ export function rowKey(row: DisplayRow): string {
       return `peek:${row.folderId}:${row.id}`;
     case 'new-tab':
       return 'new-tab';
-    case 'new-panel':
-      return 'new-panel';
   }
 }
 

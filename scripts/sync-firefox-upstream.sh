@@ -95,6 +95,17 @@ fs.writeFileSync(versionsPath, `${JSON.stringify(versions, null, 2)}\n`);
 NODE
 
 echo "firefox:sync: synced config/firefox-versions.json to ${next_version}"
+
+if ! patch_check_output="$(node scripts/firefox-patch-stack.mjs check --for-import 2>&1)"; then
+  echo "$patch_check_output" >&2
+  echo "firefox:sync: Firefox patch stack is stale" >&2
+  echo "firefox:sync: current patch base: $(node -p "require('./patches/series.json').base.version")" >&2
+  echo "firefox:sync: target Firefox version: ${next_version}" >&2
+  echo "firefox:sync: run: pnpm run firefox:patches:rebase" >&2
+  echo "firefox:sync: then: pnpm run import" >&2
+  exit 1
+fi
+
 echo "firefox:sync: building extensions before import"
 pnpm run ext:build
 

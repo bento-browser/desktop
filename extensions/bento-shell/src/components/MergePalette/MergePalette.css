@@ -1,20 +1,27 @@
-/* Layer-2 component: MergePalette. Uses Tale UI CommandPalette visuals; Bento
- * only constrains the chrome overlay frame and status row alignment. */
+/* Layer-2 component: MergePalette. Tale UI CommandPalette styles are unlayered,
+ * so Bento's popup sizing and in-palette import overlay overrides stay
+ * unlayered with scoped selectors. */
 
 .tale-command-palette__popup.bento-merge-palette__popup {
   width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
   height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
+.tale-command-palette__dialog.bento-merge-palette__dialog {
+  position: relative;
+  overflow: hidden;
+}
+
 .tale-command-palette__dialog.bento-merge-palette__dialog,
 .tale-command-palette__content.bento-merge-palette__content,
-.tale-command-palette__listbox.bento-merge-palette__listbox {
+.tale-column.bento-merge-palette__source-list {
   min-height: 0;
   flex: 1 1 auto;
 }
 
-.tale-command-palette__listbox.bento-merge-palette__listbox {
-  max-height: none;
+.tale-column.bento-merge-palette__source-list {
+  overflow: auto;
+  padding: var(--space-xs);
 }
 
 .bento-merge-palette__refresh {
@@ -30,58 +37,114 @@
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__loader-item {
-  align-items: stretch;
-  white-space: normal;
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__section-label {
+  padding-inline: var(--space-xs);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-card {
+  padding: var(--space-xs);
+  background-color: var(--neutral-10);
+  border: 1px solid var(--neutral-20);
+  border-radius: var(--radius-s);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-row,
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-row {
+  min-width: 0;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-main,
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-title,
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-title {
+  overflow-wrap: anywhere;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-meta {
+  flex: 0 0 auto;
+  overflow-wrap: anywhere;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-list {
+  padding-inline-start: var(--space-l);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-item {
+  padding: var(--space-xs);
+  border-block-start: 1px solid var(--neutral-20);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-preview-list {
+  padding-inline-start: var(--space-xl);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-preview-row {
+  min-width: 0;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__more-tabs {
+  padding-inline-start: var(--space-xs);
+}
+
+.tale-command-palette__dialog.bento-merge-palette__dialog[data-merging='true']
+  .tale-command-palette__close,
+.tale-command-palette__dialog.bento-merge-palette__dialog[data-merging='true']
+  .bento-merge-palette__content {
+  visibility: hidden;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__import-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: var(--space-xl);
+  background-color: var(--neutral-10);
+  color: var(--neutral-90);
 }
 
 .tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__loader {
-  flex: 1 1 auto;
-  min-width: 0;
   width: 100%;
   gap: var(--space-xs);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__loader-content {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: var(--space-s);
-  width: 100%;
+.tale-command-palette__popup.bento-merge-palette__popup
+  .bento-merge-palette__loader
+  .tale-progress-bar__header {
+  justify-content: center;
+  text-align: center;
 }
 
 .tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__cancel-button {
   flex: 0 0 auto;
 }
 
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__overlay-close-button {
+  position: absolute;
+  top: var(--space-2xs);
+  right: var(--space-2xs);
+  z-index: 1;
+}
+
 .tale-command-palette__popup.bento-merge-palette__popup
   .bento-merge-palette__loader
   .tale-progress-bar__label {
   overflow-wrap: anywhere;
-}
-
-.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item {
-  align-items: flex-start;
-  min-height: auto;
-}
-
-.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-content {
-  min-width: 0;
-  white-space: normal;
-}
-
-.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-title,
-.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-description {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.tale-command-palette__popup.bento-merge-palette__popup .tale-command-palette__item-meta {
-  align-self: flex-start;
-  flex: 0 0 auto;
-  margin-top: var(--space-4xs);
 }
 
 .tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__footer {
@@ -111,13 +174,5 @@
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-  }
-
-  .bento-merge-palette__loader-item {
-    display: flex;
-  }
-
-  .bento-merge-palette__loader-content {
-    display: flex;
   }
 }

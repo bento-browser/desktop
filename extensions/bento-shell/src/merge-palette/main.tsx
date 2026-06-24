@@ -12,6 +12,9 @@ import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/progress-bar';
 import '@tale-ui/react-styles/command-palette';
+import '@tale-ui/react-styles/column';
+import '@tale-ui/react-styles/row';
+import '@tale-ui/react-styles/text';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';

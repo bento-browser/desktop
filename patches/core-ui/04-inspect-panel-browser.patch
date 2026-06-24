@@ -1,8 +1,17 @@
+From 98b9dd3402ae90095ab3c4a1dcf69318ccb98dad Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:32 +1000
+Subject: [PATCH] Support inspecting panel browsers
+
+---
+ browser/base/content/nsContextMenu.sys.mjs | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index 5ee0ee4246..c927fe0f9e 100644
+index a9173d534626f18adcbfe570cbcdc0cd929cc31d..b2eb53b7b2fc10e2c64cb0d217d876d0d890f4c3 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -1386,15 +1386,22 @@ export class nsContextMenu {
+@@ -1401,15 +1401,22 @@ export class nsContextMenu {
    }
  
    inspectNode() {
@@ -27,3 +36,6 @@ index 5ee0ee4246..c927fe0f9e 100644
        this.targetIdentifier
      );
    }
+-- 
+2.50.1 (Apple Git-155)
+

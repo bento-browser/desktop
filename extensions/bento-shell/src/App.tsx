@@ -4,6 +4,7 @@ import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Icon } from '@tale-ui/react/icon';
+import { Spinner } from '@tale-ui/react/spinner';
 import { Tooltip } from '@tale-ui/react/tooltip';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
@@ -23,6 +24,7 @@ import { useTabsStore } from './state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from './state/workspaces';
 import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
+import { useExternalMergeStore } from './state/externalMerge';
 import type { UiColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
@@ -105,6 +107,7 @@ export function App() {
   const folders = useWorkspaceFolders(activeWorkspaceId);
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
+  const importInProgress = useExternalMergeStore((s) => Boolean(s.activeOperationId));
   // Per-workspace theme. Mirrors the active workspace's themeId onto
   // <html data-bento-theme="..."> so the scoped theme rules in
   // theme/presets/<id>.css apply to the shell. Chrome receives the active
@@ -508,14 +511,23 @@ export function App() {
               <Icon icon={Command} />
             </IconButton>
           </FooterTooltip>
-          <FooterTooltip label="Merge browser session" isDisabled={sidebarCollapsed}>
+          <FooterTooltip
+            label={importInProgress ? 'Importing browser session' : 'Merge browser session'}
+            isDisabled={sidebarCollapsed}
+          >
             <IconButton
               variant="ghost"
               size="sm"
-              aria-label="Merge browser session"
+              aria-label={
+                importInProgress ? 'View session import progress' : 'Merge browser session'
+              }
               onPress={openMergePalette}
             >
-              <Icon icon={Merge} />
+              {importInProgress ? (
+                <Spinner size="sm" label="Importing browser session" />
+              ) : (
+                <Icon icon={Merge} />
+              )}
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Color mode" isDisabled={sidebarCollapsed}>

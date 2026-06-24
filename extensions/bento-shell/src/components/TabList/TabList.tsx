@@ -4,7 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@tale-ui/react/button';
 import { Icon } from '@tale-ui/react/icon';
 import { IconButton } from '@tale-ui/react/icon-button';
-import PanelRight from 'lucide-react/dist/esm/icons/panel-right';
+import { Menu } from '@tale-ui/react/menu';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
 import X from 'lucide-react/dist/esm/icons/x';
@@ -12,7 +12,6 @@ import X from 'lucide-react/dist/esm/icons/x';
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
-import { useSettingsStore } from '../../state/settings';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders';
 import { TabRow } from '../TabRow/TabRow';
@@ -57,6 +56,14 @@ const REMOVAL_ANIMATION_MS = 200;
 // .bento-tab-list-pane--{enter,exit}-* CSS animation duration.
 const WORKSPACE_SLIDE_MS = 260;
 const SELECTED_TABS_TITLE_PREFIX = 'BENTO_SELECTED_TABS:';
+const SCROLLBAR_THUMB_MIN_HEIGHT = 24;
+const SCROLLBAR_SCROLL_VISIBLE_MS = 700;
+
+interface ScrollMetrics {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}
 
 interface TabListSearchResult {
   id: number;
@@ -179,7 +186,6 @@ interface TabListPaneProps {
    * its rows aren't grabbable while sliding off (it is also
    * pointer-events:none in CSS, but the prop gate is clearer). */
   onReorder?: (id: number, anchorId: number, before: boolean) => void;
-  isCollapsed: boolean;
   className: string;
   searchOpen: boolean;
   searchQuery: string;
@@ -213,7 +219,6 @@ function TabListPane({
   onFolderContextMenu,
   onSelectionContextMenu,
   onReorder,
-  isCollapsed,
   className,
   searchOpen,
   searchQuery,
@@ -226,9 +231,27 @@ function TabListPane({
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
   const folders = useWorkspaceFolders(workspaceId);
   const parentRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const scrollbarDragRef = useRef<{
+    pointerId: number;
+    startY: number;
+    startScrollTop: number;
+    trackHeight: number;
+    thumbHeight: number;
+    maxScrollTop: number;
+  } | null>(null);
+  const scrollbarHideTimerRef = useRef<number | null>(null);
   const [rowHeight, setRowHeight] = useState(ROW_HEIGHT_FALLBACK);
   const [rowGap, setRowGap] = useState(0);
+  const [scrollMetrics, setScrollMetrics] = useState<ScrollMetrics>({
+    scrollTop: 0,
+    scrollHeight: 0,
+    clientHeight: 0,
+  });
+  const [scrollbarDragging, setScrollbarDragging] = useState(false);
+  const [scrollbarScrolling, setScrollbarScrolling] = useState(false);
   const rowSlotSize = rowHeight + rowGap;
+  const searchFiltering = searchOpen && searchQuery.trim().length > 0;
   // Drag source — the tab id the user is currently grabbing, or null.
   // Removed-but-fading rows in displayedIds keep their slot; locking the
   // source id (not its filtered index) means the indicator math stays
@@ -236,12 +259,32 @@ function TabListPane({
   const [dragSourceId, setDragSourceId] = useState<number | null>(null);
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const newMenuPopoverRef = useRef<HTMLElement>(null);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
   // means "drop at end"). Null when the cursor isn't over a valid drop
   // target so the indicator hides.
   const [dropSlot, setDropSlot] = useState<number | null>(null);
   const [folderDropTargetId, setFolderDropTargetId] = useState<string | null>(null);
+
+  const updateScrollMetrics = useCallback(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const next = {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    };
+    setScrollMetrics((prev) =>
+      prev.scrollTop === next.scrollTop &&
+      prev.scrollHeight === next.scrollHeight &&
+      prev.clientHeight === next.clientHeight
+        ? prev
+        : next,
+    );
+  }, []);
 
   // Persistent probe + ResizeObserver. Vite injects CSS asynchronously in
   // dev, so a one-shot read can race the stylesheet and fall back. Watching
@@ -276,10 +319,9 @@ function TabListPane({
   const rows = useMemo(
     () =>
       buildDisplayRows(displayedIds, tabsById, folders, activeId, {
-        isCollapsed,
         forceCollapsedFolders: dragFolderId !== null,
       }),
-    [activeId, displayedIds, dragFolderId, folders, isCollapsed, tabsById],
+    [activeId, displayedIds, dragFolderId, folders, tabsById],
   );
   const pinnedRunLength = useMemo(() => {
     let count = 0;
@@ -318,10 +360,33 @@ function TabListPane({
     estimateSize: useCallback(() => rowSlotSize, [rowSlotSize]),
     overscan: 5,
   });
+  const totalSize = virtualizer.getTotalSize();
 
   useLayoutEffect(() => {
     virtualizer.measure();
   }, [rowSlotSize, rows.length, virtualizer]);
+
+  useLayoutEffect(() => {
+    updateScrollMetrics();
+  }, [searchFiltering, searchResults.length, totalSize, updateScrollMetrics]);
+
+  useEffect(() => {
+    const scroller = parentRef.current;
+    if (!scroller) return;
+    const observer = new ResizeObserver(updateScrollMetrics);
+    observer.observe(scroller);
+    if (viewportRef.current) observer.observe(viewportRef.current);
+    updateScrollMetrics();
+    return () => observer.disconnect();
+  }, [updateScrollMetrics]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollbarHideTimerRef.current !== null) {
+        window.clearTimeout(scrollbarHideTimerRef.current);
+      }
+    };
+  }, []);
 
   // Translate the pointer's y position into a drop slot (0..displayedIds.length).
   // Reads the viewport's scrollable coords, divides by the measured row
@@ -545,7 +610,126 @@ function TabListPane({
 
   const dragEnabled = onReorder !== undefined || workspaceId !== null;
   const dropIndicatorY = dropSlot === null ? 0 : Math.max(0, dropSlot * rowSlotSize - rowGap / 2);
-  const searchFiltering = searchOpen && searchQuery.trim().length > 0;
+  const maxScrollTop = Math.max(0, scrollMetrics.scrollHeight - scrollMetrics.clientHeight);
+  const hasScrollableOverflow = maxScrollTop > 1 && scrollMetrics.clientHeight > 0;
+  const scrollbarThumbHeight = hasScrollableOverflow
+    ? Math.min(
+        scrollMetrics.clientHeight,
+        Math.max(
+          SCROLLBAR_THUMB_MIN_HEIGHT,
+          (scrollMetrics.clientHeight / scrollMetrics.scrollHeight) * scrollMetrics.clientHeight,
+        ),
+      )
+    : 0;
+  const maxScrollbarThumbTop = Math.max(0, scrollMetrics.clientHeight - scrollbarThumbHeight);
+  const scrollbarThumbTop =
+    hasScrollableOverflow && maxScrollTop > 0
+      ? (scrollMetrics.scrollTop / maxScrollTop) * maxScrollbarThumbTop
+      : 0;
+  const scrollbarThumbStyle = {
+    height: `${scrollbarThumbHeight}px`,
+    transform: `translateY(${scrollbarThumbTop}px)`,
+  };
+
+  const handlePaneScroll = useCallback(() => {
+    updateScrollMetrics();
+    setScrollbarScrolling(true);
+    if (scrollbarHideTimerRef.current !== null) {
+      window.clearTimeout(scrollbarHideTimerRef.current);
+    }
+    scrollbarHideTimerRef.current = window.setTimeout(() => {
+      scrollbarHideTimerRef.current = null;
+      setScrollbarScrolling(false);
+    }, SCROLLBAR_SCROLL_VISIBLE_MS);
+  }, [updateScrollMetrics]);
+
+  const handleCollapsedScrollbarPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const scroller = parentRef.current;
+      if (!scroller) return;
+      const trackHeight = scroller.clientHeight;
+      const scrollHeight = scroller.scrollHeight;
+      const nextMaxScrollTop = Math.max(0, scrollHeight - trackHeight);
+      if (trackHeight <= 0 || nextMaxScrollTop <= 1) return;
+      const thumbHeight = Math.min(
+        trackHeight,
+        Math.max(SCROLLBAR_THUMB_MIN_HEIGHT, (trackHeight / scrollHeight) * trackHeight),
+      );
+      const maxThumbTop = Math.max(1, trackHeight - thumbHeight);
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const target = event.target as Element | null;
+      let startScrollTop = scroller.scrollTop;
+      if (!target?.closest('.bento-tab-list-pane__scrollbar-thumb')) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const targetThumbTop = Math.max(
+          0,
+          Math.min(maxThumbTop, event.clientY - rect.top - thumbHeight / 2),
+        );
+        scroller.scrollTop = (targetThumbTop / maxThumbTop) * nextMaxScrollTop;
+        startScrollTop = scroller.scrollTop;
+        updateScrollMetrics();
+      }
+
+      scrollbarDragRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startScrollTop,
+        trackHeight,
+        thumbHeight,
+        maxScrollTop: nextMaxScrollTop,
+      };
+      setScrollbarDragging(true);
+      setScrollbarScrolling(true);
+      if (scrollbarHideTimerRef.current !== null) {
+        window.clearTimeout(scrollbarHideTimerRef.current);
+        scrollbarHideTimerRef.current = null;
+      }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is best-effort; wheel/trackpad scrolling still works.
+      }
+    },
+    [updateScrollMetrics],
+  );
+
+  const handleCollapsedScrollbarPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = scrollbarDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const scroller = parentRef.current;
+      if (!scroller) return;
+      event.preventDefault();
+      const maxThumbTravel = Math.max(1, drag.trackHeight - drag.thumbHeight);
+      const nextScrollTop =
+        drag.startScrollTop + ((event.clientY - drag.startY) / maxThumbTravel) * drag.maxScrollTop;
+      scroller.scrollTop = Math.max(0, Math.min(drag.maxScrollTop, nextScrollTop));
+      updateScrollMetrics();
+    },
+    [updateScrollMetrics],
+  );
+
+  const handleCollapsedScrollbarPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = scrollbarDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      scrollbarDragRef.current = null;
+      setScrollbarDragging(false);
+      scrollbarHideTimerRef.current = window.setTimeout(() => {
+        scrollbarHideTimerRef.current = null;
+        setScrollbarScrolling(false);
+      }, SCROLLBAR_SCROLL_VISIBLE_MS);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      updateScrollMetrics();
+    },
+    [updateScrollMetrics],
+  );
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -576,6 +760,24 @@ function TabListPane({
     };
   }, [onCloseSearch, searchOpen, searchQuery]);
 
+  useEffect(() => {
+    if (!newMenuOpen) return;
+    const closeIfOutsideNewMenu = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (newMenuTriggerRef.current?.contains(target)) return;
+      if (newMenuPopoverRef.current?.contains(target)) return;
+      setNewMenuOpen(false);
+    };
+    const closeOnWindowBlur = () => setNewMenuOpen(false);
+    document.addEventListener('pointerdown', closeIfOutsideNewMenu, true);
+    window.addEventListener('blur', closeOnWindowBlur);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutsideNewMenu, true);
+      window.removeEventListener('blur', closeOnWindowBlur);
+    };
+  }, [newMenuOpen]);
+
   const renderSearchButton = () => (
     <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
       <IconButton
@@ -588,6 +790,30 @@ function TabListPane({
         <Icon icon={Search} size="sm" />
       </IconButton>
     </span>
+  );
+
+  const renderNewMenu = () => (
+    <Menu.Root size="sm" isOpen={newMenuOpen} onOpenChange={setNewMenuOpen}>
+      <Menu.Trigger
+        ref={newMenuTriggerRef}
+        className="tale-button tale-button--ghost tale-button--sm bento-tab-list__new-action-button"
+        data-bento-menu-open={newMenuOpen ? 'true' : undefined}
+        aria-label="New"
+      >
+        <Icon icon={Plus} size="sm" />
+        <span className="bento-tab-list__new-action-label">New</span>
+      </Menu.Trigger>
+      <Menu.Popover ref={newMenuPopoverRef} placement="bottom start" offset={4}>
+        <Menu.MenuList aria-label="New">
+          <Menu.Item id="new-tab" textValue="New tab" onAction={onCreateTab}>
+            New tab
+          </Menu.Item>
+          <Menu.Item id="new-panel" textValue="New panel" onAction={onCreatePanel}>
+            New panel
+          </Menu.Item>
+        </Menu.MenuList>
+      </Menu.Popover>
+    </Menu.Root>
   );
 
   const renderSearchOverlay = (filtering = false) => (
@@ -670,146 +896,116 @@ function TabListPane({
   );
 
   return (
-    <div
-      ref={parentRef}
-      className={className}
-      onDragOver={dragEnabled ? onPaneDragOver : undefined}
-      onDragLeave={dragEnabled ? onPaneDragLeave : undefined}
-      onDrop={dragEnabled ? onPaneDrop : undefined}
-    >
+    <div className={className}>
       <div
-        className="bento-tab-list__viewport"
-        style={{ height: searchFiltering ? '100%' : `${virtualizer.getTotalSize()}px` }}
+        ref={parentRef}
+        className="bento-tab-list-pane__scroller"
+        onScroll={handlePaneScroll}
+        onDragOver={dragEnabled ? onPaneDragOver : undefined}
+        onDragLeave={dragEnabled ? onPaneDragLeave : undefined}
+        onDrop={dragEnabled ? onPaneDrop : undefined}
       >
-        {dropSlot !== null && (dragSourceId !== null || dragFolderId !== null) && (
-          <div
-            className="bento-tab-list__drop-indicator"
-            style={{ transform: `translateY(${dropIndicatorY}px)` }}
-            aria-hidden="true"
-          />
-        )}
-        {searchFiltering && renderSearchOverlay(true)}
-        {!searchFiltering &&
-          virtualizer.getVirtualItems().map((vi) => {
-            const row = rows[vi.index];
-            if (!row) return null;
-            if (row.kind === 'new-tab') {
-              return (
-                <div
-                  key={rowKey(row)}
-                  className={
-                    row.afterPinnedSection
-                      ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned' +
-                        (searchOpen ? ' bento-tab-list__row--search-open' : '')
-                      : 'bento-tab-list__row bento-tab-list__row--new-tab' +
-                        (searchOpen ? ' bento-tab-list__row--search-open' : '')
-                  }
-                  style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-                >
-                  <div className="bento-tab-list__new-actions">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="bento-tab-list__new-action-button"
-                      aria-label="New tab"
-                      onPress={onCreateTab}
-                    >
-                      <Icon icon={Plus} size="sm" />
-                      <span className="bento-tab-list__new-action-label">New tab</span>
-                    </Button>
-                    {!isCollapsed && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="bento-tab-list__new-action-button"
-                        aria-label="New panel"
-                        onPress={onCreatePanel}
-                      >
-                        <Icon icon={PanelRight} size="sm" />
-                        <span className="bento-tab-list__new-action-label">New panel</span>
-                      </Button>
-                    )}
-                    {renderSearchButton()}
-                    {searchOpen && renderSearchOverlay()}
+        <div
+          ref={viewportRef}
+          className="bento-tab-list__viewport"
+          style={{ height: searchFiltering ? '100%' : `${totalSize}px` }}
+        >
+          {dropSlot !== null && (dragSourceId !== null || dragFolderId !== null) && (
+            <div
+              className="bento-tab-list__drop-indicator"
+              style={{ transform: `translateY(${dropIndicatorY}px)` }}
+              aria-hidden="true"
+            />
+          )}
+          {searchFiltering && renderSearchOverlay(true)}
+          {!searchFiltering &&
+            virtualizer.getVirtualItems().map((vi) => {
+              const row = rows[vi.index];
+              if (!row) return null;
+              if (row.kind === 'new-tab') {
+                return (
+                  <div
+                    key={rowKey(row)}
+                    className={
+                      row.afterPinnedSection
+                        ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned' +
+                          (searchOpen ? ' bento-tab-list__row--search-open' : '')
+                        : 'bento-tab-list__row bento-tab-list__row--new-tab' +
+                          (searchOpen ? ' bento-tab-list__row--search-open' : '')
+                    }
+                    style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                  >
+                    <div className="bento-tab-list__new-actions">
+                      {renderNewMenu()}
+                      {renderSearchButton()}
+                      {searchOpen && renderSearchOverlay()}
+                    </div>
                   </div>
-                </div>
-              );
-            }
+                );
+              }
 
-            if (row.kind === 'new-panel') {
-              return (
-                <div
-                  key={rowKey(row)}
-                  className={
-                    'bento-tab-list__row bento-tab-list__row--new-tab' +
-                    (searchOpen ? ' bento-tab-list__row--search-open' : '')
-                  }
-                  style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-                >
-                  <div className="bento-tab-list__new-actions">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="bento-tab-list__new-action-button"
-                      aria-label="New panel"
-                      onPress={onCreatePanel}
-                    >
-                      <Icon icon={PanelRight} size="sm" />
-                      <span className="bento-tab-list__new-action-label">New panel</span>
-                    </Button>
-                    {renderSearchButton()}
-                    {searchOpen && renderSearchOverlay()}
+              if (row.kind === 'folder') {
+                const folder = folders.find((candidate) => candidate.id === row.folderId);
+                if (!folder) return null;
+                return (
+                  <div
+                    key={rowKey(row)}
+                    className="bento-tab-list__row"
+                    style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                  >
+                    <FolderRow
+                      folder={folder}
+                      dragging={row.folderId === dragFolderId}
+                      dropTarget={row.folderId === folderDropTargetId}
+                      onContextMenu={onFolderContextMenu}
+                      onDragStart={handleFolderDragStart}
+                      onDragEnd={handleFolderDragEnd}
+                    />
                   </div>
-                </div>
-              );
-            }
+                );
+              }
 
-            if (row.kind === 'folder') {
-              const folder = folders.find((candidate) => candidate.id === row.folderId);
-              if (!folder) return null;
+              const id = row.kind === 'tab' || row.kind === 'peek' ? row.id : undefined;
+              if (id === undefined) return null;
               return (
                 <div
                   key={rowKey(row)}
                   className="bento-tab-list__row"
                   style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
                 >
-                  <FolderRow
-                    folder={folder}
-                    dragging={row.folderId === dragFolderId}
-                    dropTarget={row.folderId === folderDropTargetId}
-                    onContextMenu={onFolderContextMenu}
-                    onDragStart={handleFolderDragStart}
-                    onDragEnd={handleFolderDragEnd}
+                  <TabRow
+                    id={id}
+                    active={id === activeId}
+                    selected={selectedIds.has(id)}
+                    removing={removing.has(id)}
+                    dragging={id === dragSourceId}
+                    indent={row.kind === 'peek' || row.indent}
+                    onActivate={onSelectClick}
+                    onClose={onClose}
+                    onOpenInSidePanel={onOpenInSidePanel}
+                    onContextMenu={onTabContextMenu ? handleRowContextMenu : undefined}
+                    onDragStart={dragEnabled && row.kind === 'tab' ? handleDragStart : undefined}
+                    onDragEnd={dragEnabled && row.kind === 'tab' ? handleDragEnd : undefined}
                   />
                 </div>
               );
-            }
-
-            const id = row.kind === 'tab' || row.kind === 'peek' ? row.id : undefined;
-            if (id === undefined) return null;
-            return (
-              <div
-                key={rowKey(row)}
-                className="bento-tab-list__row"
-                style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-              >
-                <TabRow
-                  id={id}
-                  active={id === activeId}
-                  selected={selectedIds.has(id)}
-                  removing={removing.has(id)}
-                  dragging={id === dragSourceId}
-                  indent={row.kind === 'peek' || row.indent}
-                  onActivate={onSelectClick}
-                  onClose={onClose}
-                  onOpenInSidePanel={onOpenInSidePanel}
-                  onContextMenu={onTabContextMenu ? handleRowContextMenu : undefined}
-                  onDragStart={dragEnabled && row.kind === 'tab' ? handleDragStart : undefined}
-                  onDragEnd={dragEnabled && row.kind === 'tab' ? handleDragEnd : undefined}
-                />
-              </div>
-            );
-          })}
+            })}
+        </div>
+      </div>
+      <div
+        className={
+          'bento-tab-list-pane__scrollbar' +
+          (scrollbarDragging ? ' bento-tab-list-pane__scrollbar--dragging' : '') +
+          (scrollbarScrolling ? ' bento-tab-list-pane__scrollbar--visible' : '')
+        }
+        hidden={!hasScrollableOverflow}
+        onPointerDown={handleCollapsedScrollbarPointerDown}
+        onPointerMove={handleCollapsedScrollbarPointerMove}
+        onPointerUp={handleCollapsedScrollbarPointerUp}
+        onPointerCancel={handleCollapsedScrollbarPointerUp}
+        aria-hidden="true"
+      >
+        <div className="bento-tab-list-pane__scrollbar-thumb" style={scrollbarThumbStyle} />
       </div>
     </div>
   );
@@ -855,7 +1051,6 @@ export function TabList({
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const tabsById = useTabsStore((s) => s.byId);
   const panelsByWorkspace = usePanelsStore((s) => s.byWorkspace);
-  const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   // Pass windowId so the filter ALSO restricts to tabs in this window's
   // gBrowser — cross-window tabs from another window with the same
   // workspaceId aren't actionable here (clicking them activates them in
@@ -865,11 +1060,8 @@ export function TabList({
   const activeId = useTabsStore((s) => s.activeId);
   const folders = useWorkspaceFolders(activeWorkspaceId);
   const visualRows = useMemo(
-    () =>
-      buildDisplayRows(orderedIds, tabsById, folders, activeId, {
-        isCollapsed: sidebarCollapsed,
-      }),
-    [activeId, folders, orderedIds, sidebarCollapsed, tabsById],
+    () => buildDisplayRows(orderedIds, tabsById, folders, activeId, {}),
+    [activeId, folders, orderedIds, tabsById],
   );
   const visualTabOrder = useMemo(() => flattenTabOrder(visualRows), [visualRows]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -1149,7 +1341,6 @@ export function TabList({
             onTabContextMenu={onTabContextMenu}
             onFolderContextMenu={onFolderContextMenu}
             onSelectionContextMenu={handleSelectionContextMenu}
-            isCollapsed={sidebarCollapsed}
             className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
             searchOpen={false}
             searchQuery=""
@@ -1180,7 +1371,6 @@ export function TabList({
           onTabContextMenu={onTabContextMenu}
           onFolderContextMenu={onFolderContextMenu}
           onSelectionContextMenu={handleSelectionContextMenu}
-          isCollapsed={sidebarCollapsed}
           // Only the steady-state incoming pane allows reorder. The
           // outgoing pane (rendered above during a workspace-switch slide)
           // is mid-animation and pointer-events:none anyway; gating here

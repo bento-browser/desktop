@@ -23,20 +23,78 @@
     contain: strict;
   }
 
-  /* Each pane is the actual scrollable, virtualized list. position:
-     absolute lets two panes share the stage without one pushing the other,
-     which is what the slide animation needs. */
+  /* Each pane is an animated shell. Its scroller child owns native scrolling
+     so collapsed mode can hide the expanding platform scrollbar and draw a
+     fixed-width thumb instead. */
   .bento-tab-list-pane {
     position: absolute;
     inset: 0;
+    overflow: hidden;
+  }
+
+  .bento-tab-list-pane__scroller {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
     padding-block-start: var(--space-3xs);
     padding-inline: var(--space-3xs);
   }
 
-  html[data-bento-collapsed='true'] .bento-tab-list-pane {
+  html[data-bento-collapsed='true'] .bento-tab-list-pane__scroller {
     padding-inline: 0;
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list-pane__scroller::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bento-tab-list-pane__scrollbar {
+    display: none;
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list-pane__scrollbar {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 4;
+    display: block;
+    width: var(--bento-scrollbar-thickness);
+    cursor: default;
+    touch-action: none;
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list-pane__scrollbar[hidden] {
+    display: none;
+  }
+
+  .bento-tab-list-pane__scrollbar-thumb {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 1px;
+    min-height: 24px;
+    border-radius: var(--bento-scrollbar-radius);
+    background-color: color-mix(in srgb, var(--neutral-90) 28%, transparent);
+    opacity: 0;
+    transition:
+      opacity var(--bento-duration-fast) var(--bento-easing-standard),
+      background-color var(--bento-duration-fast) var(--bento-easing-standard);
+  }
+
+  .bento-tab-list-pane__scrollbar:hover .bento-tab-list-pane__scrollbar-thumb,
+  .bento-tab-list-pane__scrollbar--visible .bento-tab-list-pane__scrollbar-thumb,
+  .bento-tab-list-pane__scrollbar--dragging .bento-tab-list-pane__scrollbar-thumb {
+    opacity: 1;
+  }
+
+  .bento-tab-list-pane__scrollbar:hover .bento-tab-list-pane__scrollbar-thumb,
+  .bento-tab-list-pane__scrollbar--dragging .bento-tab-list-pane__scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--neutral-90) 38%, transparent);
   }
 
   /* Empty-state version of the pane uses Column flex semantics so the
@@ -230,6 +288,10 @@
   height: 100%;
   min-height: 0;
   justify-content: flex-start;
+}
+
+.bento-tab-list__new-action-button[data-bento-menu-open='true'] {
+  background-color: var(--bento-surface-active);
 }
 
 .bento-tab-list__new-action-label {

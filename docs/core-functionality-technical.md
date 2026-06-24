@@ -154,6 +154,18 @@ and cannot reliably blur the parent chrome pixels behind it with its own
 - Keep native top-urlbar interception in chrome, not in the extension frame; the
   Firefox suggestions popup is created by parent chrome urlbar code before the
   remote Bento overlay can react.
+- Intercept native top-urlbar pointer/focus at chrome window capture, not only
+  on `#urlbar-input`. Firefox 152 can open the native `urlbarView` before an
+  input-local listener runs, producing a brief autosuggest flash. Keep the
+  short `bento-native-urlbar-intercepting` chrome attribute and CSS suppression
+  as a backstop while the Bento address overlay opens.
+- Chrome-mounted shell pages must remain explicitly loadable from outside the
+  extension page context. Keep every HTML entry loaded by
+  `bento-shell-mount.js` in `bento-shell`'s `web_accessible_resources`, and
+  navigate those chrome `<browser>` frames through `loadURI()` with a system
+  principal before falling back to `src`. Firefox 152 tightened this path; a
+  missing entry or principal can show Firefox's "Problem loading page" in the
+  sidebar or leave chrome-mounted overlays such as the address bar blank.
 - Do not create a blank tab for native-urlbar clicks. They are current-tab
   edits; only explicit new-tab mode should defer tab creation until commit.
 - Do not rely only on CSS inside `address-bar.html` for the frosted backdrop.
@@ -358,14 +370,15 @@ adds `audible` and `muted` to each `panels/sync` panel entry and re-emits
 `panels/sync` when a panel tab's audio state changes; the shell forwards that
 through `BENTO_PANELS`, and `bento-shell-mount.js` mirrors it in
 `currentPanelAudioByTabId` for the chrome-injected header button beside Reload.
-`extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the new-tab
-row into the virtualized pane after the pinned run and before regular tabs. When
-the active workspace's filtered sidebar tab ids include at least one
-`TabSnapshot.pinned` tab, `TabListPane` marks that inserted new-tab row with
-`bento-tab-list__row--after-pinned`, and `TabList.css` paints that row's top
-divider. The divider occupies no layout height, so collapse/expand keeps row
-positions stable while still separating pinned tabs from the new-tab and regular
-tab section.
+`extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the New menu
+row into the virtualized pane after the pinned run and before regular tabs. That
+Tale UI menu exposes the New tab and New panel actions from the same row in both
+expanded and collapsed sidebar modes. When the active workspace's filtered
+sidebar tab ids include at least one `TabSnapshot.pinned` tab, `TabListPane`
+marks that inserted New menu row with `bento-tab-list__row--after-pinned`, and
+`TabList.css` paints that row's top divider. The divider occupies no layout
+height, so collapse/expand keeps row positions stable while still separating
+pinned tabs from the New menu and regular tab section.
 
 Sidebar drag handling in `TabListPane` classifies tab drops before falling back
 to anchor-based reordering. A drop in slot `0` or within the current pinned run
@@ -418,11 +431,14 @@ Membership is stored on tabs with the `bento.folderId` sessions key in
 `TabRegistry`, so closing a tab removes its membership without mutating folder
 metadata. The wire protocol adds `TabSnapshot.folderId`, `TabFolder`,
 `tabFolders/snapshot`, `tabFolders/changed`, `tabFolder/*` actions, and
-`tabs/setFolder`. Moving a tab to another workspace clears folder membership in
-the same tab delta as the workspace change. Moving a whole folder uses
-`tabFolder/assignWorkspace`: tools updates each member tab's workspace while
-preserving that folder id, then moves the folder metadata to the target
-workspace at the end of that workspace's folder order.
+`tabs/setFolder`. `TabFolderStore.create()` defaults folders to expanded for
+user-created folders but accepts an explicit initial `collapsed` value for
+system-created folders such as browser-session merge imports. Moving a tab to
+another workspace clears folder membership in the same tab delta as the
+workspace change. Moving a whole folder uses `tabFolder/assignWorkspace`: tools
+updates each member tab's workspace while preserving that folder id, then moves
+the folder metadata to the target workspace at the end of that workspace's
+folder order.
 
 Folder drops use the same `tabs/setFolder` action as the context menu. The shell
 marks folder rows as drop targets and dispatches the folder id when a tab is
@@ -716,16 +732,21 @@ React mount is not the refresh boundary. The palette search row also exposes a
 refresh button that dispatches a new `externalMerge/requestSources` request
 through the same store path while keeping the current source rows visible until
 the replacement response arrives; refresh is disabled while a merge operation is
-active. While `activeOperationId` is set, the shell renders a Tale UI
-indeterminate `ProgressBar` loader inside the command palette naming the source
-being imported, in addition to disabling the source rows and footer refresh
-affordance. The loader row includes a Cancel button that dispatches
-`externalMerge/cancel` for the active `operationId`; the footer exposes a
-visible Close button that hides the palette without cancelling an active merge.
-Source rows use `closeOnSelect={false}`, the `useCommandPalette` hook is also
-configured with `closeOnSelect: false`, and merge completion does not start an
-auto-close timer; only the Close button, backdrop dismissal, or chrome close
-lifecycle should hide the palette.
+active. While `activeOperationId` is set, the shell renders an opaque absolute
+overlay inside the Tale UI command palette popup. The overlay covers the search,
+source rows, footer, and close control, names the source being imported, and
+shows an indeterminate `ProgressBar` plus Close and Cancel buttons. The Close
+button hides the palette without cancelling the active import, and the Cancel
+button dispatches `externalMerge/cancel` for the active `operationId`. Backdrop
+dismissal and `onOpenChange` close handling are disabled while that in-palette
+merge overlay is active.
+The source list renders source cards instead of selectable command rows: source
+cards start collapsed and expose Import all plus expandable target cards for
+native spaces or windows. Target cards also start with their tab previews
+collapsed; expanding them shows up to 10 tab previews and an "X more tabs"
+overflow line, and their Import button dispatches `externalMerge/merge` with
+`targetIds`. Merge completion does not start an auto-close timer; only the Close
+button, backdrop dismissal, or chrome close lifecycle should hide the palette.
 
 `extensions/bento-tools/experiments/bento-external-sessions/` is the privileged
 source reader. It discovers Firefox profiles from the Mozilla Firefox
@@ -768,12 +789,26 @@ only each tab's current `entries[index - 1]` entry, and excludes private/hidden
 tabs and windows. Zen normalization maps spaces to native workspaces and applies
 the same live visible-tab filtering. Zen tab folder membership can appear as
 Firefox-style `extData.tabGroupId`, object-shaped `group` / `folder` fields,
-numeric ids, or Zen-specific folder fields, so the reader must preserve those
-fields and the parser must normalize them to the same string id used by the
-group definition. Chromium normalization uses a dedicated persisted-session
-parser. For modern `SNSS` session files, it reconstructs live tabs from Chromium
-session commands, using `SetTabWindow`, tab/window close, selected-navigation,
-and navigation-update records; it must not count every URL string in
+numeric ids, keyed `folders`/`tabFolders` object maps, folder-owned member lists
+such as `tabs`/`children`, or Zen-specific folder fields, so the reader must
+preserve those fields and the parser must normalize them to the same string id
+used by the group definition.
+Confirmed Zen folder import regression fix, 2026-06-24: if the manual Zen merge
+shows group/folder counts but imported Bento workspaces contain only ungrouped
+tabs, the Zen session probably stores folder membership on the folder object
+instead of each tab. Keep the reader preserving keyed folder maps and member
+lists, and keep the parser's fallback from tab ids/uuids to folder membership
+maps before creating Bento folders.
+Confirmed Zen folder import regression fix, 2026-06-24: if Zen folder children
+import as normal pinned Bento tabs instead of Bento folder members, check whether
+the Zen session marks those folder children with `pinned: true`. The Zen parser
+must prefer resolved folder membership over generic pinned state so those tabs
+remain eligible for `TabFolderStore` folder creation; only `zenEssential` tabs
+stay pinned when they also carry Zen's pinned flag. Chromium normalization uses
+a dedicated persisted-session parser. For modern `SNSS` session files, it
+reconstructs live tabs from Chromium session commands, using `SetTabWindow`,
+tab/window close, selected-navigation, and navigation-update records; it must
+not count every URL string in
 `Session_*` or `Tabs_*` files, because those files also contain history entries,
 stale rotated records, and closed tab data. When grouped Chromium metadata is
 detected but cannot be safely mapped, the source is reported as an unsupported
@@ -789,13 +824,18 @@ navigation per surviving live tab, not one tab per URL string.
 `loadExternalMergeSources()` calls the experiment's `listCandidates()`, reads
 each candidate snapshot, normalizes it in bundled tools code, and derives the
 shell-visible `ExternalMergeSource` counts from importable live windows, tabs,
-and groups. Empty, corrupt, unreadable, private-only, or unsupported candidates
-remain visible as disabled source rows with a sanitized reason, even when other
-sources are mergeable. Do not drop failed candidates only because a readable
-Firefox or Zen source exists; users still need to see that Chrome was found but
-could not be read. Confirmed mixed-result regression fix, 2026-06-24: the merge
-palette must show mergeable Firefox/Zen rows and a disabled Chrome row together
-when Chromium session discovery succeeds but session file reads fail.
+and groups. It also derives source target metadata from the same normalized
+session: native workspaces/spaces become `workspace:<id>` targets, otherwise
+windows become `window:<id>` targets. Each target carries tab/group/window
+counts and the first 10 importable tab previews for the shell; tools does not
+send every tab title for large sessions. Empty, corrupt, unreadable,
+private-only, or unsupported candidates remain visible as disabled source rows
+with a sanitized reason, even when other sources are mergeable. Do not drop
+failed candidates only because a readable Firefox or Zen source exists; users
+still need to see that Chrome was found but could not be read. Confirmed
+mixed-result regression fix, 2026-06-24: the merge palette must show mergeable
+Firefox/Zen rows and a disabled Chrome row together when Chromium session
+discovery succeeds but session file reads fail.
 
 Merge execution lives in
 `extensions/bento-tools/src/externalMerge/ExternalMergeExecutor.ts`. It builds a
@@ -823,17 +863,24 @@ survives filtering. Native source workspaces/spaces become one Bento workspace
 each; otherwise each source window becomes one workspace. Workspace names use
 `<Browser>: <Workspace name>` or `<Browser>: <Profile name> Window <n>` and the
 same collision behavior as backup import (`name`, `name (imported)`, then
-numeric suffix). Workspaces are created with `{ activate: false }` until all
-tabs/folders are created. Tabs are opened inactive in the requesting window when
-known, assigned to the workspace through `TabRegistry.assignWorkspaceEagerly`,
-and pinned tabs are pinned with `browser.tabs.update` as a backstop. The
+numeric suffix). When `externalMerge/merge` carries `targetIds`, `buildPlans()`
+applies the same source-space/window grouping but keeps only matching target ids;
+omitting `targetIds` imports the full source as before. Workspaces are created
+with `{ activate: false }` until all tabs/folders are created. Tabs are opened
+inactive in the requesting window when known, assigned to the workspace through
+`TabRegistry.assignWorkspaceEagerly`, and pinned tabs are pinned with
+`browser.tabs.update` as a backstop. The
 executor must await the eager assignment's `browser.sessions.setTabValue`
 completion before counting a tab as imported; if the workspace marker cannot be
 persisted, the created tab is removed and the temporary workspace is discarded
 when no other tabs imported. This keeps imported workspaces from relaunching as
 empty workspaces containing only a fallback new tab. Source tab groups become
 `TabFolderStore` folders only for non-pinned imported members; pinned group
-members stay pinned and un-foldered. Folder assignment uses
+members stay pinned and un-foldered after source-specific parser normalization.
+For Zen specifically, folder membership must be normalized before pinned status
+so sidebar folder children are not misclassified as pinned members. Folder
+metadata for imported groups is created with `collapsed: true` so newly imported
+source folders start closed in Bento. Folder assignment uses
 `TabRegistry.assignFolderEagerly()` rather than `setFolder()` because
 `browser.tabs.create()` can resolve before `tabs.onCreated` has populated the
 registry. If no member can persist the folder marker, the empty imported folder
@@ -847,6 +894,14 @@ probably reporting success before `bento.workspaceId` session values are
 durable. Keep `TabRegistry.assignWorkspaceEagerly()` returning an awaitable
 persistence result and keep the executor's wait before incrementing
 `tabsOpened`.
+Confirmed restart-persistence regression fix, 2026-06-24: if the executor waits
+for `assignWorkspaceEagerly()` but imported workspaces still relaunch empty,
+check the boot backfill path. `background.ts` must not call persistent
+`TabRegistry.assignWorkspace()` before SessionStore tab extData settles; that
+can overwrite a restored imported tab's saved `bento.workspaceId` with the
+currently active workspace. Boot-time fallback assignment after
+`hydrateWorkspaceIds()` must stay in-memory only, and `hydrateWorkspaceIds()`
+must retry delayed session reads before that fallback runs.
 Cancellation is cooperative and operation-scoped. `protocol-handler.ts` owns the
 single in-flight `AbortController`, reports `ExternalMergeError("cancelled",
 ...)` immediately when `externalMerge/cancel` matches the active operation, and
@@ -1026,6 +1081,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   from the decoded layout tree, append it as a root before computing flat-layout
   geometry. Otherwise the panel is resolved and rendered, but receives no
   `panelRects` entry and overlaps until the next live layout refresh.
+- In `bento-no-side-panels` mode, the moved `#tabbrowser-tabbox` is still the
+  rounded content frame. Keep that frame and its child tabpanels/browser
+  surfaces clipped to `--radius-m`; `.browserContainer` alone does not prevent
+  page paint from showing through the rounded corners.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
 - `panelLayout/breakOut` promotes an existing child into the root layout and
@@ -1207,10 +1266,11 @@ bookmarks with `browser.bookmarks.search(query)`, filters bookmark folders out,
 dedupes by normalized URL, and ranks host-prefix matches, history recency and
 visit count, and bookmark matches. Favicons are best-effort: open tabs provide
 `TabSnapshot.favIconUrl`, but history and bookmark APIs do not return favicons.
-The React overlay renders the local tab/panel rows, async history/bookmark rows,
-and synthetic search/open row through Tale UI's `CommandPalette` recipe and
-`useCommandPalette` hook. Sorting is disabled so the groups keep Bento's fixed
-order: open tabs, panels, history/bookmarks, then search/open.
+The React overlay renders the active workspace's local tab/panel rows, async
+history/bookmark rows, and synthetic search/open row through Tale UI's
+`CommandPalette` recipe and `useCommandPalette` hook. Sorting is disabled so the
+groups keep Bento's fixed order: open tabs, panels, history/bookmarks, then
+search/open.
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
 one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload;
@@ -1229,6 +1289,11 @@ Load-bearing pitfalls:
 - Open tabs are title-filtered only because `TabSnapshot` intentionally omits
   URL for wire-size reasons. Zen-style title+URL tab matching requires a
   deliberate protocol widening.
+- Open tab and panel rows must be filtered by `useActiveWorkspaceIdForWindow`
+  and the source `windowId`. The full command palette can list cross-workspace
+  tabs because it labels workspace context and `tab/activate` switches
+  workspaces first; the floating address bar is a browser-surface replacement
+  and should not show inactive workspace tabs as local open tabs.
 - New-tab submissions must create the tab inactive, eagerly assign it to
   `ctx.workspaces.getActiveId(ctx.sourceWindowId)`, then activate it. Passing
   `active: true` directly to `browser.tabs.create` lets Firefox fire

@@ -39,7 +39,12 @@ export class TabFolderStore {
     return this.#byId.get(id);
   }
 
-  create(input: { id: string; workspaceId: string; name?: string }): TabFolder {
+  create(input: {
+    id: string;
+    workspaceId: string;
+    name?: string;
+    collapsed?: boolean;
+  }): TabFolder {
     const existing = this.#byId.get(input.id);
     if (existing) return existing;
     const siblings = this.foldersForWorkspace(input.workspaceId);
@@ -50,7 +55,7 @@ export class TabFolderStore {
       workspaceId: input.workspaceId,
       name,
       order,
-      collapsed: false,
+      collapsed: input.collapsed ?? false,
       createdAt: Date.now(),
     };
     this.#byId.set(folder.id, folder);

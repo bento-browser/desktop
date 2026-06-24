@@ -969,6 +969,74 @@ describe('protocol handler external merge', () => {
     vi.unstubAllGlobals();
   });
 
+  it('broadcasts external merge lifecycle events to all shell documents', async () => {
+    let resolveSnapshot!: (value: unknown) => void;
+    const snapshotPromise = new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    });
+    vi.stubGlobal('browser', {
+      bentoExternalSessions: {
+        readSnapshot: vi.fn(() => snapshotPromise),
+      },
+      tabs: {
+        query: vi.fn(async () => []),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const broadcast = vi.fn();
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: vi.fn(),
+        activate: vi.fn(() => 'noop'),
+      } as unknown as HandlerContext['workspaces'],
+      panels: {
+        getPanels: vi.fn(() => []),
+      } as unknown as HandlerContext['panels'],
+      tabFolders: {
+        create: vi.fn(),
+      } as unknown as HandlerContext['tabFolders'],
+      broadcast,
+      sourceWindowId: 5,
+    });
+
+    handle({ type: 'externalMerge/merge', sourceId: 'source-1', operationId: 'op-1' }, ctx);
+
+    expect(broadcast).toHaveBeenCalledWith({
+      type: 'externalMerge/started',
+      operationId: 'op-1',
+      windowId: 5,
+      sourceId: 'source-1',
+    });
+
+    resolveSnapshot({
+      sourceId: 'source-1',
+      kind: 'firefox',
+      browserName: 'Firefox',
+      profileName: 'Default',
+      lastModified: 1,
+      capturedAt: 1,
+      format: 'firefox-json',
+      json: JSON.stringify({ windows: [] }),
+    });
+
+    await vi.waitFor(() => {
+      expect(broadcast).toHaveBeenCalledWith({
+        type: 'externalMerge/error',
+        operationId: 'op-1',
+        windowId: 5,
+        sourceId: 'source-1',
+        code: 'no-importable-tabs',
+        message: 'Firefox did not contain any importable tabs.',
+      });
+    });
+  });
+
   it('rejects duplicate merge operations before reading another snapshot', async () => {
     let resolveSnapshot!: (value: unknown) => void;
     const snapshotPromise = new Promise((resolve) => {

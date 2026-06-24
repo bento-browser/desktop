@@ -1,5 +1,18 @@
+From 5461313f0737dab35070862c8a5db6536683b2fe Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:42 +1000
+Subject: [PATCH] Add mach build hang guards
+
+---
+ build/mach_initialize.py                             |  2 +-
+ python/mach/mach/main.py                             | 12 ++++++++----
+ python/mach/mach/mixin/process.py                    |  2 +-
+ python/mozbuild/mozbuild/base.py                     |  2 +-
+ .../mozbase/mozprocess/mozprocess/processhandler.py  | 11 +++++++++--
+ 5 files changed, 20 insertions(+), 9 deletions(-)
+
 diff --git a/build/mach_initialize.py b/build/mach_initialize.py
-index 498f8c28a8..c545bd48fd 100644
+index a968553ab29808aed7d4264be9612b6c64a9e986..419499bf4d1383bc3115a47487540430df869f9f 100644
 --- a/build/mach_initialize.py
 +++ b/build/mach_initialize.py
 @@ -290,7 +290,7 @@ def initialize(topsrcdir, args=()):
@@ -12,7 +25,7 @@ index 498f8c28a8..c545bd48fd 100644
          _finalize_telemetry_glean(
              context.telemetry,
 diff --git a/python/mach/mach/main.py b/python/mach/mach/main.py
-index 9582455e7e..e323165cb4 100644
+index 42ce4dc08cdd4f9271a3b6bc3b67357434378c89..aa476dcc24bca309ce2c1743d080b2b1c742fc62 100644
 --- a/python/mach/mach/main.py
 +++ b/python/mach/mach/main.py
 @@ -374,9 +374,13 @@ To see more help for a specific command, run:
@@ -42,10 +55,10 @@ index 9582455e7e..e323165cb4 100644
      def log(self, level, action, params, format_str):
          """Helper method to record a structured log event."""
 diff --git a/python/mach/mach/mixin/process.py b/python/mach/mach/mixin/process.py
-index cefe4412a6..d962865144 100644
+index 1105b25c04e5db54519323208b7f3230be0ef8b6..2206c6227bc9f93ccab09a8a90c501ae705f7320 100644
 --- a/python/mach/mach/mixin/process.py
 +++ b/python/mach/mach/mixin/process.py
-@@ -161,7 +161,7 @@ class ProcessExecutionMixin:
+@@ -162,7 +162,7 @@ class ProcessExecutionMixin(LoggingMixin):
          self.log(logging.DEBUG, "process", {"env": str(use_env)}, "Environment: {env}")
  
          if pass_thru:
@@ -55,7 +68,7 @@ index cefe4412a6..d962865144 100644
              # Leave it to the subprocess to handle Ctrl+C. If it terminates as
              # a result of Ctrl+C, proc.wait() will return a status code, and,
 diff --git a/python/mozbuild/mozbuild/base.py b/python/mozbuild/mozbuild/base.py
-index ddd5fe8667..8b8eaf7486 100644
+index 08f41d502c10a053662a0d97b333081091a6fe49..442f5f91559d92f28b5f8685bffb12639b797ba1 100644
 --- a/python/mozbuild/mozbuild/base.py
 +++ b/python/mozbuild/mozbuild/base.py
 @@ -1049,7 +1049,7 @@ class MachCommandBase(MozbuildObject):
@@ -68,10 +81,11 @@ index ddd5fe8667..8b8eaf7486 100644
          return self._metrics
  
 diff --git a/testing/mozbase/mozprocess/mozprocess/processhandler.py b/testing/mozbase/mozprocess/mozprocess/processhandler.py
-index 36d4625d93..f7145adf7c 100644
+index 0cb39031c1f9fbc0cef48776a5e171e9b5e979b6..5dfc3f42f7c7697a50b376f23daccef5c02c67de 100644
 --- a/testing/mozbase/mozprocess/mozprocess/processhandler.py
 +++ b/testing/mozbase/mozprocess/mozprocess/processhandler.py
 @@ -98,7 +98,7 @@ class ProcessHandlerMixin:
+             stdout=None,
              stderr=None,
              preexec_fn=None,
 -            close_fds=False,
@@ -79,8 +93,7 @@ index 36d4625d93..f7145adf7c 100644
              shell=False,
              cwd=None,
              env=None,
-             universal_newlines=False,
-@@ -849,6 +849,7 @@ class ProcessHandlerMixin:
+@@ -891,6 +891,7 @@ falling back to not using job objects for managing child processes""",
              env=self.env,
              ignore_children=self._ignore_children,
          )
@@ -88,8 +101,7 @@ index 36d4625d93..f7145adf7c 100644
  
          # build process arguments
          args.update(self.keywordargs)
-@@ -972,8 +973,14 @@ class ProcessHandlerMixin:
-             if self._ignore_children:
+@@ -1006,7 +1007,13 @@ falling back to not using job objects for managing child processes""",
                  while self.reader.is_still_reading(timeout=0.1):
                      time.sleep(0.1)
              else:
@@ -104,3 +116,6 @@ index 36d4625d93..f7145adf7c 100644
          return self.returncode
  
      @property
+-- 
+2.50.1 (Apple Git-155)
+

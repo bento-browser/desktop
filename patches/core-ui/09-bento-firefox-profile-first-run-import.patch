@@ -1,20 +1,36 @@
+From 3992730aba0e69a2bc16834413a53a062a3fef89 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:39 +1000
+Subject: [PATCH] Import Firefox profile data on first Bento run
+
+---
+ .../migration/FirefoxProfileMigrator.sys.mjs  | 489 +++++++++++++++++-
+ .../migration/MigrationUtils.sys.mjs          |   8 +
+ .../migration/MigrationWizardParent.sys.mjs   |  11 +
+ .../migration/content/migration-wizard.mjs    |  11 +-
+ .../locales/en-US/browser/migrationWizard.ftl |   2 +
+ toolkit/xre/nsAppRunner.cpp                   |   8 +
+ 6 files changed, 524 insertions(+), 5 deletions(-)
+
 diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
-index f27344a721..e5f99505fc 100644
+index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..b084587e14a04a2b2cfa22fc2f77a401dac667be 100644
 --- a/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 +++ b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
-@@ -12,6 +12,7 @@
+@@ -10,6 +10,7 @@
   */
-
+ 
  import { MigrationUtils } from "resource:///modules/MigrationUtils.sys.mjs";
 +import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
+ 
  import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
-
-@@ -24,5 +25,40 @@ ChromeUtils.defineESModuleGetters(lazy, {
+ 
+@@ -20,8 +21,43 @@ ChromeUtils.defineESModuleGetters(lazy, {
+   PlacesBackups: "resource://gre/modules/PlacesBackups.sys.mjs",
+   ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
    SessionMigration: "resource:///modules/sessionstore/SessionMigration.sys.mjs",
 +  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
  });
-+
+ 
 +function getInstalledMacAppIconURL(bundleNames) {
 +  if (AppConstants.platform != "macosx") {
 +    return null;
@@ -48,12 +64,13 @@ index f27344a721..e5f99505fc 100644
 +  }
 +  return null;
 +}
-
++
  /**
   * Firefox profile migrator. Currently, this class only does "pave over"
-@@ -43,6 +74,15 @@ export class FirefoxProfileMigrator extends MigratorBase {
+  * migrations, where various parts of an old profile overwrite a new
+@@ -40,6 +76,15 @@ export class FirefoxProfileMigrator extends MigratorBase {
    }
-
+ 
    static get brandImage() {
 +    if (AppConstants.MOZ_APP_NAME == "bento") {
 +      return (
@@ -66,8 +83,8 @@ index f27344a721..e5f99505fc 100644
 +    }
      return "chrome://branding/content/icon128.png";
    }
-
-@@ -58,6 +59,10 @@ export class FirefoxProfileMigrator extends MigratorBase {
+ 
+@@ -56,6 +101,10 @@ export class FirefoxProfileMigrator extends MigratorBase {
     *   - {nsIFile} rootDir - The root directory of the profile.
     */
    async getAllProfiles() {
@@ -78,10 +95,10 @@ index f27344a721..e5f99505fc 100644
      let allProfiles = new Map();
      let profileService = Cc[
        "@mozilla.org/toolkit/profile-service;1"
-@@ -81,6 +86,130 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -79,6 +128,130 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return allProfiles;
    }
-
+ 
 +  /**
 +   * Return profiles from Mozilla Firefox's profile registry when Bento is the
 +   * running app. Bento has its own profile registry, so nsIToolkitProfileService
@@ -209,9 +226,9 @@ index f27344a721..e5f99505fc 100644
    async getSourceProfiles() {
      let sorter = (a, b) => {
        return a.name
-@@ -89,13 +262,19 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -87,13 +260,19 @@ export class FirefoxProfileMigrator extends MigratorBase {
      };
-
+ 
      let profiles = await this.getAllProfiles();
 -
 -    return [...profiles.values()]
@@ -229,9 +246,9 @@ index f27344a721..e5f99505fc 100644
 +    }
 +    return profilesWithResources;
    }
-
+ 
    _getFileObject(dir, fileName) {
-@@ -465,3 +644,309 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -463,3 +642,309 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return true;
    }
  }
@@ -542,7 +559,7 @@ index f27344a721..e5f99505fc 100644
 +  }
 +}
 diff --git a/browser/components/migration/MigrationUtils.sys.mjs b/browser/components/migration/MigrationUtils.sys.mjs
-index 07444c92b8..ab25e99865 100644
+index c4eea345401133c26d9ba63b14ddaa0a519087d4..950a8b7a08df8d1cbce25fccff992ba82dd151d3 100644
 --- a/browser/components/migration/MigrationUtils.sys.mjs
 +++ b/browser/components/migration/MigrationUtils.sys.mjs
 @@ -57,6 +57,10 @@ const MIGRATOR_MODULES = Object.freeze({
@@ -553,19 +570,19 @@ index 07444c92b8..ab25e99865 100644
 +    moduleURI: "resource:///modules/FirefoxProfileMigrator.sys.mjs",
 +    platforms: ["macosx"],
 +  },
-  FirefoxSelectableProfileMigrator: {
-    moduleURI: "resource:///modules/FirefoxSelectableProfileMigrator.sys.mjs",
-    platforms: ["linux", "macosx", "win"],
-@@ -179,6 +183,8 @@ class MigrationUtils {
-        "about:welcome?*",
-        "about:preferences",
-        "about:settings",
+   FirefoxSelectableProfileMigrator: {
+     moduleURI: "resource:///modules/FirefoxSelectableProfileMigrator.sys.mjs",
+     platforms: ["linux", "macosx", "win"],
+@@ -172,6 +176,8 @@ class MigrationUtils {
+         "about:welcome?*",
+         "about:preferences",
+         "about:settings",
 +        "chrome://browser/content/bento-migration-host.html",
 +        "chrome://browser/content/bento-migration-host.html?*",
-        "chrome://browser/content/migration/migration-dialog-window.html",
-        "chrome://browser/content/spotlight.html",
-        "about:firefoxview",
-@@ -511,6 +515,8 @@ class MigrationUtils {
+         "chrome://browser/content/migration/migration-dialog-window.html",
+         "chrome://browser/content/spotlight.html",
+         "about:firefoxview",
+@@ -508,6 +514,8 @@ class MigrationUtils {
        "Internet Explorer": "ie",
        "Microsoft Edge": "edge",
        Safari: "safari",
@@ -575,10 +592,10 @@ index 07444c92b8..ab25e99865 100644
        Nightly: "firefox",
        Opera: "opera",
 diff --git a/browser/components/migration/MigrationWizardParent.sys.mjs b/browser/components/migration/MigrationWizardParent.sys.mjs
-index 61e6502dd4..f68cd792bf 100644
+index 1e1b4985f078a07d69bfdad25f8c6b83e578c264..9106c433be1c0b2b745337b6e3b72c0781b172be 100644
 --- a/browser/components/migration/MigrationWizardParent.sys.mjs
 +++ b/browser/components/migration/MigrationWizardParent.sys.mjs
-@@ -585,6 +585,17 @@ export class MigrationWizardParent extends JSWindowActorParent {
+@@ -584,6 +584,17 @@ export class MigrationWizardParent extends JSWindowActorParent {
        if (!migrator?.enabled) {
          return null;
        }
@@ -593,14 +610,14 @@ index 61e6502dd4..f68cd792bf 100644
 +      ) {
 +        return null;
 +      }
-
+ 
        if (!(await migrator.hasPermissions())) {
          // If we're unable to get permissions for this migrator, then we
 diff --git a/browser/components/migration/content/migration-wizard.mjs b/browser/components/migration/content/migration-wizard.mjs
-index 7095b32269..0f34b31fd9 100644
+index 2c45343dd8bdf80d441e406718d05d89d0fde26b..cae6fdc8cfcac7668f04ffdc687df3e7e15045d4 100644
 --- a/browser/components/migration/content/migration-wizard.mjs
 +++ b/browser/components/migration/content/migration-wizard.mjs
-@@ -104,6 +104,9 @@ export class MigrationWizard extends HTMLElement {
+@@ -107,6 +107,9 @@ export class MigrationWizard extends HTMLElement {
                  <label id="payment-methods" class="resource-type-label" data-resource-type="PAYMENT_METHODS">
                    <input type="checkbox"/><span data-l10n-id="migration-payment-methods-option-label"></span>
                  </label>
@@ -609,7 +626,7 @@ index 7095b32269..0f34b31fd9 100644
 +                </label>
                </fieldset>
              </details>
-
+ 
 @@ -502,11 +505,11 @@ export class MigrationWizard extends HTMLElement {
      if (panelItem.brandImage) {
        this.#browserProfileSelector.querySelector(
@@ -622,28 +639,28 @@ index 7095b32269..0f34b31fd9 100644
 -      ).style.content = "url(chrome://global/skin/icons/defaultFavicon.svg)";
 +      ).style.content = 'url("chrome://global/skin/icons/defaultFavicon.svg")';
      }
-
+ 
      let key = panelItem.getAttribute("key");
 @@ -665,7 +668,7 @@ export class MigrationWizard extends HTMLElement {
-
+ 
        let button = opt.shadowRoot.querySelector("button");
        if (migrator.brandImage) {
 -        button.style.backgroundImage = `url(${migrator.brandImage})`;
 +        button.style.backgroundImage = `url("${migrator.brandImage}")`;
        }
-
+ 
        if (migrator.profile) {
-@@ -1264,6 +1264,8 @@ class MigrationWizard extends HTMLElement {
+@@ -1264,6 +1267,8 @@ export class MigrationWizard extends HTMLElement {
          "migration-list-autofill-label",
        [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PAYMENT_METHODS]:
          "migration-list-payment-methods-label",
 +      [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.SESSION]:
 +        "migration-session-option-label",
      };
-
+ 
      if (MigrationWizardConstants.USES_FAVORITES.includes(key)) {
 diff --git a/browser/locales/en-US/browser/migrationWizard.ftl b/browser/locales/en-US/browser/migrationWizard.ftl
-index 9b8cc78a6a..19ab3e219c 100644
+index 9b8cc78a6a3b05f209d4be1abc9cb865a6c32dd6..19ab3e219c04abd4fa7924910d2255bc18cb0112 100644
 --- a/browser/locales/en-US/browser/migrationWizard.ftl
 +++ b/browser/locales/en-US/browser/migrationWizard.ftl
 @@ -37,6 +37,8 @@ migration-wizard-migrator-display-name-chromium-edge = Microsoft Edge
@@ -656,13 +673,13 @@ index 9b8cc78a6a..19ab3e219c 100644
  migration-wizard-migrator-display-name-file-bookmarks = Bookmarks from HTML file
  migration-wizard-migrator-display-name-ie = Microsoft Internet Explorer
 diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
-index 6d330fca12..18221cd021 100644
+index 12fed39d6d7c73b7328c5adfd64afed7f120ba03..895ecdec885ca0362ec56cf4efdac29ae6a84152 100644
 --- a/toolkit/xre/nsAppRunner.cpp
 +++ b/toolkit/xre/nsAppRunner.cpp
-@@ -3082,6 +3082,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
+@@ -3111,6 +3111,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
      gDoMigration = true;
    }
-
+ 
 +  if (EnvHasValue("BENTO_RESTART_TO_MIGRATION")) {
 +    SaveToEnv("BENTO_RESTART_TO_MIGRATION=");
 +    if (gAppData && gAppData->name &&
@@ -674,3 +691,6 @@ index 6d330fca12..18221cd021 100644
  #if defined(XP_WIN)
    // This arg is only used to indicate to telemetry that a profile refresh
    // (reset+migration) was requested from the uninstaller, pass this along
+-- 
+2.50.1 (Apple Git-155)
+

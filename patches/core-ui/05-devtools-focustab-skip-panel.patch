@@ -1,10 +1,19 @@
+From bf1eae0d1b8aa426c05f17f293c2800cc20f190b Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:34 +1000
+Subject: [PATCH] Skip Bento panel browsers in DevTools focusTab
+
+---
+ devtools/client/framework/toolbox-hosts.js | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
 diff --git a/devtools/client/framework/toolbox-hosts.js b/devtools/client/framework/toolbox-hosts.js
-index add425f56d..ea3e117d4f 100644
+index c6db4ece3f11fffa5915cfd0ac83108e03b04f24..74107cf7c0351ba83b0783c90cb13fa134869354 100644
 --- a/devtools/client/framework/toolbox-hosts.js
 +++ b/devtools/client/framework/toolbox-hosts.js
 @@ -492,6 +492,13 @@ class PageHost {
  function focusTab(tab) {
-   const browserWindow = tab.ownerGlobal;
+   const browserWindow = tab.documentGlobal;
    browserWindow.focus();
 +  // Bento: a panel tab's <browser> lives inside a side-panel container
 +  // and is always visible. Reassigning selectedTab would fire TabSelect
@@ -16,3 +25,6 @@ index add425f56d..ea3e117d4f 100644
    browserWindow.gBrowser.selectedTab = tab;
  }
  
+-- 
+2.50.1 (Apple Git-155)
+

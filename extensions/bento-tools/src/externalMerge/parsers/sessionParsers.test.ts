@@ -158,6 +158,104 @@ describe('external merge session parsers', () => {
     expect(session.windows[0]!.tabs.map((tab) => tab.groupId)).toEqual(['7', 'folder-object']);
   });
 
+  it('maps Zen folder-owned member lists from keyed folder and tab objects', () => {
+    const session = normalizeExternalSession({
+      sourceId: 'zen-default',
+      kind: 'zen',
+      browserName: 'Zen Browser',
+      profileName: 'Default',
+      lastModified: 100,
+      capturedAt: 200,
+      format: 'zen-json',
+      json: JSON.stringify({
+        spaces: { 'space-a': { name: 'Space A' } },
+        folders: {
+          'folder-alpha': {
+            name: 'Alpha Folder',
+            index: 0,
+            tabs: ['tab-alpha', { uuid: 'tab-beta' }],
+          },
+        },
+        tabs: {
+          'tab-alpha': {
+            zenWorkspace: 'space-a',
+            entries: [{ url: 'https://alpha.example/', title: 'Alpha' }],
+            index: 1,
+          },
+          'tab-beta': {
+            zenWorkspace: 'space-a',
+            entries: [{ url: 'https://beta.example/', title: 'Beta' }],
+            index: 2,
+          },
+          'tab-plain': {
+            zenWorkspace: 'space-a',
+            entries: [{ url: 'https://plain.example/', title: 'Plain' }],
+            index: 3,
+          },
+        },
+      }),
+    });
+
+    expect(session.workspaces).toEqual([
+      { id: 'space-a', name: 'Space A', windowIds: ['zen-window-space-a'] },
+    ]);
+    expect(session.windows).toHaveLength(1);
+    expect(session.windows[0]!.groups).toEqual([
+      { id: 'folder-alpha', name: 'Alpha Folder', index: 0 },
+    ]);
+    expect(session.windows[0]!.tabs.map((tab) => [tab.url, tab.groupId])).toEqual([
+      ['https://alpha.example/', 'folder-alpha'],
+      ['https://beta.example/', 'folder-alpha'],
+      ['https://plain.example/', undefined],
+    ]);
+  });
+
+  it('prefers Zen folder membership over generic pinned state', () => {
+    const session = normalizeExternalSession({
+      sourceId: 'zen-default',
+      kind: 'zen',
+      browserName: 'Zen Browser',
+      profileName: 'Default',
+      lastModified: 100,
+      capturedAt: 200,
+      format: 'zen-json',
+      json: JSON.stringify({
+        spaces: [{ uuid: 'space-a', name: 'Space A' }],
+        folders: [{ id: 'reclaim', name: 'Reclaim', index: 0, tabs: ['planner'] }],
+        tabs: [
+          {
+            id: 'planner',
+            zenWorkspace: 'space-a',
+            pinned: true,
+            entries: [{ url: 'https://planner.example/', title: 'Planner | Reclaim' }],
+            index: 1,
+          },
+          {
+            id: 'essential',
+            zenWorkspace: 'space-a',
+            pinned: true,
+            zenEssential: true,
+            entries: [{ url: 'https://essential.example/', title: 'Essential' }],
+            index: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(session.windows).toHaveLength(1);
+    expect(session.windows[0]!.groups).toEqual([{ id: 'reclaim', name: 'Reclaim', index: 0 }]);
+    expect(
+      session.windows[0]!.tabs.map((tab) => ({
+        url: tab.url,
+        pinned: tab.pinned,
+        groupId: tab.groupId,
+      })),
+    ).toEqual([
+      { url: 'https://essential.example/', pinned: true, groupId: undefined },
+      { url: 'https://planner.example/', pinned: false, groupId: 'reclaim' },
+    ]);
+  });
+
   it('extracts Chromium session URLs and rejects grouped sessions', () => {
     const plain = btoa('xxxx https://one.example/\u0000yyyy https://two.example/path');
     const session = normalizeExternalSession({

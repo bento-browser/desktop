@@ -73,4 +73,48 @@ describe('TabRegistry closing markers', () => {
       warn.mockRestore();
     }
   });
+
+  it('retries boot hydration so delayed session workspace values are recovered', async () => {
+    const listeners: Array<(tab: browser.tabs.Tab) => void> = [];
+    vi.stubGlobal('browser', {
+      sessions: {
+        getTabValue: vi.fn(async (tabId: number, key: string) => {
+          if (tabId !== 123) return undefined;
+          const workspaceReads = vi
+            .mocked(browser.sessions.getTabValue)
+            .mock.calls.filter((call) => call[0] === 123 && call[1] === 'bento.workspaceId').length;
+          if (key === 'bento.workspaceId') return workspaceReads >= 2 ? 'ws-imported' : undefined;
+          return undefined;
+        }),
+        setTabValue: vi.fn().mockResolvedValue(undefined),
+        removeTabValue: vi.fn().mockResolvedValue(undefined),
+      },
+      tabs: {
+        query: vi.fn(async () => [
+          {
+            id: 123,
+            windowId: 1,
+            index: 0,
+            title: 'Imported',
+            active: true,
+            pinned: false,
+          },
+        ]),
+        onCreated: { addListener: vi.fn((listener) => listeners.push(listener)) },
+        onUpdated: { addListener: vi.fn() },
+        onRemoved: { addListener: vi.fn() },
+        onActivated: { addListener: vi.fn() },
+        onMoved: { addListener: vi.fn() },
+        onAttached: { addListener: vi.fn() },
+      },
+    });
+
+    const tabs = new TabRegistry();
+    await tabs.init();
+    expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+
+    await tabs.hydrateWorkspaceIds({ attempts: 3, delayMs: 0 });
+
+    expect(tabs.snapshot()[0]?.workspaceId).toBe('ws-imported');
+  });
 });

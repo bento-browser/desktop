@@ -125,6 +125,7 @@ describe('executeExternalMerge', () => {
       id: expect.any(String),
       workspaceId: 'imported-workspace',
       name: 'Research',
+      collapsed: true,
     });
     expect(assignFolderEagerly).toHaveBeenCalledTimes(1);
     expect(assignFolderEagerly).toHaveBeenCalledWith(101, 'folder-1');
@@ -220,6 +221,7 @@ describe('executeExternalMerge', () => {
       id: expect.any(String),
       workspaceId: 'imported-workspace',
       name: 'Research',
+      collapsed: true,
     });
     expect(ctx.tabs.assignFolderEagerly).toHaveBeenCalledWith(100, 'folder-1');
     expect(deleteFolder).toHaveBeenCalledWith('folder-1');
@@ -315,6 +317,204 @@ describe('executeExternalMerge', () => {
       tabsOpened: 1,
       failedTabs: 0,
     });
+  });
+
+  it('imports only the selected browser window when target ids are provided', async () => {
+    vi.stubGlobal('browser', {
+      tabs: {
+        query: vi.fn(async () => []),
+        create: vi.fn(async () => ({ id: 100 })),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const createWorkspace = vi.fn((input: { name: string }) => ({
+      id: 'imported-window',
+      name: input.name,
+      createdAt: 1,
+    }));
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(async () => true),
+        assignFolderEagerly: vi.fn(),
+        rename: vi.fn(),
+      },
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: createWorkspace,
+        activate: vi.fn(() => 'activated'),
+      },
+      panels: {
+        getPanels: vi.fn(() => []),
+      },
+      tabFolders: {
+        create: vi.fn(),
+      },
+      sourceWindowId: 7,
+    } as unknown as HandlerContext;
+
+    const summary = await executeExternalMerge(
+      {
+        sourceId: 'chrome-default',
+        kind: 'chrome',
+        browserName: 'Chrome',
+        profileName: 'Default',
+        capturedAt: 1,
+        lastModified: 1,
+        windows: [
+          {
+            id: 'window-1',
+            active: false,
+            groups: [],
+            tabs: [
+              {
+                id: 'tab-1',
+                url: 'https://first.example/',
+                title: 'First',
+                index: 0,
+                active: true,
+                pinned: false,
+              },
+            ],
+          },
+          {
+            id: 'window-2',
+            active: true,
+            groups: [],
+            tabs: [
+              {
+                id: 'tab-2',
+                url: 'https://second.example/',
+                title: 'Second',
+                index: 0,
+                active: true,
+                pinned: false,
+              },
+            ],
+          },
+        ],
+      },
+      ctx,
+      { targetIds: ['window:window-2'] },
+    );
+
+    expect(createWorkspace).toHaveBeenCalledTimes(1);
+    expect(createWorkspace).toHaveBeenCalledWith({ name: 'Chrome: Default Window 2' }, 7, {
+      activate: false,
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      windowId: 7,
+      url: 'https://second.example/',
+    });
+    expect(browser.tabs.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://first.example/' }),
+    );
+    expect(summary.workspacesCreated).toBe(1);
+    expect(summary.tabsOpened).toBe(1);
+  });
+
+  it('imports only the selected native space when target ids are provided', async () => {
+    vi.stubGlobal('browser', {
+      tabs: {
+        query: vi.fn(async () => []),
+        create: vi.fn(async () => ({ id: 100 })),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    const createWorkspace = vi.fn((input: { name: string }) => ({
+      id: 'imported-space',
+      name: input.name,
+      createdAt: 1,
+    }));
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(async () => true),
+        assignFolderEagerly: vi.fn(),
+        rename: vi.fn(),
+      },
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: createWorkspace,
+        activate: vi.fn(() => 'activated'),
+      },
+      panels: {
+        getPanels: vi.fn(() => []),
+      },
+      tabFolders: {
+        create: vi.fn(),
+      },
+      sourceWindowId: 7,
+    } as unknown as HandlerContext;
+
+    const summary = await executeExternalMerge(
+      {
+        sourceId: 'zen-default',
+        kind: 'zen',
+        browserName: 'Zen Browser',
+        profileName: 'Default',
+        capturedAt: 1,
+        lastModified: 1,
+        workspaces: [
+          { id: 'space-a', name: 'Space A', windowIds: ['window-a'] },
+          { id: 'space-b', name: 'Space B', windowIds: ['window-b'] },
+        ],
+        windows: [
+          {
+            id: 'window-a',
+            workspaceId: 'space-a',
+            active: false,
+            groups: [],
+            tabs: [
+              {
+                id: 'tab-a',
+                url: 'https://space-a.example/',
+                title: 'Space A',
+                index: 0,
+                active: true,
+                pinned: false,
+              },
+            ],
+          },
+          {
+            id: 'window-b',
+            workspaceId: 'space-b',
+            active: true,
+            groups: [],
+            tabs: [
+              {
+                id: 'tab-b',
+                url: 'https://space-b.example/',
+                title: 'Space B',
+                index: 0,
+                active: true,
+                pinned: false,
+              },
+            ],
+          },
+        ],
+      },
+      ctx,
+      { targetIds: ['workspace:space-b'] },
+    );
+
+    expect(createWorkspace).toHaveBeenCalledTimes(1);
+    expect(createWorkspace).toHaveBeenCalledWith({ name: 'Zen Browser: Space B' }, 7, {
+      activate: false,
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      windowId: 7,
+      url: 'https://space-b.example/',
+    });
+    expect(browser.tabs.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://space-a.example/' }),
+    );
+    expect(summary.workspacesCreated).toBe(1);
+    expect(summary.tabsOpened).toBe(1);
   });
 
   it('removes a created tab when its workspace marker cannot be persisted', async () => {

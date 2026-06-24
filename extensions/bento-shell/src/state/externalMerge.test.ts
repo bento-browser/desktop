@@ -78,6 +78,20 @@ describe('external merge shell store', () => {
     expect(useExternalMergeStore.getState().activeSourceId).toBe('source-1');
   });
 
+  it('dispatches target ids when starting a targeted merge', () => {
+    const dispatch = vi.fn();
+    expect(useExternalMergeStore.getState().startMerge('source-1', dispatch, ['window:one'])).toBe(
+      true,
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'externalMerge/merge',
+      sourceId: 'source-1',
+      operationId: useExternalMergeStore.getState().activeOperationId,
+      targetIds: ['window:one'],
+    });
+  });
+
   it('dispatches cancel for the active merge operation only', () => {
     const dispatch = vi.fn();
     expect(useExternalMergeStore.getState().cancelMerge(dispatch)).toBe(false);
@@ -91,6 +105,41 @@ describe('external merge shell store', () => {
       type: 'externalMerge/cancel',
       operationId,
     });
+  });
+
+  it('mirrors a merge operation started by another shell document', () => {
+    useExternalMergeStore.getState().applyStarted(
+      {
+        operationId: 'operation-remote',
+        windowId: 1,
+        sourceId: 'source-1',
+      },
+      1,
+    );
+
+    expect(useExternalMergeStore.getState().activeOperationId).toBe('operation-remote');
+    expect(useExternalMergeStore.getState().activeSourceId).toBe('source-1');
+
+    useExternalMergeStore.getState().applyComplete(
+      {
+        operationId: 'operation-remote',
+        windowId: 1,
+        summary: {
+          sourceId: 'source-1',
+          workspacesCreated: 1,
+          foldersCreated: 0,
+          tabsOpened: 1,
+          pinnedTabsOpened: 0,
+          skippedDuplicates: 0,
+          skippedUnsupportedUrls: 0,
+          failedTabs: 0,
+        },
+      },
+      1,
+    );
+
+    expect(useExternalMergeStore.getState().activeOperationId).toBeNull();
+    expect(useExternalMergeStore.getState().summary?.sourceId).toBe('source-1');
   });
 
   it('refreshes sources without clearing visible rows and blocks refresh while merging', () => {

@@ -17,11 +17,19 @@
   },
   "permissions": ["storage"],
   "web_accessible_resources": [
+    "dist/address-bar.html",
+    "dist/confirm.html",
+    "dist/edit-workspace.html",
     "dist/index.html",
-    "dist/settings.html",
+    "dist/menu.html",
+    "dist/merge-palette.html",
     "dist/palette.html",
-    "dist/welcome.html",
     "dist/panel-newtab.html",
+    "dist/panel-trailer.html",
+    "dist/settings.html",
+    "dist/welcome.html",
+    "dist/workspace-palette.html",
+    "dist/workspace-switcher.html",
     "dist/assets/*"
   ],
   "commands": {

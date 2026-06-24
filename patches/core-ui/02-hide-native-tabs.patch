@@ -1,8 +1,17 @@
+From bf9a13b09823821430f6cbd9899a5e364c63d359 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 24 Jun 2026 19:23:30 +1000
+Subject: [PATCH] Hide native Firefox tabs
+
+---
+ browser/themes/shared/browser-shared.css | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
 diff --git a/browser/themes/shared/browser-shared.css b/browser/themes/shared/browser-shared.css
-index 57b8dc0eda..04c9290d50 100644
+index 2287d8f9fd5a86be00a0e9d7635a119fca446f50..3136b41a6480f95415cc995b65f5194a2c14403a 100644
 --- a/browser/themes/shared/browser-shared.css
 +++ b/browser/themes/shared/browser-shared.css
-@@ -1508,3 +1508,9 @@ popupnotificationcontent {
+@@ -1732,3 +1732,9 @@ popupnotificationcontent {
  #bookmarksToolbarFolderMenu {
    --menuitem-icon: url("chrome://browser/skin/places/bookmarksToolbar.svg");
  }
@@ -12,3 +21,6 @@ index 57b8dc0eda..04c9290d50 100644
 +#TabsToolbar {
 +  visibility: collapse !important;
 +}
+-- 
+2.50.1 (Apple Git-155)
+

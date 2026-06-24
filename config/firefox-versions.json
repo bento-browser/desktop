@@ -2,7 +2,7 @@
   "channels": [
     {
       "channel": "release",
-      "version": "151.0.4",
+      "version": "152.0.2",
       "surferConfig": "surfer.json"
     }
   ]
