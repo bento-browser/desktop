@@ -7,7 +7,6 @@ import { IconButton } from '@tale-ui/react/icon-button';
 import { Menu } from '@tale-ui/react/menu';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
-import X from 'lucide-react/dist/esm/icons/x';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
@@ -844,7 +843,7 @@ function TabListPane({
             }
           }}
         />
-        <IconButton
+        <Button
           variant="ghost"
           size="sm"
           className="bento-tab-list-search__clear-button"
@@ -854,8 +853,8 @@ function TabListPane({
             searchInputRef.current?.focus();
           }}
         >
-          <Icon icon={X} size="sm" />
-        </IconButton>
+          Clear
+        </Button>
       </div>
       {searchQuery.trim().length > 0 && (
         <div className="bento-tab-list-search__results">

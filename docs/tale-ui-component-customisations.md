@@ -199,9 +199,9 @@ Current drift:
   to remain translucent. Hover, focus, pressed, selected, and selected-combined
   states must use `color-mix(..., transparent)` or `--bento-surface-*` overlays,
   not solid neutral/accent fills.
-- Bento renders the address palette clear affordance as
+- Bento renders command-palette search clear affordances as
   `CommandPalette.ClearButton` with `tale-button tale-button--ghost
-tale-button--sm` classes and visible `Clear` text. Keep it as the
+tale-button--sm` classes and visible `Clear` text. Keep them as the
   CommandPalette clear part so it preserves Tale UI's field-clearing behavior;
   do not nest a separate `Button` inside it.
 - Bento wraps the input and search-engine `Select` trigger in a compact `Row`.
@@ -238,6 +238,70 @@ Regression checks:
 - Long search-engine names should truncate inside the picker trigger and must
   not push into the address input. The picker popover should remain readable over
   dark content.
+
+### Workspace theme picker
+
+Upstream base: Tale UI's Emoji Picker recipe adapted to workspace theme
+metadata. Bento uses `Popover`, `SearchField`, `ToggleButton`, `Tooltip`,
+`ColorSwatch`, and `Text`; it intentionally uses a Tale UI `ToggleButton`
+option grid instead of `ListBox` so every option can be the trigger for a Tale
+UI `Tooltip` that shows the full theme name. It also does not use `Virtualizer`
+for the current small static theme list. There is no
+`@tale-ui/react-styles/virtualizer` import.
+
+Bento owners:
+
+- [WorkspaceThemePicker.tsx](../extensions/bento-shell/src/components/WorkspaceThemePicker/WorkspaceThemePicker.tsx)
+  owns the shared picker behavior for single-workspace and all-workspaces
+  editing.
+- [WorkspaceThemePicker.css](../extensions/bento-shell/src/components/WorkspaceThemePicker/WorkspaceThemePicker.css)
+  owns the compact trigger, popover width, search wrapper, theme grid, and
+  selected-state overrides.
+- [WorkspacePalette.tsx](../extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.tsx)
+  wires the shared picker into each workspace row and dispatches theme ids
+  through `workspace/update` immediately.
+- [edit-workspace/main.tsx](../extensions/bento-shell/src/edit-workspace/main.tsx)
+  wires the shared picker into the single-workspace draft form and saves the
+  selected theme id only when the dialog is saved.
+- [workspace-palette/main.tsx](../extensions/bento-shell/src/workspace-palette/main.tsx)
+  and [edit-workspace/main.tsx](../extensions/bento-shell/src/edit-workspace/main.tsx)
+  import the per-component Tale UI styles required by their standalone Vite
+  entries.
+
+Current drift:
+
+- Bento uses a fixed-width trigger so workspace manager rows keep stable
+  columns while long theme names truncate.
+- The Popover keeps Tale UI's frameless picker surface but overrides the recipe
+  width with `--bento-workspace-theme-picker-*` tokens.
+- The option grid uses two larger theme tiles rather than the emoji recipe's
+  small virtualized cells. Each item shows a two-colour swatch and the theme
+  name; selected state fills the `ToggleButton` tile instead of reserving space
+  for a check icon. The inter-tile grid gap is `--space-3xs`. The stable theme
+  id stays searchable but is not rendered as a duplicate subtitle.
+- The SearchField clear button must render an explicit `X` icon; Tale UI does
+  not provide one automatically.
+- The SearchField receives focus when the Popover opens and uses `slot={null}`
+  so it does not inherit the parent workspace `CommandPalette` autocomplete
+  input context.
+- Each option button is wrapped in `Tooltip.Root`; the popup shows the full
+  theme name on hover/focus so truncated names remain inspectable.
+
+Regression checks:
+
+- Open the single-workspace Edit Workspace dialog, open the theme picker, search
+  by both theme name and id, select a theme, save, and confirm the workspace
+  updates through the normal workspace store mirror.
+- Open the workspace manager, open a row theme picker, and search by both theme
+  name and id.
+- While the theme picker is open, typing in its search field must not change the
+  outer "Search workspaces..." field.
+- Select a theme and confirm the row updates via the normal workspace store
+  mirror rather than local-only optimistic state.
+- Check narrow layouts: workspace name, icon field, theme trigger, status, and
+  delete button must not overlap.
+- Press Escape inside the theme picker once to close only the picker, then a
+  second time to close the workspace manager.
 
 ## Themes and chrome
 

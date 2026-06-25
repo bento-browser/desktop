@@ -95,7 +95,12 @@
     --bento-workspace-palette-max-block: 84vh;
     --bento-workspace-palette-row-min-width: 68rem;
     --bento-workspace-palette-icon-field-width: 6rem;
-    --bento-workspace-palette-theme-picker-min-width: 20rem;
+    --bento-workspace-theme-picker-trigger-width: 16rem;
+    --bento-workspace-theme-picker-popup-width: 28rem;
+    --bento-workspace-theme-picker-popup-max-inline: calc(100vw - var(--space-m));
+    --bento-workspace-theme-picker-list-max-block: 24rem;
+    --bento-workspace-theme-picker-option-block-size: 4.8rem;
+    --bento-workspace-theme-picker-swatch-size: 1.8rem;
     --bento-address-bar-width: 64rem;
     --bento-address-bar-height: 42rem;
     --bento-address-bar-max-inline: 92vw;

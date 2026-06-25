@@ -10,14 +10,17 @@ import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/avatar';
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/color-swatch';
-import '@tale-ui/react-styles/color-swatch-picker';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/command-palette';
 import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/icon-button';
+import '@tale-ui/react-styles/popover';
 import '@tale-ui/react-styles/row';
+import '@tale-ui/react-styles/search-field';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/text-field';
+import '@tale-ui/react-styles/toggle-button';
+import '@tale-ui/react-styles/tooltip';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';

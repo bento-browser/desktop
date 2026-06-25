@@ -110,10 +110,10 @@ The tab list exposes `New tab` and `New panel` buttons for opening fresh regular
 tabs and blank panels in the active workspace. A search icon beside those
 controls expands into a sidebar search field over the action row. Typing filters
 open tabs and side panels by title across all workspaces. The field has a clear
-button. While a query is active, the sidebar shows only the search field and
-matching result rows; normal tabs, folders, pinned sections, and creation
-controls are hidden until the query is cleared or search closes. Results use the
-same row footprint as sidebar tabs, identify each result's workspace with its
+button labeled "Clear". While a query is active, the sidebar shows only the
+search field and matching result rows; normal tabs, folders, pinned sections,
+and creation controls are hidden until the query is cleared or search closes.
+Results use the same row footprint as sidebar tabs, identify each result's workspace with its
 workspace icon or initial, tint the workspace marker with that workspace's theme,
 and selecting a result switches to that tab or focuses that panel. When pinned
 tabs exist, these controls appear below the pinned run and above regular tabs.
@@ -164,10 +164,14 @@ Recently closed regular tabs should reopen with Firefox's standard
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
 covering the window with an opaque overlay.
+Editing a single workspace lets the user rename it, set its icon, and choose a
+theme with the same compact searchable theme picker used by the all-workspaces
+manager.
 It also exposes "Edit all workspaces", which opens a workspace-only command
 palette where every workspace can be searched, renamed, re-iconed, re-themed,
-activated, created, or deleted from one view. Deleting a non-empty workspace
-uses Bento's confirmation dialog before closing its tabs.
+activated, created, or deleted from one view. Workspace re-theming uses a
+compact searchable theme picker. Deleting a non-empty workspace uses Bento's
+confirmation dialog before closing its tabs.
 
 Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal
@@ -185,6 +189,8 @@ The command palette search field and command rows show clear hover, focus, and
 active states so mouse and keyboard navigation both have visible feedback. Rows
 include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
+Command-palette search fields use a visible "Clear" button instead of an
+icon-only clear affordance.
 
 The floating address/search bar opens with `Cmd/Ctrl+L` or `Cmd/Ctrl+E` for the
 current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
@@ -205,6 +211,7 @@ the main tab surface.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
 does not leave an empty tab behind. Results use the same command-palette row
 treatment as Bento's command palette on a translucent, backdrop-blurred surface.
+The address/search field uses a visible "Clear" button.
 When the bar opens immediately after a workspace or tab change, the blurred
 surface reflects the currently visible workspace rather than a previous one.
 If an empty workspace created from the workspace manager triggers the new-tab

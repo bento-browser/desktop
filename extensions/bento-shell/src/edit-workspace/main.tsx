@@ -17,22 +17,13 @@
 // purely a chrome concern via the host overlay (same pattern as palette
 // and confirm).
 
-import { StrictMode, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog } from '@tale-ui/react/dialog';
 import { Button } from '@tale-ui/react/button';
 import { TextField } from '@tale-ui/react/text-field';
 import { Text } from '@tale-ui/react/text';
 import { Column } from '@tale-ui/react/column';
-import { ColorSwatchPicker } from '@tale-ui/react/color-swatch-picker';
-import { ColorSwatch } from '@tale-ui/react/color-swatch';
-// Type-only — react-aria's ColorSwatchPicker accepts `string | Color` for
-// `value`/`defaultValue` and emits `Color` from `onChange`. We pass plain
-// brand-60 hex strings in (no parseColor needed) and call `.toString('hex')`
-// on the emitted Color to look up the matching theme. Keeping this as a
-// type-only import avoids pulling the (~30 KB gz) parseColor + Color
-// implementation into the bundle.
-import type { Color } from 'react-aria-components';
 
 import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
@@ -41,8 +32,12 @@ import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/text-field';
-import '@tale-ui/react-styles/color-swatch-picker';
 import '@tale-ui/react-styles/color-swatch';
+import '@tale-ui/react-styles/icon';
+import '@tale-ui/react-styles/popover';
+import '@tale-ui/react-styles/search-field';
+import '@tale-ui/react-styles/toggle-button';
+import '@tale-ui/react-styles/tooltip';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
@@ -55,7 +50,8 @@ import {
   subscribeToEditWorkspaceRequests,
   type EditWorkspacePayload,
 } from '../bridge/useEditWorkspace';
-import { BENTO_THEMES, DEFAULT_THEME_ID, getThemeMeta } from '../theme/presets';
+import { DEFAULT_THEME_ID } from '../theme/presets';
+import { WorkspaceThemePicker } from '../components/WorkspaceThemePicker/WorkspaceThemePicker';
 import './edit-workspace.css';
 
 initToolsPort();
@@ -79,26 +75,6 @@ function EditWorkspaceApp() {
       setDraftIcon(next.icon ?? '');
     });
   }, []);
-
-  // Reverse lookup: normalized brand-60 hex → themeId. Built once from
-  // BENTO_THEMES so onChange can resolve the picker's emitted Color
-  // back to a stable theme id without depending on object identity.
-  const themeIdByBrandHex = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const theme of BENTO_THEMES) out[theme.brand60.toLowerCase()] = theme.id;
-    return out;
-  }, []);
-
-  // Picker value tracks the workspace's current theme. react-aria's
-  // ColorSwatchPicker.Root accepts `string | Color` for value, so we
-  // pass the brand-60 hex straight in — no parseColor needed.
-  const pickerValue = getThemeMeta(draftThemeId).brand60;
-
-  function onPickerChange(color: Color) {
-    const hex = color.toString('hex').toLowerCase();
-    const matchedId = themeIdByBrandHex[hex];
-    if (matchedId) setDraftThemeId(matchedId);
-  }
 
   function close() {
     document.title = `${EDIT_WORKSPACE_CLOSE_PREFIX}_${Date.now()}`;
@@ -125,6 +101,8 @@ function EditWorkspaceApp() {
     close();
   }
 
+  const workspaceName = draftName.trim() || payload?.name || 'workspace';
+
   return (
     <Dialog.Root
       isOpen={true}
@@ -147,29 +125,11 @@ function EditWorkspaceApp() {
               <Text variant="label" size="s">
                 Theme
               </Text>
-              <ColorSwatchPicker.Root
-                value={pickerValue}
-                onChange={onPickerChange}
-                aria-label="Workspace theme"
-                className="bento-edit-workspace__theme-picker tale-color-swatch-picker--circle"
-              >
-                {BENTO_THEMES.map((theme) => (
-                  <ColorSwatchPicker.Item
-                    key={theme.id}
-                    color={theme.brand60}
-                    aria-label={theme.name}
-                  >
-                    <ColorSwatch
-                      className="tale-color-swatch--split"
-                      style={
-                        {
-                          '--tale-color-swatch-secondary': theme.neutral20,
-                        } as CSSProperties
-                      }
-                    />
-                  </ColorSwatchPicker.Item>
-                ))}
-              </ColorSwatchPicker.Root>
+              <WorkspaceThemePicker
+                workspaceName={workspaceName}
+                selectedThemeId={draftThemeId}
+                onThemeChange={setDraftThemeId}
+              />
             </Column>
             <TextField.Root value={draftIcon} onChange={setDraftIcon}>
               <TextField.Label>Icon</TextField.Label>

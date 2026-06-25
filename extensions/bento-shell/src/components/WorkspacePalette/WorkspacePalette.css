@@ -25,7 +25,7 @@
   grid-template-columns:
     minmax(0, 1fr)
     var(--bento-workspace-palette-icon-field-width)
-    minmax(var(--bento-workspace-palette-theme-picker-min-width), auto)
+    var(--bento-workspace-theme-picker-trigger-width)
     auto
     auto;
   min-width: var(--bento-workspace-palette-row-min-width);
@@ -59,13 +59,6 @@
 
 .bento-workspace-palette__icon-input {
   text-align: center;
-}
-
-.bento-workspace-palette__theme-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2xs);
-  min-width: var(--bento-workspace-palette-theme-picker-min-width);
 }
 
 .tale-command-palette__popup.bento-workspace-palette__popup .bento-workspace-palette__footer {

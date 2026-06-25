@@ -359,12 +359,10 @@
   color: var(--neutral-60);
 }
 
-.tale-icon-button.bento-tab-list-search__clear-button {
-  width: var(--bento-tab-row-height);
-  min-width: var(--bento-tab-row-height);
+.tale-button.bento-tab-list-search__clear-button {
+  flex: 0 0 auto;
   height: var(--bento-tab-row-height);
   min-height: var(--bento-tab-row-height);
-  padding: 0;
   color: var(--neutral-70);
 }
 

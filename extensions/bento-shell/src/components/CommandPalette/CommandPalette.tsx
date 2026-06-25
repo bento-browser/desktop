@@ -388,7 +388,12 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
                 autoFocus
                 onKeyDown={handleInputKeyDown}
               />
-              <TaleCommandPalette.ClearButton aria-label="Clear search" />
+              <TaleCommandPalette.ClearButton
+                aria-label="Clear search"
+                className="tale-button tale-button--ghost tale-button--sm"
+              >
+                Clear
+              </TaleCommandPalette.ClearButton>
             </TaleCommandPalette.SearchField>
             <TaleCommandPalette.ListBox
               aria-label="Commands"

@@ -7,6 +7,7 @@ import { WorkspacePalette } from './WorkspacePalette';
 import { makeTab } from '../../state/__fixtures__/tabs';
 import { makeWorkspace, seedMany, seedWorkspaces } from '../../state/__fixtures__/workspaces';
 import { useTabsStore } from '../../state/tabs';
+import { BENTO_THEMES } from '../../theme/presets';
 
 export const Default = () => {
   useEffect(() => {
@@ -48,3 +49,25 @@ export const ManyWorkspaces = () => {
 };
 
 ManyWorkspaces.storyName = 'Scrollable workspace manager';
+
+export const AllThemeWorkspaces = () => {
+  useEffect(() => {
+    const workspaces = BENTO_THEMES.map((theme, index) =>
+      makeWorkspace({
+        id: `w-theme-${theme.id}`,
+        name:
+          theme.id === 'mountain-meadow'
+            ? 'Mountain Meadow workspace with a name that should truncate'
+            : `${theme.name} workspace`,
+        themeId: theme.id,
+        icon: theme.name[0],
+        createdAt: index + 1,
+      }),
+    );
+    seedWorkspaces(workspaces, 'w-theme-mountain-meadow');
+  }, []);
+
+  return <WorkspacePalette onClose={() => {}} />;
+};
+
+AllThemeWorkspaces.storyName = 'All workspace themes';

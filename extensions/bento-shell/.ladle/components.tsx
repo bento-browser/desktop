@@ -17,12 +17,16 @@ import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/menu';
 import '@tale-ui/react-styles/avatar';
+import '@tale-ui/react-styles/color-swatch';
 import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/autocomplete';
+import '@tale-ui/react-styles/popover';
 import '@tale-ui/react-styles/search-field';
 import '@tale-ui/react-styles/command-palette';
 import '@tale-ui/react-styles/card';
 import '@tale-ui/react-styles/switch';
+import '@tale-ui/react-styles/toggle-button';
+import '@tale-ui/react-styles/tooltip';
 import '@tale-ui/react-styles/number-field';
 import '@tale-ui/react-styles/text-field';
 

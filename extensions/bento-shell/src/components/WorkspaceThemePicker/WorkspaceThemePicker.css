@@ -1,0 +1,111 @@
+/* Shared workspace theme picker used by the single-workspace dialog and
+ * all-workspaces command palette. */
+
+.tale-button.bento-workspace-theme-picker__trigger {
+  width: var(--bento-workspace-theme-picker-trigger-width);
+  min-width: 0;
+  justify-content: flex-start;
+  padding-inline: var(--space-2xs);
+}
+
+.bento-workspace-theme-picker__trigger-swatch,
+.bento-workspace-theme-picker__option-swatch {
+  width: var(--bento-workspace-theme-picker-swatch-size);
+  height: var(--bento-workspace-theme-picker-swatch-size);
+}
+
+.bento-workspace-theme-picker__trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bento-workspace-theme-picker__chevron {
+  flex: 0 0 auto;
+  color: var(--neutral-60);
+}
+
+.tale-popover__popup.bento-workspace-theme-picker__popover {
+  width: min(
+    var(--bento-workspace-theme-picker-popup-width),
+    var(--bento-workspace-theme-picker-popup-max-inline)
+  );
+}
+
+.tale-column.bento-workspace-theme-picker__panel {
+  min-width: 0;
+}
+
+.tale-column.bento-workspace-theme-picker__search {
+  margin-bottom: 0;
+}
+
+.tale-column.bento-workspace-theme-picker__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: var(--bento-workspace-theme-picker-option-block-size);
+  gap: var(--space-3xs);
+  max-height: var(--bento-workspace-theme-picker-list-max-block);
+  overflow: auto;
+}
+
+.tale-toggle-button.bento-workspace-theme-picker__option {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--bento-workspace-theme-picker-option-block-size);
+  gap: var(--space-s);
+  justify-content: flex-start;
+  min-width: 0;
+  padding: var(--space-2xs);
+  border: 1px solid var(--neutral-20);
+  background-color: var(--neutral-10);
+  overflow: hidden;
+}
+
+.tale-toggle-button.bento-workspace-theme-picker__option[data-hovered],
+.tale-toggle-button.bento-workspace-theme-picker__option[data-focused] {
+  background-color: var(--neutral-14);
+  color: var(--neutral-90);
+}
+
+.tale-toggle-button.bento-workspace-theme-picker__option[data-selected] {
+  border-color: transparent;
+  background-color: var(--color-60);
+  color: var(--color-60-fg);
+}
+
+.tale-toggle-button.bento-workspace-theme-picker__option[data-selected][data-hovered],
+.tale-toggle-button.bento-workspace-theme-picker__option[data-selected][data-focused] {
+  border-color: transparent;
+  background-color: var(--color-70);
+  color: var(--color-70-fg);
+}
+
+.bento-workspace-theme-picker__option-name {
+  display: -webkit-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.tale-toggle-button.bento-workspace-theme-picker__option[data-selected]
+  .bento-workspace-theme-picker__option-name {
+  color: var(--color-60-fg);
+}
+
+.tale-toggle-button.bento-workspace-theme-picker__option[data-selected][data-hovered]
+  .bento-workspace-theme-picker__option-name,
+.tale-toggle-button.bento-workspace-theme-picker__option[data-selected][data-focused]
+  .bento-workspace-theme-picker__option-name {
+  color: var(--color-70-fg);
+}

@@ -356,11 +356,24 @@ Shell-side workspace state is mirrored in
 global fallback is the active workspace for every window.
 Single-workspace editing uses `edit-workspace.html`; all-workspace management
 uses `workspace-palette.html`, opened from the workspace switcher through the
-`useWorkspacePalette` title sentinel. The workspace palette is a
-chrome-mounted `CommandPalette` frame that reads `useWorkspacesStore`,
-dispatches `workspace/update`, `workspace/activate`, `workspace/create`, and
-`workspace/delete`, and keeps non-empty delete confirmation in the normal
-confirm overlay above the still-mounted manager.
+`useWorkspacePalette` title sentinel. Both surfaces use
+`components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which adapts Tale
+UI's Emoji Picker recipe with `Popover` and `SearchField` over local
+`BENTO_THEMES` metadata, then renders compact Tale UI `ToggleButton` options so
+selected state fills the tile and each option can expose a full-name `Tooltip`
+on hover/focus. Theme selection writes stable `Workspace.themeId` values:
+`edit-workspace.html` keeps the choice in draft state until Save dispatches
+`workspace/update`, while `workspace-palette.html` dispatches
+`workspace/update` immediately for the edited row. Theme search text stays local
+to the picker and is not persisted or sent over the bridge. When the theme
+popover opens, focus moves into its `SearchField`; that field uses `slot={null}`
+to opt out of any surrounding `CommandPalette` autocomplete context so typing
+there cannot update a parent search query.
+
+The workspace palette is a chrome-mounted `CommandPalette` frame that reads
+`useWorkspacesStore`, dispatches `workspace/update`, `workspace/activate`,
+`workspace/create`, and `workspace/delete`, and keeps non-empty delete
+confirmation in the normal confirm overlay above the still-mounted manager.
 
 Sidebar tab multi-selection lives in
 `extensions/bento-shell/src/components/TabList/TabList.tsx`. Selection is UI
@@ -1268,8 +1281,10 @@ matching here unless that surface is intentionally widened.
 When `searchOpen` is true and the trimmed query is non-empty, `TabListPane`
 skips rendering the normal virtualized display rows and renders only the search
 field plus matching results. This avoids leaving tabs, folders, pinned sections,
-or creation controls visible behind the filtering surface. Clearing the field
-returns the pane to the normal virtualized row path.
+or creation controls visible behind the filtering surface. The clear affordance
+is a visible Tale UI ghost/sm `Button` labeled "Clear"; pressing it clears the
+local query, refocuses the search input, and returns the pane to the normal
+virtualized row path.
 
 Selecting a regular-tab result calls `TabList`'s normal `onActivate` prop so it
 uses the same tools dispatch and chrome scroll-to-main sentinel as a visible

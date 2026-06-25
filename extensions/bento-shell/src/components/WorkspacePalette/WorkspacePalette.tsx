@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { CommandPalette as TaleCommandPalette } from '@tale-ui/react/command-palette';
 import { Avatar } from '@tale-ui/react/avatar';
 import { Button } from '@tale-ui/react/button';
-import { ColorSwatch } from '@tale-ui/react/color-swatch';
-import { ColorSwatchPicker } from '@tale-ui/react/color-swatch-picker';
 import { Column } from '@tale-ui/react/column';
 import { Icon } from '@tale-ui/react/icon';
 import { IconButton } from '@tale-ui/react/icon-button';
@@ -21,6 +19,7 @@ import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { BENTO_THEMES, DEFAULT_THEME_ID, getThemeMeta } from '../../theme/presets';
+import { WorkspaceThemePicker } from '../WorkspaceThemePicker/WorkspaceThemePicker';
 import './WorkspacePalette.css';
 
 export interface WorkspacePaletteProps {
@@ -31,10 +30,6 @@ interface WorkspaceDraft {
   name: string;
   icon: string;
 }
-
-type ColorSwatchPickerColor = Parameters<
-  NonNullable<ComponentProps<typeof ColorSwatchPicker.Root>['onChange']>
->[0];
 
 const THEME_ROTATION = BENTO_THEMES.map((theme) => theme.id).filter(
   (id) => id !== DEFAULT_THEME_ID,
@@ -73,11 +68,10 @@ interface WorkspaceEditorRowProps {
   active: boolean;
   canDelete: boolean;
   tabCount: number;
-  pickerValue: string;
   onDraftChange: (id: string, changes: Partial<WorkspaceDraft>) => void;
   onCommitName: (workspace: Workspace) => void;
   onCommitIcon: (workspace: Workspace) => void;
-  onThemeChange: (workspace: Workspace, color: ColorSwatchPickerColor) => void;
+  onThemeChange: (workspace: Workspace, themeId: string) => void;
   onActivate: (id: string) => void;
   onDelete: (workspace: Workspace) => void;
 }
@@ -88,7 +82,6 @@ function WorkspaceEditorRow({
   active,
   canDelete,
   tabCount,
-  pickerValue,
   onDraftChange,
   onCommitName,
   onCommitIcon,
@@ -146,19 +139,11 @@ function WorkspaceEditorRow({
           }}
         />
       </TextField.Root>
-      <ColorSwatchPicker.Root
-        value={pickerValue}
-        onChange={(color) => onThemeChange(workspace, color)}
-        aria-label={`Theme for ${workspace.name}`}
-        className="bento-workspace-palette__theme-picker"
-        shape="circle"
-      >
-        {BENTO_THEMES.map((theme) => (
-          <ColorSwatchPicker.Item key={theme.id} color={theme.brand60} aria-label={theme.name}>
-            <ColorSwatch secondaryColor={theme.neutral20} />
-          </ColorSwatchPicker.Item>
-        ))}
-      </ColorSwatchPicker.Root>
+      <WorkspaceThemePicker
+        workspaceName={workspace.name}
+        selectedThemeId={workspace.themeId}
+        onThemeChange={(themeId) => onThemeChange(workspace, themeId)}
+      />
       <Button
         variant={active ? 'ghost' : 'neutral'}
         size="sm"
@@ -227,12 +212,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
     return () => window.removeEventListener('focus', focusSearch);
   }, []);
 
-  const themeIdByBrandHex = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const theme of BENTO_THEMES) out[theme.brand60.toLowerCase()] = theme.id;
-    return out;
-  }, []);
-
   const tabCounts = useMemo(() => {
     const out: Record<string, number> = {};
     for (const tab of tabs) {
@@ -282,10 +261,10 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
     setDraft(workspace.id, { icon });
   }
 
-  function updateTheme(workspace: Workspace, color: ColorSwatchPickerColor) {
-    const matchedId = themeIdByBrandHex[color.toString('hex').toLowerCase()];
-    if (!matchedId || matchedId === workspace.themeId) return;
-    dispatch({ type: 'workspace/update', id: workspace.id, changes: { themeId: matchedId } });
+  function updateTheme(workspace: Workspace, themeId: string) {
+    if (themeId !== (workspace.themeId ?? DEFAULT_THEME_ID)) {
+      dispatch({ type: 'workspace/update', id: workspace.id, changes: { themeId } });
+    }
   }
 
   function activateWorkspace(id: string) {
@@ -348,7 +327,12 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                 className="bento-workspace-palette__input"
                 autoFocus
               />
-              <TaleCommandPalette.ClearButton aria-label="Clear search" />
+              <TaleCommandPalette.ClearButton
+                aria-label="Clear search"
+                className="tale-button tale-button--ghost tale-button--sm"
+              >
+                Clear
+              </TaleCommandPalette.ClearButton>
             </TaleCommandPalette.SearchField>
             <Column gap="xs" className="bento-workspace-palette__list">
               <Row gap="s" align="center" className="bento-workspace-palette__heading-row">
@@ -378,7 +362,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                   active={workspace.id === activeId}
                   canDelete={workspaces.length > 1}
                   tabCount={tabCounts[workspace.id] ?? 0}
-                  pickerValue={getThemeMeta(workspace.themeId).brand60}
                   onDraftChange={setDraft}
                   onCommitName={commitName}
                   onCommitIcon={commitIcon}

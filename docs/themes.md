@@ -170,15 +170,13 @@ tabstrip / titlebar to re-skin alongside the shell.
 
 1. Open the workspace switcher (sidebar trigger).
 2. Click **Edit `<workspace>`**.
-3. The Edit Workspace dialog shows a **Theme** row of circular swatches
-   — one per registered preset (default + every imported theme). Each
-   swatch is split diagonally: the brand colour (`--brand-60`) fills
-   the top-left and the pale surface neutral (`--neutral-default-20`)
-   fills the bottom-right, so the pair reads as a mini preview of the
-   themed UI. Click one to select. Save.
+3. The Edit Workspace dialog shows a **Theme** picker. Open it to search by
+   theme name or id, then choose a tile. Each tile shows a circular split swatch:
+   the brand colour (`--brand-60`) and pale surface neutral
+   (`--neutral-default-20`) read as a mini preview of the themed UI. Save.
 
-The change persists immediately to `bento.workspaces` storage and
-the active shell + chrome re-skin atomically.
+Saving persists the change to `bento.workspaces` storage and the active shell +
+chrome re-skin atomically.
 
 Each workspace's row in the switcher menu shows that workspace's
 theme via the avatar tint, so you can identify workspaces at a glance.

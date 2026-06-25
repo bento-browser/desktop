@@ -326,7 +326,12 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 className="bento-merge-palette__input"
                 autoFocus
               />
-              <TaleCommandPalette.ClearButton aria-label="Clear search" />
+              <TaleCommandPalette.ClearButton
+                aria-label="Clear search"
+                className="tale-button tale-button--ghost tale-button--sm"
+              >
+                Clear
+              </TaleCommandPalette.ClearButton>
               <IconButton
                 variant="ghost"
                 size="sm"
