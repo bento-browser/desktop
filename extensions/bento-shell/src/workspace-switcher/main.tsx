@@ -94,6 +94,10 @@ function workspaceInitial(name: string): string {
   return trimmed.length > 0 ? trimmed[0]!.toUpperCase() : '?';
 }
 
+function looksLikeEmojiValue(value: string): boolean {
+  return /[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F]/u.test(value);
+}
+
 function WorkspaceSwitcherOverlayApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
@@ -245,21 +249,26 @@ function WorkspaceSwitcherOverlayApp() {
         className="bento-workspace-switcher__popover"
       >
         <Menu.MenuList className={SMALL_MENU_CLASS} aria-label="Workspaces">
-          {workspaces.map((w) => (
-            <Menu.Item key={w.id} id={w.id} textValue={w.name} onAction={() => onActivate(w.id)}>
-              <Avatar.Root
-                size="sm"
-                className="bento-workspace-switcher__avatar"
-                data-bento-theme={w.themeId ?? DEFAULT_THEME_ID}
-              >
-                <Avatar.Fallback>{w.icon || workspaceInitial(w.name)}</Avatar.Fallback>
-              </Avatar.Root>
-              <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
-                {w.name}
-              </Text>
-              {w.id === activeId ? <Icon icon={Check} size="sm" label="Active" /> : null}
-            </Menu.Item>
-          ))}
+          {workspaces.map((w) => {
+            const icon = w.icon?.trim();
+            const hasEmojiIcon = !!icon && looksLikeEmojiValue(icon);
+            return (
+              <Menu.Item key={w.id} id={w.id} textValue={w.name} onAction={() => onActivate(w.id)}>
+                <Avatar.Root
+                  size="sm"
+                  className="bento-workspace-switcher__avatar"
+                  data-bento-theme={w.themeId ?? DEFAULT_THEME_ID}
+                  data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
+                >
+                  <Avatar.Fallback>{icon || workspaceInitial(w.name)}</Avatar.Fallback>
+                </Avatar.Root>
+                <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+                  {w.name}
+                </Text>
+                {w.id === activeId ? <Icon icon={Check} size="sm" label="Active" /> : null}
+              </Menu.Item>
+            );
+          })}
           <Menu.Separator />
           <Menu.Item id={NEW_WORKSPACE_KEY} textValue="New workspace" onAction={onCreate}>
             <Icon icon={Plus} size="sm" />

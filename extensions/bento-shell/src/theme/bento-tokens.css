@@ -94,7 +94,8 @@
     --bento-workspace-palette-max-inline: 94vw;
     --bento-workspace-palette-max-block: 84vh;
     --bento-workspace-palette-row-min-width: 68rem;
-    --bento-workspace-palette-icon-field-width: 6rem;
+    --bento-workspace-palette-icon-field-width: 3.6rem;
+    --bento-workspace-palette-status-action-width: 8rem;
     --bento-workspace-theme-picker-trigger-width: 16rem;
     --bento-workspace-theme-picker-popup-width: 28rem;
     --bento-workspace-theme-picker-popup-max-inline: calc(100vw - var(--space-m));

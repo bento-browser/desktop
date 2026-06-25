@@ -25,7 +25,8 @@
     "react-aria-components": "^1.16.0",
     "zustand": "^5.0.0",
     "@tanstack/react-virtual": "^3.10.0",
-    "lucide-react": "^0.460.0"
+    "lucide-react": "^0.460.0",
+    "emojibase-data": "17.0.0"
   },
   "devDependencies": {
     "@ladle/react": "^4.1.0",

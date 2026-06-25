@@ -12,9 +12,21 @@ import { Row } from '@tale-ui/react/row';
 import { SearchField } from '@tale-ui/react/search-field';
 import { Text } from '@tale-ui/react/text';
 import { TextField } from '@tale-ui/react/text-field';
+import emojiDataUrl from 'emojibase-data/en/data.json?url';
+import emojiMessagesUrl from 'emojibase-data/en/messages.json?url';
 import Check from 'lucide-react/dist/esm/icons/check';
+import Flag from 'lucide-react/dist/esm/icons/flag';
+import Package from 'lucide-react/dist/esm/icons/package';
+import PaletteIcon from 'lucide-react/dist/esm/icons/palette';
+import PawPrint from 'lucide-react/dist/esm/icons/paw-print';
+import Plane from 'lucide-react/dist/esm/icons/plane';
 import Plus from 'lucide-react/dist/esm/icons/plus';
+import Shapes from 'lucide-react/dist/esm/icons/shapes';
+import Smile from 'lucide-react/dist/esm/icons/smile';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
+import Trophy from 'lucide-react/dist/esm/icons/trophy';
+import Users from 'lucide-react/dist/esm/icons/users';
+import Utensils from 'lucide-react/dist/esm/icons/utensils';
 import XIcon from 'lucide-react/dist/esm/icons/x';
 import type { Workspace } from '@shared/protocol';
 
@@ -22,7 +34,7 @@ import { requestConfirm } from '../../bridge/useConfirm';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
-import { BENTO_THEMES, DEFAULT_THEME_ID, getThemeMeta } from '../../theme/presets';
+import { BENTO_THEMES, DEFAULT_THEME_ID } from '../../theme/presets';
 import { WorkspaceThemePicker } from '../WorkspaceThemePicker/WorkspaceThemePicker';
 import './WorkspacePalette.css';
 
@@ -42,94 +54,205 @@ type EmojiItem = {
   emoji: string;
   label: string;
   group: string;
+  subgroup: string;
+  groupOrder: number;
+  subgroupOrder: number;
   keywords?: string[];
+  order: number;
 };
 
-type EmojiSeed = readonly [emoji: string, label: string, keywords?: readonly string[]];
+type EmojiSection = {
+  id: string;
+  group: string;
+  subgroup: string;
+  groupOrder: number;
+  subgroupOrder: number;
+  items: EmojiItem[];
+};
 
-const WORKSPACE_EMOJI_GROUPS: Array<{ group: string; items: EmojiSeed[] }> = [
-  {
-    group: 'Work and tools',
-    items: [
-      ['💼', 'Briefcase', ['work', 'business', 'office']],
-      ['💻', 'Laptop', ['computer', 'code', 'development']],
-      ['⌨️', 'Keyboard', ['typing', 'code', 'tools']],
-      ['🛠️', 'Hammer and wrench', ['tools', 'build', 'fix']],
-      ['⚙️', 'Gear', ['settings', 'operations', 'system']],
-      ['📈', 'Chart increasing', ['analytics', 'growth', 'metrics']],
-      ['📋', 'Clipboard', ['tasks', 'checklist', 'plan']],
-      ['🎯', 'Target', ['goal', 'focus', 'objective']],
-    ],
-  },
-  {
-    group: 'Communication',
-    items: [
-      ['💬', 'Speech balloon', ['chat', 'message']],
-      ['✉️', 'Envelope', ['email', 'mail']],
-      ['📱', 'Mobile phone', ['mobile', 'call']],
-      ['📣', 'Megaphone', ['announce', 'broadcast']],
-      ['👥', 'Busts in silhouette', ['team', 'people']],
-      ['🤝', 'Handshake', ['deal', 'partner']],
-    ],
-  },
-  {
-    group: 'Reading and research',
-    items: [
-      ['📚', 'Books', ['reading', 'library', 'study']],
-      ['📘', 'Blue book', ['read', 'documentation']],
-      ['📰', 'Newspaper', ['news', 'articles']],
-      ['🔬', 'Microscope', ['research', 'science']],
-      ['🔍', 'Magnifying glass', ['search', 'find']],
-      ['🧠', 'Brain', ['thinking', 'learning']],
-      ['💡', 'Light bulb', ['idea', 'insight']],
-    ],
-  },
-  {
-    group: 'Personal',
-    items: [
-      ['🏠', 'House', ['home', 'personal']],
-      ['☕', 'Coffee', ['drink', 'break']],
-      ['🎵', 'Musical note', ['music', 'audio']],
-      ['🎮', 'Video game', ['play', 'gaming']],
-      ['📷', 'Camera', ['photo', 'image']],
-      ['🎨', 'Artist palette', ['creative', 'design']],
-      ['❤️', 'Red heart', ['love', 'favorite']],
-    ],
-  },
-  {
-    group: 'Travel and places',
-    items: [
-      ['✈️', 'Airplane', ['flight', 'travel']],
-      ['🚀', 'Rocket', ['launch', 'startup']],
-      ['🚗', 'Car', ['drive', 'travel']],
-      ['🚆', 'Train', ['rail', 'commute']],
-      ['⛰️', 'Mountain', ['outdoors', 'hike']],
-      ['🏙️', 'Cityscape', ['urban', 'place']],
-    ],
-  },
-  {
-    group: 'Symbols and shapes',
-    items: [
-      ['✨', 'Sparkles', ['shine', 'magic']],
-      ['⭐', 'Star', ['favorite', 'important']],
-      ['🔥', 'Fire', ['hot', 'urgent']],
-      ['✅', 'Check mark button', ['done', 'complete']],
-      ['⚠️', 'Warning', ['alert', 'risk']],
-      ['🔒', 'Lock', ['security', 'private']],
-      ['🔵', 'Blue circle', ['blue', 'shape']],
-      ['📌', 'Pushpin', ['pinned', 'important']],
-    ],
-  },
-];
+type EmojiCategory = {
+  id: string;
+  label: string;
+  groupOrder: number;
+  icon: typeof Smile;
+  sections: EmojiSection[];
+};
 
-const WORKSPACE_EMOJI_ITEMS: EmojiItem[] = WORKSPACE_EMOJI_GROUPS.flatMap(({ group, items }) =>
-  items.map(([emoji, label, keywords]) => ({
+type EmojiLoadState = 'idle' | 'loading' | 'loaded' | 'error';
+
+type EmojibaseEmoji = {
+  emoji?: unknown;
+  group?: unknown;
+  label?: unknown;
+  order?: unknown;
+  shortcodes?: unknown;
+  skins?: unknown;
+  subgroup?: unknown;
+  tags?: unknown;
+  unicode?: unknown;
+};
+
+let workspaceEmojiItemsCache: EmojiItem[] | undefined;
+let workspaceEmojiItemsPromise: Promise<EmojiItem[]> | undefined;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function stringItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizedKeywordList(...sources: unknown[]): string[] | undefined {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+
+  for (const source of sources) {
+    for (const item of stringItems(source)) {
+      const keyword = item.trim();
+      const key = keyword.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      keywords.push(keyword);
+    }
+  }
+
+  return keywords.length > 0 ? keywords : undefined;
+}
+
+function messageNamesFromMessages(
+  messages: unknown,
+  key: 'groups' | 'subgroups',
+): Map<number, string> {
+  const names = new Map<number, string>();
+  const entries = isRecord(messages) ? messages[key] : undefined;
+  if (!Array.isArray(entries)) return names;
+
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    const order = finiteNumber(entry.order);
+    if (order === undefined || typeof entry.message !== 'string') continue;
+    names.set(order, entry.message);
+  }
+
+  return names;
+}
+
+function taxonomyOrder(value: unknown, fallback: unknown): number {
+  return finiteNumber(value) ?? finiteNumber(fallback) ?? Number.MAX_SAFE_INTEGER;
+}
+
+function taxonomyName(order: number, names: ReadonlyMap<number, string>): string {
+  if (order === Number.MAX_SAFE_INTEGER) return 'other';
+  return names.get(order) ?? 'other';
+}
+
+function emojiItemFromSource(
+  source: EmojibaseEmoji,
+  groupNames: ReadonlyMap<number, string>,
+  subgroupNames: ReadonlyMap<number, string>,
+  fallbackOrder: number,
+  parent?: EmojibaseEmoji,
+): EmojiItem | undefined {
+  const emoji =
+    typeof source.emoji === 'string'
+      ? source.emoji
+      : typeof source.unicode === 'string'
+        ? source.unicode
+        : undefined;
+  if (!emoji || typeof source.label !== 'string') return undefined;
+
+  const groupOrder = taxonomyOrder(source.group, parent?.group);
+  const subgroupOrder = taxonomyOrder(source.subgroup, parent?.subgroup);
+
+  return {
     emoji,
-    label,
-    group,
-    keywords: keywords ? [...keywords] : undefined,
-  })),
-);
+    label: source.label,
+    group: taxonomyName(groupOrder, groupNames),
+    subgroup: taxonomyName(subgroupOrder, subgroupNames),
+    groupOrder,
+    subgroupOrder,
+    keywords: normalizedKeywordList(
+      parent?.tags,
+      parent?.shortcodes,
+      source.tags,
+      source.shortcodes,
+    ),
+    order: finiteNumber(source.order) ?? finiteNumber(parent?.order) ?? fallbackOrder,
+  };
+}
+
+function normalizeEmojibaseData(rawEmojis: unknown, rawMessages: unknown): EmojiItem[] {
+  if (!Array.isArray(rawEmojis)) return [];
+  const groupNames = messageNamesFromMessages(rawMessages, 'groups');
+  const subgroupNames = messageNamesFromMessages(rawMessages, 'subgroups');
+  const items: EmojiItem[] = [];
+
+  rawEmojis.forEach((rawEmoji, index) => {
+    if (!isRecord(rawEmoji)) return;
+    const emoji = rawEmoji as EmojibaseEmoji;
+    const baseOrder = finiteNumber(emoji.order) ?? index;
+    const baseItem = emojiItemFromSource(emoji, groupNames, subgroupNames, baseOrder);
+    if (baseItem) items.push(baseItem);
+
+    const skins = Array.isArray(emoji.skins) ? emoji.skins : [];
+    skins.forEach((rawSkin, skinIndex) => {
+      if (!isRecord(rawSkin)) return;
+      const skin = rawSkin as EmojibaseEmoji;
+      const skinItem = emojiItemFromSource(
+        skin,
+        groupNames,
+        subgroupNames,
+        baseOrder + (skinIndex + 1) / 10,
+        emoji,
+      );
+      if (skinItem) items.push(skinItem);
+    });
+  });
+
+  return items.sort(
+    (a, b) =>
+      a.groupOrder - b.groupOrder ||
+      a.subgroupOrder - b.subgroupOrder ||
+      a.order - b.order ||
+      a.label.localeCompare(b.label),
+  );
+}
+
+async function fetchJsonAsset(url: string): Promise<unknown> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to load emoji data: ${response.status}`);
+  }
+  return response.json() as Promise<unknown>;
+}
+
+function loadWorkspaceEmojiItems(): Promise<EmojiItem[]> {
+  if (workspaceEmojiItemsCache) return Promise.resolve(workspaceEmojiItemsCache);
+  workspaceEmojiItemsPromise ??= Promise.all([
+    fetchJsonAsset(emojiDataUrl),
+    fetchJsonAsset(emojiMessagesUrl),
+  ])
+    .then(([rawEmojis, rawMessages]) => {
+      const items = normalizeEmojibaseData(rawEmojis, rawMessages);
+      if (items.length === 0) {
+        throw new Error('Emoji dataset did not contain any usable entries.');
+      }
+      workspaceEmojiItemsCache = items;
+      return items;
+    })
+    .catch((error: unknown) => {
+      workspaceEmojiItemsPromise = undefined;
+      throw error;
+    });
+
+  return workspaceEmojiItemsPromise;
+}
 
 function workspaceInitial(name: string): string {
   const trimmed = name.trim();
@@ -147,13 +270,6 @@ function pickRotatedTheme(used: ReadonlySet<string | undefined>, total: number):
   return THEME_ROTATION[total % THEME_ROTATION.length]!;
 }
 
-function commandText(workspace: Workspace): string {
-  return [workspace.name, workspace.icon ?? '', getThemeMeta(workspace.themeId).name]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
 function isEnterKey(key: string): boolean {
   return key === 'Enter';
 }
@@ -167,16 +283,109 @@ function isPlainEscape(event: KeyboardEvent): boolean {
 function emojiMatchesQuery(item: EmojiItem, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return [item.emoji, item.label, item.group, ...(item.keywords ?? [])]
+  return [item.emoji, item.label, item.group, item.subgroup, ...(item.keywords ?? [])]
     .join(' ')
     .toLowerCase()
     .includes(needle);
 }
 
-function findEmojiByValue(value: string | undefined | null): EmojiItem | undefined {
+function groupEmojiSections(items: readonly EmojiItem[]): EmojiSection[] {
+  const sectionMap = new Map<string, EmojiSection>();
+
+  for (const item of items) {
+    const sectionId = `${item.groupOrder}:${item.subgroupOrder}`;
+    let section = sectionMap.get(sectionId);
+    if (!section) {
+      section = {
+        id: sectionId,
+        group: item.group,
+        subgroup: item.subgroup,
+        groupOrder: item.groupOrder,
+        subgroupOrder: item.subgroupOrder,
+        items: [],
+      };
+      sectionMap.set(sectionId, section);
+    }
+    section.items.push(item);
+  }
+
+  return [...sectionMap.values()].sort(
+    (a, b) =>
+      a.groupOrder - b.groupOrder ||
+      a.subgroupOrder - b.subgroupOrder ||
+      a.group.localeCompare(b.group) ||
+      a.subgroup.localeCompare(b.subgroup),
+  );
+}
+
+function categoryKeyForOrder(groupOrder: number): string {
+  return groupOrder === Number.MAX_SAFE_INTEGER
+    ? 'emoji-category-other'
+    : `emoji-category-${groupOrder}`;
+}
+
+function categoryIconForOrder(groupOrder: number): typeof Smile {
+  switch (groupOrder) {
+    case 0:
+      return Smile;
+    case 1:
+      return Users;
+    case 2:
+      return PaletteIcon;
+    case 3:
+      return PawPrint;
+    case 4:
+      return Utensils;
+    case 5:
+      return Plane;
+    case 6:
+      return Trophy;
+    case 7:
+      return Package;
+    case 8:
+      return Shapes;
+    case 9:
+      return Flag;
+    default:
+      return Shapes;
+  }
+}
+
+function groupEmojiCategories(sections: readonly EmojiSection[]): EmojiCategory[] {
+  const categoryMap = new Map<string, EmojiCategory>();
+
+  for (const section of sections) {
+    const categoryId = categoryKeyForOrder(section.groupOrder);
+    let category = categoryMap.get(categoryId);
+    if (!category) {
+      category = {
+        id: categoryId,
+        label: section.group,
+        groupOrder: section.groupOrder,
+        icon: categoryIconForOrder(section.groupOrder),
+        sections: [],
+      };
+      categoryMap.set(categoryId, category);
+    }
+    category.sections.push(section);
+  }
+
+  return [...categoryMap.values()].sort(
+    (a, b) => a.groupOrder - b.groupOrder || a.label.localeCompare(b.label),
+  );
+}
+
+function findEmojiByValue(
+  value: string | undefined | null,
+  items: readonly EmojiItem[] = workspaceEmojiItemsCache ?? [],
+): EmojiItem | undefined {
   const normalized = value?.trim();
   if (!normalized) return undefined;
-  return WORKSPACE_EMOJI_ITEMS.find((item) => item.emoji === normalized);
+  return items.find((item) => item.emoji === normalized);
+}
+
+function looksLikeEmojiValue(value: string): boolean {
+  return /[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F]/u.test(value);
 }
 
 interface WorkspaceIconPickerProps {
@@ -194,26 +403,77 @@ function WorkspaceIconPicker({
 }: WorkspaceIconPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [activeCategoryKey, setActiveCategoryKey] = useState<string | null>(null);
+  const [emojiItems, setEmojiItems] = useState<EmojiItem[]>(workspaceEmojiItemsCache ?? []);
+  const [emojiLoadState, setEmojiLoadState] = useState<EmojiLoadState>(
+    workspaceEmojiItemsCache ? 'loaded' : 'idle',
+  );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedValue = value?.trim() || undefined;
-  const selectedEmoji = findEmojiByValue(normalizedValue);
+  const selectedEmoji = findEmojiByValue(normalizedValue, emojiItems);
   const displayedIcon = normalizedValue ?? fallback;
-  const isLegacyIcon = !!normalizedValue && !selectedEmoji;
+  const isEmojiIcon =
+    !!selectedEmoji || (!!normalizedValue && looksLikeEmojiValue(normalizedValue));
+  const isLegacyIcon = !!normalizedValue && !isEmojiIcon;
 
   const filteredEmojis = useMemo(
-    () => WORKSPACE_EMOJI_ITEMS.filter((item) => emojiMatchesQuery(item, query)),
-    [query],
+    () => emojiItems.filter((item) => emojiMatchesQuery(item, query)),
+    [emojiItems, query],
   );
+  const emojiSections = useMemo(() => groupEmojiSections(filteredEmojis), [filteredEmojis]);
+  const emojiCategories = useMemo(() => groupEmojiCategories(emojiSections), [emojiSections]);
+  const selectedEmojiCategoryKey = selectedEmoji
+    ? categoryKeyForOrder(selectedEmoji.groupOrder)
+    : null;
+  const activeCategoryExists =
+    activeCategoryKey !== null &&
+    emojiCategories.some((category) => category.id === activeCategoryKey);
+  const selectedCategoryKey = activeCategoryExists
+    ? activeCategoryKey
+    : selectedEmojiCategoryKey &&
+        emojiCategories.some((category) => category.id === selectedEmojiCategoryKey)
+      ? selectedEmojiCategoryKey
+      : (emojiCategories[0]?.id ?? null);
+  const activeCategory =
+    emojiCategories.find((category) => category.id === selectedCategoryKey) ?? null;
+
+  useEffect(() => {
+    if (!isOpen || emojiLoadState === 'loaded' || emojiLoadState === 'error') return undefined;
+    if (workspaceEmojiItemsCache) {
+      setEmojiItems(workspaceEmojiItemsCache);
+      setEmojiLoadState('loaded');
+      return undefined;
+    }
+
+    let isActive = true;
+    setEmojiLoadState('loading');
+    void loadWorkspaceEmojiItems()
+      .then((items) => {
+        if (!isActive) return;
+        setEmojiItems(items);
+        setEmojiLoadState('loaded');
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setEmojiLoadState('error');
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [isOpen]);
 
   function closePicker() {
     setIsOpen(false);
     setQuery('');
+    setActiveCategoryKey(null);
   }
 
   function handleOpenChange(next: boolean) {
     setIsOpen(next);
     if (!next) {
       setQuery('');
+      setActiveCategoryKey(null);
       return;
     }
     requestAnimationFrame(() => {
@@ -229,11 +489,6 @@ function WorkspaceIconPicker({
     closePicker();
   }
 
-  function clearIcon() {
-    onIconChange(undefined);
-    closePicker();
-  }
-
   function handlePanelKeyDownCapture(event: KeyboardEvent) {
     if (!isPlainEscape(event)) return;
     event.preventDefault();
@@ -241,12 +496,44 @@ function WorkspaceIconPicker({
     closePicker();
   }
 
+  function handleEmojiTabListKeyDown(event: KeyboardEvent) {
+    if (emojiCategories.length === 0) return;
+
+    const currentIndex = Math.max(
+      0,
+      emojiCategories.findIndex((category) => category.id === selectedCategoryKey),
+    );
+    let nextIndex: number | undefined;
+
+    if (event.key === 'ArrowLeft') {
+      nextIndex = (currentIndex - 1 + emojiCategories.length) % emojiCategories.length;
+    } else if (event.key === 'ArrowRight') {
+      nextIndex = (currentIndex + 1) % emojiCategories.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = emojiCategories.length - 1;
+    }
+
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    const nextCategory = emojiCategories[nextIndex];
+    if (!nextCategory) return;
+    setActiveCategoryKey(nextCategory.id);
+    requestAnimationFrame(() => {
+      document.getElementById(`${nextCategory.id}-tab`)?.focus();
+    });
+  }
+
   const selectedKeys = selectedEmoji ? [selectedEmoji.emoji] : [];
   const triggerDescription = selectedEmoji
     ? `${selectedEmoji.label} icon`
-    : normalizedValue
-      ? `${normalizedValue} custom icon`
-      : `${fallback} initial`;
+    : normalizedValue && isEmojiIcon
+      ? `${normalizedValue} emoji icon`
+      : normalizedValue
+        ? `${normalizedValue} custom icon`
+        : `${fallback} initial`;
+  const isEmojiLoading = emojiLoadState === 'idle' || emojiLoadState === 'loading';
 
   return (
     <Popover.Root isOpen={isOpen} onOpenChange={handleOpenChange}>
@@ -281,38 +568,91 @@ function WorkspaceIconPicker({
               </SearchField.ClearButton>
             </SearchField.Root>
           </Column>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="bento-workspace-palette__icon-clear"
-            isDisabled={!normalizedValue}
-            onPress={clearIcon}
-          >
-            Clear icon
-          </Button>
-          {filteredEmojis.length > 0 ? (
-            <ListBox.Root
-              aria-label="Workspace icon emoji results"
-              items={filteredEmojis}
-              layout="grid"
-              selectionMode="single"
-              selectedKeys={selectedKeys}
-              className="tale-list-box--frameless bento-workspace-palette__emoji-list"
-              onSelectionChange={(keys) => {
-                const key = keys === 'all' ? null : ([...keys][0] ?? null);
-                selectEmoji(key);
-              }}
+          {emojiLoadState === 'error' ? (
+            <Text
+              as="div"
+              color="muted"
+              className="tale-popover__empty bento-workspace-palette__icon-empty"
             >
-              {(item) => (
-                <ListBox.Item
-                  className="tale-list-box__item--emoji bento-workspace-palette__emoji-item"
-                  id={item.emoji}
-                  textValue={item.label}
+              Emoji data unavailable.
+            </Text>
+          ) : isEmojiLoading ? (
+            <Text
+              as="div"
+              color="muted"
+              className="tale-popover__empty bento-workspace-palette__icon-empty"
+            >
+              Loading emoji...
+            </Text>
+          ) : activeCategory ? (
+            <Column gap="2xs" className="bento-workspace-palette__emoji-tabs">
+              <Column
+                role="tabpanel"
+                id="emoji-category-panel"
+                aria-labelledby={`${activeCategory.id}-tab`}
+                className="bento-workspace-palette__emoji-tab-panel"
+              >
+                <ListBox.Root
+                  aria-label={`${activeCategory.label} emoji results`}
+                  layout="grid"
+                  selectionMode="single"
+                  selectedKeys={selectedKeys}
+                  className="tale-list-box--frameless bento-workspace-palette__emoji-list"
+                  onSelectionChange={(keys) => {
+                    const key = keys === 'all' ? null : ([...keys][0] ?? null);
+                    selectEmoji(key);
+                  }}
                 >
-                  {item.emoji}
-                </ListBox.Item>
-              )}
-            </ListBox.Root>
+                  {activeCategory.sections.map((section) => (
+                    <ListBox.Section
+                      key={section.id}
+                      id={`emoji-section-${section.id}`}
+                      className="bento-workspace-palette__emoji-section"
+                    >
+                      <ListBox.Header className="bento-workspace-palette__emoji-section-header">
+                        {section.subgroup}
+                      </ListBox.Header>
+                      {section.items.map((item) => (
+                        <ListBox.Item
+                          key={item.emoji}
+                          className="tale-list-box__item--emoji bento-workspace-palette__emoji-item"
+                          id={item.emoji}
+                          textValue={item.label}
+                        >
+                          <span className="bento-workspace-palette__emoji-glyph">{item.emoji}</span>
+                        </ListBox.Item>
+                      ))}
+                    </ListBox.Section>
+                  ))}
+                </ListBox.Root>
+              </Column>
+              <Row
+                role="tablist"
+                aria-label="Emoji categories"
+                gap="4xs"
+                className="bento-workspace-palette__emoji-tab-list"
+                onKeyDown={handleEmojiTabListKeyDown}
+              >
+                {emojiCategories.map((category) => (
+                  <button
+                    key={category.id}
+                    id={`${category.id}-tab`}
+                    type="button"
+                    role="tab"
+                    aria-label={category.label}
+                    aria-selected={category.id === selectedCategoryKey}
+                    aria-controls="emoji-category-panel"
+                    className="tale-icon-button tale-button tale-button--ghost tale-icon-button--sm bento-workspace-palette__emoji-tab"
+                    data-selected={category.id === selectedCategoryKey ? 'true' : undefined}
+                    onClick={() => setActiveCategoryKey(category.id)}
+                  >
+                    <span className="tale-button__content">
+                      <Icon icon={category.icon} size="sm" />
+                    </span>
+                  </button>
+                ))}
+              </Row>
+            </Column>
           ) : (
             <Text
               as="div"
@@ -356,7 +696,10 @@ function WorkspaceEditorRow({
   onDelete,
 }: WorkspaceEditorRowProps) {
   const displayName = draft.name.trim() || workspace.name;
-  const avatarText = workspace.icon?.trim() || workspaceInitial(displayName);
+  const iconValue = workspace.icon?.trim();
+  const avatarText = iconValue || workspaceInitial(displayName);
+  const hasIcon = !!iconValue;
+  const hasEmojiIcon = !!iconValue && looksLikeEmojiValue(iconValue);
 
   return (
     <Row gap="s" align="center" className="bento-workspace-palette__row">
@@ -365,10 +708,12 @@ function WorkspaceEditorRow({
           size="sm"
           className="bento-workspace-switcher__avatar"
           data-bento-theme={workspace.themeId ?? DEFAULT_THEME_ID}
+          data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
         >
           <Avatar.Fallback>{avatarText}</Avatar.Fallback>
         </Avatar.Root>
         <TextField.Root
+          slot={null}
           value={draft.name}
           onChange={(name) => onDraftChange(workspace.id, { name })}
           className="bento-workspace-palette__name-field"
@@ -380,18 +725,35 @@ function WorkspaceEditorRow({
             className="bento-workspace-palette__field-input"
             onBlur={() => onCommitName(workspace)}
             onKeyDown={(event) => {
+              if (event.key !== 'Escape') {
+                event.stopPropagation();
+              }
               if (!isEnterKey(event.key)) return;
+              event.preventDefault();
               event.currentTarget.blur();
             }}
           />
         </TextField.Root>
       </Row>
-      <WorkspaceIconPicker
-        workspaceName={workspace.name}
-        value={workspace.icon}
-        fallback={workspaceInitial(displayName)}
-        onIconChange={(icon) => onIconChange(workspace, icon)}
-      />
+      <Row className="bento-workspace-palette__icon-cell">
+        <WorkspaceIconPicker
+          workspaceName={workspace.name}
+          value={workspace.icon}
+          fallback={workspaceInitial(displayName)}
+          onIconChange={(icon) => onIconChange(workspace, icon)}
+        />
+        {hasIcon ? (
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={`Clear icon for ${workspace.name}`}
+            className="bento-workspace-palette__icon-clear-button"
+            onPress={() => onIconChange(workspace, undefined)}
+          >
+            <Icon icon={XIcon} size="sm" strokeWidth={3} />
+          </IconButton>
+        ) : null}
+      </Row>
       <WorkspaceThemePicker
         workspaceName={workspace.name}
         selectedThemeId={workspace.themeId}
@@ -400,6 +762,7 @@ function WorkspaceEditorRow({
       <Button
         variant={active ? 'ghost' : 'neutral'}
         size="sm"
+        className="bento-workspace-palette__status-button"
         onPress={() => onActivate(workspace.id)}
         isDisabled={active}
       >
@@ -416,6 +779,7 @@ function WorkspaceEditorRow({
         variant="danger"
         size="sm"
         aria-label={`Delete ${workspace.name}`}
+        className="bento-workspace-palette__delete-button"
         isDisabled={!canDelete}
         onPress={() => onDelete(workspace)}
       >
@@ -435,7 +799,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
   );
   const windowId = useCurrentWindowId();
   const activeId = useActiveWorkspaceIdForWindow(windowId);
-  const [query, setQuery] = useState('');
   const [drafts, setDrafts] = useState<Record<string, WorkspaceDraft>>({});
 
   useEffect(() => {
@@ -450,20 +813,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
     });
   }, [workspaces]);
 
-  useEffect(() => {
-    const focusSearch = () => {
-      const input = document.querySelector(
-        '.bento-workspace-palette__input',
-      ) as HTMLInputElement | null;
-      if (!input) return;
-      input.focus();
-      input.select();
-    };
-    focusSearch();
-    window.addEventListener('focus', focusSearch);
-    return () => window.removeEventListener('focus', focusSearch);
-  }, []);
-
   const tabCounts = useMemo(() => {
     const out: Record<string, number> = {};
     for (const tab of tabs) {
@@ -472,12 +821,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
     }
     return out;
   }, [tabs]);
-
-  const filteredWorkspaces = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return workspaces;
-    return workspaces.filter((workspace) => commandText(workspace).includes(needle));
-  }, [query, workspaces]);
 
   function setDraft(id: string, changes: Partial<WorkspaceDraft>) {
     setDrafts((current) => ({
@@ -562,25 +905,7 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
           <TaleCommandPalette.Title className="bento-workspace-palette__sr-only">
             Workspaces
           </TaleCommandPalette.Title>
-          <TaleCommandPalette.Close aria-label="Close workspace palette" />
-          <TaleCommandPalette.Content
-            className="bento-workspace-palette__content"
-            inputValue={query}
-            onInputChange={setQuery}
-          >
-            <TaleCommandPalette.SearchField>
-              <TaleCommandPalette.Input
-                placeholder="Search workspaces..."
-                className="bento-workspace-palette__input"
-                autoFocus
-              />
-              <TaleCommandPalette.ClearButton
-                aria-label="Clear search"
-                className="tale-button tale-button--ghost tale-button--sm"
-              >
-                Clear
-              </TaleCommandPalette.ClearButton>
-            </TaleCommandPalette.SearchField>
+          <TaleCommandPalette.Content className="bento-workspace-palette__content">
             <Column gap="xs" className="bento-workspace-palette__list">
               <Row gap="s" align="center" className="bento-workspace-palette__heading-row">
                 <Text variant="label" size="s" color="muted">
@@ -599,7 +924,7 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                   Delete
                 </Text>
               </Row>
-              {filteredWorkspaces.map((workspace) => (
+              {workspaces.map((workspace) => (
                 <WorkspaceEditorRow
                   key={workspace.id}
                   workspace={workspace}
@@ -616,9 +941,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                 />
               ))}
             </Column>
-            {filteredWorkspaces.length === 0 ? (
-              <TaleCommandPalette.Empty>No matching workspaces.</TaleCommandPalette.Empty>
-            ) : null}
             <TaleCommandPalette.Footer className="bento-workspace-palette__footer">
               <Text
                 variant="text"
@@ -626,7 +948,7 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                 color="muted"
                 className="bento-workspace-palette__footer-text"
               >
-                {resultLabel(filteredWorkspaces.length)}
+                {resultLabel(workspaces.length)}
               </Text>
               <Button
                 variant="neutral"
@@ -635,7 +957,15 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                 onPress={createWorkspace}
               >
                 <Icon icon={Plus} size="sm" />
-                New workspace
+                Add workspace
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="bento-workspace-palette__close-button"
+                onPress={onClose}
+              >
+                Close
               </Button>
             </TaleCommandPalette.Footer>
           </TaleCommandPalette.Content>

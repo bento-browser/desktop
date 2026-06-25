@@ -30,6 +30,10 @@ function workspaceInitial(name: string): string {
   return trimmed.length > 0 ? trimmed[0]!.toUpperCase() : '?';
 }
 
+function looksLikeEmojiValue(value: string): boolean {
+  return /[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F]/u.test(value);
+}
+
 export function WorkspaceSwitcher() {
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
@@ -51,6 +55,9 @@ export function WorkspaceSwitcher() {
   useEffect(() => {
     return subscribeToWorkspaceSwitcherClose(() => setIsOpen(false));
   }, []);
+
+  const activeIcon = active?.icon?.trim();
+  const hasEmojiIcon = !!activeIcon && looksLikeEmojiValue(activeIcon);
 
   const onPress = () => {
     const trigger = triggerRef.current;
@@ -84,8 +91,9 @@ export function WorkspaceSwitcher() {
         size="sm"
         className="bento-workspace-switcher__avatar"
         data-bento-theme={active?.themeId ?? DEFAULT_THEME_ID}
+        data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
       >
-        <Avatar.Fallback>{active?.icon || workspaceInitial(active?.name ?? '?')}</Avatar.Fallback>
+        <Avatar.Fallback>{activeIcon || workspaceInitial(active?.name ?? '?')}</Avatar.Fallback>
       </Avatar.Root>
       <Text variant="text" size="s" className="bento-workspace-switcher__trigger-name">
         {active?.name ?? 'No workspace'}

@@ -294,8 +294,8 @@ Regression checks:
   updates through the normal workspace store mirror.
 - Open the workspace manager, open a row theme picker, and search by both theme
   name and id.
-- While the theme picker is open, typing in its search field must not change the
-  outer "Search workspaces..." field.
+- While the theme picker is open, typing in its search field must stay local to
+  the picker and must not trigger parent palette keyboard handling.
 - Select a theme and confirm the row updates via the normal workspace store
   mirror rather than local-only optimistic state.
 - Check narrow layouts: workspace name, icon trigger, theme trigger, status, and
@@ -306,19 +306,20 @@ Regression checks:
 ### Workspace icon emoji picker
 
 Upstream base: Tale UI's Emoji Picker recipe adapted to workspace icons in the
-all-workspaces command palette. Bento uses `Popover`, `SearchField`, `ListBox`,
-`Icon`, and `Text` over a curated inline emoji list. There is no full emoji
-package dependency, no `Virtualizer`, and no
+all-workspaces command palette. Bento uses `Popover`, `SearchField`,
+`ListBox`, `Icon`, and `Text` over the English `emojibase-data` dataset. The
+JSON files are emitted as local extension assets and loaded on picker open.
+There is no runtime CDN dependency, no `Virtualizer`, and no
 `@tale-ui/react-styles/virtualizer` import.
 
 Bento owners:
 
 - [WorkspacePalette.tsx](../extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.tsx)
-  owns the private `WorkspaceIconPicker`, local emoji data, filtering, selection,
-  and `workspace/update` dispatch.
+  owns the private `WorkspaceIconPicker`, Emojibase asset loading, dataset
+  normalization, filtering, selection, and `workspace/update` dispatch.
 - [WorkspacePalette.css](../extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.css)
-  owns the fixed icon trigger, popover width, emoji grid sizing, and legacy
-  custom-icon clamping.
+  owns the fixed icon trigger, popover width, category tab strip, emoji grid
+  sizing, and legacy custom-icon clamping.
 - [workspace-palette/main.tsx](../extensions/bento-shell/src/workspace-palette/main.tsx)
   imports the per-component Tale UI styles, including `list-box`.
 
@@ -327,29 +328,73 @@ Current drift:
 - Bento keeps the existing `Workspace.icon?: string` schema and persistence
   path. Existing non-emoji strings display in the trigger as legacy custom icons
   and can be cleared or replaced.
+- Bento fetches the local `emojibase-data/en/data.json` and
+  `emojibase-data/en/messages.json` assets only when the picker opens, so the
+  full emoji collection is not parsed during workspace-palette cold start.
+- Bento flattens Emojibase skin-tone variants into selectable grid items and
+  renders them under Emojibase category tabs and subgroup sections.
+- Bento maps each Emojibase category tab to a lucide icon in a lightweight ARIA
+  tab strip and keeps the category text as an accessible label rather than
+  visible tab copy. Category tabs are fixed 1:1 square controls, and the icon
+  picker popover is widened to fit the tab strip.
+- Selected emoji cells use an outline instead of a fill. Emoji cells and
+  category icon tabs have explicit hover and focus-visible states, and subgroup
+  headers align flush with the emoji grid. Emoji glyphs are wrapped in a fixed
+  size flex-centered icon span inside the fixed size emoji button.
+- The emoji results and empty/loading/error states use a fixed block size so the
+  picker height does not change between categories or search results.
 - Bento uses `ListBox` grid layout directly rather than the recipe's
-  `Virtualizer`; the local emoji list is small and keeping virtualizer code out
-  of the entry preserves the workspace-palette cold-start budget.
-- The trigger is fixed to `--bento-workspace-palette-icon-field-width` so the
-  workspace manager grid remains stable.
+  `Virtualizer`; keeping virtualizer code out of the entry preserves the
+  workspace-palette cold-start budget.
+- The workspace row keeps fixed-size columns for the square icon trigger, theme
+  trigger, status action, and delete button so controls stay aligned between
+  rows. The row avatar, name input, icon trigger, theme trigger, status button,
+  and delete button use the icon-column width as their shared block size. Row
+  containers are unframed: no item padding, border, outline, shadow, or fill;
+  the parent list gap supplies row separation. When an icon is present, its
+  clear action is an overlaid close-icon button at the top-right of the square
+  icon trigger.
+- The all-workspaces manager does not render the command-palette chrome close
+  icon; the footer pairs the Add workspace action with a text Close button.
+- The row name `TextField.Root` uses `slot={null}` and contains non-Escape
+  keydown events so row renaming stays local while typing and commits through
+  the normal `workspace/update` path only after blur or Enter blur.
+- The row icon trigger renders emoji and fallback initials in an unclipped fixed
+  glyph box; only legacy custom strings use overflow clamping.
+- Workspace avatars with emoji icons force a white avatar background across the
+  sidebar trigger, workspace switcher menu, and all-workspaces editor in both
+  light and dark modes; themed avatar backgrounds still apply to initials and
+  legacy custom strings.
 - The SearchField clear button renders an explicit `X` icon; Tale UI does not
   provide one automatically.
 - The SearchField uses `slot={null}` so typing in the icon picker does not
-  update the parent workspace command palette query.
+  inherit the parent workspace `CommandPalette` autocomplete context.
 - Escape is contained inside the icon popover: first Escape closes the icon
   picker, second Escape can close the workspace manager.
 
 Regression checks:
 
 - Open the workspace manager, open an icon picker, search by emoji label,
-  keyword, group, and emoji glyph, then select a result.
+  keyword, group, subgroup, and emoji glyph, then select a result.
+- Switch between icon category tabs and confirm the active tab keeps its
+  subgroup sections and selected emoji state.
+- Confirm emoji and category-tab hover/focus states are visible, and selected
+  emoji cells are outlined rather than filled.
 - Clear an icon and confirm the workspace initial fallback returns.
 - Seed a workspace with a legacy string such as `W` or `Ops`; confirm it
   displays safely, has no selected emoji cell, and can be replaced.
 - Press Escape inside the icon picker once to close only the picker, then a
   second time to close the workspace manager.
+- Type into a workspace name field and confirm the row list does not filter or
+  trigger palette row handling; blur the name field and confirm the workspace
+  rename is then applied.
 - Check narrow layouts: workspace name, icon trigger, theme trigger, status, and
   delete button must not overlap.
+- Confirm the top-right command-palette close icon is absent, the footer shows
+  Add workspace and Close buttons, and the row controls share a consistent
+  height.
+- Confirm workspace rows have no item padding, border, outline, shadow, or fill,
+  while the vertical gap between rows remains visible.
 
 ## Themes and chrome
 

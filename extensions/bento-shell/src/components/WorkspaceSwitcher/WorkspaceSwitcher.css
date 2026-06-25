@@ -32,6 +32,14 @@
   color: var(--bento-workspace-accent-fg);
 }
 
+.tale-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] {
+  background-color: #fff;
+  color: var(--neutral-90);
+}
+.tale-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] .tale-avatar__fallback {
+  color: var(--neutral-90);
+}
+
 /* Collapsed sidebar — hide the chevron, fade out the trigger-name.
  * Unlayered because Tale UI's .tale-icon { display: inline-block } and
  * .tale-text defaults are unlayered too — a layered display: none would

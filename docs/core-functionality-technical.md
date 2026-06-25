@@ -372,22 +372,43 @@ there cannot update a parent search query.
 
 `workspace-palette.html` re-icons workspaces with a private emoji picker in
 `components/WorkspacePalette/WorkspacePalette.tsx`. The picker adapts Tale UI's
-Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over a curated
-inline emoji set. It does not use `Virtualizer` because the fixed local set is
-small and the workspace-palette cold-start budget is tight. Selecting or
-clearing an icon still dispatches `workspace/update` with `changes.icon`; the
-shared `Workspace.icon` schema remains an optional string stored in
-`bento.workspaces`.
+Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over
+`emojibase-data`'s English dataset. Vite emits `en/data.json` and
+`en/messages.json` as local extension assets, and the picker fetches them only
+when opened so the workspace-palette cold-start JS budget does not absorb the
+emoji collection. Bento flattens base emoji and skin-tone variants into the
+same selectable grid, maps Emojibase categories to icon-only lucide tab
+buttons, renders Emojibase subgroup sections inside the active category tab,
+and uses the Emojibase group/subgroup messages for labels and search.
+Selecting an icon from the picker or pressing the icon control's overlaid clear
+button still dispatches `workspace/update` with `changes.icon`; the shared
+`Workspace.icon` schema remains an optional string stored in `bento.workspaces`.
 Existing non-emoji strings are not migrated or rejected: the row avatar and
-picker trigger display them as legacy custom icons, and the picker can clear or
-replace them with an emoji. The emoji search field uses `slot={null}` and the
+picker trigger display them as legacy custom icons, the overlaid clear button
+can clear them, and the picker can replace them with an emoji. The emoji search field uses `slot={null}` and the
 popover contains Escape so the first Escape closes only the icon picker before a
 second Escape can close the parent workspace command palette.
+Workspace avatars that render emoji icons set `data-bento-emoji-icon="true"` in
+the sidebar trigger, workspace switcher menu, and all-workspaces editor, then
+override the themed avatar background to persistent white in both color modes.
+Initials and legacy custom strings keep the workspace theme background.
 
 The workspace palette is a chrome-mounted `CommandPalette` frame that reads
 `useWorkspacesStore`, dispatches `workspace/update`, `workspace/activate`,
 `workspace/create`, and `workspace/delete`, and keeps non-empty delete
 confirmation in the normal confirm overlay above the still-mounted manager.
+The palette does not render the command-palette chrome close icon; closing is a
+footer text button next to the Add workspace action. Workspace rows share the
+icon-column width as their control block size so the name input, avatar, icon
+trigger, theme trigger, status button, and delete button stay visually level.
+Rows are unframed: no row padding, border, outline, shadow, or fill; the parent
+list gap is the row separator.
+Workspace name fields keep draft text in local `WorkspacePalette` state while
+typing and only dispatch `workspace/update` from blur, with Enter blurring the
+field. Because the rows live inside the parent `CommandPalette.Content`
+autocomplete provider, the nested name `TextField.Root` must use `slot={null}`
+and contain non-Escape keydown events so typing in a workspace name cannot
+inherit command-palette input state or trigger palette row handling.
 
 Sidebar tab multi-selection lives in
 `extensions/bento-shell/src/components/TabList/TabList.tsx`. Selection is UI
