@@ -223,6 +223,12 @@ when the selected id differs from the current default.
   `pendingpaint` / `blank` marker on the selected browser, and a selected-tab
   workspace ID matching `currentWorkspaceId` before snapshotting. Do not replace
   this with a delayed recapture after the address palette is already visible.
+- When an empty workspace is created from `workspace-palette.html`, the
+  activation-created new tab can focus Firefox's native urlbar and open the
+  floating address palette. Keep `#bento-addrbar-host` stacked below
+  `#bento-workspace-palette-host`, pass `suppressFocus` through the
+  `bento-addrbar-bus` open payload, and leave the workspace palette frame
+  focused so workspace management remains the active context.
 - Do not let the address palette inherit Tale UI's popup enter/exit transform or
   local `backdrop-filter`. The popup itself owns the real `box-shadow`; animating
   a filtered, transformed translucent popup changes compositor bounds and makes

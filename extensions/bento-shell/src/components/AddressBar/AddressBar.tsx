@@ -35,6 +35,7 @@ export interface AddressBarProps {
   mode: AddrbarMode;
   openVersion?: number;
   initialQuery?: string;
+  suppressFocus?: boolean;
 }
 
 type RowKind = OpenAddressRowKind | 'history' | 'bookmark' | 'synthetic';
@@ -119,6 +120,7 @@ export default function AddressBar({
   mode,
   openVersion = 0,
   initialQuery = '',
+  suppressFocus = false,
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [engineSelection, setEngineSelection] = useState(() => resetEngineSelection(null));
@@ -229,6 +231,7 @@ export default function AddressBar({
   }, [query]);
 
   useEffect(() => {
+    if (suppressFocus) return;
     const focusSearch = () => {
       const input = document.querySelector('.bento-address-bar__input') as HTMLInputElement | null;
       if (!input) return;
@@ -238,7 +241,7 @@ export default function AddressBar({
     focusSearch();
     window.addEventListener('focus', focusSearch);
     return () => window.removeEventListener('focus', focusSearch);
-  }, [openVersion]);
+  }, [openVersion, suppressFocus]);
 
   const palette = useCommandPalette<AddressRow>({
     commands: rows,
@@ -313,7 +316,7 @@ export default function AddressBar({
                 <CommandPalette.Input
                   placeholder="Search or enter address"
                   className="bento-address-bar__input"
-                  autoFocus
+                  autoFocus={!suppressFocus}
                   onKeyDown={handleInputKeyDown}
                 />
                 <CommandPalette.ClearButton

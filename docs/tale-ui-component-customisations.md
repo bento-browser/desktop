@@ -229,6 +229,9 @@ Regression checks:
 - Create a new workspace and let the auto-created new tab focus the address
   palette. The blurred pixels inside the palette should come from the new
   workspace/new-tab surface, not the previously active workspace.
+- Create a new workspace from the workspace manager. If the address/new-tab
+  palette opens, it should remain below the workspace manager and should not
+  steal focus from it.
 - The popup shadow must not visibly resize during open or dismiss.
 - The search field area must not look like an extra opaque band stacked on top of
   the popup surface.

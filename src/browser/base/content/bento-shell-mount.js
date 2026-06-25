@@ -2787,10 +2787,13 @@
 
   // Floating address/search bar overlay. New overlays use the JS factory
   // so dev reloads pick them up without requiring a browser.xhtml rebuild.
+  // Keep this below modal/workspace-management overlays: an empty workspace
+  // can auto-focus Firefox's native urlbar, which opens this surface while
+  // the workspace palette is still the user's active context.
   ensureOverlayHost({
     hostId: 'bento-addrbar-host',
     frameId: 'bento-addrbar-frame',
-    zIndex: 99999,
+    zIndex: 99994,
   });
 
   // The remote extension frame can be transparent, but its internal
@@ -3047,6 +3050,23 @@
 
   function isAddrbarVisible(host) {
     return host.style.display !== 'none';
+  }
+
+  function getAddrbarFocusPreservingFrame() {
+    const candidates = [
+      ['bento-confirm-host', isConfirmVisible, 'bento-confirm-frame'],
+      ['bento-edit-workspace-host', isEditWorkspaceVisible, 'bento-edit-workspace-frame'],
+      ['bento-workspace-palette-host', isWorkspacePaletteVisible, 'bento-workspace-palette-frame'],
+      ['bento-merge-palette-host', isMergePaletteVisible, 'bento-merge-palette-frame'],
+      ['bento-embedded-import-host', isEmbeddedImportVisible, 'bento-embedded-import-frame'],
+      ['bento-welcome-host', isWelcomeVisible, 'bento-welcome-frame'],
+      ['bento-workspace-switcher-host', isWorkspaceSwitcherVisible, 'bento-workspace-switcher-frame'],
+    ];
+    for (const [hostId, isVisible, frameId] of candidates) {
+      const host = document.getElementById(hostId);
+      if (host && isVisible(host)) return document.getElementById(frameId);
+    }
+    return null;
   }
 
   function getAddrbarSurfaceIdentity() {
@@ -3392,8 +3412,12 @@
     host.style.opacity = '1';
     const frame = document.getElementById('bento-addrbar-frame');
     setTimeout(() => {
-      frame?.focus();
-      dispatchAddrbarOpen(currentAddrbarMode, initialQuery);
+      const focusPreservingFrame = getAddrbarFocusPreservingFrame();
+      dispatchAddrbarOpen(currentAddrbarMode, initialQuery, {
+        suppressFocus: !!focusPreservingFrame,
+      });
+      if (focusPreservingFrame) focusPreservingFrame.focus();
+      else frame?.focus();
     }, 0);
   }
 
@@ -8583,8 +8607,9 @@
     '  try {' +
     '    var mode = msg.data && msg.data.mode === "newTab" ? "newTab" : "current";' +
     '    var initialQuery = msg.data && typeof msg.data.initialQuery === "string" ? msg.data.initialQuery : "";' +
+    '    var suppressFocus = !!(msg.data && msg.data.suppressFocus);' +
     '    var channel = new content.BroadcastChannel("bento-addrbar-bus");' +
-    '    channel.postMessage({ kind: "open", mode: mode, initialQuery: initialQuery });' +
+    '    channel.postMessage({ kind: "open", mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
@@ -8662,7 +8687,7 @@
     }
   }
 
-  function dispatchAddrbarOpen(mode, initialQuery = '') {
+  function dispatchAddrbarOpen(mode, initialQuery = '', options = {}) {
     const frame = document.getElementById('bento-addrbar-frame');
     if (!frame) return false;
     try {
@@ -8672,7 +8697,11 @@
         mm.loadFrameScript(ADDRBAR_OPEN_FRAME_SCRIPT_URL, true);
         frame._bentoAddrbarOpenScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoAddrbarOpen', { mode, initialQuery });
+      mm.sendAsyncMessage('BentoAddrbarOpen', {
+        mode,
+        initialQuery,
+        suppressFocus: options.suppressFocus === true,
+      });
       return true;
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar open dispatch failed:', err);

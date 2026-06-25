@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-24
+- Last updated: 2026-06-25
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -76,8 +76,11 @@ Use this shape for new or changed touchpoints:
   do not paint above Bento modal scrims, leaves that toolbar scrim disabled for
   the floating address bar, paints a clipped chrome-side blurred bitmap behind
   the floating address bar because the extension frame cannot reliably blur
-  parent chrome/content pixels with its own `backdrop-filter`, opens the manual
-  browser-session merge palette from the sidebar footer in a persistent
+  parent chrome/content pixels with its own `backdrop-filter`, keeps the
+  floating address bar below the workspace manager and suppresses address-bar
+  autofocus when an empty workspace created from that manager triggers native
+  urlbar focus, opens the manual browser-session merge palette from the sidebar
+  footer in a persistent
   chrome-hosted overlay frame, delivers open/close lifecycle nonces into that
   extension frame,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
@@ -152,7 +155,9 @@ Use this shape for new or changed touchpoints:
   the current workspace's visible surface on the first native-urlbar `focus`
   open after creating a new workspace, rejects the command-palette-close
   workspace/tab/browser surface before taking that first frost snapshot, and
-  does not change shadow size after opening, verify sidebar tab and folder
+  does not change shadow size after opening, verify creating a workspace from
+  the workspace manager keeps that manager above and focused if the address
+  palette opens underneath, verify sidebar tab and folder
   `Rename` context-menu actions focus the inline field and select its text for
   immediate typing, verify side-panel and
   sub-panel header hiding/restoration still works from the panel header menu and

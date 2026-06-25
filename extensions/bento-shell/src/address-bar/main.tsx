@@ -33,13 +33,15 @@ function AddressBarApp() {
   const [mode, setMode] = useState<AddrbarMode>('current');
   const [initialQuery, setInitialQuery] = useState('');
   const [openVersion, setOpenVersion] = useState(0);
+  const [suppressFocus, setSuppressFocus] = useState(false);
 
   useEffect(() => {
     dispatch({ type: 'searchEngines/requestSnapshot' });
-    return subscribeToAddrbarOpenRequests((nextMode, nextInitialQuery = '') => {
+    return subscribeToAddrbarOpenRequests((nextMode, nextInitialQuery = '', options) => {
       dispatch({ type: 'searchEngines/requestSnapshot' });
       setMode(nextMode);
       setInitialQuery(nextInitialQuery);
+      setSuppressFocus(options?.suppressFocus === true);
       setOpenVersion((version) => version + 1);
     });
   }, []);
@@ -50,6 +52,7 @@ function AddressBarApp() {
       mode={mode}
       openVersion={openVersion}
       initialQuery={initialQuery}
+      suppressFocus={suppressFocus}
     />
   );
 }

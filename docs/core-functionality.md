@@ -207,6 +207,8 @@ does not leave an empty tab behind. Results use the same command-palette row
 treatment as Bento's command palette on a translucent, backdrop-blurred surface.
 When the bar opens immediately after a workspace or tab change, the blurred
 surface reflects the currently visible workspace rather than a previous one.
+If an empty workspace created from the workspace manager triggers the new-tab
+address/search bar, the workspace manager remains above it and keeps focus.
 History and bookmark rows use generic icons when no favicon source is
 available.
 

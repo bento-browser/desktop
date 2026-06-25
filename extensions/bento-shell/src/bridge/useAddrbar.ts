@@ -10,6 +10,7 @@ interface OpenMessage {
   kind: 'open';
   mode: AddrbarMode;
   initialQuery?: string;
+  suppressFocus?: boolean;
 }
 
 type BusMessage = OpenMessage;
@@ -43,13 +44,19 @@ export function signalAddrbarNavigate(value: string | AddrbarNavigatePayload): v
 }
 
 export function subscribeToAddrbarOpenRequests(
-  handler: (mode: AddrbarMode, initialQuery?: string) => void,
+  handler: (
+    mode: AddrbarMode,
+    initialQuery?: string,
+    options?: { suppressFocus?: boolean },
+  ) => void,
 ): () => void {
   const ch = bus();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'open') handler(data.mode, data.initialQuery);
+    if (data?.kind === 'open') {
+      handler(data.mode, data.initialQuery, { suppressFocus: data.suppressFocus === true });
+    }
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);
