@@ -168,10 +168,10 @@ Editing a single workspace lets the user rename it, set its icon, and choose a
 theme with the same compact searchable theme picker used by the all-workspaces
 manager.
 It also exposes "Edit all workspaces", which opens a workspace-only command
-palette where every workspace can be searched, renamed, re-iconed, re-themed,
-activated, created, or deleted from one view. Workspace re-theming uses a
-compact searchable theme picker. Deleting a non-empty workspace uses Bento's
-confirmation dialog before closing its tabs.
+palette where every workspace can be searched, renamed, re-iconed with a
+searchable emoji picker, re-themed, activated, created, or deleted from one
+view. Workspace re-theming uses a compact searchable theme picker. Deleting a
+non-empty workspace uses Bento's confirmation dialog before closing its tabs.
 
 Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal

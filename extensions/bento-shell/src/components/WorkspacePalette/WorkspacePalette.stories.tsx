@@ -29,18 +29,30 @@ Default.storyName = 'Workspace manager';
 export const ManyWorkspaces = () => {
   useEffect(() => {
     const workspaces = [
-      makeWorkspace({ id: 'w-personal', name: 'Personal', createdAt: 1 }),
-      makeWorkspace({ id: 'w-work', name: 'Work', themeId: 'teal', icon: 'W', createdAt: 2 }),
+      makeWorkspace({ id: 'w-personal', name: 'Personal', icon: '🏠', createdAt: 1 }),
+      makeWorkspace({ id: 'w-work', name: 'Work', themeId: 'teal', icon: '💼', createdAt: 2 }),
       makeWorkspace({
         id: 'w-research',
         name: 'Research with a longer name',
         themeId: 'forest',
-        icon: 'R',
+        icon: '🔬',
         createdAt: 3,
       }),
       makeWorkspace({ id: 'w-side', name: 'Side project', themeId: 'terracotta', createdAt: 4 }),
-      makeWorkspace({ id: 'w-admin', name: 'Admin', themeId: 'antique', createdAt: 5 }),
-      makeWorkspace({ id: 'w-read', name: 'Reading', themeId: 'rosewater', createdAt: 6 }),
+      makeWorkspace({
+        id: 'w-admin',
+        name: 'Admin',
+        themeId: 'antique',
+        icon: 'Ops',
+        createdAt: 5,
+      }),
+      makeWorkspace({
+        id: 'w-read',
+        name: 'Reading',
+        themeId: 'rosewater',
+        icon: '📚',
+        createdAt: 6,
+      }),
     ];
     seedWorkspaces(workspaces, 'w-research');
   }, []);
@@ -60,7 +72,7 @@ export const AllThemeWorkspaces = () => {
             ? 'Mountain Meadow workspace with a name that should truncate'
             : `${theme.name} workspace`,
         themeId: theme.id,
-        icon: theme.name[0],
+        icon: index % 3 === 0 ? '⭐' : index % 3 === 1 ? undefined : theme.name[0],
         createdAt: index + 1,
       }),
     );
@@ -71,3 +83,33 @@ export const AllThemeWorkspaces = () => {
 };
 
 AllThemeWorkspaces.storyName = 'All workspace themes';
+
+export const IconStates = () => {
+  useEffect(() => {
+    seedWorkspaces(
+      [
+        makeWorkspace({ id: 'w-emoji', name: 'Emoji icon workspace', icon: '🚀', createdAt: 1 }),
+        makeWorkspace({ id: 'w-empty', name: 'Workspace without an icon', createdAt: 2 }),
+        makeWorkspace({
+          id: 'w-legacy-letter',
+          name: 'Legacy single-letter icon',
+          icon: 'W',
+          themeId: 'teal',
+          createdAt: 3,
+        }),
+        makeWorkspace({
+          id: 'w-legacy-word',
+          name: 'Legacy multi-character icon with a long workspace name',
+          icon: 'Ops',
+          themeId: 'forest',
+          createdAt: 4,
+        }),
+      ],
+      'w-emoji',
+    );
+  }, []);
+
+  return <WorkspacePalette onClose={() => {}} />;
+};
+
+IconStates.storyName = 'Workspace icon states';

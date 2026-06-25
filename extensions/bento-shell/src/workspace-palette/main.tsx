@@ -14,6 +14,7 @@ import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/command-palette';
 import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/icon-button';
+import '@tale-ui/react-styles/list-box';
 import '@tale-ui/react-styles/popover';
 import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/search-field';

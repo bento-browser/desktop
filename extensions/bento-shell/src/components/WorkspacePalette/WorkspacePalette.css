@@ -48,17 +48,73 @@
   min-width: 0;
 }
 
-.bento-workspace-palette__icon-field {
-  width: var(--bento-workspace-palette-icon-field-width);
-}
-
 .bento-workspace-palette__field-input {
   width: 100%;
   min-width: 0;
 }
 
-.bento-workspace-palette__icon-input {
-  text-align: center;
+.tale-button.bento-workspace-palette__icon-trigger {
+  width: var(--bento-workspace-palette-icon-field-width);
+  min-width: 0;
+  justify-content: center;
+  padding-inline: var(--space-2xs);
+}
+
+.bento-workspace-palette__icon-trigger-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--text-m-font-size);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tale-button.bento-workspace-palette__icon-trigger[data-bento-custom-icon='true']
+  .bento-workspace-palette__icon-trigger-value {
+  font-family: var(--label-font-family);
+  font-size: var(--label-xs-font-size);
+}
+
+.tale-popover__popup.bento-workspace-palette__icon-popover {
+  width: min(30rem, calc(100vw - var(--space-m)));
+}
+
+.tale-column.bento-workspace-palette__icon-panel {
+  min-width: 0;
+}
+
+.tale-column.bento-workspace-palette__icon-search {
+  margin-bottom: 0;
+}
+
+.tale-button.bento-workspace-palette__icon-clear {
+  justify-content: center;
+}
+
+.tale-list-box.bento-workspace-palette__emoji-list {
+  grid-template-columns: repeat(auto-fill, minmax(3.2rem, 1fr));
+  gap: var(--space-4xs);
+  max-height: 20rem;
+}
+
+.tale-list-box__item.bento-workspace-palette__emoji-item {
+  width: 3.2rem;
+  min-height: 3.2rem;
+  border-radius: var(--radius-s);
+  font-size: 2rem;
+}
+
+.tale-list-box__item.bento-workspace-palette__emoji-item[data-selected] {
+  background-color: var(--color-60);
+  color: var(--color-60-fg);
+}
+
+.tale-list-box__item.bento-workspace-palette__emoji-item[data-selected][data-hovered],
+.tale-list-box__item.bento-workspace-palette__emoji-item[data-selected][data-focused] {
+  background-color: var(--color-70);
+  color: var(--color-70-fg);
 }
 
 .tale-command-palette__popup.bento-workspace-palette__popup .bento-workspace-palette__footer {

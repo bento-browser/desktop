@@ -370,6 +370,20 @@ popover opens, focus moves into its `SearchField`; that field uses `slot={null}`
 to opt out of any surrounding `CommandPalette` autocomplete context so typing
 there cannot update a parent search query.
 
+`workspace-palette.html` re-icons workspaces with a private emoji picker in
+`components/WorkspacePalette/WorkspacePalette.tsx`. The picker adapts Tale UI's
+Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over a curated
+inline emoji set. It does not use `Virtualizer` because the fixed local set is
+small and the workspace-palette cold-start budget is tight. Selecting or
+clearing an icon still dispatches `workspace/update` with `changes.icon`; the
+shared `Workspace.icon` schema remains an optional string stored in
+`bento.workspaces`.
+Existing non-emoji strings are not migrated or rejected: the row avatar and
+picker trigger display them as legacy custom icons, and the picker can clear or
+replace them with an emoji. The emoji search field uses `slot={null}` and the
+popover contains Escape so the first Escape closes only the icon picker before a
+second Escape can close the parent workspace command palette.
+
 The workspace palette is a chrome-mounted `CommandPalette` frame that reads
 `useWorkspacesStore`, dispatches `workspace/update`, `workspace/activate`,
 `workspace/create`, and `workspace/delete`, and keeps non-empty delete

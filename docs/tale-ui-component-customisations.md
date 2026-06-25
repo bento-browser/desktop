@@ -298,10 +298,58 @@ Regression checks:
   outer "Search workspaces..." field.
 - Select a theme and confirm the row updates via the normal workspace store
   mirror rather than local-only optimistic state.
-- Check narrow layouts: workspace name, icon field, theme trigger, status, and
+- Check narrow layouts: workspace name, icon trigger, theme trigger, status, and
   delete button must not overlap.
 - Press Escape inside the theme picker once to close only the picker, then a
   second time to close the workspace manager.
+
+### Workspace icon emoji picker
+
+Upstream base: Tale UI's Emoji Picker recipe adapted to workspace icons in the
+all-workspaces command palette. Bento uses `Popover`, `SearchField`, `ListBox`,
+`Icon`, and `Text` over a curated inline emoji list. There is no full emoji
+package dependency, no `Virtualizer`, and no
+`@tale-ui/react-styles/virtualizer` import.
+
+Bento owners:
+
+- [WorkspacePalette.tsx](../extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.tsx)
+  owns the private `WorkspaceIconPicker`, local emoji data, filtering, selection,
+  and `workspace/update` dispatch.
+- [WorkspacePalette.css](../extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.css)
+  owns the fixed icon trigger, popover width, emoji grid sizing, and legacy
+  custom-icon clamping.
+- [workspace-palette/main.tsx](../extensions/bento-shell/src/workspace-palette/main.tsx)
+  imports the per-component Tale UI styles, including `list-box`.
+
+Current drift:
+
+- Bento keeps the existing `Workspace.icon?: string` schema and persistence
+  path. Existing non-emoji strings display in the trigger as legacy custom icons
+  and can be cleared or replaced.
+- Bento uses `ListBox` grid layout directly rather than the recipe's
+  `Virtualizer`; the local emoji list is small and keeping virtualizer code out
+  of the entry preserves the workspace-palette cold-start budget.
+- The trigger is fixed to `--bento-workspace-palette-icon-field-width` so the
+  workspace manager grid remains stable.
+- The SearchField clear button renders an explicit `X` icon; Tale UI does not
+  provide one automatically.
+- The SearchField uses `slot={null}` so typing in the icon picker does not
+  update the parent workspace command palette query.
+- Escape is contained inside the icon popover: first Escape closes the icon
+  picker, second Escape can close the workspace manager.
+
+Regression checks:
+
+- Open the workspace manager, open an icon picker, search by emoji label,
+  keyword, group, and emoji glyph, then select a result.
+- Clear an icon and confirm the workspace initial fallback returns.
+- Seed a workspace with a legacy string such as `W` or `Ops`; confirm it
+  displays safely, has no selected emoji cell, and can be replaced.
+- Press Escape inside the icon picker once to close only the picker, then a
+  second time to close the workspace manager.
+- Check narrow layouts: workspace name, icon trigger, theme trigger, status, and
+  delete button must not overlap.
 
 ## Themes and chrome
 
