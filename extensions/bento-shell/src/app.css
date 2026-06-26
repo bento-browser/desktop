@@ -56,7 +56,7 @@
   .bento-shell-app__header {
     padding-block: var(--space-3xs);
     padding-inline: var(--space-3xs);
-    border-bottom: 1px solid var(--bento-sidebar-divider-color);
+    background-color: var(--neutral-5);
     /* Keep padding identical in expanded and collapsed modes so the
        header's vertical rhythm does not shift during sidebar toggles. */
   }

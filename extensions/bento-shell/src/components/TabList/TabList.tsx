@@ -322,6 +322,9 @@ function TabListPane({
       }),
     [activeId, displayedIds, dragFolderId, folders, tabsById],
   );
+  const newActionRowIndex = rows.findIndex((row) => row.kind === 'new-tab');
+  const topSurfaceHeight = newActionRowIndex > 0 ? newActionRowIndex * rowSlotSize : 0;
+  const hasTopSurface = topSurfaceHeight > 0;
   const pinnedRunLength = useMemo(() => {
     let count = 0;
     for (const row of rows) {
@@ -360,6 +363,10 @@ function TabListPane({
     overscan: 5,
   });
   const totalSize = virtualizer.getTotalSize();
+  const viewportStyle = {
+    height: searchFiltering ? '100%' : `${totalSize}px`,
+    '--bento-tab-list-top-surface-height': `${topSurfaceHeight}px`,
+  } as CSSProperties;
 
   useLayoutEffect(() => {
     virtualizer.measure();
@@ -906,8 +913,11 @@ function TabListPane({
       >
         <div
           ref={viewportRef}
-          className="bento-tab-list__viewport"
-          style={{ height: searchFiltering ? '100%' : `${totalSize}px` }}
+          className={
+            'bento-tab-list__viewport' +
+            (hasTopSurface ? ' bento-tab-list__viewport--top-surface' : '')
+          }
+          style={viewportStyle}
         >
           {dropSlot !== null && (dragSourceId !== null || dragFolderId !== null) && (
             <div

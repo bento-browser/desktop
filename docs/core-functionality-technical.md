@@ -479,14 +479,20 @@ updates. The particle layer is parented to `#bento-panel-nav`, not inside each
 favicon button or `.bento-panel-nav__list`, because the favicon list is a
 horizontal scroll container and clips child overflow.
 `extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the New menu
-row into the virtualized pane after the pinned run and before regular tabs. That
-Tale UI menu exposes the New tab and New panel actions from the same row in both
-expanded and collapsed sidebar modes. When the active workspace's filtered
-sidebar tab ids include at least one `TabSnapshot.pinned` tab, `TabListPane`
-marks that inserted New menu row with `bento-tab-list__row--after-pinned`, and
-`TabList.css` paints that row's top divider. The divider occupies no layout
-height, so collapse/expand keeps row positions stable while still separating
-pinned tabs from the New menu and regular tab section.
+row into the virtualized pane after pinned tabs and folder rows, before regular
+tabs. That Tale UI menu exposes the New tab and New panel actions from the same
+row in both expanded and collapsed sidebar modes. When the inserted New menu row
+has any pinned tab or folder row above it, `TabListPane` marks it with
+`bento-tab-list__row--after-pinned` for styling hooks, but no divider is painted
+between pinned tabs/folders and the New menu. The New/Search controls shift down
+by `--bento-tab-list-row-gap` in that state so their top inset matches the
+pinned/folder section's bottom gap without changing the virtualizer row height.
+The workspace-switcher header stays on the base neutral-5 sidebar surface, while
+the pinned/folder region above the New menu is neutral-12: `TabListPane` exposes
+the pre-New-row height to `TabList.css` so the tab-list viewport paints only
+that upper region. When that height is zero, the neutral-12 pseudo-element is not
+attached, so empty pinned/folder sections do not leave a colored strip above
+New/Search.
 
 Sidebar drag handling in `TabListPane` classifies tab drops before falling back
 to anchor-based reordering. A drop in slot `0` or within the current pinned run
