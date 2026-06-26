@@ -9,6 +9,10 @@
     align-items: flex-end;
   }
 
+  .bento-edit-workspace__icon-field {
+    flex: 0 0 auto;
+  }
+
   .bento-edit-workspace__name-field {
     flex: 1 1 auto;
     min-width: 0;

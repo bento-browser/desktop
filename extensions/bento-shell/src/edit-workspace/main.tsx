@@ -128,12 +128,17 @@ function EditWorkspaceApp() {
           </Dialog.Description>
           <Column gap="m" className="bento-edit-workspace__form">
             <Row gap="m" align="end" className="bento-edit-workspace__name-row">
-              <WorkspaceIconField
-                workspaceName={workspaceName}
-                value={draftIcon || undefined}
-                fallback={workspaceInitial(workspaceName)}
-                onIconChange={(icon) => setDraftIcon(icon ?? '')}
-              />
+              <Column gap="2xs" className="bento-edit-workspace__icon-field">
+                <Text variant="label" size="s" as="span">
+                  Icon
+                </Text>
+                <WorkspaceIconField
+                  workspaceName={workspaceName}
+                  value={draftIcon || undefined}
+                  fallback={workspaceInitial(workspaceName)}
+                  onIconChange={(icon) => setDraftIcon(icon ?? '')}
+                />
+              </Column>
               <TextField.Root
                 value={draftName}
                 onChange={setDraftName}
