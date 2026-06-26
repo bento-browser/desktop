@@ -26,15 +26,21 @@ import type { SettingsStore } from '../settings/SettingsStore';
 // them in Bento Settings without restarting.
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
+interface SleepPolicyOptions {
+  getProtectedTabIds?: () => Iterable<number>;
+}
+
 export class SleepPolicy {
   #tabs: TabRegistry;
   #settings: SettingsStore;
+  #options: SleepPolicyOptions;
   #lastActivatedAt = new Map<number, number>();
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(tabs: TabRegistry, settings: SettingsStore) {
+  constructor(tabs: TabRegistry, settings: SettingsStore, options: SleepPolicyOptions = {}) {
     this.#tabs = tabs;
     this.#settings = settings;
+    this.#options = options;
   }
 
   init(): void {
@@ -83,6 +89,7 @@ export class SleepPolicy {
 
   #eligibleForSleep(now: number, sleepAfterMs: number, keepAlivePerWorkspace: number): number[] {
     const allTabs = this.#tabs.snapshot();
+    const protectedIds = new Set(this.#options.getProtectedTabIds?.() ?? []);
 
     // Group by workspace so per-workspace keep-alive can be applied.
     // Tabs without a workspaceId go in their own bucket — they're not
@@ -95,7 +102,6 @@ export class SleepPolicy {
       else byWorkspace.set(key, [t]);
     }
 
-    const protectedIds = new Set<number>();
     for (const [, tabs] of byWorkspace) {
       // Sort by lastActivated DESC, take top N — those stay warm.
       const ranked = tabs
@@ -108,6 +114,7 @@ export class SleepPolicy {
     return allTabs
       .filter((t) => !t.pinned)
       .filter((t) => !t.active)
+      .filter((t) => !t.discarded)
       .filter((t) => !protectedIds.has(t.id))
       .filter((t) => {
         const last = this.#lastActivatedAt.get(t.id) ?? now;

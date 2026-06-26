@@ -1831,6 +1831,11 @@ Top-row splits and 2x2 groups:
   `.bento-panel--discarded` plus `.bento-panel-nav__icon--discarded` without
   changing navigator structure. Grouped navigator cells also receive a per-cell
   dimming class so subdivided groups can show which contained panel is asleep.
+  `SleepPolicy` receives active-workspace visible panel ids from `background.ts`
+  as protected tab ids, so the 60-second sweep cannot discard a panel currently
+  rendered in a visible workspace and trigger an immediate wake/reload loop.
+  Inactive-workspace panels can still be discarded and later wake through
+  Firefox's normal tab restore path.
 - Panel navigator structural changes must keep each button at a stable layout
   size. Split, subdivide, promote-survivor, and remove operations can convert a
   single-panel icon to a grouped icon or back while the panel strip is also

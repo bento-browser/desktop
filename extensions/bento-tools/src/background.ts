@@ -737,10 +737,31 @@ async function emitPanelsSync(
 }
 
 const keys = new KeyRegistry({ workspaces, broadcastEvent });
-const sleep = new SleepPolicy(tabs, settings);
+
+function getActiveWorkspacePanelTabIds(): number[] {
+  const workspaceIds = new Set<string>();
+  const globalActiveId = workspaces.getActiveId();
+  if (globalActiveId) workspaceIds.add(globalActiveId);
+  for (const workspaceId of Object.values(workspaces.getActiveIdByWindow())) {
+    if (workspaceId) workspaceIds.add(workspaceId);
+  }
+
+  const tabIds = new Set<number>();
+  for (const workspaceId of workspaceIds) {
+    for (const tabId of panels.getVisiblePanelIds(workspaceId)) {
+      tabIds.add(tabId);
+    }
+  }
+  return Array.from(tabIds);
+}
+
+const sleep = new SleepPolicy(tabs, settings, {
+  getProtectedTabIds: getActiveWorkspacePanelTabIds,
+});
 // Sleep depends on TabRegistry + SettingsStore being populated for its first
-// sweep (Workspaces only matter if a tab has a workspaceId). Defer init
-// until they're ready.
+// sweep. Workspaces + panels are also consulted so visible active-workspace
+// panel tabs stay awake instead of being discarded and immediately reloaded.
+// Defer init until they're ready.
 //
 // `bootReady` is awaited inside runtime.onConnectExternal so the initial
 // snapshots sent to a freshly-connected shell reflect post-restore state

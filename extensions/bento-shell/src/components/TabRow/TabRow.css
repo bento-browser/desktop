@@ -15,7 +15,7 @@
     padding-inline: var(--space-2xs) 0;
     border-radius: var(--radius-s);
     line-height: 1;
-    color: var(--neutral-90);
+    color: var(--neutral-100);
     cursor: pointer;
     user-select: none;
     overflow: hidden;
@@ -90,8 +90,12 @@
     background-color: var(--color-60);
   }
 
+  .bento-tab-row--selected .tale-text {
+    color: var(--neutral-100);
+  }
+
   .bento-tab-row--active .tale-text {
-    color: var(--color-60-fg);
+    color: var(--color-5);
   }
 
   .bento-tab-row__favicon {
@@ -154,6 +158,7 @@
   }
 
   .bento-tab-row > .tale-text {
+    color: var(--neutral-100);
     user-select: none;
     -moz-user-select: none;
     overflow: hidden;
@@ -343,11 +348,24 @@
   caret-color: var(--neutral-90);
 }
 
+/* Unlayered by design: Tale UI text utilities are unlayered, so the sidebar
+ * tab label foreground must be unlayered too. */
+.bento-tab-row > .tale-text {
+  color: var(--neutral-100);
+}
+
+.bento-tab-row--selected > .tale-text {
+  color: var(--neutral-100);
+}
+
+.bento-tab-row--active > .tale-text {
+  color: var(--color-5);
+}
+
 /* Unlayered by design: Tale UI text/button/icon utilities are unlayered, so
  * active-row foreground overrides must be unlayered too. Keep every foreground
  * affordance on the accent row tied to the matching contrast token. */
 .bento-tab-row--active,
-.bento-tab-row--active .tale-text,
 .bento-tab-row--active .tale-icon,
 .bento-tab-row--active .bento-tab-row__audio-control .tale-icon-button,
 .bento-tab-row--active
