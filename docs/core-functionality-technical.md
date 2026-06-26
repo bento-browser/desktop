@@ -397,7 +397,10 @@ the icon picker before a second Escape can close the workspace editor dialog.
 Workspace avatars that render emoji icons set `data-bento-emoji-icon="true"` in
 the sidebar trigger and workspace switcher menu, then override the themed avatar
 background to persistent white in both color modes. Initials and legacy custom
-strings keep the workspace theme background.
+strings keep the workspace theme background. The sidebar workspace switcher
+trigger keeps Tale UI's neutral button shape but overrides that variant's
+background, border, and text colors with `--color-*` tokens so the control
+follows the active workspace brand instead of the neutral palette.
 
 The workspace editor is a chrome-mounted `Dialog` frame that reads
 `useWorkspacesStore`, dispatches `workspace/update`, `workspace/activate`,

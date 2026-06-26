@@ -368,6 +368,9 @@ Current drift:
 - Workspace avatars with emoji icons force a white avatar background across the
   sidebar trigger and workspace switcher menu in both light and dark modes;
   themed avatar backgrounds still apply to initials and legacy custom strings.
+- The sidebar workspace switcher trigger keeps Tale UI's neutral button shape
+  but overrides that variant's background, border, and text colors with
+  `--color-*` tokens so it follows the active workspace brand.
 - The SearchField clear button renders an explicit `X` icon; Tale UI does not
   provide one automatically.
 - The SearchField uses `slot={null}` so typing in the icon picker stays local to

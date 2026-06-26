@@ -67,6 +67,7 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
  * unlayered, so keep this unlayered too; otherwise .text--body-s keeps
  * its 1.5 line-height and the glyphs sit high next to the avatar. */
 .tale-text.bento-workspace-switcher__trigger-name {
+  color: var(--color-90);
   line-height: 1;
   position: relative;
   top: 1px;
@@ -102,9 +103,11 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   color: inherit;
 }
 
-/* Menu.Trigger renders a real button. The trigger uses Tale UI neutral
- * button classes for its visual frame; Bento only controls the sidebar
- * layout constraints here. */
+/* Menu.Trigger renders a real button. It keeps Tale UI's neutral button class
+ * for the subtle secondary shape, then swaps that variant's neutral color
+ * source for brand tokens so the workspace control follows the active theme.
+ * These rules are unlayered because Tale UI's button variant rules are
+ * unlayered too. */
 .tale-button.tale-menu__trigger.bento-workspace-switcher__trigger {
   display: flex;
   width: 100%;
@@ -112,6 +115,35 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   max-width: 100%;
   box-sizing: border-box;
   justify-content: flex-start;
+  background-color: color-mix(in srgb, var(--color-60) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
+  color: var(--color-90);
+}
+
+.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger:hover:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger[data-hovered]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  background-color: color-mix(in srgb, var(--color-60) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-60) 22%, transparent);
+  color: var(--color-90);
+}
+
+.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger:active:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger[data-pressed]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  background-color: color-mix(in srgb, var(--color-60) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
+  color: var(--color-90);
 }
 
 html[data-bento-collapsed='true']
