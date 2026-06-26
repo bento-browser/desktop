@@ -167,15 +167,17 @@ covering the window with an opaque overlay.
 Editing a single workspace lets the user rename it, set its icon, and choose a
 theme with the same compact searchable theme picker used by the all-workspaces
 manager.
-It also exposes "Edit all workspaces", which opens a workspace-only command
-palette where every workspace can be renamed, re-iconed with a searchable full
-emoji picker with icon category tabs and subgroup sections, cleared with the
-icon control's overlaid close button, re-themed, activated, added with the
-footer Add workspace button, or deleted from one view. The palette closes from
-the footer Close button. Workspace name edits stay in the row while typing and
-apply after the name field loses focus. Workspace rows use unframed controls
-with visible gaps between rows. Workspace re-theming uses a compact searchable
-theme picker. Workspace avatars that display emoji icons keep a white avatar
+It also exposes "Edit all workspaces", which opens an "Edit workspaces" dialog
+where every workspace can be renamed, re-iconed from the first column with a
+searchable full emoji picker with icon category tabs and subgroup sections,
+cleared with the icon control's overlaid close button, re-themed, activated,
+added with the Add workspace button at the bottom of the workspace list, or
+deleted from one view. The dialog uses the standard corner close affordance and
+also closes from the footer Close button. Workspace name edits stay in the row
+while typing and apply after the name field loses focus. Workspace rows use
+unframed controls with visible gaps between rows and do not duplicate the icon
+beside the workspace name. Workspace re-theming uses a compact searchable theme
+picker. Workspace avatars that display emoji icons keep a white avatar
 background in both light and dark modes. Deleting a non-empty workspace uses
 Bento's confirmation dialog before closing its tabs.
 
@@ -183,9 +185,11 @@ Chrome-level menus and modals should preserve visual context. A command palette,
 workspace editor, confirmation, or welcome dialog may draw its intended modal
 scrim, but the overlay page itself should not cover the browser with an opaque
 surface. Bento modal scrims cover the full chrome window, including the toolbar
-and address bar. The floating address/search bar is not a modal scrim; it leaves
-the native toolbar visible while blurring only the content behind its palette
-surface.
+and address bar. Stacked modals add matching stacked toolbar scrim layers, so a
+confirmation opened over the workspace editor dims the native address bar by the
+same amount as the content behind it. The floating address/search bar is not a
+modal scrim; it leaves the native toolbar visible while blurring only the content
+behind its palette surface.
 
 The command palette separates normal tabs from side panels. Choosing a tab opens
 that tab in the main content slot, switching to its workspace first when needed.

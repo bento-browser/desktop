@@ -282,8 +282,7 @@ Current drift:
 - The SearchField clear button must render an explicit `X` icon; Tale UI does
   not provide one automatically.
 - The SearchField receives focus when the Popover opens and uses `slot={null}`
-  so it does not inherit the parent workspace `CommandPalette` autocomplete
-  input context.
+  so it does not inherit surrounding overlay input context.
 - Each option button is wrapped in `Tooltip.Root`; the popup shows the full
   theme name on hover/focus so truncated names remain inspectable.
 
@@ -295,7 +294,7 @@ Regression checks:
 - Open the workspace manager, open a row theme picker, and search by both theme
   name and id.
 - While the theme picker is open, typing in its search field must stay local to
-  the picker and must not trigger parent palette keyboard handling.
+  the picker and must not trigger parent dialog keyboard handling.
 - Select a theme and confirm the row updates via the normal workspace store
   mirror rather than local-only optimistic state.
 - Check narrow layouts: workspace name, icon trigger, theme trigger, status, and
@@ -306,7 +305,7 @@ Regression checks:
 ### Workspace icon emoji picker
 
 Upstream base: Tale UI's Emoji Picker recipe adapted to workspace icons in the
-all-workspaces command palette. Bento uses `Popover`, `SearchField`,
+all-workspaces dialog. Bento uses `Popover`, `SearchField`,
 `ListBox`, `Icon`, and `Text` over the English `emojibase-data` dataset. The
 JSON files are emitted as local extension assets and loaded on picker open.
 There is no runtime CDN dependency, no `Virtualizer`, and no
@@ -343,32 +342,36 @@ Current drift:
   size flex-centered icon span inside the fixed size emoji button.
 - The emoji results and empty/loading/error states use a fixed block size so the
   picker height does not change between categories or search results.
+- The emoji grid and category tab strip hide native scrollbars to avoid a
+  mount-time vertical/horizontal scrollbar flash; wheel, trackpad, and keyboard
+  scrolling still work inside the picker.
 - Bento uses `ListBox` grid layout directly rather than the recipe's
   `Virtualizer`; keeping virtualizer code out of the entry preserves the
   workspace-palette cold-start budget.
-- The workspace row keeps fixed-size columns for the square icon trigger, theme
-  trigger, status action, and delete button so controls stay aligned between
-  rows. The row avatar, name input, icon trigger, theme trigger, status button,
-  and delete button use the icon-column width as their shared block size. Row
-  containers are unframed: no item padding, border, outline, shadow, or fill;
-  the parent list gap supplies row separation. When an icon is present, its
-  clear action is an overlaid close-icon button at the top-right of the square
-  icon trigger.
-- The all-workspaces manager does not render the command-palette chrome close
-  icon; the footer pairs the Add workspace action with a text Close button.
-- The row name `TextField.Root` uses `slot={null}` and contains non-Escape
-  keydown events so row renaming stays local while typing and commits through
-  the normal `workspace/update` path only after blur or Enter blur.
+- The workspace row keeps fixed-size columns for the square icon trigger, name,
+  theme trigger, status action, and delete button so controls stay aligned
+  between rows. The icon picker is the first column; there is no duplicate
+  avatar beside the workspace name. The name input, icon trigger, theme trigger,
+  status button, and delete button use the icon-column width as their shared
+  block size. Row containers are unframed: no item padding, border, outline,
+  shadow, or fill; the parent list gap supplies row separation. When an icon is
+  present, its clear action is an overlaid close-icon button at the top-right of
+  the square icon trigger.
+- The all-workspaces manager is a Tale UI `Dialog` titled "Edit workspaces"; it
+  uses the default corner close affordance, keeps a footer text Close button,
+  and places the Add workspace action at the bottom of the workspace list.
+- The row name `TextField.Root` keeps row renaming local while typing and
+  commits through the normal `workspace/update` path only after blur or Enter
+  blur.
 - The row icon trigger renders emoji and fallback initials in an unclipped fixed
   glyph box; only legacy custom strings use overflow clamping.
 - Workspace avatars with emoji icons force a white avatar background across the
-  sidebar trigger, workspace switcher menu, and all-workspaces editor in both
-  light and dark modes; themed avatar backgrounds still apply to initials and
-  legacy custom strings.
+  sidebar trigger and workspace switcher menu in both light and dark modes;
+  themed avatar backgrounds still apply to initials and legacy custom strings.
 - The SearchField clear button renders an explicit `X` icon; Tale UI does not
   provide one automatically.
-- The SearchField uses `slot={null}` so typing in the icon picker does not
-  inherit the parent workspace `CommandPalette` autocomplete context.
+- The SearchField uses `slot={null}` so typing in the icon picker stays local to
+  the picker.
 - Escape is contained inside the icon popover: first Escape closes the icon
   picker, second Escape can close the workspace manager.
 
@@ -380,6 +383,8 @@ Regression checks:
   subgroup sections and selected emoji state.
 - Confirm emoji and category-tab hover/focus states are visible, and selected
   emoji cells are outlined rather than filled.
+- Open the icon picker and confirm no vertical or horizontal native scrollbars
+  flash inside the emoji grid or category tab strip.
 - Clear an icon and confirm the workspace initial fallback returns.
 - Seed a workspace with a legacy string such as `W` or `Ops`; confirm it
   displays safely, has no selected emoji cell, and can be replaced.
@@ -390,9 +395,11 @@ Regression checks:
   rename is then applied.
 - Check narrow layouts: workspace name, icon trigger, theme trigger, status, and
   delete button must not overlap.
-- Confirm the top-right command-palette close icon is absent, the footer shows
-  Add workspace and Close buttons, and the row controls share a consistent
-  height.
+- Confirm the dialog title reads "Edit workspaces", the top-right default close
+  icon is present, the footer shows the Close button, Add workspace sits at the
+  bottom of the workspace list, and the row controls share a consistent height.
+- Confirm the icon picker is the first row column and no duplicate avatar appears
+  beside the workspace name.
 - Confirm workspace rows have no item padding, border, outline, shadow, or fill,
   while the vertical gap between rows remains visible.
 

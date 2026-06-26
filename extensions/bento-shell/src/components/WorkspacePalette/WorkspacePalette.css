@@ -1,15 +1,21 @@
-/* Layer-2 component: WorkspacePalette. Uses Tale UI CommandPalette visuals
- * with inline workspace editing controls. */
+/* Layer-2 component: WorkspacePalette. Uses Tale UI Dialog visuals with inline
+ * workspace editing controls. */
 
-.tale-command-palette__popup.bento-workspace-palette__popup {
+.tale-dialog__popup.bento-workspace-palette__dialog {
   width: min(var(--bento-workspace-palette-width), var(--bento-workspace-palette-max-inline));
   height: min(var(--bento-workspace-palette-height), var(--bento-workspace-palette-max-block));
+  max-height: min(var(--bento-workspace-palette-height), var(--bento-workspace-palette-max-block));
+  overflow: hidden;
+  padding: var(--space-s);
 }
 
-.tale-command-palette__dialog.bento-workspace-palette__dialog,
-.tale-command-palette__content.bento-workspace-palette__content {
+.tale-column.bento-workspace-palette__content {
   min-height: 0;
   flex: 1 1 auto;
+}
+
+.tale-dialog__title.bento-workspace-palette__title {
+  margin: 0;
 }
 
 .tale-column.bento-workspace-palette__list {
@@ -23,8 +29,8 @@
 .tale-row.bento-workspace-palette__heading-row {
   display: grid;
   grid-template-columns:
-    minmax(0, 1fr)
     var(--bento-workspace-palette-icon-field-width)
+    minmax(0, 1fr)
     var(--bento-workspace-theme-picker-trigger-width)
     var(--bento-workspace-palette-status-action-width)
     var(--bento-workspace-palette-icon-field-width);
@@ -41,14 +47,15 @@
   box-shadow: none;
 }
 
+.tale-row.bento-workspace-palette__list-actions {
+  justify-content: flex-start;
+  min-width: var(--bento-workspace-palette-row-min-width);
+  margin-top: auto;
+}
+
 .tale-row.bento-workspace-palette__name-cell {
   min-width: 0;
   min-height: var(--bento-workspace-palette-icon-field-width);
-}
-
-.tale-row.bento-workspace-palette__name-cell .tale-avatar.bento-workspace-switcher__avatar {
-  width: var(--bento-workspace-palette-icon-field-width);
-  height: var(--bento-workspace-palette-icon-field-width);
 }
 
 .bento-workspace-palette__name-field {
@@ -175,6 +182,7 @@
   padding-block-start: var(--space-4xs);
   border-block-start: 1px solid var(--neutral-20);
   overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .bento-workspace-palette__emoji-tab {
@@ -226,6 +234,9 @@
   gap: var(--space-4xs);
   height: 20rem;
   max-height: 20rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
 
 .tale-popover__empty.bento-workspace-palette__icon-empty {
@@ -299,8 +310,13 @@
   outline-color: var(--neutral-90);
 }
 
-.tale-command-palette__popup.bento-workspace-palette__popup .bento-workspace-palette__footer {
+.tale-dialog__actions.bento-workspace-palette__footer {
+  display: flex;
   align-items: center;
+  gap: var(--space-xs);
+  margin-top: 0;
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--neutral-20);
 }
 
 .bento-workspace-palette__footer-text {

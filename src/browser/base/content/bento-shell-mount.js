@@ -3600,14 +3600,57 @@
     }
   }
 
+  function createOverlayToolbarScrimLayer() {
+    const layer = document.createElement('div');
+    layer.setAttribute('data-bento-toolbar-scrim-layer', 'true');
+    layer.style.cssText =
+      'position: absolute; inset: 0; background-color: var(--scrim, rgba(0, 0, 0, 0.48));' +
+      ' opacity: 0; pointer-events: none;' +
+      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+    return layer;
+  }
+
+  function syncOverlayToolbarScrimLayers(scrim) {
+    // The popover's own background represents the first modal scrim. Extra
+    // active modal owners need extra layers so stacked dialogs dim the toolbar
+    // by the same amount as their in-document Dialog.Backdrops dim content.
+    const targetExtraLayerCount = Math.max(0, activeToolbarScrimOwners.size - 1);
+    const layers = Array.from(scrim.querySelectorAll('[data-bento-toolbar-scrim-layer]'));
+
+    while (layers.length < targetExtraLayerCount) {
+      const layer = createOverlayToolbarScrimLayer();
+      scrim.appendChild(layer);
+      layers.push(layer);
+    }
+
+    layers.forEach((layer, index) => {
+      if (index < targetExtraLayerCount) {
+        layer.removeAttribute('data-bento-closing');
+        requestAnimationFrame(() => {
+          if (!layer.hasAttribute('data-bento-closing')) layer.style.opacity = '1';
+        });
+        return;
+      }
+
+      if (layer.hasAttribute('data-bento-closing')) return;
+      layer.setAttribute('data-bento-closing', 'true');
+      layer.style.opacity = '0';
+      setTimeout(() => {
+        if (layer.hasAttribute('data-bento-closing')) layer.remove();
+      }, WELCOME_TRANSITION_MS);
+    });
+  }
+
   function showOverlayToolbarScrim(owner) {
     activeToolbarScrimOwners.add(owner);
     const scrim = document.getElementById('bento-overlay-toolbar-scrim');
     if (!scrim) return;
     if (getOverlayToolbarScrimHeight() <= 0) return;
-    scrim.style.opacity = '0';
+    const wasOpen = isOverlayToolbarScrimOpen(scrim);
+    if (!wasOpen) scrim.style.opacity = '0';
     sizeOverlayToolbarScrim(scrim);
-    if (!isOverlayToolbarScrimOpen(scrim) && typeof scrim.showPopover === 'function') {
+    syncOverlayToolbarScrimLayers(scrim);
+    if (!wasOpen && typeof scrim.showPopover === 'function') {
       try {
         scrim.showPopover();
       } catch (err) {
@@ -3629,9 +3672,11 @@
     if (!scrim) return;
     if (activeToolbarScrimOwners.size > 0) {
       sizeOverlayToolbarScrim(scrim);
+      syncOverlayToolbarScrimLayers(scrim);
       scrim.style.opacity = '1';
       return;
     }
+    syncOverlayToolbarScrimLayers(scrim);
     scrim.style.opacity = '0';
     setTimeout(() => {
       if (

@@ -7,11 +7,10 @@ import { createRoot } from 'react-dom/client';
 
 import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/avatar';
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/color-swatch';
 import '@tale-ui/react-styles/column';
-import '@tale-ui/react-styles/command-palette';
+import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/list-box';

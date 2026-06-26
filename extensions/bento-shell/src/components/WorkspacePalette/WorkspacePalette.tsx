@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type Key, type KeyboardEvent } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { CommandPalette as TaleCommandPalette } from '@tale-ui/react/command-palette';
-import { Avatar } from '@tale-ui/react/avatar';
 import { Button } from '@tale-ui/react/button';
 import { Column } from '@tale-ui/react/column';
+import { Dialog } from '@tale-ui/react/dialog';
 import { Icon } from '@tale-ui/react/icon';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { ListBox } from '@tale-ui/react/list-box';
@@ -697,44 +696,10 @@ function WorkspaceEditorRow({
 }: WorkspaceEditorRowProps) {
   const displayName = draft.name.trim() || workspace.name;
   const iconValue = workspace.icon?.trim();
-  const avatarText = iconValue || workspaceInitial(displayName);
   const hasIcon = !!iconValue;
-  const hasEmojiIcon = !!iconValue && looksLikeEmojiValue(iconValue);
 
   return (
     <Row gap="s" align="center" className="bento-workspace-palette__row">
-      <Row gap="s" align="center" className="bento-workspace-palette__name-cell">
-        <Avatar.Root
-          size="sm"
-          className="bento-workspace-switcher__avatar"
-          data-bento-theme={workspace.themeId ?? DEFAULT_THEME_ID}
-          data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
-        >
-          <Avatar.Fallback>{avatarText}</Avatar.Fallback>
-        </Avatar.Root>
-        <TextField.Root
-          slot={null}
-          value={draft.name}
-          onChange={(name) => onDraftChange(workspace.id, { name })}
-          className="bento-workspace-palette__name-field"
-        >
-          <TextField.Label className="bento-workspace-palette__sr-only">
-            Workspace name
-          </TextField.Label>
-          <TextField.Input
-            className="bento-workspace-palette__field-input"
-            onBlur={() => onCommitName(workspace)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape') {
-                event.stopPropagation();
-              }
-              if (!isEnterKey(event.key)) return;
-              event.preventDefault();
-              event.currentTarget.blur();
-            }}
-          />
-        </TextField.Root>
-      </Row>
       <Row className="bento-workspace-palette__icon-cell">
         <WorkspaceIconPicker
           workspaceName={workspace.name}
@@ -753,6 +718,26 @@ function WorkspaceEditorRow({
             <Icon icon={XIcon} size="sm" strokeWidth={3} />
           </IconButton>
         ) : null}
+      </Row>
+      <Row gap="s" align="center" className="bento-workspace-palette__name-cell">
+        <TextField.Root
+          value={draft.name}
+          onChange={(name) => onDraftChange(workspace.id, { name })}
+          className="bento-workspace-palette__name-field"
+        >
+          <TextField.Label className="bento-workspace-palette__sr-only">
+            Workspace name
+          </TextField.Label>
+          <TextField.Input
+            className="bento-workspace-palette__field-input"
+            onBlur={() => onCommitName(workspace)}
+            onKeyDown={(event) => {
+              if (!isEnterKey(event.key)) return;
+              event.preventDefault();
+              event.currentTarget.blur();
+            }}
+          />
+        </TextField.Root>
       </Row>
       <WorkspaceThemePicker
         workspaceName={workspace.name}
@@ -888,31 +873,24 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
   }
 
   return (
-    <TaleCommandPalette.Root
-      open={true}
-      size="lg"
-      closeOnSelect={false}
+    <Dialog.Root
+      isOpen={true}
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
     >
-      <TaleCommandPalette.Backdrop isDismissable>
-        <TaleCommandPalette.Popup
-          aria-label="Workspace palette"
-          className="bento-workspace-palette__dialog"
-          modalProps={{ className: 'bento-workspace-palette__popup' }}
-        >
-          <TaleCommandPalette.Title className="bento-workspace-palette__sr-only">
-            Workspaces
-          </TaleCommandPalette.Title>
-          <TaleCommandPalette.Content className="bento-workspace-palette__content">
+      <Dialog.Backdrop isDismissable>
+        <Dialog.Popup className="bento-workspace-palette__dialog">
+          <Dialog.Close aria-label="Close" />
+          <Dialog.Title className="bento-workspace-palette__title">Edit workspaces</Dialog.Title>
+          <Column gap="xs" className="bento-workspace-palette__content">
             <Column gap="xs" className="bento-workspace-palette__list">
               <Row gap="s" align="center" className="bento-workspace-palette__heading-row">
                 <Text variant="label" size="s" color="muted">
-                  Workspace
+                  Icon
                 </Text>
                 <Text variant="label" size="s" color="muted">
-                  Icon
+                  Workspace
                 </Text>
                 <Text variant="label" size="s" color="muted">
                   Theme
@@ -940,8 +918,19 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                   onDelete={deleteWorkspace}
                 />
               ))}
+              <Row align="center" className="bento-workspace-palette__list-actions">
+                <Button
+                  variant="neutral"
+                  size="sm"
+                  className="bento-workspace-palette__new-button"
+                  onPress={createWorkspace}
+                >
+                  <Icon icon={Plus} size="sm" />
+                  Add workspace
+                </Button>
+              </Row>
             </Column>
-            <TaleCommandPalette.Footer className="bento-workspace-palette__footer">
+            <Dialog.Actions className="bento-workspace-palette__footer">
               <Text
                 variant="text"
                 size="s"
@@ -951,15 +940,6 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
                 {resultLabel(workspaces.length)}
               </Text>
               <Button
-                variant="neutral"
-                size="sm"
-                className="bento-workspace-palette__new-button"
-                onPress={createWorkspace}
-              >
-                <Icon icon={Plus} size="sm" />
-                Add workspace
-              </Button>
-              <Button
                 variant="ghost"
                 size="sm"
                 className="bento-workspace-palette__close-button"
@@ -967,10 +947,10 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
               >
                 Close
               </Button>
-            </TaleCommandPalette.Footer>
-          </TaleCommandPalette.Content>
-        </TaleCommandPalette.Popup>
-      </TaleCommandPalette.Backdrop>
-    </TaleCommandPalette.Root>
+            </Dialog.Actions>
+          </Column>
+        </Dialog.Popup>
+      </Dialog.Backdrop>
+    </Dialog.Root>
   );
 }
