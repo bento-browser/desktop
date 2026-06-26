@@ -1,10 +1,10 @@
-/* Layer-3 feature: Settings page. Centered single-column layout sized for
- * an extension page. */
+/* Layer-3 feature: Settings page. Responsive bento layout for extension and
+ * browser-tab widths. */
 @layer bento.features {
   .bento-settings {
     box-sizing: border-box;
-    max-width: 64rem;
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     padding-block: var(--space-l);
     padding-inline: var(--space-m);
     color: var(--neutral-90);
@@ -17,6 +17,39 @@
 
   .bento-settings__header {
     margin-bottom: var(--space-s);
+    max-width: var(--bento-settings-header-max-width);
+  }
+
+  .bento-settings__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--bento-settings-grid-gap);
+    width: min(100%, var(--bento-settings-grid-max-width));
+  }
+
+  .bento-settings__stack {
+    display: grid;
+    align-content: start;
+    gap: var(--bento-settings-grid-gap);
+    min-width: 0;
+  }
+
+  .bento-settings__tile {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .bento-settings__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .bento-settings__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   .bento-settings__footer {

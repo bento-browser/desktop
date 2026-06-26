@@ -164,9 +164,9 @@ Recently closed regular tabs should reopen with Firefox's standard
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
 covering the window with an opaque overlay.
-Editing a single workspace lets the user rename it, set its icon, and choose a
-theme with the same compact searchable theme picker used by the all-workspaces
-manager.
+Editing a single workspace lets the user rename it, set or clear its icon with
+the same searchable full emoji picker used by the all-workspaces manager, and
+choose a theme with the same compact searchable theme picker used there.
 It also exposes "Edit all workspaces", which opens an "Edit workspaces" dialog
 where every workspace can be renamed, re-iconed from the first column with a
 searchable full emoji picker with icon category tabs and subgroup sections,

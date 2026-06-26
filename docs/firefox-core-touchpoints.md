@@ -282,8 +282,9 @@ Use this shape for new or changed touchpoints:
   bookmarks/history/password resources are present in the new
   Bento profile.
 - Rollback or migration notes: removing the patch reverts Bento to vanilla
-  Firefox 150 behavior, where the Bento chrome host cannot drive the migration
-  actor and startup migration cannot be entered from Bento onboarding. The
+  Firefox behavior for this migration surface, where the Bento chrome host
+  cannot drive the migration actor and startup migration cannot be entered from
+  Bento onboarding. The
   confirmed 2026-06-09 Zen import fix depends on keeping all of these pieces
   together: profile rows are filtered through `getMigrateData(profile)`, app
   icons use quoted `moz-icon://` CSS URLs built from installed macOS bundles,

@@ -1,0 +1,138 @@
+/* Shared workspace icon picker used by the single-workspace dialog and
+ * all-workspaces command palette. */
+
+.tale-row.bento-workspace-icon-picker__field {
+  position: relative;
+  width: var(--bento-workspace-palette-icon-field-width);
+  height: var(--bento-workspace-palette-icon-field-width);
+}
+
+.tale-button.bento-workspace-icon-picker__trigger {
+  width: var(--bento-workspace-palette-icon-field-width);
+  height: var(--bento-workspace-palette-icon-field-width);
+  aspect-ratio: 1;
+  min-width: var(--bento-workspace-palette-icon-field-width);
+  min-height: var(--bento-workspace-palette-icon-field-width);
+  overflow: visible;
+  justify-content: center;
+  padding: 0;
+}
+
+.bento-workspace-icon-picker__trigger-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--bento-workspace-icon-picker-trigger-value-size);
+  width: var(--bento-workspace-icon-picker-trigger-value-size);
+  height: var(--bento-workspace-icon-picker-trigger-value-size);
+  overflow: visible;
+  font-size: var(--bento-workspace-icon-picker-trigger-font-size);
+  line-height: 1;
+}
+
+.tale-button.bento-workspace-icon-picker__trigger[data-bento-custom-icon='true']
+  .bento-workspace-icon-picker__trigger-value {
+  display: block;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--label-font-family);
+  font-size: var(--label-xs-font-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tale-popover__popup.bento-workspace-icon-picker__popover {
+  width: min(var(--bento-workspace-icon-picker-popover-width), calc(100vw - var(--space-m)));
+}
+
+.tale-icon-button.bento-workspace-icon-picker__clear-button {
+  position: absolute;
+  inset-block-start: var(--bento-workspace-icon-picker-clear-offset);
+  inset-inline-end: var(--bento-workspace-icon-picker-clear-offset);
+  z-index: 1;
+  width: var(--bento-workspace-icon-picker-clear-button-size);
+  height: var(--bento-workspace-icon-picker-clear-button-size);
+  min-height: var(--bento-workspace-icon-picker-clear-button-size);
+  padding: 0;
+  border-radius: var(--radius-full);
+  background-color: var(--neutral-20);
+  color: var(--neutral-90);
+}
+
+.tale-row.bento-workspace-icon-picker__emoji-tab-list {
+  padding-block-start: var(--space-4xs);
+  border-block-start: 1px solid var(--neutral-20);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bento-workspace-icon-picker__emoji-tab {
+  flex: 0 0 var(--bento-workspace-icon-picker-tab-size);
+  width: var(--bento-workspace-icon-picker-tab-size);
+  height: var(--bento-workspace-icon-picker-tab-size);
+  color: var(--neutral-60);
+}
+
+.bento-workspace-icon-picker__emoji-tab[data-selected] {
+  color: var(--neutral-5);
+  background-color: var(--neutral-90);
+}
+
+.tale-list-box.bento-workspace-icon-picker__emoji-list {
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--bento-workspace-icon-picker-item-size), 1fr)
+  );
+  align-content: start;
+  gap: var(--space-4xs);
+  height: var(--bento-workspace-icon-picker-list-height);
+  max-height: var(--bento-workspace-icon-picker-list-height);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.tale-popover__empty.bento-workspace-icon-picker__empty {
+  display: flex;
+  align-items: center;
+  min-height: var(--bento-workspace-icon-picker-list-height);
+}
+
+.tale-list-box__header.bento-workspace-icon-picker__emoji-section-header {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: var(--space-4xs);
+  padding: var(--space-xs) var(--space-2xs) var(--space-3xs);
+  padding-inline-start: 0;
+}
+
+.bento-workspace-icon-picker__emoji-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--bento-workspace-icon-picker-item-size);
+  height: var(--bento-workspace-icon-picker-item-size);
+  padding: 0;
+  border-radius: var(--radius-s);
+  font-size: var(--bento-workspace-icon-picker-trigger-font-size);
+  line-height: 1;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+}
+
+.bento-workspace-icon-picker__emoji-item[data-hovered] {
+  background-color: var(--neutral-12);
+}
+
+.bento-workspace-icon-picker__emoji-item[data-focused],
+.bento-workspace-icon-picker__emoji-item[data-focus-visible] {
+  background-color: var(--neutral-10);
+  outline-color: var(--neutral-70);
+}
+
+.bento-workspace-icon-picker__emoji-item[data-selected] {
+  outline-color: var(--neutral-60);
+}

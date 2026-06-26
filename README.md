@@ -40,7 +40,7 @@ Surfer detects `gtar` automatically once it's on `PATH`.
 
 ```sh
 npm install            # install Surfer
-npm run download       # fetch Firefox source (configured version: 150.0.1)
+npm run download       # fetch Firefox source (version configured in surfer.json)
 npm run bootstrap      # install Mozilla build deps via mach
 npm run build          # compile Bento Browser
 npm run build:ui       # UI-only rebuild (faster iteration)

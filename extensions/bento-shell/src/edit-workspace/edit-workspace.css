@@ -2,6 +2,15 @@
  * own padding; this just spaces the form sections. */
 @layer bento.components {
   .bento-edit-workspace__form {
-    padding-block: var(--space-s);
+    padding-block: var(--space-xs);
+  }
+
+  .tale-row.bento-edit-workspace__name-row {
+    align-items: flex-end;
+  }
+
+  .bento-edit-workspace__name-field {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }

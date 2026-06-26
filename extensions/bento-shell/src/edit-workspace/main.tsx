@@ -24,6 +24,7 @@ import { Button } from '@tale-ui/react/button';
 import { TextField } from '@tale-ui/react/text-field';
 import { Text } from '@tale-ui/react/text';
 import { Column } from '@tale-ui/react/column';
+import { Row } from '@tale-ui/react/row';
 
 import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
@@ -34,7 +35,10 @@ import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/text-field';
 import '@tale-ui/react-styles/color-swatch';
 import '@tale-ui/react-styles/icon';
+import '@tale-ui/react-styles/icon-button';
+import '@tale-ui/react-styles/list-box';
 import '@tale-ui/react-styles/popover';
+import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/search-field';
 import '@tale-ui/react-styles/toggle-button';
 import '@tale-ui/react-styles/tooltip';
@@ -51,10 +55,16 @@ import {
   type EditWorkspacePayload,
 } from '../bridge/useEditWorkspace';
 import { DEFAULT_THEME_ID } from '../theme/presets';
+import { WorkspaceIconField } from '../components/WorkspaceIconPicker/WorkspaceIconPicker';
 import { WorkspaceThemePicker } from '../components/WorkspaceThemePicker/WorkspaceThemePicker';
 import './edit-workspace.css';
 
 initToolsPort();
+
+function workspaceInitial(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed[0]!.toUpperCase() : '?';
+}
 
 function EditWorkspaceApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
@@ -114,13 +124,25 @@ function EditWorkspaceApp() {
         <Dialog.Popup>
           <Dialog.Title>Edit workspace</Dialog.Title>
           <Dialog.Description>
-            Rename, pick a theme, or set a one-character icon for this workspace.
+            Rename, pick a theme, or set an emoji for this workspace.
           </Dialog.Description>
           <Column gap="m" className="bento-edit-workspace__form">
-            <TextField.Root value={draftName} onChange={setDraftName}>
-              <TextField.Label>Name</TextField.Label>
-              <TextField.Input autoFocus />
-            </TextField.Root>
+            <Row gap="m" align="end" className="bento-edit-workspace__name-row">
+              <WorkspaceIconField
+                workspaceName={workspaceName}
+                value={draftIcon || undefined}
+                fallback={workspaceInitial(workspaceName)}
+                onIconChange={(icon) => setDraftIcon(icon ?? '')}
+              />
+              <TextField.Root
+                value={draftName}
+                onChange={setDraftName}
+                className="bento-edit-workspace__name-field"
+              >
+                <TextField.Label>Workspace name</TextField.Label>
+                <TextField.Input autoFocus />
+              </TextField.Root>
+            </Row>
             <Column gap="2xs">
               <Text variant="label" size="s">
                 Theme
@@ -131,13 +153,6 @@ function EditWorkspaceApp() {
                 onThemeChange={setDraftThemeId}
               />
             </Column>
-            <TextField.Root value={draftIcon} onChange={setDraftIcon}>
-              <TextField.Label>Icon</TextField.Label>
-              <TextField.Input placeholder="Single character or emoji (optional)" maxLength={2} />
-              <TextField.Description>
-                Shown in the workspace avatar. Leave blank to use the first letter of the name.
-              </TextField.Description>
-            </TextField.Root>
           </Column>
           <Dialog.Actions>
             <Button variant="neutral" onPress={close}>

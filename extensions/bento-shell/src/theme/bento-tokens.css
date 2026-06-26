@@ -96,6 +96,14 @@
     --bento-workspace-palette-row-min-width: 68rem;
     --bento-workspace-palette-icon-field-width: 3.6rem;
     --bento-workspace-palette-status-action-width: 8rem;
+    --bento-workspace-icon-picker-trigger-value-size: 2.4rem;
+    --bento-workspace-icon-picker-trigger-font-size: 2rem;
+    --bento-workspace-icon-picker-popover-width: 34rem;
+    --bento-workspace-icon-picker-list-height: 20rem;
+    --bento-workspace-icon-picker-tab-size: 3rem;
+    --bento-workspace-icon-picker-item-size: 3.2rem;
+    --bento-workspace-icon-picker-clear-button-size: 1.8rem;
+    --bento-workspace-icon-picker-clear-offset: -0.6rem;
     --bento-workspace-theme-picker-trigger-width: 16rem;
     --bento-workspace-theme-picker-popup-width: 28rem;
     --bento-workspace-theme-picker-popup-max-inline: calc(100vw - var(--space-m));
@@ -108,6 +116,9 @@
     --bento-address-bar-max-block: 74vh;
     --bento-address-bar-favicon-size: 1.8rem;
     --bento-address-bar-engine-width: 14rem;
+    --bento-settings-grid-max-width: 132rem;
+    --bento-settings-grid-gap: var(--space-s);
+    --bento-settings-header-max-width: 72rem;
 
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay

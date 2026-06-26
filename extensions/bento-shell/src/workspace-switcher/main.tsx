@@ -289,12 +289,12 @@ function WorkspaceSwitcherOverlayApp() {
           {canEdit ? (
             <Menu.Item
               id={EDIT_WORKSPACE_KEY}
-              textValue={`Edit ${active!.name}`}
+              textValue="Edit this workspace"
               onAction={onRequestEdit}
             >
               <Icon icon={Pencil} size="sm" />
               <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
-                Edit {active!.name}
+                Edit this workspace
               </Text>
             </Menu.Item>
           ) : null}

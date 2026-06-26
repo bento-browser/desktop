@@ -181,10 +181,10 @@ export function BackupSection() {
   if (!settings) return null;
 
   return (
-    <Card.Root>
+    <Card.Root className="bento-settings__tile bento-settings__tile--narrow">
       <Card.Header>
         <Column gap="2xs">
-          <Text variant="heading" size="m">
+          <Text variant="title" size="m">
             Backup &amp; export
           </Text>
           <Text variant="text" size="s" color="muted">
@@ -353,7 +353,7 @@ export function BackupSection() {
                 <Switch.Thumb />
               </Switch.Root>
             </Row>
-            <Row gap="m">
+            <Row gap="m" wrap>
               <NumberField.Root
                 value={settings.autoBackupIntervalMinutes}
                 onChange={(v) => {

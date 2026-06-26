@@ -370,21 +370,25 @@ popover opens, focus moves into its `SearchField`; that field uses `slot={null}`
 to opt out of any surrounding input context so typing there stays local to the
 picker.
 
-`workspace-palette.html` re-icons workspaces with a private emoji picker in
-`components/WorkspacePalette/WorkspacePalette.tsx`. The picker adapts Tale UI's
-Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over
+`edit-workspace.html` and `workspace-palette.html` re-icon workspaces with the
+shared emoji picker in
+`components/WorkspaceIconPicker/WorkspaceIconPicker.tsx`. The picker adapts
+Tale UI's Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over
 `emojibase-data`'s English dataset. Vite emits `en/data.json` and
 `en/messages.json` as local extension assets, and the picker fetches them only
-when opened so the workspace-palette cold-start JS budget does not absorb the
-emoji collection. Bento flattens base emoji and skin-tone variants into the
-same selectable grid, maps Emojibase categories to icon-only lucide tab
-buttons, renders Emojibase subgroup sections inside the active category tab,
-and uses the Emojibase group/subgroup messages for labels and search. The emoji
-grid and category tab strip hide native scrollbars to prevent first-open
+when opened so the workspace editor cold-start JS budget does not absorb the
+emoji collection. Bento flattens base emoji and skin-tone variants into the same
+selectable grid, maps Emojibase categories to icon-only lucide tab buttons,
+renders Emojibase subgroup sections inside the active category tab, and uses
+the Emojibase group/subgroup messages for labels and search. The emoji grid and
+category tab strip hide native scrollbars to prevent first-open
 vertical/horizontal scrollbar flashes while preserving internal scrolling.
 Selecting an icon from the picker or pressing the icon control's overlaid clear
-button still dispatches `workspace/update` with `changes.icon`; the shared
-`Workspace.icon` schema remains an optional string stored in `bento.workspaces`.
+button still writes `changes.icon`: `edit-workspace.html` keeps the value in
+draft state until Save dispatches `workspace/update`, while
+`workspace-palette.html` dispatches `workspace/update` immediately for the
+edited row. The shared `Workspace.icon` schema remains an optional string stored
+in `bento.workspaces`.
 Existing non-emoji strings are not migrated or rejected: the picker trigger
 displays them as legacy custom icons, the overlaid clear button can clear them,
 and the picker can replace them with an emoji. The emoji search field uses
@@ -1497,7 +1501,7 @@ The working panel renderer is `reconcilePanelsSplitView` in
 
 Bento does not move a tab's `linkedBrowser` into a custom host. Earlier
 docShell-swap and browser-reparent approaches broke WebExtensions and browser
-identity. The current renderer drives Firefox 150's native split-view machinery:
+identity. The current renderer drives Firefox's native split-view machinery:
 
 1. Resolve `panels/sync` tab ids to real `gBrowser` tab elements with
    `ExtensionParent`'s tab tracker.

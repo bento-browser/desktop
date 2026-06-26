@@ -76,7 +76,8 @@ Do not give the user fragments and expect them to assemble the procedure. Do not
 
 ## What this project is
 
-Bento Browser is a Surfer-based Firefox 150 fork. The UI shell ships as two privileged built-in extensions:
+Bento Browser is a Surfer-based Firefox fork. The active Firefox version is
+configured in `surfer.json`. The UI shell ships as two privileged built-in extensions:
 
 - **bento-shell** — React + Tale UI, the visible chrome (vertical tabs, workspaces, panels, command palette).
 - **bento-tools** — plain TypeScript background logic (tab/keyboard/persistence).
