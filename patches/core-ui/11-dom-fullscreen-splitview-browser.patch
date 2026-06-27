@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Sat, 27 Jun 2026 16:35:00 +1000
+Subject: [PATCH] Allow DOM fullscreen from split view browsers
+
+---
+ browser/base/content/browser-fullScreenAndPointerLock.js | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/browser/base/content/browser-fullScreenAndPointerLock.js b/browser/base/content/browser-fullScreenAndPointerLock.js
+index 88f8704d9f11d98f96c5e30ae05762fb16b4d910..c4051b3843ab996b014b599e3f8de9784d5648ef 100644
+--- a/browser/base/content/browser-fullScreenAndPointerLock.js
++++ b/browser/base/content/browser-fullScreenAndPointerLock.js
+@@ -621,13 +621,13 @@ var FullScreen = {
+       }
+     }
+ 
+-    // If we've received a fullscreen notification, we have to ensure that the
+-    // element that's requesting fullscreen belongs to the browser that's currently
+-    // active. If not, we exit fullscreen since the "full-screen document" isn't
+-    // actually visible now.
++    // If we've received a fullscreen notification, ensure the requesting
++    // element belongs to one of the browsers currently active in the window.
++    // This includes split-view browsers, which can be visible even when they
++    // are not gBrowser.selectedBrowser.
+     if (
+       !aBrowser ||
+-      gBrowser.selectedBrowser != aBrowser ||
++      !gBrowser.selectedBrowsers.includes(aBrowser) ||
+       // The top-level window has lost focus since the request to enter
+       // full-screen was made. Cancel full-screen.
+       Services.focus.activeWindow != window
+@@ -636,6 +636,12 @@ var FullScreen = {
+       return;
+     }
+ 
++    try {
++      window.BentoShellDomFullscreen?.markRequesterForBrowser?.(aBrowser);
++    } catch (ex) {
++      Cu.reportError(ex);
++    }
++
+     // Remove permission prompts when entering full-screen.
+     if (!FullScreen.permissionsFullScreenAllowed) {
+       let notifications = PopupNotifications.getNotification(
+@@ -749,6 +755,11 @@ var FullScreen = {
+     );
+ 
+     document.documentElement.removeAttribute("inDOMFullscreen");
++    try {
++      window.BentoShellDomFullscreen?.clearRequester?.();
++    } catch (ex) {
++      Cu.reportError(ex);
++    }
+ 
+     return needToWaitForChildExit;
+   },
+-- 
+2.50.1 (Apple Git-155)

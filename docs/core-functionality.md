@@ -236,10 +236,11 @@ available.
 
 The main content area is the normal browser surface. It behaves like a regular
 Firefox tab view and remains the user's primary page for the active task.
-When page content in the main slot enters fullscreen, Bento chrome, panel
-controls, and panel focus rings hide so the fullscreen element owns the whole
-browser window. The normal rounded main-content frame is also removed during
-fullscreen so videos reach the window edges without clipped corners.
+When page content in the main slot or any panel enters fullscreen, Bento
+chrome, panel headers, panel loading overlays, and panel focus rings hide so
+the fullscreen element owns the whole browser window. Normal rounded content
+frames are also removed during fullscreen so videos reach the window edges
+without clipped corners.
 
 Panels sit alongside this main content instead of replacing it. This keeps Bento
 compatible with normal browsing habits while adding a richer workspace layout

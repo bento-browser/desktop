@@ -1018,7 +1018,10 @@ omitting `targetIds` imports the full source as before. Workspaces are created
 with `{ activate: false }` until all tabs/folders are created. Tabs are opened
 inactive in the requesting window when known, assigned to the workspace through
 `TabRegistry.assignWorkspaceEagerly`, and pinned tabs are pinned with
-`browser.tabs.update` as a backstop. The
+`browser.tabs.update` as a backstop. Source tab titles are not written to
+`TabRegistry.rename()` / `bento.customTitle`; imported tabs must keep using the
+live Firefox tab title so later navigation through links or the floating
+address bar updates the sidebar text normally. The
 executor must await the eager assignment's `browser.sessions.setTabValue`
 completion before counting a tab as imported; if the workspace marker cannot be
 persisted, the created tab is removed and the temporary workspace is discarded
@@ -1236,7 +1239,7 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   page paint from showing through the rounded corners. Exception: when Firefox
   sets `:root[inDOMFullscreen]`, the fullscreen override must clear the strip
   host and browser-wrapper radii so video fullscreen is not clipped by the
-  normal main-content frame.
+  normal main-content or panel frame.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
 - `panelLayout/breakOut` promotes an existing child into the root layout and
@@ -1633,19 +1636,40 @@ The following mechanisms are load-bearing:
 - DOM fullscreen depends on Bento yielding the chrome it adds around Firefox's
   browser deck. Firefox's stock fullscreen stylesheet hides `#navigator-toolbox`
   and native sidebar elements, but not `#bento-shell-host`,
-  `#bento-shell-splitter`, `#bento-panel-nav`, `#bento-strip-scrollbar`, the
-  add-panel trailer, or flat-layout overlay splitters. Keep the
+  `#bento-shell-splitter`, `#bento-panel-nav`, `#bento-strip-scrollbar`,
+  chrome-injected panel headers/loading overlays, the add-panel trailer, or
+  flat-layout overlay splitters. Keep the
   `:root[inDOMFullscreen]` rules in `injectChromeStyles()` so the selected
   deck panel overrides stale flat-layout inline rects, loses rounded corners and
-  shadows, suppresses Bento focus-ring pseudo-elements, hides non-selected panel
-  slots, removes strip padding, clears the outer strip host radius, and lets
-  video fullscreen cover the whole browser window.
+  shadows, suppresses Bento focus-ring pseudo-elements and loading overlays,
+  hides non-selected panel slots, removes strip padding, clears the outer strip
+  host radius, and lets video fullscreen cover the whole browser window.
+  Panel-origin fullscreen needs one additional bridge: Firefox's
+  `FullScreen.enterDomFullscreen` normally aborts when the requester is not
+  `gBrowser.selectedBrowser`, so
+  `patches/core-ui/11-dom-fullscreen-splitview-browser.patch` changes that
+  check to use `gBrowser.selectedBrowsers`, which already includes active
+  split-view browsers and calls `window.BentoShellDomFullscreen` with the exact
+  requesting browser before Firefox sets `inDOMFullscreen`. Bento records that
+  slot using `data-bento-dom-fullscreen-requester` plus the root
+  `bento-dom-fullscreen-panel` attribute; fullscreen CSS expands that marked
+  slot and hides every other split-view slot. The `MozDOMFullscreen:Entered`
+  listener remains only as a fallback.
   Regression history: the first pass hid Bento chrome but left the browser UI
   around the video; the second pass left the main-slot focus pseudo-element
   visible at the video edge; the third pass still allowed the rounded outer
-  strip host to clip the fullscreen browser. Preserve all three parts of the
-  fix: hide Bento chrome/controls, suppress focus-ring pseudo-elements, and
-  clear every panel/browser wrapper radius while `inDOMFullscreen` is active.
+  strip host to clip the fullscreen browser; the fourth pass allowed panel
+  requests but still needed requester-specific CSS so a side panel, not the
+  deck-selected main slot, owns fullscreen; the fifth pass hid Bento's
+  per-panel loading overlay so its neutral background and spinner cannot cover
+  a fullscreen panel video; the sixth pass reset Firefox's stock
+  `-moz-subtree-hidden-only-visually: 1` rule for the marked requester because
+  side-panel requesters are not normally `.deck-selected`. Preserve all parts of
+  the fix: hide Bento chrome/controls/overlays, accept visible split-view
+  browsers as fullscreen requesters, mark the requesting panel slot from the
+  exact `aBrowser`, keep that marked slot visually unhidden, suppress focus-ring
+  pseudo-elements, and clear every panel/browser wrapper radius while
+  `inDOMFullscreen` is active.
 
 ## Flat panel layout and subdivisions
 
@@ -2273,7 +2297,9 @@ When changing core functionality, manually verify at least the affected subset:
 - Vimium or another content-key extension inside a panel;
 - AMO install permission prompt from a panel;
 - Dark Reader or another content-script extension inside a panel;
-- video fullscreen from the main content slot while side panels are present;
+- video fullscreen from the main content slot and from a side panel while side
+  panels are present, with the side-panel video visible and no Bento loading
+  overlay, spinner, or neutral chrome background replacing it;
 - theme switch and sidebar footer UI light/dark/Auto switch;
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored.

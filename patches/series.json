@@ -67,6 +67,11 @@
       "subject": "Use Bento accent token for infobars"
     },
     {
+      "path": "patches/core-ui/11-dom-fullscreen-splitview-browser.patch",
+      "id": "dom-fullscreen-splitview-browser",
+      "subject": "Allow DOM fullscreen from split view browsers"
+    },
+    {
       "path": "patches/experiments/01-mach-build-hang-guards.patch",
       "id": "mach-build-hang-guards",
       "subject": "Add mach build hang guards"

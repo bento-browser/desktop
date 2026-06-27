@@ -60,8 +60,10 @@ Use this shape for new or changed touchpoints:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
+  - `engine/browser/base/content/browser-fullScreenAndPointerLock.js`
   - `engine/toolkit/content/widgets/infobar.css`
   - `patches/core-ui/10-bento-infobar-accent-token.patch`
+  - `patches/core-ui/11-dom-fullscreen-splitview-browser.patch`
   - `patches/chrome-layout/**`
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
   visibility and geometry, renders chrome-side menu overlays for sidebar and
@@ -86,13 +88,18 @@ Use this shape for new or changed touchpoints:
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
-  fullscreen by hiding Bento-owned chrome, flat panel controls, and focus-ring
-  pseudo-elements while removing rounded panel clipping when Firefox's
-  `inDOMFullscreen` attribute is set, and exposes the
-  chrome-side container behavior that extension code cannot perform directly.
+  fullscreen by hiding Bento-owned chrome, panel headers/loading overlays, flat
+  panel controls, and focus-ring pseudo-elements while removing rounded panel
+  clipping when Firefox's `inDOMFullscreen` attribute is set, permits visible
+  split-view panel browsers to request DOM fullscreen through Firefox's
+  active-browser check and pre-marks the exact requesting browser before
+  fullscreen CSS applies, overrides Firefox's visual hiding of non-`.deck-selected`
+  split-view panels for that requester, and exposes the chrome-side container
+  behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
-  chrome window events, native `#urlbar-input` pointer/focus events,
+  `gBrowser.selectedBrowsers`, `FullScreen.enterDomFullscreen`, chrome window
+  events, native `#urlbar-input` pointer/focus events,
   `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
   chrome `<browser>.loadURI()` with system principals for Bento extension-frame
@@ -166,9 +173,11 @@ Use this shape for new or changed touchpoints:
   immediate typing, verify side-panel and
   sub-panel header hiding/restoration still works from the panel header menu and
   the restore handle while main-panel headers stay unavailable, verify video
-  fullscreen from the main content slot hides the sidebar, panel navigator,
-  strip scrollbar, panel trailer, side-panel slots, rounded panel framing, and
-  Bento focus rings in both side-panel and no-side-panel workspaces, verify
+  fullscreen from the main content slot and from a side panel hides the sidebar,
+  panel navigator, strip scrollbar, panel trailer, panel header/loading overlay,
+  non-requesting side-panel slots, rounded panel framing, and Bento focus rings
+  in both side-panel and no-side-panel workspaces, and does not show a neutral
+  chrome background in place of the side-panel video, verify
   `Inspect in Panel` and `Inspect Accessibility Properties in Panel` appear only
   when the corresponding stock Firefox context-menu item appears, open a
   page-hosted DevTools toolbox in an adjacent Bento panel, select the clicked

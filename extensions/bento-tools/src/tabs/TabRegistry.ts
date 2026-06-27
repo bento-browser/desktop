@@ -47,6 +47,12 @@ function tabUrl(t: browser.tabs.Tab): string | undefined {
   return url || undefined;
 }
 
+function customTitleMatchesPageIdentity(tab: TabSnapshot): boolean {
+  const customTitle = tab.customTitle?.trim();
+  if (!customTitle) return false;
+  return customTitle === tab.title.trim() || customTitle === tab.url?.trim();
+}
+
 async function readWorkspaceId(tabId: number): Promise<string | undefined> {
   try {
     const value = await browser.sessions.getTabValue(tabId, WORKSPACE_SESSION_KEY);
@@ -611,6 +617,7 @@ export class TabRegistry {
     if (nextDiscarded !== (existing.discarded ?? false)) changes.discarded = nextDiscarded;
     const nextUrl = tabUrl(tab);
     if (nextUrl) this.#urlByTabId.set(id, nextUrl);
+    const urlChanged = nextUrl !== existing.url;
     if (nextUrl !== existing.url) {
       if (nextUrl) {
         changes.url = nextUrl;
@@ -619,10 +626,19 @@ export class TabRegistry {
         this.#urlByTabId.delete(id);
       }
     }
+    if (urlChanged && customTitleMatchesPageIdentity(existing)) {
+      changes.customTitle = undefined;
+      void browser.sessions.setTabValue(id, CUSTOM_TITLE_SESSION_KEY, '').catch((err) => {
+        console.warn('[bento-tools] custom title clear on navigation failed:', id, err);
+      });
+    }
     if (Object.keys(changes).length === 0) return;
     Object.assign(existing, changes);
     if ('url' in changes && changes.url === undefined) {
       delete existing.url;
+    }
+    if ('customTitle' in changes && changes.customTitle === undefined) {
+      delete existing.customTitle;
     }
     this.#enqueue({ kind: 'updated', id, changes });
   };

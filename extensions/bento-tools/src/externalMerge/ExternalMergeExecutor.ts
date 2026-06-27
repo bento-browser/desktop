@@ -279,9 +279,6 @@ async function createImportedTab(
       console.warn('[bento-tools] externalMerge: pin update failed:', err);
     });
   }
-  if (tab.source.title && tab.source.title !== tab.source.url) {
-    void ctx.tabs.rename(created.id, tab.source.title);
-  }
   return created.id;
 }
 

@@ -35,6 +35,8 @@
   const BENTO_DEFAULT_UI_COLOR_MODE = 'light';
   const CHROME_DARK_QUERY = '(prefers-color-scheme: dark)';
   const STARTUP_VEIL_TIMEOUT_MS = 3000;
+  const BENTO_DOM_FULLSCREEN_PANEL_ATTR = 'bento-dom-fullscreen-panel';
+  const BENTO_DOM_FULLSCREEN_REQUESTER_ATTR = 'data-bento-dom-fullscreen-requester';
 
   function seedChromeColorMode() {
     const root = document.documentElement;
@@ -1527,13 +1529,22 @@
          hides Firefox-owned chrome. Bento's sidebar, splitters, panel
          navigator, scrollbar, and flat-layout geometry live outside
          those selectors, so they must yield here or page fullscreen
-         stays trapped inside the main content slot. */
+         stays trapped inside the main content slot. Side-panel fullscreen
+         is marked from Firefox's exact requesting browser so the actual
+         requesting slot, not necessarily the deck-selected main slot,
+         expands to the window. */
       :root[inDOMFullscreen] #bento-shell-host,
       :root[inDOMFullscreen] #bento-shell-splitter,
       :root[inDOMFullscreen] #bento-shell-splitter-affordance,
       :root[inDOMFullscreen] #bento-panel-nav,
       :root[inDOMFullscreen] #bento-strip-scrollbar,
       :root[inDOMFullscreen] #bento-add-panel-trailer,
+      :root[inDOMFullscreen] .bento-panel-header,
+      :root[inDOMFullscreen] .bento-panel-header-restore,
+      :root[inDOMFullscreen] .bento-panel-loading-overlay,
+      :root[inDOMFullscreen] .bento-subdivision-vsplitter,
+      :root[inDOMFullscreen] .bento-subdivision-hsplitter,
+      :root[inDOMFullscreen] .bento-subdivision-chooser,
       :root[inDOMFullscreen] #bento-side-panel-host > .bento-panel-splitter,
       :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-vsplitter,
       :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-hsplitter,
@@ -1563,7 +1574,8 @@
         border: 0 !important;
       }
       :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel],
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected {
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] {
         left: 0 !important;
         top: 0 !important;
         width: 100% !important;
@@ -1572,11 +1584,16 @@
         height: 100% !important;
         min-height: 0 !important;
         max-height: none !important;
+        display: flex !important;
+        position: absolute !important;
         flex: 1 1 auto !important;
         margin: 0 !important;
         border-radius: 0 !important;
         box-shadow: none !important;
         overflow: hidden !important;
+        -moz-subtree-hidden-only-visually: 0 !important;
+        visibility: inherit !important;
+        opacity: 1 !important;
       }
       :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active {
         gap: 0 !important;
@@ -1584,15 +1601,22 @@
         overflow: hidden !important;
         scrollbar-width: none !important;
       }
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active:not(.deck-selected) {
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active:not(.deck-selected),
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active:not([data-bento-dom-fullscreen-requester]) {
         display: none !important;
       }
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserContainer,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserContainer,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserStack,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserStack,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > browser,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected browser,
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserContainer,
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserContainer,
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserStack,
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserStack,
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > browser,
+      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected browser,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] > .browserContainer,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] .browserContainer,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] > .browserStack,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] .browserStack,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] > browser,
+      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] browser,
       :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
       :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserContainer,
       :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserStack,
@@ -1600,6 +1624,9 @@
         border-radius: 0 !important;
         box-shadow: none !important;
         overflow: hidden !important;
+        -moz-subtree-hidden-only-visually: 0 !important;
+        visibility: inherit !important;
+        opacity: 1 !important;
       }
       /* Injected per-panel header — sits above the browser, takes its
          natural height, doesn't flex. */
@@ -5375,6 +5402,81 @@
     if (!panelEl) return null;
     return panelEl.closest?.('[data-bento-panel-tab-id]') || panelEl;
   }
+
+  function clearBentoDomFullscreenRequester() {
+    document.documentElement.removeAttribute(BENTO_DOM_FULLSCREEN_PANEL_ATTR);
+    for (const panelEl of document.querySelectorAll(
+      `[${BENTO_DOM_FULLSCREEN_REQUESTER_ATTR}]`,
+    )) {
+      panelEl.style?.removeProperty('-moz-subtree-hidden-only-visually');
+      panelEl.style?.removeProperty('visibility');
+      panelEl.style?.removeProperty('opacity');
+      panelEl.removeAttribute(BENTO_DOM_FULLSCREEN_REQUESTER_ATTR);
+    }
+  }
+
+  function getBrowserFromDomFullscreenEvent(event) {
+    const target = event?.target;
+    if (!target) return null;
+    if (target.localName === 'browser') return target;
+    return target.documentGlobal?.docShell?.chromeEventHandler || null;
+  }
+
+  function markBentoDomFullscreenRequesterForBrowser(browserEl) {
+    if (!browserEl?.closest) return false;
+    const panelEl = browserEl.closest(
+      '[data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+    );
+    const slotPanelEl = getTopLevelSlotPanelElement(panelEl);
+    if (!slotPanelEl?.classList?.contains('split-view-panel-active')) return false;
+    clearBentoDomFullscreenRequester();
+    slotPanelEl.setAttribute(BENTO_DOM_FULLSCREEN_REQUESTER_ATTR, '1');
+    if (panelEl && panelEl !== slotPanelEl) {
+      panelEl.setAttribute(BENTO_DOM_FULLSCREEN_REQUESTER_ATTR, '1');
+    }
+    browserEl.setAttribute(BENTO_DOM_FULLSCREEN_REQUESTER_ATTR, '1');
+    for (const el of [slotPanelEl, panelEl, browserEl]) {
+      if (!el?.style) continue;
+      el.style.setProperty('-moz-subtree-hidden-only-visually', '0', 'important');
+      el.style.setProperty('visibility', 'inherit', 'important');
+      el.style.setProperty('opacity', '1', 'important');
+    }
+    try {
+      browserEl.preserveLayers?.(true);
+      browserEl.renderLayers = true;
+      browserEl.docShellIsActive = true;
+    } catch {
+      // Best-effort paint nudge while entering DOM fullscreen.
+    }
+    forceHidePanelLoadingOverlay(slotPanelEl);
+    forceHidePanelLoadingOverlay(panelEl);
+    if (!slotPanelEl.dataset?.bentoMainPanel) {
+      document.documentElement.setAttribute(BENTO_DOM_FULLSCREEN_PANEL_ATTR, 'true');
+    }
+    return true;
+  }
+
+  function markBentoDomFullscreenRequester(event) {
+    const browserEl = getBrowserFromDomFullscreenEvent(event);
+    markBentoDomFullscreenRequesterForBrowser(browserEl);
+  }
+
+  function attachBentoDomFullscreenRequesterTracking() {
+    window.BentoShellDomFullscreen = {
+      clearRequester: clearBentoDomFullscreenRequester,
+      markRequesterForBrowser: markBentoDomFullscreenRequesterForBrowser,
+    };
+    window.addEventListener('MozDOMFullscreen:Entered', markBentoDomFullscreenRequester, true);
+    window.addEventListener('MozDOMFullscreen:Exited', clearBentoDomFullscreenRequester, true);
+    document.addEventListener(
+      'fullscreenchange',
+      () => {
+        if (!document.fullscreenElement) clearBentoDomFullscreenRequester();
+      },
+      true,
+    );
+  }
+  attachBentoDomFullscreenRequesterTracking();
 
   function getTopLevelSlotTabId(panelEl) {
     const slotPanel = getTopLevelSlotPanelElement(panelEl);

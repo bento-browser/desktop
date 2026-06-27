@@ -120,6 +120,7 @@ describe('executeExternalMerge', () => {
     expect(browser.tabs.create).toHaveBeenCalledTimes(2);
     expect(assignWorkspaceEagerly).toHaveBeenCalledWith(100, 'imported-workspace');
     expect(assignWorkspaceEagerly).toHaveBeenCalledWith(101, 'imported-workspace');
+    expect(ctx.tabs.rename).not.toHaveBeenCalled();
     expect(browser.tabs.update).toHaveBeenCalledWith(100, { pinned: true });
     expect(folderCreate).toHaveBeenCalledWith({
       id: expect.any(String),

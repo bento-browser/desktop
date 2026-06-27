@@ -145,6 +145,10 @@ Existing examples:
   the correct contrast tokens.
 - [TabList.css](../extensions/bento-shell/src/components/TabList/TabList.css)
   has an unlayered alignment override for Tale UI button defaults.
+- [PinnedPanels.css](../extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.css)
+  uses scoped unlayered `IconButton` variant overrides so pinned-panel buttons
+  can keep neutral/accent interactive fills without visible borders or a default
+  fill.
 
 ## Component drift register
 
@@ -405,6 +409,33 @@ Regression checks:
   beside the workspace name.
 - Confirm workspace rows have no item padding, border, outline, shadow, or fill,
   while the vertical gap between rows remains visible.
+
+### Pinned panel rail buttons
+
+Upstream base: Tale UI `IconButton` with `variant="neutral"` and `size="sm"`.
+
+Bento owners:
+
+- [PinnedPanels.tsx](../extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.tsx)
+  renders the pinned-panel rail buttons.
+- [PinnedPanels.css](../extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.css)
+  owns the local button-state overrides.
+
+Current drift:
+
+- Pinned-panel buttons use the neutral IconButton behavior but remove the
+  default neutral fill and all visible borders. Hover and pressed states keep
+  Tale UI's neutral background fills. The focused pinned panel keeps the accent
+  background and paired foreground token, with a transparent border.
+
+Regression checks:
+
+- In the expanded sidebar, pinned-panel buttons should show only favicons at
+  rest, without a visible button fill or border.
+- Hover and press a pinned panel. The state fill should appear, but no border
+  should appear.
+- Focus/open a pinned panel. The active accent fill should remain visible with
+  no border.
 
 ## Themes and chrome
 

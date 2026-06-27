@@ -35,23 +35,37 @@
     position: relative;
   }
 
-  .bento-pinned-panels + .bento-shell-app__main::before {
+  .bento-pinned-panels + .bento-shell-app__main::before,
+  .bento-pinned-panels + .bento-shell-app__main::after {
     content: '';
     position: absolute;
-    inset-block-start: 0;
     inset-inline-start: 0;
     width: var(--bento-sidebar-corner-radius);
     height: var(--bento-sidebar-corner-radius);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .bento-pinned-panels + .bento-shell-app__main::before {
+    inset-block-start: 0;
     background: radial-gradient(
       circle at 100% 100%,
       transparent var(--bento-sidebar-corner-radius),
       var(--bento-pinned-panels-bg) var(--bento-sidebar-corner-radius)
     );
-    pointer-events: none;
-    z-index: 0;
   }
 
-  html[data-bento-collapsed='true'] .bento-pinned-panels + .bento-shell-app__main::before {
+  .bento-pinned-panels + .bento-shell-app__main::after {
+    inset-block-end: 0;
+    background: radial-gradient(
+      circle at 100% 0,
+      transparent var(--bento-sidebar-corner-radius),
+      var(--bento-pinned-panels-bg) var(--bento-sidebar-corner-radius)
+    );
+  }
+
+  html[data-bento-collapsed='true'] .bento-pinned-panels + .bento-shell-app__main::before,
+  html[data-bento-collapsed='true'] .bento-pinned-panels + .bento-shell-app__main::after {
     content: none;
   }
 

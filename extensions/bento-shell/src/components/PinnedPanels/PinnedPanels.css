@@ -48,6 +48,8 @@
   }
 }
 
+/* Unlayered so these state overrides beat Tale UI's unlayered IconButton
+   variant rules while staying scoped to the pinned-panel rail. */
 .bento-pinned-panels__button.tale-icon-button,
 .bento-pinned-panels__button.tale-icon-button:hover,
 .bento-pinned-panels__button.tale-icon-button:active,
@@ -56,6 +58,35 @@
 .bento-pinned-panels__button.tale-icon-button[data-focus-visible],
 .bento-pinned-panels__button.tale-icon-button[data-bento-focused='true'] {
   border-radius: 0 !important;
+}
+
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral {
+  background-color: transparent;
+  border-color: transparent;
+}
+
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral:hover:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-hovered]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  background-color: color-mix(in srgb, var(--neutral-90) 12%, transparent);
+  border-color: transparent;
+}
+
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral:active:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-pressed]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  background-color: color-mix(in srgb, var(--neutral-90) 16%, transparent);
+  border-color: transparent;
 }
 
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:not(
@@ -79,6 +110,6 @@
     [data-pending]
   ) {
   background-color: var(--color-60);
-  border-color: var(--color-60);
+  border-color: transparent;
   color: var(--color-60-fg);
 }

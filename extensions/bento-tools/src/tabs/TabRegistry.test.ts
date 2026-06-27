@@ -234,6 +234,64 @@ describe('TabRegistry URL snapshots', () => {
     expect(tabs.snapshot()[0]?.url).toBe('https://new.example/');
   });
 
+  it('clears page-title-equivalent custom titles when the tab navigates', async () => {
+    const listeners = stubTabsBrowser([
+      makeTab({ id: 1, title: 'Imported title', url: 'https://old.example/' }),
+    ]);
+    const emitted: unknown[] = [];
+    const tabs = new TabRegistry();
+    tabs.onDeltas((deltas) => emitted.push(...deltas));
+    await tabs.init();
+    await tabs.rename(1, 'Imported title');
+    emitted.length = 0;
+    vi.mocked(browser.sessions.setTabValue).mockClear();
+
+    listeners.updated?.(
+      1,
+      { url: 'https://new.example/' } as browser.tabs._OnUpdatedChangeInfo,
+      makeTab({ id: 1, title: 'New title', url: 'https://new.example/' }),
+    );
+
+    expect(emitted).toContainEqual({
+      kind: 'updated',
+      id: 1,
+      changes: expect.objectContaining({
+        customTitle: undefined,
+        title: 'New title',
+        url: 'https://new.example/',
+      }),
+    });
+    expect(browser.sessions.setTabValue).toHaveBeenCalledWith(1, 'bento.customTitle', '');
+    expect(tabs.snapshot()[0]?.customTitle).toBeUndefined();
+  });
+
+  it('keeps deliberate custom titles that differ from the page title when the tab navigates', async () => {
+    const listeners = stubTabsBrowser([
+      makeTab({ id: 1, title: 'Original page title', url: 'https://old.example/' }),
+    ]);
+    const emitted: unknown[] = [];
+    const tabs = new TabRegistry();
+    tabs.onDeltas((deltas) => emitted.push(...deltas));
+    await tabs.init();
+    await tabs.rename(1, 'Pinned workflow');
+    emitted.length = 0;
+    vi.mocked(browser.sessions.setTabValue).mockClear();
+
+    listeners.updated?.(
+      1,
+      { url: 'https://new.example/' } as browser.tabs._OnUpdatedChangeInfo,
+      makeTab({ id: 1, title: 'New title', url: 'https://new.example/' }),
+    );
+
+    expect(emitted).toContainEqual({
+      kind: 'updated',
+      id: 1,
+      changes: expect.not.objectContaining({ customTitle: undefined }),
+    });
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+    expect(tabs.snapshot()[0]?.customTitle).toBe('Pinned workflow');
+  });
+
   it('emits undefined and clears the stored URL when update has no URL', async () => {
     const listeners = stubTabsBrowser([makeTab({ id: 1, url: 'https://old.example/' })]);
     const emitted: unknown[] = [];
