@@ -117,6 +117,7 @@
     height: calc(var(--bento-tab-list-top-surface-height, 0px) + var(--space-3xs));
     background-color: var(--neutral-12);
     pointer-events: none;
+    transition: height var(--bento-duration-base) var(--bento-easing-standard);
   }
 
   html[data-bento-collapsed='true'] .bento-tab-list__viewport--top-surface::before {
@@ -160,6 +161,7 @@
   /* Reduced motion: skip the slide. The drop indicator's instant
      reorder still reads clearly — it just snaps instead of gliding. */
   @media (prefers-reduced-motion: reduce) {
+    .bento-tab-list__viewport--top-surface::before,
     .bento-tab-list__row {
       transition: none;
     }
