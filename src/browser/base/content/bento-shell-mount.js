@@ -214,7 +214,7 @@
          reserve --bento-splitter-hit-size; the visible indicator is a
          centered half-length capsule inside that hit target. */
       :root {
-        --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-30);
+        --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-20);
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
         --bento-splitter-hit-size: 14px;
         --bento-splitter-hit-half: 7px;

@@ -7,6 +7,7 @@ import { IconButton } from '@tale-ui/react/icon-button';
 import { Menu } from '@tale-ui/react/menu';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
+import X from 'lucide-react/dist/esm/icons/x';
 
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
@@ -850,7 +851,7 @@ function TabListPane({
             }
           }}
         />
-        <Button
+        <IconButton
           variant="ghost"
           size="sm"
           className="bento-tab-list-search__clear-button"
@@ -860,8 +861,8 @@ function TabListPane({
             searchInputRef.current?.focus();
           }}
         >
-          Clear
-        </Button>
+          <Icon icon={X} size="sm" />
+        </IconButton>
       </div>
       {searchQuery.trim().length > 0 && (
         <div className="bento-tab-list-search__results">
@@ -870,30 +871,52 @@ function TabListPane({
               '--bento-search-result-accent': result.workspaceThemeColor,
             } as CSSProperties;
             return (
-              <Button
+              <div
                 key={`${result.kind}:${result.workspaceId}:${result.id}`}
-                variant="ghost"
-                size="sm"
                 className="bento-tab-list-search__result"
                 style={style}
-                aria-label={`${result.kind === 'panel' ? 'Panel' : 'Tab'}: ${result.title} in ${
-                  result.workspaceName
-                }`}
-                onPress={() => onRunSearchResult(result)}
               >
-                <span className="bento-tab-list-search__workspace-avatar" aria-hidden="true">
-                  {result.workspaceIcon}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="bento-tab-list-search__result-main"
+                  aria-label={`${result.kind === 'panel' ? 'Panel' : 'Tab'}: ${result.title} in ${
+                    result.workspaceName
+                  }`}
+                  onPress={() => onRunSearchResult(result)}
+                >
+                  <span className="bento-tab-list-search__workspace-avatar" aria-hidden="true">
+                    {result.workspaceIcon}
+                  </span>
+                  {result.favIconUrl ? (
+                    <img
+                      className="bento-tab-list-search__favicon"
+                      src={result.favIconUrl}
+                      alt=""
+                    />
+                  ) : (
+                    <span className="bento-tab-list-search__favicon bento-tab-list-search__favicon--placeholder" />
+                  )}
+                  <span className="bento-tab-list-search__title">{result.title}</span>
+                  <span className="bento-tab-list-search__kind">
+                    {result.kind === 'panel' ? 'Panel' : 'Tab'}
+                  </span>
+                </Button>
+                <span className="bento-tab-list-search__result-actions">
+                  <IconButton
+                    variant="ghost"
+                    size="sm"
+                    className="bento-tab-list-search__result-close"
+                    aria-label={`Close ${result.kind === 'panel' ? 'panel' : 'tab'}`}
+                    onPress={() => {
+                      onClose(result.id);
+                      searchInputRef.current?.focus();
+                    }}
+                  >
+                    <Icon icon={X} size="sm" />
+                  </IconButton>
                 </span>
-                {result.favIconUrl ? (
-                  <img className="bento-tab-list-search__favicon" src={result.favIconUrl} alt="" />
-                ) : (
-                  <span className="bento-tab-list-search__favicon bento-tab-list-search__favicon--placeholder" />
-                )}
-                <span className="bento-tab-list-search__title">{result.title}</span>
-                <span className="bento-tab-list-search__kind">
-                  {result.kind === 'panel' ? 'Panel' : 'Tab'}
-                </span>
-              </Button>
+              </div>
             );
           })}
         </div>
@@ -915,7 +938,7 @@ function TabListPane({
           ref={viewportRef}
           className={
             'bento-tab-list__viewport' +
-            (hasTopSurface ? ' bento-tab-list__viewport--top-surface' : '')
+            (hasTopSurface && !searchFiltering ? ' bento-tab-list__viewport--top-surface' : '')
           }
           style={viewportStyle}
         >

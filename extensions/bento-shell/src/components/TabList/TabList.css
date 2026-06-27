@@ -148,10 +148,6 @@
     box-sizing: border-box;
   }
 
-  .bento-tab-list__row--after-pinned .bento-tab-list__new-actions {
-    transform: translateY(var(--bento-tab-list-row-gap));
-  }
-
   .bento-tab-list__row--search-open {
     z-index: 2;
   }
@@ -361,8 +357,10 @@
   color: var(--neutral-60);
 }
 
-.tale-button.bento-tab-list-search__clear-button {
-  flex: 0 0 auto;
+.tale-icon-button.bento-tab-list-search__clear-button {
+  justify-self: center;
+  width: var(--bento-tab-row-height);
+  min-width: var(--bento-tab-row-height);
   height: var(--bento-tab-row-height);
   min-height: var(--bento-tab-row-height);
   color: var(--neutral-70);
@@ -376,9 +374,36 @@
   overflow-y: auto;
 }
 
-.tale-button.bento-tab-list-search__result {
+.bento-tab-list-search__result {
   --bento-search-result-accent: var(--bento-workspace-accent);
+  --bento-search-result-bg: color-mix(
+    in srgb,
+    var(--bento-search-result-accent) 10%,
+    var(--neutral-10)
+  );
+  --bento-search-result-hover-bg: color-mix(
+    in srgb,
+    var(--bento-search-result-accent) 16%,
+    var(--bento-surface-hover-solid)
+  );
 
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--bento-tab-row-height);
+  min-height: var(--bento-tab-row-height);
+  border-radius: var(--radius-s);
+  background-color: var(--bento-search-result-bg);
+  box-shadow: inset 3px 0 0 var(--bento-search-result-accent);
+  overflow: hidden;
+}
+
+.bento-tab-list-search__result:hover,
+.bento-tab-list-search__result:focus-within {
+  background-color: var(--bento-search-result-hover-bg);
+}
+
+.tale-button.bento-tab-list-search__result-main {
   display: grid;
   grid-template-columns: var(--bento-favicon-size) var(--bento-favicon-size) minmax(0, 1fr) auto;
   align-items: center;
@@ -386,22 +411,65 @@
   gap: var(--space-xs);
   box-sizing: border-box;
   width: 100%;
-  height: var(--bento-tab-row-height);
+  height: 100%;
   min-height: var(--bento-tab-row-height);
   padding-inline: var(--space-2xs);
   border-radius: var(--radius-s);
-  background-color: color-mix(in srgb, var(--bento-search-result-accent) 10%, var(--neutral-10));
-  box-shadow: inset 3px 0 0 var(--bento-search-result-accent);
+  background-color: transparent;
   color: var(--neutral-90);
 }
 
-.tale-button.bento-tab-list-search__result:hover:not([data-disabled], [data-pending]),
-.tale-button.bento-tab-list-search__result[data-hovered]:not([data-disabled], [data-pending]) {
-  background-color: color-mix(
-    in srgb,
-    var(--bento-search-result-accent) 16%,
-    var(--bento-surface-hover-solid)
+.tale-button.bento-tab-list-search__result-main:hover:not([data-disabled], [data-pending]),
+.tale-button.bento-tab-list-search__result-main:active:not([data-disabled], [data-pending]),
+.tale-button.bento-tab-list-search__result-main[data-hovered]:not([data-disabled], [data-pending]),
+.tale-button.bento-tab-list-search__result-main[data-pressed]:not([data-disabled], [data-pending]) {
+  background-color: transparent;
+  color: var(--neutral-90);
+}
+
+.bento-tab-list-search__result-actions {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  display: flex;
+  align-items: center;
+  padding-inline-start: var(--space-s);
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--bento-search-result-hover-bg) var(--space-xs)
   );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
+}
+
+.bento-tab-list-search__result:hover .bento-tab-list-search__result-actions,
+.bento-tab-list-search__result:focus-within .bento-tab-list-search__result-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tale-icon-button.bento-tab-list-search__result-close {
+  width: var(--bento-tab-row-height);
+  min-width: var(--bento-tab-row-height);
+  height: var(--bento-tab-row-height);
+  min-height: var(--bento-tab-row-height);
+  color: var(--neutral-70);
+}
+
+.tale-icon-button.bento-tab-list-search__result-close:hover:not([data-disabled], [data-pending]),
+.tale-icon-button.bento-tab-list-search__result-close:active:not([data-disabled], [data-pending]),
+.tale-icon-button.bento-tab-list-search__result-close[data-hovered]:not(
+    [data-disabled],
+    [data-pending]
+  ),
+.tale-icon-button.bento-tab-list-search__result-close[data-pressed]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  background-color: color-mix(in srgb, var(--neutral-90) 10%, transparent);
+  color: var(--neutral-90);
 }
 
 .bento-tab-list-search__workspace-avatar {

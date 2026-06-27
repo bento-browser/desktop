@@ -207,6 +207,15 @@
     background-image: none !important;
     color: var(--neutral-90) !important;
   }
+  .titlebar-buttonbox-container:-moz-window-inactive,
+  .titlebar-buttonbox:-moz-window-inactive,
+  .titlebar-button:-moz-window-inactive,
+  .titlebar-button:-moz-window-inactive > .toolbarbutton-icon,
+  .titlebar-button:-moz-window-inactive::before {
+    color: var(--neutral-30) !important;
+    fill: var(--neutral-30) !important;
+    stroke: var(--neutral-30) !important;
+  }
   #PersonalToolbar {
     background-color: var(--neutral-14) !important;
     background-image: none !important;
