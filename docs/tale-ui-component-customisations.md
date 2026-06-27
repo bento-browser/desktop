@@ -118,19 +118,14 @@ Existing examples:
   The dimensions come from `--bento-command-palette-*` tokens.
 - [AddressBar.css](../extensions/bento-shell/src/components/AddressBar/AddressBar.css)
   uses the same override pattern for the floating address/new-tab palette's
-  translucent `CommandPalette` surface, with dimensions from
-  `--bento-address-bar-*` tokens. It disables the address palette's local
-  `backdrop-filter` and enter/exit transform overrides; the actual clipped
-  page/sidebar blur behind the transparent chrome frame comes from the
-  chrome-owned `#bento-addrbar-frost` bitmap layer in
-  [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) and
-  [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css).
-  The bitmap must be captured before the overlay fades in so the popup shadow
-  does not visually resize after opening. Its search-field wrapper stays
-  transparent so it does not stack another color-mix layer over the popup
-  surface, and its hover/focus/pressed/selected states use translucent
-  `color-mix(..., transparent)` or `--bento-surface-*` layers rather than solid
-  neutral/accent fills.
+  standard `CommandPalette` surface, with dimensions from
+  `--bento-address-bar-*` tokens and an explicit `var(--neutral-5)` popup
+  background. The search field and input are transparent so the toolbar reads
+  as one continuous neutral surface. Its chrome host is larger than the popup
+  so transparent gutters can carry the Tale UI popup shadow without clipping. Its
+  `CommandPalette.Backdrop` is a non-painting wrapper used only for React Aria
+  modal context; it does not use Tale UI's translucent command-palette recipe
+  or run chrome-side frost scripts.
 - [MergePalette.css](../extensions/bento-shell/src/components/MergePalette/MergePalette.css)
   uses a scoped unlayered `CommandPalette` override for the active import
   overlay. The overlay is positioned inside the popup, covers the search,
@@ -156,11 +151,10 @@ This section records intentional Bento drift from upstream Tale UI component
 recipes. Treat these entries as upgrade notes: when bumping Tale UI, compare the
 upstream component CSS/API against the drift below before deleting local rules.
 
-### CommandPalette translucent address palette
+### CommandPalette address palette
 
-Upstream base: Tale UI `CommandPalette` and the
-`tale-command-palette__popup--translucent` recipe, plus Tale UI `Select` for
-the one-shot search-engine picker.
+Upstream base: Tale UI `CommandPalette`, plus Tale UI `Select` for the one-shot
+search-engine picker.
 
 Bento owners:
 
@@ -169,40 +163,20 @@ Bento owners:
   `CommandPalette`, `Row`, and `Select`.
 - [AddressBar.css](../extensions/bento-shell/src/components/AddressBar/AddressBar.css)
   owns the local CommandPalette drift.
-- [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) and
-  [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css)
-  own the chrome-side frost proxy behind the transparent extension frame.
+- [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js) owns
+  the chrome overlay host and shortcut/open lifecycle.
 
 Current drift:
 
-- Bento disables the palette-local `backdrop-filter` on the Tale UI backdrop and
-  popup. A WebExtension overlay frame can show parent chrome pixels through
-  transparency, but its internal backdrop filter cannot reliably blur those
-  parent pixels. The blur is instead supplied by chrome's clipped
-  `#bento-addrbar-frost` bitmap. The capture may use targeted remote
-  `browser.drawSnapshot` calls for the sidebar frame, `gBrowser.selectedBrowser`,
-  and visible side-panel browsers only. Do not use broad tabpanel queries or
-  delayed bitmap recaptures for this surface; during new-workspace handoff
-  Firefox can return retained previous-tab layers, which creates stale blur and
-  distracting late updates. Native top-urlbar opens after workspace creation
-  wait for the new workspace surface to stabilize before the first capture; on a
-  timeout, prefer no frost to a previous-workspace frost. The working guard
-  records the palette-close surface identity and rejects that same
-  workspace/tab/browser identity on immediate native-urlbar `focus` opens before
-  snapshotting.
-- Bento disables Tale UI's popup enter/exit transform for this surface. The real
-  `box-shadow` stays on the CommandPalette popup; transforming a filtered
-  translucent popup changes compositor bounds and makes the shadow appear to grow
-  and shrink during open/close.
-- Bento uses a stronger translucent popup surface
-  `color-mix(in srgb, var(--neutral-5) 84%, transparent)` so text remains
-  readable over dark page or panel content. The search-field and chip containers
-  stay transparent so they do not stack a second translucent layer over the
-  popup.
-- Bento overrides translucent item, clear-button, chip, and shortcut-key states
-  to remain translucent. Hover, focus, pressed, selected, and selected-combined
-  states must use `color-mix(..., transparent)` or `--bento-surface-*` overlays,
-  not solid neutral/accent fills.
+- Bento uses the standard opaque CommandPalette surface and explicitly sets the
+  address popup background to `var(--neutral-5)`. Its
+  `CommandPalette.Backdrop` must stay transparent and non-scrimmed, and the
+  chrome address overlay frame is sized around the popup plus transparent
+  shadow gutters instead of covering the full browser window. Do not re-add a
+  painting/full-window backdrop,
+  `tale-command-palette__popup--translucent`,
+  `tale-command-palette__backdrop--transparent`, `backdrop-filter`, or the old
+  chrome-side frost bitmap path.
 - Bento renders command-palette search clear affordances as
   `CommandPalette.ClearButton` with `tale-button tale-button--ghost
 tale-button--sm` classes and visible `Clear` text. Keep them as the
@@ -216,8 +190,8 @@ tale-button--sm` classes and visible `Clear` text. Keep them as the
   `--bento-address-bar-engine-width`, makes the trigger fill that stable slot,
   and truncates the selected engine label. This prevents long engine names from
   resizing or occluding the CommandPalette input.
-- Bento gives the Select popover a slightly stronger translucent neutral surface
-  so it remains legible when opened over dark page or panel content.
+- Bento gives the Select popover the same `var(--neutral-5)` surface as the
+  popup so it remains opaque and token-driven in light and dark modes.
 - Address result favicons use Tale UI `Image` but are fully styled by
   `AddressBar.css`; this overlay intentionally does not import the global
   `@tale-ui/react-styles/image` stylesheet.
@@ -225,23 +199,16 @@ tale-button--sm` classes and visible `Clear` text. Keep them as the
 Regression checks:
 
 - Open the address/new-tab palette over dark page content and hover rows. The
-  row state should read as a translucent wash, not a solid rectangle.
-- The top browser toolbar must not receive a modal scrim when the address/new-tab
-  palette opens.
-- Only the content directly behind the command palette bounds should blur; the
-  whole Bento UI must not blur.
-- Create a new workspace and let the auto-created new tab focus the address
-  palette. The blurred pixels inside the palette should come from the new
-  workspace/new-tab surface, not the previously active workspace.
+  popup should remain an opaque neutral-5 command-palette surface.
+- The browser content, sidebar, and top browser toolbar must not receive a modal
+  scrim when the address/new-tab palette opens; scrolling outside the palette
+  should not be blocked by an invisible full-window overlay frame.
 - Create a new workspace from the workspace manager. If the address/new-tab
   palette opens, it should remain below the workspace manager and should not
   steal focus from it.
-- The popup shadow must not visibly resize during open or dismiss.
-- The search field area must not look like an extra opaque band stacked on top of
-  the popup surface.
 - Long search-engine names should truncate inside the picker trigger and must
-  not push into the address input. The picker popover should remain readable over
-  dark content.
+  not push into the address input. The picker popover should remain opaque and
+  readable over dark content.
 
 ### Workspace theme picker
 

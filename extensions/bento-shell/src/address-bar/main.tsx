@@ -1,5 +1,5 @@
 // Floating address/search bar overlay entry. Lives in its own Vite chunk
-// and chrome <browser> frame so it can cover the full browser window.
+// and chrome <browser> frame sized around the palette popup.
 
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -26,6 +26,7 @@ import {
 } from '../bridge/useAddrbar';
 
 initToolsPort();
+document.documentElement.dataset.bentoAddressBar = 'true';
 
 function AddressBarApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
@@ -34,14 +35,18 @@ function AddressBarApp() {
   const [initialQuery, setInitialQuery] = useState('');
   const [openVersion, setOpenVersion] = useState(0);
   const [suppressFocus, setSuppressFocus] = useState(false);
+  const [clipboardUrl, setClipboardUrl] = useState('');
 
   useEffect(() => {
     dispatch({ type: 'searchEngines/requestSnapshot' });
+    dispatch({ type: 'savedPanels/requestSnapshot' });
     return subscribeToAddrbarOpenRequests((nextMode, nextInitialQuery = '', options) => {
       dispatch({ type: 'searchEngines/requestSnapshot' });
+      dispatch({ type: 'savedPanels/requestSnapshot' });
       setMode(nextMode);
       setInitialQuery(nextInitialQuery);
       setSuppressFocus(options?.suppressFocus === true);
+      setClipboardUrl(options?.clipboardUrl || '');
       setOpenVersion((version) => version + 1);
     });
   }, []);
@@ -53,6 +58,7 @@ function AddressBarApp() {
       openVersion={openVersion}
       initialQuery={initialQuery}
       suppressFocus={suppressFocus}
+      clipboardUrl={clipboardUrl}
     />
   );
 }

@@ -1,87 +1,48 @@
-/* Layer-2 component: AddressBar. Uses Tale UI's translucent CommandPalette
- * recipe for input, groups, result rows, and empty state. Bento only
- * constrains the chrome overlay frame and favicon sizing. */
+/* Layer-2 component: AddressBar. Uses Tale UI's standard CommandPalette recipe
+ * for input, groups, result rows, and empty state. Bento only constrains the
+ * chrome overlay frame and favicon sizing. */
 
 /* Tale UI CommandPalette CSS is unlayered, so these narrow unlayered
  * selectors intentionally beat its popup/listbox sizing rules. */
 .tale-command-palette__backdrop.bento-address-bar__backdrop {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  position: fixed;
+  inset: 0;
+  z-index: auto;
+  background-color: transparent;
+  pointer-events: none;
+  transition: none;
+}
+
+html[data-bento-address-bar='true'],
+html[data-bento-address-bar='true'] body,
+html[data-bento-address-bar='true'] #root {
+  background: transparent;
 }
 
 .tale-command-palette__popup.bento-address-bar__popup {
-  width: min(var(--bento-address-bar-width), var(--bento-address-bar-max-inline));
-  height: min(var(--bento-address-bar-height), var(--bento-address-bar-max-block));
+  --bento-address-bar-frame-padding-top: 4rem;
+  --bento-address-bar-frame-padding-inline: 8rem;
+  --bento-address-bar-frame-padding-bottom: 14rem;
+
+  top: var(--bento-address-bar-frame-padding-top);
+  left: 50%;
+  width: min(
+    var(--bento-address-bar-width),
+    calc(
+      100vw - var(--bento-address-bar-frame-padding-inline) -
+        var(--bento-address-bar-frame-padding-inline)
+    )
+  );
+  height: min(
+    var(--bento-address-bar-height),
+    calc(
+      100vh - var(--bento-address-bar-frame-padding-top) -
+        var(--bento-address-bar-frame-padding-bottom)
+    )
+  );
+  background-color: var(--neutral-5);
+  pointer-events: auto;
   transform: translateX(-50%);
-  transition: opacity 0.18s ease;
-}
-
-.tale-command-palette__popup.bento-address-bar__popup[data-entering],
-.tale-command-palette__popup.bento-address-bar__popup[data-exiting] {
-  transform: translateX(-50%);
-}
-
-.tale-command-palette__popup.tale-command-palette__popup--translucent.bento-address-bar__popup {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  background-color: color-mix(in srgb, var(--neutral-5) 84%, transparent);
-}
-
-.bento-address-bar__popup :is(.tale-command-palette__search-field, .tale-command-palette__chips) {
-  background-color: transparent;
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-hovered] {
-  background-color: var(--bento-surface-hover);
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-focused] {
-  background-color: color-mix(in srgb, var(--neutral-90) 12%, transparent);
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-pressed] {
-  background-color: var(--bento-surface-active);
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-selected] {
-  background-color: color-mix(in srgb, var(--color-60) 14%, transparent);
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-hovered][data-selected] {
-  background-color: color-mix(in srgb, var(--color-60) 18%, transparent);
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-focused][data-selected] {
-  background-color: color-mix(in srgb, var(--color-60) 20%, transparent);
-}
-
-.bento-address-bar__popup .tale-command-palette__item[data-pressed][data-selected] {
-  background-color: color-mix(in srgb, var(--color-60) 24%, transparent);
-}
-
-.bento-address-bar__popup
-  :is(.tale-command-palette__clear[data-hovered], .tale-command-palette__chip-remove:hover) {
-  background-color: var(--bento-surface-hover);
-}
-
-.bento-address-bar__popup .tale-command-palette__clear[data-pressed] {
-  background-color: var(--bento-surface-active);
-}
-
-.bento-address-bar__popup :is(.tale-command-palette__chip, .tale-command-palette__shortcut-key) {
-  background-color: color-mix(in srgb, var(--neutral-90) 7%, transparent);
-}
-
-.bento-address-bar__popup
-  .tale-command-palette__item:is([data-hovered], [data-focused])
-  .tale-command-palette__shortcut-key {
-  background-color: color-mix(in srgb, var(--neutral-90) 12%, transparent);
-}
-
-.bento-address-bar__popup
-  .tale-command-palette__item[data-selected]
-  .tale-command-palette__shortcut-key {
-  background-color: color-mix(in srgb, var(--color-60) 16%, transparent);
 }
 
 :is(.bento-address-bar__dialog, .bento-address-bar__content, .bento-address-bar__listbox) {
@@ -99,7 +60,6 @@
   min-width: 0;
   padding: var(--space-xs);
   border-bottom: 1px solid var(--neutral-18);
-  background-color: transparent;
 }
 
 .bento-address-bar__toolbar .tale-command-palette__search-field.bento-address-bar__search-field {
@@ -114,6 +74,7 @@
 
 .bento-address-bar__search-field .tale-command-palette__input {
   min-width: 0;
+  background-color: transparent;
 }
 
 .bento-address-bar__toolbar .tale-command-palette__clear.bento-address-bar__clear-button {
@@ -129,7 +90,6 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  background-color: transparent;
 }
 
 .tale-select__trigger.bento-address-bar__engine-trigger .tale-select__value {
@@ -140,7 +100,7 @@
 }
 
 .tale-select__popover.bento-address-bar__engine-popover {
-  background-color: color-mix(in srgb, var(--neutral-5) 92%, transparent);
+  background-color: var(--neutral-5);
 }
 
 .bento-address-bar__listbox {

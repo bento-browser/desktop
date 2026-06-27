@@ -210,6 +210,10 @@ current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
 address field also opens the same floating address/search bar in current-tab
 mode instead of showing Firefox's native suggestion dropdown. Empty input shows
 recent history and does not compute or show open tab or panel autocomplete rows.
+In new-tab mode, if the clipboard contains a web URL, the first result offers to
+open that URL from the clipboard. Saved panels also appear by default in
+new-tab mode and open as side panels. Typing hides these default clipboard and
+saved-panel rows.
 It floats over the browser content without restyling Firefox's native address
 bar. After the user types, results include capped matches for open normal tabs
 and panels from the active workspace by title or URL, plus history, bookmarks,
@@ -223,10 +227,9 @@ panel strip was scrolled over side panels, because the submitted load targets
 the main tab surface.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
 does not leave an empty tab behind. Results use the same command-palette row
-treatment as Bento's command palette on a translucent, backdrop-blurred surface.
+surface treatment as Bento's command palette on an opaque neutral-5 surface, and
+the palette does not dim the browser content behind it.
 The address/search field uses a visible "Clear" button.
-When the bar opens immediately after a workspace or tab change, the blurred
-surface reflects the currently visible workspace rather than a previous one.
 If an empty workspace created from the workspace manager triggers the new-tab
 address/search bar, the workspace manager remains above it and keeps focus.
 History and bookmark rows use generic icons when no favicon source is

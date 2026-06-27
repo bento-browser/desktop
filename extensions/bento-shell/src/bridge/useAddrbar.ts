@@ -11,6 +11,7 @@ interface OpenMessage {
   mode: AddrbarMode;
   initialQuery?: string;
   suppressFocus?: boolean;
+  clipboardUrl?: string;
 }
 
 type BusMessage = OpenMessage;
@@ -47,7 +48,7 @@ export function subscribeToAddrbarOpenRequests(
   handler: (
     mode: AddrbarMode,
     initialQuery?: string,
-    options?: { suppressFocus?: boolean },
+    options?: { suppressFocus?: boolean; clipboardUrl?: string },
   ) => void,
 ): () => void {
   const ch = bus();
@@ -55,7 +56,10 @@ export function subscribeToAddrbarOpenRequests(
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
     if (data?.kind === 'open') {
-      handler(data.mode, data.initialQuery, { suppressFocus: data.suppressFocus === true });
+      handler(data.mode, data.initialQuery, {
+        suppressFocus: data.suppressFocus === true,
+        clipboardUrl: typeof data.clipboardUrl === 'string' ? data.clipboardUrl : '',
+      });
     }
   };
   ch.addEventListener('message', listener);

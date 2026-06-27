@@ -160,36 +160,46 @@ restart.
 and focus or pointer entry on Firefox's native `#urlbar-input` is intercepted in
 the parent chrome window so Firefox's native suggestions popup is closed and the
 Bento overlay opens instead. Open requests can pass an `initialQuery` through
-the `bento-addrbar-bus` payload; native top-urlbar clicks currently use an empty
-query so the overlay shows recent history.
+the `bento-addrbar-bus` payload; `Cmd/Ctrl+T` requests with an empty initial
+query also pass a validated clipboard web URL as `clipboardUrl` when the global
+clipboard contains one. Native top-urlbar clicks currently use an empty query so
+the overlay shows recent history.
 
 The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
-initial query with the open version and passes it to
+initial query and clipboard URL with the open version and passes them to
 `components/AddressBar/AddressBar.tsx`, which controls Tale UI's
 `CommandPalette` input with the query state and keys the palette content by open
 version so selected text resets predictably. The entry dispatches
-`searchEngines/requestSnapshot` on mount and on every open; `bento-tools`
-answers with `searchEngines/snapshot`, which
+`searchEngines/requestSnapshot` and `savedPanels/requestSnapshot` on mount and on
+every open; `bento-tools` answers with `searchEngines/snapshot`, which
 `extensions/bento-shell/src/state/searchEngines.ts` mirrors for the address
-palette only. This path does not use `privacy/setDefaultSearchEngine` and never
-mutates Bento Settings or Firefox's default search engine.
+palette only, and `savedPanels/snapshot`, which
+`extensions/bento-shell/src/state/savedPanels.ts` mirrors globally. This path
+does not use `privacy/setDefaultSearchEngine` and never mutates Bento Settings
+or Firefox's default search engine.
 `extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
 recent-history request using `browser.history.search({ text: '', startTime: 0 })`.
-The address palette keeps Tale UI's translucent `CommandPalette` surface colors,
-but Bento disables the popup/backdrop-local `backdrop-filter` rules for this
-chrome-mounted overlay. The real page/sidebar blur comes from a chrome-owned
-`#bento-addrbar-frost` layer: `bento-shell-mount.js` captures the visible chrome
-window plus the explicit current remote browser surfaces, then
-`src/browser/base/content/bento-chrome-theme.css` blurs that clipped bitmap under
-the transparent address-bar frame. The extension frame is a compositor boundary
-and cannot reliably blur the parent chrome pixels behind it with its own
-`backdrop-filter`.
+The address palette uses Tale UI's standard opaque `CommandPalette` popup with
+an explicit `var(--neutral-5)` background. Its `CommandPalette.Backdrop` is a
+non-painting wrapper used only for React Aria modal context, and the chrome
+address overlay frame is sized around the popup plus transparent shadow gutters
+instead of covering the full browser window. The bottom gutter is intentionally
+larger than the top gutter so Tale UI's long popup shadow is not clipped by the
+chrome `<browser>` frame. The browser content, sidebar, and toolbar do not
+receive a modal scrim when the palette opens. It does not use the translucent
+CommandPalette recipe, local `backdrop-filter`, or a chrome-side frosted bitmap
+capture before opening.
 
 `TabSnapshot.url` is part of the shared tab wire payload. `TabRegistry`
 populates it from `tab.url` or `pendingUrl`, emits URL update deltas, and emits
 URL-clearing deltas when Firefox no longer exposes a usable URL for the tab. The
 address palette does not build open tab/panel rows while `query.trim()` is
-empty. After typing, `components/AddressBar/openRows.ts` matches active
+empty. For empty new-tab opens, a validated clipboard URL row is prepended ahead
+of saved-panel and recent-history rows. Saved-panel rows are built from the
+global saved-panel mirror and dispatch `panel/openAt` with `position: 'end'`, so
+they append as side panels instead of opening as main tabs. These default rows
+are removed as soon as the user types. After typing,
+`components/AddressBar/openRows.ts` matches active
 workspace rows by `customTitle || title || 'Untitled'` and normalized URL text
 with protocol and leading `www.` removed, restricts rows to the source window,
 classifies panels from `panelsByWorkspace.get(activeWorkspaceId)` only, ranks
@@ -223,56 +233,25 @@ when the selected id differs from the current default.
   sidebar or leave chrome-mounted overlays such as the address bar blank.
 - Do not create a blank tab for native-urlbar clicks. They are current-tab
   edits; only explicit new-tab mode should defer tab creation until commit.
-- Do not rely only on CSS inside `address-bar.html` for the frosted backdrop.
-  The frame can show parent chrome pixels through transparency, but its internal
-  `backdrop-filter` does not reliably blur those parent pixels. Keep the
-  clipped chrome-side `#bento-addrbar-frost` layer in `bento-shell-mount.js` and
-  its paint/clip rules in `src/browser/base/content/bento-chrome-theme.css`; do
-  not blur the whole `#tabbrowser-tabpanels`, sidebar frame, or strip.
-- Do not reveal `#bento-addrbar-frost` after the palette is already visible.
-  Late insertion changes the translucent surface under the popup and reads as
-  the command palette shadow shrinking after open. Prepare the clipped bitmap
-  first, then fade in the address overlay.
-- Do not use broad remote `browser.drawSnapshot` queries or delayed recaptures
-  for this blur. Creating an empty workspace opens a fresh Firefox new tab and
-  focuses the native urlbar, and Firefox can retain previous-tab layers for
-  inactive tabpanel browsers during that handoff. The candidate list must stay
-  explicit: Bento sidebar frame, `gBrowser.selectedBrowser`, and visible
-  side-panel browsers. The palette should not reveal first and patch the frost
-  layer seconds later.
-- Native-urlbar opens that immediately follow a command-palette workspace action
-  must wait for the selected workspace/tab/browser surface to leave Bento's
-  `bento-workspace-switching` / `bento-workspace-stabilizing` state and produce
-  stable paints before capturing the frost bitmap. If that readiness gate times
-  out, show the palette without frost rather than capturing a retained previous
-  workspace layer.
-- The new-workspace handoff fix depends on remembering the surface identity
-  when the command palette hides: current Bento workspace ID, selected tab's
-  workspace ID, selected tab object, and selected browser object. A native
-  top-urlbar `focus` event that arrives immediately afterward must reject that
-  same surface identity, then wait for stable `MozAfterPaint` cycles, no
-  `pendingpaint` / `blank` marker on the selected browser, and a selected-tab
-  workspace ID matching `currentWorkspaceId` before snapshotting. Do not replace
-  this with a delayed recapture after the address palette is already visible.
 - When an empty workspace is created from `workspace-palette.html`, the
   activation-created new tab can focus Firefox's native urlbar and open the
   floating address palette. Keep `#bento-addrbar-host` stacked below
   `#bento-workspace-palette-host`, pass `suppressFocus` through the
   `bento-addrbar-bus` open payload, and leave the workspace palette frame
   focused so workspace management remains the active context.
-- Do not let the address palette inherit Tale UI's popup enter/exit transform or
-  local `backdrop-filter`. The popup itself owns the real `box-shadow`; animating
-  a filtered, transformed translucent popup changes compositor bounds and makes
-  that shadow look larger during open/close.
-- Keep the address palette's translucent state layers translucent. Tale UI
-  component upgrades may change CommandPalette hover, focus, pressed, selected,
-  clear-button, chip, or shortcut-key state backgrounds. For this chrome overlay,
-  those states must stay as transparent overlays; solid state fills read as
-  opaque rectangles when the palette sits above dark page or panel content.
-- Keep the CommandPalette search-field and chip container backgrounds
-  transparent in the address palette. They sit on top of the already translucent
-  popup surface, so adding another translucent fill creates a darker opaque band
-  across the top of the palette.
+- Keep the address palette on the standard opaque CommandPalette recipe. Do not
+  re-add a painting/full-window `CommandPalette.Backdrop`,
+  `tale-command-palette__popup--translucent`,
+  `tale-command-palette__backdrop--transparent`, `backdrop-filter`, or
+  chrome-side `drawSnapshot`/frost capture before open. Those paths delay
+  shortcut-to-visible latency, dim the page behind the palette, or recreate the
+  invisible full-window hit target that blocks scrolling.
+- Keep the chrome address overlay frame larger than the popup itself. The extra
+  transparent gutters are what let the neutral popup shadow render without a
+  hard clipped edge while still avoiding a full-window input blocker.
+- Keep the address popup and search-engine picker popover on `var(--neutral-5)`
+  surfaces so the palette reads as a traditional neutral command palette in
+  light and dark modes.
 - Keep address-palette search-engine state separate from privacy settings. The
   picker is a one-shot override for submitted non-URL searches only.
 - Keep the picker dirty flag tied to `openVersion`. Late search-engine snapshots
@@ -784,8 +763,9 @@ dim as the content-area `Dialog.Backdrop` stack. `showPopover()` /
 overlay id (`palette`, `confirm`, `edit-workspace`, `merge-palette`,
 `workspace-palette`, `welcome`) so a stacked modal can close without removing
 the toolbar scrim that another still-visible modal needs. The floating address
-bar does not own this toolbar scrim; its translucent palette leaves the native
-toolbar visible and only blurs the content area behind the palette bounds.
+bar does not own this toolbar scrim; its in-frame backdrop is transparent
+modal context only, and only the opaque neutral-5 popup paints over the browser
+content.
 
 Why a popover and nothing else works — the critical pitfall: `#urlbar` is
 declared with `popover="manual"` (navigator-toolbox.inc.xhtml), so the megabar
@@ -1413,7 +1393,10 @@ capture phase, opens the overlay, and sends the mode to the addrbar frame
 through a frame script that posts on `BroadcastChannel('bento-addrbar-bus')`
 from the content global. `Cmd/Ctrl+E` is also forwarded by the `BentoKey`
 content actor so the current-tab address dialog opens while web content owns
-focus.
+focus. Empty new-tab opens read `text/plain` from the global clipboard in
+chrome, sanitize it with Firefox URL bar paste handling when available, resolve
+it through `Services.uriFixup`, reject keyword-search results, and forward only
+`http`/`https` specs as `clipboardUrl`.
 
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
 actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the
@@ -1424,11 +1407,13 @@ dedupes by normalized URL, and ranks host-prefix matches, history recency and
 visit count, and bookmark matches. Favicons are best-effort: open tabs provide
 `TabSnapshot.favIconUrl`, but history and bookmark APIs do not return favicons.
 The React overlay renders typed-only active-workspace tab/panel rows, async
-history/bookmark rows, and synthetic search/open row through Tale UI's
-`CommandPalette` recipe and `useCommandPalette` hook. Sorting is disabled so the
-groups keep Bento's fixed order: open tabs, panels, history/bookmarks, then
-search/open. Empty query preserves recent-history results but returns no
-open-tab/open-panel rows.
+history/bookmark rows, an empty-new-tab clipboard URL row, and synthetic
+search/open row through Tale UI's `CommandPalette` recipe and `useCommandPalette`
+hook. Empty new-tab mode also renders saved-panel rows from the saved-panel
+mirror and opens them through `panel/openAt`. Sorting is disabled so the groups
+keep Bento's fixed order: clipboard when present, saved panels, open tabs,
+panels, history/bookmarks, then search/open. Empty query preserves
+recent-history results but returns no open-tab/open-panel autocomplete rows.
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
 one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload.

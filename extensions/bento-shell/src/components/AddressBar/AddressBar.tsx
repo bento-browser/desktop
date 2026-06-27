@@ -14,6 +14,7 @@ import { Select } from '@tale-ui/react/select';
 
 import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import ClockIcon from 'lucide-react/dist/esm/icons/clock';
+import ClipboardIcon from 'lucide-react/dist/esm/icons/clipboard';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
 import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
 import SearchIcon from 'lucide-react/dist/esm/icons/search';
@@ -23,6 +24,7 @@ import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { signalAddrbarNavigate, type AddrbarMode } from '../../bridge/useAddrbar';
 import { useAddressBarStore } from '../../state/addressBar';
 import { usePanelsStore } from '../../state/panels';
+import { useSavedPanelsStore } from '../../state/savedPanels';
 import { useSearchEnginesStore } from '../../state/searchEngines';
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow } from '../../state/workspaces';
@@ -36,16 +38,29 @@ export interface AddressBarProps {
   openVersion?: number;
   initialQuery?: string;
   suppressFocus?: boolean;
+  clipboardUrl?: string;
 }
 
-type RowKind = OpenAddressRowKind | 'history' | 'bookmark' | 'synthetic';
+type RowKind =
+  | OpenAddressRowKind
+  | 'history'
+  | 'bookmark'
+  | 'clipboard'
+  | 'savedPanel'
+  | 'synthetic';
 
 interface AddressRow extends CommandPaletteCommand {
   id: string;
   kind: RowKind;
   title: string;
   subtitle: string;
-  group: 'Open Tabs' | 'Open Panels' | 'History & Bookmarks' | 'Search';
+  group:
+    | 'Clipboard'
+    | 'Saved Panels'
+    | 'Open Tabs'
+    | 'Open Panels'
+    | 'History & Bookmarks'
+    | 'Search';
   tabId?: number;
   workspaceId?: string;
   url?: string;
@@ -85,6 +100,10 @@ function rowIcon(kind: RowKind) {
       return ClockIcon;
     case 'bookmark':
       return BookmarkIcon;
+    case 'clipboard':
+      return ClipboardIcon;
+    case 'savedPanel':
+      return PanelRightOpenIcon;
     case 'synthetic':
       return SearchIcon;
   }
@@ -121,6 +140,7 @@ export default function AddressBar({
   openVersion = 0,
   initialQuery = '',
   suppressFocus = false,
+  clipboardUrl = '',
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [engineSelection, setEngineSelection] = useState(() => resetEngineSelection(null));
@@ -129,6 +149,7 @@ export default function AddressBar({
   const tabsById = useTabsStore((s) => s.byId);
   const orderedIds = useTabsStore((s) => s.orderedIds);
   const panelsByWorkspace = usePanelsStore((s) => s.byWorkspace);
+  const savedPanels = useSavedPanelsStore((s) => s.items);
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const resultQuery = useAddressBarStore((s) => s.query);
   const serverResults = useAddressBarStore((s) => s.results);
@@ -160,6 +181,34 @@ export default function AddressBar({
     return serverResults.map(resultToRow);
   }, [query, resultQuery, serverResults]);
 
+  const clipboardRow = useMemo<AddressRow | null>(() => {
+    const url = clipboardUrl.trim();
+    if (mode !== 'newTab' || query.trim() || !url) return null;
+    return {
+      id: `clipboard:${url}`,
+      kind: 'clipboard',
+      title: `Open ${url}`,
+      subtitle: 'From clipboard',
+      group: 'Clipboard',
+      keywords: [url],
+      url,
+    };
+  }, [clipboardUrl, mode, query]);
+
+  const savedPanelRows = useMemo<AddressRow[]>(() => {
+    if (mode !== 'newTab' || query.trim()) return [];
+    return savedPanels.map((item) => ({
+      id: `saved-panel:${item.id}`,
+      kind: 'savedPanel',
+      title: item.title.trim().length > 0 ? item.title : item.url,
+      subtitle: 'Open saved panel',
+      group: 'Saved Panels',
+      keywords: [item.title, item.url, 'saved panel'],
+      url: item.url,
+      favIconUrl: item.favIconUrl,
+    }));
+  }, [mode, query, savedPanels]);
+
   const syntheticRow = useMemo<AddressRow | null>(() => {
     const trimmed = query.trim();
     if (!trimmed) return null;
@@ -187,6 +236,11 @@ export default function AddressBar({
         onClose();
         return;
       }
+      if (row.kind === 'savedPanel' && row.url) {
+        dispatch({ type: 'panel/openAt', url: row.url, sourceTabId: null, position: 'end' });
+        onClose();
+        return;
+      }
       if (row.url) {
         const searchEngineId =
           row.kind === 'synthetic' &&
@@ -203,11 +257,17 @@ export default function AddressBar({
   );
 
   const rows = useMemo<AddressRow[]>(() => {
-    return [...openRows, ...asyncRows, ...(syntheticRow ? [syntheticRow] : [])].map((row) => ({
+    return [
+      ...(clipboardRow ? [clipboardRow] : []),
+      ...savedPanelRows,
+      ...openRows,
+      ...asyncRows,
+      ...(syntheticRow ? [syntheticRow] : []),
+    ].map((row) => ({
       ...row,
       action: () => runRow(row),
     }));
-  }, [asyncRows, openRows, runRow, syntheticRow]);
+  }, [asyncRows, clipboardRow, openRows, runRow, savedPanelRows, syntheticRow]);
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -242,6 +302,17 @@ export default function AddressBar({
     window.addEventListener('focus', focusSearch);
     return () => window.removeEventListener('focus', focusSearch);
   }, [openVersion, suppressFocus]);
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.bento-address-bar__popup, .bento-address-bar__engine-popover')) return;
+      onClose();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [onClose]);
 
   const palette = useCommandPalette<AddressRow>({
     commands: rows,
@@ -288,15 +359,12 @@ export default function AddressBar({
         if (!next) onClose();
       }}
     >
-      <CommandPalette.Backdrop
-        isDismissable
-        className="tale-command-palette__backdrop--transparent bento-address-bar__backdrop"
-      >
+      <CommandPalette.Backdrop className="bento-address-bar__backdrop" isDismissable>
         <CommandPalette.Popup
           aria-label="Address bar"
           className="bento-address-bar__dialog"
           modalProps={{
-            className: 'tale-command-palette__popup--translucent bento-address-bar__popup',
+            className: 'bento-address-bar__popup',
           }}
         >
           <CommandPalette.Title className="bento-address-bar__sr-only">
