@@ -7,7 +7,7 @@
  * steady state only the incoming pane is rendered. */
 @layer bento.components {
   .bento-tab-list {
-    --bento-tab-list-row-gap: var(--space-4xs);
+    --bento-tab-list-row-gap: var(--bento-sidebar-section-gap, var(--space-4xs));
 
     display: flex;
     flex: 1;
@@ -40,7 +40,7 @@
     overflow-x: hidden;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    padding-block-start: var(--space-3xs);
+    padding-block-start: 0;
     padding-inline: var(--space-3xs);
   }
 
@@ -112,16 +112,13 @@
   .bento-tab-list__viewport--top-surface::before {
     content: '';
     position: absolute;
-    top: calc(-1 * var(--space-3xs));
-    inset-inline: calc(-1 * var(--space-3xs));
-    height: calc(var(--bento-tab-list-top-surface-height, 0px) + var(--space-3xs));
+    top: 0;
+    inset-inline: 0;
+    height: var(--bento-tab-list-top-surface-height, 0px);
+    border-radius: var(--radius-s);
     background-color: var(--neutral-12);
     pointer-events: none;
     transition: height var(--bento-duration-base) var(--bento-easing-standard);
-  }
-
-  html[data-bento-collapsed='true'] .bento-tab-list__viewport--top-surface::before {
-    inset-inline: 0;
   }
 
   .bento-tab-list__row {

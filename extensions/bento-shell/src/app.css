@@ -13,6 +13,7 @@
   .bento-shell-app {
     --bento-pinned-panels-bg: var(--neutral-14);
     --bento-sidebar-corner-radius: var(--radius-l);
+    --bento-sidebar-section-gap: var(--space-4xs);
     display: flex;
     flex-direction: row;
     box-sizing: border-box;
@@ -54,7 +55,8 @@
   }
 
   .bento-shell-app__header {
-    padding-block: var(--space-3xs);
+    padding-block-start: var(--space-3xs);
+    padding-block-end: var(--bento-sidebar-section-gap);
     padding-inline: var(--space-3xs);
     background-color: var(--neutral-5);
     /* Keep padding identical in expanded and collapsed modes so the

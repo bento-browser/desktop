@@ -324,7 +324,8 @@ function TabListPane({
     [activeId, displayedIds, dragFolderId, folders, tabsById],
   );
   const newActionRowIndex = rows.findIndex((row) => row.kind === 'new-tab');
-  const topSurfaceHeight = newActionRowIndex > 0 ? newActionRowIndex * rowSlotSize : 0;
+  const topSurfaceHeight =
+    newActionRowIndex > 0 ? Math.max(0, newActionRowIndex * rowSlotSize - rowGap) : 0;
   const hasTopSurface = topSurfaceHeight > 0;
   const pinnedRunLength = useMemo(() => {
     let count = 0;
