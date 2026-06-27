@@ -28,6 +28,37 @@ dispatches `Action` messages through `extensions/bento-shell/src/bridge/useTools
 `bento-tools` mutates stores and broadcasts `Event` payloads back. Shell Zustand
 stores are mirrors only.
 
+## Native Tabs And Titlebar Controls
+
+Bento hides Firefox's native horizontal tab strip through Firefox's own
+hidden-tabs titlebar state. `prefs/bento.js` defaults
+`bento.chrome.hideNativeTabs` to `true`, and
+`patches/core-ui/02-hide-native-tabs.patch` makes
+`TabBarVisibility.update()` include that pref in `hideTabsToolbar` for normal
+browser windows. The patch does not enable `sidebar.verticalTabs`.
+
+When the pref-driven branch is active, Firefox sets
+`#navigator-toolbox[tabs-hidden]`, toggles `#nav-bar.browser-titlebar`, and
+collapses `#TabsToolbar`. That keeps the native horizontal tab strip hidden
+while reusing Firefox's existing titlebar/control markup and platform window
+commands from the nav-bar titlebar copy. Bento shell owns the visible tab UI;
+it does not render custom minimize, maximize, restore, or close controls.
+
+Popup and taskbar-tab windows stay on Firefox's existing single-tab path because
+the Bento condition is guarded by `!isSingleTabWindow`. If
+`bento.chrome.hideNativeTabs` is set to `false` in a profile, Firefox falls back
+to its default tabbar/titlebar behavior for that profile.
+
+### Native Tabs And Titlebar Pitfalls
+
+- Do not restore a CSS-only global `#TabsToolbar` collapse. It hides the
+  tab-toolbar control copy without putting the nav bar into Firefox's native
+  titlebar state.
+- Do not enable or depend on `sidebar.verticalTabs`; Bento's visible tab UI is
+  the `bento-shell` sidebar, not Firefox's native vertical-tabs/sidebar UI.
+- Do not add window controls in `bento-shell`. The controls must remain
+  Firefox's native titlebar controls and commands.
+
 ## DevTools In Panel Implementation
 
 `src/browser/base/content/bento-shell-mount.js` installs Bento-specific

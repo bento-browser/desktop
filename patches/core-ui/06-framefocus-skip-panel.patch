@@ -1,4 +1,4 @@
-From fcfba560c0531b3b6053cf74e9347a5f8967133e Mon Sep 17 00:00:00 2001
+From 283547bea07e60d0c7073b616f51ca56febf4324 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:35 +1000
 Subject: [PATCH] Skip Bento panel browsers in frame focus
@@ -8,7 +8,7 @@ Subject: [PATCH] Skip Bento panel browsers in frame focus
  1 file changed, 9 insertions(+)
 
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 08b5b56e069d038d72c87355920c4ce8a55ed805..528e93314832dfa99730ab8ad55afec5a1074c51 100644
+index 32b4aaa047f53e40ee324b9da7eb6cbcba8bff94..c3a23506260d0c780c8dca4de64e219ff0e83a64 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
 @@ -8259,6 +8259,15 @@

@@ -1,4 +1,4 @@
-From bb333da85faa6a1ee622a85a75e18f00ff323143 Mon Sep 17 00:00:00 2001
+From 73308117805ccbd7746d827bff8e671f2af54477 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:46 +1000
 Subject: [PATCH] Preserve Bento behavior when closing the last tab
@@ -8,7 +8,7 @@ Subject: [PATCH] Preserve Bento behavior when closing the last tab
  1 file changed, 11 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 8557b933f6579b8508e103f7939ea7c9ec298576..0ce66ad8f24171bd8c48aa6552f31166a3c63057 100644
+index 366bce8ac222271010c7b0d8600d162a6d0b9e36..ae78a89e5fad917fff15c2da13ad241323c8467a 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
 @@ -5550,11 +5550,16 @@

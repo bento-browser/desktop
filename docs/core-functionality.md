@@ -160,6 +160,9 @@ from the New menu and regular tabs with a divider instead of a text
 subheading.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
+Bento replaces Firefox's native horizontal tab strip with its workspace/sidebar
+tab UI, while retaining the operating system's native window controls in the
+top chrome.
 
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than

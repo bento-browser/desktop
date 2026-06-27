@@ -1,4 +1,4 @@
-From f30805617460947449072e143779fbf934f8d5fd Mon Sep 17 00:00:00 2001
+From 36d0a4e9755713f61661fc314834ac77b2fad2d6 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:47 +1000
 Subject: [PATCH] Disable Firefox split view
@@ -44,10 +44,10 @@ index 8f2ebf3a0bd4e2af01cf41024b16bd491e8ed961..2acf461892f3538aec8f624c791ea127
            !gBrowser.selectedTab.splitview &&
            !this.pinned &&
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 0ce66ad8f24171bd8c48aa6552f31166a3c63057..88e31fecf179d13ac5a7c6b023cba17bd89dda61 100644
+index ae78a89e5fad917fff15c2da13ad241323c8467a..c4b86c05188d41d8ab98098781bfea019b089ce9 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -10537,11 +10537,12 @@ var TabContextMenu = {
+@@ -10542,11 +10542,12 @@ var TabContextMenu = {
        contextEditNote.hidden = true;
      }
  

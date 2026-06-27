@@ -1,26 +1,37 @@
-From bf9a13b09823821430f6cbd9899a5e364c63d359 Mon Sep 17 00:00:00 2001
+From aab7786365dbf812d44e527a8917527823021ceb Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
 
 ---
- browser/themes/shared/browser-shared.css | 6 ++++++
- 1 file changed, 6 insertions(+)
+ browser/components/tabbrowser/content/tabbrowser.js | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
 
-diff --git a/browser/themes/shared/browser-shared.css b/browser/themes/shared/browser-shared.css
-index 2287d8f9fd5a86be00a0e9d7635a119fca446f50..3136b41a6480f95415cc995b65f5194a2c14403a 100644
---- a/browser/themes/shared/browser-shared.css
-+++ b/browser/themes/shared/browser-shared.css
-@@ -1732,3 +1732,9 @@ popupnotificationcontent {
- #bookmarksToolbarFolderMenu {
-   --menuitem-icon: url("chrome://browser/skin/places/bookmarksToolbar.svg");
- }
-+
-+/* Bento: hide the native horizontal tab strip; vertical tabs ship via the
-+ * bento-shell extension mounted in browser-box.inc.xhtml. */
-+#TabsToolbar {
-+  visibility: collapse !important;
-+}
+diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
+index 08b5b56e069d038d72c87355920c4ce8a55ed805..32b4aaa047f53e40ee324b9da7eb6cbcba8bff94 100644
+--- a/browser/components/tabbrowser/content/tabbrowser.js
++++ b/browser/components/tabbrowser/content/tabbrowser.js
+@@ -10175,6 +10175,9 @@ var TabBarVisibility = {
+     let hasVerticalTabs =
+       !isSingleTabWindow &&
+       Services.prefs.getBoolPref("sidebar.verticalTabs", false);
++    let hasBentoHiddenNativeTabs =
++      !isSingleTabWindow &&
++      Services.prefs.getBoolPref("bento.chrome.hideNativeTabs", false);
+ 
+     // When `gBrowser` has not been initialized, we're opening a new window and
+     // assume only a single tab is loading.
+@@ -10183,7 +10186,9 @@ var TabBarVisibility = {
+     // To prevent tabs being lost, hiding the tabs toolbar should only work
+     // when only a single tab is visible or tabs are displayed elsewhere.
+     let hideTabsToolbar =
+-      (isSingleTabWindow && hasSingleTab) || hasVerticalTabs;
++      (isSingleTabWindow && hasSingleTab) ||
++      hasVerticalTabs ||
++      hasBentoHiddenNativeTabs;
+ 
+     // We only want a non-customized titlebar for popups. It should not be the
+     // case, but if a popup window contains more than one tab we re-enable
 -- 
 2.50.1 (Apple Git-155)
 

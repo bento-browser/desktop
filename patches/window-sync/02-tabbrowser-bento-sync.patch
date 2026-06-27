@@ -1,4 +1,4 @@
-From c9db437b009abee3e94480d32ece1861a0a353f7 Mon Sep 17 00:00:00 2001
+From b7456011a778068fc8a9b0a5b198c023a6277c67 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:45 +1000
 Subject: [PATCH] Synchronize tabbrowser state with Bento
@@ -8,7 +8,7 @@ Subject: [PATCH] Synchronize tabbrowser state with Bento
  1 file changed, 34 insertions(+), 7 deletions(-)
 
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 528e93314832dfa99730ab8ad55afec5a1074c51..8557b933f6579b8508e103f7939ea7c9ec298576 100644
+index c3a23506260d0c780c8dca4de64e219ff0e83a64..366bce8ac222271010c7b0d8600d162a6d0b9e36 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
 @@ -4179,6 +4179,12 @@

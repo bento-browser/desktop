@@ -123,6 +123,11 @@ pref("browser.startup.page", 3);
 // bookmarks toolbar hidden unless users explicitly turn it back on.
 pref("browser.toolbars.bookmarks.visibility", "never");
 
+// Hide Firefox's native horizontal tab strip through Firefox's
+// TabBarVisibility hidden-tabs titlebar state. Bento's visible tabs remain
+// owned by the bento-shell sidebar.
+pref("bento.chrome.hideNativeTabs", true);
+
 // Disable the macOS two-finger trackpad swipe-back/forward history gesture.
 // Bento panels each have their own back/forward controls in the per-panel
 // header, so the gesture is redundant; in practice it misfires often during

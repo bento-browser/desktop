@@ -209,6 +209,48 @@ Use this shape for new or changed touchpoints:
   if a Firefox update makes a patch unnecessary, remove the patch and record the
   removal here.
 
+### Hidden Native Tabs And Titlebar Controls
+
+- Status: Active
+- Last updated: 2026-06-27
+- Files or patches:
+  - `patches/core-ui/02-hide-native-tabs.patch`
+  - `browser/components/tabbrowser/content/tabbrowser.js`
+  - `browser/base/content/navigator-toolbox.inc.xhtml`
+  - `browser/base/content/titlebar-items.inc.xhtml`
+  - `browser/themes/shared/browser-shared.css`
+  - `prefs/bento.js`
+- Bento functionality: hides Firefox's native horizontal tab strip while keeping
+  the operating system's native window controls visible in the top chrome. The
+  visible tab UI remains owned by `bento-shell`.
+- Vanilla Firefox surface touched or depended on: `TabBarVisibility.update()`,
+  `#navigator-toolbox[tabs-hidden]`, `#nav-bar.browser-titlebar`, the nav-bar
+  titlebar spacer/buttonbox copy, and the native titlebar commands in
+  `titlebar-items.inc.xhtml`.
+- Why this cannot stay extension-only: only Firefox chrome can collapse
+  `#TabsToolbar`, mark the toolbox `tabs-hidden`, and promote the nav bar into
+  Firefox's native titlebar/window-control state before the shell extension
+  renders.
+- Firefox update risk: upstream changes to `TabBarVisibility.update()`,
+  titlebar-control markup, titlebar CSS, or nav-bar drag-region behavior can
+  re-expose the native tab strip, hide the native window controls, or make
+  toolbar controls draggable/clickable in the wrong places.
+- Regression checks for future updates: verify native window controls are
+  visible and clickable, Firefox's native horizontal tab strip stays hidden,
+  `sidebar.verticalTabs` remains false and no native Firefox vertical-tabs/sidebar
+  UI appears, popup windows keep Firefox's existing single-tab popup behavior,
+  fullscreen/maximized/restored states swap native controls correctly, empty
+  titlebar/nav-bar space drags the window, and URL bar or toolbar button
+  interaction does not drag the window.
+- Rollback or migration notes: for one profile, set
+  `bento.chrome.hideNativeTabs` to `false` and relaunch. For source rollback,
+  remove the default pref from `prefs/bento.js`, revert the Bento-specific
+  `TabBarVisibility.update()` condition in the existing patch-stack commit, then
+  export, check, import, and build. If restoring the old hidden-tab behavior
+  instead of removing native-tab hiding entirely, restore the old
+  `#TabsToolbar { visibility: collapse !important; }` rule in
+  `patches/core-ui/02-hide-native-tabs.patch` and revalidate native controls.
+
 ### First-Run Browser Profile Import
 
 - Status: Active
