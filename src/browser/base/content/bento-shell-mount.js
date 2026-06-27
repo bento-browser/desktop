@@ -1523,6 +1523,84 @@
         border-start-end-radius: 0 !important;
         overflow: clip;
       }
+      /* DOM fullscreen. Firefox's stock fullscreen stylesheet only
+         hides Firefox-owned chrome. Bento's sidebar, splitters, panel
+         navigator, scrollbar, and flat-layout geometry live outside
+         those selectors, so they must yield here or page fullscreen
+         stays trapped inside the main content slot. */
+      :root[inDOMFullscreen] #bento-shell-host,
+      :root[inDOMFullscreen] #bento-shell-splitter,
+      :root[inDOMFullscreen] #bento-shell-splitter-affordance,
+      :root[inDOMFullscreen] #bento-panel-nav,
+      :root[inDOMFullscreen] #bento-strip-scrollbar,
+      :root[inDOMFullscreen] #bento-add-panel-trailer,
+      :root[inDOMFullscreen] #bento-side-panel-host > .bento-panel-splitter,
+      :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-vsplitter,
+      :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-hsplitter,
+      :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-chooser {
+        display: none !important;
+        visibility: collapse !important;
+      }
+      :root[inDOMFullscreen] #bento-strip-container,
+      :root[inDOMFullscreen] #bento-side-panel-host {
+        border-radius: 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+      }
+      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
+        padding: 0 !important;
+      }
+      :root[inDOMFullscreen] #bento-side-panel-host > [data-bento-main-panel]::after,
+      :root[inDOMFullscreen] #bento-side-panel-host > [data-bento-panel-tab-id]::after,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]::after,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id]::after,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after,
+      :root[inDOMFullscreen] [data-bento-subpanel]::after,
+      :root[inDOMFullscreen] [data-bento-subdivided]::before,
+      :root[inDOMFullscreen] .bento-subdivision-chooser::after {
+        content: none !important;
+        display: none !important;
+        border: 0 !important;
+      }
+      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel],
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected {
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        flex: 1 1 auto !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+      }
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active {
+        gap: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        scrollbar-width: none !important;
+      }
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active:not(.deck-selected) {
+        display: none !important;
+      }
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserContainer,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserContainer,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserStack,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserStack,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > browser,
+      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected browser,
+      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
+      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserContainer,
+      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserStack,
+      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] browser {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+      }
       /* Injected per-panel header — sits above the browser, takes its
          natural height, doesn't flex. */
       .bento-panel-header[data-bento-injected="1"] {

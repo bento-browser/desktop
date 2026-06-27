@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-25
+- Last updated: 2026-06-27
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -85,7 +85,10 @@ Use this shape for new or changed touchpoints:
   extension frame,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
-  Back/Forward session-history popups from panel headers, and exposes the
+  Back/Forward session-history popups from panel headers, preserves DOM
+  fullscreen by hiding Bento-owned chrome, flat panel controls, and focus-ring
+  pseudo-elements while removing rounded panel clipping when Firefox's
+  `inDOMFullscreen` attribute is set, and exposes the
   chrome-side container behavior that extension code cannot perform directly.
 - Vanilla Firefox surface touched or depended on: browser chrome DOM,
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
@@ -117,7 +120,8 @@ Use this shape for new or changed touchpoints:
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
-  corners, verify sidebar context menus still dispatch tab, folder, and
+  corners during normal browsing but removes that frame during DOM fullscreen,
+  verify sidebar context menus still dispatch tab, folder, and
   workspace actions including moving a
   folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and
   `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
@@ -161,7 +165,10 @@ Use this shape for new or changed touchpoints:
   `Rename` context-menu actions focus the inline field and select its text for
   immediate typing, verify side-panel and
   sub-panel header hiding/restoration still works from the panel header menu and
-  the restore handle while main-panel headers stay unavailable, verify
+  the restore handle while main-panel headers stay unavailable, verify video
+  fullscreen from the main content slot hides the sidebar, panel navigator,
+  strip scrollbar, panel trailer, side-panel slots, rounded panel framing, and
+  Bento focus rings in both side-panel and no-side-panel workspaces, verify
   `Inspect in Panel` and `Inspect Accessibility Properties in Panel` appear only
   when the corresponding stock Firefox context-menu item appears, open a
   page-hosted DevTools toolbox in an adjacent Bento panel, select the clicked

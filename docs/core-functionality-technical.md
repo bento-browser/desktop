@@ -1233,7 +1233,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
 - In `bento-no-side-panels` mode, the moved `#tabbrowser-tabbox` is still the
   rounded content frame. Keep that frame and its child tabpanels/browser
   surfaces clipped to `--radius-m`; `.browserContainer` alone does not prevent
-  page paint from showing through the rounded corners.
+  page paint from showing through the rounded corners. Exception: when Firefox
+  sets `:root[inDOMFullscreen]`, the fullscreen override must clear the strip
+  host and browser-wrapper radii so video fullscreen is not clipped by the
+  normal main-content frame.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
 - `panelLayout/breakOut` promotes an existing child into the root layout and
@@ -1627,6 +1630,22 @@ The following mechanisms are load-bearing:
   `tabpanels.selectedPanel`, then force a selected-main browser repaint and
   clear `blank`/`pendingpaint`. The workspace-switch workaround appeared to
   fix the bug only because it ran a later full reconcile.
+- DOM fullscreen depends on Bento yielding the chrome it adds around Firefox's
+  browser deck. Firefox's stock fullscreen stylesheet hides `#navigator-toolbox`
+  and native sidebar elements, but not `#bento-shell-host`,
+  `#bento-shell-splitter`, `#bento-panel-nav`, `#bento-strip-scrollbar`, the
+  add-panel trailer, or flat-layout overlay splitters. Keep the
+  `:root[inDOMFullscreen]` rules in `injectChromeStyles()` so the selected
+  deck panel overrides stale flat-layout inline rects, loses rounded corners and
+  shadows, suppresses Bento focus-ring pseudo-elements, hides non-selected panel
+  slots, removes strip padding, clears the outer strip host radius, and lets
+  video fullscreen cover the whole browser window.
+  Regression history: the first pass hid Bento chrome but left the browser UI
+  around the video; the second pass left the main-slot focus pseudo-element
+  visible at the video edge; the third pass still allowed the rounded outer
+  strip host to clip the fullscreen browser. Preserve all three parts of the
+  fix: hide Bento chrome/controls, suppress focus-ring pseudo-elements, and
+  clear every panel/browser wrapper radius while `inDOMFullscreen` is active.
 
 ## Flat panel layout and subdivisions
 
@@ -2254,6 +2273,7 @@ When changing core functionality, manually verify at least the affected subset:
 - Vimium or another content-key extension inside a panel;
 - AMO install permission prompt from a panel;
 - Dark Reader or another content-script extension inside a panel;
+- video fullscreen from the main content slot while side panels are present;
 - theme switch and sidebar footer UI light/dark/Auto switch;
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored.
