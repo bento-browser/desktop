@@ -14,6 +14,7 @@
     --bento-pinned-panels-bg: var(--neutral-14);
     --bento-sidebar-corner-radius: var(--radius-l);
     --bento-sidebar-section-gap: var(--space-4xs);
+    --bento-sidebar-collapse-transition: 200ms var(--bento-easing-standard, ease);
     display: flex;
     flex-direction: row;
     box-sizing: border-box;
@@ -59,6 +60,9 @@
     padding-block-end: var(--bento-sidebar-section-gap);
     padding-inline: var(--space-3xs);
     background-color: var(--neutral-5);
+    transition:
+      padding-inline-start var(--bento-sidebar-collapse-transition),
+      padding-inline-end var(--bento-sidebar-collapse-transition);
     /* Keep padding identical in expanded and collapsed modes so the
        header's vertical rhythm does not shift during sidebar toggles. */
   }
@@ -68,6 +72,9 @@
     padding-inline: var(--space-2xs);
     border-top: 1px solid var(--bento-sidebar-divider-color);
     justify-content: flex-end;
+    transition:
+      padding-inline-start var(--bento-sidebar-collapse-transition),
+      padding-inline-end var(--bento-sidebar-collapse-transition);
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__header,

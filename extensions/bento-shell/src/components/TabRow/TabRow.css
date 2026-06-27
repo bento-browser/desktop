@@ -11,7 +11,11 @@
     align-items: center;
     gap: var(--space-xs);
     box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 100%;
+    min-height: 0;
     padding-inline: var(--space-2xs) 0;
     border-radius: var(--radius-s);
     line-height: 1;
@@ -21,8 +25,38 @@
     overflow: hidden;
     transition:
       background-color var(--bento-duration-fast) var(--bento-easing-standard),
+      width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      min-width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      max-width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      height
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      min-height
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
       opacity var(--bento-duration-base) var(--bento-easing-standard),
       transform var(--bento-duration-base) var(--bento-easing-standard),
+      margin-inline-start
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
       padding var(--bento-duration-base) var(--bento-easing-standard);
     /* Skip layout/paint when scrolled off-screen (§6.4). */
     content-visibility: auto;

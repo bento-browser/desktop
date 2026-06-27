@@ -5,7 +5,11 @@
     align-items: center;
     gap: var(--space-xs);
     box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 100%;
+    min-height: 0;
     padding-inline: var(--space-2xs) 0;
     border-radius: var(--radius-s);
     color: var(--neutral-90);
@@ -14,6 +18,36 @@
     overflow: hidden;
     transition:
       background-color var(--bento-duration-fast) var(--bento-easing-standard),
+      width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      min-width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      max-width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      height
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      min-height
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      padding
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
       opacity var(--bento-duration-base) var(--bento-easing-standard);
   }
 

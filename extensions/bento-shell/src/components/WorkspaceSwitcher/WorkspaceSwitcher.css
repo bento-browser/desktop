@@ -118,6 +118,40 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
   background-color: color-mix(in srgb, var(--color-60) 8%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   color: var(--color-90);
+  transition:
+    width
+      var(
+        --bento-sidebar-collapse-transition,
+        var(--bento-duration-base) var(--bento-easing-standard)
+      ),
+    min-width
+      var(
+        --bento-sidebar-collapse-transition,
+        var(--bento-duration-base) var(--bento-easing-standard)
+      ),
+    max-width
+      var(
+        --bento-sidebar-collapse-transition,
+        var(--bento-duration-base) var(--bento-easing-standard)
+      ),
+    height
+      var(
+        --bento-sidebar-collapse-transition,
+        var(--bento-duration-base) var(--bento-easing-standard)
+      ),
+    min-height
+      var(
+        --bento-sidebar-collapse-transition,
+        var(--bento-duration-base) var(--bento-easing-standard)
+      ),
+    padding
+      var(
+        --bento-sidebar-collapse-transition,
+        var(--bento-duration-base) var(--bento-easing-standard)
+      ),
+    background-color var(--bento-duration-fast) var(--bento-easing-standard),
+    border-color var(--bento-duration-fast) var(--bento-easing-standard),
+    color var(--bento-duration-fast) var(--bento-easing-standard);
 }
 
 .tale-button.tale-menu__trigger.bento-workspace-switcher__trigger:hover:not(
@@ -172,7 +206,6 @@ html[data-bento-collapsed='true']
     box-sizing: border-box;
     align-items: center;
     justify-content: flex-start;
-    transition: padding var(--bento-duration-base) var(--bento-easing-standard);
   }
 
   .bento-workspace-switcher__trigger.bento-workspace-switcher__trigger--open
