@@ -13,7 +13,6 @@
   }
 
   .bento-backup__entry {
-    padding: var(--space-xs) var(--space-s);
     border-radius: var(--radius-s);
     background: var(--neutral-5);
   }

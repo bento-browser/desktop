@@ -1,36 +1,34 @@
-/* Layer-3 helper: keyboard shortcuts dialog. The dialog popup gets a
- * scroll affordance because the catalogue grows over time and shouldn't
- * push the page beyond a comfortable reading height. */
+/* Layer-3 helper: searchable keyboard-shortcuts command palette. */
+
+/* Tale UI component CSS is unlayered, so these narrow unlayered selectors
+ * intentionally beat its popup/listbox sizing rules. */
+.tale-command-palette__popup.bento-shortcuts-command-palette__popup {
+  width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
+  height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
+}
+
+.tale-command-palette__dialog.bento-shortcuts-command-palette__dialog,
+.tale-command-palette__content.bento-shortcuts-command-palette__content,
+.tale-command-palette__listbox.bento-shortcuts-command-palette__listbox {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tale-command-palette__listbox.bento-shortcuts-command-palette__listbox {
+  max-height: none;
+}
+
+.tale-command-palette__item.bento-shortcuts-command-palette__item {
+  cursor: default;
+}
+
 @layer bento.components {
-  .bento-shortcuts-dialog {
-    max-width: 32rem;
-    width: 100%;
-  }
-
-  .bento-shortcuts-dialog__groups {
-    max-height: 60vh;
-    overflow-y: auto;
-    padding-block: var(--space-xs);
-  }
-
-  .bento-shortcuts-dialog__row {
-    justify-content: flex-start;
-  }
-
-  /* Same key-cap visual as WelcomeBanner. Keep wide enough that two
-     adjacent rows align (the modifier column is the alignment anchor),
-     but allow the text to expand for compound combos like Cmd+Shift+T. */
-  .bento-shortcuts-dialog__combo {
-    display: inline-flex;
-    align-items: center;
-    min-width: 8rem;
-    padding: var(--space-3xs) var(--space-2xs);
-    border-radius: var(--radius-xs);
-    background-color: var(--neutral-16);
-    color: var(--neutral-90);
-    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-    font-size: var(--font-size-xs);
-    line-height: 1;
+  .bento-shortcuts-command-palette__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
     white-space: nowrap;
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
@@ -55,6 +55,10 @@ function FooterTooltip({
   );
 }
 
+function settingsUrl(): string {
+  return `${location.origin}/dist/settings.html`;
+}
+
 function openSettings() {
   // Round-trip through bento-tools (which has reliable browser.tabs access)
   // because the chrome-mounted <browser remote=true remoteType=extension>
@@ -66,8 +70,7 @@ function openSettings() {
   // focusExisting: Settings is a singleton — repeated clicks should
   // bring the existing tab forward rather than stack duplicates inside
   // the workspace.
-  const url = `${location.origin}/dist/settings.html`;
-  dispatch({ type: 'tab/openUrl', url, focusExisting: true });
+  dispatch({ type: 'tab/openUrl', url: settingsUrl(), focusExisting: true });
 }
 
 function openCommandPalette() {
@@ -101,6 +104,7 @@ function encodeSidebarMenuPayload(payload: object): string {
 export function App() {
   const ready = useToolsReady();
   const windowId = useCurrentWindowId();
+  const [settingsRevealRequest, setSettingsRevealRequest] = useState<number | undefined>();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const tabsById = useTabsStore((s) => s.byId);
   const activeTabId = useTabsStore((s) => s.activeId);
@@ -179,6 +183,10 @@ export function App() {
   const onCreatePanel = () =>
     dispatch({ type: 'panel/openAt', url: 'about:newtab', sourceTabId: null, position: 'end' });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
+  const onOpenSettings = () => {
+    setSettingsRevealRequest((value = 0) => value + 1);
+    openSettings();
+  };
   const openSidebarContextMenu = (
     event: React.MouseEvent,
     tabId: number | null,
@@ -474,6 +482,8 @@ export function App() {
           )}
         </Row>
         <TabList
+          revealTabUrl={settingsUrl()}
+          revealTabRequest={settingsRevealRequest}
           onActivate={onActivate}
           onClose={onClose}
           onCloseSelected={onCloseSelected}
@@ -542,7 +552,7 @@ export function App() {
             />
           </FooterTooltip>
           <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
-            <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={openSettings}>
+            <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={onOpenSettings}>
               <Icon icon={Settings} />
             </IconButton>
           </FooterTooltip>

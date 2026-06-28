@@ -22,6 +22,8 @@ import { getThemeMeta } from '../../theme/presets';
 import './TabList.css';
 
 export interface TabListProps {
+  revealTabUrl?: string;
+  revealTabRequest?: number;
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onCloseSelected?: (ids: number[]) => void;
@@ -190,6 +192,8 @@ interface TabListPaneProps {
   searchOpen: boolean;
   searchQuery: string;
   searchResults: TabListSearchResult[];
+  revealTabId?: number | null;
+  revealTabRequest?: number;
   onOpenSearch: () => void;
   onCloseSearch: () => void;
   onSearchQueryChange: (value: string) => void;
@@ -223,6 +227,8 @@ function TabListPane({
   searchOpen,
   searchQuery,
   searchResults,
+  revealTabId,
+  revealTabRequest,
   onOpenSearch,
   onCloseSearch,
   onSearchQueryChange,
@@ -261,6 +267,7 @@ function TabListPane({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const newMenuPopoverRef = useRef<HTMLElement>(null);
+  const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
@@ -323,6 +330,18 @@ function TabListPane({
       }),
     [activeId, displayedIds, dragFolderId, folders, tabsById],
   );
+  const activeRowIndex = useMemo(() => {
+    if (activeId === null) return -1;
+    return rows.findIndex(
+      (row) => (row.kind === 'tab' || row.kind === 'peek') && row.id === activeId,
+    );
+  }, [activeId, rows]);
+  const requestedRevealRowIndex = useMemo(() => {
+    if (revealTabId === null || revealTabId === undefined) return -1;
+    return rows.findIndex(
+      (row) => (row.kind === 'tab' || row.kind === 'peek') && row.id === revealTabId,
+    );
+  }, [revealTabId, rows]);
   const newActionRowIndex = rows.findIndex((row) => row.kind === 'new-tab');
   const topSurfaceHeight =
     newActionRowIndex > 0 ? Math.max(0, newActionRowIndex * rowSlotSize - rowGap) : 0;
@@ -373,6 +392,27 @@ function TabListPane({
   useLayoutEffect(() => {
     virtualizer.measure();
   }, [rowSlotSize, rows.length, virtualizer]);
+
+  useLayoutEffect(() => {
+    if (
+      revealTabRequest === undefined ||
+      searchFiltering ||
+      requestedRevealRowIndex < 0 ||
+      rowSlotSize <= 0
+    ) {
+      return;
+    }
+    smoothRevealRef.current = { request: revealTabRequest, rowIndex: requestedRevealRowIndex };
+    virtualizer.scrollToIndex(requestedRevealRowIndex, { align: 'auto', behavior: 'smooth' });
+  }, [requestedRevealRowIndex, revealTabRequest, rowSlotSize, searchFiltering, virtualizer]);
+
+  useLayoutEffect(() => {
+    if (searchFiltering || activeRowIndex < 0 || rowSlotSize <= 0) return;
+    const smoothReveal = smoothRevealRef.current;
+    if (smoothReveal?.rowIndex === activeRowIndex) return;
+    smoothRevealRef.current = null;
+    virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
+  }, [activeRowIndex, rowSlotSize, searchFiltering, virtualizer]);
 
   useLayoutEffect(() => {
     updateScrollMetrics();
@@ -1062,6 +1102,8 @@ function TabListPane({
 // stage-level slide replaces it: the OLD pane carries OLD ids only, the
 // NEW pane carries NEW ids only, and the user sees a directional swap.
 export function TabList({
+  revealTabUrl,
+  revealTabRequest,
   onActivate,
   onClose,
   onCloseSelected,
@@ -1102,6 +1144,12 @@ export function TabList({
   const [searchQuery, setSearchQuery] = useState('');
   const lastSelectedIdRef = useRef<number | null>(null);
   const mirroredSelectedTitleRef = useRef(false);
+  const revealTabId = useMemo(() => {
+    if (revealTabRequest === undefined || !revealTabUrl) return null;
+    const activeTab = activeId !== null ? tabsById[activeId] : null;
+    if (activeTab?.url === revealTabUrl) return activeTab.id;
+    return orderedIds.find((id) => tabsById[id]?.url === revealTabUrl) ?? null;
+  }, [activeId, orderedIds, revealTabRequest, revealTabUrl, tabsById]);
 
   const searchResults = useMemo<TabListSearchResult[]>(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -1378,6 +1426,8 @@ export function TabList({
             searchOpen={false}
             searchQuery=""
             searchResults={[]}
+            revealTabId={null}
+            revealTabRequest={undefined}
             onOpenSearch={() => undefined}
             onCloseSearch={() => undefined}
             onSearchQueryChange={() => undefined}
@@ -1413,6 +1463,8 @@ export function TabList({
           searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchResults={searchResults}
+          revealTabId={revealTabId}
+          revealTabRequest={revealTabRequest}
           onOpenSearch={() => setSearchOpen(true)}
           onCloseSearch={handleCloseSearch}
           onSearchQueryChange={setSearchQuery}

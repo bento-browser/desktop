@@ -4,6 +4,8 @@ import { Switch } from '@tale-ui/react/switch';
 import { NumberField } from '@tale-ui/react/number-field';
 import { Button } from '@tale-ui/react/button';
 import { IconButton } from '@tale-ui/react/icon-button';
+import { AlertDialog } from '@tale-ui/react/alert-dialog';
+import { Tooltip } from '@tale-ui/react/tooltip';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
@@ -13,7 +15,7 @@ import Upload from 'lucide-react/dist/esm/icons/upload';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 
-import type { BentoExportSchema, ImportSummary } from '@shared/protocol';
+import type { BackupListEntry, BentoExportSchema, ImportSummary } from '@shared/protocol';
 import { useSettingsStore } from '../../state/settings';
 import { useWorkspacesStore } from '../../state/workspaces';
 import { useBackupStore } from '../../state/backup';
@@ -45,6 +47,11 @@ interface ImportPreview {
   panelCount: number;
   hasSettings: boolean;
   hasSavedPanels: boolean;
+}
+
+interface PendingBackupAction {
+  action: 'restore' | 'delete';
+  backup: BackupListEntry;
 }
 
 function parseImportFile(json: string): ImportPreview | null {
@@ -82,6 +89,7 @@ export function BackupSection() {
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [parseError, setParseError] = useState(false);
+  const [pendingBackupAction, setPendingBackupAction] = useState<PendingBackupAction | null>(null);
 
   useEffect(() => {
     dispatch({ type: 'backup/requestList' });
@@ -178,7 +186,31 @@ export function BackupSection() {
     });
   }, [importPreview, importSettings, importSavedPanels, replaceExisting]);
 
+  const closeBackupActionDialog = useCallback(() => {
+    setPendingBackupAction(null);
+  }, []);
+
+  const handleBackupActionConfirm = useCallback(() => {
+    if (!pendingBackupAction) return;
+    const { action, backup } = pendingBackupAction;
+    setPendingBackupAction(null);
+    if (action === 'restore') {
+      setImportStatus(null);
+      dispatch({ type: 'backup/restore', backupId: backup.id });
+    } else {
+      dispatch({ type: 'backup/delete', backupId: backup.id });
+    }
+  }, [pendingBackupAction]);
+
   if (!settings) return null;
+
+  const isRestoreAction = pendingBackupAction?.action === 'restore';
+  const pendingBackup = pendingBackupAction?.backup;
+  const pendingBackupLabel = pendingBackup
+    ? `${formatDate(pendingBackup.createdAt)} (${pendingBackup.workspaceCount} workspace${
+        pendingBackup.workspaceCount !== 1 ? 's' : ''
+      }, ${pendingBackup.tabCount} tab${pendingBackup.tabCount !== 1 ? 's' : ''})`
+    : '';
 
   return (
     <Card.Root className="bento-settings__tile bento-settings__tile--narrow">
@@ -402,7 +434,7 @@ export function BackupSection() {
               <Text variant="label" size="m">
                 Stored backups
               </Text>
-              <Column gap="xs">
+              <Column gap="m">
                 {backups.map((b) => (
                   <Row
                     key={b.id}
@@ -421,22 +453,34 @@ export function BackupSection() {
                       </Text>
                     </Column>
                     <Row gap="xs">
-                      <IconButton
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Restore backup"
-                        onPress={() => dispatch({ type: 'backup/restore', backupId: b.id })}
-                      >
-                        <Icon icon={RotateCcw} size="sm" />
-                      </IconButton>
-                      <IconButton
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Delete backup"
-                        onPress={() => dispatch({ type: 'backup/delete', backupId: b.id })}
-                      >
-                        <Icon icon={Trash2} size="sm" />
-                      </IconButton>
+                      <Tooltip.Root delay={400}>
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Restore backup"
+                          onPress={() => setPendingBackupAction({ action: 'restore', backup: b })}
+                        >
+                          <Icon icon={RotateCcw} size="sm" />
+                        </IconButton>
+                        <Tooltip.Popup placement="top" offset={8}>
+                          <Tooltip.Arrow />
+                          Restore backup
+                        </Tooltip.Popup>
+                      </Tooltip.Root>
+                      <Tooltip.Root delay={400}>
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Delete backup"
+                          onPress={() => setPendingBackupAction({ action: 'delete', backup: b })}
+                        >
+                          <Icon icon={Trash2} size="sm" />
+                        </IconButton>
+                        <Tooltip.Popup placement="top" offset={8}>
+                          <Tooltip.Arrow />
+                          Delete backup
+                        </Tooltip.Popup>
+                      </Tooltip.Root>
                     </Row>
                   </Row>
                 ))}
@@ -445,6 +489,40 @@ export function BackupSection() {
           )}
         </Column>
       </Card.Body>
+      {pendingBackup && (
+        <AlertDialog.Root
+          isOpen={true}
+          onOpenChange={(open) => {
+            if (!open) closeBackupActionDialog();
+          }}
+        >
+          <AlertDialog.Backdrop>
+            <AlertDialog.Popup>
+              <AlertDialog.Content>
+                <AlertDialog.Title>
+                  {isRestoreAction ? 'Restore this backup?' : 'Delete this backup?'}
+                </AlertDialog.Title>
+                <AlertDialog.Description>
+                  {isRestoreAction
+                    ? `Restore ${pendingBackupLabel} as new workspaces. Your current workspaces will stay in place.`
+                    : `Delete ${pendingBackupLabel}. This removes the stored snapshot and cannot be undone.`}
+                </AlertDialog.Description>
+                <AlertDialog.Actions>
+                  <Button variant="neutral" onPress={closeBackupActionDialog}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant={isRestoreAction ? 'primary' : 'danger'}
+                    onPress={handleBackupActionConfirm}
+                  >
+                    {isRestoreAction ? 'Restore' : 'Delete'}
+                  </Button>
+                </AlertDialog.Actions>
+              </AlertDialog.Content>
+            </AlertDialog.Popup>
+          </AlertDialog.Backdrop>
+        </AlertDialog.Root>
+      )}
     </Card.Root>
   );
 }

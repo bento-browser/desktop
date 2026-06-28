@@ -119,6 +119,7 @@
     --bento-settings-grid-max-width: 132rem;
     --bento-settings-grid-gap: var(--space-s);
     --bento-settings-header-max-width: 72rem;
+    --bento-settings-number-field-max-width: 14rem;
 
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay

@@ -13,6 +13,7 @@ import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/icon';
+import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/card';
 import '@tale-ui/react-styles/switch';
@@ -21,7 +22,7 @@ import '@tale-ui/react-styles/disclosure';
 import '@tale-ui/react-styles/toggle-button';
 import '@tale-ui/react-styles/number-field';
 import '@tale-ui/react-styles/text-field';
-import '@tale-ui/react-styles/dialog';
+import '@tale-ui/react-styles/command-palette';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';

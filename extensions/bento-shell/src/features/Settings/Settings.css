@@ -79,14 +79,20 @@
     justify-content: flex-end;
   }
 
-  /* Pinned width for every NumberField in Settings so wide-digit
-     values (1280, etc.) don't wrap and the controls line up
-     visually. With Tale UI's Group + Input now flex-grow-aware (see
-     @tale-ui/react-styles number-field.css), setting Root width alone
-     is enough: Group fills Root, Input fills remaining Group space. */
+  /* Keep NumberField labels/descriptions at normal row width while capping the
+     visible input group so controls line up without dominating compact rows. */
   .bento-settings__number-field {
-    width: 18rem;
-    flex: 0 0 auto;
+    --tale-number-field-width: 100%;
+    --tale-number-field-group-width: var(--bento-settings-number-field-max-width);
+
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .tale-row > .bento-settings__number-field {
+    width: fit-content;
   }
 
   .bento-settings__privacy-levels {
@@ -113,5 +119,53 @@
   .bento-settings__protection-detail[data-active='true'] {
     border-color: color-mix(in srgb, var(--bento-workspace-accent) 46%, var(--neutral-24));
     background-color: color-mix(in srgb, var(--bento-workspace-accent) 9%, var(--neutral-6));
+  }
+
+  .bento-settings__custom-size-list {
+    position: relative;
+    min-width: 0;
+  }
+
+  .bento-settings__custom-size-drop-indicator {
+    position: absolute;
+    inset-inline: var(--space-s);
+    height: var(--bento-focus-ring-width);
+    border-radius: var(--radius-full);
+    background-color: var(--bento-workspace-accent);
+    pointer-events: none;
+    transform: translateY(-50%);
+    z-index: 1;
+  }
+
+  .bento-settings__custom-size-row {
+    position: relative;
+    min-width: 0;
+    border-radius: var(--radius-s);
+  }
+
+  .bento-settings__custom-size-row[data-dragging='true'] {
+    background-color: var(--bento-surface-hover);
+  }
+
+  .bento-settings__custom-size-grip {
+    flex: 0 0 auto;
+    align-self: stretch;
+    padding-inline: var(--space-2xs);
+    color: var(--neutral-50);
+    border-radius: var(--radius-s);
+    cursor: grab;
+  }
+
+  .bento-settings__custom-size-grip:hover {
+    color: var(--neutral-70);
+    background-color: var(--bento-surface-hover);
+  }
+
+  .bento-settings__custom-size-list[data-dragging='true'] {
+    cursor: grabbing;
+  }
+
+  .bento-settings__custom-size-row[data-dragging='true'] .bento-settings__custom-size-grip {
+    cursor: grabbing;
   }
 }

@@ -11,7 +11,7 @@
 // — Bento doesn't duplicate them. See plans/bento-browser-features.md
 // and the repo README for the complete list of shipped privacy defaults.
 
-import { useEffect, useState } from 'react';
+import { type DragEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Card } from '@tale-ui/react/card';
 import { Switch } from '@tale-ui/react/switch';
 import { NumberField } from '@tale-ui/react/number-field';
@@ -30,6 +30,7 @@ import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 import Keyboard from 'lucide-react/dist/esm/icons/keyboard';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
+import GripVertical from 'lucide-react/dist/esm/icons/grip-vertical';
 
 import type {
   PrivacyAdvancedKey,
@@ -45,6 +46,13 @@ import { ShortcutsDialog } from './ShortcutsDialog';
 import { BackupSection } from './BackupSection';
 import './Settings.css';
 
+const EMPTY_CUSTOM_PANEL_SIZES: number[] = [];
+
+interface CustomSizeFlipSnapshot {
+  rects: Map<string, DOMRect>;
+  expectedKeys: string[];
+}
+
 function update<K extends keyof import('@shared/protocol').BentoSettings>(
   key: K,
   value: import('@shared/protocol').BentoSettings[K],
@@ -57,6 +65,30 @@ function firstSelectedKey(keys: unknown): string | null {
   if (!(keys instanceof Set)) return null;
   const first = Array.from(keys)[0];
   return typeof first === 'string' ? first : null;
+}
+
+function customSizeKey(sizes: number[], index: number): string {
+  const px = sizes[index];
+  let occurrence = 0;
+  for (let i = 0; i <= index; i++) {
+    if (sizes[i] === px) occurrence++;
+  }
+  return `${px}:${occurrence}`;
+}
+
+function sameStringArray(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function moveSizeToFilteredSlot(sizes: number[], fromIndex: number, slot: number): number[] | null {
+  if (fromIndex < 0 || fromIndex >= sizes.length) return null;
+  const next = [...sizes];
+  const [moved] = next.splice(fromIndex, 1);
+  if (moved === undefined) return null;
+  if (slot < 0 || slot > next.length) return null;
+  if (slot === fromIndex) return null;
+  next.splice(slot, 0, moved);
+  return next;
 }
 
 function advancedBoolean(key: PrivacyAdvancedKey, value: boolean, label: string, detail: string) {
@@ -149,6 +181,14 @@ export function Settings() {
   const settings = useSettingsStore((s) => s.current);
   const privacy = usePrivacyStore((s) => s.settings);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [customSizeDragIndex, setCustomSizeDragIndex] = useState<number | null>(null);
+  const [customSizeDropTarget, setCustomSizeDropTarget] = useState<{
+    slot: number;
+    top: number;
+  } | null>(null);
+  const customSizeListRef = useRef<HTMLDivElement | null>(null);
+  const customSizeFlipSnapshotRef = useRef<CustomSizeFlipSnapshot | null>(null);
+  const customPanelSizes = settings?.customPanelSizes ?? EMPTY_CUSTOM_PANEL_SIZES;
 
   // Request a fresh privacy snapshot on mount. Tools doesn't push
   // privacy/changed deltas (settings rarely change without explicit user
@@ -160,6 +200,47 @@ export function Settings() {
     dispatch({ type: 'privacy/requestSnapshot' });
   }, []);
 
+  useLayoutEffect(() => {
+    const pending = customSizeFlipSnapshotRef.current;
+    if (!pending) return;
+    const currentKeys = customPanelSizes.map((_, index) => customSizeKey(customPanelSizes, index));
+    if (!sameStringArray(currentKeys, pending.expectedKeys)) return;
+    customSizeFlipSnapshotRef.current = null;
+
+    const list = customSizeListRef.current;
+    if (!list) return;
+    const moved: Array<{ row: HTMLElement; dy: number }> = [];
+    for (const row of list.querySelectorAll<HTMLElement>('.bento-settings__custom-size-row')) {
+      const key = row.dataset.customSizeKey;
+      if (!key) continue;
+      const oldRect = pending.rects.get(key);
+      if (!oldRect) continue;
+      const newRect = row.getBoundingClientRect();
+      const dy = oldRect.top - newRect.top;
+      if (Math.abs(dy) < 1) continue;
+      moved.push({ row, dy });
+    }
+    if (moved.length === 0) return;
+    for (const { row, dy } of moved) {
+      row.style.transition = 'none';
+      row.style.transform = `translateY(${dy}px)`;
+    }
+    void list.offsetHeight;
+    requestAnimationFrame(() => {
+      for (const { row } of moved) {
+        row.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        row.style.transform = '';
+        const cleanup = (event?: TransitionEvent) => {
+          if (event && event.propertyName !== 'transform') return;
+          row.style.transition = '';
+          row.removeEventListener('transitionend', cleanup);
+        };
+        row.addEventListener('transitionend', cleanup);
+        window.setTimeout(() => cleanup(), 400);
+      }
+    });
+  }, [customPanelSizes]);
+
   if (!settings) {
     return (
       <Column gap="m" align="center" className="bento-settings bento-settings--loading">
@@ -169,6 +250,82 @@ export function Settings() {
       </Column>
     );
   }
+
+  const clearCustomSizeDrag = () => {
+    setCustomSizeDragIndex(null);
+    setCustomSizeDropTarget(null);
+  };
+  const getCustomSizeDropTarget = (list: HTMLDivElement, clientY: number) => {
+    if (customSizeDragIndex === null) return;
+    const rows = Array.from(
+      list.querySelectorAll<HTMLElement>('.bento-settings__custom-size-row'),
+    ).filter((row) => Number(row.dataset.customSizeIndex) !== customSizeDragIndex);
+    if (rows.length === 0) return null;
+    let slot = 0;
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      if (clientY > rect.top + rect.height / 2) slot++;
+      else break;
+    }
+    if (slot === customSizeDragIndex) return null;
+    const listRect = list.getBoundingClientRect();
+    let top: number;
+    if (slot <= 0) {
+      const first = rows[0];
+      if (!first) return null;
+      top = first.getBoundingClientRect().top;
+    } else if (slot >= rows.length) {
+      const last = rows[rows.length - 1];
+      if (!last) return null;
+      top = last.getBoundingClientRect().bottom;
+    } else {
+      const previous = rows[slot - 1];
+      const next = rows[slot];
+      if (!previous || !next) return null;
+      const previousRect = previous.getBoundingClientRect();
+      const nextRect = next.getBoundingClientRect();
+      top = previousRect.bottom + (nextRect.top - previousRect.bottom) / 2;
+    }
+    top = top - listRect.top + list.scrollTop;
+    return { slot, top };
+  };
+  const onCustomSizeListDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (customSizeDragIndex === null) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setCustomSizeDropTarget(getCustomSizeDropTarget(event.currentTarget, event.clientY) ?? null);
+  };
+  const stageCustomSizeFlip = (list: HTMLDivElement, nextSizes: number[]) => {
+    const rects = new Map<string, DOMRect>();
+    for (const row of list.querySelectorAll<HTMLElement>('.bento-settings__custom-size-row')) {
+      const key = row.dataset.customSizeKey;
+      if (key) rects.set(key, row.getBoundingClientRect());
+    }
+    customSizeFlipSnapshotRef.current = {
+      rects,
+      expectedKeys: nextSizes.map((_, index) => customSizeKey(nextSizes, index)),
+    };
+  };
+  const onCustomSizeListDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const fromIndex = customSizeDragIndex;
+    if (fromIndex === null) {
+      clearCustomSizeDrag();
+      return;
+    }
+    const target =
+      customSizeDropTarget ?? getCustomSizeDropTarget(event.currentTarget, event.clientY);
+    const next = target ? moveSizeToFilteredSlot(customPanelSizes, fromIndex, target.slot) : null;
+    if (next) {
+      stageCustomSizeFlip(event.currentTarget, next);
+      update('customPanelSizes', next);
+    }
+    clearCustomSizeDrag();
+  };
+  const onCustomSizeListDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setCustomSizeDropTarget(null);
+  };
 
   return (
     <Column gap="l" className="bento-settings">
@@ -505,8 +662,7 @@ export function Settings() {
                   Keyboard shortcuts
                 </Text>
                 <Text variant="text" size="s" color="muted">
-                  Reference for the Bento-specific hotkeys (workspaces, panels, command palette).
-                  Standard Firefox shortcuts continue to work.
+                  Searchable reference for Bento hotkeys and standard Firefox tab shortcuts.
                 </Text>
               </Column>
             </Card.Header>
@@ -594,9 +750,52 @@ export function Settings() {
                     resizes only that panel.
                   </Text>
                 </Column>
-                <Column gap="xs">
-                  {(settings.customPanelSizes ?? []).map((px, i) => (
-                    <Row key={i} gap="xs" align="end">
+                <Column
+                  gap="xs"
+                  ref={customSizeListRef}
+                  role="list"
+                  aria-label="Custom panel sizes"
+                  className="bento-settings__custom-size-list"
+                  data-dragging={customSizeDragIndex !== null ? 'true' : undefined}
+                  onDragOver={onCustomSizeListDragOver}
+                  onDrop={onCustomSizeListDrop}
+                  onDragLeave={onCustomSizeListDragLeave}
+                >
+                  {customPanelSizes.map((px, i) => (
+                    <Row
+                      key={customSizeKey(customPanelSizes, i)}
+                      gap="xs"
+                      align="end"
+                      role="listitem"
+                      className="bento-settings__custom-size-row"
+                      data-custom-size-index={i}
+                      data-custom-size-key={customSizeKey(customPanelSizes, i)}
+                      data-dragging={customSizeDragIndex === i ? 'true' : undefined}
+                    >
+                      <Row
+                        align="center"
+                        justify="center"
+                        draggable
+                        title="Drag to reorder"
+                        aria-label={`Drag ${px} px custom panel size to reorder`}
+                        className="bento-settings__custom-size-grip"
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          try {
+                            event.dataTransfer.setData(
+                              'application/x-bento-panel-size-index',
+                              String(i),
+                            );
+                          } catch {
+                            // React state carries the source index; the dataTransfer marker is best-effort.
+                          }
+                          setCustomSizeDragIndex(i);
+                          setCustomSizeDropTarget(null);
+                        }}
+                        onDragEnd={clearCustomSizeDrag}
+                      >
+                        <Icon icon={GripVertical} size="sm" />
+                      </Row>
                       <NumberField.Root
                         value={px}
                         onChange={(v) => {
@@ -604,7 +803,7 @@ export function Settings() {
                           // so we don't persist garbage; the user's next keystroke
                           // will dispatch a valid number.
                           if (!Number.isFinite(v) || v <= 0) return;
-                          const next = [...(settings.customPanelSizes ?? [])];
+                          const next = [...customPanelSizes];
                           next[i] = Math.round(v);
                           update('customPanelSizes', next);
                         }}
@@ -625,7 +824,7 @@ export function Settings() {
                         variant="ghost"
                         aria-label={`Remove size ${px} px`}
                         onPress={() => {
-                          const next = (settings.customPanelSizes ?? []).filter((_, j) => j !== i);
+                          const next = customPanelSizes.filter((_, j) => j !== i);
                           update('customPanelSizes', next);
                         }}
                       >
@@ -633,12 +832,20 @@ export function Settings() {
                       </IconButton>
                     </Row>
                   ))}
+                  {customSizeDropTarget ? (
+                    <div
+                      role="presentation"
+                      aria-hidden="true"
+                      className="bento-settings__custom-size-drop-indicator"
+                      style={{ top: customSizeDropTarget.top }}
+                    />
+                  ) : null}
                   <Row>
                     <Button
                       variant="neutral"
                       size="sm"
                       onPress={() => {
-                        const next = [...(settings.customPanelSizes ?? []), 480];
+                        const next = [...customPanelSizes, 480];
                         update('customPanelSizes', next);
                       }}
                     >

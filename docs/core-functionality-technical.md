@@ -303,7 +303,15 @@ mirrors the live privacy snapshot. The level selector uses Tale UI
 `onSelectionChange`. The search selector uses `Select.Root` with
 `selectedKey/onSelectionChange`. Advanced controls use `Disclosure` and
 settings-row `Switch.Root` controls. The full protection-level benefit/caveat
-comparison rendered in Settings comes from `PRIVACY_LEVEL_DETAILS`.
+comparison rendered in Settings comes from `PRIVACY_LEVEL_DETAILS`. The
+keyboard-shortcuts reference in
+`extensions/bento-shell/src/features/Settings/ShortcutsDialog.tsx` is a
+read-only Tale UI `CommandPalette` with static shortcut command records, local
+`useCommandPalette` filtering, visible category section headers, command rows,
+and `CommandPalette.Shortcut` key tokens. The shortcut rows use command-palette
+item visuals but are display-only list rows, not selectable `CommandPalette.Item`
+actions. The settings entrypoint imports `@tale-ui/react-styles/command-palette`
+for that surface.
 
 The address palette reads the same visible-engine data through the narrow
 `searchEngines/requestSnapshot` / `searchEngines/snapshot` protocol. That mirror
@@ -1114,6 +1122,11 @@ across profiles or sessions. Do not treat `panelLayout` alone as the complete
 layout snapshot; workspace-level main width and strip scroll are separate
 `PanelStore` state and must travel with the backup payload.
 
+`extensions/bento-shell/src/features/Settings/BackupSection.tsx` owns the stored
+backup action affordances. Restore and delete icon buttons use Tale UI
+`Tooltip` labels and open a local `AlertDialog`; only the dialog confirmation
+dispatches `backup/restore` or `backup/delete`.
+
 When `replaceExisting` is enabled, import must create the replacement workspaces
 and tabs before removing old workspace tabs. Removing old tabs first can close
 the only browser window during `pnpm run dev`, terminating the running Bento
@@ -1266,7 +1279,8 @@ workspace for its window. The payload carries:
 - workspace theme id;
 - UI color mode;
 - sidebar collapsed state;
-- custom panel sizes;
+- custom panel sizes, preserving the Settings-defined drag order for the panel
+  header custom widths menu;
 - default panel width, mirrored into the main content slot minimum width;
 - panel cycle wraparound setting;
 - panel shadow setting;

@@ -101,6 +101,8 @@ layout state as restart persistence: tabs, panels, panel order, panel widths,
 main content width, subdivisions, split-panel ratios, pinned panel references
 including their remembered widths, saved panels, settings, and the panel-strip
 scroll position.
+Stored backup restore and delete controls identify themselves on hover and ask
+for confirmation before dispatching either action.
 Replacement import should keep the browser window alive while it swaps the
 workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
@@ -279,6 +281,8 @@ Panels support the core Bento workflow:
   blank.
 - restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
   regular tab, using the configured default new-panel width.
+- choose custom panel width presets in Settings and drag those presets to set
+  the order shown in each side-panel header's custom widths menu.
 
 Side-panel and sub-panel headers can be hidden per panel from the header's
 `...` menu. Hidden headers are restored from a small grey handle at the panel's
@@ -453,8 +457,10 @@ shows a compact benefit/caveat explanation for the selected level. The search
 choices shown in onboarding and Settings are Firefox's currently visible search
 engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding search
 step adds supporting text that calls out visible privacy-oriented search engines
-when Firefox exposes them. Bento bundles uBlock Origin enabled by default and
-leaves it removable/disableable by the user.
+when Firefox exposes them. Settings also includes a searchable keyboard
+shortcuts command palette whose results are grouped by category and show command
+titles, supporting descriptions, and key tokens. Bento bundles uBlock Origin
+enabled by default and leaves it removable/disableable by the user.
 
 ## Design principles
 
