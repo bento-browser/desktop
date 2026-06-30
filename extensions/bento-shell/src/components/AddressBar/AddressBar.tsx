@@ -45,6 +45,7 @@ type RowKind =
   | OpenAddressRowKind
   | 'history'
   | 'bookmark'
+  | 'topSite'
   | 'clipboard'
   | 'savedPanel'
   | 'synthetic';
@@ -57,6 +58,7 @@ interface AddressRow extends CommandPaletteCommand {
   group:
     | 'Clipboard'
     | 'Saved Panels'
+    | 'Top Sites'
     | 'Open Tabs'
     | 'Open Panels'
     | 'History & Bookmarks'
@@ -74,7 +76,9 @@ function isUrlLike(query: string): boolean {
 }
 
 function resultSubtitle(result: AddrResult): string {
-  return result.kind === 'bookmark' ? `Bookmark · ${result.url}` : `History · ${result.url}`;
+  if (result.kind === 'bookmark') return `Bookmark · ${result.url}`;
+  if (result.kind === 'topSite') return `Top site · ${result.url}`;
+  return `History · ${result.url}`;
 }
 
 function resultToRow(result: AddrResult): AddressRow {
@@ -83,7 +87,7 @@ function resultToRow(result: AddrResult): AddressRow {
     kind: result.kind,
     title: result.title || result.url,
     subtitle: resultSubtitle(result),
-    group: 'History & Bookmarks',
+    group: result.kind === 'topSite' ? 'Top Sites' : 'History & Bookmarks',
     keywords: [result.url],
     url: result.url,
     favIconUrl: result.favIconUrl,
@@ -97,6 +101,7 @@ function rowIcon(kind: RowKind) {
     case 'panel':
       return PanelRightOpenIcon;
     case 'history':
+    case 'topSite':
       return ClockIcon;
     case 'bookmark':
       return BookmarkIcon;

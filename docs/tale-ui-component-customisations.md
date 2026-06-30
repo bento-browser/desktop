@@ -89,6 +89,11 @@ component CSS. If a reusable value is missing, add it to
 `bento-tokens.css` first. The usual exceptions are CSS conventions such as
 `0`, `100%`, and `1px` hairlines, plus documented optical corrections.
 
+Tale UI uses the browser-standard rem root: `1rem = 16px`. Bento-authored
+custom `rem` values in tokens, critical CSS, chrome-injected CSS, and
+standalone migration surfaces should use that contract directly. Do not add a
+Tale-specific `font-size: 10px` or `62.5%` root override.
+
 When text or icons sit on a tinted accent surface, use the paired foreground
 token for that surface. For example, active workspace/tab affordances should
 pair `--color-60` with `--color-60-fg`, not with an arbitrary neutral.

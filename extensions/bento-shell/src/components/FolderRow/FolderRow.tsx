@@ -13,6 +13,7 @@ export interface FolderRowProps {
   dragging?: boolean;
   dropTarget?: boolean;
   onContextMenu?: (id: string, event: React.MouseEvent<HTMLDivElement>) => void;
+  onToggleCollapsed?: (id: string, collapsed: boolean) => void;
   onDragStart?: (id: string) => void;
   onDragEnd?: (id: string) => void;
 }
@@ -22,6 +23,7 @@ function FolderRowImpl({
   dragging = false,
   dropTarget = false,
   onContextMenu,
+  onToggleCollapsed,
   onDragStart,
   onDragEnd,
 }: FolderRowProps) {
@@ -102,7 +104,9 @@ function FolderRowImpl({
       onDragEnd={draggable ? () => onDragEnd?.(folder.id) : undefined}
       onClick={() => {
         if (renaming || dragging) return;
-        dispatch({ type: 'tabFolder/setCollapsed', id: folder.id, collapsed: !folder.collapsed });
+        const collapsed = !folder.collapsed;
+        if (onToggleCollapsed) onToggleCollapsed(folder.id, collapsed);
+        else dispatch({ type: 'tabFolder/setCollapsed', id: folder.id, collapsed });
       }}
       onContextMenu={(event) => {
         event.preventDefault();

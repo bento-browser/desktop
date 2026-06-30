@@ -20,9 +20,9 @@ html[data-bento-address-bar='true'] #root {
 }
 
 .tale-command-palette__popup.bento-address-bar__popup {
-  --bento-address-bar-frame-padding-top: 4rem;
-  --bento-address-bar-frame-padding-inline: 8rem;
-  --bento-address-bar-frame-padding-bottom: 14rem;
+  --bento-address-bar-frame-padding-top: 2.5rem;
+  --bento-address-bar-frame-padding-inline: 5rem;
+  --bento-address-bar-frame-padding-bottom: 8.75rem;
 
   top: var(--bento-address-bar-frame-padding-top);
   left: 50%;

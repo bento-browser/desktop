@@ -74,8 +74,8 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
 }
 
 /* Cap the menu popup so it sits exactly under the trigger's outer width.
- * Tale UI's .tale-menu__popup defaults to `min-width: 16rem;
- * max-width: 32rem; width: max-content` — a long "Delete <very long
+ * Tale UI's .tale-menu__popup defaults to `min-width: 10rem;
+ * max-width: 20rem; width: max-content` — a long "Delete <very long
  * name>" item pushes it up to 320px regardless of the sidebar.
  *
  * react-aria anchors the popover at trigger-left (placement="bottom
@@ -88,7 +88,7 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
  * Targets the popup (not the popover wrapper, which is unstyled) and
  * is unlayered because Tale UI's defaults are unlayered too — layered
  * rules lose to unlayered regardless of specificity. min-width:0
- * unlocks the 16rem floor for narrow sidebars (persist=width allows
+ * unlocks the 10rem floor for narrow sidebars (persist=width allows
  * down to 200px). */
 .bento-workspace-switcher__popover .tale-menu__popup {
   min-width: 0;

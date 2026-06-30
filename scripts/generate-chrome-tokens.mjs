@@ -20,21 +20,13 @@
  * picks up the new theme alongside the extension.
  *
  * What this generator omits and why:
- *   - Tale UI's _base.css { html { font-size: 62.5% } }: applying that
- *     rule to chrome XHTML would resize ALL Firefox chrome (URL bar,
- *     tabs, menus). We only want the design tokens, not the root
- *     font-size override.
+ *   - Tale UI's _base.css { html { font-size: 100% } }: chrome already
+ *     runs on the browser-standard rem contract, and we only need token
+ *     files here, not document-level defaults for HTML apps.
  *   - Tale UI's index.css Google Fonts @import: chrome CSP would block
  *     the network fetch and the font isn't needed in chrome anyway.
  *   - Foundations / layout / utilities CSS: those style HTML/JSX
  *     elements; chrome XUL has its own widget styling.
- *
- * What it adds:
- *   - An explicit `--scale: 1.25px` after _effects.css so the calc-based
- *     radii resolve to the same px values as the extension's 62.5%-root
- *     rendering (1.25px == 0.125rem at 10px root). Without this, chrome
- *     would compute --radius-m as 16px instead of 10px and the panel
- *     corners would be twice as round as the rest of the UI.
  */
 
 import { readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
@@ -227,20 +219,7 @@ try {
   );
 }
 
-// Override --scale so calc(N * --scale) radii resolve to the same px
-// values the extension renders under its 62.5% root font-size.
-const footer = [
-  '',
-  '/* ─── chrome-only overrides ─────────────────────────────────── */',
-  ':root {',
-  '  /* 0.125rem at Tale UI\'s 62.5% root == 1.25px. Pinned in px here so',
-  '     chrome XHTML\'s system root font-size doesn\'t double the radii. */',
-  '  --scale: 1.25px;',
-  '}',
-  '',
-].join('\n');
-
-writeFileSync(OUT_PATH, header + body + bentoSection + presetsSection + footer);
+writeFileSync(OUT_PATH, header + body + bentoSection + presetsSection);
 
 const stat = statSync(OUT_PATH);
 const kb = (stat.size / 1024).toFixed(1);

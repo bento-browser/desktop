@@ -17,6 +17,7 @@ import { PinnedPanels } from './components/PinnedPanels/PinnedPanels';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
+import { signalAddrbarOpen } from './bridge/useAddrbar';
 import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
@@ -179,7 +180,7 @@ export function App() {
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
-  const onCreateTab = () => dispatch({ type: 'tab/create' });
+  const onCreateTab = () => signalAddrbarOpen('newTab');
   const onCreatePanel = () =>
     dispatch({ type: 'panel/openAt', url: 'about:newtab', sourceTabId: null, position: 'end' });
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });

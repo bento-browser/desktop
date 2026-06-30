@@ -12,14 +12,14 @@ body {
 }
 
 html {
-  --font-size-root: 10px;
+  --font-size-root: 16px;
 
-  font-size: 10px;
+  font-size: 100%;
   color-scheme: light;
 }
 
 html.tale-ui:not(.system-font-size) {
-  font-size: 10px;
+  font-size: 100%;
 }
 
 html[data-color-mode='dark'] {
@@ -57,7 +57,7 @@ body {
   --button-border: 0;
   --button-border-radius: var(--radius-s);
   --button-font-weight: 650;
-  --button-min-height: 3.2rem;
+  --button-min-height: 2rem;
   --button-background-color: var(--bento-migration-surface-control);
   --button-background-color-hover: var(--bento-migration-surface-hover);
   --button-background-color-active: var(--bento-migration-surface-active);
@@ -73,14 +73,14 @@ body {
   --color-accent-primary: var(--bento-migration-accent);
   --color-accent-primary-hover: var(--bento-migration-accent-hover);
   --color-accent-primary-active: var(--bento-migration-accent-active);
-  --focus-outline: 0 0 0 0.3rem var(--focus-ring-glow);
+  --focus-outline: 0 0 0 0.1875rem var(--focus-ring-glow);
   --focus-outline-color: var(--neutral-50);
-  --focus-outline-inset: -0.2rem;
-  --focus-outline-offset: 0.2rem;
+  --focus-outline-inset: -0.125rem;
+  --focus-outline-offset: 0.125rem;
   --focus-ring-color: var(--neutral-50);
   --focus-ring-glow: color-mix(in srgb, var(--neutral-60) 30%, transparent);
-  --font-size-root: 10px;
-  --font-size-small: 1.2rem;
+  --font-size-root: 16px;
+  --font-size-small: 0.75rem;
   --font-weight-heading: 650;
   --font-weight-semibold: 650;
   --icon-color: var(--neutral-80);
@@ -96,25 +96,25 @@ body {
   --label-font-family: var(--bento-migration-font-family);
   --label-font-weight: 650;
   --label-line-height: 1.4;
-  --label-m-font-size: 1.4rem;
-  --label-s-font-size: 1.2rem;
-  --label-xs-font-size: 1.1rem;
+  --label-m-font-size: 0.875rem;
+  --label-s-font-size: 0.75rem;
+  --label-xs-font-size: 0.6875rem;
   --item-focus-bg: var(--neutral-14);
   --item-focus-color: var(--neutral-90);
   --modal-actions-gap: var(--space-3xs);
   --modal-description-color: var(--bento-migration-text-muted);
   --modal-description-font-size: var(--text-s-font-size);
   --modal-title-color: var(--bento-migration-text);
-  --modal-title-font-size: 1.8rem;
-  --size-item-medium: 2.8rem;
-  --size-item-large: 3.6rem;
-  --size-item-xsmall: 2.4rem;
-  --space-large: 1.2rem;
-  --space-small: 0.8rem;
+  --modal-title-font-size: 1.125rem;
+  --size-item-medium: 1.75rem;
+  --size-item-large: 2.25rem;
+  --size-item-xsmall: 1.5rem;
+  --space-large: 0.75rem;
+  --space-small: 0.5rem;
   --text-font-family: var(--bento-migration-font-family);
   --text-line-height: 1.5;
-  --text-m-font-size: 1.4rem;
-  --text-s-font-size: 1.2rem;
+  --text-m-font-size: 0.875rem;
+  --text-s-font-size: 0.75rem;
   --text-color: var(--bento-migration-text);
   --text-color-deemphasized: var(--bento-migration-text-muted);
   --text-color-disabled: var(--neutral-50);
@@ -179,7 +179,7 @@ body {
   gap: var(--space-3xs);
   width: fit-content;
   min-width: 0;
-  min-height: 3.6rem;
+  min-height: 2.25rem;
   margin: 0;
   padding: var(--space-3xs) var(--space-2xs);
   border: 1px solid transparent;
@@ -196,8 +196,8 @@ body {
 
 .tale-button:focus-visible {
   box-shadow:
-    0 0 0 0.2rem var(--neutral-100),
-    0 0 0 0.4rem var(--focus-ring-color);
+    0 0 0 0.125rem var(--neutral-100),
+    0 0 0 0.25rem var(--focus-ring-color);
 }
 
 .tale-button--primary {
@@ -233,8 +233,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  width: min(54rem, calc(100vw - var(--space-l)));
-  min-height: 34rem;
+  width: min(33.75rem, calc(100vw - var(--space-l)));
+  min-height: 21.25rem;
   border-color: var(--bento-migration-border);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--neutral-5) 58%, transparent), transparent 46%),
@@ -247,13 +247,13 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-3xs);
-  min-height: 2.4rem;
+  min-height: 1.5rem;
 }
 
 .bento-migration-host__mark {
-  width: 1.8rem;
-  height: 1.8rem;
-  border: 0.2rem solid var(--bento-migration-accent);
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 0.125rem solid var(--bento-migration-accent);
   border-radius: var(--radius-xs);
   background:
     linear-gradient(
@@ -276,7 +276,7 @@ body {
 
 .bento-migration-host__label {
   color: var(--bento-migration-text-muted);
-  font-size: 1.3rem;
+  font-size: 0.8125rem;
   font-weight: 650;
 }
 
@@ -298,19 +298,19 @@ body {
 .bento-migration-host__startup-copy {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.1875rem;
   min-width: 0;
 }
 
 .bento-migration-host__startup-copy strong {
   color: var(--bento-migration-text);
-  font-size: 1.4rem;
+  font-size: 0.875rem;
   font-weight: 650;
 }
 
 .bento-migration-host__startup-copy span {
   color: var(--bento-migration-text-muted);
-  font-size: 1.2rem;
+  font-size: 0.75rem;
 }
 
 #restart-profile-import {
@@ -319,13 +319,13 @@ body {
 }
 
 migration-wizard {
-  --embedded-wizard-header-font-size: 1.6rem;
+  --embedded-wizard-header-font-size: 1rem;
   --embedded-wizard-header-font-weight: 650;
-  --embedded-wizard-header-margin-block: 0 1.2rem;
-  --embedded-wizard-subheader-font-size: 1.2rem;
+  --embedded-wizard-header-margin-block: 0 0.75rem;
+  --embedded-wizard-subheader-font-size: 0.75rem;
   --embedded-wizard-subheader-font-weight: 500;
   --embedded-wizard-subheader-margin-block: 0 var(--space-xs);
-  --resource-type-label-margin-block: 1.2rem 0;
+  --resource-type-label-margin-block: 0.75rem 0;
   --resource-type-label-margin-inline: var(--space-xs) 0;
 
   width: 100%;

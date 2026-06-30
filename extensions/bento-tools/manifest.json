@@ -41,7 +41,8 @@
     "privacy",
     "browserSettings",
     "bookmarks",
-    "history"
+    "history",
+    "topSites"
   ],
   "commands": {
     "workspace-1": {

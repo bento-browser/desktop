@@ -316,8 +316,8 @@
         position: absolute;
         left: 50%;
         top: 42%;
-        width: min(34rem, 46%);
-        height: 4rem;
+        width: min(21.25rem, 46%);
+        height: 2.5rem;
         border-radius: var(--radius-s);
         background-color: var(--neutral-14);
         transform: translate(-50%, -50%);
@@ -326,9 +326,9 @@
         content: '';
         position: absolute;
         left: 50%;
-        top: calc(42% + 6.5rem);
-        width: min(28rem, 38%);
-        height: 2.8rem;
+        top: calc(42% + 4.0625rem);
+        width: min(17.5rem, 38%);
+        height: 1.75rem;
         border-radius: var(--radius-s);
         background-color: var(--neutral-12);
         transform: translateX(-50%);
@@ -340,7 +340,7 @@
         gap: var(--space-xs);
       }
       .bento-startup-veil__workspace {
-        height: 3.6rem;
+        height: 2.25rem;
         margin-block-end: var(--space-s);
       }
       .bento-startup-veil__rows {
@@ -349,26 +349,26 @@
         gap: var(--space-xs);
       }
       .bento-startup-veil__dot {
-        width: 1.6rem;
-        height: 1.6rem;
+        width: 1rem;
+        height: 1rem;
         border-radius: var(--radius-s);
         background-color: var(--neutral-14);
         flex: 0 0 auto;
       }
       .bento-startup-veil__row .bento-startup-veil__dot {
-        width: 1rem;
-        height: 1rem;
+        width: 0.625rem;
+        height: 0.625rem;
       }
       .bento-startup-veil__bar {
-        height: 1rem;
+        height: 0.625rem;
         border-radius: var(--radius-xs);
         background-color: var(--neutral-14);
       }
       .bento-startup-veil__workspace .bento-startup-veil__bar {
-        width: 7rem;
+        width: 4.375rem;
       }
       .bento-startup-veil__row .bento-startup-veil__bar {
-        width: min(12rem, 68%);
+        width: min(7.5rem, 68%);
       }
       @media (prefers-reduced-motion: no-preference) {
         .bento-startup-veil__bar,
@@ -1370,7 +1370,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        --_spinner-size: 3.6rem;
+        --_spinner-size: 2.25rem;
       }
       .bento-panel-loading-overlay .tale-spinner__svg {
         width: var(--_spinner-size);
@@ -1664,26 +1664,32 @@
          grid and applyTrailerWidth() flips --bento-saved-panel-overflow
          to 1 so the host widens just enough for the select. */
       #bento-add-panel-trailer {
-        width: calc(
-          (var(--space-l) * 3) +
-            (var(--space-3xs) * 2) +
-            (var(--space-xs) * 2) +
-            (
-              var(--bento-saved-panel-overflow, 0) *
-                (12rem - ((var(--space-l) * 3) + (var(--space-3xs) * 2)))
-            )
-        ) !important;
-        flex: 0 0
+        --bento-panel-trailer-button-size: max(
+          var(--space-l),
+          calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
+        );
+        --bento-panel-trailer-grid-width: calc(
+          (var(--bento-panel-trailer-button-size) * 3) + (var(--space-3xs) * 2)
+        );
+        --bento-panel-trailer-base-width: max(
+          16rem,
+          calc(var(--bento-panel-trailer-grid-width) + (var(--space-xs) * 2))
+        );
+        --bento-panel-trailer-wide-width: 16rem;
+        --bento-panel-trailer-width: max(
+          var(--bento-panel-trailer-base-width),
           calc(
-            (var(--space-l) * 3) +
-              (var(--space-3xs) * 2) +
+            var(--bento-panel-trailer-grid-width) +
               (var(--space-xs) * 2) +
               (
                 var(--bento-saved-panel-overflow, 0) *
-                  (12rem - ((var(--space-l) * 3) + (var(--space-3xs) * 2)))
+                  (var(--bento-panel-trailer-wide-width) - var(--bento-panel-trailer-grid-width))
               )
-          ) !important;
-        min-width: calc((var(--space-l) * 3) + (var(--space-3xs) * 2) + (var(--space-xs) * 2)) !important;
+          )
+        );
+        width: var(--bento-panel-trailer-width) !important;
+        flex: 0 0 var(--bento-panel-trailer-width) !important;
+        min-width: var(--bento-panel-trailer-base-width) !important;
         align-self: stretch !important;
         display: flex !important;
         flex-direction: row !important;
@@ -2290,7 +2296,7 @@
         flex-direction: column !important;
         align-items: center !important;
         gap: var(--space-2xs) !important;
-        max-width: min(100%, 34rem) !important;
+        max-width: min(100%, 21.25rem) !important;
         max-height: 45% !important;
         overflow: auto !important;
       }
@@ -2301,7 +2307,7 @@
       }
       .bento-subdivision-chooser__saved-grid {
         display: grid !important;
-        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)) !important;
+        grid-template-columns: repeat(auto-fit, minmax(5.625rem, 1fr)) !important;
         gap: var(--space-2xs) !important;
         width: 100% !important;
       }
@@ -3695,6 +3701,7 @@
   const WORKSPACE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_PALETTE';
   const MERGE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_MERGE_PALETTE';
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
+  const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
   const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
   // Same pattern for the confirm overlay (workspace deletion, etc.). The
@@ -4532,6 +4539,34 @@
         ? parsed.searchEngineId.trim()
         : undefined;
     return searchEngineId ? { value, searchEngineId } : { value };
+  }
+
+  function parseAddrbarOpenPayload(encodedPayload) {
+    const decoded = decodeAddrbarPayload(encodedPayload).trim();
+    if (!decoded.startsWith('{')) {
+      return { mode: decoded === 'newTab' ? 'newTab' : 'current', initialQuery: '' };
+    }
+    const parsed = JSON.parse(decoded);
+    return {
+      mode: parsed?.mode === 'newTab' ? 'newTab' : 'current',
+      initialQuery: typeof parsed?.initialQuery === 'string' ? parsed.initialQuery : '',
+    };
+  }
+
+  function handleAddrbarOpenTitle(title) {
+    const tail = title.slice(ADDRBAR_OPEN_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) {
+      showAddrbar('newTab');
+      return;
+    }
+    try {
+      const payload = parseAddrbarOpenPayload(tail.slice(colon + 1));
+      showAddrbar(payload.mode, payload.initialQuery);
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar open payload decode failed:', err);
+      showAddrbar('newTab');
+    }
   }
 
   function resolveAddrbarSpec(value) {
@@ -14143,7 +14178,7 @@
       items: payload.items,
       onSelect: (itemId) => {
         if (itemId === 'new-tab') {
-          dispatchShellAction({ type: 'tab/create' });
+          showAddrbar('newTab');
           return;
         }
         if (itemId === 'reopen-closed-tab') {
@@ -16314,6 +16349,7 @@
           if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
           else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
+          else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
           else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
           else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();

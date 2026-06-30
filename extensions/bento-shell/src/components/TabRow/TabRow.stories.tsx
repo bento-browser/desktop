@@ -32,7 +32,7 @@ function SidebarFrame({
 }
 
 // Toggle data-bento-collapsed on <html> for the duration of the story so
-// TabRow's collapsed CSS rules (grid-template-columns: 1rem, hide title /
+// TabRow's collapsed CSS rules (grid-template-columns: 0.625rem, hide title /
 // audible / actions) take effect. Cleanup on unmount keeps the attribute
 // from leaking into other stories.
 function useCollapsedAttribute(collapsed: boolean) {

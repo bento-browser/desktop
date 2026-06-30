@@ -3,6 +3,7 @@ import type { AddrbarNavigatePayload } from '@shared/protocol';
 export type AddrbarMode = 'current' | 'newTab';
 
 export const ADDRBAR_BUS_NAME = 'bento-addrbar-bus';
+export const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
 export const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
 export const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
 
@@ -34,6 +35,12 @@ export function encodeTitlePayload(value: string): string {
 
 export function signalAddrbarClose(): void {
   document.title = `${ADDRBAR_CLOSE_PREFIX}_${Date.now()}`;
+}
+
+export function signalAddrbarOpen(mode: AddrbarMode, initialQuery = ''): void {
+  document.title = `${ADDRBAR_OPEN_PREFIX}${Date.now()}:${encodeTitlePayload(
+    JSON.stringify({ mode, initialQuery }),
+  )}`;
 }
 
 export function signalAddrbarNavigate(value: string | AddrbarNavigatePayload): void {

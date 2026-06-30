@@ -25,6 +25,7 @@ import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/button';
+import '@tale-ui/react-styles/icon-button';
 import '@tale-ui/react-styles/icon';
 import '@tale-ui/react-styles/tooltip';
 import '@tale-ui/react-styles/select-native';

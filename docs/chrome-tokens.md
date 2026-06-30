@@ -45,18 +45,17 @@ themes/_neutral-themes.css→  .neutral-cool, .neutral-warm, … overrides
 
 It deliberately **skips**:
 
-- `tokens/_base.css`'s `html { font-size: 62.5% }` — would resize all of
-  Firefox chrome (URL bar, tabs, menus). The `:root` vars in that file
-  are inlined into `_effects.css`'s scale anyway.
+- `tokens/_base.css`'s `html { font-size: 100% }` — chrome already uses
+  the browser-standard rem contract. The generator only needs token files,
+  not document-level defaults for HTML apps.
 - `index.css`'s Google Fonts `@import` — chrome CSP blocks the network
   fetch and Bento bundles fonts locally for the extension.
 - All `foundations/`, `layout/`, `utilities/` — those style HTML/JSX
   elements; chrome XUL has its own widget styling.
 
-It **adds** a `--scale: 1.25px` override at the end so the calc-based
-radii resolve to the same px values the extension renders under its
-62.5%-root font-size (`0.125rem` at 10px root == 1.25px). Without this
-override, chrome's system 16px root would double the radii.
+It does not add root-size compensation. Tale UI now publishes tokens for the
+browser-standard root (`1rem = 16px`), and chrome consumes those values
+directly.
 
 ## Activating a different theme
 
@@ -125,8 +124,8 @@ The only times this file needs human attention are:
   apply (a new `_base.css`-style document-root override, or content
   styles that target HTML elements chrome doesn't have) — update the
   "skips" list in this doc and the generator.
-- The `--scale: 1.25px` override needs revisiting if Tale UI changes
-  its root font-size convention away from 62.5% / 10px.
+- Tale UI changes its root font-size convention again. Re-audit Bento's
+  bespoke `rem` values and this generator before importing the update.
 
 If `pnpm run import` ever fails with `cannot read .../tokens/_X.css`,
 either Tale UI removed a file we're reading or the path to the Tale UI

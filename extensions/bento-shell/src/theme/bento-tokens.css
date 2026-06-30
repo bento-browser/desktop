@@ -63,7 +63,7 @@
        #bento-shell-host via the chrome-injected stylesheet in
        bento-shell-mount.js — the chrome patch ships inline min/max
        values that the !important overrides there clobber. */
-    --bento-tab-row-height: 3.2rem;
+    --bento-tab-row-height: 2rem;
     --bento-tab-row-font-size: var(--text-xs-font-size);
     --bento-tab-folder-indent: var(--space-s);
     --bento-pinned-panels-button-size: var(--space-l);
@@ -84,42 +84,42 @@
     --bento-brand-bg: var(--neutral-5);
 
     /* Component dimensions */
-    --bento-favicon-size: 1.6rem;
-    --bento-command-palette-width: 60rem;
-    --bento-command-palette-height: 48rem;
+    --bento-favicon-size: 1rem;
+    --bento-command-palette-width: 37.5rem;
+    --bento-command-palette-height: 30rem;
     --bento-command-palette-max-inline: 90vw;
     --bento-command-palette-max-block: 80vh;
-    --bento-workspace-palette-width: 76rem;
-    --bento-workspace-palette-height: 56rem;
+    --bento-workspace-palette-width: 47.5rem;
+    --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;
     --bento-workspace-palette-max-block: 84vh;
-    --bento-workspace-palette-row-min-width: 68rem;
-    --bento-workspace-palette-icon-field-width: 3.6rem;
-    --bento-workspace-palette-status-action-width: 8rem;
-    --bento-workspace-icon-picker-trigger-value-size: 2.4rem;
-    --bento-workspace-icon-picker-trigger-font-size: 2rem;
-    --bento-workspace-icon-picker-popover-width: 34rem;
-    --bento-workspace-icon-picker-list-height: 20rem;
-    --bento-workspace-icon-picker-tab-size: 3rem;
-    --bento-workspace-icon-picker-item-size: 3.2rem;
-    --bento-workspace-icon-picker-clear-button-size: 1.8rem;
-    --bento-workspace-icon-picker-clear-offset: -0.6rem;
-    --bento-workspace-theme-picker-trigger-width: 16rem;
-    --bento-workspace-theme-picker-popup-width: 28rem;
+    --bento-workspace-palette-row-min-width: 42.5rem;
+    --bento-workspace-palette-icon-field-width: 2.25rem;
+    --bento-workspace-palette-status-action-width: 5rem;
+    --bento-workspace-icon-picker-trigger-value-size: 1.5rem;
+    --bento-workspace-icon-picker-trigger-font-size: 1.25rem;
+    --bento-workspace-icon-picker-popover-width: 21.25rem;
+    --bento-workspace-icon-picker-list-height: 12.5rem;
+    --bento-workspace-icon-picker-tab-size: 1.875rem;
+    --bento-workspace-icon-picker-item-size: 2rem;
+    --bento-workspace-icon-picker-clear-button-size: 1.125rem;
+    --bento-workspace-icon-picker-clear-offset: -0.375rem;
+    --bento-workspace-theme-picker-trigger-width: 10rem;
+    --bento-workspace-theme-picker-popup-width: 17.5rem;
     --bento-workspace-theme-picker-popup-max-inline: calc(100vw - var(--space-m));
-    --bento-workspace-theme-picker-list-max-block: 24rem;
-    --bento-workspace-theme-picker-option-block-size: 4.8rem;
-    --bento-workspace-theme-picker-swatch-size: 1.8rem;
-    --bento-address-bar-width: 64rem;
-    --bento-address-bar-height: 42rem;
+    --bento-workspace-theme-picker-list-max-block: 15rem;
+    --bento-workspace-theme-picker-option-block-size: 3rem;
+    --bento-workspace-theme-picker-swatch-size: 1.125rem;
+    --bento-address-bar-width: 40rem;
+    --bento-address-bar-height: 26.25rem;
     --bento-address-bar-max-inline: 92vw;
     --bento-address-bar-max-block: 74vh;
-    --bento-address-bar-favicon-size: 1.8rem;
-    --bento-address-bar-engine-width: 14rem;
-    --bento-settings-grid-max-width: 132rem;
+    --bento-address-bar-favicon-size: 1.125rem;
+    --bento-address-bar-engine-width: 8.75rem;
+    --bento-settings-grid-max-width: 82.5rem;
     --bento-settings-grid-gap: var(--space-s);
-    --bento-settings-header-max-width: 72rem;
-    --bento-settings-number-field-max-width: 14rem;
+    --bento-settings-header-max-width: 45rem;
+    --bento-settings-number-field-max-width: 8.75rem;
 
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay

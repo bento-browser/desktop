@@ -108,10 +108,12 @@ workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
 
 The sidebar tab list supports multi-selection for workspace organization.
-The tab list exposes `New tab` and `New panel` buttons for opening fresh regular
-tabs and blank panels in the active workspace. A search icon beside those
-controls expands into a sidebar search field over the action row. Typing filters
-open tabs and side panels by title across all workspaces. The field has a clear
+The tab list exposes `New tab` and `New panel` buttons. `New tab` opens the
+floating address/search bar in new-tab mode, creating the tab only after the
+user commits, while `New panel` opens a blank panel in the active workspace. A
+search icon beside those controls expands into a sidebar search field over the
+action row. Typing filters open tabs and side panels by title across all
+workspaces. The field has a clear
 button labeled "Clear". While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.
@@ -211,7 +213,8 @@ The floating address/search bar opens with `Cmd/Ctrl+L` or `Cmd/Ctrl+E` for the
 current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
 address field also opens the same floating address/search bar in current-tab
 mode instead of showing Firefox's native suggestion dropdown. Empty input shows
-recent history and does not compute or show open tab or panel autocomplete rows.
+the same top-site shortcuts as Firefox's new tab page and does not compute or
+show open tab or panel autocomplete rows.
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
 open that URL from the clipboard. Saved panels also appear by default in
 new-tab mode and open as side panels. Typing hides these default clipboard and

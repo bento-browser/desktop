@@ -24,6 +24,18 @@ describe('searchAddressResults', () => {
       bookmarks: {
         search: vi.fn(async () => []),
       },
+      topSites: {
+        get: vi.fn(async () => [
+          {
+            url: 'https://example.com/top',
+            title: 'Top site',
+            favicon: 'data:image/png;base64,abc',
+          },
+          {
+            url: 'https://example.com/untitled-top',
+          },
+        ]),
+      },
     });
   });
 
@@ -31,7 +43,34 @@ describe('searchAddressResults', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns recent history for an empty query', async () => {
+  it('returns new-tab top sites for an empty query', async () => {
+    const results = await searchAddressResults('', 8);
+
+    expect(browser.topSites.get).toHaveBeenCalledWith({
+      newtab: true,
+      limit: 8,
+      includeFavicon: true,
+    });
+    expect(browser.history.search).not.toHaveBeenCalled();
+    expect(browser.bookmarks.search).not.toHaveBeenCalled();
+    expect(results).toEqual([
+      expect.objectContaining({
+        kind: 'topSite',
+        url: 'https://example.com/top',
+        title: 'Top site',
+        favIconUrl: 'data:image/png;base64,abc',
+      }),
+      expect.objectContaining({
+        kind: 'topSite',
+        url: 'https://example.com/untitled-top',
+        title: 'https://example.com/untitled-top',
+      }),
+    ]);
+  });
+
+  it('falls back to recent history when top sites are unavailable', async () => {
+    vi.mocked(browser.topSites.get).mockRejectedValueOnce(new Error('unavailable'));
+
     const results = await searchAddressResults('', 8);
 
     expect(browser.history.search).toHaveBeenCalledWith({

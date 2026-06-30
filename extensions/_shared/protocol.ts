@@ -673,7 +673,7 @@ export interface PrivacySettings {
 }
 
 export interface AddrResult {
-  kind: 'history' | 'bookmark';
+  kind: 'history' | 'bookmark' | 'topSite';
   url: string;
   title: string;
   favIconUrl?: string;

@@ -5,8 +5,32 @@
  * sizes itself via the savedPanelCount-derived flexBasis; this CSS only
  * lays out the buttons inside the iframe.
  */
+/* Tale UI component styles are unlayered, so these button overrides stay
+ * unlayered too. They keep the actual IconButton boxes matched to the grid
+ * tracks that the chrome host reserves. */
+.tale-icon-button.bento-panel-trailer__btn {
+  --tale-button-padding-inline: var(--space-2xs);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--bento-panel-trailer-button-size, var(--space-l));
+  height: var(--bento-panel-trailer-button-size, var(--space-l));
+  min-width: var(--bento-panel-trailer-button-size, var(--space-l));
+  border-radius: var(--radius-s);
+}
+
+.tale-icon-button.bento-panel-trailer__btn .tale-icon,
+.tale-icon-button.bento-panel-trailer__btn svg {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
 @layer bento.components {
   .bento-panel-trailer {
+    --bento-panel-trailer-button-size: max(
+      var(--space-l),
+      calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
+    );
+    --bento-panel-trailer-wide-width: 16rem;
     /* Fill the iframe — chrome controls the outer vbox width. */
     display: flex;
     flex-direction: column;
@@ -23,8 +47,8 @@
 
   .bento-panel-trailer__grid {
     display: grid;
-    grid-template-columns: repeat(3, var(--space-l));
-    grid-template-rows: repeat(3, var(--space-l));
+    grid-template-columns: repeat(3, var(--bento-panel-trailer-button-size));
+    grid-template-rows: repeat(3, var(--bento-panel-trailer-button-size));
     gap: var(--space-3xs);
     flex: 0 0 auto;
   }
@@ -33,20 +57,9 @@
    * classes (applied alongside) handle hover/active/focus rings. The
    * BEM modifiers force a square aspect for icon-only triggers. */
   .bento-panel-trailer__btn {
-    --tale-button-padding-inline: var(--space-2xs);
-    flex: 0 0 auto;
-    width: var(--space-l);
-    height: var(--space-l);
-    min-width: var(--space-l);
-    border-radius: var(--radius-s);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-  }
-
-  .bento-panel-trailer__btn svg {
-    width: 1rem;
-    height: 1rem;
   }
 
   :root[data-bento-cycle-focus-add='1'] .bento-panel-trailer__btn--add {
@@ -54,8 +67,8 @@
   }
 
   .bento-panel-trailer__placeholder {
-    width: var(--space-l);
-    height: var(--space-l);
+    width: var(--bento-panel-trailer-button-size);
+    height: var(--bento-panel-trailer-button-size);
     border-radius: var(--radius-s);
     background-color: var(--neutral-18);
   }
@@ -80,6 +93,6 @@
 
   .bento-panel-trailer__more {
     flex: 0 0 auto;
-    width: 12rem;
+    width: var(--bento-panel-trailer-wide-width);
   }
 }

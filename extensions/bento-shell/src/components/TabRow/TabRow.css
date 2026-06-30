@@ -6,7 +6,7 @@
 @layer bento.components {
   .bento-tab-row {
     display: grid;
-    grid-template-columns: 1rem minmax(0, 1fr);
+    grid-template-columns: 0.625rem minmax(0, 1fr);
     position: relative;
     align-items: center;
     gap: var(--space-xs);
@@ -144,7 +144,7 @@
   }
 
   /* Loading state replaces the favicon with the Tale UI Spinner. The slot
-     keeps its 1rem footprint so the title doesn't reflow as the throbber
+     keeps its 0.625rem footprint so the title doesn't reflow as the throbber
      toggles on/off during a normal page load. */
   .bento-tab-row__favicon--loading {
     display: inline-flex;
@@ -171,7 +171,7 @@
   }
 
   .bento-tab-row--has-audio-control {
-    grid-template-columns: 1rem minmax(0, 1fr);
+    grid-template-columns: 0.625rem minmax(0, 1fr);
     padding-inline-start: calc(var(--space-s) + var(--bento-favicon-size));
   }
 

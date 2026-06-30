@@ -268,6 +268,8 @@ function TabListPane({
   const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const newMenuPopoverRef = useRef<HTMLElement>(null);
   const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
+  const folderToggleAnchorRef = useRef<{ folderId: string; offsetTop: number } | null>(null);
+  const suppressAutoScrollRowsRef = useRef<unknown | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
@@ -394,6 +396,31 @@ function TabListPane({
   }, [rowSlotSize, rows.length, virtualizer]);
 
   useLayoutEffect(() => {
+    const anchor = folderToggleAnchorRef.current;
+    if (!anchor || searchFiltering || rowSlotSize <= 0) return;
+    const scroller = parentRef.current;
+    if (!scroller) return;
+    const rowIndex = rows.findIndex(
+      (row) => row.kind === 'folder' && row.folderId === anchor.folderId,
+    );
+    if (rowIndex < 0) {
+      folderToggleAnchorRef.current = null;
+      return;
+    }
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const nextScrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, rowIndex * rowSlotSize - anchor.offsetTop),
+    );
+    if (Math.abs(scroller.scrollTop - nextScrollTop) > 0.5) {
+      scroller.scrollTop = nextScrollTop;
+    }
+    folderToggleAnchorRef.current = null;
+    suppressAutoScrollRowsRef.current = rows;
+    updateScrollMetrics();
+  }, [rowSlotSize, rows, searchFiltering, updateScrollMetrics]);
+
+  useLayoutEffect(() => {
     if (
       revealTabRequest === undefined ||
       searchFiltering ||
@@ -402,17 +429,24 @@ function TabListPane({
     ) {
       return;
     }
+    if (suppressAutoScrollRowsRef.current === rows) return;
     smoothRevealRef.current = { request: revealTabRequest, rowIndex: requestedRevealRowIndex };
     virtualizer.scrollToIndex(requestedRevealRowIndex, { align: 'auto', behavior: 'smooth' });
-  }, [requestedRevealRowIndex, revealTabRequest, rowSlotSize, searchFiltering, virtualizer]);
+  }, [requestedRevealRowIndex, revealTabRequest, rowSlotSize, rows, searchFiltering, virtualizer]);
 
   useLayoutEffect(() => {
+    if (suppressAutoScrollRowsRef.current === rows) {
+      smoothRevealRef.current = null;
+      suppressAutoScrollRowsRef.current = null;
+      return;
+    }
     if (searchFiltering || activeRowIndex < 0 || rowSlotSize <= 0) return;
+    suppressAutoScrollRowsRef.current = null;
     const smoothReveal = smoothRevealRef.current;
     if (smoothReveal?.rowIndex === activeRowIndex) return;
     smoothRevealRef.current = null;
     virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
-  }, [activeRowIndex, rowSlotSize, searchFiltering, virtualizer]);
+  }, [activeRowIndex, rowSlotSize, rows, searchFiltering, virtualizer]);
 
   useLayoutEffect(() => {
     updateScrollMetrics();
@@ -649,6 +683,24 @@ function TabListPane({
     setDropSlot(null);
     setFolderDropTargetId(null);
   }, []);
+  const handleFolderToggleCollapsed = useCallback(
+    (folderId: string, collapsed: boolean) => {
+      const scroller = parentRef.current;
+      if (scroller && rowSlotSize > 0) {
+        const rowIndex = rows.findIndex(
+          (row) => row.kind === 'folder' && row.folderId === folderId,
+        );
+        if (rowIndex >= 0) {
+          folderToggleAnchorRef.current = {
+            folderId,
+            offsetTop: rowIndex * rowSlotSize - scroller.scrollTop,
+          };
+        }
+      }
+      dispatch({ type: 'tabFolder/setCollapsed', id: folderId, collapsed });
+    },
+    [rowSlotSize, rows],
+  );
   const handleRowContextMenu = useCallback(
     (tabId: number, event: React.MouseEvent<HTMLDivElement>) => {
       onTabContextMenu?.(tabId, event, onSelectionContextMenu(tabId), visualTabOrder);
@@ -1031,6 +1083,7 @@ function TabListPane({
                       dragging={row.folderId === dragFolderId}
                       dropTarget={row.folderId === folderDropTargetId}
                       onContextMenu={onFolderContextMenu}
+                      onToggleCollapsed={handleFolderToggleCollapsed}
                       onDragStart={handleFolderDragStart}
                       onDragEnd={handleFolderDragEnd}
                     />

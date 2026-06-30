@@ -29,8 +29,8 @@
 
   .bento-tab-list-skeleton__bar {
     flex: 1;
-    height: 0.9rem;
-    max-width: 16rem;
+    height: 0.5625rem;
+    max-width: 10rem;
     border-radius: var(--radius-xs);
     background-color: var(--bento-surface-hover-solid);
     animation: bento-tab-list-skeleton-shimmer 1.4s var(--bento-easing-in-out) infinite;

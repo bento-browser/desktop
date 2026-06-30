@@ -159,11 +159,14 @@ restart.
 `Cmd/Ctrl+L` opens it in current-tab mode, `Cmd/Ctrl+T` opens it in new-tab mode,
 and focus or pointer entry on Firefox's native `#urlbar-input` is intercepted in
 the parent chrome window so Firefox's native suggestions popup is closed and the
-Bento overlay opens instead. Open requests can pass an `initialQuery` through
-the `bento-addrbar-bus` payload; `Cmd/Ctrl+T` requests with an empty initial
-query also pass a validated clipboard web URL as `clipboardUrl` when the global
+Bento overlay opens instead. The sidebar `New tab` action sends
+`BENTO_OPEN_ADDRBAR:<ts>:<payload>` title IPC through `signalAddrbarOpen('newTab')`;
+chrome decodes it and calls the same `showAddrbar('newTab')` path as the keyboard
+shortcut. Open requests can pass an `initialQuery` through the
+`bento-addrbar-bus` payload; `Cmd/Ctrl+T` requests with an empty initial query
+also pass a validated clipboard web URL as `clipboardUrl` when the global
 clipboard contains one. Native top-urlbar clicks currently use an empty query so
-the overlay shows recent history.
+the overlay shows the same top-site shortcuts as Firefox's new tab page.
 
 The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
 initial query and clipboard URL with the open version and passes them to
@@ -178,7 +181,8 @@ palette only, and `savedPanels/snapshot`, which
 does not use `privacy/setDefaultSearchEngine` and never mutates Bento Settings
 or Firefox's default search engine.
 `extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
-recent-history request using `browser.history.search({ text: '', startTime: 0 })`.
+new-tab top-sites request using `browser.topSites.get({ newtab: true })`, with
+recent history as a fallback if the top-sites API is unavailable or not ready.
 The address palette uses Tale UI's standard opaque `CommandPalette` popup with
 an explicit `var(--neutral-5)` background. Its `CommandPalette.Backdrop` is a
 non-painting wrapper used only for React Aria modal context, and the chrome
@@ -195,7 +199,7 @@ populates it from `tab.url` or `pendingUrl`, emits URL update deltas, and emits
 URL-clearing deltas when Firefox no longer exposes a usable URL for the tab. The
 address palette does not build open tab/panel rows while `query.trim()` is
 empty. For empty new-tab opens, a validated clipboard URL row is prepended ahead
-of saved-panel and recent-history rows. Saved-panel rows are built from the
+of saved-panel and top-site rows. Saved-panel rows are built from the
 global saved-panel mirror and dispatch `panel/openAt` with `position: 'end'`, so
 they append as side panels instead of opening as main tabs. These default rows
 are removed as soon as the user types. After typing,
@@ -452,10 +456,11 @@ empty-selection title writes can stomp `BENTO_PANELS` before chrome polls it and
 hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
 assignment remains tools-owned.
 `TabList` also renders the visible `New tab` and `New panel` buttons above the
-virtualized pane. `New tab` dispatches the existing `tab/create` action from
-`App.tsx`; `tab/create` may also carry a Firefox tab-strip `index` when a
-context-menu command needs a specific insertion point. `New panel` dispatches
-`panel/openAt` with `about:newtab`,
+virtualized pane. `New tab` calls `signalAddrbarOpen('newTab')` from `App.tsx`
+so the floating address/search bar opens and no blank tab is created until the
+user commits. Indexed context-menu commands still dispatch `tab/create` with a
+Firefox tab-strip `index` when a command needs a specific insertion point.
+`New panel` dispatches `panel/openAt` with `about:newtab`,
 `sourceTabId: null`, and `position: 'end'`. Tab and panel creation stay
 tools-owned and use the same active-window and active-workspace assignment paths
 as other entry points. Collapsed sidebar mode keeps the controls visible as
@@ -466,6 +471,12 @@ geometry predictable. The collapsed host width is
 `--bento-tab-strip-width-collapsed`, which aliases
 `--bento-pinned-panels-rail-width`, so the collapsed sidebar matches the
 favicon-only pinned-panel rail width.
+Folder expand/collapse records the clicked folder row's offset inside the
+virtualized scroller before dispatching `tabFolder/setCollapsed`, restores that
+offset on the next row-model render, and suppresses the pane's one-shot
+active-tab auto-scroll for that render. Without this anchor, collapsing a folder
+that contains the active tab can move the active row to a peek slot and make the
+sidebar jump away from the clicked folder.
 The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
@@ -1415,19 +1426,22 @@ it through `Services.uriFixup`, reject keyword-search results, and forward only
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
 actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the
 query so the shell can discard stale async results. The tools search module
-queries all history with `browser.history.search({ startTime: 0 })`, searches
-bookmarks with `browser.bookmarks.search(query)`, filters bookmark folders out,
-dedupes by normalized URL, and ranks host-prefix matches, history recency and
-visit count, and bookmark matches. Favicons are best-effort: open tabs provide
-`TabSnapshot.favIconUrl`, but history and bookmark APIs do not return favicons.
+queries Firefox new-tab top sites for empty input, queries all history with
+`browser.history.search({ startTime: 0 })` after typing, searches bookmarks with
+`browser.bookmarks.search(query)`, filters bookmark folders out, dedupes by
+normalized URL, and ranks host-prefix matches, history recency and visit count,
+and bookmark matches. Favicons are best-effort: open tabs provide
+`TabSnapshot.favIconUrl`, top-site rows can include `browser.topSites` favicons,
+but history and bookmark APIs do not return favicons.
 The React overlay renders typed-only active-workspace tab/panel rows, async
-history/bookmark rows, an empty-new-tab clipboard URL row, and synthetic
-search/open row through Tale UI's `CommandPalette` recipe and `useCommandPalette`
-hook. Empty new-tab mode also renders saved-panel rows from the saved-panel
-mirror and opens them through `panel/openAt`. Sorting is disabled so the groups
-keep Bento's fixed order: clipboard when present, saved panels, open tabs,
-panels, history/bookmarks, then search/open. Empty query preserves
-recent-history results but returns no open-tab/open-panel autocomplete rows.
+top-site/history/bookmark rows, an empty-new-tab clipboard URL row, and
+synthetic search/open row through Tale UI's `CommandPalette` recipe and
+`useCommandPalette` hook. Empty new-tab mode also renders saved-panel rows from
+the saved-panel mirror and opens them through `panel/openAt`. Sorting is
+disabled so the groups keep Bento's fixed order: clipboard when present, saved
+panels, typed open tabs, typed panels, top sites or typed history/bookmarks, then
+search/open. Empty query preserves top-site results but returns no
+open-tab/open-panel autocomplete rows.
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
 one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload.

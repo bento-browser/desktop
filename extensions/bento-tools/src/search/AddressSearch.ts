@@ -59,6 +59,51 @@ function titleForUrl(title: string | undefined, url: string): string {
   return url;
 }
 
+async function getEmptyQueryResults(maxResults: number): Promise<AddrResult[]> {
+  try {
+    const topSites = await browser.topSites.get({
+      newtab: true,
+      limit: maxResults,
+      includeFavicon: true,
+    });
+    if (topSites.length > 0) {
+      return topSites
+        .filter((site) => !!site.url)
+        .map(
+          (site, index): AddrResult => ({
+            kind: 'topSite',
+            url: site.url,
+            title: titleForUrl(site.title, site.url),
+            favIconUrl: site.favicon,
+            score: maxResults - index,
+          }),
+        )
+        .slice(0, maxResults);
+    }
+  } catch {
+    // Fall back to recent history when topSites is unavailable or not ready.
+  }
+
+  const historyItems = await browser.history.search({
+    text: '',
+    startTime: 0,
+    maxResults,
+  });
+
+  return historyItems
+    .filter((item) => !!item.url)
+    .map(
+      (item): AddrResult => ({
+        kind: 'history',
+        url: item.url!,
+        title: titleForUrl(item.title, item.url!),
+        score: historyScore('', item),
+      }),
+    )
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults);
+}
+
 function mergeResult(byUrl: Map<string, AddrResult>, key: string, result: AddrResult): void {
   const existing = byUrl.get(key);
   if (!existing) {
@@ -82,24 +127,7 @@ export async function searchAddressResults(
   const byUrl = new Map<string, AddrResult>();
 
   if (!trimmed) {
-    const historyItems = await browser.history.search({
-      text: '',
-      startTime: 0,
-      maxResults,
-    });
-
-    return historyItems
-      .filter((item) => !!item.url)
-      .map(
-        (item): AddrResult => ({
-          kind: 'history',
-          url: item.url!,
-          title: titleForUrl(item.title, item.url!),
-          score: historyScore('', item),
-        }),
-      )
-      .sort((a, b) => b.score - a.score)
-      .slice(0, maxResults);
+    return getEmptyQueryResults(maxResults);
   }
 
   const [historyItems, bookmarkNodes] = await Promise.all([
