@@ -1,12 +1,16 @@
 // Layer-2 component: floating address/search bar.
 
-import { type Key, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { useShallow } from 'zustand/shallow';
 import {
-  CommandPalette,
-  useCommandPalette,
-  type CommandPaletteCommand,
-} from '@tale-ui/react/command-palette';
+  type CSSProperties,
+  type Key,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useShallow } from 'zustand/shallow';
+import { CommandPalette, useCommandPalette } from '@tale-ui/react/command-palette';
 import { Icon } from '@tale-ui/react/icon';
 import { Image } from '@tale-ui/react/image';
 import { Row } from '@tale-ui/react/row';
@@ -19,9 +23,12 @@ import FileIcon from 'lucide-react/dist/esm/icons/file';
 import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
 import SearchIcon from 'lucide-react/dist/esm/icons/search';
 
-import type { AddrResult } from '@shared/protocol';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
-import { signalAddrbarNavigate, type AddrbarMode } from '../../bridge/useAddrbar';
+import {
+  signalAddrbarNavigate,
+  type AddrbarMode,
+  type AddrbarPlacement,
+} from '../../bridge/useAddrbar';
 import { useAddressBarStore } from '../../state/addressBar';
 import { usePanelsStore } from '../../state/panels';
 import { useSavedPanelsStore } from '../../state/savedPanels';
@@ -30,6 +37,16 @@ import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow } from '../../state/workspaces';
 import { applyDefaultEngineIfClean, chooseEngine, resetEngineSelection } from './engineSelection';
 import { buildOpenRows, type OpenAddressRowKind } from './openRows';
+import {
+  buildClipboardRow,
+  buildSavedPanelRows,
+  buildSyntheticRow,
+  chooseSearchEngineForAddressRow,
+  resultToRow,
+  rowTextValue,
+  type AddressRow,
+  type AddressRowKind,
+} from './addressRows';
 import './AddressBar.css';
 
 export interface AddressBarProps {
@@ -39,62 +56,10 @@ export interface AddressBarProps {
   initialQuery?: string;
   suppressFocus?: boolean;
   clipboardUrl?: string;
+  placement?: AddrbarPlacement | null;
 }
 
-type RowKind =
-  | OpenAddressRowKind
-  | 'history'
-  | 'bookmark'
-  | 'topSite'
-  | 'clipboard'
-  | 'savedPanel'
-  | 'synthetic';
-
-interface AddressRow extends CommandPaletteCommand {
-  id: string;
-  kind: RowKind;
-  title: string;
-  subtitle: string;
-  group:
-    | 'Clipboard'
-    | 'Saved Panels'
-    | 'Top Sites'
-    | 'Open Tabs'
-    | 'Open Panels'
-    | 'History & Bookmarks'
-    | 'Search';
-  tabId?: number;
-  workspaceId?: string;
-  url?: string;
-  favIconUrl?: string;
-}
-
-function isUrlLike(query: string): boolean {
-  const trimmed = query.trim();
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return true;
-  return /^[^\s]+\.[^\s]+$/.test(trimmed);
-}
-
-function resultSubtitle(result: AddrResult): string {
-  if (result.kind === 'bookmark') return `Bookmark · ${result.url}`;
-  if (result.kind === 'topSite') return `Top site · ${result.url}`;
-  return `History · ${result.url}`;
-}
-
-function resultToRow(result: AddrResult): AddressRow {
-  return {
-    id: `${result.kind}:${result.url}`,
-    kind: result.kind,
-    title: result.title || result.url,
-    subtitle: resultSubtitle(result),
-    group: result.kind === 'topSite' ? 'Top Sites' : 'History & Bookmarks',
-    keywords: [result.url],
-    url: result.url,
-    favIconUrl: result.favIconUrl,
-  };
-}
-
-function rowIcon(kind: RowKind) {
+function rowIcon(kind: AddressRowKind | OpenAddressRowKind) {
   switch (kind) {
     case 'tab':
       return FileIcon;
@@ -121,6 +86,17 @@ function ResultIcon({ row }: { row: AddressRow }) {
   return <Icon icon={rowIcon(row.kind)} size="sm" />;
 }
 
+function SearchEngineIcon({
+  engine,
+  className,
+}: {
+  engine: { name: string; iconUrl?: string } | null;
+  className: string;
+}) {
+  if (engine?.iconUrl) return <Image className={className} src={engine.iconUrl} alt="" />;
+  return <Icon icon={SearchIcon} size="sm" className={className} />;
+}
+
 function ResultRow({ row }: { row: AddressRow }) {
   return (
     <>
@@ -135,10 +111,6 @@ function ResultRow({ row }: { row: AddressRow }) {
   );
 }
 
-function rowTextValue(row: AddressRow): string {
-  return [row.title, row.subtitle, row.group, row.url].filter(Boolean).join(' ');
-}
-
 export default function AddressBar({
   onClose,
   mode,
@@ -146,6 +118,7 @@ export default function AddressBar({
   initialQuery = '',
   suppressFocus = false,
   clipboardUrl = '',
+  placement = null,
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [engineSelection, setEngineSelection] = useState(() => resetEngineSelection(null));
@@ -166,6 +139,14 @@ export default function AddressBar({
         searchEnginesHydrated: s.hydrated,
       })),
     );
+  const selectedEngine = useMemo(() => {
+    return (
+      availableSearchEngines.find((engine) => engine.id === selectedSearchEngineId) ||
+      availableSearchEngines.find((engine) => engine.id === defaultSearchEngine) ||
+      availableSearchEngines[0] ||
+      null
+    );
+  }, [availableSearchEngines, defaultSearchEngine, selectedSearchEngineId]);
 
   const openRows = useMemo<AddressRow[]>(
     () =>
@@ -187,46 +168,15 @@ export default function AddressBar({
   }, [query, resultQuery, serverResults]);
 
   const clipboardRow = useMemo<AddressRow | null>(() => {
-    const url = clipboardUrl.trim();
-    if (mode !== 'newTab' || query.trim() || !url) return null;
-    return {
-      id: `clipboard:${url}`,
-      kind: 'clipboard',
-      title: `Open ${url}`,
-      subtitle: 'From clipboard',
-      group: 'Clipboard',
-      keywords: [url],
-      url,
-    };
+    return buildClipboardRow({ mode, query, clipboardUrl });
   }, [clipboardUrl, mode, query]);
 
   const savedPanelRows = useMemo<AddressRow[]>(() => {
-    if (mode !== 'newTab' || query.trim()) return [];
-    return savedPanels.map((item) => ({
-      id: `saved-panel:${item.id}`,
-      kind: 'savedPanel',
-      title: item.title.trim().length > 0 ? item.title : item.url,
-      subtitle: 'Open saved panel',
-      group: 'Saved Panels',
-      keywords: [item.title, item.url, 'saved panel'],
-      url: item.url,
-      favIconUrl: item.favIconUrl,
-    }));
+    return buildSavedPanelRows({ mode, query, savedPanels });
   }, [mode, query, savedPanels]);
 
   const syntheticRow = useMemo<AddressRow | null>(() => {
-    const trimmed = query.trim();
-    if (!trimmed) return null;
-    const open = isUrlLike(trimmed);
-    return {
-      id: 'synthetic:submit',
-      kind: 'synthetic',
-      title: open ? `Open ${trimmed}` : `Search for ${trimmed}`,
-      subtitle: mode === 'newTab' ? 'Open in new tab' : 'Open in current tab',
-      group: 'Search',
-      keywords: [trimmed],
-      url: trimmed,
-    };
+    return buildSyntheticRow({ mode, query });
   }, [mode, query]);
 
   const runRow = useCallback(
@@ -247,14 +197,12 @@ export default function AddressBar({
         return;
       }
       if (row.url) {
-        const searchEngineId =
-          row.kind === 'synthetic' &&
-          !isUrlLike(row.url) &&
-          engineSelectionDirty &&
-          selectedSearchEngineId &&
-          selectedSearchEngineId !== defaultSearchEngine
-            ? selectedSearchEngineId
-            : undefined;
+        const searchEngineId = chooseSearchEngineForAddressRow({
+          row,
+          engineSelectionDirty,
+          selectedSearchEngineId,
+          defaultSearchEngine,
+        });
         signalAddrbarNavigate(searchEngineId ? { value: row.url, searchEngineId } : row.url);
       }
     },
@@ -328,6 +276,15 @@ export default function AddressBar({
   });
 
   const enginePickerDisabled = !searchEnginesHydrated || availableSearchEngines.length === 0;
+  const popupStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!placement) return undefined;
+    return {
+      left: placement.left,
+      top: placement.top,
+      width: placement.width,
+      height: placement.height,
+    };
+  }, [placement]);
   const handleSearchEngineChange = useCallback((key: Key | null) => {
     const next = typeof key === 'string' || typeof key === 'number' ? String(key) : null;
     setEngineSelection((state) => chooseEngine(state, next));
@@ -364,12 +321,14 @@ export default function AddressBar({
         if (!next) onClose();
       }}
     >
-      <CommandPalette.Backdrop className="bento-address-bar__backdrop" isDismissable>
+      <CommandPalette.Backdrop className="bento-address-bar__backdrop" isDismissable={false}>
         <CommandPalette.Popup
           aria-label="Address bar"
           className="bento-address-bar__dialog"
           modalProps={{
-            className: 'bento-address-bar__popup',
+            className:
+              'bento-address-bar__popup' + (placement ? ' bento-address-bar__popup--anchored' : ''),
+            style: popupStyle,
           }}
         >
           <CommandPalette.Title className="bento-address-bar__sr-only">
@@ -409,14 +368,25 @@ export default function AddressBar({
               >
                 <Select.Label className="bento-address-bar__sr-only">Search engine</Select.Label>
                 <Select.Trigger className="bento-address-bar__engine-trigger">
-                  <Select.Value />
+                  <SearchEngineIcon
+                    engine={selectedEngine}
+                    className="bento-address-bar__engine-icon"
+                  />
                   <Select.Icon />
                 </Select.Trigger>
                 <Select.Popover className="bento-address-bar__engine-popover">
                   <Select.ListBox>
                     {availableSearchEngines.map((engine) => (
                       <Select.Item key={engine.id} id={engine.id} textValue={engine.name}>
-                        {engine.name}
+                        <span className="bento-address-bar__engine-option">
+                          <SearchEngineIcon
+                            engine={engine}
+                            className="bento-address-bar__engine-option-icon"
+                          />
+                          <span className="bento-address-bar__engine-option-name">
+                            {engine.name}
+                          </span>
+                        </span>
                       </Select.Item>
                     ))}
                   </Select.ListBox>

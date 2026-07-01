@@ -43,20 +43,39 @@ sync_addon() {
   fi
 
   # If target_dist is already a symlink pointing to source_dist, no-op.
+  local dist_linked=0
   if [ -L "$target_dist" ]; then
     local current
     current="$(readlink "$target_dist")"
     if [ "$current" = "$source_dist" ]; then
-      echo "sync-symlinks: $addon already linked"
-      return 0
+      echo "sync-symlinks: $addon dist/ already linked"
+      dist_linked=1
     fi
   fi
 
-  # Replace the directory (whether real dir with per-file symlinks, or a
-  # stale symlink to a different path) with a fresh symlink to source_dist.
-  rm -rf "$target_dist"
-  ln -s "$source_dist" "$target_dist"
-  echo "sync-symlinks: $addon dist/ linked -> $source_dist"
+  if [ "$dist_linked" -eq 0 ]; then
+    # Replace the directory (whether real dir with per-file symlinks, or a
+    # stale symlink to a different path) with a fresh symlink to source_dist.
+    rm -rf "$target_dist"
+    ln -s "$source_dist" "$target_dist"
+    echo "sync-symlinks: $addon dist/ linked -> $source_dist"
+  fi
+
+  local source_experiments="$REPO_ROOT/$ENGINE_EXT_ROOT/$addon/experiments"
+  local target_experiments="$target_addon_dir/experiments"
+  if [ -d "$source_experiments" ]; then
+    if [ -L "$target_experiments" ]; then
+      local current_experiments
+      current_experiments="$(readlink "$target_experiments")"
+      if [ "$current_experiments" = "$source_experiments" ]; then
+        echo "sync-symlinks: $addon experiments/ already linked"
+        return 0
+      fi
+    fi
+    rm -rf "$target_experiments"
+    ln -s "$source_experiments" "$target_experiments"
+    echo "sync-symlinks: $addon experiments/ linked -> $source_experiments"
+  fi
   return 0
 }
 

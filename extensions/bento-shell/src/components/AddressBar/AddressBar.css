@@ -43,6 +43,23 @@ html[data-bento-address-bar='true'] #root {
   background-color: var(--neutral-5);
   pointer-events: auto;
   transform: translateX(-50%);
+  transition: opacity 0.18s ease;
+}
+
+.tale-command-palette__popup.bento-address-bar__popup[data-entering],
+.tale-command-palette__popup.bento-address-bar__popup[data-exiting] {
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.tale-command-palette__popup.bento-address-bar__popup--anchored {
+  transform: none;
+}
+
+.tale-command-palette__popup.bento-address-bar__popup--anchored[data-entering],
+.tale-command-palette__popup.bento-address-bar__popup--anchored[data-exiting] {
+  opacity: 0;
+  transform: none;
 }
 
 :is(.bento-address-bar__dialog, .bento-address-bar__content, .bento-address-bar__listbox) {
@@ -82,21 +99,32 @@ html[data-bento-address-bar='true'] #root {
 }
 
 .tale-select.bento-address-bar__engine-select {
-  flex: 0 1 var(--bento-address-bar-engine-width);
+  flex: 0 0 auto;
+  width: max-content;
   min-width: 0;
 }
 
 .tale-select__trigger.bento-address-bar__engine-trigger {
   box-sizing: border-box;
-  width: 100%;
+  width: auto;
   min-width: 0;
+  padding-inline: var(--space-3xs);
+  gap: var(--space-4xs);
+  justify-content: center;
 }
 
 .tale-select__trigger.bento-address-bar__engine-trigger .tale-select__value {
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tale-select__trigger.bento-address-bar__engine-trigger .tale-select__icon {
+  width: var(--bento-sidebar-address-chevron-size);
+  height: var(--bento-sidebar-address-chevron-size);
+  font-size: var(--bento-sidebar-address-chevron-size);
 }
 
 .tale-select__popover.bento-address-bar__engine-popover {
@@ -117,11 +145,27 @@ html[data-bento-address-bar='true'] #root {
     white-space: nowrap;
   }
 
-  .bento-address-bar__favicon {
+  .bento-address-bar__favicon,
+  .bento-address-bar__engine-icon,
+  .bento-address-bar__engine-option-icon {
     display: block;
     width: var(--bento-address-bar-favicon-size);
     height: var(--bento-address-bar-favicon-size);
     border-radius: var(--radius-s);
     object-fit: contain;
+  }
+
+  .bento-address-bar__engine-option {
+    display: inline-grid;
+    grid-template-columns: var(--bento-address-bar-favicon-size) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-xs);
+    min-width: 0;
+  }
+
+  .bento-address-bar__engine-option-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

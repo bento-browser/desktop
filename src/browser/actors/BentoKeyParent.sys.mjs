@@ -23,7 +23,11 @@ export class BentoKeyParent extends JSWindowActorParent {
     if (!win) return;
     try {
       if (message.name === 'BentoKey:AddrbarOpen') {
-        win.dispatchEvent(new win.CustomEvent('BentoKey:AddrbarOpen'));
+        win.dispatchEvent(
+          new win.CustomEvent('BentoKey:AddrbarOpen', {
+            detail: { mode: message.data?.mode === 'newTab' ? 'newTab' : 'current' },
+          }),
+        );
         return;
       }
       if (message.name === 'BentoKey:PanelHistory') {

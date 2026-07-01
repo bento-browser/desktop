@@ -308,7 +308,12 @@ describe('protocol handler search engine snapshots', () => {
     vi.stubGlobal('browser', {
       bentoPrivacy: {
         getSearchEngines: vi.fn().mockResolvedValue([
-          { id: 'ddg', name: 'DuckDuckGo', isDefault: true },
+          {
+            id: 'ddg',
+            name: 'DuckDuckGo',
+            isDefault: true,
+            iconUrl: 'data:image/png;base64,ddg',
+          },
           { id: 'google', name: 'Google', isDefault: false },
         ]),
         getDefaultSearchEngine: vi.fn().mockResolvedValue('ddg'),
@@ -324,7 +329,12 @@ describe('protocol handler search engine snapshots', () => {
         snapshot: {
           defaultSearchEngine: 'ddg',
           availableSearchEngines: [
-            { id: 'ddg', name: 'DuckDuckGo', isDefault: true },
+            {
+              id: 'ddg',
+              name: 'DuckDuckGo',
+              isDefault: true,
+              iconUrl: 'data:image/png;base64,ddg',
+            },
             { id: 'google', name: 'Google', isDefault: false },
           ],
         },

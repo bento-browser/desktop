@@ -15,6 +15,7 @@ import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 import { TabList } from './components/TabList/TabList';
 import { PinnedPanels } from './components/PinnedPanels/PinnedPanels';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
+import { SidebarAddressBar } from './components/SidebarAddressBar/SidebarAddressBar';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
 import { signalAddrbarOpen } from './bridge/useAddrbar';
@@ -482,6 +483,7 @@ export function App() {
             </Text>
           )}
         </Row>
+        <SidebarAddressBar />
         <TabList
           revealTabUrl={settingsUrl()}
           revealTabRequest={settingsRevealRequest}

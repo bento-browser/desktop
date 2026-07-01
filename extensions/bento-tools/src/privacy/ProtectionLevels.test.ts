@@ -52,7 +52,12 @@ describe('privacy protection levels', () => {
     vi.stubGlobal('browser', {
       bentoPrivacy: {
         getSearchEngines: vi.fn().mockResolvedValue([
-          { id: 'ddg', name: 'DuckDuckGo', isDefault: false },
+          {
+            id: 'ddg',
+            name: 'DuckDuckGo',
+            isDefault: false,
+            iconUrl: 'data:image/png;base64,ddg',
+          },
           { id: 'google', name: 'Google', isDefault: true },
         ]),
         getDefaultSearchEngine: vi.fn().mockResolvedValue('google'),
@@ -62,7 +67,12 @@ describe('privacy protection levels', () => {
     await expect(readSearchEnginesSnapshot()).resolves.toEqual({
       defaultSearchEngine: 'google',
       availableSearchEngines: [
-        { id: 'ddg', name: 'DuckDuckGo', isDefault: false },
+        {
+          id: 'ddg',
+          name: 'DuckDuckGo',
+          isDefault: false,
+          iconUrl: 'data:image/png;base64,ddg',
+        },
         { id: 'google', name: 'Google', isDefault: true },
       ],
     });

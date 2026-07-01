@@ -72,6 +72,11 @@
       "subject": "Allow DOM fullscreen from split view browsers"
     },
     {
+      "path": "patches/core-ui/12-center-native-preferences.patch",
+      "id": "center-native-preferences",
+      "subject": "Center native preferences layout"
+    },
+    {
       "path": "patches/experiments/01-mach-build-hang-guards.patch",
       "id": "mach-build-hang-guards",
       "subject": "Add mach build hang guards"

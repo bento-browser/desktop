@@ -5,14 +5,36 @@ export type AddrbarMode = 'current' | 'newTab';
 export const ADDRBAR_BUS_NAME = 'bento-addrbar-bus';
 export const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
 export const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
+export const ADDRBAR_READY_PREFIX = 'BENTO_ADDRBAR_READY';
 export const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
+
+export interface AddrbarAnchorRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface AddrbarPlacement {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface AddrbarOpenOptions {
+  anchorRect?: AddrbarAnchorRect;
+  clipboardUrl?: string;
+}
 
 interface OpenMessage {
   kind: 'open';
+  openId?: string;
   mode: AddrbarMode;
   initialQuery?: string;
   suppressFocus?: boolean;
   clipboardUrl?: string;
+  placement?: AddrbarPlacement;
 }
 
 type BusMessage = OpenMessage;
@@ -37,9 +59,24 @@ export function signalAddrbarClose(): void {
   document.title = `${ADDRBAR_CLOSE_PREFIX}_${Date.now()}`;
 }
 
-export function signalAddrbarOpen(mode: AddrbarMode, initialQuery = ''): void {
+export function signalAddrbarReady(openId: string): void {
+  document.title = `${ADDRBAR_READY_PREFIX}:${encodeTitlePayload(
+    JSON.stringify({ openId, timestamp: Date.now() }),
+  )}`;
+}
+
+export function signalAddrbarOpen(
+  mode: AddrbarMode,
+  initialQuery = '',
+  options: AddrbarOpenOptions = {},
+): void {
   document.title = `${ADDRBAR_OPEN_PREFIX}${Date.now()}:${encodeTitlePayload(
-    JSON.stringify({ mode, initialQuery }),
+    JSON.stringify({
+      mode,
+      initialQuery,
+      ...(options.anchorRect ? { anchorRect: options.anchorRect } : {}),
+      ...(options.clipboardUrl ? { clipboardUrl: options.clipboardUrl } : {}),
+    }),
   )}`;
 }
 
@@ -55,7 +92,12 @@ export function subscribeToAddrbarOpenRequests(
   handler: (
     mode: AddrbarMode,
     initialQuery?: string,
-    options?: { suppressFocus?: boolean; clipboardUrl?: string },
+    options?: {
+      openId?: string;
+      suppressFocus?: boolean;
+      clipboardUrl?: string;
+      placement?: AddrbarPlacement;
+    },
   ) => void,
 ): () => void {
   const ch = bus();
@@ -64,8 +106,10 @@ export function subscribeToAddrbarOpenRequests(
     const data = e.data as BusMessage | undefined;
     if (data?.kind === 'open') {
       handler(data.mode, data.initialQuery, {
+        openId: typeof data.openId === 'string' ? data.openId : '',
         suppressFocus: data.suppressFocus === true,
         clipboardUrl: typeof data.clipboardUrl === 'string' ? data.clipboardUrl : '',
+        placement: data.placement,
       });
     }
   };

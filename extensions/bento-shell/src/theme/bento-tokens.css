@@ -115,7 +115,12 @@
     --bento-address-bar-max-inline: 92vw;
     --bento-address-bar-max-block: 74vh;
     --bento-address-bar-favicon-size: 1.125rem;
-    --bento-address-bar-engine-width: 8.75rem;
+    --bento-sidebar-address-row-height: 2rem;
+    --bento-sidebar-address-icon-size: 1rem;
+    --bento-sidebar-address-chevron-size: 0.75rem;
+    --bento-sidebar-address-button-size: 1.5rem;
+    --bento-sidebar-address-field-radius: var(--radius-s);
+    --bento-sidebar-address-field-min-width: 0;
     --bento-settings-grid-max-width: 82.5rem;
     --bento-settings-grid-gap: var(--space-s);
     --bento-settings-header-max-width: 45rem;

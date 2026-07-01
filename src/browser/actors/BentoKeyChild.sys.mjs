@@ -7,10 +7,10 @@
 // Lives in every web content document (one instance per BrowsingContext,
 // see registerWindowActor in bento-shell-mount.js). Forwards a small
 // allowlist of chrome-bound keys (Cmd/Ctrl+Shift+ArrowLeft/Right for panel
-// cycling, Cmd/Ctrl+ArrowLeft/Right for panel history, Cmd/Ctrl+E for the
-// floating address bar) back to chrome, so panel navigation works while
-// content has focus — without this, focus has to sit on the chrome panel
-// container, which prevents page-bound
+// cycling, Cmd/Ctrl+ArrowLeft/Right for panel history, and Firefox-equivalent
+// browser address shortcuts Cmd/Ctrl+L, Cmd/Ctrl+E, Cmd/Ctrl+T) back to chrome,
+// so panel navigation works while content has focus — without this, focus has
+// to sit on the chrome panel container, which prevents page-bound
 // keyboard extensions (Vimium, Surfingkeys, etc.) from receiving any
 // keys.
 //
@@ -24,6 +24,11 @@
 //     handler claimed the key.
 
 const FORWARDED_KEYS = new Set(['ArrowLeft', 'ArrowRight']);
+const ADDRESS_KEY_MODES = new Map([
+  ['KeyE', 'current'],
+  ['KeyL', 'current'],
+  ['KeyT', 'newTab'],
+]);
 
 function isEditableTarget(target) {
   if (!target) return false;
@@ -35,24 +40,35 @@ function isEditableTarget(target) {
   return false;
 }
 
+function hasPlatformAccel(event) {
+  if (typeof event.getModifierState === 'function') {
+    return event.getModifierState('Accel');
+  }
+  return event.metaKey || event.ctrlKey;
+}
+
+function hasExtraAccelModifier(event) {
+  return event.metaKey && event.ctrlKey;
+}
+
 export class BentoKeyChild extends JSWindowActorChild {
   handleEvent(event) {
     if (event.type !== 'keydown') return;
     if (event.defaultPrevented) return;
-    if (!event.altKey && !event.shiftKey && event.code === 'KeyE') {
-      const accel = event.metaKey || event.ctrlKey;
-      const extraModifier = event.metaKey && event.ctrlKey;
-      if (accel && !extraModifier) {
+    if (!event.altKey && !event.shiftKey && ADDRESS_KEY_MODES.has(event.code)) {
+      const accel = hasPlatformAccel(event);
+      if (accel && !hasExtraAccelModifier(event)) {
         event.preventDefault();
         event.stopPropagation();
-        this.sendAsyncMessage('BentoKey:AddrbarOpen');
+        this.sendAsyncMessage('BentoKey:AddrbarOpen', {
+          mode: ADDRESS_KEY_MODES.get(event.code),
+        });
         return;
       }
     }
     if (!event.altKey && FORWARDED_KEYS.has(event.key)) {
-      const accel = event.metaKey || event.ctrlKey;
-      const extraModifier = event.metaKey && event.ctrlKey;
-      if (accel && !extraModifier) {
+      const accel = hasPlatformAccel(event);
+      if (accel && !hasExtraAccelModifier(event)) {
         if (isEditableTarget(event.composedTarget ?? event.target)) return;
         event.preventDefault();
         event.stopPropagation();

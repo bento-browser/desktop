@@ -237,6 +237,12 @@
     opacity: 0 !important;
   }
 
+  :root[bento-sidebar-addressbar='true'] #urlbar-container,
+  :root[bento-sidebar-addressbar='true'] #search-container {
+    display: none !important;
+    visibility: collapse !important;
+  }
+
   notification-message {
     --info-bar-accent-background: none !important;
     --info-bar-background-color-configurable: var(--neutral-90) !important;

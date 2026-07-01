@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-06-27
+- Last updated: 2026-07-01
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -68,12 +68,23 @@ Use this shape for new or changed touchpoints:
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
   visibility and geometry, renders chrome-side menu overlays for sidebar and
   panel actions, hands focus back to the sidebar frame for chrome-originated
-  shell UI actions such as inline tab/folder rename, opens the floating
-  address/search bar on `Cmd/Ctrl+L` and `Cmd/Ctrl+T`, routes submitted
+  shell UI actions such as inline tab/folder rename, routes `Cmd/Ctrl+L`,
+  `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, sidebar `New tab`, and native top-urlbar fallback
+  opens to the centered address/search overlay, routes direct expanded-sidebar
+  URL row activation to the same overlay with a sidebar anchor, routes submitted
   address/search text through Firefox URI fixup, resolves one-shot
   address-palette non-default search-engine submissions through Firefox
   `SearchService` without changing the default engine, reveals the main content
-  slot after committed address/search submissions, mounts a shared modal
+  slot after committed address/search submissions, emits scoped sidebar address
+  snapshots for active URL/title/loading/security/bookmark state, opens
+  Firefox's native identity popup from the sidebar security button, toggles
+  regular Firefox bookmarks from the sidebar address star with stale
+  tab/URL/snapshot guards, copies the current sidebar URL through Firefox's
+  native clipboard helper with the same stale tab/URL/snapshot guards, lets
+  direct sidebar URL row editing overhang the sidebar without resizing the
+  sidebar frame or moving content,
+  hides the native top URL/search field under a Bento
+  chrome attribute while keeping toolbar and window controls visible, mounts a shared modal
   toolbar scrim as a top-layer manual popover so native toolbar/urlbar controls
   do not paint above Bento modal scrims, leaves that toolbar scrim disabled for
   the floating address bar, keeps the address palette on an opaque neutral
@@ -101,7 +112,12 @@ Use this shape for new or changed touchpoints:
   `gBrowser`, `gBrowser.tabpanels`, browser panel elements, split-view markers,
   `gBrowser.selectedBrowsers`, `FullScreen.enterDomFullscreen`, chrome window
   events, native `#urlbar-input` pointer/focus events,
-  `gURLBar.view.close()`, frame focus, title/actor messaging paths,
+  `#urlbar-container` and `#search-container` chrome CSS,
+  `#bento-shell-frame` geometry for anchored address-overlay placement,
+  native identity
+  chrome (`gIdentityHandler`, `#identity-box`, `#identity-icon-box`,
+  `#identity-popup`, `PanelMultiView.openPopup`), Places bookmark APIs and
+  Places observer events, `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
   chrome `<browser>.loadURI()` with system principals for Bento extension-frame
   entries,
@@ -124,7 +140,9 @@ Use this shape for new or changed touchpoints:
   structure, split-view implementation, browser actor messaging, URI fixup, or
   chrome event ordering can break panel layout, focus, inline sidebar rename,
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
-  navigation, one-shot search-engine resolution, or visibility.
+  navigation, one-shot search-engine resolution, sidebar address scoping,
+  native identity popup anchoring, bookmark state, native URL-bar hiding, or
+  visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -132,10 +150,25 @@ Use this shape for new or changed touchpoints:
   verify sidebar context menus still dispatch tab, folder, and
   workspace actions including moving a
   folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and
-  `Cmd/Ctrl+T` open the floating address bar instead of native urlbar/new-tab
-  handling, verify clicking into Firefox's native top address input opens the
-  same Bento floating address bar with recent history suggestions and does not
-  leave the native urlbar suggestions dropdown open, verify
+  `Cmd/Ctrl+T` open the centered address/search overlay with current/new-tab
+  mode, verify clicking the expanded-sidebar URL row opens the address/search
+  overlay anchored below that row,
+  verify clicking or programmatic focus into Firefox's hidden native top address
+  input opens Bento's centered address entry and does not leave the native urlbar
+  suggestions dropdown open, verify the native top URL/search field is hidden
+  while toolbar buttons, extension buttons, app/menu buttons, toolbar
+  customization, titlebar controls, and window dragging still work, verify two
+  Bento windows do not leak sidebar address URL/title/security/bookmark
+  snapshots across windows, verify clicking the sidebar
+  security control opens Firefox's native identity popup with native content,
+  verify the expanded-sidebar address overlay can extend over the panel
+  strip/main content while editing and closes after Escape, submit, and outside
+  click,
+  verify regular bookmarks outside the "Saved panels" folder fill the sidebar
+  star while saved-panel-only bookmarks do not, verify rapid navigation or tab
+  switching during a sidebar star toggle does not mutate the stale page, verify
+  the sidebar Copy URL button writes the current selected main-tab URL to the
+  global clipboard, verify
   `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
   navigate that panel's own history without moving panel focus and without
   stealing cursor movement from editable fields, verify
@@ -224,6 +257,33 @@ Use this shape for new or changed touchpoints:
 - Rollback or migration notes: keep each patch small and independently skippable;
   if a Firefox update makes a patch unnecessary, remove the patch and record the
   removal here.
+
+### Native Preferences Layout
+
+- Status: Active
+- Last updated: 2026-07-01
+- Files or patches:
+  - `engine/browser/components/preferences/preferences.xhtml`
+  - `engine/browser/themes/shared/preferences/preferences.css`
+- Bento functionality: centers Firefox's native `about:preferences` content pane
+  and category navigation as one unit in the available browser content area, so
+  the settings controls do not sit flush against the side nav on wide windows.
+- Vanilla Firefox surface touched or depended on: the native preferences XHTML
+  layout, including `#categories`, `.main-content`, and `.pane-container`.
+- Why this cannot stay extension-only: `about:preferences` is a privileged
+  built-in Firefox page; extension CSS cannot reliably restyle its chrome-loaded
+  layout.
+- Firefox update risk: upstream preferences markup, XUL box alignment behavior,
+  or settings redesign layout changes can reintroduce left alignment or alter
+  the content pane width.
+- Regression checks for future updates: open `about:preferences` in a wide
+  Bento window and confirm the search field and settings pane are centered in
+  the area beside the category nav; narrow the window and confirm the pane still
+  fits without horizontal clipping, category navigation works, and the main
+  preferences area still scrolls.
+- Rollback or migration notes: remove the `pack="center"` XHTML override and
+  the `.main-content` width bound if upstream Firefox adopts a centered
+  preferences layout or this customization conflicts with a future redesign.
 
 ### Hidden Native Tabs And Titlebar Controls
 

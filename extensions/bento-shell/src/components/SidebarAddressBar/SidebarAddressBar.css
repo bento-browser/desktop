@@ -1,0 +1,126 @@
+@layer bento.components {
+  .bento-sidebar-address-bar {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 0 var(--space-3xs) var(--space-2xs);
+    background: var(--neutral-5);
+  }
+
+  html[data-bento-collapsed='true'] .bento-sidebar-address-bar {
+    display: none;
+  }
+
+  .bento-sidebar-address-bar__row {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns:
+      var(--bento-sidebar-address-button-size) minmax(0, 1fr) auto
+      var(--bento-sidebar-address-button-size) var(--bento-sidebar-address-button-size);
+    align-items: center;
+    gap: var(--space-4xs);
+    height: var(--bento-sidebar-address-row-height);
+    padding-inline: var(--space-4xs);
+    border: 1px solid var(--neutral-18);
+    border-radius: var(--bento-sidebar-address-field-radius);
+    background: var(--neutral-5);
+  }
+
+  .bento-sidebar-address-bar__row:focus-within {
+    border-color: var(--color-60);
+    box-shadow: inset 0 0 0 1px var(--color-60);
+  }
+
+  .tale-icon-button.bento-sidebar-address-bar__security-button,
+  .tale-icon-button.bento-sidebar-address-bar__copy-button,
+  .tale-icon-button.bento-sidebar-address-bar__bookmark-button,
+  .bento-sidebar-address-bar__loading {
+    width: var(--bento-sidebar-address-button-size);
+    height: var(--bento-sidebar-address-button-size);
+    min-width: var(--bento-sidebar-address-button-size);
+    min-height: var(--bento-sidebar-address-button-size);
+  }
+
+  .bento-sidebar-address-bar__security-button,
+  .bento-sidebar-address-bar__loading {
+    color: var(--neutral-70);
+  }
+
+  .bento-sidebar-address-bar__loading {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .bento-sidebar-address-bar__security-button[data-security='secure'],
+  .bento-sidebar-address-bar__security-button[data-security='verified'] {
+    color: var(--color-60);
+  }
+
+  .bento-sidebar-address-bar__security-button[data-security='insecure'],
+  .bento-sidebar-address-bar__security-button[data-security='mixed'] {
+    color: var(--red-60);
+  }
+
+  .bento-sidebar-address-bar__security-glyph {
+    position: relative;
+    box-sizing: border-box;
+    display: block;
+    width: 0.8rem;
+    height: 0.58rem;
+    margin-block-start: 0.18rem;
+    border: 1.5px solid currentColor;
+    border-radius: 0.16rem;
+  }
+
+  .bento-sidebar-address-bar__security-glyph::before {
+    content: '';
+    position: absolute;
+    inset-block-end: calc(100% - 0.06rem);
+    inset-inline-start: 50%;
+    width: 0.46rem;
+    height: 0.42rem;
+    border: 1.5px solid currentColor;
+    border-block-end: 0;
+    border-radius: 0.46rem 0.46rem 0 0;
+    transform: translateX(-50%);
+  }
+
+  .bento-sidebar-address-bar__bookmark-button[data-bookmarked='true'] {
+    color: var(--color-60);
+  }
+
+  .bento-sidebar-address-bar__bookmark-button[data-bookmarked='true'] svg {
+    fill: currentColor;
+  }
+
+  .bento-sidebar-address-bar__input {
+    box-sizing: border-box;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--neutral-90);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bento-sidebar-address-bar__input {
+    width: 100%;
+    height: calc(var(--bento-sidebar-address-row-height) - 2px);
+    outline: 0;
+  }
+
+  .bento-sidebar-address-bar__input::placeholder {
+    color: var(--neutral-50);
+    opacity: 1;
+  }
+}
+
+/* Unlayered by design: raw input typography can beat layered component CSS,
+ * so the read-only address field matches sidebar tab labels from the same
+ * cascade level as tab/folder rename inputs. */
+.bento-sidebar-address-bar__input {
+  font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family) !important;
+  letter-spacing: var(--text-letter-spacing);
+}

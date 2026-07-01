@@ -153,20 +153,85 @@ restart.
   are ephemeral and their pinned bindings must be refused, removed on close, and
   filtered from storage.
 
-## Floating Address Bar Implementation
+## Address Entry Implementation
 
-`src/browser/base/content/bento-shell-mount.js` owns address overlay visibility.
-`Cmd/Ctrl+L` opens it in current-tab mode, `Cmd/Ctrl+T` opens it in new-tab mode,
-and focus or pointer entry on Firefox's native `#urlbar-input` is intercepted in
-the parent chrome window so Firefox's native suggestions popup is closed and the
-Bento overlay opens instead. The sidebar `New tab` action sends
-`BENTO_OPEN_ADDRBAR:<ts>:<payload>` title IPC through `signalAddrbarOpen('newTab')`;
-chrome decodes it and calls the same `showAddrbar('newTab')` path as the keyboard
-shortcut. Open requests can pass an `initialQuery` through the
-`bento-addrbar-bus` payload; `Cmd/Ctrl+T` requests with an empty initial query
-also pass a validated clipboard web URL as `clipboardUrl` when the global
-clipboard contains one. Native top-urlbar clicks currently use an empty query so
-the overlay shows the same top-site shortcuts as Firefox's new tab page.
+`src/browser/base/content/bento-shell-mount.js` owns address-entry routing.
+`Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, the sidebar `New tab` action,
+content-process BentoKey actor events, and native top-urlbar fallback focus
+open the centered floating overlay hosted at `address-bar.html`. Direct
+activation of the expanded-sidebar URL row opens the same overlay with a
+sidebar anchor so it appears below the row and can extend over the panel strip
+and main content.
+
+The persistent sidebar row is mounted between the workspace switcher and
+`TabList`. `extensions/bento-shell/src/state/sidebarAddress.ts` stores the last
+chrome-owned snapshot, edit mode, draft value, and pending bookmark-toggle key.
+`extensions/bento-shell/src/bridge/useSidebarAddress.ts`
+subscribes to `BroadcastChannel('bento-sidebar-address-bus')`, but applies only
+messages whose chrome-stamped `windowId` and per-frame
+`bentoSidebarAddressBridgeToken` match the shell frame hash. Missing or
+mismatched tokens are ignored so same-origin BroadcastChannel delivery cannot
+cross-update another Bento window.
+
+Chrome generates the sidebar bridge token in `bento-shell-mount.js`, stamps it
+into `#bento-shell-frame`'s hash beside `bentoWindowId`, and sends sidebar
+snapshots through a frame script plus `messageManager`, not document-title IPC.
+Snapshots include tab id, full URL, display URL, title,
+loading state, Firefox-derived security state, regular bookmark state, and a
+monotonic snapshot token. Snapshot emission is coalesced with
+`requestAnimationFrame` and listens to tab selection/attribute/restored events,
+selected-browser progress location/security/state changes, and Places bookmark
+change events. Empty new-tab opens carry the same chrome-validated clipboard web
+URL suggestion as the centered overlay.
+
+Activating the expanded-sidebar row opens the shared address/search overlay
+with a sidebar anchor instead of rendering suggestions inside the sidebar
+iframe. `SidebarAddressBar` sends `BENTO_OPEN_ADDRBAR` with the row's
+frame-local rect. Chrome converts that rect through the live
+`#bento-shell-frame` and `#browser` geometry, shows `#bento-addrbar-host` as a
+full `#browser` overlay, and passes the computed popup placement to
+`address-bar.html` over the existing `BentoAddrbarOpen` frame script. Anchored
+placements start below the sidebar row, not over it. The overlay owns the
+focused input, result list, and search-engine picker, so the popup can extend
+over the panel strip or main content without asking the sidebar iframe to
+overpaint its chrome bounds. Shortcut, new-tab, and top-urlbar fallback opens
+omit the anchor and therefore keep the original centered overlay position.
+
+Firefox remains the source of truth for address semantics. The sidebar submit
+path and the floating overlay submit path both call the same chrome helper,
+which resolves optional one-shot search engine submissions through Firefox
+`SearchService`, falls back to Firefox URI fixup, navigates the selected main
+browser in current-tab mode, and dispatches `tab/openUrl` in new-tab mode.
+Successful submissions still reveal the main content slot.
+
+The sidebar security control reads the native identity block state from
+Firefox chrome and opens Firefox's native identity popup through
+`gIdentityHandler`/`PanelMultiView` anchored to a temporary chrome-owned element
+positioned over the sidebar button. Bento does not implement certificate or TLS
+details in React. The sidebar bookmark star uses chrome-side Places helpers and
+normal Firefox bookmarks only; the managed "Saved panels" folder is excluded
+from regular bookmark fill/removal. Toggle payloads must match the current
+window token, selected WebExtension tab id, selected main-tab URL, and latest
+snapshot token before and after async Places reads; duplicate toggles for the
+same tab/URL are ignored while one is in flight.
+The sidebar Copy URL button uses the same scoped title-IPC channel and must
+match the current window token, selected WebExtension tab id, selected main-tab
+URL, and latest snapshot token before chrome writes the URL to the global
+clipboard via Firefox's native clipboard helper. This keeps clipboard writes
+out of the extension page permission surface and prevents stale sidebar frames
+from copying a URL after navigation.
+
+The native top URL/search container is hidden by
+`bento-chrome-theme.css` under `:root[bento-sidebar-addressbar='true']`. The
+capture-phase native-urlbar listener remains as a fallback for Firefox internals
+that still try to focus the hidden native urlbar; it opens the centered
+address/search overlay instead of routing through the sidebar row. Bento does
+not enable Firefox's native `sidebar.verticalTabs`.
+
+The floating overlay remains implemented by
+`extensions/bento-shell/src/address-bar/main.tsx` and
+`components/AddressBar/AddressBar.tsx`. It is now the collapsed-sidebar fallback
+and still receives open requests through `bento-addrbar-bus`.
 
 The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
 initial query and clipboard URL with the open version and passes them to
@@ -197,9 +262,9 @@ capture before opening.
 `TabSnapshot.url` is part of the shared tab wire payload. `TabRegistry`
 populates it from `tab.url` or `pendingUrl`, emits URL update deltas, and emits
 URL-clearing deltas when Firefox no longer exposes a usable URL for the tab. The
-address palette does not build open tab/panel rows while `query.trim()` is
-empty. For empty new-tab opens, a validated clipboard URL row is prepended ahead
-of saved-panel and top-site rows. Saved-panel rows are built from the
+address helpers do not build open tab/panel rows while `query.trim()` is empty.
+For empty floating new-tab opens, a validated clipboard URL row is prepended
+ahead of saved-panel and top-site rows. Saved-panel rows are built from the
 global saved-panel mirror and dispatch `panel/openAt` with `position: 'end'`, so
 they append as side panels instead of opening as main tabs. These default rows
 are removed as soon as the user types. After typing,
@@ -216,18 +281,40 @@ to the latest mirrored default and clears the dirty flag. A late
 still clean; after the user chooses an engine, later snapshots for that open
 must not overwrite the choice. Selecting the default engine after a non-default
 choice clears the effective override because navigation sends an engine id only
-when the selected id differs from the current default.
+when the selected id differs from the current default. The narrow
+`browser.bentoPrivacy.getSearchEngines()` bridge returns Firefox's visible
+engine icon as a data URL when `SearchService` exposes one; the bridge converts
+blob/chrome/resource icon URLs before handing them to React. The sidebar uses
+that icon in the closed picker and shows full engine names only inside the
+opened menu.
 
-### Floating Address Bar Pitfalls
+Shared row shaping for tools results, synthetic open/search rows, saved-panel
+defaults, URL-like detection, row text, and one-shot engine payload selection
+lives in `components/AddressBar/addressRows.ts`. Both the sidebar row and
+floating fallback use those helpers so autocomplete behavior does not drift.
+
+### Address Entry Pitfalls
 
 - Keep native top-urlbar interception in chrome, not in the extension frame; the
   Firefox suggestions popup is created by parent chrome urlbar code before the
-  remote Bento overlay can react.
+  remote Bento UI can react.
 - Intercept native top-urlbar pointer/focus at chrome window capture, not only
   on `#urlbar-input`. Firefox 152 can open the native `urlbarView` before an
   input-local listener runs, producing a brief autosuggest flash. Keep the
   short `bento-native-urlbar-intercepting` chrome attribute and CSS suppression
-  as a backstop while the Bento address overlay opens.
+  as a backstop while the Bento address entry opens.
+- Keep sidebar address snapshots/focus scoped by both `windowId` and
+  `bridgeToken`. `messageManager` targets the frame, but the frame script then
+  rebroadcasts on a same-origin BroadcastChannel shared by every Bento window.
+- Do not mutate Places from a sidebar bookmark command unless the command's tab
+  id, URL, bridge token, and snapshot token still match the selected main tab
+  immediately before mutation.
+- Do not copy a sidebar URL unless the command's tab id, URL, bridge token, and
+  snapshot token still match the selected main tab immediately before the
+  clipboard write.
+- Keep the security popup native. React may show the security label/icon, but
+  certificate, permission, and identity details must remain Firefox's
+  `identity-popup` content.
 - Chrome-mounted shell pages must remain explicitly loadable from outside the
   extension page context. Keep every HTML entry loaded by
   `bento-shell-mount.js` in `bento-shell`'s `web_accessible_resources`, and
@@ -253,9 +340,35 @@ when the selected id differs from the current default.
 - Keep the chrome address overlay frame larger than the popup itself. The extra
   transparent gutters are what let the neutral popup shadow render without a
   hard clipped edge while still avoiding a full-window input blocker.
+- Keep `#bento-addrbar-host` hidden until the address frame acknowledges the
+  current `openId`. On cold opens, revealing the host before the frame applies
+  the new placement shows the previous/default centered popup for a frame before
+  it moves.
+- When switching an already-open address palette from centered to anchored, set
+  host opacity to `0` with transitions disabled before changing host geometry.
+  Otherwise the previous centered popup can briefly paint in the full-window
+  anchored host at top center.
+- Keep the address `CommandPalette` animation opacity-only. Tale UI's default
+  command-palette transform transition causes visible movement when switching
+  between anchored sidebar opens and centered shortcut/new-tab opens.
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
   surfaces so the palette reads as a traditional neutral command palette in
   light and dark modes.
+- Search provider icons come from Firefox `SearchService` engines. Native
+  Firefox chrome can use the `SearchEngine.getIconURL()` result directly,
+  including `ConfigSearchEngine` object URLs backed by the `search-config-icons`
+  remote-settings collection. Bento must convert those URLs to `data:image/*`
+  in the privileged `bentoPrivacy.getSearchEngines()` bridge before sending
+  them to the extension frame. Keep the small bundled Firefox search-config
+  icon fallback under `extensions/bento-tools/experiments/bento-privacy` for
+  default engines whose native object URL cannot be converted during early
+  startup.
+- Keep expanded-sidebar address editing in the shared address overlay. A
+  sidebar-frame popover cannot reliably paint over the panel strip/main content
+  because the sidebar is a chrome-hosted iframe with its own paint bounds.
+- Do not route shortcut, new-tab, or top-urlbar fallback opens through sidebar
+  row focus. Those entry points must keep the centered address/search overlay;
+  only direct activation of the sidebar URL row should pass an anchor.
 - Keep address-palette search-engine state separate from privacy settings. The
   picker is a one-shot override for submitted non-URL searches only.
 - Keep the picker dirty flag tied to `openVersion`. Late search-engine snapshots
@@ -761,7 +874,10 @@ and close the overlay.
 For local development, `scripts/sync-builtin-addon-symlinks.sh` must refresh
 every built `engine/obj-*` app bundle because `scripts/dev-launch.sh` chooses
 the newest `Bento.app`; otherwise `pnpm run dev:fresh` can launch a stale bundle
-whose built-in welcome assets do not match the current source.
+whose built-in welcome assets do not match the current source. The sync script
+links built-in addon `dist/` directories and privileged addon `experiments/`
+directories; keep both paths synced because Bento Tools experiment APIs and
+bundled experiment assets are outside the Vite-built `dist/` tree.
 The welcome overlay browser stays mounted under `#browser` so its title-IPC
 open/close signals stay reliable. Bento modal overlays also share a separate
 `bento-overlay-toolbar-scrim` for the native toolbar/urlbar strip, which

@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 1 Jul 2026 19:05:00 +1000
+Subject: [PATCH] Center native preferences layout
+
+---
+ browser/components/preferences/preferences.xhtml  | 4 ++--
+ browser/themes/shared/preferences/preferences.css | 5 +++++
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
+index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..25194f78202ae5d97377430bb1546fb066cedaa7 100644
+--- a/browser/components/preferences/preferences.xhtml
++++ b/browser/components/preferences/preferences.xhtml
+@@ -112,7 +112,7 @@
+                 src="chrome://browser/locale/browser.properties"/>
+ 
+   <stack id="preferences-stack" flex="1">
+-  <hbox flex="1">
++  <hbox flex="1" pack="center">
+ 
+     <html:moz-page-nav id="categories" data-l10n-id="category-nav-heading" allownoselection="true">
+       <html:moz-page-nav-button id="category-general"
+@@ -228,7 +228,7 @@
+       <key data-l10n-id="focus-search" key="" modifiers="accel" id="focusSearch1"/>
+     </keyset>
+ 
+-    <vbox class="main-content" flex="1" align="start">
++    <vbox class="main-content" align="center">
+       <vbox class="pane-container">
+         <html:div id="search-container">
+           <html:nav-notice
+diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
+index bcede3342137a1655f48128181831ab34d7f6395..e7c891b13d07e1e4e38c970693b0a4101eaa9929 100644
+--- a/browser/themes/shared/preferences/preferences.css
++++ b/browser/themes/shared/preferences/preferences.css
+@@ -109,7 +109,12 @@
+   padding-top: 0;
+   scroll-padding-top: calc(calc(2 * var(--page-space-block-start)) + var(--search-container-padding) + var(--search-container-margin));
+ 
++  @media (min-width: 951px) {
++    width: min(720px, calc(100vw - calc(var(--size-sidebar) - 42px)));
++  }
++
+   @media (max-width: 950px) {
++    width: 100%;
+     padding-inline: var(--space-medium);
+   }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

@@ -2565,6 +2565,18 @@
   // __windowId=null and bento-tools falls back to legacy global semantics
   // — degraded but still functional (matches pre-A.1 behaviour).
   const SET_FRAME_SRC_MAX_RETRIES = 20; // ~1s @ 50ms
+  let __bentoSidebarAddressBridgeToken = null;
+
+  function getBentoSidebarAddressBridgeToken() {
+    if (__bentoSidebarAddressBridgeToken) return __bentoSidebarAddressBridgeToken;
+    try {
+      __bentoSidebarAddressBridgeToken = String(Services.uuid.generateUUID()).replace(/[{}]/g, '');
+    } catch {
+      __bentoSidebarAddressBridgeToken =
+        String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+    }
+    return __bentoSidebarAddressBridgeToken;
+  }
 
   function getBentoSystemPrincipal() {
     try {
@@ -2645,7 +2657,9 @@
       frame.style.backgroundColor = 'transparent';
       frame.style.setProperty('-moz-appearance', 'none');
     }
-    setFrameSrc('bento-shell-frame', '/dist/index.html');
+    setFrameSrc('bento-shell-frame', '/dist/index.html', undefined, {
+      bentoSidebarAddressBridgeToken: getBentoSidebarAddressBridgeToken(),
+    });
   }
 
   function setBentoPaletteSrc() {
@@ -3113,12 +3127,74 @@
   const ADDRBAR_FRAME_GUTTER_TOP_PX = 40;
   const ADDRBAR_FRAME_GUTTER_INLINE_PX = 80;
   const ADDRBAR_FRAME_GUTTER_BOTTOM_PX = 140;
+  const ADDRBAR_ANCHOR_MARGIN_PX = 12;
+  const ADDRBAR_OPEN_RETRY_MS = 120;
+  const ADDRBAR_OPEN_RETRY_LIMIT = 8;
+  const ADDRBAR_OPEN_FALLBACK_REVEAL_MS = 1400;
+  const ADDRBAR_HOST_TRANSITION = 'opacity 0.18s var(--bento-easing-standard, ease)';
+  let addrbarOpenSeq = 0;
+  let pendingAddrbarReveal = null;
 
   function isAddrbarVisible(host) {
     return host.style.display !== 'none';
   }
 
-  function positionAddrbarHost(host) {
+  function nextAddrbarOpenId() {
+    addrbarOpenSeq += 1;
+    return `${Date.now()}-${addrbarOpenSeq}`;
+  }
+
+  function readAddrbarAnchorNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function computeAddrbarAnchoredPlacement(anchorRect) {
+    if (!anchorRect) return null;
+    const browser = document.getElementById('browser');
+    const shellFrame = document.getElementById('bento-shell-frame');
+    const browserRect = browser?.getBoundingClientRect?.();
+    const shellRect = shellFrame?.getBoundingClientRect?.();
+    if (!browserRect || !shellRect) return null;
+
+    const anchorLeft =
+      shellRect.left - browserRect.left + readAddrbarAnchorNumber(anchorRect.left);
+    const anchorTop = shellRect.top - browserRect.top + readAddrbarAnchorNumber(anchorRect.top);
+    const anchorWidth = Math.max(1, readAddrbarAnchorNumber(anchorRect.width));
+    const anchorHeight = Math.max(1, readAddrbarAnchorNumber(anchorRect.height));
+    const viewportWidth = Math.max(1, browserRect.width);
+    const viewportHeight = Math.max(1, browserRect.height);
+    const left = Math.max(
+      ADDRBAR_ANCHOR_MARGIN_PX,
+      Math.min(anchorLeft, viewportWidth - ADDRBAR_ANCHOR_MARGIN_PX - anchorWidth),
+    );
+    const availableWidth = Math.max(
+      anchorWidth,
+      viewportWidth - left - ADDRBAR_ANCHOR_MARGIN_PX,
+    );
+    const width = Math.min(ADDRBAR_POPUP_WIDTH_PX, availableWidth);
+    const top = Math.max(ADDRBAR_ANCHOR_MARGIN_PX, anchorTop + anchorHeight + 4);
+    const height = Math.min(
+      ADDRBAR_POPUP_HEIGHT_PX,
+      Math.max(180, viewportHeight - top - ADDRBAR_ANCHOR_MARGIN_PX),
+    );
+    return {
+      left: Math.round(left),
+      top: Math.round(top),
+      width: Math.round(width),
+      height: Math.round(height),
+    };
+  }
+
+  function positionAddrbarHost(host, placement = null) {
+    if (placement) {
+      host.style.top = '0';
+      host.style.left = '0';
+      host.style.width = '100%';
+      host.style.height = '100%';
+      host.style.transform = 'none';
+      return;
+    }
     const width = ADDRBAR_POPUP_WIDTH_PX + ADDRBAR_FRAME_GUTTER_INLINE_PX * 2;
     const height =
       ADDRBAR_POPUP_HEIGHT_PX + ADDRBAR_FRAME_GUTTER_TOP_PX + ADDRBAR_FRAME_GUTTER_BOTTOM_PX;
@@ -3127,6 +3203,66 @@
     host.style.width = `min(${width}px, 100%)`;
     host.style.height = `min(${height}px, 100%)`;
     host.style.transform = 'translateX(-50%)';
+  }
+
+  function clearPendingAddrbarReveal() {
+    const pending = pendingAddrbarReveal;
+    if (!pending) return;
+    if (pending.retryTimer) clearTimeout(pending.retryTimer);
+    if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
+    pendingAddrbarReveal = null;
+  }
+
+  function prepareAddrbarHostForOpen(host, placement = null) {
+    const previousTransition = host.style.transition;
+    host.style.transition = 'none';
+    host.style.pointerEvents = 'none';
+    host.style.opacity = '0';
+    host.style.display = 'flex';
+    host.removeAttribute('hidden');
+    void host.getBoundingClientRect();
+    positionAddrbarHost(host, placement);
+    void host.getBoundingClientRect();
+    host.style.transition =
+      previousTransition && previousTransition !== 'none'
+        ? previousTransition
+        : ADDRBAR_HOST_TRANSITION;
+  }
+
+  function revealPendingAddrbar(openId) {
+    const pending = pendingAddrbarReveal;
+    if (!pending || pending.openId !== openId) return;
+    if (pending.retryTimer) clearTimeout(pending.retryTimer);
+    if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
+    pendingAddrbarReveal = null;
+
+    const host = document.getElementById('bento-addrbar-host');
+    if (!host) return;
+    const frame = document.getElementById('bento-addrbar-frame');
+    const focusPreservingFrame = pending.focusPreservingFrameId
+      ? document.getElementById(pending.focusPreservingFrameId)
+      : null;
+    host.style.pointerEvents = 'auto';
+    host.style.opacity = '1';
+    if (focusPreservingFrame) focusPreservingFrame.focus();
+    else frame?.focus();
+  }
+
+  function retryPendingAddrbarOpen(openId) {
+    const pending = pendingAddrbarReveal;
+    if (!pending || pending.openId !== openId) return;
+    if (pending.retryCount >= ADDRBAR_OPEN_RETRY_LIMIT) return;
+    pending.retryCount += 1;
+    dispatchAddrbarOpen(pending.mode, pending.initialQuery, {
+      openId: pending.openId,
+      suppressFocus: pending.suppressFocus,
+      clipboardUrl: pending.clipboardUrl,
+      placement: pending.placement,
+    });
+    pending.retryTimer = setTimeout(
+      () => retryPendingAddrbarOpen(openId),
+      ADDRBAR_OPEN_RETRY_MS,
+    );
   }
 
   function getAddrbarFocusPreservingFrame() {
@@ -3209,12 +3345,16 @@
     }
   }
 
-  function showAddrbar(mode, initialQuery = '') {
+  function showAddrbar(mode, initialQuery = '', options = {}) {
     currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
-    const clipboardUrl =
-      currentAddrbarMode === 'newTab' && !String(initialQuery || '').trim()
-        ? resolveClipboardUrlSuggestion()
-        : '';
+    const openId = nextAddrbarOpenId();
+    const placement = computeAddrbarAnchoredPlacement(options.anchorRect);
+    let clipboardUrl = '';
+    if (typeof options.clipboardUrl === 'string' && options.clipboardUrl) {
+      clipboardUrl = options.clipboardUrl;
+    } else if (currentAddrbarMode === 'newTab' && !String(initialQuery || '').trim()) {
+      clipboardUrl = resolveClipboardUrlSuggestion();
+    }
     const paletteHost = document.getElementById('bento-palette-host');
     if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
     const host = document.getElementById('bento-addrbar-host');
@@ -3223,26 +3363,47 @@
       return;
     }
 
-    positionAddrbarHost(host);
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-addrbar-frame');
-    setTimeout(() => {
-      const focusPreservingFrame = getAddrbarFocusPreservingFrame();
-      dispatchAddrbarOpen(currentAddrbarMode, initialQuery, {
-        suppressFocus: !!focusPreservingFrame,
-        clipboardUrl,
-      });
-      if (focusPreservingFrame) focusPreservingFrame.focus();
-      else frame?.focus();
-    }, 0);
+    const focusPreservingFrame = getAddrbarFocusPreservingFrame();
+    clearPendingAddrbarReveal();
+    prepareAddrbarHostForOpen(host, placement);
+    pendingAddrbarReveal = {
+      openId,
+      mode: currentAddrbarMode,
+      initialQuery,
+      suppressFocus: !!focusPreservingFrame,
+      clipboardUrl,
+      placement,
+      focusPreservingFrameId: focusPreservingFrame?.id || '',
+      retryCount: 0,
+      retryTimer: null,
+      fallbackTimer: setTimeout(
+        () => revealPendingAddrbar(openId),
+        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
+      ),
+    };
+
+    dispatchAddrbarOpen(currentAddrbarMode, initialQuery, {
+      openId,
+      suppressFocus: !!focusPreservingFrame,
+      clipboardUrl,
+      placement,
+    });
+    pendingAddrbarReveal.retryTimer = setTimeout(
+      () => retryPendingAddrbarOpen(openId),
+      ADDRBAR_OPEN_RETRY_MS,
+    );
+  }
+
+  function openAddressEntry(mode, initialQuery = '') {
+    const nextMode = mode === 'newTab' ? 'newTab' : 'current';
+    showAddrbar(nextMode, initialQuery);
   }
 
   function hideAddrbar() {
+    clearPendingAddrbarReveal();
     const host = document.getElementById('bento-addrbar-host');
     if (!host) return;
+    host.style.pointerEvents = 'none';
     host.style.opacity = '0';
     setTimeout(() => {
       if (host.style.opacity === '0') {
@@ -3703,7 +3864,12 @@
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
   const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
+  const ADDRBAR_READY_PREFIX = 'BENTO_ADDRBAR_READY';
   const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
+  const SIDEBAR_ADDRESS_SUBMIT_PREFIX = 'BENTO_SIDEBAR_ADDRESS_SUBMIT:';
+  const SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX = 'BENTO_SIDEBAR_ADDRESS_BOOKMARK_TOGGLE:';
+  const SIDEBAR_ADDRESS_IDENTITY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_IDENTITY:';
+  const SIDEBAR_ADDRESS_COPY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_COPY:';
   // Same pattern for the confirm overlay (workspace deletion, etc.). The
   // confirm payload itself travels via BroadcastChannel('bento-confirm-bus')
   // — the title is just the visibility signal.
@@ -4547,9 +4713,20 @@
       return { mode: decoded === 'newTab' ? 'newTab' : 'current', initialQuery: '' };
     }
     const parsed = JSON.parse(decoded);
+    const anchorRect =
+      parsed?.anchorRect && typeof parsed.anchorRect === 'object'
+        ? {
+            left: Number(parsed.anchorRect.left) || 0,
+            top: Number(parsed.anchorRect.top) || 0,
+            width: Number(parsed.anchorRect.width) || 0,
+            height: Number(parsed.anchorRect.height) || 0,
+          }
+        : null;
     return {
       mode: parsed?.mode === 'newTab' ? 'newTab' : 'current',
       initialQuery: typeof parsed?.initialQuery === 'string' ? parsed.initialQuery : '',
+      clipboardUrl: typeof parsed?.clipboardUrl === 'string' ? parsed.clipboardUrl : '',
+      anchorRect,
     };
   }
 
@@ -4557,15 +4734,35 @@
     const tail = title.slice(ADDRBAR_OPEN_PREFIX.length);
     const colon = tail.indexOf(':');
     if (colon < 0) {
-      showAddrbar('newTab');
+      openAddressEntry('newTab');
       return;
     }
     try {
       const payload = parseAddrbarOpenPayload(tail.slice(colon + 1));
-      showAddrbar(payload.mode, payload.initialQuery);
+      if (payload.anchorRect) {
+        showAddrbar(payload.mode, payload.initialQuery, {
+          anchorRect: payload.anchorRect,
+          clipboardUrl: payload.clipboardUrl,
+        });
+      } else {
+        openAddressEntry(payload.mode, payload.initialQuery);
+      }
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar open payload decode failed:', err);
-      showAddrbar('newTab');
+      openAddressEntry('newTab');
+    }
+  }
+
+  function handleAddrbarReadyTitle(title) {
+    const tail = title.slice(ADDRBAR_READY_PREFIX.length);
+    const encodedPayload = tail.startsWith(':') ? tail.slice(1) : tail;
+    if (!encodedPayload) return;
+    try {
+      const parsed = JSON.parse(decodeAddrbarPayload(encodedPayload));
+      const openId = typeof parsed?.openId === 'string' ? parsed.openId : '';
+      if (openId) revealPendingAddrbar(openId);
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar ready payload decode failed:', err);
     }
   }
 
@@ -4617,6 +4814,37 @@
     }, 0);
   }
 
+  async function navigateAddressEntry(value, mode, searchEngineId) {
+    let spec = null;
+    if (searchEngineId && !isAddrbarUrlLike(value)) {
+      try {
+        spec = await resolveAddrbarSearchSpec(value, searchEngineId);
+      } catch (err) {
+        console.warn('[bento-shell-mount] addrbar search engine resolution failed:', err);
+      }
+    }
+    if (!spec) spec = resolveAddrbarSpec(value);
+    if (!spec) return false;
+
+    if (mode === 'newTab') {
+      dispatchShellAction({ type: 'tab/openUrl', url: spec });
+      scheduleScrollMainPanelIntoViewForAddrbar();
+      return true;
+    }
+
+    const browserEl = window.gBrowser?.selectedBrowser;
+    if (!browserEl) return false;
+    const principal = Services.scriptSecurityManager.getSystemPrincipal();
+    if (typeof browserEl.fixupAndLoadURIString === 'function') {
+      browserEl.fixupAndLoadURIString(spec, { triggeringPrincipal: principal });
+    } else {
+      const uri = Services.io.newURI(spec);
+      browserEl.loadURI(uri, { triggeringPrincipal: principal });
+    }
+    scheduleScrollMainPanelIntoViewForAddrbar();
+    return true;
+  }
+
   async function handleAddrbarNavigateTitle(title) {
     const colon = title.indexOf(':');
     if (colon < 0) {
@@ -4638,42 +4866,7 @@
     }
 
     try {
-      let spec = null;
-      if (payload.searchEngineId && !isAddrbarUrlLike(value)) {
-        try {
-          spec = await resolveAddrbarSearchSpec(value, payload.searchEngineId);
-        } catch (err) {
-          console.warn('[bento-shell-mount] addrbar search engine resolution failed:', err);
-        }
-      }
-      if (!spec) spec = resolveAddrbarSpec(value);
-
-      if (currentAddrbarMode === 'newTab') {
-        if (spec) {
-          dispatchShellAction({ type: 'tab/openUrl', url: spec });
-          scheduleScrollMainPanelIntoViewForAddrbar();
-        }
-        hideAddrbar();
-        return;
-      }
-
-      const browserEl = window.gBrowser?.selectedBrowser;
-      if (!browserEl) {
-        hideAddrbar();
-        return;
-      }
-      if (!spec) {
-        hideAddrbar();
-        return;
-      }
-      const principal = Services.scriptSecurityManager.getSystemPrincipal();
-      if (typeof browserEl.fixupAndLoadURIString === 'function') {
-        browserEl.fixupAndLoadURIString(spec, { triggeringPrincipal: principal });
-      } else {
-        const uri = Services.io.newURI(spec);
-        browserEl.loadURI(uri, { triggeringPrincipal: principal });
-      }
-      scheduleScrollMainPanelIntoViewForAddrbar();
+      await navigateAddressEntry(value, currentAddrbarMode, payload.searchEngineId);
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar navigation failed:', err);
     } finally {
@@ -4912,6 +5105,73 @@
       if (bookmark?.guid) matches.push(bookmark);
     });
     return matches;
+  }
+
+  function normalizeBookmarkUrlSpec(url) {
+    const value = String(url || '').trim();
+    if (!value) return '';
+    try {
+      return Services.io.newURI(value).spec;
+    } catch {
+      return '';
+    }
+  }
+
+  function isBookmarkableUrlSpec(spec) {
+    if (!spec) return false;
+    if (spec === 'about:blank' || spec === 'about:newtab') return false;
+    if (isBentoPanelNewTabUrl(spec)) return false;
+    return true;
+  }
+
+  function getActiveMainBrowser() {
+    return window.gBrowser?.selectedBrowser || null;
+  }
+
+  function getSelectedWebExtensionTabId() {
+    try {
+      const tab = window.gBrowser?.selectedTab;
+      const tracker = getTabTracker();
+      const id = tab && tracker?.getId?.(tab);
+      return Number.isInteger(id) ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function activeMainBrowserSpec() {
+    try {
+      return getActiveMainBrowser()?.currentURI?.spec || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function sidebarAddressUrlMatchesActiveMain(url) {
+    const payloadSpec = normalizeBookmarkUrlSpec(url);
+    const activeSpec = normalizeBookmarkUrlSpec(activeMainBrowserSpec());
+    return !!payloadSpec && !!activeSpec && payloadSpec === activeSpec;
+  }
+
+  function classifyRegularBookmarks(bookmarks, savedPanelsFolderGuid) {
+    return bookmarks.filter((bookmark) => bookmark.parentGuid !== savedPanelsFolderGuid);
+  }
+
+  async function getRegularBookmarkStateForUrl(spec) {
+    if (!isBookmarkableUrlSpec(spec)) {
+      return { isBookmarked: false, canBookmark: false };
+    }
+    try {
+      const PlacesUtils = getPlacesUtils();
+      const bookmarks = await getBookmarksForUrl(PlacesUtils, spec);
+      const savedPanelsFolderGuid = await getSavedPanelsFolderGuid(PlacesUtils);
+      return {
+        isBookmarked: classifyRegularBookmarks(bookmarks, savedPanelsFolderGuid).length > 0,
+        canBookmark: true,
+      };
+    } catch {
+      return { isBookmarked: false, canBookmark: false };
+    }
   }
 
   function setPanelBookmarkButtonState(bookmarkBtn, isBookmarked) {
@@ -8568,18 +8828,33 @@
     '"use strict";' +
     'addMessageListener("BentoAddrbarOpen", function(msg) {' +
     '  try {' +
+    '    var openId = msg.data && typeof msg.data.openId === "string" ? msg.data.openId : "";' +
     '    var mode = msg.data && msg.data.mode === "newTab" ? "newTab" : "current";' +
     '    var initialQuery = msg.data && typeof msg.data.initialQuery === "string" ? msg.data.initialQuery : "";' +
     '    var suppressFocus = !!(msg.data && msg.data.suppressFocus);' +
     '    var clipboardUrl = msg.data && typeof msg.data.clipboardUrl === "string" ? msg.data.clipboardUrl : "";' +
+    '    var placement = msg.data && msg.data.placement && typeof msg.data.placement === "object" ? msg.data.placement : null;' +
     '    var channel = new content.BroadcastChannel("bento-addrbar-bus");' +
-    '    channel.postMessage({ kind: "open", mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus, clipboardUrl: clipboardUrl });' +
+    '    channel.postMessage({ kind: "open", openId: openId, mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus, clipboardUrl: clipboardUrl, placement: placement });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
   const ADDRBAR_OPEN_FRAME_SCRIPT_URL =
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(ADDRBAR_OPEN_FRAME_SCRIPT_SRC);
+
+  const SIDEBAR_ADDRESS_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoSidebarAddress", function(msg) {' +
+    '  try {' +
+    '    var channel = new content.BroadcastChannel("bento-sidebar-address-bus");' +
+    '    channel.postMessage(msg.data);' +
+    '    channel.close();' +
+    '  } catch (e) {}' +
+    '});';
+  const SIDEBAR_ADDRESS_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(SIDEBAR_ADDRESS_FRAME_SCRIPT_SRC);
 
   const MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC =
     '"use strict";' +
@@ -8662,14 +8937,39 @@
         frame._bentoAddrbarOpenScriptLoaded = true;
       }
       mm.sendAsyncMessage('BentoAddrbarOpen', {
+        openId: typeof options.openId === 'string' ? options.openId : '',
         mode,
         initialQuery,
         suppressFocus: options.suppressFocus === true,
         clipboardUrl: typeof options.clipboardUrl === 'string' ? options.clipboardUrl : '',
+        placement: options.placement || null,
       });
       return true;
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar open dispatch failed:', err);
+      return false;
+    }
+  }
+
+  function dispatchSidebarAddressMessage(message, attempt = 0) {
+    const frame = document.getElementById('bento-shell-frame');
+    if (!frame) return false;
+    try {
+      const mm = frame.messageManager;
+      if (!mm || typeof mm.sendAsyncMessage !== 'function') {
+        if (attempt < 10) {
+          setTimeout(() => dispatchSidebarAddressMessage(message, attempt + 1), 100);
+        }
+        return false;
+      }
+      if (!frame._bentoSidebarAddressScriptLoaded && typeof mm.loadFrameScript === 'function') {
+        mm.loadFrameScript(SIDEBAR_ADDRESS_FRAME_SCRIPT_URL, true);
+        frame._bentoSidebarAddressScriptLoaded = true;
+      }
+      mm.sendAsyncMessage('BentoSidebarAddress', message);
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address dispatch failed:', err);
       return false;
     }
   }
@@ -14178,7 +14478,7 @@
       items: payload.items,
       onSelect: (itemId) => {
         if (itemId === 'new-tab') {
-          showAddrbar('newTab');
+          openAddressEntry('newTab');
           return;
         }
         if (itemId === 'reopen-closed-tab') {
@@ -16192,6 +16492,7 @@
         if (title === lastSeenAddrbarTitle) return;
         lastSeenAddrbarTitle = title;
         if (title.startsWith(ADDRBAR_CLOSE_PREFIX)) hideAddrbar();
+        else if (title.startsWith(ADDRBAR_READY_PREFIX)) handleAddrbarReadyTitle(title);
         else if (title.startsWith(ADDRBAR_NAVIGATE_PREFIX)) handleAddrbarNavigateTitle(title);
       }, 60);
     }
@@ -16350,7 +16651,15 @@
           else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
           else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
-          else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
+          else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
+            handleSidebarAddressSubmitTitle(title);
+          } else if (title.startsWith(SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX)) {
+            handleSidebarAddressBookmarkToggleTitle(title);
+          } else if (title.startsWith(SIDEBAR_ADDRESS_IDENTITY_PREFIX)) {
+            handleSidebarAddressIdentityTitle(title);
+          } else if (title.startsWith(SIDEBAR_ADDRESS_COPY_PREFIX)) {
+            handleSidebarAddressCopyTitle(title);
+          } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
           else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
           else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
           else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
@@ -16481,7 +16790,7 @@
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-        showAddrbar(e.code === 'KeyT' ? 'newTab' : 'current');
+        openAddressEntry(e.code === 'KeyT' ? 'newTab' : 'current');
       },
       true,
     );
@@ -16551,7 +16860,7 @@
       const now = Date.now();
       if (now - lastOpenAt < 180) return;
       lastOpenAt = now;
-      showAddrbar('current');
+      openAddressEntry('current');
     };
 
     window.addEventListener('pointerdown', openFromNativeUrlbar, true);
@@ -16608,6 +16917,405 @@
   }
 
   const WORKSPACE_SESSION_KEY = 'extension:bento-tools@bento.app:bento.workspaceId';
+
+  let sidebarAddressSnapshotToken = 0;
+  let sidebarAddressLatestPostedToken = 0;
+  let sidebarAddressSnapshotScheduled = false;
+  const sidebarAddressBookmarkTogglesInFlight = new Set();
+
+  function readSidebarAddressDisplayUrl(browserEl) {
+    try {
+      if (window.gURLBar?.untrimmedValue) return String(window.gURLBar.untrimmedValue);
+    } catch {
+      /* fall through */
+    }
+    try {
+      if (window.gURLBar?.value) return String(window.gURLBar.value);
+    } catch {
+      /* fall through */
+    }
+    try {
+      return browserEl?.currentURI?.displaySpec || browserEl?.currentURI?.spec || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function readSidebarAddressTitle(browserEl) {
+    try {
+      return browserEl?.contentTitle || window.gBrowser?.selectedTab?.label || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function readSidebarAddressSecurity(browserEl) {
+    const identityBox = document.getElementById('identity-box');
+    const identityIcon = document.getElementById('identity-icon');
+    const identityLabel = document.getElementById('identity-icon-label');
+    const identityClass = String(identityBox?.className || '');
+    const tooltip =
+      identityBox?.getAttribute?.('tooltiptext') ||
+      identityIcon?.getAttribute?.('tooltiptext') ||
+      identityBox?.getAttribute?.('title') ||
+      '';
+    let label = (identityLabel?.textContent || '').trim();
+    let kind = 'unknown';
+
+    if (/verifiedIdentity|verifiedDomain|secure/i.test(identityClass)) {
+      kind = /verifiedIdentity/i.test(identityClass) ? 'verified' : 'secure';
+      if (!label) label = 'Secure';
+    } else if (/mixed|broken/i.test(identityClass)) {
+      kind = 'mixed';
+      if (!label) label = 'Mixed content';
+    } else if (/notSecure|insecure|certError/i.test(identityClass)) {
+      kind = 'insecure';
+      if (!label) label = 'Not secure';
+    }
+
+    if (kind === 'unknown') {
+      try {
+        const uri = browserEl?.currentURI;
+        if (uri?.scheme === 'about' || uri?.scheme === 'chrome') kind = 'internal';
+        else if (uri?.scheme === 'moz-extension') kind = 'extension';
+        else if (uri?.scheme === 'file') kind = 'local';
+      } catch {
+        /* keep unknown */
+      }
+    }
+
+    if (kind === 'unknown') {
+      try {
+        const state = browserEl?.securityUI?.state || 0;
+        if (state & Ci.nsIWebProgressListener.STATE_IS_SECURE) {
+          kind = 'secure';
+          if (!label) label = 'Secure';
+        } else if (state & Ci.nsIWebProgressListener.STATE_IS_BROKEN) {
+          kind = 'mixed';
+          if (!label) label = 'Mixed content';
+        } else if (state & Ci.nsIWebProgressListener.STATE_IS_INSECURE) {
+          kind = 'insecure';
+          if (!label) label = 'Not secure';
+        }
+      } catch {
+        /* keep unknown */
+      }
+    }
+
+    if (!label) {
+      if (kind === 'internal') label = 'Browser page';
+      else if (kind === 'extension') label = 'Extension page';
+      else if (kind === 'local') label = 'Local file';
+      else label = 'Site information';
+    }
+
+    return {
+      kind,
+      label,
+      tooltip: tooltip || label,
+      canOpenIdentity: !!window.gIdentityHandler,
+    };
+  }
+
+  function sidebarAddressPayloadMatchesScope(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+    const bridgeToken = getBentoSidebarAddressBridgeToken();
+    if (!bridgeToken || payload.bridgeToken !== bridgeToken) return false;
+    const windowId = getChromeWindowId();
+    if (typeof windowId === 'number') return payload.windowId === windowId;
+    return payload.windowId === null || payload.windowId === undefined;
+  }
+
+  function sidebarAddressPayloadMatchesSelectedTab(payload) {
+    if (!sidebarAddressPayloadMatchesScope(payload)) return false;
+    if (Number(payload.snapshotToken) !== sidebarAddressLatestPostedToken) return false;
+    const activeTabId = getSelectedWebExtensionTabId();
+    if (activeTabId !== null && payload.tabId !== activeTabId) return false;
+    return sidebarAddressUrlMatchesActiveMain(payload.url);
+  }
+
+  async function buildSidebarAddressSnapshot(token, browserEl, tabId, spec) {
+    const bookmark = await getRegularBookmarkStateForUrl(spec);
+    if (token !== sidebarAddressSnapshotToken) return null;
+    if (browserEl !== getActiveMainBrowser()) return null;
+    if (normalizeBookmarkUrlSpec(activeMainBrowserSpec()) !== spec) return null;
+    return {
+      kind: 'snapshot',
+      windowId: getChromeWindowId(),
+      bridgeToken: getBentoSidebarAddressBridgeToken(),
+      messageId: Date.now(),
+      snapshotToken: token,
+      tabId,
+      url: spec,
+      displayUrl: readSidebarAddressDisplayUrl(browserEl),
+      title: readSidebarAddressTitle(browserEl),
+      security: readSidebarAddressSecurity(browserEl),
+      bookmark,
+      loading: !!window.gBrowser?.selectedTab?.hasAttribute?.('busy'),
+    };
+  }
+
+  async function emitSidebarAddressSnapshot() {
+    const browserEl = getActiveMainBrowser();
+    const spec = normalizeBookmarkUrlSpec(activeMainBrowserSpec());
+    const token = ++sidebarAddressSnapshotToken;
+    if (!browserEl || !spec) {
+      sidebarAddressLatestPostedToken = token;
+      dispatchSidebarAddressMessage({
+        kind: 'snapshot',
+        windowId: getChromeWindowId(),
+        bridgeToken: getBentoSidebarAddressBridgeToken(),
+        messageId: Date.now(),
+        snapshotToken: token,
+        tabId: getSelectedWebExtensionTabId(),
+        url: '',
+        displayUrl: '',
+        title: '',
+        security: readSidebarAddressSecurity(browserEl),
+        bookmark: { isBookmarked: false, canBookmark: false },
+        loading: false,
+      });
+      return;
+    }
+    const snapshot = await buildSidebarAddressSnapshot(
+      token,
+      browserEl,
+      getSelectedWebExtensionTabId(),
+      spec,
+    );
+    if (!snapshot) return;
+    sidebarAddressLatestPostedToken = token;
+    dispatchSidebarAddressMessage(snapshot);
+  }
+
+  function scheduleSidebarAddressSnapshot() {
+    if (sidebarAddressSnapshotScheduled) return;
+    sidebarAddressSnapshotScheduled = true;
+    requestAnimationFrame(() => {
+      sidebarAddressSnapshotScheduled = false;
+      emitSidebarAddressSnapshot().catch((err) => {
+        console.warn('[bento-shell-mount] sidebar address snapshot failed:', err);
+      });
+    });
+  }
+
+  function parseSidebarAddressTitlePayload(rawTitle, prefix) {
+    const tail = rawTitle.slice(prefix.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return null;
+    try {
+      return JSON.parse(decodeAddrbarPayload(tail.slice(colon + 1)));
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address payload parse failed:', err);
+      return null;
+    }
+  }
+
+  async function handleSidebarAddressSubmitTitle(rawTitle) {
+    const payload = parseSidebarAddressTitlePayload(rawTitle, SIDEBAR_ADDRESS_SUBMIT_PREFIX);
+    if (!sidebarAddressPayloadMatchesScope(payload)) return;
+    const value = typeof payload.value === 'string' ? payload.value.trim() : '';
+    if (!value) return;
+    try {
+      await navigateAddressEntry(
+        value,
+        payload.mode === 'newTab' ? 'newTab' : 'current',
+        typeof payload.searchEngineId === 'string' ? payload.searchEngineId : undefined,
+      );
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address submit failed:', err);
+    } finally {
+      scheduleSidebarAddressSnapshot();
+    }
+  }
+
+  async function handleSidebarAddressBookmarkToggleTitle(rawTitle) {
+    const payload = parseSidebarAddressTitlePayload(
+      rawTitle,
+      SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX,
+    );
+    const spec = normalizeBookmarkUrlSpec(payload?.url);
+    if (
+      !spec ||
+      !isBookmarkableUrlSpec(spec) ||
+      !sidebarAddressPayloadMatchesSelectedTab(payload)
+    ) {
+      scheduleSidebarAddressSnapshot();
+      return;
+    }
+    const tabId = getSelectedWebExtensionTabId();
+    const inflightKey = `${tabId ?? 'unknown'}:${spec}`;
+    if (sidebarAddressBookmarkTogglesInFlight.has(inflightKey)) {
+      scheduleSidebarAddressSnapshot();
+      return;
+    }
+    sidebarAddressBookmarkTogglesInFlight.add(inflightKey);
+    try {
+      const PlacesUtils = getPlacesUtils();
+      const bookmarks = await getBookmarksForUrl(PlacesUtils, spec);
+      const savedPanelsFolderGuid = await getSavedPanelsFolderGuid(PlacesUtils);
+      if (!sidebarAddressPayloadMatchesSelectedTab(payload)) return;
+      const removableBookmarks = classifyRegularBookmarks(bookmarks, savedPanelsFolderGuid);
+      if (removableBookmarks.length > 0) {
+        await Promise.all(
+          removableBookmarks.map((bookmark) => PlacesUtils.bookmarks.remove(bookmark.guid)),
+        );
+      } else {
+        const browserEl = getActiveMainBrowser();
+        let title =
+          typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : spec;
+        try {
+          title = browserEl?.contentTitle || title;
+        } catch {
+          /* keep payload title */
+        }
+        if (!sidebarAddressPayloadMatchesSelectedTab(payload)) return;
+        await PlacesUtils.bookmarks.insert({
+          parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+          url: spec,
+          title,
+        });
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address bookmark toggle failed:', err);
+    } finally {
+      sidebarAddressBookmarkTogglesInFlight.delete(inflightKey);
+      scheduleSidebarAddressSnapshot();
+    }
+  }
+
+  function writeTextToGlobalClipboard(value) {
+    const text = typeof value === 'string' ? value : '';
+    if (!text) return false;
+    try {
+      Cc['@mozilla.org/widget/clipboardhelper;1']
+        .getService(Ci.nsIClipboardHelper)
+        .copyString(text);
+      return true;
+    } catch {
+      /* fall back to transferable clipboard write */
+    }
+
+    const supportsString = Cc['@mozilla.org/supports-string;1'].createInstance(
+      Ci.nsISupportsString,
+    );
+    supportsString.data = text;
+    const transferable = Cc['@mozilla.org/widget/transferable;1'].createInstance(
+      Ci.nsITransferable,
+    );
+    transferable.init(window.docShell.QueryInterface(Ci.nsILoadContext));
+    transferable.addDataFlavor('text/plain');
+    transferable.setTransferData('text/plain', supportsString);
+    Services.clipboard.setData(transferable, null, Services.clipboard.kGlobalClipboard);
+    return true;
+  }
+
+  function handleSidebarAddressCopyTitle(rawTitle) {
+    const payload = parseSidebarAddressTitlePayload(rawTitle, SIDEBAR_ADDRESS_COPY_PREFIX);
+    if (!sidebarAddressPayloadMatchesSelectedTab(payload)) return;
+    const spec = normalizeBookmarkUrlSpec(payload?.url);
+    if (!spec) return;
+    try {
+      writeTextToGlobalClipboard(spec);
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address copy failed:', err);
+    }
+  }
+
+  function ensureSidebarIdentityAnchor(anchorRect) {
+    const shellFrame = document.getElementById('bento-shell-frame');
+    const shellRect = shellFrame?.getBoundingClientRect();
+    if (!shellRect || !anchorRect) return null;
+    let anchor = document.getElementById('bento-sidebar-address-identity-anchor');
+    if (!anchor) {
+      anchor = document.createElementNS(HTML_NS, 'span');
+      anchor.id = 'bento-sidebar-address-identity-anchor';
+      anchor.setAttribute('aria-hidden', 'true');
+      document.documentElement.appendChild(anchor);
+    }
+    const left = shellRect.left + Number(anchorRect.left || 0);
+    const top = shellRect.top + Number(anchorRect.top || 0);
+    const width = Math.max(1, Number(anchorRect.width || 1));
+    const height = Math.max(1, Number(anchorRect.height || 1));
+    anchor.style.cssText =
+      'position: fixed; pointer-events: none; z-index: 2147483647; left: ' +
+      Math.round(left) +
+      'px; top: ' +
+      Math.round(top) +
+      'px; width: ' +
+      Math.round(width) +
+      'px; height: ' +
+      Math.round(height) +
+      'px;';
+    return anchor;
+  }
+
+  function openNativeIdentityPopupForSidebar(anchorRect) {
+    const handler = window.gIdentityHandler;
+    if (!handler || typeof window.PanelMultiView?.openPopup !== 'function') return false;
+    const anchor = ensureSidebarIdentityAnchor(anchorRect);
+    if (!anchor) return false;
+    try {
+      handler._initializePopup?.();
+      handler.refreshIdentityPopup?.();
+      for (const panel of Array.from(document.querySelectorAll('panel[openpanel]'))) {
+        PanelMultiView.hidePopup(panel);
+      }
+      const popup = handler._identityPopup || document.getElementById('identity-popup');
+      if (!popup) return false;
+      popup.addEventListener('popuphidden', () => anchor.remove(), { once: true });
+      PanelMultiView.openPopup(popup, anchor, {
+        position: 'bottomleft topleft',
+        triggerEvent: null,
+      }).catch(console.error);
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar identity popup failed:', err);
+      anchor.remove();
+      return false;
+    }
+  }
+
+  function handleSidebarAddressIdentityTitle(rawTitle) {
+    const payload = parseSidebarAddressTitlePayload(rawTitle, SIDEBAR_ADDRESS_IDENTITY_PREFIX);
+    if (!sidebarAddressPayloadMatchesSelectedTab(payload)) return;
+    openNativeIdentityPopupForSidebar(payload.anchorRect);
+  }
+
+  function attachSidebarAddressSnapshotListeners() {
+    document.documentElement.setAttribute('bento-sidebar-addressbar', 'true');
+    scheduleSidebarAddressSnapshot();
+
+    window.addEventListener('TabSelect', scheduleSidebarAddressSnapshot, true);
+    window.addEventListener('TabAttrModified', scheduleSidebarAddressSnapshot, true);
+    window.addEventListener('SSTabRestored', scheduleSidebarAddressSnapshot, true);
+
+    try {
+      window.gBrowser?.addTabsProgressListener?.({
+        onLocationChange(browser) {
+          if (browser === window.gBrowser?.selectedBrowser) scheduleSidebarAddressSnapshot();
+        },
+        onSecurityChange(browser) {
+          if (browser === window.gBrowser?.selectedBrowser) scheduleSidebarAddressSnapshot();
+        },
+        onStateChange(browser) {
+          if (browser === window.gBrowser?.selectedBrowser) scheduleSidebarAddressSnapshot();
+        },
+      });
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address progress listener failed:', err);
+    }
+
+    try {
+      const PlacesUtils = getPlacesUtils();
+      PlacesUtils.observers.addListener(
+        ['bookmark-added', 'bookmark-removed', 'bookmark-moved', 'bookmark-url-changed'],
+        scheduleSidebarAddressSnapshot,
+      );
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar address Places listener failed:', err);
+    }
+  }
 
   function workspaceTabsInOrder() {
     if (!window.gBrowser || !currentWorkspaceId) return [];
@@ -16973,8 +17681,8 @@
       if (dir !== 1 && dir !== -1) return;
       navigateFocusedPanelHistory(dir);
     });
-    window.addEventListener('BentoKey:AddrbarOpen', () => {
-      showAddrbar('current');
+    window.addEventListener('BentoKey:AddrbarOpen', (e) => {
+      openAddressEntry(e?.detail?.mode === 'newTab' ? 'newTab' : 'current');
     });
   }
 
@@ -17111,6 +17819,7 @@
   attachAddrbarKeybinding();
   attachAddrbarOutsideDismissListener();
   attachTopUrlbarModalListener();
+  attachSidebarAddressSnapshotListeners();
   attachPaletteKeybinding();
   attachPaletteEscListener();
   attachPaletteCloseListener();

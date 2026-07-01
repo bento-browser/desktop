@@ -1,7 +1,7 @@
 // Floating address/search bar overlay entry. Lives in its own Vite chunk
 // and chrome <browser> frame sized around the palette popup.
 
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import '@tale-ui/core/src';
@@ -21,21 +21,29 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { dispatch, initToolsPort } from '../bridge/useToolsPort';
 import {
   signalAddrbarClose,
+  signalAddrbarReady,
   subscribeToAddrbarOpenRequests,
   type AddrbarMode,
+  type AddrbarPlacement,
 } from '../bridge/useAddrbar';
 
 initToolsPort();
 document.documentElement.dataset.bentoAddressBar = 'true';
 
+interface AddressBarOpenState {
+  openId: string;
+  mode: AddrbarMode;
+  initialQuery: string;
+  openVersion: number;
+  suppressFocus: boolean;
+  clipboardUrl: string;
+  placement: AddrbarPlacement | null;
+}
+
 function AddressBarApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
-  const [mode, setMode] = useState<AddrbarMode>('current');
-  const [initialQuery, setInitialQuery] = useState('');
-  const [openVersion, setOpenVersion] = useState(0);
-  const [suppressFocus, setSuppressFocus] = useState(false);
-  const [clipboardUrl, setClipboardUrl] = useState('');
+  const [openState, setOpenState] = useState<AddressBarOpenState | null>(null);
 
   useEffect(() => {
     dispatch({ type: 'searchEngines/requestSnapshot' });
@@ -43,22 +51,33 @@ function AddressBarApp() {
     return subscribeToAddrbarOpenRequests((nextMode, nextInitialQuery = '', options) => {
       dispatch({ type: 'searchEngines/requestSnapshot' });
       dispatch({ type: 'savedPanels/requestSnapshot' });
-      setMode(nextMode);
-      setInitialQuery(nextInitialQuery);
-      setSuppressFocus(options?.suppressFocus === true);
-      setClipboardUrl(options?.clipboardUrl || '');
-      setOpenVersion((version) => version + 1);
+      setOpenState((state) => ({
+        openId: options?.openId || '',
+        mode: nextMode,
+        initialQuery: nextInitialQuery,
+        suppressFocus: options?.suppressFocus === true,
+        clipboardUrl: options?.clipboardUrl || '',
+        placement: options?.placement || null,
+        openVersion: (state?.openVersion || 0) + 1,
+      }));
     });
   }, []);
+
+  useLayoutEffect(() => {
+    if (openState?.openId) signalAddrbarReady(openState.openId);
+  }, [openState?.openId]);
+
+  if (!openState) return null;
 
   return (
     <AddressBar
       onClose={signalAddrbarClose}
-      mode={mode}
-      openVersion={openVersion}
-      initialQuery={initialQuery}
-      suppressFocus={suppressFocus}
-      clipboardUrl={clipboardUrl}
+      mode={openState.mode}
+      openVersion={openState.openVersion}
+      initialQuery={openState.initialQuery}
+      suppressFocus={openState.suppressFocus}
+      clipboardUrl={openState.clipboardUrl}
+      placement={openState.placement}
     />
   );
 }

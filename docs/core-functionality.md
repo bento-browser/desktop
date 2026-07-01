@@ -108,9 +108,11 @@ workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
 
 The sidebar tab list supports multi-selection for workspace organization.
-The tab list exposes `New tab` and `New panel` buttons. `New tab` opens the
-floating address/search bar in new-tab mode, creating the tab only after the
-user commits, while `New panel` opens a blank panel in the active workspace. A
+The tab list exposes `New tab` and `New panel` buttons. In expanded sidebar
+mode, `New tab` opens the centered address/search overlay in new-tab mode,
+creating the tab only after the user commits. In collapsed sidebar mode, it
+opens the same centered address/search fallback. `New panel`
+opens a blank panel in the active workspace. A
 search icon beside those controls expands into a sidebar search field over the
 action row. Typing filters open tabs and side panels by title across all
 workspaces. The field has a clear
@@ -209,32 +211,41 @@ such as current/active markers or workspace shortcut hints where applicable.
 Command-palette search fields use a visible "Clear" button instead of an
 icon-only clear affordance.
 
-The floating address/search bar opens with `Cmd/Ctrl+L` or `Cmd/Ctrl+E` for the
-current tab and `Cmd/Ctrl+T` for a new tab. Clicking into Firefox's native top
-address field also opens the same floating address/search bar in current-tab
-mode instead of showing Firefox's native suggestion dropdown. Empty input shows
-the same top-site shortcuts as Firefox's new tab page and does not compute or
-show open tab or panel autocomplete rows.
+In expanded sidebar mode, the main address/search entry is a persistent row
+below the workspace switcher and above the tab list. It mirrors the active main
+tab's URL, loading state, Firefox security identity state, and regular Firefox
+bookmark state, with one-click actions to copy the current URL or toggle the
+regular bookmark state. Clicking the row opens Bento's address entry below the row. Its
+suggestions can extend beyond the sidebar over the panel strip and main content
+slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`, and any fallback path
+that reaches Firefox's hidden native top address field open the centered
+address/search overlay instead of showing Firefox's native suggestion dropdown.
+The field uses the sidebar tab row text size on a neutral-5 surface. The native
+top URL/search field is hidden in normal Bento windows while toolbar buttons and
+native window controls remain visible. In collapsed sidebar mode, those same
+actions open the existing floating address/search fallback.
+
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
-open that URL from the clipboard. Saved panels also appear by default in
-new-tab mode and open as side panels. Typing hides these default clipboard and
-saved-panel rows.
-It floats over the browser content without restyling Firefox's native address
-bar. After the user types, results include capped matches for open normal tabs
-and panels from the active workspace by title or URL, plus history, bookmarks,
-and a final search/open row. The palette includes a one-shot search-engine
-picker initialized from Firefox's current default engine each time it opens.
-Choosing another engine affects only the submitted non-URL search and does not
-change Bento Settings or Firefox's default search engine. Submitting a URL-like
-value ignores the one-shot picker and continues through Firefox URL fixup.
+open that URL from the clipboard. Saved panels also appear by default and open
+as side panels. Typing hides these default clipboard and saved-panel rows. After
+the user types, results include capped matches for open normal tabs and panels
+from the active workspace by title or URL, plus history, bookmarks, and a final
+search/open row. The address entry includes a one-shot search-engine picker
+initialized from Firefox's current default engine each time editing starts.
+The closed picker shows the provider icon; opening it shows the full provider
+names. Choosing another engine affects only the submitted non-URL search and
+does not change Bento Settings or Firefox's default search engine. Submitting a
+URL-like value ignores the one-shot picker and continues through Firefox URL
+fixup.
 Successful address or search submissions reveal the main content slot if the
 panel strip was scrolled over side panels, because the submitted load targets
 the main tab surface.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
-does not leave an empty tab behind. Results use the same command-palette row
-surface treatment as Bento's command palette on an opaque neutral-5 surface, and
-the palette does not dim the browser content behind it.
-The address/search field uses a visible "Clear" button.
+does not leave an empty tab behind. Sidebar suggestions render in a
+sidebar-anchored neutral popover that can overhang the sidebar; the collapsed
+fallback uses the same opaque floating command-palette surface as before and
+does not dim the browser content behind it.
+The floating fallback address/search field uses a visible "Clear" button.
 If an empty workspace created from the workspace manager triggers the new-tab
 address/search bar, the workspace manager remains above it and keeps focus.
 History and bookmark rows use generic icons when no favicon source is

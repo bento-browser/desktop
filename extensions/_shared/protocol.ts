@@ -247,6 +247,7 @@ export interface SearchEngineChoice {
   id: SearchEngineId;
   name: string;
   isDefault: boolean;
+  iconUrl?: string;
 }
 export interface SearchEnginesSnapshot {
   defaultSearchEngine: SearchEngineId;

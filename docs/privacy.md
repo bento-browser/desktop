@@ -25,10 +25,11 @@ the user continues.
 
 Fresh profiles default to DuckDuckGo. Bento Settings can switch the default
 search engine among Firefox's currently visible search engines. Bento does not
-maintain a separate provider list; ids, names, ordering, and availability come
-from Firefox `SearchService.getVisibleEngines()`. During onboarding, Bento adds
-supporting text that identifies visible privacy-oriented engines when they are
-present, without filtering the Firefox-provided list.
+maintain a separate provider list; ids, names, icons, ordering, and availability
+come from Firefox `SearchService.getVisibleEngines()`. Provider icons are
+converted to renderable data URLs before reaching the shell UI. During
+onboarding, Bento adds supporting text that identifies visible privacy-oriented
+engines when they are present, without filtering the Firefox-provided list.
 
 The runtime search setter is privileged because `browser.search` cannot set the
 default engine. Bento uses a bento-tools WebExtension experiment that calls

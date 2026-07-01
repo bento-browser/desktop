@@ -194,12 +194,23 @@ tale-button--sm` classes and visible `Clear` text. Keep them as the
   The row owns the toolbar padding and divider while the inner
   `CommandPalette.SearchField` remains flush, avoiding a doubled search-field
   inset around the picker trigger.
-- Bento constrains the address-palette search-engine `Select` with
-  `--bento-address-bar-engine-width`, makes the trigger fill that stable slot,
-  and truncates the selected engine label. This prevents long engine names from
-  resizing or occluding the CommandPalette input.
+- Bento keeps the closed address-palette search-engine `Select` trigger
+  icon-only and content-sized. The popover items show full engine names, so long
+  names cannot resize or occlude the CommandPalette input while the closed
+  trigger keeps a tight icon-to-chevron gap.
 - Bento gives the Select popover the same `var(--neutral-5)` surface as the
   popup so it remains opaque and token-driven in light and dark modes.
+- Bento renders Firefox search-engine icons from the bridged `iconUrl` data URL.
+  The privileged bridge converts native Firefox `SearchEngine.getIconURL()`
+  results because raw chrome/object URLs are not reliable extension-frame image
+  sources. It falls back to bundled copies of Firefox's search-config icon
+  attachments for the default providers when native conversion is unavailable.
+- The CommandPalette backdrop is not React-Aria-dismissable. Bento closes the
+  address palette through its own outside-pointer handler so the search-engine
+  Select popover can be clicked or dismissed without closing the whole palette.
+- Bento disables Tale UI's default command-palette transform animation for this
+  overlay. Centered and sidebar-anchored opens fade only, without slide
+  movement.
 - Address result favicons use Tale UI `Image` but are fully styled by
   `AddressBar.css`; this overlay intentionally does not import the global
   `@tale-ui/react-styles/image` stylesheet.
@@ -214,9 +225,61 @@ Regression checks:
 - Create a new workspace from the workspace manager. If the address/new-tab
   palette opens, it should remain below the workspace manager and should not
   steal focus from it.
-- Long search-engine names should truncate inside the picker trigger and must
-  not push into the address input. The picker popover should remain opaque and
-  readable over dark content.
+- The closed search-engine picker should stay icon-sized with a tight
+  icon-to-chevron gap. Long engine names should appear only in the picker
+  popover, which should remain opaque and readable over dark content.
+- Open the search-engine picker, then click its trigger again to dismiss it; the
+  address palette should remain open.
+- Reopen after switching between sidebar-anchored and centered shortcut modes;
+  the popup should fade without any transform movement.
+
+### SidebarAddressBar
+
+Upstream base: Tale UI `IconButton`, `Icon`, `Spinner`, and `Tooltip`, with a
+native read-only launcher input.
+
+Bento owners:
+
+- [SidebarAddressBar.tsx](../extensions/bento-shell/src/components/SidebarAddressBar/SidebarAddressBar.tsx)
+  composes the expanded-sidebar address row.
+- [SidebarAddressBar.css](../extensions/bento-shell/src/components/SidebarAddressBar/SidebarAddressBar.css)
+  owns the stable row sizing.
+- [bento-tokens.css](../extensions/bento-shell/src/theme/bento-tokens.css)
+  defines `--bento-sidebar-address-*` dimensions.
+
+Current drift:
+
+- The row is a browser chrome control, not a Tale UI form recipe. It keeps fixed
+  security/copy/bookmark button slots and a stable input slot so long URLs,
+  loading state, and bookmark/security changes do not resize the sidebar.
+- The read-only native input uses an unlayered rule on
+  `.bento-sidebar-address-bar__input` with the exact sidebar tab-row font
+  shorthand; do not rely on inherited or layered input fonts for this chrome
+  control.
+- Activating the row opens the shared `AddressBar` overlay anchored below the
+  row. Keyboard shortcuts, the `New tab` action, and native top-urlbar fallback
+  opens use the centered `AddressBar` overlay. The overlay owns the focused
+  input, suggestions, and search-engine picker so those surfaces can render
+  outside the sidebar iframe when anchored.
+- The copy and bookmark affordances use Tale UI `IconButton`; the bookmark
+  button fills the lucide bookmark icon via a scoped data attribute when the
+  current page has a regular Firefox bookmark.
+- The component hides entirely under `html[data-bento-collapsed='true']`; the
+  floating address palette owns collapsed-sidebar address entry.
+
+Regression checks:
+
+- Expanded sidebar: click the URL row, type a long URL in the anchored address
+  overlay, toggle loading and bookmark states, and confirm row height and button
+  slots do not move. Then use `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and `Cmd/Ctrl+T` and
+  confirm those paths open the centered address overlay.
+- Narrow sidebar: long URLs truncate without overlapping the security, copy,
+  search-engine, or bookmark buttons, and the provider menu opens with full
+  names while the closed trigger stays icon-sized.
+- Expanded sidebar: suggestions can overhang the sidebar onto the panel strip or
+  main content, and Escape/outside click returns the shell frame to normal.
+- Collapsed sidebar: the row is not visible and the floating address fallback
+  remains reachable.
 
 ### CommandPalette settings shortcut reference
 

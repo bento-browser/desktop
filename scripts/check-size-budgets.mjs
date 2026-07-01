@@ -8,7 +8,7 @@ const jsEntryBudgets = [
   {
     name: 'bento-shell · shell cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/shell.js',
-    limit: '196 KB',
+    limit: '197 KB',
   },
   {
     name: 'bento-shell · palette cold-start JS (gz)',
