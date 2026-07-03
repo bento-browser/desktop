@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Bento Browser — release build pipeline.
 #
-# Produces distributable installers (.dmg on macOS, .exe and .zip on
-# Windows) into release-out/ at the repo root. Used both locally
-# (sanity-check before tagging) and by .github/workflows/release.yml.
+# Produces distributable packages (.dmg on macOS, .tar.xz/.tar.bz2 on
+# Linux, .exe and .zip on Windows) into release-out/ at the repo root. Used
+# both locally (sanity-check before tagging) and by .github/workflows/release.yml.
 #
 # What's different from `npm run build`:
 #   1. Sets BENTO_RELEASE=1 so .pnpmfile.cjs's readPackage hook is a
@@ -14,7 +14,7 @@
 #      against the npm-pinned versions for the duration of the build.
 #      The lockfile change is intentional and ephemeral — see
 #      "restore dev state" below.
-#   3. Runs `surfer package` to produce platform installers, not just the
+#   3. Runs `surfer package` to produce platform artifacts, not just the
 #      app bundle.
 #   4. Restores the original lockfile + node_modules at the end so a dev
 #      machine isn't left in release-mode after running this.
@@ -120,18 +120,25 @@ bash scripts/surfer-env.sh set buildMode release >/dev/null
 BENTO_RELEASE=1 bash scripts/surfer-env.sh build
 bash scripts/sync-builtin-addon-symlinks.sh
 
-step "3/4 Packaging installer (surfer package)"
+step "3/4 Packaging artifact (surfer package)"
 case "$PLATFORM" in
   macos)
     # Remove stale macOS packages before packaging so the collected artifact
     # always comes from this build's configured Bento release version.
     find engine/obj-*/dist -maxdepth 2 -name 'bento-*.dmg' -delete 2>/dev/null || true
     ;;
+  linux)
+    # Remove stale Linux packages before packaging so the collected artifact
+    # always comes from this build's configured Bento release version.
+    find engine/obj-*/dist -maxdepth 2 \
+      \( -name 'bento-*.tar.bz2' -o -name 'bento-*.tar.xz' \) \
+      -delete 2>/dev/null || true
+    ;;
 esac
 bash scripts/surfer-env.sh package
 
 step "4/4 Collecting artifacts into $OUT_DIR"
-# Mach drops platform-specific installers under engine/obj-*/dist/.
+# Mach drops platform-specific artifacts under engine/obj-*/dist/.
 # Hunt for them by extension and copy with a versioned name. The exact
 # subpath varies per platform — find handles that without hard-coding.
 case "$PLATFORM" in
@@ -184,13 +191,22 @@ case "$PLATFORM" in
     ;;
   linux)
     # Mach on Linux produces a .tar.bz2 (or .tar.xz on newer Firefox).
-    # Linux isn't an M1 release target but the script handles it for
-    # local-build experimentation.
-    TAR="$(find engine/obj-*/dist -maxdepth 2 \( -name '*.tar.bz2' -o -name '*.tar.xz' \) | head -n1)"
-    if [ -z "$TAR" ]; then
-      echo "build-release: no .tar.bz2 / .tar.xz found under engine/obj-*/dist" >&2
+    TAR_LIST="$(
+      find engine/obj-*/dist -maxdepth 2 \
+        \( -name "bento-$VERSION*.tar.bz2" -o -name "bento-$VERSION*.tar.xz" \) |
+        sort
+    )"
+    TAR_COUNT="$(printf '%s\n' "$TAR_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
+    if [ "$TAR_COUNT" = "0" ]; then
+      echo "build-release: no bento-$VERSION .tar.bz2 / .tar.xz found under engine/obj-*/dist" >&2
       exit 1
     fi
+    if [ "$TAR_COUNT" != "1" ]; then
+      echo "build-release: expected one bento-$VERSION Linux tarball, found $TAR_COUNT:" >&2
+      printf '%s\n' "$TAR_LIST" >&2
+      exit 1
+    fi
+    TAR="$TAR_LIST"
     EXT="${TAR##*.tar.}"
     OUT="$OUT_DIR/Bento-$VERSION-linux.tar.$EXT"
     cp "$TAR" "$OUT"

@@ -15,7 +15,7 @@ for the implementation map.
 ## Status
 
 Pre-v0.1.0 development. Builds and release tooling exist for maintainer
-iteration; public distribution is not enabled yet.
+iteration across macOS, Linux, and Windows; public distribution is not enabled yet.
 
 ## Prerequisites
 
@@ -44,7 +44,8 @@ npm run download       # fetch Firefox source (version configured in surfer.json
 npm run bootstrap      # install Mozilla build deps via mach
 npm run build          # compile Bento Browser
 npm run build:ui       # UI-only rebuild (faster iteration)
-npm run package        # produce platform installers
+npm run package        # produce platform packages/installers
+npm run build:release  # produce a release-mode artifact for the host platform
 npm run lc             # Surfer license check
 npm run build:full     # download → bootstrap → build → package
 npm run brand:regen    # regenerate engine/branding from surfer.json + configs/branding/

@@ -1,7 +1,7 @@
 name: Release
 
 # Tag-driven release. Tag the repo with `v0.1.0` (matching surfer.json's
-# version) and the workflow builds Bento for macOS + Windows in parallel,
+# version) and the workflow builds Bento for macOS, Linux, and Windows in parallel,
 # then attaches the artifacts to a draft GitHub Release. The Release stays
 # in draft until you publish it manually — final review of the artifacts +
 # notes before users see them.
@@ -27,10 +27,9 @@ jobs:
       matrix:
         # macos-26 = Apple Silicon (aarch64) with Xcode 26.x / macOS SDK 26.x.
         # Firefox 150+ configure rejects the older macOS 14 SDK as too old.
+        # ubuntu-latest = Linux x86_64.
         # windows-latest = Windows Server 2022 x86_64.
-        # Linux builds aren't part of the M1 release surface but the
-        # build-release.sh script handles them locally if needed.
-        os: [macos-26, windows-latest]
+        os: [macos-26, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180 # Firefox builds run 30–60 min on hosted runners; pad for cold caches.
     steps:
@@ -87,7 +86,7 @@ jobs:
           BENTO_RELEASE: '1'
         # build-release.sh handles platform detection, runs the full
         # ext:build → import → surfer build → surfer package chain, and
-        # drops a versioned installer into release-out/.
+        # drops a versioned artifact into release-out/.
         # Bash on Windows runners is git-bash which handles the script
         # syntax fine.
         run: bash scripts/build-release.sh
@@ -114,6 +113,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bento-macOS
+          path: release-out/
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bento-Linux
           path: release-out/
 
       - name: Download Windows artifact
