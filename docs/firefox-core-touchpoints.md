@@ -101,9 +101,15 @@ Use this shape for new or changed touchpoints:
   footer in a persistent
   chrome-hosted overlay frame, delivers open/close lifecycle nonces into that
   extension frame, opens Firefox's native app menu from a sidebar footer button
-  by anchoring `PanelUI.panel` to a temporary chrome-side element, hides the
-  stock toolbar `#PanelUI-button` while Bento's sidebar addressbar mode is
-  active,
+  by anchoring `PanelUI.panel` to a temporary chrome-side element with left-edge
+  footer alignment and temporary native panel animation suppression, opens
+  Firefox's native downloads panel from a sidebar footer button by anchoring
+  `DownloadsPanel.panel` to a temporary chrome-side element with the same
+  left-edge footer alignment and animation suppression, patches
+  `DownloadsButton.getAnchor()`/`releaseAnchor()` so automatic native downloads
+  panel opens use a sidebar fallback anchor, hides the stock toolbar
+  `#PanelUI-button` and `#downloads-button` while Bento's sidebar addressbar
+  mode is active,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -165,10 +171,15 @@ Use this shape for new or changed touchpoints:
   overlay anchored below that row,
   verify clicking or programmatic focus into Firefox's hidden native top address
   input opens Bento's centered address entry and does not leave the native urlbar
-  suggestions dropdown open, verify the native top URL/search field and stock
-  toolbar app-menu button are hidden while the sidebar footer Firefox-menu
-  button opens the native app menu with submenus, Settings, More Tools, Help,
-  update/sign-in banners, and keyboard shortcuts intact, verify remaining
+  suggestions dropdown open, verify the native top URL/search field, stock
+  toolbar app-menu button, and stock toolbar downloads button are hidden while
+  the sidebar footer Firefox-menu button opens the native app menu with
+  submenus, Settings, More Tools, Help, update/sign-in banners, and keyboard
+  shortcuts intact and grows rightward from the trigger when space allows,
+  without sliding in from the top or bottom, verify the sidebar footer Downloads
+  button opens Firefox's native downloads panel with recent download actions and
+  download history intact while using the same footer-side alignment and no
+  top/bottom slide, verify remaining
   toolbar buttons, extension buttons, toolbar customization, titlebar controls,
   and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark

@@ -3865,6 +3865,8 @@
   const MERGE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_MERGE_PALETTE';
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
+  const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
+  const SIDEBAR_FOOTER_PANEL_POSITION = 'topleft bottomleft';
   const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
   const ADDRBAR_READY_PREFIX = 'BENTO_ADDRBAR_READY';
@@ -4013,14 +4015,14 @@
     applyChromeColorMode(mode);
   }
 
-  function ensureSidebarAppMenuAnchor(anchorRect) {
+  function ensureSidebarFooterAnchor(anchorRect, id) {
     const shellFrame = document.getElementById('bento-shell-frame');
     const shellRect = shellFrame?.getBoundingClientRect();
     if (!shellRect || !anchorRect) return null;
-    let anchor = document.getElementById('bento-sidebar-app-menu-anchor');
+    let anchor = document.getElementById(id);
     if (!anchor) {
       anchor = document.createElementNS(HTML_NS, 'span');
-      anchor.id = 'bento-sidebar-app-menu-anchor';
+      anchor.id = id;
       anchor.setAttribute('aria-hidden', 'true');
       document.documentElement.appendChild(anchor);
     }
@@ -4039,6 +4041,58 @@
       Math.round(height) +
       'px;';
     return anchor;
+  }
+
+  function ensureSidebarAppMenuAnchor(anchorRect) {
+    return ensureSidebarFooterAnchor(anchorRect, 'bento-sidebar-app-menu-anchor');
+  }
+
+  function ensureSidebarDownloadsAnchor(anchorRect) {
+    return ensureSidebarFooterAnchor(anchorRect, 'bento-sidebar-downloads-anchor');
+  }
+
+  function ensureSidebarDownloadsFallbackAnchor() {
+    const shellFrame = document.getElementById('bento-shell-frame');
+    const shellRect = shellFrame?.getBoundingClientRect();
+    if (!shellRect) return null;
+    return ensureSidebarFooterAnchor(
+      {
+        left: Math.max(0, shellRect.width - 76),
+        top: Math.max(0, shellRect.height - 44),
+        width: 32,
+        height: 32,
+      },
+      'bento-sidebar-downloads-anchor',
+    );
+  }
+
+  function parseSidebarAnchorPayload(rawTitle, prefix, label) {
+    const tail = rawTitle.slice(prefix.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return null;
+    try {
+      const payload = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
+      return payload?.anchor || null;
+    } catch (err) {
+      console.warn(`[bento-shell-mount] ${label} payload parse failed:`, err);
+      return null;
+    }
+  }
+
+  function suppressSidebarFooterPanelAnimation(panel) {
+    if (!panel) return () => {};
+    const previousAnimate = panel.getAttribute('animate');
+    const hadAnimate = panel.hasAttribute('animate');
+    panel.setAttribute('animate', 'false');
+    panel.setAttribute('bento-sidebar-footer-panel', 'true');
+    return () => {
+      panel.removeAttribute('bento-sidebar-footer-panel');
+      if (hadAnimate) {
+        panel.setAttribute('animate', previousAnimate);
+      } else {
+        panel.removeAttribute('animate');
+      }
+    };
   }
 
   async function openNativeAppMenuFromSidebar(anchorRect) {
@@ -4062,16 +4116,18 @@
       panelUi.show?.();
       return false;
     }
+    const restoreAnimation = suppressSidebarFooterPanelAnimation(panel);
     const cleanup = () => {
       panel?.removeEventListener('popuphidden', cleanup);
       anchor.remove();
+      restoreAnimation();
     };
     try {
       panelUi._ensureShortcutsShown?.();
       await panelUi.ensureReady();
       panel.addEventListener('popuphidden', cleanup);
       const opened = await window.PanelMultiView.openPopup(panel, anchor, {
-        position: 'topright bottomright',
+        position: SIDEBAR_FOOTER_PANEL_POSITION,
         triggerEvent: null,
       });
       if (!opened) cleanup();
@@ -4085,22 +4141,150 @@
 
   function handleAppMenuOpenTitle(rawTitle) {
     // Format: BENTO_OPEN_APP_MENU:<ts>:<base64-json>
-    const tail = rawTitle.slice(APP_MENU_OPEN_PREFIX.length);
-    const colon = tail.indexOf(':');
-    if (colon < 0) {
-      openNativeAppMenuFromSidebar(null);
-      return;
-    }
-    let payload;
-    try {
-      payload = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
-    } catch (err) {
-      console.warn('[bento-shell-mount] app menu payload parse failed:', err);
-      openNativeAppMenuFromSidebar(null);
-      return;
-    }
-    openNativeAppMenuFromSidebar(payload?.anchor || null);
+    openNativeAppMenuFromSidebar(
+      parseSidebarAnchorPayload(rawTitle, APP_MENU_OPEN_PREFIX, 'app menu'),
+    );
   }
+
+  function waitForDownloadsViewReady(timeoutMs = 10000) {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const tick = () => {
+        const view = window.DownloadsView;
+        if (!view || !view.loading || Date.now() - startedAt >= timeoutMs) {
+          resolve();
+          return;
+        }
+        window.setTimeout(tick, 50);
+      };
+      tick();
+    });
+  }
+
+  function openPrivateDownloadsChoiceIfNeeded() {
+    const privateBrowsingUtils = window.PrivateBrowsingUtils;
+    const privateDownloadsSubview = window.PrivateDownloadsSubview;
+    const services = window.Services;
+    if (!privateBrowsingUtils || !privateDownloadsSubview || !services) return;
+    try {
+      if (
+        privateBrowsingUtils.isContentWindowPrivate(window) &&
+        services.prefs.getBoolPref('browser.download.enableDeletePrivate', false) &&
+        !services.prefs.getBoolPref('browser.download.deletePrivate.chosen', false)
+      ) {
+        privateDownloadsSubview.openWhenReady();
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] private downloads subview check failed:', err);
+    }
+  }
+
+  function patchDownloadsButtonAnchorForSidebar() {
+    const downloadsButton = window.DownloadsButton;
+    if (!downloadsButton || downloadsButton.__bentoNativeGetAnchor) return;
+    const nativeGetAnchor = downloadsButton.getAnchor.bind(downloadsButton);
+    const nativeReleaseAnchor = downloadsButton.releaseAnchor.bind(downloadsButton);
+    Object.defineProperty(downloadsButton, '__bentoNativeGetAnchor', {
+      value: nativeGetAnchor,
+    });
+    Object.defineProperty(downloadsButton, '__bentoNativeReleaseAnchor', {
+      value: nativeReleaseAnchor,
+    });
+    downloadsButton.getAnchor = function getBentoDownloadsAnchor() {
+      if (document.documentElement.hasAttribute('bento-sidebar-addressbar')) {
+        return ensureSidebarDownloadsFallbackAnchor() || nativeGetAnchor();
+      }
+      return nativeGetAnchor();
+    };
+    downloadsButton.releaseAnchor = function releaseBentoDownloadsAnchor() {
+      const result = nativeReleaseAnchor();
+      document.getElementById('bento-sidebar-downloads-anchor')?.remove();
+      return result;
+    };
+  }
+
+  async function openNativeDownloadsPanelFromSidebar(anchorRect) {
+    patchDownloadsButtonAnchorForSidebar();
+    const downloadsPanel = window.DownloadsPanel;
+    if (!downloadsPanel || typeof downloadsPanel.initialize !== 'function') {
+      console.warn('[bento-shell-mount] DownloadsPanel unavailable; cannot open downloads');
+      return false;
+    }
+    if (document.documentElement.hasAttribute('customizing')) return false;
+    if (typeof window.PanelMultiView?.openPopup !== 'function') {
+      console.warn('[bento-shell-mount] PanelMultiView unavailable; cannot open downloads');
+      return false;
+    }
+    const panel = downloadsPanel.panel;
+    if (!panel) {
+      console.warn('[bento-shell-mount] downloads panel element unavailable');
+      return false;
+    }
+    if (downloadsPanel.isPanelShowing || panel.state === 'open' || panel.state === 'showing') {
+      downloadsPanel._focusPanel?.();
+      return true;
+    }
+    const anchor = ensureSidebarDownloadsAnchor(anchorRect);
+    if (!anchor) {
+      downloadsPanel.showPanel?.(true, false);
+      return false;
+    }
+    let opened = false;
+    const restoreAnimation = suppressSidebarFooterPanelAnimation(panel);
+    const cleanup = () => {
+      panel.removeEventListener('popuphidden', cleanup);
+      anchor.remove();
+      restoreAnimation();
+    };
+    try {
+      window.Glean?.downloads?.panelShown?.add?.(1);
+      downloadsPanel._openedManually = true;
+      downloadsPanel._preventFocusRing = true;
+      downloadsPanel.initialize();
+      await waitForDownloadsViewReady();
+      const visibleItems = window.DownloadsView?._visibleViewItems?.values?.();
+      if (visibleItems) {
+        for (const viewItem of visibleItems) {
+          viewItem.download.refresh().catch(console.error);
+        }
+      }
+      panel.classList.toggle('bookmarks-toolbar', false);
+      panel.addEventListener('popuphidden', cleanup);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      const result = await window.PanelMultiView.openPopup(
+        panel,
+        anchor,
+        SIDEBAR_FOOTER_PANEL_POSITION,
+        0,
+        0,
+        false,
+        null,
+      );
+      if (result === false) {
+        cleanup();
+        return false;
+      }
+      opened = true;
+      downloadsPanel._focusPanel?.();
+      openPrivateDownloadsChoiceIfNeeded();
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar downloads open failed:', err);
+      cleanup();
+      return false;
+    } finally {
+      if (!opened && panel.state === 'closed') cleanup();
+    }
+  }
+
+  function handleDownloadsOpenTitle(rawTitle) {
+    // Format: BENTO_OPEN_DOWNLOADS:<ts>:<base64-json>
+    openNativeDownloadsPanelFromSidebar(
+      parseSidebarAnchorPayload(rawTitle, DOWNLOADS_OPEN_PREFIX, 'downloads'),
+    );
+  }
+
+  patchDownloadsButtonAnchorForSidebar();
 
   // ─── Side panel strip (multi-panel) ────────────────────────────────────
   //
@@ -16772,6 +16956,7 @@
           else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
           else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
+          else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
           else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
           else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
             handleSidebarAddressSubmitTitle(title);

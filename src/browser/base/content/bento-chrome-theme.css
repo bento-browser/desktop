@@ -243,9 +243,12 @@
     visibility: collapse !important;
   }
 
-  /* Bento opens Firefox's native app menu from the sidebar footer. Keep
-   * the stock toolbar entry hidden so the menu has one visible home. */
-  :root[bento-sidebar-addressbar='true'] #PanelUI-button {
+  /* Bento opens Firefox's native app menu and downloads panel from the
+   * sidebar footer. Keep the stock toolbar entries hidden so each has one
+   * visible home. */
+  :root[bento-sidebar-addressbar='true'] #PanelUI-button,
+  :root[bento-sidebar-addressbar='true'] #downloads-button,
+  :root[bento-sidebar-addressbar='true'] #wrapper-downloads-button {
     display: none !important;
     visibility: collapse !important;
   }

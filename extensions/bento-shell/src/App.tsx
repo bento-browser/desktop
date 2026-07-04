@@ -8,6 +8,7 @@ import { Spinner } from '@tale-ui/react/spinner';
 import { Tooltip } from '@tale-ui/react/tooltip';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
+import Download from 'lucide-react/dist/esm/icons/download';
 import Merge from 'lucide-react/dist/esm/icons/merge';
 import Menu from 'lucide-react/dist/esm/icons/menu';
 import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
@@ -92,8 +93,8 @@ function openMergePalette() {
   document.title = newTitle;
 }
 
-function openFirefoxAppMenu(anchorRect: DOMRect | null) {
-  document.title = `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+function sidebarAnchorPayload(anchorRect: DOMRect | null) {
+  return {
     anchor: anchorRect
       ? {
           left: anchorRect.left,
@@ -102,7 +103,19 @@ function openFirefoxAppMenu(anchorRect: DOMRect | null) {
           height: anchorRect.height,
         }
       : null,
-  })}`;
+  };
+}
+
+function openFirefoxAppMenu(anchorRect: DOMRect | null) {
+  document.title = `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeSidebarMenuPayload(
+    sidebarAnchorPayload(anchorRect),
+  )}`;
+}
+
+function openFirefoxDownloads(anchorRect: DOMRect | null) {
+  document.title = `BENTO_OPEN_DOWNLOADS:${Date.now()}:${encodeSidebarMenuPayload(
+    sidebarAnchorPayload(anchorRect),
+  )}`;
 }
 
 interface SidebarMenuItem {
@@ -203,7 +216,11 @@ export function App() {
     setSettingsRevealRequest((value = 0) => value + 1);
     openSettings();
   };
+  const downloadsButtonRef = useRef<HTMLButtonElement>(null);
   const appMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const onOpenFirefoxDownloads = () => {
+    openFirefoxDownloads(downloadsButtonRef.current?.getBoundingClientRect() ?? null);
+  };
   const onOpenFirefoxAppMenu = () => {
     openFirefoxAppMenu(appMenuButtonRef.current?.getBoundingClientRect() ?? null);
   };
@@ -581,6 +598,17 @@ export function App() {
               onPress={onOpenFirefoxAppMenu}
             >
               <Icon icon={Menu} />
+            </IconButton>
+          </FooterTooltip>
+          <FooterTooltip label="Downloads" isDisabled={sidebarCollapsed}>
+            <IconButton
+              ref={downloadsButtonRef}
+              variant="ghost"
+              size="sm"
+              aria-label="Downloads"
+              onPress={onOpenFirefoxDownloads}
+            >
+              <Icon icon={Download} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
