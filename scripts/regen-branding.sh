@@ -9,7 +9,8 @@
 # Why: Surfer's patch-check skips branding regen when SHA1(logo.png) and
 # SHA1(MacOSInstaller.svg) match .surfer/hashes.json AND the engine branding
 # dir exists. Touching surfer.json alone doesn't bust either input. This script
-# wipes both signals so the next `npm run build[:ui]` runs the branding apply.
+# wipes both signals, then runs the shared Bento import wrapper so branding,
+# prefs, patch checks, chrome tokens, and built-in add-on symlinks stay aligned.
 
 set -euo pipefail
 
@@ -37,16 +38,13 @@ if [ -f "$HASHES_FILE" ]; then
   echo "removed $HASHES_FILE"
 fi
 
-echo "branding cache cleared for brand '$BRAND'. Running 'surfer import' to regenerate..."
+echo "branding cache cleared for brand '$BRAND'. Running 'pnpm run import' to regenerate..."
 
 # `surfer build` only runs patchCheck (a count comparison), not the actual
-# patch/branding apply. We have to invoke 'surfer import' explicitly to run
+# patch/branding apply. We have to invoke the import wrapper to run
 # importMelonPatches → brandingPatch.apply, which regenerates the engine
-# branding folder from configs/branding/<brand>/ and surfer.json.
-bash "$REPO_ROOT/scripts/surfer-env.sh" import
-
-# Append Bento defaults via the shared script (also runs after every
-# `npm run import` / `npm run build` so prefs survive subsequent imports).
-bash "$REPO_ROOT/scripts/append-prefs.sh"
+# branding folder from configs/branding/<brand>/ and surfer.json. The wrapper
+# also appends prefs and syncs built-in add-on symlinks.
+pnpm run import
 
 echo "branding regenerated."

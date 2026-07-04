@@ -1,10 +1,10 @@
 # Chrome design tokens
 
-Bento's chrome (Firefox `browser.xhtml` + scripts under `src/browser/`) is a
-separate document tree from the `bento-shell` extension, so chrome inline
-styles can't read the extension's `:root` cascade. This doc covers how
-chrome gets Tale UI design tokens anyway, and how that pipeline absorbs
-future themes.
+Bento's chrome (Firefox `browser.xhtml` + scripts under `src/browser/`) and
+privileged built-in pages such as native `about:preferences` are separate
+document trees from the `bento-shell` extension, so they can't read the
+extension's `:root` cascade. This doc covers how those Firefox-owned surfaces
+get Tale UI design tokens anyway, and how that pipeline absorbs future themes.
 
 ## How it works today
 
@@ -23,11 +23,15 @@ future themes.
    creates a symlink under the deployed app's
    `chrome/browser/content/browser/` so changes land without a full mach
    rebuild.
-6. **Loaded at boot:** [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
+6. **Loaded by consumers:** [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
    `injectChromeTokens()` adds a `<link rel="stylesheet">` to the chrome
    `<window>` pointing at `chrome://browser/content/bento-chrome-tokens.css`.
    Tale UI variable names (`--color-60`, `--neutral-90`, `--radius-m`, …)
-   are then available to chrome inline styles via `var()`.
+   are then available to chrome inline styles via `var()`. Native
+   `about:preferences` loads the same generated sheet from
+   [preferences.xhtml](../engine/browser/components/preferences/preferences.xhtml)
+   and maps Firefox's in-content semantic variables to those tokens in
+   [preferences.css](../engine/browser/themes/shared/preferences/preferences.css).
 
 ## What gets included, what doesn't
 

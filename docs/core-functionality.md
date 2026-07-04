@@ -236,7 +236,7 @@ The closed picker shows the provider icon; opening it shows the full provider
 names. Choosing another engine affects only the submitted non-URL search and
 does not change Bento Settings or Firefox's default search engine. Submitting a
 URL-like value ignores the one-shot picker and continues through Firefox URL
-fixup.
+fixup, including internal browser pages such as `about:preferences`.
 Successful address or search submissions reveal the main content slot if the
 panel strip was scrolled over side panels, because the submitted load targets
 the main tab surface.
@@ -278,6 +278,8 @@ Panels support the core Bento workflow:
 - create a blank panel from the sidebar tab list;
 - create a blank panel from the trailer at the end of the panel strip, move
   focus to it, and reveal it from the right when it fits in the visible strip;
+- click into a partially visible panel or panel trailer and have the strip
+  reveal the whole panel or trailer section;
 - bookmark the current panel URL from the panel header;
 - right-click the panel header Back or Forward buttons to show that panel's
   previous, current, and next page-history entries;

@@ -2,8 +2,9 @@
 
 Build, packaging, and release helper scripts.
 
-- `build-bento.sh` — runs the full Surfer pipeline (download → bootstrap → build → package).
-  Equivalent to `npm run build:full`.
+- `build-bento.sh` — runs the full supported Bento pipeline (download →
+  bootstrap → extension build → `pnpm run import` → build → package).
+  Equivalent to `pnpm run build:full`.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit
   stack:
   - `pnpm run firefox:patches:check` validates `patches/series.json`, Surfer

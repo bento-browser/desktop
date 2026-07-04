@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   type Key,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -48,6 +49,9 @@ import {
   type AddressRowKind,
 } from './addressRows';
 import './AddressBar.css';
+
+const ENGINE_PICKER_INTERACTION_SELECTOR =
+  '.bento-address-bar__engine-select, .bento-address-bar__engine-popover';
 
 export interface AddressBarProps {
   onClose: () => void;
@@ -122,6 +126,7 @@ export default function AddressBar({
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [engineSelection, setEngineSelection] = useState(() => resetEngineSelection(null));
+  const [enginePickerOpen, setEnginePickerOpen] = useState(false);
   const { selectedSearchEngineId, engineSelectionDirty } = engineSelection;
   const windowId = useCurrentWindowId();
   const tabsById = useTabsStore((s) => s.byId);
@@ -229,6 +234,7 @@ export default function AddressBar({
 
   useEffect(() => {
     setEngineSelection(resetEngineSelection(defaultSearchEngine));
+    setEnginePickerOpen(false);
   }, [openVersion]);
 
   useEffect(() => {
@@ -290,6 +296,31 @@ export default function AddressBar({
     setEngineSelection((state) => chooseEngine(state, next));
   }, []);
 
+  const handlePalettePointerDownCapture = useCallback(
+    (event: ReactPointerEvent) => {
+      if (!enginePickerOpen) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(ENGINE_PICKER_INTERACTION_SELECTOR)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setEnginePickerOpen(false);
+    },
+    [enginePickerOpen],
+  );
+
+  const handleEngineTriggerPointerDownCapture = useCallback(
+    (event: ReactPointerEvent) => {
+      if (!enginePickerOpen) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setEnginePickerOpen(false);
+    },
+    [enginePickerOpen],
+  );
+
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (
@@ -325,6 +356,7 @@ export default function AddressBar({
         <CommandPalette.Popup
           aria-label="Address bar"
           className="bento-address-bar__dialog"
+          onPointerDownCapture={handlePalettePointerDownCapture}
           modalProps={{
             className:
               'bento-address-bar__popup' + (placement ? ' bento-address-bar__popup--anchored' : ''),
@@ -363,18 +395,23 @@ export default function AddressBar({
                 placeholder="Search"
                 selectedKey={selectedSearchEngineId}
                 onSelectionChange={handleSearchEngineChange}
+                isOpen={enginePickerOpen}
+                onOpenChange={setEnginePickerOpen}
                 isDisabled={enginePickerDisabled}
                 className="bento-address-bar__engine-select"
               >
                 <Select.Label className="bento-address-bar__sr-only">Search engine</Select.Label>
-                <Select.Trigger className="bento-address-bar__engine-trigger">
+                <Select.Trigger
+                  className="bento-address-bar__engine-trigger"
+                  onPointerDownCapture={handleEngineTriggerPointerDownCapture}
+                >
                   <SearchEngineIcon
                     engine={selectedEngine}
                     className="bento-address-bar__engine-icon"
                   />
                   <Select.Icon />
                 </Select.Trigger>
-                <Select.Popover className="bento-address-bar__engine-popover">
+                <Select.Popover className="bento-address-bar__engine-popover" isNonModal>
                   <Select.ListBox>
                     {availableSearchEngines.map((engine) => (
                       <Select.Item key={engine.id} id={engine.id} textValue={engine.name}>

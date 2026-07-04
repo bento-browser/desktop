@@ -194,14 +194,18 @@ full `#browser` overlay, and passes the computed popup placement to
 placements start below the sidebar row, not over it. The overlay owns the
 focused input, result list, and search-engine picker, so the popup can extend
 over the panel strip or main content without asking the sidebar iframe to
-overpaint its chrome bounds. Shortcut, new-tab, and top-urlbar fallback opens
-omit the anchor and therefore keep the original centered overlay position.
+overpaint its chrome bounds. Sidebar-anchored placements use a smaller
+512px-by-378px cap so the row-local picker reads as attached to the sidebar,
+while shortcut, new-tab, and top-urlbar fallback opens omit the anchor and
+therefore keep the original centered overlay size and position.
 
 Firefox remains the source of truth for address semantics. The sidebar submit
 path and the floating overlay submit path both call the same chrome helper,
 which resolves optional one-shot search engine submissions through Firefox
 `SearchService`, falls back to Firefox URI fixup, navigates the selected main
-browser in current-tab mode, and dispatches `tab/openUrl` in new-tab mode.
+browser in current-tab mode, dispatches `tab/openUrl` in new-tab mode for
+ordinary web loads, and uses Firefox chrome's trusted-tab path for privileged
+new-tab `about:`/`chrome:` loads that the WebExtension tabs API rejects.
 Successful submissions still reveal the main content slot.
 
 The sidebar security control reads the native identity block state from
@@ -354,6 +358,9 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
   surfaces so the palette reads as a traditional neutral command palette in
   light and dark modes.
+- Keep the nested search-engine `Select.Popover` non-modal. React Aria's
+  default select underlay catches clicks meant for the command palette and can
+  turn a provider-menu dismissal into a full address-palette dismissal.
 - Search provider icons come from Firefox `SearchService` engines. Native
   Firefox chrome can use the `SearchEngine.getIconURL()` result directly,
   including `ConfigSearchEngine` object URLs backed by the `search-config-icons`
@@ -366,6 +373,10 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep expanded-sidebar address editing in the shared address overlay. A
   sidebar-frame popover cannot reliably paint over the panel strip/main content
   because the sidebar is a chrome-hosted iframe with its own paint bounds.
+- Keep the sidebar-anchored address overlay smaller than the centered shortcut
+  overlay. The anchored cap is 80% of the standard width and 90% of the
+  standard height; shortcut/new-tab/top-urlbar opens keep the standard centered
+  dimensions.
 - Do not route shortcut, new-tab, or top-urlbar fallback opens through sidebar
   row focus. Those entry points must keep the centered address/search overlay;
   only direct activation of the sidebar URL row should pass an anchor.
@@ -1570,8 +1581,13 @@ initializes Firefox `SearchService`, calls
 `SearchService.getEngineById(id).getSubmission(value).uri.spec`, and loads that
 one URL without mutating the default search engine. Any import, lookup, or
 submission failure falls back to the existing URI-fixup route. For new-tab mode,
-chrome dispatches `tab/openUrl` with the resolved spec so bento-tools creates
-the tab in the source window and eagerly assigns it to the active workspace.
+chrome dispatches `tab/openUrl` with ordinary resolved specs so bento-tools
+creates the tab in the source window and eagerly assigns it to the active
+workspace. Resolved `about:` and `chrome:` specs instead use
+`gBrowser.addTrustedTab()` from chrome, because WebExtension `tabs.create`
+rejects privileged internal pages such as `about:preferences`; the existing
+tabs-created listener still assigns the resulting tab to that window's active
+workspace.
 After a successful current-tab or new-tab submission, chrome schedules
 `scrollPanelToLeftmost` for the main panel and clears restored-main auto-scroll
 suppression so the panel strip reveals the main content slot even if the user
@@ -1585,6 +1601,10 @@ Load-bearing pitfalls:
 - Do not remove the explicit main-slot reveal after submit. Current-tab address
   loads do not necessarily change `gBrowser.selectedTab`, so the reconcile-time
   selected-tab auto-scroll path may not run.
+- Do not route privileged new-tab address submissions through WebExtension
+  `tabs.create`. Firefox rejects internal pages such as `about:preferences`
+  there; keep the chrome-owned trusted-tab path for resolved `about:`/`chrome:`
+  specs.
 - Do not rebuild open tab/panel rows for empty address input. Empty input should
   keep recent-history behavior but must not eagerly walk every open tab/panel to
   construct autocomplete rows.
@@ -2184,12 +2204,14 @@ left-align affordance and still use `scrollPanelToLeftmost`.
 The `Wrap panel shortcut cycling at the ends` setting applies to shortcut
 traversal only. Shift-wheel panel cycling must always clamp at the first and
 last cycle targets; do not let scroll gestures loop back to the start or end.
-When the Add-panel trailer receives focus, both the `focusin` auto-scroll
-listener and the capture-phase focus tracker must ignore it. The trailer sits
-under an ancestor with `data-bento-main-panel`, so an unguarded `closest()`
-lookup can misidentify trailer focus as main-panel focus and reset
-`currentActiveIdx` to 0. That makes the next scroll gesture appear to loop back
-to the main content slot even when wheel traversal is clamped.
+When the Add-panel trailer receives focus, the `focusin` auto-scroll listener
+must call `scrollPanelIntoViewFromRight` for `#bento-add-panel-trailer`, then
+return before panel-index bookkeeping. The capture-phase focus tracker must
+still ignore trailer focus. The trailer sits under an ancestor with
+`data-bento-main-panel`, so an unguarded `closest()` lookup can misidentify
+trailer focus as main-panel focus and reset `currentActiveIdx` to 0. That makes
+the next scroll gesture appear to loop back to the main content slot even when
+wheel traversal is clamped.
 
 The Add-panel trailer's visible cycle indicator belongs on the outer
 `#bento-add-panel-trailer` XUL host, not only inside the iframe. The host is the

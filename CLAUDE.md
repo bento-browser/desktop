@@ -323,27 +323,27 @@ Then iterate by what you changed:
 
 | Changed                                                     | Build command                                                                                    | Reload                                                                                          |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && npx surfer import`                                          | Press **Alt+Shift+R** in Bento (triggers `browser.runtime.reload()` via the dev-reload command) |
+| `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && pnpm run import`                                            | Press **Alt+Shift+R** in Bento (triggers `browser.runtime.reload()` via the dev-reload command) |
 | `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                                              |
-| `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && npx surfer import`                                          | Quit + relaunch                                                                                 |
-| `patches/`, `src/browser/`, `prefs/bento.js`, `surfer.json` | `npm run build` (~15 s — mach build is mostly cached)                                            | Quit + relaunch                                                                                 |
-| Surfer fork itself                                          | Push to `Bento-Browser/surfer`, bump SHA in `package.json`, `pnpm install`, then `npm run build` | Quit + relaunch                                                                                 |
+| `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && pnpm run import`                                            | Quit + relaunch                                                                                 |
+| `patches/`, `src/browser/`, `prefs/bento.js`, `surfer.json` | `pnpm run build` (~15 s — mach build is mostly cached)                                           | Quit + relaunch                                                                                 |
+| Surfer fork itself                                          | Push to `Bento-Browser/surfer`, bump SHA in `package.json`, `pnpm install`, then `pnpm run build` | Quit + relaunch                                                                                 |
 
-> **How the reload works**: `surfer import` symlinks the built extension dist into the compiled app bundle — files are live on disk immediately. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
+> **How the reload works**: `pnpm run import` runs the Bento import wrapper: theme preset sync, chrome token generation, patch-stack check/reset, `surfer import`, prefs append, and built-in add-on symlink sync. Built extension files are live on disk immediately after import. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
 
 <!-- -->
 
 > **Manifest changes that need a version bump**: Firefox caches built-in addon metadata (commands, permissions list, name/description) keyed by `version`. A quit+relaunch alone WON'T re-read a changed manifest if the version stayed the same — the cached entry in the profile's `extensions.json` wins. Bump the addon's `manifest.json` version (e.g. `0.1.0` → `0.1.1`) whenever you add/remove/rename a command or change a permission. Code-only changes don't need a bump (background.js / dist/ are read fresh from disk).
 
-`npm run build` already chains: `ext:build` → `surfer import` (which also runs `scripts/append-prefs.sh` to keep `prefs/bento.js` in `engine/browser/app/profile/firefox.js` so dev prefs survive) → `surfer build`.
+`pnpm run build` already chains: `ext:build` → `pnpm run import` → `surfer build` → built-in add-on symlink sync.
 
-`npm run brand:regen` is for when **branding** assets change (`surfer.json` brand fields, `configs/branding/<brand>/**`). It wipes the engine branding dir and re-imports — slower than `surfer import` alone.
+`pnpm run brand:regen` is for when **branding** assets change (`surfer.json` brand fields, `configs/branding/<brand>/**`). It wipes the engine branding dir and re-runs `pnpm run import`.
 
-**Don't run `npm run build` on every UI change** — the table above's build+import loop is ~3 seconds. Reserve full builds for chrome / engine changes.
+**Don't run `pnpm run build` on every UI change** — the table above's build+import loop is ~3 seconds. Reserve full builds for chrome / engine changes.
 
 ## Repo crosswalk
 
-- `extensions/` — `bento-shell` and `bento-tools`. **Note**: upstream Surfer does NOT auto-bundle this folder. The local Surfer fork (pinned by SHA in [package.json](package.json)) adds the copy step. See [docs/maintaining-surfer.md](docs/maintaining-surfer.md).
+- `extensions/` — `bento-shell`, `bento-tools`, and bundled `ublock-origin`. **Note**: upstream Surfer does NOT auto-bundle this folder. The local Surfer fork (pinned by SHA in [package.json](package.json)) adds the runtime-filtered `builtin-addons/` copy step. See [docs/maintaining-surfer.md](docs/maintaining-surfer.md).
 - `patches/` — git format-patch files applied to Firefox source. Keep small; bigger overlays = harder Firefox bumps.
 - `prefs/bento.js` — privacy defaults appended to the engine's branding prefs.
 - `surfer.json` — brand, version, URLs.

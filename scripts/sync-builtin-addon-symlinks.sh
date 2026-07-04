@@ -17,7 +17,7 @@
 # Idempotent — safe to re-run. Skips silently if the deployed app bundle
 # isn't present (CI / pre-build state).
 #
-# Wired into `pnpm import` and post-build scripts. Direct `surfer import` /
+# Wired into `pnpm run import` and post-build scripts. Direct `surfer import` /
 # `surfer build` invocations bypass this — use the package scripts instead.
 
 set -euo pipefail

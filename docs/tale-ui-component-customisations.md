@@ -206,8 +206,10 @@ tale-button--sm` classes and visible `Clear` text. Keep them as the
   sources. It falls back to bundled copies of Firefox's search-config icon
   attachments for the default providers when native conversion is unavailable.
 - The CommandPalette backdrop is not React-Aria-dismissable. Bento closes the
-  address palette through its own outside-pointer handler so the search-engine
-  Select popover can be clicked or dismissed without closing the whole palette.
+  address palette through its own outside-pointer handler. The nested
+  search-engine `Select.Popover` must stay `isNonModal` so React Aria does not
+  render a full-window select underlay that steals clicks from the command
+  palette and escalates a picker dismissal into an address-palette dismissal.
 - Bento disables Tale UI's default command-palette transform animation for this
   overlay. Centered and sidebar-anchored opens fade only, without slide
   movement.
@@ -230,6 +232,8 @@ Regression checks:
   popover, which should remain opaque and readable over dark content.
 - Open the search-engine picker, then click its trigger again to dismiss it; the
   address palette should remain open.
+- Open the search-engine picker, then click back into the address palette input
+  or result area; only the picker should close.
 - Reopen after switching between sidebar-anchored and centered shortcut modes;
   the popup should fade without any transform movement.
 
@@ -548,8 +552,10 @@ pnpm run import
 ```
 
 That regenerates the chrome-side token stylesheet so Firefox chrome can consume
-the same Tale UI and Bento variables as the extension shell. The chrome pipeline
-is documented in [chrome-tokens.md](chrome-tokens.md).
+the same Tale UI and Bento variables as the extension shell. Firefox-owned
+native `about:preferences` also loads that generated token sheet and maps its
+in-content semantic variables onto Tale UI tokens. The chrome pipeline is
+documented in [chrome-tokens.md](chrome-tokens.md).
 
 ## Chrome-side Tale translations
 

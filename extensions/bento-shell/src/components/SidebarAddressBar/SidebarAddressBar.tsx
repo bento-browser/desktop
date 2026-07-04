@@ -144,7 +144,12 @@ export function SidebarAddressBar() {
 
   return (
     <section className="bento-sidebar-address-bar" aria-label="Address bar">
-      <form ref={rowRef} className="bento-sidebar-address-bar__row" onSubmit={handleSubmit}>
+      <form
+        ref={rowRef}
+        className="bento-sidebar-address-bar__row"
+        data-loading={snapshot?.loading ? 'true' : 'false'}
+        onSubmit={handleSubmit}
+      >
         <Tooltip.Root delay={350}>
           <IconButton
             ref={securityButtonRef}
@@ -173,9 +178,11 @@ export function SidebarAddressBar() {
           onFocus={handleBeginEdit}
           onClick={handleBeginEdit}
         />
-        <span className="bento-sidebar-address-bar__loading" aria-hidden="true">
-          {snapshot?.loading ? <Spinner size="sm" label="Loading page" /> : null}
-        </span>
+        {snapshot?.loading ? (
+          <span className="bento-sidebar-address-bar__loading" aria-hidden="true">
+            <Spinner size="sm" label="Loading page" />
+          </span>
+        ) : null}
         <Tooltip.Root delay={350}>
           <IconButton
             variant="ghost"

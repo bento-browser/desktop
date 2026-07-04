@@ -3124,6 +3124,8 @@
   let addrbarUrlbarUtils = null;
   const ADDRBAR_POPUP_WIDTH_PX = 640;
   const ADDRBAR_POPUP_HEIGHT_PX = 420;
+  const ADDRBAR_ANCHORED_POPUP_WIDTH_PX = Math.round(ADDRBAR_POPUP_WIDTH_PX * 0.8);
+  const ADDRBAR_ANCHORED_POPUP_HEIGHT_PX = Math.round(ADDRBAR_POPUP_HEIGHT_PX * 0.9);
   const ADDRBAR_FRAME_GUTTER_TOP_PX = 40;
   const ADDRBAR_FRAME_GUTTER_INLINE_PX = 80;
   const ADDRBAR_FRAME_GUTTER_BOTTOM_PX = 140;
@@ -3172,10 +3174,10 @@
       anchorWidth,
       viewportWidth - left - ADDRBAR_ANCHOR_MARGIN_PX,
     );
-    const width = Math.min(ADDRBAR_POPUP_WIDTH_PX, availableWidth);
+    const width = Math.min(ADDRBAR_ANCHORED_POPUP_WIDTH_PX, availableWidth);
     const top = Math.max(ADDRBAR_ANCHOR_MARGIN_PX, anchorTop + anchorHeight + 4);
     const height = Math.min(
-      ADDRBAR_POPUP_HEIGHT_PX,
+      ADDRBAR_ANCHORED_POPUP_HEIGHT_PX,
       Math.max(180, viewportHeight - top - ADDRBAR_ANCHOR_MARGIN_PX),
     );
     return {
@@ -4814,6 +4816,28 @@
     }, 0);
   }
 
+  function shouldOpenAddrbarSpecWithChromeNewTab(spec) {
+    try {
+      const scheme = Services.io.newURI(spec).scheme;
+      return scheme === 'about' || scheme === 'chrome';
+    } catch {
+      return false;
+    }
+  }
+
+  function openTrustedAddrbarNewTab(spec) {
+    if (!window.gBrowser || typeof window.gBrowser.addTrustedTab !== 'function') return false;
+    try {
+      const tab = window.gBrowser.addTrustedTab(spec, { skipAnimation: true });
+      if (!tab) return false;
+      window.gBrowser.selectedTab = tab;
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] addrbar trusted new-tab load failed:', err);
+      return false;
+    }
+  }
+
   async function navigateAddressEntry(value, mode, searchEngineId) {
     let spec = null;
     if (searchEngineId && !isAddrbarUrlLike(value)) {
@@ -4827,7 +4851,11 @@
     if (!spec) return false;
 
     if (mode === 'newTab') {
-      dispatchShellAction({ type: 'tab/openUrl', url: spec });
+      if (shouldOpenAddrbarSpecWithChromeNewTab(spec)) {
+        if (!openTrustedAddrbarNewTab(spec)) return false;
+      } else {
+        dispatchShellAction({ type: 'tab/openUrl', url: spec });
+      }
       scheduleScrollMainPanelIntoViewForAddrbar();
       return true;
     }
@@ -14749,13 +14777,16 @@
         ) {
           return;
         }
-        // Add-panel trailer focus must bypass this listener: the trailer
-        // has neither data-bento-* attr, so closest() walks past it up
-        // to the outer #tabbrowser-tabbox (which DOES carry data-bento-
-        // main-panel) and the fallback below incorrectly resets
-        // currentActiveIdx to 0 — turning the next Right-arrow press
-        // from the trailer into a wrap-to-first-side-panel jump.
-        if (target.closest('#bento-add-panel-trailer')) {
+        // Add-panel trailer focus still needs the same reveal behavior as
+        // normal panels, but must bypass panel-index bookkeeping: the
+        // trailer has neither data-bento-* attr, so closest() can walk
+        // past it up to the outer #tabbrowser-tabbox and incorrectly
+        // reset currentActiveIdx to 0.
+        const trailerEl = target.closest('#bento-add-panel-trailer');
+        if (trailerEl) {
+          if (window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
+            scrollPanelIntoViewFromRight(trailerEl);
+          }
           applyFocusedPanelIndicator(null);
           return;
         }

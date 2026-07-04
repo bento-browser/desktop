@@ -1,18 +1,26 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
-Subject: [PATCH] Center native preferences layout
+Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.xhtml  | 4 ++--
- browser/themes/shared/preferences/preferences.css | 5 +++++
- 2 files changed, 7 insertions(+), 2 deletions(-)
+ browser/components/preferences/preferences.xhtml  |   5 +-
+ browser/themes/shared/preferences/preferences.css | 216 +++++++++++++++++++++-
+ 2 files changed, 212 insertions(+), 9 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..25194f78202ae5d97377430bb1546fb066cedaa7 100644
+index 9760a4a35b..a7b50a3d68 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -112,7 +112,7 @@
+@@ -20,6 +20,7 @@
+   <link rel="stylesheet" href="chrome://global/skin/global.css" />
+ 
+   <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
++  <link rel="stylesheet" href="chrome://browser/content/bento-chrome-tokens.css" />
+   <link
+     rel="stylesheet"
+     href="chrome://browser/skin/preferences/preferences.css"
+@@ -112,7 +113,7 @@
                  src="chrome://browser/locale/browser.properties"/>
  
    <stack id="preferences-stack" flex="1">
@@ -21,7 +29,7 @@ index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..25194f78202ae5d97377430bb1546fb0
  
      <html:moz-page-nav id="categories" data-l10n-id="category-nav-heading" allownoselection="true">
        <html:moz-page-nav-button id="category-general"
-@@ -228,7 +228,7 @@
+@@ -228,7 +229,7 @@
        <key data-l10n-id="focus-search" key="" modifiers="accel" id="focusSearch1"/>
      </keyset>
  
@@ -31,10 +39,172 @@ index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..25194f78202ae5d97377430bb1546fb0
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index bcede3342137a1655f48128181831ab34d7f6395..e7c891b13d07e1e4e38c970693b0a4101eaa9929 100644
+index bcede33421..5bd3f02921 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
-@@ -109,7 +109,12 @@
+@@ -24,7 +24,160 @@
+ 
+   /* stylelint-disable-next-line media-query-no-invalid */
+   @media -moz-pref("browser.settings-redesign.enabled") {
+-    --background-color-canvas: light-dark(var(--color-gray-05), var(--color-gray-90));
++    @media not (forced-colors) {
++      --background-color-canvas: var(--neutral-10);
++    }
++  }
++
++  @media not (forced-colors) {
++    accent-color: var(--color-60);
++
++    --background-color-canvas: var(--neutral-10);
++    --background-color-box: var(--neutral-5);
++    --background-color-box-info: var(--neutral-12);
++    --background-color-critical: color-mix(in srgb, var(--error-60) 12%, var(--neutral-10));
++    --background-color-information: var(--neutral-12);
++    --background-color-list-item-hover: color-mix(in srgb, var(--color-60) 12%, transparent);
++    --background-color-overlay: var(--scrim-strong);
++    --background-color-success: color-mix(in srgb, var(--success-60) 12%, var(--neutral-10));
++    --background-color-warning: color-mix(in srgb, var(--warning-60) 16%, var(--neutral-10));
++
++    --border-color: var(--neutral-20);
++    --border-color-deemphasized: var(--neutral-16);
++    --border-color-error: light-dark(var(--error-70), var(--error-40));
++    --border-color-interactive: var(--neutral-30);
++    --border-color-interactive-active: var(--neutral-50);
++    --border-color-interactive-disabled: var(--neutral-20);
++    --border-color-interactive-hover: var(--neutral-40);
++    --border-color-selected: var(--color-60);
++    --border-radius-circle: var(--radius-full);
++    --border-radius-xsmall: var(--radius-xs);
++    --border-radius-small: var(--radius-s);
++    --border-radius-medium: var(--radius-m);
++    --border-radius-large: var(--radius-xl);
++
++    --box-border: none;
++    --box-border-color: transparent;
++    --box-border-width: 0;
++    --box-border-radius: var(--radius-m);
++    --box-button-background-color: transparent;
++    --box-button-background-color-hover: var(--neutral-16);
++    --box-button-background-color-active: var(--neutral-20);
++    --box-button-background-color-disabled: transparent;
++
++    --box-shadow-level-1: var(--shadow-xs);
++    --box-shadow-level-2: var(--shadow-s);
++    --box-shadow-level-3: var(--shadow-m);
++    --box-shadow-level-4: var(--shadow-l);
++    --popup-box-shadow: var(--shadow-l);
++
++    --button-background-color: var(--neutral-12);
++    --button-background-color-hover: var(--neutral-16);
++    --button-background-color-active: var(--neutral-20);
++    --button-background-color-disabled: var(--neutral-10);
++    --button-background-color-ghost-hover: var(--neutral-16);
++    --button-background-color-ghost-active: var(--neutral-20);
++    --button-background-color-menu: transparent;
++    --button-background-color-menu-hover: var(--neutral-16);
++    --button-background-color-menu-active: var(--neutral-20);
++    --button-background-color-menu-disabled: transparent;
++    --button-background-color-primary: var(--color-60);
++    --button-background-color-primary-hover: var(--color-50);
++    --button-background-color-primary-active: var(--color-40);
++    --button-background-color-primary-disabled: var(--color-60);
++    --button-border-color: var(--neutral-20);
++    --button-border-color-hover: var(--neutral-24);
++    --button-border-color-active: var(--neutral-30);
++    --button-border-color-disabled: var(--neutral-16);
++    --button-border-color-primary: transparent;
++    --button-border-color-primary-hover: transparent;
++    --button-border-color-primary-active: transparent;
++    --button-border-color-primary-disabled: transparent;
++    --button-border-radius: var(--radius-s);
++    --button-text-color: var(--neutral-90);
++    --button-text-color-hover: var(--neutral-90);
++    --button-text-color-active: var(--neutral-90);
++    --button-text-color-disabled: var(--neutral-50);
++    --button-text-color-primary: var(--color-60-fg);
++    --button-text-color-primary-hover: var(--color-50-fg);
++    --button-text-color-primary-active: var(--color-40-fg);
++    --button-text-color-primary-disabled: var(--color-60-fg);
++    --button-text-color-ghost: var(--neutral-80);
++    --button-text-color-ghost-hover: var(--neutral-90);
++    --button-text-color-ghost-active: var(--neutral-90);
++    --button-text-color-menu: var(--neutral-90);
++    --button-text-color-menu-hover: var(--neutral-90);
++    --button-text-color-menu-active: var(--neutral-90);
++    --button-text-color-menu-disabled: var(--neutral-50);
++
++    --card-background-color: var(--neutral-5);
++    --card-border: none;
++    --card-border-color: transparent;
++    --card-border-width: 0;
++    --card-border-radius: var(--radius-l);
++    --card-box-shadow: none;
++    --card-box-shadow-hover: none;
++
++    --checkbox-size: var(--bento-icon-size-sm);
++    --color-accent-attention: var(--success-60);
++    --color-accent-primary: var(--color-60);
++    --color-accent-primary-hover: var(--color-50);
++    --color-accent-primary-active: var(--color-40);
++    --color-accent-primary-selected: var(--color-60);
++    --dialog-warning-text-color: light-dark(var(--warning-80), var(--warning-40));
++
++    --focus-outline-color: var(--color-60);
++
++    --icon-color: var(--neutral-70);
++    --icon-color-critical: var(--error-60);
++    --icon-color-information: var(--color-60);
++    --icon-color-success: var(--success-60);
++    --icon-color-warning: var(--warning-60);
++
++    --input-bgcolor: var(--neutral-10);
++    --input-border-color: var(--neutral-24);
++    --input-color: var(--neutral-90);
++    --input-text-background-color: var(--neutral-10);
++    --input-text-background-color-disabled: var(--neutral-12);
++    --input-text-border-color: var(--neutral-24);
++    --input-text-border-color-disabled: var(--neutral-20);
++    --input-text-border-radius: var(--radius-s);
++    --input-text-color: var(--neutral-90);
++    --input-box-shadow-color-warning: color-mix(in srgb, var(--warning-60) 30%, transparent);
++    --input-border-color-warning: var(--warning-60);
++
++    --link-color: var(--color-70);
++    --link-color-hover: var(--color-80);
++    --link-color-active: var(--color-90);
++    --link-color-visited: var(--color-70);
++
++    --message-bar-background-color-warning: color-mix(in srgb, var(--warning-60) 18%, var(--neutral-10));
++    --message-bar-button-background-color: var(--neutral-16);
++    --message-bar-button-background-color-hover: var(--neutral-20);
++    --message-bar-button-background-color-active: var(--neutral-24);
++    --message-bar-text-color-warning: light-dark(var(--warning-90), var(--warning-20));
++
++    --panel-background-color: var(--neutral-10);
++    --panel-background-color-dimmed: var(--neutral-16);
++    --panel-background-color-dimmed-further: var(--neutral-20);
++    --panel-border-color: var(--neutral-20);
++    --panel-border-radius: var(--radius-m);
++    --panel-box-shadow: var(--shadow-l);
++    --panel-menuitem-border-radius: var(--radius-s);
++
++    --table-background-color: var(--neutral-10);
++    --table-border-color: var(--neutral-20);
++    --table-header-background-color: var(--color-60);
++    --table-header-text-color: var(--color-60-fg);
++    --table-row-background-color: var(--neutral-10);
++    --table-row-background-color-alternate: var(--neutral-12);
++
++    --text-color: var(--neutral-90);
++    --text-color-accent-primary-selected: var(--color-60-fg);
++    --text-color-deemphasized: var(--neutral-70);
++    --text-color-disabled: var(--neutral-50);
++    --text-color-error: light-dark(var(--error-70), var(--error-40));
++    --text-color-list-item-hover: var(--neutral-90);
+   }
+ 
+   user-select: text;
+@@ -109,7 +262,12 @@
    padding-top: 0;
    scroll-padding-top: calc(calc(2 * var(--page-space-block-start)) + var(--search-container-padding) + var(--search-container-margin));
  
@@ -47,6 +217,102 @@ index bcede3342137a1655f48128181831ab34d7f6395..e7c891b13d07e1e4e38c970693b0a410
      padding-inline: var(--space-medium);
    }
  }
+@@ -127,6 +285,50 @@
+   width: 100%;
+ }
+ 
++@media not (forced-colors) {
++  #preferences-root,
++  #preferences-body {
++    background-color: var(--background-color-canvas);
++    color: var(--text-color);
++  }
++
++  #categories {
++    --page-nav-border-color: var(--neutral-16);
++    --page-nav-hr-background-color: var(--neutral-20);
++    --page-nav-button-background-color-hover: var(--neutral-14);
++    --page-nav-button-background-color-active: var(--neutral-18);
++    --page-nav-button-background-color-selected: color-mix(in srgb, var(--color-60) 12%, var(--neutral-10));
++    --page-nav-button-indicator-color: var(--color-60);
++    --page-nav-button-text-color: var(--neutral-80);
++    --page-nav-button-text-color-hover: var(--neutral-90);
++    --page-nav-button-text-color-active: var(--neutral-90);
++  }
++
++  #searchInput {
++    --input-text-background-color: var(--neutral-10);
++    --input-text-border-color: var(--neutral-24);
++    --input-text-border-radius: var(--radius-s);
++    --input-text-color: var(--neutral-90);
++  }
++
++  moz-card {
++    --card-background-color: var(--neutral-5);
++    --card-border: none;
++    --card-border-color: transparent;
++    --card-border-width: 0;
++    --card-border-radius: var(--radius-l);
++    --card-box-shadow: none;
++  }
++
++  moz-box-item,
++  moz-message-bar {
++    --box-border: none;
++    --box-border-color: transparent;
++    --box-border-width: 0;
++    --box-border-radius: var(--radius-m);
++  }
++}
++
+ html|div[data-category],
+ groupbox[data-category],
+ setting-group[data-category] {
+@@ -656,7 +858,7 @@ html|dialog,
+   @media not (forced-colors) {
+     html|dialog,
+     .dialogBox {
+-      --background-color-canvas: #42414d;
++      --background-color-canvas: var(--neutral-12);
+     }
+   }
+ }
+@@ -755,11 +957,11 @@ html|dialog,
+ }
+ 
+ .fxaProfileImage.actionable:hover {
+-  border-color: #0095dd;
++  border-color: var(--color-60);
+ }
+ 
+ .fxaProfileImage.actionable:hover:active {
+-  border-color: #ff9500;
++  border-color: var(--warning-60);
+ }
+ 
+ #useFirefoxSync {
+@@ -1365,11 +1567,11 @@ richlistitem .text-link:hover {
+ 
+ @media (prefers-color-scheme: dark) {
+   .qr-code-box:not([hidden="true"]) {
+-    background-color: rgba(91, 91, 102, 0.45);
++    background-color: color-mix(in srgb, var(--neutral-20) 45%, transparent);
+   }
+ 
+   .qr-code-box-title {
+-    color: #fbfbfe;
++    color: var(--neutral-90);
+   }
+ }
+ 
+@@ -1471,7 +1673,7 @@ setting-group[groupid="aiFeatures"] {
+ 
+ .ai-controls-description {
+   --ai-controls-description-image-margin: calc(64px + var(--space-large));
+-  --ai-controls-description-background-color: light-dark(var(--color-violet-0), var(--color-violet-90));
++  --ai-controls-description-background-color: color-mix(in srgb, var(--color-60) 10%, var(--neutral-10));
+   anchor-name: --ai-controls-description;
+ 
+   @media not (forced-colors) {
 -- 
 2.50.1 (Apple Git-155)
-

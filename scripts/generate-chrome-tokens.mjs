@@ -2,7 +2,7 @@
 /**
  * Generate `src/browser/base/content/bento-chrome-tokens.css` by
  * concatenating the Tale UI token CSS files into a single chrome
- * stylesheet that the Bento chrome script injects into browser.xhtml.
+ * stylesheet that Firefox-owned Bento surfaces can load.
  *
  * Why a generator and not a hand-maintained file: chrome XHTML is a
  * different document tree from the bento-shell extension, so we can't
@@ -143,9 +143,11 @@ const header = [
   ` * ${BENTO_TOKENS_PATH} (Bento token layer).`,
   ' * Runs as part of `pnpm run import` — bump `import` script if removed.',
   ' *',
-  ' * Loaded into browser.xhtml as a chrome stylesheet via',
-  ' * `chrome://browser/content/bento-chrome-tokens.css` and applied by',
-  ' * src/browser/base/content/bento-shell-mount.js. Same variable names',
+  ' * Loaded as a chrome stylesheet via',
+  ' * `chrome://browser/content/bento-chrome-tokens.css`. browser.xhtml',
+  ' * injects it from src/browser/base/content/bento-shell-mount.js;',
+  ' * native pages such as about:preferences can link it directly.',
+  ' * Same variable names',
   ' * Tale UI + Bento publish — chrome inline styles can use',
   ' * `var(--color-60)`, `var(--radius-m)`, `var(--neutral-90)`,',
   ' * `var(--bento-scrollbar-thickness)`, etc., with auto light/dark',

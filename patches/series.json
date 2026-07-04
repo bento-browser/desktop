@@ -74,7 +74,7 @@
     {
       "path": "patches/core-ui/12-center-native-preferences.patch",
       "id": "center-native-preferences",
-      "subject": "Center native preferences layout"
+      "subject": "Center and theme native preferences layout"
     },
     {
       "path": "patches/experiments/01-mach-build-hang-guards.patch",

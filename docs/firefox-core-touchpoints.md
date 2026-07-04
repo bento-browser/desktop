@@ -74,15 +74,19 @@ Use this shape for new or changed touchpoints:
   URL row activation to the same overlay with a sidebar anchor, routes submitted
   address/search text through Firefox URI fixup, resolves one-shot
   address-palette non-default search-engine submissions through Firefox
-  `SearchService` without changing the default engine, reveals the main content
-  slot after committed address/search submissions, emits scoped sidebar address
+  `SearchService` without changing the default engine, opens privileged
+  new-tab address submissions such as `about:preferences` through
+  `gBrowser.addTrustedTab` when WebExtension tab creation would reject them,
+  reveals the main content slot after committed address/search submissions,
+  emits scoped sidebar address
   snapshots for active URL/title/loading/security/bookmark state, opens
   Firefox's native identity popup from the sidebar security button, toggles
   regular Firefox bookmarks from the sidebar address star with stale
   tab/URL/snapshot guards, copies the current sidebar URL through Firefox's
   native clipboard helper with the same stale tab/URL/snapshot guards, lets
   direct sidebar URL row editing overhang the sidebar without resizing the
-  sidebar frame or moving content,
+  sidebar frame or moving content, caps the sidebar-anchored address overlay
+  below the centered overlay size,
   hides the native top URL/search field under a Bento
   chrome attribute while keeping toolbar and window controls visible, mounts a shared modal
   toolbar scrim as a top-layer manual popover so native toolbar/urlbar controls
@@ -123,9 +127,11 @@ Use this shape for new or changed touchpoints:
   entries,
   `SearchService.sys.mjs`, `SearchService.promiseInitialized`,
   `SearchService.getEngineById`, search-engine `getSubmission().uri.spec`,
+  `gBrowser.addTrustedTab` for privileged address-entry new-tab submissions
+  and DevTools panel tabs,
   `browsingContext.sessionHistory`, `SessionStore.getSessionHistory`,
   browser `gotoIndex()`,
-  `gBrowser.addTrustedTab`, `DevToolsShim.on/off('toolbox-ready')`,
+  `DevToolsShim.on/off('toolbox-ready')`,
   `DevToolsShim.getToolboxes()`, the
   `about:devtools-toolbox?type=tab&id=<browserId>&tool=<tool>` URL contract,
   `gContextMenu.targetIdentifier`, `toolbox.commands.descriptorFront.browserId`,
@@ -162,7 +168,8 @@ Use this shape for new or changed touchpoints:
   snapshots across windows, verify clicking the sidebar
   security control opens Firefox's native identity popup with native content,
   verify the expanded-sidebar address overlay can extend over the panel
-  strip/main content while editing and closes after Escape, submit, and outside
+  strip/main content while editing, stays smaller than the centered shortcut
+  overlay, and closes after Escape, submit, and outside
   click,
   verify regular bookmarks outside the "Saved panels" folder fill the sidebar
   star while saved-panel-only bookmarks do not, verify rapid navigation or tab
@@ -184,7 +191,9 @@ Use this shape for new or changed touchpoints:
   verify URL-like input ignores the selected one-shot engine, verify the picker
   resets to Firefox's current default on the next open and does not mutate Bento
   Settings/default search, verify engine lookup/submission failures fall back to
-  URI fixup, verify submitting a floating-address search while the panel strip
+  URI fixup, verify submitting `about:preferences` from both current-tab and
+  new-tab address-entry mode opens the native preferences page, verify
+  submitting a floating-address search while the panel strip
   is scrolled to side panels reveals the main content slot, verify native URL bar
   inset controls and the
   search-mode switcher popup inherit Bento token colors in light and dark modes,
@@ -250,7 +259,7 @@ Use this shape for new or changed touchpoints:
 - Firefox update risk: upstream tabbrowser, toolbar, BrowserWindowTracker,
   DevTools, focus, or key actor changes can cause duplicated UI, broken shortcuts,
   stale window state, or incorrect panel focus.
-- Regression checks for future updates: run `npm run build`, verify native tabs
+- Regression checks for future updates: run `pnpm run build`, verify native tabs
   remain hidden, verify Bento shortcuts still win where reserved, verify focus
   traversal skips or enters panel browsers correctly, and verify Browser Toolbox
   inspection works for panel browsers.
@@ -261,29 +270,43 @@ Use this shape for new or changed touchpoints:
 ### Native Preferences Layout
 
 - Status: Active
-- Last updated: 2026-07-01
+- Last updated: 2026-07-04
 - Files or patches:
   - `engine/browser/components/preferences/preferences.xhtml`
   - `engine/browser/themes/shared/preferences/preferences.css`
+  - `src/browser/base/content/bento-chrome-tokens.css`
 - Bento functionality: centers Firefox's native `about:preferences` content pane
   and category navigation as one unit in the available browser content area, so
   the settings controls do not sit flush against the side nav on wide windows.
+  The native preferences page also loads Bento's generated Tale UI token sheet
+  and maps Firefox in-content semantic variables for surfaces, text, borders,
+  buttons, fields, panels, and focus rings onto Tale UI/Bento tokens while
+  rendering preferences cards and box groups as borderless neutral-5 tiles.
 - Vanilla Firefox surface touched or depended on: the native preferences XHTML
-  layout, including `#categories`, `.main-content`, and `.pane-container`.
+  layout and in-content theme cascade, including `#categories`,
+  `.main-content`, `.pane-container`, `chrome://global/skin/in-content/common.css`,
+  and the generated `chrome://browser/content/bento-chrome-tokens.css`.
 - Why this cannot stay extension-only: `about:preferences` is a privileged
   built-in Firefox page; extension CSS cannot reliably restyle its chrome-loaded
-  layout.
+  layout or define its in-content semantic theme variables.
 - Firefox update risk: upstream preferences markup, XUL box alignment behavior,
-  or settings redesign layout changes can reintroduce left alignment or alter
-  the content pane width.
+  settings redesign layout changes, in-content variable names, or preferences
+  widget token dependencies can reintroduce left alignment, alter the content
+  pane width, or disconnect preferences controls from Bento's Tale UI palette.
 - Regression checks for future updates: open `about:preferences` in a wide
   Bento window and confirm the search field and settings pane are centered in
   the area beside the category nav; narrow the window and confirm the pane still
   fits without horizontal clipping, category navigation works, and the main
-  preferences area still scrolls.
+  preferences area still scrolls. Check light and dark appearances for the
+  neutral-10 page background, borderless neutral-5 cards/tiles without box
+  shadows, search field, switches, buttons, selected category, links, dialogs,
+  warning/info boxes, and QR/AI promo surfaces; confirm forced colors still
+  follows Firefox/system colors.
 - Rollback or migration notes: remove the `pack="center"` XHTML override and
   the `.main-content` width bound if upstream Firefox adopts a centered
-  preferences layout or this customization conflicts with a future redesign.
+  preferences layout. Remove the `bento-chrome-tokens.css` link and preferences
+  semantic-token bridge if this customization conflicts with a future redesign
+  or Firefox exposes a supported shared theme-token hook for in-content pages.
 
 ### Hidden Native Tabs And Titlebar Controls
 
@@ -451,7 +474,7 @@ Use this shape for new or changed touchpoints:
 - Firefox update risk: upstream pref renames, search config schema changes,
   branding layout changes, build system changes, or obsolete temporary patches
   can silently stop applying or block security update rebases.
-- Regression checks for future updates: run `npm run build`, confirm
+- Regression checks for future updates: run `pnpm run build`, confirm
   `scripts/append-prefs.sh` still appends `prefs/bento.js`, inspect branding in
   the built app, confirm fresh-profile omnibar search uses DuckDuckGo, inspect
   `about:config` for the Standard privacy defaults, confirm Firefox-visible
@@ -463,17 +486,26 @@ Use this shape for new or changed touchpoints:
 ### Built-In Extension Copy Surface
 
 - Status: Active
-- Last updated: 2026-06-07
+- Last updated: 2026-07-04
 - Files or patches:
   - `/Users/admin/Projects/surfer/src/commands/patches/extensions-copy.ts`
+  - `package.json`
+  - `pnpm-lock.yaml`
+  - `scripts/import.sh`
+  - `scripts/build-bento.sh`
+  - `scripts/sync-builtin-addon-symlinks.sh`
   - `extensions/ublock-origin/.bento-runtime-entries.json`
   - `extensions/bento-tools/experiments/bento-privacy/**`
 - Bento functionality: packages Bento's privileged built-in extensions and the
   bundled uBlock Origin extension into Firefox's `builtin-addons/` runtime
-  location. The Surfer copy step now lets an extension declare a per-extension
-  runtime entry list so uBlock Origin keeps its required `js/`, `css/`, `lib/`,
-  `assets/`, locale, and HTML entry files without broadening the copy surface of
-  Bento's own source-based extensions.
+  location. The Surfer pin
+  `0c4bfd6dc8f865e71f789d4377d8ee589e28af84` is rebased onto upstream Surfer
+  `17d9a1577170880cdac13dca7c3d6871716fc046` and keeps Bento's extension copy,
+  runtime-entry filtering, repo-local patch import, patch-check consistency, and
+  generated `jar.mn` behavior. The copy step lets an extension declare a
+  per-extension runtime entry list so uBlock Origin keeps its required `js/`,
+  `css/`, `lib/`, `assets/`, locale, and HTML entry files without broadening the
+  copy surface of Bento's own source-based extensions.
 - Vanilla Firefox surface touched or depended on: Firefox built-in add-on
   loading from `browser/extensions`, generated `jar.mn`, generated per-extension
   `moz.build`, and `browser/extensions/moz.build` registration.
@@ -489,7 +521,9 @@ Use this shape for new or changed touchpoints:
   includes `experiments/bento-privacy`, confirm
   `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
   `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
-  shows Bento Tools, Bento Shell, and uBlock Origin.
+  shows Bento Tools, Bento Shell, and uBlock Origin. Direct `surfer import`
+  does not prove this surface is valid because it bypasses Bento's import
+  wrapper and built-in add-on symlink sync.
 - Rollback or migration notes: if uBlock Origin is removed, remove
   `extensions/ublock-origin/` and its runtime-entry file. If Surfer upstream
   adopts a native equivalent, migrate to that and remove Bento-specific copy

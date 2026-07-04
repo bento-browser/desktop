@@ -40,7 +40,7 @@
     "theme:sync": "node scripts/sync-theme-presets.mjs"
   },
   "devDependencies": {
-    "@bento-browser/surfer": "github:Bento-Browser/surfer#358ca0418217c59fb659acd05ce7996682105147",
+    "@bento-browser/surfer": "github:Bento-Browser/surfer#0c4bfd6dc8f865e71f789d4377d8ee589e28af84",
     "@eslint/js": "^9.0.0",
     "@size-limit/file": "^12.1.0",
     "eslint": "^9.0.0",
