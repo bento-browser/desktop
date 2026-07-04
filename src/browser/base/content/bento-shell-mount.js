@@ -3864,6 +3864,7 @@
   const WORKSPACE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_PALETTE';
   const MERGE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_MERGE_PALETTE';
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
+  const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
   const ADDRBAR_READY_PREFIX = 'BENTO_ADDRBAR_READY';
@@ -4010,6 +4011,95 @@
     if (colonAfterTs < 0) return;
     const mode = tail.slice(colonAfterTs + 1).trim();
     applyChromeColorMode(mode);
+  }
+
+  function ensureSidebarAppMenuAnchor(anchorRect) {
+    const shellFrame = document.getElementById('bento-shell-frame');
+    const shellRect = shellFrame?.getBoundingClientRect();
+    if (!shellRect || !anchorRect) return null;
+    let anchor = document.getElementById('bento-sidebar-app-menu-anchor');
+    if (!anchor) {
+      anchor = document.createElementNS(HTML_NS, 'span');
+      anchor.id = 'bento-sidebar-app-menu-anchor';
+      anchor.setAttribute('aria-hidden', 'true');
+      document.documentElement.appendChild(anchor);
+    }
+    const left = shellRect.left + Number(anchorRect.left || 0);
+    const top = shellRect.top + Number(anchorRect.top || 0);
+    const width = Math.max(1, Number(anchorRect.width || 1));
+    const height = Math.max(1, Number(anchorRect.height || 1));
+    anchor.style.cssText =
+      'position: fixed; pointer-events: none; z-index: 2147483647; left: ' +
+      Math.round(left) +
+      'px; top: ' +
+      Math.round(top) +
+      'px; width: ' +
+      Math.round(width) +
+      'px; height: ' +
+      Math.round(height) +
+      'px;';
+    return anchor;
+  }
+
+  async function openNativeAppMenuFromSidebar(anchorRect) {
+    const panelUi = window.PanelUI;
+    if (!panelUi || typeof panelUi.ensureReady !== 'function') {
+      console.warn('[bento-shell-mount] PanelUI unavailable; cannot open Firefox menu');
+      return false;
+    }
+    if (document.documentElement.hasAttribute('customizing')) return false;
+    const panel = panelUi.panel;
+    if (panel?.state === 'open' || panel?.state === 'showing') {
+      panelUi.hide?.();
+      return true;
+    }
+    if (typeof window.PanelMultiView?.openPopup !== 'function') {
+      console.warn('[bento-shell-mount] PanelMultiView unavailable; cannot open Firefox menu');
+      return false;
+    }
+    const anchor = ensureSidebarAppMenuAnchor(anchorRect);
+    if (!anchor) {
+      panelUi.show?.();
+      return false;
+    }
+    const cleanup = () => {
+      panel?.removeEventListener('popuphidden', cleanup);
+      anchor.remove();
+    };
+    try {
+      panelUi._ensureShortcutsShown?.();
+      await panelUi.ensureReady();
+      panel.addEventListener('popuphidden', cleanup);
+      const opened = await window.PanelMultiView.openPopup(panel, anchor, {
+        position: 'topright bottomright',
+        triggerEvent: null,
+      });
+      if (!opened) cleanup();
+      return opened;
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar Firefox menu open failed:', err);
+      cleanup();
+      return false;
+    }
+  }
+
+  function handleAppMenuOpenTitle(rawTitle) {
+    // Format: BENTO_OPEN_APP_MENU:<ts>:<base64-json>
+    const tail = rawTitle.slice(APP_MENU_OPEN_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) {
+      openNativeAppMenuFromSidebar(null);
+      return;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
+    } catch (err) {
+      console.warn('[bento-shell-mount] app menu payload parse failed:', err);
+      openNativeAppMenuFromSidebar(null);
+      return;
+    }
+    openNativeAppMenuFromSidebar(payload?.anchor || null);
   }
 
   // ─── Side panel strip (multi-panel) ────────────────────────────────────
@@ -16681,6 +16771,7 @@
           if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
           else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
+          else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
           else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
           else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
             handleSidebarAddressSubmitTitle(title);

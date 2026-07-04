@@ -243,6 +243,13 @@
     visibility: collapse !important;
   }
 
+  /* Bento opens Firefox's native app menu from the sidebar footer. Keep
+   * the stock toolbar entry hidden so the menu has one visible home. */
+  :root[bento-sidebar-addressbar='true'] #PanelUI-button {
+    display: none !important;
+    visibility: collapse !important;
+  }
+
   notification-message {
     --info-bar-accent-background: none !important;
     --info-bar-background-color-configurable: var(--neutral-90) !important;

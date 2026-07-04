@@ -9,6 +9,7 @@ import { Tooltip } from '@tale-ui/react/tooltip';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
 import Merge from 'lucide-react/dist/esm/icons/merge';
+import Menu from 'lucide-react/dist/esm/icons/menu';
 import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 
@@ -89,6 +90,19 @@ function openCommandPalette() {
 function openMergePalette() {
   const newTitle = `BENTO_OPEN_MERGE_PALETTE_${Date.now()}`;
   document.title = newTitle;
+}
+
+function openFirefoxAppMenu(anchorRect: DOMRect | null) {
+  document.title = `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+    anchor: anchorRect
+      ? {
+          left: anchorRect.left,
+          top: anchorRect.top,
+          width: anchorRect.width,
+          height: anchorRect.height,
+        }
+      : null,
+  })}`;
 }
 
 interface SidebarMenuItem {
@@ -188,6 +202,10 @@ export function App() {
   const onOpenSettings = () => {
     setSettingsRevealRequest((value = 0) => value + 1);
     openSettings();
+  };
+  const appMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const onOpenFirefoxAppMenu = () => {
+    openFirefoxAppMenu(appMenuButtonRef.current?.getBoundingClientRect() ?? null);
   };
   const openSidebarContextMenu = (
     event: React.MouseEvent,
@@ -553,6 +571,17 @@ export function App() {
               modes={UI_COLOR_MODE_ORDER}
               surfaceLabel="Bento UI"
             />
+          </FooterTooltip>
+          <FooterTooltip label="Firefox menu" isDisabled={sidebarCollapsed}>
+            <IconButton
+              ref={appMenuButtonRef}
+              variant="ghost"
+              size="sm"
+              aria-label="Open Firefox menu"
+              onPress={onOpenFirefoxAppMenu}
+            >
+              <Icon icon={Menu} />
+            </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
             <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={onOpenSettings}>

@@ -992,6 +992,22 @@ automatically at process start and do not route it through Bento's Settings
 backup/import code; that code is additive workspace JSON import and has
 different data-loss semantics.
 
+## Sidebar Native Firefox Menu
+
+The sidebar footer's Firefox-menu button signals
+`BENTO_OPEN_APP_MENU:<timestamp>:<base64-json>` to
+`src/browser/base/content/bento-shell-mount.js` with the button's
+iframe-local bounding rect. Chrome adds the `#bento-shell-frame` rect, positions
+a temporary `#bento-sidebar-app-menu-anchor` in the chrome document, and opens
+Firefox's native `#appMenu-popup` through `PanelMultiView.openPopup(PanelUI.panel, ...)`.
+The temporary anchor is removed after `popuphidden`.
+
+Bento does not reimplement Firefox's app menu in React. The native menu keeps
+owning sign-in state, update/menu-message banners, subviews, extension entries,
+shortcuts, and Firefox command handlers. `bento-chrome-theme.css` hides the
+stock `#PanelUI-button` while Bento's sidebar-addressbar chrome mode is active
+so the footer button is the visible app-menu entry point.
+
 ## Manual Browser Session Merge
 
 Manual browser-session merge is a runtime additive import, separate from the

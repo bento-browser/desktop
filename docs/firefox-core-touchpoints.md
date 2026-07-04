@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-01
+- Last updated: 2026-07-04
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -100,7 +100,10 @@ Use this shape for new or changed touchpoints:
   triggers native urlbar focus, opens the manual browser-session merge palette from the sidebar
   footer in a persistent
   chrome-hosted overlay frame, delivers open/close lifecycle nonces into that
-  extension frame,
+  extension frame, opens Firefox's native app menu from a sidebar footer button
+  by anchoring `PanelUI.panel` to a temporary chrome-side element, hides the
+  stock toolbar `#PanelUI-button` while Bento's sidebar addressbar mode is
+  active,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -120,7 +123,8 @@ Use this shape for new or changed touchpoints:
   `#bento-shell-frame` geometry for anchored address-overlay placement,
   native identity
   chrome (`gIdentityHandler`, `#identity-box`, `#identity-icon-box`,
-  `#identity-popup`, `PanelMultiView.openPopup`), Places bookmark APIs and
+  `#identity-popup`, `PanelMultiView.openPopup`), Firefox app-menu chrome
+  (`PanelUI`, `#appMenu-popup`, `#PanelUI-button`), Places bookmark APIs and
   Places observer events, `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
   chrome `<browser>.loadURI()` with system principals for Bento extension-frame
@@ -147,8 +151,8 @@ Use this shape for new or changed touchpoints:
   chrome event ordering can break panel layout, focus, inline sidebar rename,
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, sidebar address scoping,
-  native identity popup anchoring, bookmark state, native URL-bar hiding, or
-  visibility.
+  native identity/app-menu popup anchoring, bookmark state, native URL-bar and
+  toolbar app-menu hiding, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -161,9 +165,12 @@ Use this shape for new or changed touchpoints:
   overlay anchored below that row,
   verify clicking or programmatic focus into Firefox's hidden native top address
   input opens Bento's centered address entry and does not leave the native urlbar
-  suggestions dropdown open, verify the native top URL/search field is hidden
-  while toolbar buttons, extension buttons, app/menu buttons, toolbar
-  customization, titlebar controls, and window dragging still work, verify two
+  suggestions dropdown open, verify the native top URL/search field and stock
+  toolbar app-menu button are hidden while the sidebar footer Firefox-menu
+  button opens the native app menu with submenus, Settings, More Tools, Help,
+  update/sign-in banners, and keyboard shortcuts intact, verify remaining
+  toolbar buttons, extension buttons, toolbar customization, titlebar controls,
+  and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark
   snapshots across windows, verify clicking the sidebar
   security control opens Firefox's native identity popup with native content,

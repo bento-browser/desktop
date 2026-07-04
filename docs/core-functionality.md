@@ -34,14 +34,15 @@ Standard privacy and DuckDuckGo search. The onboarding overlay is not dismissed
 by clicking the scrim or pressing Esc, and the user exits it only from the final
 step.
 
-The sidebar footer also exposes a manual "Merge browser session" action. This
-is a runtime, additive, one-way merge from another browser profile's latest
-persisted session snapshot. Bento does not sync with or write to the external
-profile. It imports mergeable open tabs into new Bento workspaces, maps source
-tab groups or tab folders to Bento tab folders when the source format exposes
-them, creates those imported folders collapsed, preserves pinned tabs as pinned
-tabs, skips URLs already open in Bento, and activates the first imported
-workspace when the merge completes. Imported
+The sidebar footer exposes Firefox's native app menu and a manual "Merge
+browser session" action. The merge action is a runtime, additive, one-way merge
+from another browser profile's latest persisted session snapshot. Bento does
+not sync with or write to the external profile. It imports mergeable open tabs
+into new Bento workspaces, maps source tab groups or tab folders to Bento tab
+folders when the source format exposes them, creates those imported folders
+collapsed, preserves pinned tabs as pinned tabs, skips URLs already open in
+Bento, and activates the first imported workspace when the merge completes.
+Imported
 workspaces use
 Bento's normal restart persistence, so their tabs remain assigned to those
 workspaces after relaunch. If Bento finds a browser profile but cannot read or
@@ -221,9 +222,10 @@ slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`, and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface. The native
-top URL/search field is hidden in normal Bento windows while toolbar buttons and
-native window controls remain visible. In collapsed sidebar mode, those same
-actions open the existing floating address/search fallback.
+top URL/search field and stock toolbar app-menu button are hidden in normal
+Bento windows while the remaining toolbar buttons and native window controls
+remain visible. In collapsed sidebar mode, those same actions open the existing
+floating address/search fallback.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
 open that URL from the clipboard. Saved panels also appear by default and open
@@ -412,6 +414,7 @@ The intended behavior is:
 - focused panels have clear visual state through a persistent ring and active
   header colour;
 - the sidebar's New menu remains reachable when the sidebar is collapsed;
+- Firefox's native app menu remains reachable from the sidebar footer;
 - panel navigator controls use the same compact sizing and bottom-edge rhythm as
   the sidebar footer controls;
 - sidebar footer icon buttons show Tale UI tooltips on hover;
