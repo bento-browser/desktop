@@ -245,11 +245,24 @@ set the native `#bento-shell-splitter` to `resizebefore="none"` and
 manual width writer. During drag, compute the affordance position from the
 starting splitter left plus width delta instead of calling
 `getBoundingClientRect()` after every width write; live rect reads in that loop
-make the sidebar resize choppy and unstable. Sidebar chrome that follows the
-edge (`#bento-sidebar-chrome-divider` and `--bento-toolbar-nav-offset`) must use
-the same cached start-of-drag geometry plus live width delta; its `ResizeObserver`
-callbacks must ignore `bento-sidebar-resizing`. `bento-chrome-theme.css` keeps
-the native top toolbar on the same
+make the sidebar resize choppy and unstable. Batch live drag writes through a
+single `requestAnimationFrame` callback and persist the XUL `width` attribute
+only on mouseup; writing style, affordance position, divider position, toolbar
+offset, and persisted width for every raw `mousemove` can still stutter even
+after the native splitter path is disabled. Use pointer events with
+`setPointerCapture`, matching Bento's panel splitters; window-level
+`mousemove` is more prone to jitter when the cursor crosses remote browser
+surfaces. While dragging, disable pointer events on `#bento-shell-frame`, move
+the native nav buttons with a transform instead of live margin layout, and set
+`--bento-toolbar-nav-offset` on `#nav-bar-customization-target` rather than
+`:root` so each frame invalidates less chrome CSS. Sidebar chrome that follows
+the edge (`#bento-sidebar-chrome-divider` and `--bento-toolbar-nav-offset`) must
+use the same cached start-of-drag geometry plus live width delta; its
+`ResizeObserver` callbacks must ignore `bento-sidebar-resizing`.
+Manual verification for this path should compare sidebar-handle drag against
+panel-splitter drag: both should track the pointer without visible stutter, while
+sidebar collapse/expand still uses the normal width transition.
+`bento-chrome-theme.css` keeps the native top toolbar on the same
 neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
 removes Firefox's toolbox bottom border so no separator line appears between
 the top toolbar and content area. `attachSidebarChromeDivider()` overlays a

@@ -194,8 +194,9 @@ Use this shape for new or changed touchpoints:
   reaches the top of the window, verify the native Back/Forward/Reload control
   group stays on the sidebar side of that divider and moves continuously while
   dragging the sidebar splitter without width-transition smoothing or XUL/native
-  splitter competition, using cached drag geometry instead of live rect reads
-  while still animating collapsed/expanded sidebar state, verify remaining
+  splitter competition, using pointer capture and cached drag geometry instead
+  of live rect reads while still animating collapsed/expanded sidebar state,
+  verify remaining
   toolbar buttons, extension buttons, toolbar customization, titlebar controls,
   and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark
