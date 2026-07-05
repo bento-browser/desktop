@@ -17820,7 +17820,17 @@
     const spec = normalizeBookmarkUrlSpec(payload?.url);
     if (!spec) return;
     try {
-      writeTextToGlobalClipboard(spec);
+      if (!writeTextToGlobalClipboard(spec)) return;
+      dispatchSidebarAddressMessage({
+        kind: 'copy-result',
+        windowId: getChromeWindowId(),
+        bridgeToken: getBentoSidebarAddressBridgeToken(),
+        messageId: Date.now(),
+        tabId: typeof payload.tabId === 'number' ? payload.tabId : null,
+        url: spec,
+        snapshotToken: Number(payload.snapshotToken),
+        success: true,
+      });
     } catch (err) {
       console.warn('[bento-shell-mount] sidebar address copy failed:', err);
     }

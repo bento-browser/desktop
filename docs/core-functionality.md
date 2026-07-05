@@ -221,9 +221,11 @@ In expanded sidebar mode, the main address/search entry is a persistent row
 at the top of the sidebar above the tab list. It mirrors the active main
 tab's URL, loading state, Firefox security identity state, and regular Firefox
 bookmark state, with one-click actions to copy the current URL or toggle the
-regular bookmark state. Clicking the row opens Bento's address entry below the row. Its
-suggestions can extend beyond the sidebar over the panel strip and main content
-slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`, and any fallback path
+regular bookmark state. The copy action shows a `Copied` tooltip after the URL
+has been written to the clipboard. Clicking the row opens Bento's address entry
+below the row. Its suggestions can extend beyond the sidebar over the panel
+strip and main content slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`,
+and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface. The native

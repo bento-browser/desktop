@@ -222,9 +222,11 @@ same tab/URL are ignored while one is in flight.
 The sidebar Copy URL button uses the same scoped title-IPC channel and must
 match the current window token, selected WebExtension tab id, selected main-tab
 URL, and latest snapshot token before chrome writes the URL to the global
-clipboard via Firefox's native clipboard helper. This keeps clipboard writes
-out of the extension page permission surface and prevents stale sidebar frames
-from copying a URL after navigation.
+clipboard via Firefox's native clipboard helper. After a successful write,
+chrome sends a scoped `copy-result` message back over the sidebar address bus so
+the shell can show the `Copied` tooltip. This keeps clipboard writes out of the
+extension page permission surface and prevents stale sidebar frames from copying
+a URL after navigation.
 
 The native top URL/search container is hidden by
 `bento-chrome-theme.css` under `:root[bento-sidebar-addressbar='true']`. The

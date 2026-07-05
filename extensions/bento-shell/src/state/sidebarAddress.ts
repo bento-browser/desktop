@@ -40,13 +40,23 @@ export interface SidebarAddressFocusRequest {
   selectAll: boolean;
 }
 
+export interface SidebarAddressCopyResult {
+  id: number;
+  tabId: number | null;
+  url: string;
+  snapshotToken: number;
+  success: boolean;
+}
+
 interface SidebarAddressState {
   snapshot: SidebarAddressSnapshot | null;
   editMode: AddrbarMode | null;
   draftValue: string;
   pendingBookmarkToggleKey: string | null;
   focusRequest: SidebarAddressFocusRequest | null;
+  lastCopyResult: SidebarAddressCopyResult | null;
   applySnapshot: (snapshot: SidebarAddressSnapshot) => void;
+  applyCopyResult: (result: Omit<SidebarAddressCopyResult, 'id'>) => void;
   requestFocus: (
     mode: AddrbarMode,
     initialQuery?: string,
@@ -61,6 +71,7 @@ interface SidebarAddressState {
 }
 
 let nextFocusRequestId = 1;
+let nextCopyResultId = 1;
 
 function snapshotDraftValue(snapshot: SidebarAddressSnapshot | null): string {
   return snapshot?.url || '';
@@ -81,6 +92,7 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
   draftValue: '',
   pendingBookmarkToggleKey: null,
   focusRequest: null,
+  lastCopyResult: null,
   applySnapshot: (snapshot) => {
     const current = get().snapshot;
     if (!isNewerOrEqualSnapshot(current, snapshot)) return;
@@ -89,6 +101,15 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
       draftValue: state.editMode ? state.draftValue : snapshotDraftValue(snapshot),
       pendingBookmarkToggleKey: null,
     }));
+  },
+  applyCopyResult: (result) => {
+    set({
+      lastCopyResult: {
+        ...result,
+        id: nextCopyResultId,
+      },
+    });
+    nextCopyResultId += 1;
   },
   requestFocus: (mode, initialQuery = '', selectAll = true, clipboardUrl = '') => {
     set({
@@ -126,5 +147,6 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
       draftValue: '',
       pendingBookmarkToggleKey: null,
       focusRequest: null,
+      lastCopyResult: null,
     }),
 }));

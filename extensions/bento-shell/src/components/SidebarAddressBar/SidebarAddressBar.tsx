@@ -1,4 +1,4 @@
-import { type FormEvent, type PointerEvent, useCallback, useRef } from 'react';
+import { type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@tale-ui/react/icon';
 import { IconButton } from '@tale-ui/react/icon-button';
 import { Spinner } from '@tale-ui/react/spinner';
@@ -17,6 +17,8 @@ import {
 } from '../../bridge/useSidebarAddress';
 import { useSidebarAddressStore, type SidebarAddressSnapshot } from '../../state/sidebarAddress';
 import './SidebarAddressBar.css';
+
+const COPY_FEEDBACK_MS = 1400;
 
 function bookmarkKey(snapshot: SidebarAddressSnapshot | null): string | null {
   if (!snapshot || snapshot.tabId === null || !snapshot.url) return null;
@@ -49,8 +51,51 @@ export function SidebarAddressBar() {
   const rowRef = useRef<HTMLFormElement>(null);
   const securityButtonRef = useRef<HTMLButtonElement>(null);
   const lastOpenAtRef = useRef(0);
+  const lastHandledCopyResultIdRef = useRef(0);
+  const copyFeedbackTimeoutRef = useRef<number | null>(null);
+  const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
   const snapshot = useSidebarAddressStore((s) => s.snapshot);
   const pendingBookmarkToggleKey = useSidebarAddressStore((s) => s.pendingBookmarkToggleKey);
+  const lastCopyResult = useSidebarAddressStore((s) => s.lastCopyResult);
+
+  const clearCopyFeedbackTimer = useCallback(() => {
+    if (copyFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimeoutRef.current);
+      copyFeedbackTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearCopyFeedback = useCallback(() => {
+    clearCopyFeedbackTimer();
+    setCopyFeedbackVisible(false);
+  }, [clearCopyFeedbackTimer]);
+
+  useEffect(() => clearCopyFeedbackTimer, [clearCopyFeedbackTimer]);
+
+  useEffect(() => {
+    clearCopyFeedback();
+  }, [clearCopyFeedback, snapshot?.snapshotToken, snapshot?.url]);
+
+  useEffect(() => {
+    if (!lastCopyResult?.success || lastCopyResult.id <= lastHandledCopyResultIdRef.current) {
+      return;
+    }
+    lastHandledCopyResultIdRef.current = lastCopyResult.id;
+    if (
+      !snapshot ||
+      lastCopyResult.tabId !== snapshot.tabId ||
+      lastCopyResult.url !== snapshot.url ||
+      lastCopyResult.snapshotToken !== snapshot.snapshotToken
+    ) {
+      return;
+    }
+    clearCopyFeedbackTimer();
+    setCopyFeedbackVisible(true);
+    copyFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setCopyFeedbackVisible(false);
+      copyFeedbackTimeoutRef.current = null;
+    }, COPY_FEEDBACK_MS);
+  }, [clearCopyFeedbackTimer, lastCopyResult, snapshot]);
 
   const openAddressOverlay = useCallback(
     (mode: AddrbarMode, initialQuery = '', clipboardUrl = '') => {
@@ -183,7 +228,7 @@ export function SidebarAddressBar() {
             <Spinner size="sm" label="Loading page" />
           </span>
         ) : null}
-        <Tooltip.Root delay={350}>
+        <Tooltip.Root delay={0} isOpen={copyFeedbackVisible}>
           <IconButton
             variant="ghost"
             size="sm"
@@ -196,7 +241,7 @@ export function SidebarAddressBar() {
           </IconButton>
           <Tooltip.Popup placement="bottom" offset={6}>
             <Tooltip.Arrow />
-            {copyLabel}
+            Copied
           </Tooltip.Popup>
         </Tooltip.Root>
         <IconButton

@@ -11,6 +11,20 @@ describe('sidebar address bridge scope', () => {
         expected,
       ),
     ).toBe(true);
+    expect(
+      shouldAcceptSidebarAddressMessage(
+        {
+          kind: 'copy-result',
+          windowId: 7,
+          bridgeToken: 'token-a',
+          tabId: 10,
+          url: 'https://example.com',
+          snapshotToken: 2,
+          success: true,
+        },
+        expected,
+      ),
+    ).toBe(true);
   });
 
   it('rejects mismatched window ids', () => {

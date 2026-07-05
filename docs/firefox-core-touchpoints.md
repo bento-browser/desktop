@@ -210,7 +210,7 @@ Use this shape for new or changed touchpoints:
   star while saved-panel-only bookmarks do not, verify rapid navigation or tab
   switching during a sidebar star toggle does not mutate the stale page, verify
   the sidebar Copy URL button writes the current selected main-tab URL to the
-  global clipboard, verify
+  global clipboard and shows a `Copied` tooltip after the write succeeds, verify
   `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
   navigate that panel's own history without moving panel focus and without
   stealing cursor movement from editable fields, verify

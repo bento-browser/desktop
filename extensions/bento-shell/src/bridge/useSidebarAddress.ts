@@ -13,6 +13,16 @@ export const SIDEBAR_ADDRESS_COPY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_COPY:';
 export type SidebarAddressBusMessage =
   | (SidebarAddressSnapshot & { kind: 'snapshot'; messageId?: number })
   | {
+      kind: 'copy-result';
+      windowId: number | null;
+      bridgeToken: string;
+      messageId?: number;
+      tabId: number | null;
+      url: string;
+      snapshotToken: number;
+      success: boolean;
+    }
+  | {
       kind: 'focus';
       windowId: number | null;
       bridgeToken: string;
@@ -80,7 +90,9 @@ export function shouldAcceptSidebarAddressMessage(
 ): message is SidebarAddressBusMessage {
   if (!message || typeof message !== 'object') return false;
   const data = message as Partial<SidebarAddressBusMessage>;
-  if (data.kind !== 'snapshot' && data.kind !== 'focus') return false;
+  if (data.kind !== 'snapshot' && data.kind !== 'focus' && data.kind !== 'copy-result') {
+    return false;
+  }
   if (!expected.bridgeToken || typeof data.bridgeToken !== 'string') return false;
   if (data.bridgeToken !== expected.bridgeToken) return false;
   if (expected.windowId !== null) return data.windowId === expected.windowId;
@@ -121,6 +133,13 @@ export function useSidebarAddressBridge(): SidebarAddressScope {
       if (!shouldAcceptSidebarAddressMessage(data, { windowId, bridgeToken })) return;
       if (data.kind === 'snapshot') {
         useSidebarAddressStore.getState().applySnapshot(data);
+      } else if (data.kind === 'copy-result') {
+        useSidebarAddressStore.getState().applyCopyResult({
+          tabId: data.tabId,
+          url: data.url,
+          snapshotToken: data.snapshotToken,
+          success: data.success,
+        });
       } else {
         useSidebarAddressStore
           .getState()

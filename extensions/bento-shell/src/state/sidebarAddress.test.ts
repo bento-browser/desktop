@@ -66,4 +66,29 @@ describe('sidebar address store', () => {
     useSidebarAddressStore.getState().applySnapshot(snapshot(1));
     expect(useSidebarAddressStore.getState().pendingBookmarkToggleKey).toBeNull();
   });
+
+  it('records copy results in arrival order', () => {
+    useSidebarAddressStore.getState().applyCopyResult({
+      tabId: 10,
+      url: 'https://example.com',
+      snapshotToken: 1,
+      success: true,
+    });
+    const first = useSidebarAddressStore.getState().lastCopyResult;
+    useSidebarAddressStore.getState().applyCopyResult({
+      tabId: 10,
+      url: 'https://example.com',
+      snapshotToken: 1,
+      success: true,
+    });
+    const second = useSidebarAddressStore.getState().lastCopyResult;
+
+    expect(first?.id).toBeLessThan(second?.id ?? 0);
+    expect(second).toMatchObject({
+      tabId: 10,
+      url: 'https://example.com',
+      snapshotToken: 1,
+      success: true,
+    });
+  });
 });
