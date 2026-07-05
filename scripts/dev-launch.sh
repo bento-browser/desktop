@@ -25,6 +25,15 @@ if [ "$#" -gt 0 ]; then
   shift
 fi
 
+PROFILE_LOCK="$PROFILE/.parentlock"
+if { [ -e "$PROFILE_LOCK" ] || [ -L "$PROFILE_LOCK" ]; } &&
+  command -v lsof >/dev/null 2>&1 &&
+  lsof "$PROFILE_LOCK" >/dev/null 2>&1; then
+  echo "dev-launch: $PROFILE appears to still be in use" >&2
+  echo "dev-launch: quit Bento and wait for it to exit before launching another dev instance" >&2
+  exit 1
+fi
+
 if [ ! -x "$BENTO_BIN" ]; then
   echo "dev-launch: missing executable $BENTO_BIN; run a full build first" >&2
   exit 1

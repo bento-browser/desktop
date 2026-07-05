@@ -641,6 +641,10 @@
         box-shadow: var(--bento-panel-frame-shadow);
         overflow: clip;
       }
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer > .browserContainer {
+        border-radius: 0;
+        overflow: visible;
+      }
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
         box-shadow: var(--bento-panel-frame-outline-shadow);
       }
@@ -4883,12 +4887,34 @@
     host.style.width = width + 'px';
   }
 
+  const BENTO_RESIZE_SETTLED_EVENT = 'bento-resize-settled';
+  let prepareSidebarChromeDividerForSidebarResize = null;
+  let syncSidebarChromeDividerForSidebarWidth = null;
+  let finishSidebarChromeDividerSidebarResize = null;
+  let prepareToolbarNavigationForSidebarResize = null;
+  let syncToolbarNavigationForSidebarWidth = null;
+  let finishToolbarNavigationSidebarResize = null;
+
+  function isBentoWindowResizing() {
+    return document.documentElement.getAttribute('bento-window-resizing') === 'true';
+  }
+
+  function isBentoSidebarResizing() {
+    return document.documentElement.getAttribute('bento-sidebar-resizing') === 'true';
+  }
+
+  function isBentoChromeLiveResizing() {
+    return isBentoWindowResizing() || isBentoSidebarResizing();
+  }
+
   function attachSidebarSplitterFeedback() {
     const splitter = document.getElementById('bento-shell-splitter');
     const shell = document.getElementById('browser');
     const host = document.getElementById('bento-shell-host');
     if (!splitter || !shell || !host || splitter.dataset.bentoFeedbackAttached === '1') return;
     splitter.dataset.bentoFeedbackAttached = '1';
+    splitter.setAttribute('resizebefore', 'none');
+    splitter.setAttribute('resizeafter', 'none');
 
     let affordance = document.getElementById('bento-shell-splitter-affordance');
     if (!affordance) {
@@ -4906,45 +4932,81 @@
     const clearDragging = () => {
       affordance.classList.remove('bento-shell-splitter--dragging');
       host.classList.remove('bento-shell-sidebar-resizing');
+      document.documentElement.removeAttribute('bento-sidebar-resizing');
       document.documentElement.style.removeProperty('cursor');
     };
 
-    affordance.addEventListener('mousedown', (event) => {
+    const beginDrag = (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
+      event.stopImmediatePropagation?.();
+      event.stopPropagation();
 
       const startX = event.clientX;
       const startWidth = host.getBoundingClientRect().width;
+      const shellRect = shell.getBoundingClientRect();
+      const splitterRect = splitter.getBoundingClientRect();
+      const startAffordanceLeft = Math.round(splitterRect.left - shellRect.left);
       const style = getComputedStyle(host);
       const min = parseFloat(style.minWidth) || 0;
       const max = parseFloat(style.maxWidth) || Number.POSITIVE_INFINITY;
+      let lastWidth = Math.round(startWidth);
 
+      prepareSidebarChromeDividerForSidebarResize?.();
+      prepareToolbarNavigationForSidebarResize?.();
       affordance.classList.add('bento-shell-splitter--dragging');
       host.classList.add('bento-shell-sidebar-resizing');
+      document.documentElement.setAttribute('bento-sidebar-resizing', 'true');
       document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
 
       const onMove = (moveEvent) => {
         const next = Math.max(min, Math.min(max, startWidth + moveEvent.clientX - startX));
+        lastWidth = Math.round(next);
         host.style.width = next + 'px';
-        host.setAttribute('width', String(Math.round(next)));
-        updateAffordancePosition();
+        host.setAttribute('width', String(lastWidth));
+        affordance.style.left = Math.round(startAffordanceLeft + next - startWidth) + 'px';
+        syncSidebarChromeDividerForSidebarWidth?.(next);
+        syncToolbarNavigationForSidebarWidth?.(next);
       };
 
       const onUp = () => {
         window.removeEventListener('mousemove', onMove, true);
         window.removeEventListener('mouseup', onUp, true);
+        window.removeEventListener('blur', onUp, true);
+        try {
+          Services.xulStore.setValue(host.ownerDocument.documentURI, host.id, 'width', String(lastWidth));
+        } catch (err) {
+          console.warn('[bento-shell-mount] sidebar width persistence failed:', err);
+        }
         clearDragging();
+        finishSidebarChromeDividerSidebarResize?.();
+        finishToolbarNavigationSidebarResize?.();
+        requestAnimationFrame(updateAffordancePosition);
       };
 
       window.addEventListener('mousemove', onMove, true);
       window.addEventListener('mouseup', onUp, true);
-      window.addEventListener('blur', onUp, { once: true });
-    });
+      window.addEventListener('blur', onUp, true);
+    };
+
+    affordance.addEventListener('mousedown', beginDrag);
+    splitter.addEventListener('mousedown', beginDrag, true);
+
+    let raf = 0;
+    const scheduleAffordancePosition = () => {
+      if (isBentoChromeLiveResizing()) return;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        updateAffordancePosition();
+      });
+    };
 
     updateAffordancePosition();
-    window.addEventListener('resize', updateAffordancePosition);
+    window.addEventListener('resize', scheduleAffordancePosition);
+    window.addEventListener(BENTO_RESIZE_SETTLED_EVENT, scheduleAffordancePosition);
     if (window.ResizeObserver) {
-      const ro = new ResizeObserver(updateAffordancePosition);
+      const ro = new ResizeObserver(scheduleAffordancePosition);
       ro.observe(host);
       const strip = document.getElementById('bento-strip-container');
       if (strip) ro.observe(strip);
@@ -4971,6 +5033,22 @@
       parent.appendChild(divider);
     }
 
+    let sidebarLeftForDrag = 0;
+    prepareSidebarChromeDividerForSidebarResize = () => {
+      sidebarLeftForDrag = host.getBoundingClientRect().left;
+    };
+    syncSidebarChromeDividerForSidebarWidth = (width) => {
+      if (width <= 0) {
+        divider.hidden = true;
+        return;
+      }
+      divider.hidden = false;
+      divider.style.left = Math.max(0, Math.round(sidebarLeftForDrag + width) - 1) + 'px';
+    };
+    finishSidebarChromeDividerSidebarResize = () => {
+      scheduleUpdate();
+    };
+
     let raf = 0;
     const updateDivider = () => {
       raf = 0;
@@ -4983,12 +5061,14 @@
       divider.style.left = Math.max(0, Math.round(rect.right) - 1) + 'px';
     };
     const scheduleUpdate = () => {
+      if (isBentoChromeLiveResizing()) return;
       if (raf) return;
       raf = requestAnimationFrame(updateDivider);
     };
 
     scheduleUpdate();
     window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener(BENTO_RESIZE_SETTLED_EVENT, scheduleUpdate);
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(scheduleUpdate);
       ro.observe(host);
@@ -5014,37 +5094,61 @@
     if (target.dataset.bentoToolbarNavAlignmentAttached === '1') return;
     target.dataset.bentoToolbarNavAlignmentAttached = '1';
 
-    let raf = 0;
-    const updateOffset = () => {
-      raf = 0;
+    const readMetrics = () => {
       const hostRect = host.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
-      if (hostRect.width <= 0 || targetRect.width <= 0) {
-        root.style.setProperty('--bento-toolbar-nav-offset', '0px');
-        return;
-      }
-
       const groupWidth = [backButton, forwardButton, stopReloadButton].reduce((sum, el) => {
         const rect = el.getBoundingClientRect();
         return sum + Math.max(0, rect.width || 0);
       }, 0);
-      if (groupWidth <= 0) {
+      return {
+        hostLeft: hostRect.left,
+        hostRight: hostRect.right,
+        hostWidth: hostRect.width,
+        targetLeft: targetRect.left,
+        targetWidth: targetRect.width,
+        groupWidth,
+        edgeInset: tokenPx('--space-2xs', 8),
+      };
+    };
+    const applyOffset = (metrics, sidebarWidth) => {
+      if (metrics.hostWidth <= 0 || metrics.targetWidth <= 0 || metrics.groupWidth <= 0) {
         root.style.setProperty('--bento-toolbar-nav-offset', '0px');
         return;
       }
-
-      const edgeInset = tokenPx('--space-2xs', 8);
-      const desiredStart = hostRect.right - edgeInset - groupWidth;
-      const offset = Math.max(0, Math.round(desiredStart - targetRect.left));
+      const sidebarRight =
+        typeof sidebarWidth === 'number' ? metrics.hostLeft + sidebarWidth : metrics.hostRight;
+      const desiredStart = sidebarRight - metrics.edgeInset - metrics.groupWidth;
+      const offset = Math.max(0, Math.round(desiredStart - metrics.targetLeft));
       root.style.setProperty('--bento-toolbar-nav-offset', offset + 'px');
     };
+    let sidebarResizeMetrics = null;
+    prepareToolbarNavigationForSidebarResize = () => {
+      sidebarResizeMetrics = readMetrics();
+    };
+    syncToolbarNavigationForSidebarWidth = (width) => {
+      if (!sidebarResizeMetrics) sidebarResizeMetrics = readMetrics();
+      applyOffset(sidebarResizeMetrics, width);
+    };
+    finishToolbarNavigationSidebarResize = () => {
+      sidebarResizeMetrics = null;
+      scheduleUpdate();
+    };
+
+    let raf = 0;
+    const updateOffset = () => {
+      raf = 0;
+      applyOffset(readMetrics());
+    };
     const scheduleUpdate = () => {
+      if (isBentoChromeLiveResizing()) return;
       if (raf) return;
       raf = requestAnimationFrame(updateOffset);
     };
 
     scheduleUpdate();
     window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener(BENTO_RESIZE_SETTLED_EVENT, scheduleUpdate);
     window.addEventListener('aftercustomization', scheduleUpdate, true);
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(scheduleUpdate);
@@ -11598,6 +11702,7 @@
   }
 
   function updateStripScrollbar() {
+    if (isBentoChromeLiveResizing()) return;
     const host = getStripScrollTarget();
     const bar = document.getElementById('bento-strip-scrollbar');
     if (!host || !bar) return;
@@ -18061,6 +18166,7 @@
       timer = window.setTimeout(() => {
         timer = null;
         root.removeAttribute('bento-window-resizing');
+        window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
         requestAnimationFrame(() => requestAnimationFrame(repaintSelectedBrowserAfterWindowResize));
       }, 300);
     });

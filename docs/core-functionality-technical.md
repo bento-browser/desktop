@@ -239,7 +239,16 @@ is resized. `#bento-shell-host` keeps a width transition for sidebar
 collapse/expand, but `attachSidebarSplitterFeedback()` must add
 `bento-shell-sidebar-resizing` during manual splitter drag so that transition is
 disabled while drag writes live `width` values; otherwise the handle feels
-smoothed or laggy instead of tracking the pointer. `bento-chrome-theme.css` keeps
+smoothed or laggy instead of tracking the pointer. The same splitter setup must
+set the native `#bento-shell-splitter` to `resizebefore="none"` and
+`resizeafter="none"` so Firefox's XUL splitter does not compete with Bento's
+manual width writer. During drag, compute the affordance position from the
+starting splitter left plus width delta instead of calling
+`getBoundingClientRect()` after every width write; live rect reads in that loop
+make the sidebar resize choppy and unstable. Sidebar chrome that follows the
+edge (`#bento-sidebar-chrome-divider` and `--bento-toolbar-nav-offset`) must use
+the same cached start-of-drag geometry plus live width delta; its `ResizeObserver`
+callbacks must ignore `bento-sidebar-resizing`. `bento-chrome-theme.css` keeps
 the native top toolbar on the same
 neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
 removes Firefox's toolbox bottom border so no separator line appears between
@@ -907,6 +916,14 @@ whose built-in welcome assets do not match the current source. The sync script
 links built-in addon `dist/` directories and privileged addon `experiments/`
 directories; keep both paths synced because Bento Tools experiment APIs and
 bundled experiment assets are outside the Vite-built `dist/` tree.
+`scripts/dev-profile-clean.sh` preserves `xulstore.json` so window geometry and
+sidebar width survive repeated `pnpm run dev` launches, but it must not wipe a
+live profile lock. Both `dev-profile-clean.sh` and `dev-launch.sh` check
+`.parentlock` with `lsof` and abort when the previous Bento instance still has
+the dev profile open; otherwise a fast second launch can put two parent
+processes on the same profile and make chrome/sidebar resize behavior
+intermittently choppy. A stale, unopened `.parentlock` from an already-exited
+instance remains cleanable.
 The welcome overlay browser stays mounted under `#browser` so its title-IPC
 open/close signals stay reliable. Bento modal overlays also share a separate
 `bento-overlay-toolbar-scrim` for the native toolbar/urlbar strip, which
@@ -1433,9 +1450,18 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `#tabbrowser-tabpanels > .browserSidebarContainer`. The current no-panel
   frame uses `border-radius: var(--radius-xl)`,
   `box-shadow: var(--bento-panel-frame-shadow)`, and `overflow: clip` on that
-  native container. Exception: when Firefox sets `:root[inDOMFullscreen]`, the
+  native container. Because that native container owns the clip, neutralize the
+  direct child `.browserContainer` radius/overflow in no-panel mode; otherwise
+  the main page has two rounded clipping layers during window/sidebar resize,
+  which reintroduces choppy live resizing. Exception: when Firefox sets
+  `:root[inDOMFullscreen]`, the
   fullscreen override must clear the strip host and browser-wrapper radii so
   video fullscreen is not clipped by the normal main-content or panel frame.
+  This CSS structure is necessary but not sufficient: live window resize must
+  also keep chrome measurement observers out of the hot path. While
+  `:root[bento-window-resizing='true']`, splitter-affordance, sidebar-divider,
+  toolbar-navigation, and strip-scrollbar observers defer geometry reads until
+  the `bento-resize-settled` event.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
 - `panelLayout/breakOut` promotes an existing child into the root layout and

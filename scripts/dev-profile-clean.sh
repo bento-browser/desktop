@@ -27,6 +27,15 @@ if [ ! -d "$PROFILE" ]; then
   exit 0
 fi
 
+PROFILE_LOCK="$PROFILE/.parentlock"
+if { [ -e "$PROFILE_LOCK" ] || [ -L "$PROFILE_LOCK" ]; } &&
+  command -v lsof >/dev/null 2>&1 &&
+  lsof "$PROFILE_LOCK" >/dev/null 2>&1; then
+  echo "dev-profile-clean: $PROFILE appears to still be in use" >&2
+  echo "dev-profile-clean: quit Bento and wait for it to exit before running pnpm run dev again" >&2
+  exit 1
+fi
+
 # User data we WANT to persist between launches.
 KEEP=(
   # Browser identity / certs / passwords

@@ -171,7 +171,8 @@ Use this shape for new or changed touchpoints:
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
   corners during normal browsing, keeps live window resize smooth with that
-  frame visible, and removes that frame during DOM fullscreen,
+  frame visible while chrome resize observers are deferred, and removes that
+  frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and
   workspace actions including moving a
   folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and
@@ -192,8 +193,9 @@ Use this shape for new or changed touchpoints:
   background with no bottom separator line, verify the sidebar right divider
   reaches the top of the window, verify the native Back/Forward/Reload control
   group stays on the sidebar side of that divider and moves continuously while
-  dragging the sidebar splitter without width-transition smoothing, while still
-  animating collapsed/expanded sidebar state, verify remaining
+  dragging the sidebar splitter without width-transition smoothing or XUL/native
+  splitter competition, using cached drag geometry instead of live rect reads
+  while still animating collapsed/expanded sidebar state, verify remaining
   toolbar buttons, extension buttons, toolbar customization, titlebar controls,
   and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark
