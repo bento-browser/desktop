@@ -606,22 +606,96 @@
         padding-block-end: var(--space-2xs);
         padding-inline-start: var(--space-2xs);
         padding-inline-end: var(--space-2xs);
+        position: relative;
+        isolation: isolate;
       }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::before {
+        content: '';
+        position: absolute;
+        inset-block-start: var(--space-3xs);
+        inset-block-end: var(--space-2xs);
+        inset-inline-start: var(--space-2xs);
+        inset-inline-end: var(--space-2xs);
         border-radius: var(--radius-m);
         background-color: var(--neutral-5);
         box-shadow: var(--bento-panel-frame-shadow);
-        overflow: clip;
+        pointer-events: none;
+        z-index: 0;
+      }
+      #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host::before {
+        box-shadow: var(--bento-panel-frame-outline-shadow);
+      }
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
+        border-radius: 0;
+        background-color: transparent;
+        box-shadow: none;
+        overflow: visible;
+        position: relative;
+        z-index: 1;
       }
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
-        box-shadow: var(--bento-panel-frame-outline-shadow);
+        box-shadow: none;
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserContainer,
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserStack,
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] browser {
-        border-radius: var(--radius-m);
-        overflow: clip;
+        border-radius: 0;
+        overflow: visible;
+      }
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::after {
+        --bento-no-panel-radius: var(--radius-m);
+        content: '';
+        position: absolute;
+        inset-block-start: var(--space-3xs);
+        inset-block-end: var(--space-2xs);
+        inset-inline-start: var(--space-2xs);
+        inset-inline-end: var(--space-2xs);
+        pointer-events: none;
+        z-index: 2;
+        background-image:
+          radial-gradient(
+            circle at 100% 100%,
+            transparent calc(var(--bento-no-panel-radius) - 1px),
+            var(--neutral-5) var(--bento-no-panel-radius)
+          ),
+          radial-gradient(
+            circle at 0 100%,
+            transparent calc(var(--bento-no-panel-radius) - 1px),
+            var(--neutral-5) var(--bento-no-panel-radius)
+          ),
+          radial-gradient(
+            circle at 0 0,
+            transparent calc(var(--bento-no-panel-radius) - 1px),
+            var(--neutral-5) var(--bento-no-panel-radius)
+          ),
+          radial-gradient(
+            circle at 100% 0,
+            transparent calc(var(--bento-no-panel-radius) - 1px),
+            var(--neutral-5) var(--bento-no-panel-radius)
+          );
+        background-position:
+          left top,
+          right top,
+          right bottom,
+          left bottom;
+        background-repeat: no-repeat;
+        background-size:
+          var(--bento-no-panel-radius) var(--bento-no-panel-radius),
+          var(--bento-no-panel-radius) var(--bento-no-panel-radius),
+          var(--bento-no-panel-radius) var(--bento-no-panel-radius),
+          var(--bento-no-panel-radius) var(--bento-no-panel-radius);
+      }
+      /* Live-resize perf mode. No-panel padding, rounded clipping, and
+         frame shadow are each independently choppy during macOS live
+         resize, so collapse the frame during resize and restore it after
+         the gesture ends. */
+      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
+        padding: 0;
+      }
+      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::before,
+      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::after {
+        content: none;
       }
 
       /* Custom always-visible horizontal scrollbar. Sits between the
@@ -17953,6 +18027,22 @@
     // favicon.
     reconcilePanels([]);
   }
+
+  function attachWindowResizePerfMode() {
+    const root = document.documentElement;
+    let timer = null;
+    window.addEventListener('resize', () => {
+      if (root.getAttribute('bento-window-resizing') !== 'true') {
+        root.setAttribute('bento-window-resizing', 'true');
+      }
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        root.removeAttribute('bento-window-resizing');
+      }, 300);
+    });
+  }
+
   // Window-resize repaint poke. After a window resize the active
   // tab's content frequently paints at the pre-resize size with the
   // surrounding container background showing through. Tab-out-and-
@@ -18201,7 +18291,11 @@
   attachWorkspaceTabSwitchKeybinding();
   attachTabSelectListener();
   attachPanelAcceleratorListener();
-  attachResizeRepaintPoke();
+  attachWindowResizePerfMode();
+  // Disabled after resize diagnostic: the post-resize docShell toggle made
+  // no-panel live resizing visibly rougher. Re-enable only if stale browser
+  // paint returns after a resize.
+  // attachResizeRepaintPoke();
   registerContentKeyActor();
   attachContentKeyBridgeListener();
   attachPanelFocusTracker();
