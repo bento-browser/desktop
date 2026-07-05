@@ -439,6 +439,15 @@
       #bento-shell-splitter-affordance.bento-sidebar-collapsed {
         display: none;
       }
+      #bento-sidebar-chrome-divider {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background-color: var(--bento-sidebar-divider-color);
+        pointer-events: none;
+        z-index: 3;
+      }
 
       /* Sidebar dimensions. The chrome patch ships inline width/min/max
          on #bento-shell-host (so the sidebar still renders sensibly if
@@ -1553,6 +1562,7 @@
       :root[inDOMFullscreen] #bento-shell-host,
       :root[inDOMFullscreen] #bento-shell-splitter,
       :root[inDOMFullscreen] #bento-shell-splitter-affordance,
+      :root[inDOMFullscreen] #bento-sidebar-chrome-divider,
       :root[inDOMFullscreen] #bento-panel-nav,
       :root[inDOMFullscreen] #bento-strip-scrollbar,
       :root[inDOMFullscreen] #bento-add-panel-trailer,
@@ -4933,6 +4943,51 @@
       ro.observe(host);
       const strip = document.getElementById('bento-strip-container');
       if (strip) ro.observe(strip);
+    }
+  }
+
+  function attachSidebarChromeDivider() {
+    const host = document.getElementById('bento-shell-host');
+    const parent = document.body;
+    if (!host || !parent) {
+      if (document.readyState !== 'complete') {
+        const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+        window.addEventListener(evt, attachSidebarChromeDivider, { once: true });
+      }
+      return;
+    }
+    if (host.dataset.bentoChromeDividerAttached === '1') return;
+    host.dataset.bentoChromeDividerAttached = '1';
+
+    let divider = document.getElementById('bento-sidebar-chrome-divider');
+    if (!divider) {
+      divider = document.createElementNS(HTML_NS, 'div');
+      divider.id = 'bento-sidebar-chrome-divider';
+      parent.appendChild(divider);
+    }
+
+    let raf = 0;
+    const updateDivider = () => {
+      raf = 0;
+      const rect = host.getBoundingClientRect();
+      if (rect.width <= 0) {
+        divider.hidden = true;
+        return;
+      }
+      divider.hidden = false;
+      divider.style.left = Math.max(0, Math.round(rect.right) - 1) + 'px';
+    };
+    const scheduleUpdate = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(updateDivider);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(scheduleUpdate);
+      ro.observe(host);
+      host._bentoSidebarChromeDividerResizeObserver = ro;
     }
   }
 
@@ -17954,6 +18009,7 @@
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
+    attachSidebarChromeDivider();
     attachToolbarNavigationAlignment();
     // Initial reconcile with no side panels — primes the strip into
     // a clean baseline state so the first panels/sync from bento-tools

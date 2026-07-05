@@ -230,10 +230,11 @@ The field uses the sidebar tab row text size on a neutral-5 surface. The native
 top URL/search field, stock toolbar app-menu button, and stock toolbar downloads
 button are hidden in normal Bento windows while the remaining toolbar buttons
 and native window controls remain visible on the same background as the
-sidebar, without a bottom separator line. The native Back, Forward, and
-Reload/Stop controls are positioned so their group tracks the sidebar's right
-edge as the sidebar is resized. In collapsed sidebar mode, those same actions
-open the existing floating address/search fallback.
+sidebar, without a bottom separator line. The sidebar's right divider extends
+through the native top toolbar to the top of the window, so the native Back,
+Forward, and Reload/Stop controls sit on the sidebar side of that divider while
+tracking the sidebar edge as the sidebar is resized. In collapsed sidebar mode,
+those same actions open the existing floating address/search fallback.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
 open that URL from the clipboard. Saved panels also appear by default and open

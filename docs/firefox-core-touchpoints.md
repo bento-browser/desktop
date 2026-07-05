@@ -90,8 +90,9 @@ Use this shape for new or changed touchpoints:
   hides the native top URL/search field under a Bento
   chrome attribute while keeping toolbar and window controls visible on the
   same background as the Bento sidebar and without Firefox's toolbox bottom
-  separator, aligns Firefox's native Back/Forward/Reload control cluster with
-  the Bento sidebar's right edge as the sidebar is resized, mounts a shared modal
+  separator, extends the sidebar right divider through the native top toolbar,
+  aligns Firefox's native Back/Forward/Reload control cluster with the Bento
+  sidebar's right edge as the sidebar is resized, mounts a shared modal
   toolbar scrim as a top-layer manual popover so native toolbar/urlbar controls
   do not paint above Bento modal scrims, leaves that toolbar scrim disabled for
   the floating address bar, keeps the address palette on an opaque neutral
@@ -131,7 +132,7 @@ Use this shape for new or changed touchpoints:
   `#urlbar-container` and `#search-container` chrome CSS,
   `#nav-bar`, `#navigator-toolbox`, `#nav-bar-customization-target`,
   `#back-button`, `#forward-button`, `#stop-reload-button`, toolbar geometry,
-  and chrome `ResizeObserver`,
+  `#bento-sidebar-chrome-divider`, and chrome `ResizeObserver`,
   `#bento-shell-frame` geometry for anchored address-overlay placement,
   native identity
   chrome (`gIdentityHandler`, `#identity-box`, `#identity-icon-box`,
@@ -164,7 +165,7 @@ Use this shape for new or changed touchpoints:
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, sidebar address scoping,
   native identity/app-menu popup anchoring, bookmark state, native URL-bar and
-  toolbar app-menu hiding, native toolbar surface/separator styling,
+  toolbar app-menu hiding, native toolbar surface/separator/sidebar-divider styling,
   native navigation-button alignment, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
@@ -188,10 +189,11 @@ Use this shape for new or changed touchpoints:
   button opens Firefox's native downloads panel with recent download actions and
   download history intact while using the same footer-side alignment and no
   top/bottom slide, verify the native top toolbar matches the sidebar
-  background with no bottom separator line, verify the native
-  Back/Forward/Reload control group aligns with the sidebar's right edge and
-  moves continuously while dragging the sidebar splitter and while toggling
-  collapsed/expanded sidebar state, verify remaining
+  background with no bottom separator line, verify the sidebar right divider
+  reaches the top of the window, verify the native Back/Forward/Reload control
+  group stays on the sidebar side of that divider and moves continuously while
+  dragging the sidebar splitter and while toggling collapsed/expanded sidebar
+  state, verify remaining
   toolbar buttons, extension buttons, toolbar customization, titlebar controls,
   and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark

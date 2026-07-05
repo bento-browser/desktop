@@ -238,7 +238,10 @@ the native navigation cluster tracks the sidebar's right edge while the sidebar
 is resized. `bento-chrome-theme.css` keeps the native top toolbar on the same
 neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
 removes Firefox's toolbox bottom border so no separator line appears between
-the top toolbar and content area.
+the top toolbar and content area. `attachSidebarChromeDivider()` overlays a
+fixed one-pixel divider at `#bento-shell-host`'s right edge from the top of the
+chrome viewport downward, so the native navigation controls remain visually
+inside the sidebar segment while resizing.
 
 The floating overlay remains implemented by
 `extensions/bento-shell/src/address-bar/main.tsx` and
