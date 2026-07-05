@@ -601,31 +601,14 @@
         display: none !important;
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
-        overflow-x: hidden;
-        padding-block-start: var(--space-3xs);
-        padding-block-end: var(--space-2xs);
-        padding-inline-start: var(--space-2xs);
-        padding-inline-end: var(--space-2xs);
-        position: relative;
-        isolation: isolate;
-      }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::before {
-        content: '';
-        position: absolute;
-        inset-block-start: var(--space-3xs);
-        inset-block-end: var(--space-2xs);
-        inset-inline-start: var(--space-2xs);
-        inset-inline-end: var(--space-2xs);
-        border-radius: var(--radius-m);
-        background-color: var(--neutral-5);
-        box-shadow: var(--bento-panel-frame-shadow);
-        pointer-events: none;
-        z-index: 0;
-      }
-      #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host::before {
-        box-shadow: var(--bento-panel-frame-outline-shadow);
+        overflow: visible;
+        padding: 0;
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
+        margin-block-start: var(--space-3xs);
+        margin-block-end: var(--space-2xs);
+        margin-inline-start: var(--space-2xs);
+        margin-inline-end: var(--space-2xs);
         border-radius: 0;
         background-color: transparent;
         box-shadow: none;
@@ -636,66 +619,18 @@
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
         box-shadow: none;
       }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserContainer,
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserStack,
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] browser {
-        border-radius: 0;
-        overflow: visible;
+      /* No-panel frame follows Firefox/Zen's native structure: the
+         tabbox wrapper creates the gutter, while browserSidebarContainer
+         owns the rounded clip and frame paint. This keeps macOS live
+         window resize smooth. */
+      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
+        border-radius: var(--radius-xl);
+        background-color: var(--neutral-5);
+        box-shadow: var(--bento-panel-frame-shadow);
+        overflow: clip;
       }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::after {
-        --bento-no-panel-radius: var(--radius-m);
-        content: '';
-        position: absolute;
-        inset-block-start: var(--space-3xs);
-        inset-block-end: var(--space-2xs);
-        inset-inline-start: var(--space-2xs);
-        inset-inline-end: var(--space-2xs);
-        pointer-events: none;
-        z-index: 2;
-        background-image:
-          radial-gradient(
-            circle at 100% 100%,
-            transparent calc(var(--bento-no-panel-radius) - 1px),
-            var(--neutral-5) var(--bento-no-panel-radius)
-          ),
-          radial-gradient(
-            circle at 0 100%,
-            transparent calc(var(--bento-no-panel-radius) - 1px),
-            var(--neutral-5) var(--bento-no-panel-radius)
-          ),
-          radial-gradient(
-            circle at 0 0,
-            transparent calc(var(--bento-no-panel-radius) - 1px),
-            var(--neutral-5) var(--bento-no-panel-radius)
-          ),
-          radial-gradient(
-            circle at 100% 0,
-            transparent calc(var(--bento-no-panel-radius) - 1px),
-            var(--neutral-5) var(--bento-no-panel-radius)
-          );
-        background-position:
-          left top,
-          right top,
-          right bottom,
-          left bottom;
-        background-repeat: no-repeat;
-        background-size:
-          var(--bento-no-panel-radius) var(--bento-no-panel-radius),
-          var(--bento-no-panel-radius) var(--bento-no-panel-radius),
-          var(--bento-no-panel-radius) var(--bento-no-panel-radius),
-          var(--bento-no-panel-radius) var(--bento-no-panel-radius);
-      }
-      /* Live-resize perf mode. No-panel padding, rounded clipping, and
-         frame shadow are each independently choppy during macOS live
-         resize, so collapse the frame during resize and restore it after
-         the gesture ends. */
-      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
-        padding: 0;
-      }
-      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::before,
-      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host::after {
-        content: none;
+      #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
+        box-shadow: var(--bento-panel-frame-outline-shadow);
       }
 
       /* Custom always-visible horizontal scrollbar. Sits between the

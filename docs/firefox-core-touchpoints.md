@@ -169,7 +169,8 @@ Use this shape for new or changed touchpoints:
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
-  corners during normal browsing but removes that frame during DOM fullscreen,
+  corners during normal browsing, keeps live window resize smooth with that
+  frame visible, and removes that frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and
   workspace actions including moving a
   folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and

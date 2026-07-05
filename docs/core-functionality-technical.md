@@ -1414,13 +1414,20 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   from the decoded layout tree, append it as a root before computing flat-layout
   geometry. Otherwise the panel is resolved and rendered, but receives no
   `panelRects` entry and overlaps until the next live layout refresh.
-- In `bento-no-side-panels` mode, the moved `#tabbrowser-tabbox` is still the
-  rounded content frame. Keep that frame and its child tabpanels/browser
-  surfaces clipped to `--radius-m`; `.browserContainer` alone does not prevent
-  page paint from showing through the rounded corners. Exception: when Firefox
-  sets `:root[inDOMFullscreen]`, the fullscreen override must clear the strip
-  host and browser-wrapper radii so video fullscreen is not clipped by the
-  normal main-content or panel frame.
+- In `bento-no-side-panels` mode, do not create the main-content gutter with
+  padding on `#bento-side-panel-host` or with host pseudo-elements. macOS live
+  window resize became choppy when no-panel host padding, rounded child
+  clipping, or frame shadow were each tested in isolation. The working shape
+  mirrors Zen Browser's simpler native structure: keep
+  `#bento-side-panel-host` unpadded and `overflow: visible`, create the real
+  gutter with margins on the direct `[data-bento-main-panel]`, and put the
+  rounded clip plus frame paint on the native
+  `#tabbrowser-tabpanels > .browserSidebarContainer`. The current no-panel
+  frame uses `border-radius: var(--radius-xl)`,
+  `box-shadow: var(--bento-panel-frame-shadow)`, and `overflow: clip` on that
+  native container. Exception: when Firefox sets `:root[inDOMFullscreen]`, the
+  fullscreen override must clear the strip host and browser-wrapper radii so
+  video fullscreen is not clipped by the normal main-content or panel frame.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
 - `panelLayout/breakOut` promotes an existing child into the root layout and
@@ -1917,13 +1924,17 @@ Top-level panel resizing:
   immediate `panels/sync`; if chrome skips the live refresh, neighbouring panel
   rects, root splitters, and the strip scroll extent remain aligned to the old
   width until a later reconcile.
-- Workspace height resize path: `attachResizeRepaintPoke` and the
-  `tabpanels` `ResizeObserver` must call `refreshFlatPanelLayoutFromLiveState`,
-  not only `syncInterPanelSplitters`. Flat layout writes absolute inline heights
-  to each panel; if the browser window shrinks, or chrome height changes because
-  the bookmarks toolbar is toggled, and only splitters are resynced, panels keep
-  their old `height/minHeight/maxHeight` and extend underneath the navigator or
-  beyond the visible Bento window.
+- Workspace height resize path: the `tabpanels` `ResizeObserver` and the
+  settled window-resize path (`attachWindowResizePerfMode` ->
+  `repaintSelectedBrowserAfterWindowResize`) must call
+  `refreshFlatPanelLayoutFromLiveState`, not only `syncInterPanelSplitters`.
+  Flat layout writes absolute inline heights to each panel; if the browser
+  window shrinks, or chrome height changes because the bookmarks toolbar is
+  toggled, and only splitters are resynced, panels keep their old
+  `height/minHeight/maxHeight` and extend underneath the navigator or beyond
+  the visible Bento window. Keep the selected-browser `docShellIsActive`
+  false/true repaint poke after the resize gesture settles; running it during
+  macOS live resize made no-panel resizing visibly rougher.
 - Working solution: keep the flat-layout computed gap at `var(--space-2xs)`.
   Do not let `.bento-flat-panel-layout` compute `gap: 0`, because geometry reads
   that value and panels will visually touch. The add-panel trailer also needs an
