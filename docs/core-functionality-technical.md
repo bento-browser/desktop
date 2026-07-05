@@ -235,7 +235,12 @@ not enable Firefox's native `sidebar.verticalTabs`. `bento-shell-mount.js`
 measures `#bento-shell-host`, `#nav-bar-customization-target`, and the native
 Back/Forward/Stop-Reload controls, then writes `--bento-toolbar-nav-offset` so
 the native navigation cluster tracks the sidebar's right edge while the sidebar
-is resized. `bento-chrome-theme.css` keeps the native top toolbar on the same
+is resized. `#bento-shell-host` keeps a width transition for sidebar
+collapse/expand, but `attachSidebarSplitterFeedback()` must add
+`bento-shell-sidebar-resizing` during manual splitter drag so that transition is
+disabled while drag writes live `width` values; otherwise the handle feels
+smoothed or laggy instead of tracking the pointer. `bento-chrome-theme.css` keeps
+the native top toolbar on the same
 neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
 removes Firefox's toolbox bottom border so no separator line appears between
 the top toolbar and content area. `attachSidebarChromeDivider()` overlays a

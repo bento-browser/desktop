@@ -467,6 +467,9 @@
           min-width 200ms var(--bento-easing-standard, ease),
           max-width 200ms var(--bento-easing-standard, ease);
       }
+      #bento-shell-host.bento-shell-sidebar-resizing {
+        transition: none !important;
+      }
       #bento-shell-host.bento-sidebar-collapsed {
         min-width: var(--bento-tab-strip-width-collapsed) !important;
         max-width: var(--bento-tab-strip-width-collapsed) !important;
@@ -4902,6 +4905,7 @@
 
     const clearDragging = () => {
       affordance.classList.remove('bento-shell-splitter--dragging');
+      host.classList.remove('bento-shell-sidebar-resizing');
       document.documentElement.style.removeProperty('cursor');
     };
 
@@ -4916,6 +4920,7 @@
       const max = parseFloat(style.maxWidth) || Number.POSITIVE_INFINITY;
 
       affordance.classList.add('bento-shell-splitter--dragging');
+      host.classList.add('bento-shell-sidebar-resizing');
       document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
 
       const onMove = (moveEvent) => {
