@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-04
+- Last updated: 2026-07-05
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -88,7 +88,10 @@ Use this shape for new or changed touchpoints:
   sidebar frame or moving content, caps the sidebar-anchored address overlay
   below the centered overlay size,
   hides the native top URL/search field under a Bento
-  chrome attribute while keeping toolbar and window controls visible, mounts a shared modal
+  chrome attribute while keeping toolbar and window controls visible on the
+  same background as the Bento sidebar and without Firefox's toolbox bottom
+  separator, aligns Firefox's native Back/Forward/Reload control cluster with
+  the Bento sidebar's right edge as the sidebar is resized, mounts a shared modal
   toolbar scrim as a top-layer manual popover so native toolbar/urlbar controls
   do not paint above Bento modal scrims, leaves that toolbar scrim disabled for
   the floating address bar, keeps the address palette on an opaque neutral
@@ -126,6 +129,9 @@ Use this shape for new or changed touchpoints:
   `gBrowser.selectedBrowsers`, `FullScreen.enterDomFullscreen`, chrome window
   events, native `#urlbar-input` pointer/focus events,
   `#urlbar-container` and `#search-container` chrome CSS,
+  `#nav-bar`, `#navigator-toolbox`, `#nav-bar-customization-target`,
+  `#back-button`, `#forward-button`, `#stop-reload-button`, toolbar geometry,
+  and chrome `ResizeObserver`,
   `#bento-shell-frame` geometry for anchored address-overlay placement,
   native identity
   chrome (`gIdentityHandler`, `#identity-box`, `#identity-icon-box`,
@@ -158,7 +164,8 @@ Use this shape for new or changed touchpoints:
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, sidebar address scoping,
   native identity/app-menu popup anchoring, bookmark state, native URL-bar and
-  toolbar app-menu hiding, or visibility.
+  toolbar app-menu hiding, native toolbar surface/separator styling,
+  native navigation-button alignment, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -179,7 +186,11 @@ Use this shape for new or changed touchpoints:
   without sliding in from the top or bottom, verify the sidebar footer Downloads
   button opens Firefox's native downloads panel with recent download actions and
   download history intact while using the same footer-side alignment and no
-  top/bottom slide, verify remaining
+  top/bottom slide, verify the native top toolbar matches the sidebar
+  background with no bottom separator line, verify the native
+  Back/Forward/Reload control group aligns with the sidebar's right edge and
+  moves continuously while dragging the sidebar splitter and while toggling
+  collapsed/expanded sidebar state, verify remaining
   toolbar buttons, extension buttons, toolbar customization, titlebar controls,
   and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark

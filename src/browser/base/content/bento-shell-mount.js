@@ -249,14 +249,22 @@
          edge.
          !important needed for width + min-width because XUL chrome
          CSS sets defaults for <splitter> that win otherwise. */
-      /* Draw the top-toolbar/content separator with Bento's divider
-         color so the edge above the panel strip matches the sidebar.
-         Firefox's content-area.css applies
-           #navigator-toolbox { border-bottom: 0.01px solid ... }
-         which renders as a 1px hairline between the toolbar and the
-         content area; override the color and stable width here. */
-      #navigator-toolbox {
-        border-bottom: 1px solid var(--bento-sidebar-divider-color) !important;
+      /* Remove Firefox's top-toolbar/content separator so the toolbar
+         reads as one continuous surface with the sidebar. Firefox's
+         content-area.css applies a tiny border-bottom on
+         #navigator-toolbox, and upstream toolbar rules may paint on
+         #nav-bar, so this must be explicit. */
+      #navigator-toolbox,
+      #nav-bar {
+        border-bottom: 0 !important;
+        box-shadow: none !important;
+        outline: none !important;
+      }
+      :root {
+        --bento-toolbar-nav-offset: 0px;
+      }
+      :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
+        margin-inline-start: var(--bento-toolbar-nav-offset, 0px) !important;
       }
       :root[bento-startup-loading='true'] #navigator-toolbox {
         opacity: 0;
@@ -4916,6 +4924,65 @@
       ro.observe(host);
       const strip = document.getElementById('bento-strip-container');
       if (strip) ro.observe(strip);
+    }
+  }
+
+  function attachToolbarNavigationAlignment() {
+    const root = document.documentElement;
+    const host = document.getElementById('bento-shell-host');
+    const target = document.getElementById('nav-bar-customization-target');
+    const navBar = document.getElementById('nav-bar');
+    const backButton = document.getElementById('back-button');
+    const forwardButton = document.getElementById('forward-button');
+    const stopReloadButton = document.getElementById('stop-reload-button');
+    if (!host || !target || !backButton || !forwardButton || !stopReloadButton) {
+      if (document.readyState !== 'complete') {
+        const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+        window.addEventListener(evt, attachToolbarNavigationAlignment, { once: true });
+      }
+      return;
+    }
+    if (target.dataset.bentoToolbarNavAlignmentAttached === '1') return;
+    target.dataset.bentoToolbarNavAlignmentAttached = '1';
+
+    let raf = 0;
+    const updateOffset = () => {
+      raf = 0;
+      const hostRect = host.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      if (hostRect.width <= 0 || targetRect.width <= 0) {
+        root.style.setProperty('--bento-toolbar-nav-offset', '0px');
+        return;
+      }
+
+      const groupWidth = [backButton, forwardButton, stopReloadButton].reduce((sum, el) => {
+        const rect = el.getBoundingClientRect();
+        return sum + Math.max(0, rect.width || 0);
+      }, 0);
+      if (groupWidth <= 0) {
+        root.style.setProperty('--bento-toolbar-nav-offset', '0px');
+        return;
+      }
+
+      const edgeInset = tokenPx('--space-2xs', 8);
+      const desiredStart = hostRect.right - edgeInset - groupWidth;
+      const offset = Math.max(0, Math.round(desiredStart - targetRect.left));
+      root.style.setProperty('--bento-toolbar-nav-offset', offset + 'px');
+    };
+    const scheduleUpdate = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(updateOffset);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('aftercustomization', scheduleUpdate, true);
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(scheduleUpdate);
+      for (const el of [host, target, navBar, backButton, forwardButton, stopReloadButton]) {
+        if (el) ro.observe(el);
+      }
+      target._bentoToolbarNavAlignmentResizeObserver = ro;
     }
   }
 
@@ -17878,6 +17945,7 @@
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
+    attachToolbarNavigationAlignment();
     // Initial reconcile with no side panels — primes the strip into
     // a clean baseline state so the first panels/sync from bento-tools
     // can replace it with the real panel list. refreshPanelNav inside

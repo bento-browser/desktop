@@ -77,9 +77,8 @@
     --bento-panel-min-width: 240px;
     --bento-main-panel-min-width: 640px;
 
-    /* Brand background. Matches the chrome's --toolbox-bgcolor and
-       window background. The top address toolbar is a separate neutral-14
-       surface so it matches the pinned panels rail. Auto-flips with
+    /* Brand background. Matches the chrome's --toolbox-bgcolor, top
+       toolbar, sidebar, and window background. Auto-flips with
        data-color-mode via Tale UI's color-modes mechanism. */
     --bento-brand-bg: var(--neutral-5);
 

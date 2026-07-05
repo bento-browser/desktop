@@ -63,7 +63,7 @@
     --toolbar-color: var(--neutral-90) !important;
     --toolbar-bgimage: none !important;
     --toolbarseparator-color: var(--neutral-30) !important;
-    --chrome-content-separator-color: var(--neutral-20) !important;
+    --chrome-content-separator-color: transparent !important;
 
     /* ─── Toolbar buttons (back/forward/reload/extensions/etc.) ──── */
     --toolbarbutton-icon-fill: var(--neutral-80) !important;
@@ -112,7 +112,7 @@
 
     /* Tabs separator (between titlebar drag area and nav bar). With
      * #TabsToolbar hidden this is the seam at the top of the chrome. */
-    --tabs-navbar-separator-color: var(--neutral-22) !important;
+    --tabs-navbar-separator-color: transparent !important;
 
     /* Sidebar (Firefox's native sidebar — Bento uses its own). Themed
      * for completeness in case any code path reveals it. */
@@ -154,11 +154,9 @@
   }
 
   /* ─── Unified chrome surface ──────────────────────────────────────
-   * Bento's sidebar and the chrome window background use the neutral-5
-   * brand surface. The top address toolbar uses neutral-14 to match the
-   * pinned panels rail while keeping the hidden titlebar/toolbox surface
-   * separate. Overlay hosts (palette, confirm, etc.) stay transparent —
-   * they're modal scrims, not chrome surfaces. */
+   * Bento's sidebar, top toolbar, and chrome window background use the
+   * neutral-5 brand surface. Overlay hosts (palette, confirm, etc.) stay
+   * transparent — they're modal scrims, not chrome surfaces. */
   #bento-shell-host {
     background-color: var(--neutral-5) !important;
   }
@@ -180,7 +178,7 @@
     color: var(--neutral-90) !important;
   }
   #nav-bar {
-    background-color: var(--neutral-14) !important;
+    background-color: var(--neutral-5) !important;
     background-image: none !important;
     color: var(--neutral-90) !important;
   }
@@ -194,7 +192,7 @@
     stroke: var(--neutral-30) !important;
   }
   #PersonalToolbar {
-    background-color: var(--neutral-14) !important;
+    background-color: var(--neutral-5) !important;
     background-image: none !important;
     color: var(--neutral-90) !important;
   }

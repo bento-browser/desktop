@@ -510,14 +510,13 @@ export function App() {
     <div className="bento-shell-app" onContextMenu={onRootContextMenu}>
       <PinnedPanels />
       <div className="bento-shell-app__main">
-        <Row gap="xs" align="center" className="bento-shell-app__header">
-          <WorkspaceSwitcher />
-          {!ready && (
+        {!ready && (
+          <Row gap="xs" align="center" className="bento-shell-app__header">
             <Text variant="text" size="xs" color="muted">
               connecting…
             </Text>
-          )}
-        </Row>
+          </Row>
+        )}
         <SidebarAddressBar />
         <TabList
           revealTabUrl={settingsUrl()}
@@ -532,6 +531,9 @@ export function App() {
           onFolderContextMenu={onFolderContextMenu}
           onReorder={onReorder}
         />
+        <div className="bento-shell-app__workspace-switcher">
+          <WorkspaceSwitcher />
+        </div>
         <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">
           {/* Collapse/expand toggle. DOM order matters: this is the FIRST
               child so flex-direction:column-reverse in collapsed mode pins

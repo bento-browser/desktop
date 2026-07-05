@@ -91,9 +91,28 @@
       padding-inline-end var(--bento-sidebar-collapse-transition);
   }
 
+  .bento-shell-app__workspace-switcher {
+    display: flex;
+    flex: 0 0 auto;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--bento-sidebar-section-gap);
+    padding-block: var(--space-2xs);
+    padding-inline: var(--space-3xs);
+    background-color: var(--neutral-5);
+    transition:
+      padding-inline-start var(--bento-sidebar-collapse-transition),
+      padding-inline-end var(--bento-sidebar-collapse-transition);
+  }
+
   html[data-bento-collapsed='true'] .bento-shell-app__header,
-  html[data-bento-collapsed='true'] .bento-shell-app__footer {
+  html[data-bento-collapsed='true'] .bento-shell-app__footer,
+  html[data-bento-collapsed='true'] .bento-shell-app__workspace-switcher {
     padding-inline: 0;
+  }
+
+  html[data-bento-collapsed='true'] .bento-shell-app__workspace-switcher {
+    align-items: center;
   }
 }
 

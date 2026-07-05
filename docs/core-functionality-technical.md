@@ -163,8 +163,9 @@ activation of the expanded-sidebar URL row opens the same overlay with a
 sidebar anchor so it appears below the row and can extend over the panel strip
 and main content.
 
-The persistent sidebar row is mounted between the workspace switcher and
-`TabList`. `extensions/bento-shell/src/state/sidebarAddress.ts` stores the last
+The persistent sidebar row is mounted above `TabList`; the workspace switcher
+trigger is mounted below `TabList` and above the sidebar footer.
+`extensions/bento-shell/src/state/sidebarAddress.ts` stores the last
 chrome-owned snapshot, edit mode, draft value, and pending bookmark-toggle key.
 `extensions/bento-shell/src/bridge/useSidebarAddress.ts`
 subscribes to `BroadcastChannel('bento-sidebar-address-bus')`, but applies only
@@ -230,7 +231,14 @@ The native top URL/search container is hidden by
 capture-phase native-urlbar listener remains as a fallback for Firefox internals
 that still try to focus the hidden native urlbar; it opens the centered
 address/search overlay instead of routing through the sidebar row. Bento does
-not enable Firefox's native `sidebar.verticalTabs`.
+not enable Firefox's native `sidebar.verticalTabs`. `bento-shell-mount.js`
+measures `#bento-shell-host`, `#nav-bar-customization-target`, and the native
+Back/Forward/Stop-Reload controls, then writes `--bento-toolbar-nav-offset` so
+the native navigation cluster tracks the sidebar's right edge while the sidebar
+is resized. `bento-chrome-theme.css` keeps the native top toolbar on the same
+neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
+removes Firefox's toolbox bottom border so no separator line appears between
+the top toolbar and content area.
 
 The floating overlay remains implemented by
 `extensions/bento-shell/src/address-bar/main.tsx` and
@@ -546,7 +554,9 @@ background to persistent white in both color modes. Initials and legacy custom
 strings keep the workspace theme background. The sidebar workspace switcher
 trigger keeps Tale UI's neutral button shape but overrides that variant's
 background, border, and text colors with `--color-*` tokens so the control
-follows the active workspace brand instead of the neutral palette.
+follows the active workspace brand instead of the neutral palette. The trigger
+is rendered as a fixed bottom sidebar section between `TabList` and the footer,
+so workspace switching remains reachable after scrolling long tab lists.
 
 The workspace editor is a chrome-mounted `Dialog` frame that reads
 `useWorkspacesStore`, dispatches `workspace/update`, `workspace/activate`,

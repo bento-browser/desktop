@@ -177,7 +177,8 @@ top chrome.
 
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
-covering the window with an opaque overlay.
+covering the window with an opaque overlay. Its trigger sits at the bottom of
+the sidebar, below the tab list and above the footer controls.
 Editing a single workspace lets the user rename it, set or clear its icon with
 the same searchable full emoji picker used by the all-workspaces manager, and
 choose a theme with the same compact searchable theme picker used there.
@@ -217,7 +218,7 @@ Command-palette search fields use a visible "Clear" button instead of an
 icon-only clear affordance.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
-below the workspace switcher and above the tab list. It mirrors the active main
+at the top of the sidebar above the tab list. It mirrors the active main
 tab's URL, loading state, Firefox security identity state, and regular Firefox
 bookmark state, with one-click actions to copy the current URL or toggle the
 regular bookmark state. Clicking the row opens Bento's address entry below the row. Its
@@ -228,8 +229,11 @@ address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface. The native
 top URL/search field, stock toolbar app-menu button, and stock toolbar downloads
 button are hidden in normal Bento windows while the remaining toolbar buttons
-and native window controls remain visible. In collapsed sidebar mode, those same
-actions open the existing floating address/search fallback.
+and native window controls remain visible on the same background as the
+sidebar, without a bottom separator line. The native Back, Forward, and
+Reload/Stop controls are positioned so their group tracks the sidebar's right
+edge as the sidebar is resized. In collapsed sidebar mode, those same actions
+open the existing floating address/search fallback.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
 open that URL from the clipboard. Saved panels also appear by default and open
