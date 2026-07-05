@@ -18028,6 +18028,32 @@
     reconcilePanels([]);
   }
 
+  // After macOS live resize, some content pages can keep the pre-resize
+  // layout viewport until the browser is deactivated/reactivated. Run the
+  // poke only after the resize gesture settles, so live resize stays cheap.
+  function repaintSelectedBrowserAfterWindowResize() {
+    try {
+      if (!refreshFlatPanelLayoutFromLiveState()) {
+        syncInterPanelSplitters();
+        updateFlatLayoutOverlayPositions(window.gBrowser?.tabpanels, currentPanelLayoutGeometry);
+        updateStripScrollbar();
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] settled resize layout sync failed:', err);
+    }
+
+    const browserEl = window.gBrowser?.selectedTab?.linkedBrowser;
+    if (!browserEl) return;
+    try {
+      browserEl.preserveLayers?.(true);
+      browserEl.renderLayers = true;
+      browserEl.docShellIsActive = false;
+      browserEl.docShellIsActive = true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] settled resize repaint failed:', err);
+    }
+  }
+
   function attachWindowResizePerfMode() {
     const root = document.documentElement;
     let timer = null;
@@ -18039,52 +18065,8 @@
       timer = window.setTimeout(() => {
         timer = null;
         root.removeAttribute('bento-window-resizing');
+        requestAnimationFrame(() => requestAnimationFrame(repaintSelectedBrowserAfterWindowResize));
       }, 300);
-    });
-  }
-
-  // Window-resize repaint poke. After a window resize the active
-  // tab's content frequently paints at the pre-resize size with the
-  // surrounding container background showing through. Tab-out-and-
-  // back-in fixes it because the focus path cycles docShellIsActive
-  // = false → true, which forces the docShell to re-sync its layout
-  // viewport. We do the same cycle once per resize gesture.
-  //
-  // Cycle UNCONDITIONALLY (don't gate on the current docShellIsActive
-  // value) — empirically the active first tab's browser reads as
-  // docShellIsActive=false at debounce time, likely because macOS
-  // live-resize triggers visibilitychange which Firefox uses to
-  // deactivate docShells; the false→true write puts it back where
-  // selected browsers should be. Setting `false` first ensures the
-  // setter actually re-fires even when the current value is already
-  // true (Firefox's setter no-ops on same-value writes).
-  function attachResizeRepaintPoke() {
-    let timer = null;
-    window.addEventListener('resize', () => {
-      // Recompute flat panel rects first so absolute-positioned panels
-      // shed stale inline heights when the window shrinks. Splitters and
-      // chooser overlays are synced by the live-layout refresh path.
-      try {
-        if (!refreshFlatPanelLayoutFromLiveState()) {
-          syncInterPanelSplitters();
-          updateFlatLayoutOverlayPositions(window.gBrowser?.tabpanels, currentPanelLayoutGeometry);
-          updateStripScrollbar();
-        }
-      } catch (err) {
-        console.warn('[bento-shell-mount] resize layout sync failed:', err);
-      }
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        timer = null;
-        const browserEl = window.gBrowser?.selectedTab?.linkedBrowser;
-        if (!browserEl) return;
-        try {
-          browserEl.docShellIsActive = false;
-          browserEl.docShellIsActive = true;
-        } catch (err) {
-          console.warn('[bento-shell-mount] resize repaint poke failed:', err);
-        }
-      }, 60);
     });
   }
 
@@ -18292,10 +18274,6 @@
   attachTabSelectListener();
   attachPanelAcceleratorListener();
   attachWindowResizePerfMode();
-  // Disabled after resize diagnostic: the post-resize docShell toggle made
-  // no-panel live resizing visibly rougher. Re-enable only if stale browser
-  // paint returns after a resize.
-  // attachResizeRepaintPoke();
   registerContentKeyActor();
   attachContentKeyBridgeListener();
   attachPanelFocusTracker();
