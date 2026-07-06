@@ -15,8 +15,7 @@ const noop = () => {};
 const defaultTabListProps = {
   onActivate: noop,
   onClose: noop,
-  onCreateTab: noop,
-  onCreatePanel: noop,
+  onOpenNewMenu: noop,
   onOpenInSidePanel: noop,
 };
 

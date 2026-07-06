@@ -161,8 +161,8 @@
   // re-themes from the same source as the rest of Bento. Loaded AFTER
   // tokens so the var() references it makes resolve. See the file
   // header at chrome://browser/content/bento-chrome-theme.css for the
-  // coverage list — visible chrome only; menus, popups, scrollbars,
-  // devtools chrome stay on Firefox defaults until iterated.
+  // coverage list. Scrollbars and devtools chrome stay on Firefox
+  // defaults until iterated.
   function injectChromeTheme() {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -170,6 +170,96 @@
     document.documentElement.appendChild(link);
   }
   injectChromeTheme();
+
+  const BENTO_CHROME_THEME_ATTRS = [
+    'data-color-mode',
+    'data-theme',
+    'data-bento-color-mode-pref',
+    'data-bento-theme',
+  ];
+  const BENTO_CHROME_STYLESHEET_HREFS = [
+    'chrome://browser/content/bento-chrome-tokens.css',
+    'chrome://browser/content/bento-chrome-theme.css',
+  ];
+
+  function isBentoThemeableChromeDocument(doc) {
+    const href = String(doc?.location?.href || '');
+    return (
+      href.startsWith('chrome://browser/content/sidebar/') ||
+      href.startsWith('chrome://browser/content/places/')
+    );
+  }
+
+  function hasChromeStylesheet(doc, href) {
+    return Array.from(doc.documentElement.querySelectorAll('link[rel="stylesheet"]')).some(
+      (link) => link.getAttribute('href') === href,
+    );
+  }
+
+  function syncChromeThemeAttributes(targetRoot) {
+    const sourceRoot = document.documentElement;
+    for (const attr of BENTO_CHROME_THEME_ATTRS) {
+      const value = sourceRoot.getAttribute(attr);
+      if (value === null) targetRoot.removeAttribute(attr);
+      else targetRoot.setAttribute(attr, value);
+    }
+  }
+
+  function syncBentoChromeThemeDocument(doc) {
+    if (!doc?.documentElement || !isBentoThemeableChromeDocument(doc)) return false;
+    const root = doc.documentElement;
+    syncChromeThemeAttributes(root);
+    for (const href of BENTO_CHROME_STYLESHEET_HREFS) {
+      if (hasChromeStylesheet(doc, href)) continue;
+      const link = doc.createElementNS('http://www.w3.org/1999/xhtml', 'link');
+      link.setAttribute('rel', 'stylesheet');
+      link.setAttribute('href', href);
+      link.setAttribute('data-bento-chrome-theme', 'true');
+      root.appendChild(link);
+    }
+    return true;
+  }
+
+  let nativeSidebarThemeSyncQueued = false;
+  function syncNativeSidebarChromeTheme() {
+    nativeSidebarThemeSyncQueued = false;
+    const sidebar = document.getElementById('sidebar');
+    let doc = null;
+    try {
+      doc = sidebar?.contentDocument || sidebar?.contentWindow?.document;
+    } catch {
+      doc = null;
+    }
+    syncBentoChromeThemeDocument(doc);
+  }
+
+  function scheduleNativeSidebarChromeThemeSync() {
+    if (nativeSidebarThemeSyncQueued) return;
+    nativeSidebarThemeSyncQueued = true;
+    window.requestAnimationFrame(syncNativeSidebarChromeTheme);
+  }
+
+  function attachNativeSidebarChromeThemeSync() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar && !sidebar.__bentoChromeThemeSyncAttached) {
+      sidebar.__bentoChromeThemeSyncAttached = true;
+      sidebar.addEventListener('load', scheduleNativeSidebarChromeThemeSync, true);
+    }
+    scheduleNativeSidebarChromeThemeSync();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachNativeSidebarChromeThemeSync, {
+      once: true,
+    });
+  } else {
+    attachNativeSidebarChromeThemeSync();
+  }
+  window.addEventListener('load', attachNativeSidebarChromeThemeSync, { once: true });
+  new MutationObserver(scheduleNativeSidebarChromeThemeSync).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: BENTO_CHROME_THEME_ATTRS,
+  });
 
   function resolveChromeToken(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -222,13 +312,18 @@
         --bento-splitter-hit-half: 7px;
         --bento-splitter-indicator-radius: 3px;
         --bento-panel-gap: var(--bento-splitter-hit-size);
+        --bento-scrollbar-thickness: calc(
+          var(--bento-splitter-indicator-radius) + var(--bento-splitter-indicator-radius)
+        );
+        --bento-scrollbar-radius: var(--bento-splitter-indicator-radius);
+        --bento-strip-scrollbar-gap: var(--space-2xs);
         --bento-panel-nav-button-size: var(--bento-control-size-sm);
         --bento-panel-nav-favicon-size: var(--bento-icon-size-sm);
         --bento-panel-nav-height: calc(
           var(--bento-panel-nav-button-size) + var(--space-xs)
         );
         --bento-strip-scrollbar-row-height: calc(
-          var(--bento-scrollbar-thickness) + var(--space-4xs)
+          var(--bento-scrollbar-thickness) + var(--bento-strip-scrollbar-gap)
         );
         --bento-strip-controls-height: var(--bento-strip-scrollbar-row-height);
       }
@@ -271,12 +366,46 @@
       }
       :root {
         --bento-toolbar-nav-offset: 0px;
+        --bento-bookmarks-toolbar-offset: 0px;
+        --bento-bookmarks-toolbar-height: 0px;
         --bento-tab-strip-width-min-effective: var(--bento-tab-strip-width-min);
       }
       :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
         margin-inline-start: var(--bento-toolbar-nav-offset, 0px) !important;
       }
+      :root[bento-sidebar-addressbar='true'] #bento-shell-host,
+      :root[bento-sidebar-addressbar='true'] #bento-shell-splitter,
+      :root[bento-sidebar-addressbar='true'] #sidebar-main,
+      :root[bento-sidebar-addressbar='true'] #sidebar-launcher-splitter,
+      :root[bento-sidebar-addressbar='true'] #sidebar-box,
+      :root[bento-sidebar-addressbar='true'] #sidebar-splitter {
+        margin-block-start: calc(-1 * var(--bento-bookmarks-toolbar-height, 0px)) !important;
+        height: calc(100% + var(--bento-bookmarks-toolbar-height, 0px)) !important;
+      }
+      :root[bento-sidebar-addressbar='true'] #bento-shell-splitter-affordance {
+        top: calc(-1 * var(--bento-bookmarks-toolbar-height, 0px)) !important;
+      }
+      :root[bento-sidebar-addressbar='true'] #PersonalToolbar {
+        margin-inline-start: var(--bento-bookmarks-toolbar-offset, 0px) !important;
+        width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
+        max-width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        transition: none !important;
+        animation: none !important;
+      }
+      :root[bento-sidebar-addressbar='true'] #PersonalToolbar[collapsed] {
+        visibility: collapse !important;
+        transition: none !important;
+      }
       :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > toolbarspring {
+        display: none !important;
+        visibility: collapse !important;
+      }
+      :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > [data-bento-extension-toolbar-anchor='true'] {
+        margin-inline-start: auto !important;
+      }
+      :root[bento-sidebar-addressbar='true'] #nav-bar > .titlebar-spacer[type='post-tabs'] {
         display: none !important;
         visibility: collapse !important;
       }
@@ -288,7 +417,7 @@
       :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button,
       :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #forward-button,
       :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #stop-reload-button,
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #stop-reload-button ~ * {
+      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #bento-panel-nav {
         transform: translateX(var(--bento-toolbar-nav-offset, 0px));
         will-change: transform;
       }
@@ -470,6 +599,41 @@
       #bento-shell-splitter-affordance.bento-sidebar-collapsed {
         display: none;
       }
+      :root[bento-sidebar-addressbar='true'] #sidebar-splitter {
+        width: var(--bento-splitter-hit-size) !important;
+        min-width: var(--bento-splitter-hit-size) !important;
+        max-width: var(--bento-splitter-hit-size) !important;
+        margin-inline: calc(-1 * var(--bento-splitter-hit-half)) !important;
+        cursor: col-resize;
+        border: 0 !important;
+        padding: 0 !important;
+        appearance: none;
+        background-color: transparent !important;
+        background-image:
+          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+          linear-gradient(
+            to right,
+            transparent calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
+            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+            transparent calc(50% + var(--bento-splitter-indicator-radius))
+          ),
+          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size:
+          100% 100%,
+          100% 50%,
+          100% 100%;
+        opacity: 0;
+        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+        z-index: 4;
+      }
+      :root[bento-sidebar-addressbar='true'] #sidebar-splitter:hover,
+      :root[bento-sidebar-addressbar='true'] #sidebar-splitter:focus-visible,
+      :root[bento-sidebar-addressbar='true'] #sidebar-splitter.bento-native-sidebar-splitter--dragging {
+        opacity: 1;
+      }
       #bento-sidebar-chrome-divider {
         position: fixed;
         top: 0;
@@ -548,7 +712,8 @@
       /* The strip is wrapped in a vbox container by setupPanelNavigator
          so the custom bottom scrollbar can be overlaid in a stable
          position. The favicon navigator itself is mounted in the top
-         toolbar beside the browser extension buttons. */
+         toolbar after Reload, while browser extension buttons are pushed
+         to the far side of the same top bar. */
       #bento-strip-container {
         display: flex;
         flex-direction: column;
@@ -687,7 +852,7 @@
         position: absolute;
         left: var(--space-2xs);
         right: var(--space-2xs);
-        bottom: var(--space-2xs);
+        bottom: var(--bento-strip-scrollbar-gap);
         z-index: 20;
         height: var(--bento-scrollbar-thickness);
         margin: 0;
@@ -726,8 +891,8 @@
         cursor: grabbing;
       }
 
-      /* Panel navigator bar. Mounted in the top toolbar immediately
-         before the browser extension buttons.
+      /* Panel navigator bar. Mounted in the top toolbar after the
+         native Reload/Stop control.
          [◀] [favicon] [favicon] [favicon] [▶]
          Active item gets the accent border + tinted background. */
       #bento-panel-nav {
@@ -1494,7 +1659,9 @@
         align-items: stretch;
         gap: var(--bento-panel-gap);
         padding-block-start: var(--space-3xs);
-        padding-block-end: calc(var(--bento-strip-controls-height) + var(--space-2xs));
+        padding-block-end: calc(
+          var(--bento-strip-controls-height) + var(--bento-strip-scrollbar-gap)
+        );
         padding-inline-start: var(--space-3xs);
         padding-inline-end: var(--space-2xs);
         overflow-x: scroll;
@@ -3858,7 +4025,7 @@
   }
 
   // ─── Generic chrome-menu overlay ───────────────────────────────────────
-  // showChromeMenu({ anchor, items, onSelect }) opens a Tale UI Menu over
+  // showChromeMenu({ anchor, items, onSelect, placement }) opens a Tale UI Menu over
   // the entire chrome window, positioned next to `anchor` (a DOMRect-ish
   // {left, top, width, height} from the trigger element's
   // getBoundingClientRect). Each open generates a unique contextId so
@@ -3872,7 +4039,7 @@
   // display.
   const menuOnSelectByContext = new Map();
 
-  function showChromeMenu({ anchor, items, onSelect }) {
+  function showChromeMenu({ anchor, items, onSelect, placement }) {
     const host = document.getElementById('bento-menu-host');
     if (!host) {
       console.warn('[bento-shell-mount] showChromeMenu: bento-menu-host missing');
@@ -3906,6 +4073,7 @@
       contextId,
       items,
       anchor: adjustedAnchor,
+      placement,
     });
     const frame = document.getElementById('bento-menu-frame');
     setTimeout(() => frame?.focus(), 0);
@@ -4927,6 +5095,9 @@
   let prepareToolbarNavigationForSidebarResize = null;
   let syncToolbarNavigationForSidebarWidth = null;
   let finishToolbarNavigationSidebarResize = null;
+  let prepareBookmarksToolbarForSidebarResize = null;
+  let syncBookmarksToolbarForSidebarWidth = null;
+  let finishBookmarksToolbarSidebarResize = null;
 
   function isBentoWindowResizing() {
     return document.documentElement.getAttribute('bento-window-resizing') === 'true';
@@ -4983,6 +5154,7 @@
       const startAffordanceLeft = Math.round(splitterRect.left - shellRect.left);
       prepareSidebarChromeDividerForSidebarResize?.();
       prepareToolbarNavigationForSidebarResize?.();
+      prepareBookmarksToolbarForSidebarResize?.();
       const style = getComputedStyle(host);
       const min = parseFloat(style.minWidth) || 0;
       const max = parseFloat(style.maxWidth) || Number.POSITIVE_INFINITY;
@@ -5000,6 +5172,7 @@
         affordance.style.left = Math.round(startAffordanceLeft + next - startWidth) + 'px';
         syncSidebarChromeDividerForSidebarWidth?.(next);
         syncToolbarNavigationForSidebarWidth?.(next);
+        syncBookmarksToolbarForSidebarWidth?.(next);
       };
       const scheduleDragWidth = (next) => {
         pendingWidth = next;
@@ -5049,6 +5222,7 @@
         clearDragging();
         finishSidebarChromeDividerSidebarResize?.();
         finishToolbarNavigationSidebarResize?.();
+        finishBookmarksToolbarSidebarResize?.();
         requestAnimationFrame(updateAffordancePosition);
       };
 
@@ -5089,6 +5263,152 @@
       const strip = document.getElementById('bento-strip-container');
       if (strip) ro.observe(strip);
     }
+  }
+
+  function attachNativeSidebarSplitterFeedback() {
+    const splitter = document.getElementById('sidebar-splitter');
+    const box = document.getElementById('sidebar-box');
+    if (!splitter || !box || splitter.dataset.bentoNativeFeedbackAttached === '1') return;
+    splitter.dataset.bentoNativeFeedbackAttached = '1';
+    splitter.setAttribute('resizebefore', 'none');
+    splitter.setAttribute('resizeafter', 'none');
+
+    const isTruthyAttr = (el, name) => {
+      const value = el.getAttribute(name);
+      return value !== null && value !== 'false';
+    };
+    const isVisible = () =>
+      !box.hidden &&
+      !box.collapsed &&
+      !isTruthyAttr(box, 'hidden') &&
+      !isTruthyAttr(box, 'collapsed') &&
+      !splitter.hidden &&
+      !splitter.collapsed &&
+      !isTruthyAttr(splitter, 'hidden') &&
+      !isTruthyAttr(splitter, 'collapsed');
+    const readBounds = () => {
+      const style = getComputedStyle(box);
+      const min = cssLengthToPx(style.minWidth, tokenPx('--bento-tab-strip-width-min', 200));
+      const max = cssLengthToPx(style.maxWidth, Math.max(min, window.innerWidth * 0.75));
+      return {
+        min: Math.max(0, min),
+        max: Math.max(min, max),
+      };
+    };
+    const applyWidth = (width) => {
+      const { min, max } = readBounds();
+      const next = Math.round(Math.max(min, Math.min(max, width)));
+      box.style.width = next + 'px';
+      box.setAttribute('width', String(next));
+      return next;
+    };
+    const restorePersistedWidth = () => {
+      try {
+        const value = Services.xulStore.getValue(box.ownerDocument.documentURI, box.id, 'width');
+        const width = Number.parseFloat(value);
+        if (Number.isFinite(width) && width > 0) {
+          applyWidth(width);
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] native sidebar width restore failed:', err);
+      }
+    };
+    restorePersistedWidth();
+
+    const clearDragging = () => {
+      splitter.classList.remove('bento-native-sidebar-splitter--dragging');
+      document.documentElement.removeAttribute('bento-native-sidebar-resizing');
+      document.documentElement.style.removeProperty('cursor');
+      document.documentElement.style.removeProperty('user-select');
+    };
+
+    const beginDrag = (event) => {
+      if (event.button !== 0 || !isVisible()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation?.();
+      event.stopPropagation();
+
+      const startX = event.clientX;
+      const startWidth = box.getBoundingClientRect().width || cssLengthToPx(box.style.width, 0);
+      if (!startWidth) return;
+      const pointerId = event.pointerId;
+      const dragTarget = event.currentTarget || splitter;
+      const isPositionEnd = box.hasAttribute('sidebar-positionend');
+      let lastWidth = Math.round(startWidth);
+      let pendingWidth = startWidth;
+      let dragWriteRaf = 0;
+
+      const applyDragWidth = () => {
+        dragWriteRaf = 0;
+        lastWidth = applyWidth(pendingWidth);
+      };
+      const scheduleDragWidth = (next) => {
+        pendingWidth = next;
+        if (dragWriteRaf) return;
+        dragWriteRaf = requestAnimationFrame(applyDragWidth);
+      };
+
+      splitter.classList.add('bento-native-sidebar-splitter--dragging');
+      document.documentElement.setAttribute('bento-native-sidebar-resizing', 'true');
+      document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
+      document.documentElement.style.setProperty('user-select', 'none', 'important');
+      try {
+        dragTarget.setPointerCapture?.(pointerId);
+      } catch (err) {
+        console.warn('[bento-shell-mount] native sidebar splitter setPointerCapture failed:', err);
+      }
+
+      const onMove = (moveEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        const delta = moveEvent.clientX - startX;
+        scheduleDragWidth(startWidth + (isPositionEnd ? -delta : delta));
+      };
+
+      const onUp = (upEvent) => {
+        if (upEvent?.pointerId !== undefined && upEvent.pointerId !== pointerId) return;
+        dragTarget.removeEventListener('pointermove', onMove, true);
+        dragTarget.removeEventListener('pointerup', onUp, true);
+        dragTarget.removeEventListener('pointercancel', onUp, true);
+        dragTarget.removeEventListener('lostpointercapture', onUp, true);
+        window.removeEventListener('blur', onUp, true);
+        try {
+          dragTarget.releasePointerCapture?.(pointerId);
+        } catch {
+          /* already released */
+        }
+        if (dragWriteRaf) {
+          cancelAnimationFrame(dragWriteRaf);
+          applyDragWidth();
+        }
+        try {
+          Services.xulStore.setValue(
+            box.ownerDocument.documentURI,
+            box.id,
+            'width',
+            String(lastWidth),
+          );
+        } catch (err) {
+          console.warn('[bento-shell-mount] native sidebar width persistence failed:', err);
+        }
+        clearDragging();
+        window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
+      };
+
+      dragTarget.addEventListener('pointermove', onMove, true);
+      dragTarget.addEventListener('pointerup', onUp, true);
+      dragTarget.addEventListener('pointercancel', onUp, true);
+      dragTarget.addEventListener('lostpointercapture', onUp, true);
+      window.addEventListener('blur', onUp, true);
+    };
+
+    const suppressNativeSplitterDrag = (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopImmediatePropagation?.();
+      event.stopPropagation();
+    };
+    splitter.addEventListener('pointerdown', beginDrag, true);
+    splitter.addEventListener('mousedown', suppressNativeSplitterDrag, true);
   }
 
   function attachSidebarChromeDivider() {
@@ -5196,16 +5516,23 @@
       const alignedMin = metrics.targetLeft - metrics.hostLeft + metrics.edgeInset + metrics.groupWidth;
       return Math.ceil(Math.max(baseMin, alignedMin));
     };
+    let effectiveSidebarMinWidth = null;
     const applyEffectiveSidebarMinWidth = (metrics) => {
       const minWidth = computeAlignedSidebarMinWidth(metrics);
-      document.documentElement.style.setProperty(
-        '--bento-tab-strip-width-min-effective',
-        minWidth + 'px',
-      );
+      if (minWidth !== effectiveSidebarMinWidth) {
+        document.documentElement.style.setProperty(
+          '--bento-tab-strip-width-min-effective',
+          minWidth + 'px',
+        );
+        effectiveSidebarMinWidth = minWidth;
+      }
       return minWidth;
     };
-    const applyOffset = (metrics, sidebarWidth) => {
-      const minWidth = applyEffectiveSidebarMinWidth(metrics);
+    const applyOffset = (metrics, sidebarWidth, cachedMinWidth = null) => {
+      const minWidth =
+        typeof cachedMinWidth === 'number'
+          ? cachedMinWidth
+          : applyEffectiveSidebarMinWidth(metrics);
       if (metrics.hostWidth <= 0 || metrics.targetWidth <= 0 || metrics.groupWidth <= 0) {
         target.style.setProperty('--bento-toolbar-nav-offset', '0px');
         return;
@@ -5219,16 +5546,21 @@
       target.style.setProperty('--bento-toolbar-nav-offset', offset + 'px');
     };
     let sidebarResizeMetrics = null;
+    let sidebarResizeMinWidth = null;
     prepareToolbarNavigationForSidebarResize = () => {
       sidebarResizeMetrics = readMetrics();
-      applyEffectiveSidebarMinWidth(sidebarResizeMetrics);
+      sidebarResizeMinWidth = applyEffectiveSidebarMinWidth(sidebarResizeMetrics);
     };
     syncToolbarNavigationForSidebarWidth = (width) => {
-      if (!sidebarResizeMetrics) sidebarResizeMetrics = readMetrics();
-      applyOffset(sidebarResizeMetrics, width);
+      if (!sidebarResizeMetrics) {
+        sidebarResizeMetrics = readMetrics();
+        sidebarResizeMinWidth = applyEffectiveSidebarMinWidth(sidebarResizeMetrics);
+      }
+      applyOffset(sidebarResizeMetrics, width, sidebarResizeMinWidth);
     };
     finishToolbarNavigationSidebarResize = () => {
       sidebarResizeMetrics = null;
+      sidebarResizeMinWidth = null;
       scheduleUpdate();
     };
 
@@ -5253,6 +5585,132 @@
         if (el) ro.observe(el);
       }
       target._bentoToolbarNavAlignmentResizeObserver = ro;
+    }
+  }
+
+  function attachBookmarksToolbarAlignment() {
+    const root = document.documentElement;
+    const toolbar = document.getElementById('PersonalToolbar');
+    const host = document.getElementById('bento-shell-host');
+    if (!root || !toolbar || !host) {
+      if (document.readyState !== 'complete') {
+        const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+        window.addEventListener(evt, attachBookmarksToolbarAlignment, { once: true });
+      }
+      return;
+    }
+    if (toolbar.dataset.bentoBookmarksToolbarAlignmentAttached === '1') return;
+    toolbar.dataset.bentoBookmarksToolbarAlignmentAttached = '1';
+
+    const getStrip = () =>
+      document.getElementById('bento-strip-container') ||
+      document.getElementById('bento-side-panel-host');
+
+    let lastOffset = null;
+    let lastHeight = null;
+    let lastVisibleHeight = 0;
+    const applyOffset = (offset) => {
+      const viewportWidth = Math.max(
+        0,
+        window.innerWidth || document.documentElement?.clientWidth || 0,
+      );
+      const bounded = viewportWidth > 0 ? Math.min(offset, viewportWidth) : offset;
+      const safeOffset = Math.max(0, Math.round(Number.isFinite(bounded) ? bounded : 0));
+      if (safeOffset === lastOffset) return;
+      toolbar.style.setProperty('--bento-bookmarks-toolbar-offset', safeOffset + 'px');
+      lastOffset = safeOffset;
+    };
+    const applyHeight = (height) => {
+      const safeHeight = Math.max(0, Math.round(Number.isFinite(height) ? height : 0));
+      if (safeHeight === lastHeight) return;
+      root.style.setProperty('--bento-bookmarks-toolbar-height', safeHeight + 'px');
+      lastHeight = safeHeight;
+    };
+    const isTruthyToolbarAttr = (name) => {
+      const value = toolbar.getAttribute(name);
+      return value !== null && value !== 'false';
+    };
+    const isToolbarVisible = () =>
+      !toolbar.hidden &&
+      !toolbar.collapsed &&
+      !isTruthyToolbarAttr('hidden') &&
+      !isTruthyToolbarAttr('collapsed');
+
+    const readOffset = () => {
+      const stripRect = getStrip()?.getBoundingClientRect?.();
+      if (stripRect && Number.isFinite(stripRect.left)) return stripRect.left;
+      const hostRect = host.getBoundingClientRect();
+      return hostRect.right;
+    };
+    const readHeight = () => {
+      const rect = toolbar.getBoundingClientRect?.();
+      const styles = getComputedStyle(toolbar);
+      const measured = Math.max(
+        rect && Number.isFinite(rect.height) ? rect.height : 0,
+        cssLengthToPx(styles.height, 0),
+        cssLengthToPx(styles.minHeight, 0),
+      );
+      if (measured > 0) lastVisibleHeight = measured;
+      if (!isToolbarVisible()) return 0;
+      return measured > 0 ? measured : lastVisibleHeight || 28;
+    };
+
+    let dragHostLeft = 0;
+    let dragStripInset = 0;
+    prepareBookmarksToolbarForSidebarResize = () => {
+      const hostRect = host.getBoundingClientRect();
+      const stripRect = getStrip()?.getBoundingClientRect?.();
+      dragHostLeft = hostRect.left;
+      dragStripInset =
+        stripRect && Number.isFinite(stripRect.left) ? stripRect.left - hostRect.right : 0;
+    };
+    syncBookmarksToolbarForSidebarWidth = (width) => {
+      applyOffset(dragHostLeft + Math.max(0, width) + dragStripInset);
+    };
+    finishBookmarksToolbarSidebarResize = () => {
+      scheduleUpdate();
+    };
+
+    let raf = 0;
+    const updateLayout = () => {
+      raf = 0;
+      applyOffset(readOffset());
+      applyHeight(readHeight());
+    };
+    const scheduleUpdate = () => {
+      if (isBentoChromeLiveResizing()) return;
+      if (raf) return;
+      raf = requestAnimationFrame(updateLayout);
+    };
+    const updateNowAndSchedule = () => {
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      updateLayout();
+      scheduleUpdate();
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener(BENTO_RESIZE_SETTLED_EVENT, scheduleUpdate);
+    window.addEventListener('aftercustomization', scheduleUpdate, true);
+    toolbar.addEventListener('transitionend', scheduleUpdate, true);
+    if (window.MutationObserver) {
+      const observer = new MutationObserver(updateNowAndSchedule);
+      observer.observe(toolbar, {
+        attributes: true,
+        attributeFilter: ['collapsed', 'hidden', 'style', 'class'],
+      });
+      toolbar._bentoBookmarksToolbarMutationObserver = observer;
+    }
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(scheduleUpdate);
+      ro.observe(host);
+      ro.observe(toolbar);
+      const strip = getStrip();
+      if (strip) ro.observe(strip);
+      toolbar._bentoBookmarksToolbarAlignmentResizeObserver = ro;
     }
   }
 
@@ -12046,10 +12504,21 @@
     return null;
   }
 
+  function markExtensionToolbarAnchor(target, anchor) {
+    if (!target?.children) return;
+    for (const child of Array.from(target.children)) {
+      if (child.getAttribute?.('data-bento-extension-toolbar-anchor') === 'true') {
+        child.removeAttribute('data-bento-extension-toolbar-anchor');
+      }
+    }
+    anchor?.setAttribute?.('data-bento-extension-toolbar-anchor', 'true');
+  }
+
   function placePanelNavigatorInToolbar(nav) {
     const target = getPanelNavigatorToolbarTarget();
     if (!target || !nav) return false;
     const anchor = getPanelNavigatorToolbarAnchor(target);
+    markExtensionToolbarAnchor(target, anchor);
     if (nav.parentNode === target) {
       if (anchor && nav.nextSibling === anchor) return true;
       if (!anchor && nav === target.lastElementChild) return true;
@@ -15179,9 +15648,14 @@
     showChromeMenu({
       anchor,
       items: payload.items,
+      placement: payload.placement === 'bottom start' ? 'bottom start' : undefined,
       onSelect: (itemId) => {
         if (itemId === 'new-tab') {
           openAddressEntry('newTab');
+          return;
+        }
+        if (itemId === 'new-panel') {
+          addNewPanel();
           return;
         }
         if (itemId === 'reopen-closed-tab') {
@@ -18302,8 +18776,10 @@
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
+    attachNativeSidebarSplitterFeedback();
     attachSidebarChromeDivider();
     attachToolbarNavigationAlignment();
+    attachBookmarksToolbarAlignment();
     // Initial reconcile with no side panels — primes the strip into
     // a clean baseline state so the first panels/sync from bento-tools
     // can replace it with the real panel list. refreshPanelNav inside

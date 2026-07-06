@@ -20,7 +20,6 @@ import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitc
 import { SidebarAddressBar } from './components/SidebarAddressBar/SidebarAddressBar';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
-import { signalAddrbarOpen } from './bridge/useAddrbar';
 import { requestWelcome } from './bridge/useWelcome';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
@@ -208,9 +207,22 @@ export function App() {
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
-  const onCreateTab = () => signalAddrbarOpen('newTab');
-  const onCreatePanel = () =>
-    dispatch({ type: 'panel/openAt', url: 'about:newtab', sourceTabId: null, position: 'end' });
+  const onOpenNewMenu = (anchorRect: DOMRect) => {
+    document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+      anchor: {
+        left: anchorRect.left,
+        top: anchorRect.top,
+        width: anchorRect.width,
+        height: anchorRect.height,
+      },
+      placement: 'bottom start',
+      tabId: null,
+      items: [
+        { id: 'new-tab', label: 'New tab' },
+        { id: 'new-panel', label: 'New panel' },
+      ] satisfies SidebarMenuItem[],
+    })}`;
+  };
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const onOpenSettings = () => {
     setSettingsRevealRequest((value = 0) => value + 1);
@@ -524,8 +536,7 @@ export function App() {
           onActivate={onActivate}
           onClose={onClose}
           onCloseSelected={onCloseSelected}
-          onCreateTab={onCreateTab}
-          onCreatePanel={onCreatePanel}
+          onOpenNewMenu={onOpenNewMenu}
           onOpenInSidePanel={onOpenInSidePanel}
           onTabContextMenu={onTabContextMenu}
           onFolderContextMenu={onFolderContextMenu}

@@ -608,6 +608,20 @@ tale-icon-button--sm` to panel-header controls and defines a scoped
   scopes inherited custom properties on `#appMenu-menu-message > menu-message`
   so the upstream shadow-DOM component uses Tale UI neutral, accent, foreground,
   and button tokens instead of Firefox's default information banner colours.
+- Native Firefox bookmark / Places surfaces:
+  [bento-chrome-theme.css](../src/browser/base/content/bento-chrome-theme.css)
+  maps bookmark toolbar popups, app-menu bookmark panelviews, Places context
+  menus, and native sidebar bookmark trees onto Tale UI neutral, text, button,
+  field, accent, and paired foreground tokens. The native Bookmarks sidebar
+  search box maps Firefox `moz-input-search` variables to Tale UI `--field-*`
+  category tokens plus the Bento sidebar address-field size and focus tokens,
+  and the Bookmarks sidebar title uses Tale UI `label-l` typography so it
+  visually matches the Bento sidebar. The browser window
+  already loads the token sheets directly; [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
+  also injects the same token/theme stylesheets into `chrome://browser/content/sidebar/*`
+  and `chrome://browser/content/places/*` sidebar documents and mirrors
+  `data-color-mode` / `data-bento-theme` attributes there so bookmark text does
+  not fall back to OS menu colours.
 - `Card` with `outlined` / `filled` and `sm` / `md` classes:
   [bento-migration-host.html](../src/browser/base/content/bento-migration-host.html)
   and [bento-migration-host.js](../src/browser/base/content/bento-migration-host.js)

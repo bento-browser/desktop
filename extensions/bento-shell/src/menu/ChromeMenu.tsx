@@ -37,6 +37,7 @@ export interface ChromeMenuOpenPayload {
   contextId: string;
   anchor: ChromeMenuAnchor;
   items: ChromeMenuItem[];
+  placement?: 'bottom start' | 'bottom end';
 }
 
 interface ChromeMenuProps {
@@ -93,7 +94,7 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
   // rect is already in chrome-window coords (this overlay frame covers
   // the whole window, so its DOM coords == chrome-window coords).
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { anchor, items } = payload;
+  const { anchor, items, placement = 'bottom end' } = payload;
 
   return (
     <Menu.Root
@@ -120,7 +121,7 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
           margin: 0,
         }}
       />
-      <Menu.Popover placement="bottom end" offset={4}>
+      <Menu.Popover placement={placement} offset={4}>
         <Menu.MenuList className={SMALL_MENU_CLASS} onAction={(key) => onSelect(String(key))}>
           {renderItems(items, onSelect)}
         </Menu.MenuList>

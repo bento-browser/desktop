@@ -38,6 +38,9 @@ The sidebar footer exposes Firefox's native app menu, Firefox's native downloads
 panel, and a manual "Merge browser session" action. Native footer panels are
 left-edge anchored to their trigger buttons so they grow rightward when screen
 space permits, and they open without Firefox's arrow-panel slide animation. The
+native Bookmarks sidebar uses Bento-scaled title styling, matches the Bento
+sidebar address field for bookmark search, and has its own resizable edge
+separate from the main Bento sidebar. The
 merge action is a runtime, additive, one-way merge from another browser
 profile's latest persisted session snapshot. Bento does not sync with or write
 to the external profile. It
@@ -430,10 +433,15 @@ The intended behavior is:
 - the sidebar's New menu remains reachable when the sidebar is collapsed;
 - Firefox's native app menu and downloads panel remain reachable from the
   sidebar footer;
-- panel navigator controls sit in the native top toolbar immediately left of the
-  browser extension buttons, flush with the sidebar divider after the native
-  reload button and tracking that divider during live sidebar resize, while the
-  panel-strip scrollbar stays in the bottom inset of the strip;
+- panel navigator controls sit in the native top toolbar flush with the sidebar
+  divider after the native reload button and track that divider during live
+  sidebar resize, while browser extension buttons align to the right side of the
+  top bar without Firefox's native post-tabs spacer gap, the native bookmarks
+  toolbar starts at the panel-strip edge instead of spanning or pushing down
+  Bento or Firefox-native sidebars, Firefox-native sidebars such as Bookmarks
+  remain independently resizable, and the panel-strip scrollbar stays in the
+  bottom inset of the strip with the same visible thickness as the splitter
+  handles and equal top/bottom clearance;
 - sidebar footer icon buttons show Tale UI tooltips on hover;
 - the fixed main content slot button in the panel navigator is separated from
   draggable side-panel buttons by a divider;

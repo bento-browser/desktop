@@ -23,6 +23,7 @@
  *   - titlebar / toolbox background
  *   - window accent (lwtheme baseline)
  *   - notification bars
+ *   - native bookmark menus / Places sidebars that are opened from Bento chrome
  *
  * NOT covered (deliberate — separate iteration):
  *   - scrollbars
@@ -75,8 +76,28 @@
     --button-background-color-hover: var(--neutral-16) !important;
     --button-background-color-active: var(--neutral-20) !important;
     --button-text-color: var(--neutral-90) !important;
+    --button-background-color-primary: var(--color-60) !important;
+    --button-background-color-primary-hover: var(--color-50) !important;
+    --button-background-color-primary-active: var(--color-40) !important;
     --button-text-color-primary: var(--color-60-fg) !important;
+    --button-text-color-primary-hover: var(--color-50-fg) !important;
+    --button-text-color-primary-active: var(--color-40-fg) !important;
+    --button-background-color-ghost: transparent !important;
+    --button-background-color-ghost-hover: var(--neutral-16) !important;
+    --button-background-color-ghost-active: var(--neutral-22) !important;
+    --button-background-color-ghost-disabled: transparent !important;
+    --button-text-color-ghost: var(--neutral-90) !important;
+    --button-text-color-ghost-hover: var(--neutral-16-fg) !important;
+    --button-text-color-ghost-active: var(--neutral-22-fg) !important;
+    --button-text-color-ghost-disabled: var(--neutral-50) !important;
     --color-accent-primary: var(--color-60) !important;
+    --color-accent-attention: var(--color-60) !important;
+    --text-color: var(--neutral-90) !important;
+    --text-color-deemphasized: var(--neutral-70) !important;
+    --text-color-disabled: var(--neutral-50) !important;
+    --background-color-box: var(--neutral-10) !important;
+    --border-color: var(--neutral-20) !important;
+    --border-color-deemphasized: var(--neutral-16) !important;
 
     /* ─── URL bar field (#urlbar) ──────────────────────────────────── */
     --toolbar-field-background-color: var(--neutral-5) !important;
@@ -349,9 +370,323 @@
    * element level so ::part(content) gets an opaque background. */
   *|panel[type='arrow'] {
     --panel-background: var(--arrowpanel-background) !important;
+    --panel-background-color: var(--arrowpanel-background) !important;
     --panel-color: var(--arrowpanel-color) !important;
+    --panel-text-color: var(--arrowpanel-color) !important;
     --panel-border-color: var(--arrowpanel-border-color) !important;
     --panel-border-radius: var(--arrowpanel-border-radius) !important;
+    --button-background-color-ghost: transparent !important;
+    --button-background-color-ghost-hover: var(--arrowpanel-dimmed) !important;
+    --button-background-color-ghost-active: var(--arrowpanel-dimmed-further) !important;
+    --button-background-color-ghost-disabled: transparent !important;
+    --button-text-color-ghost: var(--arrowpanel-color) !important;
+    --button-text-color-ghost-hover: var(--neutral-16-fg) !important;
+    --button-text-color-ghost-active: var(--neutral-22-fg) !important;
+    --button-text-color-ghost-disabled: var(--neutral-50) !important;
+    --text-color: var(--arrowpanel-color) !important;
+    --text-color-deemphasized: var(--neutral-70) !important;
+    --text-color-disabled: var(--neutral-50) !important;
+  }
+
+  /* Native bookmark surfaces use a mix of toolbar menupopups, app-menu
+   * panelviews, and Places sidebars. Pin their inherited text and menu
+   * variables to Tale UI tokens so labels do not fall back to OS menu text
+   * colours on Bento's neutral surfaces. */
+  :is(
+    #BMB_bookmarksPopup,
+    #BMB_bookmarksPopup menupopup,
+    #bookmarksMenuPopup,
+    #bookmarksMenuPopup menupopup,
+    #PlacesToolbarItems menupopup,
+    #placesContext,
+    #placesContext menupopup,
+    #PanelUI-bookmarks,
+    #panelMenu_bookmarksMenu,
+    menupopup[placespopup='true']
+  ) {
+    appearance: none !important;
+    background-color: transparent !important;
+    color: var(--text-color) !important;
+    --panel-background: var(--arrowpanel-background) !important;
+    --panel-background-color: var(--arrowpanel-background) !important;
+    --panel-color: var(--arrowpanel-color) !important;
+    --panel-text-color: var(--arrowpanel-color) !important;
+    --panel-border-color: var(--arrowpanel-border-color) !important;
+    --panel-border-radius: var(--arrowpanel-border-radius) !important;
+    --panel-list-background-color: var(--arrowpanel-background) !important;
+    --panel-list-color: var(--arrowpanel-color) !important;
+    --panel-list-border-color: var(--arrowpanel-border-color) !important;
+    --panel-list-border-radius: var(--arrowpanel-border-radius) !important;
+    --menuitem-border-radius: var(--arrowpanel-menuitem-border-radius) !important;
+    --menuitem-icon-fill: var(--neutral-80) !important;
+    --button-background-color-ghost: transparent !important;
+    --button-background-color-ghost-hover: var(--arrowpanel-dimmed) !important;
+    --button-background-color-ghost-active: var(--arrowpanel-dimmed-further) !important;
+    --button-background-color-ghost-disabled: transparent !important;
+    --button-text-color-ghost: var(--arrowpanel-color) !important;
+    --button-text-color-ghost-hover: var(--neutral-16-fg) !important;
+    --button-text-color-ghost-active: var(--neutral-22-fg) !important;
+    --button-text-color-ghost-disabled: var(--neutral-50) !important;
+    --text-color: var(--arrowpanel-color) !important;
+    --text-color-deemphasized: var(--neutral-70) !important;
+    --text-color-disabled: var(--neutral-50) !important;
+  }
+
+  :is(
+    #BMB_bookmarksPopup,
+    #bookmarksMenuPopup,
+    #PlacesToolbarItems menupopup,
+    #placesContext,
+    menupopup[placespopup='true']
+  )::part(content) {
+    background: var(--arrowpanel-background) !important;
+    color: var(--neutral-16-fg) !important;
+    border-color: var(--arrowpanel-border-color) !important;
+    border-radius: var(--arrowpanel-border-radius) !important;
+    box-shadow: var(--shadow-l) !important;
+  }
+
+  :is(
+      #BMB_bookmarksPopup,
+      #bookmarksMenuPopup,
+      #PlacesToolbarItems menupopup,
+      #placesContext,
+      menupopup[placespopup='true']
+    )
+    :is(menu, menuitem):not([disabled]) {
+    color: var(--neutral-22-fg) !important;
+  }
+
+  :is(
+      #BMB_bookmarksPopup,
+      #bookmarksMenuPopup,
+      #PlacesToolbarItems menupopup,
+      #placesContext,
+      menupopup[placespopup='true']
+    )
+    :is(menu, menuitem)[_moz-menuactive]:not([disabled]) {
+    background-color: var(--arrowpanel-dimmed) !important;
+    color: var(--arrowpanel-color) !important;
+  }
+
+  :is(
+      #BMB_bookmarksPopup,
+      #bookmarksMenuPopup,
+      #PlacesToolbarItems menupopup,
+      #placesContext,
+      menupopup[placespopup='true']
+    )
+    :is(menu, menuitem)[_moz-menuactive]:not([disabled]):active {
+    background-color: var(--arrowpanel-dimmed-further) !important;
+    color: var(--arrowpanel-color) !important;
+  }
+
+  :is(
+      #BMB_bookmarksPopup,
+      #bookmarksMenuPopup,
+      #PlacesToolbarItems menupopup,
+      #placesContext,
+      menupopup[placespopup='true']
+    )
+    :is(menu, menuitem)[disabled] {
+    color: var(--neutral-50) !important;
+  }
+
+  :is(
+      #BMB_bookmarksPopup,
+      #bookmarksMenuPopup,
+      #PlacesToolbarItems menupopup,
+      #placesContext,
+      menupopup[placespopup='true']
+    )
+    .menu-accel {
+    color: var(--neutral-70) !important;
+  }
+
+  :is(
+      #BMB_bookmarksPopup,
+      #bookmarksMenuPopup,
+      #PlacesToolbarItems menupopup,
+      #placesContext,
+      menupopup[placespopup='true']
+    )
+    :is(menu, menuitem)[_moz-menuactive]:not([disabled])
+    .menu-accel {
+    color: currentColor !important;
+  }
+
+  :is(
+    .sidebar-panel,
+    sidebar-main,
+    sidebar-bookmarks,
+    sidebar-bookmark-list,
+    sidebar-panel-header
+  ) {
+    color: var(--text-color) !important;
+    --field-min-height: var(--bento-sidebar-address-row-height, 2rem) !important;
+    --field-padding-block: var(--space-3xs) !important;
+    --field-padding-inline: var(--space-2xs) !important;
+    --field-border-color: var(--neutral-18) !important;
+    --field-radius: var(--bento-sidebar-address-field-radius, var(--radius-s)) !important;
+    --field-bg: var(--neutral-5) !important;
+    --field-color: var(--neutral-90) !important;
+    --field-font-family: var(
+      --text-font-family,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif
+    ) !important;
+    --field-font-size: var(--bento-tab-row-font-size, var(--text-xs-font-size)) !important;
+    --field-focus-border: var(--color-60) !important;
+    --field-focus-glow: inset 0 0 0 1px var(--field-focus-border) !important;
+    --field-placeholder-color: var(--neutral-50) !important;
+    --sidebar-background-color: var(--neutral-5) !important;
+    --sidebar-text-color: var(--text-color) !important;
+    --sidebar-box-color: var(--text-color) !important;
+    --sidebar-box-background: var(--neutral-10) !important;
+    --sidebar-box-border-color: var(--neutral-16) !important;
+    --button-background-color-primary: var(--color-60) !important;
+    --button-background-color-primary-hover: var(--color-50) !important;
+    --button-background-color-primary-active: var(--color-40) !important;
+    --button-text-color-primary: var(--color-60-fg) !important;
+    --button-text-color-primary-hover: var(--color-50-fg) !important;
+    --button-text-color-primary-active: var(--color-40-fg) !important;
+    --button-background-color-ghost: transparent !important;
+    --button-background-color-ghost-hover: var(--neutral-16) !important;
+    --button-background-color-ghost-active: var(--neutral-22) !important;
+    --button-background-color-ghost-disabled: transparent !important;
+    --button-text-color-ghost: var(--text-color) !important;
+    --button-text-color-ghost-hover: var(--neutral-16-fg) !important;
+    --button-text-color-ghost-active: var(--neutral-22-fg) !important;
+    --button-text-color-ghost-disabled: var(--neutral-50) !important;
+    --input-bgcolor: var(--field-bg) !important;
+    --input-color: var(--field-color) !important;
+    --input-border-color: var(--field-border-color) !important;
+    --input-text-min-height: var(--field-min-height) !important;
+    --input-text-background-color: var(--field-bg) !important;
+    --input-text-color: var(--field-color) !important;
+    --input-text-border-color: var(--field-border-color) !important;
+    --input-text-border: 1px solid var(--input-text-border-color) !important;
+    --input-text-border-radius: var(--field-radius) !important;
+    --icon-color: var(--neutral-70) !important;
+  }
+
+  :root[bento-sidebar-addressbar='true']
+    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-switcher-target {
+    display: flex !important;
+    align-items: center !important;
+    -moz-box-align: center !important;
+  }
+
+  :root[bento-sidebar-addressbar='true']
+    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-switcher-target
+    > :is(#sidebar-icon, #sidebar-title, #sidebar-switcher-arrow) {
+    align-self: center !important;
+  }
+
+  :root[bento-sidebar-addressbar='true']
+    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-title,
+  #bookmarksPanel #sidebar-panel-header > [data-l10n-id='sidebar-menu-bookmarks-2'] {
+    display: flex !important;
+    align-items: center !important;
+    font-family: var(
+      --text-font-family,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif
+    ) !important;
+    font-size: var(--label-l-font-size) !important;
+    font-weight: var(--label-font-weight) !important;
+    line-height: var(--bento-icon-size-sm, 1rem) !important;
+  }
+
+  :root[bento-sidebar-addressbar='true']
+    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-title {
+    transform: translateY(1px) !important;
+  }
+
+  :root[bento-sidebar-addressbar='true']
+    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    :is(#sidebar-icon, #sidebar-switcher-arrow) {
+    margin-block: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  #bookmarksPanel #sidebar-search-container {
+    padding: var(--space-3xs) var(--space-3xs) var(--space-2xs) !important;
+  }
+
+  :is(#bookmarksPanel, sidebar-bookmarks) moz-input-search {
+    box-sizing: border-box !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: var(--field-min-height) !important;
+    color: var(--field-color) !important;
+    font-family: var(--field-font-family) !important;
+    font-size: var(--field-font-size) !important;
+    line-height: 1 !important;
+    border-radius: var(--field-radius) !important;
+    --input-text-min-height: var(--field-min-height) !important;
+    --input-text-background-color: var(--field-bg) !important;
+    --input-text-color: var(--field-color) !important;
+    --input-text-border-color: var(--field-border-color) !important;
+    --input-text-border: 1px solid var(--input-text-border-color) !important;
+    --input-text-border-radius: var(--field-radius) !important;
+    --input-text-icon-size: var(--bento-icon-size-sm, 1rem) !important;
+  }
+
+  :is(sidebar-bookmarks, sidebar-panel-header):focus-within {
+    --input-border-color: var(--field-focus-border) !important;
+    --input-text-border-color: var(--field-focus-border) !important;
+  }
+
+  :is(#bookmarksPanel, sidebar-bookmarks) moz-input-search:focus-within {
+    --input-text-border-color: var(--field-focus-border) !important;
+    box-shadow: var(--field-focus-glow) !important;
+  }
+
+  .sidebar-panel {
+    background-color: var(--neutral-5) !important;
+  }
+
+  .sidebar-placesTree {
+    color: var(--neutral-16-fg) !important;
+  }
+
+  .sidebar-placesTreechildren::-moz-tree-cell-text,
+  .sidebar-placesTreechildren::-moz-tree-image,
+  .sidebar-placesTreechildren::-moz-tree-twisty {
+    color: var(--text-color) !important;
+  }
+
+  .sidebar-placesTreechildren::-moz-tree-row(hover) {
+    background-color: var(--neutral-12) !important;
+  }
+
+  .sidebar-placesTreechildren::-moz-tree-row(selected) {
+    background-color: var(--neutral-16) !important;
+  }
+
+  .sidebar-placesTreechildren::-moz-tree-cell-text(selected),
+  .sidebar-placesTreechildren::-moz-tree-image(selected),
+  .sidebar-placesTreechildren::-moz-tree-twisty(selected) {
+    color: var(--text-color) !important;
+  }
+
+  .sidebar-placesTreechildren::-moz-tree-row(selected, focus) {
+    background-color: var(--color-60) !important;
+  }
+
+  .sidebar-placesTreechildren::-moz-tree-cell-text(selected, focus),
+  .sidebar-placesTreechildren::-moz-tree-image(selected, focus),
+  .sidebar-placesTreechildren::-moz-tree-twisty(selected, focus) {
+    color: var(--color-60-fg) !important;
   }
 
   /* The URL bar search-engine menu is a toolbar menupopup, not an arrow

@@ -74,6 +74,7 @@ function MenuApp() {
         contextId: action.contextId,
         anchor: action.anchor,
         items: action.items,
+        placement: action.placement === 'bottom start' ? 'bottom start' : undefined,
       });
     }
     channel.addEventListener('message', onMessage);

@@ -119,9 +119,13 @@ Use this shape for new or changed touchpoints:
   left-edge footer alignment and animation suppression, patches
   `DownloadsButton.getAnchor()`/`releaseAnchor()` so automatic native downloads
   panel opens use a sidebar fallback anchor, hides the stock toolbar
-  `#PanelUI-button`, `#downloads-button`, and `#fxa-toolbar-menu-button`, and
+  `#PanelUI-button`, `#downloads-button`, and `#fxa-toolbar-menu-button`,
   collapses native nav-bar `toolbarspring` gaps while Bento's sidebar
-  addressbar mode is active,
+  addressbar mode is active, and right-aligns the browser extension toolbar
+  buttons with a marked first extension child while hiding the native post-tabs
+  titlebar spacer, and aligns Firefox's native bookmarks toolbar with Bento's
+  panel-strip start edge without pushing Bento or Firefox-native sidebar content
+  down,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -139,6 +143,9 @@ Use this shape for new or changed touchpoints:
   events, native `#urlbar-input` pointer/focus events,
   `#urlbar-container` and `#search-container` chrome CSS,
   `#nav-bar`, `#navigator-toolbox`, `#nav-bar-customization-target`,
+  `#PersonalToolbar`, `#bento-strip-container`, native `#sidebar-title`,
+  native `#sidebar-box`, native `#sidebar-splitter`, native Bookmarks sidebar
+  `moz-input-search`,
   `#unified-extensions-button`, `#fxa-toolbar-menu-button`, native toolbar
   springs, extension browser-action toolbar children, `#back-button`,
   `#forward-button`, `#stop-reload-button`, toolbar geometry,
@@ -208,13 +215,22 @@ Use this shape for new or changed touchpoints:
   splitter competition, using pointer capture and cached drag geometry instead
   of live rect reads while still animating collapsed/expanded sidebar state,
   verify the panel navigator sits flush with the sidebar divider after the
-  native Reload/Stop control and immediately left of the browser extension
-  toolbar buttons, and verify that navigator/extension cluster follows the
-  sidebar divider continuously during sidebar-handle drag instead of jumping on
-  mouseup, verify the expanded sidebar cannot be dragged narrower than the
+  native Reload/Stop control, verify browser extension toolbar buttons align to
+  the right side of the top bar without a post-tabs spacer gap, and verify that
+  the native bookmarks toolbar starts at the panel-strip edge and tracks
+  sidebar resize/collapse without creating a gap above Bento's sidebar address
+  field or Firefox's native Bookmarks sidebar search field, verify Cmd+Shift+B
+  show/hide does not visibly push sidebar contents before correcting, and verify
+  that the native Bookmarks sidebar can be resized from its own right edge
+  independently of the Bento sidebar handle, and that the navigator follows the
+  sidebar divider continuously during
+  sidebar-handle drag instead of jumping on mouseup while extensions remain
+  right-aligned,
+  verify the expanded sidebar cannot be dragged narrower than the
   width where Back/Forward/Reload stop moving left so the divider never appears
   behind those buttons, while the panel-strip scrollbar remains in the bottom
-  inset of the panel strip, verify remaining toolbar buttons, extension buttons, toolbar
+  inset of the panel strip with splitter-matched thickness and equal top/bottom
+  clearance, verify remaining toolbar buttons, extension buttons, toolbar
   customization, titlebar controls, and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark
   snapshots across windows, verify clicking the sidebar
@@ -223,6 +239,9 @@ Use this shape for new or changed touchpoints:
   strip/main content while editing, stays smaller than the centered shortcut
   overlay, and closes after Escape, submit, and outside
   click,
+  verify the native Bookmarks sidebar title uses Tale UI `label-l` typography,
+  its icon/title/chevron are vertically centered, and its search field matches
+  the Bento sidebar address field in light and dark modes,
   verify regular bookmarks outside the "Saved panels" folder fill the sidebar
   star while saved-panel-only bookmarks do not, verify rapid navigation or tab
   switching during a sidebar star toggle does not mutate the stale page, verify

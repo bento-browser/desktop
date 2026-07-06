@@ -81,8 +81,10 @@ const TALE_UI_CSS = findTaleUiCss();
 const SOURCES = [
   'tokens/_colors.css',
   'tokens/_neutrals.css',
+  'tokens/_foreground.css',
   'tokens/_effects.css',
   'tokens/_spacing.css',
+  'tokens/_typography.css',
   'themes/_color-modes.css',
   'themes/_color-themes.css',
   'themes/_neutral-themes.css',

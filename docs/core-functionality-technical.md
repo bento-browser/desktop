@@ -244,10 +244,47 @@ That is the exact sidebar width where `--bento-toolbar-nav-offset` clamps to
 zero. The expanded sidebar min width must use this computed value, not only the
 static token min, otherwise the sidebar divider can keep moving left after
 Back/Forward/Reload have reached their leftmost position and appear underneath
-those buttons. In the same sidebar-addressbar mode, Bento collapses native
-`toolbarspring` children in `#nav-bar-customization-target` so the extension
-cluster and top-toolbar panel navigator sit flush with the sidebar divider after
-Reload/Stop. `#bento-shell-host` keeps a width transition for sidebar
+those buttons. During manual drag, compute and write that effective min width
+before the live resize loop, then reuse the cached value for every drag frame;
+writing `--bento-tab-strip-width-min-effective` on `:root` from
+`syncToolbarNavigationForSidebarWidth()` reintroduces layout-wide invalidation
+and makes sidebar/window resize choppy. In the same sidebar-addressbar mode,
+Bento collapses native
+`toolbarspring` children in `#nav-bar-customization-target` so the top-toolbar
+panel navigator sits flush with the sidebar divider after Reload/Stop. Bento
+marks the first browser extension toolbar child with
+`data-bento-extension-toolbar-anchor='true'` and gives it
+`margin-inline-start: auto` so the extension cluster aligns to the right side of
+the top bar instead of staying adjacent to the navigator. It also hides
+`#nav-bar > .titlebar-spacer[type='post-tabs']`; otherwise Firefox keeps a 40px
+native titlebar spacer after the extension buttons and creates an empty right
+edge gap. `attachBookmarksToolbarAlignment()` measures `#bento-strip-container`
+and writes `--bento-bookmarks-toolbar-offset` on `#PersonalToolbar` so Firefox's
+native bookmarks toolbar starts at the panel-strip edge instead of spanning over
+the sidebar. It also measures `#PersonalToolbar` height and writes
+`--bento-bookmarks-toolbar-height` so `#bento-shell-host`,
+`#bento-shell-splitter`, `#bento-shell-splitter-affordance`, `#sidebar-main`,
+`#sidebar-launcher-splitter`, `#sidebar-box`, and `#sidebar-splitter`
+counter-offset that height; otherwise Firefox pushes the entire `#browser` row
+down and leaves a blank gap above Bento's sidebar address field or Firefox's
+native Bookmarks sidebar search field whenever the bookmarks toolbar is
+visible. Observe `#PersonalToolbar` `collapsed`/`hidden` mutations and update
+the height synchronously before the next paint; relying only on ResizeObserver
+lets Cmd+Shift+B show/hide animation shift the sidebar first and correct it
+after the animation settles. Also override Firefox's native
+`#PersonalToolbar` vertical slide transition in Bento mode and collapse
+visibility immediately when `[collapsed]`; otherwise Firefox presents
+intermediate toolbar heights that move sidebars before the compensation can
+settle. During manual sidebar resize, cache the strip-to-sidebar inset before
+the live resize loop and update the bookmark offset from the drag width; do not
+read strip geometry every drag frame. `attachNativeSidebarSplitterFeedback()`
+takes over Firefox's `#sidebar-splitter` in the same mode so native sidebars
+such as Bookmarks can be resized independently of the Bento sidebar. It uses the
+same pointer-capture, rAF-batched width writer pattern, persists `#sidebar-box`
+width through XUL store, and gives the native splitter a Bento-sized hover
+target; leaving Firefox's narrow transparent XUL splitter alone makes the
+Bookmarks panel feel fixed next to Bento's larger sidebar handle.
+`#bento-shell-host` keeps a width transition for sidebar
 collapse/expand, but `attachSidebarSplitterFeedback()` must add
 `bento-shell-sidebar-resizing` during manual splitter drag so that transition is
 disabled while drag writes live `width` values; otherwise the handle feels
@@ -265,14 +302,16 @@ after the native splitter path is disabled. Use pointer events with
 `setPointerCapture`, matching Bento's panel splitters; window-level
 `mousemove` is more prone to jitter when the cursor crosses remote browser
 surfaces. While dragging, disable pointer events on `#bento-shell-frame`, move
-the native nav buttons and every visible toolbar sibling after
-`#stop-reload-button` with the same transform instead of live margin layout, and
-set `--bento-toolbar-nav-offset` on `#nav-bar-customization-target` rather than
-`:root` so each frame invalidates less chrome CSS. The later-sibling transform is
-required because the top-toolbar panel navigator and extension buttons sit after
-Reload; moving only Back/Forward/Reload leaves the navigator/extensions behind
-until mouseup, when the settled margin layout jumps into place. Sidebar chrome
-that follows the edge (`#bento-sidebar-chrome-divider` and
+the native nav buttons and `#bento-panel-nav` with the same transform instead of
+live margin layout, and set `--bento-toolbar-nav-offset` on
+`#nav-bar-customization-target` rather than `:root` so each frame invalidates
+less chrome CSS. The panel navigator transform is required because it sits after
+Reload; moving only Back/Forward/Reload leaves the navigator behind until
+mouseup, when the settled margin layout jumps into place. Do not transform the
+browser extension buttons in this path: the extension anchor's auto margin keeps
+that cluster pinned to the right side of the top bar while the navigator follows
+the sidebar divider. Sidebar chrome that follows the edge
+(`#bento-sidebar-chrome-divider` and
 `--bento-toolbar-nav-offset`) must use the same cached start-of-drag geometry
 plus live width delta; its `ResizeObserver` callbacks must ignore
 `bento-sidebar-resizing`.
@@ -285,14 +324,23 @@ point as Back/Forward/Reload instead of sliding underneath them. Keep
 `:root[bento-sidebar-resizing='true']` and
 `:root[bento-window-resizing='true']`; otherwise a collapsed-width change can
 make live sidebar or window resize inherit the collapse animation path and become
-choppy.
+choppy. The bottom panel-strip scrollbar derives `--bento-scrollbar-thickness`
+from twice `--bento-splitter-indicator-radius` and uses
+`--bento-strip-scrollbar-gap` for both its bottom inset and the reserved
+clearance above it; this keeps the scrollbar visually as thin as the splitter
+handles and centered between the panels and the bottom window edge.
 `bento-chrome-theme.css` keeps the native top toolbar on the same
 neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
 removes Firefox's toolbox bottom border so no separator line appears between
 the top toolbar and content area. `attachSidebarChromeDivider()` overlays a
 fixed one-pixel divider at `#bento-shell-host`'s right edge from the top of the
 chrome viewport downward, so the native navigation controls remain visually
-inside the sidebar segment while resizing.
+inside the sidebar segment while resizing. The same chrome theme keeps Firefox's
+native Bookmarks sidebar visually aligned with Bento by sizing the native
+`#sidebar-title` with Tale UI `label-l` typography, vertically centering the
+header icon/title/chevron, and mapping `moz-input-search` through the same
+height, border, radius, typography, and focus-ring tokens as the Bento sidebar
+address field instead of Firefox's default input colours.
 
 The floating overlay remains implemented by
 `extensions/bento-shell/src/address-bar/main.tsx` and
@@ -1824,6 +1872,10 @@ Load-bearing details:
   `cssCodeSplit: false`, so unrelated entry CSS such as `panel-newtab.css` can
   arrive later in the shared `style.css` bundle and otherwise override plain
   transparent background declarations.
+- Sidebar-owned menus that need to overhang the collapsed rail must route
+  through the chrome-mounted menu overlay, not an iframe-local `Menu.Popover`.
+  The sidebar New menu uses `BENTO_SIDEBAR_CONTEXT_MENU` with
+  `placement: 'bottom start'` for this reason.
 - Do not add an app-wide surface to menu overlay roots. If an overlay needs a
   content-area scrim, it should be drawn by that overlay's dialog/backdrop
   component, not by the page or chrome host background. If it is a modal scrim,
@@ -2228,10 +2280,11 @@ Top-row splits and 2x2 groups:
   toolbar:
   `--bento-panel-nav-button-size` uses `--bento-control-size-sm`, matching Tale
   UI `IconButton size="sm"`, and `#bento-panel-nav` is mounted before the first
-  extension toolbar child so it sits immediately left of browser extension
-  buttons. Bento collapses native toolbar springs in sidebar-addressbar mode so
-  that navigator/extension cluster starts at the sidebar divider instead of
-  drifting right behind an empty URL-bar gap. Keep grouped favicon cells
+  extension toolbar child so it stays after Reload/Stop while the first
+  extension child becomes the right-aligned toolbar anchor. Bento collapses
+  native toolbar springs in sidebar-addressbar mode so that the navigator starts
+  at the sidebar divider instead of drifting right behind an empty URL-bar gap.
+  Keep grouped favicon cells
   small enough to fit inside that fixed 24px slot; increasing grouped favicon
   dimensions without changing the slot causes the navigator to overflow or
   drift out of alignment with the sidebar footer.

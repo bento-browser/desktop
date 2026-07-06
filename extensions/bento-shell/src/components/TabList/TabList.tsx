@@ -4,7 +4,6 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@tale-ui/react/button';
 import { Icon } from '@tale-ui/react/icon';
 import { IconButton } from '@tale-ui/react/icon-button';
-import { Menu } from '@tale-ui/react/menu';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
 import X from 'lucide-react/dist/esm/icons/x';
@@ -27,8 +26,7 @@ export interface TabListProps {
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onCloseSelected?: (ids: number[]) => void;
-  onCreateTab: () => void;
-  onCreatePanel: () => void;
+  onOpenNewMenu: (anchorRect: DOMRect) => void;
   onOpenInSidePanel: (id: number) => void;
   onTabContextMenu?: (
     id: number,
@@ -169,11 +167,10 @@ interface TabListPaneProps {
   tabsById: ReturnType<typeof useTabsStore.getState>['byId'];
   activeId: number | null;
   selectedIds: Set<number>;
-  onCreateTab: () => void;
-  onCreatePanel: () => void;
   onSelectClick: (id: number, event: React.MouseEvent<HTMLDivElement>) => void;
   onClose: (id: number) => void;
   onOpenInSidePanel: (id: number) => void;
+  onOpenNewMenu: (anchorRect: DOMRect) => void;
   onTabContextMenu?: (
     id: number,
     event: React.MouseEvent<HTMLDivElement>,
@@ -214,11 +211,10 @@ function TabListPane({
   tabsById,
   activeId,
   selectedIds,
-  onCreateTab,
-  onCreatePanel,
   onSelectClick,
   onClose,
   onOpenInSidePanel,
+  onOpenNewMenu,
   onTabContextMenu,
   onFolderContextMenu,
   onSelectionContextMenu,
@@ -266,11 +262,9 @@ function TabListPane({
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
-  const newMenuPopoverRef = useRef<HTMLElement>(null);
   const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
   const folderToggleAnchorRef = useRef<{ folderId: string; offsetTop: number } | null>(null);
   const suppressAutoScrollRowsRef = useRef<unknown | null>(null);
-  const [newMenuOpen, setNewMenuOpen] = useState(false);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
   // means "drop at end"). Null when the cursor isn't over a valid drop
@@ -860,24 +854,6 @@ function TabListPane({
     };
   }, [onCloseSearch, searchOpen, searchQuery]);
 
-  useEffect(() => {
-    if (!newMenuOpen) return;
-    const closeIfOutsideNewMenu = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (newMenuTriggerRef.current?.contains(target)) return;
-      if (newMenuPopoverRef.current?.contains(target)) return;
-      setNewMenuOpen(false);
-    };
-    const closeOnWindowBlur = () => setNewMenuOpen(false);
-    document.addEventListener('pointerdown', closeIfOutsideNewMenu, true);
-    window.addEventListener('blur', closeOnWindowBlur);
-    return () => {
-      document.removeEventListener('pointerdown', closeIfOutsideNewMenu, true);
-      window.removeEventListener('blur', closeOnWindowBlur);
-    };
-  }, [newMenuOpen]);
-
   const renderSearchButton = () => (
     <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
       <IconButton
@@ -892,28 +868,21 @@ function TabListPane({
     </span>
   );
 
-  const renderNewMenu = () => (
-    <Menu.Root size="sm" isOpen={newMenuOpen} onOpenChange={setNewMenuOpen}>
-      <Menu.Trigger
-        ref={newMenuTriggerRef}
-        className="tale-button tale-button--ghost tale-button--sm bento-tab-list__new-action-button"
-        data-bento-menu-open={newMenuOpen ? 'true' : undefined}
-        aria-label="New"
-      >
-        <Icon icon={Plus} size="sm" />
-        <span className="bento-tab-list__new-action-label">New</span>
-      </Menu.Trigger>
-      <Menu.Popover ref={newMenuPopoverRef} placement="bottom start" offset={4}>
-        <Menu.MenuList aria-label="New">
-          <Menu.Item id="new-tab" textValue="New tab" onAction={onCreateTab}>
-            New tab
-          </Menu.Item>
-          <Menu.Item id="new-panel" textValue="New panel" onAction={onCreatePanel}>
-            New panel
-          </Menu.Item>
-        </Menu.MenuList>
-      </Menu.Popover>
-    </Menu.Root>
+  const renderNewButton = () => (
+    <Button
+      variant="ghost"
+      size="sm"
+      ref={newMenuTriggerRef}
+      className="bento-tab-list__new-action-button"
+      aria-label="New"
+      onPress={() => {
+        const rect = newMenuTriggerRef.current?.getBoundingClientRect();
+        if (rect) onOpenNewMenu(rect);
+      }}
+    >
+      <Icon icon={Plus} size="sm" />
+      <span className="bento-tab-list__new-action-label">New</span>
+    </Button>
   );
 
   const renderSearchOverlay = (filtering = false) => (
@@ -1061,7 +1030,7 @@ function TabListPane({
                     style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
                   >
                     <div className="bento-tab-list__new-actions">
-                      {renderNewMenu()}
+                      {renderNewButton()}
                       {renderSearchButton()}
                       {searchOpen && renderSearchOverlay()}
                     </div>
@@ -1160,8 +1129,7 @@ export function TabList({
   onActivate,
   onClose,
   onCloseSelected,
-  onCreateTab,
-  onCreatePanel,
+  onOpenNewMenu,
   onOpenInSidePanel,
   onTabContextMenu,
   onFolderContextMenu,
@@ -1467,11 +1435,10 @@ export function TabList({
             tabsById={tabsById}
             activeId={activeId}
             selectedIds={selectedIds}
-            onCreateTab={onCreateTab}
-            onCreatePanel={onCreatePanel}
             onSelectClick={handleSelectClick}
             onClose={onClose}
             onOpenInSidePanel={onOpenInSidePanel}
+            onOpenNewMenu={onOpenNewMenu}
             onTabContextMenu={onTabContextMenu}
             onFolderContextMenu={onFolderContextMenu}
             onSelectionContextMenu={handleSelectionContextMenu}
@@ -1499,11 +1466,10 @@ export function TabList({
           tabsById={tabsById}
           activeId={activeId}
           selectedIds={selectedIds}
-          onCreateTab={onCreateTab}
-          onCreatePanel={onCreatePanel}
           onSelectClick={handleSelectClick}
           onClose={onClose}
           onOpenInSidePanel={onOpenInSidePanel}
+          onOpenNewMenu={onOpenNewMenu}
           onTabContextMenu={onTabContextMenu}
           onFolderContextMenu={onFolderContextMenu}
           onSelectionContextMenu={handleSelectionContextMenu}

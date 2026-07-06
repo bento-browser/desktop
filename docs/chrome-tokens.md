@@ -40,8 +40,10 @@ The generator copies these files verbatim, in this order:
 ```
 tokens/_colors.css        →  --brand-X primitives + per-hue scales
 tokens/_neutrals.css      →  --neutral-{cool,warm,…}-X scales
+tokens/_foreground.css    →  paired --color-X-fg / --neutral-X-fg text tokens
 tokens/_effects.css       →  --radius-X, --shadow-X, --scrim-X
 tokens/_spacing.css       →  --space-X
+tokens/_typography.css    →  --text-s-font-size, --text-font-weight, …
 themes/_color-modes.css   →  light/dark @media flips for --color-X
 themes/_color-themes.css  →  .color-red, .color-blue, … overrides
 themes/_neutral-themes.css→  .neutral-cool, .neutral-warm, … overrides
