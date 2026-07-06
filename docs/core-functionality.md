@@ -229,10 +229,11 @@ and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface. The native
-top URL/search field, stock toolbar app-menu button, and stock toolbar downloads
-button are hidden in normal Bento windows while the remaining toolbar buttons
-and native window controls remain visible on the same background as the
-sidebar, without a bottom separator line. The sidebar's right divider extends
+top URL/search field, stock toolbar app-menu button, stock toolbar downloads
+button, and stock toolbar Account menu are hidden in normal Bento windows while
+the remaining toolbar buttons and native window controls remain visible on the
+same background as the sidebar, without a bottom separator line. The sidebar's
+right divider extends
 through the native top toolbar to the top of the window, so the native Back,
 Forward, and Reload/Stop controls sit on the sidebar side of that divider while
 tracking the sidebar edge as the sidebar is resized. In collapsed sidebar mode,
@@ -427,8 +428,10 @@ The intended behavior is:
 - the sidebar's New menu remains reachable when the sidebar is collapsed;
 - Firefox's native app menu and downloads panel remain reachable from the
   sidebar footer;
-- panel navigator controls use the same compact sizing and bottom-edge rhythm as
-  the sidebar footer controls;
+- panel navigator controls sit in the native top toolbar immediately left of the
+  browser extension buttons, flush with the sidebar divider after the native
+  reload button and tracking that divider during live sidebar resize, while the
+  panel-strip scrollbar stays in the bottom inset of the strip;
 - sidebar footer icon buttons show Tale UI tooltips on hover;
 - the fixed main content slot button in the panel navigator is separated from
   draggable side-panel buttons by a divider;

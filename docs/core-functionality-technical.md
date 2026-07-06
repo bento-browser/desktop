@@ -237,7 +237,10 @@ not enable Firefox's native `sidebar.verticalTabs`. `bento-shell-mount.js`
 measures `#bento-shell-host`, `#nav-bar-customization-target`, and the native
 Back/Forward/Stop-Reload controls, then writes `--bento-toolbar-nav-offset` so
 the native navigation cluster tracks the sidebar's right edge while the sidebar
-is resized. `#bento-shell-host` keeps a width transition for sidebar
+is resized. In the same sidebar-addressbar mode, Bento collapses native
+`toolbarspring` children in `#nav-bar-customization-target` so the extension
+cluster and top-toolbar panel navigator sit flush with the sidebar divider after
+Reload/Stop. `#bento-shell-host` keeps a width transition for sidebar
 collapse/expand, but `attachSidebarSplitterFeedback()` must add
 `bento-shell-sidebar-resizing` during manual splitter drag so that transition is
 disabled while drag writes live `width` values; otherwise the handle feels
@@ -255,12 +258,17 @@ after the native splitter path is disabled. Use pointer events with
 `setPointerCapture`, matching Bento's panel splitters; window-level
 `mousemove` is more prone to jitter when the cursor crosses remote browser
 surfaces. While dragging, disable pointer events on `#bento-shell-frame`, move
-the native nav buttons with a transform instead of live margin layout, and set
-`--bento-toolbar-nav-offset` on `#nav-bar-customization-target` rather than
-`:root` so each frame invalidates less chrome CSS. Sidebar chrome that follows
-the edge (`#bento-sidebar-chrome-divider` and `--bento-toolbar-nav-offset`) must
-use the same cached start-of-drag geometry plus live width delta; its
-`ResizeObserver` callbacks must ignore `bento-sidebar-resizing`.
+the native nav buttons and every visible toolbar sibling after
+`#stop-reload-button` with the same transform instead of live margin layout, and
+set `--bento-toolbar-nav-offset` on `#nav-bar-customization-target` rather than
+`:root` so each frame invalidates less chrome CSS. The later-sibling transform is
+required because the top-toolbar panel navigator and extension buttons sit after
+Reload; moving only Back/Forward/Reload leaves the navigator/extensions behind
+until mouseup, when the settled margin layout jumps into place. Sidebar chrome
+that follows the edge (`#bento-sidebar-chrome-divider` and
+`--bento-toolbar-nav-offset`) must use the same cached start-of-drag geometry
+plus live width delta; its `ResizeObserver` callbacks must ignore
+`bento-sidebar-resizing`.
 Manual verification for this path should compare sidebar-handle drag against
 panel-splitter drag: both should track the pointer without visible stutter, while
 sidebar collapse/expand still uses the normal width transition. Keep
@@ -680,7 +688,7 @@ adds `audible` and `muted` to each `panels/sync` panel entry and re-emits
 `panels/sync` when a panel tab's audio state changes; the shell forwards that
 through `BENTO_PANELS`, and `bento-shell-mount.js` mirrors it in
 `currentPanelAudioByTabId` for the chrome-injected header button beside Reload.
-The bottom panel navigator also consumes the same panel metadata. Normal and
+The top-toolbar panel navigator also consumes the same panel metadata. Normal and
 grouped side-panel nav buttons toggle `.bento-panel-nav__icon--audible` and
 their Lucide music-note particle overlay when any contained panel is
 `audible && !muted`; this must stay a metadata update on reused nav buttons,
@@ -1094,10 +1102,11 @@ Bento does not reimplement Firefox's app menu in React. The native menu keeps
 owning sign-in state, update/menu-message banners, subviews, extension entries,
 shortcuts, and Firefox command handlers. Bento also keeps the native downloads
 panel as the source of truth for download item actions, blocked-download flows,
-private-download prompts, and download history. `bento-chrome-theme.css` hides
-the stock `#PanelUI-button`, `#downloads-button`, and
-`#wrapper-downloads-button` while Bento's sidebar-addressbar chrome mode is
-active so the footer buttons are the visible entry points.
+private-download prompts, and download history. Bento hides the stock
+`#PanelUI-button`, `#downloads-button`, `#wrapper-downloads-button`, and
+`#fxa-toolbar-menu-button` while Bento's sidebar-addressbar chrome mode is
+active so the footer buttons are the visible app/download entry points and the
+native Account menu does not occupy the top toolbar.
 
 ## Manual Browser Session Merge
 
@@ -2206,10 +2215,14 @@ Top-row splits and 2x2 groups:
   differences do not change the outer slot. Dimensional nav animation makes the
   navigator row jump during those layout operations even when favicon metadata is
   patched in place.
-- Panel navigator button size should track the sidebar footer controls:
+- Panel navigator button size should stay compact enough for the native top
+  toolbar:
   `--bento-panel-nav-button-size` uses `--bento-control-size-sm`, matching Tale
-  UI `IconButton size="sm"`, and `#bento-panel-nav` uses the same `space-2xs`
-  block/inline padding as `.bento-shell-app__footer`. Keep grouped favicon cells
+  UI `IconButton size="sm"`, and `#bento-panel-nav` is mounted before the first
+  extension toolbar child so it sits immediately left of browser extension
+  buttons. Bento collapses native toolbar springs in sidebar-addressbar mode so
+  that navigator/extension cluster starts at the sidebar divider instead of
+  drifting right behind an empty URL-bar gap. Keep grouped favicon cells
   small enough to fit inside that fixed 24px slot; increasing grouped favicon
   dimensions without changing the slot causes the navigator to overflow or
   drift out of alignment with the sidebar footer.

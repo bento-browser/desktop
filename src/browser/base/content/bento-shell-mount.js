@@ -222,6 +222,15 @@
         --bento-splitter-hit-half: 7px;
         --bento-splitter-indicator-radius: 3px;
         --bento-panel-gap: var(--bento-splitter-hit-size);
+        --bento-panel-nav-button-size: var(--bento-control-size-sm);
+        --bento-panel-nav-favicon-size: var(--bento-icon-size-sm);
+        --bento-panel-nav-height: calc(
+          var(--bento-panel-nav-button-size) + var(--space-xs)
+        );
+        --bento-strip-scrollbar-row-height: calc(
+          var(--bento-scrollbar-thickness) + var(--space-4xs)
+        );
+        --bento-strip-controls-height: var(--bento-strip-scrollbar-row-height);
       }
       #tabbrowser-tabpanels.bento-panel-shadows-disabled,
       #bento-strip-container.bento-panel-shadows-disabled {
@@ -266,9 +275,19 @@
       :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
         margin-inline-start: var(--bento-toolbar-nav-offset, 0px) !important;
       }
+      :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > toolbarspring {
+        display: none !important;
+        visibility: collapse !important;
+      }
+      :root[bento-sidebar-addressbar='true'] #fxa-toolbar-menu-button,
+      :root[bento-sidebar-addressbar='true'] #wrapper-fxa-toolbar-menu-button {
+        display: none !important;
+        visibility: collapse !important;
+      }
       :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button,
       :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #forward-button,
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #stop-reload-button {
+      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #stop-reload-button,
+      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #stop-reload-button ~ * {
         transform: translateX(var(--bento-toolbar-nav-offset, 0px));
         will-change: transform;
       }
@@ -524,26 +543,14 @@
          internal padding so panel content and direct shadows clip
          together at the scrollport edge. */
       /* The strip is wrapped in a vbox container by setupPanelNavigator
-         so we can place the navigator bar immediately below it. The
-         strip itself is still horizontally scrollable but the native
-         scrollbar is hidden — the navigator IS the visible scroll
-         affordance (favicons + cycle buttons + active marker). */
+         so the custom bottom scrollbar can be overlaid in a stable
+         position. The favicon navigator itself is mounted in the top
+         toolbar beside the browser extension buttons. */
       #bento-strip-container {
         display: flex;
         flex-direction: column;
         flex: 1 1 0%;
         min-width: 0;
-        --bento-panel-nav-button-size: var(--bento-control-size-sm);
-        --bento-panel-nav-favicon-size: var(--bento-icon-size-sm);
-        --bento-panel-nav-height: calc(
-          var(--bento-panel-nav-button-size) + var(--space-xs)
-        );
-        --bento-strip-scrollbar-row-height: calc(
-          var(--bento-scrollbar-thickness) + var(--space-4xs)
-        );
-        --bento-strip-controls-height: calc(
-          var(--bento-panel-nav-height) + var(--bento-strip-scrollbar-row-height)
-        );
         position: relative;
         z-index: 1;
         overflow: visible;
@@ -563,12 +570,14 @@
          transitions) so the user sees a STATIC fade — no panel
          sliding into place during fade-in. */
       #tabbrowser-tabpanels,
-      #bento-strip-container {
+      #bento-strip-container,
+      #bento-panel-nav {
         transition: opacity var(--bento-duration-fast, 140ms)
           var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1));
       }
       #tabbrowser-tabpanels.bento-workspace-switching,
-      #bento-strip-container.bento-workspace-switching {
+      #bento-strip-container.bento-workspace-switching,
+      #bento-panel-nav.bento-workspace-switching {
         opacity: 0;
       }
       /* Suppress layout transitions while the workspace strip is being
@@ -587,15 +596,16 @@
       #tabbrowser-tabpanels.bento-workspace-switching > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-workspace-switching > [data-bento-panel-tab-id],
       #tabbrowser-tabpanels.bento-workspace-switching > .split-view-splitter,
-      #bento-strip-container.bento-workspace-stabilizing .bento-panel-nav__icon,
-      #bento-strip-container.bento-workspace-stabilizing .bento-panel-nav__list,
-      #bento-strip-container.bento-workspace-switching .bento-panel-nav__icon,
-      #bento-strip-container.bento-workspace-switching .bento-panel-nav__list {
+      #bento-panel-nav.bento-workspace-stabilizing .bento-panel-nav__icon,
+      #bento-panel-nav.bento-workspace-stabilizing .bento-panel-nav__list,
+      #bento-panel-nav.bento-workspace-switching .bento-panel-nav__icon,
+      #bento-panel-nav.bento-workspace-switching .bento-panel-nav__list {
         transition: none !important;
       }
       @media (prefers-reduced-motion: reduce) {
         #tabbrowser-tabpanels,
-        #bento-strip-container {
+        #bento-strip-container,
+        #bento-panel-nav {
           transition: none;
         }
       }
@@ -622,9 +632,12 @@
       #bento-side-panel-host::-webkit-scrollbar {
         display: none;
       }
-      #bento-strip-container.bento-no-side-panels > #bento-panel-nav,
       #bento-strip-container.bento-no-side-panels > #bento-strip-scrollbar {
         display: none !important;
+      }
+      #bento-panel-nav.bento-panel-nav--hidden {
+        display: none !important;
+        visibility: collapse !important;
       }
       #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
         overflow: visible;
@@ -663,15 +676,15 @@
         box-shadow: var(--bento-panel-frame-outline-shadow);
       }
 
-      /* Custom always-visible horizontal scrollbar. Sits between the
-         panel strip and the favicon navigator. A divider-colored rail
-         sits behind the thumb so it lines up visually with the
-         sidebar footer divider. */
+      /* Custom always-visible horizontal scrollbar. Stays in the
+         bottom strip position while the favicon navigator lives in the
+         top toolbar. A divider-colored rail sits behind the thumb so it
+         lines up visually with the sidebar footer divider. */
       #bento-strip-scrollbar {
         position: absolute;
         left: var(--space-2xs);
         right: var(--space-2xs);
-        bottom: calc(var(--bento-panel-nav-height) + var(--space-4xs));
+        bottom: var(--space-2xs);
         z-index: 20;
         height: var(--bento-scrollbar-thickness);
         margin: 0;
@@ -710,21 +723,24 @@
         cursor: grabbing;
       }
 
-      /* Panel navigator bar. Sits at the bottom of the strip area.
+      /* Panel navigator bar. Mounted in the top toolbar immediately
+         before the browser extension buttons.
          [◀] [favicon] [favicon] [favicon] [▶]
-         Active item (whichever panel is currently leftmost in the
-         strip) gets the accent border + tinted background. */
+         Active item gets the accent border + tinted background. */
       #bento-panel-nav {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        position: relative;
         z-index: 20;
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: var(--space-2xs);
-        padding-block: var(--space-2xs);
+        align-self: center;
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: 42vw;
+        margin-inline-start: var(--space-2xs);
+        margin-inline-end: 0;
+        padding-block: var(--space-4xs);
         padding-inline: var(--space-2xs);
         box-sizing: border-box;
         min-height: var(--bento-panel-nav-height);
@@ -11979,6 +11995,63 @@
     }
   }
 
+  function isExtensionToolbarChild(el) {
+    if (!el || el.id === 'bento-panel-nav') return false;
+    const id = el.id || '';
+    if (id === 'unified-extensions-button' || id === 'wrapper-unified-extensions-button') {
+      return true;
+    }
+    if (id.endsWith('-browser-action')) return true;
+    if (el.classList?.contains('webextension-browser-action')) return true;
+    return !!el.querySelector?.(
+      '#unified-extensions-button, .webextension-browser-action, [id$="-browser-action"]',
+    );
+  }
+
+  function getPanelNavigatorToolbarTarget() {
+    return (
+      document.getElementById('nav-bar-customization-target') ||
+      document.getElementById('nav-bar')
+    );
+  }
+
+  function getPanelNavigatorToolbarAnchor(target) {
+    if (!target?.children) return null;
+    for (const child of Array.from(target.children)) {
+      if (isExtensionToolbarChild(child)) return child;
+    }
+    return null;
+  }
+
+  function placePanelNavigatorInToolbar(nav) {
+    const target = getPanelNavigatorToolbarTarget();
+    if (!target || !nav) return false;
+    const anchor = getPanelNavigatorToolbarAnchor(target);
+    if (nav.parentNode === target) {
+      if (anchor && nav.nextSibling === anchor) return true;
+      if (!anchor && nav === target.lastElementChild) return true;
+    }
+    target.insertBefore(nav, anchor || null);
+    return true;
+  }
+
+  function mountPanelNavigator(nav, fallbackParent) {
+    if (placePanelNavigatorInToolbar(nav)) return;
+    if (fallbackParent && nav.parentNode !== fallbackParent) fallbackParent.appendChild(nav);
+  }
+
+  function watchPanelNavigatorToolbarPlacement(nav, fallbackParent) {
+    const mount = () => mountPanelNavigator(nav, fallbackParent);
+    window.addEventListener('load', mount, { once: true });
+    window.addEventListener('aftercustomization', mount, true);
+
+    const target = getPanelNavigatorToolbarTarget();
+    if (!target || !window.MutationObserver) return;
+    const observer = new MutationObserver(mount);
+    observer.observe(target, { childList: true });
+    nav._bentoToolbarPlacementObserver = observer;
+  }
+
   function setupPanelNavigator() {
     const host = document.getElementById('bento-side-panel-host');
     if (!host) return;
@@ -11997,6 +12070,8 @@
 
     const nav = document.createElementNS(HTML_NS, 'div');
     nav.id = 'bento-panel-nav';
+    nav.setAttribute('role', 'toolbar');
+    nav.setAttribute('aria-label', 'Panel navigator');
 
     const prevBtn = document.createElementNS(HTML_NS, 'button');
     prevBtn.type = 'button';
@@ -12029,7 +12104,8 @@
     nav.appendChild(list);
     nav.appendChild(addBtn);
     nav.appendChild(nextBtn);
-    wrap.appendChild(nav);
+    mountPanelNavigator(nav, wrap);
+    watchPanelNavigatorToolbarPlacement(nav, wrap);
 
     // Live updates: tab switches refresh the main favicon. Tab attribute
     // changes also patch the last panel payload so panel nav favicons keep up
@@ -12039,13 +12115,12 @@
     // manual scroll doesn't override the user's selection. The custom
     // scrollbar's thumb position DOES update on scroll though.
     host.addEventListener('scroll', updateStripScrollbar, { passive: true });
-    // Shift+wheel panel cycling is attached to the strip CONTAINER, not
-    // just the panel host — so the gesture also works when the cursor
-    // is over the custom scrollbar (#bento-strip-scrollbar) or the
-    // favicon navigator (#bento-panel-nav) underneath the panels.
-    // Those are siblings of the host inside #bento-strip-container, so
-    // a listener on the host alone never sees their wheel events.
+    // Shift+wheel panel cycling is attached to the strip CONTAINER for
+    // the bottom scrollbar and to the toolbar navigator for its top
+    // controls. A listener on the panel host alone never sees either
+    // surface.
     wrap.addEventListener('wheel', onPanelStripWheel, { capture: true, passive: false });
+    nav.addEventListener('wheel', onPanelStripWheel, { capture: true, passive: false });
     // Chrome-wide horizontal-wheel intercept: any side-scroll over the
     // chrome (sidebar, panel headers, between-panel gaps) scrolls the
     // panel strip, so the user always has a reliable surface to rest
@@ -12287,9 +12362,13 @@
   function setNoSidePanelsMode(enabled) {
     const container = document.getElementById('bento-strip-container');
     const host = document.getElementById('bento-side-panel-host');
+    const nav = document.getElementById('bento-panel-nav');
     const tabpanels = window.gBrowser?.tabpanels;
     if (container) {
       container.classList.toggle('bento-no-side-panels', enabled);
+    }
+    if (nav) {
+      nav.classList.toggle('bento-panel-nav--hidden', enabled);
     }
     if (enabled) {
       if (host) host.scrollLeft = 0;
@@ -16744,8 +16823,10 @@
   const WORKSPACE_STABILIZE_MS = 260;
   function clearWorkspaceFadeClasses() {
     const sc = document.getElementById('bento-strip-container');
+    const nav = document.getElementById('bento-panel-nav');
     const tp = window.gBrowser?.tabpanels;
     if (sc) sc.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
+    if (nav) nav.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (tp) tp.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (__workspaceFadeCleanupTimer) {
       clearTimeout(__workspaceFadeCleanupTimer);
@@ -16754,10 +16835,13 @@
   }
   function cancelWorkspaceFadeForMainOnly() {
     const sc = document.getElementById('bento-strip-container');
+    const nav = document.getElementById('bento-panel-nav');
     const tp = window.gBrowser?.tabpanels;
     const hadFadeClass =
       sc?.classList.contains('bento-workspace-switching') ||
       sc?.classList.contains('bento-workspace-stabilizing') ||
+      nav?.classList.contains('bento-workspace-switching') ||
+      nav?.classList.contains('bento-workspace-stabilizing') ||
       tp?.classList.contains('bento-workspace-switching') ||
       tp?.classList.contains('bento-workspace-stabilizing');
     const hadTimer =
@@ -16779,8 +16863,9 @@
   }
   function setWorkspaceFadeClasses(enabled) {
     const stripContainer = document.getElementById('bento-strip-container');
+    const nav = document.getElementById('bento-panel-nav');
     const tp = window.gBrowser?.tabpanels;
-    for (const el of [stripContainer, tp]) {
+    for (const el of [stripContainer, nav, tp]) {
       if (!el) continue;
       el.classList.toggle('bento-workspace-switching', enabled);
       el.classList.toggle('bento-workspace-stabilizing', enabled);
@@ -16834,6 +16919,9 @@
       __workspaceFadeWatchdog = null;
       if (
         (stripContainer && stripContainer.classList.contains('bento-workspace-switching')) ||
+        (document
+          .getElementById('bento-panel-nav')
+          ?.classList.contains('bento-workspace-switching')) ||
         (tp && tp.classList.contains('bento-workspace-switching'))
       ) {
         console.warn(
@@ -16896,7 +16984,9 @@
         // The watchdog above is the belt; this `finally` is the
         // suspenders.
         requestAnimationFrame(() => {
+          const nav = document.getElementById('bento-panel-nav');
           if (stripContainer) stripContainer.classList.remove('bento-workspace-switching');
+          if (nav) nav.classList.remove('bento-workspace-switching');
           if (tp) tp.classList.remove('bento-workspace-switching');
           // Keep layout-transition suppression through the fade-in. If
           // we remove it in the same frame as the opacity class, pending
@@ -16907,6 +16997,8 @@
             if (stripContainer) {
               stripContainer.classList.remove('bento-workspace-stabilizing');
             }
+            const nav = document.getElementById('bento-panel-nav');
+            if (nav) nav.classList.remove('bento-workspace-stabilizing');
             if (tp) tp.classList.remove('bento-workspace-stabilizing');
           }, WORKSPACE_STABILIZE_MS);
           if (__workspaceFadeWatchdog) {

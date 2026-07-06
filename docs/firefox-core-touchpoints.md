@@ -119,8 +119,9 @@ Use this shape for new or changed touchpoints:
   left-edge footer alignment and animation suppression, patches
   `DownloadsButton.getAnchor()`/`releaseAnchor()` so automatic native downloads
   panel opens use a sidebar fallback anchor, hides the stock toolbar
-  `#PanelUI-button` and `#downloads-button` while Bento's sidebar addressbar
-  mode is active,
+  `#PanelUI-button`, `#downloads-button`, and `#fxa-toolbar-menu-button`, and
+  collapses native nav-bar `toolbarspring` gaps while Bento's sidebar
+  addressbar mode is active,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -138,7 +139,9 @@ Use this shape for new or changed touchpoints:
   events, native `#urlbar-input` pointer/focus events,
   `#urlbar-container` and `#search-container` chrome CSS,
   `#nav-bar`, `#navigator-toolbox`, `#nav-bar-customization-target`,
-  `#back-button`, `#forward-button`, `#stop-reload-button`, toolbar geometry,
+  `#unified-extensions-button`, `#fxa-toolbar-menu-button`, native toolbar
+  springs, extension browser-action toolbar children, `#back-button`,
+  `#forward-button`, `#stop-reload-button`, toolbar geometry,
   `#bento-sidebar-chrome-divider`, and chrome `ResizeObserver`,
   `#bento-shell-frame` geometry for anchored address-overlay placement,
   native identity
@@ -189,7 +192,8 @@ Use this shape for new or changed touchpoints:
   verify clicking or programmatic focus into Firefox's hidden native top address
   input opens Bento's centered address entry and does not leave the native urlbar
   suggestions dropdown open, verify the native top URL/search field, stock
-  toolbar app-menu button, and stock toolbar downloads button are hidden while
+  toolbar app-menu button, stock toolbar downloads button, and stock toolbar
+  Account menu are hidden while
   the sidebar footer Firefox-menu button opens the native app menu with
   submenus, Settings, More Tools, Help, update/sign-in banners, and keyboard
   shortcuts intact and grows rightward from the trigger when space allows,
@@ -203,9 +207,13 @@ Use this shape for new or changed touchpoints:
   dragging the sidebar splitter without width-transition smoothing or XUL/native
   splitter competition, using pointer capture and cached drag geometry instead
   of live rect reads while still animating collapsed/expanded sidebar state,
-  verify remaining
-  toolbar buttons, extension buttons, toolbar customization, titlebar controls,
-  and window dragging still work, verify two
+  verify the panel navigator sits flush with the sidebar divider after the
+  native Reload/Stop control and immediately left of the browser extension
+  toolbar buttons, and verify that navigator/extension cluster follows the
+  sidebar divider continuously during sidebar-handle drag instead of jumping on
+  mouseup, while the panel-strip scrollbar remains in the bottom inset of the
+  panel strip, verify remaining toolbar buttons, extension buttons, toolbar
+  customization, titlebar controls, and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark
   snapshots across windows, verify clicking the sidebar
   security control opens Firefox's native identity popup with native content,
