@@ -86,6 +86,7 @@
     padding-inline: var(--space-2xs);
     border-top: 1px solid var(--bento-sidebar-divider-color);
     justify-content: flex-end;
+    gap: var(--space-4xs) !important;
     transition:
       padding-inline-start var(--bento-sidebar-collapse-transition),
       padding-inline-end var(--bento-sidebar-collapse-transition);
@@ -149,5 +150,5 @@ html[data-bento-collapsed='true'] .tale-row.bento-shell-app__footer {
      to justify-content and flex-direction below. */
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: var(--space-2xs);
+  gap: var(--space-4xs) !important;
 }

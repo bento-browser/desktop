@@ -285,6 +285,33 @@ Regression checks:
 - Collapsed sidebar: the row is not visible and the floating address fallback
   remains reachable.
 
+### Sidebar footer buttons
+
+Upstream base: Tale UI `Row`, `IconButton`, `Icon`, and `Tooltip`.
+
+Bento owners:
+
+- [App.tsx](../extensions/bento-shell/src/App.tsx) composes the footer actions.
+- [app.css](../extensions/bento-shell/src/app.css) owns the expanded and
+  collapsed footer layout overrides.
+
+Current drift:
+
+- Footer action buttons intentionally use the smallest Tale UI Row gap
+  (`4xs`) in both expanded and collapsed sidebar modes. Tale UI `Row` always
+  emits an inline token gap, so `app.css` uses scoped
+  `gap: var(--space-4xs) !important` rules to keep collapsed mode aligned with
+  the footer's explicit Row prop.
+
+Regression checks:
+
+- In expanded sidebar mode, footer icon buttons should use the `4xs` token gap
+  between button boxes.
+- In collapsed sidebar mode, the vertical footer stack should also use the
+  `4xs` token gap between button boxes.
+- Hover each footer button and confirm its Tale UI tooltip and button state
+  still appear.
+
 ### CommandPalette settings shortcut reference
 
 Upstream base: Tale UI `CommandPalette`.

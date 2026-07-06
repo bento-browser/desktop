@@ -534,7 +534,7 @@ export function App() {
         <div className="bento-shell-app__workspace-switcher">
           <WorkspaceSwitcher />
         </div>
-        <Row ref={footerRef} gap="2xs" align="center" className="bento-shell-app__footer">
+        <Row ref={footerRef} gap="4xs" align="center" className="bento-shell-app__footer">
           {/* Collapse/expand toggle. DOM order matters: this is the FIRST
               child so flex-direction:column-reverse in collapsed mode pins
               it to the bottom of the vertical stack (= same on-screen
