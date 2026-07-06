@@ -263,7 +263,12 @@ use the same cached start-of-drag geometry plus live width delta; its
 `ResizeObserver` callbacks must ignore `bento-sidebar-resizing`.
 Manual verification for this path should compare sidebar-handle drag against
 panel-splitter drag: both should track the pointer without visible stutter, while
-sidebar collapse/expand still uses the normal width transition.
+sidebar collapse/expand still uses the normal width transition. Keep
+`#bento-shell-host` width/min-width/max-width transitions disabled under both
+`:root[bento-sidebar-resizing='true']` and
+`:root[bento-window-resizing='true']`; otherwise a collapsed-width change can
+make live sidebar or window resize inherit the collapse animation path and become
+choppy.
 `bento-chrome-theme.css` keeps the native top toolbar on the same
 neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
 removes Firefox's toolbox bottom border so no separator line appears between
@@ -634,9 +639,21 @@ square icon-only buttons in separate virtual rows so they do not crowd the
 collapsed rail. Each action row and each favicon-only tab row keeps the same
 `--bento-tab-row-height` as expanded mode so toggling the sidebar keeps row
 geometry predictable. The collapsed host width is
-`--bento-tab-strip-width-collapsed`, which aliases
-`--bento-pinned-panels-rail-width`, so the collapsed sidebar matches the
-favicon-only pinned-panel rail width.
+`--bento-tab-strip-width-collapsed`, which reserves the favicon-only control
+width plus symmetric `--bento-sidebar-collapsed-inline-padding`; that collapsed
+padding is intentionally larger than the expanded section padding so active
+favicon buttons do not sit tight against the rail edges.
+The workspace switcher is the exception to applying that padding on the section
+wrapper: in collapsed mode `.bento-shell-app__workspace-switcher` must keep
+`padding-inline: 0`, while `.bento-workspace-switcher__trigger` is locked to the
+same square `--bento-tab-row-height` width/min/max/height as tab-row controls.
+The rail breathing room comes from the host width, not from shrinking the
+switcher wrapper's content box; adding left/right padding there makes the active
+workspace avatar background look squeezed instead of square.
+Keep the chrome host pinned directly to this token rather than layering on a
+second chrome-local `calc()`/`max()` fallback; live sidebar/window resize relies
+on a single collapsed-width path plus the `bento-sidebar-resizing` and
+`bento-window-resizing` transition guards above.
 Folder expand/collapse records the clicked folder row's offset inside the
 virtualized scroller before dispatching `tabFolder/setCollapsed`, restores that
 offset on the next row-model render, and suppresses the pane's one-shot

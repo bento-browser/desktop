@@ -72,7 +72,7 @@
   .bento-shell-app__header {
     padding-block-start: var(--space-3xs);
     padding-block-end: var(--bento-sidebar-section-gap);
-    padding-inline: var(--space-3xs);
+    padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
     transition:
       padding-inline-start var(--bento-sidebar-collapse-transition),
@@ -94,11 +94,12 @@
   .bento-shell-app__workspace-switcher {
     display: flex;
     flex: 0 0 auto;
+    box-sizing: border-box;
     min-width: 0;
     flex-direction: column;
     gap: var(--bento-sidebar-section-gap);
     padding-block: var(--space-2xs);
-    padding-inline: var(--space-3xs);
+    padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
     transition:
       padding-inline-start var(--bento-sidebar-collapse-transition),
@@ -106,13 +107,13 @@
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__header,
-  html[data-bento-collapsed='true'] .bento-shell-app__footer,
-  html[data-bento-collapsed='true'] .bento-shell-app__workspace-switcher {
-    padding-inline: 0;
+  html[data-bento-collapsed='true'] .bento-shell-app__footer {
+    padding-inline: var(--bento-sidebar-collapsed-inline-padding);
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__workspace-switcher {
     align-items: center;
+    padding-inline: 0;
   }
 }
 
@@ -133,15 +134,11 @@
  * Compound selector (html[data-bento-collapsed] .tale-row.bento-*)
  * also wins on specificity over .tale-row alone. */
 html[data-bento-collapsed='true'] .tale-row.bento-shell-app__footer {
-  flex-direction: column-reverse;
-  /* align-items: flex-start (the cross-axis is horizontal in a column
-     flex) so the stacked buttons hug the rail's left edge throughout
-     the collapse transition. With align-items:center the buttons
-     hover in the middle of the still-wide rail during the 200ms
-     host-width animation — visually adrift. flex-start keeps them
-     planted against the host's existing padding-left inset, so the
-     position reads as fixed while the rail walls move in around
-     them.
+  flex-direction: column-reverse !important;
+  /* align-items:center (the cross-axis is horizontal in a column flex)
+     keeps the stacked buttons centered inside the rail's padded content
+     column after the host width collapses. The collapsed section padding
+     gives the narrow rail extra inline breathing room on both sides.
      !important because Tale UI's Row component applies alignItems,
      justifyContent, and gap as INLINE STYLES via the React prop
      (align="center" on the footer JSX → style="align-items:center").

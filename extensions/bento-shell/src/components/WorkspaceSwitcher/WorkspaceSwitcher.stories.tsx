@@ -12,13 +12,24 @@ import {
 import { makeTab } from '../../state/__fixtures__/tabs';
 import { useTabsStore } from '../../state/tabs';
 
-function HeaderFrame({ children, width = 300 }: { children: React.ReactNode; width?: number }) {
+const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
+
+function HeaderFrame({
+  children,
+  width = 300,
+  collapsed = false,
+}: {
+  children: React.ReactNode;
+  width?: number | string;
+  collapsed?: boolean;
+}) {
   return (
     <div
       style={{
         width,
+        boxSizing: 'border-box',
         backgroundColor: 'var(--bento-brand-bg)',
-        padding: 'var(--space-xs)',
+        padding: collapsed ? 0 : 'var(--space-xs)',
       }}
     >
       {children}
@@ -27,9 +38,9 @@ function HeaderFrame({ children, width = 300 }: { children: React.ReactNode; wid
 }
 
 // Toggle data-bento-collapsed on <html> for the collapsed-rail story.
-// WorkspaceSwitcher's collapsed CSS switches the trigger to a vertical
-// avatar+chevron stack and hides the workspace name. Cleanup on unmount
-// keeps the attribute from leaking into other stories.
+// WorkspaceSwitcher's collapsed CSS switches the trigger to an avatar-only
+// square and hides the workspace name/chevron. Cleanup on unmount keeps the
+// attribute from leaking into other stories.
 function useCollapsedAttribute(collapsed: boolean) {
   useEffect(() => {
     const html = document.documentElement;
@@ -126,7 +137,7 @@ DeleteWithTabs.storyName = 'Delete workspace with tabs (delete item visible)';
 // edit-workspace.html directly.
 
 export const Collapsed = () => {
-  // Narrow rail: avatar + chevron stack vertically, workspace name hidden.
+  // Narrow rail: avatar-only trigger, workspace name and chevron hidden.
   // Open the menu to verify the popover still anchors correctly to the
   // tighter trigger (it should appear to the right of the rail at chrome
   // scale).
@@ -135,13 +146,13 @@ export const Collapsed = () => {
   }, []);
   useCollapsedAttribute(true);
   return (
-    <HeaderFrame width={64}>
+    <HeaderFrame width={COLLAPSED_SIDEBAR_WIDTH} collapsed>
       <WorkspaceSwitcher />
     </HeaderFrame>
   );
 };
 
-Collapsed.storyName = 'Collapsed (avatar + chevron stack)';
+Collapsed.storyName = 'Collapsed (avatar-only trigger)';
 
 export const CollapsedMultiple = () => {
   // Same collapsed layout but with the 'Work' workspace active so the
@@ -151,7 +162,7 @@ export const CollapsedMultiple = () => {
   }, []);
   useCollapsedAttribute(true);
   return (
-    <HeaderFrame width={64}>
+    <HeaderFrame width={COLLAPSED_SIDEBAR_WIDTH} collapsed>
       <WorkspaceSwitcher />
     </HeaderFrame>
   );

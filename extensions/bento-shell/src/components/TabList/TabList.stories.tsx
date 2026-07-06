@@ -20,6 +20,8 @@ const defaultTabListProps = {
   onOpenInSidePanel: noop,
 };
 
+const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
+
 function SidebarFrame({
   children,
   height = 600,
@@ -27,7 +29,7 @@ function SidebarFrame({
 }: {
   children: React.ReactNode;
   height?: number;
-  width?: number;
+  width?: number | string;
 }) {
   return (
     <div
@@ -152,7 +154,7 @@ export const Collapsed = () => {
   }, []);
   useCollapsedAttribute(true);
   return (
-    <SidebarFrame width={64}>
+    <SidebarFrame width={COLLAPSED_SIDEBAR_WIDTH}>
       <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );
@@ -169,7 +171,7 @@ export const CollapsedMany = () => {
   }, []);
   useCollapsedAttribute(true);
   return (
-    <SidebarFrame width={64}>
+    <SidebarFrame width={COLLAPSED_SIDEBAR_WIDTH}>
       <TabList {...defaultTabListProps} />
     </SidebarFrame>
   );

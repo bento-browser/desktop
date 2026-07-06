@@ -14,10 +14,18 @@ import { markToolsBootedForStory } from './state/__fixtures__/bus';
 import { useSettingsStore } from './state/settings';
 import type { Action } from '@shared/protocol';
 
-function ShellFrame({ children, width = 300 }: { children: React.ReactNode; width?: number }) {
+const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
+
+function ShellFrame({
+  children,
+  width = 300,
+}: {
+  children: React.ReactNode;
+  width?: number | string;
+}) {
   // Match the real shell's host frame: fixed-width column on a brand-bg
-  // canvas. The collapsed stories pass width=64 (= 4rem at 16px root) to
-  // mirror chrome's narrow-rail width applied via #bento-shell-host.
+  // canvas. Collapsed stories use the same token chrome applies to
+  // #bento-shell-host.
   return (
     <div
       style={{
@@ -93,7 +101,7 @@ export const Collapsed = () => {
   }, []);
   useCollapsedAttribute(true);
   return (
-    <ShellFrame width={64}>
+    <ShellFrame width={COLLAPSED_SIDEBAR_WIDTH}>
       <App />
     </ShellFrame>
   );
@@ -134,7 +142,7 @@ export const CollapseToggle = () => {
   const collapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   useCollapsedAttribute(collapsed);
   return (
-    <ShellFrame width={collapsed ? 64 : 300}>
+    <ShellFrame width={collapsed ? COLLAPSED_SIDEBAR_WIDTH : 300}>
       <App />
     </ShellFrame>
   );

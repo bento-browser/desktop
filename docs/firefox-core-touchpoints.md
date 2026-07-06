@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-05
+- Last updated: 2026-07-06
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -87,6 +87,13 @@ Use this shape for new or changed touchpoints:
   direct sidebar URL row editing overhang the sidebar without resizing the
   sidebar frame or moving content, caps the sidebar-anchored address overlay
   below the centered overlay size,
+  keeps the collapsed sidebar host width at one collapsed control plus
+  symmetric collapsed-sidebar inline padding through the generated chrome token
+  and suppresses host width transitions during live
+  sidebar/window resize,
+  leaves the collapsed workspace-switcher section unpadded so its centered
+  avatar trigger remains the same square size as the other collapsed rail
+  controls,
   hides the native top URL/search field under a Bento
   chrome attribute while keeping toolbar and window controls visible on the
   same background as the Bento sidebar and without Firefox's toolbox bottom

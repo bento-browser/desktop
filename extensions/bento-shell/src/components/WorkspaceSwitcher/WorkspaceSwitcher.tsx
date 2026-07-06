@@ -1,7 +1,7 @@
 // Sidebar workspace-switcher trigger. The actual menu (workspace list,
 // New / Edit / Delete actions) lives in a chrome-mounted overlay (see
 // src/workspace-switcher/main.tsx) so the popover can render outside the
-// sidebar's bounds — critical when the rail is collapsed to 4rem and an
+// sidebar's bounds — critical when the rail is collapsed and an
 // inline Menu.Popover would be clipped at the iframe boundary.
 //
 // On click: read the trigger's bounding rect + window screen coords and

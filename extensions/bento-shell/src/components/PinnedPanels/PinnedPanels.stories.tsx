@@ -8,6 +8,8 @@ import { makePinnedEntry, seedPinnedPanels } from '../../state/__fixtures__/pinn
 import { makeTab } from '../../state/__fixtures__/tabs';
 import { useTabsStore } from '../../state/tabs';
 
+const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
+
 function SidebarFrame({
   children,
   collapsed = false,
@@ -18,7 +20,7 @@ function SidebarFrame({
   return (
     <div
       style={{
-        width: collapsed ? 64 : 300,
+        width: collapsed ? COLLAPSED_SIDEBAR_WIDTH : 300,
         backgroundColor: 'var(--bento-brand-bg)',
         padding: collapsed ? 0 : 'var(--space-xs)',
       }}

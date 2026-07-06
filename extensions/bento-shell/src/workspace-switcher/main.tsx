@@ -1,8 +1,8 @@
 // Workspace-switcher menu overlay entry. Mirrors the inline menu logic
 // from src/components/WorkspaceSwitcher/WorkspaceSwitcher.tsx but lifted
 // into a chrome-mounted <browser> so the popover can render outside the
-// sidebar's bounds — critical when the rail is collapsed to a 4rem-wide
-// strip and the inline menu would otherwise be clipped at the iframe
+// sidebar's bounds — critical when the rail is collapsed and the inline
+// menu would otherwise be clipped at the iframe
 // boundary.
 //
 // Lifecycle:

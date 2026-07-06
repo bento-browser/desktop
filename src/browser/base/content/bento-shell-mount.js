@@ -464,10 +464,10 @@
          !important here from --bento-tab-strip-width-min/-max so they
          become tunable from bento-tokens.css without a patch rebuild.
          Collapsed pins width/min/max to --bento-tab-strip-width-
-         collapsed and hides the splitter — there's nothing to
-         resize when the rail is at its minimum. The width
-         transition makes the collapse/expand toggle feel animated
-         rather than snapping. */
+         collapsed, which already reserves the collapsed control plus
+         symmetric rail padding. Keep the chrome host on this single token
+         so live sidebar/window resize does not get an extra calc/max()
+         width path; the transition is disabled below while resizing. */
       #bento-shell-host {
         min-width: var(--bento-tab-strip-width-min) !important;
         max-width: var(--bento-tab-strip-width-max) !important;
@@ -476,6 +476,8 @@
           min-width 200ms var(--bento-easing-standard, ease),
           max-width 200ms var(--bento-easing-standard, ease);
       }
+      :root[bento-window-resizing='true'] #bento-shell-host,
+      :root[bento-sidebar-resizing='true'] #bento-shell-host,
       #bento-shell-host.bento-shell-sidebar-resizing {
         transition: none !important;
       }

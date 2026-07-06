@@ -6,6 +6,7 @@ import { TabRow } from './TabRow';
 import { makeTab, seedSingle } from '../../state/__fixtures__/tabs';
 
 const noop = () => {};
+const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
 
 function SidebarFrame({
   children,
@@ -15,15 +16,17 @@ function SidebarFrame({
   collapsed?: boolean;
 }) {
   // Mimic the real shell sidebar's width + dark canvas so visual states
-  // match what they look like inside Bento. collapsed=true narrows the
-  // frame to 4rem (chrome's #bento-shell-host width when the rail
-  // collapses) so the favicon-only TabRow layout reads correctly.
+  // match what they look like inside Bento. collapsed=true uses the same
+  // collapsed host-width token as chrome.
   return (
     <div
       style={{
-        width: collapsed ? 64 : 300,
+        width: collapsed ? COLLAPSED_SIDEBAR_WIDTH : 300,
+        boxSizing: 'border-box',
         backgroundColor: 'var(--bento-brand-bg)',
-        padding: collapsed ? 0 : 'var(--space-xs)',
+        padding: collapsed ? '0 var(--bento-sidebar-collapsed-inline-padding)' : 'var(--space-xs)',
+        display: collapsed ? 'flex' : undefined,
+        justifyContent: collapsed ? 'center' : undefined,
       }}
     >
       {children}

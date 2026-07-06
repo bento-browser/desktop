@@ -108,7 +108,7 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
  * source for brand tokens so the workspace control follows the active theme.
  * These rules are unlayered because Tale UI's button variant rules are
  * unlayered too. */
-.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger {
+.tale-button.bento-workspace-switcher__trigger {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -154,44 +154,35 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
     color var(--bento-duration-fast) var(--bento-easing-standard);
 }
 
-.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger:hover:not(
-    [data-disabled],
-    [data-pending]
-  ),
-.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger[data-hovered]:not(
-    [data-disabled],
-    [data-pending]
-  ) {
+.tale-button.bento-workspace-switcher__trigger:hover:not([data-disabled], [data-pending]),
+.tale-button.bento-workspace-switcher__trigger[data-hovered]:not([data-disabled], [data-pending]) {
   background-color: color-mix(in srgb, var(--color-60) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 22%, transparent);
   color: var(--color-90);
 }
 
-.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger:active:not(
-    [data-disabled],
-    [data-pending]
-  ),
-.tale-button.tale-menu__trigger.bento-workspace-switcher__trigger[data-pressed]:not(
-    [data-disabled],
-    [data-pending]
-  ) {
+.tale-button.bento-workspace-switcher__trigger:active:not([data-disabled], [data-pending]),
+.tale-button.bento-workspace-switcher__trigger[data-pressed]:not([data-disabled], [data-pending]) {
   background-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
   color: var(--color-90);
 }
 
-html[data-bento-collapsed='true']
-  .tale-button.tale-menu__trigger.bento-workspace-switcher__trigger {
+html[data-bento-collapsed='true'] .tale-button.bento-workspace-switcher__trigger {
   width: var(--bento-tab-row-height);
   min-width: var(--bento-tab-row-height);
   max-width: var(--bento-tab-row-height);
   height: var(--bento-tab-row-height);
   min-height: var(--bento-tab-row-height);
+  max-height: var(--bento-tab-row-height);
   aspect-ratio: 1 / 1;
   align-items: center;
   justify-content: center;
   margin-inline: auto;
   padding: 0;
+  border-radius: var(--radius-s);
+  background-color: color-mix(in srgb, var(--color-60) 12%, var(--neutral-5));
+  border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
 }
 
 @layer bento.components {
@@ -240,20 +231,6 @@ html[data-bento-collapsed='true']
        text shrink to 0 width as the rail narrows, so the only thing
        missing for a smooth disappearance is the opacity transition. */
     transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
-  }
-
-  /* Collapsed sidebar — same square control size as the collapsed tab
-     rows. The trigger-name and chevron are hidden via the unlayered
-     rule above (a layered display:none would lose to Tale UI's
-     unlayered .tale-icon / .tale-text defaults). */
-  html[data-bento-collapsed='true'] .bento-workspace-switcher__trigger {
-    width: var(--bento-tab-row-height);
-    min-width: var(--bento-tab-row-height);
-    height: var(--bento-tab-row-height);
-    min-height: var(--bento-tab-row-height);
-    aspect-ratio: 1 / 1;
-    justify-content: center;
-    padding: 0;
   }
 
   .bento-workspace-switcher__chevron {

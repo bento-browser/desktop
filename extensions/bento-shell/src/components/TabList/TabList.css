@@ -56,7 +56,7 @@
   }
 
   html[data-bento-collapsed='true'] .bento-tab-list-pane__scroller {
-    padding-inline: 0;
+    padding-inline: var(--bento-sidebar-collapsed-inline-padding);
     scrollbar-gutter: auto;
     scrollbar-width: none;
   }
