@@ -237,7 +237,14 @@ not enable Firefox's native `sidebar.verticalTabs`. `bento-shell-mount.js`
 measures `#bento-shell-host`, `#nav-bar-customization-target`, and the native
 Back/Forward/Stop-Reload controls, then writes `--bento-toolbar-nav-offset` so
 the native navigation cluster tracks the sidebar's right edge while the sidebar
-is resized. In the same sidebar-addressbar mode, Bento collapses native
+is resized. It also writes `--bento-tab-strip-width-min-effective` from the same
+metrics, using
+`max(--bento-tab-strip-width-min, targetLeft - sidebarLeft + edgeInset + nativeNavGroupWidth)`.
+That is the exact sidebar width where `--bento-toolbar-nav-offset` clamps to
+zero. The expanded sidebar min width must use this computed value, not only the
+static token min, otherwise the sidebar divider can keep moving left after
+Back/Forward/Reload have reached their leftmost position and appear underneath
+those buttons. In the same sidebar-addressbar mode, Bento collapses native
 `toolbarspring` children in `#nav-bar-customization-target` so the extension
 cluster and top-toolbar panel navigator sit flush with the sidebar divider after
 Reload/Stop. `#bento-shell-host` keeps a width transition for sidebar
@@ -271,7 +278,9 @@ plus live width delta; its `ResizeObserver` callbacks must ignore
 `bento-sidebar-resizing`.
 Manual verification for this path should compare sidebar-handle drag against
 panel-splitter drag: both should track the pointer without visible stutter, while
-sidebar collapse/expand still uses the normal width transition. Keep
+sidebar collapse/expand still uses the normal width transition. Also drag the
+expanded sidebar to its minimum width and verify the divider stops at the same
+point as Back/Forward/Reload instead of sliding underneath them. Keep
 `#bento-shell-host` width/min-width/max-width transitions disabled under both
 `:root[bento-sidebar-resizing='true']` and
 `:root[bento-window-resizing='true']`; otherwise a collapsed-width change can

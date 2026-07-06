@@ -211,8 +211,10 @@ Use this shape for new or changed touchpoints:
   native Reload/Stop control and immediately left of the browser extension
   toolbar buttons, and verify that navigator/extension cluster follows the
   sidebar divider continuously during sidebar-handle drag instead of jumping on
-  mouseup, while the panel-strip scrollbar remains in the bottom inset of the
-  panel strip, verify remaining toolbar buttons, extension buttons, toolbar
+  mouseup, verify the expanded sidebar cannot be dragged narrower than the
+  width where Back/Forward/Reload stop moving left so the divider never appears
+  behind those buttons, while the panel-strip scrollbar remains in the bottom
+  inset of the panel strip, verify remaining toolbar buttons, extension buttons, toolbar
   customization, titlebar controls, and window dragging still work, verify two
   Bento windows do not leak sidebar address URL/title/security/bookmark
   snapshots across windows, verify clicking the sidebar

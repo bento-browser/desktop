@@ -271,6 +271,7 @@
       }
       :root {
         --bento-toolbar-nav-offset: 0px;
+        --bento-tab-strip-width-min-effective: var(--bento-tab-strip-width-min);
       }
       :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
         margin-inline-start: var(--bento-toolbar-nav-offset, 0px) !important;
@@ -303,7 +304,9 @@
         inset: 0;
         z-index: 2147483000;
         display: grid;
-        grid-template-columns: minmax(48px, var(--bento-tab-strip-width-min, 220px)) 1fr;
+        grid-template-columns:
+          minmax(48px, var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min, 220px)))
+          1fr;
         min-width: 0;
         min-height: 0;
         background-color: var(--neutral-5);
@@ -488,7 +491,7 @@
          so live sidebar/window resize does not get an extra calc/max()
          width path; the transition is disabled below while resizing. */
       #bento-shell-host {
-        min-width: var(--bento-tab-strip-width-min) !important;
+        min-width: var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min)) !important;
         max-width: var(--bento-tab-strip-width-max) !important;
         transition:
           width 200ms var(--bento-easing-standard, ease),
@@ -4978,6 +4981,8 @@
       const shellRect = shell.getBoundingClientRect();
       const splitterRect = splitter.getBoundingClientRect();
       const startAffordanceLeft = Math.round(splitterRect.left - shellRect.left);
+      prepareSidebarChromeDividerForSidebarResize?.();
+      prepareToolbarNavigationForSidebarResize?.();
       const style = getComputedStyle(host);
       const min = parseFloat(style.minWidth) || 0;
       const max = parseFloat(style.maxWidth) || Number.POSITIVE_INFINITY;
@@ -5002,8 +5007,6 @@
         dragWriteRaf = requestAnimationFrame(applyDragWidth);
       };
 
-      prepareSidebarChromeDividerForSidebarResize?.();
-      prepareToolbarNavigationForSidebarResize?.();
       affordance.classList.add('bento-shell-splitter--dragging');
       host.classList.add('bento-shell-sidebar-resizing');
       document.documentElement.setAttribute('bento-sidebar-resizing', 'true');
@@ -5185,13 +5188,32 @@
         edgeInset: tokenPx('--space-2xs', 8),
       };
     };
+    const computeAlignedSidebarMinWidth = (metrics) => {
+      const baseMin = tokenPx('--bento-tab-strip-width-min', 200);
+      if (metrics.hostWidth <= 0 || metrics.targetWidth <= 0 || metrics.groupWidth <= 0) {
+        return Math.ceil(baseMin);
+      }
+      const alignedMin = metrics.targetLeft - metrics.hostLeft + metrics.edgeInset + metrics.groupWidth;
+      return Math.ceil(Math.max(baseMin, alignedMin));
+    };
+    const applyEffectiveSidebarMinWidth = (metrics) => {
+      const minWidth = computeAlignedSidebarMinWidth(metrics);
+      document.documentElement.style.setProperty(
+        '--bento-tab-strip-width-min-effective',
+        minWidth + 'px',
+      );
+      return minWidth;
+    };
     const applyOffset = (metrics, sidebarWidth) => {
+      const minWidth = applyEffectiveSidebarMinWidth(metrics);
       if (metrics.hostWidth <= 0 || metrics.targetWidth <= 0 || metrics.groupWidth <= 0) {
         target.style.setProperty('--bento-toolbar-nav-offset', '0px');
         return;
       }
       const sidebarRight =
-        typeof sidebarWidth === 'number' ? metrics.hostLeft + sidebarWidth : metrics.hostRight;
+        typeof sidebarWidth === 'number'
+          ? metrics.hostLeft + Math.max(minWidth, sidebarWidth)
+          : Math.max(metrics.hostRight, metrics.hostLeft + minWidth);
       const desiredStart = sidebarRight - metrics.edgeInset - metrics.groupWidth;
       const offset = Math.max(0, Math.round(desiredStart - metrics.targetLeft));
       target.style.setProperty('--bento-toolbar-nav-offset', offset + 'px');
@@ -5199,6 +5221,7 @@
     let sidebarResizeMetrics = null;
     prepareToolbarNavigationForSidebarResize = () => {
       sidebarResizeMetrics = readMetrics();
+      applyEffectiveSidebarMinWidth(sidebarResizeMetrics);
     };
     syncToolbarNavigationForSidebarWidth = (width) => {
       if (!sidebarResizeMetrics) sidebarResizeMetrics = readMetrics();
