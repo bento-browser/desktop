@@ -98,6 +98,12 @@ When text or icons sit on a tinted accent surface, use the paired foreground
 token for that surface. For example, active workspace/tab affordances should
 pair `--color-60` with `--color-60-fg`, not with an arbitrary neutral.
 
+Firefox-owned chrome surfaces such as native toolbar customization cannot use
+`@tale-ui/react` directly. Style those surfaces in
+`src/browser/base/content/bento-chrome-theme.css` by mapping native Firefox
+semantic variables and scoped selectors to generated Tale UI/Bento chrome
+tokens from `bento-chrome-tokens.css`.
+
 ## CSS layers and overrides
 
 Most Bento component rules belong inside:

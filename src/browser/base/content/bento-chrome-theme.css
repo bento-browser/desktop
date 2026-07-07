@@ -24,6 +24,7 @@
  *   - window accent (lwtheme baseline)
  *   - notification bars
  *   - native bookmark menus / Places sidebars that are opened from Bento chrome
+ *   - native Customize Toolbar mode
  *
  * NOT covered (deliberate — separate iteration):
  *   - scrollbars
@@ -61,7 +62,9 @@
 
     /* ─── Main toolbar (#nav-bar) ──────────────────────────────────── */
     --toolbar-bgcolor: var(--neutral-5) !important;
+    --toolbar-background-color: var(--neutral-5) !important;
     --toolbar-color: var(--neutral-90) !important;
+    --toolbar-text-color: var(--neutral-90) !important;
     --toolbar-bgimage: none !important;
     --toolbarseparator-color: var(--neutral-30) !important;
     --chrome-content-separator-color: transparent !important;
@@ -72,6 +75,9 @@
     --toolbarbutton-icon-fill-attention-text: var(--color-60-fg) !important;
     --toolbarbutton-hover-background: var(--neutral-16) !important;
     --toolbarbutton-active-background: var(--neutral-20) !important;
+    --toolbarbutton-background-color-hover: var(--neutral-16) !important;
+    --toolbarbutton-background-color-active: var(--neutral-20) !important;
+    --toolbarbutton-border-radius: var(--radius-s) !important;
     --button-background-color: var(--neutral-14) !important;
     --button-background-color-hover: var(--neutral-16) !important;
     --button-background-color-active: var(--neutral-20) !important;
@@ -98,6 +104,16 @@
     --background-color-box: var(--neutral-10) !important;
     --border-color: var(--neutral-20) !important;
     --border-color-deemphasized: var(--neutral-16) !important;
+    --border-radius-small: var(--radius-s) !important;
+    --border-radius-medium: var(--radius-m) !important;
+    --border-radius-large: var(--radius-l) !important;
+    --panel-background-color: var(--neutral-10) !important;
+    --panel-background-color-dimmed: var(--neutral-16) !important;
+    --panel-background-color-dimmed-further: var(--neutral-22) !important;
+    --panel-border-color: var(--neutral-20) !important;
+    --panel-border-radius: var(--radius-l) !important;
+    --panel-box-shadow: var(--shadow-l) !important;
+    --panel-text-color: var(--neutral-90) !important;
 
     /* ─── URL bar field (#urlbar) ──────────────────────────────────── */
     --toolbar-field-background-color: var(--neutral-5) !important;
@@ -622,33 +638,42 @@
     padding: var(--space-3xs) var(--space-3xs) var(--space-2xs) !important;
   }
 
-  :is(#bookmarksPanel, sidebar-bookmarks) moz-input-search {
+  #bookmarksPanel #sidebar-search-container > .bento-bookmarks-search-input {
+    appearance: none !important;
+    -moz-appearance: none !important;
     box-sizing: border-box !important;
     display: block !important;
     width: 100% !important;
-    min-height: var(--field-min-height) !important;
-    color: var(--field-color) !important;
-    font-family: var(--field-font-family) !important;
-    font-size: var(--field-font-size) !important;
+    height: var(--bento-sidebar-address-row-height-px, 32px) !important;
+    min-height: var(--bento-sidebar-address-row-height-px, 32px) !important;
+    margin: 0 !important;
+    padding-block: 0 !important;
+    padding-inline: calc(var(--space-2xs) + var(--bento-icon-size-sm, 1rem) + var(--space-3xs))
+      var(--space-2xs) !important;
+    border: 1px solid var(--neutral-18) !important;
+    border-radius: var(--bento-sidebar-address-field-radius, var(--radius-s)) !important;
+    background-color: var(--neutral-5) !important;
+    background-image: url(chrome://global/skin/icons/search-textbox.svg) !important;
+    background-position: var(--space-2xs) center !important;
+    background-repeat: no-repeat !important;
+    background-size: var(--bento-icon-size-sm, 1rem) !important;
+    color: var(--neutral-90) !important;
+    font: var(--text-font-weight) var(--text-l-font-size) / 1 var(--text-font-family) !important;
+    letter-spacing: var(--text-letter-spacing) !important;
     line-height: 1 !important;
-    border-radius: var(--field-radius) !important;
-    --input-text-min-height: var(--field-min-height) !important;
-    --input-text-background-color: var(--field-bg) !important;
-    --input-text-color: var(--field-color) !important;
-    --input-text-border-color: var(--field-border-color) !important;
-    --input-text-border: 1px solid var(--input-text-border-color) !important;
-    --input-text-border-radius: var(--field-radius) !important;
-    --input-text-icon-size: var(--bento-icon-size-sm, 1rem) !important;
+    outline: none !important;
+    -moz-context-properties: fill !important;
+    fill: var(--neutral-70) !important;
   }
 
-  :is(sidebar-bookmarks, sidebar-panel-header):focus-within {
-    --input-border-color: var(--field-focus-border) !important;
-    --input-text-border-color: var(--field-focus-border) !important;
-  }
-
-  :is(#bookmarksPanel, sidebar-bookmarks) moz-input-search:focus-within {
-    --input-text-border-color: var(--field-focus-border) !important;
+  #bookmarksPanel #sidebar-search-container > .bento-bookmarks-search-input:focus {
+    border-color: var(--field-focus-border) !important;
     box-shadow: var(--field-focus-glow) !important;
+  }
+
+  #bookmarksPanel #sidebar-search-container > .bento-bookmarks-search-input::placeholder {
+    color: var(--neutral-50) !important;
+    opacity: 1 !important;
   }
 
   .sidebar-panel {
@@ -730,6 +755,320 @@
     color: var(--arrowpanel-color) !important;
     border-color: var(--arrowpanel-border-color) !important;
     box-shadow: none !important;
+  }
+
+  /* ─── Customize Toolbar mode ───────────────────────────────────────
+   * Firefox builds this screen in browser.xhtml from native XUL, so it
+   * consumes chrome tokens rather than @tale-ui/react components. Keep it
+   * scoped to [customizing] so ordinary chrome keeps its existing layout. */
+  :root[customizing] {
+    --drag-drop-transition-duration: var(--bento-duration-slow) !important;
+    --font-weight-heading: var(--heading-font-weight) !important;
+    --font-weight-semibold: var(--heading-font-weight) !important;
+    --link-color: var(--color-70) !important;
+    --link-color-hover: var(--color-80) !important;
+    --link-color-active: var(--color-90) !important;
+    --toolbar-background-color: var(--neutral-5) !important;
+    --toolbar-text-color: var(--neutral-90) !important;
+    --panel-background-color: var(--neutral-10) !important;
+    --panel-background-color-dimmed: var(--neutral-16) !important;
+    --panel-background-color-dimmed-further: var(--neutral-22) !important;
+    --panel-border-color: var(--neutral-20) !important;
+    --panel-border-radius: var(--radius-l) !important;
+    --panel-box-shadow: var(--shadow-l) !important;
+    --panel-separator-color: var(--neutral-20) !important;
+    --panel-text-color: var(--neutral-90) !important;
+    --button-background-color: var(--neutral-12) !important;
+    --button-background-color-hover: var(--neutral-16) !important;
+    --button-background-color-active: var(--neutral-20) !important;
+    --button-border-color: var(--neutral-20) !important;
+    --button-border-color-hover: var(--neutral-24) !important;
+    --button-border-color-active: var(--neutral-30) !important;
+    --button-border-radius: var(--radius-s) !important;
+    --button-text-color: var(--neutral-90) !important;
+    --button-text-color-hover: var(--neutral-90) !important;
+    --button-text-color-active: var(--neutral-90) !important;
+    --button-background-color-primary: var(--color-60) !important;
+    --button-background-color-primary-hover: var(--color-50) !important;
+    --button-background-color-primary-active: var(--color-40) !important;
+    --button-border-color-primary: transparent !important;
+    --button-border-color-primary-hover: transparent !important;
+    --button-border-color-primary-active: transparent !important;
+    --button-text-color-primary: var(--color-60-fg) !important;
+    --button-text-color-primary-hover: var(--color-50-fg) !important;
+    --button-text-color-primary-active: var(--color-40-fg) !important;
+    --default-focusring: var(--default-focusring-width) solid var(--focus-outline-color) !important;
+  }
+
+  #customization-container {
+    background-color: var(--neutral-5) !important;
+    color: var(--neutral-90) !important;
+  }
+
+  #customization-content-container,
+  #customization-palette-container,
+  #customization-palette {
+    background-color: var(--neutral-5) !important;
+    color: var(--neutral-90) !important;
+  }
+
+  #customization-header,
+  #customization-panelHeader {
+    color: var(--neutral-90) !important;
+    font-family: var(--label-font-family) !important;
+    font-weight: var(--heading-font-weight) !important;
+  }
+
+  #customization-panelDescription {
+    color: var(--neutral-70) !important;
+    font-family: var(--text-font-family) !important;
+  }
+
+  #customization-panel-container {
+    --bento-customization-panel-shadow-gutter: var(--space-2xl);
+
+    overflow: visible !important;
+    padding-block: 0 var(--bento-customization-panel-shadow-gutter) !important;
+    padding-inline: var(--customization-panel-padding)
+      var(--bento-customization-panel-shadow-gutter) !important;
+  }
+
+  #customization-panelWrapper,
+  #customization-panelWrapper > .panel-arrowcontent,
+  #customization-panelHolder {
+    overflow: visible !important;
+  }
+
+  #customization-footer {
+    background-color: var(--neutral-5) !important;
+    border-top: 1px solid var(--neutral-16) !important;
+    color: var(--neutral-90) !important;
+    column-gap: var(--space-xs) !important;
+    row-gap: var(--space-3xs) !important;
+  }
+
+  #customization-footer > :is(.footer-button, .customization-checkbox, .customization-link) {
+    margin: 0 !important;
+  }
+
+  #customization-footer > .customization-link {
+    color: var(--color-70) !important;
+  }
+
+  #customization-footer > .customization-link:hover {
+    color: var(--color-80) !important;
+  }
+
+  #customization-footer > .customization-link:active {
+    color: var(--color-90) !important;
+  }
+
+  #customization-panelWrapper > .panel-arrowcontent {
+    background: var(--neutral-10) !important;
+    border: 1px solid var(--neutral-20) !important;
+    border-radius: var(--radius-l) !important;
+    box-shadow: var(--shadow-l) !important;
+    color: var(--neutral-90) !important;
+  }
+
+  #customization-panelWrapper > .panel-arrowbox > .panel-arrow[side='top'] {
+    fill: var(--neutral-10) !important;
+    stroke: var(--neutral-20) !important;
+  }
+
+  #customization-panelHolder > #widget-overflow-fixed-list:not(:empty) {
+    border-top: 1px solid var(--neutral-20) !important;
+  }
+
+  #customization-panelHolder > #widget-overflow-fixed-list::before {
+    opacity: 0.8 !important;
+  }
+
+  toolbarpaletteitem[place='palette'] {
+    color: var(--neutral-80) !important;
+    font: var(--text-font-weight) var(--text-l-font-size) / var(--text-line-height)
+      var(--text-font-family) !important;
+  }
+
+  toolbarpaletteitem[place='palette']::after {
+    color: var(--neutral-80) !important;
+  }
+
+  toolbarpaletteitem[place='palette']:hover,
+  toolbarpaletteitem[place='palette']:focus-visible {
+    color: var(--neutral-90) !important;
+  }
+
+  toolbarpaletteitem[place='palette'] > toolbarspring {
+    outline-color: var(--neutral-50) !important;
+  }
+
+  toolbarpaletteitem[place='palette'] > :is(toolbarbutton, toolbaritem),
+  toolbarpaletteitem[place='toolbar'] > :is(toolbarbutton, toolbaritem),
+  toolbarpaletteitem[place='panel'] > :is(toolbarbutton, toolbaritem) {
+    color: inherit !important;
+    fill: currentColor !important;
+  }
+
+  toolbarpaletteitem[mousedown] > #search-container > #searchbar,
+  toolbarpaletteitem[mousedown] .urlbar-background {
+    box-shadow:
+      inset 0 0 0 1px var(--color-60),
+      var(--shadow-s) !important;
+    outline: none !important;
+  }
+
+  #customization-footer > .footer-button {
+    color: var(--button-text-color) !important;
+    background-color: var(--button-background-color) !important;
+    border-color: var(--button-border-color) !important;
+    border-radius: var(--button-border-radius) !important;
+  }
+
+  #customization-footer > .footer-button:not([disabled]):hover {
+    color: var(--button-text-color-hover) !important;
+    background-color: var(--button-background-color-hover) !important;
+    border-color: var(--button-border-color-hover) !important;
+  }
+
+  #customization-footer > .footer-button:not([disabled]):hover:active,
+  #customization-footer > .footer-button[open] {
+    color: var(--button-text-color-active) !important;
+    background-color: var(--button-background-color-active) !important;
+    border-color: var(--button-border-color-active) !important;
+  }
+
+  #customization-reset-button,
+  #customization-done-button {
+    position: relative !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: var(--space-3xs) !important;
+    width: fit-content !important;
+    min-width: 0 !important;
+    min-height: 2rem !important;
+    padding: var(--space-3xs) var(--space-2xs) !important;
+    appearance: none !important;
+    -moz-appearance: none !important;
+    border: 1px solid var(--button-border-color) !important;
+    border-radius: var(--radius-s) !important;
+    font-family: var(--label-font-family) !important;
+    font-size: var(--label-m-font-size) !important;
+    font-weight: var(--label-font-weight) !important;
+    line-height: 1 !important;
+    outline: none !important;
+    text-decoration: none !important;
+    user-select: none !important;
+    white-space: nowrap !important;
+    transition:
+      background-color var(--bento-duration-fast) var(--bento-easing-standard),
+      border-color var(--bento-duration-fast) var(--bento-easing-standard),
+      color var(--bento-duration-fast) var(--bento-easing-standard),
+      box-shadow var(--bento-duration-fast) var(--bento-easing-standard) !important;
+  }
+
+  #customization-reset-button:focus-visible,
+  #customization-done-button:focus-visible {
+    box-shadow:
+      0 0 0 0.125rem var(--neutral-100),
+      0 0 0 0.25rem var(--focus-ring-color) !important;
+  }
+
+  #customization-reset-button[disabled],
+  #customization-done-button[disabled] {
+    opacity: 0.45 !important;
+    pointer-events: none !important;
+  }
+
+  :is(#customization-reset-button, #customization-done-button) > .button-box {
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  #customization-reset-button {
+    color: var(--neutral-90) !important;
+    background-color: var(--neutral-14) !important;
+    border-color: transparent !important;
+  }
+
+  #customization-reset-button:not([disabled]):hover {
+    color: var(--neutral-90) !important;
+    background-color: var(--neutral-18) !important;
+    border-color: transparent !important;
+  }
+
+  #customization-reset-button:not([disabled]):hover:active,
+  #customization-reset-button[open] {
+    color: var(--neutral-90) !important;
+    background-color: var(--neutral-22) !important;
+    border-color: transparent !important;
+  }
+
+  #customization-footer > .customization-checkbox {
+    color: var(--neutral-90) !important;
+  }
+
+  #customization-footer > .customization-checkbox[disabled] {
+    color: var(--neutral-50) !important;
+  }
+
+  #customization-footer > .customization-checkbox .checkbox-check:not([native]) {
+    background-color: var(--neutral-12) !important;
+    border-color: var(--neutral-24) !important;
+  }
+
+  #customization-done-button {
+    min-height: 2.25rem !important;
+    color: var(--color-60-fg) !important;
+    background-color: var(--color-60) !important;
+    border-color: transparent !important;
+  }
+
+  #customization-done-button:not([disabled]):hover {
+    color: var(--color-50-fg) !important;
+    background-color: var(--color-50) !important;
+    border-color: transparent !important;
+  }
+
+  #customization-done-button:not([disabled]):hover:active,
+  #customization-done-button[open] {
+    color: var(--color-40-fg) !important;
+    background-color: var(--color-40) !important;
+    border-color: transparent !important;
+  }
+
+  :is(#customization-toolbar-menu, #customization-uidensity-menu) {
+    --panel-background: var(--neutral-10) !important;
+    --panel-background-color: var(--neutral-10) !important;
+    --panel-border-color: var(--neutral-20) !important;
+    --panel-border-radius: var(--radius-m) !important;
+    --panel-text-color: var(--neutral-90) !important;
+    --menuitem-border-radius: var(--radius-s) !important;
+  }
+
+  :is(#customization-toolbar-menu, #customization-uidensity-menu)::part(content) {
+    background: var(--neutral-10) !important;
+    border-color: var(--neutral-20) !important;
+    border-radius: var(--radius-m) !important;
+    box-shadow: var(--shadow-l) !important;
+    color: var(--neutral-90) !important;
+  }
+
+  .customization-uidensity-menuitem {
+    color: var(--neutral-90) !important;
+  }
+
+  .customization-uidensity-menuitem:hover,
+  .customization-uidensity-menuitem:focus-visible {
+    background-color: var(--neutral-16) !important;
+    color: var(--neutral-90) !important;
+  }
+
+  .customization-uidensity-menuitem:hover:active,
+  .customization-uidensity-menuitem[active='true'] {
+    background-color: var(--neutral-20) !important;
+    color: var(--neutral-90) !important;
   }
 
   ::selection {

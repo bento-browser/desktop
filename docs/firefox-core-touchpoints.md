@@ -125,7 +125,9 @@ Use this shape for new or changed touchpoints:
   buttons with a marked first extension child while hiding the native post-tabs
   titlebar spacer, and aligns Firefox's native bookmarks toolbar with Bento's
   panel-strip start edge without pushing Bento or Firefox-native sidebar content
-  down,
+  down, maps Firefox's native Customize Toolbar screen surfaces, buttons, links,
+  palette items, and overflow-panel preview through the same generated Tale
+  UI/Bento chrome tokens,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -143,7 +145,9 @@ Use this shape for new or changed touchpoints:
   events, native `#urlbar-input` pointer/focus events,
   `#urlbar-container` and `#search-container` chrome CSS,
   `#nav-bar`, `#navigator-toolbox`, `#nav-bar-customization-target`,
-  `#PersonalToolbar`, `#bento-strip-container`, native `#sidebar-title`,
+  `#PersonalToolbar`, `#customization-container`,
+  `#customization-palette`, `#customization-footer`,
+  `#customization-panelWrapper`, `#bento-strip-container`, native `#sidebar-title`,
   native `#sidebar-box`, native `#sidebar-splitter`, native Bookmarks sidebar
   `moz-input-search`,
   `#unified-extensions-button`, `#fxa-toolbar-menu-button`, native toolbar
@@ -183,7 +187,8 @@ Use this shape for new or changed touchpoints:
   navigation, one-shot search-engine resolution, sidebar address scoping,
   native identity/app-menu popup anchoring, bookmark state, native URL-bar and
   toolbar app-menu hiding, native toolbar surface/separator/sidebar-divider styling,
-  native navigation-button alignment, or visibility.
+  native Customize Toolbar markup and token variable names, native
+  navigation-button alignment, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -226,6 +231,9 @@ Use this shape for new or changed touchpoints:
   sidebar divider continuously during
   sidebar-handle drag instead of jumping on mouseup while extensions remain
   right-aligned,
+  verify Customize Toolbar mode uses Tale UI/Bento token surfaces for the main
+  palette, bottom footer, Restore Defaults/Done buttons, Manage Themes link,
+  and overflow-menu preview in light and dark modes,
   verify the expanded sidebar cannot be dragged narrower than the
   width where Back/Forward/Reload stop moving left so the divider never appears
   behind those buttons, while the panel-strip scrollbar remains in the bottom

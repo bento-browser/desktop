@@ -338,9 +338,16 @@ chrome viewport downward, so the native navigation controls remain visually
 inside the sidebar segment while resizing. The same chrome theme keeps Firefox's
 native Bookmarks sidebar visually aligned with Bento by sizing the native
 `#sidebar-title` with Tale UI `label-l` typography, vertically centering the
-header icon/title/chevron, and mapping `moz-input-search` through the same
-height, border, radius, typography, and focus-ring tokens as the Bento sidebar
-address field instead of Firefox's default input colours.
+header icon/title/chevron, and replacing the legacy Places
+`moz-input-search` search box with a native HTML search input through
+`syncNativeBookmarksSearchInput()`. The replacement keeps the `search-box` ID
+and calls the sidebar's existing bookmark filtering path, while the chrome CSS
+can style the visible input directly with the same height, border, radius,
+typography, icon spacing, and focus-ring tokens as the Bento sidebar address
+field. Use a 32px fallback for this native chrome search field rather than
+`2rem`: the native chrome document can resolve `rem` from Firefox's smaller
+chrome font size, while the Bento sidebar address field is designed as a 32px
+row.
 
 The floating overlay remains implemented by
 `extensions/bento-shell/src/address-bar/main.tsx` and

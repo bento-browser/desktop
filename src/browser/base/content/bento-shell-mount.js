@@ -205,6 +205,82 @@
     }
   }
 
+  function runNativeBookmarksSearch(doc, input) {
+    const win = doc?.defaultView;
+    if (typeof win?.searchBookmarks === 'function') {
+      win.searchBookmarks({ currentTarget: input });
+      return;
+    }
+
+    const tree = doc?.getElementById('bookmarks-view');
+    if (!tree) return;
+    const value = input.value;
+    if (!value) {
+      tree.place = tree.place;
+      return;
+    }
+
+    try {
+      win?.Glean?.sidebar?.search?.bookmarks?.add(1);
+      win?.Glean?.browserUiInteraction?.sidebarBookmarks?.search?.add(1);
+      if (win && typeof win.gCumulativeSearches === 'number') win.gCumulativeSearches += 1;
+    } catch {
+      // Telemetry is best-effort here; the filter itself must keep working.
+    }
+
+    const roots = win?.PlacesUtils?.bookmarks?.userContentRoots;
+    if (roots) tree.applyFilter(value, roots);
+  }
+
+  function syncNativeBookmarksSearchInput(doc, attempt = 0) {
+    const href = String(doc?.location?.href || '');
+    if (!href.startsWith('chrome://browser/content/places/bookmarksSidebar.xhtml')) return;
+    const search = doc.getElementById('search-box');
+    if (!search) return;
+    if (search.classList?.contains('bento-bookmarks-search-input')) return;
+
+    const scheduleRetry = () => {
+      if (attempt >= 20) return;
+      doc.defaultView?.setTimeout(() => syncNativeBookmarksSearchInput(doc, attempt + 1), 50);
+    };
+
+    const container = doc.getElementById('sidebar-search-container');
+    if (!container) {
+      scheduleRetry();
+      return;
+    }
+
+    const input = doc.createElementNS('http://www.w3.org/1999/xhtml', 'input');
+    input.id = 'search-box';
+    input.className = 'bento-bookmarks-search-input';
+    input.type = 'search';
+    input.autocomplete = 'off';
+    input.setAttribute('aria-controls', 'bookmarks-view');
+    input.setAttribute('data-l10n-id', 'places-bookmarks-search');
+    input.setAttribute('data-l10n-attrs', 'placeholder');
+
+    const placeholder = search.getAttribute('placeholder') || search.placeholder;
+    if (placeholder) input.setAttribute('placeholder', placeholder);
+    if ('value' in search && search.value) input.value = search.value;
+
+    let searchTimeout = 0;
+    const queueSearch = () => {
+      doc.defaultView?.clearTimeout(searchTimeout);
+      searchTimeout = doc.defaultView?.setTimeout(
+        () => runNativeBookmarksSearch(doc, input),
+        250,
+      );
+    };
+    input.addEventListener('input', queueSearch);
+    input.addEventListener('search', () => {
+      doc.defaultView?.clearTimeout(searchTimeout);
+      runNativeBookmarksSearch(doc, input);
+    });
+
+    search.replaceWith(input);
+    doc.l10n?.translateElements?.([input]);
+  }
+
   function syncBentoChromeThemeDocument(doc) {
     if (!doc?.documentElement || !isBentoThemeableChromeDocument(doc)) return false;
     const root = doc.documentElement;
@@ -217,6 +293,7 @@
       link.setAttribute('data-bento-chrome-theme', 'true');
       root.appendChild(link);
     }
+    syncNativeBookmarksSearchInput(doc);
     return true;
   }
 
