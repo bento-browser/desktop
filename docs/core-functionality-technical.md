@@ -656,7 +656,7 @@ actions. The settings entrypoint imports `@tale-ui/react-styles/command-palette`
 for that surface. The Keyboard shortcuts card also writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
 that value from the `BENTO_PANELS` title payload to decide whether Cmd/Ctrl+S
-targets the collapsed rail or the fully hidden sidebar state.
+targets the collapsed rail or the hidden sidebar state with edge-hover reveal.
 
 The address palette reads the same visible-engine data through the narrow
 `searchEngines/requestSnapshot` / `searchEngines/snapshot` protocol. That mirror
@@ -834,9 +834,15 @@ reserved for Bento. The handler reads `sidebarShortcutBehavior` from the latest
 sets both `sidebarHidden=true` and `sidebarCollapsed=true`; the next shortcut
 press clears both so the sidebar returns expanded. Chrome applies
 `.bento-sidebar-hidden` to `#bento-shell-host`, `#bento-shell-splitter`, and
-`#bento-shell-splitter-affordance`, shrinking the host and splitter to zero and
-letting the existing divider, toolbar-navigation, and bookmarks-toolbar
-observers recompute from the real hidden width.
+`#bento-shell-splitter-affordance`, pins the host to the collapsed rail width,
+cancels its hbox footprint with an equal negative right margin, translates the
+rail off the left edge, and hides the splitter. A chrome-side
+`#bento-sidebar-hidden-hover-zone` at the left edge, plus a window pointer-move
+fallback, toggles `.bento-sidebar-hidden-revealed` while hovered so the
+collapsed rail slides over the content without changing the content layout.
+While `sidebarHidden` is true, the divider, toolbar-navigation, and
+bookmarks-toolbar alignment paths must treat the sidebar width as zero even
+during hover reveal.
 Folder expand/collapse records the clicked folder row's offset inside the
 virtualized scroller before dispatching `tabFolder/setCollapsed`, restores that
 offset on the next row-model render, and suppresses the pane's one-shot

@@ -700,8 +700,8 @@ export function Settings() {
                       <Select.Item id="collapse" textValue="Collapse to narrow rail">
                         Collapse to narrow rail
                       </Select.Item>
-                      <Select.Item id="hide" textValue="Hide sidebar entirely">
-                        Hide sidebar entirely
+                      <Select.Item id="hide" textValue="Hide, reveal on edge hover">
+                        Hide, reveal on edge hover
                       </Select.Item>
                     </Select.ListBox>
                   </Select.Popover>

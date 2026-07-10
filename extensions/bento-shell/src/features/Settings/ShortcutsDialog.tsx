@@ -105,7 +105,7 @@ const SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   shortcutCommand({
     id: 'sidebar:minimize',
     title: 'Minimize sidebar',
-    subtitle: 'Collapse the sidebar to the rail or hide it, depending on Settings.',
+    subtitle: 'Collapse the sidebar to the rail or hide it with edge-hover access.',
     group: 'Sidebar',
     icon: commandIcon(PanelLeftCloseIcon),
     shortcut: [MOD, 'S'],

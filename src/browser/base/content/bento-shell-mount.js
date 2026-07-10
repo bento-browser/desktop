@@ -608,6 +608,7 @@
       }
       :root[bento-sidebar-addressbar='true'] #bento-shell-host,
       :root[bento-sidebar-addressbar='true'] #bento-shell-splitter,
+      :root[bento-sidebar-addressbar='true'] #bento-sidebar-hidden-hover-zone,
       :root[bento-sidebar-addressbar='true'] #sidebar-main,
       :root[bento-sidebar-addressbar='true'] #sidebar-launcher-splitter,
       :root[bento-sidebar-addressbar='true'] #sidebar-box,
@@ -912,11 +913,21 @@
         width: var(--bento-tab-strip-width-collapsed) !important;
       }
       #bento-shell-host.bento-sidebar-hidden {
-        min-width: 0 !important;
-        max-width: 0 !important;
-        width: 0 !important;
+        position: relative;
+        z-index: 5;
+        min-width: var(--bento-tab-strip-width-collapsed) !important;
+        max-width: var(--bento-tab-strip-width-collapsed) !important;
+        width: var(--bento-tab-strip-width-collapsed) !important;
+        margin-right: calc(-1 * var(--bento-tab-strip-width-collapsed)) !important;
         overflow: hidden;
         pointer-events: none;
+        transform: translateX(-100%);
+        transition: transform 160ms var(--bento-easing-standard, ease);
+      }
+      #bento-shell-host.bento-sidebar-hidden.bento-sidebar-hidden-revealed {
+        z-index: 7;
+        pointer-events: auto;
+        transform: translateX(0);
       }
       #bento-shell-splitter.bento-sidebar-collapsed {
         /* visibility:hidden (NOT display:none) so the splitter still
@@ -939,6 +950,20 @@
       }
       #bento-shell-splitter-affordance.bento-sidebar-hidden {
         display: none;
+      }
+      #bento-sidebar-hidden-hover-zone {
+        display: none;
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 12px;
+        z-index: 6;
+        pointer-events: none;
+      }
+      :root[bento-sidebar-hidden='true'] #bento-sidebar-hidden-hover-zone {
+        display: block;
+        pointer-events: auto;
       }
 
       /* Bento panel rounded corners. The real panel frame owns outer
@@ -5650,6 +5675,75 @@
     }
   }
 
+  function attachHiddenSidebarHoverZone() {
+    const shell = document.getElementById('browser');
+    const host = document.getElementById('bento-shell-host');
+    if (!shell || !host || host.dataset.bentoHiddenSidebarHoverAttached === '1') return;
+    host.dataset.bentoHiddenSidebarHoverAttached = '1';
+
+    let zone = document.getElementById('bento-sidebar-hidden-hover-zone');
+    if (!zone) {
+      zone = document.createElementNS(HTML_NS, 'div');
+      zone.id = 'bento-sidebar-hidden-hover-zone';
+      zone.setAttribute('aria-hidden', 'true');
+      shell.appendChild(zone);
+    }
+
+    const EDGE_HOVER_WIDTH_PX = 12;
+    const HIDE_GRACE_MS = 120;
+    let hideTimer = 0;
+    const setRevealed = (revealed) => {
+      const active = currentSidebarHidden && revealed;
+      host.classList.toggle('bento-sidebar-hidden-revealed', active);
+      document.documentElement.toggleAttribute('bento-sidebar-hidden-revealed', active);
+    };
+    const reveal = () => {
+      if (!currentSidebarHidden) return;
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = 0;
+      }
+      setRevealed(true);
+    };
+    const scheduleHide = () => {
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        hideTimer = 0;
+        if (zone.matches(':hover') || host.matches(':hover')) return;
+        setRevealed(false);
+      }, HIDE_GRACE_MS);
+    };
+    const onPointerMove = (event) => {
+      if (!currentSidebarHidden) return;
+      const y = event.clientY;
+      if (y < 0 || y > window.innerHeight) {
+        scheduleHide();
+        return;
+      }
+      if (event.clientX <= EDGE_HOVER_WIDTH_PX) {
+        reveal();
+        return;
+      }
+      if (!host.classList.contains('bento-sidebar-hidden-revealed')) return;
+      const rect = host.getBoundingClientRect();
+      if (event.clientX > rect.right + EDGE_HOVER_WIDTH_PX) {
+        scheduleHide();
+      }
+    };
+
+    zone.addEventListener('pointerenter', reveal);
+    zone.addEventListener('mouseenter', reveal);
+    zone.addEventListener('pointerleave', scheduleHide);
+    zone.addEventListener('mouseleave', scheduleHide);
+    host.addEventListener('pointerenter', reveal);
+    host.addEventListener('mouseenter', reveal);
+    host.addEventListener('pointerleave', scheduleHide);
+    host.addEventListener('mouseleave', scheduleHide);
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('mousemove', onPointerMove, true);
+    window.addEventListener('blur', () => setRevealed(false), true);
+  }
+
   function attachNativeSidebarSplitterFeedback() {
     const splitter = document.getElementById('sidebar-splitter');
     const box = document.getElementById('sidebar-box');
@@ -5859,7 +5953,7 @@
       sidebarLeftForDrag = host.getBoundingClientRect().left;
     };
     syncSidebarChromeDividerForSidebarWidth = (width) => {
-      if (width <= 0) {
+      if (currentSidebarHidden || width <= 0) {
         divider.hidden = true;
         updateToolbarBackgroundSplit(0);
         return;
@@ -5876,6 +5970,11 @@
     let raf = 0;
     const updateDivider = () => {
       raf = 0;
+      if (currentSidebarHidden) {
+        divider.hidden = true;
+        updateToolbarBackgroundSplit(0);
+        return;
+      }
       const rect = host.getBoundingClientRect();
       if (rect.width <= 0) {
         divider.hidden = true;
@@ -5964,6 +6063,10 @@
       return minWidth;
     };
     const applyOffset = (metrics, sidebarWidth, cachedMinWidth = null) => {
+      if (currentSidebarHidden) {
+        target.style.setProperty('--bento-toolbar-nav-offset', '0px');
+        return;
+      }
       const minWidth =
         typeof cachedMinWidth === 'number'
           ? cachedMinWidth
@@ -6072,6 +6175,7 @@
       !isTruthyToolbarAttr('collapsed');
 
     const readOffset = () => {
+      if (currentSidebarHidden) return 0;
       const stripRect = getStrip()?.getBoundingClientRect?.();
       if (stripRect && Number.isFinite(stripRect.left)) return stripRect.left;
       const hostRect = host.getBoundingClientRect();
@@ -18173,6 +18277,10 @@
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
     document.documentElement.toggleAttribute('bento-sidebar-hidden', currentSidebarHidden);
+    if (!currentSidebarHidden) {
+      host.classList.remove('bento-sidebar-hidden-revealed');
+      document.documentElement.removeAttribute('bento-sidebar-hidden-revealed');
+    }
     if (!host.__bentoSidebarHiddenApplied) {
       host.__bentoSidebarHiddenApplied = true;
       const wasHidden = host.classList.contains('bento-sidebar-hidden');
@@ -19414,6 +19522,7 @@
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
+    attachHiddenSidebarHoverZone();
     attachNativeSidebarSplitterFeedback();
     attachSidebarChromeDivider();
     attachToolbarNavigationAlignment();

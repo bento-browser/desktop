@@ -303,7 +303,9 @@ Use this shape for new or changed touchpoints:
   `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels while
   plain Left/Right arrows still reach side-panel content such as videos, verify
   `Cmd/Ctrl+S` follows Bento Settings by either collapsing the sidebar to the
-  rail or hiding it entirely and pressing the shortcut again restores it, verify
+  rail or hiding it from layout, verify left-edge hover reveals the collapsed
+  rail over content without pushing content, and verify pressing the shortcut
+  again restores it, verify
   `Cmd/Ctrl+W` from a focused side panel showing `about:preferences` or
   `about:settings` closes that panel rather than the main content tab, verify
   right-clicking a side

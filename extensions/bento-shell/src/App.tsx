@@ -451,11 +451,19 @@ export function App() {
     document.title = `BENTO_TAB_MOVE:${Date.now()}:${id}:${anchorId}:${before ? 'before' : 'after'}`;
   };
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
-  const sidebarCollapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
+  const sidebarCollapsedSetting = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
+  const sidebarHidden = useSettingsStore((s) => s.current?.sidebarHidden ?? false);
+  const sidebarCollapsed = sidebarHidden || sidebarCollapsedSetting;
   const setUiColorMode = (next: UiColorModePref) =>
     dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
-  const toggleSidebarCollapsed = () =>
-    dispatch({ type: 'settings/update', changes: { sidebarCollapsed: !sidebarCollapsed } });
+  const toggleSidebarCollapsed = () => {
+    dispatch({
+      type: 'settings/update',
+      changes: sidebarHidden
+        ? { sidebarHidden: false, sidebarCollapsed: false }
+        : { sidebarHidden: false, sidebarCollapsed: !sidebarCollapsed },
+    });
+  };
 
   // Mirror sidebarCollapsed onto the shell document's <html> via a data
   // attribute so CSS rules (TabRow, WorkspaceSwitcher, footer layout)

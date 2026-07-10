@@ -201,13 +201,13 @@ export interface BentoSettings {
    * the same screen position so the cursor doesn't have to move). */
   sidebarCollapsed: boolean;
   /** Sidebar hidden state. Set by the Cmd/Ctrl+S shortcut when
-   * sidebarShortcutBehavior is 'hide'. The chrome shrinks the sidebar host
-   * and splitter to zero while the same shortcut remains available to restore
-   * the expanded sidebar. */
+   * sidebarShortcutBehavior is 'hide'. The chrome removes the sidebar's
+   * effective layout footprint while keeping the collapsed rail available
+   * through left-edge hover; the same shortcut restores the expanded sidebar. */
   sidebarHidden: boolean;
   /** Minimized sidebar target used by Cmd/Ctrl+S. 'collapse' preserves the
-   * narrow rail behavior; 'hide' removes the sidebar from the layout until
-   * the shortcut is pressed again. */
+   * narrow rail behavior; 'hide' removes the sidebar's effective layout
+   * footprint while preserving a left-edge hover reveal for the collapsed rail. */
   sidebarShortcutBehavior: SidebarShortcutBehavior;
   /** Default width (CSS pixels) applied to a newly-added panel before
    * the user has dragged its splitter. Also used as the default minimum

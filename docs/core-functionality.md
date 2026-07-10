@@ -248,8 +248,10 @@ than the point where those native controls stop moving left, so the divider
 never slides underneath them. In collapsed sidebar
 mode, those same actions open the existing floating address/search fallback.
 `Cmd/Ctrl+S` minimizes the sidebar. Settings controls whether that shortcut
-collapses the sidebar to the narrow rail or hides it entirely until the shortcut
-is pressed again.
+collapses the sidebar to the narrow rail or hides it from layout. In hidden
+mode, hovering the left edge of the browser window slides the collapsed rail
+over the page without pushing content; pressing the shortcut again restores the
+expanded sidebar.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
 open that URL from the clipboard. Saved panels also appear by default and open
@@ -517,7 +519,7 @@ when Firefox exposes them. Settings also includes a searchable keyboard
 shortcuts command palette whose results are grouped by category and show command
 titles, supporting descriptions, and key tokens. The Keyboard shortcuts card
 also lets users choose whether `Cmd/Ctrl+S` collapses the sidebar to the rail or
-hides it entirely. Bento bundles uBlock Origin
+hides it with left-edge hover access. Bento bundles uBlock Origin
 enabled by default and leaves it removable/disableable by the user.
 
 ## Design principles
