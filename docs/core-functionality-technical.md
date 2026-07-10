@@ -337,7 +337,7 @@ content area. `attachSidebarChromeDivider()` overlays a fixed one-pixel divider
 at `#bento-shell-host`'s right edge from the top of the chrome viewport
 downward, then stamps the measured split as both `--bento-toolbar-divider-x`
 and an explicit gradient on the native toolbar surfaces so they stay neutral-5
-over the sidebar and switch to neutral-10 over the main content and panel strip.
+over the sidebar and switch to neutral-14 over the main content and panel strip.
 Regression pitfall: setting the split only through stylesheet rules or only on
 `#nav-bar` can leave the right side of the top chrome on the sidebar colour,
 because Firefox may paint the visible strip from `#navigator-toolbox` or
@@ -350,7 +350,7 @@ split: `body`, macOS's `body::after` titlebar pseudo-element, `#browser`, and
 `#appcontent` all paint the same split gradient. This prevents clipped or
 transparent toolbar pixels from leaking Firefox's neutral-5/native titlebar
 background above the panel strip. `#bento-toolbar-main-backdrop` is an explicit
-first child of `#navigator-toolbox`; it paints the main-side neutral-10 toolbar
+first child of `#navigator-toolbox`; it paints the main-side neutral-14 toolbar
 backdrop from the sidebar divider to the right edge while `#toolbar-menubar`,
 `#TabsToolbar`, `#nav-bar`, and `#PersonalToolbar` are lifted above it with
 `z-index: 1`, so native/titlebar paint cannot show through behind the panel
@@ -364,9 +364,9 @@ neutral-5 with layered `!important` declarations; unlayered runtime CSS can
 lose to those declarations on the panel path. Direct panel frame backplates
 also set `--bento-panel-strip-bg` with `!important`, but stay in the normal
 runtime rule group so later subdivision-specific transparent-frame exceptions
-can still win. The actual browser content and panel headers still own their own
-surfaces, but any exposed panel-strip/backplate pixels must resolve to the same
-neutral-10 value as the main side of the toolbar. Regression pitfall: the
+can still win. The actual browser content and neutral-5 panel headers still own
+their own surfaces, but any exposed panel-strip/backplate pixels must resolve to
+the same neutral-14 value as the main side of the toolbar. Regression pitfall: the
 no-panel view and split-panel view expose different chrome layers.
 In no-panel mode the moved `#tabbrowser-tabbox` mostly exposes the strip
 container and the main `browserSidebarContainer`; in split-panel mode
@@ -376,10 +376,11 @@ background around the deck. Keep explicit `background-color` and
 `background-image: none` resets on the strip container, side-panel host, split
 scrollport, and split scrollport parent so the panels path matches the main
 side of the top toolbar. Regression signature in the default light theme:
-the toolbar over the panel navigator/extensions samples as neutral-10
-(`#F4F1EF`) while the panel strip samples as neutral-5 (`#F8F6F4`). That means
+the toolbar over the panel navigator/extensions samples as the configured
+main-side token, currently neutral-14, while the panel strip samples as
+neutral-5 (`#F8F6F4`). That means
 one of the split-panel scrollport, parent tabbox, trailer, extent, or direct
-panel-frame rules is missing from the neutral-10 strip path or has fallen out of
+panel-frame rules is missing from the main-side strip path or has fallen out of
 the `bento.chrome-theme` layer where it needs to beat the static chrome theme.
 Do not fix this by changing panel headers; panel headers are separate surfaces.
 The same chrome theme keeps Firefox's native Bookmarks
@@ -2477,10 +2478,11 @@ stays on the outer XUL `vbox` so Enter/Space creates a blank panel.
 
 `bento-shell-mount.js` uses `.bento-panel--focused` and
 `.bento-panel--cycle-focused` as the source of truth for visible panel focus.
-Those classes paint both the existing panel ring and the focused panel header's
-`--color-20` background/`--color-20-fg` icon treatment. DevTools/content
-partner panels receive the same classes through `getDevtoolsFocusPartnerElement`,
-so focusing either side of a pair highlights both headers as well as both rings.
+Those classes paint the existing panel ring while keeping the panel header
+surface neutral-5 with the standard neutral icon treatment.
+DevTools/content partner panels receive the same classes through
+`getDevtoolsFocusPartnerElement`, so focusing either side of a pair highlights
+both rings.
 Cycle navigation applies both classes immediately: `.bento-panel--cycle-focused`
 is the short-lived traversal flash, while `.bento-panel--focused` persists on the
 actual content slot until focus moves elsewhere. The chrome focus tracker also

@@ -237,7 +237,7 @@ button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without
 a bottom separator line. The toolbar segment over the sidebar keeps the
 sidebar's neutral-5 background, while the toolbar segment over the main content
-and panel strip uses the same neutral-10 backdrop as the panel strip in both
+and panel strip uses the same neutral-14 backdrop as the panel strip in both
 main-only and panel-strip views. The sidebar's right divider extends
 through the native top toolbar to the top of the window, so the native Back,
 Forward, and Reload/Stop controls sit on the sidebar side of that divider while
@@ -321,10 +321,10 @@ Panels support the core Bento workflow:
 - choose custom panel width presets in Settings and drag those presets to set
   the order shown in each side-panel header's custom widths menu.
 
-Side-panel and sub-panel headers can be hidden per panel from the header's
-`...` menu. Hidden headers are restored from a small grey handle at the panel's
-top center. This state persists across workspace switches and restarts. The main
-content slot does not expose this header action.
+Side-panel and sub-panel headers sit on a neutral-5 surface and can be hidden
+per panel from the header's `...` menu. Hidden headers are restored from a small
+grey handle at the panel's top center. This state persists across workspace
+switches and restarts. The main content slot does not expose this header action.
 
 Right-clicking page content in the main slot or in a side panel exposes
 `Inspect in Panel` and, when Firefox exposes the matching stock item,
@@ -437,7 +437,7 @@ The intended behavior is:
   sidebar footer;
 - panel navigator controls sit in the native top toolbar flush with the sidebar
   divider after the native reload button and track that divider during live
-  sidebar resize, the toolbar and panel-strip backdrops switch to neutral-10 on
+  sidebar resize, the toolbar and panel-strip backdrops switch to neutral-14 on
   the main-content side of that divider, while browser extension buttons align
   to the right side of the top bar without Firefox's native post-tabs spacer
   gap, the native bookmarks

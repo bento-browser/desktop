@@ -100,7 +100,7 @@ Use this shape for new or changed touchpoints:
   controls,
   hides the native top URL/search field under a Bento
   chrome attribute while keeping toolbar and window controls visible on the
-  sidebar-matched background on the sidebar side of the divider, neutral-10 on
+  sidebar-matched background on the sidebar side of the divider, neutral-14 on
   the main-content side, and without Firefox's toolbox bottom separator,
   extends the sidebar right divider through the native top toolbar,
   aligns Firefox's native Back/Forward/Reload control cluster with the Bento
@@ -230,14 +230,14 @@ Use this shape for new or changed touchpoints:
   download history intact while using the same footer-side alignment and no
   top/bottom slide, verify the native top toolbar matches the sidebar
   background on the sidebar side of the divider, switches to the panel-strip
-  neutral-10 backdrop on the main-content side across `#navigator-toolbox`,
-  `#TabsToolbar`, and `#nav-bar`, matches that same neutral-10 backdrop behind
+  neutral-14 backdrop on the main-content side across `#navigator-toolbox`,
+  `#TabsToolbar`, and `#nav-bar`, matches that same neutral-14 backdrop behind
   the main content with no panels and behind the panel strip when panels are
   present, including clipped/native-titlebar fallback pixels from `body`,
   `body::after`, `#browser`, and `#appcontent`, and the
   `#bento-toolbar-main-backdrop` layer behind the panel navigator/extension
   buttons, with split-view panel frame backplates resolving to the same
-  neutral-10 value rather than neutral-5, and has no bottom separator line,
+  neutral-14 value rather than neutral-5, and has no bottom separator line,
   verify the sidebar right divider
   reaches the top of the window, verify the native Back/Forward/Reload control
   group stays on the sidebar side of that divider and moves continuously while
@@ -329,8 +329,9 @@ Use this shape for new or changed touchpoints:
   verify sidebar tab and folder
   `Rename` context-menu actions focus the inline field and select its text for
   immediate typing, verify side-panel and
-  sub-panel header hiding/restoration still works from the panel header menu and
-  the restore handle while main-panel headers stay unavailable, verify video
+  sub-panel headers stay on their neutral-5 surface and header
+  hiding/restoration still works from the panel header menu and the restore
+  handle while main-panel headers stay unavailable, verify video
   fullscreen from the main content slot and from a side panel hides the sidebar,
   panel navigator, strip scrollbar, panel trailer, panel header/loading overlay,
   non-requesting side-panel slots, rounded panel framing, and Bento focus rings

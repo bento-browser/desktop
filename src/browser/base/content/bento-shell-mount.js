@@ -459,7 +459,7 @@
           var(--bento-panel-nav-button-size) + var(--space-xs)
         );
         --bento-toolbar-sidebar-bg: var(--neutral-5);
-        --bento-toolbar-main-bg: var(--neutral-10);
+        --bento-toolbar-main-bg: var(--neutral-14);
         --bento-toolbar-divider-x: 100vw;
         --bento-panel-strip-bg: var(--bento-toolbar-main-bg);
         --bento-strip-scrollbar-row-height: calc(
@@ -562,7 +562,7 @@
       }
       /* bento-chrome-theme.css paints core chrome containers neutral-5 with
          layered !important rules. Keep these in the same layer so the panel
-         path cannot leak that sidebar colour behind the neutral-10 strip. */
+         path cannot leak that sidebar colour behind the main-side strip. */
       @layer bento.chrome-theme {
         :root[bento-sidebar-addressbar='true'] body,
         :root[bento-sidebar-addressbar='true'] body::after,
@@ -1557,26 +1557,26 @@
       }
       .bento-panel--focused > .bento-panel-header,
       .bento-panel--cycle-focused > .bento-panel-header {
-        background-color: var(--color-20);
-        border-bottom-color: var(--color-20);
+        background-color: var(--neutral-5);
+        border-bottom-color: var(--neutral-5);
       }
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button,
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button {
-        color: var(--color-20-fg);
+        color: var(--neutral-80);
       }
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--color-20-fg) 14%, transparent);
-        color: var(--color-20-fg);
+        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
+        color: var(--neutral-90);
       }
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
       .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--color-20-fg) 20%, transparent);
-        color: var(--color-20-fg);
+        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
+        color: var(--neutral-90);
       }
       #bento-side-panel-host > [data-bento-panel-tab-id] > browser {
         flex: 1 1 auto;
@@ -1591,8 +1591,8 @@
         align-items: center;
         gap: var(--space-3xs);
         padding: var(--space-3xs) var(--space-2xs);
-        background-color: var(--neutral-16);
-        border-bottom: var(--bento-border-hairline) solid var(--neutral-16);
+        background-color: var(--neutral-5);
+        border-bottom: var(--bento-border-hairline) solid var(--neutral-5);
         flex: 0 0 auto;
         max-height: var(--bento-panel-header-height);
         min-height: var(--bento-panel-header-height);
