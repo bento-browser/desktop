@@ -12,6 +12,7 @@
 
   .bento-shell-app {
     --bento-pinned-panels-bg: var(--neutral-14);
+    --bento-pinned-panels-block-start: var(--space-3xs);
     --bento-sidebar-corner-radius: var(--radius-l);
     --bento-sidebar-section-gap: var(--space-4xs);
     --bento-sidebar-collapse-transition: 200ms var(--bento-easing-standard, ease);
@@ -19,7 +20,7 @@
     flex-direction: row;
     box-sizing: border-box;
     border-inline-end: 1px solid var(--bento-sidebar-divider-color);
-    background-color: transparent;
+    background-color: var(--bento-brand-bg, var(--neutral-5));
     color: var(--neutral-90);
     overflow: hidden;
   }
@@ -51,7 +52,7 @@
   }
 
   .bento-pinned-panels + .bento-shell-app__main::before {
-    inset-block-start: 0;
+    inset-block-start: var(--bento-pinned-panels-block-start);
     background: radial-gradient(
       circle at 100% 100%,
       transparent var(--bento-sidebar-corner-radius),

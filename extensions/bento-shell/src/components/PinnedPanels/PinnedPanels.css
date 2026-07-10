@@ -15,13 +15,15 @@
     max-width: var(--bento-pinned-panels-rail-width);
     gap: 0;
     box-sizing: border-box;
-    height: 100%;
-    padding-block: var(--space-3xs);
+    height: calc(100% - var(--bento-pinned-panels-block-start, var(--space-3xs)));
+    margin-block-start: var(--bento-pinned-panels-block-start, var(--space-3xs));
+    padding-block: 0 var(--space-3xs);
     padding-inline: 0;
     overflow-y: auto;
     overflow-x: hidden;
     background-color: var(--bento-pinned-panels-bg, var(--neutral-14));
     border-right: var(--bento-border-hairline) solid var(--bento-sidebar-divider-color);
+    border-top-right-radius: var(--bento-sidebar-corner-radius, var(--radius-l));
   }
 
   .bento-pinned-panels__button.tale-icon-button {

@@ -37,6 +37,8 @@
   const STARTUP_VEIL_TIMEOUT_MS = 3000;
   const BENTO_DOM_FULLSCREEN_PANEL_ATTR = 'bento-dom-fullscreen-panel';
   const BENTO_DOM_FULLSCREEN_REQUESTER_ATTR = 'data-bento-dom-fullscreen-requester';
+  const BENTO_PANEL_CORNER_RADIUS_MIN = 0;
+  const BENTO_PANEL_CORNER_RADIUS_MAX = 36;
 
   function seedChromeColorMode() {
     const root = document.documentElement;
@@ -444,6 +446,7 @@
       :root {
         --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-20);
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
+        --bento-panel-corner-radius: var(--radius-m);
         --bento-splitter-hit-size: 14px;
         --bento-splitter-hit-half: 7px;
         --bento-splitter-indicator-radius: 3px;
@@ -930,7 +933,7 @@
          - [data-bento-main-panel] = #tabbrowser-tabbox after we move
            it into the strip. */
       .browserContainer {
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         overflow: clip;
       }
 
@@ -1017,7 +1020,7 @@
         flex-direction: row;
         align-items: stretch;
         overflow: visible;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         gap: 0;
         flex: 1 1 auto;
         min-height: 0;
@@ -1554,7 +1557,7 @@
         position: absolute;
         inset: 0;
         border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
@@ -1768,8 +1771,8 @@
         align-items: center;
         justify-content: center;
         background-color: var(--neutral-5);
-        border-end-start-radius: var(--radius-m);
-        border-end-end-radius: var(--radius-m);
+        border-end-start-radius: var(--bento-panel-corner-radius);
+        border-end-end-radius: var(--bento-panel-corner-radius);
         color: var(--color-60);
         pointer-events: none;
         z-index: 9;
@@ -1967,7 +1970,7 @@
          horizontal scrollport edge. */
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow);
         box-sizing: border-box;
@@ -1989,7 +1992,7 @@
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > browser,
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > .browserContainer,
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > .browserStack {
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         overflow: clip;
       }
       /* Side-panel content sits directly under the injected panel header.
@@ -1999,8 +2002,8 @@
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > browser,
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserContainer,
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserStack {
-        border-end-start-radius: var(--radius-m);
-        border-end-end-radius: var(--radius-m);
+        border-end-start-radius: var(--bento-panel-corner-radius);
+        border-end-end-radius: var(--bento-panel-corner-radius);
         border-start-start-radius: 0 !important;
         border-start-end-radius: 0 !important;
         overflow: clip;
@@ -2113,7 +2116,7 @@
          natural height, doesn't flex. */
       .bento-panel-header[data-bento-injected="1"] {
         flex: 0 0 auto;
-        border-radius: var(--radius-m) var(--radius-m) 0 0;
+        border-radius: var(--bento-panel-corner-radius) var(--bento-panel-corner-radius) 0 0;
         position: relative;
         z-index: 5;
       }
@@ -2183,7 +2186,7 @@
         padding: 0;
         background-color: transparent;
         border: 0;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         color: var(--neutral-70);
         transition:
           flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard);
@@ -2197,7 +2200,7 @@
         position: absolute;
         inset: 0;
         border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
@@ -2358,7 +2361,7 @@
         position: absolute;
         inset: 0;
         border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
@@ -2373,7 +2376,7 @@
         position: absolute;
         inset: 0;
         border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
@@ -2436,7 +2439,7 @@
         top: 0;
         height: var(--bento-subdivision-top-focus-height, 50%);
         border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--radius-m);
+        border-radius: var(--bento-panel-corner-radius);
         pointer-events: none;
         z-index: 12;
         box-sizing: border-box;
@@ -2479,7 +2482,7 @@
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-top-closed] {
         background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--radius-m) !important;
+        border-radius: var(--bento-panel-corner-radius) !important;
       }
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-survivor-subdivided] {
         background-color: transparent !important;
@@ -2499,7 +2502,7 @@
       .bento-subdivision-bottom > [data-bento-subpanel] {
         background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--radius-m) !important;
+        border-radius: var(--bento-panel-corner-radius) !important;
       }
       .bento-subdivision-bottom > [data-bento-subpanel][data-bento-subdivided] {
         background-color: transparent !important;
@@ -2613,7 +2616,7 @@
         margin: 0 !important;
         background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--radius-m) !important;
+        border-radius: var(--bento-panel-corner-radius) !important;
       }
       [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .bento-panel-header {
         position: relative !important;
@@ -2630,7 +2633,7 @@
       [data-bento-subpanel][data-bento-subdivision-top-closed] > [data-bento-subpanel]:not([data-bento-subdivided]) {
         background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--radius-m) !important;
+        border-radius: var(--bento-panel-corner-radius) !important;
       }
       [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] {
         background-color: transparent !important;
@@ -2661,8 +2664,8 @@
       [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserStack,
       [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack,
       [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack > browser {
-        border-end-start-radius: var(--radius-m) !important;
-        border-end-end-radius: var(--radius-m) !important;
+        border-end-start-radius: var(--bento-panel-corner-radius) !important;
+        border-end-end-radius: var(--bento-panel-corner-radius) !important;
         border-start-start-radius: 0 !important;
         border-start-end-radius: 0 !important;
         overflow: clip !important;
@@ -2850,7 +2853,7 @@
         position: absolute !important;
         z-index: 6 !important;
         box-sizing: border-box;
-        border-radius: var(--radius-m) !important;
+        border-radius: var(--bento-panel-corner-radius) !important;
         box-shadow: var(--bento-panel-frame-shadow);
       }
       .bento-subdivision-chooser::after {
@@ -17637,6 +17640,9 @@
       if (typeof decoded.panelShadowsEnabled === 'boolean') {
         applyChromePanelShadowsEnabled(decoded.panelShadowsEnabled);
       }
+      if (typeof decoded.panelCornerRadiusPx === 'number') {
+        applyChromePanelCornerRadius(decoded.panelCornerRadiusPx);
+      }
       hideStartupVeil();
       if (
         typeof decoded.scrollToPanelTabId === 'number' &&
@@ -18076,6 +18082,16 @@
       '--bento-main-panel-min-width',
       Math.round(n) + 'px',
     );
+  }
+  function applyChromePanelCornerRadius(radiusPx) {
+    const n = Number(radiusPx);
+    if (!Number.isFinite(n)) return;
+    const rounded = Math.round(n);
+    const clamped = Math.min(
+      BENTO_PANEL_CORNER_RADIUS_MAX,
+      Math.max(BENTO_PANEL_CORNER_RADIUS_MIN, rounded),
+    );
+    document.documentElement?.style.setProperty('--bento-panel-corner-radius', clamped + 'px');
   }
   // Preset side-panel widths surfaced in each panel header's kebab menu.
   // Mirrored from BentoSettings.customPanelSizes via the BENTO_PANELS

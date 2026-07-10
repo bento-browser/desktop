@@ -95,6 +95,10 @@
     width: fit-content;
   }
 
+  .bento-settings__panel-radius-slider {
+    width: 100%;
+  }
+
   .bento-settings__privacy-levels {
     width: max-content;
     max-width: 100%;

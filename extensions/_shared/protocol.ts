@@ -225,6 +225,10 @@ export interface BentoSettings {
    * default; disabling removes the chrome-side shadow proxy elements for
    * users who prefer flatter panels or want less visual separation. */
   panelShadowsEnabled: boolean;
+  /** Rounded corner radius, in CSS pixels, for Bento split-view panel
+   * frames. The default matches the current Tale UI `--radius-m` panel
+   * corner value. */
+  panelCornerRadiusPx: number;
   /** Automatic periodic backup of workspace state to storage.local. */
   autoBackupEnabled: boolean;
   /** Minutes between automatic backups. */
@@ -821,6 +825,10 @@ export type Event =
        * with many spawned panels keeps a normal tab-content width instead
        * of shrinking to the low chrome fallback. */
       defaultPanelWidthPx?: number;
+      /** Current Bento Settings panel corner radius in CSS pixels. Chrome
+       * mirrors this into `--bento-panel-corner-radius` for panel frames,
+       * content clips, focus rings, and subdivision chooser frames. */
+      panelCornerRadiusPx?: number;
       /** Per-workspace horizontal scroll position of the chrome panel
        * strip in CSS pixels. Chrome restores tabpanels.scrollLeft to
        * this value after the workspace-switch reconcile. Undefined

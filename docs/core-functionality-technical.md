@@ -2192,6 +2192,13 @@ Top-level panel resizing:
   immediate `panels/sync`; if chrome skips the live refresh, neighbouring panel
   rects, root splitters, and the strip scroll extent remain aligned to the old
   width until a later reconcile.
+- Panel corner radius path: `BentoSettings.panelCornerRadiusPx` defaults to 8,
+  matching the current Tale UI `--radius-m` panel frame radius. Settings writes
+  it through `settings/update`; `background.ts` treats it as chrome-bound and
+  re-emits `panels/sync`; `useToolsPort.ts` includes it in the `BENTO_PANELS`
+  title payload; `bento-shell-mount.js` clamps it to `0-36px` and writes
+  `--bento-panel-corner-radius` for panel frames, content clips, focus rings,
+  subdivision frames, and the add-panel trailer.
 - Workspace height resize path: the `tabpanels` `ResizeObserver` and the
   settled window-resize path (`attachWindowResizePerfMode` ->
   `repaintSelectedBrowserAfterWindowResize`) must call

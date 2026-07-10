@@ -18,6 +18,7 @@ import { NumberField } from '@tale-ui/react/number-field';
 import { TextField } from '@tale-ui/react/text-field';
 import { Select } from '@tale-ui/react/select';
 import { Disclosure } from '@tale-ui/react/disclosure';
+import { Slider } from '@tale-ui/react/slider';
 import { ToggleButtonGroup } from '@tale-ui/react/toggle-group';
 import { ToggleButton } from '@tale-ui/react/toggle-button';
 import { Button } from '@tale-ui/react/button';
@@ -47,6 +48,8 @@ import { BackupSection } from './BackupSection';
 import './Settings.css';
 
 const EMPTY_CUSTOM_PANEL_SIZES: number[] = [];
+const PANEL_CORNER_RADIUS_MIN = 0;
+const PANEL_CORNER_RADIUS_MAX = 36;
 
 interface CustomSizeFlipSnapshot {
   rects: Map<string, DOMRect>;
@@ -743,6 +746,33 @@ export function Settings() {
                     <Switch.Thumb />
                   </Switch.Root>
                 </Row>
+                <Column gap="3xs">
+                  <Slider.Root
+                    value={settings.panelCornerRadiusPx}
+                    onChange={(value) => {
+                      if (Array.isArray(value)) return;
+                      update('panelCornerRadiusPx', Math.round(value));
+                    }}
+                    minValue={PANEL_CORNER_RADIUS_MIN}
+                    maxValue={PANEL_CORNER_RADIUS_MAX}
+                    step={1}
+                    className="bento-settings__panel-radius-slider"
+                  >
+                    <Slider.Header>
+                      <Slider.Label>Panel corner radius (px)</Slider.Label>
+                      <Slider.Output />
+                    </Slider.Header>
+                    <Slider.Control>
+                      <Slider.Track>
+                        <Slider.Indicator />
+                        <Slider.Thumb />
+                      </Slider.Track>
+                    </Slider.Control>
+                  </Slider.Root>
+                  <Text variant="text" size="s" color="muted">
+                    Changes the rounded corners on Bento panel frames and their focus rings.
+                  </Text>
+                </Column>
                 <Column gap="2xs">
                   <Text>Custom panel sizes (px)</Text>
                   <Text variant="text" size="s" color="muted">

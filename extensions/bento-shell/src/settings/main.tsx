@@ -18,6 +18,7 @@ import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/card';
 import '@tale-ui/react-styles/switch';
 import '@tale-ui/react-styles/select';
+import '@tale-ui/react-styles/slider';
 import '@tale-ui/react-styles/disclosure';
 import '@tale-ui/react-styles/toggle-button';
 import '@tale-ui/react-styles/number-field';

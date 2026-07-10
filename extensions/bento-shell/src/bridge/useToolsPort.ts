@@ -232,6 +232,7 @@ function ensureConnection(): void {
               customPanelSizes?: number[];
               panelCycleWraparound?: boolean;
               panelShadowsEnabled?: boolean;
+              panelCornerRadiusPx?: number;
               stripScrollLeft?: number;
               pinnedTabIdsInWorkspace?: number[];
               savedPanelCount?: number;
@@ -263,7 +264,8 @@ function ensureConnection(): void {
             // channel. uiColorMode flips Tale UI tokens on the chrome
             // window root; sidebarCollapsed toggles the narrow-rail
             // class on #bento-shell-host; customPanelSizes populates
-            // each side panel header's kebab "more" menu; and
+            // each side panel header's kebab "more" menu;
+            // panelCornerRadiusPx sets split-view panel frame radius; and
             // defaultPanelWidthPx sets the main slot's default minimum
             // width. Single channel = no race with separate title
             // writes (the COLOR_MODE channel was dropped earlier for
@@ -290,6 +292,9 @@ function ensureConnection(): void {
             }
             if (typeof cur?.panelShadowsEnabled === 'boolean') {
               payload.panelShadowsEnabled = cur.panelShadowsEnabled;
+            }
+            if (typeof cur?.panelCornerRadiusPx === 'number') {
+              payload.panelCornerRadiusPx = cur.panelCornerRadiusPx;
             }
             // Pinned-panel set for THIS workspace (Set.has(tabId) drives
             // the chrome panel-header pin button state), per-panel audio
