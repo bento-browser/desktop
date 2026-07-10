@@ -587,6 +587,8 @@
         :root[bento-sidebar-addressbar='true'] #bento-side-panel-host,
         :root[bento-sidebar-addressbar='true'] #tabbrowser-tabpanels.bento-split-active,
         :root[bento-sidebar-addressbar='true'] #tabbrowser-tabbox:has(> #tabbrowser-tabpanels.bento-split-active),
+        :root[bento-sidebar-addressbar='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel],
+        :root[bento-sidebar-addressbar='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
         :root[bento-sidebar-addressbar='true'] #bento-add-panel-trailer,
         :root[bento-sidebar-addressbar='true'] #bento-flat-layout-extent {
           background-color: var(--bento-panel-strip-bg) !important;
@@ -1050,7 +1052,8 @@
         margin-inline-start: var(--space-2xs);
         margin-inline-end: var(--space-2xs);
         border-radius: 0;
-        background-color: transparent;
+        background-color: var(--bento-panel-strip-bg) !important;
+        background-image: none !important;
         box-shadow: none;
         overflow: visible;
         position: relative;

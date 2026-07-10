@@ -1628,10 +1628,15 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `#tabbrowser-tabpanels > .browserSidebarContainer`. The current no-panel
   frame uses `border-radius: var(--radius-xl)`,
   `box-shadow: var(--bento-panel-frame-shadow)`, and `overflow: clip` on that
-  native container. Because that native container owns the clip, neutralize the
-  direct child `.browserContainer` radius/overflow in no-panel mode; otherwise
-  the main page has two rounded clipping layers during window/sidebar resize,
-  which reintroduces choppy live resizing. Exception: when Firefox sets
+  native container. The moved `#tabbrowser-tabbox` and its child
+  `#tabbrowser-tabpanels` must paint `--bento-panel-strip-bg` in the
+  `bento.chrome-theme` layer in no-panel mode; otherwise Firefox's static
+  neutral-5 tabbox/tabpanels backing can show as a sharp square corner behind
+  the rounded main-content clip. Because `browserSidebarContainer` owns the
+  clip, neutralize the direct child `.browserContainer` radius/overflow in
+  no-panel mode; otherwise the main page has two rounded clipping layers during
+  window/sidebar resize, which reintroduces choppy live resizing. Exception:
+  when Firefox sets
   `:root[inDOMFullscreen]`, the
   fullscreen override must clear the strip host and browser-wrapper radii so
   video fullscreen is not clipped by the normal main-content or panel frame.

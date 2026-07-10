@@ -206,9 +206,10 @@ Use this shape for new or changed touchpoints:
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
-  corners during normal browsing, keeps live window and Bento sidebar resize
-  smooth with that frame visible while chrome resize observers are deferred and
-  panel frames use outline-only shadows during the live gesture, run
+  corners during normal browsing without a square tabbox/tabpanels backing
+  corner showing behind the rounded clip, keeps live window and Bento sidebar
+  resize smooth with that frame visible while chrome resize observers are
+  deferred and panel frames use outline-only shadows during the live gesture, run
   `pnpm run chrome:resize-check` after chrome token changes, and removes that
   frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and
