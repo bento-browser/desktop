@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { MouseEvent } from 'react';
 import { IconButton } from '@tale-ui/react/icon-button';
+import { Tooltip } from '@tale-ui/react/tooltip';
 
 import { usePinnedPanelsStore } from '../../state/pinnedPanels';
 import { usePanelFocusStore } from '../../state/panelFocus';
@@ -46,28 +47,34 @@ function PinnedPanelRowImpl({ entry }: PinnedPanelRowProps) {
   };
 
   return (
-    <IconButton
-      className="bento-pinned-panels__button"
-      data-bento-focused={isFocused ? 'true' : undefined}
-      variant="neutral"
-      size="sm"
-      aria-label={`Open pinned panel: ${title}`}
-      onPress={openPinnedPanel}
-      onAuxClick={(e) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          e.stopPropagation();
-          closePinnedPanel();
-        }
-      }}
-      onContextMenu={openContextMenu}
-    >
-      {favIconUrl ? (
-        <img className="bento-pinned-panels__favicon" src={favIconUrl} alt="" />
-      ) : (
-        <span className="bento-pinned-panels__favicon bento-pinned-panels__favicon--placeholder" />
-      )}
-    </IconButton>
+    <Tooltip.Root delay={400}>
+      <IconButton
+        className="bento-pinned-panels__button"
+        data-bento-focused={isFocused ? 'true' : undefined}
+        variant="neutral"
+        size="sm"
+        aria-label={`Open pinned panel: ${title}`}
+        onPress={openPinnedPanel}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            closePinnedPanel();
+          }
+        }}
+        onContextMenu={openContextMenu}
+      >
+        {favIconUrl ? (
+          <img className="bento-pinned-panels__favicon" src={favIconUrl} alt="" />
+        ) : (
+          <span className="bento-pinned-panels__favicon bento-pinned-panels__favicon--placeholder" />
+        )}
+      </IconButton>
+      <Tooltip.Popup placement="right" offset={8}>
+        <Tooltip.Arrow />
+        {title}
+      </Tooltip.Popup>
+    </Tooltip.Root>
   );
 }
 
