@@ -1086,6 +1086,10 @@
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
         box-shadow: var(--bento-panel-frame-outline-shadow);
       }
+      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer,
+      :root[bento-sidebar-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
+        box-shadow: var(--bento-panel-frame-outline-shadow);
+      }
 
       /* Custom always-visible horizontal scrollbar. Stays in the
          bottom strip position while the favicon navigator lives in the

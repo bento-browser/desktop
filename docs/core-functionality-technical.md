@@ -1662,7 +1662,13 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   the `bento-resize-settled` event, and panel frames use the outline-only
   `--bento-panel-frame-shadow`. Do not let generated Tale UI `--shadow-l`
   values paint on live-resized panel frames, including panel-strip and
-  subdivision splitter drags. Privileged native about pages such as
+  subdivision splitter drags. In no-side-panels mode, also keep a direct
+  `box-shadow: var(--bento-panel-frame-outline-shadow)` override on the native
+  `#tabbrowser-tabpanels > .browserSidebarContainer` frame while
+  `bento-window-resizing` or `bento-sidebar-resizing` is set; that native frame
+  is the resized, rounded main-content surface, so relying only on inherited
+  shadow variables is not enough to guard this path against later chrome CSS
+  changes. Privileged native about pages such as
   `about:preferences` and `about:settings` make this regression visible first.
   `pnpm run chrome:resize-check` enforces this guard after chrome token
   generation.
@@ -1736,6 +1742,10 @@ disabled class and the live resize root attributes (`bento-window-resizing`,
 bumps cannot reintroduce full elevation shadows during live resize.
 All panel-like chrome surfaces that should respect the setting must use
 `var(--bento-panel-frame-shadow)` rather than `var(--shadow-l)` directly.
+The no-side-panels main-content frame also has an explicit live window/sidebar
+resize selector that sets its `.browserSidebarContainer` shadow to
+`var(--bento-panel-frame-outline-shadow)` directly; keep that selector in sync
+with the inherited variable guard.
 This includes ordinary split-view panel frames, subdivided-panel descendants, and
 the absolute layout chooser wrapper
 `#bento-side-panel-host > .bento-layout-chooser`. The chooser wrapper is the
