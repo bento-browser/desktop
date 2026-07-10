@@ -235,15 +235,17 @@ The field uses the sidebar tab row text size on a neutral-5 surface. The native
 top URL/search field, stock toolbar app-menu button, stock toolbar downloads
 button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without
-a bottom separator line. The toolbar segment over the sidebar keeps the
-sidebar's neutral-5 background, while the toolbar segment over the main content
-and panel strip uses the same neutral-14 backdrop as the panel strip in both
-main-only and panel-strip views. The sidebar's right divider extends
-through the native top toolbar to the top of the window, so the native Back,
-Forward, and Reload/Stop controls sit on the sidebar side of that divider while
-tracking the sidebar edge as the sidebar is resized. The expanded sidebar cannot
-be manually resized narrower than the point where those native controls stop
-moving left, so the divider never slides underneath them. In collapsed sidebar
+a bottom separator line. With no side panels visible, the main background and
+toolbar are neutral-5 and the sidebar's right divider is hidden. When side
+panels are visible, the toolbar segment over the sidebar keeps the sidebar's
+neutral-5 background while the toolbar segment over the main content and panel
+strip uses the same neutral-14 backdrop as the panel strip, with the sidebar's
+right divider extending through the native top toolbar to the top of the
+window. The native Back, Forward, and Reload/Stop controls sit on the sidebar
+side of that divider when it is visible and track the sidebar edge as the
+sidebar is resized. The expanded sidebar cannot be manually resized narrower
+than the point where those native controls stop moving left, so the divider
+never slides underneath them. In collapsed sidebar
 mode, those same actions open the existing floating address/search fallback.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
@@ -437,10 +439,11 @@ The intended behavior is:
   sidebar footer;
 - panel navigator controls sit in the native top toolbar flush with the sidebar
   divider after the native reload button and track that divider during live
-  sidebar resize, the toolbar and panel-strip backdrops switch to neutral-14 on
-  the main-content side of that divider, while browser extension buttons align
-  to the right side of the top bar without Firefox's native post-tabs spacer
-  gap, the native bookmarks
+  sidebar resize when panels are visible, the toolbar and panel-strip backdrops
+  switch to neutral-14 on the main-content side of that divider in panel view
+  and neutral-5 with no divider in no-panel view, while browser extension
+  buttons align to the right side of the top bar without Firefox's native
+  post-tabs spacer gap, the native bookmarks
   toolbar starts at the panel-strip edge instead of spanning or pushing down
   Bento or Firefox-native sidebars, Firefox-native sidebars such as Bookmarks
   remain independently resizable, and the panel-strip scrollbar stays in the

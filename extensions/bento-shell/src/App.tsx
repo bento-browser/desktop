@@ -25,6 +25,7 @@ import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from './state/workspaces';
+import { getPanelIdsForWorkspace, usePanelsStore } from './state/panels';
 import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
 import { useExternalMergeStore } from './state/externalMerge';
@@ -139,6 +140,11 @@ export function App() {
   const folders = useWorkspaceFolders(activeWorkspaceId);
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
+  const activePanelIds = usePanelsStore((s) => getPanelIdsForWorkspace(s, activeWorkspaceId));
+  const activePanelsHydrated = usePanelsStore((s) =>
+    activeWorkspaceId ? s.hydratedWorkspaces.has(activeWorkspaceId) : false,
+  );
+  const hasNoSidePanels = activePanelsHydrated && activePanelIds.size === 0;
   const importInProgress = useExternalMergeStore((s) => Boolean(s.activeOperationId));
   // Per-workspace theme. Mirrors the active workspace's themeId onto
   // <html data-bento-theme="..."> so the scoped theme rules in
@@ -519,7 +525,12 @@ export function App() {
   }, [sidebarCollapsed]);
 
   return (
-    <div className="bento-shell-app" onContextMenu={onRootContextMenu}>
+    <div
+      className={
+        hasNoSidePanels ? 'bento-shell-app bento-shell-app--no-side-panels' : 'bento-shell-app'
+      }
+      onContextMenu={onRootContextMenu}
+    >
       <PinnedPanels />
       <div className="bento-shell-app__main">
         {!ready && (

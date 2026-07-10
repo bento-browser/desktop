@@ -467,6 +467,9 @@
         );
         --bento-strip-controls-height: var(--bento-strip-scrollbar-row-height);
       }
+      :root[bento-no-side-panels='true'] {
+        --bento-toolbar-main-bg: var(--neutral-5);
+      }
       #tabbrowser-tabpanels.bento-panel-shadows-disabled,
       #bento-strip-container.bento-panel-shadows-disabled {
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
@@ -873,6 +876,9 @@
         background-color: var(--bento-sidebar-divider-color);
         pointer-events: none;
         z-index: 3;
+      }
+      :root[bento-no-side-panels='true'] #bento-sidebar-chrome-divider {
+        display: none;
       }
 
       /* Sidebar dimensions. The chrome patch ships inline width/min/max
@@ -13147,6 +13153,11 @@
     const host = document.getElementById('bento-side-panel-host');
     const nav = document.getElementById('bento-panel-nav');
     const tabpanels = window.gBrowser?.tabpanels;
+    if (enabled) {
+      document.documentElement.setAttribute('bento-no-side-panels', 'true');
+    } else {
+      document.documentElement.removeAttribute('bento-no-side-panels');
+    }
     if (container) {
       container.classList.toggle('bento-no-side-panels', enabled);
     }

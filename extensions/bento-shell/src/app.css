@@ -24,6 +24,10 @@
     overflow: hidden;
   }
 
+  .bento-shell-app--no-side-panels {
+    border-inline-end-color: transparent;
+  }
+
   .bento-shell-app__main {
     display: flex;
     flex: 1 1 auto;

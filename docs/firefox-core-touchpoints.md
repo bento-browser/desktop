@@ -100,8 +100,10 @@ Use this shape for new or changed touchpoints:
   controls,
   hides the native top URL/search field under a Bento
   chrome attribute while keeping toolbar and window controls visible on the
-  sidebar-matched background on the sidebar side of the divider, neutral-14 on
-  the main-content side, and without Firefox's toolbox bottom separator,
+  sidebar-matched background in no-panel view, and on the sidebar-matched
+  background on the sidebar side of the divider plus neutral-14 on the
+  main-content side when panels are visible, and without Firefox's toolbox
+  bottom separator,
   extends the sidebar right divider through the native top toolbar,
   aligns Firefox's native Back/Forward/Reload control cluster with the Bento
   sidebar's right edge as the sidebar is resized, mounts a shared modal
@@ -207,8 +209,9 @@ Use this shape for new or changed touchpoints:
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
   corners during normal browsing without a square tabbox/tabpanels backing
-  corner showing behind the rounded clip, keeps live window and Bento sidebar
-  resize smooth with that frame visible while chrome resize observers are
+  corner showing behind the rounded clip, uses neutral-5 behind the main slot,
+  hides the sidebar right border and top-toolbar divider, keeps live window and
+  Bento sidebar resize smooth with that frame visible while chrome resize observers are
   deferred and panel frames use outline-only shadows during the live gesture, run
   `pnpm run chrome:resize-check` after chrome token changes, and removes that
   frame during DOM fullscreen,
@@ -230,11 +233,12 @@ Use this shape for new or changed touchpoints:
   button opens Firefox's native downloads panel with recent download actions and
   download history intact while using the same footer-side alignment and no
   top/bottom slide, verify the native top toolbar matches the sidebar
-  background on the sidebar side of the divider, switches to the panel-strip
+  background with no divider in no-panel view, matches the sidebar background
+  on the sidebar side of the divider in panel view, switches to the panel-strip
   neutral-14 backdrop on the main-content side across `#navigator-toolbox`,
-  `#TabsToolbar`, and `#nav-bar`, matches that same neutral-14 backdrop behind
-  the main content with no panels and behind the panel strip when panels are
-  present, including clipped/native-titlebar fallback pixels from `body`,
+  `#TabsToolbar`, and `#nav-bar` when panels are present, uses neutral-5 behind
+  the main content with no panels, and matches neutral-14 behind the panel strip
+  when panels are present, including clipped/native-titlebar fallback pixels from `body`,
   `body::after`, `#browser`, and `#appcontent`, and the
   `#bento-toolbar-main-backdrop` layer behind the panel navigator/extension
   buttons, with split-view panel frame backplates resolving to the same

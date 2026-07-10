@@ -337,7 +337,16 @@ content area. `attachSidebarChromeDivider()` overlays a fixed one-pixel divider
 at `#bento-shell-host`'s right edge from the top of the chrome viewport
 downward, then stamps the measured split as both `--bento-toolbar-divider-x`
 and an explicit gradient on the native toolbar surfaces so they stay neutral-5
-over the sidebar and switch to neutral-14 over the main content and panel strip.
+over the sidebar and switch to neutral-14 over the main content and panel strip
+when panels are visible. `setNoSidePanelsMode(true)` mirrors a
+`bento-no-side-panels='true'` attribute onto the chrome root; in that state
+`--bento-toolbar-main-bg` resolves to neutral-5, so the native top toolbar,
+fallback chrome surfaces, moved tabbox backing, and no-panel main background
+stay on the sidebar surface, and `#bento-sidebar-chrome-divider` is hidden.
+The sidebar iframe mirrors the active workspace's panel set and adds
+`.bento-shell-app--no-side-panels` when hydrated with zero panels so its own
+right border becomes transparent. Removing the root/class state restores the
+neutral-14 main-side toolbar/panel-strip colour and the divider for panel view.
 Regression pitfall: setting the split only through stylesheet rules or only on
 `#nav-bar` can leave the right side of the top chrome on the sidebar colour,
 because Firefox may paint the visible strip from `#navigator-toolbox` or
@@ -375,7 +384,10 @@ and its parent `#tabbrowser-tabbox` can leak Firefox's default neutral-5
 background around the deck. Keep explicit `background-color` and
 `background-image: none` resets on the strip container, side-panel host, split
 scrollport, and split scrollport parent so the panels path matches the main
-side of the top toolbar. Regression signature in the default light theme:
+side of the top toolbar. No-panel mode is the deliberate exception: those same
+tokenized backing layers resolve to neutral-5 and the divider is hidden so the
+main-only view reads as one continuous sidebar-coloured surface behind the
+rounded main content slot. Regression signature in the default light theme:
 the toolbar over the panel navigator/extensions samples as the configured
 main-side token, currently neutral-14, while the panel strip samples as
 neutral-5 (`#F8F6F4`). That means
@@ -1630,9 +1642,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `box-shadow: var(--bento-panel-frame-shadow)`, and `overflow: clip` on that
   native container. The moved `#tabbrowser-tabbox` and its child
   `#tabbrowser-tabpanels` must paint `--bento-panel-strip-bg` in the
-  `bento.chrome-theme` layer in no-panel mode; otherwise Firefox's static
-  neutral-5 tabbox/tabpanels backing can show as a sharp square corner behind
-  the rounded main-content clip. Because `browserSidebarContainer` owns the
+  `bento.chrome-theme` layer in no-panel mode; that token deliberately resolves
+  to neutral-5 only while `bento-no-side-panels='true'`. Otherwise Firefox's
+  static tabbox/tabpanels backing can show as a sharp square corner behind the
+  rounded main-content clip. Because `browserSidebarContainer` owns the
   clip, neutralize the direct child `.browserContainer` radius/overflow in
   no-panel mode; otherwise the main page has two rounded clipping layers during
   window/sidebar resize, which reintroduces choppy live resizing. Exception:
