@@ -458,6 +458,10 @@
         --bento-panel-nav-height: calc(
           var(--bento-panel-nav-button-size) + var(--space-xs)
         );
+        --bento-toolbar-sidebar-bg: var(--neutral-5);
+        --bento-toolbar-main-bg: var(--neutral-10);
+        --bento-toolbar-divider-x: 100vw;
+        --bento-panel-strip-bg: var(--bento-toolbar-main-bg);
         --bento-strip-scrollbar-row-height: calc(
           var(--bento-scrollbar-thickness) + var(--bento-strip-scrollbar-gap)
         );
@@ -503,6 +507,91 @@
         border-bottom: 0 !important;
         box-shadow: none !important;
         outline: none !important;
+      }
+      #navigator-toolbox {
+        position: relative !important;
+      }
+      #toolbar-menubar,
+      #TabsToolbar,
+      #nav-bar,
+      #PersonalToolbar {
+        position: relative !important;
+        z-index: 1 !important;
+      }
+      #bento-toolbar-main-backdrop {
+        position: fixed;
+        top: 0;
+        left: var(--bento-toolbar-divider-x);
+        width: calc(100vw - var(--bento-toolbar-divider-x));
+        height: var(--bento-toolbar-backdrop-height, 0px);
+        background-color: var(--bento-toolbar-main-bg);
+        pointer-events: none;
+        z-index: 0;
+      }
+      #navigator-toolbox,
+      #TabsToolbar,
+      #nav-bar {
+        background-color: var(--bento-toolbar-main-bg) !important;
+        background-image: linear-gradient(
+          to right,
+          var(--bento-toolbar-sidebar-bg) 0,
+          var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
+          var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
+          var(--bento-toolbar-main-bg) 100%
+        ) !important;
+        background-repeat: no-repeat !important;
+      }
+      :root[bento-sidebar-addressbar='true'] body,
+      :root[bento-sidebar-addressbar='true'] body::after,
+      :root[bento-sidebar-addressbar='true'] #browser,
+      :root[bento-sidebar-addressbar='true'] #appcontent {
+        background-color: var(--bento-toolbar-main-bg) !important;
+        background-image: linear-gradient(
+          to right,
+          var(--bento-toolbar-sidebar-bg) 0,
+          var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
+          var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
+          var(--bento-toolbar-main-bg) 100%
+        ) !important;
+        background-repeat: no-repeat !important;
+        background-size: 100% 100% !important;
+      }
+      :root[bento-sidebar-addressbar='true'] body::after {
+        appearance: none !important;
+        -moz-default-appearance: none !important;
+      }
+      /* bento-chrome-theme.css paints core chrome containers neutral-5 with
+         layered !important rules. Keep these in the same layer so the panel
+         path cannot leak that sidebar colour behind the neutral-10 strip. */
+      @layer bento.chrome-theme {
+        :root[bento-sidebar-addressbar='true'] body,
+        :root[bento-sidebar-addressbar='true'] body::after,
+        :root[bento-sidebar-addressbar='true'] #browser,
+        :root[bento-sidebar-addressbar='true'] #appcontent {
+          background-color: var(--bento-toolbar-main-bg) !important;
+          background-image: linear-gradient(
+            to right,
+            var(--bento-toolbar-sidebar-bg) 0,
+            var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
+            var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
+            var(--bento-toolbar-main-bg) 100%
+          ) !important;
+          background-repeat: no-repeat !important;
+          background-size: 100% 100% !important;
+        }
+        :root[bento-sidebar-addressbar='true'] body::after {
+          appearance: none !important;
+          -moz-default-appearance: none !important;
+        }
+        :root[bento-sidebar-addressbar='true'] #bento-strip-container,
+        :root[bento-sidebar-addressbar='true'] #bento-side-panel-host,
+        :root[bento-sidebar-addressbar='true'] #tabbrowser-tabpanels.bento-split-active,
+        :root[bento-sidebar-addressbar='true'] #tabbrowser-tabbox:has(> #tabbrowser-tabpanels.bento-split-active),
+        :root[bento-sidebar-addressbar='true'] #bento-add-panel-trailer,
+        :root[bento-sidebar-addressbar='true'] #bento-flat-layout-extent {
+          background-color: var(--bento-panel-strip-bg) !important;
+          background-image: none !important;
+        }
       }
       :root {
         --bento-toolbar-nav-offset: 0px;
@@ -862,6 +951,8 @@
         position: relative;
         z-index: 1;
         overflow: visible;
+        background-color: var(--bento-panel-strip-bg) !important;
+        background-image: none !important;
       }
       /* Workspace-switch fade. Applied as a class toggle to BOTH the
          split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
@@ -936,6 +1027,8 @@
            moment regardless of CSS, which conflicts with the user's
            "always visible" requirement. */
         scrollbar-width: none;
+        background-color: var(--bento-panel-strip-bg) !important;
+        background-image: none !important;
       }
       #bento-side-panel-host::-webkit-scrollbar {
         display: none;
@@ -1783,9 +1876,8 @@
          it, flex would shrink them past min-width and squash content
          until the panels are unusable. */
       #tabbrowser-tabpanels.bento-split-active {
-        /* No background fill — chrome bg shows through directly so
-           there's no surface discrepancy. Panels are cards lifted
-           via box-shadow over that same chrome bg.
+        /* The strip backdrop intentionally matches the main side of the
+           top toolbar while panel frames remain on the chrome card surface.
            display:flex + gap:var(--bento-panel-gap) is the single source of
            truth for inter-panel spacing — Firefox's content-area.css
            sets margin-left: 5px on .split-view-panel-active children
@@ -1807,12 +1899,18 @@
         overflow-x: scroll;
         overflow-y: hidden;
         box-sizing: border-box;
+        background-color: var(--bento-panel-strip-bg) !important;
+        background-image: none !important;
         /* Hide tabpanels' native horizontal scrollbar — the custom
            always-visible #bento-strip-scrollbar in the sidebar drives
            tabpanels.scrollLeft and is positioned next to the favicon
            nav. macOS's overlay scrollbar floats over panel content and
            auto-hides; the custom one stays put. */
         scrollbar-width: none;
+      }
+      #tabbrowser-tabbox:has(> #tabbrowser-tabpanels.bento-split-active) {
+        background-color: var(--bento-panel-strip-bg) !important;
+        background-image: none !important;
       }
       #tabbrowser-tabpanels.bento-split-active.bento-flat-panel-layout {
         display: block;
@@ -1861,7 +1959,7 @@
       #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
         border-radius: var(--radius-m);
-        background-color: var(--neutral-5);
+        background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow);
         box-sizing: border-box;
         border: 0;
@@ -2370,7 +2468,7 @@
         box-shadow: none !important;
       }
       #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-top-closed] {
-        background-color: var(--neutral-5) !important;
+        background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
@@ -2390,7 +2488,7 @@
       [data-bento-subdivided] > .browserStack,
       [data-bento-subdivided] > [data-bento-subpanel]:not([data-bento-subdivided]),
       .bento-subdivision-bottom > [data-bento-subpanel] {
-        background-color: var(--neutral-5) !important;
+        background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
@@ -2504,7 +2602,7 @@
         max-height: none !important;
         align-self: stretch !important;
         margin: 0 !important;
-        background-color: var(--neutral-5) !important;
+        background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
@@ -2521,7 +2619,7 @@
         overflow: visible !important;
       }
       [data-bento-subpanel][data-bento-subdivision-top-closed] > [data-bento-subpanel]:not([data-bento-subdivided]) {
-        background-color: var(--neutral-5) !important;
+        background-color: var(--bento-panel-strip-bg) !important;
         box-shadow: var(--bento-panel-frame-shadow) !important;
         border-radius: var(--radius-m) !important;
       }
@@ -5553,8 +5651,9 @@
 
   function attachSidebarChromeDivider() {
     const host = document.getElementById('bento-shell-host');
+    const toolbox = document.getElementById('navigator-toolbox');
     const parent = document.body;
-    if (!host || !parent) {
+    if (!host || !toolbox || !parent) {
       if (document.readyState !== 'complete') {
         const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
         window.addEventListener(evt, attachSidebarChromeDivider, { once: true });
@@ -5570,6 +5669,43 @@
       divider.id = 'bento-sidebar-chrome-divider';
       parent.appendChild(divider);
     }
+    let toolbarBackdrop = document.getElementById('bento-toolbar-main-backdrop');
+    if (toolbox && !toolbarBackdrop) {
+      toolbarBackdrop = document.createElementNS(HTML_NS, 'div');
+      toolbarBackdrop.id = 'bento-toolbar-main-backdrop';
+      toolbox.insertBefore(toolbarBackdrop, toolbox.firstChild);
+    }
+
+    const updateToolbarBackgroundSplit = (dividerLeft) => {
+      if (typeof dividerLeft !== 'number') return;
+      const rootSplit = Math.max(0, Math.round(dividerLeft)) + 'px';
+      document.documentElement.style.setProperty('--bento-toolbar-divider-x', rootSplit);
+      const toolboxRect = toolbox?.getBoundingClientRect?.();
+      const browserRect = document.getElementById('browser')?.getBoundingClientRect?.();
+      if (toolboxRect && browserRect) {
+        const height = Math.max(0, Math.round(browserRect.top - toolboxRect.top));
+        document.documentElement.style.setProperty('--bento-toolbar-backdrop-height', height + 'px');
+      }
+      for (const id of ['navigator-toolbox', 'TabsToolbar', 'nav-bar']) {
+        const toolbarSurface = document.getElementById(id);
+        if (!toolbarSurface) continue;
+        const rect = toolbarSurface.getBoundingClientRect();
+        const splitX = Math.max(0, Math.round(dividerLeft - rect.left));
+        const split = splitX + 'px';
+        const gradient =
+          'linear-gradient(to right, ' +
+          'var(--bento-toolbar-sidebar-bg) 0, ' +
+          'var(--bento-toolbar-sidebar-bg) ' +
+          split +
+          ', var(--bento-toolbar-main-bg) ' +
+          split +
+          ', var(--bento-toolbar-main-bg) 100%)';
+        toolbarSurface.style.setProperty('--bento-toolbar-divider-x', split);
+        toolbarSurface.style.setProperty('background-color', 'var(--bento-toolbar-main-bg)', 'important');
+        toolbarSurface.style.setProperty('background-image', gradient, 'important');
+        toolbarSurface.style.setProperty('background-repeat', 'no-repeat', 'important');
+      }
+    };
 
     let sidebarLeftForDrag = 0;
     prepareSidebarChromeDividerForSidebarResize = () => {
@@ -5581,7 +5717,9 @@
         return;
       }
       divider.hidden = false;
-      divider.style.left = Math.max(0, Math.round(sidebarLeftForDrag + width) - 1) + 'px';
+      const dividerLeft = Math.max(0, Math.round(sidebarLeftForDrag + width) - 1);
+      divider.style.left = dividerLeft + 'px';
+      updateToolbarBackgroundSplit(dividerLeft);
     };
     finishSidebarChromeDividerSidebarResize = () => {
       scheduleUpdate();
@@ -5596,7 +5734,9 @@
         return;
       }
       divider.hidden = false;
-      divider.style.left = Math.max(0, Math.round(rect.right) - 1) + 'px';
+      const dividerLeft = Math.max(0, Math.round(rect.right) - 1);
+      divider.style.left = dividerLeft + 'px';
+      updateToolbarBackgroundSplit(dividerLeft);
     };
     const scheduleUpdate = () => {
       if (isBentoChromeLiveResizing()) return;
@@ -5605,11 +5745,17 @@
     };
 
     scheduleUpdate();
+    if (document.readyState !== 'complete') {
+      const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+      window.addEventListener(evt, scheduleUpdate, { once: true });
+    }
+    window.addEventListener('load', scheduleUpdate, { once: true });
     window.addEventListener('resize', scheduleUpdate);
     window.addEventListener(BENTO_RESIZE_SETTLED_EVENT, scheduleUpdate);
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(scheduleUpdate);
       ro.observe(host);
+      ro.observe(toolbox);
       host._bentoSidebarChromeDividerResizeObserver = ro;
     }
   }

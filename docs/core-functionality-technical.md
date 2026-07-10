@@ -312,7 +312,8 @@ browser extension buttons in this path: the extension anchor's auto margin keeps
 that cluster pinned to the right side of the top bar while the navigator follows
 the sidebar divider. Sidebar chrome that follows the edge
 (`#bento-sidebar-chrome-divider` and
-`--bento-toolbar-nav-offset`) must use the same cached start-of-drag geometry
+`--bento-toolbar-nav-offset`) and the split top-toolbar background
+(`--bento-toolbar-divider-x`) must use the same cached start-of-drag geometry
 plus live width delta; its `ResizeObserver` callbacks must ignore
 `bento-sidebar-resizing`.
 Manual verification for this path should compare sidebar-handle drag against
@@ -329,16 +330,62 @@ from twice `--bento-splitter-indicator-radius` and uses
 `--bento-strip-scrollbar-gap` for both its bottom inset and the reserved
 clearance above it; this keeps the scrollbar visually as thin as the splitter
 handles and centered between the panels and the bottom window edge.
-`bento-chrome-theme.css` keeps the native top toolbar on the same
-neutral-5 surface as the Bento sidebar, and `bento-shell-mount.js` explicitly
-removes Firefox's toolbox bottom border so no separator line appears between
-the top toolbar and content area. `attachSidebarChromeDivider()` overlays a
-fixed one-pixel divider at `#bento-shell-host`'s right edge from the top of the
-chrome viewport downward, so the native navigation controls remain visually
-inside the sidebar segment while resizing. The same chrome theme keeps Firefox's
-native Bookmarks sidebar visually aligned with Bento by sizing the native
-`#sidebar-title` with Tale UI `label-l` typography, vertically centering the
-header icon/title/chevron, and replacing the legacy Places
+`bento-chrome-theme.css` keeps the native top toolbar tokenized with the rest
+of Bento chrome, and `bento-shell-mount.js` explicitly removes Firefox's
+toolbox bottom border so no separator line appears between the top toolbar and
+content area. `attachSidebarChromeDivider()` overlays a fixed one-pixel divider
+at `#bento-shell-host`'s right edge from the top of the chrome viewport
+downward, then stamps the measured split as both `--bento-toolbar-divider-x`
+and an explicit gradient on the native toolbar surfaces so they stay neutral-5
+over the sidebar and switch to neutral-10 over the main content and panel strip.
+Regression pitfall: setting the split only through stylesheet rules or only on
+`#nav-bar` can leave the right side of the top chrome on the sidebar colour,
+because Firefox may paint the visible strip from `#navigator-toolbox` or
+`#TabsToolbar`, and an unset split variable falls back to a full-width
+neutral-5 toolbar. Keep the explicit gradient stamping on all three toolbar
+surfaces (`#navigator-toolbox`, `#TabsToolbar`, and `#nav-bar`) from the same
+divider measurement. The root `--bento-toolbar-divider-x` is also written from
+the same measured viewport coordinate so fallback surfaces can use the identical
+split: `body`, macOS's `body::after` titlebar pseudo-element, `#browser`, and
+`#appcontent` all paint the same split gradient. This prevents clipped or
+transparent toolbar pixels from leaking Firefox's neutral-5/native titlebar
+background above the panel strip. `#bento-toolbar-main-backdrop` is an explicit
+first child of `#navigator-toolbox`; it paints the main-side neutral-10 toolbar
+backdrop from the sidebar divider to the right edge while `#toolbar-menubar`,
+`#TabsToolbar`, `#nav-bar`, and `#PersonalToolbar` are lifted above it with
+`z-index: 1`, so native/titlebar paint cannot show through behind the panel
+navigator or extension buttons. The panel strip uses
+`--bento-panel-strip-bg: var(--bento-toolbar-main-bg)` for its container, host,
+split scrollport backdrop, add-panel trailer, flat-layout extent, and split-view
+panel frame backplates. The core strip/tabbox/trailer overrides must stay inside
+the `bento.chrome-theme` cascade layer because `bento-chrome-theme.css` paints
+`#browser`, `#appcontent`, `#tabbrowser-tabbox`, and `#tabbrowser-tabpanels`
+neutral-5 with layered `!important` declarations; unlayered runtime CSS can
+lose to those declarations on the panel path. Direct panel frame backplates
+also set `--bento-panel-strip-bg` with `!important`, but stay in the normal
+runtime rule group so later subdivision-specific transparent-frame exceptions
+can still win. The actual browser content and panel headers still own their own
+surfaces, but any exposed panel-strip/backplate pixels must resolve to the same
+neutral-10 value as the main side of the toolbar. Regression pitfall: the
+no-panel view and split-panel view expose different chrome layers.
+In no-panel mode the moved `#tabbrowser-tabbox` mostly exposes the strip
+container and the main `browserSidebarContainer`; in split-panel mode
+`#tabbrowser-tabpanels.bento-split-active` is the visible horizontal scrollport,
+and its parent `#tabbrowser-tabbox` can leak Firefox's default neutral-5
+background around the deck. Keep explicit `background-color` and
+`background-image: none` resets on the strip container, side-panel host, split
+scrollport, and split scrollport parent so the panels path matches the main
+side of the top toolbar. Regression signature in the default light theme:
+the toolbar over the panel navigator/extensions samples as neutral-10
+(`#F4F1EF`) while the panel strip samples as neutral-5 (`#F8F6F4`). That means
+one of the split-panel scrollport, parent tabbox, trailer, extent, or direct
+panel-frame rules is missing from the neutral-10 strip path or has fallen out of
+the `bento.chrome-theme` layer where it needs to beat the static chrome theme.
+Do not fix this by changing panel headers; panel headers are separate surfaces.
+The same chrome theme keeps Firefox's native Bookmarks
+sidebar visually aligned with Bento by sizing the native `#sidebar-title` with
+Tale UI `label-l` typography, vertically centering the header icon/title/chevron,
+and replacing the legacy Places
 `moz-input-search` search box with a native HTML search input through
 `syncNativeBookmarksSearchInput()`. The replacement keeps the `search-box` ID
 and calls the sidebar's existing bookmark filtering path, while the chrome CSS
