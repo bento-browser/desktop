@@ -210,9 +210,10 @@ Use this shape for new or changed touchpoints:
   with no side panels clips page content inside the rounded main content frame
   corners during normal browsing without a square tabbox/tabpanels backing
   corner showing behind the rounded clip, uses neutral-5 behind the main slot,
-  hides the sidebar right border and top-toolbar divider, keeps live window and
-  Bento sidebar resize smooth with that frame visible while chrome resize observers are
-  deferred and panel frames use outline-only shadows during the live gesture, run
+  hides the sidebar right border and top-toolbar divider, keeps live window,
+  Bento sidebar, and panel-splitter resize smooth, including when a panel is
+  showing `about:preferences` or `about:settings`, while chrome resize observers
+  are deferred and panel frames use outline-only shadows during the live gesture, run
   `pnpm run chrome:resize-check` after chrome token changes, and removes that
   frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and

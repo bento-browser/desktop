@@ -475,7 +475,8 @@
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
       }
       :root[bento-window-resizing='true'],
-      :root[bento-sidebar-resizing='true'] {
+      :root[bento-sidebar-resizing='true'],
+      :root[bento-panel-resizing='true'] {
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
       }
 
@@ -5354,8 +5355,32 @@
     return document.documentElement.getAttribute('bento-sidebar-resizing') === 'true';
   }
 
+  let bentoPanelResizeDepth = 0;
+
+  function isBentoPanelResizing() {
+    return document.documentElement.getAttribute('bento-panel-resizing') === 'true';
+  }
+
+  function beginBentoPanelResize() {
+    bentoPanelResizeDepth += 1;
+    if (bentoPanelResizeDepth === 1) {
+      document.documentElement.setAttribute('bento-panel-resizing', 'true');
+    }
+  }
+
+  function endBentoPanelResize() {
+    const wasResizing = bentoPanelResizeDepth > 0;
+    if (wasResizing) {
+      bentoPanelResizeDepth -= 1;
+    }
+    if (wasResizing && bentoPanelResizeDepth === 0) {
+      document.documentElement.removeAttribute('bento-panel-resizing');
+      window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
+    }
+  }
+
   function isBentoChromeLiveResizing() {
-    return isBentoWindowResizing() || isBentoSidebarResizing();
+    return isBentoWindowResizing() || isBentoSidebarResizing() || isBentoPanelResizing();
   }
 
   function attachSidebarSplitterFeedback() {
@@ -7915,6 +7940,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
+    beginBentoPanelResize();
     splitter.classList.add('bento-subdivision-vsplitter--dragging');
     document.documentElement.style.setProperty('cursor', 'row-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -7942,6 +7968,7 @@
     splitter.classList.remove('bento-subdivision-vsplitter--dragging');
     document.documentElement.style.removeProperty('cursor');
     document.documentElement.style.removeProperty('user-select');
+    endBentoPanelResize();
     const topH = d.topPanel.getBoundingClientRect().height;
     const colH = d.col.getBoundingClientRect().height;
     const ratio = colH > 0 ? topH / colH : 0.5;
@@ -7987,6 +8014,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
+    beginBentoPanelResize();
     splitter.classList.add('bento-subdivision-hsplitter--dragging');
     document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -8014,6 +8042,7 @@
     splitter.classList.remove('bento-subdivision-hsplitter--dragging');
     document.documentElement.style.removeProperty('cursor');
     document.documentElement.style.removeProperty('user-select');
+    endBentoPanelResize();
     const leftW = d.leftPanel.getBoundingClientRect().width;
     const bottomW = d.bottom.getBoundingClientRect().width;
     const ratio = bottomW > 0 ? leftW / bottomW : 0.5;
@@ -8874,6 +8903,7 @@
     } catch (err) {
       console.warn('[bento-shell-mount] setPointerCapture failed:', err);
     }
+    beginBentoPanelResize();
     splitter.classList.add('bento-panel-splitter--dragging');
     document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -8927,6 +8957,7 @@
     splitter.classList.remove('bento-panel-splitter--dragging');
     document.documentElement.style.removeProperty('cursor');
     document.documentElement.style.removeProperty('user-select');
+    endBentoPanelResize();
     // After drag, re-position all splitters (the resized panel
     // shifts every splitter to its right).
     syncInterPanelSplitters();
@@ -14023,6 +14054,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
+    beginBentoPanelResize();
     splitter.classList.add(
       splitter._bentoAxis === 'vertical'
         ? 'bento-subdivision-vsplitter--dragging'
@@ -14057,6 +14089,7 @@
     splitter.classList.remove('bento-subdivision-vsplitter--dragging', 'bento-subdivision-hsplitter--dragging');
     document.documentElement.style.removeProperty('cursor');
     document.documentElement.style.removeProperty('user-select');
+    endBentoPanelResize();
     const point =
       drag.axis === 'vertical'
         ? (e?.clientY ?? splitter.getBoundingClientRect().top + splitter.getBoundingClientRect().height / 2)

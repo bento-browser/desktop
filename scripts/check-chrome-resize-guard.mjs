@@ -24,7 +24,7 @@ const chromeTokens = readRepoFile(chromeTokensPath);
 const normalPanelShadow =
   /--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\),\s*var\(--shadow-l\);/;
 const liveResizeOutlineShadow =
-  /:root\[bento-window-resizing='true'\]\s*,\s*:root\[bento-sidebar-resizing='true'\]\s*\{[^}]*--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
+  /:root\[bento-window-resizing='true'\]\s*,\s*:root\[bento-sidebar-resizing='true'\]\s*,\s*:root\[bento-panel-resizing='true'\]\s*\{[^}]*--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const generatedShadowToken = /--shadow-l:\s*[^;]+;/;
 
 const failures = [];
@@ -39,7 +39,7 @@ if (!normalPanelShadow.test(chromeMount)) {
 if (!liveResizeOutlineShadow.test(chromeMount)) {
   failures.push(
     `${chromeMountPath} must override --bento-panel-frame-shadow to ` +
-      'outline-only for both bento-window-resizing and bento-sidebar-resizing.',
+      'outline-only for bento-window-resizing, bento-sidebar-resizing, and bento-panel-resizing.',
   );
 }
 
