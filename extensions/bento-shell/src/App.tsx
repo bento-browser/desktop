@@ -77,6 +77,10 @@ function openSettings() {
   dispatch({ type: 'tab/openUrl', url: settingsUrl(), focusExisting: true });
 }
 
+function signalScrollToMain() {
+  document.title = `BENTO_SCROLL_TO_MAIN_${Date.now()}`;
+}
+
 function openCommandPalette() {
   // Sidebar content can't directly call the chrome-side showPalette()
   // (cross-process). Use the same document.title IPC pattern as the
@@ -209,7 +213,7 @@ export function App() {
     // already-active tab, so chrome's TabSelect-driven reconcile
     // never runs for that case and the strip stays stuck wherever
     // the user last scrolled it. Title sentinel covers the gap.
-    document.title = `BENTO_SCROLL_TO_MAIN_${Date.now()}`;
+    signalScrollToMain();
   };
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
@@ -233,6 +237,7 @@ export function App() {
   const onOpenSettings = () => {
     setSettingsRevealRequest((value = 0) => value + 1);
     openSettings();
+    signalScrollToMain();
   };
   const downloadsButtonRef = useRef<HTMLButtonElement>(null);
   const appMenuButtonRef = useRef<HTMLButtonElement>(null);

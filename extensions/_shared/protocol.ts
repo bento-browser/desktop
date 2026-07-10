@@ -165,6 +165,8 @@ export interface BackupListEntry {
   tabCount: number;
 }
 
+export type SidebarShortcutBehavior = 'collapse' | 'hide';
+
 export interface BentoSettings {
   /** Tab sleep on/off. When false, SleepPolicy's sweep is a no-op. */
   tabSleepEnabled: boolean;
@@ -198,6 +200,15 @@ export interface BentoSettings {
    * footer buttons stack vertically (with the collapse-toggle pinned at
    * the same screen position so the cursor doesn't have to move). */
   sidebarCollapsed: boolean;
+  /** Sidebar hidden state. Set by the Cmd/Ctrl+S shortcut when
+   * sidebarShortcutBehavior is 'hide'. The chrome shrinks the sidebar host
+   * and splitter to zero while the same shortcut remains available to restore
+   * the expanded sidebar. */
+  sidebarHidden: boolean;
+  /** Minimized sidebar target used by Cmd/Ctrl+S. 'collapse' preserves the
+   * narrow rail behavior; 'hide' removes the sidebar from the layout until
+   * the shortcut is pressed again. */
+  sidebarShortcutBehavior: SidebarShortcutBehavior;
   /** Default width (CSS pixels) applied to a newly-added panel before
    * the user has dragged its splitter. Also used as the default minimum
    * width for an unresized main content slot while side panels consume

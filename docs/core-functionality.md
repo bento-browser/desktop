@@ -247,6 +247,9 @@ sidebar is resized. The expanded sidebar cannot be manually resized narrower
 than the point where those native controls stop moving left, so the divider
 never slides underneath them. In collapsed sidebar
 mode, those same actions open the existing floating address/search fallback.
+`Cmd/Ctrl+S` minimizes the sidebar. Settings controls whether that shortcut
+collapses the sidebar to the narrow rail or hides it entirely until the shortcut
+is pressed again.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
 open that URL from the clipboard. Saved panels also appear by default and open
@@ -512,7 +515,9 @@ engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding search
 step adds supporting text that calls out visible privacy-oriented search engines
 when Firefox exposes them. Settings also includes a searchable keyboard
 shortcuts command palette whose results are grouped by category and show command
-titles, supporting descriptions, and key tokens. Bento bundles uBlock Origin
+titles, supporting descriptions, and key tokens. The Keyboard shortcuts card
+also lets users choose whether `Cmd/Ctrl+S` collapses the sidebar to the rail or
+hides it entirely. Bento bundles uBlock Origin
 enabled by default and leaves it removable/disableable by the user.
 
 ## Design principles

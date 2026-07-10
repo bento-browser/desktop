@@ -41,6 +41,8 @@ function makeSettings(overrides: Partial<BentoSettings> = {}): SettingsStore {
     uiColorMode: 'light',
     contentColorMode: 'light',
     sidebarCollapsed: false,
+    sidebarHidden: false,
+    sidebarShortcutBehavior: 'collapse',
     defaultPanelWidthPx: 640,
     customPanelSizes: [320, 480, 768, 1280],
     panelCycleWraparound: false,

@@ -36,7 +36,7 @@
 // the windowId itself — actions from window A and window B both flow
 // through it on the same port.
 
-import type { Action, Event, WireAction } from '@shared/protocol';
+import type { Action, Event, SidebarShortcutBehavior, WireAction } from '@shared/protocol';
 import { useSyncExternalStore } from 'react';
 import { useTabsStore } from '../state/tabs';
 import { selectActiveIdForWindow, useWorkspacesStore } from '../state/workspaces';
@@ -229,6 +229,8 @@ function ensureConnection(): void {
               defaultPanelWidthPx?: number;
               uiColorMode?: string;
               sidebarCollapsed?: boolean;
+              sidebarHidden?: boolean;
+              sidebarShortcutBehavior?: SidebarShortcutBehavior;
               customPanelSizes?: number[];
               panelCycleWraparound?: boolean;
               panelShadowsEnabled?: boolean;
@@ -263,7 +265,9 @@ function ensureConnection(): void {
             // they reach chrome via the single BENTO_PANELS title-IPC
             // channel. uiColorMode flips Tale UI tokens on the chrome
             // window root; sidebarCollapsed toggles the narrow-rail
-            // class on #bento-shell-host; customPanelSizes populates
+            // class on #bento-shell-host; sidebarHidden and
+            // sidebarShortcutBehavior drive Cmd/Ctrl+S hide/restore;
+            // customPanelSizes populates
             // each side panel header's kebab "more" menu;
             // panelCornerRadiusPx sets split-view panel frame radius; and
             // defaultPanelWidthPx sets the main slot's default minimum
@@ -278,6 +282,15 @@ function ensureConnection(): void {
             else if (bootUiColorMode) payload.uiColorMode = bootUiColorMode;
             if (typeof cur?.sidebarCollapsed === 'boolean') {
               payload.sidebarCollapsed = cur.sidebarCollapsed;
+            }
+            if (typeof cur?.sidebarHidden === 'boolean') {
+              payload.sidebarHidden = cur.sidebarHidden;
+            }
+            if (
+              cur?.sidebarShortcutBehavior === 'collapse' ||
+              cur?.sidebarShortcutBehavior === 'hide'
+            ) {
+              payload.sidebarShortcutBehavior = cur.sidebarShortcutBehavior;
             }
             if (Array.isArray(cur?.customPanelSizes)) {
               payload.customPanelSizes = cur.customPanelSizes;

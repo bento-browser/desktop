@@ -629,8 +629,9 @@ set the private default to the same engine when separate private search is not
 enabled. Search provider ids, ordering, availability, and display names come
 from Firefox `SearchService.getVisibleEngines()`.
 
-`SettingsStore` is version 2. Defaults are
-`privacyProtectionLevel: 'standard'` and `defaultSearchEngine: 'ddg'`.
+`SettingsStore` is version 2. Defaults include
+`privacyProtectionLevel: 'standard'`, `defaultSearchEngine: 'ddg'`,
+`sidebarHidden: false`, and `sidebarShortcutBehavior: 'collapse'`.
 Migrated v1 profiles receive those default fields in the settings snapshot but
 do not have an explicit stored override. On tools boot, `background.ts` applies
 the stored privacy preset or stored default search engine only when
@@ -652,7 +653,10 @@ read-only Tale UI `CommandPalette` with static shortcut command records, local
 and `CommandPalette.Shortcut` key tokens. The shortcut rows use command-palette
 item visuals but are display-only list rows, not selectable `CommandPalette.Item`
 actions. The settings entrypoint imports `@tale-ui/react-styles/command-palette`
-for that surface.
+for that surface. The Keyboard shortcuts card also writes
+`BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
+that value from the `BENTO_PANELS` title payload to decide whether Cmd/Ctrl+S
+targets the collapsed rail or the fully hidden sidebar state.
 
 The address palette reads the same visible-engine data through the narrow
 `searchEngines/requestSnapshot` / `searchEngines/snapshot` protocol. That mirror
@@ -822,6 +826,17 @@ Keep the chrome host pinned directly to this token rather than layering on a
 second chrome-local `calc()`/`max()` fallback; live sidebar/window resize relies
 on a single collapsed-width path plus the `bento-sidebar-resizing` and
 `bento-window-resizing` transition guards above.
+Cmd/Ctrl+S is handled in `src/browser/base/content/bento-shell-mount.js` from a
+capture-phase keydown listener because Firefox's `key_savePage` binding is
+reserved for Bento. The handler reads `sidebarShortcutBehavior` from the latest
+`BENTO_PANELS` payload. In `collapse` mode it toggles
+`BentoSettings.sidebarCollapsed` and clears `sidebarHidden`. In `hide` mode it
+sets both `sidebarHidden=true` and `sidebarCollapsed=true`; the next shortcut
+press clears both so the sidebar returns expanded. Chrome applies
+`.bento-sidebar-hidden` to `#bento-shell-host`, `#bento-shell-splitter`, and
+`#bento-shell-splitter-affordance`, shrinking the host and splitter to zero and
+letting the existing divider, toolbar-navigation, and bookmarks-toolbar
+observers recompute from the real hidden width.
 Folder expand/collapse records the clicked folder row's offset inside the
 virtualized scroller before dispatching `tabFolder/setCollapsed`, restores that
 offset on the next row-model render, and suppresses the pane's one-shot
@@ -1960,8 +1975,9 @@ Load-bearing pitfalls:
 - `document.title` is last-write-wins. Do not reintroduce separate title writes
   for chrome-bound settings that can ride inside `BENTO_PANELS`.
 - `BENTO_PANELS` is the canonical chrome state payload for panel visibility,
-  layout, theme, color mode, sidebar collapsed state, and related active
-  workspace chrome state. Any extra sidebar title channel must be sparse: emit
+  layout, theme, color mode, sidebar collapsed/hidden state, sidebar shortcut
+  behavior, and related active workspace chrome state. Any extra sidebar title
+  channel must be sparse: emit
   only for a real event/state transition, never on ordinary renders, snapshots,
   or empty steady state. A harmless-looking repeated sentinel such as an empty
   selection payload can overwrite `BENTO_PANELS` before chrome's polling loop

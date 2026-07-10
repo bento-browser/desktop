@@ -911,6 +911,13 @@
         max-width: var(--bento-tab-strip-width-collapsed) !important;
         width: var(--bento-tab-strip-width-collapsed) !important;
       }
+      #bento-shell-host.bento-sidebar-hidden {
+        min-width: 0 !important;
+        max-width: 0 !important;
+        width: 0 !important;
+        overflow: hidden;
+        pointer-events: none;
+      }
       #bento-shell-splitter.bento-sidebar-collapsed {
         /* visibility:hidden (NOT display:none) so the splitter still
            occupies its --bento-splitter-hit-size slot — that's what creates
@@ -922,6 +929,16 @@
            minimum) which is the same behaviour display:none gave us
            on the interaction front. */
         visibility: hidden;
+      }
+      #bento-shell-splitter.bento-sidebar-hidden {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        margin-inline: 0 !important;
+      }
+      #bento-shell-splitter-affordance.bento-sidebar-hidden {
+        display: none;
       }
 
       /* Bento panel rounded corners. The real panel frame owns outer
@@ -5844,6 +5861,7 @@
     syncSidebarChromeDividerForSidebarWidth = (width) => {
       if (width <= 0) {
         divider.hidden = true;
+        updateToolbarBackgroundSplit(0);
         return;
       }
       divider.hidden = false;
@@ -5861,6 +5879,7 @@
       const rect = host.getBoundingClientRect();
       if (rect.width <= 0) {
         divider.hidden = true;
+        updateToolbarBackgroundSplit(0);
         return;
       }
       divider.hidden = false;
@@ -11009,7 +11028,10 @@
     true /* capture */,
   );
 
-  // Cmd/Ctrl+S toggles the sidebar collapsed state. Firefox's stock
+  let currentSidebarHidden = false;
+  let currentSidebarShortcutBehavior = 'collapse';
+
+  // Cmd/Ctrl+S toggles the sidebar minimized state. Firefox's stock
   // key_savePage is patched to reserved="true" (patches/core-ui/
   // 07-key-savepage-reserved.patch) so chrome's capture-phase listener
   // sees the keydown even when content has focus, and content can no
@@ -11017,11 +11039,10 @@
   // Browser:SavePage command — File → Save Page As stays available via
   // the menu for users who still need to save.
   //
-  // Current collapsed state is read from #bento-shell-host's class
-  // (set by applyChromeSidebarCollapsed on each panels/sync). Dispatch
-  // settings/update with the toggled value; tools persists + broadcasts
-  // back via BENTO_PANELS, and applyChromeSidebarCollapsed re-applies
-  // the class so the next press toggles the other way.
+  // Current state is read from #bento-shell-host's classes (set by the
+  // BENTO_PANELS settings payload). Dispatch settings/update with the
+  // toggled value; tools persists + broadcasts back through the same
+  // channel so the next press sees the updated minimized state.
   window.addEventListener(
     'keydown',
     (e) => {
@@ -11032,10 +11053,26 @@
       e.preventDefault();
       e.stopImmediatePropagation();
       const host = document.getElementById('bento-shell-host');
+      const currentlyHidden =
+        currentSidebarHidden || !!host?.classList.contains('bento-sidebar-hidden');
       const currentlyCollapsed = !!host?.classList.contains('bento-sidebar-collapsed');
+      if (currentlyHidden) {
+        dispatchShellAction({
+          type: 'settings/update',
+          changes: { sidebarHidden: false, sidebarCollapsed: false },
+        });
+        return;
+      }
+      if (currentSidebarShortcutBehavior === 'hide') {
+        dispatchShellAction({
+          type: 'settings/update',
+          changes: { sidebarHidden: true, sidebarCollapsed: true },
+        });
+        return;
+      }
       dispatchShellAction({
         type: 'settings/update',
-        changes: { sidebarCollapsed: !currentlyCollapsed },
+        changes: { sidebarHidden: false, sidebarCollapsed: !currentlyCollapsed },
       });
     },
     true /* capture */,
@@ -17686,6 +17723,15 @@
       if (typeof decoded.sidebarCollapsed === 'boolean') {
         applyChromeSidebarCollapsed(decoded.sidebarCollapsed);
       }
+      if (
+        decoded.sidebarShortcutBehavior === 'collapse' ||
+        decoded.sidebarShortcutBehavior === 'hide'
+      ) {
+        currentSidebarShortcutBehavior = decoded.sidebarShortcutBehavior;
+      }
+      if (typeof decoded.sidebarHidden === 'boolean') {
+        applyChromeSidebarHidden(decoded.sidebarHidden);
+      }
       // Default panel width also drives the unresized main slot's minimum
       // width. This keeps fresh workspaces with many spawned panels from
       // squeezing tab content below the user's normal panel size.
@@ -18120,6 +18166,31 @@
     if (splitter) splitter.classList.toggle('bento-sidebar-collapsed', collapsed);
     const affordance = document.getElementById('bento-shell-splitter-affordance');
     if (affordance) affordance.classList.toggle('bento-sidebar-collapsed', collapsed);
+  }
+
+  function applyChromeSidebarHidden(hidden) {
+    currentSidebarHidden = hidden === true;
+    const host = document.getElementById('bento-shell-host');
+    if (!host) return;
+    document.documentElement.toggleAttribute('bento-sidebar-hidden', currentSidebarHidden);
+    if (!host.__bentoSidebarHiddenApplied) {
+      host.__bentoSidebarHiddenApplied = true;
+      const wasHidden = host.classList.contains('bento-sidebar-hidden');
+      if (wasHidden !== currentSidebarHidden) {
+        host.style.transition = 'none';
+        host.classList.toggle('bento-sidebar-hidden', currentSidebarHidden);
+        host.offsetWidth;
+        host.style.removeProperty('transition');
+      }
+    } else {
+      host.classList.toggle('bento-sidebar-hidden', currentSidebarHidden);
+      host.offsetWidth;
+    }
+    const splitter = document.getElementById('bento-shell-splitter');
+    if (splitter) splitter.classList.toggle('bento-sidebar-hidden', currentSidebarHidden);
+    const affordance = document.getElementById('bento-shell-splitter-affordance');
+    if (affordance) affordance.classList.toggle('bento-sidebar-hidden', currentSidebarHidden);
+    window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
   }
 
   // One-shot flag set by handlePanelsTitle when the workspace changed.

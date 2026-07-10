@@ -38,6 +38,7 @@ import type {
   PrivacyProtectionLevel,
   SearchEngineId,
   SelectablePrivacyProtectionLevel,
+  SidebarShortcutBehavior,
 } from '@shared/protocol';
 import { PRIVACY_LEVELS, PRIVACY_LEVEL_DETAILS, privacyLevelLabel } from '@shared/privacy-levels';
 import { useSettingsStore } from '../../state/settings';
@@ -68,6 +69,10 @@ function firstSelectedKey(keys: unknown): string | null {
   if (!(keys instanceof Set)) return null;
   const first = Array.from(keys)[0];
   return typeof first === 'string' ? first : null;
+}
+
+function isSidebarShortcutBehavior(value: unknown): value is SidebarShortcutBehavior {
+  return value === 'collapse' || value === 'hide';
 }
 
 function customSizeKey(sizes: number[], index: number): string {
@@ -670,12 +675,41 @@ export function Settings() {
               </Column>
             </Card.Header>
             <Card.Body>
-              <Row>
-                <Button variant="neutral" onPress={() => setShortcutsOpen(true)}>
-                  <Icon icon={Keyboard} size="sm" />
-                  View shortcuts
-                </Button>
-              </Row>
+              <Column gap="m">
+                <Row>
+                  <Button variant="neutral" onPress={() => setShortcutsOpen(true)}>
+                    <Icon icon={Keyboard} size="sm" />
+                    View shortcuts
+                  </Button>
+                </Row>
+                <Select.Root
+                  placeholder="Select sidebar shortcut behavior"
+                  selectedKey={settings.sidebarShortcutBehavior}
+                  onSelectionChange={(key) => {
+                    if (!isSidebarShortcutBehavior(key)) return;
+                    update('sidebarShortcutBehavior', key);
+                  }}
+                >
+                  <Select.Label>Cmd/Ctrl+S sidebar action</Select.Label>
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Icon />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <Select.ListBox>
+                      <Select.Item id="collapse" textValue="Collapse to narrow rail">
+                        Collapse to narrow rail
+                      </Select.Item>
+                      <Select.Item id="hide" textValue="Hide sidebar entirely">
+                        Hide sidebar entirely
+                      </Select.Item>
+                    </Select.ListBox>
+                  </Select.Popover>
+                </Select.Root>
+                <Text variant="text" size="s" color="muted">
+                  Chooses the minimized sidebar state used by Cmd/Ctrl+S.
+                </Text>
+              </Column>
             </Card.Body>
           </Card.Root>
 

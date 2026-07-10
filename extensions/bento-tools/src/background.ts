@@ -804,6 +804,9 @@ const bootReady = Promise.all([
   let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;
   let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
     settings.snapshot().sidebarCollapsed;
+  let lastSidebarHidden: BentoSettings['sidebarHidden'] = settings.snapshot().sidebarHidden;
+  let lastSidebarShortcutBehavior: BentoSettings['sidebarShortcutBehavior'] =
+    settings.snapshot().sidebarShortcutBehavior;
   let lastCustomPanelSizesKey: string = JSON.stringify(settings.snapshot().customPanelSizes ?? []);
   let lastDefaultPanelWidthPx: BentoSettings['defaultPanelWidthPx'] =
     settings.snapshot().defaultPanelWidthPx;
@@ -817,7 +820,8 @@ const bootReady = Promise.all([
     void applyContentColorMode(next.contentColorMode);
     // Re-fire panels/sync for every active workspace whenever a
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
-    // customPanelSizes, defaultPanelWidthPx, panelCycleWraparound,
+    // sidebarHidden, sidebarShortcutBehavior, customPanelSizes,
+    // defaultPanelWidthPx, panelCycleWraparound,
     // panelShadowsEnabled, panelCornerRadiusPx) so chrome picks up the
     // new value via the BENTO_PANELS title (which carries those fields
     // in its payload). The shell no longer writes dedicated
@@ -836,6 +840,8 @@ const bootReady = Promise.all([
     // caches uiColorMode in React state) reflects the change.
     const colorChanged = next.uiColorMode !== lastUiColorMode;
     const collapsedChanged = next.sidebarCollapsed !== lastSidebarCollapsed;
+    const hiddenChanged = next.sidebarHidden !== lastSidebarHidden;
+    const shortcutBehaviorChanged = next.sidebarShortcutBehavior !== lastSidebarShortcutBehavior;
     // Array compare via JSON — customPanelSizes is small (typically <8
     // numbers) so the stringify cost is negligible, and it correctly
     // detects content changes that the SettingsStore's referential
@@ -849,6 +855,8 @@ const bootReady = Promise.all([
     const cornerRadiusChanged = next.panelCornerRadiusPx !== lastPanelCornerRadiusPx;
     if (colorChanged) lastUiColorMode = next.uiColorMode;
     if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
+    if (hiddenChanged) lastSidebarHidden = next.sidebarHidden;
+    if (shortcutBehaviorChanged) lastSidebarShortcutBehavior = next.sidebarShortcutBehavior;
     if (sizesChanged) lastCustomPanelSizesKey = sizesKey;
     if (defaultPanelWidthChanged) lastDefaultPanelWidthPx = next.defaultPanelWidthPx;
     if (wraparoundChanged) lastPanelCycleWraparound = next.panelCycleWraparound;
@@ -857,6 +865,8 @@ const bootReady = Promise.all([
     if (
       colorChanged ||
       collapsedChanged ||
+      hiddenChanged ||
+      shortcutBehaviorChanged ||
       sizesChanged ||
       defaultPanelWidthChanged ||
       wraparoundChanged ||

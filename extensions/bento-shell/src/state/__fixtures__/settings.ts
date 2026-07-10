@@ -18,6 +18,8 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   contentColorMode: 'light',
   defaultPanelWidthPx: 640,
   sidebarCollapsed: false,
+  sidebarHidden: false,
+  sidebarShortcutBehavior: 'collapse',
   customPanelSizes: [320, 480, 768, 1280],
   panelCycleWraparound: false,
   panelShadowsEnabled: true,

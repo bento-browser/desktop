@@ -74,7 +74,8 @@ Use this shape for new or changed touchpoints:
   URL row activation to the same overlay with a sidebar anchor, routes submitted
   address/search text through Firefox URI fixup, resolves one-shot
   address-palette non-default search-engine submissions through Firefox
-  `SearchService` without changing the default engine, opens privileged
+  `SearchService` without changing the default engine, handles `Cmd/Ctrl+S`
+  sidebar minimization according to Bento Settings, opens privileged
   new-tab address submissions such as `about:preferences` through
   `gBrowser.addTrustedTab` when WebExtension tab creation would reject them,
   reveals the main content slot after committed address/search submissions,
@@ -301,6 +302,8 @@ Use this shape for new or changed touchpoints:
   stealing cursor movement from editable fields, verify
   `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels while
   plain Left/Right arrows still reach side-panel content such as videos, verify
+  `Cmd/Ctrl+S` follows Bento Settings by either collapsing the sidebar to the
+  rail or hiding it entirely and pressing the shortcut again restores it, verify
   `Cmd/Ctrl+W` from a focused side panel showing `about:preferences` or
   `about:settings` closes that panel rather than the main content tab, verify
   right-clicking a side

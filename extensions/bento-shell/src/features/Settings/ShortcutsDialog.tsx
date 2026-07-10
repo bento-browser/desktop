@@ -15,6 +15,7 @@ import {
 } from '@tale-ui/react/command-palette';
 import { Icon } from '@tale-ui/react/icon';
 import LayersIcon from 'lucide-react/dist/esm/icons/layers';
+import PanelLeftCloseIcon from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
 import CommandIcon from 'lucide-react/dist/esm/icons/command';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
@@ -22,7 +23,13 @@ import WrenchIcon from 'lucide-react/dist/esm/icons/wrench';
 
 import './ShortcutsDialog.css';
 
-type ShortcutCategory = 'Workspaces' | 'Panels' | 'Command Palette' | 'Tabs' | 'Developer';
+type ShortcutCategory =
+  | 'Workspaces'
+  | 'Sidebar'
+  | 'Panels'
+  | 'Command Palette'
+  | 'Tabs'
+  | 'Developer';
 
 interface ShortcutCommand {
   id: string;
@@ -94,6 +101,15 @@ const SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
     // bare ⌘N is Firefox's own tab-switch hotkey and isn't ours.
     shortcut: [MOD, ALT, '1-9'],
     keywords: ['workspace', 'switch', 'jump'],
+  }),
+  shortcutCommand({
+    id: 'sidebar:minimize',
+    title: 'Minimize sidebar',
+    subtitle: 'Collapse the sidebar to the rail or hide it, depending on Settings.',
+    group: 'Sidebar',
+    icon: commandIcon(PanelLeftCloseIcon),
+    shortcut: [MOD, 'S'],
+    keywords: ['sidebar', 'collapse', 'hide', 'minimize'],
   }),
   shortcutCommand({
     id: 'panel:previous',
