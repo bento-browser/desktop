@@ -325,7 +325,18 @@ point as Back/Forward/Reload instead of sliding underneath them. Keep
 `:root[bento-sidebar-resizing='true']` and
 `:root[bento-window-resizing='true']`; otherwise a collapsed-width change can
 make live sidebar or window resize inherit the collapse animation path and become
-choppy. The bottom panel-strip scrollbar derives `--bento-scrollbar-thickness`
+choppy. Panel-view frame shadows stay at the normal outline plus drop-shadow
+during live sidebar, window, and panel resize; do not use a global
+`--bento-panel-frame-shadow` live-resize override for panel view. The only
+outline-only live resize frame is the no-side-panels
+`.browserSidebarContainer` during window/sidebar resize. For panel splitters,
+`about:preferences` and `about:settings` are the exceptional expensive content:
+when a dragged panel or flat-layout group contains one of those browsers,
+`bento-shell-mount.js` preserves its layers, temporarily deactivates that
+browser's docshell during the drag, and restores it when `bento-resize-settled`
+fires. Keep that freeze scoped to the resized panel/group so ordinary web panels
+and panel shadows stay on the normal path. The bottom panel-strip scrollbar
+derives `--bento-scrollbar-thickness`
 from twice `--bento-splitter-indicator-radius` and uses
 `--bento-strip-scrollbar-gap` for both its bottom inset and the reserved
 clearance above it; this keeps the scrollbar visually as thin as the splitter

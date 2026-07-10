@@ -213,9 +213,11 @@ Use this shape for new or changed touchpoints:
   hides the sidebar right border and top-toolbar divider, keeps live window,
   Bento sidebar, and panel-splitter resize smooth, including when a panel is
   showing `about:preferences` or `about:settings`, while chrome resize observers
-  are deferred, panel-view frames keep normal shadows during the live gesture,
-  and only the no-side-panels `.browserSidebarContainer` frame has a direct
-  outline-only live window/sidebar resize override, run
+  are deferred, settings about-page browsers in the resized panel/group are
+  layer-preserved and docshell-paused only for the live panel drag, panel-view
+  frames keep normal shadows during the live gesture, and only the
+  no-side-panels `.browserSidebarContainer` frame has a direct outline-only live
+  window/sidebar resize override, run
   `pnpm run chrome:resize-check` after chrome token changes, and removes that
   frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and

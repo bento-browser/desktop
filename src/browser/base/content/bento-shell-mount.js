@@ -5355,12 +5355,105 @@
   }
 
   let bentoPanelResizeDepth = 0;
+  const bentoPanelResizeFrozenSettingsAboutBrowsers = new Map();
 
   function isBentoPanelResizing() {
     return document.documentElement.getAttribute('bento-panel-resizing') === 'true';
   }
 
-  function beginBentoPanelResize() {
+  function getBrowserCurrentSpec(browserEl) {
+    try {
+      const currentSpec = browserEl?.currentURI?.spec;
+      if (typeof currentSpec === 'string') return currentSpec;
+    } catch {}
+    try {
+      const documentSpec = browserEl?.browsingContext?.currentWindowGlobal?.documentURI?.spec;
+      if (typeof documentSpec === 'string') return documentSpec;
+    } catch {}
+    try {
+      const src = browserEl?.getAttribute?.('src');
+      if (typeof src === 'string') return src;
+    } catch {}
+    return '';
+  }
+
+  function isBentoSettingsAboutSpec(spec) {
+    return (
+      typeof spec === 'string' &&
+      (spec.startsWith('about:preferences') || spec.startsWith('about:settings'))
+    );
+  }
+
+  function getBentoPanelResizeTargets(targets) {
+    if (!targets) return [];
+    if (targets.querySelectorAll || targets.getBoundingClientRect) return [targets];
+    if (typeof targets[Symbol.iterator] === 'function') return Array.from(targets).filter(Boolean);
+    return [targets];
+  }
+
+  function shouldFreezeSettingsAboutBrowserForPanelResize(browserEl) {
+    if (!isBentoSettingsAboutSpec(getBrowserCurrentSpec(browserEl))) return false;
+    try {
+      const rect = browserEl.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    } catch {
+      return true;
+    }
+  }
+
+  function freezePanelResizeSettingsAboutBrowsers(targets) {
+    for (const target of getBentoPanelResizeTargets(targets)) {
+      const browsers = target?.matches?.('browser')
+        ? [target]
+        : Array.from(target?.querySelectorAll?.('browser') || []);
+      for (const browserEl of browsers) {
+        if (
+          bentoPanelResizeFrozenSettingsAboutBrowsers.has(browserEl) ||
+          !shouldFreezeSettingsAboutBrowserForPanelResize(browserEl)
+        ) {
+          continue;
+        }
+        const previous = {};
+        try {
+          previous.docShellIsActive = browserEl.docShellIsActive;
+        } catch {}
+        try {
+          previous.renderLayers = browserEl.renderLayers;
+        } catch {}
+        bentoPanelResizeFrozenSettingsAboutBrowsers.set(browserEl, previous);
+        try {
+          browserEl.preserveLayers?.(true);
+        } catch {}
+        try {
+          browserEl.renderLayers = true;
+        } catch {}
+        try {
+          browserEl.docShellIsActive = false;
+        } catch {}
+      }
+    }
+  }
+
+  function restorePanelResizeSettingsAboutBrowsers() {
+    if (bentoPanelResizeFrozenSettingsAboutBrowsers.size === 0) return;
+    for (const [browserEl, previous] of bentoPanelResizeFrozenSettingsAboutBrowsers) {
+      try {
+        browserEl.preserveLayers?.(true);
+      } catch {}
+      try {
+        browserEl.renderLayers =
+          typeof previous.renderLayers === 'boolean' ? previous.renderLayers : true;
+      } catch {}
+      try {
+        browserEl.docShellIsActive =
+          typeof previous.docShellIsActive === 'boolean' ? previous.docShellIsActive : true;
+      } catch {}
+    }
+    bentoPanelResizeFrozenSettingsAboutBrowsers.clear();
+  }
+
+  function beginBentoPanelResize(resizeTargets = null) {
+    freezePanelResizeSettingsAboutBrowsers(resizeTargets);
     bentoPanelResizeDepth += 1;
     if (bentoPanelResizeDepth === 1) {
       document.documentElement.setAttribute('bento-panel-resizing', 'true');
@@ -5374,6 +5467,7 @@
     }
     if (wasResizing && bentoPanelResizeDepth === 0) {
       document.documentElement.removeAttribute('bento-panel-resizing');
+      restorePanelResizeSettingsAboutBrowsers();
       window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
     }
   }
@@ -7939,7 +8033,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
-    beginBentoPanelResize();
+    beginBentoPanelResize(col);
     splitter.classList.add('bento-subdivision-vsplitter--dragging');
     document.documentElement.style.setProperty('cursor', 'row-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -8013,7 +8107,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
-    beginBentoPanelResize();
+    beginBentoPanelResize(bottom);
     splitter.classList.add('bento-subdivision-hsplitter--dragging');
     document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -8902,7 +8996,7 @@
     } catch (err) {
       console.warn('[bento-shell-mount] setPointerCapture failed:', err);
     }
-    beginBentoPanelResize();
+    beginBentoPanelResize(leftPanel);
     splitter.classList.add('bento-panel-splitter--dragging');
     document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -13957,6 +14051,32 @@
     return null;
   }
 
+  function getPanelElementsForLayoutGroup(groupId) {
+    const group = findCurrentLayoutGroup(groupId);
+    if (!group) return [];
+    const tabIds = [];
+    const collect = (node) => {
+      if (!node) return;
+      if (node.kind === 'panel') {
+        const tabId = Number(node.tabId);
+        if (Number.isFinite(tabId)) tabIds.push(tabId);
+        return;
+      }
+      if (node.kind === 'group') {
+        collect(node.children?.[0]);
+        collect(node.children?.[1]);
+      }
+    };
+    collect(group);
+    return tabIds
+      .map((tabId) =>
+        document.querySelector(
+          '[data-bento-panel-tab-id="' + CSS.escape(String(tabId)) + '"]',
+        ),
+      )
+      .filter(Boolean);
+  }
+
   function ratioFromLayoutPointer(axis, groupRect, clientX, clientY) {
     if (!groupRect) return 0.5;
     const splitterSize = panelSplitterSizePx();
@@ -14053,7 +14173,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
-    beginBentoPanelResize();
+    beginBentoPanelResize(getPanelElementsForLayoutGroup(splitter._bentoGroupId));
     splitter.classList.add(
       splitter._bentoAxis === 'vertical'
         ? 'bento-subdivision-vsplitter--dragging'
