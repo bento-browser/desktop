@@ -301,6 +301,8 @@ Use this shape for new or changed touchpoints:
   stealing cursor movement from editable fields, verify
   `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels while
   plain Left/Right arrows still reach side-panel content such as videos, verify
+  `Cmd/Ctrl+W` from a focused side panel showing `about:preferences` or
+  `about:settings` closes that panel rather than the main content tab, verify
   right-clicking a side
   panel or sub-panel header Back or Forward button shows that panel's own
   previous, current, and next session-history entries and selecting an entry

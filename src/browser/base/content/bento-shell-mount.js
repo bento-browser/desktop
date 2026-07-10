@@ -9793,6 +9793,26 @@
     }
   }
 
+  function getFocusedPanelElementForClose() {
+    const active = document.activeElement;
+    const activePanel = active?.closest?.('[data-bento-panel-tab-id]');
+    if (activePanel) return activePanel;
+    if (active && isEditableChromeTarget(active)) return null;
+    let focusedContentBrowser = null;
+    try {
+      focusedContentBrowser = Services.focus.focusedContentBrowsingContext?.top?.embedderElement;
+    } catch {}
+    const contentPanel = focusedContentBrowser?.closest?.('[data-bento-panel-tab-id]');
+    if (contentPanel) return contentPanel;
+    if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) return null;
+    if (!Number.isFinite(currentFocusedPanelTabId)) return null;
+    const focusedPanel = document.querySelector(
+      '[data-bento-panel-tab-id="' + CSS.escape(String(currentFocusedPanelTabId)) + '"]',
+    );
+    if (!focusedPanel?.classList?.contains('bento-panel--focused')) return null;
+    return focusedPanel;
+  }
+
   function getPanelFocusIndicatorTargets() {
     const out = [];
     const seen = new Set();
@@ -10924,9 +10944,7 @@
         currentSidebarSelectedTabIds = [];
         return;
       }
-      const active = document.activeElement;
-      if (!active || typeof active.closest !== 'function') return;
-      const panel = active.closest('[data-bento-panel-tab-id]');
+      const panel = getFocusedPanelElementForClose();
       if (panel) {
         const tabId = Number(panel.dataset.bentoPanelTabId);
         if (!Number.isFinite(tabId)) return;

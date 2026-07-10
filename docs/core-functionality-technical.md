@@ -2578,6 +2578,15 @@ panel button keyboard activation bubble back to the outer host, or a saved-panel
 Enter press will create a blank `about:blank?bento_add_as_panel=1...` marker
 panel instead of opening the saved URL.
 
+The chrome `Cmd/Ctrl+W` intercept closes the focused side panel before falling
+back to main-slot close. Resolve the panel first from `document.activeElement`,
+then from `Services.focus.focusedContentBrowsingContext.top.embedderElement`,
+then from `currentFocusedPanelTabId` plus the visible `.bento-panel--focused`
+state. Privileged `about:*` pages, especially `about:preferences` and
+`about:settings`, can leave chrome `activeElement` outside the panel even while
+the panel owns content focus; without the focused-browser/focused-panel fallback
+the shortcut falls through to `tab/closeMain` and removes the main content tab.
+
 Boot-time strip scroll restore uses `stripScrollLeft` from `panels/sync` and
 applies it after the flat layout commits. When restoring to a nonzero scroll
 position on first launch, keep `__suppressNextMainAutoScrollForWorkspace` armed
@@ -2631,6 +2640,10 @@ or blank add-panel insertion is still settling.
   `.browserContainer` / `<browser>` nodes keep a Bento click fallback that
   updates the focused-panel ring, navigator marker, and strip reveal without
   forcing focus away from the clicked content control.
+- Do not route `Cmd/Ctrl+W` straight to main-slot close when no active chrome
+  ancestor resolves to `[data-bento-panel-tab-id]`. Check Firefox's focused
+  content embedder and the persisted focused panel indicator first so focused
+  `about:*` panel content closes its panel.
 - Do not forward plain arrow keys, or panel shortcuts from editable targets, in
   the actor.
 - Do not activate a pinned panel by setting `gBrowser.selectedTab` to the panel
