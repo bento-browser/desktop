@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-07
+- Last updated: 2026-07-10
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -205,8 +205,10 @@ Use this shape for new or changed touchpoints:
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
-  corners during normal browsing, keeps live window resize smooth with that
-  frame visible while chrome resize observers are deferred, and removes that
+  corners during normal browsing, keeps live window and Bento sidebar resize
+  smooth with that frame visible while chrome resize observers are deferred and
+  panel frames use outline-only shadows during the live gesture, run
+  `pnpm run chrome:resize-check` after chrome token changes, and removes that
   frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and
   workspace actions including moving a

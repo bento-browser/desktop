@@ -1587,11 +1587,15 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `:root[inDOMFullscreen]`, the
   fullscreen override must clear the strip host and browser-wrapper radii so
   video fullscreen is not clipped by the normal main-content or panel frame.
-  This CSS structure is necessary but not sufficient: live window resize must
-  also keep chrome measurement observers out of the hot path. While
-  `:root[bento-window-resizing='true']`, splitter-affordance, sidebar-divider,
+  This CSS structure is necessary but not sufficient: live window/sidebar resize
+  must also keep chrome measurement observers and expensive frame paints out of
+  the hot path. While `:root[bento-window-resizing='true']` or
+  `:root[bento-sidebar-resizing='true']`, splitter-affordance, sidebar-divider,
   toolbar-navigation, and strip-scrollbar observers defer geometry reads until
-  the `bento-resize-settled` event.
+  the `bento-resize-settled` event, and panel frames use the outline-only
+  `--bento-panel-frame-shadow`. Do not let generated Tale UI `--shadow-l`
+  values paint on live-resized panel frames. `pnpm run chrome:resize-check`
+  enforces this guard after chrome token generation.
 - When removing a parent panel with descendants, close or remove descendant
   sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
 - `panelLayout/breakOut` promotes an existing child into the root layout and
@@ -1655,7 +1659,10 @@ from the strip container because its shadow is applied outside `tabpanels`.
 The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.js`
 inside `injectChromeStyles()`. `:root` defines
 `--bento-panel-frame-outline-shadow` and `--bento-panel-frame-shadow`; the
-disabled class overrides `--bento-panel-frame-shadow` to the outline-only value.
+disabled class and the live resize root attributes override
+`--bento-panel-frame-shadow` to the outline-only value. Keep
+`scripts/check-chrome-resize-guard.mjs` wired into token import paths so token
+bumps cannot reintroduce full elevation shadows during live resize.
 All panel-like chrome surfaces that should respect the setting must use
 `var(--bento-panel-frame-shadow)` rather than `var(--shadow-l)` directly.
 This includes ordinary split-view panel frames, subdivided-panel descendants, and
