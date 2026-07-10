@@ -1659,16 +1659,16 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `:root[bento-sidebar-resizing='true']` or
   `:root[bento-panel-resizing='true']`, splitter-affordance, sidebar-divider,
   toolbar-navigation, and strip-scrollbar observers defer geometry reads until
-  the `bento-resize-settled` event, and panel frames use the outline-only
-  `--bento-panel-frame-shadow`. Do not let generated Tale UI `--shadow-l`
-  values paint on live-resized panel frames, including panel-strip and
-  subdivision splitter drags. In no-side-panels mode, also keep a direct
+  the `bento-resize-settled` event. Do not globally override
+  `--bento-panel-frame-shadow` during live resize; panel-view frames should keep
+  their normal elevation so panel-view window/sidebar resize can be evaluated
+  independently from the no-panel performance path. In no-side-panels mode, keep
+  a direct
   `box-shadow: var(--bento-panel-frame-outline-shadow)` override on the native
   `#tabbrowser-tabpanels > .browserSidebarContainer` frame while
   `bento-window-resizing` or `bento-sidebar-resizing` is set; that native frame
-  is the resized, rounded main-content surface, so relying only on inherited
-  shadow variables is not enough to guard this path against later chrome CSS
-  changes. Privileged native about pages such as
+  is the resized, rounded main-content surface and is the documented choppy
+  no-panel path. Privileged native about pages such as
   `about:preferences` and `about:settings` make this regression visible first.
   `pnpm run chrome:resize-check` enforces this guard after chrome token
   generation.
@@ -1735,9 +1735,10 @@ from the strip container because its shadow is applied outside `tabpanels`.
 The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.js`
 inside `injectChromeStyles()`. `:root` defines
 `--bento-panel-frame-outline-shadow` and `--bento-panel-frame-shadow`; the
-disabled class and the live resize root attributes (`bento-window-resizing`,
-`bento-sidebar-resizing`, and `bento-panel-resizing`) override
-`--bento-panel-frame-shadow` to the outline-only value. Keep
+disabled class overrides `--bento-panel-frame-shadow` to the outline-only value.
+Do not use live resize root attributes (`bento-window-resizing`,
+`bento-sidebar-resizing`, or `bento-panel-resizing`) to override the shared
+shadow token globally. Keep
 `scripts/check-chrome-resize-guard.mjs` wired into token import paths so token
 bumps cannot reintroduce full elevation shadows during live resize.
 All panel-like chrome surfaces that should respect the setting must use
@@ -1745,7 +1746,7 @@ All panel-like chrome surfaces that should respect the setting must use
 The no-side-panels main-content frame also has an explicit live window/sidebar
 resize selector that sets its `.browserSidebarContainer` shadow to
 `var(--bento-panel-frame-outline-shadow)` directly; keep that selector in sync
-with the inherited variable guard.
+with the scoped no-panel resize guard.
 This includes ordinary split-view panel frames, subdivided-panel descendants, and
 the absolute layout chooser wrapper
 `#bento-side-panel-host > .bento-layout-chooser`. The chooser wrapper is the

@@ -474,11 +474,6 @@
       #bento-strip-container.bento-panel-shadows-disabled {
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
       }
-      :root[bento-window-resizing='true'],
-      :root[bento-sidebar-resizing='true'],
-      :root[bento-panel-resizing='true'] {
-        --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
-      }
 
       /* Inline sidebar: no padding around the frame, no rounded
          corners on the frame. Edges flush with the window so the

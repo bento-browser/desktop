@@ -23,8 +23,8 @@ const chromeTokens = readRepoFile(chromeTokensPath);
 
 const normalPanelShadow =
   /--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\),\s*var\(--shadow-l\);/;
-const liveResizeOutlineShadow =
-  /:root\[bento-window-resizing='true'\]\s*,\s*:root\[bento-sidebar-resizing='true'\]\s*,\s*:root\[bento-panel-resizing='true'\]\s*\{[^}]*--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
+const globalLiveResizeShadowOverride =
+  /:root\[(?:bento-window-resizing|bento-sidebar-resizing|bento-panel-resizing)='true'\][^{]*\{[^}]*--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const noPanelLiveResizeOutlineShadow =
   /:root\[bento-window-resizing='true'\]\s+#bento-strip-container\.bento-no-side-panels[^,{]*>\s*#tabbrowser-tabpanels\s*>\s*\.browserSidebarContainer\s*,\s*:root\[bento-sidebar-resizing='true'\]\s+#bento-strip-container\.bento-no-side-panels[^,{]*>\s*#tabbrowser-tabpanels\s*>\s*\.browserSidebarContainer\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const generatedShadowToken = /--shadow-l:\s*[^;]+;/;
@@ -38,10 +38,9 @@ if (!normalPanelShadow.test(chromeMount)) {
   );
 }
 
-if (!liveResizeOutlineShadow.test(chromeMount)) {
+if (globalLiveResizeShadowOverride.test(chromeMount)) {
   failures.push(
-    `${chromeMountPath} must override --bento-panel-frame-shadow to ` +
-      'outline-only for bento-window-resizing, bento-sidebar-resizing, and bento-panel-resizing.',
+    `${chromeMountPath} must not globally override --bento-panel-frame-shadow for live resize; scope outline-only live resize to the no-side-panels frame.`,
   );
 }
 
