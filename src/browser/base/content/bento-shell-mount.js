@@ -10326,6 +10326,49 @@
     }
   }
 
+  function getPanelRemovalFocusFallback(previousCycleIndex) {
+    const targets = getPanelCycleTargets();
+    if (targets.length === 0) return null;
+    const start =
+      Number.isInteger(previousCycleIndex) && previousCycleIndex >= 0
+        ? Math.min(previousCycleIndex, targets.length - 1)
+        : Math.min(Math.max(currentActiveIdx, 0), targets.length - 1);
+    const isFocusablePanelTarget = (target) =>
+      !!target && target.id !== 'bento-add-panel-trailer';
+    for (let i = start; i < targets.length; i += 1) {
+      if (isFocusablePanelTarget(targets[i])) return { target: targets[i], index: i };
+    }
+    for (let i = start - 1; i >= 0; i -= 1) {
+      if (isFocusablePanelTarget(targets[i])) return { target: targets[i], index: i };
+    }
+    return null;
+  }
+
+  function focusSelectedMainAfterPanelRemoval() {
+    currentActiveIdx = 0;
+    applyActiveMarker(0);
+    applyFocusedPanelIndicator(null);
+    try {
+      const browserEl = window.gBrowser?.selectedBrowser;
+      if (browserEl) browserEl.focus({ preventScroll: true });
+    } catch (err) {
+      console.warn('[bento-shell-mount] main focus after panel removal failed:', err);
+    }
+    return true;
+  }
+
+  function focusNextTargetAfterPanelRemoval(previousCycleIndex) {
+    const fallback = getPanelRemovalFocusFallback(previousCycleIndex);
+    if (!fallback) return focusSelectedMainAfterPanelRemoval();
+    if (fallback.index === 0) {
+      clearRestoredMainAutoScrollSuppression();
+      scrollPanelToLeftmost(fallback.target);
+    } else {
+      scrollPanelIntoViewFromRight(fallback.target);
+    }
+    return focusPanelCycleTarget(fallback.target);
+  }
+
   // The active panel is the user's current cycle selection. Source of
   // truth for both the bottom favicon marker and the cycle-focus
   // indicator on the panel itself. NOT recomputed from scroll position
@@ -14680,6 +14723,23 @@
     // view. Snapshot BEFORE overwriting __lastPanelsPayload below;
     // otherwise the comparison would always show zero deltas.
     const previousTabIds = new Set(__lastPanelsPayload.map((p) => p.tabId));
+    const isInitialReconcileForWorkspace = __reconciledForWorkspace !== currentWorkspaceId;
+    const previousFocusedPanelTabId = Number.isFinite(currentFocusedPanelTabId)
+      ? currentFocusedPanelTabId
+      : null;
+    const previousFocusedPanelCycleIndex =
+      previousFocusedPanelTabId !== null
+        ? getCycleIndexForPanelTabId(previousFocusedPanelTabId)
+        : -1;
+    const incomingPanelTabIds = new Set(
+      panels
+        .map((panel) => Number(panel?.tabId))
+        .filter((tabId) => Number.isFinite(tabId) && Number.isInteger(tabId)),
+    );
+    const shouldPromoteFocusAfterPanelRemoval =
+      !isInitialReconcileForWorkspace &&
+      previousFocusedPanelTabId !== null &&
+      !incomingPanelTabIds.has(previousFocusedPanelTabId);
     const materializeRetry = Number.isInteger(options.materializeRetry)
       ? options.materializeRetry
       : 0;
@@ -14817,6 +14877,9 @@
         return false;
       };
       if (!previous.length && !__lastSplitViewMarker && !splitActive && !hasMainOnlyArtifacts()) {
+        if (shouldPromoteFocusAfterPanelRemoval) {
+          focusSelectedMainAfterPanelRemoval();
+        }
         // Already torn down — record the workspace so a subsequent
         // first-panel-add within it is detected as mid-session.
         __reconciledForWorkspace = currentWorkspaceId;
@@ -14910,6 +14973,9 @@
 
       // Refresh nav strip (no panels → empty)
       refreshPanelNav([]);
+      if (shouldPromoteFocusAfterPanelRemoval) {
+        focusSelectedMainAfterPanelRemoval();
+      }
       // Record that we've completed a reconcile for this workspace —
       // the next reconcile within the same workspace is mid-session
       // (e.g. user adding the first panel via "Open in new panel"),
@@ -15607,7 +15673,6 @@
         if (panelEl) clearSubdivisionFromPanel(panelEl, { force: true });
       }
     }
-    const isInitialReconcileForWorkspace = __reconciledForWorkspace !== currentWorkspaceId;
     const newTabIds = panels.map((p) => p.tabId).filter((id) => !previousTabIds.has(id));
     const shouldAnimateNewPanels = newTabIds.length > 0 && !isInitialReconcileForWorkspace;
     const pendingSubdivisionPanelEnters = [];
@@ -15976,6 +16041,9 @@
         scrolledToNewPanel = true;
         scheduleScrollPanelTabIntoView(newRootId);
       }
+    }
+    if (!scrolledToNewPanel && shouldPromoteFocusAfterPanelRemoval) {
+      scrolledToNewPanel = focusNextTargetAfterPanelRemoval(previousFocusedPanelCycleIndex);
     }
     __reconciledForWorkspace = currentWorkspaceId;
     __lastSubdivisionsSnapshot = snapshotSubdivisions(currentSubdivisions);
