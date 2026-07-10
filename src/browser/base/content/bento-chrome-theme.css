@@ -531,16 +531,97 @@
     color: currentColor !important;
   }
 
+  /* Firefox's sidebar switcher is an ordinary toolbar menupopup. Keep its
+   * labels and shortcuts on the same token palette for Bookmarks, History,
+   * Synced Tabs, Passwords, and extension sidebar entries. */
+  #sidebarMenu-popup,
+  #sidebarMenu-popup menupopup {
+    appearance: none !important;
+    background-color: transparent !important;
+    color: var(--arrowpanel-color) !important;
+    font-family: var(--label-font-family) !important;
+    font-size: var(--label-m-font-size) !important;
+    font-weight: var(--label-font-weight) !important;
+    --panel-background: var(--arrowpanel-background) !important;
+    --panel-background-color: var(--arrowpanel-background) !important;
+    --panel-color: var(--arrowpanel-color) !important;
+    --panel-text-color: var(--arrowpanel-color) !important;
+    --panel-border-color: var(--arrowpanel-border-color) !important;
+    --panel-border-radius: var(--arrowpanel-border-radius) !important;
+    --panel-shadow: var(--shadow-l) !important;
+    --menuitem-border-radius: var(--arrowpanel-menuitem-border-radius) !important;
+    --menuitem-icon-fill: var(--neutral-80) !important;
+  }
+
+  #sidebarMenu-popup::part(content),
+  #sidebarMenu-popup menupopup::part(content) {
+    background: var(--arrowpanel-background) !important;
+    border-color: var(--arrowpanel-border-color) !important;
+    border-radius: var(--arrowpanel-border-radius) !important;
+    box-shadow: var(--shadow-l) !important;
+    color: var(--arrowpanel-color) !important;
+  }
+
+  #sidebarMenu-popup :is(menu, menuitem):not([disabled]) {
+    color: var(--arrowpanel-color) !important;
+    font-family: var(--label-font-family) !important;
+    font-size: var(--label-m-font-size) !important;
+    font-weight: var(--label-font-weight) !important;
+  }
+
+  #sidebarMenu-popup :is(menu, menuitem)[_moz-menuactive]:not([disabled]) {
+    background-color: var(--arrowpanel-dimmed) !important;
+    color: var(--arrowpanel-color) !important;
+  }
+
+  #sidebarMenu-popup :is(menu, menuitem)[_moz-menuactive]:not([disabled]):active,
+  #sidebarMenu-popup :is(menu, menuitem)[checked='true']:not([disabled]),
+  #sidebarMenu-popup :is(menu, menuitem)[selected='true']:not([disabled]) {
+    background-color: var(--color-60) !important;
+    color: var(--color-60-fg) !important;
+  }
+
+  #sidebarMenu-popup :is(menu, menuitem)[disabled] {
+    color: var(--neutral-50) !important;
+  }
+
+  #sidebarMenu-popup :is(.menu-accel, .menu-iconic-accel) {
+    color: var(--neutral-70) !important;
+    font-family: var(--label-font-family) !important;
+    font-size: var(--label-s-font-size) !important;
+  }
+
+  #sidebarMenu-popup
+    :is(menu, menuitem):is([_moz-menuactive], [checked='true'], [selected='true']):not([disabled])
+    :is(.menu-accel, .menu-iconic-accel) {
+    color: currentColor !important;
+  }
+
+  :host {
+    --field-min-height: var(--bento-sidebar-address-row-height-px, 32px) !important;
+    --field-padding-block: 0 !important;
+    --field-padding-inline: var(--space-2xs) !important;
+    --field-border-color: var(--neutral-18) !important;
+    --field-radius: var(--bento-sidebar-address-field-radius, var(--radius-s)) !important;
+    --field-bg: var(--neutral-5) !important;
+    --field-color: var(--neutral-90) !important;
+    --field-focus-border: var(--color-60) !important;
+    --field-focus-glow: inset 0 0 0 1px var(--field-focus-border) !important;
+    --field-placeholder-color: var(--neutral-50) !important;
+  }
+
   :is(
     .sidebar-panel,
     sidebar-main,
+    sidebar-history,
+    sidebar-syncedtabs,
     sidebar-bookmarks,
     sidebar-bookmark-list,
     sidebar-panel-header
   ) {
     color: var(--text-color) !important;
-    --field-min-height: var(--bento-sidebar-address-row-height, 2rem) !important;
-    --field-padding-block: var(--space-3xs) !important;
+    --field-min-height: var(--bento-sidebar-address-row-height-px, 32px) !important;
+    --field-padding-block: 0 !important;
     --field-padding-inline: var(--space-2xs) !important;
     --field-border-color: var(--neutral-18) !important;
     --field-radius: var(--bento-sidebar-address-field-radius, var(--radius-s)) !important;
@@ -588,23 +669,101 @@
     --icon-color: var(--neutral-70) !important;
   }
 
+  :is(.sidebar-panel, sidebar-history, sidebar-syncedtabs, sidebar-panel-header)
+    moz-input-search {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-height: var(--field-min-height) !important;
+    color: var(--field-color) !important;
+    font: var(--text-font-weight) var(--text-l-font-size) / 1 var(--text-font-family) !important;
+    letter-spacing: var(--text-letter-spacing) !important;
+    --input-text-min-height: var(--field-min-height) !important;
+    --input-text-background-color: var(--field-bg) !important;
+    --input-text-color: var(--field-color) !important;
+    --input-text-border-color: var(--field-border-color) !important;
+    --input-text-border: 1px solid var(--input-text-border-color) !important;
+    --input-text-border-radius: var(--field-radius) !important;
+    --input-text-icon-size: var(--bento-icon-size-sm, 1rem) !important;
+    --space-medium: var(--space-2xs) !important;
+    --space-xxsmall: var(--space-2xs) !important;
+    --icon-color: var(--neutral-70) !important;
+  }
+
+  :host #input:is([type='search']) {
+    min-height: var(--field-min-height, var(--bento-sidebar-address-row-height-px, 32px)) !important;
+    border: 1px solid var(--field-border-color, var(--neutral-18)) !important;
+    border-radius: var(
+      --field-radius,
+      var(--bento-sidebar-address-field-radius, var(--radius-s))
+    ) !important;
+    background-color: var(--field-bg, var(--neutral-5)) !important;
+    color: var(--field-color, var(--neutral-90)) !important;
+    font: var(--text-font-weight) var(--text-l-font-size) / 1 var(--text-font-family) !important;
+    letter-spacing: var(--text-letter-spacing) !important;
+    fill: var(--neutral-70) !important;
+  }
+
+  :host #input:is([type='search'])::placeholder {
+    color: var(--field-placeholder-color, var(--neutral-50)) !important;
+    opacity: 1 !important;
+  }
+
+  .sidebar-panel-heading {
+    color: var(--text-color) !important;
+    font: var(--label-font-weight) var(--label-l-font-size) / 1 var(--label-font-family) !important;
+    letter-spacing: var(--label-letter-spacing) !important;
+  }
+
+  .sidebar-panel-heading > h4 {
+    display: flex !important;
+    align-items: center !important;
+    margin-block: var(--space-2xs) !important;
+    color: inherit !important;
+    font: inherit !important;
+    letter-spacing: inherit !important;
+    line-height: 1 !important;
+  }
+
   :root[bento-sidebar-addressbar='true']
-    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-box:is(
+      [sidebarcommand='viewBookmarksSidebar'],
+      [sidebarcommand='viewHistorySidebar'],
+      [sidebarcommand='viewTabsSidebar'],
+      [sidebarcommand='viewCPMSidebar']
+    )
     #sidebar-switcher-target {
     display: flex !important;
     align-items: center !important;
     -moz-box-align: center !important;
+    color: var(--neutral-90) !important;
+    fill: currentColor !important;
+    font-family: var(--label-font-family) !important;
+    font-size: var(--label-l-font-size) !important;
+    font-weight: var(--label-font-weight) !important;
+    line-height: 1 !important;
   }
 
   :root[bento-sidebar-addressbar='true']
-    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-box:is(
+      [sidebarcommand='viewBookmarksSidebar'],
+      [sidebarcommand='viewHistorySidebar'],
+      [sidebarcommand='viewTabsSidebar'],
+      [sidebarcommand='viewCPMSidebar']
+    )
     #sidebar-switcher-target
     > :is(#sidebar-icon, #sidebar-title, #sidebar-switcher-arrow) {
     align-self: center !important;
+    color: currentColor !important;
+    fill: currentColor !important;
   }
 
   :root[bento-sidebar-addressbar='true']
-    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-box:is(
+      [sidebarcommand='viewBookmarksSidebar'],
+      [sidebarcommand='viewHistorySidebar'],
+      [sidebarcommand='viewTabsSidebar'],
+      [sidebarcommand='viewCPMSidebar']
+    )
     #sidebar-title,
   #bookmarksPanel #sidebar-panel-header > [data-l10n-id='sidebar-menu-bookmarks-2'] {
     display: flex !important;
@@ -622,13 +781,23 @@
   }
 
   :root[bento-sidebar-addressbar='true']
-    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-box:is(
+      [sidebarcommand='viewBookmarksSidebar'],
+      [sidebarcommand='viewHistorySidebar'],
+      [sidebarcommand='viewTabsSidebar'],
+      [sidebarcommand='viewCPMSidebar']
+    )
     #sidebar-title {
     transform: translateY(1px) !important;
   }
 
   :root[bento-sidebar-addressbar='true']
-    #sidebar-box[sidebarcommand='viewBookmarksSidebar']
+    #sidebar-box:is(
+      [sidebarcommand='viewBookmarksSidebar'],
+      [sidebarcommand='viewHistorySidebar'],
+      [sidebarcommand='viewTabsSidebar'],
+      [sidebarcommand='viewCPMSidebar']
+    )
     :is(#sidebar-icon, #sidebar-switcher-arrow) {
     margin-block: 0 !important;
     flex: 0 0 auto !important;
@@ -678,6 +847,11 @@
 
   .sidebar-panel {
     background-color: var(--neutral-5) !important;
+  }
+
+  #bookmarksPanel {
+    --sidebar-background-color: var(--neutral-10) !important;
+    background-color: var(--neutral-10) !important;
   }
 
   .sidebar-placesTree {

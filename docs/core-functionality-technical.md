@@ -347,7 +347,32 @@ typography, icon spacing, and focus-ring tokens as the Bento sidebar address
 field. Use a 32px fallback for this native chrome search field rather than
 `2rem`: the native chrome document can resolve `rem` from Firefox's smaller
 chrome font size, while the Bento sidebar address field is designed as a 32px
-row.
+row. History and Synced Tabs sidebar search fields are inside Lit component
+shadow roots, so `syncBentoChromeThemeShadowRoots()` injects the generated
+Bento token/theme links into the native sidebar component roots and lets
+`moz-input-search` consume the same inherited input variables as Bookmarks.
+Firefox's sidebar switcher header and menupopup are styled in
+`bento-chrome-theme.css` so Bookmarks, History, Synced Tabs, Passwords, and
+extension rows share the same Tale UI label, shortcut, hover, and selected
+colors. The visible header button is `#sidebar-switcher-target` in
+`browser-box.inc.xhtml`; styling only `#sidebarMenu-popup` changes the dropdown
+menu, not the title shown at the top of the sidebar.
+
+The Passwords sidebar surface is Firefox's
+`chrome://global/content/megalist/megalist.html`, not a Bento React panel.
+`patches/core-ui/14-theme-megalist-passwords.patch` loads
+`bento-chrome-tokens.css` into that document and maps the megalist's semantic
+variables (`--background-color-*`, `--text-color`, `--button-*`,
+`--input-text-*`, link/icon/warning variables, panel shadows, and sidebar card
+variables) to light neutral Tale UI/Bento tokens. The Passwords documents set
+`data-color-mode="light"` and `color-scheme: light` deliberately so macOS or
+browser dark mode cannot flip `--neutral-5`, `--neutral-10`, and `--neutral-90`
+back to dark surfaces and light text. The full-page Passwords manager and
+import report remain `about:logins` documents;
+`patches/core-ui/13-theme-about-logins.patch` loads the same token sheet there,
+and `aboutlogins/common.css` maps their semantic in-content variables. Keep
+those mappings in shared Firefox component stylesheets because they are loaded
+by the root documents and shadow-DOM component templates.
 
 The floating overlay remains implemented by
 `extensions/bento-shell/src/address-bar/main.tsx` and
@@ -2402,6 +2427,24 @@ Those classes paint both the existing panel ring and the focused panel header's
 `--color-20` background/`--color-20-fg` icon treatment. DevTools/content
 partner panels receive the same classes through `getDevtoolsFocusPartnerElement`,
 so focusing either side of a pair highlights both headers as well as both rings.
+Cycle navigation applies both classes immediately: `.bento-panel--cycle-focused`
+is the short-lived traversal flash, while `.bento-panel--focused` persists on the
+actual content slot until focus moves elsewhere. The chrome focus tracker also
+re-applies `.bento-panel--focused` when the focus event belongs to the already
+active cycle index, because privileged `about:*` pages can move focus into the
+main browser while `currentActiveIdx` is already `0`.
+
+Clicking into panel content runs through `updatePanelActivationFromChromeTarget`.
+Chrome `focusin` remains the normal signal, but each reconciled split-view
+`.browserContainer` and `<browser>` also has a Bento-owned capture-phase `click`
+fallback attached after Firefox's native split-view click listener is removed.
+This fixes privileged internal pages such as `about:preferences` and
+`about:addons`, where the click can focus content without producing the chrome
+`focusin` path Bento previously depended on. The fallback updates
+`currentActiveIdx`, the favicon navigator marker, the persistent focus ring, and
+the minimal strip reveal without calling `setActiveByIndex`, so it does not
+promote the panel to `gBrowser.selectedTab` or steal focus from the clicked
+control.
 
 Cmd/Ctrl+Shift+arrow and Shift-wheel traversal must use minimal reveal
 scrolling. If the next cycle target is already fully visible, the strip should
@@ -2473,6 +2516,20 @@ or blank add-panel insertion is still settling.
   `allowWrap: false` when scroll gestures call `navigatePanels`.
 - Do not let trailer focus update `currentActiveIdx` through ancestor
   `data-bento-main-panel` lookup.
+- Do not let the persistent focus ring depend on a later chrome focus event
+  after wheel/shortcut cycle. `setActiveByIndex` and `focusPanelCycleTarget`
+  must update `.bento-panel--focused` directly, otherwise cycling back to main
+  can leave the first side panel painted as focused while main content owns
+  focus.
+- Do not skip the persistent focus-ring refresh just because a chrome focus
+  event resolves to the current `currentActiveIdx`. That same-index case is how
+  tabbing into an already-active main `about:*` browser restores the main-slot
+  focus indicator.
+- Do not rely only on chrome `focusin` to detect click-into-panel activation.
+  Privileged `about:*` pages can skip that path, so reconciled panel
+  `.browserContainer` / `<browser>` nodes keep a Bento click fallback that
+  updates the focused-panel ring, navigator marker, and strip reveal without
+  forcing focus away from the clicked content control.
 - Do not forward plain arrow keys, or panel shortcuts from editable targets, in
   the actor.
 - Do not activate a pinned panel by setting `gBrowser.selectedTab` to the panel

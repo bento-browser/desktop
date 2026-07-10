@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-06
+- Last updated: 2026-07-07
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -78,6 +78,10 @@ Use this shape for new or changed touchpoints:
   new-tab address submissions such as `about:preferences` through
   `gBrowser.addTrustedTab` when WebExtension tab creation would reject them,
   reveals the main content slot after committed address/search submissions,
+  updates panel focus rings, navigator active markers, and strip reveal from
+  chrome `focusin` plus a reconciled `.browserContainer` / `<browser>` click
+  fallback for privileged `about:*` documents that do not reliably emit
+  chrome-side focus,
   emits scoped sidebar address
   snapshots for active URL/title/loading/security/bookmark state, opens
   Firefox's native identity popup from the sidebar security button, toggles
@@ -127,7 +131,9 @@ Use this shape for new or changed touchpoints:
   panel-strip start edge without pushing Bento or Firefox-native sidebar content
   down, maps Firefox's native Customize Toolbar screen surfaces, buttons, links,
   palette items, and overflow-panel preview through the same generated Tale
-  UI/Bento chrome tokens,
+  UI/Bento chrome tokens, themes Firefox's Passwords `about:logins` documents,
+  shared shadow-component stylesheet, and sidebar megalist surface through the
+  generated Tale UI/Bento chrome tokens,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -149,7 +155,10 @@ Use this shape for new or changed touchpoints:
   `#customization-palette`, `#customization-footer`,
   `#customization-panelWrapper`, `#bento-strip-container`, native `#sidebar-title`,
   native `#sidebar-box`, native `#sidebar-splitter`, native Bookmarks sidebar
-  `moz-input-search`,
+  `moz-input-search`, native History and Synced Tabs sidebar component shadow
+  roots and `moz-input-search` fields, Passwords `about:logins` documents,
+  shared component stylesheets, and `chrome://global/content/megalist` sidebar
+  document/component stylesheet,
   `#unified-extensions-button`, `#fxa-toolbar-menu-button`, native toolbar
   springs, extension browser-action toolbar children, `#back-button`,
   `#forward-button`, `#stop-reload-button`, toolbar geometry,
@@ -161,6 +170,8 @@ Use this shape for new or changed touchpoints:
   (`PanelUI`, `#appMenu-popup`, `#PanelUI-button`), Places bookmark APIs and
   Places observer events, `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
+  split-view `.browserContainer` click events and `<browser>` focus/click
+  events,
   chrome `<browser>.loadURI()` with system principals for Bento extension-frame
   entries,
   `SearchService.sys.mjs`, `SearchService.promiseInitialized`,
@@ -184,11 +195,13 @@ Use this shape for new or changed touchpoints:
   structure, split-view implementation, browser actor messaging, URI fixup, or
   chrome event ordering can break panel layout, focus, inline sidebar rename,
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
-  navigation, one-shot search-engine resolution, sidebar address scoping,
+  navigation, one-shot search-engine resolution, panel focus detection on
+  privileged `about:*` pages, sidebar address scoping,
   native identity/app-menu popup anchoring, bookmark state, native URL-bar and
   toolbar app-menu hiding, native toolbar surface/separator/sidebar-divider styling,
-  native Customize Toolbar markup and token variable names, native
-  navigation-button alignment, or visibility.
+  native Customize Toolbar markup and token variable names, Passwords
+  `about:logins` and megalist stylesheet load order and semantic color variable
+  names, native navigation-button alignment, or visibility.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -249,7 +262,13 @@ Use this shape for new or changed touchpoints:
   click,
   verify the native Bookmarks sidebar title uses Tale UI `label-l` typography,
   its icon/title/chevron are vertically centered, and its search field matches
-  the Bento sidebar address field in light and dark modes,
+  the Bento sidebar address field in light and dark modes, verify History and
+  Synced Tabs sidebar search fields use the same search field colors and that
+  the sidebar switcher dropdown text is consistent across Bookmarks, History,
+  Synced Tabs, and Passwords, verify the Passwords sidebar megalist search
+  field, cards, actions, alerts, and the full-page Passwords page/import report
+  resolve through forced light neutral Tale UI token colors instead of OS
+  dark/native defaults,
   verify regular bookmarks outside the "Saved panels" folder fill the sidebar
   star while saved-panel-only bookmarks do not, verify rapid navigation or tab
   switching during a sidebar star toggle does not mutate the stale page, verify
@@ -273,7 +292,13 @@ Use this shape for new or changed touchpoints:
   URI fixup, verify submitting `about:preferences` from both current-tab and
   new-tab address-entry mode opens the native preferences page, verify
   submitting a floating-address search while the panel strip
-  is scrolled to side panels reveals the main content slot, verify native URL bar
+  is scrolled to side panels reveals the main content slot, verify clicking into
+  `about:preferences` and `about:addons` in the main content slot also updates
+  the focus ring/navigator marker and scrolls the strip back to main without
+  stealing focus from clicked controls, verify Shift-wheel cycling from the
+  first side panel back to main clears the side-panel focus ring and keeps the
+  main-slot ring visible, verify tabbing through controls inside those
+  `about:*` main-slot pages keeps the main-slot focus ring visible, verify native URL bar
   inset controls and the
   search-mode switcher popup inherit Bento token colors in light and dark modes,
   verify notification bars such as the popup-blocked banner inherit Bento token

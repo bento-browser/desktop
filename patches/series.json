@@ -77,6 +77,16 @@
       "subject": "Center and theme native preferences layout"
     },
     {
+      "path": "patches/core-ui/13-theme-about-logins.patch",
+      "id": "theme-about-logins",
+      "subject": "Theme about logins with Bento tokens"
+    },
+    {
+      "path": "patches/core-ui/14-theme-megalist-passwords.patch",
+      "id": "theme-megalist-passwords",
+      "subject": "Theme Passwords megalist with Bento tokens"
+    },
+    {
       "path": "patches/experiments/01-mach-build-hang-guards.patch",
       "id": "mach-build-hang-guards",
       "subject": "Add mach build hang guards"

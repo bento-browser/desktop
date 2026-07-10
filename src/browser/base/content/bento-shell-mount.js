@@ -181,6 +181,16 @@
     'chrome://browser/content/bento-chrome-tokens.css',
     'chrome://browser/content/bento-chrome-theme.css',
   ];
+  const BENTO_CHROME_SHADOW_THEME_HOST_SELECTOR = [
+    'sidebar-main',
+    'sidebar-history',
+    'sidebar-syncedtabs',
+    'sidebar-bookmarks',
+    'sidebar-bookmark-list',
+    'sidebar-panel-header',
+    'sidebar-customize',
+    'moz-input-search',
+  ].join(',');
 
   function isBentoThemeableChromeDocument(doc) {
     const href = String(doc?.location?.href || '');
@@ -194,6 +204,54 @@
     return Array.from(doc.documentElement.querySelectorAll('link[rel="stylesheet"]')).some(
       (link) => link.getAttribute('href') === href,
     );
+  }
+
+  function hasRootChromeStylesheet(root, href) {
+    return Array.from(root.querySelectorAll?.('link[rel="stylesheet"]') || []).some(
+      (link) => link.getAttribute('href') === href,
+    );
+  }
+
+  function syncBentoChromeThemeRoot(root, doc) {
+    for (const href of BENTO_CHROME_STYLESHEET_HREFS) {
+      if (hasRootChromeStylesheet(root, href)) continue;
+      const link = doc.createElementNS('http://www.w3.org/1999/xhtml', 'link');
+      link.setAttribute('rel', 'stylesheet');
+      link.setAttribute('href', href);
+      link.setAttribute('data-bento-chrome-theme', 'true');
+      root.appendChild(link);
+    }
+  }
+
+  function syncBentoChromeThemeShadowRoots(doc, attempt = 0) {
+    const href = String(doc?.location?.href || '');
+    if (!href.startsWith('chrome://browser/content/sidebar/')) return;
+
+    const roots = new Set();
+    let hostCount = 0;
+    let missingShadowRoot = false;
+
+    const collectRoots = (root) => {
+      for (const host of root.querySelectorAll?.(BENTO_CHROME_SHADOW_THEME_HOST_SELECTOR) || []) {
+        hostCount += 1;
+        if (!host.shadowRoot) {
+          missingShadowRoot = true;
+          continue;
+        }
+        if (roots.has(host.shadowRoot)) continue;
+        roots.add(host.shadowRoot);
+        collectRoots(host.shadowRoot);
+      }
+    };
+
+    collectRoots(doc);
+
+    for (const root of roots) {
+      syncBentoChromeThemeRoot(root, doc);
+    }
+
+    if (attempt >= 20 || (hostCount > 0 && !missingShadowRoot)) return;
+    doc.defaultView?.setTimeout(() => syncBentoChromeThemeShadowRoots(doc, attempt + 1), 50);
   }
 
   function syncChromeThemeAttributes(targetRoot) {
@@ -293,6 +351,7 @@
       link.setAttribute('data-bento-chrome-theme', 'true');
       root.appendChild(link);
     }
+    syncBentoChromeThemeShadowRoots(doc);
     syncNativeBookmarksSearchInput(doc);
     return true;
   }
@@ -9948,6 +10007,7 @@
       currentActiveIdx = idx;
       applyActiveMarker(idx);
       applyPanelFocusIndicator(idx);
+      applyFocusedPanelIndicator(panelEl);
     }
     try {
       const browserEl = getPanelTargetBrowser(panelEl);
@@ -10819,6 +10879,8 @@
     const targets = getPanelCycleTargets();
     if (idx < 0 || idx >= targets.length) return;
     const target = targets[idx];
+    const isTrailer = target.id === 'bento-add-panel-trailer';
+    applyFocusedPanelIndicator(isTrailer ? null : target);
     // Panel target → focus the panel's <browser> content so the
     // page receives keys natively. Page-bound keyboard extensions
     // (Vimium j/k, Surfingkeys, etc.) only work when their content
@@ -10837,7 +10899,6 @@
     // Mouse hover/click on the iframe's React buttons still works
     // normally — those don't go through this focus path.
     try {
-      const isTrailer = target.id === 'bento-add-panel-trailer';
       const browserEl = isTrailer ? null : getPanelTargetBrowser(target);
       if (browserEl) {
         browserEl.focus({ preventScroll: true });
@@ -15163,6 +15224,7 @@
       const browserEl = panelEl.querySelector('browser');
       browserContainer?.removeEventListener('click', tabpanels);
       browserEl?.removeEventListener('focus', tabpanels);
+      attachBentoPanelContentClickFallback(browserContainer, browserEl);
     }
 
     // Set inline `order` per panel so flex layout renders them in
@@ -15977,94 +16039,104 @@
     }
   }
 
+  function updatePanelActivationFromChromeTarget(target) {
+    if (!target || typeof target.closest !== 'function') return;
+    if (
+      isPanelFocusAutoScrollSuppressed() ||
+      target.closest(
+        '.bento-panel-splitter, .bento-layout-vsplitter, .bento-layout-hsplitter',
+      )
+    ) {
+      return;
+    }
+    // Add-panel trailer focus still needs the same reveal behavior as
+    // normal panels, but must bypass panel-index bookkeeping: the
+    // trailer has neither data-bento-* attr, so closest() can walk
+    // past it up to the outer #tabbrowser-tabbox and incorrectly
+    // reset currentActiveIdx to 0.
+    const trailerEl = target.closest('#bento-add-panel-trailer');
+    if (trailerEl) {
+      if (window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
+        scrollPanelIntoViewFromRight(trailerEl);
+      }
+      applyFocusedPanelIndicator(null);
+      return;
+    }
+    // Browser elements live inside the panel containers (notif-
+    // boxes) tagged with data-bento-{main-panel,panel-tab-id};
+    // closest() walks up to find the right one regardless of any
+    // wrapper depth Firefox introduces between <browser> and the
+    // panel container.
+    const panelEl = target.closest(
+      '.bento-subdivision-chooser, [data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
+    );
+    if (!panelEl) {
+      applyFocusedPanelIndicator(null);
+      return;
+    }
+    // Only scroll if the panel is inside the active strip. If
+    // tabpanels isn't in split-view mode, no strip to scroll.
+    if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
+      applyFocusedPanelIndicator(null);
+      return;
+    }
+    const stripPanelEl =
+      panelEl.classList?.contains('bento-subdivision-chooser')
+        ? getOwningPanelForSubdivisionChooser(panelEl) || panelEl
+        : getTopLevelSlotPanelElement(panelEl) || panelEl;
+    if (isRestoredMainAutoScrollSuppressed(stripPanelEl)) {
+      return;
+    }
+    scrollPanelIntoViewFromRight(stripPanelEl);
+    // Sync the navigator's active marker to match the panel that
+    // just received focus. Without this, clicking into a panel
+    // scrolls the strip but leaves the favicon highlight stuck on
+    // wherever the last keyboard cycle put it. Update state +
+    // marker directly rather than calling setActiveByIndex —
+    // that helper also focuses the panel's <browser>, which
+    // would re-fire this same focusin handler.
+    const targets = getPanelCycleTargets();
+    let idx = getCycleIndexForPanelElement(panelEl);
+    if (idx < 0 && panelEl.id === 'tabbrowser-tabbox' && targets.length > 0) {
+      idx = 0;
+    }
+    if (idx >= 0) {
+      currentActiveIdx = idx;
+      applyActiveMarker(idx);
+    }
+    applyFocusedPanelIndicator(idx >= 0 ? targets[idx] : panelEl);
+  }
+
   // Click-into-partial-panel auto-scroll. When the user clicks inside
-  // a panel's <browser> content, Firefox's focus engine routes chrome
-  // focus to that <browser> element — focusin fires on chrome's
-  // document with the browser as the target. We listen here so that
-  // if the focused panel is only partially in view (the user clicked
-  // an edge that was peeking past the strip's visible area), the
-  // strip nudges just enough to bring the full panel into view —
-  // preserving the neighbouring panels' context rather than jumping
-  // the clicked panel to the leftmost slot. Programmatic focus from
-  // setActiveByIndex / reconcile also fires focusin, but
-  // scrollPanelIntoViewFromRight's fully-visible early-return makes
-  // those a no-op when the panel is already on screen.
+  // a panel's <browser> content, Firefox's focus engine usually routes
+  // chrome focus to that <browser> element — focusin fires on chrome's
+  // document with the browser as the target. Some privileged about: pages
+  // do not reliably produce that focusin path, so reconciled panel
+  // browsers also attach a click fallback that calls the same helper.
   function attachPanelClickAutoScroll() {
     window.addEventListener(
       'focusin',
       (e) => {
-        const target = e.target;
-        if (!target || typeof target.closest !== 'function') return;
-        if (
-          isPanelFocusAutoScrollSuppressed() ||
-          target.closest(
-            '.bento-panel-splitter, .bento-layout-vsplitter, .bento-layout-hsplitter',
-          )
-        ) {
-          return;
-        }
-        // Add-panel trailer focus still needs the same reveal behavior as
-        // normal panels, but must bypass panel-index bookkeeping: the
-        // trailer has neither data-bento-* attr, so closest() can walk
-        // past it up to the outer #tabbrowser-tabbox and incorrectly
-        // reset currentActiveIdx to 0.
-        const trailerEl = target.closest('#bento-add-panel-trailer');
-        if (trailerEl) {
-          if (window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
-            scrollPanelIntoViewFromRight(trailerEl);
-          }
-          applyFocusedPanelIndicator(null);
-          return;
-        }
-        // Browser elements live inside the panel containers (notif-
-        // boxes) tagged with data-bento-{main-panel,panel-tab-id};
-        // closest() walks up to find the right one regardless of any
-        // wrapper depth Firefox introduces between <browser> and the
-        // panel container.
-        const panelEl = target.closest(
-          '.bento-subdivision-chooser, [data-bento-subpanel], [data-bento-panel-tab-id], [data-bento-main-panel]',
-        );
-        if (!panelEl) {
-          applyFocusedPanelIndicator(null);
-          return;
-        }
-        // Only scroll if the panel is inside the active strip. If
-        // tabpanels isn't in split-view mode, no strip to scroll.
-        if (!window.gBrowser?.tabpanels?.classList.contains('bento-split-active')) {
-          applyFocusedPanelIndicator(null);
-          return;
-        }
-        const stripPanelEl =
-          panelEl.classList?.contains('bento-subdivision-chooser')
-            ? getOwningPanelForSubdivisionChooser(panelEl) || panelEl
-            : getTopLevelSlotPanelElement(panelEl) || panelEl;
-        if (isRestoredMainAutoScrollSuppressed(stripPanelEl)) {
-          return;
-        }
-        scrollPanelIntoViewFromRight(stripPanelEl);
-        // Sync the navigator's active marker to match the panel that
-        // just received focus. Without this, clicking into a panel
-        // scrolls the strip but leaves the favicon highlight stuck on
-        // wherever the last keyboard cycle put it. Update state +
-        // marker directly rather than calling setActiveByIndex —
-        // that helper also focuses the panel's <browser>, which
-        // would re-fire this same focusin handler.
-        //
-        const targets = getPanelCycleTargets();
-        let idx = getCycleIndexForPanelElement(panelEl);
-        if (idx < 0 && panelEl.id === 'tabbrowser-tabbox' && targets.length > 0) {
-          idx = 0;
-        }
-        if (idx >= 0) {
-          currentActiveIdx = idx;
-          applyActiveMarker(idx);
-        }
-        applyFocusedPanelIndicator(idx >= 0 ? targets[idx] : panelEl);
+        updatePanelActivationFromChromeTarget(e.target);
       },
       true,
     );
   }
   attachPanelClickAutoScroll();
+
+  function handleBentoPanelContentClick(e) {
+    if (e._bentoPanelContentClickHandled) return;
+    e._bentoPanelContentClickHandled = true;
+    updatePanelActivationFromChromeTarget(e.currentTarget || e.target);
+  }
+
+  function attachBentoPanelContentClickFallback(...targets) {
+    for (const target of targets) {
+      if (!target || target._bentoPanelContentClickFallbackAttached) continue;
+      target.addEventListener('click', handleBentoPanelContentClick, true);
+      target._bentoPanelContentClickFallbackAttached = true;
+    }
+  }
 
   // ─── "Open in new panel" link context-menu item ────────────────────────
   // Adds a menuitem to Firefox's contentAreaContextMenu that appears when
@@ -18996,9 +19068,12 @@
         );
         if (!container) return;
         const idx = getCycleIndexForPanelElement(container);
-        if (idx < 0 || idx === currentActiveIdx) return;
-        currentActiveIdx = idx;
-        applyPanelFocusIndicator(idx);
+        if (idx < 0) return;
+        if (idx !== currentActiveIdx) {
+          currentActiveIdx = idx;
+          applyPanelFocusIndicator(idx);
+        }
+        applyFocusedPanelIndicator(container);
       },
       true,
     );
