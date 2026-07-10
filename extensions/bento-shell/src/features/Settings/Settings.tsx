@@ -51,6 +51,8 @@ import './Settings.css';
 const EMPTY_CUSTOM_PANEL_SIZES: number[] = [];
 const PANEL_CORNER_RADIUS_MIN = 0;
 const PANEL_CORNER_RADIUS_MAX = 36;
+const PANEL_SPLITTER_SIZE_MIN = 6;
+const PANEL_SPLITTER_SIZE_MAX = 36;
 
 interface CustomSizeFlipSnapshot {
   rects: Map<string, DOMRect>;
@@ -793,7 +795,7 @@ export function Settings() {
                     className="bento-settings__panel-radius-slider"
                   >
                     <Slider.Header>
-                      <Slider.Label>Panel corner radius (px)</Slider.Label>
+                      <Slider.Label>Panel roundness</Slider.Label>
                       <Slider.Output />
                     </Slider.Header>
                     <Slider.Control>
@@ -805,6 +807,33 @@ export function Settings() {
                   </Slider.Root>
                   <Text variant="text" size="s" color="muted">
                     Changes the rounded corners on Bento panel frames and their focus rings.
+                  </Text>
+                </Column>
+                <Column gap="3xs">
+                  <Slider.Root
+                    value={settings.panelSplitterSizePx}
+                    onChange={(value) => {
+                      if (Array.isArray(value)) return;
+                      update('panelSplitterSizePx', Math.round(value));
+                    }}
+                    minValue={PANEL_SPLITTER_SIZE_MIN}
+                    maxValue={PANEL_SPLITTER_SIZE_MAX}
+                    step={1}
+                    className="bento-settings__panel-splitter-slider"
+                  >
+                    <Slider.Header>
+                      <Slider.Label>Panel gaps</Slider.Label>
+                      <Slider.Output />
+                    </Slider.Header>
+                    <Slider.Control>
+                      <Slider.Track>
+                        <Slider.Indicator />
+                        <Slider.Thumb />
+                      </Slider.Track>
+                    </Slider.Control>
+                  </Slider.Root>
+                  <Text variant="text" size="s" color="muted">
+                    Controls the drag target and visual gap between Bento panels.
                   </Text>
                 </Column>
                 <Column gap="2xs">

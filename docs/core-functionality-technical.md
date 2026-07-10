@@ -2221,6 +2221,13 @@ Top-level panel resizing:
   title payload; `bento-shell-mount.js` clamps it to `0-36px` and writes
   `--bento-panel-corner-radius` for panel frames, content clips, focus rings,
   subdivision frames, and the add-panel trailer.
+- Panel splitter size path: `BentoSettings.panelSplitterSizePx` defaults to 14,
+  matching the previous hard-coded `--bento-splitter-hit-size`. Settings writes
+  it through `settings/update`; `background.ts` treats it as chrome-bound and
+  re-emits `panels/sync`; `useToolsPort.ts` includes it in the `BENTO_PANELS`
+  title payload; `bento-shell-mount.js` clamps it to `6-36px` and writes
+  `--bento-splitter-hit-size`. `--bento-panel-gap` derives from that token, so
+  splitter drag targets and the visible gap between panels stay aligned.
 - Workspace height resize path: the `tabpanels` `ResizeObserver` and the
   settled window-resize path (`attachWindowResizePerfMode` ->
   `repaintSelectedBrowserAfterWindowResize`) must call

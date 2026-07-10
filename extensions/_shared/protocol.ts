@@ -240,6 +240,10 @@ export interface BentoSettings {
    * frames. The default matches the current Tale UI `--radius-m` panel
    * corner value. */
   panelCornerRadiusPx: number;
+  /** Splitter hit target size, in CSS pixels, for Bento split-view
+   * panel boundaries. This also controls the visual gap between panels.
+   * The default matches the current hard-coded splitter size. */
+  panelSplitterSizePx: number;
   /** Automatic periodic backup of workspace state to storage.local. */
   autoBackupEnabled: boolean;
   /** Minutes between automatic backups. */
@@ -840,6 +844,10 @@ export type Event =
        * mirrors this into `--bento-panel-corner-radius` for panel frames,
        * content clips, focus rings, and subdivision chooser frames. */
       panelCornerRadiusPx?: number;
+      /** Current Bento Settings splitter size in CSS pixels. Chrome mirrors
+       * this into `--bento-splitter-hit-size`, which also drives the visual
+       * gap between split-view panels. */
+      panelSplitterSizePx?: number;
       /** Per-workspace horizontal scroll position of the chrome panel
        * strip in CSS pixels. Chrome restores tabpanels.scrollLeft to
        * this value after the workspace-switch reconcile. Undefined

@@ -329,6 +329,8 @@ Panels support the core Bento workflow:
   the order shown in each side-panel header's custom widths menu.
 - adjust Bento panel corner roundedness in Settings with the current panel
   radius as the default.
+- adjust Bento splitter size in Settings, which also changes the visual gap
+  between panels.
 
 Side-panel and sub-panel headers sit on a neutral-5 surface and can be hidden
 per panel from the header's `...` menu. Hidden headers are restored from a small

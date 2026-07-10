@@ -95,7 +95,8 @@
     width: fit-content;
   }
 
-  .bento-settings__panel-radius-slider {
+  .bento-settings__panel-radius-slider,
+  .bento-settings__panel-splitter-slider {
     width: 100%;
   }
 

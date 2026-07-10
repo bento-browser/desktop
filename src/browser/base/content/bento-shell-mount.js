@@ -39,6 +39,8 @@
   const BENTO_DOM_FULLSCREEN_REQUESTER_ATTR = 'data-bento-dom-fullscreen-requester';
   const BENTO_PANEL_CORNER_RADIUS_MIN = 0;
   const BENTO_PANEL_CORNER_RADIUS_MAX = 36;
+  const BENTO_PANEL_SPLITTER_SIZE_MIN = 6;
+  const BENTO_PANEL_SPLITTER_SIZE_MAX = 36;
 
   function seedChromeColorMode() {
     const root = document.documentElement;
@@ -448,7 +450,7 @@
         --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
         --bento-panel-corner-radius: var(--radius-m);
         --bento-splitter-hit-size: 14px;
-        --bento-splitter-hit-half: 7px;
+        --bento-splitter-hit-half: calc(var(--bento-splitter-hit-size) / 2);
         --bento-splitter-indicator-radius: 3px;
         --bento-panel-gap: var(--bento-splitter-hit-size);
         --bento-scrollbar-thickness: calc(
@@ -17861,6 +17863,9 @@
       if (typeof decoded.panelCornerRadiusPx === 'number') {
         applyChromePanelCornerRadius(decoded.panelCornerRadiusPx);
       }
+      if (typeof decoded.panelSplitterSizePx === 'number') {
+        applyChromePanelSplitterSize(decoded.panelSplitterSizePx);
+      }
       hideStartupVeil();
       if (
         typeof decoded.scrollToPanelTabId === 'number' &&
@@ -18339,6 +18344,16 @@
       Math.max(BENTO_PANEL_CORNER_RADIUS_MIN, rounded),
     );
     document.documentElement?.style.setProperty('--bento-panel-corner-radius', clamped + 'px');
+  }
+  function applyChromePanelSplitterSize(sizePx) {
+    const n = Number(sizePx);
+    if (!Number.isFinite(n)) return;
+    const rounded = Math.round(n);
+    const clamped = Math.min(
+      BENTO_PANEL_SPLITTER_SIZE_MAX,
+      Math.max(BENTO_PANEL_SPLITTER_SIZE_MIN, rounded),
+    );
+    document.documentElement?.style.setProperty('--bento-splitter-hit-size', clamped + 'px');
   }
   // Preset side-panel widths surfaced in each panel header's kebab menu.
   // Mirrored from BentoSettings.customPanelSizes via the BENTO_PANELS

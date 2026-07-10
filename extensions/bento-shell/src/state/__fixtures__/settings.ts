@@ -24,6 +24,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   panelCycleWraparound: false,
   panelShadowsEnabled: true,
   panelCornerRadiusPx: 8,
+  panelSplitterSizePx: 14,
   autoBackupEnabled: true,
   autoBackupIntervalMinutes: 30,
   autoBackupMaxCount: 5,

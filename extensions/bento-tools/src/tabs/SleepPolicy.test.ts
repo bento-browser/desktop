@@ -48,6 +48,7 @@ function makeSettings(overrides: Partial<BentoSettings> = {}): SettingsStore {
     panelCycleWraparound: false,
     panelShadowsEnabled: true,
     panelCornerRadiusPx: 8,
+    panelSplitterSizePx: 14,
     autoBackupEnabled: true,
     autoBackupIntervalMinutes: 30,
     autoBackupMaxCount: 5,
