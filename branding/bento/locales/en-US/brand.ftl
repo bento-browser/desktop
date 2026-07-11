@@ -18,7 +18,6 @@
 
 -brand-shorter-name = Bento
 -brand-short-name = Bento
--brand-shortcut-name = Bento
 -brand-full-name = Bento Browser
 # This brand name can be used in messages where the product name needs to
 # remain unchanged across different versions (Nightly, Beta, etc.).

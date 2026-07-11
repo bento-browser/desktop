@@ -21,16 +21,16 @@
 ; Stable since they share the same branding when building with other branches that
 ; set the update channel to stable.
 !define OFFICIAL
-!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-latest"
-!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-latest"
-!define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-latest"
+!define URLStubDownloadX86 "https://bentobrowser.app/download?os=win"
+!define URLStubDownloadAMD64 "https://bentobrowser.app/download?os=win64"
+!define URLStubDownloadAArch64 "https://bentobrowser.app/download?os=win64-aarch64"
 !define URLManualDownload "https://bentobrowser.app/download"
-!define URLSystemRequirements "https://www.mozilla.org/firefox/system-requirements/"
+!define URLSystemRequirements "https://bentobrowser.app/system-requirements/"
 !define Channel "stable"
 
 # The installer's certificate name and issuer expected by the stub installer
-!define CertNameDownload   "Mozilla Corporation"
-!define CertIssuerDownload "DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1"
+!define CertNameDownload   "Bento Browser"
+!define CertIssuerDownload "TBD"
 
 # Dialog units are used so the UI displays correctly with the system's DPI
 # settings.

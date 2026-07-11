@@ -6,10 +6,10 @@
 #   - brands.<brand>.release.displayVersion in surfer.json
 #   - any *.svg/*.png in configs/branding/<brand>/content/
 #
-# Why: Surfer's patch-check skips branding regen when SHA1(logo.png) and
-# SHA1(MacOSInstaller.svg) match .surfer/hashes.json AND the engine branding
-# dir exists. Touching surfer.json alone doesn't bust either input. This script
-# wipes both signals, then runs the shared Bento import wrapper so branding,
+# Why: Surfer's patch-check skips branding regen when its cached source-asset
+# hashes match .surfer/hashes.json AND the engine branding dir exists. Touching
+# surfer.json alone doesn't bust either input. This script wipes both signals,
+# then runs the shared Bento import wrapper so branding,
 # prefs, patch checks, chrome tokens, and built-in add-on symlinks stay aligned.
 
 set -euo pipefail

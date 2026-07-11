@@ -4,8 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 pref("startup.homepage_override_url", "https://bentobrowser.app/whatsnew?v=%VERSION%");
-pref("startup.homepage_welcome_url", "https://bentobrowser.app/welcome/");
-pref("startup.homepage_welcome_url.additional", "https://bentobrowser.app/privacy/");
+pref("startup.homepage_welcome_url", "https://bentobrowser.app/welcome");
+pref("startup.homepage_welcome_url.additional", "");
 
 // Give the user x seconds to react before showing the big UI. default=192 hours
 pref("app.update.promptWaitTime", 691200);
