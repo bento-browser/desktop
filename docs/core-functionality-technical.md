@@ -973,6 +973,9 @@ honors folder ids present in the active workspace's folder set. Collapsed
 folders hide members except for the active member peek row. Sidebar selection,
 Shift-range selection, close-selected, and the `BENTO_SELECTED_TABS` mirror use
 the flattened visible tab order so hidden folder members cannot be acted on.
+`TabListPane` derives each folder-row count from its workspace's panel-filtered
+tab IDs, so the count follows live folder membership and matches the tabs that
+can appear in the sidebar.
 
 Folder and tab rename context-menu requests are `ui/renameRequest` bus actions
 consumed by `extensions/bento-shell/src/state/ui.ts`; they must not be

@@ -1,7 +1,7 @@
 @layer bento.components {
   .bento-folder-row {
     display: grid;
-    grid-template-columns: var(--bento-favicon-size) minmax(0, 1fr);
+    grid-template-columns: var(--bento-favicon-size) minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-xs);
     box-sizing: border-box;
@@ -10,7 +10,7 @@
     max-width: 100%;
     height: 100%;
     min-height: 0;
-    padding-inline: var(--space-2xs) 0;
+    padding-inline: var(--space-2xs);
     border-radius: var(--radius-s);
     color: var(--neutral-90);
     cursor: pointer;
@@ -88,7 +88,7 @@
     height: var(--bento-favicon-size);
   }
 
-  .bento-folder-row > .tale-text {
+  .bento-folder-row__label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -98,6 +98,13 @@
     margin: 0;
     position: relative;
     top: 2px;
+  }
+
+  .bento-folder-row__count {
+    justify-self: end;
+    margin: 0;
+    color: var(--neutral-50);
+    line-height: 1;
   }
 
   .bento-folder-row__rename-input {

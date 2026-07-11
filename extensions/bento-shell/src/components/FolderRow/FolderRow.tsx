@@ -10,6 +10,7 @@ import './FolderRow.css';
 
 export interface FolderRowProps {
   folder: TabFolder;
+  tabCount: number;
   dragging?: boolean;
   dropTarget?: boolean;
   onContextMenu?: (id: string, event: React.MouseEvent<HTMLDivElement>) => void;
@@ -20,6 +21,7 @@ export interface FolderRowProps {
 
 function FolderRowImpl({
   folder,
+  tabCount,
   dragging = false,
   dropTarget = false,
   onContextMenu,
@@ -139,8 +141,13 @@ function FolderRowImpl({
           onBlur={commitRename}
         />
       ) : (
-        <Text variant="text" size="s" color="muted">
+        <Text className="bento-folder-row__label" variant="text" size="s" color="muted">
           {folder.name}
+        </Text>
+      )}
+      {!renaming && (
+        <Text className="bento-folder-row__count" variant="text" size="xs">
+          {tabCount}
         </Text>
       )}
     </div>

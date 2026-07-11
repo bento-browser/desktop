@@ -8,7 +8,10 @@ export default {
 
 export function Expanded() {
   return (
-    <FolderRow folder={makeFolder({ id: 'folder-1', workspaceId: 'ws-1', name: 'Research' })} />
+    <FolderRow
+      folder={makeFolder({ id: 'folder-1', workspaceId: 'ws-1', name: 'Research' })}
+      tabCount={3}
+    />
   );
 }
 
@@ -21,6 +24,7 @@ export function Collapsed() {
         name: 'Research',
         collapsed: true,
       })}
+      tabCount={3}
     />
   );
 }
@@ -34,6 +38,7 @@ export function LongName() {
           workspaceId: 'ws-1',
           name: 'Very long folder name that should truncate cleanly',
         })}
+        tabCount={12}
       />
     </div>
   );

@@ -326,6 +326,14 @@ function TabListPane({
       }),
     [activeId, displayedIds, dragFolderId, folders, tabsById],
   );
+  const folderTabCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const id of ids) {
+      const folderId = tabsById[id]?.folderId;
+      if (folderId) counts.set(folderId, (counts.get(folderId) ?? 0) + 1);
+    }
+    return counts;
+  }, [ids, tabsById]);
   const activeRowIndex = useMemo(() => {
     if (activeId === null) return -1;
     return rows.findIndex(
@@ -1049,6 +1057,7 @@ function TabListPane({
                   >
                     <FolderRow
                       folder={folder}
+                      tabCount={folderTabCounts.get(folder.id) ?? 0}
                       dragging={row.folderId === dragFolderId}
                       dropTarget={row.folderId === folderDropTargetId}
                       onContextMenu={onFolderContextMenu}

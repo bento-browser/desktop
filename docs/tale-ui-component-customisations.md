@@ -152,6 +152,10 @@ Existing examples:
 - [TabRow.css](../extensions/bento-shell/src/components/TabRow/TabRow.css)
   uses unlayered foreground rules so active-row text, buttons, and icons keep
   the correct contrast tokens.
+- [FolderRow.css](../extensions/bento-shell/src/components/FolderRow/FolderRow.css)
+  uses a three-column grid for the folder icon, truncating label, and right-aligned
+  `Text` tab count. The count uses Tale UI's `xs` text style with the
+  `--neutral-50` token, one step below the `s` folder label.
 - [TabList.css](../extensions/bento-shell/src/components/TabList/TabList.css)
   has an unlayered alignment override for Tale UI button defaults.
 - [PinnedPanels.css](../extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.css)

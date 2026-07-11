@@ -138,6 +138,8 @@ can be moved to another workspace from their context menu, and persist across
 restarts. Tabs inside folders remain normal unpinned Firefox tabs. Folder names
 are not directly editable by clicking the row; rename starts from the folder
 context menu and opens an inline field that is immediately ready for typing.
+Each folder row shows its tab count at the right, in neutral-50 text smaller
+than the folder name.
 Deleting a folder returns its member tabs to the regular section.
 Dragging a normal tab into the pinned run pins it; dragging a pinned tab below
 that run unpins it. Dragging a tab onto a folder places it in that folder; pinned
