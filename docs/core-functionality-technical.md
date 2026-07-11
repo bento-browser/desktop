@@ -2479,7 +2479,12 @@ Top-row splits and 2x2 groups:
   `getOrderedPanels()`: that list includes the main content slot, so it can add
   a bogus `panel:undefined` entry and make `PanelStore.reorderRootNodes` reject
   the reorder. Use the navigator root-node payload (`getPanelNavRootNodeIds`) so
-  the ids match `currentPanelLayout.root` exactly.
+  the ids match `currentPanelLayout.root` exactly. Because the navigator is
+  mounted in Firefox's titlebar-capable nav bar, draggable side-panel favicon
+  buttons must explicitly set `-moz-window-dragging: no-drag`; otherwise the
+  titlebar drag region consumes pointer movement before `setupNavDrag()` can
+  start a reorder. Scope that override to the favicon buttons so blank top-bar
+  space still moves the browser window.
 - The first panel navigator button represents the fixed main content slot, not a
   draggable panel. Keep `bento-panel-nav__icon--main` applied when the button is
   created and when it is reused during navigator diffing. It should have the

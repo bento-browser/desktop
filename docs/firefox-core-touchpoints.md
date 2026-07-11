@@ -267,6 +267,9 @@ Use this shape for new or changed touchpoints:
   sidebar divider continuously during
   sidebar-handle drag instead of jumping on mouseup while extensions remain
   right-aligned,
+  verify dragging a side-panel favicon button reorders panels rather than
+  moving the window, while dragging unused top-bar space still moves the
+  window,
   verify Customize Toolbar mode uses Tale UI/Bento token surfaces for the main
   palette, bottom footer, Restore Defaults/Done buttons, Manage Themes link,
   and overflow-menu preview in light and dark modes,

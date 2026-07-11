@@ -464,7 +464,9 @@ The intended behavior is:
   Bento or Firefox-native sidebars, Firefox-native sidebars such as Bookmarks
   remain independently resizable, and the panel-strip scrollbar stays in the
   bottom inset of the strip with the same visible thickness as the splitter
-  handles and equal top/bottom clearance;
+  handles and equal top/bottom clearance; side-panel favicon buttons remain
+  drag-reorderable from that top toolbar while unused top-bar space remains
+  available for moving the browser window;
 - sidebar footer icon buttons show Tale UI tooltips on hover;
 - the fixed main content slot button in the panel navigator is separated from
   draggable side-panel buttons by a divider;

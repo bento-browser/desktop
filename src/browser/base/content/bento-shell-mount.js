@@ -1429,6 +1429,11 @@
          drop indicator marks the prospective insertion point. */
       .bento-panel-nav__icon[data-bento-nav-draggable] {
         cursor: grab;
+        /* The navigator now lives in Firefox's titlebar-capable nav bar.
+           Explicitly opt favicon controls out of that drag region so their
+           pointer sequence reaches setupNavDrag(); unoccupied toolbar space
+           remains available for native window dragging. */
+        -moz-window-dragging: no-drag;
       }
       .bento-panel-nav__list--dragging {
         cursor: grabbing;
