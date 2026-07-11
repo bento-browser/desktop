@@ -450,7 +450,8 @@ The intended behavior is:
   sidebar footer;
 - panel navigator controls sit in the native top toolbar flush with the sidebar
   divider after the native reload button and track that divider during live
-  sidebar resize when panels are visible, the toolbar and panel-strip backdrops
+  sidebar resize when panels are visible, match the native toolbar buttons'
+  control size, the toolbar and panel-strip backdrops
   switch to neutral-14 on the main-content side of that divider in panel view
   and neutral-5 with no divider in no-panel view, while browser extension
   buttons align to the right side of the top bar without Firefox's native

@@ -458,7 +458,10 @@
         );
         --bento-scrollbar-radius: var(--bento-splitter-indicator-radius);
         --bento-strip-scrollbar-gap: var(--space-2xs);
-        --bento-panel-nav-button-size: var(--bento-control-size-sm);
+        /* Match Firefox toolbar-button hit targets at every density and
+           narrow-window breakpoint. The navigator is plain HTML, so it does
+           not inherit the native toolbarbutton sizing rules automatically. */
+        --bento-panel-nav-button-size: calc(16px + (var(--toolbarbutton-padding-inner) * 2));
         --bento-panel-nav-favicon-size: var(--bento-icon-size-sm);
         --bento-panel-nav-height: calc(
           var(--bento-panel-nav-button-size) + var(--space-xs)
@@ -12449,6 +12452,18 @@
     const mainBtn = list.children[0];
     const fav = getStableMainNavFavicon(mainBtn);
     if (fav !== null) refreshNavIconImage(mainBtn, fav);
+    syncPanelNavAudioParticles(mainBtn, isMainTabAudioPlaying());
+  }
+
+  function isMainTabAudioPlaying() {
+    try {
+      const tab = window.gBrowser?.selectedTab;
+      return (
+        tab?.hasAttribute?.('soundplaying') === true && tab?.hasAttribute?.('muted') !== true
+      );
+    } catch {
+      return false;
+    }
   }
 
   function refreshPanelNavFromTabAttr(tab) {
@@ -12692,6 +12707,7 @@
           btn.classList.add('bento-panel-nav__icon--main');
           btn.title = 'Main content slot';
           btn.setAttribute('aria-label', 'Main content slot');
+          syncPanelNavAudioParticles(btn, isMainTabAudioPlaying());
           existing.delete(key);
           desiredEls.push(btn);
           continue;
@@ -12731,6 +12747,7 @@
             setActiveByIndex(0);
           });
           btn.classList.add('bento-panel-nav__icon--main');
+          syncPanelNavAudioParticles(btn, isMainTabAudioPlaying());
         } else {
           const panelPayload = navPanels[i - 1];
           const tabId = Number(panelPayload?.tabId);

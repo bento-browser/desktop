@@ -872,13 +872,15 @@ through `BENTO_PANELS`, and `bento-shell-mount.js` mirrors it in
 The top-toolbar panel navigator also consumes the same panel metadata. Normal and
 grouped side-panel nav buttons toggle `.bento-panel-nav__icon--audible` and
 their Lucide music-note particle overlay when any contained panel is
-`audible && !muted`; this must stay a metadata update on reused nav buttons,
-not a navigator structural signature input. The emitter must stop creating new
-notes when audio stops while letting already-emitted finite particles finish
-their fade-out; do not remove the particle layer abruptly for normal audio-off
-updates. The particle layer is parented to `#bento-panel-nav`, not inside each
-favicon button or `.bento-panel-nav__list`, because the favicon list is a
-horizontal scroll container and clips child overflow.
+`audible && !muted`; the fixed main-slot button derives the equivalent state
+from the selected Firefox tab's `soundplaying` and `muted` attributes. Both
+paths must stay metadata updates on reused nav buttons, not navigator structural
+signature input. The emitter must stop creating new notes when audio stops while
+letting already-emitted finite particles finish their fade-out; do not remove the
+particle layer abruptly for normal audio-off updates. The particle layer is
+parented to `#bento-panel-nav`, not inside each favicon button or
+`.bento-panel-nav__list`, because the favicon list is a horizontal scroll
+container and clips child overflow.
 `extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the New menu
 row into the virtualized pane after pinned tabs and folder rows, before regular
 tabs. That Tale UI menu exposes the New tab and New panel actions from the same
@@ -2447,18 +2449,18 @@ Top-row splits and 2x2 groups:
   differences do not change the outer slot. Dimensional nav animation makes the
   navigator row jump during those layout operations even when favicon metadata is
   patched in place.
-- Panel navigator button size should stay compact enough for the native top
-  toolbar:
-  `--bento-panel-nav-button-size` uses `--bento-control-size-sm`, matching Tale
-  UI `IconButton size="sm"`, and `#bento-panel-nav` is mounted before the first
-  extension toolbar child so it stays after Reload/Stop while the first
-  extension child becomes the right-aligned toolbar anchor. Bento collapses
-  native toolbar springs in sidebar-addressbar mode so that the navigator starts
-  at the sidebar divider instead of drifting right behind an empty URL-bar gap.
-  Keep grouped favicon cells
-  small enough to fit inside that fixed 24px slot; increasing grouped favicon
-  dimensions without changing the slot causes the navigator to overflow or
-  drift out of alignment with the sidebar footer.
+- Panel navigator button size must match native top-toolbar controls:
+  `--bento-panel-nav-button-size` uses Firefox's `--toolbarbutton-padding-inner`
+  with the native 16px icon dimension, so density and narrow-window breakpoint
+  changes apply to the plain-HTML navigator too. `#bento-panel-nav` is mounted
+  before the first extension toolbar child so it stays after Reload/Stop while
+  the first extension child becomes the right-aligned toolbar anchor. Bento
+  collapses native toolbar springs in sidebar-addressbar mode so that the
+  navigator starts at the sidebar divider instead of drifting right behind an
+  empty URL-bar gap. Keep grouped favicon cells small enough to fit inside this
+  derived button slot; increasing grouped favicon dimensions without changing
+  the slot causes the navigator to overflow or drift out of alignment with the
+  sidebar footer.
 - Panel navigator drag reorder must dispatch only layout root node ids to
   `panelLayout/reorderRoot`. Do not derive this payload from
   `getOrderedPanels()`: that list includes the main content slot, so it can add
