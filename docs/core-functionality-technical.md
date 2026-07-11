@@ -766,6 +766,16 @@ background, border, and text colors with `--color-*` tokens so the control
 follows the active workspace brand instead of the neutral palette. The trigger
 is rendered as a fixed bottom sidebar section between `TabList` and the footer,
 so workspace switching remains reachable after scrolling long tab lists.
+`useWorkspaceHasPlayingAudio()` and `useWorkspaceIdsWithPlayingAudio()` derive
+workspace-level audio state from the mirrored `TabSnapshot` map, including tabs
+rendered as panels. `WorkspaceSwitcher` uses the first hook for its active
+avatar and `workspace-switcher/main.tsx` uses the second for every menu row;
+both render the shared `WorkspaceAudioParticles` layer only when a workspace has
+an `audible && !muted` tab. The layer is positioned outside `Avatar.Root` so its
+notes can float beyond the avatar's clipped bounds. It emits finite notes on the
+same varied upward paths as panel navigator particles; an audio-off update stops
+new emissions while existing notes complete their fade-out. Menu particles use
+`--neutral-30` so they contrast with the menu surface.
 
 The workspace editor is a chrome-mounted `Dialog` frame that reads
 `useWorkspacesStore`, dispatches `workspace/update`, `workspace/activate`,

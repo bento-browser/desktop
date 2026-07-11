@@ -17,12 +17,14 @@ import { Avatar } from '@tale-ui/react/avatar';
 import ChevronsUpDown from 'lucide-react/dist/esm/icons/chevrons-up-down';
 
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
+import { useWorkspaceHasPlayingAudio } from '../../state/tabs';
 import {
   requestWorkspaceSwitcher,
   subscribeToWorkspaceSwitcherClose,
 } from '../../bridge/useWorkspaceSwitcher';
 import { useCurrentWindowId } from '../../bridge/useToolsPort';
 import { DEFAULT_THEME_ID } from '../../theme/presets';
+import { WorkspaceAudioParticles } from './WorkspaceAudioParticles';
 import './WorkspaceSwitcher.css';
 
 function workspaceInitial(name: string): string {
@@ -58,6 +60,7 @@ export function WorkspaceSwitcher() {
 
   const activeIcon = active?.icon?.trim();
   const hasEmojiIcon = !!activeIcon && looksLikeEmojiValue(activeIcon);
+  const activeWorkspaceHasPlayingAudio = useWorkspaceHasPlayingAudio(activeWorkspaceId);
 
   const onPress = () => {
     const trigger = triggerRef.current;
@@ -87,14 +90,17 @@ export function WorkspaceSwitcher() {
       aria-expanded={isOpen}
       onPress={onPress}
     >
-      <Avatar.Root
-        size="sm"
-        className="bento-workspace-switcher__avatar"
-        data-bento-theme={active?.themeId ?? DEFAULT_THEME_ID}
-        data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
-      >
-        <Avatar.Fallback>{activeIcon || workspaceInitial(active?.name ?? '?')}</Avatar.Fallback>
-      </Avatar.Root>
+      <span className="bento-workspace-switcher__avatar-frame">
+        <Avatar.Root
+          size="sm"
+          className="bento-workspace-switcher__avatar"
+          data-bento-theme={active?.themeId ?? DEFAULT_THEME_ID}
+          data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
+        >
+          <Avatar.Fallback>{activeIcon || workspaceInitial(active?.name ?? '?')}</Avatar.Fallback>
+        </Avatar.Root>
+        <WorkspaceAudioParticles active={activeWorkspaceHasPlayingAudio} />
+      </span>
       <Text variant="text" size="s" className="bento-workspace-switcher__trigger-name">
         {active?.name ?? 'No workspace'}
       </Text>

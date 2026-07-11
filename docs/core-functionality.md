@@ -183,7 +183,10 @@ top chrome.
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
 covering the window with an opaque overlay. Its trigger sits at the bottom of
-the sidebar, below the tab list and above the footer controls.
+the sidebar, below the tab list and above the footer controls. Floating music
+notes beside a workspace avatar identify a workspace with audible, unmuted
+audio; the animation appears on the current-workspace trigger and on every
+matching row in the switcher menu.
 Editing a single workspace lets the user rename it, set or clear its icon with
 the same searchable full emoji picker used by the all-workspaces manager, and
 choose a theme with the same compact searchable theme picker used there.

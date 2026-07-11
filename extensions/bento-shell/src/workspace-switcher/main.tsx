@@ -53,8 +53,9 @@ import {
   type WorkspaceSwitcherOpenPayload,
 } from '../bridge/useWorkspaceSwitcher';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
-import { useWorkspaceTabIds } from '../state/tabs';
+import { useWorkspaceIdsWithPlayingAudio, useWorkspaceTabIds } from '../state/tabs';
 import { BENTO_THEMES, DEFAULT_THEME_ID } from '../theme/presets';
+import { WorkspaceAudioParticles } from '../components/WorkspaceSwitcher/WorkspaceAudioParticles';
 // Reuse the inline menu's CSS — only the trigger styles in
 // WorkspaceSwitcher.css are unused here; the popover/avatar/item rules
 // all apply identically to this overlay's menu DOM.
@@ -108,6 +109,7 @@ function WorkspaceSwitcherOverlayApp() {
   const activeId = useActiveWorkspaceIdForWindow(windowId);
   const active = activeId ? workspaces.find((w) => w.id === activeId) : undefined;
   const tabIdsInActive = useWorkspaceTabIds(activeId);
+  const workspaceIdsWithPlayingAudio = useWorkspaceIdsWithPlayingAudio();
   const tabCount = tabIdsInActive.length;
   const canDelete = workspaces.length > 1 && active !== undefined;
   const canEdit = active !== undefined;
@@ -252,16 +254,20 @@ function WorkspaceSwitcherOverlayApp() {
           {workspaces.map((w) => {
             const icon = w.icon?.trim();
             const hasEmojiIcon = !!icon && looksLikeEmojiValue(icon);
+            const hasPlayingAudio = workspaceIdsWithPlayingAudio.has(w.id);
             return (
               <Menu.Item key={w.id} id={w.id} textValue={w.name} onAction={() => onActivate(w.id)}>
-                <Avatar.Root
-                  size="sm"
-                  className="bento-workspace-switcher__avatar"
-                  data-bento-theme={w.themeId ?? DEFAULT_THEME_ID}
-                  data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
-                >
-                  <Avatar.Fallback>{icon || workspaceInitial(w.name)}</Avatar.Fallback>
-                </Avatar.Root>
+                <span className="bento-workspace-switcher__avatar-frame">
+                  <Avatar.Root
+                    size="sm"
+                    className="bento-workspace-switcher__avatar"
+                    data-bento-theme={w.themeId ?? DEFAULT_THEME_ID}
+                    data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
+                  >
+                    <Avatar.Fallback>{icon || workspaceInitial(w.name)}</Avatar.Fallback>
+                  </Avatar.Root>
+                  <WorkspaceAudioParticles active={hasPlayingAudio} variant="menu" />
+                </span>
                 <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
                   {w.name}
                 </Text>

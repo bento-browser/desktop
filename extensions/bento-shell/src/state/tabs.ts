@@ -97,6 +97,34 @@ export function useTab(id: number): TabSnapshot | undefined {
   return useTabsStore((s) => s.byId[id]);
 }
 
+/** True when a workspace contains at least one currently audible, unmuted tab.
+ * This intentionally includes panel tabs: the workspace switcher is the
+ * cross-workspace audio locator, not a sidebar-row filter. */
+export function useWorkspaceHasPlayingAudio(workspaceId: string | null): boolean {
+  return useTabsStore((s) => {
+    if (!workspaceId) return false;
+    return Object.values(s.byId).some(
+      (tab) => tab.workspaceId === workspaceId && tab.audible === true && tab.muted !== true,
+    );
+  });
+}
+
+/** Workspace ids containing at least one currently audible, unmuted tab.
+ * Used by workspace-list surfaces to mark every workspace playing audio. */
+export function useWorkspaceIdsWithPlayingAudio(): ReadonlySet<string> {
+  return useTabsStore(
+    useShallow((s) => {
+      const ids = new Set<string>();
+      for (const tab of Object.values(s.byId)) {
+        if (tab.workspaceId && tab.audible === true && tab.muted !== true) {
+          ids.add(tab.workspaceId);
+        }
+      }
+      return ids;
+    }),
+  );
+}
+
 /** Returns ordered tab ids belonging to the given workspace, with panel
  * tabs subtracted. Panels and tabs are disjoint in Bento's model: a tab
  * promoted to a side panel disappears from the sidebar list (the panel is

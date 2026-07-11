@@ -40,6 +40,75 @@
   color: var(--neutral-90);
 }
 
+/* Audio notes float from the workspace avatar instead of occupying a static
+ * badge. The avatar clips its own contents, so the surrounding frame owns the
+ * particle layer. */
+.bento-workspace-switcher__avatar-frame {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.bento-workspace-switcher__audio-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.tale-icon.bento-workspace-switcher__audio-particle {
+  position: absolute;
+  inset-inline-end: calc(-1 * var(--space-3xs));
+  inset-block-start: var(--space-4xs);
+  width: var(--bento-icon-size-xs);
+  height: var(--bento-icon-size-xs);
+  color: var(--color-70);
+  opacity: 0;
+  animation: bento-workspace-switcher-audio-particle 1500ms linear forwards;
+}
+.tale-icon.bento-workspace-switcher__audio-particle--1 {
+  --bento-workspace-switcher-audio-x: calc(-1 * var(--space-2xs));
+  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-s));
+  --bento-workspace-switcher-audio-rotation: -12deg;
+}
+.tale-icon.bento-workspace-switcher__audio-particle--2 {
+  --bento-workspace-switcher-audio-x: var(--space-2xs);
+  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-m));
+  --bento-workspace-switcher-audio-rotation: 10deg;
+}
+.tale-icon.bento-workspace-switcher__audio-particle--3 {
+  --bento-workspace-switcher-audio-x: var(--space-s);
+  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-xs));
+  --bento-workspace-switcher-audio-rotation: 16deg;
+}
+.bento-workspace-switcher__audio-particles--menu
+  .tale-icon.bento-workspace-switcher__audio-particle {
+  color: var(--neutral-30);
+}
+@keyframes bento-workspace-switcher-audio-particle {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.55) rotate(0deg);
+  }
+  14% {
+    opacity: 0.9;
+  }
+  68% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        var(--bento-workspace-switcher-audio-x),
+        var(--bento-workspace-switcher-audio-y)
+      )
+      scale(1) rotate(var(--bento-workspace-switcher-audio-rotation));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tale-icon.bento-workspace-switcher__audio-particle {
+    animation-duration: 1100ms;
+  }
+}
+
 /* Collapsed sidebar — hide the chevron, fade out the trigger-name.
  * Unlayered because Tale UI's .tale-icon { display: inline-block } and
  * .tale-text defaults are unlayered too — a layered display: none would
