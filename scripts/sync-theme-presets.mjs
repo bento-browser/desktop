@@ -9,7 +9,7 @@
  * stylesheet all see the same preset set.
  */
 
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,6 +35,14 @@ function displayNameFromId(id) {
 
 function extractToken(css, token) {
   return css.match(new RegExp(`${token}\\s*:\\s*(#[0-9a-fA-F]{3,8})`))?.[1].toLowerCase();
+}
+
+function writeIfChanged(path, content) {
+  if (existsSync(path) && readFileSync(path, 'utf-8') === content) {
+    return false;
+  }
+  writeFileSync(path, content);
+  return true;
 }
 
 function compilePresetCss(id, css) {
@@ -161,9 +169,10 @@ export function getThemeMeta(id: string | undefined | null): BentoThemeMeta {
 }
 `;
 
-writeFileSync(INDEX_CSS_PATH, indexCss);
-writeFileSync(INDEX_TS_PATH, indexTs);
+const cssChanged = writeIfChanged(INDEX_CSS_PATH, indexCss);
+const tsChanged = writeIfChanged(INDEX_TS_PATH, indexTs);
 
 console.log(
-  `sync-theme-presets: wrote ${ids.length} themes (${ids.join(', ')})`,
+  `sync-theme-presets: ${cssChanged || tsChanged ? 'wrote' : 'unchanged'} ` +
+    `${ids.length} themes (${ids.join(', ')})`,
 );

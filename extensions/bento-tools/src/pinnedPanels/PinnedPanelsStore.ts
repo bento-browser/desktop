@@ -37,9 +37,8 @@ interface PinnedPanelsStoreOptions {
 export class PinnedPanelsStore {
   /** Live entries keyed by "wsId\\0tabId" for O(1) duplicate check. */
   #byKey = new Map<string, PinnedPanelEntry>();
-  /** Monotonic counter used for new entries' `order`. Initialized at boot
-   * from the max persisted order so restored entries keep their original
-   * positions and new pins append after them. */
+  /** Next order assigned to an appended pin. Initialized at boot from the
+   * persisted maximum and normalized after a user reorder. */
   #nextOrder = 0;
   /** Persisted entries from last shutdown, grouped by workspaceId. The
    * boot restorer (background.ts) consumes from here as each workspace's
@@ -158,6 +157,39 @@ export class PinnedPanelsStore {
     };
     this.#byKey.set(key, entry);
     this.#enqueue({ kind: 'added', entry });
+    this.#schedulePersist();
+    return true;
+  }
+
+  /** Replace the global rail order. The caller must supply every live entry
+   * exactly once; rejecting partial or stale payloads prevents accidental pin
+   * loss when two windows have the rail open. */
+  reorder(orderedKeys: Array<Pick<PinnedPanelEntry, 'workspaceId' | 'tabId'>>): boolean {
+    const current = this.entries();
+    if (orderedKeys.length !== current.length) return false;
+
+    const remaining = new Map<string, PinnedPanelEntry>();
+    for (const entry of current) {
+      remaining.set(this.#key(entry.workspaceId, entry.tabId), entry);
+    }
+
+    const reordered: PinnedPanelEntry[] = [];
+    for (const identity of orderedKeys) {
+      const key = this.#key(identity.workspaceId, identity.tabId);
+      const entry = remaining.get(key);
+      if (!entry) return false;
+      remaining.delete(key);
+      reordered.push(entry);
+    }
+    if (remaining.size !== 0) return false;
+    if (reordered.every((entry, index) => entry === current[index])) return false;
+
+    const normalized = reordered.map((entry, order) => ({ ...entry, order }));
+    for (const entry of normalized) {
+      this.#byKey.set(this.#key(entry.workspaceId, entry.tabId), entry);
+    }
+    this.#nextOrder = normalized.length;
+    this.#enqueue({ kind: 'reordered', entries: normalized });
     this.#schedulePersist();
     return true;
   }

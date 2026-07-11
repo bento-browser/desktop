@@ -1426,6 +1426,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       return;
     }
+    case 'pinnedPanels/reorder': {
+      ctx.pinnedPanels.reorder(action.orderedKeys);
+      return;
+    }
     case 'pinnedPanel/open': {
       if (!ctx.workspaces.has(action.workspaceId)) return;
       const entry = ctx.pinnedPanels.get(action.workspaceId, action.tabId);

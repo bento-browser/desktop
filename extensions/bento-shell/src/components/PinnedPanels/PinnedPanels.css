@@ -21,6 +21,7 @@
     padding-inline: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    position: relative;
     background-color: var(--bento-pinned-panels-bg, var(--neutral-14));
     border-right: var(--bento-border-hairline) solid var(--bento-sidebar-divider-color);
     border-top-right-radius: var(--bento-sidebar-corner-radius, var(--radius-l));
@@ -32,6 +33,11 @@
     min-width: var(--bento-pinned-panels-button-size);
     min-height: var(--bento-pinned-panels-button-size);
     padding: 0;
+    cursor: grab;
+    touch-action: none;
+    transition:
+      opacity var(--bento-duration-fast) var(--bento-easing-standard),
+      transform var(--bento-duration-fast) var(--bento-easing-standard);
   }
 
   .bento-pinned-panels__favicon {
@@ -39,10 +45,43 @@
     height: var(--bento-pinned-panels-favicon-size);
     border-radius: 0;
     display: block;
+    pointer-events: none;
+    user-select: none;
   }
 
   .bento-pinned-panels__favicon--placeholder {
     background-color: var(--neutral-30);
+  }
+
+  .bento-pinned-panels--dragging,
+  .bento-pinned-panels--dragging .bento-pinned-panels__button {
+    cursor: grabbing;
+  }
+
+  .bento-pinned-panels__button--dragging.tale-icon-button {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+
+  .bento-pinned-panels__drop-indicator {
+    position: absolute;
+    inset-inline: var(--space-3xs);
+    height: var(--bento-focus-ring-width);
+    border-radius: var(--bento-focus-ring-width);
+    background-color: var(--color-60);
+    pointer-events: none;
+    z-index: 1;
+    animation: bento-pinned-panels-drop-fade-in var(--bento-duration-fast)
+      var(--bento-easing-standard);
+  }
+
+  @keyframes bento-pinned-panels-drop-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   html[data-bento-collapsed='true'] .bento-pinned-panels {
@@ -65,6 +104,11 @@
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral {
   background-color: transparent;
   border-color: transparent;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    opacity var(--bento-duration-fast) var(--bento-easing-standard),
+    transform var(--bento-duration-fast) var(--bento-easing-standard);
 }
 
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral:hover:not(
@@ -114,4 +158,11 @@
   background-color: var(--color-60);
   border-color: transparent;
   color: var(--color-60-fg);
+}
+
+.bento-pinned-panels__button--dragging.tale-icon-button,
+.bento-pinned-panels__button--dragging.tale-icon-button:hover {
+  background-color: transparent;
+  border-color: transparent;
+  transform: scale(0.92);
 }

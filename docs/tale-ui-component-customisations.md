@@ -537,6 +537,10 @@ Current drift:
   default neutral fill and all visible borders. Hover and pressed states keep
   Tale UI's neutral background fills. The focused pinned panel keeps the accent
   background and paired foreground token, with a transparent border.
+- A drag past the shared 4px threshold dims and scales the source button,
+  changes the rail cursor to grabbing, and shows a non-reflowing accent insertion
+  marker. On drop, FLIP transforms settle the reordered buttons with the panel
+  navigator's duration and easing. A completed drag suppresses the button open.
 
 Regression checks:
 
@@ -546,6 +550,10 @@ Regression checks:
   should appear.
 - Focus/open a pinned panel. The active accent fill should remain visible with
   no border.
+- Drag a pin above or below another pin. The source should dim and scale, the
+  accent marker should track the intended slot without moving other buttons
+  during the drag, and the buttons should settle into the persisted order on
+  release without opening the dragged pin.
 
 ### Settings NumberFields
 

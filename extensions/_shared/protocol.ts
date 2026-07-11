@@ -598,6 +598,12 @@ export type Action =
   /** Legacy focus action for callers that need to switch to the workspace
    * that owns the pinned binding and focus the existing panel. */
   | { type: 'pinnedPanel/activate'; workspaceId: string; tabId: number }
+  /** Commit a global pinned-panel rail order after a sidebar drag. The full
+   * ordered identity list prevents a stale client from moving only a subset. */
+  | {
+      type: 'pinnedPanels/reorder';
+      orderedKeys: Array<{ workspaceId: string; tabId: number }>;
+    }
   | { type: 'pinnedPanels/requestSnapshot' }
   /** Bookmark the panel's URL into the "Saved panels" folder under
    * "Other Bookmarks". Tools find-or-creates the folder lazily and
@@ -647,8 +653,8 @@ export interface SavedPanelEntry {
 /** A pinned-panel entry. Identity is `(workspaceId, tabId)` while the
  * backing tab exists. If the tab has been closed, `tabId` can be a
  * synthetic negative id until the user opens the pin and tools rebinds it
- * to a replacement tab. `order` is append-on-add and stable across
- * rebinds/restarts; the shell renders pins in ascending `order`. */
+ * to a replacement tab. `order` is user-controlled, stable across
+ * rebinds/restarts, and rendered ascending by the shell. */
 export interface PinnedPanelEntry {
   workspaceId: string;
   tabId: number;
@@ -659,9 +665,8 @@ export interface PinnedPanelEntry {
   widthPx?: number;
 }
 
-/** Pinned-panel delta. `reordered` is currently unused (drag-to-reorder is
- * a future feature) but reserved so the wire schema doesn't need to be
- * widened later. */
+/** Pinned-panel delta. A reorder carries the complete canonical list so every
+ * shell mirrors the same global rail order. */
 export type PinnedPanelDelta =
   | { kind: 'added'; entry: PinnedPanelEntry }
   | { kind: 'updated'; workspaceId: string; tabId: number; changes: Partial<PinnedPanelEntry> }

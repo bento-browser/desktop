@@ -2749,6 +2749,16 @@ rebind to a live panel tab.
 Chrome dispatches `panel/focusedChanged` when the focused side-panel tab id
 changes. The shell mirrors that event into `usePanelFocusStore`, and the pinned
 rail applies the `color-60` tonal treatment to the matching pinned-panel button.
+Pinned rail reordering is committed only on pointer release: `PinnedPanels.tsx`
+uses a 4px threshold, pointer capture, and a non-reflowing horizontal insertion
+indicator, then dispatches `pinnedPanels/reorder` with every `(workspaceId,
+tabId)` identity. `PinnedPanelsStore.reorder()` rejects incomplete or stale
+lists, normalizes `order`, persists the result, and emits its existing complete
+`reordered` delta to every shell mirror. Before dispatch, the rail captures each
+button rect; after the delta reorders React children, a vertical FLIP transform
+settles the buttons with the same opacity, scale, accent-indicator, duration,
+and easing treatment as the top panel navigator. A completed drag suppresses
+the button's normal open press.
 
 Saved panels are bookmarks in a managed "Saved panels" folder under Firefox's
 "Other Bookmarks" root. The store is
@@ -2773,6 +2783,19 @@ and `components/PanelTrailer`. It runs inside the chrome-mounted
   specific pinned panel if it still exists and recreates/rebinds it from the
   stored URL only when it does not. Do not activate the pinned tab directly;
   direct tab activation breaks the main/panel distinction.
+- Pinned-panel rail reorder actions must carry the complete global identity
+  list, not an index or a workspace-local subset. The rail includes pins from
+  every workspace and synthetic negative tab ids can be rebound after restore.
+  Reordering must therefore retain each live `(workspaceId, tabId)` entry and
+  wait for a real drag before suppressing the normal open press.
+- Pinned-panel favicon images must be `draggable={false}` and pointer-transparent.
+  Otherwise Firefox starts native image drag-and-drop, shows its ghost image,
+  and prevents the IconButton's pointer-capture reorder path from receiving the
+  drag sequence.
+- Pointer capture can remain active if the user releases the pointer outside the
+  Firefox window. While a pinned-rail drag is active, cancel it on window blur,
+  document hiding, or a `mouseout` whose `relatedTarget` is null; otherwise the
+  source stays dimmed and the insertion marker remains visible indefinitely.
 - Relaunch + double-click regression: after `pnpm run dev` relaunch, inactive
   workspace pins are initially synthetic URL-backed entries while panel restore
   is still lazy. `pinnedPanel/open` must be single-flight by stable pin identity

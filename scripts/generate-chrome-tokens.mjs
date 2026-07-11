@@ -223,8 +223,14 @@ try {
   );
 }
 
-writeFileSync(OUT_PATH, header + body + bentoSection + presetsSection);
+const output = header + body + bentoSection + presetsSection;
+const unchanged = existsSync(OUT_PATH) && readFileSync(OUT_PATH, 'utf-8') === output;
+if (!unchanged) {
+  writeFileSync(OUT_PATH, output);
+}
 
 const stat = statSync(OUT_PATH);
 const kb = (stat.size / 1024).toFixed(1);
-console.log(`generate-chrome-tokens: wrote ${OUT_PATH} (${kb} kB)`);
+console.log(
+  `generate-chrome-tokens: ${unchanged ? 'unchanged' : 'wrote'} ${OUT_PATH} (${kb} kB)`,
+);

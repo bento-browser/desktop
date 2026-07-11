@@ -369,7 +369,10 @@ Use this shape for new or changed touchpoints:
   leave the panel stuck, verify focusing a sibling panel in the same subdivision
   does not show the DevTools focus indicator for the linked sub-panel, verify
   DevTools panels cannot persist in the pinned panels rail after close or restart
-  while normal pinned panels still can, and close ephemeral toolbox tabs on
+  while normal pinned panels still can, verify dragging a pinned panel favicon
+  reorders the global sidebar rail with the same dimmed source, accent insertion
+  marker, and settle animation as the top panel navigator while a normal click
+  still opens the pin, and close ephemeral toolbox tabs on
   caller removal, inspected-tab closure, and restart, run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase.

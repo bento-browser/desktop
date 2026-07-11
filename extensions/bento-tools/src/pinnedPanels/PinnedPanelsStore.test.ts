@@ -99,4 +99,30 @@ describe('PinnedPanelsStore', () => {
     ]);
     expect(store.entries()[0]?.tabId).toBeLessThan(0);
   });
+
+  it('reorders the complete pinned rail and normalizes persisted order values', () => {
+    const store = new PinnedPanelsStore();
+    store.add('ws-a', 1);
+    store.add('ws-b', 2);
+    store.add('ws-a', 3);
+
+    expect(
+      store.reorder([
+        { workspaceId: 'ws-a', tabId: 3 },
+        { workspaceId: 'ws-a', tabId: 1 },
+        { workspaceId: 'ws-b', tabId: 2 },
+      ]),
+    ).toBe(true);
+    expect(store.entries().map((entry) => [entry.workspaceId, entry.tabId, entry.order])).toEqual([
+      ['ws-a', 3, 0],
+      ['ws-a', 1, 1],
+      ['ws-b', 2, 2],
+    ]);
+    expect(
+      store.reorder([
+        { workspaceId: 'ws-a', tabId: 3 },
+        { workspaceId: 'ws-a', tabId: 1 },
+      ]),
+    ).toBe(false);
+  });
 });
