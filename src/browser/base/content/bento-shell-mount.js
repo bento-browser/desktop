@@ -466,6 +466,10 @@
         --bento-panel-nav-height: calc(
           var(--bento-panel-nav-button-size) + var(--space-xs)
         );
+        /* The macOS titlebar controls are copied into #nav-bar while the
+           native tab strip is hidden. Keep that shared control row clear of
+           the window edge without introducing a second titlebar surface. */
+        --bento-toolbar-top-inset: 4px;
         --bento-toolbar-sidebar-bg: var(--neutral-5);
         --bento-toolbar-main-bg: var(--neutral-14);
         --bento-toolbar-divider-x: 100vw;
@@ -524,6 +528,14 @@
       #PersonalToolbar {
         position: relative !important;
         z-index: 1 !important;
+      }
+      @media (-moz-platform: macos) {
+        /* The titlebar controls, native navigation controls, and Bento's
+           panel navigator all live in this toolbar. Padding its top edge
+           moves the complete row together and preserves its toolbar layout. */
+        #nav-bar {
+          padding-block-start: var(--bento-toolbar-top-inset) !important;
+        }
       }
       #bento-toolbar-main-backdrop {
         position: fixed;

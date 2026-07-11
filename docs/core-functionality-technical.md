@@ -41,7 +41,10 @@ When the pref-driven branch is active, Firefox sets
 `#navigator-toolbox[tabs-hidden]`, toggles `#nav-bar.browser-titlebar`, and
 collapses `#TabsToolbar`. That keeps the native horizontal tab strip hidden
 while reusing Firefox's existing titlebar/control markup and platform window
-commands from the nav-bar titlebar copy. Bento shell owns the visible tab UI;
+commands from the nav-bar titlebar copy. On macOS, `bento-shell-mount.js` adds
+a 4px top inset to `#nav-bar`; this moves that titlebar copy, the native
+navigation controls, and the mounted panel navigator as one row. Bento shell
+owns the visible tab UI;
 it does not render custom minimize, maximize, restore, or close controls.
 
 Popup and taskbar-tab windows stay on Firefox's existing single-tab path because

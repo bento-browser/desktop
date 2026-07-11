@@ -240,7 +240,8 @@ The field uses the sidebar tab row text size on a neutral-5 surface. The native
 top URL/search field, stock toolbar app-menu button, stock toolbar downloads
 button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without
-a bottom separator line. With no side panels visible, the main background and
+a bottom separator line. On macOS, that native control row has a small top inset
+from the window edge. With no side panels visible, the main background and
 toolbar are neutral-5 and the sidebar's right divider is hidden. When side
 panels are visible, the toolbar segment over the sidebar keeps the sidebar's
 neutral-5 background while the toolbar segment over the main content and panel
