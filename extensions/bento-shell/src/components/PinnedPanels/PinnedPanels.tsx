@@ -120,6 +120,7 @@ interface PendingDrag {
   lastClientX: number;
   lastClientY: number;
   sourceButton: HTMLButtonElement;
+  captured: boolean;
   dragging: boolean;
 }
 
@@ -208,10 +209,12 @@ export function PinnedPanels() {
       const pending = dragRef.current;
       if (!pending || pointerId !== pending.pointerId) return;
       dragRef.current = null;
-      try {
-        pending.sourceButton.releasePointerCapture(pointerId);
-      } catch {
-        // Pointer capture can already be released after a cancellation.
+      if (pending.captured) {
+        try {
+          pending.sourceButton.releasePointerCapture(pointerId);
+        } catch {
+          // Pointer capture can already be released after a cancellation.
+        }
       }
       if (pending.dragging && commit) {
         const drop = computeDropPosition(pending.entryKey, clientY);
@@ -283,13 +286,9 @@ export function PinnedPanels() {
         lastClientX: event.clientX,
         lastClientY: event.clientY,
         sourceButton: event.currentTarget,
+        captured: false,
         dragging: false,
       };
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
-        // A missed capture only limits the drag to the rail's bounds.
-      }
     },
     [],
   );
@@ -308,6 +307,12 @@ export function PinnedPanels() {
         }
         pending.dragging = true;
         suppressOpenKeysRef.current.add(pending.entryKey);
+        try {
+          pending.sourceButton.setPointerCapture(event.pointerId);
+          pending.captured = true;
+        } catch {
+          // A missed capture only limits the drag to the rail's bounds.
+        }
       }
       const drop = computeDropPosition(pending.entryKey, event.clientY);
       if (drop) setDragState({ entryKey: pending.entryKey, indicatorTop: drop.indicatorTop });
