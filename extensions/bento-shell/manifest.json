@@ -25,6 +25,7 @@
     "dist/merge-palette.html",
     "dist/palette.html",
     "dist/panel-newtab.html",
+    "dist/panel-navigator-tooltip.html",
     "dist/panel-trailer.html",
     "dist/settings.html",
     "dist/welcome.html",

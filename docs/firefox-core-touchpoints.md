@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-10
+- Last updated: 2026-07-11
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -269,7 +269,11 @@ Use this shape for new or changed touchpoints:
   right-aligned,
   verify dragging a side-panel favicon button reorders panels rather than
   moving the window, while dragging unused top-bar space still moves the
-  window,
+  window, verify rapid clicks on the panel navigator's previous/next controls
+  cycle panels without maximizing or restoring the window, and verify hovering
+  each navigator button opens its Tale UI tooltip at that button without
+  blocking clicks or drag reorder, with the main slot showing the selected
+  page title,
   verify Customize Toolbar mode uses Tale UI/Bento token surfaces for the main
   palette, bottom footer, Restore Defaults/Done buttons, Manage Themes link,
   and overflow-menu preview in light and dark modes,

@@ -467,10 +467,13 @@ The intended behavior is:
   bottom inset of the strip with the same visible thickness as the splitter
   handles and equal top/bottom clearance; side-panel favicon buttons remain
   drag-reorderable from that top toolbar while unused top-bar space remains
-  available for moving the browser window;
+  available for moving the browser window, and rapid clicks on previous/next
+  cycle panels without changing the window state;
 - sidebar footer icon buttons show Tale UI tooltips on hover;
-- the fixed main content slot button in the panel navigator is separated from
-  draggable side-panel buttons by a divider;
+- the divider between the fixed main content slot button and draggable
+  side-panel buttons is centered in their shared gap;
+- panel navigator buttons show Tale UI tooltips with their panel names; the
+  main content slot uses the current page title;
 - grouped panel navigator icons show and refresh the favicons for visible
   panels inside a vertical or 2x2 group;
 - sleeping inactive-workspace panels appear dimmed in the panel strip and their

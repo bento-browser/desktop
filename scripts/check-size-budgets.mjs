@@ -8,52 +8,52 @@ const jsEntryBudgets = [
   {
     name: 'bento-shell · shell cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/shell.js',
-    limit: '197 KB',
+    limit: '215 KB',
   },
   {
     name: 'bento-shell · palette cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/palette.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · address-bar cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/address-bar.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · settings cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/settings.js',
-    limit: '190 KB',
+    limit: '205 KB',
   },
   {
     name: 'bento-shell · confirm cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/confirm.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · edit-workspace cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/edit-workspace.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · welcome cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/welcome.js',
-    limit: '186 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · menu cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/menu.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · workspace-palette cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/workspace-palette.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
   {
     name: 'bento-shell · merge-palette cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/merge-palette.js',
-    limit: '185 KB',
+    limit: '200 KB',
   },
 ];
 

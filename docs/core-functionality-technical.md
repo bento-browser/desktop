@@ -2485,13 +2485,27 @@ Top-row splits and 2x2 groups:
   titlebar drag region consumes pointer movement before `setupNavDrag()` can
   start a reorder. Scope that override to the favicon buttons so blank top-bar
   space still moves the browser window.
+- The previous/next navigator controls are also in that titlebar-capable nav
+  bar. Set `-moz-window-dragging: no-drag` on `.bento-panel-nav__btn`, and
+  cancel their bubbled `click` and `dblclick` events after calling
+  `navigatePanels`. Without both safeguards, a rapid pair of control clicks
+  can reach Firefox's titlebar double-click handler and maximize the window.
 - The first panel navigator button represents the fixed main content slot, not a
   draggable panel. Keep `bento-panel-nav__icon--main` applied when the button is
   created and when it is reused during navigator diffing. It should have the
-  `Main content slot` label, should use a divider between itself and the
-  side-panel buttons instead of an outline/border treatment, and must not
+  current main tab's page-title label, should use a divider between itself and
+  the side-panel buttons instead of an outline/border treatment, and must not
   receive `data-bento-nav-draggable`; side-panel buttons are the only navigator
-  entries that participate in drag reorder.
+  entries that participate in drag reorder. Navigator button hover labels are
+  rendered by the `panel-navigator-tooltip.html` chrome overlay using Tale UI's
+  `Tooltip` component: chrome sends the button's screen rect and label through
+  its frame message manager, and the overlay positions an invisible trigger at
+  that rect. Center the divider within the
+  combined main-button trailing margin and list flex gap so its clearance from
+  the main slot and first side-panel button remains equal. Its absolute
+  containing block is inside the main button's border, so include the border
+  hairline in the inline-end offset rather than leaving the divider one pixel
+  closer to the main slot.
 
 ### Flat layout pitfalls
 

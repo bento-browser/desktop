@@ -1233,6 +1233,10 @@
         transition:
           background-color var(--bento-duration-fast) var(--bento-easing-standard),
           color var(--bento-duration-fast) var(--bento-easing-standard);
+        /* The navigator sits in Firefox's titlebar-capable nav bar. These
+           controls must not participate in the native titlebar drag or
+           double-click-to-maximize region. */
+        -moz-window-dragging: no-drag;
       }
       .bento-panel-nav__btn:hover {
         background-color: var(--neutral-16);
@@ -1294,12 +1298,22 @@
       .bento-panel-nav__icon--main {
         overflow: visible;
         margin-inline-end: var(--space-xs);
+        /* The list's flex gap follows this margin. Keep the divider
+           centered in their combined space so it has equal clearance from
+           the fixed main slot and the first draggable panel button. */
+        --bento-panel-nav-main-divider-gap: calc(var(--space-xs) + var(--space-3xs));
       }
       .bento-panel-nav__icon--main::after {
         content: '';
         position: absolute;
         inset-block-start: 50%;
-        inset-inline-end: calc(-1 * var(--space-2xs));
+        inset-inline-end: calc(
+          -1 *
+            (
+              ((var(--bento-panel-nav-main-divider-gap) - 1px) / 2) +
+                var(--bento-border-hairline)
+            )
+        );
         width: 1px;
         height: 16px;
         border-radius: var(--radius-pill);
@@ -3312,6 +3326,44 @@
     setFrameSrc('bento-panel-trailer-frame', '/dist/panel-trailer.html');
   }
 
+  const PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoPanelNavigatorTooltip", function(msg) {' +
+    '  content.postMessage({ kind: "bento-panel-navigator-tooltip", payload: msg.data || null }, "*");' +
+    '});';
+  const PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_SRC);
+  let panelNavigatorTooltipPayload = null;
+
+  function ensurePanelNavigatorTooltipFrameScript() {
+    const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
+    if (!frame || frame._bentoPanelNavigatorTooltipFrameScriptLoaded) return;
+    try {
+      frame.messageManager?.loadFrameScript?.(PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL, true);
+      frame._bentoPanelNavigatorTooltipFrameScriptLoaded = true;
+      frame.addEventListener(
+        'load',
+        () => {
+          if (panelNavigatorTooltipPayload) {
+            frame.messageManager?.sendAsyncMessage?.(
+              'BentoPanelNavigatorTooltip',
+              panelNavigatorTooltipPayload,
+            );
+          }
+        },
+        true,
+      );
+    } catch (err) {
+      console.warn('[bento-shell-mount] panel navigator tooltip frame setup failed:', err);
+    }
+  }
+
+  function setBentoPanelNavigatorTooltipSrc() {
+    setFrameSrc('bento-panel-navigator-tooltip-frame', '/dist/panel-navigator-tooltip.html');
+    ensurePanelNavigatorTooltipFrameScript();
+  }
+
   // Create overlay host elements dynamically rather than in the patch.
   // Why: browser.xhtml is preprocessed by mach at full-build time, so adding
   // a new <vbox> to browser-box.inc.xhtml requires `npm run build` to land
@@ -3326,9 +3378,9 @@
   // a rebuild anyway. New overlays added in dev should go through this
   // factory.
   function ensureOverlayHost(opts) {
-    const { hostId, frameId, zIndex, remote = true } = opts;
+    const { hostId, frameId, zIndex, remote = true, parentId = 'browser' } = opts;
     if (document.getElementById(hostId)) return;
-    const parent = document.getElementById('browser');
+    const parent = parentId ? document.getElementById(parentId) : document.documentElement;
     if (!parent) {
       console.warn('[bento-shell-mount] ensureOverlayHost:', hostId, '— parent missing');
       return;
@@ -3458,6 +3510,15 @@
     zIndex: 99995,
   });
 
+  ensureOverlayHost({
+    hostId: 'bento-panel-navigator-tooltip-host',
+    frameId: 'bento-panel-navigator-tooltip-frame',
+    zIndex: 99999,
+    // Panel navigator buttons are in #nav-bar, above #browser. Mounting
+    // below #browser clips an anchored popup before it reaches the toolbar.
+    parentId: null,
+  });
+
   // Floating address/search bar overlay. New overlays use the JS factory
   // so dev reloads pick them up without requiring a browser.xhtml rebuild.
   // Keep this below modal/workspace-management overlays: an empty workspace
@@ -3486,6 +3547,15 @@
     wsSwitcherHostInit.style.display = 'flex';
     wsSwitcherHostInit.style.pointerEvents = 'none';
     // opacity:0 and hidden=true already set by ensureOverlayHost defaults.
+  }
+
+  const panelNavigatorTooltipHostInit = document.getElementById('bento-panel-navigator-tooltip-host');
+  if (panelNavigatorTooltipHostInit) {
+    panelNavigatorTooltipHostInit.style.display = 'flex';
+    panelNavigatorTooltipHostInit.style.pointerEvents = 'none';
+    // Unlike modal overlays this host has no backdrop; keep it painted so
+    // the transparent frame can show its Tale UI tooltip popup.
+    panelNavigatorTooltipHostInit.style.opacity = '1';
   }
 
   // ─── Palette overlay show/hide ──────────────────────────────────────────
@@ -10294,6 +10364,56 @@
     }
   }
 
+  function getMainPanelTooltipLabel() {
+    try {
+      const tab = window.gBrowser?.selectedTab;
+      const title = tab?.label || window.gBrowser?.selectedBrowser?.contentTitle || '';
+      return title.trim() || 'New tab';
+    } catch {
+      return 'New tab';
+    }
+  }
+
+  let panelNavigatorTooltipTimer = null;
+  function hidePanelNavigatorTooltip() {
+    if (panelNavigatorTooltipTimer) {
+      clearTimeout(panelNavigatorTooltipTimer);
+      panelNavigatorTooltipTimer = null;
+    }
+    panelNavigatorTooltipPayload = null;
+    const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
+    frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', null);
+  }
+
+  function showPanelNavigatorTooltip(btn) {
+    if (!btn?.isConnected) return;
+    const label = btn.getAttribute('aria-label') || '';
+    if (!label) return;
+    const rect = btn.getBoundingClientRect();
+    const screenX = (window.mozInnerScreenX || window.screenX || 0) + rect.left;
+    const screenY = (window.mozInnerScreenY || window.screenY || 0) + rect.top;
+    panelNavigatorTooltipPayload = {
+      label,
+      screenX,
+      screenY,
+      width: rect.width,
+      height: rect.height,
+    };
+    ensurePanelNavigatorTooltipFrameScript();
+    const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
+    frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
+  }
+
+  function attachPanelNavigatorTooltip(btn) {
+    btn.addEventListener('mouseenter', () => {
+      hidePanelNavigatorTooltip();
+      panelNavigatorTooltipTimer = setTimeout(() => showPanelNavigatorTooltip(btn), 400);
+    });
+    btn.addEventListener('mouseleave', hidePanelNavigatorTooltip);
+    btn.addEventListener('focus', () => showPanelNavigatorTooltip(btn));
+    btn.addEventListener('blur', hidePanelNavigatorTooltip);
+  }
+
   function isSelectedBrowserTab(tab) {
     try {
       return !!tab && window.gBrowser?.selectedTab === tab;
@@ -11527,8 +11647,8 @@
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className = 'bento-panel-nav__icon bento-panel-nav__icon--subdivided';
-    btn.title = title || 'Panel group';
-    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-label', title || 'Panel group');
+    attachPanelNavigatorTooltip(btn);
     renderGroupedNavIconRows(btn, rows);
 
     btn.addEventListener('click', (e) => {
@@ -11558,8 +11678,8 @@
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className = 'bento-panel-nav__icon';
-    btn.title = title;
     btn.setAttribute('aria-label', title);
+    attachPanelNavigatorTooltip(btn);
     if (favIconUrl) {
       const img = document.createElementNS(HTML_NS, 'img');
       img.src = favIconUrl;
@@ -12722,8 +12842,7 @@
       if (btn) {
         if (key === 'main') {
           btn.classList.add('bento-panel-nav__icon--main');
-          btn.title = 'Main content slot';
-          btn.setAttribute('aria-label', 'Main content slot');
+          btn.setAttribute('aria-label', getMainPanelTooltipLabel());
           syncPanelNavAudioParticles(btn, isMainTabAudioPlaying());
           existing.delete(key);
           desiredEls.push(btn);
@@ -12756,7 +12875,7 @@
       if (!btn) {
         // New icon — construct via buildNavIcon with the right handler.
         if (key === 'main') {
-          btn = buildNavIcon(getMainTabFavicon(), 'Main content slot', () => {
+          btn = buildNavIcon(getMainTabFavicon(), getMainPanelTooltipLabel(), () => {
             const ordered = getOrderedPanels();
             const main = ordered[0] || document.getElementById('tabbrowser-tabbox');
             clearRestoredMainAutoScrollSuppression();
@@ -12851,8 +12970,7 @@
     syncPanelNavDiscardedClass(btn, navInfo);
     syncPanelNavAudioClass(btn, navInfo);
     if (!navInfo.isGrouped) {
-      btn.title = navInfo.title || 'Panel';
-      btn.setAttribute('aria-label', btn.title);
+      btn.setAttribute('aria-label', navInfo.title || 'Panel');
       const favIconUrl = getStablePanelNavFavicon(navInfo.tabId, navInfo.favIconUrl || '', btn);
       if (favIconUrl !== null) refreshNavIconImage(btn, favIconUrl);
       return true;
@@ -13233,7 +13351,19 @@
     prevBtn.title = 'Previous panel';
     prevBtn.setAttribute('aria-label', 'Previous panel');
     prevBtn.appendChild(makeIcon(ICONS.chevronLeft));
-    prevBtn.addEventListener('click', () => navigatePanels(-1));
+    function cyclePanelFromNavigator(event, delta) {
+      event.preventDefault();
+      event.stopPropagation();
+      navigatePanels(delta);
+    }
+
+    function suppressPanelNavigatorDoubleClick(event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    prevBtn.addEventListener('click', (event) => cyclePanelFromNavigator(event, -1));
+    prevBtn.addEventListener('dblclick', suppressPanelNavigatorDoubleClick);
 
     const list = document.createElementNS(HTML_NS, 'div');
     list.className = 'bento-panel-nav__list';
@@ -13252,7 +13382,8 @@
     nextBtn.title = 'Next panel';
     nextBtn.setAttribute('aria-label', 'Next panel');
     nextBtn.appendChild(makeIcon(ICONS.chevronRight));
-    nextBtn.addEventListener('click', () => navigatePanels(1));
+    nextBtn.addEventListener('click', (event) => cyclePanelFromNavigator(event, 1));
+    nextBtn.addEventListener('dblclick', suppressPanelNavigatorDoubleClick);
 
     nav.appendChild(prevBtn);
     nav.appendChild(list);
@@ -19507,6 +19638,7 @@
           'bento-welcome-frame',
           'bento-workspace-switcher-frame',
           'bento-menu-frame',
+          'bento-panel-navigator-tooltip-frame',
           'bento-panel-trailer-frame',
         ];
         for (const id of ids) {
@@ -19527,6 +19659,8 @@
             else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
             else if (id === 'bento-workspace-switcher-frame') setBentoWorkspaceSwitcherSrc();
             else if (id === 'bento-menu-frame') setBentoMenuSrc();
+            else if (id === 'bento-panel-navigator-tooltip-frame')
+              setBentoPanelNavigatorTooltipSrc();
             else if (id === 'bento-panel-trailer-frame') setBentoPanelTrailerSrc();
           }
         }
@@ -19550,6 +19684,7 @@
   setBentoWelcomeSrc();
   setBentoWorkspaceSwitcherSrc();
   setBentoMenuSrc();
+  setBentoPanelNavigatorTooltipSrc();
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so
   // the strip is ready by the first reconcilePanels(). Wrapped in

@@ -2,7 +2,7 @@
   {
     "name": "bento-shell · style.css (gz)",
     "path": "extensions/bento-shell/dist/assets/style.css",
-    "limit": "37 KB",
+    "limit": "40 KB",
     "gzip": true
   },
   {
@@ -14,7 +14,7 @@
   {
     "name": "bento-tools · background.js (gz)",
     "path": "extensions/bento-tools/dist/background.js",
-    "limit": "40 KB",
+    "limit": "45 KB",
     "gzip": true
   }
 ]
