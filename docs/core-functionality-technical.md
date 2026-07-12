@@ -2762,7 +2762,11 @@ URL-backed pinned-panel entries use negative tab ids and are ignored until they
 rebind to a live panel tab.
 Chrome dispatches `panel/focusedChanged` when the focused side-panel tab id
 changes. The shell mirrors that event into `usePanelFocusStore`, and the pinned
-rail applies the `color-60` tonal treatment to the matching pinned-panel button.
+rail applies the destination workspace's scoped `color-60` tonal treatment to
+each pinned-panel button. Each button carries that workspace's
+`data-bento-theme`, so its solid `color-20` background and workspace-toned
+border resolve correctly even when the destination is not the active workspace.
+Hover uses `color-30`; the focused panel uses `color-60`.
 Pinned rail reordering is committed only on pointer release: `PinnedPanels.tsx`
 uses a 4px threshold, then takes pointer capture only after that threshold so
 the normal React Aria `IconButton` press sequence remains intact for clicks. It

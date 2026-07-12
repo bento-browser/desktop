@@ -102,13 +102,11 @@
 }
 
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral {
-  background-color: transparent;
-  border-color: transparent;
+  background-color: var(--color-20);
+  border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   cursor: grab;
   touch-action: none;
-  transition:
-    opacity var(--bento-duration-fast) var(--bento-easing-standard),
-    transform var(--bento-duration-fast) var(--bento-easing-standard);
+  transition: all var(--bento-pinned-panels-state-transition-duration) var(--bento-easing-standard);
 }
 
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral:hover:not(
@@ -119,8 +117,8 @@
     [data-disabled],
     [data-pending]
   ) {
-  background-color: color-mix(in srgb, var(--neutral-90) 12%, transparent);
-  border-color: transparent;
+  background-color: var(--color-30);
+  border-color: color-mix(in srgb, var(--color-60) 22%, transparent);
 }
 
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral:active:not(
@@ -131,8 +129,8 @@
     [data-disabled],
     [data-pending]
   ) {
-  background-color: color-mix(in srgb, var(--neutral-90) 16%, transparent);
-  border-color: transparent;
+  background-color: var(--color-40);
+  border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
 }
 
 .bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:not(
@@ -156,13 +154,13 @@
     [data-pending]
   ) {
   background-color: var(--color-60);
-  border-color: transparent;
+  border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
   color: var(--color-60-fg);
 }
 
 .bento-pinned-panels__button--dragging.tale-icon-button,
 .bento-pinned-panels__button--dragging.tale-icon-button:hover {
-  background-color: transparent;
-  border-color: transparent;
+  background-color: var(--color-20);
+  border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   transform: scale(0.92);
 }

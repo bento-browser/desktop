@@ -6,8 +6,10 @@ import { Tooltip } from '@tale-ui/react/tooltip';
 import { usePinnedPanelsStore } from '../../state/pinnedPanels';
 import { usePanelFocusStore } from '../../state/panelFocus';
 import { useTab } from '../../state/tabs';
+import { useWorkspace } from '../../state/workspaces';
 import { dispatch } from '../../bridge/useToolsPort';
 import type { PinnedPanelEntry } from '@shared/protocol';
+import { DEFAULT_THEME_ID } from '../../theme/presets';
 import './PinnedPanels.css';
 
 interface PinnedPanelRowProps {
@@ -40,6 +42,7 @@ function PinnedPanelRowImpl({
   // the activation handler dispatches through bento-tools which has
   // access to every window's tabs.
   const tab = useTab(entry.tabId);
+  const workspace = useWorkspace(entry.workspaceId);
   const focusedTabId = usePanelFocusStore((s) => s.focusedTabId);
   const title = tab?.customTitle || tab?.title || entry.title || entry.url || 'Pinned panel';
   const favIconUrl = tab?.favIconUrl || entry.favIconUrl;
@@ -69,6 +72,7 @@ function PinnedPanelRowImpl({
       <IconButton
         className={`bento-pinned-panels__button${dragging ? ' bento-pinned-panels__button--dragging' : ''}`}
         data-bento-pinned-panel-key={entryKey}
+        data-bento-theme={workspace?.themeId ?? DEFAULT_THEME_ID}
         data-bento-focused={isFocused ? 'true' : undefined}
         variant="neutral"
         size="sm"

@@ -72,6 +72,7 @@
     --bento-pinned-panels-button-size: var(--space-l);
     --bento-pinned-panels-favicon-size: var(--bento-control-size-sm);
     --bento-pinned-panels-rail-width: var(--bento-pinned-panels-button-size);
+    --bento-pinned-panels-state-transition-duration: 300ms;
     --bento-tab-strip-width-min: 200px;
     --bento-tab-strip-width-max: 600px;
     --bento-tab-strip-width-collapsed: calc(

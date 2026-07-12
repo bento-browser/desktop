@@ -533,10 +533,13 @@ Bento owners:
 
 Current drift:
 
-- Pinned-panel buttons use the neutral IconButton behavior but remove the
-  default neutral fill and all visible borders. Hover and pressed states keep
-  Tale UI's neutral background fills. The focused pinned panel keeps the accent
-  background and paired foreground token, with a transparent border.
+- Each pinned-panel button carries its destination workspace's
+  `data-bento-theme`, making its `--color-*` tokens independent of the active
+  workspace. Its default/pressed background is the workspace's solid
+  `--color-20`, hover is `--color-30`, pressed is `--color-40`, and focused is
+  `--color-60`; borders use the workspace switcher trigger's 16%/22%/28% accent
+  mixes. Its state changes transition all properties over the dedicated 300ms
+  pinned-panel token. The focused pin keeps the paired foreground token.
 - A drag past the shared 4px threshold dims and scales the source button,
   changes the rail cursor to grabbing, and shows a non-reflowing accent insertion
   marker. On drop, FLIP transforms settle the reordered buttons with the panel
@@ -544,12 +547,11 @@ Current drift:
 
 Regression checks:
 
-- In the expanded sidebar, pinned-panel buttons should show only favicons at
-  rest, without a visible button fill or border.
-- Hover and press a pinned panel. The state fill should appear, but no border
-  should appear.
-- Focus/open a pinned panel. The active accent fill should remain visible with
-  no border.
+- In the expanded sidebar, each pinned-panel button should have its destination
+  workspace's solid `color-20` fill and a workspace-coloured border.
+- Hover a pinned panel to show `color-30`, press it to show `color-40`, and focus
+  it to show `color-60`. State changes should transition over 300ms. Borders
+  should retain that destination workspace's colour, including when it is not active.
 - Drag a pin above or below another pin. The source should dim and scale, the
   accent marker should track the intended slot without moving other buttons
   during the drag, and the buttons should settle into the persisted order on

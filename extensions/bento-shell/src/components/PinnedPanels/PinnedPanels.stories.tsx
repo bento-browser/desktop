@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { PinnedPanels } from './PinnedPanels';
 import { makePinnedEntry, seedPinnedPanels } from '../../state/__fixtures__/pinnedPanels';
 import { makeTab } from '../../state/__fixtures__/tabs';
+import { seedMany } from '../../state/__fixtures__/workspaces';
 import { useTabsStore } from '../../state/tabs';
 
 const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
@@ -68,6 +69,7 @@ export const SinglePin = () => {
 
 export const MultiWorkspace = () => {
   useEffect(() => {
+    seedMany();
     useTabsStore
       .getState()
       .applySnapshot([
@@ -88,7 +90,7 @@ export const MultiWorkspace = () => {
   );
 };
 
-MultiWorkspace.storyName = 'Multi-workspace (no workspace indicator on rows)';
+MultiWorkspace.storyName = 'Multi-workspace workspace colours';
 
 export const LongTitles = () => {
   useEffect(() => {
