@@ -1198,7 +1198,7 @@
       /* Panel navigator bar. Mounted in the top toolbar after the
          native Reload/Stop control.
          [◀] [favicon] [favicon] [favicon] [▶]
-         Active item gets the accent border + tinted background. */
+         Active item gets a subtle tinted background. */
       #bento-panel-nav {
         position: relative;
         z-index: 20;
@@ -1239,8 +1239,11 @@
         -moz-window-dragging: no-drag;
       }
       .bento-panel-nav__btn:hover {
-        background-color: var(--neutral-16);
+        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
         color: var(--neutral-90);
+      }
+      .bento-panel-nav__btn:active {
+        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
       }
       .bento-panel-nav__btn > svg {
         width: var(--bento-icon-size-sm);
@@ -1292,8 +1295,8 @@
           border-color var(--bento-duration-base) var(--bento-easing-standard);
       }
       .bento-panel-nav__icon:hover {
-        background-color: var(--neutral-16);
-        border-color: var(--neutral-30);
+        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
+        border-color: transparent;
       }
       .bento-panel-nav__icon--main {
         overflow: visible;
@@ -1322,11 +1325,11 @@
         pointer-events: none;
       }
       .bento-panel-nav__icon--main:hover {
-        background-color: var(--neutral-12);
+        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
       }
       .bento-panel-nav__icon--active {
-        border-color: var(--color-60);
-        background-color: var(--color-3);
+        border-color: transparent;
+        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
       }
       .bento-panel-nav__icon--discarded {
         opacity: 0.55;

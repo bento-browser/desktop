@@ -73,10 +73,10 @@
     --toolbarbutton-icon-fill: var(--neutral-80) !important;
     --toolbarbutton-icon-fill-attention: var(--color-60) !important;
     --toolbarbutton-icon-fill-attention-text: var(--color-60-fg) !important;
-    --toolbarbutton-hover-background: var(--neutral-16) !important;
-    --toolbarbutton-active-background: var(--neutral-20) !important;
-    --toolbarbutton-background-color-hover: var(--neutral-16) !important;
-    --toolbarbutton-background-color-active: var(--neutral-20) !important;
+    --toolbarbutton-hover-background: color-mix(in srgb, var(--neutral-100) 10%, transparent) !important;
+    --toolbarbutton-active-background: color-mix(in srgb, var(--neutral-100) 5%, transparent) !important;
+    --toolbarbutton-background-color-hover: color-mix(in srgb, var(--neutral-100) 10%, transparent) !important;
+    --toolbarbutton-background-color-active: color-mix(in srgb, var(--neutral-100) 5%, transparent) !important;
     --toolbarbutton-border-radius: var(--radius-s) !important;
     --button-background-color: var(--neutral-14) !important;
     --button-background-color-hover: var(--neutral-16) !important;
@@ -188,6 +188,17 @@
 
     /* Focus ring color used by toolbar buttons + URL bar focus. */
     --focus-outline-color: var(--color-60) !important;
+  }
+
+  /* Native toolbar controls, including extension actions, consume the
+   * toolbarbutton state colors above. Keep their state changes as smooth as
+   * the panel navigator controls. */
+  #nav-bar .toolbarbutton-1 > :is(
+    .toolbarbutton-icon,
+    .toolbarbutton-text,
+    .toolbarbutton-badge-stack
+  ) {
+    transition: background-color 0.3s ease;
   }
 
   /* ─── Unified chrome surface ──────────────────────────────────────
