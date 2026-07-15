@@ -5,9 +5,12 @@
   "binaryName": "bento",
   "version": {
     "product": "firefox",
-    "version": "152.0.2",
-    "candidate": "152.0.2",
+    "version": "152.0.6",
+    "candidate": "152.0.6",
     "candidateBuild": 1
+  },
+  "buildOptions": {
+    "windowsUseSymbolicLinks": false
   },
   "addons": {},
   "brands": {
@@ -25,7 +28,9 @@
     }
   },
   "license": {
-    "ignoredFiles": [".*\\.json"],
+    "ignoredFiles": [
+      ".*\\.json"
+    ],
     "licenseType": "MPL-2.0"
   },
   "updateHostname": "updates.bentobrowser.app"
