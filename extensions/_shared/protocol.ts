@@ -68,7 +68,7 @@ export type WorkspaceDelta =
   | { kind: 'updated'; id: string; changes: Partial<Workspace> }
   | { kind: 'removed'; id: string }
   /** When `windowId` is present the activation is scoped to that chrome
-   * window only (Zen-style per-window active workspace). When absent it's
+   * window only (Bento's per-window active workspace). When absent it's
    * a global activation: legacy single-window UI and tools-internal flows
    * use this form and every shell mirror treats it as "the active id for
    * everyone". Shells that track per-window state should apply the new
@@ -785,7 +785,7 @@ export type Event =
       activeId: string | null;
       /** Per-window active workspace map. Empty at boot (windows fall back
        * to `activeId` until each one explicitly activates per-window).
-       * Populated by Zen-style per-window activations dispatched with a
+       * Populated by per-window activations dispatched with a
        * non-null `__windowId` on the wire envelope. In-memory in tools;
        * phase G's disk sidebar will persist this. */
       activeIdByWindow: Record<number, string>;

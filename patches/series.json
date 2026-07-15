@@ -3,7 +3,8 @@
   "base": {
     "product": "firefox",
     "version": "152.0.2",
-    "tree": "0ffbbf0c27e40224e0e27a6ef3f98bc9b63257c6"
+    "tree": "0ffbbf0c27e40224e0e27a6ef3f98bc9b63257c6",
+    "contentTree": "6685f570f4c83a841ffb5df1607b64a5b66b9239911d33f54d2e18ca00b2679d"
   },
   "series": [
     {

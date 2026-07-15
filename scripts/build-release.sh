@@ -22,6 +22,10 @@
 # Locally: run from the repo root. Requires the surfer download +
 # bootstrap to have been done at least once before (the same prerequisite
 # `npm run build` has).
+#
+# Set BENTO_BUILD_JOBS to a positive integer to cap native build
+# parallelism on memory-constrained builders. When unset, Surfer retains
+# its normal platform default.
 
 set -euo pipefail
 
@@ -117,7 +121,15 @@ BENTO_RELEASE=1 pnpm run import
 # debug output for daily iteration; release-mode is the right choice for
 # distributable artifacts. Restored by the trap on exit.
 bash scripts/surfer-env.sh set buildMode release >/dev/null
-BENTO_RELEASE=1 bash scripts/surfer-env.sh build
+if [ -n "${BENTO_BUILD_JOBS:-}" ]; then
+  if ! [[ "$BENTO_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "build-release: BENTO_BUILD_JOBS must be a positive integer" >&2
+    exit 1
+  fi
+  BENTO_RELEASE=1 bash scripts/surfer-env.sh build --jobs "$BENTO_BUILD_JOBS"
+else
+  BENTO_RELEASE=1 bash scripts/surfer-env.sh build
+fi
 bash scripts/sync-builtin-addon-symlinks.sh
 
 step "3/4 Packaging artifact (surfer package)"
@@ -214,4 +226,5 @@ case "$PLATFORM" in
     ;;
 esac
 
+node scripts/check-product-identity.mjs "$OUT_DIR"
 step "Done. Release artifact: $OUT"

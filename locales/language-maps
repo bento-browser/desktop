@@ -1,6 +1,6 @@
 # Locale alias map. Format: <input>:<output>, one per line, '#' starts a
 # comment. Surfer reads this in scripts/build-release.sh's package step
-# (via @bento-browser/surfer's getLocales) to translate short locale
+# (via the pinned build tool's getLocales) to translate short locale
 # codes from `supported-languages` into Mozilla's full BCP-47 locale tags.
 #
 # Bento ships en-US only for M1, so this file is currently empty of

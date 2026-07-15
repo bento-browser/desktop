@@ -14,21 +14,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          BENTO_RELEASE: '1'
+        run: pnpm install --no-frozen-lockfile
 
       - name: Validate JSON syntax
         run: |
           set -e
-          for f in surfer.json package.json config/firefox-versions.json tsconfig.json .surfer/dynamicConfig.brand.json .size-limit.json; do
+          for f in surfer.json package.json config/firefox-versions.json config/allowed-zen-references.json tsconfig.json .surfer/dynamicConfig.brand.json .size-limit.json; do
             echo "checking $f"
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
 
       - name: Validate surfer.json brand schema
-        # Catches the class of breakage we hit when scaffolding: missing
-        # release.displayVersion, urls/installer fields renamed, etc.
+        # Keep only fields understood by the pinned upstream package.
         run: |
           node -e "
             const c = JSON.parse(require('fs').readFileSync('surfer.json','utf8'));
@@ -60,6 +68,15 @@ jobs:
         # Default-pref files are evaluated by Firefox at startup. Catch syntax
         # errors before they become runtime failures inside the browser.
         run: node --check prefs/bento.js
+
+      - name: Firefox patch stack tests
+        run: pnpm run firefox:patches:test
+
+      - name: Branding and built-in add-on installer tests
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs
+
+      - name: Zen reference boundary
+        run: pnpm run check:zen-boundary
 
   extensions:
     name: Extensions — typecheck, lint, build, size-limit
@@ -132,7 +149,7 @@ jobs:
       - name: Surfer reads our config
         # `surfer --version` parses surfer.json end-to-end and exits non-zero
         # if any required field is missing. Our cheapest end-to-end check.
-        run: pnpm exec surfer --version
+        run: pnpm exec surfer --version | tee surfer-version.txt && grep -F '1.14.6' surfer-version.txt
       - name: Surfer license check
         run: pnpm run lc
 
@@ -159,6 +176,13 @@ jobs:
           BENTO_RELEASE: '1'
         run: pnpm install --no-frozen-lockfile
 
+      - name: Configure deterministic Firefox source checkout
+        run: |
+          git config --global user.name "Bento CI"
+          git config --global user.email "ci@bentobrowser.invalid"
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+
       - name: Cache Firefox source (engine/)
         uses: actions/cache@v4
         with:
@@ -167,6 +191,23 @@ jobs:
 
       - name: Surfer download
         run: pnpm run download
+
+      - name: Build extensions and import Bento sources
+        env:
+          BENTO_RELEASE: '1'
+        run: pnpm run ext:build && pnpm run import
+
+      - name: Verify repeated import is idempotent
+        env:
+          BENTO_RELEASE: '1'
+        run: |
+          node scripts/snapshot-import-output.mjs > import-first.sha256
+          pnpm run import
+          node scripts/snapshot-import-output.mjs > import-second.sha256
+          node -e "const fs=require('fs'); if(fs.readFileSync('import-first.sha256','utf8')!==fs.readFileSync('import-second.sha256','utf8')) process.exit(1)"
+
+      - name: Verify imported branding, add-ons, patches, and identity
+        run: node scripts/check-import-output.mjs
 
       # The full build (`pnpm run build`) requires the Mozilla build toolchain
       # (Rust, clang, ~30 GB disk, ~30–60 min wall time on hosted runners).

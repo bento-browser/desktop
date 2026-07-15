@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
-# Force Surfer to regenerate branding from configs/branding/<brand>/ and
-# surfer.json on the next build. Run after changing:
-#   - brands.<brand>.backgroundColor in surfer.json
-#   - brands.<brand>.brand{Shorter,Short,Full}Name in surfer.json
-#   - brands.<brand>.release.displayVersion in surfer.json
-#   - any *.svg/*.png in configs/branding/<brand>/content/
-#
-# Why: Surfer's patch-check skips branding regen when its cached source-asset
-# hashes match .surfer/hashes.json AND the engine branding dir exists. Touching
-# surfer.json alone doesn't bust either input. This script wipes both signals,
-# then runs the shared Bento import wrapper so branding,
-# prefs, patch checks, chrome tokens, and built-in add-on symlinks stay aligned.
+# Reinstall the tracked canonical branding and run the normal import pipeline.
+# Branding metadata and assets are maintained directly under branding/bento.
 
 set -euo pipefail
 
@@ -23,28 +13,12 @@ if [ ! -f "$BRAND_FILE" ]; then
   exit 1
 fi
 
-# dynamicConfig.brand.json contains a JSON string literal, e.g. "bento"
 BRAND="$(node -p "require('./$BRAND_FILE')")"
-
-ENGINE_BRAND_DIR="engine/browser/branding/$BRAND"
-HASHES_FILE=".surfer/hashes.json"
-
-if [ -d "$ENGINE_BRAND_DIR" ]; then
-  rm -rf "$ENGINE_BRAND_DIR"
-  echo "removed $ENGINE_BRAND_DIR"
-fi
-if [ -f "$HASHES_FILE" ]; then
-  rm -f "$HASHES_FILE"
-  echo "removed $HASHES_FILE"
+if [ "$BRAND" != "bento" ]; then
+  echo "error: active brand must be 'bento', found '$BRAND'" >&2
+  exit 1
 fi
 
-echo "branding cache cleared for brand '$BRAND'. Running 'pnpm run import' to regenerate..."
-
-# `surfer build` only runs patchCheck (a count comparison), not the actual
-# patch/branding apply. We have to invoke the import wrapper to run
-# importMelonPatches → brandingPatch.apply, which regenerates the engine
-# branding folder from configs/branding/<brand>/ and surfer.json. The wrapper
-# also appends prefs and syncs built-in add-on symlinks.
+echo "reinstalling canonical branding/bento through the normal import pipeline..."
 pnpm run import
-
-echo "branding regenerated."
+echo "branding reinstalled."

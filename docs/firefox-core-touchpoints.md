@@ -591,18 +591,20 @@ Use this shape for new or changed touchpoints:
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-06-07
+- Last updated: 2026-07-14
 - Files or patches:
   - `prefs/bento.js`
   - `engine/services/settings/dumps/main/search-config-v2.json`
   - `engine/third_party/application-services/components/remote_settings/dumps/main/search-config-v2.json`
   - `surfer.json`
+  - `branding/bento/**`
   - `configs/**`
+  - `scripts/install-branding.mjs`
+  - `scripts/firefox-patch-stack.mjs`
   - `patches/experiments/**`
 - Bento functionality: applies Bento defaults, DuckDuckGo fresh-profile search,
   Firefox-visible search options for Bento onboarding and Settings, branding,
-  build configuration, and temporary Firefox-source build guards needed by the
-  local Surfer-based fork. Privacy defaults include strict
+  build configuration, and temporary Firefox-source build guards. Privacy defaults include strict
   tracking protection, tracker-cookie partitioning, Global Privacy Control,
   query stripping, speculative networking off, remote search suggestions off,
   local Safe Browsing on, remote Safe Browsing download checks off, DoH disabled,
@@ -625,14 +627,15 @@ Use this shape for new or changed touchpoints:
   search engines can be selected as default search in onboarding and Settings,
   and re-evaluate whether each experiment patch is still needed.
 - Rollback or migration notes: remove temporary experiment patches as soon as
-  upstream or Surfer no longer requires them.
+  upstream Firefox no longer requires them.
 
 ### Built-In Extension Copy Surface
 
 - Status: Active
-- Last updated: 2026-07-04
+- Last updated: 2026-07-14
 - Files or patches:
-  - `/Users/admin/Projects/surfer/src/commands/patches/extensions-copy.ts`
+  - `scripts/install-builtin-addons.mjs`
+  - `scripts/install-builtin-addons.test.mjs`
   - `package.json`
   - `pnpm-lock.yaml`
   - `scripts/import.sh`
@@ -640,13 +643,9 @@ Use this shape for new or changed touchpoints:
   - `scripts/sync-builtin-addon-symlinks.sh`
   - `extensions/ublock-origin/.bento-runtime-entries.json`
   - `extensions/bento-tools/experiments/bento-privacy/**`
-- Bento functionality: packages Bento's privileged built-in extensions and the
-  bundled uBlock Origin extension into Firefox's `builtin-addons/` runtime
-  location. The Surfer pin
-  `0c4bfd6dc8f865e71f789d4377d8ee589e28af84` is rebased onto upstream Surfer
-  `17d9a1577170880cdac13dca7c3d6871716fc046` and keeps Bento's extension copy,
-  runtime-entry filtering, repo-local patch import, patch-check consistency, and
-  generated `jar.mn` behavior. The copy step lets an extension declare a
+- Bento functionality: Bento's independent installer packages its privileged
+  built-in extensions and the bundled uBlock Origin extension into Firefox's
+  `builtin-addons/` runtime location. The copy step lets an extension declare a
   per-extension runtime entry list so uBlock Origin keeps its required `js/`,
   `css/`, `lib/`, `assets/`, locale, and HTML entry files without broadening the
   copy surface of Bento's own source-based extensions.
@@ -669,6 +668,5 @@ Use this shape for new or changed touchpoints:
   does not prove this surface is valid because it bypasses Bento's import
   wrapper and built-in add-on symlink sync.
 - Rollback or migration notes: if uBlock Origin is removed, remove
-  `extensions/ublock-origin/` and its runtime-entry file. If Surfer upstream
-  adopts a native equivalent, migrate to that and remove Bento-specific copy
-  handling.
+  `extensions/ublock-origin/` and its runtime-entry file. Keep the installer in
+  Bento while Bento bundles privileged built-in extensions.

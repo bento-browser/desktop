@@ -17,4 +17,4 @@ contributor-facing guides.
 - [Chrome tokens](chrome-tokens.md)
 - [Implementing Firefox patches](firefox-patches.md)
 - [Firefox core touchpoints](firefox-core-touchpoints.md)
-- [Maintaining Surfer](maintaining-surfer.md)
+- [Firefox build tooling](build-tooling.md)

@@ -2,7 +2,7 @@
   "name": "bento-browser",
   "version": "0.0.0",
   "private": true,
-  "description": "Bento Browser — a Firefox-based browser built with @bento-browser/surfer (fork of @zen-browser/surfer).",
+  "description": "Bento Browser — an independent browser derived from Mozilla Firefox.",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
@@ -21,11 +21,16 @@
     "build:release": "bash scripts/build-release.sh",
     "firefox:sync": "bash scripts/sync-firefox-upstream.sh",
     "firefox:patches:check": "node scripts/firefox-patch-stack.mjs check",
+    "firefox:patches:apply": "node scripts/firefox-patch-stack.mjs apply",
     "firefox:patches:materialize": "node scripts/firefox-patch-stack.mjs materialize",
     "firefox:patches:rebase": "node scripts/firefox-patch-stack.mjs rebase",
     "firefox:patches:export": "node scripts/firefox-patch-stack.mjs export",
     "firefox:patches:test": "node --test scripts/firefox-patch-stack.test.mjs",
     "chrome:resize-check": "node scripts/check-chrome-resize-guard.mjs",
+    "import:branding": "node scripts/install-branding.mjs",
+    "import:addons": "node scripts/install-builtin-addons.mjs",
+    "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
+    "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
     "dev:fresh": "pnpm run ext:build && pnpm run import && bash scripts/dev-launch.sh $(mktemp -d)",
@@ -41,7 +46,7 @@
     "theme:sync": "node scripts/sync-theme-presets.mjs"
   },
   "devDependencies": {
-    "@bento-browser/surfer": "github:Bento-Browser/surfer#0c4bfd6dc8f865e71f789d4377d8ee589e28af84",
+    "@zen-browser/surfer": "1.14.6",
     "@eslint/js": "^9.0.0",
     "@size-limit/file": "^12.1.0",
     "eslint": "^9.0.0",

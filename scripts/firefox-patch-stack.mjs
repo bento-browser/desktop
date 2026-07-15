@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -8,7 +9,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import tinyGlob from 'tiny-glob';
 
-export const SURFER_APPLY_ARGS = [
+export const FIREFOX_PATCH_APPLY_ARGS = [
   '--ignore-space-change',
   '--ignore-whitespace',
   '--verbose',
@@ -76,7 +77,9 @@ function gitMaybe(args, cwd) {
 
 function ensureEngineGit(ctx) {
   if (!fs.existsSync(path.join(ctx.engineDir, '.git'))) {
-    throw new UserError('engine/.git is missing; run pnpm run download before using the patch stack helper.');
+    throw new UserError(
+      'engine/.git is missing; run pnpm run download before using the patch stack helper.',
+    );
   }
 }
 
@@ -90,6 +93,41 @@ function refCommit(ctx, ref) {
 
 function refTree(ctx, ref) {
   return git(['rev-parse', `${ref}^{tree}`], { cwd: ctx.engineDir });
+}
+
+export function refContentTree(ctx, ref) {
+  const result = spawnSync('git', ['ls-tree', '-r', '-z', ref], {
+    cwd: ctx.engineDir,
+    encoding: 'buffer',
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: 'pipe',
+  });
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .map((value) => value.toString('utf8'))
+      .join('\n')
+      .trim();
+    throw new UserError(
+      `git ls-tree -r -z ${ref} failed in ${ctx.engineDir}${output ? `\n${output}` : ''}`,
+      result.status || 1,
+    );
+  }
+
+  const hash = crypto.createHash('sha256');
+  for (const record of result.stdout.subarray(0, -1).toString('utf8').split('\0')) {
+    if (!record) continue;
+    const tab = record.indexOf('\t');
+    const [mode, type, object] = record.slice(0, tab).split(' ');
+    const objectKind = mode === '120000' ? 'symlink' : mode === '160000' ? 'submodule' : type;
+    hash.update(objectKind);
+    hash.update('\0');
+    hash.update(object);
+    hash.update('\0');
+    hash.update(record.slice(tab + 1));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
 }
 
 function hasRef(ctx, ref) {
@@ -117,7 +155,7 @@ export function createContext(repoRoot = DEFAULT_REPO_ROOT) {
   };
 }
 
-async function surferRepoPatchOrder(ctx) {
+async function repoPatchPaths(ctx) {
   if (!fs.existsSync(ctx.patchesDir)) {
     return [];
   }
@@ -162,6 +200,12 @@ function validateManifestShape(ctx, manifest) {
     if (!manifest.base.version) errors.push('base.version is required.');
     if (manifest.base.tree !== undefined && typeof manifest.base.tree !== 'string') {
       errors.push('base.tree must be a string when present.');
+    }
+    if (
+      manifest.base.contentTree !== undefined &&
+      !/^[0-9a-f]{64}$/.test(manifest.base.contentTree)
+    ) {
+      errors.push('base.contentTree must be a lowercase SHA-256 hash when present.');
     }
   }
   if (!Array.isArray(manifest.series)) {
@@ -213,33 +257,23 @@ async function validateManifest(ctx, manifest, options = {}) {
 
   const manifestPaths = manifest.series.map((entry) => entry.path);
   const manifestPathSet = new Set(manifestPaths);
-  const repoOrder = await surferRepoPatchOrder(ctx);
+  const repoPatches = await repoPatchPaths(ctx);
   const srcPatches = await unmanagedSrcPatches(ctx);
 
   for (const srcPatch of srcPatches) {
     errors.push(
-      `${srcPatch} is unmanaged. Surfer applies src/**/*.patch before patches/**/*.patch; this helper only manages repo-owned patches/**/*.patch files.`,
+      `${srcPatch} is unmanaged. Bento applies only the ordered patches listed in patches/series.json.`,
     );
   }
 
-  for (const patchPath of repoOrder) {
+  for (const patchPath of repoPatches) {
     if (!manifestPathSet.has(patchPath)) {
       errors.push(`extra repo patch is not listed in patches/series.json: ${patchPath}`);
     }
   }
   for (const patchPath of manifestPaths) {
-    if (!repoOrder.includes(patchPath)) {
-      errors.push(`manifest patch is not in Surfer repo patch scan: ${patchPath}`);
-    }
-  }
-  if (repoOrder.length === manifestPaths.length) {
-    for (let index = 0; index < repoOrder.length; index += 1) {
-      if (repoOrder[index] !== manifestPaths[index]) {
-        errors.push(
-          `manifest order differs from Surfer order at index ${index}: manifest has ${manifestPaths[index]}, Surfer has ${repoOrder[index]}`,
-        );
-        break;
-      }
+    if (!repoPatches.includes(patchPath)) {
+      errors.push(`manifest patch is not present under patches/: ${patchPath}`);
     }
   }
 
@@ -283,7 +317,9 @@ async function downloadFirefoxArchive(ctx, version) {
   process.stderr.write(`firefox-patch-stack: downloading ${url}\n`);
   const response = await fetch(url);
   if (!response.ok || !response.body) {
-    throw new UserError(`failed to download Firefox ${version} source archive: HTTP ${response.status}`);
+    throw new UserError(
+      `failed to download Firefox ${version} source archive: HTTP ${response.status}`,
+    );
   }
   const file = fs.createWriteStream(archive);
   await new Promise((resolve, reject) => {
@@ -296,9 +332,13 @@ async function downloadFirefoxArchive(ctx, version) {
 
 function extractArchive(archive, dest) {
   const candidates = process.platform === 'darwin' ? ['gtar', 'tar'] : ['tar'];
+  const args =
+    process.platform === 'win32'
+      ? ['--force-local', '-xf', archive, '-C', dest]
+      : ['-xf', archive, '-C', dest];
   let last;
   for (const command of candidates) {
-    const result = spawnSync(command, ['-xf', archive, '-C', dest], {
+    const result = spawnSync(command, args, {
       encoding: 'utf8',
       stdio: 'pipe',
     });
@@ -310,33 +350,55 @@ function extractArchive(archive, dest) {
   throw new UserError(`failed to extract ${archive}${last ? `\n${last}` : ''}`);
 }
 
-async function ensureBaseRef(ctx, version, expectedTree) {
+function assertExpectedBase(ctx, ref, expectedTree, expectedContentTree) {
+  const tree = refTree(ctx, ref);
+  if (!expectedTree || tree === expectedTree) {
+    return { tree, contentTree: expectedContentTree ? refContentTree(ctx, ref) : undefined };
+  }
+
+  const contentTree = refContentTree(ctx, ref);
+  if (expectedContentTree && contentTree === expectedContentTree) {
+    process.stderr.write(
+      `firefox-patch-stack: accepted platform-specific tree ${tree}; canonical content matches ${expectedContentTree}\n`,
+    );
+    return { tree, contentTree };
+  }
+
+  throw new UserError(
+    [
+      `${ref} tree ${tree} does not match patches/series.json base.tree ${expectedTree}.`,
+      expectedContentTree
+        ? `Canonical content tree ${contentTree} does not match ${expectedContentTree}.`
+        : 'No canonical base.contentTree fallback is recorded.',
+    ].join('\n'),
+  );
+}
+
+async function ensureBaseRef(ctx, version, expectedTree, expectedContentTree) {
   ensureEngineGit(ctx);
   const ref = baseRef(version);
   if (hasRef(ctx, ref)) {
-    const tree = refTree(ctx, ref);
-    if (expectedTree && tree !== expectedTree) {
-      throw new UserError(`${ref} tree ${tree} does not match patches/series.json base.tree ${expectedTree}.`);
-    }
-    return { ref, commit: refCommit(ctx, ref), tree };
+    const validated = assertExpectedBase(ctx, ref, expectedTree, expectedContentTree);
+    return { ref, commit: refCommit(ctx, ref), ...validated };
   }
 
   if (hasRef(ctx, `refs/heads/${version}`)) {
     git(['update-ref', ref, `refs/heads/${version}`], { cwd: ctx.engineDir });
-    const tree = refTree(ctx, ref);
-    if (expectedTree && tree !== expectedTree) {
-      throw new UserError(`${ref} tree ${tree} does not match patches/series.json base.tree ${expectedTree}.`);
-    }
-    return { ref, commit: refCommit(ctx, ref), tree };
+    const validated = assertExpectedBase(ctx, ref, expectedTree, expectedContentTree);
+    return { ref, commit: refCommit(ctx, ref), ...validated };
   }
 
   const archive = await downloadFirefoxArchive(ctx, version);
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), `bento-firefox-${version}-`));
   try {
     extractArchive(archive, tempRoot);
-    const entries = (await fsp.readdir(tempRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory());
+    const entries = (await fsp.readdir(tempRoot, { withFileTypes: true })).filter((entry) =>
+      entry.isDirectory(),
+    );
     if (entries.length !== 1) {
-      throw new UserError(`expected one extracted Firefox source directory in ${tempRoot}, found ${entries.length}`);
+      throw new UserError(
+        `expected one extracted Firefox source directory in ${tempRoot}, found ${entries.length}`,
+      );
     }
     const sourceDir = path.join(tempRoot, entries[0].name);
     git(['init'], { cwd: sourceDir });
@@ -345,11 +407,8 @@ async function ensureBaseRef(ctx, version, expectedTree) {
     git(['add', '-A'], { cwd: sourceDir });
     git(['commit', '-m', `Firefox ${version}`], { cwd: sourceDir, stdio: 'ignore' });
     git(['fetch', sourceDir, `HEAD:${ref}`], { cwd: ctx.engineDir });
-    const tree = refTree(ctx, ref);
-    if (expectedTree && tree !== expectedTree) {
-      throw new UserError(`${ref} tree ${tree} does not match patches/series.json base.tree ${expectedTree}.`);
-    }
-    return { ref, commit: refCommit(ctx, ref), tree };
+    const validated = assertExpectedBase(ctx, ref, expectedTree, expectedContentTree);
+    return { ref, commit: refCommit(ctx, ref), ...validated };
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
   }
@@ -387,7 +446,7 @@ function addDetachedWorktree(ctx, ref, prefix = 'bento-patch-replay-') {
 }
 
 function applyPatchToWorktree(ctx, worktreeDir, patchPath, { index = false } = {}) {
-  const args = ['apply', ...SURFER_APPLY_ARGS];
+  const args = ['apply', ...FIREFOX_PATCH_APPLY_ARGS];
   if (index) {
     args.push('--index');
   }
@@ -416,7 +475,12 @@ function commitLegacyPatch(ctx, worktreeDir, entry) {
 }
 
 export async function materialize(ctx, manifest, options = {}) {
-  const base = await ensureBaseRef(ctx, manifest.base.version, manifest.base.tree);
+  const base = await ensureBaseRef(
+    ctx,
+    manifest.base.version,
+    manifest.base.tree,
+    manifest.base.contentTree,
+  );
   const worktreeDir = options.worktreeDir || ctx.stackWorktreeDir;
   if (!options.allowExistingWorktree) {
     assertNoActiveStackWorktree(ctx);
@@ -438,7 +502,9 @@ export async function materialize(ctx, manifest, options = {}) {
               result.stdout,
               result.stderr,
               `Inspect: git -C ${worktreeDir} status`,
-            ].filter(Boolean).join('\n'),
+            ]
+              .filter(Boolean)
+              .join('\n'),
             result.status || 1,
           );
         }
@@ -472,14 +538,22 @@ async function exportStack(ctx, manifest, options = {}) {
   const mergeBase = git(['merge-base', targetBase.ref, STACK_REF], { cwd: ctx.engineDir });
   const targetCommit = refCommit(ctx, targetBase.ref);
   if (mergeBase !== targetCommit) {
-    throw new UserError(`${STACK_BRANCH} is not based on ${targetBase.ref}; run pnpm run firefox:patches:rebase.`);
+    throw new UserError(
+      `${STACK_BRANCH} is not based on ${targetBase.ref}; run pnpm run firefox:patches:rebase.`,
+    );
   }
 
-  const mergeCommits = git(['rev-list', '--merges', `${targetBase.ref}..${STACK_REF}`], { cwd: ctx.engineDir });
+  const mergeCommits = git(['rev-list', '--merges', `${targetBase.ref}..${STACK_REF}`], {
+    cwd: ctx.engineDir,
+  });
   if (mergeCommits.trim()) {
-    throw new UserError(`${STACK_BRANCH} contains merge commits; keep the Firefox patch stack linear.`);
+    throw new UserError(
+      `${STACK_BRANCH} contains merge commits; keep the Firefox patch stack linear.`,
+    );
   }
-  const commits = git(['rev-list', '--reverse', `${targetBase.ref}..${STACK_REF}`], { cwd: ctx.engineDir })
+  const commits = git(['rev-list', '--reverse', `${targetBase.ref}..${STACK_REF}`], {
+    cwd: ctx.engineDir,
+  })
     .split('\n')
     .filter(Boolean);
   if (commits.length !== manifest.series.length) {
@@ -505,6 +579,7 @@ async function exportStack(ctx, manifest, options = {}) {
       product: targetProduct,
       version: targetVersion,
       tree: targetBase.tree,
+      contentTree: targetBase.contentTree || refContentTree(ctx, targetBase.ref),
     },
   };
   jsonWrite(ctx.manifestPath, updated);
@@ -521,7 +596,12 @@ async function commandCheck(ctx, flags) {
   if (errors.length) {
     throw new UserError(errors.join('\n'));
   }
-  const base = await ensureBaseRef(ctx, manifest.base.version, manifest.base.tree);
+  const base = await ensureBaseRef(
+    ctx,
+    manifest.base.version,
+    manifest.base.tree,
+    manifest.base.contentTree,
+  );
   await replaySeries(ctx, manifest, base.ref);
   process.stdout.write('firefox-patch-stack: check passed\n');
 }
@@ -533,7 +613,9 @@ async function commandMaterialize(ctx) {
     throw new UserError(errors.join('\n'));
   }
   await materialize(ctx, manifest);
-  process.stdout.write(`firefox-patch-stack: materialized ${manifest.series.length} commits on ${STACK_BRANCH}\n`);
+  process.stdout.write(
+    `firefox-patch-stack: materialized ${manifest.series.length} commits on ${STACK_BRANCH}\n`,
+  );
 }
 
 async function commandRebase(ctx) {
@@ -544,14 +626,22 @@ async function commandRebase(ctx) {
   }
   const surfer = loadSurfer(ctx);
   const targetVersion = surfer.version?.version;
-  const oldBase = await ensureBaseRef(ctx, manifest.base.version, manifest.base.tree);
+  const oldBase = await ensureBaseRef(
+    ctx,
+    manifest.base.version,
+    manifest.base.tree,
+    manifest.base.contentTree,
+  );
   const targetBase = await ensureBaseRef(ctx, targetVersion);
 
   await materialize(ctx, manifest);
   assertNoActiveStackWorktree(ctx);
   await fsp.mkdir(path.dirname(ctx.stackWorktreeDir), { recursive: true });
   git(['worktree', 'add', ctx.stackWorktreeDir, STACK_BRANCH], { cwd: ctx.engineDir });
-  const result = gitMaybe(['rebase', '--onto', targetBase.ref, oldBase.ref, STACK_BRANCH], ctx.stackWorktreeDir);
+  const result = gitMaybe(
+    ['rebase', '--onto', targetBase.ref, oldBase.ref, STACK_BRANCH],
+    ctx.stackWorktreeDir,
+  );
   if (!result.ok) {
     throw new UserError(
       [
@@ -565,7 +655,9 @@ async function commandRebase(ctx) {
         `git -C ${ctx.stackWorktreeDir} rebase --continue`,
         'pnpm run firefox:patches:export',
         'pnpm run import',
-      ].filter((line) => line !== undefined).join('\n'),
+      ]
+        .filter((line) => line !== undefined)
+        .join('\n'),
       result.status || 1,
     );
   }
@@ -580,6 +672,24 @@ async function commandExport(ctx) {
     throw new UserError(errors.join('\n'));
   }
   await exportStack(ctx, manifest);
+}
+
+async function commandApply(ctx) {
+  const manifest = loadManifest(ctx);
+  const errors = await validateManifest(ctx, manifest, { forImport: true });
+  if (errors.length) {
+    throw new UserError(errors.join('\n'));
+  }
+  ensureEngineGit(ctx);
+  await ensureBaseRef(ctx, manifest.base.version, manifest.base.tree, manifest.base.contentTree);
+  for (const entry of manifest.series) {
+    try {
+      applyPatchToWorktree(ctx, ctx.engineDir, entry.path);
+    } catch (error) {
+      throw new UserError(`failed to apply ${entry.path} (${entry.id})\n${error.message}`);
+    }
+  }
+  process.stdout.write(`firefox-patch-stack: applied ${manifest.series.length} patches\n`);
 }
 
 export async function main(argv = process.argv.slice(2), options = {}) {
@@ -598,12 +708,15 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     case 'export':
       await commandExport(ctx);
       break;
+    case 'apply':
+      await commandApply(ctx);
+      break;
     default:
       throw new UserError(`unknown command: ${command}`);
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     if (error instanceof UserError) {
       process.stderr.write(`${error.message}\n`);

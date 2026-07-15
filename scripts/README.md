@@ -7,8 +7,10 @@ Build, packaging, and release helper scripts.
   Equivalent to `pnpm run build:full`.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit
   stack:
-  - `pnpm run firefox:patches:check` validates `patches/series.json`, Surfer
-    patch order, and sequential `git apply` replay;
+  - `pnpm run firefox:patches:check` validates `patches/series.json` and
+    sequential `git apply` replay;
+  - `pnpm run firefox:patches:apply` applies the manifest to the live engine in
+    its declared order without committing;
   - `pnpm run firefox:patches:materialize` recreates `bento/patch-stack` from
     the manifest;
   - `pnpm run firefox:patches:rebase` rebases the stack to the Firefox version

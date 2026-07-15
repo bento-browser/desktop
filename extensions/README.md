@@ -3,9 +3,8 @@
 Bundled built-in extensions that implement Bento Browser's UI shell,
 privileged browser logic, and default content blocking.
 
-Each subdirectory is a single extension with its own `manifest.json`. The
-The Bento Surfer fork's `extensions-copy` patch step (see
-[../docs/maintaining-surfer.md](../docs/maintaining-surfer.md)) copies these
+Each subdirectory is a single extension with its own `manifest.json`.
+[scripts/install-builtin-addons.mjs](../scripts/install-builtin-addons.mjs) copies these
 into `engine/browser/extensions/<name>/`, generates `jar.mn` entries under
 Firefox's `builtin-addons/<name>/` runtime path, generates a `moz.build` for
 each extension, and appends `DIRS += [...]` to
@@ -16,8 +15,8 @@ Folders with names starting with `_` (e.g. `_shared` for shared TypeScript
 sources) and folders without a `manifest.json` are skipped — they will never
 be copied into the engine.
 
-Surfer copies only runtime entries, not every source file. Bento's default
-source-built extensions use the fork's default runtime entry list:
+The Bento installer copies only runtime entries, not every source file. Bento's
+default source-built extensions use this runtime entry list:
 `manifest.json`, `chrome.manifest`, `dist`, `experiments`, `icons`, `_locales`,
 `background.html`, `background.js`, `options.html`, and `popup.html`.
 

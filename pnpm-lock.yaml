@@ -9,15 +9,15 @@ pnpmfileChecksum: sha256-RBciX61Ibfwwg9DnAFtxKpq0vS/NK89YfB2Uj4t+WCE=
 importers:
   .:
     devDependencies:
-      '@bento-browser/surfer':
-        specifier: github:Bento-Browser/surfer#0c4bfd6dc8f865e71f789d4377d8ee589e28af84
-        version: https://codeload.github.com/Bento-Browser/surfer/tar.gz/0c4bfd6dc8f865e71f789d4377d8ee589e28af84
       '@eslint/js':
         specifier: ^9.0.0
         version: 9.39.4
       '@size-limit/file':
         specifier: ^12.1.0
         version: 12.1.0(size-limit@12.1.0)
+      '@zen-browser/surfer':
+        specifier: 1.14.6
+        version: 1.14.6
       eslint:
         specifier: ^9.0.0
         version: 9.39.4
@@ -270,14 +270,6 @@ packages:
         integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==,
       }
     engines: { node: '>=6.9.0' }
-
-  '@bento-browser/surfer@https://codeload.github.com/Bento-Browser/surfer/tar.gz/0c4bfd6dc8f865e71f789d4377d8ee589e28af84':
-    resolution:
-      {
-        tarball: https://codeload.github.com/Bento-Browser/surfer/tar.gz/0c4bfd6dc8f865e71f789d4377d8ee589e28af84,
-      }
-    version: 1.14.6-bento.1
-    hasBin: true
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution:
@@ -1864,6 +1856,13 @@ packages:
       {
         integrity: sha512-T532WBu791cBxJlCl6SO+J14l81DQx6uQHm1bQbmCDY7nqlEIgkza/UFnSBNaUtSf41unldDFjdOBYEQC4b5Hw==,
       }
+
+  '@zen-browser/surfer@1.14.6':
+    resolution:
+      {
+        integrity: sha512-hgTKadIJ/9/9dizHn4229ZZHQckd7D4OR6e7HVkcmtuq1Jke3OAn6SH7u7NjvzvYy35Mb2sXjVUvZEG1ITIfgg==,
+      }
+    hasBin: true
 
   accepts@1.3.8:
     resolution:
@@ -6374,36 +6373,6 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@bento-browser/surfer@https://codeload.github.com/Bento-Browser/surfer/tar.gz/0c4bfd6dc8f865e71f789d4377d8ee589e28af84':
-    dependencies:
-      '@resvg/resvg-js': 1.4.0
-      async-icns: 1.0.2
-      axios: 1.16.0
-      chalk: 4.1.2
-      cli-progress: 3.12.0
-      commander: 6.2.1
-      execa: 5.1.1
-      fast-extract: 1.14.2
-      fs-extra: 10.1.0
-      ini: 3.0.1
-      is-apple-silicon: https://codeload.github.com/trickypr/is-apple-silicon/tar.gz/5f75501a1d7566ba9f94174b6825d7bd9d302b6a
-      kleur: 4.1.5
-      modern-async: 1.1.5
-      mount-dmg: 1.0.1
-      picomatch: 2.3.2
-      png-to-ico: 2.1.8
-      prompts: 2.4.2
-      rustic: 1.2.2
-      semver: 7.7.4
-      sharp: 0.32.6
-      tiny-glob: 0.2.9
-      xmlbuilder2: 4.0.3
-    transitivePeerDependencies:
-      - bare-abort-controller
-      - bare-buffer
-      - debug
-      - react-native-b4a
-
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
 
@@ -7277,6 +7246,36 @@ snapshots:
       '@vitest/pretty-format': 4.1.7
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
+
+  '@zen-browser/surfer@1.14.6':
+    dependencies:
+      '@resvg/resvg-js': 1.4.0
+      async-icns: 1.0.2
+      axios: 1.16.0
+      chalk: 4.1.2
+      cli-progress: 3.12.0
+      commander: 6.2.1
+      execa: 5.1.1
+      fast-extract: 1.14.2
+      fs-extra: 10.1.0
+      ini: 3.0.1
+      is-apple-silicon: https://codeload.github.com/trickypr/is-apple-silicon/tar.gz/5f75501a1d7566ba9f94174b6825d7bd9d302b6a
+      kleur: 4.1.5
+      modern-async: 1.1.5
+      mount-dmg: 1.0.1
+      picomatch: 2.3.2
+      png-to-ico: 2.1.8
+      prompts: 2.4.2
+      rustic: 1.2.2
+      semver: 7.7.4
+      sharp: 0.32.6
+      tiny-glob: 0.2.9
+      xmlbuilder2: 4.0.3
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - debug
+      - react-native-b4a
 
   accepts@1.3.8:
     dependencies:

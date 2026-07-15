@@ -1126,7 +1126,7 @@
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
         box-shadow: none;
       }
-      /* No-panel frame follows Firefox/Zen's native structure: the
+      /* No-panel frame uses Firefox's native structure: the
          tabbox wrapper creates the gutter, while browserSidebarContainer
          owns the rounded clip and frame paint. This keeps macOS live
          window resize smooth. */

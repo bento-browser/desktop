@@ -5,7 +5,7 @@
 //
 // Per-window active workspace (phase A.2): tracks both a global fallback
 // `activeId` (legacy single-window state, persisted by tools) and a
-// `activeIdByWindow` map populated by Zen-style per-window activations.
+// `activeIdByWindow` map populated by per-window activations.
 // Selectors like `useActiveWorkspaceForCurrentWindow()` read the per-
 // window value when this shell document knows its windowId (resolved by
 // useToolsPort on mount), falling back to the global value otherwise.

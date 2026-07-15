@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "path": "package.json",
+      "pattern": "@zen-browser/surfer|check:zen-boundary",
+      "category": "build-tool",
+      "reason": "Pins the upstream build tool and exposes its boundary check."
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "pattern": "@zen-browser/surfer",
+      "category": "build-tool",
+      "reason": "Records the exact upstream npm package resolution."
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "pattern": "@zen-browser/surfer",
+      "category": "build-tool",
+      "reason": "Permits the pinned build tool's install scripts."
+    },
+    {
+      "path": "CLAUDE.md",
+      "pattern": "@zen-browser/surfer",
+      "category": "build-tool",
+      "reason": "Documents the exact dependency upgrade command."
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "pattern": "allowed-zen-references|Zen reference boundary|check:zen-boundary",
+      "category": "build-tool",
+      "reason": "Runs and validates the build-time reference guard in CI."
+    },
+    {
+      "path": "docs/build-tooling.md",
+      "pattern": "@zen-browser/surfer|zen-browser/surfer",
+      "category": "build-tool",
+      "reason": "Documents the internal build dependency and upgrade procedure."
+    },
+    {
+      "path": "scripts/check-zen-boundary.mjs",
+      "pattern": "zen|ZEN_",
+      "category": "build-tool",
+      "reason": "Implements the build-time reference guard itself."
+    },
+    {
+      "path": "docs/core-functionality.md",
+      "pattern": "(?=.*(?:import|migrat|profile|session|space|tab|workspace|pinned|restore|Firefox|wizard)).*(?:\\bzen\\b|zen-browser|zen_)",
+      "category": "import-compatibility",
+      "reason": "Documents the explicit Zen Browser import feature."
+    },
+    {
+      "path": "docs/core-functionality-technical.md",
+      "pattern": "(?=.*(?:import|migrat|profile|session|space|tab|folder|workspace|pinned|essential|restore|Firefox|wizard|merge|brandImage|jsonlz4|scope|source|welcome|successful)).*(?:\\bzen\\b|zen-browser|zen_)",
+      "category": "import-compatibility",
+      "reason": "Documents Zen import formats, conversion, and migration behavior."
+    },
+    {
+      "path": "docs/firefox-core-touchpoints.md",
+      "pattern": "(?=.*(?:import|migrat|profile|session|space|tab|folder|workspace|pinned|essential|restore|Firefox|wizard|brandImage|jsonlz4|scope|icon)).*(?:\\bzen\\b|zen-browser|zen_)",
+      "category": "import-compatibility",
+      "reason": "Records Firefox surfaces required by Zen import compatibility."
+    },
+    {
+      "path": "prefs/bento.js",
+      "pattern": "browser\\.migrate\\.zen\\.enabled",
+      "category": "import-compatibility",
+      "reason": "Enables Firefox's explicit Zen profile migrator."
+    },
+    {
+      "path": "patches/core-ui/09-bento-firefox-profile-first-run-import.patch",
+      "pattern": "zen|Zen",
+      "category": "import-compatibility",
+      "reason": "Implements Firefox startup migration from Zen profiles and sessions."
+    },
+    {
+      "path": "src/browser/base/content/bento-migration-host.*",
+      "pattern": "Zen|zen",
+      "category": "import-compatibility",
+      "reason": "Presents Zen Browser as an explicit profile import source."
+    },
+    {
+      "path": "src/browser/base/content/bento-shell-mount.js",
+      "pattern": "Import Firefox or Zen|Firefox/Zen|firefox-zen|scopeFirefoxZen|MIGRATION_SCOPE",
+      "category": "import-compatibility",
+      "reason": "Hands the explicit Firefox and Zen import action to startup migration."
+    },
+    {
+      "path": "extensions/_shared/protocol.ts",
+      "pattern": "['\"]zen['\"]",
+      "category": "import-compatibility",
+      "reason": "Keeps the stable Zen import-source protocol value."
+    },
+    {
+      "path": "extensions/bento-shell/src/welcome/main.tsx",
+      "pattern": "Firefox and Zen",
+      "category": "import-compatibility",
+      "reason": "Labels the explicit onboarding import action."
+    },
+    {
+      "path": "extensions/bento-shell/src/components/MergePalette/MergePalette.stories.tsx",
+      "pattern": "['\"]zen['\"]|Zen Browser",
+      "category": "import-compatibility",
+      "reason": "Covers Zen as an import source in merge UI stories."
+    },
+    {
+      "path": "extensions/bento-tools/experiments/bento-external-sessions/api.js",
+      "pattern": "zen|Zen",
+      "category": "import-compatibility",
+      "reason": "Discovers and reads Zen profile and session files."
+    },
+    {
+      "path": "extensions/bento-tools/src/externalMerge/**",
+      "pattern": "zen|Zen",
+      "category": "import-compatibility",
+      "reason": "Parses, normalizes, tests, and executes explicit Zen session imports."
+    },
+    {
+      "path": "extensions/bento-tools/src/background.ts",
+      "pattern": "Zen import",
+      "category": "import-compatibility",
+      "reason": "Explains ordering required while restoring imported Zen tabs."
+    },
+    {
+      "path": "extensions/bento-tools/src/panels/SessionMarker.test.ts",
+      "pattern": "zen-workspace",
+      "category": "import-compatibility",
+      "reason": "Tests session markers produced by imported Zen workspaces."
+    },
+    {
+      "path": "extensions/bento-tools/src/workspaces/WorkspaceStore.test.ts",
+      "pattern": "Zen workspace|zen-space",
+      "category": "import-compatibility",
+      "reason": "Tests adoption of workspaces imported from Zen."
+    }
+  ]
+}

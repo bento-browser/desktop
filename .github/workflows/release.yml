@@ -29,9 +29,20 @@ jobs:
         # Firefox 150+ configure rejects the older macOS 14 SDK as too old.
         # ubuntu-latest = Linux x86_64.
         # windows-latest = Windows Server 2022 x86_64.
-        os: [macos-26, ubuntu-latest, windows-latest]
+        include:
+          - os: macos-26
+            build-jobs: ''
+          # GitHub-hosted Linux and Windows runners can exhaust memory when
+          # Firefox uses its default native-build parallelism.
+          - os: ubuntu-latest
+            build-jobs: '1'
+          - os: windows-latest
+            build-jobs: '1'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 180 # Firefox builds run 30–60 min on hosted runners; pad for cold caches.
+    # A cold optimized Firefox build can exceed three hours on hosted macOS.
+    # Keep the job at GitHub's six-hour hosted-runner ceiling so the first
+    # successful build can populate the native object cache.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -55,7 +66,7 @@ jobs:
 
       # Cache mach build artifacts so an incremental release that only
       # changes Bento extensions doesn't re-link the entire engine. The
-      # key is keyed on the surfer SHA + patches (the things that affect
+      # key is keyed on the exact build-tool package/config + patches (the things that affect
       # native compile output) and intentionally NOT on github.sha, so
       # commits that only touch extensions/, scripts/, or branding/ hit
       # the cache and skip the multi-hour relink step.
@@ -75,6 +86,22 @@ jobs:
           BENTO_RELEASE: '1'
         run: pnpm install --no-frozen-lockfile
 
+      - name: Configure deterministic Firefox source checkout
+        run: |
+          git config --global user.name "Bento CI"
+          git config --global user.email "ci@bentobrowser.invalid"
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+
+      - name: Install MozillaBuild
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install mozillabuild --version=4.2.1 --yes --no-progress
+          if (-not (Test-Path 'C:\mozilla-build\start-shell.bat')) {
+            throw 'MozillaBuild did not install at C:\mozilla-build'
+          }
+
       - name: Surfer download (Firefox source)
         run: pnpm run download
 
@@ -84,6 +111,7 @@ jobs:
       - name: Build release artifact
         env:
           BENTO_RELEASE: '1'
+          BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
         # build-release.sh handles platform detection, runs the full
         # ext:build → import → surfer build → surfer package chain, and
         # drops a versioned artifact into release-out/.

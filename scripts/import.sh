@@ -23,8 +23,13 @@ run_step "sync theme presets" node scripts/sync-theme-presets.mjs
 run_step "generate chrome tokens" node scripts/generate-chrome-tokens.mjs
 run_step "check Firefox patch stack" node scripts/firefox-patch-stack.mjs check --for-import
 run_step "reset engine patches" bash scripts/reset-engine-patches.sh
-run_step "surfer import" bash scripts/surfer-env.sh import
+run_step "surfer import" env SURFER_NO_BRANDING_PATCH=true bash scripts/surfer-env.sh import
+run_step "install canonical branding" node scripts/install-branding.mjs
+run_step "install built-in add-ons" node scripts/install-builtin-addons.mjs
+run_step "apply Firefox patch stack" node scripts/firefox-patch-stack.mjs apply
 run_step "append prefs" bash scripts/append-prefs.sh
 run_step "sync builtin addon symlinks" bash scripts/sync-builtin-addon-symlinks.sh
+run_step "scan product identity" node scripts/check-product-identity.mjs \
+  branding/bento engine/browser/branding/bento
 
 echo "import: finished"

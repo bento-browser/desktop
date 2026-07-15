@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Append prefs/bento.js to the engine's regenerated branding file. Idempotent.
-# Surfer's import step rewrites engine/browser/branding/<brand>/pref/firefox-
-# branding.js from scratch each time, so any Bento defaults we appended via
-# brand:regen disappear on the next build. Run this AFTER every surfer import
-# (the npm scripts do this automatically — see package.json).
+# Append prefs/bento.js only to Firefox engine copies. Idempotent.
+# Branding is installed from the tracked canonical branding/bento directory;
+# this script never modifies that canonical source. Run it after each import.
 
 set -euo pipefail
 
@@ -33,11 +31,17 @@ append_to() {
   fi
   local tmp
   tmp="$(mktemp)"
-  if grep -qF "$MARKER" "$dest"; then
-    awk -v marker="$MARKER" 'index($0, marker) == 1 { exit } { print }' "$dest" > "$tmp"
-  else
-    cp "$dest" "$tmp"
-  fi
+  # Remove the previous managed block and trim blank lines before it so
+  # repeated imports do not grow the file by one empty line each time.
+  awk -v marker="$MARKER" '
+    index($0, marker) == 1 { exit }
+    { lines[NR] = $0 }
+    END {
+      last = NR
+      while (last > 0 && lines[last] == "") last--
+      for (i = 1; i <= last; i++) print lines[i]
+    }
+  ' "$dest" > "$tmp"
   {
     echo ""
     echo "$MARKER ==="

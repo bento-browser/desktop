@@ -675,7 +675,7 @@ onboarding completion.
 uBlock Origin is bundled as a third built-in extension under
 `extensions/ublock-origin/`. Its provenance and update notes are recorded in
 that folder's README. `.bento-runtime-entries.json` lists the extra top-level
-uBO runtime folders/files that Surfer must copy; the default Bento extension copy
+uBO runtime folders/files that Bento's add-on installer must copy; the default Bento extension copy
 filter is still used for extensions without that file.
 
 ### Privacy Pitfalls
@@ -690,7 +690,7 @@ filter is still used for extensions without that file.
   Firefox's visible search engine list.
 - Do not lock uBlock Origin with enterprise policy. Bento ships it enabled but
   user-disableable/removable.
-- Do not move experiment files under `src/`; Surfer copies only top-level
+- Do not move experiment files under `src/`; the add-on installer copies only top-level
   `experiments/` into the built-in extension.
 
 ## Workspace implementation
@@ -1683,7 +1683,7 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   padding on `#bento-side-panel-host` or with host pseudo-elements. macOS live
   window resize became choppy when no-panel host padding, rounded child
   clipping, or frame shadow were each tested in isolation. The working shape
-  mirrors Zen Browser's simpler native structure: keep
+  uses Firefox's native structure: keep
   `#bento-side-panel-host` unpadded and `overflow: visible`, create the real
   gutter with margins on the direct `[data-bento-main-panel]`, and put the
   rounded clip plus frame paint on the native

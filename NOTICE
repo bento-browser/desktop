@@ -1,10 +1,9 @@
 Bento Browser
 =============
 
-Bento Browser is a derivative of Mozilla Firefox, built using the Surfer
-build tool from the Zen Browser project. This notice satisfies the
-attribution requirements of the Mozilla Public License v2.0 for the
-upstream components Bento Browser is built on.
+Bento Browser contains code derived from Mozilla Firefox. Bento's modifications
+and product-specific code are maintained independently by Bento Browser
+contributors.
 
 Mozilla Firefox
 ---------------
@@ -12,22 +11,11 @@ Copyright (c) Mozilla Foundation and contributors.
 Source: https://hg.mozilla.org/mozilla-central/
 License: Mozilla Public License v2.0 (see LICENSE).
 
-Zen Browser
------------
-Copyright (c) Zen Browser contributors.
-Source: https://github.com/zen-browser/desktop
-License: Mozilla Public License v2.0.
-
-Surfer (and its predecessors Gluon and Melon)
----------------------------------------------
-Copyright (c) Zen Browser contributors and prior authors.
-Source: https://github.com/zen-browser/surfer
-License: Mozilla Public License v2.0.
-
 Bento Browser modifications
 ---------------------------
 Copyright (c) Bento Browser contributors.
 License: Mozilla Public License v2.0.
 
-The full text of the Mozilla Public License v2.0 is reproduced in
-LICENSE at the root of this repository.
+Other bundled third-party components retain their notices in their respective
+source directories and package metadata. The full text of the Mozilla Public
+License v2.0 is reproduced in LICENSE at the root of this repository.

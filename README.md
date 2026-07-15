@@ -1,11 +1,9 @@
 # Bento Browser
 
-A Firefox-based browser with major UI customisations, built as a true fork that
-tracks upstream Firefox releases. Build orchestration is handled by
-[`@bento-browser/surfer`](https://github.com/Bento-Browser/surfer) — a fork of
-[`@zen-browser/surfer`](https://github.com/zen-browser/surfer) that templates
-the brand-specific URLs and installer fields. See
-[docs/maintaining-surfer.md](docs/maintaining-surfer.md) for fork maintenance.
+An independent browser derived from Mozilla Firefox, with a Bento-maintained UI
+and privileged extensions built around workspaces and side-by-side panels.
+Bento tracks upstream Firefox releases while keeping its product code and
+identity in this repository.
 
 See [docs/core-functionality.md](docs/core-functionality.md) for the
 product-facing core functionality model and
@@ -48,9 +46,7 @@ npm run package        # produce platform packages/installers
 npm run build:release  # produce a release-mode artifact for the host platform
 npm run lc             # Surfer license check
 npm run build:full     # download → bootstrap → build → package
-npm run brand:regen    # regenerate engine/branding from surfer.json + configs/branding/
-                       # (run after editing brand colors, names, URLs, or assets;
-                       #  see docs/maintaining-surfer.md)
+npm run brand:regen    # reinstall tracked branding/bento into the Firefox tree
 ```
 
 ## Layout
@@ -59,7 +55,7 @@ npm run brand:regen    # regenerate engine/branding from surfer.json + configs/b
 | ------------------------------------------------------------ | ----------------------------------------------------- |
 | [surfer.json](surfer.json)                                   | Surfer config (Firefox version, branding identifiers) |
 | [configs/](configs/)                                         | Per-platform `mozconfig` fragments                    |
-| [branding/bento/](branding/bento/)                           | Bento branding assets (Phase 2)                       |
+| [branding/bento/](branding/bento/)                           | Canonical Mozilla-derived Bento branding              |
 | [extensions/](extensions/)                                   | Bundled privileged extensions (Phase 3)               |
 | [patches/](patches/)                                         | Surgical Firefox source patches (Phase 4)             |
 | [prefs/](prefs/)                                             | Default pref overrides                                |

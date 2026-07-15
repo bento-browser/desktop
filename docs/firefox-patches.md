@@ -38,9 +38,11 @@ pnpm run firefox:patches:test
 ```
 
 `check` validates `patches/series.json`, confirms there are no unmanaged
-`src/**/*.patch` files, confirms manifest order matches Surfer's repo patch
-scan order, and replays the full series sequentially on a clean Firefox base
-using Surfer-equivalent `git apply` arguments.
+`src/**/*.patch` files, verifies the recorded Firefox base tree, and replays the
+full series sequentially in manifest order using Bento's `git apply` arguments.
+The manifest records both the originating Git tree and a canonical content hash
+so executable-bit differences introduced by platform-specific archive tools do
+not weaken source-content validation.
 
 `materialize` creates or resets `bento/patch-stack` from the manifest base and
 applies each patch as one commit. It uses isolated worktrees under `.surfer/` so
@@ -52,7 +54,7 @@ finishes cleanly. It does not run automatically during `firefox:sync`.
 
 `export` writes each `bento/patch-stack` commit back to the existing manifest
 path with `git format-patch`, updates `series.json` base metadata, and replays
-the exported series sequentially for Surfer compatibility.
+the exported series sequentially to verify the result.
 
 ## Add Or Change A Patch
 

@@ -1,4 +1,7 @@
 # Bento Browser — macOS mozconfig.
 . "$topsrcdir/../configs/common/mozconfig"
 
+# Firefox prefixes the branding bundle id with this distribution id.
+ac_add_options --with-distribution-id=app.bentobrowser
+
 # TODO: macOS-specific flags (codesigning identity, universal builds, MOZ_MACBUNDLE_NAME).

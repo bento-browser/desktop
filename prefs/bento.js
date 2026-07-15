@@ -6,8 +6,7 @@
 // here ships as a Bento default (still overridable per-user via about:config).
 //
 // Privacy-leaning defaults: disable Mozilla services Bento doesn't ship,
-// telemetry/crash/study/health reporting off, no sponsored content. Matches
-// roughly what Zen, Librewolf, and similar Firefox forks ship.
+// telemetry/crash/study/health reporting off, and no sponsored content.
 
 // --- Mozilla services Bento doesn't ship ---------------------------------
 pref("extensions.pocket.enabled", false);

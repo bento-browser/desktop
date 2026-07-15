@@ -9,9 +9,6 @@
     "candidate": "152.0.2",
     "candidateBuild": 1
   },
-  "buildOptions": {
-    "generateBranding": true
-  },
   "addons": {},
   "brands": {
     "bento": {
@@ -24,37 +21,11 @@
         "github": {
           "repo": "Bento-Browser/desktop"
         }
-      },
-      "urls": {
-        "homepageOverride": "https://bentobrowser.app/whatsnew?v=%VERSION%",
-        "homepageWelcome": "https://bentobrowser.app/welcome",
-        "homepageWelcomeAdditional": "",
-        "appUpdateManual": "https://bentobrowser.app/download/",
-        "appUpdateDetails": "https://bentobrowser.app/release-notes/latest/",
-        "releaseNotes": "https://bentobrowser.app/whatsnew/",
-        "releaseNotesAboutDialog": "https://bentobrowser.app/release-notes/%VERSION%/",
-        "releaseNotesPrompt": "https://bentobrowser.app/release-notes/%VERSION%/",
-        "infoAbout": "https://bentobrowser.app",
-        "updateInfo": "https://bentobrowser.app/release-notes/${AppVersion}",
-        "helpLink": "https://github.com/Bento-Browser/desktop/issues",
-        "manualDownload": "https://bentobrowser.app/download",
-        "systemRequirements": "https://bentobrowser.app/system-requirements/",
-        "stubDownloadX86": "https://bentobrowser.app/download?os=win",
-        "stubDownloadAMD64": "https://bentobrowser.app/download?os=win64",
-        "stubDownloadAArch64": "https://bentobrowser.app/download?os=win64-aarch64"
-      },
-      "installer": {
-        "channel": "stable",
-        "official": true,
-        "certNameDownload": "Bento Browser",
-        "certIssuerDownload": "TBD"
       }
     }
   },
   "license": {
-    "ignoredFiles": [
-      ".*\\.json"
-    ],
+    "ignoredFiles": [".*\\.json"],
     "licenseType": "MPL-2.0"
   },
   "updateHostname": "updates.bentobrowser.app"

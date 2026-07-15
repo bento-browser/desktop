@@ -6,7 +6,7 @@
 //
 // A single-slot backup (`bento.workspaces.backup`) holds the previous good
 // value so a corrupt primary write can be recovered from on next load.
-// Phase G.2 — bento doesn't need a Zen-style rolling N-file backup because
+// Phase G.2 — Bento uses one atomic backup rather than a rolling N-file backup because
 // the worst case here is "the last debounced flush ate my data," which one
 // slot covers.
 
