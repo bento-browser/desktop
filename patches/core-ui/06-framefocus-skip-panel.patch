@@ -1,4 +1,4 @@
-From 283547bea07e60d0c7073b616f51ca56febf4324 Mon Sep 17 00:00:00 2001
+From 7ea26a2c536bc70ed179c01e17768c2cb96f70ae Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:35 +1000
 Subject: [PATCH] Skip Bento panel browsers in frame focus

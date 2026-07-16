@@ -1,17 +1,17 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From ecf1b6475eee305398ac6963fca3b98ebea1d9f1 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 27 Jun 2026 16:35:00 +1000
 Subject: [PATCH] Allow DOM fullscreen from split view browsers
 
 ---
- browser/base/content/browser-fullScreenAndPointerLock.js | 21 ++++++++++++++++-----
+ .../browser-fullScreenAndPointerLock.js       | 21 ++++++++++++++-----
  1 file changed, 16 insertions(+), 5 deletions(-)
 
 diff --git a/browser/base/content/browser-fullScreenAndPointerLock.js b/browser/base/content/browser-fullScreenAndPointerLock.js
-index 88f8704d9f11d98f96c5e30ae05762fb16b4d910..c4051b3843ab996b014b599e3f8de9784d5648ef 100644
+index d0d3b6fc57800b073bb1c75f6e55212749815b0a..3e7829ba3e9bcbab34c6a45febf1392816ae2cea 100644
 --- a/browser/base/content/browser-fullScreenAndPointerLock.js
 +++ b/browser/base/content/browser-fullScreenAndPointerLock.js
-@@ -621,13 +621,13 @@ var FullScreen = {
+@@ -620,13 +620,13 @@ var FullScreen = {
        }
      }
  
@@ -30,7 +30,7 @@ index 88f8704d9f11d98f96c5e30ae05762fb16b4d910..c4051b3843ab996b014b599e3f8de978
        // The top-level window has lost focus since the request to enter
        // full-screen was made. Cancel full-screen.
        Services.focus.activeWindow != window
-@@ -636,6 +636,12 @@ var FullScreen = {
+@@ -635,6 +635,12 @@ var FullScreen = {
        return;
      }
  
@@ -43,7 +43,7 @@ index 88f8704d9f11d98f96c5e30ae05762fb16b4d910..c4051b3843ab996b014b599e3f8de978
      // Remove permission prompts when entering full-screen.
      if (!FullScreen.permissionsFullScreenAllowed) {
        let notifications = PopupNotifications.getNotification(
-@@ -749,6 +755,11 @@ var FullScreen = {
+@@ -748,6 +754,11 @@ var FullScreen = {
      );
  
      document.documentElement.removeAttribute("inDOMFullscreen");
@@ -57,3 +57,4 @@ index 88f8704d9f11d98f96c5e30ae05762fb16b4d910..c4051b3843ab996b014b599e3f8de978
    },
 -- 
 2.50.1 (Apple Git-155)
+

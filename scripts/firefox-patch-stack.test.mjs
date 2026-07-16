@@ -6,7 +6,11 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { createContext, refContentTree } from './firefox-patch-stack.mjs';
+import {
+  createContext,
+  refContentTree,
+  stageFirefoxSourceBase,
+} from './firefox-patch-stack.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptPath = path.join(repoRoot, 'scripts', 'firefox-patch-stack.mjs');
@@ -97,6 +101,17 @@ test('canonical content validation accepts platform-specific executable modes', 
   const result = runFixture(root, ['check']);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stderr, /accepted platform-specific tree/);
+});
+
+test('source base staging includes files ignored by upstream Firefox', async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-firefox-source-base-test-'));
+  git(root, ['init']);
+  fs.writeFileSync(path.join(root, '.gitignore'), 'ignored.txt\n');
+  fs.writeFileSync(path.join(root, 'ignored.txt'), 'tracked by Surfer\n');
+
+  stageFirefoxSourceBase(root);
+
+  assert.deepEqual(git(root, ['ls-files']).split('\n'), ['.gitignore', 'ignored.txt']);
 });
 
 function writeLegacyPatch(root, engine, patchPath, nextContent) {

@@ -1,4 +1,4 @@
-From 81798259b35e52bd6c0ed2c0a3bdb80dd5f60a25 Mon Sep 17 00:00:00 2001
+From 163bf44992a835e2faf2bb5aca435c1718a7be8e Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:43 +1000
 Subject: [PATCH] Track Bento browser windows

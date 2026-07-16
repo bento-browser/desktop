@@ -1,4 +1,4 @@
-From 98b9dd3402ae90095ab3c4a1dcf69318ccb98dad Mon Sep 17 00:00:00 2001
+From f93c57d8f60b67a509c0bd99a11ae84af7fd23d9 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:32 +1000
 Subject: [PATCH] Support inspecting panel browsers

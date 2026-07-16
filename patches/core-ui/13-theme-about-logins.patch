@@ -1,19 +1,19 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From af6e6d3ceab748ea343faa4356b7a36ddc1f7091 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Tue, 7 Jul 2026 16:00:00 +1000
 Subject: [PATCH] Theme about logins with Bento tokens
 
 ---
- .../aboutlogins/content/aboutLogins.html           |  3 +-
- .../content/aboutLoginsImportReport.html           |  6 ++-
- browser/components/aboutlogins/content/common.css  | 49 ++++++++++++++++++++++
- .../content/components/import-error-dialog.css     |  2 +-
- .../aboutlogins/content/components/login-item.css  |  2 +-
- .../content/components/login-message-popup.css     |  2 +-
- 6 files changed, 59 insertions(+), 5 deletions(-)
+ .../aboutlogins/content/aboutLogins.html      |  5 +-
+ .../content/aboutLoginsImportReport.html      |  8 ++-
+ .../components/aboutlogins/content/common.css | 49 +++++++++++++++++++
+ .../components/import-error-dialog.css        |  2 +-
+ .../content/components/login-item.css         |  2 +-
+ .../components/login-message-popup.css        |  2 +-
+ 6 files changed, 61 insertions(+), 7 deletions(-)
 
 diff --git a/browser/components/aboutlogins/content/aboutLogins.html b/browser/components/aboutlogins/content/aboutLogins.html
-index 9bbf5e69b1..1bbfab94fd 100644
+index 9bbf5e69b17139d5063977334a869db090af3de1..1bbfab94fd15a3dd28893bb8fd4a5d20684605af 100644
 --- a/browser/components/aboutlogins/content/aboutLogins.html
 +++ b/browser/components/aboutlogins/content/aboutLogins.html
 @@ -3,11 +3,11 @@
@@ -39,7 +39,7 @@ index 9bbf5e69b1..1bbfab94fd 100644
      <link rel="icon" href="chrome://branding/content/icon32.png">
    </head>
 diff --git a/browser/components/aboutlogins/content/aboutLoginsImportReport.html b/browser/components/aboutlogins/content/aboutLoginsImportReport.html
-index 6a6932502d..b8161f2bb9 100644
+index 6a6932502d8eb82c70e6aea039580f489224ee60..b8161f2bb9e454dd636e732b298f67656634cbb1 100644
 --- a/browser/components/aboutlogins/content/aboutLoginsImportReport.html
 +++ b/browser/components/aboutlogins/content/aboutLoginsImportReport.html
 @@ -3,14 +3,14 @@
@@ -71,7 +71,7 @@ index 6a6932502d..b8161f2bb9 100644
        rel="stylesheet"
        href="chrome://browser/content/aboutlogins/common.css"
 diff --git a/browser/components/aboutlogins/content/common.css b/browser/components/aboutlogins/content/common.css
-index 2771a6b03e..65d014190b 100644
+index 2771a6b03e0cd4605190c9f33678c346f1e7a52b..65d014190b3b8d3c610690cc211dd54a1e341d2a 100644
 --- a/browser/components/aboutlogins/content/common.css
 +++ b/browser/components/aboutlogins/content/common.css
 @@ -2,6 +2,55 @@
@@ -131,7 +131,7 @@ index 2771a6b03e..65d014190b 100644
  :host([hidden]),
  [hidden] {
 diff --git a/browser/components/aboutlogins/content/components/import-error-dialog.css b/browser/components/aboutlogins/content/components/import-error-dialog.css
-index b85504de52..469342e947 100644
+index b85504de524a8e2b17565acaa15249805f3c66b0..469342e94783cbfd594b9fa2b1b9eee4db095662 100644
 --- a/browser/components/aboutlogins/content/components/import-error-dialog.css
 +++ b/browser/components/aboutlogins/content/components/import-error-dialog.css
 @@ -24,5 +24,5 @@
@@ -142,7 +142,7 @@ index b85504de52..469342e947 100644
 +  fill: var(--warning-60);
  }
 diff --git a/browser/components/aboutlogins/content/components/login-item.css b/browser/components/aboutlogins/content/components/login-item.css
-index 195e0f5a5d..e51832f72b 100644
+index 195e0f5a5de2f61c4e427512cc163895818cd758..e51832f72b894c17de6887b4a2f7227373974be8 100644
 --- a/browser/components/aboutlogins/content/components/login-item.css
 +++ b/browser/components/aboutlogins/content/components/login-item.css
 @@ -13,7 +13,7 @@
@@ -155,7 +155,7 @@ index 195e0f5a5d..e51832f72b 100644
  }
  
 diff --git a/browser/components/aboutlogins/content/components/login-message-popup.css b/browser/components/aboutlogins/content/components/login-message-popup.css
-index c443a1e3ac..4e62961d06 100644
+index c443a1e3acdec651882bac0a6297bfe74893837a..4e62961d0626bd92a6edd5d3493c23e7f5f04503 100644
 --- a/browser/components/aboutlogins/content/components/login-message-popup.css
 +++ b/browser/components/aboutlogins/content/components/login-message-popup.css
 @@ -6,7 +6,7 @@
@@ -167,3 +167,6 @@ index c443a1e3ac..4e62961d06 100644
    top: 0;
  }
  
+-- 
+2.50.1 (Apple Git-155)
+

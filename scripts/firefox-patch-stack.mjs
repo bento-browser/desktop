@@ -75,6 +75,13 @@ function gitMaybe(args, cwd) {
   };
 }
 
+export function stageFirefoxSourceBase(sourceDir) {
+  // Match Surfer's source initialization exactly. Firefox's source archive
+  // contains files covered by its own .gitignore; Surfer deliberately keeps
+  // them in the version base with `git add -f .`.
+  git(['add', '-f', '.'], { cwd: sourceDir });
+}
+
 function ensureEngineGit(ctx) {
   if (!fs.existsSync(path.join(ctx.engineDir, '.git'))) {
     throw new UserError(
@@ -404,7 +411,7 @@ async function ensureBaseRef(ctx, version, expectedTree, expectedContentTree) {
     git(['init'], { cwd: sourceDir });
     git(['config', 'user.name', 'Bento Patch Stack'], { cwd: sourceDir });
     git(['config', 'user.email', 'patch-stack@bentobrowser.invalid'], { cwd: sourceDir });
-    git(['add', '-A'], { cwd: sourceDir });
+    stageFirefoxSourceBase(sourceDir);
     git(['commit', '-m', `Firefox ${version}`], { cwd: sourceDir, stdio: 'ignore' });
     git(['fetch', sourceDir, `HEAD:${ref}`], { cwd: ctx.engineDir });
     const validated = assertExpectedBase(ctx, ref, expectedTree, expectedContentTree);
