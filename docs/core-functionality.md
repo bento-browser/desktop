@@ -47,8 +47,9 @@ to the external profile. It
 imports mergeable open tabs into new Bento workspaces, maps source tab groups or
 tab folders to Bento tab folders when the source format exposes them, creates
 those imported folders collapsed, preserves pinned tabs as pinned tabs, skips
-URLs already open in Bento, and activates the first imported workspace when the
-merge completes.
+URLs already open in Bento, and creates imported tabs asleep without activating
+an imported workspace. Imported sites do not load until the user explicitly
+opens their space or selects their tab.
 Imported
 workspaces use
 Bento's normal restart persistence, so their tabs remain assigned to those

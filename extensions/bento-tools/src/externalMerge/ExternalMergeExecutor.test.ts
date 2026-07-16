@@ -88,10 +88,18 @@ describe('executeExternalMerge', () => {
               pinned: false,
             },
             {
+              id: 'new-tab',
+              url: 'chrome://newtab/',
+              title: 'New Tab',
+              index: 2,
+              active: false,
+              pinned: false,
+            },
+            {
               id: 'pinned',
               url: 'https://pinned.example/',
               title: 'Pinned',
-              index: 2,
+              index: 3,
               active: false,
               pinned: true,
               groupId: 'group-1',
@@ -100,7 +108,7 @@ describe('executeExternalMerge', () => {
               id: 'normal',
               url: 'https://normal.example/',
               title: 'Normal',
-              index: 3,
+              index: 4,
               active: true,
               pinned: false,
               groupId: 'group-1',
@@ -131,15 +139,28 @@ describe('executeExternalMerge', () => {
     });
     expect(assignFolderEagerly).toHaveBeenCalledTimes(1);
     expect(assignFolderEagerly).toHaveBeenCalledWith(101, 'folder-1');
-    expect(activate).toHaveBeenCalledWith('imported-workspace', 7);
-    expect(browser.tabs.update).toHaveBeenCalledWith(101, { active: true });
+    expect(activate).not.toHaveBeenCalled();
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      discarded: true,
+      windowId: 7,
+      url: 'https://pinned.example/',
+      title: 'Pinned',
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      discarded: true,
+      windowId: 7,
+      url: 'https://normal.example/',
+      title: 'Normal',
+    });
     expect(summary).toMatchObject({
       workspacesCreated: 1,
       foldersCreated: 1,
       tabsOpened: 2,
       pinnedTabsOpened: 1,
       skippedDuplicates: 1,
-      skippedUnsupportedUrls: 1,
+      skippedUnsupportedUrls: 2,
       failedTabs: 0,
     });
     expect(onProgress).toHaveBeenCalledWith({
@@ -437,8 +458,10 @@ describe('executeExternalMerge', () => {
     });
     expect(browser.tabs.create).toHaveBeenCalledWith({
       active: false,
+      discarded: true,
       windowId: 7,
       url: 'https://second.example/',
+      title: 'Second',
     });
     expect(browser.tabs.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ url: 'https://first.example/' }),
@@ -539,8 +562,10 @@ describe('executeExternalMerge', () => {
     });
     expect(browser.tabs.create).toHaveBeenCalledWith({
       active: false,
+      discarded: true,
       windowId: 7,
       url: 'https://space-b.example/',
+      title: 'Space B',
     });
     expect(browser.tabs.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ url: 'https://space-a.example/' }),
@@ -783,12 +808,12 @@ describe('executeExternalMerge', () => {
     expect(browser.tabs.create).not.toHaveBeenCalled();
   });
 
-  it('does not wait for final tab focus before completing the merge', async () => {
+  it('leaves imported tabs discarded without activating their workspace or a tab', async () => {
     vi.stubGlobal('browser', {
       tabs: {
         query: vi.fn(async () => []),
         create: vi.fn(async () => ({ id: 100 })),
-        update: vi.fn(() => new Promise(() => undefined)),
+        update: vi.fn(),
       },
       sessions: {
         setTabValue: vi.fn(async () => undefined),
@@ -850,7 +875,15 @@ describe('executeExternalMerge', () => {
     );
 
     expect(summary.tabsOpened).toBe(1);
-    expect(browser.tabs.update).toHaveBeenCalledWith(100, { active: true });
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: false,
+      discarded: true,
+      windowId: 7,
+      url: 'https://firefox.example/',
+      title: 'Firefox',
+    });
+    expect(ctx.workspaces.activate).not.toHaveBeenCalled();
+    expect(browser.tabs.update).not.toHaveBeenCalled();
   });
 
   it('times out hung tab creation and removes the empty workspace', async () => {

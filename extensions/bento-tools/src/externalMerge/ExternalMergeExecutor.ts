@@ -174,7 +174,10 @@ function filterImportableTabs(
   const out: ImportableTab[] = [];
   for (const tab of tabs) {
     const normalizedUrl = normalizeExternalUrl(tab.url, session.kind);
-    if (!normalizedUrl) {
+    // Firefox rejects discarded creation for about:newtab/about:home. Empty
+    // source new tabs carry no session content, so omit them instead of waking
+    // a real new-tab page during a potentially large merge.
+    if (!normalizedUrl || normalizedUrl === 'about:newtab') {
       summary.skippedUnsupportedUrls++;
       continue;
     }
@@ -258,9 +261,10 @@ async function createImportedTab(
 ): Promise<number | null> {
   const createOptions: browser.tabs._CreateCreateProperties = {
     active: false,
+    discarded: true,
     ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
-    ...(tab.normalizedUrl === 'about:newtab' ? {} : { url: tab.normalizedUrl }),
-    ...(tab.source.pinned ? { pinned: true } : {}),
+    url: tab.normalizedUrl,
+    ...(tab.source.title ? { title: tab.source.title } : {}),
   };
   const created = await withTimeout(
     browser.tabs.create(createOptions),
@@ -321,9 +325,6 @@ export async function executeExternalMerge(
     totalTabs,
     completedTabs,
   });
-  const importedWorkspaceIds: string[] = [];
-  let firstFocusableTabId: number | null = null;
-  let firstCreatedTabId: number | null = null;
   let cancelRequested = false;
 
   for (let planIndex = 0; planIndex < plans.length; planIndex++) {
@@ -365,8 +366,6 @@ export async function executeExternalMerge(
           summary.tabsOpened++;
           siteStatus = 'opened';
           if (tab.source.pinned) summary.pinnedTabsOpened++;
-          if (firstCreatedTabId === null) firstCreatedTabId = tabId;
-          if (!tab.source.pinned && firstFocusableTabId === null) firstFocusableTabId = tabId;
         }
       } catch (err) {
         summary.failedTabs++;
@@ -411,7 +410,6 @@ export async function executeExternalMerge(
       continue;
     }
 
-    importedWorkspaceIds.push(workspace.id);
     summary.workspacesCreated++;
 
     for (const group of plan.groups) {
@@ -470,21 +468,6 @@ export async function executeExternalMerge(
     totalTabs,
     completedTabs,
   });
-
-  const firstWorkspaceId = importedWorkspaceIds[0];
-  if (firstWorkspaceId) {
-    const result = ctx.workspaces.activate(firstWorkspaceId, ctx.sourceWindowId);
-    if (result === 'conflict') {
-      console.warn('[bento-tools] externalMerge: imported workspace activation conflict');
-    }
-  }
-
-  const tabToFocus = firstFocusableTabId ?? firstCreatedTabId;
-  if (tabToFocus !== null) {
-    void browser.tabs.update(tabToFocus, { active: true }).catch((err) => {
-      console.warn('[bento-tools] externalMerge: focus imported tab failed:', err);
-    });
-  }
 
   return summary;
 }

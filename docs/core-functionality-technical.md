@@ -1457,9 +1457,12 @@ Merge execution lives in
 `extensions/bento-tools/src/externalMerge/ExternalMergeExecutor.ts`. It builds a
 normalized URL set from Bento-owned tabs plus panel tab ids, using live URLs from
 `browser.tabs.query({})`. URL normalization lowercases protocol/host, removes
-default ports, preserves path/query/hash, maps supported source new-tab URLs to
+default ports, preserves path/query/hash, recognizes source new-tab URLs as
 `about:newtab`, and rejects invalid, `javascript:`, `data:`, and unsupported
-browser-internal schemes. Duplicates are skipped against existing Bento state
+browser-internal schemes. Merge planning omits recognized new-tab pages because
+Firefox cannot create `about:` pages already discarded; importing an empty
+source new tab is not worth waking content during a bulk merge. Duplicates are
+skipped against existing Bento state
 and earlier tabs in the same merge. If filtering leaves no importable tabs, the
 executor throws `ExternalMergeError("no-importable-tabs", ...)` before creating
 workspaces so duplicate-only sources produce a visible no-op message instead of
@@ -1482,10 +1485,14 @@ same collision behavior as backup import (`name`, `name (imported)`, then
 numeric suffix). When `externalMerge/merge` carries `targetIds`, `buildPlans()`
 applies the same source-space/window grouping but keeps only matching target ids;
 omitting `targetIds` imports the full source as before. Workspaces are created
-with `{ activate: false }` until all tabs/folders are created. Tabs are opened
-inactive in the requesting window when known, assigned to the workspace through
-`TabRegistry.assignWorkspaceEagerly`, and pinned tabs are pinned with
-`browser.tabs.update` as a backstop. Source tab titles are not written to
+with `{ activate: false }` and are not activated when the merge completes. Tabs
+are created with `{ active: false, discarded: true }` in the requesting window
+when known, so Firefox records their URL and source title without loading site
+content. They remain asleep until the user explicitly activates the imported
+space/tab. The tabs are assigned to the workspace through
+`TabRegistry.assignWorkspaceEagerly`, and source-pinned tabs are pinned afterward
+with `browser.tabs.update` because Firefox rejects creating a tab as both pinned
+and discarded. Source tab titles are not written to
 `TabRegistry.rename()` / `bento.customTitle`; imported tabs must keep using the
 live Firefox tab title so later navigation through links or the floating
 address bar updates the sidebar text normally. The
@@ -1503,9 +1510,9 @@ source folders start closed in Bento. Folder assignment uses
 `TabRegistry.assignFolderEagerly()` rather than `setFolder()` because
 `browser.tabs.create()` can resolve before `tabs.onCreated` has populated the
 registry. If no member can persist the folder marker, the empty imported folder
-is deleted. At the end, the first imported workspace activates in the requesting
-window and the first non-pinned imported tab receives focus, falling back to the
-first imported tab.
+is deleted. Do not focus an imported tab or activate an imported workspace at
+the end of the merge: either action wakes at least one imported site and defeats
+the bulk-import sleeping guarantee.
 Confirmed restart-persistence regression fix, 2026-06-24: if workspaces created
 by manual Chrome/Firefox/Zen merge survive a dev relaunch but their imported
 tabs disappear and each workspace contains only a new tab, the merge executor is

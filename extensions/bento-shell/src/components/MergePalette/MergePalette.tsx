@@ -71,7 +71,7 @@ function commandIcon(icon: typeof GlobeIcon) {
 function summaryText(summary: ExternalMergeSummary): string {
   return [
     `Created ${plural(summary.workspacesCreated, 'workspace')}`,
-    `opened ${plural(summary.tabsOpened, 'tab')}`,
+    `added ${plural(summary.tabsOpened, 'sleeping tab')}`,
     `skipped ${plural(summary.skippedDuplicates, 'duplicate')}`,
   ].join(', ');
 }
@@ -129,7 +129,7 @@ function progressActivityText(activity: ExternalMergeProgressActivity): string {
   const site = activity.title.trim() || siteHostname(activity.url);
   const host = siteHostname(activity.url);
   return activity.status === 'opened'
-    ? `Added ${site} - ${host}`
+    ? `Added sleeping tab: ${site} - ${host}`
     : `Could not add ${site} - ${host}`;
 }
 
