@@ -435,7 +435,8 @@ The user should be able to keep related pages visible in one Bento window:
 - pinned panels reachable from a favicon rail beside the sidebar tabs, with each
   button using the destination workspace's switcher colour, reopening at their
   remembered width after they have been closed, and drag-reorderable within that
-  rail.
+  rail. The rail meets the top workspace-switcher section without an overlapping
+  decorative corner.
 
 The browser should handle panel placement, persistence, and traversal so the
 operating system window manager is not the main productivity tool.
