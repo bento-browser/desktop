@@ -4,7 +4,7 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-pnpmfileChecksum: sha256-RBciX61Ibfwwg9DnAFtxKpq0vS/NK89YfB2Uj4t+WCE=
+pnpmfileChecksum: sha256-UAZeFMc5tlyouUMhVsSMKn0XwFf4BAjbiG6RSCa7p2Y=
 
 importers:
   .:
@@ -51,6 +51,9 @@ importers:
       '@tale-ui/react-styles':
         specifier: link:/Users/admin/Projects/tale-ui/core/packages/styles
         version: link:../../../tale-ui/core/packages/styles
+      '@tale-ui/themes':
+        specifier: link:/Users/admin/Projects/tale-ui/core/packages/themes/build
+        version: link:../../../tale-ui/core/packages/themes/build
       '@tale-ui/utils':
         specifier: link:/Users/admin/Projects/tale-ui/core/packages/utils
         version: link:../../../tale-ui/core/packages/utils

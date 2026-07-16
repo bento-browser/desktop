@@ -192,9 +192,9 @@ const bentoSection = bentoTokensContent
     '\n'
   : '';
 
-// Workspace theme presets. scripts/sync-theme-presets.mjs compiles raw
-// Scale CSS files from theme/presets/*.css into this generated index.css,
-// scoped by `[data-bento-theme="<id>"]`. Loading the compiled output into
+// Workspace theme presets. scripts/sync-theme-presets.mjs adapts the
+// @tale-ui/themes stylesheet plus any repo-local custom themes into this
+// generated index.css, scoped by `[data-bento-theme="<id>"]`. Loading it into
 // chrome's stylesheet means switching a workspace's theme (which sets
 // `data-bento-theme` on the chrome `<window>` element via the BENTO_THEME
 // title-IPC handler in bento-shell-mount.js) re-skins the chrome UI from

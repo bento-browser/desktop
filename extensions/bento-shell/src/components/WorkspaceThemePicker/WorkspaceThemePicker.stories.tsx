@@ -4,7 +4,7 @@ import { Column } from '@tale-ui/react/column';
 import { WorkspaceThemePicker } from './WorkspaceThemePicker';
 
 export const Default = () => {
-  const [themeId, setThemeId] = useState('antique');
+  const [themeId, setThemeId] = useState('standard-blueprint');
 
   return (
     <Column gap="m" style={{ padding: 'var(--space-l)' }}>
@@ -20,7 +20,7 @@ export const Default = () => {
 Default.storyName = 'Default';
 
 export const LongWorkspaceName = () => {
-  const [themeId, setThemeId] = useState('mountain-meadow');
+  const [themeId, setThemeId] = useState('monochrome-mountain-meadow');
 
   return (
     <Column gap="m" style={{ padding: 'var(--space-l)' }}>

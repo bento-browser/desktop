@@ -3,9 +3,10 @@
 Bento workspaces can each pick a theme — a swap of the `--brand-*`,
 `--neutral-default-*`, and `--color-N-fg` CSS variables that re-skins
 the entire UI (sidebar, overlays, and Firefox chrome) when that
-workspace is active. Themes are developer-curated presets generated
-externally by the Tale UI Scale app; users pick one in the Edit
-Workspace dialog.
+workspace is active. Bento consumes the curated Standard and Monochromatic
+collections from `@tale-ui/themes`; repo-local CSS remains available for the
+Bento Default palette and custom developer themes. Users pick a theme in the
+Edit Workspace dialog or all-workspaces palette.
 
 This doc covers the developer workflow: generating a theme, importing
 it, what the import produces, where it lands at runtime, and how to
@@ -13,8 +14,14 @@ troubleshoot.
 
 ## Mental model
 
-- A **theme** is a CSS file at `extensions/bento-shell/src/theme/presets/<id>.css`
-  whose rules are all scoped by `[data-bento-theme="<id>"]`.
+- The eight **Standard** and seven **Monochromatic** shipped themes are sourced
+  from `@tale-ui/themes` metadata and production CSS.
+- `scripts/sync-theme-presets.mjs` rewrites the package selectors to Bento's
+  `[data-bento-theme="<id>"]` contract and generates
+  `theme/presets/index.css` plus `index.ts`.
+- A repo-local **Bento/custom theme** is a CSS file at
+  `extensions/bento-shell/src/theme/presets/<id>.css`. `default.css` supplies
+  Bento's Default option.
 - A **workspace** stores a `themeId` string (`extensions/_shared/protocol.ts`).
   Undefined means "use the Default theme" (`default`).
 - The **Default theme** is repo-local too:
@@ -25,15 +32,14 @@ troubleshoot.
   also pushes it to the Firefox chrome window via the `BENTO_THEME:`
   document.title sentinel; `bento-shell-mount.js` picks it up and
   copies it to the chrome `<window>` root.
-- Both surfaces share the same theme stylesheet bundle — `pnpm run
-import` concatenates every `presets/*.css` into
-  `bento-chrome-tokens.css` for chrome, while Vite picks them up in
-  the shell via `theme/presets/index.css`.
+- Both surfaces share the generated theme stylesheet bundle — Vite consumes
+  `theme/presets/index.css`, while `pnpm run import` includes that same generated
+  artifact in `bento-chrome-tokens.css` for Firefox chrome.
 
 Switching themes is a single `setAttribute` call. No runtime CSS
 generation, no `<style>` element churn.
 
-## Generating a theme with Scale
+## Generating a custom Bento theme with Scale
 
 The [Tale UI Scale app](file:///Users/admin/Projects/tale-ui/core/playground/scale)
 generates the canonical palette CSS that Bento's converter consumes.
@@ -112,7 +118,9 @@ pnpm theme:import sunset ~/Desktop/sunset.css \
 ```
 
 `<id>` must be lowercase kebab-case (`/^[a-z][a-z0-9-]*$/`). Use
-`default` when you want to replace Bento's built-in Default theme.
+`default` when you want to replace Bento's built-in Default theme. Package ids
+and their legacy monochromatic aliases are reserved and cannot be shadowed by a
+repo-local theme.
 
 The script ([scripts/import-theme.mjs](../scripts/import-theme.mjs))
 does three things:
@@ -126,20 +134,13 @@ does three things:
    - Legacy `.light .tale-ui` / `.dark .tale-ui` siblings are dropped
      (Bento uses `data-color-mode`, not those class names)
 
-2. **Patches** `extensions/bento-shell/src/theme/presets/index.css`
-   to add `@import './<id>.css';`, alphabetically sorted.
+2. **Runs** `scripts/sync-theme-presets.mjs`, which discovers the new sibling
+   CSS file and regenerates `index.css` and `index.ts` alongside the installed
+   `@tale-ui/themes` collections. `brand60` and `neutral20` are parsed for the
+   split picker swatch.
 
-3. **Patches** `extensions/bento-shell/src/theme/presets/index.ts` to
-   append a `BentoThemeMeta` entry to the `BENTO_THEMES` array. For
-   `default`, the existing Default metadata entry is refreshed instead.
-   The entry's `brand60` is parsed from the Scale CSS's `--brand-60`
-   declaration — that's the hex the picker swatch and the workspace
-   switcher avatar paint.
-
-Re-running with the same non-default `<id>` overwrites the `.css` file
-but leaves `index.css` / `index.ts` unchanged (the script is
-idempotent). Re-running with `default` overwrites `default.css` and
-refreshes the Default theme's swatch metadata.
+Re-running with the same `<id>` overwrites the `.css` file and deterministically
+regenerates both generated artifacts.
 
 ### Updating the Default theme
 
@@ -170,8 +171,9 @@ tabstrip / titlebar to re-skin alongside the shell.
 
 1. Open the workspace switcher (sidebar trigger).
 2. Click **Edit `<workspace>`**.
-3. The Edit Workspace dialog shows a **Theme** picker. Open it to search by
-   theme name or id, then choose a tile. Each tile shows a circular split swatch:
+3. The Edit Workspace dialog shows a **Theme** picker grouped into **Bento**,
+   **Standard**, and **Monochromatic** sections. Search matches collection,
+   theme name, id, and package description. Each tile shows a circular split swatch:
    the brand colour (`--brand-60`) and pale surface neutral
    (`--neutral-default-20`) read as a mini preview of the themed UI. Save.
 
@@ -190,9 +192,9 @@ use, then round-robins once every theme has been claimed at least
 once. The first workspace at fresh-profile boot ("Personal") keeps the
 Default theme — only workspaces created from the menu rotate.
 
-If you import a new theme via `pnpm theme:import`, it joins the
-rotation automatically (the rotation reads from `BENTO_THEMES` minus
-the Default).
+All shipped package themes participate in the rotation. A custom theme imported
+via `pnpm theme:import` joins automatically because the rotation reads from
+`BENTO_THEMES` minus Default.
 
 Existing workspaces created before this rotation was in place keep
 whatever `themeId` they were saved with (typically undefined → Default
@@ -202,11 +204,10 @@ visually distinct without recreating.
 ## Hand-authoring a theme (without the script)
 
 If you need finer control than Scale offers (e.g. matching an
-existing brand exactly), you can author a preset by hand. The three
-shipped presets [teal.css](../extensions/bento-shell/src/theme/presets/teal.css),
-[terracotta.css](../extensions/bento-shell/src/theme/presets/terracotta.css),
-and [rosewater.css](../extensions/bento-shell/src/theme/presets/rosewater.css)
-are good templates.
+existing brand exactly), you can author a repo-local preset by hand. Use
+[default.css](../extensions/bento-shell/src/theme/presets/default.css) as the
+local template; shipped Standard and Monochromatic CSS remains owned by
+`@tale-ui/themes`.
 
 Minimum required structure:
 
@@ -230,7 +231,7 @@ Add the neutral palette for a full UI re-skin:
   --neutral-default-5: …;
   --neutral-default-10: …;
   --neutral-default-12: …;
-  /* full 27-stop ladder, see teal.css for the complete list */
+  /* full 27-stop ladder, see the generated presets/index.css */
   --neutral-default-100: …;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
@@ -264,23 +265,8 @@ html[data-bento-theme='<id>'][data-color-mode='dark'].tale-ui {
 }
 ```
 
-Then patch `index.css` and `index.ts` manually:
-
-```css
-/* index.css — add a sorted @import */
-@import './<id>.css';
-```
-
-```ts
-// index.ts — append to BENTO_THEMES
-{
-  id: '<id>',
-  name: '<Display Name>',
-  brand60: '#abcdef',   // must match --brand-60 above
-},
-```
-
-Run `pnpm run import` to regenerate `bento-chrome-tokens.css`.
+Run `pnpm run theme:sync` to regenerate `index.css` and `index.ts`, then
+`pnpm run import` to regenerate `bento-chrome-tokens.css`.
 
 ## Token surface
 
@@ -309,8 +295,9 @@ For maintainers — skip this if you're just adding themes.
 - Every shell entry (`main.tsx`, `palette/main.tsx`, `confirm/main.tsx`,
   `settings/main.tsx`, `welcome/main.tsx`, `workspace-switcher/main.tsx`,
   `menu/main.tsx`, `edit-workspace/main.tsx`) imports
-  `theme/presets/index.css`. That barrel `@import`s every preset, so
-  every scoped rule ships in every shell bundle.
+  `theme/presets/index.css`. The generated file contains the adapted
+  `@tale-ui/themes` CSS plus any repo-local presets, so every scoped rule ships
+  in every shell bundle.
 - `useWorkspaceTheme()` ([theme/useWorkspaceTheme.ts](../extensions/bento-shell/src/theme/useWorkspaceTheme.ts))
   subscribes to the active workspace via the existing Zustand store
   and calls `document.documentElement.setAttribute('data-bento-theme',
@@ -326,8 +313,8 @@ themeId ?? 'default')`. Flipping that attribute swaps which scoped
 ### Chrome side
 
 - [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
-  reads every `presets/*.css` (alphabetically) and concatenates them
-  into the chrome-side `bento-chrome-tokens.css`. The existing
+  reads generated `presets/index.css` into the chrome-side
+  `bento-chrome-tokens.css`. The existing
   `rewriteHtmlToRoot` regex converts bare `html` selectors to `:root`
   so the chrome `<window>` element matches.
 - [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
@@ -341,8 +328,9 @@ themeId ?? 'default')`. Flipping that attribute swaps which scoped
   `setAttribute`, no runtime CSS string construction.
 - IPC payload is just the `themeId` (~20 bytes), not the rendered
   CSS (~3 KB), so the title-sentinel channel stays cheap.
-- Shell and chrome share the same source-of-truth files. Adding a
-  theme is one `pnpm theme:import` + one `pnpm run import`.
+- Shell and chrome share one generated artifact. Package upgrades refresh
+  shipped themes through `pnpm run theme:sync`; adding a custom theme is one
+  `pnpm theme:import` + one `pnpm run import`.
 - `@media (prefers-color-scheme)` and `[data-color-mode]` selectors
   work natively because the CSS is static — no need to re-render on
   mode flip.
@@ -398,14 +386,15 @@ var(--brand-10)`), add them to the `[data-bento-theme]` block too.
 
 ## Removing or renaming a theme
 
-There is no `pnpm theme:remove` script. Removal is three manual edits:
+There is no `pnpm theme:remove` script. Only repo-local custom themes can be
+removed independently:
 
 1. Delete `extensions/bento-shell/src/theme/presets/<id>.css`.
-2. Remove the `@import './<id>.css';` line from
-   `extensions/bento-shell/src/theme/presets/index.css`.
-3. Remove the corresponding `BentoThemeMeta` entry from
-   `extensions/bento-shell/src/theme/presets/index.ts`.
-4. Run `pnpm run import` to drop the rules from `bento-chrome-tokens.css`.
+2. Run `pnpm run theme:sync`.
+3. Run `pnpm run import` to drop the rules from `bento-chrome-tokens.css`.
+
+Shipped Standard and Monochromatic themes are controlled by the pinned
+`@tale-ui/themes` version and are not edited in Bento.
 
 Workspaces still carrying the deleted `themeId` will fall back to the
 Default theme at runtime (see `getThemeMeta` in
@@ -417,17 +406,15 @@ keeps the old id, so users need to re-pick the theme in Edit Workspace.
 ## Troubleshooting
 
 **The new theme doesn't show up in the picker.**
-The `BENTO_THEMES` entry didn't land. Open
-`extensions/bento-shell/src/theme/presets/index.ts` and confirm the
-metadata entry is there. If you used `pnpm theme:import` and the
-script reported success but the entry is missing, the patcher
-probably failed to locate the array — file a bug with the index.ts
-contents at the time of the run.
+Run `pnpm run theme:sync`, then open
+`extensions/bento-shell/src/theme/presets/index.ts` and confirm the generated
+metadata entry is present. A package-resolution error means the local Tale UI
+build or registry install is incomplete.
 
 **The picker shows the theme but selecting it changes nothing.**
-The `.css` file didn't import. Check `presets/index.css` for the
-`@import './<id>.css';` line. Then check the dev server / built
-bundle — Vite's CSS pipeline may have a stale cache; restart
+Run `pnpm run theme:sync` and check `presets/index.css` for the theme's
+`[data-bento-theme]` selector. Then check the dev server / built bundle — Vite's
+CSS pipeline may have a stale cache; restart
 `pnpm --filter @bento/shell dev` or rebuild.
 
 **Shell re-skins but chrome stays default.**
@@ -441,9 +428,8 @@ stylesheet is loaded at boot, not hot-swapped.
 Tale UI's defaults for `--color-N-fg` aren't tuned for your custom
 brand. Add explicit `--color-N-fg` overrides under the
 `html[data-bento-theme="<id>"]:not([data-color-mode="dark"]).tale-ui`
-selector (and the dark + `@media` variants). The shipped themes
-([teal.css](../extensions/bento-shell/src/theme/presets/teal.css) etc.)
-show the pattern.
+selector (and the dark + `@media` variants). The generated package section in
+`presets/index.css` shows the pattern.
 
 **Workspace avatars in the switcher menu all show the same colour.**
 Three things to check, in order:
@@ -482,6 +468,9 @@ to hex and re-import.
   [`/Users/admin/Projects/tale-ui/core/playground/scale/`](file:///Users/admin/Projects/tale-ui/core/playground/scale/)
 - Theme converter script:
   [`scripts/import-theme.mjs`](../scripts/import-theme.mjs)
+- Shipped theme source: `@tale-ui/themes`
+- Theme artifact generator:
+  [`scripts/sync-theme-presets.mjs`](../scripts/sync-theme-presets.mjs)
 - Theme presets registry:
   [`extensions/bento-shell/src/theme/presets/index.ts`](../extensions/bento-shell/src/theme/presets/index.ts)
 - Shell hook:

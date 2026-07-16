@@ -30,6 +30,7 @@ const TALE_UI_LINKS = {
   '@tale-ui/core': path.join(TALE_UI_ROOT, 'css'),
   '@tale-ui/react': path.join(TALE_UI_ROOT, 'react', 'build'),
   '@tale-ui/react-styles': path.join(TALE_UI_ROOT, 'styles'),
+  '@tale-ui/themes': path.join(TALE_UI_ROOT, 'themes', 'build'),
   '@tale-ui/utils': path.join(TALE_UI_ROOT, 'utils'),
 };
 

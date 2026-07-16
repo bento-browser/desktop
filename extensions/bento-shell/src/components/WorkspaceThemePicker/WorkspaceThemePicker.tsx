@@ -10,12 +10,19 @@ import { Tooltip } from '@tale-ui/react/tooltip';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import X from 'lucide-react/dist/esm/icons/x';
 
-import { BENTO_THEMES, getThemeMeta, type BentoThemeMeta } from '../../theme/presets';
+import {
+  BENTO_THEMES,
+  getThemeMeta,
+  type BentoThemeCollection,
+  type BentoThemeMeta,
+} from '../../theme/presets';
 import './WorkspaceThemePicker.css';
 
 interface ThemePickerItem {
   id: string;
   name: string;
+  description: string;
+  collection: BentoThemeCollection;
   brand60: string;
   neutral20: string;
   keywords: string[];
@@ -28,9 +35,24 @@ export interface WorkspaceThemePickerProps {
   className?: string | undefined;
 }
 
+const THEME_COLLECTIONS: ReadonlyArray<{
+  id: BentoThemeCollection;
+  label: string;
+}> = [
+  { id: 'bento', label: 'Bento' },
+  { id: 'standard', label: 'Standard' },
+  { id: 'monochrome', label: 'Monochromatic' },
+];
+
+function getCollectionLabel(collection: BentoThemeCollection): string {
+  return THEME_COLLECTIONS.find((entry) => entry.id === collection)?.label ?? collection;
+}
+
 const THEME_PICKER_ITEMS: ThemePickerItem[] = BENTO_THEMES.map((theme) => ({
   id: theme.id,
   name: theme.name,
+  description: theme.description,
+  collection: theme.collection,
   brand60: theme.brand60,
   neutral20: theme.neutral20,
   keywords: normalizeThemeKeywords(theme),
@@ -39,7 +61,16 @@ const THEME_PICKER_ITEMS: ThemePickerItem[] = BENTO_THEMES.map((theme) => ({
 function normalizeThemeKeywords(theme: BentoThemeMeta): string[] {
   return Array.from(
     new Set(
-      [theme.id, theme.name, ...theme.id.split(/[-_\s]+/), ...theme.name.split(/\s+/)]
+      [
+        theme.id,
+        theme.name,
+        theme.description,
+        theme.collection,
+        getCollectionLabel(theme.collection),
+        ...(theme.collection === 'monochrome' ? ['monochrome'] : []),
+        ...theme.id.split(/[-_\s]+/),
+        ...theme.name.split(/\s+/),
+      ]
         .map((part) => part.trim().toLowerCase())
         .filter(Boolean),
     ),
@@ -66,6 +97,14 @@ export function WorkspaceThemePicker({
   const filteredThemes = useMemo(
     () => THEME_PICKER_ITEMS.filter((theme) => themeMatchesQuery(theme, query)),
     [query],
+  );
+  const filteredThemeGroups = useMemo(
+    () =>
+      THEME_COLLECTIONS.map((collection) => ({
+        ...collection,
+        themes: filteredThemes.filter((theme) => theme.collection === collection.id),
+      })).filter((collection) => collection.themes.length > 0),
+    [filteredThemes],
   );
 
   function closePicker() {
@@ -137,40 +176,66 @@ export function WorkspaceThemePicker({
               aria-label="Theme results"
               className="bento-workspace-theme-picker__list"
             >
-              {filteredThemes.map((theme) => {
-                const isSelected = theme.id === selectedTheme.id;
-                return (
-                  <Tooltip.Root key={theme.id} delay={400}>
-                    <ToggleButton
-                      aria-label={isSelected ? `${theme.name}, selected` : theme.name}
-                      isSelected={isSelected}
-                      size="sm"
-                      className="bento-workspace-theme-picker__option"
-                      onChange={(selected) => {
-                        if (selected) selectTheme(theme.id);
-                      }}
-                    >
-                      <ColorSwatch
-                        color={theme.brand60}
-                        secondaryColor={theme.neutral20}
-                        shape="circle"
-                        className="bento-workspace-theme-picker__option-swatch"
-                      />
-                      <Text
-                        variant="text"
-                        size="xs"
-                        className="bento-workspace-theme-picker__option-name"
-                      >
-                        {theme.name}
-                      </Text>
-                    </ToggleButton>
-                    <Tooltip.Popup placement="top" offset={8}>
-                      <Tooltip.Arrow />
-                      {theme.name}
-                    </Tooltip.Popup>
-                  </Tooltip.Root>
-                );
-              })}
+              {filteredThemeGroups.map((collection) => (
+                <Column
+                  key={collection.id}
+                  gap="3xs"
+                  className="bento-workspace-theme-picker__group"
+                >
+                  <Text
+                    as="div"
+                    variant="label"
+                    size="xs"
+                    color="muted"
+                    className="bento-workspace-theme-picker__group-label"
+                  >
+                    {collection.label}
+                  </Text>
+                  <Column
+                    gap="3xs"
+                    role="group"
+                    aria-label={`${collection.label} themes`}
+                    className="bento-workspace-theme-picker__grid"
+                  >
+                    {collection.themes.map((theme) => {
+                      const isSelected = theme.id === selectedTheme.id;
+                      const accessibleName = `${theme.name}, ${collection.label}`;
+                      return (
+                        <Tooltip.Root key={theme.id} delay={400}>
+                          <ToggleButton
+                            aria-label={isSelected ? `${accessibleName}, selected` : accessibleName}
+                            isSelected={isSelected}
+                            size="sm"
+                            className="bento-workspace-theme-picker__option"
+                            onChange={(selected) => {
+                              if (selected) selectTheme(theme.id);
+                            }}
+                          >
+                            <ColorSwatch
+                              color={theme.brand60}
+                              secondaryColor={theme.neutral20}
+                              shape="circle"
+                              className="bento-workspace-theme-picker__option-swatch"
+                            />
+                            <Text
+                              variant="text"
+                              size="xs"
+                              className="bento-workspace-theme-picker__option-name"
+                            >
+                              {theme.name}
+                            </Text>
+                          </ToggleButton>
+                          <Tooltip.Popup placement="top" offset={8}>
+                            <Tooltip.Arrow />
+                            <Tooltip.Title>{theme.name}</Tooltip.Title>
+                            <Tooltip.Description>{theme.description}</Tooltip.Description>
+                          </Tooltip.Popup>
+                        </Tooltip.Root>
+                      );
+                    })}
+                  </Column>
+                </Column>
+              ))}
             </Column>
           ) : (
             <Text

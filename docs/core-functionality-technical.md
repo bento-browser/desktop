@@ -725,9 +725,15 @@ uses `workspace-palette.html`, opened from the workspace switcher through the
 `useWorkspacePalette` title sentinel. Both surfaces use
 `components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which adapts Tale
 UI's Emoji Picker recipe with `Popover` and `SearchField` over local
-`BENTO_THEMES` metadata, then renders compact Tale UI `ToggleButton` options so
-selected state fills the tile and each option can expose a full-name `Tooltip`
-on hover/focus. Theme selection writes stable `Workspace.themeId` values:
+`BENTO_THEMES` metadata. `scripts/sync-theme-presets.mjs` generates that metadata
+from Bento's repo-local Default theme plus the eight standard and seven
+monochromatic themes exported by `@tale-ui/themes`. The picker groups those
+collections and renders compact Tale UI `ToggleButton` options so selected state
+fills the tile and each option exposes the package description in a `Tooltip` on
+hover/focus. Standard ids use `standard-*`; monochromatic ids use
+`monochrome-*`, which keeps both Terracotta variants distinct. Legacy unprefixed
+workspace ids resolve to the matching monochromatic theme. Theme selection
+writes stable `Workspace.themeId` values:
 `edit-workspace.html` keeps the choice in draft state until Save dispatches
 `workspace/update`, while `workspace-palette.html` dispatches
 `workspace/update` immediately for the edited row. Theme search text stays local
@@ -2841,6 +2847,10 @@ Workspace theme metadata is stored as `Workspace.themeId`.
 
 Shell theme flow:
 
+- `scripts/sync-theme-presets.mjs` reads the installed `@tale-ui/themes`
+  metadata and production CSS, rewrites its standard/monochromatic selectors to
+  canonical `data-bento-theme` ids, adds legacy monochromatic aliases, and emits
+  the shared `theme/presets/index.ts` and `index.css` artifacts.
 - `extensions/bento-shell/src/theme/useWorkspaceTheme.ts` mirrors the active
   workspace theme to `<html data-bento-theme="...">`.
 - `useToolsPort.ts` includes the active workspace theme id in the active

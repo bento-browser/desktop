@@ -276,11 +276,11 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 ## Tale UI: development ↔ release toggle
 
-Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react: 1.3.47`, `@tale-ui/core: 1.1.17`, etc.) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
+Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react`, `@tale-ui/themes`, `@tale-ui/core`, etc. are currently `1.3.56`) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
 
 **Default install (dev loop)** — `pnpm install`:
 
-- The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/core/packages/*`. Source edits in `tale-ui/core` hot-reload into Bento exactly as before R-1.
+- The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/core/packages/*`. Packages consumed through their published export shape, including `@tale-ui/react` and `@tale-ui/themes`, link to their local `build/` output. Source edits in `tale-ui/core` hot-reload after rebuilding the affected Tale UI package.
 - The lockfile records the `link:` paths.
 
 **Release install** — `BENTO_RELEASE=1 pnpm install --no-frozen-lockfile` (used by `scripts/build-release.sh` and the GitHub Actions release workflow):

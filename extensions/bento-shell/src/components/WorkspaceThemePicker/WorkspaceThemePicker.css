@@ -44,12 +44,19 @@
 }
 
 .tale-column.bento-workspace-theme-picker__list {
+  max-height: var(--bento-workspace-theme-picker-list-max-block);
+  overflow: auto;
+}
+
+.bento-workspace-theme-picker__group-label {
+  padding-inline: var(--space-2xs);
+}
+
+.tale-column.bento-workspace-theme-picker__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: var(--bento-workspace-theme-picker-option-block-size);
   gap: var(--space-3xs);
-  max-height: var(--bento-workspace-theme-picker-list-max-block);
-  overflow: auto;
 }
 
 .tale-toggle-button.bento-workspace-theme-picker__option {

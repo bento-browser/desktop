@@ -591,6 +591,13 @@ Workspace themes retune Tale UI variables by setting `--brand-*`,
 `[data-bento-theme="<id>"]`. The active workspace theme is mirrored onto shell
 documents and Firefox chrome roots.
 
+The shipped Standard and Monochromatic collections come directly from
+`@tale-ui/themes`. `scripts/sync-theme-presets.mjs` adapts the package metadata
+and CSS to Bento's single `data-bento-theme` persistence/bridge contract and
+keeps repo-local CSS only for Bento-specific themes such as Default. The shared
+picker groups the collections; `standard-*` and `monochrome-*` ids disambiguate
+themes with the same display name.
+
 For theme work, follow [themes.md](themes.md). After importing or changing a
 theme, run:
 
