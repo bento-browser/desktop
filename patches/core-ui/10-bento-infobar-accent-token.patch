@@ -1,4 +1,4 @@
-From a62b622c33deb899322b0a6476f2768dfc269bb6 Mon Sep 17 00:00:00 2001
+From 8d080f2e82a53c8b18dadfd36e83d66095dd703b Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:41 +1000
 Subject: [PATCH] Use Bento accent token for infobars

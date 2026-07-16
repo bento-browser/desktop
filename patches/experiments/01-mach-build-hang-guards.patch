@@ -1,4 +1,4 @@
-From 5461313f0737dab35070862c8a5db6536683b2fe Mon Sep 17 00:00:00 2001
+From 6817579d0bf7003a4c868d0ecd2164694ac165ac Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:42 +1000
 Subject: [PATCH] Add mach build hang guards

@@ -1,4 +1,4 @@
-From 42fc6d7202705ee848ec9f49a88ae1b54f103bff Mon Sep 17 00:00:00 2001
+From 1bf4e0d9162bb0de0c738a9e288c14a14f8ef90e Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome

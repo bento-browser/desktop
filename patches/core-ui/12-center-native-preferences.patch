@@ -1,15 +1,15 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 1cbcad4198f0c1120926fe08ead6ba34eea53a8b Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.xhtml  |   5 +-
- browser/themes/shared/preferences/preferences.css | 216 +++++++++++++++++++++-
+ .../components/preferences/preferences.xhtml  |   5 +-
+ .../themes/shared/preferences/preferences.css | 216 +++++++++++++++++-
  2 files changed, 212 insertions(+), 9 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index 9760a4a35b..a7b50a3d68 100644
+index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..a7b50a3d68fd7e12bce1a9214e518baf50c02c83 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
 @@ -20,6 +20,7 @@
@@ -39,7 +39,7 @@ index 9760a4a35b..a7b50a3d68 100644
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index bcede33421..5bd3f02921 100644
+index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b36bf61ed3 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
 @@ -24,7 +24,160 @@
@@ -316,3 +316,4 @@ index bcede33421..5bd3f02921 100644
    @media not (forced-colors) {
 -- 
 2.50.1 (Apple Git-155)
+

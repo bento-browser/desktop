@@ -2,7 +2,7 @@
 
 This is Bento Browser's canonical Firefox-facing branding tree. Its structure
 and Mozilla-authored files are based on `browser/branding/unofficial` from
-Mozilla Firefox 152.0.2 and retain their Mozilla Public License headers. Bento
+Mozilla Firefox 152.0.6 and retain their Mozilla Public License headers. Bento
 maintains its product names, URLs, installer metadata, colors, and visual assets
 directly in this directory.
 
