@@ -64,9 +64,13 @@ own instead of importing the whole browser session. If every tab from a selected
 source, space, or window is already open in Bento, the picker reports that no
 new tabs were imported instead of silently doing nothing. While an import is
 running, the picker covers the command palette with an opaque in-palette
-progress view naming the source being imported, an indeterminate loader, and a
-Cancel button. The progress view also has a Close button that hides the picker
-without cancelling the active import.
+progress view naming the source being imported. It starts with an indeterminate
+loader while Bento reads the session, then shows the actual percentage plus
+completed/total space and site counts. A scrolling activity log reports each
+space as it starts and finishes and lists the title and hostname of each site as
+it is added, including sites that could not be opened. The progress view also
+has a Cancel button and a Close button that hides the picker without cancelling
+the active import.
 Cancel stops the remaining import work without rolling back tabs that were
 already opened. Selecting a source does not close the picker; it stays open
 through progress, success, or error. During progress the in-palette Close and

@@ -1111,6 +1111,18 @@ describe('protocol handler external merge', () => {
       windowId: 5,
       sourceId: 'source-1',
     });
+    expect(broadcast).toHaveBeenCalledWith({
+      type: 'externalMerge/progress',
+      operationId: 'op-1',
+      windowId: 5,
+      progress: {
+        stage: 'preparing',
+        totalWorkspaces: 0,
+        completedWorkspaces: 0,
+        totalTabs: 0,
+        completedTabs: 0,
+      },
+    });
 
     resolveSnapshot({
       sourceId: 'source-1',

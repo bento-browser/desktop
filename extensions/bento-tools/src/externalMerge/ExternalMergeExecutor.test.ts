@@ -110,7 +110,8 @@ describe('executeExternalMerge', () => {
       ],
     };
 
-    const summary = await executeExternalMerge(session, ctx);
+    const onProgress = vi.fn();
+    const summary = await executeExternalMerge(session, ctx, { onProgress });
 
     expect(createWorkspace).toHaveBeenCalledWith(
       { name: 'Chrome: Default Window 1 (imported)' },
@@ -140,6 +141,36 @@ describe('executeExternalMerge', () => {
       skippedDuplicates: 1,
       skippedUnsupportedUrls: 1,
       failedTabs: 0,
+    });
+    expect(onProgress).toHaveBeenCalledWith({
+      stage: 'importing',
+      totalWorkspaces: 1,
+      completedWorkspaces: 0,
+      totalTabs: 2,
+      completedTabs: 0,
+    });
+    expect(onProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'importing',
+        totalWorkspaces: 1,
+        completedWorkspaces: 0,
+        totalTabs: 2,
+        completedTabs: 1,
+        currentWorkspaceName: 'Chrome: Default Window 1 (imported)',
+        activity: {
+          kind: 'site',
+          title: 'Pinned',
+          url: 'https://pinned.example/',
+          status: 'opened',
+        },
+      }),
+    );
+    expect(onProgress).toHaveBeenCalledWith({
+      stage: 'finalizing',
+      totalWorkspaces: 1,
+      completedWorkspaces: 1,
+      totalTabs: 2,
+      completedTabs: 2,
     });
   });
 

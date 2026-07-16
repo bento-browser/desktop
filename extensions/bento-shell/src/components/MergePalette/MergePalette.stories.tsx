@@ -89,6 +89,8 @@ function seed(state: Partial<ReturnType<typeof useExternalMergeStore.getState>> 
     activeSourceId: null,
     currentRequestId: null,
     activeOperationId: null,
+    progress: null,
+    progressLog: [],
     summary: null,
     error: null,
     lastOpenNonce: null,
@@ -116,6 +118,37 @@ export const Merging = () => {
       sources,
       activeSourceId: 'chrome-default',
       activeOperationId: 'operation-active',
+      progress: {
+        stage: 'importing',
+        totalWorkspaces: 3,
+        completedWorkspaces: 1,
+        totalTabs: 38,
+        completedTabs: 17,
+        currentWorkspaceName: 'Chrome: Planning',
+      },
+      progressLog: [
+        { kind: 'workspace', name: 'Chrome: Research', status: 'started' },
+        {
+          kind: 'site',
+          title: 'Tale UI component documentation',
+          url: 'https://tale-ui.dev/components/progress-bar',
+          status: 'opened',
+        },
+        {
+          kind: 'site',
+          title: 'Project notes',
+          url: 'https://notion.so/example',
+          status: 'opened',
+        },
+        { kind: 'workspace', name: 'Chrome: Research', status: 'completed' },
+        { kind: 'workspace', name: 'Chrome: Planning', status: 'started' },
+        {
+          kind: 'site',
+          title: 'Weekly plan',
+          url: 'https://planning.example/week',
+          status: 'opened',
+        },
+      ],
     });
   }, []);
   return <MergePalette onClose={noop} />;

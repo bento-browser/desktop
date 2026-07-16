@@ -1,4 +1,4 @@
-import type { ExternalMergeSummary, Workspace } from '@shared/protocol';
+import type { ExternalMergeProgress, ExternalMergeSummary, Workspace } from '@shared/protocol';
 import type { HandlerContext } from '../messaging/protocol-handler';
 import type {
   NormalizedExternalSession,
@@ -34,6 +34,7 @@ interface CreatedTab {
 interface ExecuteExternalMergeOptions {
   signal?: AbortSignal;
   targetIds?: string[];
+  onProgress?: (progress: ExternalMergeProgress) => void;
 }
 
 const TAB_CREATE_TIMEOUT_MS = 8000;
@@ -310,6 +311,16 @@ export async function executeExternalMerge(
   if (plans.length === 0) {
     throw new ExternalMergeError('no-importable-tabs', noImportableTabsMessage(session, summary));
   }
+  const totalTabs = plans.reduce((total, plan) => total + plan.tabs.length, 0);
+  let completedTabs = 0;
+  let completedWorkspaces = 0;
+  options.onProgress?.({
+    stage: 'importing',
+    totalWorkspaces: plans.length,
+    completedWorkspaces,
+    totalTabs,
+    completedTabs,
+  });
   const importedWorkspaceIds: string[] = [];
   let firstFocusableTabId: number | null = null;
   let firstCreatedTabId: number | null = null;
@@ -321,6 +332,16 @@ export async function executeExternalMerge(
       cancelRequested = true;
       break;
     }
+
+    options.onProgress?.({
+      stage: 'importing',
+      totalWorkspaces: plans.length,
+      completedWorkspaces,
+      totalTabs,
+      completedTabs,
+      currentWorkspaceName: plan.workspaceName,
+      activity: { kind: 'workspace', name: plan.workspaceName, status: 'started' },
+    });
 
     const workspace = ctx.workspaces.create({ name: plan.workspaceName }, ctx.sourceWindowId, {
       activate: false,
@@ -334,21 +355,39 @@ export async function executeExternalMerge(
       }
 
       const tab = plan.tabs[tabIndex]!;
+      let siteStatus: 'opened' | 'failed' = 'failed';
       try {
         const tabId = await createImportedTab(ctx, workspace, tab);
         if (tabId === null) {
           summary.failedTabs++;
-          continue;
+        } else {
+          createdTabs.push({ source: tab.source, tabId });
+          summary.tabsOpened++;
+          siteStatus = 'opened';
+          if (tab.source.pinned) summary.pinnedTabsOpened++;
+          if (firstCreatedTabId === null) firstCreatedTabId = tabId;
+          if (!tab.source.pinned && firstFocusableTabId === null) firstFocusableTabId = tabId;
         }
-        createdTabs.push({ source: tab.source, tabId });
-        summary.tabsOpened++;
-        if (tab.source.pinned) summary.pinnedTabsOpened++;
-        if (firstCreatedTabId === null) firstCreatedTabId = tabId;
-        if (!tab.source.pinned && firstFocusableTabId === null) firstFocusableTabId = tabId;
       } catch (err) {
         summary.failedTabs++;
         console.warn('[bento-tools] externalMerge: tabs.create failed:', err);
       }
+
+      completedTabs++;
+      options.onProgress?.({
+        stage: 'importing',
+        totalWorkspaces: plans.length,
+        completedWorkspaces,
+        totalTabs,
+        completedTabs,
+        currentWorkspaceName: plan.workspaceName,
+        activity: {
+          kind: 'site',
+          title: tab.source.title,
+          url: tab.normalizedUrl,
+          status: siteStatus,
+        },
+      });
 
       if (tabIndex < plan.tabs.length - 1 && isCancelled(options.signal)) {
         cancelRequested = true;
@@ -358,6 +397,16 @@ export async function executeExternalMerge(
 
     if (createdTabs.length === 0) {
       ctx.workspaces.delete(workspace.id);
+      completedWorkspaces++;
+      options.onProgress?.({
+        stage: 'importing',
+        totalWorkspaces: plans.length,
+        completedWorkspaces,
+        totalTabs,
+        completedTabs,
+        currentWorkspaceName: plan.workspaceName,
+        activity: { kind: 'workspace', name: plan.workspaceName, status: 'failed' },
+      });
       if (cancelRequested) break;
       continue;
     }
@@ -388,6 +437,17 @@ export async function executeExternalMerge(
       }
     }
 
+    completedWorkspaces++;
+    options.onProgress?.({
+      stage: 'importing',
+      totalWorkspaces: plans.length,
+      completedWorkspaces,
+      totalTabs,
+      completedTabs,
+      currentWorkspaceName: plan.workspaceName,
+      activity: { kind: 'workspace', name: plan.workspaceName, status: 'completed' },
+    });
+
     if (cancelRequested) break;
     if (planIndex < plans.length - 1 && isCancelled(options.signal)) {
       cancelRequested = true;
@@ -402,6 +462,14 @@ export async function executeExternalMerge(
   if (summary.tabsOpened === 0 && summary.failedTabs > 0) {
     throw new ExternalMergeError('no-importable-tabs', tabOpenFailureMessage(session));
   }
+
+  options.onProgress?.({
+    stage: 'finalizing',
+    totalWorkspaces: plans.length,
+    completedWorkspaces,
+    totalTabs,
+    completedTabs,
+  });
 
   const firstWorkspaceId = importedWorkspaceIds[0];
   if (firstWorkspaceId) {

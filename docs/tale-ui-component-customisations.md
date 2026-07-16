@@ -144,8 +144,12 @@ Existing examples:
   uses a scoped unlayered `CommandPalette` override for the active import
   overlay. The overlay is positioned inside the popup, covers the search,
   source list, footer, and close control with an opaque token-backed surface,
-  and leaves only the in-progress `ProgressBar` plus Close and Cancel actions
-  visible.
+  and leaves only the in-progress `ProgressBar`, activity log, and Close and
+  Cancel actions visible. The log uses the token-backed
+  `--bento-merge-progress-log-*-height` bounds so long imports scroll inside the
+  existing popup instead of resizing it. Its full-width box includes its border
+  and padding so it stays centered in the overlay, with tighter leading and
+  bottom padding than its top and trailing edges.
 - [WorkspaceSwitcher.css](../extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.css)
   uses unlayered rules for Avatar, Menu popup, trigger label, and icon/text
   overrides that must beat Tale UI defaults.

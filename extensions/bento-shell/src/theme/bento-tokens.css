@@ -95,6 +95,8 @@
     --bento-command-palette-height: 30rem;
     --bento-command-palette-max-inline: 90vw;
     --bento-command-palette-max-block: 80vh;
+    --bento-merge-progress-log-min-height: 8rem;
+    --bento-merge-progress-log-max-height: 14rem;
     --bento-workspace-palette-width: 47.5rem;
     --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;

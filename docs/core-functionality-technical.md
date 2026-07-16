@@ -1345,6 +1345,17 @@ button hides the palette without cancelling the active import, and the Cancel
 button dispatches `externalMerge/cancel` for the active `operationId`. Backdrop
 dismissal and `onOpenChange` close handling are disabled while that in-palette
 merge overlay is active.
+`externalMerge/started` is followed by `externalMerge/progress` events. The
+first progress event uses the `preparing` stage while the privileged snapshot is
+read. Once `ExternalMergeExecutor` has built its filtered import plans, progress
+events carry the real workspace and tab totals, processed counts, the current
+workspace name, and optional workspace/site activity. The shell store accepts
+only progress for its active operation, retains the latest progress snapshot,
+and keeps the latest 100 activity entries. The overlay switches its Tale UI
+`ProgressBar` to a determinate percentage, shows completed/total spaces and
+sites, and auto-scrolls an accessible activity log containing imported site
+titles and hostnames. Completion, cancellation, error, and a new operation clear
+the progress snapshot and log.
 The source list renders source cards instead of selectable command rows: source
 cards start collapsed and expose Import all plus expandable target cards for
 native spaces or windows. Target cards also start with their tab previews

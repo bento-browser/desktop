@@ -761,6 +761,29 @@ export interface ExternalMergeSummary {
   failedTabs: number;
 }
 
+export type ExternalMergeProgressActivity =
+  | {
+      kind: 'workspace';
+      name: string;
+      status: 'started' | 'completed' | 'failed';
+    }
+  | {
+      kind: 'site';
+      title: string;
+      url: string;
+      status: 'opened' | 'failed';
+    };
+
+export interface ExternalMergeProgress {
+  stage: 'preparing' | 'importing' | 'finalizing';
+  totalWorkspaces: number;
+  completedWorkspaces: number;
+  totalTabs: number;
+  completedTabs: number;
+  currentWorkspaceName?: string;
+  activity?: ExternalMergeProgressActivity;
+}
+
 export type ExternalMergeErrorCode =
   | 'busy'
   | 'cancelled'
@@ -915,6 +938,12 @@ export type Event =
       operationId: string;
       windowId: number | null;
       sourceId: string;
+    }
+  | {
+      type: 'externalMerge/progress';
+      operationId: string;
+      windowId: number | null;
+      progress: ExternalMergeProgress;
     }
   | {
       type: 'externalMerge/complete';

@@ -8,6 +8,8 @@ function resetStore() {
     activeSourceId: null,
     currentRequestId: null,
     activeOperationId: null,
+    progress: null,
+    progressLog: [],
     summary: null,
     error: null,
     lastOpenNonce: null,
@@ -140,6 +142,60 @@ describe('external merge shell store', () => {
 
     expect(useExternalMergeStore.getState().activeOperationId).toBeNull();
     expect(useExternalMergeStore.getState().summary?.sourceId).toBe('source-1');
+  });
+
+  it('tracks progress and activity only for the active operation', () => {
+    const dispatch = vi.fn();
+    useExternalMergeStore.getState().startMerge('source-1', dispatch);
+    const operationId = useExternalMergeStore.getState().activeOperationId!;
+
+    useExternalMergeStore.getState().applyProgress(
+      {
+        operationId: 'stale',
+        windowId: 1,
+        progress: {
+          stage: 'importing',
+          totalWorkspaces: 1,
+          completedWorkspaces: 0,
+          totalTabs: 1,
+          completedTabs: 1,
+        },
+      },
+      1,
+    );
+    expect(useExternalMergeStore.getState().progress).toBeNull();
+
+    useExternalMergeStore.getState().applyProgress(
+      {
+        operationId,
+        windowId: 1,
+        progress: {
+          stage: 'importing',
+          totalWorkspaces: 2,
+          completedWorkspaces: 0,
+          totalTabs: 4,
+          completedTabs: 1,
+          currentWorkspaceName: 'Firefox: Research',
+          activity: {
+            kind: 'site',
+            title: 'Example',
+            url: 'https://example.com/',
+            status: 'opened',
+          },
+        },
+      },
+      1,
+    );
+
+    expect(useExternalMergeStore.getState().progress?.completedTabs).toBe(1);
+    expect(useExternalMergeStore.getState().progressLog).toEqual([
+      {
+        kind: 'site',
+        title: 'Example',
+        url: 'https://example.com/',
+        status: 'opened',
+      },
+    ]);
   });
 
   it('refreshes sources without clearing visible rows and blocks refresh while merging', () => {

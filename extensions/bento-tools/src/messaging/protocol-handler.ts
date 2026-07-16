@@ -1665,6 +1665,18 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         windowId: ctx.sourceWindowId,
         sourceId: action.sourceId,
       });
+      emitToShellDocuments(ctx, {
+        type: 'externalMerge/progress',
+        operationId: action.operationId,
+        windowId: ctx.sourceWindowId,
+        progress: {
+          stage: 'preparing',
+          totalWorkspaces: 0,
+          completedWorkspaces: 0,
+          totalTabs: 0,
+          completedTabs: 0,
+        },
+      });
       void (async () => {
         const abortController = externalMergeAbortController!;
         try {
@@ -1677,6 +1689,14 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           const summary = await executeExternalMerge(session, ctx, {
             signal: abortController.signal,
             targetIds: action.targetIds,
+            onProgress: (progress) => {
+              emitToShellDocuments(ctx, {
+                type: 'externalMerge/progress',
+                operationId: action.operationId,
+                windowId: ctx.sourceWindowId,
+                progress,
+              });
+            },
           });
           throwIfExternalMergeCancelled(abortController.signal);
           emitToShellDocuments(ctx, {

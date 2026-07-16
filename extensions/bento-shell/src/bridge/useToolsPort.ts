@@ -403,6 +403,9 @@ function ensureConnection(): void {
       case 'externalMerge/started':
         useExternalMergeStore.getState().applyStarted(event, state.windowId);
         return;
+      case 'externalMerge/progress':
+        useExternalMergeStore.getState().applyProgress(event, state.windowId);
+        return;
       case 'externalMerge/complete':
         useExternalMergeStore.getState().applyComplete(event, state.windowId);
         return;

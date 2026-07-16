@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CommandPalette as TaleCommandPalette } from '@tale-ui/react/command-palette';
 import { Button } from '@tale-ui/react/button';
 import { Column } from '@tale-ui/react/column';
@@ -22,6 +22,7 @@ import { dispatch } from '../../bridge/useToolsPort';
 import { useExternalMergeStore } from '../../state/externalMerge';
 import type {
   ExternalMergeImportTarget,
+  ExternalMergeProgressActivity,
   ExternalMergeSource,
   ExternalMergeSummary,
 } from '@shared/protocol';
@@ -108,6 +109,28 @@ function sourceTargetSummary(source: ExternalMergeSource): string {
 
 function tabPreviewLabel(tab: ExternalMergeImportTarget['previewTabs'][number]): string {
   return [tab.title, tab.url].filter(Boolean).join(' ');
+}
+
+function siteHostname(url: string): string {
+  try {
+    return new URL(url).hostname || url;
+  } catch {
+    return url;
+  }
+}
+
+function progressActivityText(activity: ExternalMergeProgressActivity): string {
+  if (activity.kind === 'workspace') {
+    if (activity.status === 'started') return `Creating space: ${activity.name}`;
+    return activity.status === 'completed'
+      ? `Finished space: ${activity.name}`
+      : `Could not create space: ${activity.name}`;
+  }
+  const site = activity.title.trim() || siteHostname(activity.url);
+  const host = siteHostname(activity.url);
+  return activity.status === 'opened'
+    ? `Added ${site} - ${host}`
+    : `Could not add ${site} - ${host}`;
 }
 
 function sourceSearchText(source: ExternalMergeSource): string {
@@ -235,12 +258,15 @@ export function MergePalette({ onClose }: MergePaletteProps) {
   const loadingSources = useExternalMergeStore((state) => state.loadingSources);
   const activeOperationId = useExternalMergeStore((state) => state.activeOperationId);
   const activeSourceId = useExternalMergeStore((state) => state.activeSourceId);
+  const progress = useExternalMergeStore((state) => state.progress);
+  const progressLog = useExternalMergeStore((state) => state.progressLog);
   const summary = useExternalMergeStore((state) => state.summary);
   const error = useExternalMergeStore((state) => state.error);
   const sources = useExternalMergeStore((state) => state.sources);
   const [query, setQuery] = useState('');
   const [expandedSourceIds, setExpandedSourceIds] = useState<Set<string>>(() => new Set());
   const [expandedTargetIds, setExpandedTargetIds] = useState<Set<string>>(() => new Set());
+  const progressLogRef = useRef<HTMLDivElement>(null);
   const filteredSources = useMemo(() => visibleSources(sources, query), [sources, query]);
   const filteredTargetCount = filteredSources.reduce((sum, { targets }) => sum + targets.length, 0);
   const isMerging = !!activeOperationId;
@@ -248,6 +274,16 @@ export function MergePalette({ onClose }: MergePaletteProps) {
   const importStatus = activeSource
     ? `Importing ${sourceLabel(activeSource)}...`
     : 'Importing browser session...';
+  const hasDeterminateProgress = !!progress && progress.totalTabs > 0;
+  const progressValue = hasDeterminateProgress
+    ? Math.round((progress.completedTabs / progress.totalTabs) * 100)
+    : 0;
+  const progressDetail =
+    !progress || progress.stage === 'preparing'
+      ? 'Reading the saved browser session...'
+      : progress.stage === 'finalizing'
+        ? 'Finishing the import...'
+        : `${progress.completedWorkspaces} of ${plural(progress.totalWorkspaces, 'space')} finished - ${progress.completedTabs} of ${plural(progress.totalTabs, 'site')} processed`;
   const close = () => onClose();
   const refreshSources = () => {
     useExternalMergeStore.getState().refreshSources(dispatch);
@@ -282,6 +318,11 @@ export function MergePalette({ onClose }: MergePaletteProps) {
     window.addEventListener('focus', focusSearch);
     return () => window.removeEventListener('focus', focusSearch);
   }, []);
+
+  useEffect(() => {
+    const log = progressLogRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [progressLog.length]);
 
   const footerText = activeOperationId
     ? 'Merging...'
@@ -486,7 +527,6 @@ export function MergePalette({ onClose }: MergePaletteProps) {
               justify="center"
               className="bento-merge-palette__import-overlay"
               aria-label="Browser session import in progress"
-              aria-live="polite"
             >
               <IconButton
                 variant="ghost"
@@ -498,16 +538,57 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 <Icon icon={XIcon} size="sm" />
               </IconButton>
               <ProgressBar.Root
-                isIndeterminate
+                isIndeterminate={!hasDeterminateProgress}
+                value={hasDeterminateProgress ? progressValue : undefined}
                 minValue={0}
                 maxValue={100}
                 className="bento-merge-palette__loader"
               >
-                <ProgressBar.Label>{importStatus}</ProgressBar.Label>
+                <ProgressBar.Header>
+                  <ProgressBar.Label>{importStatus}</ProgressBar.Label>
+                  {hasDeterminateProgress ? (
+                    <ProgressBar.Value>{progressValue}%</ProgressBar.Value>
+                  ) : null}
+                </ProgressBar.Header>
                 <ProgressBar.Track>
-                  <ProgressBar.Indicator />
+                  <ProgressBar.Indicator value={hasDeterminateProgress ? progressValue : null} />
                 </ProgressBar.Track>
               </ProgressBar.Root>
+              <Text
+                variant="text"
+                size="s"
+                color="muted"
+                className="bento-merge-palette__progress-detail"
+              >
+                {progressDetail}
+              </Text>
+              <Column
+                ref={progressLogRef}
+                gap="2xs"
+                className="bento-merge-palette__progress-log"
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-label="Import activity"
+              >
+                {progressLog.length === 0 ? (
+                  <Text variant="text" size="s" color="muted">
+                    Preparing the import...
+                  </Text>
+                ) : (
+                  progressLog.map((activity, index) => (
+                    <Text
+                      key={`${activity.kind}-${index}`}
+                      variant="text"
+                      size="s"
+                      color="muted"
+                      className="bento-merge-palette__progress-log-entry"
+                    >
+                      {progressActivityText(activity)}
+                    </Text>
+                  ))
+                )}
+              </Column>
               <Row gap="s" justify="center" className="bento-merge-palette__overlay-actions">
                 <Button
                   variant="neutral"

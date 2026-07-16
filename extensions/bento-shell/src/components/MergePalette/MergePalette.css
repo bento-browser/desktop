@@ -126,8 +126,35 @@
 .tale-command-palette__popup.bento-merge-palette__popup
   .bento-merge-palette__loader
   .tale-progress-bar__header {
-  justify-content: center;
+  text-align: start;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup
+  .bento-merge-palette__loader
+  .tale-progress-bar__label {
+  flex: 1 1 auto;
+  text-align: start;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__progress-detail {
   text-align: center;
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__progress-log {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--bento-merge-progress-log-min-height);
+  max-height: var(--bento-merge-progress-log-max-height);
+  overflow: auto;
+  padding-block: var(--space-s) var(--space-xs);
+  padding-inline: var(--space-xs) var(--space-s);
+  background-color: var(--neutral-12);
+  border: 1px solid var(--neutral-20);
+  border-radius: var(--radius-s);
+}
+
+.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__progress-log-entry {
+  overflow-wrap: anywhere;
 }
 
 .tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__cancel-button {

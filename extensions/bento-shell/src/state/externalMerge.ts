@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type {
   Action,
   ExternalMergeErrorCode,
+  ExternalMergeProgress,
+  ExternalMergeProgressActivity,
   ExternalMergeSource,
   ExternalMergeSummary,
 } from '@shared/protocol';
@@ -20,6 +22,8 @@ interface ExternalMergeState {
   activeSourceId: string | null;
   currentRequestId: string | null;
   activeOperationId: string | null;
+  progress: ExternalMergeProgress | null;
+  progressLog: ExternalMergeProgressActivity[];
   summary: ExternalMergeSummary | null;
   error: ExternalMergeErrorState | null;
   lastOpenNonce: string | null;
@@ -35,6 +39,10 @@ interface ExternalMergeState {
   ) => void;
   applyStarted: (
     event: { operationId: string; windowId: number | null; sourceId: string },
+    currentWindowId: number | null,
+  ) => void;
+  applyProgress: (
+    event: { operationId: string; windowId: number | null; progress: ExternalMergeProgress },
     currentWindowId: number | null,
   ) => void;
   applyComplete: (
@@ -76,6 +84,8 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
   activeSourceId: null,
   currentRequestId: null,
   activeOperationId: null,
+  progress: null,
+  progressLog: [],
   summary: null,
   error: null,
   lastOpenNonce: null,
@@ -91,6 +101,7 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
       error: null,
       lastOpenNonce: nonce,
       ...(activeOperationId ? {} : { activeSourceId: null }),
+      ...(activeOperationId ? {} : { progress: null, progressLog: [] }),
     });
     dispatch({ type: 'externalMerge/requestSources', requestId });
   },
@@ -104,6 +115,8 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
       summary: null,
       error: null,
       activeSourceId: null,
+      progress: null,
+      progressLog: [],
     });
     dispatch({ type: 'externalMerge/requestSources', requestId });
     return true;
@@ -117,6 +130,8 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
       error: null,
       activeSourceId: null,
       currentRequestId: null,
+      progress: null,
+      progressLog: [],
     });
   },
 
@@ -127,6 +142,8 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
     set({
       activeOperationId: operationId,
       activeSourceId: sourceId,
+      progress: null,
+      progressLog: [],
       summary: null,
       error: null,
     });
@@ -159,8 +176,20 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
     set({
       activeOperationId: event.operationId,
       activeSourceId: event.sourceId,
+      progress: null,
+      progressLog: [],
       error: null,
     });
+  },
+
+  applyProgress: (event, currentWindowId) => {
+    if (!isForCurrentWindow(event.windowId, currentWindowId)) return;
+    if (event.operationId !== get().activeOperationId) return;
+    const activity = event.progress.activity;
+    set((state) => ({
+      progress: event.progress,
+      progressLog: activity ? [...state.progressLog, activity].slice(-100) : state.progressLog,
+    }));
   },
 
   applyComplete: (event, currentWindowId) => {
@@ -169,6 +198,8 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
     set({
       activeOperationId: null,
       activeSourceId: null,
+      progress: null,
+      progressLog: [],
       summary: event.summary,
       error: null,
     });
@@ -189,6 +220,8 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
       set({
         activeOperationId: null,
         activeSourceId: null,
+        progress: null,
+        progressLog: [],
         error: { message: event.message, code: event.code, sourceId: event.sourceId },
       });
     }
