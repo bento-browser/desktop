@@ -168,6 +168,12 @@ and main content.
 
 The workspace switcher trigger is mounted above the persistent sidebar address
 row, and both are mounted above `TabList`.
+In expanded mode, `.bento-tab-list-pane__scroller` owns a `--space-3xs` top
+padding matching the address row's top padding below the workspace switcher.
+Keeping the lower gap inside the native scroller makes it visible at scroll
+position zero and lets it scroll away so tab content becomes flush with the
+address row edge. Collapsed mode resets that top padding to zero because the
+address row is hidden.
 `extensions/bento-shell/src/state/sidebarAddress.ts` stores the last
 chrome-owned snapshot, edit mode, draft value, and pending bookmark-toggle key.
 `extensions/bento-shell/src/bridge/useSidebarAddress.ts`

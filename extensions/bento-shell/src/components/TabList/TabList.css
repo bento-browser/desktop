@@ -40,7 +40,10 @@
     overflow-x: hidden;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    padding-block-start: 0;
+    /* Match the workspace-switcher/address-row gap at rest. Because this
+       padding belongs to the scroller, it scrolls away and lets tab rows sit
+       flush against the address row once the list moves. */
+    padding-block-start: var(--space-3xs);
     padding-inline: var(--space-3xs);
     transition:
       padding-inline-start
@@ -56,6 +59,7 @@
   }
 
   html[data-bento-collapsed='true'] .bento-tab-list-pane__scroller {
+    padding-block-start: 0;
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);
     scrollbar-gutter: auto;
     scrollbar-width: none;

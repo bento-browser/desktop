@@ -237,7 +237,10 @@ and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface and keeps
-its neutral border when clicked or focused. The native
+its neutral border when clicked or focused. At the top of the tab list, the
+resting gap below the address field matches the gap above it below the workspace
+switcher. That lower gap scrolls away with the tabs so scrolled rows sit flush
+against the address field. The native
 top URL/search field, stock toolbar app-menu button, stock toolbar downloads
 button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without
