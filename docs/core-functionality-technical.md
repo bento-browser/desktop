@@ -202,6 +202,8 @@ overpaint its chrome bounds. Sidebar-anchored placements use a smaller
 512px-by-378px cap so the row-local picker reads as attached to the sidebar,
 while shortcut, new-tab, and top-urlbar fallback opens omit the anchor and
 therefore keep the original centered overlay size and position.
+The persistent row intentionally has no `:focus-within` accent override: focus
+must not replace its neutral border with a workspace `--color-60` outline.
 
 Firefox remains the source of truth for address semantics. The sidebar submit
 path and the floating overlay submit path both call the same chrome helper,

@@ -236,7 +236,8 @@ strip and main content slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`
 and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
-The field uses the sidebar tab row text size on a neutral-5 surface. The native
+The field uses the sidebar tab row text size on a neutral-5 surface and keeps
+its neutral border when clicked or focused. The native
 top URL/search field, stock toolbar app-menu button, stock toolbar downloads
 button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without

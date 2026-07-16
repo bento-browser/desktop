@@ -270,6 +270,8 @@ Current drift:
   `.bento-sidebar-address-bar__input` with the exact sidebar tab-row font
   shorthand; do not rely on inherited or layered input fonts for this chrome
   control.
+- The row keeps its neutral border while focused; it does not apply a
+  workspace-brand `--color-60` focus outline.
 - Activating the row opens the shared `AddressBar` overlay anchored below the
   row. Keyboard shortcuts, the `New tab` action, and native top-urlbar fallback
   opens use the centered `AddressBar` overlay. The overlay owns the focused
