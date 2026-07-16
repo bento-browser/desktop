@@ -728,9 +728,10 @@ UI's Emoji Picker recipe with `Popover` and `SearchField` over local
 `BENTO_THEMES` metadata. `scripts/sync-theme-presets.mjs` generates that metadata
 from Bento's repo-local Default theme plus the eight standard and seven
 monochromatic themes exported by `@tale-ui/themes`. The picker groups those
-collections and renders compact Tale UI `ToggleButton` options so selected state
-fills the tile and each option exposes the package description in a `Tooltip` on
-hover/focus. Standard ids use `standard-*`; monochromatic ids use
+collections and renders compact interactive Tale UI `Card.Button` options with
+the component's standard selected state. Each option exposes the package
+description in a `Tooltip` on hover/focus. Standard ids use `standard-*`;
+monochromatic ids use
 `monochrome-*`, which keeps both Terracotta variants distinct. Legacy unprefixed
 workspace ids resolve to the matching monochromatic theme. Theme selection
 writes stable `Workspace.themeId` values:

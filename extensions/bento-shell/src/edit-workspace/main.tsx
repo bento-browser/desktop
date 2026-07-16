@@ -30,6 +30,7 @@ import '@tale-ui/core/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/button';
+import '@tale-ui/react-styles/card';
 import '@tale-ui/react-styles/column';
 import '@tale-ui/react-styles/dialog';
 import '@tale-ui/react-styles/text-field';
@@ -40,7 +41,6 @@ import '@tale-ui/react-styles/list-box';
 import '@tale-ui/react-styles/popover';
 import '@tale-ui/react-styles/row';
 import '@tale-ui/react-styles/search-field';
-import '@tale-ui/react-styles/toggle-button';
 import '@tale-ui/react-styles/tooltip';
 
 import '../theme/bento-tokens.css';

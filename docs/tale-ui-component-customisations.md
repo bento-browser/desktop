@@ -356,11 +356,11 @@ Regression checks:
 ### Workspace theme picker
 
 Upstream base: Tale UI's Emoji Picker recipe adapted to workspace theme
-metadata. Bento uses `Popover`, `SearchField`, `ToggleButton`, `Tooltip`,
-`ColorSwatch`, and `Text`; it intentionally uses a Tale UI `ToggleButton`
-option grid instead of `ListBox` so every option can be the trigger for a Tale
-UI `Tooltip` that shows the full theme name. It also does not use `Virtualizer`
-for the current small static theme list. There is no
+metadata. Bento uses `Popover`, `SearchField`, interactive `Card.Button`,
+`Tooltip`, `ColorSwatch`, and `Text`; it intentionally uses a grid of Tale UI
+interactive cards instead of `ListBox` so every option can be the trigger for
+a Tale UI `Tooltip` that shows the full theme name. It also does not use
+`Virtualizer` for the current small static theme list. There is no
 `@tale-ui/react-styles/virtualizer` import.
 
 Bento owners:
@@ -370,7 +370,8 @@ Bento owners:
   editing.
 - [WorkspaceThemePicker.css](../extensions/bento-shell/src/components/WorkspaceThemePicker/WorkspaceThemePicker.css)
   owns the compact trigger, popover width, search wrapper, theme grid, and
-  selected-state overrides.
+  interactive-card layout overrides. Tale UI owns the card hover, press,
+  focus-visible, and selected states.
 - [WorkspacePalette.tsx](../extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.tsx)
   wires the shared picker into each workspace row and dispatches theme ids
   through `workspace/update` immediately.
@@ -390,9 +391,10 @@ Current drift:
   width with `--bento-workspace-theme-picker-*` tokens.
 - The option grid uses two larger theme tiles rather than the emoji recipe's
   small virtualized cells. Each item shows a two-colour swatch and the theme
-  name; selected state fills the `ToggleButton` tile instead of reserving space
-  for a check icon. The inter-tile grid gap is `--space-3xs`. The stable theme
-  id stays searchable but is not rendered as a duplicate subtitle.
+  name; `Card.Button` exposes the selected theme through its standard outlined
+  selected state instead of reserving space for a check icon. The inter-tile
+  grid gap is `--space-3xs`. The stable theme id stays searchable but is not
+  rendered as a duplicate subtitle.
 - The SearchField clear button must render an explicit `X` icon; Tale UI does
   not provide one automatically.
 - The SearchField receives focus when the Popover opens and uses `slot={null}`

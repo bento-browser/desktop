@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
+import { Card } from '@tale-ui/react/card';
 import { ColorSwatch } from '@tale-ui/react/color-swatch';
 import { Column } from '@tale-ui/react/column';
 import { Icon } from '@tale-ui/react/icon';
 import { Popover } from '@tale-ui/react/popover';
 import { SearchField } from '@tale-ui/react/search-field';
 import { Text } from '@tale-ui/react/text';
-import { ToggleButton } from '@tale-ui/react/toggle-button';
 import { Tooltip } from '@tale-ui/react/tooltip';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import X from 'lucide-react/dist/esm/icons/x';
@@ -202,14 +202,12 @@ export function WorkspaceThemePicker({
                       const accessibleName = `${theme.name}, ${collection.label}`;
                       return (
                         <Tooltip.Root key={theme.id} delay={400}>
-                          <ToggleButton
+                          <Card.Button
                             aria-label={isSelected ? `${accessibleName}, selected` : accessibleName}
                             isSelected={isSelected}
-                            size="sm"
+                            padding="sm"
                             className="bento-workspace-theme-picker__option"
-                            onChange={(selected) => {
-                              if (selected) selectTheme(theme.id);
-                            }}
+                            onPress={() => selectTheme(theme.id)}
                           >
                             <ColorSwatch
                               color={theme.brand60}
@@ -224,7 +222,7 @@ export function WorkspaceThemePicker({
                             >
                               {theme.name}
                             </Text>
-                          </ToggleButton>
+                          </Card.Button>
                           <Tooltip.Popup placement="top" offset={8}>
                             <Tooltip.Arrow />
                             <Tooltip.Title>{theme.name}</Tooltip.Title>
