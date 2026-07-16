@@ -182,8 +182,8 @@ top chrome.
 
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
-covering the window with an opaque overlay. Its trigger sits at the bottom of
-the sidebar, below the tab list and above the footer controls. Floating music
+covering the window with an opaque overlay. Its trigger sits at the top of
+the sidebar, immediately above the URL address field. Floating music
 notes beside a workspace avatar identify a workspace with audible, unmuted
 audio; the animation appears on the current-workspace trigger and on every
 matching row in the switcher menu.

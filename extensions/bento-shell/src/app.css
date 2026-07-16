@@ -104,7 +104,7 @@
     min-width: 0;
     flex-direction: column;
     gap: var(--bento-sidebar-section-gap);
-    padding-block: 0 var(--space-2xs);
+    padding-block: var(--space-3xs) 0;
     padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
     transition:

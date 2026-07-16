@@ -166,8 +166,8 @@ activation of the expanded-sidebar URL row opens the same overlay with a
 sidebar anchor so it appears below the row and can extend over the panel strip
 and main content.
 
-The persistent sidebar row is mounted above `TabList`; the workspace switcher
-trigger is mounted below `TabList` and above the sidebar footer.
+The workspace switcher trigger is mounted above the persistent sidebar address
+row, and both are mounted above `TabList`.
 `extensions/bento-shell/src/state/sidebarAddress.ts` stores the last
 chrome-owned snapshot, edit mode, draft value, and pending bookmark-toggle key.
 `extensions/bento-shell/src/bridge/useSidebarAddress.ts`
@@ -774,8 +774,8 @@ strings keep the workspace theme background. The sidebar workspace switcher
 trigger keeps Tale UI's neutral button shape but overrides that variant's
 background, border, and text colors with `--color-*` tokens so the control
 follows the active workspace brand instead of the neutral palette. The trigger
-is rendered as a fixed bottom sidebar section between `TabList` and the footer,
-so workspace switching remains reachable after scrolling long tab lists.
+is rendered as a fixed top sidebar section before the URL address field, so
+workspace switching remains reachable after scrolling long tab lists.
 `useWorkspaceHasPlayingAudio()` and `useWorkspaceIdsWithPlayingAudio()` derive
 workspace-level audio state from the mirrored `TabSnapshot` map, including tabs
 rendered as panels. `WorkspaceSwitcher` uses the first hook for its active
