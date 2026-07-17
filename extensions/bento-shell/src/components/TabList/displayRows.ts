@@ -76,6 +76,13 @@ export function rowKey(row: DisplayRow): string {
   }
 }
 
+/** Stable key for scroll effects that should only rerun when row geometry or
+ * identity changes. Tab metadata updates (loading, discarded, title, favicon,
+ * etc.) rebuild the rows array but do not change this key. */
+export function displayRowsLayoutKey(rows: DisplayRow[]): string {
+  return JSON.stringify(rows);
+}
+
 export function pruneSelection(selected: Set<number>, visualTabOrder: number[]): Set<number> {
   const allowed = new Set(visualTabOrder);
   const next = new Set<number>();

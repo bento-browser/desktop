@@ -16,7 +16,13 @@ import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders'
 import { TabRow } from '../TabRow/TabRow';
 import { FolderRow } from '../FolderRow/FolderRow';
 import { TabListSkeleton } from './TabListSkeleton';
-import { buildDisplayRows, flattenTabOrder, pruneSelection, rowKey } from './displayRows';
+import {
+  buildDisplayRows,
+  displayRowsLayoutKey,
+  flattenTabOrder,
+  pruneSelection,
+  rowKey,
+} from './displayRows';
 import { getThemeMeta } from '../../theme/presets';
 import './TabList.css';
 
@@ -264,7 +270,7 @@ function TabListPane({
   const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
   const folderToggleAnchorRef = useRef<{ folderId: string; offsetTop: number } | null>(null);
-  const suppressAutoScrollRowsRef = useRef<unknown | null>(null);
+  const suppressAutoScrollLayoutRef = useRef<string | null>(null);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
   // the row that currently occupies filtered position N" (and `length`
   // means "drop at end"). Null when the cursor isn't over a valid drop
@@ -326,6 +332,7 @@ function TabListPane({
       }),
     [activeId, displayedIds, dragFolderId, folders, tabsById],
   );
+  const rowLayoutKey = useMemo(() => displayRowsLayoutKey(rows), [rows]);
   const folderTabCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const id of ids) {
@@ -418,9 +425,9 @@ function TabListPane({
       scroller.scrollTop = nextScrollTop;
     }
     folderToggleAnchorRef.current = null;
-    suppressAutoScrollRowsRef.current = rows;
+    suppressAutoScrollLayoutRef.current = rowLayoutKey;
     updateScrollMetrics();
-  }, [rowSlotSize, rows, searchFiltering, updateScrollMetrics]);
+  }, [rowLayoutKey, rowSlotSize, searchFiltering, updateScrollMetrics]);
 
   useLayoutEffect(() => {
     if (
@@ -431,24 +438,31 @@ function TabListPane({
     ) {
       return;
     }
-    if (suppressAutoScrollRowsRef.current === rows) return;
+    if (suppressAutoScrollLayoutRef.current === rowLayoutKey) return;
     smoothRevealRef.current = { request: revealTabRequest, rowIndex: requestedRevealRowIndex };
     virtualizer.scrollToIndex(requestedRevealRowIndex, { align: 'auto', behavior: 'smooth' });
-  }, [requestedRevealRowIndex, revealTabRequest, rowSlotSize, rows, searchFiltering, virtualizer]);
+  }, [
+    requestedRevealRowIndex,
+    revealTabRequest,
+    rowLayoutKey,
+    rowSlotSize,
+    searchFiltering,
+    virtualizer,
+  ]);
 
   useLayoutEffect(() => {
-    if (suppressAutoScrollRowsRef.current === rows) {
+    if (suppressAutoScrollLayoutRef.current === rowLayoutKey) {
       smoothRevealRef.current = null;
-      suppressAutoScrollRowsRef.current = null;
+      suppressAutoScrollLayoutRef.current = null;
       return;
     }
     if (searchFiltering || activeRowIndex < 0 || rowSlotSize <= 0) return;
-    suppressAutoScrollRowsRef.current = null;
+    suppressAutoScrollLayoutRef.current = null;
     const smoothReveal = smoothRevealRef.current;
     if (smoothReveal?.rowIndex === activeRowIndex) return;
     smoothRevealRef.current = null;
     virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
-  }, [activeRowIndex, rowSlotSize, rows, searchFiltering, virtualizer]);
+  }, [activeRowIndex, rowLayoutKey, rowSlotSize, searchFiltering, virtualizer]);
 
   useLayoutEffect(() => {
     updateScrollMetrics();

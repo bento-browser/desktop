@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { TabFolder, TabSnapshot } from '@shared/protocol';
-import { buildDisplayRows, flattenTabOrder, pruneSelection } from './displayRows';
+import {
+  buildDisplayRows,
+  displayRowsLayoutKey,
+  flattenTabOrder,
+  pruneSelection,
+} from './displayRows';
 
 function tab(partial: Partial<TabSnapshot> & Pick<TabSnapshot, 'id' | 'index'>): TabSnapshot {
   return {
@@ -93,5 +98,32 @@ describe('buildDisplayRows', () => {
     ];
     expect(flattenTabOrder(rows)).toEqual([1, 3, 4]);
     expect(Array.from(pruneSelection(new Set([2, 3, 4]), flattenTabOrder(rows)))).toEqual([3, 4]);
+  });
+
+  it('keeps the layout key stable across sleeping-tab wake metadata updates', () => {
+    const sleepingTabs = {
+      1: tab({ id: 1, index: 0, active: true }),
+      2: tab({ id: 2, index: 1, discarded: true }),
+    };
+    const wakingTabs = {
+      ...sleepingTabs,
+      2: tab({ id: 2, index: 1, discarded: false, loading: true, title: 'Loading page' }),
+    };
+
+    const sleepingRows = buildDisplayRows([1, 2], sleepingTabs, [], 1, {});
+    const wakingRows = buildDisplayRows([1, 2], wakingTabs, [], 1, {});
+
+    expect(displayRowsLayoutKey(wakingRows)).toBe(displayRowsLayoutKey(sleepingRows));
+    expect(
+      displayRowsLayoutKey(
+        buildDisplayRows(
+          [1, 2],
+          { ...wakingTabs, 2: { ...wakingTabs[2], pinned: true } },
+          [],
+          1,
+          {},
+        ),
+      ),
+    ).not.toBe(displayRowsLayoutKey(sleepingRows));
   });
 });

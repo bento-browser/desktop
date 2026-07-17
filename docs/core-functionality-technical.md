@@ -900,6 +900,13 @@ offset on the next row-model render, and suppresses the pane's one-shot
 active-tab auto-scroll for that render. Without this anchor, collapsing a folder
 that contains the active tab can move the active row to a peek slot and make the
 sidebar jump away from the clicked folder.
+The reveal and active-tab auto-scroll effects are keyed by the semantic display
+row layout, not the `rows` array reference. Waking a discarded tab can emit
+loading, discarded, title, and favicon metadata before its activation delta;
+those metadata-only renders must not scroll to the previously active tab before
+the activation render reveals the clicked tab. Structural changes such as pin,
+folder, reorder, and collapsed-peek changes still produce a new layout key and
+retain the folder-anchor suppression path above.
 The active/current sidebar tab row is styled in
 `extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
