@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Bento Shell",
   "short_name": "bento-shell",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Bento Browser UI shell — privileged built-in extension.",
   "hidden": true,
   "browser_specific_settings": {
@@ -15,24 +15,9 @@
     "scripts": ["dist/assets/background.js"],
     "persistent": true
   },
+  "content_security_policy": "script-src 'self'; object-src 'none'; frame-ancestors 'none'",
   "permissions": ["storage"],
-  "web_accessible_resources": [
-    "dist/address-bar.html",
-    "dist/confirm.html",
-    "dist/edit-workspace.html",
-    "dist/index.html",
-    "dist/menu.html",
-    "dist/merge-palette.html",
-    "dist/palette.html",
-    "dist/panel-newtab.html",
-    "dist/panel-navigator-tooltip.html",
-    "dist/panel-trailer.html",
-    "dist/settings.html",
-    "dist/welcome.html",
-    "dist/workspace-palette.html",
-    "dist/workspace-switcher.html",
-    "dist/assets/*"
-  ],
+  "web_accessible_resources": ["dist/settings.html"],
   "commands": {
     "dev-reload": {
       "suggested_key": { "default": "Alt+Shift+R" },

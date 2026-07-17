@@ -1177,7 +1177,10 @@ live profile lock. Both `dev-profile-clean.sh` and `dev-launch.sh` check
 the dev profile open; otherwise a fast second launch can put two parent
 processes on the same profile and make chrome/sidebar resize behavior
 intermittently choppy. A stale, unopened `.parentlock` from an already-exited
-instance remains cleanable.
+instance remains cleanable. Because the cleaner recursively removes every
+non-allowlisted entry, it also resolves the configured profile path and refuses
+to clean the repository root, a symlink target outside the checkout, or any
+other path outside the Bento repository.
 The welcome overlay browser stays mounted under `#browser` so its title-IPC
 open/close signals stay reliable. Bento modal overlays also share a separate
 `bento-overlay-toolbar-scrim` for the native toolbar/urlbar strip, which

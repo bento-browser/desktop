@@ -20,7 +20,37 @@
 
 set -euo pipefail
 
-PROFILE="${BENTO_DEV_PROFILE:-.bento-dev-profile}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PROFILE_INPUT="${BENTO_DEV_PROFILE:-.bento-dev-profile}"
+PROFILE_ABS="$(node -p "require('node:path').resolve(process.argv[1])" "$PROFILE_INPUT")"
+
+# This script recursively removes almost everything below PROFILE. Keep that
+# destructive scope inside the Bento checkout, even when BENTO_DEV_PROFILE is
+# supplied by a shell environment or CI wrapper. Resolve existing symlinks so a
+# checkout-local link cannot redirect cleanup into an unrelated directory.
+if [ -e "$PROFILE_ABS" ]; then
+  PROFILE="$(cd "$PROFILE_ABS" && pwd -P)"
+else
+  PROFILE_PARENT="$(dirname "$PROFILE_ABS")"
+  if [ ! -d "$PROFILE_PARENT" ]; then
+    echo "dev-profile-clean: profile parent does not exist: $PROFILE_PARENT" >&2
+    exit 1
+  fi
+  PROFILE="$(cd "$PROFILE_PARENT" && pwd -P)/$(basename "$PROFILE_ABS")"
+fi
+
+case "$PROFILE" in
+  "$REPO_ROOT"|"$REPO_ROOT"/)
+    echo "dev-profile-clean: refusing to clean the repository root" >&2
+    exit 1
+    ;;
+  "$REPO_ROOT"/*)
+    ;;
+  *)
+    echo "dev-profile-clean: profile must be inside $REPO_ROOT (got $PROFILE)" >&2
+    exit 1
+    ;;
+esac
 
 if [ ! -d "$PROFILE" ]; then
   mkdir -p "$PROFILE"

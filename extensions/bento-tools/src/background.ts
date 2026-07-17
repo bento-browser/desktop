@@ -27,7 +27,7 @@ import {
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, PinnedPanelDelta, WireAction } from '@shared/protocol';
-import { SHELL_TOOLS_PORT } from '@shared/protocol';
+import { isAuthorizedShellPort } from './messaging/external-port-auth';
 
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
@@ -2000,8 +2000,16 @@ workspaces.onDeltas((deltas) => {
 });
 
 browser.runtime.onConnectExternal.addListener((port) => {
-  if (port.name !== SHELL_TOOLS_PORT) {
-    console.warn('[bento-tools] rejecting unknown port name:', port.name);
+  if (!isAuthorizedShellPort(port)) {
+    console.warn('[bento-tools] rejecting unauthorized external port:', {
+      name: port.name,
+      senderId: port.sender?.id ?? null,
+    });
+    try {
+      port.disconnect();
+    } catch {
+      // The sender may already have disconnected.
+    }
     return;
   }
   connectedPorts.add(port);

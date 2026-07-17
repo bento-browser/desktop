@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # needed for softprops/action-gh-release to create the draft
+  contents: read
 
 jobs:
   build:
@@ -43,14 +43,18 @@ jobs:
     # Keep the job at GitHub's six-hour hosted-runner ceiling so the first
     # successful build can populate the native object cache.
     timeout-minutes: 360
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.33.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -59,7 +63,7 @@ jobs:
       # repeated for every release. Cache key includes surfer.json hash so
       # a Firefox version bump invalidates the cache.
       - name: Cache engine/
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: engine
           key: ${{ runner.os }}-engine-${{ hashFiles('surfer.json', 'patches/**') }}
@@ -71,7 +75,7 @@ jobs:
       # commits that only touch extensions/, scripts/, or branding/ hit
       # the cache and skip the multi-hour relink step.
       - name: Cache engine/obj-*
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: engine/obj-*
           key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json') }}
@@ -120,7 +124,7 @@ jobs:
         run: bash scripts/build-release.sh
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bento-${{ runner.os }}
           path: release-out/*
@@ -134,23 +138,27 @@ jobs:
     # Only create a Release on tag pushes. Manual workflow_dispatch runs
     # leave the artifacts on the workflow run page for inspection.
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bento-macOS
           path: release-out/
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bento-Linux
           path: release-out/
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bento-Windows
           path: release-out/
@@ -159,7 +167,7 @@ jobs:
         run: ls -la release-out/
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           # Draft: stays unpublished until you flip the toggle in the UI.
           # Lets you review artifacts + write release notes before users
