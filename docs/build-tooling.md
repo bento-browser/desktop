@@ -50,6 +50,29 @@ bash scripts/update-release-lock.sh
 bash scripts/install-release-deps.sh
 ```
 
+## Release security and provenance
+
+Repository release builds keep Firefox's release add-on signature enforcement
+enabled. Bento Shell and Bento Tools are registered through Firefox's built-in
+add-on packaging path; ordinary third-party XPIs remain subject to Firefox's
+normal signing requirements.
+
+Every tag release stays a draft prerelease and must pass
+`pnpm run release:security-check`. The release job generates a CycloneDX SBOM,
+`release-manifest.json`, and `SHA256SUMS`, then records GitHub artifact
+provenance attestations for every checksummed file. Run
+`pnpm run release:security-check:public` before changing a release to a public,
+non-prerelease channel. That gate remains blocked until the non-secret
+fingerprints and identities for MAR signing, Linux manifest signing, macOS
+Developer ID, and Windows Authenticode are recorded in
+`config/release-security.json`. Signing private keys never belong in the
+repository.
+
+`pnpm run security:check` protects repository-owned navigation, preference,
+profile-import, icon-fetching, bundled-add-on, signing, and release invariants.
+CI also audits the full dependency graph and runs CodeQL over Bento JavaScript
+and TypeScript.
+
 ## Upgrading Surfer
 
 No Surfer update is auto-merged. Do not create another Bento-maintained fork.

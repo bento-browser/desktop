@@ -9,6 +9,13 @@ const { SearchUtils } = ChromeUtils.importESModule(
   'moz-src:///toolkit/components/search/SearchUtils.sys.mjs',
 );
 
+const MAX_SEARCH_ICON_BYTES = 512 * 1024;
+const MAX_SEARCH_ICON_DATA_URL_CHARS = Math.ceil((MAX_SEARCH_ICON_BYTES * 4) / 3) + 256;
+const SEARCH_ICON_FETCH_TIMEOUT_MS = 5000;
+const SEARCH_ICON_CONCURRENCY = 4;
+const FETCHABLE_SEARCH_ICON_SCHEMES = new Set(['https', 'moz-extension']);
+const CHANNEL_SEARCH_ICON_SCHEMES = new Set(['chrome', 'resource', 'moz-icon']);
+
 const BUNDLED_SEARCH_ICON_PATHS = Object.freeze({
   bing: {
     path: 'experiments/bento-privacy/search-icons/bing.ico',
@@ -133,7 +140,6 @@ function bytesToBase64(bytes) {
 }
 
 function inferImageContentType(bytes, fallback = '') {
-  if (fallback && fallback.startsWith('image/')) return fallback;
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e) {
     return 'image/png';
   }
@@ -171,32 +177,121 @@ function inferImageContentType(bytes, fallback = '') {
   } catch {
     /* Ignore undecodable binary content. */
   }
-  return fallback || 'image/png';
+  return fallback && fallback.startsWith('image/') ? fallback : '';
+}
+
+function assertBoundedIconBytes(bytes) {
+  if (
+    !(bytes instanceof Uint8Array) ||
+    bytes.length === 0 ||
+    bytes.length > MAX_SEARCH_ICON_BYTES
+  ) {
+    throw new Error('Search engine icon exceeds the allowed size.');
+  }
+  return bytes;
+}
+
+async function readBoundedResponseBytes(response) {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_SEARCH_ICON_BYTES) {
+    throw new Error('Search engine icon exceeds the allowed size.');
+  }
+  if (!response.body?.getReader) {
+    return assertBoundedIconBytes(new Uint8Array(await response.arrayBuffer()));
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let length = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      length += chunk.length;
+      if (length > MAX_SEARCH_ICON_BYTES) {
+        await reader.cancel();
+        throw new Error('Search engine icon exceeds the allowed size.');
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return assertBoundedIconBytes(bytes);
+}
+
+async function fetchBoundedIcon(iconUrl) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SEARCH_ICON_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(iconUrl, {
+      signal: controller.signal,
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    });
+    if (!response.ok) throw new Error(`Search engine icon request failed: ${response.status}`);
+    return {
+      bytes: await readBoundedResponseBytes(response),
+      contentType: response.headers.get('content-type') || '',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function iconUrlToDataUrl(iconUrl, contentTypeHint = '') {
-  if (iconUrl.startsWith('data:image/')) return iconUrl;
-  try {
-    const response = await fetch(iconUrl);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const contentType = inferImageContentType(
-      bytes,
-      response.headers.get('content-type') || contentTypeHint,
-    );
-    if (!contentType.startsWith('image/')) return undefined;
-    return `data:${contentType};base64,${bytesToBase64(bytes)}`;
-  } catch {
-    // Some chrome/resource URLs are better handled through SearchUtils' image channel.
+  if (iconUrl.startsWith('data:image/')) {
+    return iconUrl.length <= MAX_SEARCH_ICON_DATA_URL_CHARS ? iconUrl : undefined;
   }
 
+  let uri;
   try {
-    const [bytes, contentType] = await SearchUtils.fetchIcon(Services.io.newURI(iconUrl));
-    const resolvedType = inferImageContentType(bytes, contentType || contentTypeHint);
+    uri = Services.io.newURI(iconUrl);
+  } catch {
+    return undefined;
+  }
+
+  let bytes;
+  let contentType = contentTypeHint;
+  try {
+    if (FETCHABLE_SEARCH_ICON_SCHEMES.has(uri.scheme)) {
+      const fetched = await fetchBoundedIcon(iconUrl);
+      bytes = fetched.bytes;
+      contentType = fetched.contentType || contentType;
+    } else if (CHANNEL_SEARCH_ICON_SCHEMES.has(uri.scheme)) {
+      const fetched = await SearchUtils.fetchIcon(uri);
+      bytes = assertBoundedIconBytes(fetched[0]);
+      contentType = fetched[1] || contentType;
+    } else {
+      return undefined;
+    }
+    const resolvedType = inferImageContentType(bytes, contentType);
     if (!resolvedType.startsWith('image/')) return undefined;
     return `data:${resolvedType};base64,${bytesToBase64(bytes)}`;
   } catch {
     return undefined;
   }
+}
+
+async function mapWithConcurrency(values, limit, mapper) {
+  const results = new Array(values.length);
+  let nextIndex = 0;
+  async function worker() {
+    for (;;) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, () => worker()));
+  return results;
 }
 
 function bundledIconKeyForEngine(engine) {
@@ -268,8 +363,10 @@ this.bentoPrivacy = class extends ExtensionAPI {
           await ensureSearchReady();
           const defaultEngine = await SearchService.getDefault();
           const defaultId = defaultEngine?.id;
-          return Promise.all(
-            (await SearchService.getVisibleEngines()).map(async (engine) => {
+          return mapWithConcurrency(
+            await SearchService.getVisibleEngines(),
+            SEARCH_ICON_CONCURRENCY,
+            async (engine) => {
               const iconUrl = await getEngineIconUrl(engine, extensionBaseURI);
               return {
                 id: engine.id,
@@ -277,7 +374,7 @@ this.bentoPrivacy = class extends ExtensionAPI {
                 isDefault: engine.id === defaultId,
                 ...(iconUrl ? { iconUrl } : {}),
               };
-            }),
+            },
           );
         },
 

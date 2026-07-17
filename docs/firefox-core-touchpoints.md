@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-11
+- Last updated: 2026-07-17
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -83,6 +83,9 @@ Use this shape for new or changed touchpoints:
   chrome `focusin` plus a reconciled `.browserContainer` / `<browser>` click
   fallback for privileged `about:*` documents that do not reliably emit
   chrome-side focus,
+  rejects script-like address schemes and performs content loads with
+  `LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL` plus an explicit triggering
+  principal,
   emits scoped sidebar address
   snapshots for active URL/title/loading/security/bookmark state, opens
   Firefox's native identity popup from the sidebar security button, toggles
@@ -497,7 +500,7 @@ Use this shape for new or changed touchpoints:
 ### First-Run Browser Profile Import
 
 - Status: Active
-- Last updated: 2026-06-05
+- Last updated: 2026-07-17
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-migration-host.{html,css,js}`
@@ -519,7 +522,9 @@ Use this shape for new or changed touchpoints:
   to Firefox/Zen and lands preselected on them instead of defaulting to Chrome
   and re-listing the runtime browsers. The generic fallback path (embedded
   runtime wizard unavailable) sets the scope empty so the startup wizard still
-  offers every browser.
+  offers every browser. Zen session conversion excludes tabs and selected
+  history entries marked private, incognito, or private-window state so those
+  URLs are not copied into Bento's normal profile.
 - Vanilla Firefox surface touched or depended on:
   `toolkit/xre/nsAppRunner.cpp`,
   `browser/components/migration/FirefoxProfileMigrator.sys.mjs`,
@@ -636,7 +641,7 @@ Use this shape for new or changed touchpoints:
 ### Built-In Extension Copy Surface
 
 - Status: Active
-- Last updated: 2026-07-14
+- Last updated: 2026-07-17
 - Files or patches:
   - `scripts/install-builtin-addons.mjs`
   - `scripts/install-builtin-addons.test.mjs`
@@ -652,7 +657,9 @@ Use this shape for new or changed touchpoints:
   `builtin-addons/` runtime location. The copy step lets an extension declare a
   per-extension runtime entry list so uBlock Origin keeps its required `js/`,
   `css/`, `lib/`, `assets/`, locale, and HTML entry files without broadening the
-  copy surface of Bento's own source-based extensions.
+  copy surface of Bento's own source-based extensions. Release builds keep
+  `MOZ_REQUIRE_SIGNING=1`; Bento-owned privileged add-ons use Firefox's built-in
+  location rather than weakening ordinary XPI signature enforcement.
 - Vanilla Firefox surface touched or depended on: Firefox built-in add-on
   loading from `browser/extensions`, generated `jar.mn`, generated per-extension
   `moz.build`, and `browser/extensions/moz.build` registration.

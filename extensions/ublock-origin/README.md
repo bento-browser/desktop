@@ -1,11 +1,11 @@
 # uBlock Origin bundled extension
 
-- Version: 1.71.0
+- Version: 1.72.2
 - Firefox add-on id: `uBlock0@raymondhill.net`
-- Source XPI: https://addons.mozilla.org/firefox/downloads/file/4814095/ublock_origin-1.71.0.xpi
-- AMO version metadata: https://addons.mozilla.org/api/v5/addons/addon/ublock-origin/versions/1.71.0/
+- Source XPI: https://addons.mozilla.org/firefox/downloads/file/4888680/ublock_origin-1.72.2.xpi
+- AMO version metadata: https://addons.mozilla.org/api/v5/addons/addon/ublock-origin/versions/1.72.2/
 - Upstream repository: https://github.com/gorhill/uBlock
-- SHA-256: `47f788a1fc2c014830b30bb0ef9588615701b98c5265fb19b8cf4ba779849feb`
+- SHA-256: `40c315b0da7871868155ecfae7a50a58dfa0920aebd865e008214986f1b7c578`
 - License: `GPL-3.0-only`
 
 ## Update steps

@@ -1,6 +1,7 @@
 // Layer-2 component: floating address/search bar.
 
 import {
+  type ClipboardEvent,
   type CSSProperties,
   type Key,
   type KeyboardEvent,
@@ -38,6 +39,7 @@ import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow } from '../../state/workspaces';
 import { applyDefaultEngineIfClean, chooseEngine, resetEngineSelection } from './engineSelection';
 import { buildOpenRows, type OpenAddressRowKind } from './openRows';
+import { replaceSelectionWithSafePaste } from './unsafeProtocol';
 import {
   buildClipboardRow,
   buildSavedPanelRows,
@@ -343,6 +345,24 @@ export default function AddressBar({
     [palette, rows],
   );
 
+  const handleInputPaste = useCallback(
+    (event: ClipboardEvent<HTMLInputElement>) => {
+      const pasted = event.clipboardData.getData('text/plain');
+      const result = replaceSelectionWithSafePaste(
+        event.currentTarget.value,
+        event.currentTarget.selectionStart,
+        event.currentTarget.selectionEnd,
+        pasted,
+      );
+      if (!result.changed) return;
+      event.preventDefault();
+      const input = event.currentTarget;
+      palette.setQuery(result.value);
+      requestAnimationFrame(() => input.setSelectionRange(result.cursor, result.cursor));
+    },
+    [palette],
+  );
+
   return (
     <CommandPalette.Root
       open={true}
@@ -382,6 +402,7 @@ export default function AddressBar({
                   className="bento-address-bar__input"
                   autoFocus={!suppressFocus}
                   onKeyDown={handleInputKeyDown}
+                  onPaste={handleInputPaste}
                 />
                 <CommandPalette.ClearButton
                   aria-label="Clear search"

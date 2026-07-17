@@ -220,6 +220,14 @@ ordinary web loads, and uses Firefox chrome's trusted-tab path for privileged
 new-tab `about:`/`chrome:` loads that the WebExtension tabs API rejects.
 Successful submissions still reveal the main content slot.
 
+All content navigation created by the Bento address entry uses
+`LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL` with an explicit chrome triggering
+principal, and rejects script-like address schemes before URI fixup or load.
+Both the React address input and the chrome-hosted panel input strip leading
+`javascript:` prefixes on paste. Keep the chrome-side validation even when the
+UI sanitizes input: content navigation must not depend on an extension-frame
+check for principal isolation.
+
 The sidebar security control reads the native identity block state from
 Firefox chrome and opens Firefox's native identity popup through
 `gIdentityHandler`/`PanelMultiView` anchored to a temporary chrome-owned element
@@ -594,6 +602,11 @@ floating fallback use those helpers so autocomplete behavior does not drift.
   icon fallback under `extensions/bento-tools/experiments/bento-privacy` for
   default engines whose native object URL cannot be converted during early
   startup.
+- Privileged search-icon conversion accepts only bounded `https:`,
+  `moz-extension:`, `chrome:`, `resource:`, and `moz-icon:` sources. Network
+  reads omit credentials and referrers, time out after five seconds, and stop at
+  512 KiB; engine conversion is limited to four concurrent tasks. Do not add
+  `http:`, `file:`, or unbounded response reads to this bridge.
 - Keep expanded-sidebar address editing in the shared address overlay. A
   sidebar-frame popover cannot reliably paint over the panel strip/main content
   because the sidebar is a chrome-hosted iframe with its own paint bounds.

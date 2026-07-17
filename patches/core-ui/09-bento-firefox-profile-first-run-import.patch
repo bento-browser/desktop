@@ -4,13 +4,13 @@ Date: Wed, 24 Jun 2026 19:23:39 +1000
 Subject: [PATCH] Import Firefox profile data on first Bento run
 
 ---
- .../migration/FirefoxProfileMigrator.sys.mjs  | 489 +++++++++++++++++-
+ .../migration/FirefoxProfileMigrator.sys.mjs  | 503 +++++++++++++++++-
  .../migration/MigrationUtils.sys.mjs          |   8 +
  .../migration/MigrationWizardParent.sys.mjs   |  11 +
  .../migration/content/migration-wizard.mjs    |  11 +-
  .../locales/en-US/browser/migrationWizard.ftl |   2 +
  toolkit/xre/nsAppRunner.cpp                   |   8 +
- 6 files changed, 524 insertions(+), 5 deletions(-)
+ 6 files changed, 538 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..b084587e14a04a2b2cfa22fc2f77a401dac667be 100644
@@ -248,7 +248,7 @@ index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..b084587e14a04a2b2cfa22fc2f77a401
    }
  
    _getFileObject(dir, fileName) {
-@@ -463,3 +642,309 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -463,3 +642,323 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return true;
    }
  }
@@ -517,7 +517,14 @@ index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..b084587e14a04a2b2cfa22fc2f77a401
 +  }
 +
 +  _convertZenTab(tab) {
-+    if (!tab || typeof tab != "object" || tab.hidden === true) {
++    if (
++      !tab ||
++      typeof tab != "object" ||
++      tab.hidden === true ||
++      tab.private === true ||
++      tab.isPrivate === true ||
++      tab.incognito === true
++    ) {
 +      return null;
 +    }
 +    let entries = Array.isArray(tab.entries) ? tab.entries : [];
@@ -529,6 +536,13 @@ index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..b084587e14a04a2b2cfa22fc2f77a401
 +        ? Math.floor(tab.index)
 +        : entries.length;
 +    let entry = entries[index - 1];
++    if (
++      entry?.private === true ||
++      entry?.isPrivate === true ||
++      entry?.incognito === true
++    ) {
++      return null;
++    }
 +    let url = entry?.url;
 +    if (typeof url != "string" || !url || url == "about:blank") {
 +      return null;
@@ -693,4 +707,3 @@ index 12fed39d6d7c73b7328c5adfd64afed7f120ba03..895ecdec885ca0362ec56cf4efdac29a
    // (reset+migration) was requested from the uninstaller, pass this along
 -- 
 2.50.1 (Apple Git-155)
-

@@ -17,7 +17,9 @@
   "browser_specific_settings": {
     "gecko": {
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       },
       "id": "uBlock0@raymondhill.net",
       "strict_min_version": "115.0"
@@ -53,14 +55,24 @@
   "content_scripts": [
     {
       "all_frames": true,
-      "js": ["/js/vapi.js", "/js/vapi-client.js", "/js/contentscript.js"],
+      "js": [
+        "/js/vapi.js",
+        "/js/vapi-client.js",
+        "/js/contentscript.js"
+      ],
       "match_about_blank": true,
-      "matches": ["http://*/*", "https://*/*", "file://*/*"],
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "file://*/*"
+      ],
       "run_at": "document_start"
     },
     {
       "all_frames": false,
-      "js": ["/js/scriptlets/subscriber.js"],
+      "js": [
+        "/js/scriptlets/subscriber.js"
+      ],
       "matches": [
         "https://easylist.to/*",
         "https://*.fanboy.co.nz/*",
@@ -73,7 +85,9 @@
     },
     {
       "all_frames": false,
-      "js": ["/js/scriptlets/updater.js"],
+      "js": [
+        "/js/scriptlets/updater.js"
+      ],
       "matches": [
         "https://github.com/uBlockOrigin/*",
         "https://ublockorigin.github.io/*",
@@ -112,6 +126,8 @@
     "<all_urls>"
   ],
   "short_name": "uBlock\u2080",
-  "version": "1.71.0",
-  "web_accessible_resources": ["/web_accessible_resources/*"]
+  "version": "1.72.2",
+  "web_accessible_resources": [
+    "/web_accessible_resources/*"
+  ]
 }

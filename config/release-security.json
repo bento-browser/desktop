@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "publicReleaseReady": false,
+  "updateService": {
+    "hostname": "updates.bentobrowser.app",
+    "marSigningKeyFingerprint": ""
+  },
+  "platformSigning": {
+    "linuxManifestKeyFingerprint": "",
+    "macosDeveloperIdTeam": "",
+    "windowsCertificateThumbprint": ""
+  }
+}

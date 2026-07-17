@@ -19,7 +19,3 @@ pref("app.update.url.details", "https://bentobrowser.app/release-notes/latest/")
 pref("app.releaseNotesURL", "https://bentobrowser.app/whatsnew/");
 pref("app.releaseNotesURL.aboutDialog", "https://bentobrowser.app/release-notes/%VERSION%/");
 pref("app.releaseNotesURL.prompt", "https://bentobrowser.app/release-notes/%VERSION%/");
-
-// Number of usages of the web console.
-// If this is less than 5, then pasting code into the web console is disabled
-pref("devtools.selfxss.count", 5);

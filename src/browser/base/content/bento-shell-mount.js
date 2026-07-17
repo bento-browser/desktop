@@ -41,6 +41,8 @@
   const BENTO_PANEL_CORNER_RADIUS_MAX = 36;
   const BENTO_PANEL_SPLITTER_SIZE_MIN = 6;
   const BENTO_PANEL_SPLITTER_SIZE_MAX = 36;
+  const BENTO_CONTENT_LOAD_FLAGS =
+    Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
 
   function seedChromeColorMode() {
     const root = document.documentElement;
@@ -6376,13 +6378,13 @@
         Services.uriFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS;
       const info = Services.uriFixup.getFixupURIInfo(value, flags);
       const uri = info.preferredURI;
-      if (!uri) return;
+      if (!uri || isDisallowedAddressURI(uri)) return;
       rememberPanelBrowserUrl(browserEl, uri.spec);
-      const principal = Services.scriptSecurityManager.getSystemPrincipal();
+      const loadOptions = getBentoContentLoadOptions();
       if (typeof browserEl.fixupAndLoadURIString === 'function') {
-        browserEl.fixupAndLoadURIString(uri.spec, { triggeringPrincipal: principal });
+        browserEl.fixupAndLoadURIString(uri.spec, loadOptions);
       } else {
-        browserEl.loadURI(uri, { triggeringPrincipal: principal });
+        browserEl.loadURI(uri, loadOptions);
       }
     } catch (err) {
       console.warn('[bento-shell-mount] panel header load failed:', err);
@@ -6479,6 +6481,62 @@
     return info.preferredURI?.spec || null;
   }
 
+  function isDisallowedAddressURI(uri) {
+    try {
+      return uri?.schemeIs?.('javascript') === true;
+    } catch {
+      return true;
+    }
+  }
+
+  function isDisallowedAddressSpec(spec) {
+    try {
+      return isDisallowedAddressURI(Services.io.newURI(spec));
+    } catch {
+      return true;
+    }
+  }
+
+  function getBentoContentLoadOptions() {
+    return {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      loadFlags: BENTO_CONTENT_LOAD_FLAGS,
+    };
+  }
+
+  function stripUnsafeAddressProtocols(value) {
+    let sanitized = String(value || '');
+    for (;;) {
+      let prefixLength = 0;
+      while (
+        prefixLength < sanitized.length &&
+        sanitized.charCodeAt(prefixLength) <= 0x20
+      ) {
+        prefixLength += 1;
+      }
+      const candidate = sanitized.slice(prefixLength);
+      let scheme = '';
+      try {
+        scheme = Services.io.extractScheme(candidate);
+      } catch {
+        return sanitized;
+      }
+      if (scheme.toLowerCase() !== 'javascript') return sanitized;
+      sanitized = candidate.slice(candidate.indexOf(':') + 1);
+    }
+  }
+
+  function sanitizeAddressPaste(event, input) {
+    const pasted = event.clipboardData?.getData?.('text/plain');
+    if (typeof pasted !== 'string' || !pasted) return;
+    const sanitized = stripUnsafeAddressProtocols(pasted);
+    if (sanitized === pasted) return;
+    event.preventDefault();
+    const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+    const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+    input.setRangeText(sanitized, start, end, 'end');
+  }
+
   function isAddrbarUrlLike(value) {
     const trimmed = String(value || '').trim();
     if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return true;
@@ -6551,7 +6609,7 @@
       }
     }
     if (!spec) spec = resolveAddrbarSpec(value);
-    if (!spec) return false;
+    if (!spec || isDisallowedAddressSpec(spec)) return false;
 
     if (mode === 'newTab') {
       if (shouldOpenAddrbarSpecWithChromeNewTab(spec)) {
@@ -6565,12 +6623,12 @@
 
     const browserEl = window.gBrowser?.selectedBrowser;
     if (!browserEl) return false;
-    const principal = Services.scriptSecurityManager.getSystemPrincipal();
+    const loadOptions = getBentoContentLoadOptions();
     if (typeof browserEl.fixupAndLoadURIString === 'function') {
-      browserEl.fixupAndLoadURIString(spec, { triggeringPrincipal: principal });
+      browserEl.fixupAndLoadURIString(spec, loadOptions);
     } else {
       const uri = Services.io.newURI(spec);
-      browserEl.loadURI(uri, { triggeringPrincipal: principal });
+      browserEl.loadURI(uri, loadOptions);
     }
     scheduleScrollMainPanelIntoViewForAddrbar();
     return true;
@@ -7430,6 +7488,7 @@
       // Spotlight-style: select-all on focus so typing replaces the URL.
       setTimeout(() => urlInput.select(), 0);
     });
+    urlInput.addEventListener('paste', (event) => sanitizeAddressPaste(event, urlInput));
     // After Enter (navigate) or Escape (cancel), put DOM focus back on
     // the panel container so the Up/Down content-scroll handler and the
     // keyboard cycle handler keep working. Without this, focus lands

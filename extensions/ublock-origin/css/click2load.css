@@ -19,35 +19,35 @@
 */
 
 body {
-  align-items: center;
-  border: 1px solid var(--ubo-red);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 0 2px;
-  position: relative;
-  width: 100vw;
-}
+    align-items: center;
+    border: 1px solid var(--ubo-red);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 0 2px;
+    position: relative;
+    width: 100vw;
+    }
 
 .logo {
-  left: 0;
-  padding: 2px 1px;
-  position: absolute;
-  top: 0;
-}
+    left: 0;
+    padding: 2px 1px;
+    position: absolute;
+    top: 0;
+    }
 
 #frameURL {
-  font-family: monospace;
-  font-size: 90%;
-  overflow-y: auto;
-  word-break: break-all;
-}
+    font-family: monospace;
+    font-size: 90%;
+    overflow-y: auto;
+    word-break: break-all;
+    }
 #frameURL > a {
-  font-size: 1rem;
-}
-
+    font-size: 1rem;
+    }
+    
 #clickToLoad {
-  cursor: default;
-  margin-bottom: 1em;
-}
+    cursor: default;
+    margin-bottom: 1em;
+    }

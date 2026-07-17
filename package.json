@@ -31,6 +31,11 @@
     "import:addons": "node scripts/install-builtin-addons.mjs",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
+    "security:check": "node scripts/check-security-invariants.mjs",
+    "release:security-check": "node scripts/check-release-security.mjs --channel=preview",
+    "release:security-check:public": "node scripts/check-release-security.mjs --channel=public",
+    "release:sbom": "node scripts/generate-release-sbom.mjs",
+    "release:metadata": "node scripts/generate-release-metadata.mjs",
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
     "dev:fresh": "pnpm run ext:build && pnpm run import && bash scripts/dev-launch.sh $(mktemp -d)",
@@ -55,7 +60,8 @@
     "prettier": "^3.3.0",
     "size-limit": "^12.1.0",
     "typescript": "^5.6.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "yaml": "2.8.4"
   },
   "pnpm": {
     "overrides": {

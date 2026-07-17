@@ -73,10 +73,19 @@ jobs:
         run: pnpm run firefox:patches:test
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/release-security.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
+
+      - name: Bento security invariants
+        run: pnpm run security:check
+
+      - name: Preview release security gate
+        run: pnpm run release:security-check
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level high
 
   extensions:
     name: Extensions — typecheck, lint, build, size-limit

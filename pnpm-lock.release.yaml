@@ -47,6 +47,9 @@ importers:
       typescript-eslint:
         specifier: ^8.0.0
         version: 8.59.1(eslint@9.39.4)(typescript@5.9.3)
+      yaml:
+        specifier: 2.8.4
+        version: 2.8.4
 
   extensions/bento-shell:
     dependencies:
