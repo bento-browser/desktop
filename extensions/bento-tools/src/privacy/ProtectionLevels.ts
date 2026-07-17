@@ -167,6 +167,7 @@ export async function readPrivacySnapshot(): Promise<PrivacySettings> {
     defaultSearchEngine: searchEngines.defaultSearchEngine,
     availableSearchEngines: searchEngines.availableSearchEngines,
     safeBrowsingEnabled,
+    remoteSafeBrowsingEnabled: boolPref(prefs, 'browser.safebrowsing.downloads.remote.enabled'),
     drmEnabled: boolPref(prefs, 'media.eme.enabled'),
     sanitizeOnShutdown: boolPref(prefs, 'privacy.sanitize.sanitizeOnShutdown'),
     resistFingerprinting: browserPrivacy['websites.resistFingerprinting'] === true,

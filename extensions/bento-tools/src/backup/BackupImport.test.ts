@@ -443,4 +443,74 @@ describe('workspace backup import/export', () => {
       }),
     ).toBeNull();
   });
+
+  it('rejects unsafe URLs, malformed layouts, and invalid imported settings', () => {
+    const valid: BentoExportSchema = {
+      schemaVersion: 2,
+      bentoVersion: '0.0.0',
+      exportedAt: 1,
+      workspaces: [
+        {
+          id: 'workspace-1',
+          name: 'Workspace 1',
+          createdAt: 1,
+          tabs: [{ url: 'https://example.test/', title: 'Example', pinned: false }],
+          panels: [{ panelKey: 'panel-1', url: 'https://panel.example.test/' }],
+          panelLayout: { root: [{ kind: 'panel', panelKey: 'panel-1' }] },
+          pinnedPanels: [],
+        },
+      ],
+      settings: { autoBackupMaxCount: 5 },
+      savedPanels: [],
+    };
+
+    expect(validateExportSchema(valid)).toBe(valid);
+    expect(
+      validateExportSchema({
+        ...valid,
+        workspaces: [
+          {
+            ...valid.workspaces[0]!,
+            tabs: [{ url: 'javascript:alert(1)', title: 'Unsafe', pinned: false }],
+          },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      validateExportSchema({
+        ...valid,
+        workspaces: [
+          {
+            ...valid.workspaces[0]!,
+            panelLayout: { root: [{ kind: 'panel', panelKey: 'missing-panel' }] },
+          },
+        ],
+      }),
+    ).toBeNull();
+    expect(validateExportSchema({ ...valid, settings: { autoBackupMaxCount: 1000 } })).toBeNull();
+    expect(validateExportSchema({ ...valid, settings: { unexpected: true } })).toBeNull();
+  });
+
+  it('rejects exports with excessive collection sizes', () => {
+    const workspace = {
+      id: 'workspace',
+      name: 'Workspace',
+      createdAt: 1,
+      tabs: [],
+      panels: [],
+      pinnedPanels: [],
+    };
+    expect(
+      validateExportSchema({
+        schemaVersion: 2,
+        bentoVersion: '0.0.0',
+        exportedAt: 1,
+        workspaces: Array.from({ length: 257 }, (_, index) => ({
+          ...workspace,
+          id: `workspace-${index}`,
+        })),
+        savedPanels: [],
+      }),
+    ).toBeNull();
+  });
 });

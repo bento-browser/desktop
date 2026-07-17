@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALLOWED_PRIVACY_PREFS, PRIVACY_PRESETS } from '@shared/privacy-levels';
-import { detectPrivacyLevelFromSnapshot, readSearchEnginesSnapshot } from './ProtectionLevels';
+import {
+  applyAdvancedSetting,
+  detectPrivacyLevelFromSnapshot,
+  readSearchEnginesSnapshot,
+} from './ProtectionLevels';
 
 describe('privacy protection levels', () => {
   beforeEach(() => {
@@ -18,9 +22,15 @@ describe('privacy protection levels', () => {
     expect(PRIVACY_PRESETS.standard.browserPrivacy['network.networkPredictionEnabled']).toBe(false);
     expect(PRIVACY_PRESETS.standard.prefs['browser.search.suggest.enabled']).toBe(false);
     expect(PRIVACY_PRESETS.standard.prefs['browser.safebrowsing.malware.enabled']).toBe(true);
-    expect(PRIVACY_PRESETS.standard.prefs['browser.safebrowsing.downloads.remote.enabled']).toBe(
-      false,
+    expect(PRIVACY_PRESETS.standard.browserPrivacy['network.httpsOnlyMode']).toBe('always');
+    expect(PRIVACY_PRESETS.standard.prefs['dom.security.https_only_mode']).toBe(true);
+    expect(PRIVACY_PRESETS.standard.prefs).not.toHaveProperty(
+      'browser.safebrowsing.downloads.remote.enabled',
     );
+    expect(ALLOWED_PRIVACY_PREFS).toContain('browser.safebrowsing.downloads.remote.enabled');
+    expect(PRIVACY_PRESETS.hardened.prefs['browser.safebrowsing.malware.enabled']).toBe(true);
+    expect(PRIVACY_PRESETS.hardened.prefs['browser.safebrowsing.phishing.enabled']).toBe(true);
+    expect(PRIVACY_PRESETS.hardened.prefs['browser.safebrowsing.downloads.enabled']).toBe(true);
     expect(PRIVACY_PRESETS.standard.prefs['network.trr.mode']).toBe(5);
   });
 
@@ -37,6 +47,26 @@ describe('privacy protection levels', () => {
         'media.eme.enabled': false,
       }),
     ).toBe('custom');
+  });
+
+  it('keeps remote download reputation independent of preset detection', () => {
+    expect(
+      detectPrivacyLevelFromSnapshot(PRIVACY_PRESETS.standard.browserPrivacy, {
+        ...PRIVACY_PRESETS.standard.prefs,
+        'browser.safebrowsing.downloads.remote.enabled': true,
+      }),
+    ).toBe('standard');
+  });
+
+  it('writes remote download reputation independently from local Safe Browsing', async () => {
+    const setPrefs = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('browser', { bentoPrivacy: { setPrefs } });
+
+    await applyAdvancedSetting('remoteSafeBrowsingEnabled', true);
+
+    expect(setPrefs).toHaveBeenCalledWith({
+      'browser.safebrowsing.downloads.remote.enabled': true,
+    });
   });
 
   it('keeps all preset prefs in the privileged allowlist', () => {

@@ -10,10 +10,9 @@
 #      no-op, pulling @tale-ui/* from npm at the pinned versions instead
 #      of the local link target. Release artifacts must NOT depend on a
 #      working tree outside the repo.
-#   2. Runs `pnpm install --no-frozen-lockfile` to update the lockfile
-#      against the npm-pinned versions for the duration of the build.
-#      The lockfile change is intentional and ephemeral — see
-#      "restore dev state" below.
+#   2. Installs from pnpm-lock.release.yaml with --frozen-lockfile.
+#      The committed release graph contains registry-backed Tale UI packages
+#      and cannot drift during CI or a later rebuild.
 #   3. Runs `surfer package` to produce platform artifacts, not just the
 #      app bundle.
 #   4. Restores the original lockfile + node_modules at the end so a dev
@@ -63,15 +62,8 @@ fi
 OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
 
-# Stash dev state so we can restore at end. Using backup files rather
-# than `git stash` because the user may have intentional uncommitted
-# changes and we shouldn't conflate them with pnpm's lockfile churn or
-# the buildMode toggle.
-LOCKFILE_BACKUP=""
-if [ -f pnpm-lock.yaml ]; then
-  LOCKFILE_BACKUP="$(mktemp)"
-  cp pnpm-lock.yaml "$LOCKFILE_BACKUP"
-fi
+# Stash dev build mode so it can be restored at the end. Using a backup file
+# rather than git stash preserves intentional uncommitted user changes.
 BUILD_MODE_BACKUP=""
 BUILD_MODE_FILE=".surfer/dynamicConfig.buildMode.json"
 if [ -f "$BUILD_MODE_FILE" ]; then
@@ -83,10 +75,6 @@ fi
 # leave the workspace in release-mode. trap fires on success and failure.
 restore_dev_state() {
   step "Restoring dev state"
-  if [ -n "$LOCKFILE_BACKUP" ]; then
-    cp "$LOCKFILE_BACKUP" pnpm-lock.yaml
-    rm -f "$LOCKFILE_BACKUP"
-  fi
   if [ -n "$BUILD_MODE_BACKUP" ]; then
     cp "$BUILD_MODE_BACKUP" "$BUILD_MODE_FILE"
     rm -f "$BUILD_MODE_BACKUP"
@@ -99,17 +87,14 @@ restore_dev_state() {
   # back to the local Tale UI checkout. Skip in CI — the runner is
   # ephemeral and re-installing is wasted time there.
   if [ -z "${CI:-}" ]; then
-    pnpm install >/dev/null 2>&1 || true
+    bash scripts/clear-tale-ui-links.sh || true
+    pnpm install --force >/dev/null 2>&1 || true
   fi
 }
 trap restore_dev_state EXIT
 
 step "1/4 Installing dependencies in release mode (BENTO_RELEASE=1)"
-# --no-frozen-lockfile lets pnpm update the lock when the .pnpmfile.cjs
-# stops rewriting @tale-ui/* to link:. Without this the install would
-# error because the lockfile records link: paths and the package.json
-# now resolves to npm versions.
-BENTO_RELEASE=1 pnpm install --no-frozen-lockfile
+bash scripts/install-release-deps.sh
 
 step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
 BENTO_RELEASE=1 pnpm run ext:build

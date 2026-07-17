@@ -591,7 +591,7 @@ Use this shape for new or changed touchpoints:
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-07-14
+- Last updated: 2026-07-17
 - Files or patches:
   - `prefs/bento.js`
   - `engine/services/settings/dumps/main/search-config-v2.json`
@@ -607,8 +607,9 @@ Use this shape for new or changed touchpoints:
   build configuration, and temporary Firefox-source build guards. Privacy defaults include strict
   tracking protection, tracker-cookie partitioning, Global Privacy Control,
   query stripping, speculative networking off, remote search suggestions off,
-  local Safe Browsing on, remote Safe Browsing download checks off, DoH disabled,
-  and AI/remote suggestion surfaces disabled.
+  local Safe Browsing on, HTTPS-only mode on, remote Safe Browsing download
+  checks off by default but independently user-toggleable, DoH disabled, and
+  AI/remote suggestion surfaces disabled.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
   search service Remote Settings dumps, branding import paths, build
   configuration, and patched build/runtime behavior covered by
@@ -625,6 +626,9 @@ Use this shape for new or changed touchpoints:
   the built app, confirm fresh-profile omnibar search uses DuckDuckGo, inspect
   `about:config` for the Standard privacy defaults, confirm Firefox-visible
   search engines can be selected as default search in onboarding and Settings,
+  confirm an HTTP-only destination still offers Firefox's exception UI, confirm
+  remote download reputation can be toggled without changing the detected
+  privacy preset,
   and re-evaluate whether each experiment patch is still needed.
 - Rollback or migration notes: remove temporary experiment patches as soon as
   upstream Firefox no longer requires them.

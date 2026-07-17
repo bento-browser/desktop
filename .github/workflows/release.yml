@@ -86,9 +86,7 @@ jobs:
       # `surfer download` / `surfer bootstrap` steps below need surfer
       # itself on disk before they can invoke it.
       - name: Install dependencies (release mode)
-        env:
-          BENTO_RELEASE: '1'
-        run: pnpm install --no-frozen-lockfile
+        run: bash scripts/install-release-deps.sh
 
       - name: Configure deterministic Firefox source checkout
         run: |

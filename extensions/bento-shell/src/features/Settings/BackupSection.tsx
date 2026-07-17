@@ -16,6 +16,7 @@ import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 
 import type { BackupListEntry, BentoExportSchema, ImportSummary } from '@shared/protocol';
+import { MAX_BACKUP_FILE_BYTES } from '@shared/export-schema';
 import { useSettingsStore } from '../../state/settings';
 import { useWorkspacesStore } from '../../state/workspaces';
 import { useBackupStore } from '../../state/backup';
@@ -160,6 +161,11 @@ export function BackupSection() {
     if (!file) return;
     setParseError(false);
     setImportStatus(null);
+    if (file.size > MAX_BACKUP_FILE_BYTES) {
+      setImportStatus('Import failed: backup files must be 10 MB or smaller.');
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const preview = parseImportFile(reader.result as string);

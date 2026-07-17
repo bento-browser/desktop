@@ -274,6 +274,7 @@ export interface SearchEnginesSnapshot {
 }
 export type PrivacyAdvancedKey =
   | 'safeBrowsingEnabled'
+  | 'remoteSafeBrowsingEnabled'
   | 'drmEnabled'
   | 'sanitizeOnShutdown'
   | 'resistFingerprinting'
@@ -681,6 +682,7 @@ export interface PrivacySettings {
   defaultSearchEngine: SearchEngineId;
   availableSearchEngines: SearchEngineChoice[];
   safeBrowsingEnabled: boolean;
+  remoteSafeBrowsingEnabled: boolean;
   drmEnabled: boolean;
   sanitizeOnShutdown: boolean;
   resistFingerprinting: boolean;

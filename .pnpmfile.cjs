@@ -7,8 +7,9 @@
 //
 // BENTO_RELEASE=1: leave the npm-pinned versions in package.json untouched.
 // Release CI (scripts/build-release.sh, GitHub Actions) sets this so the
-// install pulls @tale-ui/* from the npm registry — byte-reproducible
-// across machines, no working-tree dependency. See CLAUDE.md
+// install pulls @tale-ui/* from the npm registry using the separate frozen
+// pnpm-lock.release.yaml — reproducible across machines, with no
+// working-tree dependency. See CLAUDE.md
 // "Tale UI: development → release migration" for the full rationale.
 //
 // Why a hook instead of pnpm.overrides in package.json: overrides are

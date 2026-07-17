@@ -283,12 +283,12 @@ Tale UI is published to npm at the versions Bento targets. The extension `packag
 - The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/core/packages/*`. Packages consumed through their published export shape, including `@tale-ui/react` and `@tale-ui/themes`, link to their local `build/` output. Source edits in `tale-ui/core` hot-reload after rebuilding the affected Tale UI package.
 - The lockfile records the `link:` paths.
 
-**Release install** — `BENTO_RELEASE=1 pnpm install --no-frozen-lockfile` (used by `scripts/build-release.sh` and the GitHub Actions release workflow):
+**Release install** — `bash scripts/install-release-deps.sh` (used by `scripts/build-release.sh` and GitHub Actions):
 
 - The hook detects `BENTO_RELEASE=1` and is a no-op. pnpm sees the npm-pinned versions in `package.json` and resolves from the registry.
-- `--no-frozen-lockfile` allows the lockfile to update from `link:` → `1.3.47` for the duration of the build. Release CI runs in a clean throwaway environment so this doesn't pollute developer state.
+- The helper temporarily installs against `pnpm-lock.release.yaml` with `--frozen-lockfile`, then restores the developer lock while leaving the registry-backed release graph installed in `node_modules`. Resolution cannot drift across CI runs or later rebuilds.
 
-**When updating the Tale UI version**: bump the version strings in both `extensions/bento-shell/package.json` and `extensions/bento-tools/package.json` (when bento-tools eventually pulls Tale UI). Run `pnpm install` to refresh the lockfile against the new local checkout. Verify it still works under release mode by `BENTO_RELEASE=1 pnpm install --no-frozen-lockfile` in a separate worktree.
+**When updating the Tale UI version**: bump the version strings in both `extensions/bento-shell/package.json` and `extensions/bento-tools/package.json` (when bento-tools eventually pulls Tale UI). Run `pnpm install` to refresh the developer lock, then run `bash scripts/update-release-lock.sh`. Verify it with `bash scripts/install-release-deps.sh`.
 
 **Why this matters**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. Surfer is likewise pinned to an exact npm version; see [docs/build-tooling.md](docs/build-tooling.md).
 

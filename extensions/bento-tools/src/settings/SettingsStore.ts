@@ -8,6 +8,7 @@
 // storage payload small and lets us evolve defaults without migrating data.
 
 import type { BentoSettings } from '@shared/protocol';
+import { isValidBentoSettingsPatch } from '@shared/export-schema';
 
 const STORAGE_KEY = 'bento.settings';
 const VERSION = 2;
@@ -80,13 +81,20 @@ export class SettingsStore {
   #pendingOverrides: Partial<BentoSettings> | null = null;
 
   async init(): Promise<void> {
-    const { overrides, overrideKeys } = await load();
-    this.#overrideKeys = overrideKeys;
+    const loaded = await load();
+    const { overrides } = loaded;
     // Content color mode stays an explicit Firefox content override.
     // Profiles from older builds may have 'system' persisted there; map it
     // back to the content default while allowing uiColorMode='system'.
     if ((overrides.contentColorMode as string | undefined) === 'system')
       overrides.contentColorMode = 'light';
+    if (!isValidBentoSettingsPatch(overrides)) {
+      console.warn('[bento-tools] settings: invalid stored overrides — ignoring');
+      this.#overrideKeys.clear();
+      this.#current = { ...DEFAULT_SETTINGS };
+      return;
+    }
+    this.#overrideKeys = loaded.overrideKeys;
     this.#current = { ...DEFAULT_SETTINGS, ...overrides };
   }
 
@@ -106,6 +114,10 @@ export class SettingsStore {
   /** Merge `changes` into current settings + persist + broadcast. No-op if
    * nothing actually changed (referential check on each field). */
   update(changes: Partial<BentoSettings>): void {
+    if (!isValidBentoSettingsPatch(changes)) {
+      console.warn('[bento-tools] settings: rejected invalid changes');
+      return;
+    }
     let dirty = false;
     const next = { ...this.#current };
     for (const [key, value] of Object.entries(changes) as [

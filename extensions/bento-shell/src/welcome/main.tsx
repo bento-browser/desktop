@@ -164,7 +164,7 @@ const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     icon: Shield,
     boxes: [
       ['Standard', 'Compatibility-first'],
-      ['Enhanced', 'HTTPS-only and RFP'],
+      ['Enhanced', 'RFP and tighter WebRTC'],
       ['Hardened', 'Reduced persistence'],
       ['Custom', 'Detected later in Settings'],
     ],

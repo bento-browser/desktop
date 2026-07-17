@@ -14,6 +14,12 @@
       "reason": "Records the exact upstream npm package resolution."
     },
     {
+      "path": "pnpm-lock.release.yaml",
+      "pattern": "@zen-browser/surfer",
+      "category": "build-tool",
+      "reason": "Records the same exact upstream npm package in the frozen release graph."
+    },
+    {
       "path": "pnpm-workspace.yaml",
       "pattern": "@zen-browser/surfer",
       "category": "build-tool",

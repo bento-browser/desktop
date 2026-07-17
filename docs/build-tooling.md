@@ -30,6 +30,26 @@ order. Bento scripts do not import Surfer modules.
 Direct `surfer import` bypasses Bento's branding, add-on, patch, preference, and
 symlink steps. Use `pnpm run import` whenever the resulting engine state matters.
 
+## Reproducible release dependencies
+
+Developer installs use `pnpm-lock.yaml`, where Bento's pnpm hook records local
+Tale UI `link:` targets. Release and CI installs use the separate committed
+`pnpm-lock.release.yaml`, which records the registry-backed Tale UI graph.
+`scripts/install-release-deps.sh` temporarily swaps in that root-format lock,
+sets `BENTO_RELEASE=1`, force-relinks with `--frozen-lockfile`, and restores the
+developer lock. The relink prevents an existing developer `link:` symlink from
+surviving into a release build; the cleanup helper deletes only verified Tale
+UI symlinks and refuses real directories. Any manifest or transitive-resolution
+drift fails the install instead of silently changing a release.
+
+After changing a dependency, update both graphs:
+
+```sh
+pnpm install
+bash scripts/update-release-lock.sh
+bash scripts/install-release-deps.sh
+```
+
 ## Upgrading Surfer
 
 No Surfer update is auto-merged. Do not create another Bento-maintained fork.

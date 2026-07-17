@@ -627,6 +627,16 @@ compares it with the preset maps, and reports `custom` when any preset value
 differs. Advanced settings dispatch the same path and then emit a fresh
 `privacy/snapshot`.
 
+Standard sets both `network.httpsOnlyMode='always'` and Firefox's underlying
+HTTPS-only prefs; Firefox continues to own the HTTP exception interstitial and
+per-site exception UI. `browser.safebrowsing.downloads.remote.enabled` is
+allowlisted and exposed as `remoteSafeBrowsingEnabled`, but deliberately stays
+outside every preset map. This keeps remote download reputation independently
+user-controlled: applying or detecting Standard, Enhanced, or Hardened neither
+resets the remote choice nor changes a matching preset to Custom.
+Local Safe Browsing phishing, malware, and download-list checks remain enabled
+in all three presets; Hardened no longer trades away that protection.
+
 `extensions/bento-tools/experiments/bento-privacy/` exposes the minimal
 privileged surface that normal WebExtension APIs cannot provide:
 
@@ -1593,7 +1603,14 @@ Zen import path.
 
 Backup export/import uses schema v2 in
 `extensions/bento-tools/src/backup/BackupStore.ts`,
-`ImportExecutor.ts`, and `ExportSchema.ts`. A workspace export must include the
+`ImportExecutor.ts`, and the shared `extensions/_shared/export-schema.ts`
+validator re-exported by both shell and tools. Manual imports are limited to
+10 MB before `FileReader` allocation. The shared validator caps collection and
+string sizes, validates the complete panel-layout tree and references, permits
+only supported navigation URL schemes, and rejects unknown or out-of-range
+settings. `SettingsStore` also rejects invalid stored or runtime settings
+patches so import validation cannot be bypassed through another action path.
+A workspace export must include the
 same panel state that `PanelStore` persists for restart:
 
 - `panels[]` with durable `panelKey`, URL, and root panel `widthPx`;

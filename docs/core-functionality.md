@@ -519,20 +519,28 @@ to use.
 Bento exposes privacy as a first-class browser setting instead of hiding it
 behind `about:config`. The selectable protection levels are:
 
-- Standard: compatibility-first Bento defaults with strict Firefox tracking
+- Standard: balanced Bento defaults with strict Firefox tracking
   protection, tracker-cookie partitioning, Global Privacy Control, query
   stripping, remote search suggestions off, speculative networking off, local
-  Safe Browsing checks on, remote download checks off, uBlock Origin enabled,
-  and DuckDuckGo as the fresh-profile search default.
-- Enhanced: Standard plus HTTPS-only mode, resist fingerprinting, and tighter
-  WebRTC IP handling.
+  Safe Browsing checks on, HTTPS-only mode, uBlock Origin enabled, and
+  DuckDuckGo as the fresh-profile search default.
+- Enhanced: Standard plus resist fingerprinting and tighter WebRTC IP handling.
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
-  Browsing off, and cookies/site data/cache cleared on shutdown.
+  Browsing retained, and cookies/site data/cache cleared on shutdown.
 
 Custom is a detected state, not a selectable preset. Bento shows Custom when
 the live browser settings no longer exactly match Standard, Enhanced, or
 Hardened.
+
+Remote Safe Browsing download reputation is a separate advanced toggle rather
+than a preset value. It remains off by default and, when enabled, clearly states
+that Firefox may send eligible-download and redirect URLs, the original referrer
+when available, file name, size, SHA-256, locale, and signing or certificate
+metadata to Google Safe Browsing for an online verdict. Switching presets does
+not reset the toggle or make an otherwise matching preset appear as Custom.
+Firefox's HTTPS exception UI remains available for HTTP-only sites and local
+devices.
 
 Settings includes a privacy level selector, default search engine selector, and
 advanced privacy controls for the main browser-level levers. Settings displays

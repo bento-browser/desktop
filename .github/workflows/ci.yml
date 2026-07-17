@@ -25,9 +25,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        env:
-          BENTO_RELEASE: '1'
-        run: pnpm install --no-frozen-lockfile
+        run: bash scripts/install-release-deps.sh
 
       - name: Validate JSON syntax
         run: |
@@ -100,13 +98,9 @@ jobs:
         # so @tale-ui/* resolve from npm at the pinned versions in
         # package.json. Without it the hook would rewrite them to
         # `link:/Users/admin/Projects/tale-ui/core/packages/*` (the local
-        # dev path) which doesn't exist on the runner. --no-frozen-lockfile
-        # is needed because the committed lockfile records the link:
-        # paths from dev — CI is allowed to update its in-memory copy, the
-        # change is discarded with the runner.
-        env:
-          BENTO_RELEASE: '1'
-        run: pnpm install --no-frozen-lockfile
+        # dev path) which doesn't exist on the runner. The helper installs
+        # the committed registry-backed release lock without permitting drift.
+        run: bash scripts/install-release-deps.sh
 
       - name: Typecheck (shell)
         run: pnpm --filter @bento/shell typecheck
@@ -148,10 +142,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - name: Install dependencies
-        # See `extensions` job above for why BENTO_RELEASE + --no-frozen-lockfile.
-        env:
-          BENTO_RELEASE: '1'
-        run: pnpm install --no-frozen-lockfile
+        # See `extensions` job above for the separate frozen release lock.
+        run: bash scripts/install-release-deps.sh
       - name: Surfer reads our config
         # `surfer --version` parses surfer.json end-to-end and exits non-zero
         # if any required field is missing. Our cheapest end-to-end check.
@@ -179,10 +171,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - name: Install dependencies
-        # See `extensions` job above for why BENTO_RELEASE + --no-frozen-lockfile.
-        env:
-          BENTO_RELEASE: '1'
-        run: pnpm install --no-frozen-lockfile
+        # See `extensions` job above for the separate frozen release lock.
+        run: bash scripts/install-release-deps.sh
 
       - name: Configure deterministic Firefox source checkout
         run: |

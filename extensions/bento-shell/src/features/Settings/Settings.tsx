@@ -507,7 +507,13 @@ export function Settings() {
                           'safeBrowsingEnabled',
                           privacy.safeBrowsingEnabled,
                           'Local Safe Browsing checks',
-                          'Checks phishing, malware, and download blocklists. Remote download checks stay off in Standard and Enhanced.',
+                          'Checks locally downloaded phishing, malware, and dangerous-download blocklists without sending download-specific metadata.',
+                        )}
+                        {advancedBoolean(
+                          'remoteSafeBrowsingEnabled',
+                          privacy.remoteSafeBrowsingEnabled,
+                          'Remote download reputation checks',
+                          'Security-first option. For eligible downloads not resolved locally, sends download and redirect URLs, the original referrer when available, file name, size, SHA-256, locale, and signing or certificate metadata to Google Safe Browsing for a verdict.',
                         )}
                         {advancedBoolean(
                           'resistFingerprinting',

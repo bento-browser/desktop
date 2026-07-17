@@ -83,13 +83,13 @@ pref("network.trr.mode", 5);
 pref("browser.search.suggest.enabled", false);
 pref("browser.urlbar.suggest.searches", false);
 
-// Keep HTTPS-only as an Enhanced/Hardened feature rather than a Standard
-// default so HTTP-only intranet and device-admin pages keep working.
-pref("dom.security.https_only_mode", false);
-pref("dom.security.https_only_mode_pbm", false);
+// Upgrade navigation to HTTPS by default. Firefox retains its built-in
+// per-site temporary and permanent exception UI for HTTP-only destinations.
+pref("dom.security.https_only_mode", true);
+pref("dom.security.https_only_mode_pbm", true);
 
-// Local Safe Browsing checks stay on in Standard, but remote download
-// lookups are disabled. Hardened can turn the local checks off too.
+// Local Safe Browsing checks stay on in every preset. Remote download
+// reputation remains a separate, off-by-default user choice.
 pref("browser.safebrowsing.malware.enabled", true);
 pref("browser.safebrowsing.phishing.enabled", true);
 pref("browser.safebrowsing.downloads.enabled", true);

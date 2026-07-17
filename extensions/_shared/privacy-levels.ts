@@ -32,12 +32,12 @@ export const PRIVACY_LEVELS: readonly PrivacyLevelMetadata[] = [
   {
     id: 'standard',
     label: 'Standard',
-    summary: 'Strong defaults with the fewest site compatibility surprises.',
+    summary: 'Strong defaults with HTTPS-only protection and broad site compatibility.',
   },
   {
     id: 'enhanced',
     label: 'Enhanced',
-    summary: 'Adds HTTPS-only mode and tighter WebRTC exposure.',
+    summary: 'Adds fingerprinting resistance and tighter WebRTC exposure.',
   },
   {
     id: 'hardened',
@@ -53,27 +53,29 @@ export const PRIVACY_LEVEL_DETAILS: Record<SelectablePrivacyProtectionLevel, Pri
     standard: {
       id: 'standard',
       label: 'Standard',
-      summary: 'Strong defaults with the fewest site compatibility surprises.',
+      summary: 'Strong defaults with HTTPS-only protection and broad site compatibility.',
       bestFor: 'Best for most users and the default for fresh profiles.',
       benefits: [
         'Strict tracking protection, tracker-cookie partitioning, GPC, query stripping, and uBlock Origin are enabled.',
         'Search suggestions and speculative network connections are off.',
-        'Local Safe Browsing checks stay on; remote download lookups stay off.',
+        'Local Safe Browsing and HTTPS-only protection are enabled.',
+        'Remote download reputation is controlled separately and stays off until enabled.',
         'Highest compatibility of the three levels.',
       ],
       caveats: [
-        'HTTPS-only mode and resist fingerprinting are off.',
+        'HTTP-only sites and local device pages may need manual approval.',
+        'Resist fingerprinting is off.',
         'WebRTC, DRM, disk cache, WebGL/WebGPU, password saving, and form history stay enabled.',
       ],
     },
     enhanced: {
       id: 'enhanced',
       label: 'Enhanced',
-      summary: 'Adds HTTPS-only mode and tighter WebRTC exposure.',
+      summary: 'Adds fingerprinting resistance and tighter WebRTC exposure.',
       bestFor: 'Best for stronger browser-level privacy with moderate compatibility risk.',
       benefits: [
         'Includes Standard protections.',
-        'Turns on HTTPS-only mode and resist fingerprinting.',
+        'Turns on resist fingerprinting.',
         'Restricts WebRTC IP handling with disable_non_proxied_udp.',
       ],
       caveats: [
@@ -98,13 +100,13 @@ export const PRIVACY_LEVEL_DETAILS: Record<SelectablePrivacyProtectionLevel, Pri
         'Video calls, WebRTC apps, and DRM streaming sites will break.',
         'Maps, games, design tools, and 3D demos that need WebGL/WebGPU may fail.',
         'Sites may forget sessions after shutdown.',
-        'Local Safe Browsing is off, so phishing and malware protection depends more on uBlock Origin and user judgment.',
       ],
     },
   } as const;
 
 export const ADVANCED_KEY_TO_PREF: Partial<Record<PrivacyAdvancedKey, string>> = {
   safeBrowsingEnabled: 'browser.safebrowsing.malware.enabled',
+  remoteSafeBrowsingEnabled: 'browser.safebrowsing.downloads.remote.enabled',
   drmEnabled: 'media.eme.enabled',
   sanitizeOnShutdown: 'privacy.sanitize.sanitizeOnShutdown',
   letterboxing: 'privacy.resistFingerprinting.letterboxing',
@@ -146,7 +148,6 @@ const STANDARD_PREFS = {
   'browser.newtabpage.activity-stream.showSponsoredTopSites': false,
   'browser.places.speculativeConnect.enabled': false,
   'browser.safebrowsing.downloads.enabled': true,
-  'browser.safebrowsing.downloads.remote.enabled': false,
   'browser.safebrowsing.malware.enabled': true,
   'browser.safebrowsing.phishing.enabled': true,
   'browser.search.suggest.enabled': false,
@@ -154,8 +155,8 @@ const STANDARD_PREFS = {
   'browser.urlbar.suggest.quicksuggest.nonsponsored': false,
   'browser.urlbar.suggest.quicksuggest.sponsored': false,
   'browser.urlbar.suggest.searches': false,
-  'dom.security.https_only_mode': false,
-  'dom.security.https_only_mode_pbm': false,
+  'dom.security.https_only_mode': true,
+  'dom.security.https_only_mode_pbm': true,
   'dom.webgpu.enabled': true,
   'media.eme.enabled': true,
   'network.dns.disablePrefetch': true,
@@ -179,7 +180,7 @@ export const PRIVACY_PRESETS: Record<SelectablePrivacyProtectionLevel, PrivacyPr
       ...BASE_BROWSER_PRIVACY,
       'websites.resistFingerprinting': false,
       'network.webRTCIPHandlingPolicy': 'default',
-      'network.httpsOnlyMode': 'never',
+      'network.httpsOnlyMode': 'always',
     },
     prefs: STANDARD_PREFS,
   },
@@ -209,9 +210,6 @@ export const PRIVACY_PRESETS: Record<SelectablePrivacyProtectionLevel, PrivacyPr
       ...STANDARD_PREFS,
       'browser.cache.disk.enable': false,
       'browser.formfill.enable': false,
-      'browser.safebrowsing.downloads.enabled': false,
-      'browser.safebrowsing.malware.enabled': false,
-      'browser.safebrowsing.phishing.enabled': false,
       'dom.security.https_only_mode': true,
       'dom.security.https_only_mode_pbm': true,
       'dom.security.https_only_mode_send_http_background_request': false,
@@ -230,7 +228,10 @@ export const PRIVACY_PRESETS: Record<SelectablePrivacyProtectionLevel, PrivacyPr
 
 export const ALLOWED_PRIVACY_PREFS = Object.freeze(
   Array.from(
-    new Set(Object.values(PRIVACY_PRESETS).flatMap((preset) => Object.keys(preset.prefs))),
+    new Set([
+      ...Object.values(PRIVACY_PRESETS).flatMap((preset) => Object.keys(preset.prefs)),
+      'browser.safebrowsing.downloads.remote.enabled',
+    ]),
   ).sort(),
 );
 

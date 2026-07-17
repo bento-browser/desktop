@@ -4,22 +4,29 @@ Bento exposes three selectable privacy levels and one computed state.
 
 ## Levels
 
-- Standard: compatibility-first default. Uses strict Firefox tracking
+- Standard: balanced default. Uses strict Firefox tracking
   protection, tracker-cookie partitioning, Global Privacy Control, query
   stripping, remote search suggestions off, speculative networking off, local
-  Safe Browsing checks on, remote download checks off, DoH disabled, and uBlock
-  Origin enabled.
-- Enhanced: Standard plus HTTPS-only mode, resist fingerprinting, and WebRTC IP
-  handling set to disable non-proxied UDP.
+  Safe Browsing checks on, HTTPS-only mode, DoH disabled, and uBlock Origin
+  enabled.
+- Enhanced: Standard plus resist fingerprinting and WebRTC IP handling set to
+  disable non-proxied UDP.
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
-  Browsing off, and cookies/site data/cache cleared on shutdown.
+  Browsing retained, and cookies/site data/cache cleared on shutdown.
 - Custom: detected when live browser settings diverge from every preset. It is
   not selectable.
 
 Settings shows the benefits and caveats for all three selectable levels.
 Onboarding shows a compact explanation for the currently selected level before
 the user continues.
+
+Remote Safe Browsing download reputation is an independent advanced setting,
+not part of preset matching. It is off by default. When enabled, Firefox may
+send eligible-download and redirect URLs, the original referrer when available,
+file name, size, SHA-256, locale, and signing or certificate metadata to Google
+Safe Browsing when a local verdict is unavailable. Changing a protection preset
+does not reset this setting or change the displayed preset to Custom.
 
 ## Search
 
