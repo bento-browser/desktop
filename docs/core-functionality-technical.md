@@ -35,7 +35,10 @@ hidden-tabs titlebar state. `prefs/bento.js` defaults
 `bento.chrome.hideNativeTabs` to `true`, and
 `patches/core-ui/02-hide-native-tabs.patch` makes
 `TabBarVisibility.update()` include that pref in `hideTabsToolbar` for normal
-browser windows. The patch does not enable `sidebar.verticalTabs`.
+browser windows. The patch does not enable `sidebar.verticalTabs`. It also marks
+Firefox's `browserLayout` setting group hidden and hidden from Settings search,
+so neither the horizontal/vertical picker nor the native Show sidebar toggle is
+offered in Bento.
 
 When the pref-driven branch is active, Firefox sets
 `#navigator-toolbox[tabs-hidden]`, toggles `#nav-bar.browser-titlebar`, and
@@ -551,13 +554,12 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep the security popup native. React may show the security label/icon, but
   certificate, permission, and identity details must remain Firefox's
   `identity-popup` content.
-- Chrome-mounted shell pages must remain explicitly loadable from outside the
-  extension page context. Keep every HTML entry loaded by
-  `bento-shell-mount.js` in `bento-shell`'s `web_accessible_resources`, and
-  navigate those chrome `<browser>` frames through `loadURI()` with a system
-  principal before falling back to `src`. Firefox 152 tightened this path; a
-  missing entry or principal can show Firefox's "Problem loading page" in the
-  sidebar or leave chrome-mounted overlays such as the address bar blank.
+- Chrome-mounted shell pages must remain present in the packaged extension
+  runtime. Navigate those chrome `<browser>` frames through `loadURI()` with a
+  system principal before falling back to `src`. Firefox 152 tightened this
+  path; a missing entry or principal can show Firefox's "Problem loading page"
+  in the sidebar or leave chrome-mounted overlays such as the address bar
+  blank. These privileged mount entries do not need to be web-accessible pages.
 - Do not create a blank tab for native-urlbar clicks. They are current-tab
   edits; only explicit new-tab mode should defer tab creation until commit.
 - When an empty workspace is created from `workspace-palette.html`, the
@@ -673,21 +675,42 @@ the stored privacy preset or stored default search engine only when
 Fresh-profile browser defaults therefore come from `prefs/bento.js` and the
 search config dumps rather than from an unconditional startup rewrite.
 
-Settings UI in `extensions/bento-shell/src/features/Settings/Settings.tsx`
-mirrors the live privacy snapshot. The level selector uses Tale UI
-`ToggleButtonGroup` with `selectionMode`, `selectedKeys`, and
-`onSelectionChange`. The search selector uses `Select.Root` with
-`selectedKey/onSelectionChange`. Advanced controls use `Disclosure` and
-settings-row `Switch.Root` controls. The full protection-level benefit/caveat
-comparison rendered in Settings comes from `PRIVACY_LEVEL_DETAILS`. The
-keyboard-shortcuts reference in
-`extensions/bento-shell/src/features/Settings/ShortcutsDialog.tsx` is a
-read-only Tale UI `CommandPalette` with static shortcut command records, local
-`useCommandPalette` filtering, visible category section headers, command rows,
-and `CommandPalette.Shortcut` key tokens. The shortcut rows use command-palette
-item visuals but are display-only list rows, not selectable `CommandPalette.Item`
-actions. The settings entrypoint imports `@tale-ui/react-styles/command-palette`
-for that surface. The Keyboard shortcuts card also writes
+Native Bento Settings is registered by
+`patches/core-ui/15-bento-native-preferences.patch`. Its config module uses
+Firefox `SettingGroupManager` controls and a generated observer protocol to the
+tools-owned `browser.bentoNativePreferences` experiment. The canonical contract
+is `extensions/_shared/native-preferences-contract.json`; generated TypeScript,
+raw-script, Firefox ESM, and fixture artifacts must pass
+`pnpm native-protocol:check:all`. The experiment derives the source window and
+private state from the system-principal Settings document, and the tools service
+binds each resumable session to that window, audience, contract hash, and direct
+parent-process attestation. Settings persistence is awaited before publication.
+Setting-group Fluent messages must provide a `.label` attribute rather than a
+message value. `moz-fieldset` localizes `label`, `description`, and `ariaLabel`;
+a message value makes Fluent replace its light-DOM contents and deletes every
+rendered `setting-control`, leaving a correctly titled but empty card.
+The pane title message provides both a value for the native navigation button
+and a `.heading` attribute for `moz-page-header`; omitting `.heading` leaves the
+page icon visible with an empty heading.
+All Bento dropdowns remain `moz-select` controls but opt into its Firefox-owned
+`panel-list` rendering path with `force-panel-list`. This bypasses the macOS
+native select picker, which does not open reliably for these controls when the
+Settings document is hosted in Bento's panel layout, while preserving the
+standard `moz-select` value/change API used by the custom Bento settings model.
+The `bento-range-control`, `bento-size-list`, `bento-backup-manager`, and
+`bento-shortcut-list` elements remain Bento controller boundaries, but their
+visible controls are composed from Firefox `moz-slider`, `moz-input-number`,
+`moz-button`, `moz-input-search`, `moz-box-group`, and `moz-box-item`
+components. Bento owns value synchronization, persistence, filtering, backup
+operations, and stable occurrence identities; Firefox owns the rendered form,
+list, focus, action, and reorder affordances. Native component labels use
+Fluent `.label` attributes, while dynamic row text is assigned through the
+component properties. Chrome-bound title signals must not be written twice in
+one synchronous handler because the later title replaces the earlier one
+before the shell-frame polling bridge observes it.
+
+The native Keyboard shortcuts control is a read-only searchable catalogue. The
+Keyboard shortcuts group also writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
 that value from the `BENTO_PANELS` title payload to decide whether Cmd/Ctrl+S
 targets the collapsed rail or the hidden sidebar state with edge-hover reveal.
@@ -1630,6 +1653,11 @@ string sizes, validates the complete panel-layout tree and references, permits
 only supported navigation URL schemes, and rejects unknown or out-of-range
 settings. `SettingsStore` also rejects invalid stored or runtime settings
 patches so import validation cannot be bypassed through another action path.
+Every imported normal, panel, and fallback tab is created explicitly in the
+authenticated Settings session's target window. Snapshot collection filters
+incognito tabs before building normal-tab, panel-layout, and pinned-panel
+records. New automatic backups are tagged `private-filtered-v1`; untagged or
+unrecognized version-one entries are surfaced as `legacy-unknown`.
 A workspace export must include the
 same panel state that `PanelStore` persists for restart:
 
@@ -1648,10 +1676,19 @@ across profiles or sessions. Do not treat `panelLayout` alone as the complete
 layout snapshot; workspace-level main width and strip scroll are separate
 `PanelStore` state and must travel with the backup payload.
 
-`extensions/bento-shell/src/features/Settings/BackupSection.tsx` owns the stored
-backup action affordances. Restore and delete icon buttons use Tale UI
-`Tooltip` labels and open a local `AlertDialog`; only the dialog confirmation
-dispatches `backup/restore` or `backup/delete`.
+The native `#bentoBackups` subpane owns export, validation/import, restore, and
+delete affordances. File selection stays in privileged Firefox UI, import files
+are capped at 10 MiB, and destructive/reset actions require native confirmation.
+Private sessions reject backup operations before storage lookup.
+
+Native Settings observer envelopes cross from Firefox chrome into the tools
+experiment, so the experiment normalizes the data-only envelope into its own
+realm before applying strict plain-object validation. Privileged Settings pages
+can reject `sessionStorage` writes; in that case the resumable session tuple is
+stored as serialized data on the owning tab's browser element, which preserves
+per-tab reload identity without sharing it with another Settings tab. A resumed
+hello rotates the token and resets that new document generation's replay
+sequence before authenticated requests begin.
 
 When `replaceExisting` is enabled, import must create the replacement workspaces
 and tabs before removing old workspace tabs. Removing old tabs first can close
@@ -2952,13 +2989,12 @@ UI color mode flow:
   startup skeleton over the browser area. The skeleton is dismissed after the
   first `BENTO_PANELS` payload applies theme/color/sidebar state, with a timeout
   fallback so a failed sync cannot leave the window covered.
-- Auto UI mode must resolve from chrome/sidebar state, not from regular
-  extension tabs. Bento's content color-scheme override can make
-  `matchMedia('(prefers-color-scheme: dark)')` return the content preference
-  inside pages like `settings.html`, while chrome resolves Auto against the
-  actual browser/OS theme. `useFirefoxTheme` writes `resolved-color-mode` from
-  authoritative shell contexts; Settings calls it with
-  `preferStoredSystemResolution` so it follows that cached resolved value.
+- Auto UI mode must resolve from chrome/sidebar state, not from ordinary
+  content tabs. Bento's content color-scheme override can make
+  `matchMedia('(prefers-color-scheme: dark)')` return the content preference,
+  while chrome resolves Auto against the actual browser/OS theme.
+  `useFirefoxTheme` writes `resolved-color-mode` from authoritative shell
+  contexts, and native Bento Settings consumes the same durable preference.
 
 Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 `bento-tools` through Firefox's content color-scheme browser setting.

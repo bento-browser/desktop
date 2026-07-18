@@ -88,6 +88,11 @@
       "subject": "Theme Passwords megalist with Bento tokens"
     },
     {
+      "path": "patches/core-ui/15-bento-native-preferences.patch",
+      "id": "bento-native-preferences",
+      "subject": "Add native Bento preferences"
+    },
+    {
       "path": "patches/experiments/01-mach-build-hang-guards.patch",
       "id": "mach-build-hang-guards",
       "subject": "Add mach build hang guards"

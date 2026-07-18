@@ -69,6 +69,55 @@ test('custom runtime entries replace defaults but always include manifest', () =
   }
 });
 
+test('packages both privileged preference bridge experiments and version metadata', () => {
+  const root = fixture();
+  try {
+    const shell = addExtension(root, 'bento-shell', {
+      version: '0.0.3',
+      browser_specific_settings: { gecko: { id: 'bento-shell@bento.app' } },
+      experiment_apis: {
+        bentoChrome: {
+          schema: 'experiments/chrome-bridge/schema.json',
+          parent: { script: 'experiments/chrome-bridge/api.js' },
+        },
+      },
+    });
+    const tools = addExtension(root, 'bento-tools', {
+      version: '0.1.11',
+      browser_specific_settings: { gecko: { id: 'bento-tools@bento.app' } },
+      experiment_apis: {
+        bentoNativePreferences: {
+          schema: 'experiments/bento-native-preferences/schema.json',
+          parent: { script: 'experiments/bento-native-preferences/api.js' },
+        },
+      },
+    });
+    for (const [extension, directory] of [
+      [shell, 'chrome-bridge'],
+      [tools, 'bento-native-preferences'],
+    ]) {
+      const experiment = path.join(extension, 'experiments', directory);
+      fs.mkdirSync(experiment, { recursive: true });
+      fs.writeFileSync(path.join(experiment, 'api.js'), 'api');
+      writeJson(path.join(experiment, 'schema.json'), []);
+    }
+
+    const addons = installBuiltinAddons({ repoRoot: root });
+    for (const addon of addons) {
+      const jar = fs.readFileSync(path.join(addon.destination, 'jar.mn'), 'utf8');
+      assert.match(jar, /experiments\/.+\/api\.js/);
+      assert.match(jar, /experiments\/.+\/schema\.json/);
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(addon.destination, 'manifest.json'), 'utf8'),
+      );
+      assert.ok(manifest.experiment_apis);
+      assert.match(manifest.version, /^0\.(?:0\.3|1\.11)$/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects missing IDs and unsafe runtime entries', () => {
   const root = fixture();
   try {

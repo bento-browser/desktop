@@ -12,7 +12,6 @@ import { isValidBentoSettingsPatch } from '@shared/export-schema';
 
 const STORAGE_KEY = 'bento.settings';
 const VERSION = 2;
-const DEBOUNCE_MS = 250;
 
 export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   tabSleepEnabled: true,
@@ -50,6 +49,19 @@ interface StoredShape {
 
 type Listener = (settings: BentoSettings) => void;
 
+function settingValuesEqual(left: unknown, right: unknown): boolean {
+  return Array.isArray(left)
+    ? Array.isArray(right) &&
+        left.length === right.length &&
+        left.every((entry, index) => entry === right[index])
+    : left === right;
+}
+
+export interface SettingsCommit {
+  settings: BentoSettings;
+  durableRevision: number;
+}
+
 async function load(): Promise<{
   overrides: Partial<BentoSettings>;
   overrideKeys: Set<keyof BentoSettings>;
@@ -77,8 +89,8 @@ export class SettingsStore {
   #current: BentoSettings = { ...DEFAULT_SETTINGS };
   #listeners = new Set<Listener>();
   #overrideKeys = new Set<keyof BentoSettings>();
-  #saveTimer: ReturnType<typeof setTimeout> | null = null;
-  #pendingOverrides: Partial<BentoSettings> | null = null;
+  #durableRevision = 0;
+  #mutationQueue: Promise<void> = Promise.resolve();
 
   async init(): Promise<void> {
     const loaded = await load();
@@ -113,36 +125,44 @@ export class SettingsStore {
 
   /** Merge `changes` into current settings + persist + broadcast. No-op if
    * nothing actually changed (referential check on each field). */
-  update(changes: Partial<BentoSettings>): void {
+  update(changes: Partial<BentoSettings>): Promise<SettingsCommit> {
     if (!isValidBentoSettingsPatch(changes)) {
       console.warn('[bento-tools] settings: rejected invalid changes');
-      return;
+      return Promise.resolve({
+        settings: this.snapshot(),
+        durableRevision: this.#durableRevision,
+      });
     }
-    let dirty = false;
-    const next = { ...this.#current };
-    for (const [key, value] of Object.entries(changes) as [
-      keyof BentoSettings,
-      BentoSettings[keyof BentoSettings],
-    ][]) {
-      if (next[key] === value) continue;
-      // The cast is necessary because TS can't narrow value to the exact
-      // field's type when iterating heterogeneous keys.
-      (next as Record<keyof BentoSettings, unknown>)[key] = value;
-      this.#overrideKeys.add(key);
-      dirty = true;
-    }
-    if (!dirty) return;
-    this.#current = next;
-    this.#schedulePersist();
-    this.#broadcast();
+    return this.#enqueue(async () => {
+      const next = { ...this.#current };
+      let dirty = false;
+      for (const [key, value] of Object.entries(changes) as [
+        keyof BentoSettings,
+        BentoSettings[keyof BentoSettings],
+      ][]) {
+        const currentValue = next[key];
+        const equal = settingValuesEqual(currentValue, value);
+        if (equal) continue;
+        (next as Record<keyof BentoSettings, unknown>)[key] = value;
+        dirty = true;
+      }
+      if (dirty) await this.#persistAndPublish(next);
+      return {
+        settings: this.snapshot(),
+        durableRevision: this.#durableRevision,
+      };
+    });
   }
 
   /** Restore all settings to defaults. */
-  reset(): void {
-    this.#current = { ...DEFAULT_SETTINGS };
-    this.#overrideKeys.clear();
-    this.#schedulePersist();
-    this.#broadcast();
+  reset(): Promise<SettingsCommit> {
+    return this.#enqueue(async () => {
+      await this.#persistAndPublish({ ...DEFAULT_SETTINGS });
+      return {
+        settings: this.snapshot(),
+        durableRevision: this.#durableRevision,
+      };
+    });
   }
 
   #broadcast(): void {
@@ -150,36 +170,32 @@ export class SettingsStore {
     for (const l of this.#listeners) l(snap);
   }
 
-  #schedulePersist(): void {
+  async #persistAndPublish(next: BentoSettings): Promise<void> {
     // Compute sparse overrides (omit fields equal to default) so the stored
     // payload tracks only what the user actually changed.
     const overrides: Partial<BentoSettings> = {};
-    for (const [key, value] of Object.entries(this.#current) as [
+    for (const [key, value] of Object.entries(next) as [
       keyof BentoSettings,
       BentoSettings[keyof BentoSettings],
     ][]) {
-      if (value !== DEFAULT_SETTINGS[key]) {
+      if (!settingValuesEqual(value, DEFAULT_SETTINGS[key])) {
         (overrides as Record<keyof BentoSettings, unknown>)[key] = value;
       }
     }
+    const payload: StoredShape = { version: VERSION, overrides };
+    await browser.storage.local.set({ [STORAGE_KEY]: payload });
+    this.#current = next;
     this.#overrideKeys = new Set(Object.keys(overrides) as Array<keyof BentoSettings>);
-    this.#pendingOverrides = overrides;
-    if (this.#saveTimer) return;
-    this.#saveTimer = setTimeout(() => {
-      this.#saveTimer = null;
-      const next = this.#pendingOverrides;
-      this.#pendingOverrides = null;
-      if (next === null) return;
-      void this.#flush(next);
-    }, DEBOUNCE_MS);
+    this.#durableRevision += 1;
+    this.#broadcast();
   }
 
-  async #flush(overrides: Partial<BentoSettings>): Promise<void> {
-    const payload: StoredShape = { version: VERSION, overrides };
-    try {
-      await browser.storage.local.set({ [STORAGE_KEY]: payload });
-    } catch (err) {
-      console.error('[bento-tools] settings: save failed', err);
-    }
+  #enqueue<T>(mutation: () => Promise<T>): Promise<T> {
+    const result = this.#mutationQueue.then(mutation, mutation);
+    this.#mutationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 }

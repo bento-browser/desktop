@@ -1,0 +1,1828 @@
+// Routes incoming Action messages from bento-shell to the appropriate
+// tools-side handler. Each Action either fires a side effect (close tab,
+// switch tab, mutate workspace) or asks tools to broadcast state.
+//
+// Per-tab workspace assignment (tab/assignWorkspace) lands in PR-3b once
+// the browser.sessions wrapper exists; until then it's a no-op stub so the
+// type union stays exhaustive.
+
+import type {
+  Action,
+  Event,
+  ExternalMergeErrorCode,
+  PinnedPanelEntry,
+  WireAction,
+} from '@shared/protocol';
+import type { TabRegistry } from '../tabs/TabRegistry';
+import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
+import type { SettingsStore } from '../settings/SettingsStore';
+import type { PanelStore } from '../panels/PanelStore';
+import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
+import type { TabFolderStore } from '../tabFolders/TabFolderStore';
+import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
+import type { BackupStore } from '../backup/BackupStore';
+import {
+  clearDevtoolsPanelMarker,
+  clearPanelMarker,
+  setDevtoolsPanelMarker,
+} from '../panels/SessionMarker';
+import { validateExportSchema } from '../backup/ExportSchema';
+import { executeImport } from '../backup/ImportExecutor';
+import { searchAddressResults } from '../search/AddressSearch';
+import {
+  applyAdvancedSetting,
+  applyPrivacyLevel,
+  readPrivacySnapshot,
+  readSearchEnginesSnapshot,
+  setDefaultSearchEngine,
+} from '../privacy/ProtectionLevels';
+import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
+import { loadExternalMergeSources } from '../externalMerge/loadExternalMergeSources';
+import { normalizeExternalSession } from '../externalMerge/normalizeExternalSession';
+import {
+  ExternalMergeError,
+  externalMergeErrorCode,
+  type ExternalSessionSnapshot,
+} from '../externalMerge/sourceTypes';
+
+let externalMergeInFlightOperationId: string | null = null;
+let externalMergeAbortController: AbortController | null = null;
+let externalMergeCancelSentOperationId: string | null = null;
+const EXTERNAL_MERGE_CANCELLED_MESSAGE = 'Browser session merge was cancelled.';
+
+async function emitPrivacySnapshot(ctx: HandlerContext): Promise<void> {
+  try {
+    const privacy = await readPrivacySnapshot();
+    ctx.send({ type: 'privacy/snapshot', privacy });
+  } catch (err) {
+    console.warn('[bento-tools] emitPrivacySnapshot failed:', err);
+  }
+}
+
+async function emitSearchEnginesSnapshot(ctx: HandlerContext): Promise<void> {
+  try {
+    const snapshot = await readSearchEnginesSnapshot();
+    ctx.send({ type: 'searchEngines/snapshot', snapshot });
+  } catch (err) {
+    console.warn('[bento-tools] emitSearchEnginesSnapshot failed:', err);
+    ctx.send({
+      type: 'searchEngines/snapshot',
+      snapshot: { defaultSearchEngine: '', availableSearchEngines: [] },
+    });
+  }
+}
+
+function externalMergeMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (!message || message.includes('/') || message.includes('\\')) {
+    return 'Browser session merge failed.';
+  }
+  return message;
+}
+
+function externalMergeCode(err: unknown): ExternalMergeErrorCode | undefined {
+  const explicit = externalMergeErrorCode(err);
+  if (explicit) return explicit;
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  if (message.includes('unknown')) return 'unknown-source';
+  if (message.includes('unreadable')) return 'unreadable';
+  if (message.includes('unsupported')) return 'unsupported-session';
+  return undefined;
+}
+
+function externalMergeCancellationError(): ExternalMergeError {
+  return new ExternalMergeError('cancelled', EXTERNAL_MERGE_CANCELLED_MESSAGE);
+}
+
+function throwIfExternalMergeCancelled(signal: AbortSignal): void {
+  if (signal.aborted) throw externalMergeCancellationError();
+}
+
+function getTabLoadUrl(tab: browser.tabs.Tab): string | null {
+  const pendingUrl =
+    typeof (tab as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
+      ? ((tab as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? '')
+      : '';
+  const url = tab.url && tab.url !== 'about:blank' ? tab.url : pendingUrl;
+  return url && url !== 'about:blank' ? url : null;
+}
+
+const pinnedPanelOpenInFlight = new Set<string>();
+
+function pinnedPanelOpenKey(workspaceId: string, entry: PinnedPanelEntry): string {
+  return `${workspaceId}\u0000${entry.order}\u0000${entry.url ?? entry.tabId}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function setTabPinned(ctx: HandlerContext, tabId: number, pinned: boolean): Promise<void> {
+  const before = ctx.tabs.snapshot().find((tab) => tab.id === tabId);
+  try {
+    if (before?.pinned !== pinned) {
+      await browser.tabs.update(tabId, { pinned });
+    }
+    if (before?.folderId !== undefined) {
+      await ctx.tabs.setFolder(tabId, null);
+    }
+  } catch (err) {
+    console.warn('[bento-tools] tab/setPinned failed:', err);
+  }
+}
+
+async function activatePromotedPanelTab(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+  label: string,
+): Promise<{ ok: true; windowId?: number } | { ok: false }> {
+  if (!Number.isFinite(tabId)) return { ok: false };
+  if (ctx.tabs.isClosing(tabId)) return { ok: false };
+  ctx.tabs.assignWorkspaceEagerly(tabId, workspaceId);
+  try {
+    const live = await browser.tabs.get(tabId);
+    const windowId =
+      typeof live.windowId === 'number' && live.windowId >= 0 ? live.windowId : undefined;
+    await browser.tabs.update(tabId, { active: true });
+    return windowId !== undefined ? { ok: true, windowId } : { ok: true };
+  } catch (err) {
+    console.warn(`[bento-tools] ${label} failed:`, tabId, err);
+    return { ok: false };
+  }
+}
+
+async function promoteLeftmostPanelToTabAfterMove(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+): Promise<void> {
+  if (!ctx.panels.remove(workspaceId, tabId)) return;
+
+  // Clear the marker before activation. A promoted panel is now a normal
+  // sidebar tab; leaving bento.isPanel set makes the activation guard in
+  // background.ts treat it as a restored panel and bounce focus away.
+  await clearPanelMarker(tabId);
+  ctx.syncPanelMarkers(workspaceId);
+
+  const activated = await activatePromotedPanelTab(
+    ctx,
+    workspaceId,
+    tabId,
+    'assignWorkspace promote-panel activate',
+  );
+
+  ctx.emitPanelsSync(
+    workspaceId,
+    activated.ok && activated.windowId !== undefined ? { windowId: activated.windowId } : undefined,
+  );
+}
+
+async function promoteLeftmostPanelBeforeMainClose(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+): Promise<boolean> {
+  const originalPosition = ctx.panels.getPanels(workspaceId).indexOf(tabId);
+  if (!ctx.panels.remove(workspaceId, tabId)) return false;
+
+  // A promoted panel becomes the real main tab before the old main tab
+  // is removed. Clearing the marker first prevents the activation guard
+  // in background.ts from bouncing focus back to the tab we are closing.
+  await clearPanelMarker(tabId);
+  ctx.syncPanelMarkers(workspaceId);
+
+  const activated = await activatePromotedPanelTab(
+    ctx,
+    workspaceId,
+    tabId,
+    'tab/closeMain promote-panel activate',
+  );
+  if (!activated.ok) {
+    ctx.panels.insertAt(workspaceId, tabId, originalPosition);
+    ctx.syncPanelMarkers(workspaceId);
+    ctx.emitPanelsSync(workspaceId);
+    return false;
+  }
+
+  ctx.emitPanelsSync(
+    workspaceId,
+    activated.windowId !== undefined ? { windowId: activated.windowId } : undefined,
+  );
+  return true;
+}
+
+async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number): Promise<void> {
+  const sourceWindowId = ctx.sourceWindowId;
+  const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
+  const workspaceId =
+    tab?.workspaceId ??
+    (typeof sourceWindowId === 'number' ? ctx.workspaces.getActiveId(sourceWindowId) : null);
+
+  await ctx.tabs.markClosing(tabId);
+
+  if (workspaceId) {
+    const panelTabIds = ctx.panels.getPanels(workspaceId);
+    const panelTabIdSet = new Set(panelTabIds);
+    const remainingNormalTabs = ctx.tabs.snapshot().filter((candidate) => {
+      if (candidate.id === tabId) return false;
+      if (candidate.workspaceId !== workspaceId) return false;
+      if (typeof sourceWindowId === 'number' && candidate.windowId !== sourceWindowId) return false;
+      return !panelTabIdSet.has(candidate.id);
+    });
+
+    if (remainingNormalTabs.length === 0 && panelTabIds.length > 0) {
+      const promoted = await promoteLeftmostPanelBeforeMainClose(ctx, workspaceId, panelTabIds[0]!);
+      await closeTabAsRemoved(ctx, tabId, {
+        delayMs: promoted ? 80 : 0,
+        label: 'tab/closeMain',
+      });
+      return;
+    }
+  }
+
+  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain' });
+}
+
+function shouldCloseTabThroughMainPromotion(ctx: HandlerContext, tabId: number): boolean {
+  const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
+  if (!tab?.active) return false;
+  if (
+    typeof ctx.sourceWindowId === 'number' &&
+    typeof tab.windowId === 'number' &&
+    tab.windowId !== ctx.sourceWindowId
+  ) {
+    return false;
+  }
+  return ctx.panels.findWorkspacesContainingTab(tabId).length === 0;
+}
+
+function pickAvailableWorkspaceAfterDeleting(
+  ctx: HandlerContext,
+  deletingWorkspaceId: string,
+  preferredWorkspaceId: string,
+  windowId: number,
+): string | null {
+  const ownedByOthers = new Set(
+    Object.entries(ctx.workspaces.getActiveIdByWindow())
+      .filter(([k]) => Number(k) !== windowId)
+      .map(([, v]) => v),
+  );
+  const workspaces = ctx.workspaces.snapshot().workspaces;
+  const preferred = workspaces.find(
+    (w) =>
+      w.id === preferredWorkspaceId && w.id !== deletingWorkspaceId && !ownedByOthers.has(w.id),
+  );
+  if (preferred) return preferred.id;
+  return (
+    workspaces.find((w) => w.id !== deletingWorkspaceId && !ownedByOthers.has(w.id))?.id ?? null
+  );
+}
+
+function nextDefaultWorkspaceName(ctx: HandlerContext): string {
+  const existing = ctx.workspaces.snapshot().workspaces;
+  const taken = new Set(existing.map((w) => w.name));
+  let idx = existing.length + 1;
+  let name = `Workspace ${idx}`;
+  while (taken.has(name)) {
+    idx += 1;
+    name = `Workspace ${idx}`;
+  }
+  return name;
+}
+
+function uniqueTabIds(ids: readonly unknown[] | undefined): number[] {
+  if (!Array.isArray(ids)) return [];
+  return Array.from(
+    new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id >= 0)),
+  );
+}
+
+async function assignTabsToWorkspace(
+  ctx: HandlerContext,
+  ids: number[],
+  workspaceId: string,
+  options: { cleanup?: boolean } = {},
+): Promise<Set<string>> {
+  if (!ctx.workspaces.has(workspaceId)) return new Set();
+  const sourceWorkspaceIds = new Set<string>();
+  const knownTabs = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+
+  for (const id of uniqueTabIds(ids)) {
+    if (!knownTabs.has(id)) continue;
+    const before = ctx.tabs.snapshot().find((t) => t.id === id);
+    if (!before || before.workspaceId === workspaceId) continue;
+    const fromWorkspaceId = before.workspaceId;
+    await ctx.tabs.assignWorkspace(id, workspaceId);
+    if (fromWorkspaceId && fromWorkspaceId !== workspaceId) {
+      sourceWorkspaceIds.add(fromWorkspaceId);
+    }
+  }
+
+  if (options.cleanup !== false) {
+    for (const fromWorkspaceId of sourceWorkspaceIds) {
+      await cleanupWorkspaceAfterTabMove(ctx, -1, fromWorkspaceId, workspaceId);
+    }
+  }
+  return sourceWorkspaceIds;
+}
+
+async function cleanupWorkspaceAfterTabMove(
+  ctx: HandlerContext,
+  movedTabId: number,
+  fromWorkspaceId: string,
+  toWorkspaceId: string,
+): Promise<void> {
+  const panelTabIds = ctx.panels.getPanels(fromWorkspaceId);
+  const panelTabIdSet = new Set(panelTabIds);
+  const remainingNormalTabs = ctx.tabs
+    .snapshot()
+    .filter(
+      (t) => t.id !== movedTabId && t.workspaceId === fromWorkspaceId && !panelTabIdSet.has(t.id),
+    );
+  if (remainingNormalTabs.length > 0) return;
+
+  if (panelTabIds.length > 0) {
+    await promoteLeftmostPanelToTabAfterMove(ctx, fromWorkspaceId, panelTabIds[0]!);
+    return;
+  }
+
+  const sourceWindowId = ctx.sourceWindowId;
+  const isActiveInSourceWindow =
+    typeof sourceWindowId === 'number' &&
+    ctx.workspaces.getActiveId(sourceWindowId) === fromWorkspaceId;
+
+  if (isActiveInSourceWindow) {
+    const candidate = pickAvailableWorkspaceAfterDeleting(
+      ctx,
+      fromWorkspaceId,
+      toWorkspaceId,
+      sourceWindowId,
+    );
+    if (candidate) {
+      ctx.workspaces.forgetWindow(sourceWindowId);
+      ctx.workspaces.delete(fromWorkspaceId);
+      const result = ctx.workspaces.activate(candidate, sourceWindowId);
+      if (result !== 'activated' && result !== 'noop') {
+        console.warn(
+          '[bento-tools] assignWorkspace post-delete activate returned',
+          result,
+          '— window may be left with no active workspace',
+        );
+      }
+      return;
+    }
+  }
+
+  ctx.workspaces.delete(fromWorkspaceId);
+}
+
+const TAB_REMOVE_RETRY_DELAYS_MS = [150, 500, 1200];
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function tabStillExists(tabId: number): Promise<boolean> {
+  try {
+    await browser.tabs.get(tabId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeMarkedTabWithRetries(tabId: number, label: string, attempt = 0): void {
+  void browser.tabs.remove(tabId).catch(async (err) => {
+    await sleepMs(80);
+    if (!(await tabStillExists(tabId))) return;
+    if (attempt < TAB_REMOVE_RETRY_DELAYS_MS.length) {
+      setTimeout(
+        () => removeMarkedTabWithRetries(tabId, label, attempt + 1),
+        TAB_REMOVE_RETRY_DELAYS_MS[attempt],
+      );
+      return;
+    }
+    if (!String(err).includes('Invalid tab ID')) {
+      console.warn(`[bento-tools] ${label}: tabs.remove failed after retries:`, tabId, err);
+    }
+  });
+}
+
+async function closeTabAsRemoved(
+  ctx: HandlerContext,
+  tabId: number,
+  options: { delayMs?: number; label?: string; clearPanelMarker?: boolean } = {},
+): Promise<void> {
+  await ctx.tabs.markClosing(tabId);
+  if (options.clearPanelMarker) {
+    void clearPanelMarker(tabId);
+    void clearDevtoolsPanelMarker(tabId);
+  }
+  const start = () => removeMarkedTabWithRetries(tabId, options.label ?? 'tab/close');
+  if (typeof options.delayMs === 'number' && options.delayMs > 0) {
+    setTimeout(start, options.delayMs);
+  } else {
+    start();
+  }
+}
+
+function closeDevtoolsTabs(ctx: HandlerContext, tabIds: Set<number>, label: string): void {
+  for (const tabId of tabIds) {
+    ctx.pinnedPanels.removeForTab(tabId);
+    void closeTabAsRemoved(ctx, tabId, {
+      label,
+      clearPanelMarker: true,
+    });
+  }
+}
+
+async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<void> {
+  if (shouldCloseTabThroughMainPromotion(ctx, tabId)) {
+    await closeMainTabWithPanelPromotion(ctx, tabId);
+    return;
+  }
+  await ctx.tabs.markClosing(tabId);
+  const affected = ctx.panels.findWorkspacesContainingTab(tabId);
+  let delayActualTabRemove = false;
+  if (affected.length > 0) {
+    for (const wsId of affected) {
+      const status = ctx.panels.getPanelLayoutStatus(wsId, tabId);
+      const promoted =
+        status === 'subdivision-top' ||
+        status === 'chooser-owner' ||
+        status === 'subdivision-bottom' ||
+        status === 'split-child';
+      if (ctx.panels.remove(wsId, tabId) && promoted) {
+        delayActualTabRemove = true;
+      }
+      ctx.syncPanelMarkers(wsId);
+      ctx.emitPanelsSync(wsId);
+    }
+    // Keep the closing tab's bento.isPanel session marker in place.
+    // Firefox carries it through the closed-tab entry, and Cmd+Shift+T uses it
+    // to restore the tab back as a panel instead of reopening it as a normal tab.
+  }
+  const delayMs = delayActualTabRemove ? 500 : 0;
+  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close' });
+}
+
+async function activateNonPanelTab(
+  ctx: HandlerContext,
+  tabId: number,
+  label: string,
+): Promise<boolean> {
+  if (!Number.isFinite(tabId)) return false;
+  if (ctx.tabs.isClosing(tabId)) return false;
+  if (ctx.panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0) return false;
+  if (!ctx.tabs.snapshot().some((tab) => tab.id === tabId)) return false;
+  try {
+    await browser.tabs.get(tabId);
+    await browser.tabs.update(tabId, { active: true });
+    return true;
+  } catch (err) {
+    console.warn(`[bento-tools] ${label} failed:`, tabId, err);
+    return false;
+  }
+}
+
+function insertPanelAfterSource(
+  ctx: HandlerContext,
+  workspaceId: string,
+  tabId: number,
+  sourceTabId: number | null,
+): boolean {
+  if (sourceTabId === null) return ctx.panels.insertAt(workspaceId, tabId, 0);
+  if (!ctx.panels.containsPanel(workspaceId, sourceTabId)) {
+    return ctx.panels.insertAt(workspaceId, tabId, ctx.panels.getRootNodeIds(workspaceId).length);
+  }
+  return ctx.panels.insertAtRestoreLocation(
+    workspaceId,
+    tabId,
+    ctx.panels.getPanelRestoreLocation(workspaceId, sourceTabId),
+  );
+}
+
+async function createInactiveTab(
+  ctx: HandlerContext,
+  url: string | null | undefined,
+): Promise<number | null> {
+  const tab = await browser.tabs.create({
+    ...(!url || url === 'about:newtab' ? {} : { url }),
+    active: false,
+    ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+  });
+  return typeof tab.id === 'number' ? tab.id : null;
+}
+
+function finishAddedPanel(ctx: HandlerContext, workspaceId: string, tabId: number): void {
+  const defaultWidth = ctx.settings.snapshot().defaultPanelWidthPx;
+  if (defaultWidth > 0) ctx.panels.setWidth(tabId, defaultWidth);
+  ctx.syncPanelMarkers(workspaceId);
+  ctx.emitPanelsSync(workspaceId, {
+    scrollToPanelTabId: tabId,
+    scrollToPanelReveal: 'right-edge',
+  });
+}
+
+async function splitPanel(
+  ctx: HandlerContext,
+  workspaceId: string,
+  sourceTabId: number,
+  url: string | undefined,
+  operation: 'splitTopPanel' | 'splitBottomPanel',
+): Promise<void> {
+  try {
+    const tabId = await createInactiveTab(ctx, url);
+    if (tabId === null) return;
+    ctx.tabs.assignWorkspaceEagerly(tabId, workspaceId);
+    const split =
+      operation === 'splitTopPanel'
+        ? ctx.panels.splitTopPanel(workspaceId, sourceTabId, tabId)
+        : ctx.panels.splitBottomPanel(workspaceId, sourceTabId, tabId);
+    if (split) {
+      ctx.syncPanelMarkers(workspaceId);
+      ctx.emitPanelsSync(workspaceId);
+    }
+  } catch (err) {
+    console.warn(`[bento-tools] panelLayout/${operation} failed:`, err);
+  }
+}
+
+export interface HandlerContext {
+  tabs: TabRegistry;
+  workspaces: WorkspaceStore;
+  settings: SettingsStore;
+  panels: PanelStore;
+  pinnedPanels: PinnedPanelsStore;
+  tabFolders: TabFolderStore;
+  savedPanels: SavedPanelsStore;
+  backup: BackupStore;
+  send: (event: Event) => void;
+  /** Broadcast cross-document UI events to every connected shell document.
+   * Falls back to `send` in tests and non-background callers. */
+  broadcast?: (event: Event) => void;
+  /** Resolve the active workspace's panel tabIds to {tabId, url} and
+   * broadcast a panels/sync event. Lives on background.ts (it needs
+   * broadcast access + browser.tabs.get for URL resolution); the handler
+   * only triggers it when panel state changes. */
+  emitPanelsSync: (
+    workspaceId: string,
+    options?: {
+      scrollToPanelTabId?: number;
+      scrollToPanelReveal?: 'full' | 'right-edge';
+      windowId?: number;
+    },
+  ) => void;
+  /** Rewrite session markers for every panel in the workspace with
+   * their current indexes. Call after any mutation that changes panel
+   * order so Cmd+Shift+T restores land in the right slot. */
+  syncPanelMarkers: (workspaceId: string) => void;
+  /** Prefer this tab when the workspace activation side effect chooses
+   * the main-slot tab for a just-activated workspace. Used by cross-
+   * workspace tab activation so the activation fallback does not restore
+   * the workspace's previously-active tab over the explicit target. */
+  preferWorkspaceActivationTab: (
+    workspaceId: string,
+    tabId: number,
+    windowId?: number | null,
+  ) => void;
+  /** WebExtension windowId of the chrome window whose shell document
+   * dispatched the current action. Plumbed via the WireAction `__windowId`
+   * envelope. Null for actions that arrived before the shell document
+   * resolved its windowId (the brief async gap between mount and
+   * `browser.windows.getCurrent()` resolving), for tools-internal
+   * dispatches that bypass the bus (none today), and for any future
+   * caller that doesn't know its window. Phase A handlers that don't
+   * need per-window routing simply ignore it; phases B+ that DO need it
+   * fall back to legacy single-window behaviour when null so this stays
+   * additive. */
+  sourceWindowId: number | null;
+}
+
+function emitToShellDocuments(ctx: HandlerContext, event: Event): void {
+  (ctx.broadcast ?? ctx.send)(event);
+}
+
+export function handle(wireAction: WireAction, ctx: HandlerContext): void {
+  // Strip the routing envelope so the rest of the handler sees a clean
+  // Action (existing exhaustive switch keeps working unchanged). The
+  // windowId is exposed via ctx.sourceWindowId — set by the caller
+  // (background.ts) before invoking handle(), so this function doesn't
+  // need to extract it; it just narrows the type back to Action.
+  const action: Action = wireAction;
+  switch (action.type) {
+    case 'ping':
+      ctx.send({ type: 'pong', ts: Date.now() });
+      return;
+    case 'shell/hello': {
+      // Auto-assign this window an active workspace if it doesn't already
+      // own one. The "one workspace per window" invariant means we can't
+      // have window B silently inherit window A's workspace — the panel
+      // reconciler can't render the same tabs in two windows (Phase C
+      // territory) and trying to do so produces missing panels and
+      // workspace-switcher confusion. Picking the first available
+      // workspace ensures each window has its own isolated state from
+      // the moment it connects. When every workspace is taken (more
+      // windows than workspaces), create a fresh one automatically —
+      // leaving the window in a "No workspace" empty state has been
+      // user-reported as confusing and also breaks the chrome color-
+      // mode plumbing (which rides on panels/sync, which only fires for
+      // a window with an active workspace).
+      const wid = action.windowId;
+      if (typeof wid === 'number' && wid >= 0) {
+        let picked = ctx.workspaces.assignAvailable(wid);
+        if (!picked) {
+          // Pick "Workspace 2", "Workspace 3", … skipping names already
+          // taken so a delete-and-recreate cycle doesn't collide.
+          const name = nextDefaultWorkspaceName(ctx);
+          const ws = ctx.workspaces.create({ name }, wid);
+          picked = ws.id;
+        }
+      }
+      return;
+    }
+    case 'tabs/requestSnapshot':
+      ctx.send({ type: 'tabs/snapshot', tabs: ctx.tabs.snapshot() });
+      return;
+    case 'tabFolders/requestSnapshot':
+      ctx.send({ type: 'tabFolders/snapshot', folders: ctx.tabFolders.snapshot() });
+      return;
+    case 'tab/activate': {
+      // Clear stale `bento.isPanel` marker if this tab isn't currently a
+      // panel. The marker exists to let Cmd+Shift+T restore a closed
+      // panel back to its slot, but it can stick around on tabs that
+      // were once panels and got demoted (panel/remove path was missed
+      // for some prior code path, or a session restore re-attached the
+      // marker to a tab whose workspace assignment changed). When that
+      // happens, the onActivated revert in background.ts treats the
+      // user's click as a Cmd+Shift+T-style restore and snaps the
+      // activation back to lastActiveNonPanelTabId — symptom: clicking
+      // a sidebar tab flickers content briefly then reverts. A tab the
+      // user is actively activating is by definition not a "to-be-
+      // restored panel", so it's safe to clear the marker here.
+      const isPanelTab = ctx.panels.findWorkspacesContainingPanelOrSubPanel(action.id).length > 0;
+      if (!isPanelTab) {
+        void clearPanelMarker(action.id);
+      }
+      const targetTab = ctx.tabs.snapshot().find((tab) => tab.id === action.id);
+      const targetWorkspaceId = targetTab?.workspaceId;
+      if (
+        targetWorkspaceId &&
+        ctx.workspaces.getActiveId(ctx.sourceWindowId) !== targetWorkspaceId
+      ) {
+        const result = ctx.workspaces.activate(targetWorkspaceId, ctx.sourceWindowId);
+        if (result === 'conflict') {
+          const owner = ctx.workspaces.findOwningWindow(targetWorkspaceId);
+          if (owner !== null) {
+            browser.windows
+              .update(owner, { focused: true })
+              .catch((err) => console.warn('[bento-tools] tab/activate: focus owner failed:', err));
+          }
+          return;
+        }
+        if (result === 'activated') {
+          ctx.preferWorkspaceActivationTab(targetWorkspaceId, action.id, ctx.sourceWindowId);
+        }
+      }
+      void activateNonPanelTab(ctx, action.id, 'tab/activate');
+      return;
+    }
+    case 'tab/close':
+      {
+        void (async () => {
+          await closeTabFromSidebar(ctx, action.id);
+        })();
+      }
+      return;
+    case 'tabs/close':
+      void (async () => {
+        const liveIds = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+        for (const id of uniqueTabIds(action.ids)) {
+          if (!liveIds.has(id)) continue;
+          await closeTabFromSidebar(ctx, id);
+        }
+      })();
+      return;
+    case 'tab/closeMain':
+      void closeMainTabWithPanelPromotion(ctx, action.id);
+      return;
+    case 'tab/rename':
+      void ctx.tabs.rename(action.id, action.title);
+      return;
+    case 'tab/assignWorkspace':
+      // Pins are anchored to (workspaceId, tabId). When the user moves a
+      // tab into a different workspace, the pin's stored workspaceId
+      // would become stale — and a panel can only live in one workspace
+      // at a time, so the binding is effectively gone. Drop the pin
+      // BEFORE the assignment fires so the resulting panels/sync carries
+      // the post-cleanup pin set.
+      void (async () => {
+        const before = ctx.tabs.snapshot().find((t) => t.id === action.id);
+        const fromWorkspaceId = before?.workspaceId;
+        await ctx.tabs.assignWorkspace(action.id, action.workspaceId);
+        if (fromWorkspaceId && fromWorkspaceId !== action.workspaceId) {
+          await cleanupWorkspaceAfterTabMove(ctx, action.id, fromWorkspaceId, action.workspaceId);
+        }
+      })();
+      return;
+    case 'tabs/assignWorkspace':
+      void assignTabsToWorkspace(ctx, action.ids, action.workspaceId);
+      return;
+    case 'tabFolder/create': {
+      const workspaceId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!workspaceId) return;
+      const folderId =
+        action.id && action.id.trim().length > 0
+          ? action.id
+          : typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const folder = ctx.tabFolders.create({ id: folderId, workspaceId, name: action.name });
+      const tabIds = uniqueTabIds(action.tabIds);
+      const snapshot = ctx.tabs.snapshot();
+      void (async () => {
+        for (const id of tabIds) {
+          const tab = snapshot.find((t) => t.id === id);
+          if (!tab || tab.pinned || tab.workspaceId !== workspaceId) continue;
+          await ctx.tabs.setFolder(id, folder.id);
+        }
+      })();
+      return;
+    }
+    case 'tabFolder/rename':
+      ctx.tabFolders.rename(action.id, action.name);
+      return;
+    case 'tabFolder/setCollapsed':
+      ctx.tabFolders.setCollapsed(action.id, action.collapsed);
+      return;
+    case 'tabFolder/reorder':
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      ctx.tabFolders.reorder(action.workspaceId, action.orderedIds);
+      return;
+    case 'tabFolder/assignWorkspace': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      const folder = ctx.tabFolders.get(action.id);
+      if (!folder || folder.workspaceId === action.workspaceId) return;
+      const memberIds = ctx.tabs
+        .snapshot()
+        .filter((tab) => tab.folderId === folder.id && !tab.pinned)
+        .map((tab) => tab.id);
+      const fromWorkspaceId = folder.workspaceId;
+      void (async () => {
+        for (const id of memberIds) {
+          const before = ctx.tabs.snapshot().find((tab) => tab.id === id);
+          if (!before || before.workspaceId === action.workspaceId) continue;
+          await ctx.tabs.assignWorkspace(id, action.workspaceId, { preserveFolderId: folder.id });
+        }
+        const moved = ctx.tabFolders.moveToWorkspace(folder.id, action.workspaceId);
+        if (moved) {
+          await cleanupWorkspaceAfterTabMove(ctx, -1, fromWorkspaceId, action.workspaceId);
+        }
+      })();
+      return;
+    }
+    case 'tabFolder/delete': {
+      const removed = ctx.tabFolders.delete(action.id);
+      if (!removed) return;
+      const matching = ctx.tabs.snapshot().filter((tab) => tab.folderId === action.id);
+      void (async () => {
+        for (const tab of matching) {
+          await ctx.tabs.setFolder(tab.id, null);
+        }
+      })();
+      return;
+    }
+    case 'tabs/setFolder': {
+      const ids = uniqueTabIds(action.ids);
+      if (ids.length === 0) return;
+      const snapshot = ctx.tabs.snapshot();
+      const folder =
+        action.folderId === null ? null : (ctx.tabFolders.get(action.folderId) ?? undefined);
+      if (folder === undefined) return;
+      void (async () => {
+        for (const id of ids) {
+          const tab = snapshot.find((t) => t.id === id);
+          if (!tab) continue;
+          if (folder && tab.workspaceId !== folder.workspaceId) continue;
+          if (folder && tab.pinned) {
+            try {
+              await browser.tabs.update(id, { pinned: false });
+            } catch (err) {
+              console.warn('[bento-tools] tabs/setFolder unpin failed:', id, err);
+              continue;
+            }
+          }
+          await ctx.tabs.setFolder(id, folder ? folder.id : null);
+        }
+      })();
+      return;
+    }
+    case 'tabs/moveToNewWorkspace':
+      void (async () => {
+        const ids = uniqueTabIds(action.ids);
+        if (ids.length === 0) return;
+        const knownTabs = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+        const movableIds = ids.filter((id) => knownTabs.has(id));
+        if (movableIds.length === 0) return;
+        const requestedName = action.name?.trim();
+        const ws = ctx.workspaces.create(
+          {
+            name:
+              requestedName && requestedName.length > 0
+                ? requestedName
+                : nextDefaultWorkspaceName(ctx),
+          },
+          ctx.sourceWindowId,
+          { activate: false },
+        );
+        const sourceWorkspaceIds = await assignTabsToWorkspace(ctx, movableIds, ws.id, {
+          cleanup: false,
+        });
+        ctx.workspaces.activate(ws.id, ctx.sourceWindowId);
+        for (const fromWorkspaceId of sourceWorkspaceIds) {
+          await cleanupWorkspaceAfterTabMove(ctx, -1, fromWorkspaceId, ws.id);
+        }
+      })();
+      return;
+    case 'tab/openUrl':
+      // Background script always has browser.tabs available; the chrome-
+      // mounted shell document doesn't, which is why this round-trip exists.
+      //
+      // Pass `windowId` so the tab lands in the source window even when
+      // Firefox's "current window" tracking differs from the window the
+      // user actually clicked in. Eagerly assign workspaceId via
+      // TabRegistry so the 'updated' delta batches with the 'created'
+      // delta in a single rAF — without this, the sidebar's
+      // workspaceId filter excludes the new tab on first paint and only
+      // catches it after a workspace round-trip forces re-filter.
+      void (async () => {
+        try {
+          const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+          // focusExisting: if a tab with this URL already lives in the
+          // source workspace, activate it instead of stacking a
+          // duplicate. Used for singleton internal pages (Settings,
+          // Privacy). Cross-reference workspace membership from the
+          // registry with a live browser.tabs.query URL match. Panel
+          // tabs are excluded because activating them as the main tab fires
+          // the panel-revert path in onActivated (background.ts) —
+          // briefly activates the panel then snaps back to the last
+          // non-panel tab, which the user reads as the click being
+          // ignored. Falling through to create-new gives them a real
+          // main-area Settings tab alongside the panel.
+          if (action.focusExisting && wsId) {
+            const panelIds = new Set(ctx.panels.getPanels(wsId));
+            const wsTabIds = new Set(
+              ctx.tabs
+                .snapshot()
+                .filter((t) => t.workspaceId === wsId && !panelIds.has(t.id))
+                .map((t) => t.id),
+            );
+            if (wsTabIds.size > 0) {
+              const candidates = await browser.tabs.query({ url: action.url });
+              const match = candidates.find((t) => typeof t.id === 'number' && wsTabIds.has(t.id));
+              if (match && typeof match.id === 'number') {
+                const activated = await activateNonPanelTab(
+                  ctx,
+                  match.id,
+                  'tab/openUrl focus existing',
+                );
+                if (!activated) return;
+                if (typeof match.windowId === 'number' && match.windowId >= 0) {
+                  await browser.windows
+                    .update(match.windowId, { focused: true })
+                    .catch((err) =>
+                      console.warn('[bento-tools] tab/openUrl: focus window failed:', err),
+                    );
+                }
+                return;
+              }
+            }
+          }
+          const shouldActivate = action.active ?? true;
+          const created = await browser.tabs.create({
+            url: action.url,
+            active: false,
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof created.id !== 'number') return;
+          if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
+          if (shouldActivate) await browser.tabs.update(created.id, { active: true });
+        } catch (err) {
+          console.warn('[bento-tools] tab/openUrl failed:', err);
+        }
+      })();
+      return;
+    case 'tab/reopenClosed':
+      browser.sessions
+        .restore()
+        .catch((err) => console.warn('[bento-tools] tab/reopenClosed failed:', err));
+      return;
+    case 'tab/create':
+      // Same windowId + eager-assign rationale as tab/openUrl above.
+      void (async () => {
+        try {
+          const shouldActivate = action.active ?? true;
+          const index =
+            typeof action.index === 'number' &&
+            Number.isFinite(action.index) &&
+            Number.isInteger(action.index) &&
+            action.index >= 0
+              ? action.index
+              : undefined;
+          const created = await browser.tabs.create({
+            active: false,
+            ...(index !== undefined ? { index } : {}),
+            ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+          });
+          if (typeof created.id !== 'number') return;
+          if (index !== undefined) {
+            await browser.tabs.move(created.id, { index }).catch((err) => {
+              console.warn('[bento-tools] tab/create move-to-index failed:', err);
+            });
+          }
+          const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+          if (wsId) ctx.tabs.assignWorkspaceEagerly(created.id, wsId);
+          if (shouldActivate) await browser.tabs.update(created.id, { active: true });
+        } catch (err) {
+          console.warn('[bento-tools] tab/create failed:', err);
+        }
+      })();
+      return;
+    case 'tab/reload':
+      browser.tabs
+        .reload(action.id, { bypassCache: action.bypassCache ?? false })
+        .catch((err) => console.warn('[bento-tools] tab/reload failed:', err));
+      return;
+    case 'tabs/reload':
+      void (async () => {
+        const liveIds = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+        for (const id of uniqueTabIds(action.ids)) {
+          if (!liveIds.has(id)) continue;
+          try {
+            await browser.tabs.reload(id, { bypassCache: action.bypassCache ?? false });
+          } catch (err) {
+            console.warn('[bento-tools] tabs/reload failed:', id, err);
+          }
+        }
+      })();
+      return;
+    case 'tab/unload':
+      void (async () => {
+        try {
+          const tab = await browser.tabs.get(action.id);
+          if (tab.active || tab.discarded) return;
+          await browser.tabs.discard(action.id);
+        } catch (err) {
+          console.warn('[bento-tools] tab/unload failed:', err);
+        }
+      })();
+      return;
+    case 'tab/setPinned':
+      void setTabPinned(ctx, action.id, action.pinned);
+      return;
+    case 'tab/togglePin':
+      void (async () => {
+        try {
+          const tab = await browser.tabs.get(action.id);
+          await setTabPinned(ctx, action.id, !tab.pinned);
+        } catch (err) {
+          console.warn('[bento-tools] tab/togglePin failed:', err);
+        }
+      })();
+      return;
+    case 'tab/toggleMuted':
+      browser.tabs
+        .get(action.id)
+        .then((tab) => browser.tabs.update(action.id, { muted: !(tab.mutedInfo?.muted ?? false) }))
+        .catch((err) => console.warn('[bento-tools] tab/toggleMuted failed:', err));
+      return;
+    case 'workspaces/requestSnapshot': {
+      const snap = ctx.workspaces.snapshot();
+      ctx.send({
+        type: 'workspaces/snapshot',
+        workspaces: snap.workspaces,
+        activeId: snap.activeId,
+        activeIdByWindow: snap.activeIdByWindow,
+      });
+      return;
+    }
+    case 'workspace/create':
+      // Per-window auto-activation: when the requesting shell knows its
+      // windowId, the new workspace foregrounds only in that window.
+      // Other windows keep whatever they were on. Falls back to global
+      // activation when sourceWindowId is null (legacy / dev-loop).
+      ctx.workspaces.create(
+        { name: action.name, themeId: action.themeId, icon: action.icon },
+        ctx.sourceWindowId,
+      );
+      return;
+    case 'workspace/rename':
+      ctx.workspaces.rename(action.id, action.name);
+      return;
+    case 'workspace/update':
+      ctx.workspaces.update(action.id, action.changes);
+      if ('themeId' in action.changes) {
+        ctx.emitPanelsSync(action.id);
+      }
+      return;
+    case 'workspace/delete': {
+      // Close the workspace's tabs FIRST (browser.tabs.remove is async but
+      // fire-and-forget here; the actual removals will trigger onRemoved
+      // and the shell will see the deltas in the same rAF batch as the
+      // workspace removal). Then delete the workspace metadata so the
+      // panel store cleanup + active-workspace fallback in WorkspaceStore
+      // run in their normal order.
+      if (action.closeTabs) {
+        const tabIds = ctx.tabs
+          .snapshot()
+          .filter((t) => t.workspaceId === action.id)
+          .map((t) => t.id);
+        if (tabIds.length > 0) {
+          browser.tabs
+            .remove(tabIds)
+            .catch((err) =>
+              console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err),
+            );
+        }
+      }
+      ctx.workspaces.delete(action.id);
+      return;
+    }
+    case 'workspace/activate': {
+      // Scope the activation to the requesting window when available.
+      // sourceWindowId null falls back to legacy global activation so
+      // older shells / tools-internal callers keep working unchanged.
+      const result = ctx.workspaces.activate(action.id, ctx.sourceWindowId);
+      if (result === 'conflict') {
+        // Another window already owns this workspace. Bento enforces
+        // "one workspace per window" because two windows rendering the
+        // same workspace's panels currently produce broken state (the
+        // panel reconciler resolves panel tabs against gBrowser, which
+        // is per-window — Phase C twin-tabs will fix this and let
+        // synced display work). Until then, the friendlier behaviour is
+        // to focus the window already showing the workspace. The
+        // requesting shell's UI will reconcile on its next workspaces/
+        // changed delta (its activeIdByWindow entry stays unchanged
+        // since no 'activated' delta fired).
+        const owner = ctx.workspaces.findOwningWindow(action.id);
+        if (owner !== null) {
+          browser.windows
+            .update(owner, { focused: true })
+            .catch((err) =>
+              console.warn('[bento-tools] workspace/activate: focus owner failed:', err),
+            );
+        }
+      }
+      return;
+    }
+    case 'settings/requestSnapshot':
+      ctx.send({ type: 'settings/snapshot', settings: ctx.settings.snapshot() });
+      return;
+    case 'settings/update':
+      ctx.settings.update(action.changes);
+      return;
+    case 'settings/reset':
+      ctx.settings.reset();
+      void applyPrivacyLevel(ctx.settings.snapshot().privacyProtectionLevel)
+        .catch((err) => console.warn('[bento-tools] settings/reset privacy apply failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      void setDefaultSearchEngine(ctx.settings.snapshot().defaultSearchEngine)
+        .catch((err) => console.warn('[bento-tools] settings/reset search apply failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'panel/add': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.add(wsId, action.id)) {
+        // Stamp the configured default width so the new panel renders
+        // at the user's preferred size on first paint. Same logic in
+        // background.ts maybeHandleAddPanelMarker for the chrome-side
+        // "Add panel" button path.
+        // syncPanelMarkers writes the new tab's marker (it's now in
+        // panels.getPanels at the last index) plus refreshes any
+        // existing markers — covers add, idempotent for the rest.
+        finishAddedPanel(ctx, wsId, action.id);
+      }
+      return;
+    }
+    case 'panel/addDevtools': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.addDevtoolsPanel(wsId, action.tabId, action.forTabId, action.inspectedTabId)) {
+        ctx.tabs.assignWorkspaceEagerly(action.tabId, wsId);
+        void setDevtoolsPanelMarker(action.tabId);
+        finishAddedPanel(ctx, wsId, action.tabId);
+      }
+      return;
+    }
+    case 'panel/focus': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (
+        !ctx.panels.findWorkspacesContainingPanelOrSubPanel(action.id).includes(action.workspaceId)
+      ) {
+        return;
+      }
+      const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+      if (owner !== null && owner !== ctx.sourceWindowId) {
+        browser.windows
+          .update(owner, { focused: true })
+          .catch((err) => console.warn('[bento-tools] panel/focus: focus owner failed:', err));
+        return;
+      }
+      const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+      const sync = () => {
+        ctx.emitPanelsSync(action.workspaceId, {
+          scrollToPanelTabId: action.id,
+          ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+        });
+      };
+      if (result === 'activated') {
+        setTimeout(sync, 32);
+      } else {
+        sync();
+      }
+      return;
+    }
+    case 'panel/openAt': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) {
+        console.warn('[bento-tools] panel/openAt: no active workspace — bailing');
+        return;
+      }
+      // Compute insert position from sourceTabId and the optional
+      // position hint:
+      //   position 'end' → currentPanels.length (append). Used by the
+      //     Add-panel trailer ("+" button and saved-panel favicon
+      //     buttons) where "after which panel" doesn't apply — the
+      //     trailer always inserts at the rightmost slot.
+      //   null sourceTabId, no position hint → 0 (immediately right
+      //     of main panel). Used by link context-menu "Open in new
+      //     panel" when the right-click happened in the main panel.
+      //   id sourceTabId → that panel's index + 1 (immediately right
+      //     of it).
+      //   not-a-panel id → append (defensive: shouldn't normally happen
+      //     because the menu item only shows when the right-click was
+      //     inside a known panel)
+      let position: number;
+      if (action.position === 'end') {
+        position = ctx.panels.getRootNodeIds(wsId).length;
+      } else if (action.sourceTabId === null) {
+        position = 0;
+      } else {
+        position = ctx.panels.getRootNodeIds(wsId).length;
+      }
+      void (async () => {
+        try {
+          // createInactiveTab treats `about:newtab` as the user's configured
+          // new-tab page by omitting the URL, avoiding tabs.create's illegal
+          // URL rejection for most about:* pages.
+          const tabId = await createInactiveTab(ctx, action.url);
+          if (tabId === null) {
+            console.warn('[bento-tools] panel/openAt: tab.id not a number — bailing');
+            return;
+          }
+          const inserted =
+            action.position === 'after' || action.position === undefined
+              ? insertPanelAfterSource(ctx, wsId, tabId, action.sourceTabId)
+              : ctx.panels.insertAt(wsId, tabId, position);
+          if (!inserted) {
+            console.warn(
+              '[bento-tools] panel/openAt: insertAt returned false (tab already in panel list?) — bailing without sync',
+            );
+            return;
+          }
+          ctx.tabs.assignWorkspaceEagerly(tabId, wsId);
+          finishAddedPanel(ctx, wsId, tabId);
+        } catch (err) {
+          console.warn('[bento-tools] panel/openAt failed:', err);
+        }
+      })();
+      return;
+    }
+    case 'panel/remove': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.isDevtoolsPanel(wsId, action.id)) {
+        if (ctx.panels.remove(wsId, action.id)) {
+          ctx.pinnedPanels.removeForTab(action.id);
+          void clearPanelMarker(action.id);
+          void closeTabAsRemoved(ctx, action.id, {
+            label: 'panel/remove devtools',
+            clearPanelMarker: true,
+          });
+          ctx.syncPanelMarkers(wsId);
+          ctx.emitPanelsSync(wsId);
+        }
+        return;
+      }
+      const subVictims = ctx.panels.removeWithSubPanels(wsId, action.id);
+      for (const spId of subVictims) {
+        void closeTabAsRemoved(ctx, spId, { label: 'panel/remove sub-panel' });
+      }
+      closeDevtoolsTabs(ctx, ctx.panels.takeOrphanedDevtoolsTabs(wsId), 'panel/remove devtools');
+      void clearPanelMarker(action.id);
+      ctx.syncPanelMarkers(wsId);
+      ctx.emitPanelsSync(wsId);
+      return;
+    }
+    case 'panel/focusedChanged':
+      ctx.send({
+        type: 'panel/focusedChanged',
+        tabId: action.tabId,
+        ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
+      });
+      return;
+    case 'panels/clear': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const current = ctx.panels.getPanels(wsId);
+      if (current.length === 0) return;
+      const devtoolsTabsToClose = new Set<number>();
+      for (const id of current) {
+        if (ctx.panels.isDevtoolsPanel(wsId, id)) devtoolsTabsToClose.add(id);
+        const subVictims = ctx.panels.removeWithSubPanels(wsId, id);
+        for (const spId of subVictims) {
+          void closeTabAsRemoved(ctx, spId, { label: 'panels/clear sub-panel' });
+        }
+        void clearPanelMarker(id);
+      }
+      for (const id of ctx.panels.takeOrphanedDevtoolsTabs(wsId)) devtoolsTabsToClose.add(id);
+      closeDevtoolsTabs(ctx, devtoolsTabsToClose, 'panels/clear devtools');
+      ctx.emitPanelsSync(wsId);
+      return;
+    }
+    case 'panelLayout/reorderRoot': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.reorderRootNodes(wsId, action.rootNodeIds)) {
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
+    case 'panelLayout/movePanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (ctx.panels.movePanel(wsId, action.tabId, action.target)) {
+        ctx.syncPanelMarkers(wsId);
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
+    case 'panel/setWidth': {
+      // Width is per-tabId — workspace ownership is informational. The
+      // setter no-ops on no-change so a noisy chrome-side dispatch
+      // (multiple endPanelDrag fires for the same width) doesn't
+      // re-trigger persistence. We do NOT emit panels/sync here:
+      // chrome already has the live width on the dragged panel
+      // element, and a sync round-trip would clobber the in-flight
+      // layout with stale values from the broadcast.
+      ctx.panels.setWidth(action.id, action.widthPx);
+      ctx.pinnedPanels.updateWidthForTab(action.id, action.widthPx);
+      return;
+    }
+    case 'panel/setHeaderHidden': {
+      // Same no-echo rule as panel/setWidth: chrome already applied the
+      // live hidden state to the panel element.
+      ctx.panels.setHeaderHidden(action.id, action.hidden);
+      return;
+    }
+    case 'panel/setMainWidth': {
+      // Main content slot width is workspace-scoped. Same no-emit-after-set
+      // reasoning as panel/setWidth — chrome already has the live width on
+      // the main slot's element, and a sync round-trip would clobber the
+      // in-flight layout with stale values from the broadcast.
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      ctx.panels.setMainWidth(wsId, action.widthPx);
+      return;
+    }
+    case 'panel/setStripScroll': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      ctx.panels.setStripScroll(action.workspaceId, action.scrollLeft);
+      return;
+    }
+    case 'panelLayout/subdivide': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const subdivided = ctx.panels.subdivide(wsId, action.tabId);
+      if (subdivided) {
+        ctx.emitPanelsSync(wsId);
+      }
+      return;
+    }
+    case 'panelLayout/splitTopPanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (!ctx.panels.canSplitTopPanel(wsId, action.tabId)) return;
+      void splitPanel(ctx, wsId, action.tabId, action.url, 'splitTopPanel');
+      return;
+    }
+    case 'panelLayout/splitBottomPanel': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      if (!ctx.panels.canSplitBottomPanel(wsId, action.tabId)) return;
+      void splitPanel(ctx, wsId, action.tabId, action.url, 'splitBottomPanel');
+      return;
+    }
+    case 'panelLayout/removeVerticalGroup': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const victims = ctx.panels.removeVerticalGroup(wsId, action.groupId);
+      for (const spId of victims) {
+        void closeTabAsRemoved(ctx, spId, {
+          delayMs: action.closeDelayMs,
+          label: 'panelLayout/removeVerticalGroup child',
+        });
+      }
+      ctx.emitPanelsSync(wsId);
+      return;
+    }
+    case 'panelLayout/breakOut': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const result = ctx.panels.breakOut(wsId, action.tabId);
+      if (!result) return;
+      ctx.syncPanelMarkers(wsId);
+      ctx.emitPanelsSync(wsId);
+      return;
+    }
+    case 'panelLayout/fillChooser': {
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      const expected = action.mode === 'single' ? 1 : 2;
+      const urls = action.urls.slice(0, expected);
+      if (urls.length !== expected) return;
+      void (async () => {
+        try {
+          const newTabIds: number[] = [];
+          for (const url of urls) {
+            const tabId = await createInactiveTab(ctx, url);
+            if (tabId !== null) newTabIds.push(tabId);
+          }
+          if (newTabIds.length !== expected) return;
+          for (const tabId of newTabIds) {
+            ctx.tabs.assignWorkspaceEagerly(tabId, wsId);
+          }
+          if (ctx.panels.fillChooser(wsId, action.chooserId, action.mode, newTabIds)) {
+            ctx.syncPanelMarkers(wsId);
+            ctx.emitPanelsSync(wsId);
+          }
+        } catch (err) {
+          console.warn('[bento-tools] panelLayout/fillChooser failed:', err);
+        }
+      })();
+      return;
+    }
+    case 'panelLayout/setGroupRatio': {
+      ctx.panels.setGroupRatio(action.groupId, action.ratio);
+      return;
+    }
+    case 'pinnedPanel/add': {
+      // Validate that the workspace exists AND the tab is currently a
+      // panel or nested sub-panel in that workspace. Full-slot survivor
+      // panels are still represented as sub-panels under a hidden
+      // top-closed parent, and ordinary subdivided panels are legitimate
+      // visible panel surfaces too, so top-level-only validation rejects
+      // valid header menu requests. Silent no-op on duplicate — the
+      // store's add() returns false in that case and we don't emit.
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (
+        !ctx.panels
+          .findWorkspacesContainingPanelOrSubPanel(action.tabId)
+          .includes(action.workspaceId)
+      )
+        return;
+      if (ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId)) return;
+      void (async () => {
+        const metadata: { url?: string; title?: string; favIconUrl?: string; widthPx?: number } =
+          {};
+        const widthPx = ctx.panels.getWidth(action.tabId);
+        if (typeof widthPx === 'number' && widthPx > 0) metadata.widthPx = widthPx;
+        try {
+          const tab = await browser.tabs.get(action.tabId);
+          metadata.url = getTabLoadUrl(tab) ?? undefined;
+          metadata.title = tab.title;
+          metadata.favIconUrl = tab.favIconUrl;
+        } catch {
+          // Validation above already confirmed the panel binding exists.
+          // If the tab disappears before metadata capture, add() still
+          // no-ops or persists later from the URL it can resolve.
+        }
+        if (ctx.pinnedPanels.add(action.workspaceId, action.tabId, metadata)) {
+          // Re-emit panels/sync for the affected workspace so chrome's
+          // kebab menu (which reads pinnedTabIdsInWorkspace from the
+          // payload) picks up the new state on its next open. Active-
+          // workspace-only filtering happens in the shell mirror.
+          ctx.emitPanelsSync(action.workspaceId);
+        }
+      })();
+      return;
+    }
+    case 'pinnedPanel/remove': {
+      if (ctx.pinnedPanels.remove(action.workspaceId, action.tabId)) {
+        ctx.emitPanelsSync(action.workspaceId);
+      }
+      return;
+    }
+    case 'pinnedPanels/reorder': {
+      ctx.pinnedPanels.reorder(action.orderedKeys);
+      return;
+    }
+    case 'pinnedPanel/open': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      const entry = ctx.pinnedPanels.get(action.workspaceId, action.tabId);
+      if (!entry) return;
+      const openKey = pinnedPanelOpenKey(action.workspaceId, entry);
+      if (pinnedPanelOpenInFlight.has(openKey)) return;
+      pinnedPanelOpenInFlight.add(openKey);
+      void (async () => {
+        try {
+          const focusExistingPanel = async (tabId: number): Promise<boolean> => {
+            const panelExists = ctx.panels
+              .findWorkspacesContainingPanelOrSubPanel(tabId)
+              .includes(action.workspaceId);
+            if (!panelExists) return false;
+            try {
+              await browser.tabs.get(tabId);
+              const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+              if (owner !== null && owner !== ctx.sourceWindowId) {
+                await browser.windows.update(owner, { focused: true });
+                return true;
+              }
+              const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+              const sync = () => {
+                ctx.emitPanelsSync(action.workspaceId, {
+                  scrollToPanelTabId: tabId,
+                  ...(typeof ctx.sourceWindowId === 'number'
+                    ? { windowId: ctx.sourceWindowId }
+                    : {}),
+                });
+              };
+              if (result === 'activated') setTimeout(sync, 32);
+              else sync();
+              return true;
+            } catch {
+              return false;
+            }
+          };
+
+          if (await focusExistingPanel(action.tabId)) {
+            return;
+          }
+
+          const url = entry.url;
+          if (!url) return;
+          const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+          if (owner !== null && owner !== ctx.sourceWindowId) {
+            await browser.windows.update(owner, { focused: true });
+            return;
+          }
+          const result = ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+          if (result === 'activated' && action.tabId < 0) {
+            await delay(250);
+            const rebound = ctx.pinnedPanels.findByStableIdentity(action.workspaceId, entry);
+            if (rebound && rebound.tabId !== action.tabId) {
+              if (await focusExistingPanel(rebound.tabId)) {
+                return;
+              }
+            }
+          }
+          const tabId = await createInactiveTab(ctx, url);
+          if (tabId === null) return;
+          ctx.tabs.assignWorkspaceEagerly(tabId, action.workspaceId);
+          if (
+            !ctx.panels.insertAt(
+              action.workspaceId,
+              tabId,
+              ctx.panels.getRootNodeIds(action.workspaceId).length,
+            )
+          ) {
+            return;
+          }
+          ctx.pinnedPanels.rebindTabId(action.workspaceId, action.tabId, tabId, {
+            url,
+            title: entry.title,
+            favIconUrl: entry.favIconUrl,
+            widthPx: entry.widthPx,
+          });
+          const widthPx =
+            typeof entry.widthPx === 'number' && entry.widthPx > 0
+              ? entry.widthPx
+              : ctx.settings.snapshot().defaultPanelWidthPx;
+          if (widthPx > 0) ctx.panels.setWidth(tabId, widthPx);
+          ctx.syncPanelMarkers(action.workspaceId);
+          ctx.emitPanelsSync(action.workspaceId, { scrollToPanelTabId: tabId });
+        } catch (err) {
+          console.warn('[bento-tools] pinnedPanel/open failed:', err);
+        } finally {
+          pinnedPanelOpenInFlight.delete(openKey);
+        }
+      })();
+      return;
+    }
+    case 'pinnedPanel/close': {
+      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (!ctx.pinnedPanels.has(action.workspaceId, action.tabId)) return;
+      if (
+        !ctx.panels
+          .findWorkspacesContainingPanelOrSubPanel(action.tabId)
+          .includes(action.workspaceId)
+      ) {
+        return;
+      }
+      void (async () => {
+        await ctx.tabs.markClosing(action.tabId);
+        if (ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId)) {
+          ctx.pinnedPanels.removeForTab(action.tabId);
+        }
+        const subVictims = ctx.panels.removeWithSubPanels(action.workspaceId, action.tabId);
+        for (const spId of subVictims) {
+          void closeTabAsRemoved(ctx, spId, { label: 'pinnedPanel/close sub-panel' });
+        }
+        ctx.syncPanelMarkers(action.workspaceId);
+        ctx.emitPanelsSync(action.workspaceId);
+        removeMarkedTabWithRetries(action.tabId, 'pinnedPanel/close');
+      })();
+      return;
+    }
+    case 'pinnedPanel/activate': {
+      // Switch to the workspace that owns the pinned panel; the panel
+      // tab is NOT activated as the main tab. Activating it would
+      // relocate the panel's <browser> into the main content slot
+      // (chrome's reconciler routes the selected tab there), which is
+      // the opposite of what a pinned panel should do — the panel
+      // stays in its side slot.
+      //
+      // Scrolling the panel strip + focusing the panel's <browser> is
+      // handled chrome-side: the React caller writes a
+      // BENTO_FOCUS_PANEL:<ts>:<tabId> title alongside the dispatch,
+      // and chrome retries the scroll+focus until the workspace
+      // reconcile has materialized the panel element.
+      const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
+      if (owner !== null && owner !== ctx.sourceWindowId) {
+        // Another window already owns the workspace. Focus that window
+        // and stop — its shell will see the pin row activate via its
+        // own user gesture if the user wants to focus the panel there.
+        browser.windows
+          .update(owner, { focused: true })
+          .catch((err) =>
+            console.warn('[bento-tools] pinnedPanel/activate: focus owner failed:', err),
+          );
+        return;
+      }
+      ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
+      return;
+    }
+    case 'pinnedPanels/requestSnapshot':
+      ctx.send({ type: 'pinnedPanels/snapshot', entries: ctx.pinnedPanels.entries() });
+      return;
+    case 'savedPanels/save':
+      // Fire-and-forget — SavedPanelsStore's onCreated listener picks
+      // up the new bookmark, refreshes the list, and broadcasts via
+      // savedPanels.onChange so chrome's trailer iframe re-renders.
+      // De-dupe + folder lazy-recreate live inside `save()`.
+      void ctx.savedPanels.save(action.url, action.title, action.favIconUrl);
+      return;
+    case 'savedPanels/requestSnapshot':
+      ctx.send({ type: 'savedPanels/snapshot', items: ctx.savedPanels.list() });
+      return;
+    case 'privacy/requestSnapshot':
+      void emitPrivacySnapshot(ctx);
+      return;
+    case 'searchEngines/requestSnapshot':
+      void emitSearchEnginesSnapshot(ctx);
+      return;
+    case 'privacy/setProtectionLevel':
+      void applyPrivacyLevel(action.level)
+        .then(() => ctx.settings.update({ privacyProtectionLevel: action.level }))
+        .catch((err) => console.warn('[bento-tools] privacy/setProtectionLevel failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setAdvanced':
+      void applyAdvancedSetting(action.key, action.value)
+        .catch((err) => console.warn('[bento-tools] privacy/setAdvanced failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'privacy/setDefaultSearchEngine':
+      void setDefaultSearchEngine(action.id)
+        .then(() => ctx.settings.update({ defaultSearchEngine: action.id }))
+        .catch((err) => console.warn('[bento-tools] privacy/setDefaultSearchEngine failed:', err))
+        .finally(() => void emitPrivacySnapshot(ctx));
+      return;
+    case 'addrbar/query':
+      void (async () => {
+        try {
+          const results = await searchAddressResults(action.query, action.limit);
+          ctx.send({ type: 'addrbar/results', query: action.query, results });
+        } catch (err) {
+          console.warn('[bento-tools] addrbar/query failed:', err);
+          ctx.send({ type: 'addrbar/results', query: action.query, results: [] });
+        }
+      })();
+      return;
+    case 'externalMerge/requestSources':
+      void (async () => {
+        try {
+          const sources = await loadExternalMergeSources();
+          ctx.send({
+            type: 'externalMerge/sources',
+            requestId: action.requestId,
+            windowId: ctx.sourceWindowId,
+            sources,
+          });
+        } catch (err) {
+          console.warn('[bento-tools] externalMerge/requestSources failed:', err);
+          ctx.send({
+            type: 'externalMerge/error',
+            requestId: action.requestId,
+            windowId: ctx.sourceWindowId,
+            code: externalMergeCode(err),
+            message: externalMergeMessage(err),
+          });
+        }
+      })();
+      return;
+    case 'externalMerge/merge':
+      if (externalMergeInFlightOperationId !== null) {
+        ctx.send({
+          type: 'externalMerge/error',
+          operationId: action.operationId,
+          windowId: ctx.sourceWindowId,
+          sourceId: action.sourceId,
+          code: 'busy',
+          message: 'Another browser session merge is already running.',
+        });
+        return;
+      }
+      externalMergeInFlightOperationId = action.operationId;
+      externalMergeAbortController = new AbortController();
+      externalMergeCancelSentOperationId = null;
+      emitToShellDocuments(ctx, {
+        type: 'externalMerge/started',
+        operationId: action.operationId,
+        windowId: ctx.sourceWindowId,
+        sourceId: action.sourceId,
+      });
+      emitToShellDocuments(ctx, {
+        type: 'externalMerge/progress',
+        operationId: action.operationId,
+        windowId: ctx.sourceWindowId,
+        progress: {
+          stage: 'preparing',
+          totalWorkspaces: 0,
+          completedWorkspaces: 0,
+          totalTabs: 0,
+          completedTabs: 0,
+        },
+      });
+      void (async () => {
+        const abortController = externalMergeAbortController!;
+        try {
+          const snapshot = (await browser.bentoExternalSessions.readSnapshot(
+            action.sourceId,
+          )) as ExternalSessionSnapshot;
+          throwIfExternalMergeCancelled(abortController.signal);
+          const session = normalizeExternalSession(snapshot);
+          throwIfExternalMergeCancelled(abortController.signal);
+          const summary = await executeExternalMerge(session, ctx, {
+            signal: abortController.signal,
+            targetIds: action.targetIds,
+            onProgress: (progress) => {
+              emitToShellDocuments(ctx, {
+                type: 'externalMerge/progress',
+                operationId: action.operationId,
+                windowId: ctx.sourceWindowId,
+                progress,
+              });
+            },
+          });
+          throwIfExternalMergeCancelled(abortController.signal);
+          emitToShellDocuments(ctx, {
+            type: 'externalMerge/complete',
+            operationId: action.operationId,
+            windowId: ctx.sourceWindowId,
+            summary,
+          });
+        } catch (err) {
+          const code = externalMergeCode(err);
+          const alreadySentCancel =
+            code === 'cancelled' && externalMergeCancelSentOperationId === action.operationId;
+          if (!alreadySentCancel) {
+            if (code !== 'cancelled') {
+              console.warn('[bento-tools] externalMerge/merge failed:', err);
+            }
+            emitToShellDocuments(ctx, {
+              type: 'externalMerge/error',
+              operationId: action.operationId,
+              windowId: ctx.sourceWindowId,
+              sourceId: action.sourceId,
+              code,
+              message: externalMergeMessage(err),
+            });
+          }
+        } finally {
+          if (externalMergeInFlightOperationId === action.operationId) {
+            externalMergeInFlightOperationId = null;
+            externalMergeAbortController = null;
+            externalMergeCancelSentOperationId = null;
+          }
+        }
+      })();
+      return;
+    case 'externalMerge/cancel':
+      if (externalMergeInFlightOperationId !== action.operationId) return;
+      externalMergeAbortController?.abort();
+      if (externalMergeCancelSentOperationId === action.operationId) return;
+      externalMergeCancelSentOperationId = action.operationId;
+      emitToShellDocuments(ctx, {
+        type: 'externalMerge/error',
+        operationId: action.operationId,
+        windowId: ctx.sourceWindowId,
+        code: 'cancelled',
+        message: EXTERNAL_MERGE_CANCELLED_MESSAGE,
+      });
+      return;
+    case 'backup/export':
+      void (async () => {
+        try {
+          const data = await ctx.backup.collectSnapshot(action.workspaceIds);
+          const json = JSON.stringify(data, null, 2);
+          const date = new Date().toISOString().slice(0, 10);
+          ctx.send({ type: 'backup/exportReady', json, filename: `bento-backup-${date}.json` });
+        } catch (err) {
+          console.warn('[bento-tools] backup/export failed:', err);
+        }
+      })();
+      return;
+    case 'backup/import': {
+      const validated = validateExportSchema(action.data);
+      if (!validated) {
+        ctx.send({ type: 'backup/importError', message: 'Invalid export file format.' });
+        return;
+      }
+      void (async () => {
+        try {
+          const summary = await executeImport(validated, action.options, {
+            workspaces: ctx.workspaces,
+            tabs: ctx.tabs,
+            panels: ctx.panels,
+            pinnedPanels: ctx.pinnedPanels,
+            settings: ctx.settings,
+            savedPanels: ctx.savedPanels,
+          });
+          ctx.send({ type: 'backup/importComplete', summary });
+        } catch (err) {
+          console.warn('[bento-tools] backup/import failed:', err);
+          ctx.send({ type: 'backup/importError', message: String(err) });
+        }
+      })();
+      return;
+    }
+    case 'backup/requestList':
+      void (async () => {
+        const backups = await ctx.backup.listBackups();
+        ctx.send({ type: 'backup/list', backups });
+      })();
+      return;
+    case 'backup/restore':
+      void (async () => {
+        try {
+          const data = await ctx.backup.getBackupData(action.backupId);
+          if (!data) {
+            ctx.send({ type: 'backup/importError', message: 'Backup not found.' });
+            return;
+          }
+          const summary = await executeImport(
+            data,
+            { importSettings: false, importSavedPanels: false, replaceExisting: false },
+            {
+              workspaces: ctx.workspaces,
+              tabs: ctx.tabs,
+              panels: ctx.panels,
+              pinnedPanels: ctx.pinnedPanels,
+              settings: ctx.settings,
+              savedPanels: ctx.savedPanels,
+            },
+          );
+          ctx.send({ type: 'backup/importComplete', summary });
+        } catch (err) {
+          console.warn('[bento-tools] backup/restore failed:', err);
+          ctx.send({ type: 'backup/importError', message: String(err) });
+        }
+      })();
+      return;
+    case 'backup/delete':
+      void (async () => {
+        await ctx.backup.deleteBackup(action.backupId);
+        const backups = await ctx.backup.listBackups();
+        ctx.send({ type: 'backup/list', backups });
+      })();
+      return;
+    default: {
+      const _exhaustive: never = action;
+      console.warn('[bento-tools] unhandled action:', _exhaustive);
+    }
+  }
+}

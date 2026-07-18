@@ -1,0 +1,50 @@
+[
+  {
+    "namespace": "bentoChrome",
+    "events": [
+      {
+        "name": "onDocumentMounted",
+        "type": "function",
+        "parameters": [{ "name": "record", "type": "object", "additionalProperties": true }]
+      },
+      {
+        "name": "onDocumentChanged",
+        "type": "function",
+        "parameters": [{ "name": "record", "type": "object", "additionalProperties": true }]
+      },
+      {
+        "name": "onDocumentRemoved",
+        "type": "function",
+        "parameters": [{ "name": "record", "type": "object", "additionalProperties": true }]
+      }
+    ],
+    "functions": [
+      {
+        "name": "bindBackground",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "details", "type": "object", "additionalProperties": true }]
+      },
+      { "name": "getRebindProofs", "type": "function", "async": true, "parameters": [] },
+      {
+        "name": "ackRebindGeneration",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "generation", "type": "integer" }]
+      },
+      { "name": "listDocuments", "type": "function", "async": true, "parameters": [] },
+      {
+        "name": "noteLifecycle",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "details", "type": "object", "additionalProperties": true }]
+      },
+      {
+        "name": "invalidateDocument",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "details", "type": "object", "additionalProperties": true }]
+      }
+    ]
+  }
+]

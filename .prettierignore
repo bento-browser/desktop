@@ -1,0 +1,5 @@
+# Deterministic generated artifacts; format changes must come from their generator.
+extensions/_shared/generated/native-preferences-protocol.ts
+extensions/_shared/generated/native-preferences-protocol-fixtures.json
+extensions/bento-tools/experiments/bento-native-preferences/generated-protocol.js
+extensions/bento-tools/experiments/bento-native-preferences/loader-contract-constants.js

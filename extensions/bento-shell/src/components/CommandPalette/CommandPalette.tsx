@@ -59,12 +59,11 @@ interface BentoCommand extends CommandPaletteCommand {
   meta?: string;
 }
 
-function settingsUrl(): string {
-  return `${location.origin}/dist/settings.html`;
-}
-
-function privacyUrl(): string {
-  return `${location.origin}/dist/privacy.html`;
+async function signalOpenSettings(privacy = false): Promise<void> {
+  document.title = `${privacy ? 'BENTO_OPEN_SETTINGS_PRIVACY' : 'BENTO_OPEN_SETTINGS'}_${Date.now()}`;
+  // The palette closes by writing another title sentinel. Keep this signal
+  // visible for one chrome polling interval before that close overwrites it.
+  await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
 function commandIcon(icon: typeof SettingsIcon): ReactNode {
@@ -117,20 +116,16 @@ function useCommands(): BentoCommand[] {
       group: 'Navigation',
       icon: commandIcon(SettingsIcon),
       keywords: ['preferences', 'options'],
-      action: () => {
-        dispatch({ type: 'tab/openUrl', url: settingsUrl(), focusExisting: true });
-      },
+      action: () => signalOpenSettings(),
     });
     cmds.push({
       id: 'nav:privacy',
-      title: 'Open Privacy Dashboard',
-      subtitle: 'Review privacy state and site controls.',
+      title: 'Open Bento Privacy Settings',
+      subtitle: 'Manage Bento privacy and search settings.',
       group: 'Navigation',
       icon: commandIcon(ShieldIcon),
       keywords: ['privacy', 'dashboard', 'site controls'],
-      action: () => {
-        dispatch({ type: 'tab/openUrl', url: privacyUrl(), focusExisting: true });
-      },
+      action: () => signalOpenSettings(true),
     });
 
     // Workspaces

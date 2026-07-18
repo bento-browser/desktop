@@ -120,6 +120,12 @@ Replacement import should keep the browser window alive while it swaps the
 workspace set; Bento imports the replacement first, then removes the old
 workspaces and tabs.
 
+Backup creation never serializes private-window tabs, panels, layouts, pins, or
+derived counts. Backup actions are unavailable from private Settings windows.
+New stored backups carry a `private-filtered-v1` safety marker; older version-one
+records remain readable but are shown as `legacy-unknown` rather than being
+silently treated as verified.
+
 The sidebar tab list supports multi-selection for workspace organization.
 The tab list exposes `New tab` and `New panel` buttons. In expanded sidebar
 mode, `New tab` opens the centered address/search overlay in new-tab mode,
@@ -183,7 +189,9 @@ Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
 Bento replaces Firefox's native horizontal tab strip with its workspace/sidebar
 tab UI, while retaining the operating system's native window controls in the
-top chrome.
+top chrome. Firefox's Browser layout and native sidebar choices are omitted from
+Tabs and browsing because Bento owns both visible tab layout and sidebar
+visibility.
 
 The workspace switcher should behave like a lightweight anchored menu. Opening
 it should leave the current browser content visible behind the menu rather than
@@ -340,12 +348,12 @@ Panels support the core Bento workflow:
   blank.
 - restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
   regular tab, using the configured default new-panel width.
-- choose custom panel width presets in Settings and drag those presets to set
-  the order shown in each side-panel header's custom widths menu.
-- adjust Bento panel corner roundedness in Settings with the current panel
-  radius as the default.
-- adjust Bento splitter size in Settings, which also changes the visual gap
-  between panels.
+- choose custom panel width presets in Settings and set their order with
+  visible Move up, Move down, and Remove actions for each size;
+- adjust Bento panel corner roundedness with a labelled slider in Settings,
+  using the current panel radius as the default;
+- adjust Bento splitter size with a labelled slider in Settings, which also
+  changes the visual gap between panels.
 
 Side-panel and sub-panel headers sit on a neutral-5 surface and can be hidden
 per panel from the header's `...` menu. Hidden headers are restored from a small
@@ -542,7 +550,8 @@ not reset the toggle or make an otherwise matching preset appear as Custom.
 Firefox's HTTPS exception UI remains available for HTTP-only sites and local
 devices.
 
-Settings includes a privacy level selector, default search engine selector, and
+The Bento category in Firefox's native Settings includes a privacy level
+selector, default search engine selector, and
 advanced privacy controls for the main browser-level levers. Settings displays
 the current protection level in the Privacy card header and shows the benefits
 and caveats for Standard, Enhanced, and Hardened so users can compare
@@ -557,6 +566,16 @@ titles, supporting descriptions, and key tokens. The Keyboard shortcuts card
 also lets users choose whether `Cmd/Ctrl+S` collapses the sidebar to the rail or
 hides it with left-edge hover access. Bento bundles uBlock Origin
 enabled by default and leaves it removable/disableable by the user.
+
+Settings is available at both `about:preferences#bento` and
+`about:settings#bento`, including when Firefox's settings-redesign preference is
+disabled. Its native page header displays the Bento heading beside the Settings
+icon. Sidebar and command-palette launches reuse the Settings tab in the source
+browser window. Backups and keyboard shortcuts use native Bento subpanes. Panel
+sliders, numeric fields, list rows, reorder handles, search, and actions use
+Firefox's native Settings components. Dropdown fields use Firefox's `moz-select`
+control with its Firefox-owned panel menu, so they open consistently inside the
+Bento panel layout. There is no separate extension-hosted Settings page.
 
 ## Design principles
 

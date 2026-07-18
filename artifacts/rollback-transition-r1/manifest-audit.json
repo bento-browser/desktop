@@ -1,0 +1,94 @@
+{
+  "variant": "rollback-transition-r1",
+  "action": "package",
+  "toolsVersion": "0.1.12",
+  "shellVersion": "0.0.4",
+  "automaticFinalUpdate": false,
+  "files": [
+    {
+      "path": "dist/bento-0.0.0.en-US.mac.dmg",
+      "bytes": 95102505,
+      "sha256": "f3bbdeb1067566b7da157b97df7efcd09539c19c6a362e53b8bfcb6e043cad40"
+    },
+    {
+      "path": "dist/bento-0.0.0.en-US.mac.txt",
+      "bytes": 15,
+      "sha256": "098562ad3075eb1f3a2a8853123d7c9f7b7933ec6b84e1e9780d2fde71326223"
+    },
+    {
+      "path": "dist/bento-0.0.0.en-US.mac.update_framework_artifacts.zip",
+      "bytes": 4576,
+      "sha256": "63601acda15334f2cc9190ec282f2f2829153589ce41eb93704bc96b6d6b4a94"
+    },
+    {
+      "path": "dist/bento-0.0.0.en-US.mac.xpt_artifacts.zip",
+      "bytes": 254944,
+      "sha256": "f172d24b50e2558c0e33189737333acfd7186201099830f518d8b45b72348ef4"
+    },
+    {
+      "path": "dist/bento-0.0.1.en-US.mac.dmg",
+      "bytes": 105207662,
+      "sha256": "fc4b3742d182eb8465a41cb3906d93256f8a542fa8758f47feb090f02a29da4a"
+    },
+    {
+      "path": "dist/bento-0.0.1.en-US.mac.txt",
+      "bytes": 15,
+      "sha256": "026e1e79daaa58b8ae84ddde7ec25863dd52573bd655740c054bfb3fce112394"
+    },
+    {
+      "path": "dist/bento-0.0.1.en-US.mac.update_framework_artifacts.zip",
+      "bytes": 4571,
+      "sha256": "4027051b635c4dca12d3eb425fae51aabfa1f6d44e4a1ee5f8acac9867ddd7ca"
+    },
+    {
+      "path": "dist/bento-0.0.1.en-US.mac.xpt_artifacts.zip",
+      "bytes": 256865,
+      "sha256": "b535cdf94d061a06f15d8ec952e3d2f24af67c358955fa82d4ce5e83f700b994"
+    },
+    {
+      "path": "dist/output.mar",
+      "bytes": 79131336,
+      "sha256": "36c1dd2240d574084601912df49750b788a9dc10373e2cb0e7d571d3d4260efa"
+    },
+    {
+      "path": "dist/package_name.txt",
+      "bytes": 26,
+      "sha256": "49b2f8e48aff822d65baaa6c289159649d8ea43b1b9593da3492672af16ca473"
+    },
+    {
+      "path": "dist/update/browser/Darwin_aarch64-gcc3/bento/update.xml",
+      "bytes": 460,
+      "sha256": "b710540c0037b7819d215dd671353907989faa42f85f2c9a8782d5a25cdb4b1c"
+    },
+    {
+      "path": "dist/update/browser/Darwin_x86-gcc3/bento/update.xml",
+      "bytes": 460,
+      "sha256": "b710540c0037b7819d215dd671353907989faa42f85f2c9a8782d5a25cdb4b1c"
+    },
+    {
+      "path": "dist/update/browser/Darwin_x86-gcc3-u-i386-x86_64/bento/update.xml",
+      "bytes": 460,
+      "sha256": "b710540c0037b7819d215dd671353907989faa42f85f2c9a8782d5a25cdb4b1c"
+    },
+    {
+      "path": "dist/update/browser/Darwin_x86_64-gcc3/bento/update.xml",
+      "bytes": 460,
+      "sha256": "b710540c0037b7819d215dd671353907989faa42f85f2c9a8782d5a25cdb4b1c"
+    },
+    {
+      "path": "dist/update/browser/Darwin_x86_64-gcc3-u-i386-x86_64/bento/update.xml",
+      "bytes": 460,
+      "sha256": "b710540c0037b7819d215dd671353907989faa42f85f2c9a8782d5a25cdb4b1c"
+    },
+    {
+      "path": "release-out/.DS_Store",
+      "bytes": 6148,
+      "sha256": "d65165279105ca6773180500688df4bdc69a2c7b771752f0a46ef120b7fd8ec3"
+    },
+    {
+      "path": "release-out/Bento-0.0.1-macos.dmg",
+      "bytes": 104968348,
+      "sha256": "78c8ea129ddf7d8e18979f08c6e3888754a4929cb670342384a07b4894b7658a"
+    }
+  ]
+}

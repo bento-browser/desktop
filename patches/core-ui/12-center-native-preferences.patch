@@ -1,4 +1,4 @@
-From 1cbcad4198f0c1120926fe08ead6ba34eea53a8b Mon Sep 17 00:00:00 2001
+From e6bfd18493837ea64306ac8ecb091117232d49c6 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout

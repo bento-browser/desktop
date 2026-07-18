@@ -1080,16 +1080,23 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       ctx.send({ type: 'settings/snapshot', settings: ctx.settings.snapshot() });
       return;
     case 'settings/update':
-      ctx.settings.update(action.changes);
+      void ctx.settings
+        .update(action.changes)
+        .catch((err) => console.warn('[bento-tools] settings/update persistence failed:', err));
       return;
     case 'settings/reset':
-      ctx.settings.reset();
-      void applyPrivacyLevel(ctx.settings.snapshot().privacyProtectionLevel)
-        .catch((err) => console.warn('[bento-tools] settings/reset privacy apply failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
-      void setDefaultSearchEngine(ctx.settings.snapshot().defaultSearchEngine)
-        .catch((err) => console.warn('[bento-tools] settings/reset search apply failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
+      void (async () => {
+        try {
+          const committed = await ctx.settings.reset();
+          await Promise.allSettled([
+            applyPrivacyLevel(committed.settings.privacyProtectionLevel),
+            setDefaultSearchEngine(committed.settings.defaultSearchEngine),
+          ]);
+          await Promise.all([emitPrivacySnapshot(ctx), emitSearchEnginesSnapshot(ctx)]);
+        } catch (err) {
+          console.warn('[bento-tools] settings/reset persistence failed:', err);
+        }
+      })();
       return;
     case 'panel/add': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
@@ -1762,6 +1769,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         ctx.send({ type: 'backup/importError', message: 'Invalid export file format.' });
         return;
       }
+      if (ctx.sourceWindowId === null) {
+        ctx.send({ type: 'backup/importError', message: 'Source window is unavailable.' });
+        return;
+      }
       void (async () => {
         try {
           const summary = await executeImport(validated, action.options, {
@@ -1771,6 +1782,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
             pinnedPanels: ctx.pinnedPanels,
             settings: ctx.settings,
             savedPanels: ctx.savedPanels,
+            targetWindowId: ctx.sourceWindowId!,
           });
           ctx.send({ type: 'backup/importComplete', summary });
         } catch (err) {
@@ -1787,6 +1799,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       })();
       return;
     case 'backup/restore':
+      if (ctx.sourceWindowId === null) {
+        ctx.send({ type: 'backup/importError', message: 'Source window is unavailable.' });
+        return;
+      }
       void (async () => {
         try {
           const data = await ctx.backup.getBackupData(action.backupId);
@@ -1804,6 +1820,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
               pinnedPanels: ctx.pinnedPanels,
               settings: ctx.settings,
               savedPanels: ctx.savedPanels,
+              targetWindowId: ctx.sourceWindowId!,
             },
           );
           ctx.send({ type: 'backup/importComplete', summary });

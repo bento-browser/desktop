@@ -1,0 +1,54 @@
+[
+  {
+    "namespace": "bentoNativePreferences",
+    "events": [
+      {
+        "name": "onRequest",
+        "type": "function",
+        "parameters": [
+          {
+            "name": "message",
+            "type": "object",
+            "additionalProperties": true
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "respond",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "response", "type": "object", "additionalProperties": true }]
+      },
+      {
+        "name": "publish",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "publication", "type": "object", "additionalProperties": true }]
+      },
+      {
+        "name": "getCurrentBootAttestation",
+        "type": "function",
+        "async": true,
+        "parameters": [],
+        "returns": {
+          "type": "object",
+          "properties": {
+            "currentParentSessionId": { "type": "string" },
+            "currentBootId": { "type": "string" },
+            "singletonInitializedAt": { "type": "integer" },
+            "registryEpoch": { "type": "integer" }
+          },
+          "required": [
+            "currentParentSessionId",
+            "currentBootId",
+            "singletonInitializedAt",
+            "registryEpoch"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+]

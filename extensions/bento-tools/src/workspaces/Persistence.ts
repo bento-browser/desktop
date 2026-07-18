@@ -74,6 +74,7 @@ export async function load(): Promise<PersistedState | null> {
 export class Persistence {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #pending: PersistedState | null = null;
+  #writeQueue: Promise<void> = Promise.resolve();
 
   schedule(state: PersistedState): void {
     this.#pending = state;
@@ -82,8 +83,23 @@ export class Persistence {
       this.#timer = null;
       const next = this.#pending;
       this.#pending = null;
-      if (next) void this.#flush(next);
+      if (next) void this.flushNow(next);
     }, DEBOUNCE_MS);
+  }
+
+  flushNow(state: PersistedState): Promise<void> {
+    if (this.#timer) {
+      clearTimeout(this.#timer);
+      this.#timer = null;
+    }
+    this.#pending = null;
+    const write = () => this.#flush(state);
+    const result = this.#writeQueue.then(write, write);
+    this.#writeQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   async #flush(state: PersistedState): Promise<void> {

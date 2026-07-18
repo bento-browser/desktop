@@ -8,6 +8,10 @@
     "node": ">=20"
   },
   "scripts": {
+    "native-protocol:generate": "node scripts/generate-native-preferences-protocol.mjs --write --targets=tools,experiment",
+    "native-protocol:check": "node scripts/generate-native-preferences-protocol.mjs --check --targets=tools,experiment",
+    "native-protocol:generate:firefox": "node scripts/generate-native-preferences-protocol.mjs --write --targets=firefox --firefox-root=.surfer/patch-stack-worktree",
+    "native-protocol:check:all": "node scripts/generate-native-preferences-protocol.mjs --check --targets=tools,experiment,firefox --firefox-root=.surfer/patch-stack-worktree",
     "download": "bash scripts/surfer-env.sh download",
     "bootstrap": "bash scripts/surfer-env.sh bootstrap",
     "import": "bash scripts/import.sh && pnpm run chrome:resize-check",
@@ -36,6 +40,12 @@
     "release:security-check:public": "node scripts/check-release-security.mjs --channel=public",
     "release:sbom": "node scripts/generate-release-sbom.mjs",
     "release:metadata": "node scripts/generate-release-metadata.mjs",
+    "rollback:build-transition": "node scripts/build-rollback-variant.mjs rollback-transition-r1 build",
+    "rollback:updates-transition": "node scripts/build-rollback-variant.mjs rollback-transition-r1 updates",
+    "rollback:release-transition": "node scripts/build-rollback-variant.mjs rollback-transition-r1 release",
+    "rollback:build-final": "node scripts/build-rollback-variant.mjs rollback-final-r2 build",
+    "rollback:package-final": "node scripts/build-rollback-variant.mjs rollback-final-r2 package",
+    "rollback:release-final": "node scripts/build-rollback-variant.mjs rollback-final-r2 release",
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
     "dev:fresh": "pnpm run ext:build && pnpm run import && bash scripts/dev-launch.sh $(mktemp -d)",

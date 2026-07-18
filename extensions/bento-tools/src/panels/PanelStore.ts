@@ -168,8 +168,8 @@ export class PanelStore {
     this.#schedulePersist();
   }
 
-  persistCurrentState(): void {
-    this.#flushPersist();
+  persistCurrentState(): Promise<void> {
+    return this.#flushPersist();
   }
 
   getPanelLayout(workspaceId: string | null): WorkspacePanelLayout {
@@ -696,8 +696,8 @@ export class PanelStore {
     );
   }
 
-  #flushPersist(): void {
-    this.#persistence.flushNow(
+  #flushPersist(): Promise<void> {
+    return this.#persistence.flushNow(
       new Map(this.#layoutByWorkspace),
       new Map(this.#persistedWorkspaces),
       new Map(this.#widthByTabId),

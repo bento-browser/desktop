@@ -41,11 +41,14 @@ fi
 
 start_seconds="$(date +%s)"
 
+launch_args=(--new-instance)
+if [ "${BENTO_JSDEBUGGER:-0}" = "1" ]; then
+  launch_args+=(--jsdebugger)
+fi
+launch_args+=("$@" --profile "$PROFILE")
+
 MOZ_PURGE_CACHES="${MOZ_PURGE_CACHES:-1}" "$BENTO_BIN" \
-  --new-instance \
-  --jsdebugger \
-  "$@" \
-  --profile "$PROFILE"
+  "${launch_args[@]}"
 status=$?
 
 end_seconds="$(date +%s)"

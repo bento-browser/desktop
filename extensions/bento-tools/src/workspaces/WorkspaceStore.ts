@@ -197,6 +197,14 @@ export class WorkspaceStore {
     };
   }
 
+  persistCurrentState(): Promise<void> {
+    const snapshot = this.snapshot();
+    return this.#persistence.flushNow({
+      workspaces: snapshot.workspaces,
+      activeId: snapshot.activeId,
+    });
+  }
+
   /** Returns the active workspace for `windowId` if it has one; otherwise
    * the global fallback IF that fallback isn't already owned by another
    * window. When the fallback IS owned, returns null — the action that
@@ -239,14 +247,17 @@ export class WorkspaceStore {
   create(
     input: { name: string; themeId?: string; icon?: string },
     windowId?: number | null,
-    options: { activate?: boolean } = {},
+    options: { activate?: boolean; id?: string; createdAt?: number } = {},
   ): Workspace {
+    if (options.id && this.#workspaces.has(options.id)) {
+      throw new Error(`Workspace already exists: ${options.id}`);
+    }
     const w: Workspace = {
-      id: makeId(),
+      id: options.id ?? makeId(),
       name: input.name,
       themeId: input.themeId,
       icon: input.icon,
-      createdAt: Date.now(),
+      createdAt: options.createdAt ?? Date.now(),
     };
     this.#workspaces.set(w.id, w);
     this.#enqueue({ kind: 'created', workspace: w });

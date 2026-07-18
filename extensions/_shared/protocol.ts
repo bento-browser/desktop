@@ -163,6 +163,9 @@ export interface BackupListEntry {
   createdAt: number;
   workspaceCount: number;
   tabCount: number;
+  /** New records are filtered at schema construction. Untagged or unknown
+   * pre-fix records are retained but must not be represented as safe. */
+  privacySafety: 'private-filtered-v1' | 'legacy-unknown';
 }
 
 export type SidebarShortcutBehavior = 'collapse' | 'hide';

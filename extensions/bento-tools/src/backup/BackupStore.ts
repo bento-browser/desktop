@@ -10,9 +10,16 @@ import { DEFAULT_SETTINGS } from '../settings/SettingsStore';
 const STORAGE_KEY = 'bento.backups';
 const STORAGE_VERSION = 1;
 
+interface StoredBackupEntry {
+  id: string;
+  createdAt: number;
+  data: BentoExportSchema;
+  privacySafety?: 'private-filtered-v1' | string;
+}
+
 interface StoredBackups {
   version: number;
-  entries: Array<{ id: string; createdAt: number; data: BentoExportSchema }>;
+  entries: StoredBackupEntry[];
 }
 
 export interface BackupContext {
@@ -27,6 +34,7 @@ export interface BackupContext {
 export class BackupStore {
   #ctx: BackupContext;
   #timerId: ReturnType<typeof setTimeout> | null = null;
+  #storageQueue: Promise<void> = Promise.resolve();
 
   constructor(ctx: BackupContext) {
     this.#ctx = ctx;
@@ -37,7 +45,7 @@ export class BackupStore {
     if (!settings.autoBackupEnabled) return;
     const ms = settings.autoBackupIntervalMinutes * 60 * 1000;
     this.#timerId = setInterval(() => {
-      void this.#createAutoBackup(settings.autoBackupMaxCount);
+      void this.#createAutoBackup(this.#ctx.settings.snapshot().autoBackupMaxCount);
     }, ms);
   }
 
@@ -61,6 +69,19 @@ export class BackupStore {
     }
 
     const workspaces: BentoExportSchema['workspaces'] = [];
+    const liveTabCache = new Map<number, browser.tabs.Tab | null>();
+    const getEligibleLiveTab = async (tabId: number): Promise<browser.tabs.Tab | null> => {
+      if (liveTabCache.has(tabId)) return liveTabCache.get(tabId) ?? null;
+      try {
+        const live = await browser.tabs.get(tabId);
+        const eligible = live.incognito === true ? null : live;
+        liveTabCache.set(tabId, eligible);
+        return eligible;
+      } catch {
+        liveTabCache.set(tabId, null);
+        return null;
+      }
+    };
 
     for (const ws of targetWorkspaces) {
       const wsTabs = allTabs.filter((t) => t.workspaceId === ws.id);
@@ -72,30 +93,22 @@ export class BackupStore {
 
       for (const t of wsTabs) {
         if (panelTabIds.has(t.id)) continue;
-        try {
-          const live = await browser.tabs.get(t.id);
-          if (!live.url) continue;
-          tabIdToUrl.set(t.id, live.url);
-          tabs.push({
-            url: live.url,
-            title: t.customTitle || t.title,
-            customTitle: t.customTitle,
-            pinned: t.pinned,
-          });
-        } catch {
-          // tab gone
-        }
+        const live = await getEligibleLiveTab(t.id);
+        if (!live?.url) continue;
+        tabIdToUrl.set(t.id, live.url);
+        tabs.push({
+          url: live.url,
+          title: t.customTitle || t.title,
+          customTitle: t.customTitle,
+          pinned: t.pinned,
+        });
       }
 
       const panelSnapshot = await this.#ctx.panels.buildPanelPersistenceSnapshot(
         ws.id,
         async (tabId) => {
-          try {
-            const live = await browser.tabs.get(tabId);
-            return live.url || undefined;
-          } catch {
-            return undefined;
-          }
+          const live = await getEligibleLiveTab(tabId);
+          return live?.url || undefined;
         },
       );
       for (const entry of panelSnapshot.entries) {
@@ -177,40 +190,51 @@ export class BackupStore {
   }
 
   async listBackups(): Promise<BackupListEntry[]> {
-    const stored = await this.#loadStored();
-    return stored.entries.map((e) => ({
-      id: e.id,
-      createdAt: e.createdAt,
-      workspaceCount: e.data.workspaces.length,
-      tabCount: e.data.workspaces.reduce((sum, ws) => sum + ws.tabs.length, 0),
-    }));
+    return this.#withStorageLock(async () => {
+      const stored = await this.#loadStored();
+      return stored.entries.map((e) => ({
+        id: e.id,
+        createdAt: e.createdAt,
+        workspaceCount: e.data.workspaces.length,
+        tabCount: e.data.workspaces.reduce((sum, ws) => sum + ws.tabs.length, 0),
+        privacySafety:
+          e.privacySafety === 'private-filtered-v1' ? 'private-filtered-v1' : 'legacy-unknown',
+      }));
+    });
   }
 
   async getBackupData(id: string): Promise<BentoExportSchema | null> {
-    const stored = await this.#loadStored();
-    const entry = stored.entries.find((e) => e.id === id);
-    return entry?.data ?? null;
+    return this.#withStorageLock(async () => {
+      const stored = await this.#loadStored();
+      const entry = stored.entries.find((e) => e.id === id);
+      return entry?.data ?? null;
+    });
   }
 
   async deleteBackup(id: string): Promise<void> {
-    const stored = await this.#loadStored();
-    stored.entries = stored.entries.filter((e) => e.id !== id);
-    await this.#saveStored(stored);
+    await this.#withStorageLock(async () => {
+      const stored = await this.#loadStored();
+      stored.entries = stored.entries.filter((e) => e.id !== id);
+      await this.#saveStored(stored);
+    });
   }
 
   async #createAutoBackup(maxCount: number): Promise<void> {
     try {
       const data = await this.collectSnapshot();
-      const stored = await this.#loadStored();
-      stored.entries.push({
-        id: crypto.randomUUID(),
-        createdAt: Date.now(),
-        data,
+      await this.#withStorageLock(async () => {
+        const stored = await this.#loadStored();
+        stored.entries.push({
+          id: crypto.randomUUID(),
+          createdAt: Date.now(),
+          data,
+          privacySafety: 'private-filtered-v1',
+        });
+        while (stored.entries.length > maxCount) {
+          stored.entries.shift();
+        }
+        await this.#saveStored(stored);
       });
-      while (stored.entries.length > maxCount) {
-        stored.entries.shift();
-      }
-      await this.#saveStored(stored);
     } catch (err) {
       console.warn('[bento-tools] auto-backup failed:', err);
     }
@@ -231,6 +255,15 @@ export class BackupStore {
 
   async #saveStored(data: StoredBackups): Promise<void> {
     await browser.storage.local.set({ [STORAGE_KEY]: data });
+  }
+
+  #withStorageLock<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#storageQueue.then(operation, operation);
+    this.#storageQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   #stopTimer(): void {

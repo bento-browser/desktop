@@ -28,6 +28,13 @@ import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, PinnedPanelDelta, WireAction } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
+import { NativePreferencesService } from './native-preferences/NativePreferencesService';
+import { BentoMutationCoordinator } from './mutations/BentoMutationCoordinator';
+import { OperationRegistry } from './native-preferences/OperationRegistry';
+import { GraphOperationJournal, GraphOperationRecovery } from './replacement/GraphOperationJournal';
+import { PrivacyMutationService } from './privacy/PrivacyMutationService';
+import { GraphPublicationCoordinator } from './replacement/GraphPublicationCoordinator';
+import { isShellClientMessage } from '@shared/shell-client-protocol';
 
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
@@ -39,6 +46,35 @@ const pinnedPanels = new PinnedPanelsStore({
 const tabFolders = new TabFolderStore();
 const savedPanels = new SavedPanelsStore();
 const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
+const mutationCoordinator = new BentoMutationCoordinator();
+const operationRegistry = new OperationRegistry();
+const graphJournal = new GraphOperationJournal();
+const privacyMutations = new PrivacyMutationService(settings);
+const graphRecovery = new GraphOperationRecovery({
+  journal: graphJournal,
+  operations: operationRegistry,
+  workspaces,
+  tabs,
+  panels,
+  pinnedPanels,
+  settings,
+  savedPanels,
+  privacyMutations,
+});
+const backendInstanceId = crypto.randomUUID();
+const graphPublications = new GraphPublicationCoordinator({
+  backendInstanceId,
+  workspaces,
+  tabs,
+  panels,
+  pinnedPanels,
+  tabFolders,
+  savedPanels,
+});
+
+tabs.onDeltas(() => mutationCoordinator.noteExternalGraphChange());
+workspaces.onDeltas(() => mutationCoordinator.noteExternalGraphChange());
+pinnedPanels.onDeltas(() => mutationCoordinator.noteExternalGraphChange());
 
 function setPinnedPanelTabPinned(tabId: number, pinned: boolean, label: string): void {
   if (!Number.isFinite(tabId) || tabId < 0) return;
@@ -770,7 +806,7 @@ const sleep = new SleepPolicy(tabs, settings, {
 // panels/sync (the in-memory store hasn't received restorePanelsForWorkspace's
 // adds yet), and the shell renders the unfiltered tab list for the
 // few hundred ms between that empty sync and the post-restore broadcast.
-const bootReady = Promise.all([
+const storesReady = Promise.all([
   tabs.init().catch((err) => console.error('[bento-tools] TabRegistry init failed:', err)),
   workspaces.init().catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
   settings.init().catch((err) => console.error('[bento-tools] SettingsStore init failed:', err)),
@@ -783,7 +819,10 @@ const bootReady = Promise.all([
     .init()
     .catch((err) => console.error('[bento-tools] SavedPanelsStore init failed:', err)),
   loadParkedWorkspaceTabs(),
-]).then(async () => {
+]);
+
+const bootReady = storesReady.then(async () => {
+  await mutationCoordinator.runExclusive('recovery', () => graphRecovery.bootstrap());
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
   // prefers-color-scheme override at boot. Subsequent changes flow
@@ -978,6 +1017,7 @@ const bootReady = Promise.all([
     const tabUrls = new Map<number, string>();
     for (const t of tabs.snapshot()) {
       if (tabs.isClosing(t.id)) continue;
+      if (tabs.isPrivate(t.id)) continue;
       if (t.workspaceId) continue; // already hydrated; respect it
       try {
         const live = await browser.tabs.get(t.id);
@@ -1017,6 +1057,7 @@ const bootReady = Promise.all([
   if (wsId) {
     for (const tab of tabs.snapshot()) {
       if (tabs.isClosing(tab.id)) continue;
+      if (tabs.isPrivate(tab.id)) continue;
       if (tab.workspaceId) continue;
       tabs.setWorkspaceInMemory(tab.id, wsId);
     }
@@ -1090,6 +1131,25 @@ const bootReady = Promise.all([
     console.warn('[bento-tools] stale-marker sweep failed:', err);
   }
 });
+
+const nativePreferences = new NativePreferencesService({
+  ready: bootReady,
+  settings,
+  backup,
+  workspaces,
+  tabs,
+  panels,
+  pinnedPanels,
+  savedPanels,
+  coordinator: mutationCoordinator,
+  operations: operationRegistry,
+  journal: graphJournal,
+  recovery: graphRecovery,
+  privacyMutations,
+  graphPublications,
+  backendInstanceId,
+});
+nativePreferences.start();
 keys.init();
 
 // Per-workspace memory of the last-focused tab. When the user switches
@@ -1120,6 +1180,7 @@ tabs.onDeltas((deltas) => {
   const panelMetadataRefreshWorkspaces = new Set<string>();
   for (const d of deltas) {
     if (d.kind === 'created') {
+      if (tabs.isPrivate(d.tab.id)) continue;
       if (d.tab.folderId && !tabFolders.has(d.tab.folderId)) {
         void tabs.setFolder(d.tab.id, null);
       }
@@ -2045,6 +2106,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onMessage.addListener((message: object) => {
+    if (isShellClientMessage(message) && graphPublications.handle(port, message)) return;
     const wireAction = message as WireAction;
     // Extract the routing envelope's __windowId once and expose it on the
     // handler context. The shell document stamps every dispatch with the
@@ -2074,6 +2136,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onDisconnect.addListener(() => {
+    graphPublications.disconnect(port);
     connectedPorts.delete(port);
     unsubTabs();
     unsubWorkspaces();

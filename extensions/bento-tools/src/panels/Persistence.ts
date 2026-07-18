@@ -244,7 +244,7 @@ export class Persistence {
     headerHiddenByTabId: Map<number, true>,
     mainWidthByWorkspace: Map<string, number>,
     stripScrollByWorkspace: Map<string, number>,
-  ): void {
+  ): Promise<void> {
     if (this.#timer) {
       clearTimeout(this.#timer);
       this.#timer = null;
@@ -255,7 +255,7 @@ export class Persistence {
     this.#pendingHeaderHidden = null;
     this.#pendingMainWidths = null;
     this.#pendingStripScroll = null;
-    void this.#flush(
+    return this.#flush(
       layouts,
       persistedWorkspaces,
       widths,

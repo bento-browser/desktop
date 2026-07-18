@@ -455,38 +455,88 @@ Use this shape for new or changed touchpoints:
   semantic-token bridge if this customization conflicts with a future redesign
   or Firefox exposes a supported shared theme-token hook for in-content pages.
 
+### Native Bento Preferences
+
+- Status: Active
+- Last updated: 2026-07-19
+- Files or patches:
+  - `patches/core-ui/15-bento-native-preferences.patch`
+  - `extensions/_shared/native-preferences-contract.json`
+  - `extensions/bento-tools/experiments/bento-native-preferences/**`
+  - `extensions/bento-shell/src/experiments/chrome-bridge/**`
+  - `src/browser/base/content/bento-shell-mount.js`
+- Bento functionality: registers an always-visible native Bento category plus
+  backup and shortcut subpanes for `about:preferences` and `about:settings`.
+  A generated, hash-pinned observer contract connects native controls to the
+  durable tools stores. The parent-process document registry preserves logical
+  shell identities across add-on reloads, while source-window title signals
+  route Settings launches without accepting arbitrary URLs.
+- Vanilla Firefox surface touched or depended on: config-backed preferences
+  panes; `moz-page-header`, `moz-select` and its `panel-list` path,
+  `moz-slider`, `moz-input-number`, `moz-button`, `moz-input-search`,
+  `moz-box-group`, and `moz-box-item`; preferences
+  XHTML/jar/locales; browser actors; system-principal observer subjects; and
+  built-in WebExtension experiment loading.
+- Why this cannot stay extension-only: the category and its controls must be a
+  native Settings surface, and only parent chrome can authenticate the document,
+  derive its browser window/private audience, and retain shell mount identity.
+- Firefox update risk: preference config APIs, `moz-select`/`panel-list`
+  properties and popup event behavior, `about:settings` routing, file-picker
+  signatures, actor packaging, or extension experiment bootstrap changes can
+  break registration or fail the bridge closed.
+- Regression checks for future updates: run protocol generation checks, patch
+  replay, the four `browser_bento_*` tests, both extension builds, source install,
+  packaged-app, and release-package add-on identity checks. Confirm the native
+  slider/value pair stays synchronized, native panel-size rows reorder without
+  losing their occurrence identity, and backup/shortcut subpanes contain native
+  list and action components. Open every Bento dropdown with both mouse and
+  keyboard, select a value, and confirm the Firefox panel closes and the Bento
+  setting persists. Confirm the native page header shows its localized Bento
+  heading beside the icon. Test both redesign pref values and regular/private
+  windows.
+- Rollback or migration notes: patch 15 is the rollback boundary for the native
+  pane. Keep the source overlay routing edit out of patch 15. A rollback build
+  must restore a compatible settings surface before removing the category; do
+  not leave a bridge-only or pane-only intermediate release.
+
 ### Hidden Native Tabs And Titlebar Controls
 
 - Status: Active
-- Last updated: 2026-06-27
+- Last updated: 2026-07-19
 - Files or patches:
   - `patches/core-ui/02-hide-native-tabs.patch`
   - `browser/components/tabbrowser/content/tabbrowser.js`
+  - `browser/components/preferences/config/tabs-browsing.mjs`
+  - `browser/components/preferences/tests/browser_appearance_pane.js`
   - `browser/base/content/navigator-toolbox.inc.xhtml`
   - `browser/base/content/titlebar-items.inc.xhtml`
   - `browser/themes/shared/browser-shared.css`
   - `prefs/bento.js`
 - Bento functionality: hides Firefox's native horizontal tab strip while keeping
   the operating system's native window controls visible in the top chrome. The
-  visible tab UI remains owned by `bento-shell`.
+  visible tab UI remains owned by `bento-shell`. Firefox's Browser layout group
+  and native sidebar toggle are hidden from Settings and Settings search.
 - Vanilla Firefox surface touched or depended on: `TabBarVisibility.update()`,
   `#navigator-toolbox[tabs-hidden]`, `#nav-bar.browser-titlebar`, the nav-bar
-  titlebar spacer/buttonbox copy, and the native titlebar commands in
-  `titlebar-items.inc.xhtml`.
+  titlebar spacer/buttonbox copy, the native titlebar commands in
+  `titlebar-items.inc.xhtml`, and the config-backed `browserLayout` preferences
+  group.
 - Why this cannot stay extension-only: only Firefox chrome can collapse
   `#TabsToolbar`, mark the toolbox `tabs-hidden`, and promote the nav bar into
   Firefox's native titlebar/window-control state before the shell extension
   renders.
 - Firefox update risk: upstream changes to `TabBarVisibility.update()`,
-  titlebar-control markup, titlebar CSS, or nav-bar drag-region behavior can
-  re-expose the native tab strip, hide the native window controls, or make
-  toolbar controls draggable/clickable in the wrong places.
+  titlebar-control markup, titlebar CSS, nav-bar drag-region behavior, or the
+  Tabs and browsing group id can re-expose native tab/sidebar choices, re-expose
+  the native tab strip, hide the native window controls, or make toolbar
+  controls draggable/clickable in the wrong places.
 - Regression checks for future updates: verify native window controls are
   visible and clickable, Firefox's native horizontal tab strip stays hidden,
   `sidebar.verticalTabs` remains false and no native Firefox vertical-tabs/sidebar
-  UI appears, popup windows keep Firefox's existing single-tab popup behavior,
-  fullscreen/maximized/restored states swap native controls correctly, empty
-  titlebar/nav-bar space drags the window, and URL bar or toolbar button
+  UI appears, the Browser layout group does not appear in Tabs and browsing or
+  Settings search, popup windows keep Firefox's existing single-tab popup
+  behavior, fullscreen/maximized/restored states swap native controls correctly,
+  empty titlebar/nav-bar space drags the window, and URL bar or toolbar button
   interaction does not drag the window.
 - Rollback or migration notes: for one profile, set
   `bento.chrome.hideNativeTabs` to `false` and relaunch. For source rollback,
@@ -652,6 +702,8 @@ Use this shape for new or changed touchpoints:
   - `scripts/sync-builtin-addon-symlinks.sh`
   - `extensions/ublock-origin/.bento-runtime-entries.json`
   - `extensions/bento-tools/experiments/bento-privacy/**`
+  - `extensions/bento-tools/experiments/bento-native-preferences/**`
+  - `extensions/bento-shell/experiments/chrome-bridge/**`
 - Bento functionality: Bento's independent installer packages its privileged
   built-in extensions and the bundled uBlock Origin extension into Firefox's
   `builtin-addons/` runtime location. The copy step lets an extension declare a
@@ -672,7 +724,7 @@ Use this shape for new or changed touchpoints:
   loading.
 - Regression checks for future updates: run `pnpm run ext:build` and
   `pnpm run import`, confirm `engine/browser/extensions/bento-tools/jar.mn`
-  includes `experiments/bento-privacy`, confirm
+  includes both tools experiments and the shell jar includes the chrome bridge, confirm
   `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
   `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
   shows Bento Tools, Bento Shell, and uBlock Origin. Direct `surfer import`

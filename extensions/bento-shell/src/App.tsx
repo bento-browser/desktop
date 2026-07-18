@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Row } from '@tale-ui/react/row';
 import { Text } from '@tale-ui/react/text';
@@ -30,6 +30,8 @@ import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
 import { useExternalMergeStore } from './state/externalMerge';
 import type { UiColorModePref } from '@shared/protocol';
+import type { ToolsToShellTargeted } from '@shared/shell-client-protocol';
+import { applyGraphProjection } from './state/graph';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -59,22 +61,8 @@ function FooterTooltip({
   );
 }
 
-function settingsUrl(): string {
-  return `${location.origin}/dist/settings.html`;
-}
-
 function openSettings() {
-  // Round-trip through bento-tools (which has reliable browser.tabs access)
-  // because the chrome-mounted <browser remote=true remoteType=extension>
-  // doesn't get the WebExtensions `browser` global injected, AND
-  // window.open opens a new window not a tab (Firefox decides per user
-  // prefs). Resolving the URL via location.origin keeps it relative to
-  // bento-shell's UUID without needing to ask tools.
-  //
-  // focusExisting: Settings is a singleton — repeated clicks should
-  // bring the existing tab forward rather than stack duplicates inside
-  // the workspace.
-  dispatch({ type: 'tab/openUrl', url: settingsUrl(), focusExisting: true });
+  document.title = `BENTO_OPEN_SETTINGS_${Date.now()}`;
 }
 
 function signalScrollToMain() {
@@ -137,7 +125,6 @@ function encodeSidebarMenuPayload(payload: object): string {
 export function App() {
   const ready = useToolsReady();
   const windowId = useCurrentWindowId();
-  const [settingsRevealRequest, setSettingsRevealRequest] = useState<number | undefined>();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const tabsById = useTabsStore((s) => s.byId);
   const activeTabId = useTabsStore((s) => s.activeId);
@@ -156,6 +143,44 @@ export function App() {
   // workspace theme through the same BENTO_PANELS payload that carries
   // uiColorMode, so first-paint theme/color updates stay atomic.
   useWorkspaceTheme();
+  useEffect(() => {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    const params = new URLSearchParams(hash);
+    const mountToken = params.get('bentoMountToken');
+    const clientInstanceId = params.get('bentoClientInstanceId');
+    if (!mountToken || !clientInstanceId || windowId === null) return;
+    const documentChannel = new BroadcastChannel(`bento-shell-doc:${mountToken}`);
+    documentChannel.addEventListener('message', (message) => {
+      const data = message.data as { type?: string; envelope?: ToolsToShellTargeted } | undefined;
+      const envelope = data?.envelope;
+      if (
+        data?.type !== 'document/targeted' ||
+        !envelope ||
+        envelope.targetClientInstanceId !== clientInstanceId ||
+        envelope.expectedWindowId !== windowId ||
+        envelope.expectedRole !== 'primary'
+      ) {
+        return;
+      }
+      const disposition = applyGraphProjection(envelope.event, windowId);
+      if (disposition === 'resync-required') return;
+      const event = envelope.event;
+      document.title = `BENTO_GRAPH_COMMIT:${event.backendInstanceId}:${event.publicationId}:${event.graphRevision}`;
+      let attempts = 0;
+      const acknowledge = () => {
+        documentChannel.postMessage({
+          type: 'document/graph-applied',
+          backendInstanceId: event.backendInstanceId,
+          publicationId: event.publicationId,
+          graphRevision: event.graphRevision,
+        });
+        attempts += 1;
+        if (attempts < 5) setTimeout(acknowledge, 50);
+      };
+      setTimeout(acknowledge, 50);
+    });
+    return () => documentChannel.close();
+  }, [windowId]);
   // First-run welcome trigger. The settings snapshot lands a moment after
   // the tools port connects; once it does and welcomeSeen=false, signal
   // chrome to show the welcome overlay (chrome-mounted, full-window scrim
@@ -235,9 +260,7 @@ export function App() {
   };
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const onOpenSettings = () => {
-    setSettingsRevealRequest((value = 0) => value + 1);
     openSettings();
-    signalScrollToMain();
   };
   const downloadsButtonRef = useRef<HTMLButtonElement>(null);
   const appMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -558,8 +581,6 @@ export function App() {
         </div>
         <SidebarAddressBar />
         <TabList
-          revealTabUrl={settingsUrl()}
-          revealTabRequest={settingsRevealRequest}
           onActivate={onActivate}
           onClose={onClose}
           onCloseSelected={onCloseSelected}

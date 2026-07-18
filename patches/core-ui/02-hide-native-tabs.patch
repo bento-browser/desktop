@@ -1,12 +1,44 @@
-From d84201bc4977d4d7bb88570ebae4b44cfb8cfce4 Mon Sep 17 00:00:00 2001
+From c9974da4f426f3ec8c0118a5bc1058353cb16895 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
 
 ---
- browser/components/tabbrowser/content/tabbrowser.js | 7 ++++++-
- 1 file changed, 6 insertions(+), 1 deletion(-)
+ browser/components/preferences/config/tabs-browsing.mjs    | 2 ++
+ .../preferences/tests/browser_appearance_pane.js           | 6 +++++-
+ browser/components/tabbrowser/content/tabbrowser.js        | 7 ++++++-
+ 3 files changed, 13 insertions(+), 2 deletions(-)
 
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index 0c03ff70f9784a3b12119326687dc12c99a7dd82..4e10cb1391cc29359ae134bb067b6a227a003c16 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -584,6 +584,8 @@ SettingGroupManager.registerGroups({
+     l10nId: "browser-layout-header2",
+     iconSrc: "chrome://browser/skin/sidebar-expanded.svg",
+     headingLevel: 2,
++    hidden: true,
++    hiddenFromSearch: true,
+     items: [
+       {
+         id: "browserLayoutRadioGroup",
+diff --git a/browser/components/preferences/tests/browser_appearance_pane.js b/browser/components/preferences/tests/browser_appearance_pane.js
+index 44d36fe8b55317a678cddeb62f143668a98f2f03..a6bc2d0747dff75ddf36108a5fc69cd5f95cb468 100644
+--- a/browser/components/preferences/tests/browser_appearance_pane.js
++++ b/browser/components/preferences/tests/browser_appearance_pane.js
+@@ -136,7 +136,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
+ 
+   let group = doc.querySelector('setting-group[groupid="browserLayout"]');
+   ok(group, "browserLayout setting-group exists in tabs-browsing pane");
+-  is_element_visible(group, "browserLayout setting-group is visible");
++  is_element_hidden(group, "Bento hides Firefox's browser layout setting");
++  ok(
++    group.hasAttribute("data-hidden-from-search"),
++    "Browser layout is excluded from Settings search"
++  );
+ 
+   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+ });
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
 index 08b5b56e069d038d72c87355920c4ce8a55ed805..32b4aaa047f53e40ee324b9da7eb6cbcba8bff94 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js

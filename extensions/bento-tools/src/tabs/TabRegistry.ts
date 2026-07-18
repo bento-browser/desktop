@@ -145,6 +145,7 @@ export class TabRegistry {
   // shell-side "tab briefly orphaned" frame.
   #pendingWorkspaceAssignments = new Map<number, string>();
   #pendingFolderAssignments = new Map<number, string>();
+  #privateTabIds = new Set<number>();
 
   async init(): Promise<void> {
     // Register listeners FIRST so we don't miss tabs created during the
@@ -193,6 +194,7 @@ export class TabRegistry {
     }
     for (const tab of all) {
       if (typeof tab.id !== 'number') continue;
+      if (tab.incognito === true) this.#privateTabIds.add(tab.id);
       const url = tabUrl(tab);
       if (url) this.#urlByTabId.set(tab.id, url);
     }
@@ -483,6 +485,10 @@ export class TabRegistry {
     return Array.from(this.#tabs.values()).sort((a, b) => a.index - b.index);
   }
 
+  isPrivate(id: number): boolean {
+    return this.#privateTabIds.has(id);
+  }
+
   onDeltas(listener: Listener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
@@ -496,6 +502,7 @@ export class TabRegistry {
   #onCreated = (tab: browser.tabs.Tab) => {
     const snap = toSnapshot(tab);
     if (snap.id === -1) return;
+    if (tab.incognito === true) this.#privateTabIds.add(snap.id);
     // Eager pre-assignment from assignWorkspaceEagerly: covers the case
     // where Firefox resolved tabs.create's promise (and the handler ran
     // its eager-assign call) BEFORE this onCreated dispatch. Apply
@@ -673,6 +680,7 @@ export class TabRegistry {
     this.#closingTabIds.delete(id);
     this.#unmarkedClosingTabIds.delete(id);
     this.#urlByTabId.delete(id);
+    this.#privateTabIds.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };

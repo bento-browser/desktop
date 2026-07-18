@@ -1,0 +1,85 @@
+{
+  "manifest_version": 2,
+  "name": "Bento Tools",
+  "short_name": "bento-tools",
+  "version": "0.1.10",
+  "description": "Bento Browser background tools — tab/keyboard/persistence logic.",
+  "hidden": true,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bento-tools@bento.app",
+      "strict_min_version": "150.0"
+    }
+  },
+  "background": {
+    "scripts": ["dist/background.js"],
+    "persistent": true
+  },
+  "experiment_apis": {
+    "bentoPrivacy": {
+      "schema": "experiments/bento-privacy/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/bento-privacy/api.js",
+        "paths": [["bentoPrivacy"]]
+      }
+    },
+    "bentoExternalSessions": {
+      "schema": "experiments/bento-external-sessions/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/bento-external-sessions/api.js",
+        "paths": [["bentoExternalSessions"]]
+      }
+    }
+  },
+  "permissions": [
+    "tabs",
+    "storage",
+    "unlimitedStorage",
+    "sessions",
+    "privacy",
+    "browserSettings",
+    "bookmarks",
+    "history",
+    "topSites"
+  ],
+  "commands": {
+    "workspace-1": {
+      "suggested_key": { "default": "Ctrl+Alt+1" },
+      "description": "Switch to workspace 1"
+    },
+    "workspace-2": {
+      "suggested_key": { "default": "Ctrl+Alt+2" },
+      "description": "Switch to workspace 2"
+    },
+    "workspace-3": {
+      "suggested_key": { "default": "Ctrl+Alt+3" },
+      "description": "Switch to workspace 3"
+    },
+    "workspace-4": {
+      "suggested_key": { "default": "Ctrl+Alt+4" },
+      "description": "Switch to workspace 4"
+    },
+    "workspace-5": {
+      "suggested_key": { "default": "Ctrl+Alt+5" },
+      "description": "Switch to workspace 5"
+    },
+    "workspace-6": {
+      "suggested_key": { "default": "Ctrl+Alt+6" },
+      "description": "Switch to workspace 6"
+    },
+    "workspace-7": {
+      "suggested_key": { "default": "Ctrl+Alt+7" },
+      "description": "Switch to workspace 7"
+    },
+    "workspace-8": {
+      "suggested_key": { "default": "Ctrl+Alt+8" },
+      "description": "Switch to workspace 8"
+    },
+    "workspace-9": {
+      "suggested_key": { "default": "Ctrl+Alt+9" },
+      "description": "Switch to workspace 9"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-From c10619bf0861f2d52167b86abf1647ab4e912e44 Mon Sep 17 00:00:00 2001
+From 8cd39b2ebbe575686f3cbfa3e52c8731304b2acb Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:39 +1000
 Subject: [PATCH] Import Firefox profile data on first Bento run
@@ -13,7 +13,7 @@ Subject: [PATCH] Import Firefox profile data on first Bento run
  6 files changed, 538 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
-index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..b084587e14a04a2b2cfa22fc2f77a401dac667be 100644
+index 79ea66fd147f4e23d365cb79679ee02d20bbb6de..e375396f80645e398ba538e33ef24af3551e2b70 100644
 --- a/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 +++ b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 @@ -10,6 +10,7 @@
@@ -707,3 +707,4 @@ index 12fed39d6d7c73b7328c5adfd64afed7f120ba03..895ecdec885ca0362ec56cf4efdac29a
    // (reset+migration) was requested from the uninstaller, pass this along
 -- 
 2.50.1 (Apple Git-155)
+

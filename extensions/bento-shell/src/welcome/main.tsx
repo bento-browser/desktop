@@ -89,7 +89,7 @@ const PANEL_CYCLE_SHORTCUT = IS_MAC
   ? `${MOD}${SHIFT}← / ${MOD}${SHIFT}→`
   : `${MOD}+${SHIFT}+← / ${MOD}+${SHIFT}+→`;
 
-// Tip rows — kept in sync with ShortcutsDialog and the chrome bindings.
+// Tip rows — kept in sync with the native shortcut reference and chrome bindings.
 // Workspaces: bento-tools manifest binds Ctrl+Alt+N → workspace-N.
 // Palette: bento-shell-mount.js binds Cmd/Ctrl+Alt+P.
 // Panel cycle: bento-shell-mount.js binds Cmd/Ctrl+Shift+Left/Right.

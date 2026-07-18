@@ -109,3 +109,18 @@ new upstream branding layout.
 [patches/series.json](../patches/series.json) is the sole source of Firefox patch
 order. `pnpm run firefox:patches:apply` applies it to the live engine without
 committing. The import wrapper resets prior applications before replaying it.
+
+Native Bento Settings lives in the dedicated
+`patches/core-ui/15-bento-native-preferences.patch`. Its protocol artifacts are
+generated from one canonical JSON contract; run `pnpm native-protocol:check:all`
+against a materialized patch worktree before export. Patch 15 must not absorb
+the large `bento-shell-mount.js` source overlay, and existing chrome-layout
+patches must remain byte-identical when the native patch is updated.
+
+## Settings rollback variants
+
+The consolidated Settings rollback is built from the committed source snapshot in `rollback/legacy-source`; see [settings-consolidation-rollback.md](settings-consolidation-rollback.md). Transition r1 has build/update/release commands, while final r2 has build/package/release commands and deliberately has no automatic-update command.
+
+`pnpm dev` launches Bento without opening Browser Toolbox. Set
+`BENTO_JSDEBUGGER=1` when the launch should also start Browser Toolbox; Firefox
+may display its remote-debugging connection prompt for that opt-in mode.

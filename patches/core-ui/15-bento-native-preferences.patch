@@ -1,0 +1,2882 @@
+From 94e5b2a168e3375b3f2b3442554c287825ba1006 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Sat, 18 Jul 2026 18:43:30 +1000
+Subject: [PATCH] Add native Bento preferences
+
+---
+ .../actors/BentoShellDocumentRegistry.sys.mjs |  234 +++
+ browser/actors/moz.build                      |    1 +
+ .../components/preferences/bento/bento.css    |   39 +
+ .../BentoNativePreferencesProtocol.sys.mjs    |  406 +++++
+ .../native-preferences-protocol-fixtures.json |  114 ++
+ .../components/preferences/config/bento.mjs   | 1303 +++++++++++++++++
+ browser/components/preferences/jar.mn         |    4 +
+ browser/components/preferences/preferences.js |   28 +
+ .../components/preferences/preferences.xhtml  |    9 +
+ .../components/preferences/tests/browser.toml |    8 +
+ .../tests/browser_bento_backup_preferences.js |   37 +
+ .../tests/browser_bento_native_bridge.js      |   31 +
+ .../tests/browser_bento_preferences.js        |  165 +++
+ .../browser_bento_private_preferences.js      |   27 +
+ .../en-US/browser/preferences/bento.ftl       |  211 +++
+ .../tests/widgets/test_moz_select_panel.html  |   31 +
+ .../content/widgets/moz-select/moz-select.mjs |   10 +-
+ 17 files changed, 2657 insertions(+), 1 deletion(-)
+ create mode 100644 browser/actors/BentoShellDocumentRegistry.sys.mjs
+ create mode 100644 browser/components/preferences/bento/bento.css
+ create mode 100644 browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
+ create mode 100644 browser/components/preferences/bento/generated/native-preferences-protocol-fixtures.json
+ create mode 100644 browser/components/preferences/config/bento.mjs
+ create mode 100644 browser/components/preferences/tests/browser_bento_backup_preferences.js
+ create mode 100644 browser/components/preferences/tests/browser_bento_native_bridge.js
+ create mode 100644 browser/components/preferences/tests/browser_bento_preferences.js
+ create mode 100644 browser/components/preferences/tests/browser_bento_private_preferences.js
+ create mode 100644 browser/locales/en-US/browser/preferences/bento.ftl
+
+diff --git a/browser/actors/BentoShellDocumentRegistry.sys.mjs b/browser/actors/BentoShellDocumentRegistry.sys.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8ee763720e990ec0a001338ef2e7e203e1191ed
+--- /dev/null
++++ b/browser/actors/BentoShellDocumentRegistry.sys.mjs
+@@ -0,0 +1,234 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++function uuid() {
++  return Services.uuid.generateUUID().toString().slice(1, -1);
++}
++
++function token() {
++  return `${uuid().replaceAll("-", "")}${uuid().replaceAll("-", "")}`;
++}
++
++function cloneRecord(record) {
++  return {
++    mountToken: record.mountToken,
++    clientInstanceId: record.clientInstanceId,
++    leaseToken: record.leaseToken,
++    entryKind: record.entryKind,
++    role: record.role,
++    windowId: record.windowId,
++    isPrivate: record.isPrivate,
++    registryRevision: record.registryRevision,
++    chromeReady: record.chromeReady,
++    hidden: record.hidden,
++    lastAppliedTuple: record.lastAppliedTuple
++      ? structuredClone(record.lastAppliedTuple)
++      : null,
++  };
++}
++
++class Registry {
++  currentParentSessionId = uuid();
++  currentBootId = uuid();
++  singletonInitializedAt = Date.now();
++  registryEpoch = 0;
++  rebindGeneration = 0;
++  #documents = new Map();
++  #listeners = new Map([
++    ["mounted", new Set()],
++    ["changed", new Set()],
++    ["removed", new Set()],
++  ]);
++  #background = null;
++  #transitions = [];
++
++  getCurrentBootAttestation() {
++    return Object.freeze({
++      currentParentSessionId: this.currentParentSessionId,
++      currentBootId: this.currentBootId,
++      singletonInitializedAt: this.singletonInitializedAt,
++      registryEpoch: this.registryEpoch,
++    });
++  }
++
++  on(kind, listener) {
++    this.#listeners.get(kind)?.add(listener);
++  }
++
++  off(kind, listener) {
++    this.#listeners.get(kind)?.delete(listener);
++  }
++
++  #emit(kind, record) {
++    let snapshot = cloneRecord(record);
++    for (let listener of this.#listeners.get(kind) || []) {
++      try {
++        listener(snapshot);
++      } catch (error) {
++        console.error("Bento document registry listener failed", error);
++      }
++    }
++  }
++
++  registerDocument({ browser, chromeWindow, entryKind, role, windowId, isPrivate }) {
++    if (!browser || !chromeWindow || !Number.isInteger(windowId)) {
++      throw new Error("Invalid Bento shell document registration");
++    }
++    let existing = [...this.#documents.values()].find(
++      record => record.browserRef?.deref() === browser
++    );
++    if (existing) {
++      return cloneRecord(existing);
++    }
++    let mountToken = token();
++    let record = {
++      mountToken,
++      clientInstanceId: uuid(),
++      leaseToken: token(),
++      browserRef: new WeakRef(browser),
++      chromeWindowRef: new WeakRef(chromeWindow),
++      entryKind,
++      role: role || (entryKind === "sidebar" ? "primary" : "auxiliary"),
++      windowId,
++      isPrivate: !!isPrivate,
++      registryRevision: ++this.registryEpoch,
++      chromeReady: false,
++      hidden: true,
++      lastAppliedTuple: null,
++    };
++    this.#documents.set(mountToken, record);
++    this.#emit("mounted", record);
++    return cloneRecord(record);
++  }
++
++  removeDocument(mountToken) {
++    let record = this.#documents.get(mountToken);
++    if (!record) {
++      return false;
++    }
++    this.#documents.delete(mountToken);
++    record.registryRevision = ++this.registryEpoch;
++    record.hidden = true;
++    record.chromeReady = false;
++    this.#emit("removed", record);
++    return true;
++  }
++
++  listDocuments() {
++    for (let [mountToken, record] of this.#documents) {
++      if (!record.browserRef?.deref() || !record.chromeWindowRef?.deref()) {
++        this.removeDocument(mountToken);
++      }
++    }
++    return [...this.#documents.values()].map(cloneRecord);
++  }
++
++  bindBackground({ newBackgroundInstanceId }) {
++    if (typeof newBackgroundInstanceId !== "string" || !newBackgroundInstanceId) {
++      throw new Error("Invalid Bento shell background identity");
++    }
++    if (this.#background?.id === newBackgroundInstanceId) {
++      return structuredClone(this.#background.attestation);
++    }
++    let fromBackgroundInstanceId = this.#background?.id;
++    let generation = ++this.rebindGeneration;
++    let transition = Object.freeze({
++      parentSessionId: this.currentParentSessionId,
++      generation,
++      ...(fromBackgroundInstanceId ? { fromBackgroundInstanceId } : {}),
++      toBackgroundInstanceId: newBackgroundInstanceId,
++      fromRegistryEpoch: this.#background?.registryEpoch ?? this.registryEpoch,
++      toRegistryEpoch: this.registryEpoch,
++      issuedAt: Date.now(),
++      proofToken: token(),
++      clientsDigest: this.listDocuments()
++        .map(record => `${record.clientInstanceId}:${record.registryRevision}`)
++        .sort()
++        .join("|"),
++    });
++    this.#transitions.push(transition);
++    let attestation = Object.freeze({
++      currentBackgroundInstanceId: newBackgroundInstanceId,
++      currentRegistryEpoch: this.registryEpoch,
++      currentGeneration: generation,
++      currentAttestation: transition.proofToken,
++    });
++    this.#background = {
++      id: newBackgroundInstanceId,
++      registryEpoch: this.registryEpoch,
++      attestation,
++    };
++    return structuredClone(attestation);
++  }
++
++  getRebindProofs() {
++    return {
++      ...(this.#background?.attestation || {}),
++      transitions: this.#transitions.map(transition => structuredClone(transition)),
++      clients: this.listDocuments(),
++    };
++  }
++
++  ackRebindGeneration(generation) {
++    if (!Number.isInteger(generation) || generation > this.rebindGeneration) {
++      return false;
++    }
++    this.#transitions = this.#transitions.filter(
++      transition => transition.generation >= generation
++    );
++    return true;
++  }
++
++  noteLifecycle(details) {
++    let record = this.#documents.get(details?.mountToken);
++    if (!record) {
++      return null;
++    }
++    if (typeof details.chromeReady === "boolean") {
++      record.chromeReady = details.chromeReady;
++    }
++    if (typeof details.hidden === "boolean") {
++      record.hidden = details.hidden;
++    }
++    record.registryRevision = ++this.registryEpoch;
++    this.#emit("changed", record);
++    return cloneRecord(record);
++  }
++
++  recordChromeApplied(mountToken, tuple) {
++    let record = this.#documents.get(mountToken);
++    if (!record || !tuple) {
++      return false;
++    }
++    record.lastAppliedTuple = structuredClone(tuple);
++    record.chromeReady = true;
++    record.hidden = false;
++    record.registryRevision = ++this.registryEpoch;
++    this.#emit("changed", record);
++    return true;
++  }
++
++  invalidateDocument({ clientInstanceId, registryRevision }) {
++    let record = [...this.#documents.values()].find(
++      candidate => candidate.clientInstanceId === clientInstanceId
++    );
++    if (!record || record.registryRevision !== registryRevision) {
++      return null;
++    }
++    record.hidden = true;
++    record.chromeReady = false;
++    record.registryRevision = ++this.registryEpoch;
++    let proof = {
++      clientInstanceId,
++      windowId: record.windowId,
++      registryRevision: record.registryRevision,
++      proofSource: "parent-hidden",
++      proofToken: token(),
++    };
++    this.#emit("changed", record);
++    return proof;
++  }
++}
++
++export const BentoShellDocumentRegistry = new Registry();
+diff --git a/browser/actors/moz.build b/browser/actors/moz.build
+index 0f615b2075566866c8d80bd30d65d896c3b71304..d67e01cf084c377390079d9d2aa92428bcb79aef 100644
+--- a/browser/actors/moz.build
++++ b/browser/actors/moz.build
+@@ -102,6 +102,7 @@ FINAL_TARGET_FILES.actors += [
+     "AboutTabCrashedParent.sys.mjs",
+     "BentoKeyChild.sys.mjs",
+     "BentoKeyParent.sys.mjs",
++    "BentoShellDocumentRegistry.sys.mjs",
+     "BlockedSiteChild.sys.mjs",
+     "BlockedSiteParent.sys.mjs",
+     "BrowserProcessChild.sys.mjs",
+diff --git a/browser/components/preferences/bento/bento.css b/browser/components/preferences/bento/bento.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..c79b47540b74e5cdb04f225bfba3ae3a74ab3cee
+--- /dev/null
++++ b/browser/components/preferences/bento/bento.css
+@@ -0,0 +1,39 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++bento-range-control {
++  display: grid;
++  grid-template-columns:
++    minmax(var(--size-layout-small), 1fr) var(--size-layout-xsmall);
++  align-items: end;
++  gap: var(--space-medium);
++  min-inline-size: var(--size-layout-small);
++}
++
++bento-size-list {
++  display: grid;
++  gap: var(--space-medium);
++}
++
++bento-size-list moz-input-number {
++  inline-size: var(--size-layout-xsmall);
++}
++
++.bento-visually-hidden {
++  position: absolute;
++  inline-size: 1px;
++  block-size: 1px;
++  overflow: hidden;
++  clip-path: inset(50%);
++}
++
++bento-backup-manager {
++  display: grid;
++  gap: var(--space-medium);
++}
++
++bento-shortcut-list {
++  display: grid;
++  gap: var(--space-large);
++}
+diff --git a/browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs b/browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..cc4c0b0efff491705a85e140852b663f581f2d58
+--- /dev/null
++++ b/browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
+@@ -0,0 +1,406 @@
++// GENERATED—DO NOT EDIT. Protocol 1; generator 2; SHA-256 d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705
++export const PROTOCOL_VERSION = 1;
++export const CONTRACT_SHA256 = 'd7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705';
++export const GENERATOR_VERSION = 2;
++export const CONTRACT = {
++  "advancedPrivacy": {
++    "diskCacheEnabled": {
++      "type": "boolean"
++    },
++    "drmEnabled": {
++      "type": "boolean"
++    },
++    "formHistoryEnabled": {
++      "type": "boolean"
++    },
++    "httpsOnlyMode": {
++      "type": "enum",
++      "values": [
++        "never",
++        "always"
++      ]
++    },
++    "letterboxing": {
++      "type": "boolean"
++    },
++    "networkPrediction": {
++      "type": "boolean"
++    },
++    "passwordSavingEnabled": {
++      "type": "boolean"
++    },
++    "peerConnection": {
++      "type": "boolean"
++    },
++    "remoteSafeBrowsingEnabled": {
++      "type": "boolean"
++    },
++    "resistFingerprinting": {
++      "type": "boolean"
++    },
++    "safeBrowsingEnabled": {
++      "type": "boolean"
++    },
++    "sanitizeOnShutdown": {
++      "type": "boolean"
++    },
++    "webRTCIPHandlingPolicy": {
++      "type": "enum",
++      "values": [
++        "default",
++        "disable_non_proxied_udp"
++      ]
++    },
++    "webglEnabled": {
++      "type": "boolean"
++    },
++    "webgpuEnabled": {
++      "type": "boolean"
++    }
++  },
++  "bounds": {
++    "backupFileBytes": 10485760,
++    "deadlineMs": {
++      "max": 120000,
++      "min": 1000
++    },
++    "nameCodeUnits": 1024,
++    "sourceIdCodeUnits": 256,
++    "workspaceCount": 256
++  },
++  "editableSettings": {
++    "autoBackupEnabled": {
++      "type": "boolean"
++    },
++    "autoBackupIntervalMinutes": {
++      "max": 1440,
++      "min": 5,
++      "type": "integer"
++    },
++    "autoBackupMaxCount": {
++      "max": 20,
++      "min": 1,
++      "type": "integer"
++    },
++    "customPanelSizes": {
++      "max": 2400,
++      "maxItems": 64,
++      "min": 120,
++      "type": "integerArray"
++    },
++    "defaultPanelWidthPx": {
++      "max": 2400,
++      "min": 200,
++      "type": "integer"
++    },
++    "defaultWorkspaceName": {
++      "maxLength": 1024,
++      "minLength": 0,
++      "type": "string"
++    },
++    "panelCornerRadiusPx": {
++      "max": 36,
++      "min": 0,
++      "type": "integer"
++    },
++    "panelCycleWraparound": {
++      "type": "boolean"
++    },
++    "panelShadowsEnabled": {
++      "type": "boolean"
++    },
++    "panelSplitterSizePx": {
++      "max": 36,
++      "min": 6,
++      "type": "integer"
++    },
++    "sidebarShortcutBehavior": {
++      "type": "enum",
++      "values": [
++        "collapse",
++        "hide"
++      ]
++    },
++    "tabSleepAfterMinutes": {
++      "max": 1440,
++      "min": 1,
++      "type": "integer"
++    },
++    "tabSleepEnabled": {
++      "type": "boolean"
++    },
++    "tabSleepKeepAlivePerWorkspace": {
++      "max": 50,
++      "min": 1,
++      "type": "integer"
++    },
++    "uiColorMode": {
++      "type": "enum",
++      "values": [
++        "light",
++        "dark",
++        "system"
++      ]
++    }
++  },
++  "errorCodes": [
++    "invalid_envelope",
++    "unsupported_version",
++    "unauthorized_document",
++    "invalid_session",
++    "session_expired",
++    "parent_restarted",
++    "session_window_mismatch",
++    "private_window_forbidden",
++    "invalid_payload",
++    "payload_too_large",
++    "not_found",
++    "conflict",
++    "busy",
++    "deadline_exceeded",
++    "cancelled",
++    "backend_restarted",
++    "persistence_failed",
++    "live_effect_failed",
++    "snapshot_changed",
++    "target_window_unavailable",
++    "validation_token_invalid",
++    "validation_token_expired",
++    "validation_token_used",
++    "operation_unknown",
++    "operation_not_owned",
++    "operation_not_reconcilable",
++    "graph_reserved",
++    "internal_error"
++  ],
++  "fluentIds": [
++    "bento-error-invalid-envelope",
++    "bento-error-unsupported-version",
++    "bento-error-invalid-session",
++    "bento-error-private-window-forbidden",
++    "bento-error-persistence-failed",
++    "bento-error-target-window-unavailable",
++    "bento-error-internal"
++  ],
++  "generatorVersion": 2,
++  "journalPhases": [
++    "prepared",
++    "creating-workspaces",
++    "creating-tabs",
++    "staged",
++    "graph-subcommitted",
++    "relocating",
++    "proving",
++    "cleaning-old",
++    "publishing",
++    "awaiting-acks",
++    "graph-published",
++    "applying-saved-panels",
++    "applying-settings",
++    "applying-privacy",
++    "applying-search",
++    "terminal"
++  ],
++  "operationComponents": [
++    "settings",
++    "privacy",
++    "search",
++    "savedPanels",
++    "graphStage",
++    "graphPersistence",
++    "tabRelocation",
++    "guards",
++    "ownershipProof",
++    "usableTabProof",
++    "panelSync",
++    "oldGraphCleanup",
++    "backupRecord"
++  ],
++  "operationStates": [
++    "reserved",
++    "running",
++    "partial",
++    "succeeded",
++    "failed",
++    "cancelled"
++  ],
++  "operations": {
++    "backup/delete": {
++      "authenticated": true,
++      "operationId": "required",
++      "private": false
++    },
++    "backup/export": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": false
++    },
++    "backup/getContext": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": false
++    },
++    "backup/importValidated": {
++      "authenticated": true,
++      "operationId": "required",
++      "private": false
++    },
++    "backup/restore": {
++      "authenticated": true,
++      "operationId": "required",
++      "private": false
++    },
++    "backup/validateImport": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": false
++    },
++    "operation/reconcile": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "operation/status": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "privacy/setAdvanced": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "privacy/setDefaultSearchEngine": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "privacy/setProtectionLevel": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "recovery/acknowledgeNotice": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": false
++    },
++    "request/cancel": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "session/close": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "session/hello": {
++      "authenticated": false,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "session/renew": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "settings/reset": {
++      "authenticated": true,
++      "operationId": "required",
++      "private": true
++    },
++    "settings/update": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    },
++    "snapshot/get": {
++      "authenticated": true,
++      "operationId": "forbidden",
++      "private": true
++    }
++  },
++  "protocolVersion": 1,
++  "publicationDomains": [
++    "settings",
++    "privacy",
++    "search",
++    "backup"
++  ],
++  "session": {
++    "absoluteMs": 28800000,
++    "idleMs": 900000,
++    "sequenceMax": 2147483647,
++    "validationTokenMs": 300000
++  },
++  "shellWireDiscriminants": [
++    "shell-client/background-rebind",
++    "shell-client/rebind-accepted",
++    "shell-client/register",
++    "shell-client/ready",
++    "shell-client/heartbeat",
++    "shell-client/hidden",
++    "shell-client/bye",
++    "shell-client/action",
++    "shell-client/event",
++    "shell-client/delivery",
++    "shell-client/safe-invalidated"
++  ]
++};
++
++function isPlainObject(value) {
++  if (value === null || typeof value !== 'object') return false;
++  const prototype = Object.getPrototypeOf(value);
++  return prototype === Object.prototype || prototype === null;
++}
++
++export function validateValue(rule, value) {
++  if (rule.type === 'boolean') return typeof value === 'boolean';
++  if (rule.type === 'string') return typeof value === 'string' && value.length >= (rule.minLength ?? 0) && value.length <= (rule.maxLength ?? Number.MAX_SAFE_INTEGER);
++  if (rule.type === 'integer') return Number.isInteger(value) && value >= rule.min && value <= rule.max;
++  if (rule.type === 'enum') return typeof value === 'string' && rule.values.includes(value);
++  if (rule.type === 'integerArray') return Array.isArray(value) && value.length <= rule.maxItems && value.every((entry) => Number.isInteger(entry) && entry >= rule.min && entry <= rule.max);
++  return false;
++}
++
++export function validateSettingsChanges(value) {
++  if (!isPlainObject(value)) return false;
++  const entries = Object.entries(value);
++  if (entries.length < 1 || entries.length > 15) return false;
++  return entries.every(([key, entry]) => Object.hasOwn(CONTRACT.editableSettings, key) && validateValue(CONTRACT.editableSettings[key], entry));
++}
++
++export function validateAdvancedPrivacyChange(value) {
++  if (!isPlainObject(value) || Object.keys(value).length !== 2 || typeof value.key !== 'string' || !Object.hasOwn(CONTRACT.advancedPrivacy, value.key)) return false;
++  return Object.keys(value).every((key) => key === 'key' || key === 'value') && validateValue(CONTRACT.advancedPrivacy[value.key], value.value);
++}
++
++export function validateEnvelope(value) {
++  if (!isPlainObject(value) || value.protocolVersion !== PROTOCOL_VERSION || value.contractHash !== CONTRACT_SHA256 || typeof value.operation !== 'string' || !Object.hasOwn(CONTRACT.operations, value.operation)) return false;
++  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
++  const token = /^[A-Za-z0-9_-]{32,128}$/;
++  if (typeof value.requestId !== 'string' || !uuid.test(value.requestId)) return false;
++  if (typeof value.clientInstanceId !== 'string' || !uuid.test(value.clientInstanceId)) return false;
++  if (!Number.isInteger(value.deadlineMs) || value.deadlineMs < CONTRACT.bounds.deadlineMs.min || value.deadlineMs > CONTRACT.bounds.deadlineMs.max) return false;
++  if (!isPlainObject(value.payload)) return false;
++  const operation = CONTRACT.operations[value.operation];
++  const hello = value.operation === 'session/hello';
++  const required = hello
++    ? ['protocolVersion', 'contractHash', 'requestId', 'clientInstanceId', 'deadlineMs', 'operation', 'payload']
++    : ['protocolVersion', 'contractHash', 'requestId', 'clientInstanceId', 'resumeToken', 'sequence', 'deadlineMs', 'operation', 'payload'];
++  const optional = operation.operationId === 'required' ? ['operationId'] : [];
++  const keys = Object.keys(value);
++  if (!required.every((key) => Object.hasOwn(value, key)) || !keys.every((key) => required.includes(key) || optional.includes(key))) return false;
++  if (hello) {
++    const payloadKeys = Object.keys(value.payload);
++    if (!payloadKeys.every((key) => key === 'resumeToken') || payloadKeys.length > 1) return false;
++    if (Object.hasOwn(value.payload, 'resumeToken') && (typeof value.payload.resumeToken !== 'string' || !token.test(value.payload.resumeToken))) return false;
++  } else {
++    if (typeof value.resumeToken !== 'string' || !token.test(value.resumeToken)) return false;
++    if (!Number.isInteger(value.sequence) || value.sequence < 0 || value.sequence > 2147483647) return false;
++  }
++  if (operation.operationId === 'required' && (typeof value.operationId !== 'string' || !uuid.test(value.operationId))) return false;
++  if (operation.operationId === 'forbidden' && Object.hasOwn(value, 'operationId')) return false;
++  return true;
++}
+diff --git a/browser/components/preferences/bento/generated/native-preferences-protocol-fixtures.json b/browser/components/preferences/bento/generated/native-preferences-protocol-fixtures.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c699e8244ed939a8f9f0a52aaf5c3d365c95384
+--- /dev/null
++++ b/browser/components/preferences/bento/generated/native-preferences-protocol-fixtures.json
+@@ -0,0 +1,114 @@
++{
++  "contractHash": "d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705",
++  "errorCodes": [
++    "invalid_envelope",
++    "unsupported_version",
++    "unauthorized_document",
++    "invalid_session",
++    "session_expired",
++    "parent_restarted",
++    "session_window_mismatch",
++    "private_window_forbidden",
++    "invalid_payload",
++    "payload_too_large",
++    "not_found",
++    "conflict",
++    "busy",
++    "deadline_exceeded",
++    "cancelled",
++    "backend_restarted",
++    "persistence_failed",
++    "live_effect_failed",
++    "snapshot_changed",
++    "target_window_unavailable",
++    "validation_token_invalid",
++    "validation_token_expired",
++    "validation_token_used",
++    "operation_unknown",
++    "operation_not_owned",
++    "operation_not_reconcilable",
++    "graph_reserved",
++    "internal_error"
++  ],
++  "invalidEnvelopeMutations": [
++    "extra-top-level",
++    "bad-client-id",
++    "bad-token",
++    "missing-sequence"
++  ],
++  "invalidSettingKeys": [
++    "commandPaletteEnabled",
++    "welcomeSeen",
++    "contentColorMode",
++    "sidebarCollapsed",
++    "sidebarHidden",
++    "privacyProtectionLevel",
++    "defaultSearchEngine",
++    "unknown"
++  ],
++  "operations": [
++    "backup/delete",
++    "backup/export",
++    "backup/getContext",
++    "backup/importValidated",
++    "backup/restore",
++    "backup/validateImport",
++    "operation/reconcile",
++    "operation/status",
++    "privacy/setAdvanced",
++    "privacy/setDefaultSearchEngine",
++    "privacy/setProtectionLevel",
++    "recovery/acknowledgeNotice",
++    "request/cancel",
++    "session/close",
++    "session/hello",
++    "session/renew",
++    "settings/reset",
++    "settings/update",
++    "snapshot/get"
++  ],
++  "protocolVersion": 1,
++  "validAuthenticatedEnvelope": {
++    "clientInstanceId": "22222222-2222-4222-8222-222222222222",
++    "contractHash": "d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705",
++    "deadlineMs": 5000,
++    "operation": "snapshot/get",
++    "payload": {
++      "domains": [
++        "settings"
++      ]
++    },
++    "protocolVersion": 1,
++    "requestId": "33333333-3333-4333-8333-333333333333",
++    "resumeToken": "abcdefghijklmnopqrstuvwxyzABCDEF",
++    "sequence": 0
++  },
++  "validHelloEnvelope": {
++    "clientInstanceId": "22222222-2222-4222-8222-222222222222",
++    "contractHash": "d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705",
++    "deadlineMs": 5000,
++    "operation": "session/hello",
++    "payload": {},
++    "protocolVersion": 1,
++    "requestId": "11111111-1111-4111-8111-111111111111"
++  },
++  "validSettingsChanges": {
++    "autoBackupEnabled": true,
++    "autoBackupIntervalMinutes": 5,
++    "autoBackupMaxCount": 1,
++    "customPanelSizes": [
++      120
++    ],
++    "defaultPanelWidthPx": 200,
++    "defaultWorkspaceName": "",
++    "panelCornerRadiusPx": 0,
++    "panelCycleWraparound": true,
++    "panelShadowsEnabled": true,
++    "panelSplitterSizePx": 6,
++    "sidebarShortcutBehavior": "collapse",
++    "tabSleepAfterMinutes": 1,
++    "tabSleepEnabled": true,
++    "tabSleepKeepAlivePerWorkspace": 1,
++    "uiColorMode": "light"
++  }
++}
+diff --git a/browser/components/preferences/config/bento.mjs b/browser/components/preferences/config/bento.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..95001d3d9cb9b23caaac29eef5dc731943d27c59
+--- /dev/null
++++ b/browser/components/preferences/config/bento.mjs
+@@ -0,0 +1,1303 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++import { Preferences } from "chrome://global/content/preferences/Preferences.mjs";
++import { SettingGroupManager } from "chrome://browser/content/preferences/config/SettingGroupManager.mjs";
++import {
++  CONTRACT_SHA256,
++  PROTOCOL_VERSION,
++} from "chrome://browser/content/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs";
++
++/* eslint-disable import/no-unassigned-import */
++import "chrome://global/content/elements/moz-box-group.mjs";
++import "chrome://global/content/elements/moz-box-item.mjs";
++import "chrome://global/content/elements/moz-button.mjs";
++import "chrome://global/content/elements/moz-input-number.mjs";
++import "chrome://global/content/elements/moz-input-search.mjs";
++import "chrome://global/content/reader/moz-slider.mjs";
++/* eslint-enable import/no-unassigned-import */
++
++const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
++  "resource://gre/modules/PrivateBrowsingUtils.sys.mjs"
++);
++const IS_PRIVATE = PrivateBrowsingUtils.isWindowPrivate(
++  window.browsingContext.topChromeWindow
++);
++
++const REQUEST_TOPIC = "bento-native-preferences-request";
++const RESPONSE_TOPIC = "bento-native-preferences-response";
++const PUBLICATION_TOPIC = "bento-native-preferences-publication";
++const SESSION_KEY = "bento.nativePreferences.session.v1";
++const BENTO_SELECT_CONTROL_ATTRS = Object.freeze({
++  "force-panel-list": true,
++});
++
++const EDITABLE_SETTINGS = Object.freeze({
++  tabSleepEnabled: { defaultValue: true },
++  tabSleepAfterMinutes: { defaultValue: 30 },
++  tabSleepKeepAlivePerWorkspace: { defaultValue: 3 },
++  defaultWorkspaceName: { defaultValue: "Personal" },
++  uiColorMode: { defaultValue: "light" },
++  sidebarShortcutBehavior: { defaultValue: "collapse" },
++  defaultPanelWidthPx: { defaultValue: 640 },
++  customPanelSizes: { defaultValue: [320, 480, 768, 1280] },
++  panelCycleWraparound: { defaultValue: false },
++  panelShadowsEnabled: { defaultValue: true },
++  panelCornerRadiusPx: { defaultValue: 8 },
++  panelSplitterSizePx: { defaultValue: 14 },
++  autoBackupEnabled: { defaultValue: true },
++  autoBackupIntervalMinutes: { defaultValue: 30 },
++  autoBackupMaxCount: { defaultValue: 5 },
++});
++
++const ADVANCED_PRIVACY = Object.freeze({
++  safeBrowsingEnabled: true,
++  remoteSafeBrowsingEnabled: true,
++  resistFingerprinting: false,
++  letterboxing: false,
++  networkPrediction: true,
++  peerConnection: true,
++  webRTCIPHandlingPolicy: "default",
++  httpsOnlyMode: "never",
++  drmEnabled: true,
++  diskCacheEnabled: true,
++  webglEnabled: true,
++  webgpuEnabled: true,
++  passwordSavingEnabled: true,
++  formHistoryEnabled: true,
++  sanitizeOnShutdown: false,
++});
++
++const PRIVACY_L10N_IDS = Object.freeze({
++  safeBrowsingEnabled: "bento-privacy-safe-browsing-enabled",
++  remoteSafeBrowsingEnabled: "bento-privacy-remote-safe-browsing-enabled",
++  resistFingerprinting: "bento-privacy-resist-fingerprinting",
++  letterboxing: "bento-privacy-letterboxing",
++  networkPrediction: "bento-privacy-network-prediction",
++  peerConnection: "bento-privacy-peer-connection",
++  webRTCIPHandlingPolicy: "bento-privacy-web-rtcip-handling-policy",
++  httpsOnlyMode: "bento-privacy-https-only-mode",
++  drmEnabled: "bento-privacy-drm-enabled",
++  diskCacheEnabled: "bento-privacy-disk-cache-enabled",
++  webglEnabled: "bento-privacy-webgl-enabled",
++  webgpuEnabled: "bento-privacy-webgpu-enabled",
++  passwordSavingEnabled: "bento-privacy-password-saving-enabled",
++  formHistoryEnabled: "bento-privacy-form-history-enabled",
++  sanitizeOnShutdown: "bento-privacy-sanitize-on-shutdown",
++});
++
++function getTabSessionValue() {
++  try {
++    return window.browsingContext.embedderElement?.[SESSION_KEY] ?? null;
++  } catch {
++    return null;
++  }
++}
++
++function setTabSessionValue(value) {
++  try {
++    let browser = window.browsingContext.embedderElement;
++    if (browser) {
++      Object.defineProperty(browser, SESSION_KEY, {
++        configurable: true,
++        value,
++        writable: true,
++      });
++    }
++  } catch {}
++}
++
++function readStoredSession() {
++  let serialized = null;
++  try {
++    serialized = sessionStorage.getItem(SESSION_KEY);
++  } catch {
++    // Privileged about: pages can expose sessionStorage while rejecting access.
++    // The owning tab's browser element survives a document reload and remains
++    // isolated from other Settings tabs, so use it as the tab-scoped fallback.
++  }
++  serialized ||= getTabSessionValue();
++  try {
++    let parsed = JSON.parse(serialized || "null");
++    if (
++      parsed &&
++      typeof parsed.clientInstanceId === "string" &&
++      typeof parsed.resumeToken === "string" &&
++      Number.isInteger(parsed.sessionGeneration)
++    ) {
++      return parsed;
++    }
++  } catch {}
++  return {
++    clientInstanceId: crypto.randomUUID(),
++    resumeToken: null,
++    sessionGeneration: 0,
++  };
++}
++
++function writeStoredSession(session) {
++  let serialized = JSON.stringify(session);
++  try {
++    sessionStorage.setItem(SESSION_KEY, serialized);
++    return;
++  } catch {
++    setTabSessionValue(serialized);
++  }
++}
++
++class BentoNativeModel {
++  #session = readStoredSession();
++  #sequence = 0;
++  #pending = new Map();
++  #listeners = new Set();
++  #helloPromise = null;
++  #snapshots = Object.create(null);
++  #revision = 0;
++  #backendInstanceId = null;
++
++  constructor() {
++    Services.obs.addObserver(this, RESPONSE_TOPIC);
++    Services.obs.addObserver(this, PUBLICATION_TOPIC);
++    window.addEventListener(
++      "unload",
++      () => {
++        Services.obs.removeObserver(this, RESPONSE_TOPIC);
++        Services.obs.removeObserver(this, PUBLICATION_TOPIC);
++        for (let pending of this.#pending.values()) {
++          clearTimeout(pending.timer);
++          pending.reject(new Error("Bento Settings document closed"));
++        }
++        this.#pending.clear();
++      },
++      { once: true }
++    );
++  }
++
++  observe(_subject, topic, data) {
++    let message;
++    try {
++      message = JSON.parse(data);
++    } catch {
++      return;
++    }
++    if (
++      message?.contractHash !== CONTRACT_SHA256 ||
++      message?.protocolVersion !== PROTOCOL_VERSION ||
++      message?.clientInstanceId !== this.#session.clientInstanceId
++    ) {
++      return;
++    }
++    if (topic === RESPONSE_TOPIC) {
++      let pending = this.#pending.get(message.requestId);
++      if (!pending) {
++        return;
++      }
++      clearTimeout(pending.timer);
++      this.#pending.delete(message.requestId);
++      if (message.ok) {
++        this.#backendInstanceId = message.backendInstanceId;
++        this.#revision = Math.max(this.#revision, message.revision || 0);
++        pending.resolve(message.result);
++      } else {
++        pending.reject(new Error(message.error?.code || "internal_error"));
++      }
++      return;
++    }
++    if (topic === PUBLICATION_TOPIC) {
++      if (
++        message.backendInstanceId !== this.#backendInstanceId ||
++        message.revision < this.#revision
++      ) {
++        return;
++      }
++      this.#revision = message.revision;
++      this.#snapshots[message.domain] = message.payload;
++      this.#emit();
++    }
++  }
++
++  onChange(listener) {
++    this.#listeners.add(listener);
++    return () => this.#listeners.delete(listener);
++  }
++
++  #emit() {
++    for (let listener of this.#listeners) {
++      listener();
++    }
++  }
++
++  async ensureSession() {
++    if (this.#session.resumeToken && this.#backendInstanceId) {
++      return;
++    }
++    if (this.#helloPromise) {
++      return this.#helloPromise;
++    }
++    this.#helloPromise = this.#send(
++      "session/hello",
++      this.#session.resumeToken
++        ? { resumeToken: this.#session.resumeToken }
++        : {},
++      { unauthenticated: true }
++    )
++      .then(result => {
++        this.#session = {
++          clientInstanceId: this.#session.clientInstanceId,
++          resumeToken: result.resumeToken,
++          sessionGeneration: result.sessionGeneration,
++          expiresAt: result.expiresAt,
++          absoluteExpiresAt: result.absoluteExpiresAt,
++          isPrivate: result.isPrivate,
++        };
++        writeStoredSession(this.#session);
++        this.#revision = result.revision;
++        this.#emit();
++      })
++      .finally(() => {
++        this.#helloPromise = null;
++      });
++    return this.#helloPromise;
++  }
++
++  async request(operation, payload = {}, options = {}) {
++    if (operation !== "session/hello") {
++      await this.ensureSession();
++    }
++    return this.#send(operation, payload, options);
++  }
++
++  #send(operation, payload, { unauthenticated = false, operationId } = {}) {
++    let requestId = crypto.randomUUID();
++    let request = {
++      protocolVersion: PROTOCOL_VERSION,
++      contractHash: CONTRACT_SHA256,
++      clientInstanceId: this.#session.clientInstanceId,
++      requestId,
++      deadlineMs: 30000,
++      operation,
++      payload,
++      ...(unauthenticated
++        ? {}
++        : {
++            resumeToken: this.#session.resumeToken,
++            sequence: this.#sequence++,
++          }),
++      ...(operationId ? { operationId } : {}),
++    };
++    return new Promise((resolve, reject) => {
++      let timer = setTimeout(() => {
++        this.#pending.delete(requestId);
++        reject(new Error("deadline_exceeded"));
++      }, request.deadlineMs);
++      this.#pending.set(requestId, { resolve, reject, timer });
++      let subject = {
++        wrappedJSObject: {
++          document,
++          chromeWindow: window.browsingContext.topChromeWindow,
++          request,
++        },
++      };
++      Services.obs.notifyObservers(subject, REQUEST_TOPIC);
++    });
++  }
++
++  async refresh(domains = ["settings", "privacy", "search", "backup"]) {
++    await this.ensureSession();
++    let allowed = this.#session.isPrivate
++      ? domains.filter(domain => domain !== "backup")
++      : domains;
++    let result = await this.request("snapshot/get", { domains: allowed });
++    this.#revision = result.revision;
++    for (let domain of allowed) {
++      if (result[domain]) {
++        this.#snapshots[domain] = result[domain];
++      }
++    }
++    this.#emit();
++    return result;
++  }
++
++  get(domain, key, fallback) {
++    return this.#snapshots[domain]?.[key] ?? fallback;
++  }
++
++  snapshot(domain) {
++    return this.#snapshots[domain] ?? null;
++  }
++
++  get isPrivate() {
++    return !!this.#session.isPrivate;
++  }
++
++  async updateSetting(key, value) {
++    let result = await this.request("settings/update", {
++      changes: { [key]: value },
++    });
++    this.#snapshots.settings = result.settings;
++    this.#revision = result.durableRevision;
++    this.#emit();
++  }
++
++  async updatePrivacy(key, value) {
++    let result = await this.request("privacy/setAdvanced", { key, value });
++    this.#snapshots.privacy = result.privacy;
++    this.#emit();
++  }
++
++  async setProtectionLevel(level) {
++    let result = await this.request("privacy/setProtectionLevel", { level });
++    this.#snapshots.privacy = result.privacy;
++    this.#emit();
++  }
++
++  async setSearchEngine(id) {
++    let result = await this.request("privacy/setDefaultSearchEngine", { id });
++    this.#snapshots.search = result.search;
++    this.#emit();
++  }
++}
++
++const model = new BentoNativeModel();
++
++function makeSetting(key) {
++  let config = EDITABLE_SETTINGS[key];
++  return class extends Preferences.AsyncSetting {
++    static id = `bento-${key}`;
++    defaultValue = config.defaultValue;
++    #pending = false;
++
++    setup() {
++      let unsubscribe = model.onChange(this.emitChange);
++      void model.refresh(["settings"]);
++      return unsubscribe;
++    }
++
++    async get() {
++      return model.get("settings", key, config.defaultValue);
++    }
++
++    async set(value) {
++      this.#pending = true;
++      this.emitChange();
++      try {
++        await model.updateSetting(key, value);
++      } catch (error) {
++        console.error(`Bento setting ${key} failed`, error);
++        await model.refresh(["settings"]).catch(() => {});
++      } finally {
++        this.#pending = false;
++        this.emitChange();
++      }
++    }
++
++    async disabled() {
++      if (this.#pending) {
++        return true;
++      }
++      if (
++        (key === "tabSleepAfterMinutes" ||
++          key === "tabSleepKeepAlivePerWorkspace") &&
++        !model.get("settings", "tabSleepEnabled", true)
++      ) {
++        return true;
++      }
++      return false;
++    }
++
++    async visible() {
++      return !IS_PRIVATE || !key.startsWith("autoBackup");
++    }
++  };
++}
++
++for (let key of Object.keys(EDITABLE_SETTINGS)) {
++  Preferences.addSetting(makeSetting(key));
++}
++
++function makePrivacySetting(key) {
++  return class extends Preferences.AsyncSetting {
++    static id = `bento-privacy-${key}`;
++    defaultValue = ADVANCED_PRIVACY[key];
++    #pending = false;
++
++    setup() {
++      let unsubscribe = model.onChange(this.emitChange);
++      void model.refresh(["privacy"]);
++      return unsubscribe;
++    }
++
++    async get() {
++      return model.get("privacy", key, ADVANCED_PRIVACY[key]);
++    }
++
++    async set(value) {
++      this.#pending = true;
++      this.emitChange();
++      try {
++        await model.updatePrivacy(key, value);
++      } catch (error) {
++        console.error(`Bento privacy setting ${key} failed`, error);
++        await model.refresh(["privacy"]).catch(() => {});
++      } finally {
++        this.#pending = false;
++        this.emitChange();
++      }
++    }
++
++    async disabled() {
++      return this.#pending;
++    }
++  };
++}
++
++for (let key of Object.keys(ADVANCED_PRIVACY)) {
++  Preferences.addSetting(makePrivacySetting(key));
++}
++
++Preferences.addSetting(
++  class extends Preferences.AsyncSetting {
++    static id = "bento-privacy-protectionLevel";
++    defaultValue = "standard";
++    #pending = false;
++
++    setup() {
++      let unsubscribe = model.onChange(this.emitChange);
++      void model.refresh(["privacy"]);
++      return unsubscribe;
++    }
++    async get() {
++      return model.get("privacy", "protectionLevel", "standard");
++    }
++    async set(value) {
++      if (value === "custom") {
++        return;
++      }
++      this.#pending = true;
++      this.emitChange();
++      try {
++        await model.setProtectionLevel(value);
++      } catch (error) {
++        console.error("Bento protection preset failed", error);
++        await model.refresh(["privacy"]).catch(() => {});
++      } finally {
++        this.#pending = false;
++        this.emitChange();
++      }
++    }
++    async disabled() {
++      return this.#pending;
++    }
++  }
++);
++
++Preferences.addSetting(
++  class extends Preferences.AsyncSetting {
++    static id = "bento-defaultSearchEngine";
++    defaultValue = "";
++    defaultGetControlConfig = { options: [] };
++    #pending = false;
++
++    setup() {
++      let unsubscribe = model.onChange(this.emitChange);
++      void model.refresh(["search"]);
++      return unsubscribe;
++    }
++    async get() {
++      return model.get("search", "defaultSearchEngine", "");
++    }
++    async getControlConfig() {
++      return {
++        options: (model.get("search", "availableSearchEngines", []) || []).map(
++          engine => ({
++            value: engine.id,
++            controlAttrs: { label: engine.name },
++          })
++        ),
++      };
++    }
++    async set(value) {
++      this.#pending = true;
++      this.emitChange();
++      try {
++        await model.setSearchEngine(value);
++      } catch (error) {
++        console.error("Bento search engine update failed", error);
++        await model.refresh(["search"]).catch(() => {});
++      } finally {
++        this.#pending = false;
++        this.emitChange();
++      }
++    }
++    async disabled() {
++      return this.#pending;
++    }
++  }
++);
++
++async function saveExport() {
++  let result = await model.request("backup/export", {});
++  let picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
++  picker.init(
++    window.browsingContext,
++    await document.l10n.formatValue("bento-backup-save-title"),
++    Ci.nsIFilePicker.modeSave
++  );
++  picker.defaultString = result.filename;
++  picker.appendFilter("JSON", "*.json");
++  if ((await new Promise(resolve => picker.open(resolve))) === Ci.nsIFilePicker.returnCancel) {
++    return;
++  }
++  await IOUtils.writeUTF8(picker.file.path, result.json);
++}
++
++async function importFile() {
++  let picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
++  picker.init(
++    window.browsingContext,
++    await document.l10n.formatValue("bento-backup-import-title"),
++    Ci.nsIFilePicker.modeOpen
++  );
++  picker.appendFilter("JSON", "*.json");
++  if ((await new Promise(resolve => picker.open(resolve))) === Ci.nsIFilePicker.returnCancel) {
++    return;
++  }
++  let stat = await IOUtils.stat(picker.file.path);
++  if (stat.size > 10 * 1024 * 1024) {
++    throw new Error("payload_too_large");
++  }
++  let json = await IOUtils.readUTF8(picker.file.path);
++  let validated = await model.request("backup/validateImport", { json });
++  let confirmed = Services.prompt.confirm(
++    window,
++    await document.l10n.formatValue("bento-backup-import-confirm-title"),
++    await document.l10n.formatValue("bento-backup-import-confirm", {
++      workspaces: validated.preview.totals.workspaceCount,
++      tabs: validated.preview.totals.normalTabCount,
++    })
++  );
++  if (!confirmed) {
++    return;
++  }
++  await model.request(
++    "backup/importValidated",
++    {
++      validationToken: validated.validationToken,
++      options: {
++        importSettings: validated.preview.hasSettings,
++        importSavedPanels: validated.preview.savedPanelCount > 0,
++        replaceExisting: false,
++      },
++    },
++    { operationId: crypto.randomUUID() }
++  );
++}
++
++Preferences.addSetting({
++  id: "bento-backup-export",
++  visible: () => !IS_PRIVATE,
++  async onUserClick() {
++    await saveExport();
++  },
++});
++Preferences.addSetting({
++  id: "bento-backup-import",
++  visible: () => !IS_PRIVATE,
++  async onUserClick() {
++    await importFile();
++  },
++});
++Preferences.addSetting({
++  id: "bento-backups-export",
++  visible: () => !IS_PRIVATE,
++  async onUserClick() {
++    await saveExport();
++  },
++});
++Preferences.addSetting({
++  id: "bento-backups-import",
++  visible: () => !IS_PRIVATE,
++  async onUserClick() {
++    await importFile();
++  },
++});
++Preferences.addSetting({
++  id: "bento-backup-manage",
++  visible: () => !IS_PRIVATE,
++  onUserClick() {
++    window.gotoPref("paneBentoBackups");
++  },
++});
++Preferences.addSetting({
++  id: "bento-shortcuts-open",
++  onUserClick() {
++    window.gotoPref("paneBentoShortcuts");
++  },
++});
++Preferences.addSetting({
++  id: "bento-reset",
++  async onUserClick() {
++    if (
++      !Services.prompt.confirm(
++        window,
++        await document.l10n.formatValue("bento-reset-title"),
++        await document.l10n.formatValue("bento-reset-confirm")
++      )
++    ) {
++      return;
++    }
++    await model.request(
++      "settings/reset",
++      { confirm: true },
++      { operationId: crypto.randomUUID() }
++    );
++    await model.refresh(["settings", "privacy", "search"]);
++  },
++});
++Preferences.addSetting({
++  id: "bento-backup-manager-control",
++  visible: () => !IS_PRIVATE,
++});
++Preferences.addSetting({ id: "bento-shortcut-list-control" });
++Preferences.addSetting({
++  id: "bento-private-notice",
++  visible: () => IS_PRIVATE,
++});
++
++class BentoRangeControl extends HTMLElement {
++  #slider;
++  #valueInput;
++  #labelGeneration = 0;
++  connectedCallback() {
++    if (this.#slider) {
++      return;
++    }
++    let min = Number(this.getAttribute("min") || 0);
++    let max = Number(this.getAttribute("max") || 100);
++    this.#slider = document.createElement("moz-slider");
++    this.#slider.min = min;
++    this.#slider.max = max;
++    this.#slider.ticks = max - min + 1;
++    this.#slider.value = min;
++    this.#slider.addEventListener("slider-changed", event => {
++      let value = Math.round(Number(event.detail));
++      this.#slider.value = value;
++      this.#valueInput.value = String(value);
++      this.dispatchEvent(new Event("change", { bubbles: true }));
++    });
++
++    this.#valueInput = document.createElement("moz-input-number");
++    this.#valueInput.value = String(min);
++    this.#valueInput.addEventListener("change", () => {
++      let value = Math.min(
++        max,
++        Math.max(min, Math.round(Number(this.#valueInput.value)))
++      );
++      this.#valueInput.value = String(value);
++      this.#slider.value = value;
++      this.dispatchEvent(new Event("change", { bubbles: true }));
++    });
++    void this.#valueInput.updateComplete.then(() => {
++      this.#valueInput.inputEl.min = String(min);
++      this.#valueInput.inputEl.max = String(max);
++      this.#valueInput.inputEl.step = "1";
++    });
++    this.append(this.#slider, this.#valueInput);
++    void this.#localizeLabel();
++  }
++  async #localizeLabel() {
++    let generation = ++this.#labelGeneration;
++    let labelL10nId = this.getAttribute("data-label-l10n-id");
++    if (!labelL10nId) {
++      return;
++    }
++    let label = await document.l10n.formatValue(labelL10nId);
++    if (generation === this.#labelGeneration && this.isConnected) {
++      this.#slider.label = label;
++      this.#valueInput.ariaLabel = label;
++    }
++  }
++  get value() {
++    return Number(this.#slider?.value || 0);
++  }
++  set value(value) {
++    if (this.#slider) {
++      this.#slider.value = Number(value);
++      this.#valueInput.value = String(value);
++    }
++  }
++  focus() {
++    void this.#slider?.updateComplete.then(() =>
++      this.#slider.sliderTrack.focus()
++    );
++  }
++}
++customElements.define("bento-range-control", BentoRangeControl);
++
++class BentoSizeList extends HTMLElement {
++  #value = [];
++  #ids = [];
++  #status;
++  connectedCallback() {
++    this.#render();
++  }
++  get value() {
++    return [...this.#value];
++  }
++  set value(value) {
++    let next = Array.isArray(value) ? [...value] : [];
++    let available = this.#value.map((size, index) => ({
++      size,
++      id: this.#ids[index],
++    }));
++    this.#ids = next.map(size => {
++      let match = available.findIndex(item => item.size === size);
++      return match < 0 ? crypto.randomUUID() : available.splice(match, 1)[0].id;
++    });
++    this.#value = next;
++    this.#render();
++  }
++  #move(index, offset) {
++    let target = index + offset;
++    if (target < 0 || target >= this.#value.length) {
++      return;
++    }
++    [this.#value[index], this.#value[target]] = [
++      this.#value[target],
++      this.#value[index],
++    ];
++    [this.#ids[index], this.#ids[target]] = [
++      this.#ids[target],
++      this.#ids[index],
++    ];
++    let movedId = this.#ids[target];
++    this.#render();
++    document.l10n.setAttributes(this.#status, "bento-panel-size-moved", {
++      position: target + 1,
++    });
++    this.dispatchEvent(new Event("change", { bubbles: true }));
++    this.querySelector(
++      `[data-occurrence-id="${CSS.escape(movedId)}"] moz-input-number`
++    )?.focus();
++  }
++  #render() {
++    if (!this.isConnected) {
++      return;
++    }
++    this.replaceChildren();
++    let list = document.createElement("moz-box-group");
++    list.type = "reorderable-list";
++    list.addEventListener("reorder", event => {
++      let movedId = this.#ids[event.detail.draggedIndex];
++      this.#value = list.reorderArrayFromEvent(this.#value, event);
++      this.#ids = list.reorderArrayFromEvent(this.#ids, event);
++      let position = this.#ids.indexOf(movedId);
++      this.#render();
++      document.l10n.setAttributes(this.#status, "bento-panel-size-moved", {
++        position: position + 1,
++      });
++      this.dispatchEvent(new Event("change", { bubbles: true }));
++      requestAnimationFrame(() => {
++        this.querySelector(
++          `[data-occurrence-id="${CSS.escape(movedId)}"] moz-input-number`
++        )?.focus();
++      });
++    });
++    this.#value.forEach((size, index) => {
++      let item = document.createElement("moz-box-item");
++      item.dataset.occurrenceId = this.#ids[index] ||= crypto.randomUUID();
++      document.l10n.setAttributes(item, "bento-panel-size-item", {
++        position: index + 1,
++      });
++      let input = document.createElement("moz-input-number");
++      input.slot = "actions-start";
++      input.value = String(size);
++      void document.l10n
++        .formatValue("bento-panel-size-input", { position: index + 1 })
++        .then(label => {
++          input.ariaLabel = label;
++        });
++      void input.updateComplete.then(() => {
++        input.inputEl.min = "120";
++        input.inputEl.max = "2400";
++        input.inputEl.step = "1";
++      });
++      input.addEventListener("change", () => {
++        this.#value[index] = Number(input.value);
++        this.dispatchEvent(new Event("change", { bubbles: true }));
++      });
++      let remove = document.createElement("moz-button");
++      remove.slot = "actions";
++      remove.type = "destructive";
++      remove.size = "small";
++      document.l10n.setAttributes(remove, "bento-panel-size-remove", {
++        position: index + 1,
++      });
++      remove.addEventListener("click", () => {
++        this.#value.splice(index, 1);
++        this.#ids.splice(index, 1);
++        this.#render();
++        this.dispatchEvent(new Event("change", { bubbles: true }));
++      });
++      let up = document.createElement("moz-button");
++      up.slot = "actions";
++      up.size = "small";
++      up.disabled = index === 0;
++      document.l10n.setAttributes(up, "bento-panel-size-up", {
++        position: index + 1,
++      });
++      up.addEventListener("click", () => this.#move(index, -1));
++      let down = document.createElement("moz-button");
++      down.slot = "actions";
++      down.size = "small";
++      down.disabled = index === this.#value.length - 1;
++      document.l10n.setAttributes(down, "bento-panel-size-down", {
++        position: index + 1,
++      });
++      down.addEventListener("click", () => this.#move(index, 1));
++      item.append(input, up, down, remove);
++      list.append(item);
++    });
++    let add = document.createElement("moz-button");
++    add.setAttribute("data-l10n-id", "bento-panel-size-add");
++    add.disabled = this.#value.length >= 64;
++    add.addEventListener("click", () => {
++      this.#value.push(640);
++      this.#ids.push(crypto.randomUUID());
++      this.#render();
++      this.dispatchEvent(new Event("change", { bubbles: true }));
++    });
++    this.#status = document.createElement("p");
++    this.#status.setAttribute("aria-live", "polite");
++    this.#status.className = "bento-visually-hidden";
++    this.append(list, add, this.#status);
++  }
++}
++customElements.define("bento-size-list", BentoSizeList);
++
++class BentoBackupManager extends HTMLElement {
++  #unsubscribe;
++  #renderGeneration = 0;
++  connectedCallback() {
++    this.#unsubscribe ||= model.onChange(() => void this.#render());
++    void model.refresh(["backup"]);
++    void this.#render();
++  }
++  disconnectedCallback() {
++    this.#unsubscribe?.();
++    this.#unsubscribe = null;
++  }
++  async #act(operation, backup) {
++    let action = operation === "backup/delete" ? "delete" : "restore";
++    let [title, message] = await document.l10n.formatValues([
++      { id: `bento-backup-${action}-title` },
++      { id: `bento-backup-${action}-confirm` },
++    ]);
++    if (!Services.prompt.confirm(window, title, message)) {
++      return;
++    }
++    this.setAttribute("aria-busy", "true");
++    try {
++      await model.request(
++        operation,
++        {
++          backupId: backup.id,
++          ...(action === "delete" ? { confirm: true } : {}),
++        },
++        { operationId: crypto.randomUUID() }
++      );
++      await model.refresh(["backup"]);
++    } finally {
++      this.removeAttribute("aria-busy");
++    }
++  }
++  async #render() {
++    let generation = ++this.#renderGeneration;
++    let backups = model.snapshot("backup")?.backups ?? [];
++    let messages = [];
++    if (!backups.length) {
++      messages.push({ id: "bento-backup-empty" });
++    }
++    for (let backup of backups) {
++      messages.push({
++        id: "bento-backup-summary",
++        args: {
++          date: new Date(backup.createdAt).toLocaleString(),
++          workspaces: backup.workspaceCount,
++          tabs: backup.tabCount,
++        },
++      });
++      if (backup.privacySafety !== "private-filtered-v1") {
++        messages.push({ id: "bento-backup-legacy-unknown" });
++      }
++    }
++    let localized = await document.l10n.formatValues(messages);
++    let localizedIndex = 0;
++    let list = document.createElement("moz-box-group");
++    list.type = "list";
++    if (!backups.length) {
++      let empty = document.createElement("moz-box-item");
++      empty.label = localized[localizedIndex++];
++      list.append(empty);
++    }
++    for (let backup of backups) {
++      let item = document.createElement("moz-box-item");
++      item.label = localized[localizedIndex++];
++      if (backup.privacySafety !== "private-filtered-v1") {
++        item.description = localized[localizedIndex++];
++      }
++      let restore = document.createElement("moz-button");
++      restore.slot = "actions";
++      restore.size = "small";
++      restore.setAttribute("data-l10n-id", "bento-backup-restore");
++      restore.addEventListener(
++        "click",
++        () => void this.#act("backup/restore", backup)
++      );
++      let remove = document.createElement("moz-button");
++      remove.slot = "actions";
++      remove.size = "small";
++      remove.type = "destructive";
++      remove.setAttribute("data-l10n-id", "bento-backup-delete");
++      remove.addEventListener(
++        "click",
++        () => void this.#act("backup/delete", backup)
++      );
++      item.append(restore, remove);
++      list.append(item);
++    }
++    if (generation === this.#renderGeneration) {
++      this.replaceChildren(list);
++    }
++  }
++}
++customElements.define("bento-backup-manager", BentoBackupManager);
++
++const SHORTCUTS = Array.from({ length: 12 }, (_, index) => ({
++  labelId: `bento-shortcut-${index + 1}-label`,
++  keysId: `bento-shortcut-${index + 1}-keys`,
++}));
++
++class BentoShortcutList extends HTMLElement {
++  #renderGeneration = 0;
++  connectedCallback() {
++    if (this.firstElementChild) {
++      return;
++    }
++    let search = document.createElement("moz-input-search");
++    search.setAttribute("data-l10n-id", "bento-shortcuts-search");
++    let count = document.createElement("moz-box-item");
++    count.slot = "header";
++    let list = document.createElement("moz-box-group");
++    list.type = "list";
++    list.append(count);
++    let render = async queryValue => {
++      let generation = ++this.#renderGeneration;
++      let query = queryValue.toLowerCase();
++      let values = await document.l10n.formatValues(
++        SHORTCUTS.flatMap(row => [{ id: row.labelId }, { id: row.keysId }])
++      );
++      let localized = SHORTCUTS.map((row, index) => ({
++        ...row,
++        label: values[index * 2],
++        keys: values[index * 2 + 1],
++      }));
++      let matches = localized.filter(row =>
++        `${row.label} ${row.keys}`.toLowerCase().includes(query)
++      );
++      if (generation !== this.#renderGeneration) {
++        return;
++      }
++      document.l10n.setAttributes(count, "bento-shortcuts-results", {
++        count: matches.length,
++      });
++      list.replaceChildren(count);
++      for (let row of matches) {
++        let item = document.createElement("moz-box-item");
++        item.label = row.label;
++        item.description = row.keys;
++        list.append(item);
++      }
++    };
++    search.addEventListener("MozInputSearch:search", event => {
++      void render(event.detail.query);
++    });
++    this.append(search, list);
++    void render("");
++  }
++}
++customElements.define("bento-shortcut-list", BentoShortcutList);
++
++SettingGroupManager.registerGroups({
++  bentoAppearance: {
++    l10nId: "bento-group-appearance",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-uiColorMode",
++        l10nId: "bento-ui-color-mode",
++        control: "moz-select",
++        controlAttrs: BENTO_SELECT_CONTROL_ATTRS,
++        options: [
++          { value: "light", l10nId: "bento-color-light" },
++          { value: "dark", l10nId: "bento-color-dark" },
++          { value: "system", l10nId: "bento-color-system" },
++        ],
++      },
++    ],
++  },
++  bentoPerformance: {
++    l10nId: "bento-group-performance",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-tabSleepEnabled",
++        l10nId: "bento-tab-sleep-enabled",
++        control: "moz-toggle",
++      },
++      {
++        id: "bento-tabSleepAfterMinutes",
++        l10nId: "bento-tab-sleep-after",
++        control: "moz-input-number",
++        controlAttrs: { min: 1, max: 1440 },
++      },
++      {
++        id: "bento-tabSleepKeepAlivePerWorkspace",
++        l10nId: "bento-tab-keep-alive",
++        control: "moz-input-number",
++        controlAttrs: { min: 1, max: 50 },
++      },
++    ],
++  },
++  bentoWorkspaces: {
++    l10nId: "bento-group-workspaces",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-defaultWorkspaceName",
++        l10nId: "bento-default-workspace-name",
++        control: "moz-input-text",
++        controlAttrs: { maxlength: 1024 },
++      },
++      {
++        id: "bento-sidebarShortcutBehavior",
++        l10nId: "bento-sidebar-shortcut-behavior",
++        control: "moz-select",
++        controlAttrs: BENTO_SELECT_CONTROL_ATTRS,
++        options: [
++          { value: "collapse", l10nId: "bento-sidebar-shortcut-collapse" },
++          { value: "hide", l10nId: "bento-sidebar-shortcut-hide" },
++        ],
++      },
++    ],
++  },
++  bentoPanels: {
++    l10nId: "bento-group-panels",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-defaultPanelWidthPx",
++        l10nId: "bento-default-panel-width",
++        control: "moz-input-number",
++        controlAttrs: { min: 200, max: 2400 },
++      },
++      {
++        id: "bento-panelCycleWraparound",
++        l10nId: "bento-panel-wraparound",
++        control: "moz-toggle",
++      },
++      {
++        id: "bento-panelShadowsEnabled",
++        l10nId: "bento-panel-shadows",
++        control: "moz-toggle",
++      },
++      {
++        id: "bento-panelCornerRadiusPx",
++        l10nId: "bento-panel-roundness",
++        control: "bento-range-control",
++        controlAttrs: {
++          min: 0,
++          max: 36,
++          "data-label-l10n-id": "bento-panel-roundness-label",
++        },
++      },
++      {
++        id: "bento-panelSplitterSizePx",
++        l10nId: "bento-panel-gap",
++        control: "bento-range-control",
++        controlAttrs: {
++          min: 6,
++          max: 36,
++          "data-label-l10n-id": "bento-panel-gap-label",
++        },
++      },
++      {
++        id: "bento-customPanelSizes",
++        l10nId: "bento-custom-panel-sizes",
++        control: "bento-size-list",
++      },
++    ],
++  },
++  bentoPrivacySearch: {
++    l10nId: "bento-group-privacy-search",
++    headingLevel: 2,
++    subcategory: "bentoPrivacySearch",
++    items: [
++      {
++        id: "bento-privacy-protectionLevel",
++        l10nId: "bento-protection-level",
++        control: "moz-select",
++        controlAttrs: BENTO_SELECT_CONTROL_ATTRS,
++        options: [
++          { value: "standard", l10nId: "bento-protection-standard" },
++          { value: "enhanced", l10nId: "bento-protection-enhanced" },
++          { value: "hardened", l10nId: "bento-protection-hardened" },
++          {
++            value: "custom",
++            l10nId: "bento-protection-custom",
++            disabled: true,
++          },
++        ],
++      },
++      {
++        id: "bento-defaultSearchEngine",
++        l10nId: "bento-default-search-engine",
++        control: "moz-select",
++        controlAttrs: BENTO_SELECT_CONTROL_ATTRS,
++      },
++      ...Object.keys(ADVANCED_PRIVACY).map(key => ({
++        id: `bento-privacy-${key}`,
++        l10nId: PRIVACY_L10N_IDS[key],
++        control:
++          key === "webRTCIPHandlingPolicy" || key === "httpsOnlyMode"
++            ? "moz-select"
++            : "moz-toggle",
++        ...(key === "webRTCIPHandlingPolicy"
++          ? {
++              controlAttrs: BENTO_SELECT_CONTROL_ATTRS,
++              options: [
++                { value: "default", l10nId: "bento-webrtc-policy-default" },
++                {
++                  value: "disable_non_proxied_udp",
++                  l10nId: "bento-webrtc-policy-proxy-only",
++                },
++              ],
++            }
++          : {}),
++        ...(key === "httpsOnlyMode"
++          ? {
++              controlAttrs: BENTO_SELECT_CONTROL_ATTRS,
++              options: [
++                { value: "never", l10nId: "bento-https-only-never" },
++                { value: "always", l10nId: "bento-https-only-always" },
++              ],
++            }
++          : {}),
++      })),
++    ],
++  },
++  bentoBackupData: {
++    l10nId: "bento-group-backup-data",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-autoBackupEnabled",
++        l10nId: "bento-auto-backup-enabled",
++        control: "moz-toggle",
++      },
++      {
++        id: "bento-autoBackupIntervalMinutes",
++        l10nId: "bento-auto-backup-interval",
++        control: "moz-input-number",
++        controlAttrs: { min: 5, max: 1440, step: 5 },
++      },
++      {
++        id: "bento-autoBackupMaxCount",
++        l10nId: "bento-auto-backup-retention",
++        control: "moz-input-number",
++        controlAttrs: { min: 1, max: 20 },
++      },
++      {
++        id: "bento-backups-export",
++        l10nId: "bento-backup-export",
++        control: "moz-button",
++      },
++      {
++        id: "bento-backups-import",
++        l10nId: "bento-backup-import",
++        control: "moz-button",
++      },
++      {
++        id: "bento-backup-manage",
++        l10nId: "bento-backup-manage",
++        control: "moz-button",
++      },
++    ],
++  },
++  bentoKeyboardShortcuts: {
++    l10nId: "bento-group-keyboard-shortcuts",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-shortcuts-open",
++        l10nId: "bento-shortcuts-open",
++        control: "moz-button",
++      },
++    ],
++  },
++  bentoReset: {
++    l10nId: "bento-group-reset",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-reset",
++        l10nId: "bento-reset-button",
++        control: "moz-button",
++      },
++    ],
++  },
++  bentoBackupsManager: {
++    l10nId: "bento-backups-heading",
++    headingLevel: 2,
++    items: [
++      {
++        id: "bento-private-notice",
++        l10nId: "bento-backup-private-unavailable",
++        control: "moz-message-bar",
++        controlAttrs: { role: "status" },
++      },
++      {
++        id: "bento-backup-export",
++        l10nId: "bento-backup-export",
++        control: "moz-button",
++      },
++      {
++        id: "bento-backup-import",
++        l10nId: "bento-backup-import",
++        control: "moz-button",
++      },
++      { id: "bento-backup-manager-control", control: "bento-backup-manager" },
++    ],
++  },
++  bentoShortcutsCatalogue: {
++    l10nId: "bento-shortcuts-heading",
++    headingLevel: 2,
++    items: [
++      { id: "bento-shortcut-list-control", control: "bento-shortcut-list" },
++    ],
++  },
++});
++
++window.BentoPreferences = Object.freeze({
++  focusGroup(groupId) {
++    let group = document.querySelector(
++      `setting-group[data-subcategory~="${CSS.escape(groupId)}"]`
++    );
++    group?.scrollIntoView({ block: "start" });
++    group?.querySelector("h1,h2,h3,h4,h5,h6")?.focus();
++  },
++  model,
++});
++
++document.dispatchEvent(new CustomEvent("bento-preferences-initialized"));
+diff --git a/browser/components/preferences/jar.mn b/browser/components/preferences/jar.mn
+index aec7888f59eeb5dbffc62b861fe223159ac42586..41f3c3c110b9d17239429c35db23b69d100ed92a 100644
+--- a/browser/components/preferences/jar.mn
++++ b/browser/components/preferences/jar.mn
+@@ -32,6 +32,10 @@ browser.jar:
+    content/browser/preferences/config/account-sync.mjs                  (config/account-sync.mjs)
+    content/browser/preferences/config/accessibility.mjs                 (config/accessibility.mjs)
+    content/browser/preferences/config/appearance.mjs                    (config/appearance.mjs)
++   content/browser/preferences/config/bento.mjs                         (config/bento.mjs)
++   content/browser/preferences/bento/bento.css                          (bento/bento.css)
++   content/browser/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs (bento/generated/BentoNativePreferencesProtocol.sys.mjs)
++   content/browser/preferences/bento/generated/native-preferences-protocol-fixtures.json (bento/generated/native-preferences-protocol-fixtures.json)
+    content/browser/preferences/config/aiFeatures.mjs                    (config/aiFeatures.mjs)
+    content/browser/preferences/config/firefoxLabs.mjs                   (config/firefoxLabs.mjs)
+    content/browser/preferences/config/moreFromMozilla.mjs               (config/moreFromMozilla.mjs)
+diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
+index e95831780d00111f27bb4ad78a6ed8ec39cf886e..ff9ebbc4e7b84fb3ac189e4c9bd6cbb4f4b2f30b 100644
+--- a/browser/components/preferences/preferences.js
++++ b/browser/components/preferences/preferences.js
+@@ -223,6 +223,34 @@ var scrollOffsets;
+  * @type {Record<string, SettingPaneConfig>}
+  */
+ const CONFIG_PANES = Object.freeze({
++  bento: {
++    l10nId: "bento-settings-title",
++    iconSrc: "chrome://global/skin/icons/settings.svg",
++    groupIds: [
++      "bentoAppearance",
++      "bentoPerformance",
++      "bentoWorkspaces",
++      "bentoPanels",
++      "bentoPrivacySearch",
++      "bentoBackupData",
++      "bentoKeyboardShortcuts",
++      "bentoReset",
++    ],
++    module: "chrome://browser/content/preferences/config/bento.mjs",
++    visible: () => true,
++  },
++  bentoBackups: {
++    parent: "bento",
++    l10nId: "bento-backups-title",
++    groupIds: ["bentoBackupsManager"],
++    module: "chrome://browser/content/preferences/config/bento.mjs",
++  },
++  bentoShortcuts: {
++    parent: "bento",
++    l10nId: "bento-shortcuts-title",
++    groupIds: ["bentoShortcutsCatalogue"],
++    module: "chrome://browser/content/preferences/config/bento.mjs",
++  },
+   about: {
+     l10nId: "about-firefox-header",
+     iconSrc: "chrome://browser/skin/sidebar/firefox.svg",
+diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
+index a7b50a3d68fd7e12bce1a9214e518baf50c02c83..b64aed7a00ca1e5a651efa4febfb786c03529ffc 100644
+--- a/browser/components/preferences/preferences.xhtml
++++ b/browser/components/preferences/preferences.xhtml
+@@ -42,6 +42,7 @@
+   <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-group.css" />
+   <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-pane.css" />
+   <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-control.css" />
++  <link rel="stylesheet" href="chrome://browser/content/preferences/bento/bento.css" />
+ 
+   <link rel="localization" href="branding/brand.ftl"/>
+   <link rel="localization" href="browser/browser.ftl"/>
+@@ -49,6 +50,7 @@
+   <link rel="localization" href="browser/preferences/fonts.ftl"/>
+   <link rel="localization" href="browser/preferences/moreFromMozilla.ftl"/>
+   <link rel="localization" href="browser/preferences/preferences.ftl"/>
++  <link rel="localization" href="browser/preferences/bento.ftl"/>
+   <link rel="localization" href="toolkit/branding/brandings.ftl"/>
+   <link rel="localization" href="toolkit/firefoxlabs/features.ftl"/>
+ 
+@@ -163,6 +165,11 @@
+         iconsrc="chrome://global/skin/icons/cursor-arrow.svg"
+         data-l10n-id="pane-tabs-browsing-title2">
+       </html:moz-page-nav-button>
++      <html:moz-page-nav-button id="category-bento"
++        view="paneBento"
++        iconsrc="chrome://global/skin/icons/settings.svg"
++        data-l10n-id="bento-settings-title">
++      </html:moz-page-nav-button>
+       <html:hr class="nav-separator" id="nav-separator" role="presentation" />
+       <html:moz-page-nav-button id="category-accessibility"
+         view="paneAccessibility"
+@@ -208,6 +215,8 @@
+       <html:moz-page-nav-button class="hidden-category" view="paneContainers"/>
+       <html:moz-page-nav-button class="hidden-category" view="paneProfiles"/>
+       <html:moz-page-nav-button class="hidden-category" view="paneTranslations"/>
++      <html:moz-page-nav-button class="hidden-category" view="paneBentoBackups"/>
++      <html:moz-page-nav-button class="hidden-category" view="paneBentoShortcuts"/>
+ 
+       <!-- Footer links -->
+       <html:moz-page-nav-button id="addonsButton"
+diff --git a/browser/components/preferences/tests/browser.toml b/browser/components/preferences/tests/browser.toml
+index 92353bee15e0b056772065b09fc05f3847876af4..4e034ba6bdfdcd0db51475d0417781303f6c3492 100644
+--- a/browser/components/preferences/tests/browser.toml
++++ b/browser/components/preferences/tests/browser.toml
+@@ -28,6 +28,14 @@ run-if = ["updater"]
+ 
+ ["browser_backup_warning_banner.js"]
+ 
++["browser_bento_preferences.js"]
++
++["browser_bento_native_bridge.js"]
++
++["browser_bento_backup_preferences.js"]
++
++["browser_bento_private_preferences.js"]
++
+ ["browser_bug731866.js"]
+ 
+ ["browser_bug795764_cachedisabled.js"]
+diff --git a/browser/components/preferences/tests/browser_bento_backup_preferences.js b/browser/components/preferences/tests/browser_bento_backup_preferences.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..d46cdb9a606628065ac6d34aa0931ca5b5298290
+--- /dev/null
++++ b/browser/components/preferences/tests/browser_bento_backup_preferences.js
+@@ -0,0 +1,37 @@
++/* Any copyright is dedicated to the Public Domain.
++ * http://creativecommons.org/publicdomain/zero/1.0/ */
++
++"use strict";
++
++add_task(async function test_bento_backup_subpane_route() {
++  await openPreferencesViaOpenPreferencesAPI("bentoBackups", {
++    leaveOpen: true,
++  });
++  let doc = gBrowser.contentDocument;
++  await TestUtils.waitForCondition(
++    () => doc.querySelector('setting-pane[data-category="paneBentoBackups"]'),
++    "Bento backup subpane registered"
++  );
++  is(
++    doc.location.hash,
++    "#bentoBackups",
++    "Backup management has its native subpane route"
++  );
++  let manager = doc.querySelector("bento-backup-manager");
++  ok(manager, "Stored backup restore and delete manager is native");
++  await TestUtils.waitForCondition(
++    () => manager.querySelector("moz-box-group"),
++    "Stored backups native list rendered"
++  );
++  is(
++    manager.querySelector("moz-box-group").type,
++    "list",
++    "Stored backups use Firefox's native list group"
++  );
++  is(
++    manager.querySelectorAll("button, article").length,
++    0,
++    "Backup controller does not render custom light-DOM entries or buttons"
++  );
++  BrowserTestUtils.removeTab(gBrowser.selectedTab);
++});
+diff --git a/browser/components/preferences/tests/browser_bento_native_bridge.js b/browser/components/preferences/tests/browser_bento_native_bridge.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..b800e4cbfdafb3aa2a13e16c51b9fda44df8b385
+--- /dev/null
++++ b/browser/components/preferences/tests/browser_bento_native_bridge.js
+@@ -0,0 +1,31 @@
++/* Any copyright is dedicated to the Public Domain.
++ * http://creativecommons.org/publicdomain/zero/1.0/ */
++
++"use strict";
++
++add_task(async function test_parent_registry_attestation_shape() {
++  let { BentoShellDocumentRegistry } = ChromeUtils.importESModule(
++    "resource:///actors/BentoShellDocumentRegistry.sys.mjs"
++  );
++  let first = BentoShellDocumentRegistry.getCurrentBootAttestation();
++  let second = BentoShellDocumentRegistry.getCurrentBootAttestation();
++  Assert.deepEqual(first, second, "Parent identity is stable in one process");
++  Assert.deepEqual(
++    Object.keys(first).sort(),
++    [
++      "currentBootId",
++      "currentParentSessionId",
++      "registryEpoch",
++      "singletonInitializedAt",
++    ],
++    "Attestation exposes only the closed current-parent shape"
++  );
++});
++
++add_task(async function test_generated_protocol_is_packaged() {
++  let protocol = ChromeUtils.importESModule(
++    "chrome://browser/content/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs"
++  );
++  is(protocol.PROTOCOL_VERSION, 1, "Protocol version is packaged");
++  is(protocol.CONTRACT_SHA256.length, 64, "Contract hash is packaged");
++});
+diff --git a/browser/components/preferences/tests/browser_bento_preferences.js b/browser/components/preferences/tests/browser_bento_preferences.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce7eeb9d27f1b9e54f8c3815635e4052a398aaf8
+--- /dev/null
++++ b/browser/components/preferences/tests/browser_bento_preferences.js
+@@ -0,0 +1,165 @@
++/* Any copyright is dedicated to the Public Domain.
++ * http://creativecommons.org/publicdomain/zero/1.0/ */
++
++"use strict";
++
++add_task(async function test_bento_root_and_controls() {
++  await openPreferencesViaOpenPreferencesAPI("bento", { leaveOpen: true });
++  let doc = gBrowser.contentDocument;
++  await TestUtils.waitForCondition(
++    () => doc.getElementById("setting-control-bento-uiColorMode"),
++    "Bento pane controls rendered"
++  );
++  ok(doc.getElementById("category-bento"), "Bento category exists");
++  let bentoPane = doc.querySelector('setting-pane[data-category="paneBento"]');
++  await bentoPane.pageHeaderEl.updateComplete;
++  is(
++    bentoPane.pageHeaderEl.heading,
++    "Bento",
++    "Bento pane uses Firefox's localized native page heading"
++  );
++  for (let id of [
++    "bento-uiColorMode",
++    "bento-tabSleepEnabled",
++    "bento-defaultWorkspaceName",
++    "bento-defaultPanelWidthPx",
++    "bento-privacy-protectionLevel",
++    "bento-autoBackupEnabled",
++    "bento-shortcuts-open",
++    "bento-reset",
++  ]) {
++    ok(doc.getElementById(`setting-control-${id}`), `${id} is rendered`);
++  }
++  let appearanceGroup = doc.querySelector(
++    'setting-group[groupid="bentoAppearance"]'
++  );
++  is(
++    appearanceGroup.querySelectorAll("setting-control").length,
++    1,
++    "Fluent group label preserves the Appearance controls"
++  );
++  is(
++    appearanceGroup.querySelector("moz-fieldset").label,
++    "Appearance",
++    "The group heading localizes through the fieldset label attribute"
++  );
++  let roundness = doc.querySelector("#bento-panelCornerRadiusPx");
++  let sizeList = doc.querySelector("#bento-customPanelSizes");
++  await TestUtils.waitForCondition(
++    () =>
++      roundness.querySelector("moz-slider")?.label === "Panel roundness" &&
++      sizeList.querySelector("moz-button")?.label === "Move up",
++    "Panels controllers compose localized native Firefox controls"
++  );
++  is(
++    roundness.querySelector("moz-input-number").ariaLabel,
++    "Panel roundness",
++    "The panel roundness value field has the slider label"
++  );
++  is(
++    sizeList.querySelector("moz-box-group").type,
++    "reorderable-list",
++    "Panel sizes use Firefox's native reorderable list"
++  );
++  Assert.deepEqual(
++    [...sizeList.querySelectorAll("moz-box-item:first-of-type moz-button")].map(
++      button => button.label
++    ),
++    ["Move up", "Move down", "Remove"],
++    "Native panel size actions have visible labels"
++  );
++  is(
++    doc.querySelectorAll(
++      "bento-range-control input, bento-size-list input, bento-size-list button"
++    ).length,
++    0,
++    "Bento panel controllers do not render custom light-DOM form controls"
++  );
++  BrowserTestUtils.removeTab(gBrowser.selectedTab);
++});
++
++add_task(async function test_bento_selects_open_firefox_panel_lists() {
++  await openPreferencesViaOpenPreferencesAPI("bento", { leaveOpen: true });
++  let doc = gBrowser.contentDocument;
++  await TestUtils.waitForCondition(
++    () => doc.getElementById("setting-control-bento-uiColorMode"),
++    "Bento pane controls rendered"
++  );
++
++  let selects = [
++    ...doc.querySelectorAll(
++      'setting-pane[data-category="paneBento"] moz-select'
++    ),
++  ];
++  Assert.greaterOrEqual(
++    selects.length,
++    6,
++    "Bento pane renders its expected select controls"
++  );
++  await Promise.all(selects.map(select => select.updateComplete));
++  for (let select of selects) {
++    ok(select.forcePanelList, `${select.id} forces Firefox panel-list mode`);
++    ok(select.usePanelList, `${select.id} uses Firefox panel-list mode`);
++    is(
++      select.inputEl.localName,
++      "button",
++      `${select.id} renders Firefox's native panel trigger`
++    );
++  }
++
++  let colorMode = doc.getElementById("bento-uiColorMode");
++  let shown = BrowserTestUtils.waitForEvent(colorMode.panelList, "shown");
++  EventUtils.synthesizeMouseAtCenter(colorMode.inputEl, {}, doc.defaultView);
++  await shown;
++  ok(colorMode.panelList.open, "Bento select opens its Firefox panel-list");
++
++  let hidden = BrowserTestUtils.waitForEvent(colorMode.panelList, "hidden");
++  colorMode.panelList.hide();
++  await hidden;
++  BrowserTestUtils.removeTab(gBrowser.selectedTab);
++});
++
++add_task(async function test_bento_shortcuts_use_native_components() {
++  await openPreferencesViaOpenPreferencesAPI("bentoShortcuts", {
++    leaveOpen: true,
++  });
++  let doc = gBrowser.contentDocument;
++  await TestUtils.waitForCondition(
++    () => doc.querySelector("bento-shortcut-list"),
++    "Bento shortcut controller rendered"
++  );
++  let controller = doc.querySelector("bento-shortcut-list");
++  await TestUtils.waitForCondition(
++    () => controller.querySelectorAll("moz-box-item").length > 1,
++    "Bento shortcut rows rendered"
++  );
++  ok(
++    controller.querySelector("moz-input-search"),
++    "Shortcuts use Firefox's native search field"
++  );
++  is(
++    controller.querySelector("moz-box-group").type,
++    "list",
++    "Shortcuts use Firefox's native list group"
++  );
++  is(
++    controller.querySelectorAll("input, button").length,
++    0,
++    "Shortcut controller does not render custom light-DOM form controls"
++  );
++  BrowserTestUtils.removeTab(gBrowser.selectedTab);
++});
++
++add_task(async function test_bento_visible_without_redesign() {
++  await SpecialPowers.pushPrefEnv({
++    set: [["browser.settings-redesign.enabled", false]],
++  });
++  await openPreferencesViaOpenPreferencesAPI("bento", { leaveOpen: true });
++  ok(
++    BrowserTestUtils.isVisible(
++      gBrowser.contentDocument.getElementById("category-bento")
++    ),
++    "Bento remains visible when redesign is disabled"
++  );
++  BrowserTestUtils.removeTab(gBrowser.selectedTab);
++});
+diff --git a/browser/components/preferences/tests/browser_bento_private_preferences.js b/browser/components/preferences/tests/browser_bento_private_preferences.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..9132d91750bc63dedddd432436633f0e92456da9
+--- /dev/null
++++ b/browser/components/preferences/tests/browser_bento_private_preferences.js
+@@ -0,0 +1,27 @@
++/* Any copyright is dedicated to the Public Domain.
++ * http://creativecommons.org/publicdomain/zero/1.0/ */
++
++"use strict";
++
++add_task(async function test_private_bento_hides_backup_actions() {
++  let privateWindow = await BrowserTestUtils.openNewBrowserWindow({ private: true });
++  let tab = await BrowserTestUtils.openNewForegroundTab(
++    privateWindow.gBrowser,
++    "about:settings#bento"
++  );
++  let doc = tab.linkedBrowser.contentDocument;
++  await TestUtils.waitForCondition(
++    () => doc.getElementById("setting-control-bento-uiColorMode"),
++    "Private Bento pane initialized"
++  );
++  ok(
++    BrowserTestUtils.isVisible(doc.getElementById("setting-control-bento-uiColorMode")),
++    "Profile-global appearance remains available"
++  );
++  ok(
++    !BrowserTestUtils.isVisible(doc.getElementById("setting-control-bento-backups-export")),
++    "Backup export is unavailable in private Settings"
++  );
++  BrowserTestUtils.removeTab(tab);
++  await BrowserTestUtils.closeWindow(privateWindow);
++});
+diff --git a/browser/locales/en-US/browser/preferences/bento.ftl b/browser/locales/en-US/browser/preferences/bento.ftl
+new file mode 100644
+index 0000000000000000000000000000000000000000..9494e3b30828c20f7ad0678006c7bf211d96b5db
+--- /dev/null
++++ b/browser/locales/en-US/browser/preferences/bento.ftl
+@@ -0,0 +1,211 @@
++bento-settings-title = Bento
++    .heading = Bento
++bento-backups-title = Bento backups
++bento-shortcuts-title = Bento keyboard shortcuts
++
++bento-group-appearance =
++    .label = Appearance
++bento-group-performance =
++    .label = Performance
++bento-group-workspaces =
++    .label = Workspaces
++bento-group-panels =
++    .label = Panels
++bento-group-privacy-search =
++    .label = Privacy and search
++bento-group-backup-data =
++    .label = Backup and data
++bento-group-keyboard-shortcuts =
++    .label = Keyboard shortcuts
++bento-group-reset =
++    .label = Reset Bento
++
++bento-ui-color-mode =
++    .label = Bento color mode
++    .description = Choose the appearance of Bento browser chrome.
++bento-color-light =
++    .label = Light
++bento-color-dark =
++    .label = Dark
++bento-color-system =
++    .label = Follow system
++
++bento-tab-sleep-enabled =
++    .label = Sleep idle tabs
++bento-tab-sleep-after =
++    .label = Sleep tabs after
++    .description = Minutes of inactivity before an eligible tab sleeps.
++bento-tab-keep-alive =
++    .label = Keep alive per workspace
++
++bento-default-workspace-name =
++    .label = Default workspace name
++bento-sidebar-shortcut-behavior =
++    .label = Cmd/Ctrl+S action
++bento-sidebar-shortcut-collapse =
++    .label = Collapse the sidebar
++bento-sidebar-shortcut-hide =
++    .label = Hide the sidebar
++
++bento-default-panel-width =
++    .label = Default new panel width
++bento-panel-wraparound =
++    .label = Wrap panel shortcuts at the ends
++bento-panel-shadows =
++    .label = Show panel shadows
++bento-panel-roundness =
++    .label = Panel roundness
++bento-panel-roundness-label = Panel roundness
++bento-panel-gap =
++    .label = Panel gap and splitter size
++bento-panel-gap-label = Panel gap and splitter size
++bento-custom-panel-sizes =
++    .label = Custom panel sizes
++# Variables:
++#   $position (Number) - One-based position of this panel size in the list.
++bento-panel-size-input = Panel size { $position }
++# Variables:
++#   $position (Number) - One-based position of this panel size in the list.
++bento-panel-size-item =
++    .label = Panel size { $position }
++bento-panel-size-remove =
++    .label = Remove
++bento-panel-size-up =
++    .label = Move up
++bento-panel-size-down =
++    .label = Move down
++bento-panel-size-add =
++    .label = Add panel size
++bento-panel-size-moved = Panel size moved to position { $position }.
++
++bento-protection-level =
++    .label = Protection level
++bento-protection-standard =
++    .label = Standard
++bento-protection-enhanced =
++    .label = Enhanced
++bento-protection-hardened =
++    .label = Hardened
++bento-protection-custom =
++    .label = Custom
++bento-default-search-engine =
++    .label = Default search engine
++bento-privacy-safe-browsing-enabled =
++    .label = Local Safe Browsing
++bento-privacy-remote-safe-browsing-enabled =
++    .label = Remote download reputation
++bento-privacy-resist-fingerprinting =
++    .label = Resist fingerprinting
++bento-privacy-letterboxing =
++    .label = Letterboxing
++bento-privacy-network-prediction =
++    .label = Network prediction
++bento-privacy-peer-connection =
++    .label = WebRTC peer connections
++bento-privacy-web-rtcip-handling-policy =
++    .label = WebRTC IP handling
++bento-privacy-https-only-mode =
++    .label = HTTPS-only mode
++bento-privacy-drm-enabled =
++    .label = DRM protected content
++bento-privacy-disk-cache-enabled =
++    .label = Disk cache
++bento-privacy-webgl-enabled =
++    .label = WebGL
++bento-privacy-webgpu-enabled =
++    .label = WebGPU
++bento-privacy-password-saving-enabled =
++    .label = Password saving
++bento-privacy-form-history-enabled =
++    .label = Form history
++bento-privacy-sanitize-on-shutdown =
++    .label = Clear cookies and cache on shutdown
++bento-webrtc-policy-default =
++    .label = Default
++bento-webrtc-policy-proxy-only =
++    .label = Disable non-proxied UDP
++bento-https-only-never =
++    .label = Off
++bento-https-only-always =
++    .label = Always
++
++bento-auto-backup-enabled =
++    .label = Automatic backups
++bento-auto-backup-interval =
++    .label = Backup interval
++    .description = Minutes between automatic backups.
++bento-auto-backup-retention =
++    .label = Backups to retain
++bento-backup-export =
++    .label = Export Bento data…
++bento-backup-import =
++    .label = Import Bento data…
++bento-backup-manage =
++    .label = Manage stored backups
++bento-backup-save-title = Export Bento data
++bento-backup-import-title = Import Bento data
++bento-backup-import-confirm-title = Import Bento data?
++bento-backup-import-confirm = Import { $workspaces } workspaces and { $tabs } tabs into this window?
++bento-backups-heading =
++    .label = Stored backups
++bento-backup-private-unavailable = Backup management is unavailable in private windows.
++bento-backup-legacy-unknown = This backup predates private-data filtering. Its privacy safety is unknown.
++bento-backup-empty = No stored backups yet.
++bento-backup-summary = { $date } — { $workspaces } workspaces, { $tabs } tabs
++bento-backup-restore =
++    .label = Restore…
++bento-backup-delete =
++    .label = Delete…
++bento-backup-restore-title = Restore this backup?
++bento-backup-restore-confirm = This adds the backup's workspaces and tabs to the current window.
++bento-backup-delete-title = Delete this backup?
++bento-backup-delete-confirm = This permanently removes the selected stored backup.
++
++bento-shortcuts-open =
++    .label = View keyboard shortcuts
++bento-shortcuts-heading =
++    .label = Keyboard shortcuts
++bento-shortcuts-search =
++    .label = Search shortcuts
++    .placeholder = Search shortcuts
++# Variables:
++#   $count (Number) - Number of keyboard shortcuts matching the search.
++bento-shortcuts-results =
++    .label = { $count } results
++bento-shortcut-1-label = Switch workspace by index
++bento-shortcut-1-keys = Cmd/Ctrl + Alt + 1–9
++bento-shortcut-2-label = Minimize sidebar
++bento-shortcut-2-keys = Cmd/Ctrl + S
++bento-shortcut-3-label = Previous panel
++bento-shortcut-3-keys = Cmd/Ctrl + Shift + [
++bento-shortcut-4-label = Next panel
++bento-shortcut-4-keys = Cmd/Ctrl + Shift + ]
++bento-shortcut-5-label = Open command palette
++bento-shortcut-5-keys = Cmd/Ctrl + K
++bento-shortcut-6-label = Close overlay
++bento-shortcut-6-keys = Escape
++bento-shortcut-7-label = Close tab with pointer
++bento-shortcut-7-keys = Middle click
++bento-shortcut-8-label = New tab
++bento-shortcut-8-keys = Cmd/Ctrl + T
++bento-shortcut-9-label = Close tab
++bento-shortcut-9-keys = Cmd/Ctrl + W
++bento-shortcut-10-label = Reopen closed tab
++bento-shortcut-10-keys = Cmd/Ctrl + Shift + T
++bento-shortcut-11-label = Switch tab by index
++bento-shortcut-11-keys = Cmd/Ctrl + 1–9
++bento-shortcut-12-label = Reload Bento shell
++bento-shortcut-12-keys = Alt + Shift + R
++
++bento-reset-button =
++    .label = Reset Bento settings…
++bento-reset-title = Reset Bento settings?
++bento-reset-confirm = This restores Bento settings, privacy protection, and search to their defaults.
++
++bento-error-invalid-envelope = The Settings request was invalid.
++bento-error-unsupported-version = Bento Settings must be reloaded after an update.
++bento-error-invalid-session = The Settings session expired. Reload Settings and try again.
++bento-error-private-window-forbidden = This operation is unavailable in a private window.
++bento-error-persistence-failed = Bento could not save this setting.
++bento-error-target-window-unavailable = The originating Bento window is no longer available.
++bento-error-internal = Bento could not complete this operation.
+diff --git a/toolkit/content/tests/widgets/test_moz_select_panel.html b/toolkit/content/tests/widgets/test_moz_select_panel.html
+index 5b520e23b9a934f3eb5afe110a584f7b205310bf..23a1875def32ed866e9f22c16d7b122f6e04159d 100644
+--- a/toolkit/content/tests/widgets/test_moz_select_panel.html
++++ b/toolkit/content/tests/widgets/test_moz_select_panel.html
+@@ -58,6 +58,37 @@
+         await hidden;
+       });
+ 
++      add_task(async function testForcedPanelListWithoutIcons() {
++        let target = await testHelpers.renderTemplate(testHelpers.html`
++          <moz-select force-panel-list>
++            <moz-option value="1" label="One"></moz-option>
++            <moz-option value="2" label="Two"></moz-option>
++          </moz-select>
++        `);
++        let select = target.querySelector("moz-select");
++        await select.updateComplete;
++
++        ok(select.forcePanelList, "Forced panel-list mode is enabled");
++        ok(
++          select.usePanelList,
++          "Select uses panel-list without requiring option icons"
++        );
++        is(
++          select.inputEl.localName,
++          "button",
++          "Forced panel-list mode renders the Firefox panel trigger"
++        );
++
++        let shown = BrowserTestUtils.waitForEvent(select.panelList, "shown");
++        synthesizeMouseAtCenter(select.inputEl, {});
++        await shown;
++        ok(select.panelList.open, "Forced panel-list opens on mousedown");
++
++        let hidden = BrowserTestUtils.waitForEvent(select.panelList, "hidden");
++        select.panelList.hide();
++        await hidden;
++      });
++
+       add_task(async function testPanelAnchoredToTriggerButton() {
+         let target = await testHelpers.renderTemplate();
+         let select = target.querySelector("moz-select");
+diff --git a/toolkit/content/widgets/moz-select/moz-select.mjs b/toolkit/content/widgets/moz-select/moz-select.mjs
+index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307bb6f2af06 100644
+--- a/toolkit/content/widgets/moz-select/moz-select.mjs
++++ b/toolkit/content/widgets/moz-select/moz-select.mjs
+@@ -39,6 +39,8 @@ import { MozBaseInputElement, MozLitElement } from "../lit-utils.mjs";
+  *     default slot. Do not set directly, these will be overridden by <moz-option> children.
+  * @property {SelectOption} selectedOption - The currently selected option object.
+  * @property {number} selectedIndex - The index of the currently selected option.
++ * @property {boolean} forcePanelList - Whether to use Firefox's panel-list UI
++ *     even when the options do not have icons.
+  * @property {boolean} usePanelList - Whether or not to render a panel. Depends on options using icons.
+  */
+ export default class MozSelect extends MozBaseInputElement {
+@@ -46,6 +48,7 @@ export default class MozSelect extends MozBaseInputElement {
+     options: { type: Array, state: true },
+     selectedOption: { type: Object, state: true },
+     selectedIndex: { type: Number, state: true },
++    forcePanelList: { type: Boolean, attribute: "force-panel-list" },
+     usePanelList: { type: Boolean, state: true },
+   };
+   static inputLayout = "block";
+@@ -59,6 +62,7 @@ export default class MozSelect extends MozBaseInputElement {
+     super();
+     this.value = "";
+     this.options = [];
++    this.forcePanelList = false;
+     this.usePanelList = false;
+     this.selectedOption = null;
+     this.selectedIndex = 0;
+@@ -87,6 +91,10 @@ export default class MozSelect extends MozBaseInputElement {
+ 
+   willUpdate(changedProperties) {
+     super.willUpdate(changedProperties);
++    if (changedProperties.has("forcePanelList")) {
++      this.usePanelList =
++        this.forcePanelList || this.options.some(opt => opt.iconSrc);
++    }
+     if (changedProperties.has("value") || changedProperties.has("options")) {
+       this.selectedIndex = this.options.findIndex(
+         opt => opt.value === this.value
+@@ -143,7 +151,7 @@ export default class MozSelect extends MozBaseInputElement {
+     }
+ 
+     this.options = options;
+-    this.usePanelList = options.some(opt => opt.iconSrc);
++    this.usePanelList = this.forcePanelList || options.some(opt => opt.iconSrc);
+ 
+     // Default to first option if no value set to match native select behavior.
+     if (this.usePanelList && !this.value && this.options.length) {
+-- 
+2.50.1 (Apple Git-155)
+

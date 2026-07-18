@@ -37,6 +37,10 @@ describe('workspace backup import/export', () => {
 
   it('exports current panel layout, panel widths, main width, and strip scroll', async () => {
     vi.stubGlobal('browser', {
+      windows: {
+        get: vi.fn(async () => ({ id: 42, type: 'normal', incognito: false })),
+        getAll: vi.fn(async () => [{ id: 42, type: 'normal', incognito: false }]),
+      },
       tabs: {
         get: vi.fn(async (tabId: number) => {
           const tabs = new Map<number, { id: number; url: string }>([
@@ -134,6 +138,10 @@ describe('workspace backup import/export', () => {
   it('imports panel layout state onto the new workspace', async () => {
     let nextTabId = 100;
     vi.stubGlobal('browser', {
+      windows: {
+        get: vi.fn(async () => ({ id: 42, type: 'normal', incognito: false })),
+        getAll: vi.fn(async () => [{ id: 42, type: 'normal', incognito: false }]),
+      },
       tabs: {
         create: vi.fn(async (options: { url: string }) => ({
           id: nextTabId++,
@@ -154,6 +162,7 @@ describe('workspace backup import/export', () => {
       workspaces: {
         snapshot: () => ({ workspaces: [] }),
         create: vi.fn(() => ({ id: 'imported-workspace', name: 'Imported', createdAt: 456 })),
+        activate: vi.fn(() => 'activated'),
       },
       tabs: {
         assignWorkspace: vi.fn(async () => undefined),
@@ -169,10 +178,12 @@ describe('workspace backup import/export', () => {
       },
       settings: {
         update: vi.fn(),
+        snapshot: () => DEFAULT_SETTINGS,
       },
       savedPanels: {
         save: vi.fn(),
       },
+      targetWindowId: 42,
     } as unknown as ImportContext;
 
     const data: BentoExportSchema = {
@@ -208,7 +219,7 @@ describe('workspace backup import/export', () => {
 
     expect(summary).toMatchObject({
       workspacesCreated: 1,
-      tabsOpened: 4,
+      tabsOpened: 5,
       panelsRestored: 4,
     });
     expect(setMainWidth).toHaveBeenCalledWith('imported-workspace', 720);
@@ -228,17 +239,29 @@ describe('workspace backup import/export', () => {
   });
 
   it('replaces existing workspaces only after imported tabs exist', async () => {
+    const removed = new Set<number>();
     const createTab = vi.fn(async (options: { url: string }) => ({
       id: options.url === 'about:blank' ? 201 : 200,
       url: options.url,
       active: false,
       pinned: false,
     }));
-    const removeTabs = vi.fn(async () => undefined);
+    const removeTabs = vi.fn(async (ids: number[]) => {
+      for (const id of ids) removed.add(id);
+    });
     vi.stubGlobal('browser', {
+      windows: {
+        get: vi.fn(async () => ({ id: 42, type: 'normal', incognito: false })),
+        getAll: vi.fn(async () => [{ id: 42, type: 'normal', incognito: false }]),
+      },
       tabs: {
         create: createTab,
         remove: removeTabs,
+        move: vi.fn(async () => []),
+        get: vi.fn(async (id: number) => {
+          if (removed.has(id)) throw new Error('missing');
+          return { id, windowId: 42, incognito: false };
+        }),
       },
     });
 
@@ -257,6 +280,7 @@ describe('workspace backup import/export', () => {
         }),
         create: createWorkspace,
         delete: deleteWorkspace,
+        activate: vi.fn(() => 'activated'),
       },
       tabs: {
         snapshot: () => [
@@ -280,10 +304,12 @@ describe('workspace backup import/export', () => {
       },
       settings: {
         update: vi.fn(),
+        snapshot: () => DEFAULT_SETTINGS,
       },
       savedPanels: {
         save: vi.fn(),
       },
+      targetWindowId: 42,
     } as unknown as ImportContext;
 
     const data: BentoExportSchema = {
@@ -319,11 +345,13 @@ describe('workspace backup import/export', () => {
     expect(createWorkspace).toHaveBeenCalledWith(
       { name: 'Workspace 1', themeId: undefined, icon: undefined },
       null,
+      { activate: false, id: undefined },
     );
     expect(createTab).toHaveBeenCalledWith({
       url: 'https://main.example.test/',
       active: false,
       pinned: false,
+      windowId: 42,
     });
     expect(assignWorkspace).toHaveBeenCalledWith(200, 'imported-workspace');
     expect(removeTabs).toHaveBeenCalledWith([10]);
@@ -334,17 +362,29 @@ describe('workspace backup import/export', () => {
   });
 
   it('creates a fallback tab before replacing with an empty workspace export', async () => {
+    const removed = new Set<number>();
     const createTab = vi.fn(async () => ({
       id: 300,
       url: 'about:blank',
       active: false,
       pinned: false,
     }));
-    const removeTabs = vi.fn(async () => undefined);
+    const removeTabs = vi.fn(async (ids: number[]) => {
+      for (const id of ids) removed.add(id);
+    });
     vi.stubGlobal('browser', {
+      windows: {
+        get: vi.fn(async () => ({ id: 42, type: 'normal', incognito: false })),
+        getAll: vi.fn(async () => [{ id: 42, type: 'normal', incognito: false }]),
+      },
       tabs: {
         create: createTab,
         remove: removeTabs,
+        move: vi.fn(async () => []),
+        get: vi.fn(async (id: number) => {
+          if (removed.has(id)) throw new Error('missing');
+          return { id, windowId: 42, incognito: false };
+        }),
       },
     });
 
@@ -356,6 +396,7 @@ describe('workspace backup import/export', () => {
         }),
         create: vi.fn(() => ({ id: 'empty-workspace', name: 'Empty', createdAt: 456 })),
         delete: vi.fn(),
+        activate: vi.fn(() => 'activated'),
       },
       tabs: {
         snapshot: () => [{ id: 10, workspaceId: 'old-workspace', title: 'Old', pinned: false }],
@@ -372,10 +413,12 @@ describe('workspace backup import/export', () => {
       },
       settings: {
         update: vi.fn(),
+        snapshot: () => DEFAULT_SETTINGS,
       },
       savedPanels: {
         save: vi.fn(),
       },
+      targetWindowId: 42,
     } as unknown as ImportContext;
 
     await executeImport(
@@ -400,7 +443,11 @@ describe('workspace backup import/export', () => {
       ctx,
     );
 
-    expect(createTab).toHaveBeenCalledWith({ url: 'about:blank', active: false });
+    expect(createTab).toHaveBeenCalledWith({
+      url: 'about:blank',
+      active: false,
+      windowId: 42,
+    });
     expect(assignWorkspace).toHaveBeenCalledWith(300, 'empty-workspace');
     expect(createTab.mock.invocationCallOrder[0]).toBeLessThan(
       removeTabs.mock.invocationCallOrder[0]!,

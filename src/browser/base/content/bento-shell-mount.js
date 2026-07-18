@@ -25,6 +25,13 @@
   window.__bentoShellMountInitialized = true;
 
   const ADDON_ID = 'bento-shell@bento.app';
+  const { BentoShellDocumentRegistry } = ChromeUtils.importESModule(
+    'resource://app/actors/BentoShellDocumentRegistry.sys.mjs',
+  );
+  const { PrivateBrowsingUtils: BentoPrivateBrowsingUtils } = ChromeUtils.importESModule(
+    'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
+  );
+  let bentoShellRegistryRecord = null;
   const BENTO_PANEL_NEWTAB_PATH = '/dist/panel-newtab.html';
   const BENTO_WELCOME_STEP_ENV = 'BENTO_WELCOME_STEP';
   // Current post-import onboarding step. The welcome page also includes the
@@ -3224,8 +3231,11 @@
       frame.style.backgroundColor = 'transparent';
       frame.style.setProperty('-moz-appearance', 'none');
     }
+    const registryRecord = registerBentoShellDocument();
     setFrameSrc('bento-shell-frame', '/dist/index.html', undefined, {
       bentoSidebarAddressBridgeToken: getBentoSidebarAddressBridgeToken(),
+      bentoMountToken: registryRecord?.mountToken,
+      bentoClientInstanceId: registryRecord?.clientInstanceId,
     });
   }
 
@@ -4488,6 +4498,8 @@
   const WORKSPACE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_PALETTE';
   const MERGE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_MERGE_PALETTE';
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
+  const SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_';
+  const SETTINGS_PRIVACY_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_PRIVACY_';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
   const SIDEBAR_FOOTER_PANEL_POSITION = 'topleft bottomleft';
@@ -4565,6 +4577,84 @@
   // chars; timestamp ensures repeated identical states still trigger
   // the title-change poll.
   const PANELS_PREFIX = 'BENTO_PANELS:';
+  const GRAPH_COMMIT_PREFIX = 'BENTO_GRAPH_COMMIT:';
+
+  function handleGraphCommitTitle(rawTitle) {
+    const [, backendInstanceId, publicationId, revisionText] = rawTitle.split(':');
+    const graphRevision = Number(revisionText);
+    const record = registerBentoShellDocument();
+    if (
+      !record ||
+      !backendInstanceId ||
+      !publicationId ||
+      !Number.isSafeInteger(graphRevision)
+    ) {
+      return;
+    }
+    BentoShellDocumentRegistry.recordChromeApplied(record.mountToken, {
+      backendInstanceId,
+      publicationId,
+      graphRevision,
+    });
+  }
+
+  function registerBentoShellDocument() {
+    if (bentoShellRegistryRecord) return bentoShellRegistryRecord;
+    const browser = document.getElementById('bento-shell-frame');
+    const windowId = getChromeWindowId();
+    if (!browser || !Number.isInteger(windowId)) return null;
+    bentoShellRegistryRecord = BentoShellDocumentRegistry.registerDocument({
+      browser,
+      chromeWindow: window,
+      entryKind: 'sidebar',
+      role: 'primary',
+      windowId,
+      isPrivate: BentoPrivateBrowsingUtils.isWindowPrivate(window),
+    });
+    return bentoShellRegistryRecord;
+  }
+
+  window.addEventListener(
+    'unload',
+    () => {
+      if (bentoShellRegistryRecord) {
+        BentoShellDocumentRegistry.removeDocument(bentoShellRegistryRecord.mountToken);
+        bentoShellRegistryRecord = null;
+      }
+    },
+    { once: true },
+  );
+
+  async function openBentoSettings(focusPrivacy = false) {
+    const settingsBrowser = Array.from(window.gBrowser?.browsers || []).find((browser) => {
+      const spec = browser.currentURI?.spec || '';
+      return spec.startsWith('about:preferences') || spec.startsWith('about:settings');
+    });
+    let browser = settingsBrowser;
+    if (!browser) {
+      const tab = window.gBrowser.addTrustedTab('about:settings#bento', {
+        relatedToCurrent: true,
+      });
+      window.gBrowser.selectedTab = tab;
+      browser = tab.linkedBrowser;
+    } else {
+      window.gBrowser.selectedTab = window.gBrowser.getTabForBrowser(browser);
+      const contentWindow = browser.contentWindow;
+      if (contentWindow?.location?.hash !== '#bento') {
+        contentWindow.location.hash = 'bento';
+      }
+    }
+    window.focus();
+    if (!focusPrivacy) return;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const contentWindow = browser.contentWindow;
+      if (contentWindow?.BentoPreferences) {
+        contentWindow.BentoPreferences.focusGroup('bentoPrivacySearch');
+        return;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+  }
   // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark|system>
   // The shell sets this on settings/changed; the active BENTO_PANELS
   // payload also carries the same uiColorMode field as a self-correcting
@@ -18621,6 +18711,7 @@
   }
 
   function attachPaletteCloseListener() {
+    registerBentoShellDocument();
     const paletteFrame = document.getElementById('bento-palette-frame');
     // Both frames use polling for title-based IPC. DOMTitleChanged is
     // unreliable for our remote=true moz-extension content — the event
@@ -18636,6 +18727,13 @@
         if (title === lastSeenPaletteTitle) return;
         lastSeenPaletteTitle = title;
         if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
+        else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
+          hidePalette();
+          void openBentoSettings(true);
+        } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
+          hidePalette();
+          void openBentoSettings(false);
+        }
       }, 200);
     }
 
@@ -18831,6 +18929,11 @@
           if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
           else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
+          else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
+            void openBentoSettings(true);
+          } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
+            void openBentoSettings(false);
+          }
           else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
           else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
           else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
@@ -18854,6 +18957,7 @@
           else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
           else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
           else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
+          else if (title.startsWith(GRAPH_COMMIT_PREFIX)) handleGraphCommitTitle(title);
           else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
         }
         window.requestAnimationFrame(pollShellFrame);

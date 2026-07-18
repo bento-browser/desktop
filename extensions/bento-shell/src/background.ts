@@ -17,12 +17,180 @@
 
 import type { Action, Event } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
+import type { ShellClientToTools } from '@shared/shell-client-protocol';
+import { isTargetedShellEvent } from '@shared/shell-client-protocol';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 const RECONNECT_BASE_MS = 200;
 const RECONNECT_MAX_MS = 5000;
 
 const channel = new BroadcastChannel(CHANNEL_NAME);
+
+interface BentoChromeDocument {
+  mountToken: string;
+  clientInstanceId: string;
+  role: 'primary' | 'auxiliary';
+  windowId: number;
+  isPrivate: boolean;
+  registryRevision: number;
+}
+
+interface BentoChromeEvent<T> {
+  addListener(listener: (value: T) => void): void;
+}
+
+interface BentoChromeAPI {
+  bindBackground(details: { newBackgroundInstanceId: string }): Promise<{
+    currentGeneration: number;
+  }>;
+  listDocuments(): Promise<BentoChromeDocument[]>;
+  onDocumentMounted: BentoChromeEvent<BentoChromeDocument>;
+  onDocumentChanged: BentoChromeEvent<BentoChromeDocument>;
+  onDocumentRemoved: BentoChromeEvent<BentoChromeDocument>;
+}
+
+const bentoChrome = (browser as unknown as { bentoChrome: BentoChromeAPI }).bentoChrome;
+const backgroundInstanceId = crypto.randomUUID();
+const documentChannels = new Map<
+  string,
+  {
+    channel: BroadcastChannel;
+    record: BentoChromeDocument;
+    heartbeat: ReturnType<typeof setInterval>;
+  }
+>();
+
+function sendShellMessage(message: ShellClientToTools): void {
+  if (!toolsPort) return;
+  try {
+    toolsPort.postMessage(message);
+  } catch (error) {
+    console.warn('[bento-shell] shell-client message failed:', error);
+  }
+}
+
+function registerDocumentWithTools(record: BentoChromeDocument): void {
+  sendShellMessage({
+    type: 'shell-client/register',
+    shellBackgroundInstanceId: backgroundInstanceId,
+    clientInstanceId: record.clientInstanceId,
+    mountToken: record.mountToken,
+    role: record.role,
+    windowId: record.windowId,
+    audience: record.isPrivate ? 'private' : 'regular',
+    registryRevision: record.registryRevision,
+  });
+  sendShellMessage({
+    type: 'shell-client/ready',
+    shellBackgroundInstanceId: backgroundInstanceId,
+    clientInstanceId: record.clientInstanceId,
+    windowId: record.windowId,
+    registryRevision: record.registryRevision,
+  });
+}
+
+function attachDocument(record: BentoChromeDocument): void {
+  if (!record.mountToken || !record.clientInstanceId) return;
+  const existing = documentChannels.get(record.mountToken);
+  if (existing) {
+    existing.record = record;
+    registerDocumentWithTools(record);
+    return;
+  }
+  const documentChannel = new BroadcastChannel(`bento-shell-doc:${record.mountToken}`);
+  documentChannel.addEventListener('message', (message) => {
+    const data = message.data as
+      | {
+          type?: string;
+          backendInstanceId?: string;
+          publicationId?: string;
+          graphRevision?: number;
+          registryRevision?: number;
+        }
+      | undefined;
+    if (data?.type !== 'document/graph-applied') return;
+    if (
+      typeof data.backendInstanceId !== 'string' ||
+      typeof data.publicationId !== 'string' ||
+      typeof data.graphRevision !== 'number'
+    ) {
+      return;
+    }
+    void bentoChrome.listDocuments().then((documents) => {
+      const current = documents.find(
+        (document) => document.clientInstanceId === record.clientInstanceId,
+      ) as
+        | (BentoChromeDocument & {
+            lastAppliedTuple?: {
+              backendInstanceId?: string;
+              publicationId?: string;
+              graphRevision?: number;
+            } | null;
+          })
+        | undefined;
+      const tuple = current?.lastAppliedTuple;
+      if (
+        !current ||
+        !tuple ||
+        tuple.backendInstanceId !== data.backendInstanceId ||
+        tuple.publicationId !== data.publicationId ||
+        tuple.graphRevision !== data.graphRevision
+      ) {
+        return;
+      }
+      sendShellMessage({
+        type: 'shell-client/action',
+        clientInstanceId: current.clientInstanceId,
+        windowId: current.windowId,
+        action: 'graph/applied',
+        backendInstanceId: data.backendInstanceId!,
+        publicationId: data.publicationId!,
+        graphRevision: data.graphRevision!,
+        registryRevision: current.registryRevision,
+      });
+    });
+  });
+  const heartbeat = setInterval(() => {
+    sendShellMessage({
+      type: 'shell-client/heartbeat',
+      shellBackgroundInstanceId: backgroundInstanceId,
+      clientInstanceId: record.clientInstanceId,
+      windowId: record.windowId,
+      registryRevision: record.registryRevision,
+    });
+  }, 1000);
+  documentChannels.set(record.mountToken, { channel: documentChannel, record, heartbeat });
+  registerDocumentWithTools(record);
+}
+
+function detachDocument(record: BentoChromeDocument): void {
+  const binding = documentChannels.get(record.mountToken);
+  if (!binding) return;
+  sendShellMessage({
+    type: 'shell-client/hidden',
+    shellBackgroundInstanceId: backgroundInstanceId,
+    clientInstanceId: binding.record.clientInstanceId,
+    windowId: binding.record.windowId,
+    registryRevision: binding.record.registryRevision,
+  });
+  clearInterval(binding.heartbeat);
+  binding.channel.close();
+  documentChannels.delete(record.mountToken);
+}
+
+async function bindParentRegistry(): Promise<void> {
+  await bentoChrome.bindBackground({
+    newBackgroundInstanceId: backgroundInstanceId,
+  });
+  for (const record of await bentoChrome.listDocuments()) attachDocument(record);
+  bentoChrome.onDocumentMounted.addListener(attachDocument);
+  bentoChrome.onDocumentChanged.addListener(attachDocument);
+  bentoChrome.onDocumentRemoved.addListener(detachDocument);
+}
+
+void bindParentRegistry().catch((error: unknown) => {
+  console.error('[bento-shell] parent document registry unavailable:', error);
+});
 
 let toolsPort: browser.runtime.Port | null = null;
 let reconnectDelay = RECONNECT_BASE_MS;
@@ -52,6 +220,27 @@ function connectTools(): void {
   firstMessageReceived = false;
 
   port.onMessage.addListener((message: object) => {
+    if (isTargetedShellEvent(message)) {
+      const binding = Array.from(documentChannels.values()).find(
+        (candidate) => candidate.record.clientInstanceId === message.targetClientInstanceId,
+      );
+      const matches =
+        binding &&
+        message.shellBackgroundInstanceId === backgroundInstanceId &&
+        binding.record.role === message.expectedRole &&
+        binding.record.windowId === message.expectedWindowId &&
+        (binding.record.isPrivate ? 'private' : 'regular') === message.expectedAudience;
+      if (matches && binding) {
+        binding.channel.postMessage({ type: 'document/targeted', envelope: message });
+      }
+      sendShellMessage({
+        type: 'shell-client/delivery',
+        deliveryId: message.deliveryId,
+        targetClientInstanceId: message.targetClientInstanceId,
+        disposition: matches ? 'routed' : binding ? 'binding-mismatch' : 'target-missing',
+      });
+      return;
+    }
     const event = message as Event;
     if (!firstMessageReceived) {
       firstMessageReceived = true;
@@ -63,6 +252,10 @@ function connectTools(): void {
     }
     channel.postMessage({ kind: 'event', event });
   });
+
+  for (const binding of documentChannels.values()) {
+    registerDocumentWithTools(binding.record);
+  }
 
   port.onDisconnect.addListener(() => {
     if (toolsPort === port) toolsPort = null;

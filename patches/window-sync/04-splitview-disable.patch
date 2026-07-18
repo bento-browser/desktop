@@ -1,4 +1,4 @@
-From 508efe03bc0157f20a48327ae09eb2c2e1b9111c Mon Sep 17 00:00:00 2001
+From a8848c2af52151464263b5e263046d6c4f1048b8 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:47 +1000
 Subject: [PATCH] Disable Firefox split view

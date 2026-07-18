@@ -127,9 +127,6 @@ Existing examples:
   uses narrow unlayered selectors for the Tale UI `CommandPalette` popup and
   listbox sizing because `@tale-ui/react-styles/command-palette` is unlayered.
   The dimensions come from `--bento-command-palette-*` tokens.
-- [ShortcutsDialog.css](../extensions/bento-shell/src/features/Settings/ShortcutsDialog.css)
-  uses the same scoped unlayered `CommandPalette` sizing pattern for the
-  searchable Settings keyboard-shortcuts reference.
 - [AddressBar.css](../extensions/bento-shell/src/components/AddressBar/AddressBar.css)
   uses the same override pattern for the floating address/new-tab palette's
   standard `CommandPalette` surface, with dimensions from
@@ -332,36 +329,13 @@ Regression checks:
 - Hover each footer button and confirm its Tale UI tooltip and button state
   still appear.
 
-### CommandPalette settings shortcut reference
+### Native Settings controls
 
-Upstream base: Tale UI `CommandPalette`.
-
-Bento owners:
-
-- [ShortcutsDialog.tsx](../extensions/bento-shell/src/features/Settings/ShortcutsDialog.tsx)
-  builds the static, read-only keyboard-shortcuts command records.
-- [ShortcutsDialog.css](../extensions/bento-shell/src/features/Settings/ShortcutsDialog.css)
-  owns the local sizing override.
-- [settings/main.tsx](../extensions/bento-shell/src/settings/main.tsx)
-  imports `@tale-ui/react-styles/command-palette` for the Settings entry.
-
-Current drift:
-
-- The shortcut reference uses the standard opaque CommandPalette popup but is
-  read-only: rows use command-palette item visuals without
-  `CommandPalette.Item` selection or action behavior.
-- Popup, content, and listbox sizing use the same
-  `--bento-command-palette-*` token-backed unlayered override pattern as the
-  full command palette so category sections and key tokens scroll inside the
-  palette surface.
-
-Regression checks:
-
-- Open Settings → Keyboard shortcuts and search for a category, command title,
-  or key name. Results should filter without losing category section headers,
-  and rows should not take focus or run actions when clicked.
-- Press Escape or the close affordance. The palette should close and reopen
-  with an empty query.
+Bento Settings moved to Firefox's config-backed native preferences surface.
+Its shortcut catalogue, number inputs, toggles, selects, and range controls are
+implemented by patch 15 and no longer customize Tale UI components. Keep native
+Settings styling and regression notes in `docs/firefox-core-touchpoints.md`;
+this document covers only remaining shell-owned Tale UI drift.
 
 ### Workspace theme picker
 
@@ -568,33 +542,6 @@ Regression checks:
   accent marker should track the intended slot without moving other buttons
   during the drag, and the buttons should settle into the persisted order on
   release without opening the dragged pin.
-
-### Settings NumberFields
-
-Upstream base: Tale UI `NumberField`.
-
-Bento owners:
-
-- [Settings.tsx](../extensions/bento-shell/src/features/Settings/Settings.tsx)
-  and [BackupSection.tsx](../extensions/bento-shell/src/features/Settings/BackupSection.tsx)
-  render Settings number fields.
-- [Settings.css](../extensions/bento-shell/src/features/Settings/Settings.css)
-  owns the shared `bento-settings__number-field` sizing rule.
-
-Current drift:
-
-- Settings NumberFields use a shared root class whose inner
-  `NumberField.Group` is capped by `--bento-settings-number-field-max-width`.
-  Labels and descriptions keep the surrounding settings row width while the
-  visible input control stays narrow. Bento applies the cap through Tale UI's
-  public `--tale-number-field-group-width` variable.
-
-Regression checks:
-
-- In Settings, default-panel-width, custom-size, sleep-timeout, discard-delay,
-  and backup interval/count NumberFields should render no wider than the token
-  cap and should still keep decrement, input, and increment controls on one
-  line.
 
 ## Themes and chrome
 

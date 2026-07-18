@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bento Settings rollback</title>
+    <style>
+      :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+      body { margin: 0; background: Canvas; color: CanvasText; }
+      main { max-width: 42rem; margin: 10vh auto; padding: 2rem; }
+      h1 { font-size: 1.6rem; }
+      #state { font-weight: 650; }
+      button { font: inherit; padding: .55rem .9rem; }
+      [hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Bento Settings rollback</h1>
+      <p id="summary">Checking this profile…</p>
+      <p>State: <span id="state">unknown</span></p>
+      <button id="prepare" type="button" hidden>Prepare profile for final rollback</button>
+      <p id="result" role="status"></p>
+    </main>
+    <script src="rollback.js"></script>
+  </body>
+</html>

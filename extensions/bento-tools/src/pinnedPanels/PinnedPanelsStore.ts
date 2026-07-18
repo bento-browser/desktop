@@ -411,7 +411,11 @@ export class PinnedPanelsStore {
     void this.#resolveAndPersist(snapshot);
   }
 
-  async #resolveAndPersist(snapshot: PinnedPanelEntry[]): Promise<void> {
+  persistCurrentState(): Promise<void> {
+    return this.#resolveAndPersist(Array.from(this.#byKey.values()), true);
+  }
+
+  async #resolveAndPersist(snapshot: PinnedPanelEntry[], immediate = false): Promise<void> {
     const resolved: PersistedPinnedEntry[] = [];
     for (const entry of snapshot) {
       try {
@@ -440,6 +444,7 @@ export class PinnedPanelsStore {
         });
       }
     }
-    this.#persistence.schedule({ entries: resolved });
+    if (immediate) await this.#persistence.flushNow({ entries: resolved });
+    else this.#persistence.schedule({ entries: resolved });
   }
 }

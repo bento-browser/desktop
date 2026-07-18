@@ -151,6 +151,15 @@ export class Persistence {
     }, DEBOUNCE_MS);
   }
 
+  flushNow(state: PersistedState): Promise<void> {
+    if (this.#timer) {
+      clearTimeout(this.#timer);
+      this.#timer = null;
+    }
+    this.#pending = null;
+    return this.#flush(state);
+  }
+
   async #flush(state: PersistedState): Promise<void> {
     const payload: StoredShapeV4 = {
       version: VERSION,

@@ -17,7 +17,8 @@ Bento exposes three selectable privacy levels and one computed state.
 - Custom: detected when live browser settings diverge from every preset. It is
   not selectable.
 
-Settings shows the benefits and caveats for all three selectable levels.
+The native Bento category in Firefox Settings shows the benefits and caveats
+for all three selectable levels.
 Onboarding shows a compact explanation for the currently selected level before
 the user continues.
 
@@ -52,10 +53,16 @@ The shared preset model lives in `extensions/_shared/privacy-levels.ts`.
 `bento-tools` applies and reads the live browser state through
 `extensions/bento-tools/src/privacy/ProtectionLevels.ts`.
 
-The only privileged API is `browser.bentoPrivacy`, registered from
+The low-level privileged privacy API is `browser.bentoPrivacy`, registered from
 `extensions/bento-tools/experiments/bento-privacy/`. It exposes allowlisted pref
 reads/writes/clears and default search engine operations. It rejects prefs
 outside the static allowlist.
+
+Native Settings uses the separate tools-owned
+`browser.bentoNativePreferences` bridge. The parent adapter authenticates the
+system-principal Settings document and derives its window/private binding;
+private sessions may change safe profile settings but cannot read or mutate
+backup storage.
 
 Settings and onboarding both dispatch the same protocol actions:
 

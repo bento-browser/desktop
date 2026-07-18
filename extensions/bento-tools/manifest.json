@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Bento Tools",
   "short_name": "bento-tools",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Bento Browser background tools — tab/keyboard/persistence logic.",
   "hidden": true,
   "browser_specific_settings": {
@@ -30,6 +30,14 @@
         "scopes": ["addon_parent"],
         "script": "experiments/bento-external-sessions/api.js",
         "paths": [["bentoExternalSessions"]]
+      }
+    },
+    "bentoNativePreferences": {
+      "schema": "experiments/bento-native-preferences/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/bento-native-preferences/api.js",
+        "paths": [["bentoNativePreferences"]]
       }
     }
   },

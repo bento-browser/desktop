@@ -13,6 +13,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
+import { copyFile, mkdir } from 'node:fs/promises';
 
 // Strip `crossorigin` from emitted <script> and <link> tags. moz-extension://
 // resources don't reliably handle CORS preflight, so the attribute makes
@@ -30,8 +31,24 @@ function stripCrossOrigin(): Plugin {
   };
 }
 
+function copyChromeBridgeExperiment(): Plugin {
+  return {
+    name: 'bento-copy-chrome-bridge-experiment',
+    async closeBundle() {
+      const sourceRoot = resolve(__dirname, 'src/experiments/chrome-bridge');
+      const outputRoot = resolve(__dirname, 'experiments/chrome-bridge');
+      await mkdir(outputRoot, { recursive: true });
+      await Promise.all(
+        ['api.js', 'schema.json'].map((file) =>
+          copyFile(resolve(sourceRoot, file), resolve(outputRoot, file)),
+        ),
+      );
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react({ jsxRuntime: 'automatic' }), stripCrossOrigin()],
+  plugins: [react({ jsxRuntime: 'automatic' }), stripCrossOrigin(), copyChromeBridgeExperiment()],
 
   ...(process.env.BENTO_RELEASE === '1'
     ? { esbuild: { drop: ['console', 'debugger'] as const } }
@@ -88,13 +105,11 @@ export default defineConfig(({ mode }) => ({
       // package.json `build:background` script. Vite emits ES modules
       // (correct for the index.html entry that loads via type=module)
       // but MV2 background.scripts requires classic-script format.
-      // Multi-entry: shell is the chrome-mounted sidebar; settings is a
-      // standalone moz-extension://<uuid>/dist/settings.html page; palette,
-      // confirm, and edit-workspace are chrome-mounted overlay <browser>
-      // elements covering the whole window.
+      // Multi-entry: shell is the chrome-mounted sidebar; palette, confirm,
+      // and edit-workspace are chrome-mounted overlay <browser> elements
+      // covering the whole window.
       input: {
         shell: resolve(__dirname, 'index.html'),
-        settings: resolve(__dirname, 'settings.html'),
         palette: resolve(__dirname, 'palette.html'),
         'workspace-palette': resolve(__dirname, 'workspace-palette.html'),
         'merge-palette': resolve(__dirname, 'merge-palette.html'),

@@ -1,0 +1,114 @@
+{
+  "contractHash": "d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705",
+  "errorCodes": [
+    "invalid_envelope",
+    "unsupported_version",
+    "unauthorized_document",
+    "invalid_session",
+    "session_expired",
+    "parent_restarted",
+    "session_window_mismatch",
+    "private_window_forbidden",
+    "invalid_payload",
+    "payload_too_large",
+    "not_found",
+    "conflict",
+    "busy",
+    "deadline_exceeded",
+    "cancelled",
+    "backend_restarted",
+    "persistence_failed",
+    "live_effect_failed",
+    "snapshot_changed",
+    "target_window_unavailable",
+    "validation_token_invalid",
+    "validation_token_expired",
+    "validation_token_used",
+    "operation_unknown",
+    "operation_not_owned",
+    "operation_not_reconcilable",
+    "graph_reserved",
+    "internal_error"
+  ],
+  "invalidEnvelopeMutations": [
+    "extra-top-level",
+    "bad-client-id",
+    "bad-token",
+    "missing-sequence"
+  ],
+  "invalidSettingKeys": [
+    "commandPaletteEnabled",
+    "welcomeSeen",
+    "contentColorMode",
+    "sidebarCollapsed",
+    "sidebarHidden",
+    "privacyProtectionLevel",
+    "defaultSearchEngine",
+    "unknown"
+  ],
+  "operations": [
+    "backup/delete",
+    "backup/export",
+    "backup/getContext",
+    "backup/importValidated",
+    "backup/restore",
+    "backup/validateImport",
+    "operation/reconcile",
+    "operation/status",
+    "privacy/setAdvanced",
+    "privacy/setDefaultSearchEngine",
+    "privacy/setProtectionLevel",
+    "recovery/acknowledgeNotice",
+    "request/cancel",
+    "session/close",
+    "session/hello",
+    "session/renew",
+    "settings/reset",
+    "settings/update",
+    "snapshot/get"
+  ],
+  "protocolVersion": 1,
+  "validAuthenticatedEnvelope": {
+    "clientInstanceId": "22222222-2222-4222-8222-222222222222",
+    "contractHash": "d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705",
+    "deadlineMs": 5000,
+    "operation": "snapshot/get",
+    "payload": {
+      "domains": [
+        "settings"
+      ]
+    },
+    "protocolVersion": 1,
+    "requestId": "33333333-3333-4333-8333-333333333333",
+    "resumeToken": "abcdefghijklmnopqrstuvwxyzABCDEF",
+    "sequence": 0
+  },
+  "validHelloEnvelope": {
+    "clientInstanceId": "22222222-2222-4222-8222-222222222222",
+    "contractHash": "d7945bc9f4a5271537d6c66a16a583562c2f9a5a9088be2b2ea3b7dd04c9c705",
+    "deadlineMs": 5000,
+    "operation": "session/hello",
+    "payload": {},
+    "protocolVersion": 1,
+    "requestId": "11111111-1111-4111-8111-111111111111"
+  },
+  "validSettingsChanges": {
+    "autoBackupEnabled": true,
+    "autoBackupIntervalMinutes": 5,
+    "autoBackupMaxCount": 1,
+    "customPanelSizes": [
+      120
+    ],
+    "defaultPanelWidthPx": 200,
+    "defaultWorkspaceName": "",
+    "panelCornerRadiusPx": 0,
+    "panelCycleWraparound": true,
+    "panelShadowsEnabled": true,
+    "panelSplitterSizePx": 6,
+    "sidebarShortcutBehavior": "collapse",
+    "tabSleepAfterMinutes": 1,
+    "tabSleepEnabled": true,
+    "tabSleepKeepAlivePerWorkspace": 1,
+    "uiColorMode": "light"
+  }
+}
