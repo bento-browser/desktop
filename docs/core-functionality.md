@@ -472,6 +472,9 @@ The intended behavior is:
 - the sidebar's New menu remains reachable when the sidebar is collapsed;
 - Firefox's native app menu and downloads panel remain reachable from the
   sidebar footer;
+- Firefox's persistent native sidebar launcher and its generic toolbar toggle
+  stay hidden because Bento owns that surface; explicit native panels such as
+  Bookmarks and History remain available through their dedicated commands;
 - panel navigator controls sit in the native top toolbar flush with the sidebar
   divider after the native reload button and track that divider during live
   sidebar resize when panels are visible, match the native toolbar buttons'

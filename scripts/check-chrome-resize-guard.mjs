@@ -18,8 +18,10 @@ function readRepoFile(relativePath) {
 
 const chromeMountPath = 'src/browser/base/content/bento-shell-mount.js';
 const chromeTokensPath = 'src/browser/base/content/bento-chrome-tokens.css';
+const chromeThemePath = 'src/browser/base/content/bento-chrome-theme.css';
 const chromeMount = readRepoFile(chromeMountPath);
 const chromeTokens = readRepoFile(chromeTokensPath);
+const chromeTheme = readRepoFile(chromeThemePath);
 
 const normalPanelShadow =
   /--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\),\s*var\(--shadow-l\);/;
@@ -27,15 +29,23 @@ const globalLiveResizeShadowOverride =
   /:root\[(?:bento-window-resizing|bento-sidebar-resizing|bento-panel-resizing)='true'\][^{]*\{[^}]*--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const noPanelLiveResizeOutlineShadow =
   /:root\[bento-window-resizing='true'\]\s+#bento-strip-container\.bento-no-side-panels[^,{]*>\s*#tabbrowser-tabpanels\s*>\s*\.browserSidebarContainer\s*,\s*:root\[bento-sidebar-resizing='true'\]\s+#bento-strip-container\.bento-no-side-panels[^,{]*>\s*#tabbrowser-tabpanels\s*>\s*\.browserSidebarContainer\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
-const settingsAboutPanelResizeSpecGuard =
+const settingsAboutLiveResizeSpecGuard =
   /function isBentoSettingsAboutSpec\([^)]*\)\s*\{[\s\S]*about:preferences[\s\S]*about:settings[\s\S]*\}/;
-const settingsAboutPanelResizeFreeze =
-  /function freezePanelResizeSettingsAboutBrowsers\([^)]*\)\s*\{[\s\S]*preserveLayers\?\.\(true\)[\s\S]*docShellIsActive\s*=\s*false;/;
-const settingsAboutPanelResizeRestore =
-  /function restorePanelResizeSettingsAboutBrowsers\(\)\s*\{[\s\S]*docShellIsActive\s*=[\s\S]*true;/;
-const scopedPanelResizeBegin =
-  /beginBentoPanelResize\(leftPanel\)/;
+const settingsAboutLiveResizeFreeze =
+  /function freezeSettingsAboutBrowsersForLiveResize\(\)\s*\{[\s\S]*?for \(const browserEl of window\.gBrowser\?\.browsers \|\| \[\]\)[\s\S]*preserveLayers\?\.\(true\)[\s\S]*docShellIsActive\s*=\s*false;/;
+const settingsAboutLiveResizeRestore =
+  /function restoreSettingsAboutBrowsersAfterLiveResize\(\)\s*\{[\s\S]*docShellIsActive\s*=[\s\S]*true;/;
+const settingsAboutAllTabsFreeze =
+  /function beginBentoSettingsAboutLiveResize\(\)\s*\{\s*freezeSettingsAboutBrowsersForLiveResize\(\)/;
+const settingsAboutPanelResizeLifecycle =
+  /function beginBentoPanelResize\(\)\s*\{\s*beginBentoSettingsAboutLiveResize\(\)[\s\S]*function endBentoPanelResize\(\)[\s\S]*endBentoSettingsAboutLiveResize\(\)/;
+const settingsAboutSidebarResizeLifecycle =
+  /function attachSidebarSplitterFeedback\(\)[\s\S]*beginBentoSettingsAboutLiveResize\(\)[\s\S]*endBentoSettingsAboutLiveResize\(\)/;
+const settingsAboutWindowResizeLifecycle =
+  /function attachWindowResizePerfMode\(\)[\s\S]*beginBentoSettingsAboutLiveResize\(\)[\s\S]*endBentoSettingsAboutLiveResize\(\)/;
 const generatedShadowToken = /--shadow-l:\s*[^;]+;/;
+const nativeSidebarLauncherSuppression =
+  /:root\[bento-sidebar-addressbar='true'\]\s+:is\(\s*#sidebar-main,\s*#sidebar-launcher-splitter,\s*#sidebar-button,\s*#wrapper-sidebar-button\s*\)\s*\{[^}]*display:\s*none\s*!important;[^}]*visibility:\s*collapse\s*!important;/s;
 
 const failures = [];
 
@@ -59,19 +69,28 @@ if (!noPanelLiveResizeOutlineShadow.test(chromeMount)) {
 }
 
 if (
-  !settingsAboutPanelResizeSpecGuard.test(chromeMount) ||
-  !settingsAboutPanelResizeFreeze.test(chromeMount) ||
-  !settingsAboutPanelResizeRestore.test(chromeMount) ||
-  !scopedPanelResizeBegin.test(chromeMount)
+  !settingsAboutLiveResizeSpecGuard.test(chromeMount) ||
+  !settingsAboutLiveResizeFreeze.test(chromeMount) ||
+  !settingsAboutLiveResizeRestore.test(chromeMount) ||
+  !settingsAboutAllTabsFreeze.test(chromeMount) ||
+  !settingsAboutPanelResizeLifecycle.test(chromeMount) ||
+  !settingsAboutSidebarResizeLifecycle.test(chromeMount) ||
+  !settingsAboutWindowResizeLifecycle.test(chromeMount)
 ) {
   failures.push(
-    `${chromeMountPath} must keep panel resize smooth for about:preferences/about:settings by freezing only the resized settings about-page browser during the panel drag and restoring it when resize settles.`,
+    `${chromeMountPath} must keep panel, sidebar, and window resize smooth when about:preferences/about:settings is open in any tab by freezing every settings about-page browser during live resize and restoring it when all resize gestures settle.`,
   );
 }
 
 if (!generatedShadowToken.test(chromeTokens)) {
   failures.push(
     `${chromeTokensPath} is missing --shadow-l; run pnpm run import to regenerate chrome tokens.`,
+  );
+}
+
+if (!nativeSidebarLauncherSuppression.test(chromeTheme)) {
+  failures.push(
+    `${chromeThemePath} must hide Firefox's native sidebar launcher, launcher splitter, and generic toolbar toggle while Bento owns the sidebar.`,
   );
 }
 

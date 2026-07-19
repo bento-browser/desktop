@@ -5587,7 +5587,8 @@
   }
 
   let bentoPanelResizeDepth = 0;
-  const bentoPanelResizeFrozenSettingsAboutBrowsers = new Map();
+  let bentoSettingsAboutLiveResizeDepth = 0;
+  const bentoLiveResizeFrozenSettingsAboutBrowsers = new Map();
 
   function isBentoPanelResizing() {
     return document.documentElement.getAttribute('bento-panel-resizing') === 'true';
@@ -5616,59 +5617,39 @@
     );
   }
 
-  function getBentoPanelResizeTargets(targets) {
-    if (!targets) return [];
-    if (targets.querySelectorAll || targets.getBoundingClientRect) return [targets];
-    if (typeof targets[Symbol.iterator] === 'function') return Array.from(targets).filter(Boolean);
-    return [targets];
-  }
-
-  function shouldFreezeSettingsAboutBrowserForPanelResize(browserEl) {
-    if (!isBentoSettingsAboutSpec(getBrowserCurrentSpec(browserEl))) return false;
-    try {
-      const rect = browserEl.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0;
-    } catch {
-      return true;
-    }
-  }
-
-  function freezePanelResizeSettingsAboutBrowsers(targets) {
-    for (const target of getBentoPanelResizeTargets(targets)) {
-      const browsers = target?.matches?.('browser')
-        ? [target]
-        : Array.from(target?.querySelectorAll?.('browser') || []);
-      for (const browserEl of browsers) {
-        if (
-          bentoPanelResizeFrozenSettingsAboutBrowsers.has(browserEl) ||
-          !shouldFreezeSettingsAboutBrowserForPanelResize(browserEl)
-        ) {
-          continue;
-        }
-        const previous = {};
-        try {
-          previous.docShellIsActive = browserEl.docShellIsActive;
-        } catch {}
-        try {
-          previous.renderLayers = browserEl.renderLayers;
-        } catch {}
-        bentoPanelResizeFrozenSettingsAboutBrowsers.set(browserEl, previous);
-        try {
-          browserEl.preserveLayers?.(true);
-        } catch {}
-        try {
-          browserEl.renderLayers = true;
-        } catch {}
-        try {
-          browserEl.docShellIsActive = false;
-        } catch {}
+  function freezeSettingsAboutBrowsersForLiveResize() {
+    // Include background tabs: settings pages can keep doing expensive layout
+    // work during chrome resize even when their tab is not selected.
+    for (const browserEl of window.gBrowser?.browsers || []) {
+      if (
+        bentoLiveResizeFrozenSettingsAboutBrowsers.has(browserEl) ||
+        !isBentoSettingsAboutSpec(getBrowserCurrentSpec(browserEl))
+      ) {
+        continue;
       }
+      const previous = {};
+      try {
+        previous.docShellIsActive = browserEl.docShellIsActive;
+      } catch {}
+      try {
+        previous.renderLayers = browserEl.renderLayers;
+      } catch {}
+      bentoLiveResizeFrozenSettingsAboutBrowsers.set(browserEl, previous);
+      try {
+        browserEl.preserveLayers?.(true);
+      } catch {}
+      try {
+        browserEl.renderLayers = true;
+      } catch {}
+      try {
+        browserEl.docShellIsActive = false;
+      } catch {}
     }
   }
 
-  function restorePanelResizeSettingsAboutBrowsers() {
-    if (bentoPanelResizeFrozenSettingsAboutBrowsers.size === 0) return;
-    for (const [browserEl, previous] of bentoPanelResizeFrozenSettingsAboutBrowsers) {
+  function restoreSettingsAboutBrowsersAfterLiveResize() {
+    if (bentoLiveResizeFrozenSettingsAboutBrowsers.size === 0) return;
+    for (const [browserEl, previous] of bentoLiveResizeFrozenSettingsAboutBrowsers) {
       try {
         browserEl.preserveLayers?.(true);
       } catch {}
@@ -5681,11 +5662,24 @@
           typeof previous.docShellIsActive === 'boolean' ? previous.docShellIsActive : true;
       } catch {}
     }
-    bentoPanelResizeFrozenSettingsAboutBrowsers.clear();
+    bentoLiveResizeFrozenSettingsAboutBrowsers.clear();
   }
 
-  function beginBentoPanelResize(resizeTargets = null) {
-    freezePanelResizeSettingsAboutBrowsers(resizeTargets);
+  function beginBentoSettingsAboutLiveResize() {
+    freezeSettingsAboutBrowsersForLiveResize();
+    bentoSettingsAboutLiveResizeDepth += 1;
+  }
+
+  function endBentoSettingsAboutLiveResize() {
+    if (bentoSettingsAboutLiveResizeDepth === 0) return;
+    bentoSettingsAboutLiveResizeDepth -= 1;
+    if (bentoSettingsAboutLiveResizeDepth === 0) {
+      restoreSettingsAboutBrowsersAfterLiveResize();
+    }
+  }
+
+  function beginBentoPanelResize() {
+    beginBentoSettingsAboutLiveResize();
     bentoPanelResizeDepth += 1;
     if (bentoPanelResizeDepth === 1) {
       document.documentElement.setAttribute('bento-panel-resizing', 'true');
@@ -5699,9 +5693,9 @@
     }
     if (wasResizing && bentoPanelResizeDepth === 0) {
       document.documentElement.removeAttribute('bento-panel-resizing');
-      restorePanelResizeSettingsAboutBrowsers();
       window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
     }
+    if (wasResizing) endBentoSettingsAboutLiveResize();
   }
 
   function isBentoChromeLiveResizing() {
@@ -5734,6 +5728,7 @@
       affordance.classList.remove('bento-shell-splitter--dragging');
       host.classList.remove('bento-shell-sidebar-resizing');
       document.documentElement.removeAttribute('bento-sidebar-resizing');
+      endBentoSettingsAboutLiveResize();
       document.documentElement.style.removeProperty('cursor');
       document.documentElement.style.removeProperty('user-select');
     };
@@ -5779,6 +5774,7 @@
 
       affordance.classList.add('bento-shell-splitter--dragging');
       host.classList.add('bento-shell-sidebar-resizing');
+      beginBentoSettingsAboutLiveResize();
       document.documentElement.setAttribute('bento-sidebar-resizing', 'true');
       document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
       document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -8403,7 +8399,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
-    beginBentoPanelResize(col);
+    beginBentoPanelResize();
     splitter.classList.add('bento-subdivision-vsplitter--dragging');
     document.documentElement.style.setProperty('cursor', 'row-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -8477,7 +8473,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
-    beginBentoPanelResize(bottom);
+    beginBentoPanelResize();
     splitter.classList.add('bento-subdivision-hsplitter--dragging');
     document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -9366,7 +9362,7 @@
     } catch (err) {
       console.warn('[bento-shell-mount] setPointerCapture failed:', err);
     }
-    beginBentoPanelResize(leftPanel);
+    beginBentoPanelResize();
     splitter.classList.add('bento-panel-splitter--dragging');
     document.documentElement.style.setProperty('cursor', 'col-resize', 'important');
     document.documentElement.style.setProperty('user-select', 'none', 'important');
@@ -14697,7 +14693,7 @@
     try {
       splitter.setPointerCapture(e.pointerId);
     } catch {}
-    beginBentoPanelResize(getPanelElementsForLayoutGroup(splitter._bentoGroupId));
+    beginBentoPanelResize();
     splitter.classList.add(
       splitter._bentoAxis === 'vertical'
         ? 'bento-subdivision-vsplitter--dragging'
@@ -19916,12 +19912,14 @@
     let timer = null;
     window.addEventListener('resize', () => {
       if (root.getAttribute('bento-window-resizing') !== 'true') {
+        beginBentoSettingsAboutLiveResize();
         root.setAttribute('bento-window-resizing', 'true');
       }
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         timer = null;
         root.removeAttribute('bento-window-resizing');
+        endBentoSettingsAboutLiveResize();
         window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
         requestAnimationFrame(() => requestAnimationFrame(repaintSelectedBrowserAfterWindowResize));
       }, 300);

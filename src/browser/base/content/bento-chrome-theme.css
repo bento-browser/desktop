@@ -289,6 +289,18 @@
     visibility: collapse !important;
   }
 
+  /* Bento owns the persistent sidebar surface. Firefox may restore its
+   * revamp launcher from sidebar.backupState after browser.xhtml's initial
+   * hidden attribute has been processed, which otherwise leaves a second
+   * extension/tool rail beside Bento's sidebar. Suppress only the launcher
+   * and its generic toolbar toggle; #sidebar-box remains available for
+   * explicit native panels such as Bookmarks and History. */
+  :root[bento-sidebar-addressbar='true']
+    :is(#sidebar-main, #sidebar-launcher-splitter, #sidebar-button, #wrapper-sidebar-button) {
+    display: none !important;
+    visibility: collapse !important;
+  }
+
   /* Bento opens Firefox's native app menu and downloads panel from the
    * sidebar footer. Keep the stock toolbar entries hidden so each has one
    * visible home. */

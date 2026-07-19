@@ -215,11 +215,12 @@ Use this shape for new or changed touchpoints:
   corners during normal browsing without a square tabbox/tabpanels backing
   corner showing behind the rounded clip, uses neutral-5 behind the main slot,
   hides the sidebar right border and top-toolbar divider, keeps live window,
-  Bento sidebar, and panel-splitter resize smooth, including when a panel is
-  showing `about:preferences` or `about:settings`, while chrome resize observers
-  are deferred, settings about-page browsers in the resized panel/group are
-  layer-preserved and docshell-paused only for the live panel drag, panel-view
-  frames keep normal shadows during the live gesture, and only the
+  Bento sidebar, and panel-splitter resize smooth when `about:preferences` or
+  `about:settings` is open in any foreground or background tab, while chrome
+  resize observers are deferred, every settings about-page browser is
+  layer-preserved and docshell-paused only for the live gesture then restored
+  to its previous active state, panel-view frames keep normal shadows during the
+  live gesture, and only the
   no-side-panels `.browserSidebarContainer` frame has a direct outline-only live
   window/sidebar resize override, run
   `pnpm run chrome:resize-check` after chrome token changes, and removes that
@@ -515,12 +516,16 @@ Use this shape for new or changed touchpoints:
 - Bento functionality: hides Firefox's native horizontal tab strip while keeping
   the operating system's native window controls visible in the top chrome. The
   visible tab UI remains owned by `bento-shell`. Firefox's Browser layout group
-  and native sidebar toggle are hidden from Settings and Settings search.
+  and native sidebar toggle are hidden from Settings and Settings search. While
+  Bento's sidebar address bar is active, the native revamp launcher rail and its
+  generic toolbar toggle also stay hidden even if Firefox restores a visible
+  launcher from profile state; explicit native sidebar panels remain supported.
 - Vanilla Firefox surface touched or depended on: `TabBarVisibility.update()`,
   `#navigator-toolbox[tabs-hidden]`, `#nav-bar.browser-titlebar`, the nav-bar
   titlebar spacer/buttonbox copy, the native titlebar commands in
   `titlebar-items.inc.xhtml`, and the config-backed `browserLayout` preferences
-  group.
+  group, plus `#sidebar-main`, `#sidebar-launcher-splitter`, `#sidebar-button`,
+  and `#wrapper-sidebar-button`.
 - Why this cannot stay extension-only: only Firefox chrome can collapse
   `#TabsToolbar`, mark the toolbox `tabs-hidden`, and promote the nav bar into
   Firefox's native titlebar/window-control state before the shell extension
@@ -533,8 +538,10 @@ Use this shape for new or changed touchpoints:
 - Regression checks for future updates: verify native window controls are
   visible and clickable, Firefox's native horizontal tab strip stays hidden,
   `sidebar.verticalTabs` remains false and no native Firefox vertical-tabs/sidebar
-  UI appears, the Browser layout group does not appear in Tabs and browsing or
-  Settings search, popup windows keep Firefox's existing single-tab popup
+  launcher UI or generic sidebar toolbar button appears after persisted profile
+  state is restored, explicit native sidebar panels still open without the
+  launcher rail, the Browser layout group does not appear in Tabs and browsing
+  or Settings search, popup windows keep Firefox's existing single-tab popup
   behavior, fullscreen/maximized/restored states swap native controls correctly,
   empty titlebar/nav-bar space drags the window, and URL bar or toolbar button
   interaction does not drag the window.

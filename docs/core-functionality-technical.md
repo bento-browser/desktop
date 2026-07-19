@@ -40,6 +40,18 @@ Firefox's `browserLayout` setting group hidden and hidden from Settings search,
 so neither the horizontal/vertical picker nor the native Show sidebar toggle is
 offered in Bento.
 
+`bento-chrome-theme.css` also suppresses Firefox's revamp `#sidebar-main`,
+`#sidebar-launcher-splitter`, `#sidebar-button`, and
+`#wrapper-sidebar-button` whenever `bento-sidebar-addressbar` is active. The
+static `hidden="true"` markup is not sufficient because `SidebarController`
+can restore `launcherVisible: true` asynchronously from `sidebar.backupState`
+after startup. Keep this suppression scoped to the launcher and its generic
+toggle: native panel content in `#sidebar-box` and its `#sidebar-splitter` must
+remain available for explicit Bookmarks, History, Synced Tabs, Passwords, and
+extension-sidebar commands. `pnpm run chrome:resize-check` guards this selector
+set so a persisted Firefox profile cannot reintroduce a second rail beside
+Bento's sidebar.
+
 When the pref-driven branch is active, Firefox sets
 `#navigator-toolbox[tabs-hidden]`, toggles `#nav-bar.browser-titlebar`, and
 collapses `#TabsToolbar`. That keeps the native horizontal tab strip hidden
@@ -351,13 +363,16 @@ choppy. Panel-view frame shadows stay at the normal outline plus drop-shadow
 during live sidebar, window, and panel resize; do not use a global
 `--bento-panel-frame-shadow` live-resize override for panel view. The only
 outline-only live resize frame is the no-side-panels
-`.browserSidebarContainer` during window/sidebar resize. For panel splitters,
-`about:preferences` and `about:settings` are the exceptional expensive content:
-when a dragged panel or flat-layout group contains one of those browsers,
-`bento-shell-mount.js` preserves its layers, temporarily deactivates that
-browser's docshell during the drag, and restores it when `bento-resize-settled`
-fires. Keep that freeze scoped to the resized panel/group so ordinary web panels
-and panel shadows stay on the normal path. The bottom panel-strip scrollbar
+`.browserSidebarContainer` during window/sidebar resize. `about:preferences` and
+`about:settings` are the exceptional expensive content: their layout work can
+make window, Bento-sidebar, or panel-splitter resize choppy even when the settings
+page is open in a background tab. At the start of each live resize,
+`bento-shell-mount.js` finds every settings about-page browser in
+`gBrowser.browsers`, preserves its layers, and temporarily deactivates its
+docshell. A shared depth counter restores each browser's previous render-layer
+and docshell-active state only after all overlapping resize gestures settle.
+Keep this freeze URL-scoped to settings about pages so ordinary web tabs and
+panel shadows stay on the normal path. The bottom panel-strip scrollbar
 derives `--bento-scrollbar-thickness`
 from twice `--bento-splitter-indicator-radius` and uses
 `--bento-strip-scrollbar-gap` for both its bottom inset and the reserved
@@ -1829,7 +1844,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `bento-window-resizing` or `bento-sidebar-resizing` is set; that native frame
   is the resized, rounded main-content surface and is the documented choppy
   no-panel path. Privileged native about pages such as
-  `about:preferences` and `about:settings` make this regression visible first.
+  `about:preferences` and `about:settings` make this regression visible first;
+  every settings browser is layer-preserved and docshell-paused during live
+  window, sidebar, and panel resize, including when it belongs to a background
+  tab.
   `pnpm run chrome:resize-check` enforces this guard after chrome token
   generation.
 - When removing a parent panel with descendants, close or remove descendant
