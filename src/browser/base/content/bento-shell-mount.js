@@ -1152,10 +1152,6 @@
       #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
         box-shadow: var(--bento-panel-frame-outline-shadow);
       }
-      :root[bento-window-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer,
-      :root[bento-sidebar-resizing='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
-        box-shadow: var(--bento-panel-frame-outline-shadow);
-      }
 
       /* Custom always-visible horizontal scrollbar. Stays in the
          bottom strip position while the favicon navigator lives in the
@@ -5589,6 +5585,16 @@
   let bentoPanelResizeDepth = 0;
   let bentoSettingsAboutLiveResizeDepth = 0;
   const bentoLiveResizeFrozenSettingsAboutBrowsers = new Map();
+  const BENTO_SETTINGS_ABOUT_FROZEN_STYLE_PROPERTIES = [
+    'contain',
+    'flex',
+    'height',
+    'max-height',
+    'max-width',
+    'min-height',
+    'min-width',
+    'width',
+  ];
 
   function isBentoPanelResizing() {
     return document.documentElement.getAttribute('bento-panel-resizing') === 'true';
@@ -5617,9 +5623,58 @@
     );
   }
 
+  function captureSettingsAboutBrowserInlineStyle(browserEl) {
+    const properties = new Map();
+    for (const property of BENTO_SETTINGS_ABOUT_FROZEN_STYLE_PROPERTIES) {
+      properties.set(property, {
+        priority: browserEl.style.getPropertyPriority(property),
+        value: browserEl.style.getPropertyValue(property),
+      });
+    }
+    return properties;
+  }
+
+  function freezeSettingsAboutBrowserGeometry(browserEl, previous) {
+    const browserRect = browserEl.getBoundingClientRect();
+    const stackRect = browserEl.closest?.('.browserStack')?.getBoundingClientRect();
+    const selectedRect = window.gBrowser?.selectedBrowser?.getBoundingClientRect();
+    const width = Math.max(
+      1,
+      Math.ceil(browserRect.width || stackRect?.width || selectedRect?.width || 0),
+    );
+    const height = Math.max(
+      1,
+      Math.ceil(browserRect.height || stackRect?.height || selectedRect?.height || 0),
+    );
+    previous.inlineStyle = captureSettingsAboutBrowserInlineStyle(browserEl);
+    for (const property of ['width', 'min-width', 'max-width']) {
+      browserEl.style.setProperty(property, width + 'px', 'important');
+    }
+    for (const property of ['height', 'min-height', 'max-height']) {
+      browserEl.style.setProperty(property, height + 'px', 'important');
+    }
+    browserEl.style.setProperty('flex', 'none', 'important');
+    browserEl.style.setProperty('contain', 'strict', 'important');
+    browserEl.setAttribute('bento-settings-about-live-resize-frozen', 'true');
+  }
+
+  function restoreSettingsAboutBrowserGeometry(browserEl, previous) {
+    browserEl.removeAttribute('bento-settings-about-live-resize-frozen');
+    for (const property of BENTO_SETTINGS_ABOUT_FROZEN_STYLE_PROPERTIES) {
+      const saved = previous.inlineStyle?.get(property);
+      if (saved?.value) {
+        browserEl.style.setProperty(property, saved.value, saved.priority);
+      } else {
+        browserEl.style.removeProperty(property);
+      }
+    }
+  }
+
   function freezeSettingsAboutBrowsersForLiveResize() {
-    // Include background tabs: settings pages can keep doing expensive layout
-    // work during chrome resize even when their tab is not selected.
+    // Include background tabs: deactivating their docshell alone does not stop
+    // Firefox from resizing the embedded browser viewport on every live frame.
+    // Hold that viewport at its pre-gesture size and let the outer Bento frame
+    // continue resizing and painting its full shadow.
     for (const browserEl of window.gBrowser?.browsers || []) {
       if (
         bentoLiveResizeFrozenSettingsAboutBrowsers.has(browserEl) ||
@@ -5636,6 +5691,9 @@
       } catch {}
       bentoLiveResizeFrozenSettingsAboutBrowsers.set(browserEl, previous);
       try {
+        freezeSettingsAboutBrowserGeometry(browserEl, previous);
+      } catch {}
+      try {
         browserEl.preserveLayers?.(true);
       } catch {}
       try {
@@ -5650,6 +5708,9 @@
   function restoreSettingsAboutBrowsersAfterLiveResize() {
     if (bentoLiveResizeFrozenSettingsAboutBrowsers.size === 0) return;
     for (const [browserEl, previous] of bentoLiveResizeFrozenSettingsAboutBrowsers) {
+      try {
+        restoreSettingsAboutBrowserGeometry(browserEl, previous);
+      } catch {}
       try {
         browserEl.preserveLayers?.(true);
       } catch {}

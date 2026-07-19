@@ -359,20 +359,23 @@ point as Back/Forward/Reload instead of sliding underneath them. Keep
 `:root[bento-sidebar-resizing='true']` and
 `:root[bento-window-resizing='true']`; otherwise a collapsed-width change can
 make live sidebar or window resize inherit the collapse animation path and become
-choppy. Panel-view frame shadows stay at the normal outline plus drop-shadow
-during live sidebar, window, and panel resize; do not use a global
-`--bento-panel-frame-shadow` live-resize override for panel view. The only
-outline-only live resize frame is the no-side-panels
-`.browserSidebarContainer` during window/sidebar resize. `about:preferences` and
+choppy. Panel-view and no-side-panels main-frame shadows stay at the normal
+outline plus drop-shadow during live sidebar, window, and panel resize; do not
+use a live-resize selector to replace `--bento-panel-frame-shadow` or the native
+`.browserSidebarContainer` shadow with the outline-only value. `about:preferences` and
 `about:settings` are the exceptional expensive content: their layout work can
 make window, Bento-sidebar, or panel-splitter resize choppy even when the settings
 page is open in a background tab. At the start of each live resize,
 `bento-shell-mount.js` finds every settings about-page browser in
-`gBrowser.browsers`, preserves its layers, and temporarily deactivates its
-docshell. A shared depth counter restores each browser's previous render-layer
-and docshell-active state only after all overlapping resize gestures settle.
-Keep this freeze URL-scoped to settings about pages so ordinary web tabs and
-panel shadows stay on the normal path. The bottom panel-strip scrollbar
+`gBrowser.browsers`, fixes the embedded browser's width and height to its
+pre-gesture viewport, applies strict containment, preserves its layers, and
+temporarily deactivates its docshell. Deactivating the docshell alone is not
+enough: Firefox still propagates each parent-frame size to the embedded native
+Settings viewport and repeatedly lays it out. A shared depth counter restores
+the browser's prior inline geometry, render-layer, and docshell-active state
+only after all overlapping resize gestures settle. Keep this freeze URL-scoped
+to settings about pages so ordinary web tabs and panel shadows stay on the
+normal path. The bottom panel-strip scrollbar
 derives `--bento-scrollbar-thickness`
 from twice `--bento-splitter-indicator-radius` and uses
 `--bento-strip-scrollbar-gap` for both its bottom inset and the reserved
@@ -1837,17 +1840,16 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   the `bento-resize-settled` event. Do not globally override
   `--bento-panel-frame-shadow` during live resize; panel-view frames should keep
   their normal elevation so panel-view window/sidebar resize can be evaluated
-  independently from the no-panel performance path. In no-side-panels mode, keep
-  a direct
-  `box-shadow: var(--bento-panel-frame-outline-shadow)` override on the native
-  `#tabbrowser-tabpanels > .browserSidebarContainer` frame while
-  `bento-window-resizing` or `bento-sidebar-resizing` is set; that native frame
-  is the resized, rounded main-content surface and is the documented choppy
-  no-panel path. Privileged native about pages such as
+  independently from the no-panel performance path. In no-side-panels mode, the
+  native `#tabbrowser-tabpanels > .browserSidebarContainer` frame keeps
+  `box-shadow: var(--bento-panel-frame-shadow)` throughout live window/sidebar
+  resize. Privileged native about pages such as
   `about:preferences` and `about:settings` make this regression visible first;
-  every settings browser is layer-preserved and docshell-paused during live
-  window, sidebar, and panel resize, including when it belongs to a background
-  tab.
+  every settings browser has its embedded viewport geometry fixed, is
+  layer-preserved, and is docshell-paused during live window, sidebar, and panel
+  resize, including when it belongs to a background tab. Release the fixed
+  geometry before restoring the prior render-layer and docshell-active state so
+  the page performs one final layout at the settled size.
   `pnpm run chrome:resize-check` enforces this guard after chrome token
   generation.
 - When removing a parent panel with descendants, close or remove descendant
@@ -1918,13 +1920,13 @@ Do not use live resize root attributes (`bento-window-resizing`,
 `bento-sidebar-resizing`, or `bento-panel-resizing`) to override the shared
 shadow token globally. Keep
 `scripts/check-chrome-resize-guard.mjs` wired into token import paths so token
-bumps cannot reintroduce full elevation shadows during live resize.
+bumps cannot suppress full elevation shadows during live resize.
 All panel-like chrome surfaces that should respect the setting must use
 `var(--bento-panel-frame-shadow)` rather than `var(--shadow-l)` directly.
-The no-side-panels main-content frame also has an explicit live window/sidebar
-resize selector that sets its `.browserSidebarContainer` shadow to
-`var(--bento-panel-frame-outline-shadow)` directly; keep that selector in sync
-with the scoped no-panel resize guard.
+The no-side-panels main-content frame must not add a live window/sidebar resize
+override; its `.browserSidebarContainer` keeps the same
+`var(--bento-panel-frame-shadow)` declaration before, during, and after the
+gesture. The scoped no-panel resize guard enforces that full-shadow path.
 This includes ordinary split-view panel frames, subdivided-panel descendants, and
 the absolute layout chooser wrapper
 `#bento-side-panel-host > .bento-layout-chooser`. The chooser wrapper is the

@@ -218,11 +218,11 @@ Use this shape for new or changed touchpoints:
   Bento sidebar, and panel-splitter resize smooth when `about:preferences` or
   `about:settings` is open in any foreground or background tab, while chrome
   resize observers are deferred, every settings about-page browser is
-  layer-preserved and docshell-paused only for the live gesture then restored
-  to its previous active state, panel-view frames keep normal shadows during the
-  live gesture, and only the
-  no-side-panels `.browserSidebarContainer` frame has a direct outline-only live
-  window/sidebar resize override, run
+  held at its pre-gesture viewport geometry, layer-preserved, and docshell-paused
+  only for the live gesture then restored to its previous inline geometry and
+  active state, panel-view and no-side-panels main frames keep their full
+  configured shadows throughout the live gesture without a resize-only outline
+  override, run
   `pnpm run chrome:resize-check` after chrome token changes, and removes that
   frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and
