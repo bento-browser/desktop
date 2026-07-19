@@ -727,6 +727,13 @@ component properties. Chrome-bound title signals must not be written twice in
 one synchronous handler because the later title replaces the earlier one
 before the shell-frame polling bridge observes it.
 
+`bento-size-list` names its native `moz-box-group[type="reorderable-list"]`
+with a `label[is="moz-label"]`. Firefox supplies drag reordering and
+Ctrl+Shift+ArrowUp/ArrowDown keyboard reordering through that group. Each row
+contains a `moz-input-number` and one `moz-button[type="destructive"]` Remove
+action; separate Move up and Move down buttons would duplicate the native list
+affordance and must not be added back.
+
 The native Keyboard shortcuts control is a read-only searchable catalogue. The
 Keyboard shortcuts group also writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads

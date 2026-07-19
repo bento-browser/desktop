@@ -1,4 +1,4 @@
-From 94e5b2a168e3375b3f2b3442554c287825ba1006 Mon Sep 17 00:00:00 2001
+From 61ee6994e3d3c69fb78ccdcde90f0b983eeb17dc Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 18 Jul 2026 18:43:30 +1000
 Subject: [PATCH] Add native Bento preferences
@@ -7,21 +7,21 @@ Subject: [PATCH] Add native Bento preferences
  .../actors/BentoShellDocumentRegistry.sys.mjs |  234 +++
  browser/actors/moz.build                      |    1 +
  .../components/preferences/bento/bento.css    |   39 +
- .../BentoNativePreferencesProtocol.sys.mjs    |  406 +++++
+ .../BentoNativePreferencesProtocol.sys.mjs    |  406 ++++++
  .../native-preferences-protocol-fixtures.json |  114 ++
- .../components/preferences/config/bento.mjs   | 1303 +++++++++++++++++
+ .../components/preferences/config/bento.mjs   | 1269 +++++++++++++++++
  browser/components/preferences/jar.mn         |    4 +
  browser/components/preferences/preferences.js |   28 +
  .../components/preferences/preferences.xhtml  |    9 +
  .../components/preferences/tests/browser.toml |    8 +
  .../tests/browser_bento_backup_preferences.js |   37 +
  .../tests/browser_bento_native_bridge.js      |   31 +
- .../tests/browser_bento_preferences.js        |  165 +++
+ .../tests/browser_bento_preferences.js        |  172 +++
  .../browser_bento_private_preferences.js      |   27 +
- .../en-US/browser/preferences/bento.ftl       |  211 +++
+ .../en-US/browser/preferences/bento.ftl       |  208 +++
  .../tests/widgets/test_moz_select_panel.html  |   31 +
  .../content/widgets/moz-select/moz-select.mjs |   10 +-
- 17 files changed, 2657 insertions(+), 1 deletion(-)
+ 17 files changed, 2627 insertions(+), 1 deletion(-)
  create mode 100644 browser/actors/BentoShellDocumentRegistry.sys.mjs
  create mode 100644 browser/components/preferences/bento/bento.css
  create mode 100644 browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
@@ -864,10 +864,10 @@ index 0000000000000000000000000000000000000000..0c699e8244ed939a8f9f0a52aaf5c3d3
 +}
 diff --git a/browser/components/preferences/config/bento.mjs b/browser/components/preferences/config/bento.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..95001d3d9cb9b23caaac29eef5dc731943d27c59
+index 0000000000000000000000000000000000000000..5bd68bc02d78deadcf2f9931326205d058bbea2d
 --- /dev/null
 +++ b/browser/components/preferences/config/bento.mjs
-@@ -0,0 +1,1303 @@
+@@ -0,0 +1,1269 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -1628,36 +1628,18 @@ index 0000000000000000000000000000000000000000..95001d3d9cb9b23caaac29eef5dc7319
 +    this.#value = next;
 +    this.#render();
 +  }
-+  #move(index, offset) {
-+    let target = index + offset;
-+    if (target < 0 || target >= this.#value.length) {
-+      return;
-+    }
-+    [this.#value[index], this.#value[target]] = [
-+      this.#value[target],
-+      this.#value[index],
-+    ];
-+    [this.#ids[index], this.#ids[target]] = [
-+      this.#ids[target],
-+      this.#ids[index],
-+    ];
-+    let movedId = this.#ids[target];
-+    this.#render();
-+    document.l10n.setAttributes(this.#status, "bento-panel-size-moved", {
-+      position: target + 1,
-+    });
-+    this.dispatchEvent(new Event("change", { bubbles: true }));
-+    this.querySelector(
-+      `[data-occurrence-id="${CSS.escape(movedId)}"] moz-input-number`
-+    )?.focus();
-+  }
 +  #render() {
 +    if (!this.isConnected) {
 +      return;
 +    }
 +    this.replaceChildren();
++    let label = document.createElement("label", { is: "moz-label" });
++    label.setAttribute("is", "moz-label");
++    label.setAttribute("data-l10n-id", "bento-custom-panel-sizes-label");
++    label.id = `bento-custom-panel-sizes-${crypto.randomUUID()}`;
 +    let list = document.createElement("moz-box-group");
 +    list.type = "reorderable-list";
++    list.setAttribute("aria-labelledby", label.id);
 +    list.addEventListener("reorder", event => {
 +      let movedId = this.#ids[event.detail.draggedIndex];
 +      this.#value = list.reorderArrayFromEvent(this.#value, event);
@@ -1710,23 +1692,7 @@ index 0000000000000000000000000000000000000000..95001d3d9cb9b23caaac29eef5dc7319
 +        this.#render();
 +        this.dispatchEvent(new Event("change", { bubbles: true }));
 +      });
-+      let up = document.createElement("moz-button");
-+      up.slot = "actions";
-+      up.size = "small";
-+      up.disabled = index === 0;
-+      document.l10n.setAttributes(up, "bento-panel-size-up", {
-+        position: index + 1,
-+      });
-+      up.addEventListener("click", () => this.#move(index, -1));
-+      let down = document.createElement("moz-button");
-+      down.slot = "actions";
-+      down.size = "small";
-+      down.disabled = index === this.#value.length - 1;
-+      document.l10n.setAttributes(down, "bento-panel-size-down", {
-+        position: index + 1,
-+      });
-+      down.addEventListener("click", () => this.#move(index, 1));
-+      item.append(input, up, down, remove);
++      item.append(input, remove);
 +      list.append(item);
 +    });
 +    let add = document.createElement("moz-button");
@@ -1741,7 +1707,7 @@ index 0000000000000000000000000000000000000000..95001d3d9cb9b23caaac29eef5dc7319
 +    this.#status = document.createElement("p");
 +    this.#status.setAttribute("aria-live", "polite");
 +    this.#status.className = "bento-visually-hidden";
-+    this.append(list, add, this.#status);
++    this.append(label, list, add, this.#status);
 +  }
 +}
 +customElements.define("bento-size-list", BentoSizeList);
@@ -2367,10 +2333,10 @@ index 0000000000000000000000000000000000000000..b800e4cbfdafb3aa2a13e16c51b9fda4
 +});
 diff --git a/browser/components/preferences/tests/browser_bento_preferences.js b/browser/components/preferences/tests/browser_bento_preferences.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce7eeb9d27f1b9e54f8c3815635e4052a398aaf8
+index 0000000000000000000000000000000000000000..0e8482d8a2d7439618be82acf313e662a5404d66
 --- /dev/null
 +++ b/browser/components/preferences/tests/browser_bento_preferences.js
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,172 @@
 +/* Any copyright is dedicated to the Public Domain.
 + * http://creativecommons.org/publicdomain/zero/1.0/ */
 +
@@ -2421,7 +2387,9 @@ index 0000000000000000000000000000000000000000..ce7eeb9d27f1b9e54f8c3815635e4052
 +  await TestUtils.waitForCondition(
 +    () =>
 +      roundness.querySelector("moz-slider")?.label === "Panel roundness" &&
-+      sizeList.querySelector("moz-button")?.label === "Move up",
++      sizeList.querySelector('label[is="moz-label"]')?.textContent ===
++        "Custom panel sizes" &&
++      sizeList.querySelector("moz-button")?.label === "Remove",
 +    "Panels controllers compose localized native Firefox controls"
 +  );
 +  is(
@@ -2434,12 +2402,17 @@ index 0000000000000000000000000000000000000000..ce7eeb9d27f1b9e54f8c3815635e4052
 +    "reorderable-list",
 +    "Panel sizes use Firefox's native reorderable list"
 +  );
++  is(
++    sizeList.querySelector("moz-box-group").getAttribute("aria-labelledby"),
++    sizeList.querySelector('label[is="moz-label"]').id,
++    "The custom panel sizes label names the native reorderable list"
++  );
 +  Assert.deepEqual(
 +    [...sizeList.querySelectorAll("moz-box-item:first-of-type moz-button")].map(
 +      button => button.label
 +    ),
-+    ["Move up", "Move down", "Remove"],
-+    "Native panel size actions have visible labels"
++    ["Remove"],
++    "The native panel size action keeps only the visible remove button"
 +  );
 +  is(
 +    doc.querySelectorAll(
@@ -2571,10 +2544,10 @@ index 0000000000000000000000000000000000000000..9132d91750bc63dedddd432436633f0e
 +});
 diff --git a/browser/locales/en-US/browser/preferences/bento.ftl b/browser/locales/en-US/browser/preferences/bento.ftl
 new file mode 100644
-index 0000000000000000000000000000000000000000..9494e3b30828c20f7ad0678006c7bf211d96b5db
+index 0000000000000000000000000000000000000000..8df47d9236dc9f7b1d5f090b1416f5fa7549113a
 --- /dev/null
 +++ b/browser/locales/en-US/browser/preferences/bento.ftl
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,208 @@
 +bento-settings-title = Bento
 +    .heading = Bento
 +bento-backups-title = Bento backups
@@ -2638,6 +2611,7 @@ index 0000000000000000000000000000000000000000..9494e3b30828c20f7ad0678006c7bf21
 +bento-panel-gap-label = Panel gap and splitter size
 +bento-custom-panel-sizes =
 +    .label = Custom panel sizes
++bento-custom-panel-sizes-label = Custom panel sizes
 +# Variables:
 +#   $position (Number) - One-based position of this panel size in the list.
 +bento-panel-size-input = Panel size { $position }
@@ -2647,10 +2621,6 @@ index 0000000000000000000000000000000000000000..9494e3b30828c20f7ad0678006c7bf21
 +    .label = Panel size { $position }
 +bento-panel-size-remove =
 +    .label = Remove
-+bento-panel-size-up =
-+    .label = Move up
-+bento-panel-size-down =
-+    .label = Move down
 +bento-panel-size-add =
 +    .label = Add panel size
 +bento-panel-size-moved = Panel size moved to position { $position }.
@@ -2879,4 +2849,3 @@ index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307b
      if (this.usePanelList && !this.value && this.options.length) {
 -- 
 2.50.1 (Apple Git-155)
-

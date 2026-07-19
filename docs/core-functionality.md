@@ -348,8 +348,8 @@ Panels support the core Bento workflow:
   blank.
 - restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
   regular tab, using the configured default new-panel width.
-- choose custom panel width presets in Settings and set their order with
-  visible Move up, Move down, and Remove actions for each size;
+- manage labelled custom panel width presets in Settings, reorder them by drag
+  or keyboard, and remove individual sizes with a native destructive action;
 - adjust Bento panel corner roundedness with a labelled slider in Settings,
   using the current panel radius as the default;
 - adjust Bento splitter size with a labelled slider in Settings, which also
