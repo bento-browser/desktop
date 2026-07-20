@@ -734,6 +734,13 @@ contains a `moz-input-number` and one `moz-button[type="destructive"]` Remove
 action; separate Move up and Move down buttons would duplicate the native list
 affordance and must not be added back.
 
+The main `setting-pane[data-category="paneBento"]` is substantially longer than
+Firefox's other native panes. Keep its native `setting-group` cards continuously
+rendered. Applying `content-visibility: auto` to these groups causes Gecko to
+show large blank regions while scrolling before the skipped cards are painted.
+Do not restore that containment optimization; scrolling must preserve section
+visibility even if all native groups participate in layout and paint.
+
 The native Keyboard shortcuts control is a read-only searchable catalogue. The
 Keyboard shortcuts group also writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
