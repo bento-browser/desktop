@@ -37,6 +37,13 @@ Thumbs.db
 .codex-mcp/
 .agentic-loop/
 
+# Local Claude session state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Stray Surfer state created by commands run from extension directories
+extensions/*/.surfer/
+
 # Release artifacts (built by scripts/build-release.sh / .github/workflows/release.yml)
 release-out/
 
