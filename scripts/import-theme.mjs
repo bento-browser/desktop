@@ -6,7 +6,7 @@
  *   pnpm theme:import <id> <path-to-scale.css> [--name "Display Name"]
  *
  * The Scale app
- * (/Users/admin/Projects/tale-ui/core/playground/scale) emits canonical
+ * (/Users/admin/Projects/tale-ui/tale-ui/playground/scale) emits canonical
  * CSS that re-points --brand-* and --neutral-default-* under :root, plus
  * --color-N-fg overrides under various selector forms that assume the
  * page has class="tale-ui" on its root. This script:

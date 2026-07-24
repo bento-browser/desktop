@@ -26,7 +26,7 @@ import { Text } from '@tale-ui/react/text';
 import { Column } from '@tale-ui/react/column';
 import { Row } from '@tale-ui/react/row';
 
-import '@tale-ui/core/src';
+import '@tale-ui/css/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/button';

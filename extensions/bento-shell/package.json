@@ -16,11 +16,11 @@
     "ladle:build": "ladle build"
   },
   "dependencies": {
-    "@tale-ui/core": "1.3.56",
-    "@tale-ui/react": "1.3.56",
-    "@tale-ui/react-styles": "1.3.56",
-    "@tale-ui/themes": "1.3.56",
-    "@tale-ui/utils": "1.3.56",
+    "@tale-ui/css": "2.0.0",
+    "@tale-ui/react": "2.0.0",
+    "@tale-ui/react-styles": "2.0.0",
+    "@tale-ui/themes": "2.0.0",
+    "@tale-ui/utils": "2.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-aria-components": "^1.19.0",

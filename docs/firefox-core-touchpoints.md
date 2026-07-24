@@ -491,10 +491,12 @@ Use this shape for new or changed touchpoints:
   slider/value pair stays synchronized, the custom panel sizes label names its
   native reorderable list, and panel-size rows reorder by drag and
   Ctrl+Shift+ArrowUp/ArrowDown without losing their occurrence identity. Each
-  size row should expose only its native destructive Remove action, with no
-  duplicate Move buttons. Confirm the long main Bento pane keeps every native
-  setting group continuously rendered and scrolls without blank, delayed, or
-  jumping cards; do not add `content-visibility` containment to those groups.
+  size row should expose its numeric value and native destructive Remove action
+  without a position-based visible label or duplicate Move buttons; its number
+  field keeps the unnumbered accessible name “Panel size.” Confirm the long main
+  Bento pane keeps every native setting group continuously rendered and scrolls
+  without blank, delayed, or jumping cards; do not add `content-visibility`
+  containment to those groups.
   Confirm the backup and shortcut subpanes contain native list and action
   components. Open every Bento dropdown with both mouse and keyboard, select a
   value, and confirm the Firefox panel closes and the Bento setting persists.

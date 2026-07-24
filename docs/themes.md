@@ -41,13 +41,13 @@ generation, no `<style>` element churn.
 
 ## Generating a custom Bento theme with Scale
 
-The [Tale UI Scale app](file:///Users/admin/Projects/tale-ui/core/playground/scale)
+The [Tale UI Scale app](file:///Users/admin/Projects/tale-ui/tale-ui/playground/scale)
 generates the canonical palette CSS that Bento's converter consumes.
 
 1. From the tale-ui repo:
 
    ```sh
-   cd /Users/admin/Projects/tale-ui/core
+   cd /Users/admin/Projects/tale-ui/tale-ui
    pnpm --filter scale dev   # opens Scale at http://localhost:<port>
    ```
 
@@ -63,7 +63,7 @@ generates the canonical palette CSS that Bento's converter consumes.
    into a file you control, e.g. `~/Desktop/sunset.css`.
 
 The CSS shape Scale emits is documented in the
-[Scale source](file:///Users/admin/Projects/tale-ui/core/playground/scale/src/utils.js)
+[Scale source](file:///Users/admin/Projects/tale-ui/tale-ui/playground/scale/src/utils.js)
 — roughly:
 
 ```css
@@ -465,7 +465,7 @@ to hex and re-import.
 ## Reference
 
 - Source-of-truth Scale generator:
-  [`/Users/admin/Projects/tale-ui/core/playground/scale/`](file:///Users/admin/Projects/tale-ui/core/playground/scale/)
+  [`/Users/admin/Projects/tale-ui/tale-ui/playground/scale/`](file:///Users/admin/Projects/tale-ui/tale-ui/playground/scale/)
 - Theme converter script:
   [`scripts/import-theme.mjs`](../scripts/import-theme.mjs)
 - Shipped theme source: `@tale-ui/themes`

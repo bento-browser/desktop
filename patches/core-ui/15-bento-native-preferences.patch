@@ -9,19 +9,19 @@ Subject: [PATCH] Add native Bento preferences
  .../components/preferences/bento/bento.css    |   39 +
  .../BentoNativePreferencesProtocol.sys.mjs    |  406 ++++++
  .../native-preferences-protocol-fixtures.json |  114 ++
- .../components/preferences/config/bento.mjs   | 1269 +++++++++++++++++
+ .../components/preferences/config/bento.mjs   | 1266 +++++++++++++++++
  browser/components/preferences/jar.mn         |    4 +
  browser/components/preferences/preferences.js |   28 +
  .../components/preferences/preferences.xhtml  |    9 +
  .../components/preferences/tests/browser.toml |    8 +
  .../tests/browser_bento_backup_preferences.js |   37 +
  .../tests/browser_bento_native_bridge.js      |   31 +
- .../tests/browser_bento_preferences.js        |  172 +++
+ .../tests/browser_bento_preferences.js        |  185 +++
  .../browser_bento_private_preferences.js      |   27 +
- .../en-US/browser/preferences/bento.ftl       |  208 +++
+ .../en-US/browser/preferences/bento.ftl       |  202 +++
  .../tests/widgets/test_moz_select_panel.html  |   31 +
  .../content/widgets/moz-select/moz-select.mjs |   10 +-
- 17 files changed, 2627 insertions(+), 1 deletion(-)
+ 17 files changed, 2631 insertions(+), 1 deletion(-)
  create mode 100644 browser/actors/BentoShellDocumentRegistry.sys.mjs
  create mode 100644 browser/components/preferences/bento/bento.css
  create mode 100644 browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
@@ -864,10 +864,10 @@ index 0000000000000000000000000000000000000000..0c699e8244ed939a8f9f0a52aaf5c3d3
 +}
 diff --git a/browser/components/preferences/config/bento.mjs b/browser/components/preferences/config/bento.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5bd68bc02d78deadcf2f9931326205d058bbea2d
+index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc20922d00434
 --- /dev/null
 +++ b/browser/components/preferences/config/bento.mjs
-@@ -0,0 +1,1269 @@
+@@ -0,0 +1,1266 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -1659,14 +1659,11 @@ index 0000000000000000000000000000000000000000..5bd68bc02d78deadcf2f9931326205d0
 +    this.#value.forEach((size, index) => {
 +      let item = document.createElement("moz-box-item");
 +      item.dataset.occurrenceId = this.#ids[index] ||= crypto.randomUUID();
-+      document.l10n.setAttributes(item, "bento-panel-size-item", {
-+        position: index + 1,
-+      });
 +      let input = document.createElement("moz-input-number");
 +      input.slot = "actions-start";
 +      input.value = String(size);
 +      void document.l10n
-+        .formatValue("bento-panel-size-input", { position: index + 1 })
++        .formatValue("bento-panel-size-input")
 +        .then(label => {
 +          input.ariaLabel = label;
 +        });
@@ -2333,10 +2330,10 @@ index 0000000000000000000000000000000000000000..b800e4cbfdafb3aa2a13e16c51b9fda4
 +});
 diff --git a/browser/components/preferences/tests/browser_bento_preferences.js b/browser/components/preferences/tests/browser_bento_preferences.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..0e8482d8a2d7439618be82acf313e662a5404d66
+index 0000000000000000000000000000000000000000..daa33fcb84c8c7d863fb63b2fcd2150bc2d99dc0
 --- /dev/null
 +++ b/browser/components/preferences/tests/browser_bento_preferences.js
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,185 @@
 +/* Any copyright is dedicated to the Public Domain.
 + * http://creativecommons.org/publicdomain/zero/1.0/ */
 +
@@ -2389,7 +2386,8 @@ index 0000000000000000000000000000000000000000..0e8482d8a2d7439618be82acf313e662
 +      roundness.querySelector("moz-slider")?.label === "Panel roundness" &&
 +      sizeList.querySelector('label[is="moz-label"]')?.textContent ===
 +        "Custom panel sizes" &&
-+      sizeList.querySelector("moz-button")?.label === "Remove",
++      sizeList.querySelector("moz-button")?.label === "Remove" &&
++      sizeList.querySelector("moz-input-number")?.ariaLabel === "Panel size",
 +    "Panels controllers compose localized native Firefox controls"
 +  );
 +  is(
@@ -2406,6 +2404,18 @@ index 0000000000000000000000000000000000000000..0e8482d8a2d7439618be82acf313e662
 +    sizeList.querySelector("moz-box-group").getAttribute("aria-labelledby"),
 +    sizeList.querySelector('label[is="moz-label"]').id,
 +    "The custom panel sizes label names the native reorderable list"
++  );
++  ok(
++    [...sizeList.querySelectorAll("moz-box-item")].every(
++      item => !item.hasAttribute("label") && !item.hasAttribute("data-l10n-id")
++    ),
++    "Reorderable panel size rows do not show position-based labels"
++  );
++  ok(
++    [...sizeList.querySelectorAll("moz-input-number")].every(
++      input => input.ariaLabel === "Panel size"
++    ),
++    "Panel size inputs keep an unnumbered accessible name"
 +  );
 +  Assert.deepEqual(
 +    [...sizeList.querySelectorAll("moz-box-item:first-of-type moz-button")].map(
@@ -2544,10 +2554,10 @@ index 0000000000000000000000000000000000000000..9132d91750bc63dedddd432436633f0e
 +});
 diff --git a/browser/locales/en-US/browser/preferences/bento.ftl b/browser/locales/en-US/browser/preferences/bento.ftl
 new file mode 100644
-index 0000000000000000000000000000000000000000..8df47d9236dc9f7b1d5f090b1416f5fa7549113a
+index 0000000000000000000000000000000000000000..889f95f9fd7421573c4e95606b8b6c72ba5fb678
 --- /dev/null
 +++ b/browser/locales/en-US/browser/preferences/bento.ftl
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,202 @@
 +bento-settings-title = Bento
 +    .heading = Bento
 +bento-backups-title = Bento backups
@@ -2612,13 +2622,7 @@ index 0000000000000000000000000000000000000000..8df47d9236dc9f7b1d5f090b1416f5fa
 +bento-custom-panel-sizes =
 +    .label = Custom panel sizes
 +bento-custom-panel-sizes-label = Custom panel sizes
-+# Variables:
-+#   $position (Number) - One-based position of this panel size in the list.
-+bento-panel-size-input = Panel size { $position }
-+# Variables:
-+#   $position (Number) - One-based position of this panel size in the list.
-+bento-panel-size-item =
-+    .label = Panel size { $position }
++bento-panel-size-input = Panel size
 +bento-panel-size-remove =
 +    .label = Remove
 +bento-panel-size-add =

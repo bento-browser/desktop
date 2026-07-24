@@ -94,7 +94,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']).tale-ui {
 /*
  * @tale-ui/themes v1.3.56
  * Generated from src/themes.ts. Run `pnpm generate` after changing theme definitions.
- * Import this stylesheet after @tale-ui/core or @tale-ui/react-styles.
+ * Import this stylesheet after @tale-ui/css or @tale-ui/react-styles.
  */
 
 /* Harbour (standard) — Deep teal with a warm stone neutral. */

@@ -576,14 +576,15 @@ disabled. Its native page header displays the Bento heading beside the Settings
 icon. Sidebar and command-palette launches reuse the Settings tab in the source
 browser window. Backups and keyboard shortcuts use native Bento subpanes. Panel
 sliders, numeric fields, list rows, reorder handles, search, and actions use
-Firefox's native Settings components. Dropdown fields use Firefox's `moz-select`
-control with its Firefox-owned panel menu, so they open consistently inside the
-Bento panel layout. When panel shadows are enabled, panel and main-content
-frames retain their full elevation shadows throughout live sidebar and window
-resizing. Native Settings content holds its current viewport during a live
-resize and performs one final layout when the gesture settles, including when
-the Settings tab is in the background. There is no separate extension-hosted
-Settings page.
+Firefox's native Settings components. Custom panel-size rows show the numeric
+value and Remove action without position-based labels because the rows are
+reorderable. Dropdown fields use Firefox's `moz-select` control with its
+Firefox-owned panel menu, so they open consistently inside the Bento panel
+layout. When panel shadows are enabled, panel and main-content frames retain
+their full elevation shadows throughout live sidebar and window resizing.
+Native Settings content holds its current viewport during a live resize and
+performs one final layout when the gesture settles, including when the Settings
+tab is in the background. There is no separate extension-hosted Settings page.
 
 ## Design principles
 

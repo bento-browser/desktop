@@ -11,7 +11,7 @@ overrides:
   js-yaml: 4.2.0
   vite: 6.4.3
 
-pnpmfileChecksum: sha256-mJ1IwAG5pNWGoyI8TsukQiU5X75eoWftiu+EpgTNQsE=
+pnpmfileChecksum: sha256-DhW//U7V204FvBKnlkIfRNO66vSQlOWT7WTbXDXSKK4=
 
 importers:
 
@@ -53,21 +53,21 @@ importers:
 
   extensions/bento-shell:
     dependencies:
-      '@tale-ui/core':
-        specifier: 1.3.56
-        version: 1.3.56
+      '@tale-ui/css':
+        specifier: 2.0.0
+        version: 2.0.0
       '@tale-ui/react':
-        specifier: 1.3.56
-        version: 1.3.56(@types/react@19.2.14)(lucide-react@0.460.0(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: 2.0.0
+        version: 2.0.0(@types/react@19.2.14)(lucide-react@0.460.0(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tale-ui/react-styles':
-        specifier: 1.3.56
-        version: 1.3.56
+        specifier: 2.0.0
+        version: 2.0.0
       '@tale-ui/themes':
-        specifier: 1.3.56
-        version: 1.3.56(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: 2.0.0
+        version: 2.0.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tale-ui/utils':
-        specifier: 1.3.56
-        version: 1.3.56(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: 2.0.0
+        version: 2.0.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tanstack/react-virtual':
         specifier: ^3.10.0
         version: 3.13.24(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -935,14 +935,14 @@ packages:
   '@swc/types@0.1.26':
     resolution: {integrity: sha512-lyMwd7WGgG79RS7EERZV3T8wMdmPq3xwyg+1nmAM64kIhx5yl+juO2PYIHb7vTiPgPCj8LYjsNV2T5wiQHUEaw==}
 
-  '@tale-ui/core@1.3.56':
-    resolution: {integrity: sha512-f2zHvTAzHXh24pWgYZHSTWrQmkjlqUVkWJPMUzvzmMiQ1XGBlg1T4AjLaOjEynw9Je+LCo+zwKuj7z+dZ/46Vg==}
+  '@tale-ui/css@2.0.0':
+    resolution: {integrity: sha512-dz/eqWJXK7leEruYjPJMRq9eLVWWHJq93zQPu+Sod7aTi0L9ZSAcxPl5cd3KuGDFtnthjkxh9ALgITCO6ql9og==}
 
-  '@tale-ui/react-styles@1.3.56':
-    resolution: {integrity: sha512-KbohtgVf36AA5CrnEJyrGufEUPmd5o1010P8konhuePrfGmbEjE4GW0+o8pQawzHo9/OSTjIMI3jRBeO5bgmPA==}
+  '@tale-ui/react-styles@2.0.0':
+    resolution: {integrity: sha512-lvmwd4cD+JG75DaoQGiNnQQ4xA/43yVTPdv+WfZLykyre0MbBB+EeH+FJzc3jeEnwGo3DoyE7ZnFP7hVvmn36w==}
 
-  '@tale-ui/react@1.3.56':
-    resolution: {integrity: sha512-cAu8lPLyJD6WKeREwx29ADdvfHoXLxA97PKrjJj6Ire2io2II0BJbSiyYw9cUYN4D/nHpIoLT41H677mXOOUmw==}
+  '@tale-ui/react@2.0.0':
+    resolution: {integrity: sha512-uJp0o878FgbvoG1zlVfWPiXN67IxfDUghJSoDCSSMFgmxSLXASuzkQXz0wdE13iOM5w2sXy7hSmty0g35s35wA==}
     engines: {node: '>=14.0.0'}
     hasBin: true
     peerDependencies:
@@ -1001,11 +1001,11 @@ packages:
       react-image-crop:
         optional: true
 
-  '@tale-ui/themes@1.3.56':
-    resolution: {integrity: sha512-XN5t/3ZfsV0Vtaa8ctRMf7kvYRdr3/R0sDO99JsClIatFRRSLAVZRjG5wkRirLx7B8CLEKkgYnRwxCZYn3y7vQ==}
+  '@tale-ui/themes@2.0.0':
+    resolution: {integrity: sha512-cUp9HHTwaFmBFORtegq4gllcBu6GcVGtoEJ5u5DwFCNiMwjlqcH37kEcn3G0yQFfyEWBfq71d5f9/8NcvA3LNQ==}
 
-  '@tale-ui/utils@1.3.56':
-    resolution: {integrity: sha512-FiTiwtZXJGre/D1UB5TtZGCBrYIFvidOVEzLy+gg61sW3RlSBaCn0rf1Fphj6cjhbUmmXN4NXqvyMkZjBKomfA==}
+  '@tale-ui/utils@2.0.0':
+    resolution: {integrity: sha512-meRcffp+nK1ZpD840YxfMPxUx9n5k0/CBkz4tXC4IoQt/eL+NauD60MyCo0q/UoMCHCBFmfsjgDKZ37FCrnL8g==}
     peerDependencies:
       '@types/react': ^17 || ^18 || ^19
       react: ^17 || ^18 || ^19
@@ -1939,8 +1939,8 @@ packages:
   fast-string-width@3.0.2:
     resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
-  fast-uri@3.1.3:
-    resolution: {integrity: sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==}
+  fast-uri@3.1.4:
+    resolution: {integrity: sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==}
 
   fast-wrap-ansi@0.2.0:
     resolution: {integrity: sha512-rLV8JHxTyhVmFYhBJuMujcrHqOT2cnO5Zxj37qROj23CP39GXubJRBUFF0z8KFK77Uc0SukZUf7JZhsVEQ6n8w==}
@@ -2184,8 +2184,8 @@ packages:
     resolution: {integrity: sha512-eSmmWE5bZTK2Nou4g0AI3zZ9rswp7GRKoKXS1BLUkvPviOqs4YTN1djQIqrXy9k5gEtdLPy86JjRwsNM9tnDcA==}
     engines: {node: '>=0.10.0'}
 
-  hono@4.12.30:
-    resolution: {integrity: sha512-emn+JoJjrN9YTpRDS5it/UI2SO9BAE37T6I3d963RxcZ81G9A4pr2SZTEiiaiKbzx+NKRg5BZ89fCL7gCJCUog==}
+  hono@4.12.31:
+    resolution: {integrity: sha512-zJIHFrl6bq3RDd2YusFNCDlM8qUprxKswyi/OPzPyzKDdyBXDqWx8bZlZ7R+saTdSTatUmb3O7K4SspGPaEOQg==}
     engines: {node: '>=16.9.0'}
 
   html-void-elements@3.0.0:
@@ -2377,8 +2377,8 @@ packages:
     resolution: {integrity: sha512-zW4F8H5IhEvOQueqKpr5Fnmt2lNY3B7WY0LWa/Jpl+x3oOf3eGvoSr1QGsz8KWv45G8XwsuxZr4YXrRT1KRfPw==}
     engines: {node: '>=0.8'}
 
-  jose@6.2.3:
-    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
+  jose@6.2.4:
+    resolution: {integrity: sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -4109,9 +4109,9 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@hono/node-server@1.19.14(hono@4.12.30)':
+  '@hono/node-server@1.19.14(hono@4.12.31)':
     dependencies:
-      hono: 4.12.30
+      hono: 4.12.31
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -4289,7 +4289,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.30)
+      '@hono/node-server': 1.19.14(hono@4.12.31)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -4299,8 +4299,8 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1
       express-rate-limit: 8.6.0(express@5.2.1)
-      hono: 4.12.30
-      jose: 6.2.3
+      hono: 4.12.31
+      jose: 6.2.4
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
@@ -4563,20 +4563,20 @@ snapshots:
     dependencies:
       '@swc/counter': 0.1.3
 
-  '@tale-ui/core@1.3.56': {}
+  '@tale-ui/css@2.0.0': {}
 
-  '@tale-ui/react-styles@1.3.56':
+  '@tale-ui/react-styles@2.0.0':
     dependencies:
-      '@tale-ui/core': 1.3.56
+      '@tale-ui/css': 2.0.0
 
-  '@tale-ui/react@1.3.56(@types/react@19.2.14)(lucide-react@0.460.0(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@tale-ui/react@2.0.0(@types/react@19.2.14)(lucide-react@0.460.0(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@babel/runtime': 7.29.2
       '@internationalized/date': 3.12.2
       '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
-      '@tale-ui/core': 1.3.56
-      '@tale-ui/react-styles': 1.3.56
-      '@tale-ui/utils': 1.3.56(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@tale-ui/css': 2.0.0
+      '@tale-ui/react-styles': 2.0.0
+      '@tale-ui/utils': 2.0.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react: 19.2.5
       react-aria-components: 1.19.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-dom: 19.2.5(react@19.2.5)
@@ -4588,18 +4588,18 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@tale-ui/themes@1.3.56(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@tale-ui/themes@2.0.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@babel/runtime': 7.29.2
-      '@tale-ui/core': 1.3.56
-      '@tale-ui/utils': 1.3.56(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@tale-ui/css': 2.0.0
+      '@tale-ui/utils': 2.0.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       culori: 4.0.2
     transitivePeerDependencies:
       - '@types/react'
       - react
       - react-dom
 
-  '@tale-ui/utils@1.3.56(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@tale-ui/utils@2.0.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@babel/runtime': 7.29.2
       '@floating-ui/utils': 0.2.12
@@ -4912,7 +4912,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.3
+      fast-uri: 3.1.4
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -5648,7 +5648,7 @@ snapshots:
     dependencies:
       fast-string-truncated-width: 3.0.3
 
-  fast-uri@3.1.3: {}
+  fast-uri@3.1.4: {}
 
   fast-wrap-ansi@0.2.0:
     dependencies:
@@ -5975,7 +5975,7 @@ snapshots:
     dependencies:
       parse-passwd: 1.0.0
 
-  hono@4.12.30: {}
+  hono@4.12.31: {}
 
   html-void-elements@3.0.0: {}
 
@@ -6140,7 +6140,7 @@ snapshots:
     dependencies:
       is-promise: 4.0.0
 
-  jose@6.2.3: {}
+  jose@6.2.4: {}
 
   js-tokens@4.0.0: {}
 

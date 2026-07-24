@@ -51,7 +51,7 @@ import type {
 } from '@shared/protocol';
 import { PRIVACY_LEVELS, PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 
-import '@tale-ui/core/src';
+import '@tale-ui/css/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/text';
 import '@tale-ui/react-styles/button';

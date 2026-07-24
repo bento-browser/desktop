@@ -118,7 +118,7 @@ When adding, removing, or changing working core implementation behavior:
 
 ## Tale UI MCP server
 
-A project-scoped MCP server is registered in [.mcp.json](.mcp.json) pointing at Tale UI's own server at `/Users/admin/Projects/tale-ui/core/tools/mcp-server.mjs`. It exposes the `mcp__tale-ui__*` tool family used by the Tale UI consumer workflow below. **Project-scoped MCP servers require one-time user approval on first use in a fresh Claude Code session.**
+A project-scoped MCP server is registered in [.mcp.json](.mcp.json) pointing at Tale UI's own server at `/Users/admin/Projects/tale-ui/tale-ui/tools/mcp-server.mjs`. It exposes the `mcp__tale-ui__*` tool family used by the Tale UI consumer workflow below. **Project-scoped MCP servers require one-time user approval on first use in a fresh Claude Code session.**
 
 ## UI Components (@tale-ui/react)
 
@@ -170,7 +170,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 6. **Charts (separate package):** Install `@tale-ui/charts` and `recharts` separately. Import chart styles via `import '@tale-ui/charts/styles';`. Charts use the same compound parts pattern: `BarChart.Root`, `BarChart.Bar`, etc.
 
-7. **A2UI protocol support (optional):** If this project uses AI agents that render UI via the [A2UI protocol](https://a2ui.org/), install `@tale-ui/a2ui`. It maps A2UI agent messages to Tale UI components. See `node_modules/@tale-ui/a2ui/README.md` or the [integration guide](https://github.com/Tale-UI/core/blob/main/docs/a2ui-integration.md). Quick setup:
+7. **A2UI protocol support (optional):** If this project uses AI agents that render UI via the [A2UI protocol](https://a2ui.org/), install `@tale-ui/a2ui`. It maps A2UI agent messages to Tale UI components. See `node_modules/@tale-ui/a2ui/README.md` or the [integration guide](https://github.com/Tale-UI/tale-ui/blob/main/docs/a2ui-integration.md). Quick setup:
 
    ```tsx
    import { A2UIProvider, A2UISurface } from '@tale-ui/a2ui/renderer';
@@ -247,7 +247,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
    | `--modal-*`       | `--modal-title-color`, `--modal-title-font-size`, `--modal-description-color`, `--modal-description-font-size`, `--modal-backdrop-bg`, `--modal-actions-gap`                                                                                                                                                                                                                                               | AlertDialog, Dialog, Drawer                                                                                                    |
    | `--progress-*`    | `--progress-track-height`, `--progress-track-bg`, `--progress-indicator-bg`, `--progress-radius`                                                                                                                                                                                                                                                                                                           | ProgressBar, Meter                                                                                                             |
 
-> **Bento note**: the snippet above is mirrored from [tale-ui's canonical source](/Users/admin/Projects/tale-ui/core/docs/consumer-claude-md-snippet.md). When tale-ui updates that file, re-sync this section. The Bento-specific layered design-system rules below build on top of these base rules — they don't replace them.
+> **Bento note**: the snippet above is mirrored from [tale-ui's canonical source](/Users/admin/Projects/tale-ui/tale-ui/docs/consumer-claude-md-snippet.md). When tale-ui updates that file, re-sync this section. The Bento-specific layered design-system rules below build on top of these base rules — they don't replace them.
 
 ## Hard guardrails (ESLint or CI enforce these)
 
@@ -276,11 +276,11 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 ## Tale UI: development ↔ release toggle
 
-Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react`, `@tale-ui/themes`, `@tale-ui/core`, etc. are currently `1.3.56`) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
+Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react`, `@tale-ui/themes`, `@tale-ui/css`, etc. are currently `2.0.0`) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
 
 **Default install (dev loop)** — `pnpm install`:
 
-- The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/core/packages/*`. Packages consumed through their published export shape, including `@tale-ui/react` and `@tale-ui/themes`, link to their local `build/` output. Source edits in `tale-ui/core` hot-reload after rebuilding the affected Tale UI package.
+- The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/tale-ui/packages/*`. Packages consumed through their published export shape, including `@tale-ui/react` and `@tale-ui/themes`, link to their local `build/` output. Source edits in `tale-ui/tale-ui` hot-reload after rebuilding the affected Tale UI package.
 - The lockfile records the `link:` paths.
 
 **Release install** — `bash scripts/install-release-deps.sh` (used by `scripts/build-release.sh` and GitHub Actions):
@@ -361,5 +361,5 @@ Then iterate by what you changed:
 - `patches/` — git format-patch files applied to Firefox source. Keep small; bigger overlays = harder Firefox bumps.
 - `prefs/bento.js` — privacy defaults appended to the engine's branding prefs.
 - `surfer.json` — Firefox version, build identity, and release display version.
-- Tale UI lives **outside** this repo at `/Users/admin/Projects/tale-ui/core/`.
+- Tale UI lives **outside** this repo at `/Users/admin/Projects/tale-ui/tale-ui/`.
 - **Chrome design tokens**: chrome (Firefox `browser.xhtml`) consumes Tale UI tokens via an auto-generated stylesheet at `src/browser/base/content/bento-chrome-tokens.css` (gitignored). Regenerated from Tale UI source on every `pnpm run import`. Adding a new theme (Scale-app palette, etc.) is a one-line entry in [scripts/generate-chrome-tokens.mjs](scripts/generate-chrome-tokens.mjs)'s `SOURCES` list — see [docs/chrome-tokens.md](docs/chrome-tokens.md) for the end-to-end pipeline.

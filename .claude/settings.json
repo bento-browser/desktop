@@ -12,7 +12,7 @@
     ],
     "additionalDirectories": [
       "/Users/admin/Projects/bento-browser/.claude",
-      "/Users/admin/Projects/tale-ui/core/packages/styles"
+      "/Users/admin/Projects/tale-ui/tale-ui/packages/styles"
     ]
   },
   "hooks": {

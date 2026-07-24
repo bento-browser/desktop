@@ -9,7 +9,7 @@ get Tale UI design tokens anyway, and how that pipeline absorbs future themes.
 ## How it works today
 
 1. **Source of truth:** Tale UI CSS at
-   `/Users/admin/Projects/tale-ui/core/packages/css/src/{tokens,themes}/`.
+   `/Users/admin/Projects/tale-ui/tale-ui/packages/css/src/{tokens,themes}/`.
 2. **Generator:** [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
    reads those files and writes
    [src/browser/base/content/bento-chrome-tokens.css](../src/browser/base/content/bento-chrome-tokens.css)
@@ -99,7 +99,7 @@ re-render in the new accent. Same mechanism the extension uses on
 When the Scale app's algorithm produces a new palette in Tale UI core:
 
 1. Generate the palette CSS with the Scale app and commit it as
-   `tale-ui/core/packages/css/src/themes/_<name>-themes.css` — same
+   `tale-ui/tale-ui/packages/css/src/themes/_<name>-themes.css` — same
    shape as the existing `_color-themes.css` / `_neutral-themes.css`
    (a top-level class selector that overrides `--brand-X` /
    `--neutral-default-X` with calculated values).
@@ -113,7 +113,7 @@ When the Scale app's algorithm produces a new palette in Tale UI core:
    `bento.theme.*` pref + a runtime listener).
 
 The extension's [extensions/bento-shell/src/main.tsx](../extensions/bento-shell/src/main.tsx)
-already imports Tale UI's index.css indirectly via `@tale-ui/core`, so
+already imports Tale UI's index.css indirectly via `@tale-ui/css`, so
 the same theme classes apply on the extension side without any extra
 plumbing — single source of truth across both surfaces.
 

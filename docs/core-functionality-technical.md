@@ -731,8 +731,10 @@ before the shell-frame polling bridge observes it.
 with a `label[is="moz-label"]`. Firefox supplies drag reordering and
 Ctrl+Shift+ArrowUp/ArrowDown keyboard reordering through that group. Each row
 contains a `moz-input-number` and one `moz-button[type="destructive"]` Remove
-action; separate Move up and Move down buttons would duplicate the native list
-affordance and must not be added back.
+action. Rows intentionally have no numbered `moz-box-item` label because their
+position changes when reordered; each number input keeps the unnumbered
+accessible name “Panel size.” Separate Move up and Move down buttons would
+duplicate the native list affordance and must not be added back.
 
 The main `setting-pane[data-category="paneBento"]` is substantially longer than
 Firefox's other native panes. Keep its native `setting-group` cards continuously

@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Tooltip } from '@tale-ui/react/tooltip';
 
-import '@tale-ui/core/src';
+import '@tale-ui/css/src';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/tooltip';
 

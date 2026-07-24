@@ -1,7 +1,7 @@
 // pnpm install hook — toggles Tale UI between local link and npm pin.
 //
 // Default (no env): rewrite @tale-ui/* deps to point at the local Tale UI
-// checkout at /Users/admin/Projects/tale-ui/core/packages/* via the same
+// checkout at /Users/admin/Projects/tale-ui/tale-ui/packages/* via the same
 // `link:` paths the project used before R-1. This is what every developer
 // gets, so source edits in tale-ui hot-reload into Bento exactly as before.
 //
@@ -21,14 +21,14 @@ const path = require('path');
 
 // Resolve absolute path to the local Tale UI checkout. Anchored on this
 // file so pnpm running from any cwd inside the workspace finds it.
-const TALE_UI_ROOT = path.resolve(__dirname, '..', 'tale-ui', 'core', 'packages');
+const TALE_UI_ROOT = path.resolve(__dirname, '..', 'tale-ui', 'tale-ui', 'packages');
 
 // Map @tale-ui/* package names → local subdirectory under TALE_UI_ROOT.
 // The /react entry points to packages/react/build (the compiled output)
 // because the source-only package contains TS that Vite stumbles on for
 // some peer deps; same path Bento was using before R-1.
 const TALE_UI_LINKS = {
-  '@tale-ui/core': path.join(TALE_UI_ROOT, 'css'),
+  '@tale-ui/css': path.join(TALE_UI_ROOT, 'css'),
   '@tale-ui/react': path.join(TALE_UI_ROOT, 'react', 'build'),
   '@tale-ui/react-styles': path.join(TALE_UI_ROOT, 'styles'),
   '@tale-ui/themes': path.join(TALE_UI_ROOT, 'themes', 'build'),

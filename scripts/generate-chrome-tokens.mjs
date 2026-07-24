@@ -38,18 +38,18 @@ const REPO_ROOT = resolve(__dirname, '..');
 const OUT_PATH = resolve(REPO_ROOT, 'src/browser/base/content/bento-chrome-tokens.css');
 
 // Resolve Tale UI's CSS source dir. Scenarios:
-//   1. Dev (.pnpmfile.cjs rewrites @tale-ui/core to a `link:` of the local
-//      sibling checkout): node_modules/@tale-ui/core/ is a symlink to
-//      ../tale-ui/core/packages/css/. src/ is right there inside it.
-//   2. Release (BENTO_RELEASE=1, npm install): node_modules/@tale-ui/core/
+//   1. Dev (.pnpmfile.cjs rewrites @tale-ui/css to a `link:` of the local
+//      sibling checkout): node_modules/@tale-ui/css/ is a symlink to
+//      ../tale-ui/tale-ui/packages/css/. src/ is right there inside it.
+//   2. Release (BENTO_RELEASE=1, npm install): node_modules/@tale-ui/css/
 //      is a real install of the published package. The src/ directory
 //      ships in the npm tarball (Tale UI's package.json points main /
 //      style at src/index.css so the source files are part of "files").
 // We prefer the bento-shell workspace install because it is the actual
-// consumer of @tale-ui/core. Root node_modules can be a stale hoisted copy
+// consumer of @tale-ui/css. Root node_modules can be a stale hoisted copy
 // when the workspace package is linked to the local Tale UI checkout.
 // We walk node_modules directly rather than using
-// require.resolve('@tale-ui/core/package.json') because Node's exports
+// require.resolve('@tale-ui/css/package.json') because Node's exports
 // gating blocks deep manifest imports unless the package explicitly lists
 // "./package.json" in exports — Tale UI doesn't.
 function findTaleUiCss() {

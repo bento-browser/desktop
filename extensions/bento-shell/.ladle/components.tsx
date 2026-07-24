@@ -7,7 +7,7 @@
 import { useEffect } from 'react';
 import { useLadleContext, type GlobalProvider, ThemeState } from '@ladle/react';
 
-import '@tale-ui/core';
+import '@tale-ui/css';
 import '@tale-ui/react-styles/_primitives';
 import '@tale-ui/react-styles/button';
 import '@tale-ui/react-styles/icon-button';

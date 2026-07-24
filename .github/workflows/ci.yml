@@ -106,7 +106,7 @@ jobs:
         # BENTO_RELEASE=1 short-circuits the .pnpmfile.cjs readPackage hook
         # so @tale-ui/* resolve from npm at the pinned versions in
         # package.json. Without it the hook would rewrite them to
-        # `link:/Users/admin/Projects/tale-ui/core/packages/*` (the local
+        # `link:/Users/admin/Projects/tale-ui/tale-ui/packages/*` (the local
         # dev path) which doesn't exist on the runner. The helper installs
         # the committed registry-backed release lock without permitting drift.
         run: bash scripts/install-release-deps.sh
