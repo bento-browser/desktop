@@ -92,7 +92,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']).tale-ui {
 
 /* ─── from @tale-ui/themes/themes.css ─────────────────────────────── */
 /*
- * @tale-ui/themes v1.3.56
+ * @tale-ui/themes v2.0.0
  * Generated from src/themes.ts. Run `pnpm generate` after changing theme definitions.
  * Import this stylesheet after @tale-ui/css or @tale-ui/react-styles.
  */

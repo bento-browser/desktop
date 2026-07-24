@@ -56,12 +56,12 @@ function findTaleUiCss() {
   const candidates = [
     // The shell's concrete dependency. In dev this should be the local link;
     // in release it will be the npm package.
-    resolve(REPO_ROOT, 'extensions', 'bento-shell', 'node_modules', '@tale-ui', 'core', 'src'),
+    resolve(REPO_ROOT, 'extensions', 'bento-shell', 'node_modules', '@tale-ui', 'css', 'src'),
     // Workspace root fallback, where pnpm with node-linker=hoisted may place it.
-    resolve(REPO_ROOT, 'node_modules', '@tale-ui', 'core', 'src'),
+    resolve(REPO_ROOT, 'node_modules', '@tale-ui', 'css', 'src'),
     // Last-resort sibling checkout — pre-pnpm-install state, or scripts
     // run before any install.
-    resolve(REPO_ROOT, '..', 'tale-ui', 'core', 'packages', 'css', 'src'),
+    resolve(REPO_ROOT, '..', 'tale-ui', 'tale-ui', 'packages', 'css', 'src'),
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
