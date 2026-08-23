@@ -78,6 +78,9 @@ jobs:
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
 
+      - name: Zen reference boundary tests
+        run: pnpm run test:boundary-detector
+
       - name: Bento security invariants
         run: pnpm run security:check
 
