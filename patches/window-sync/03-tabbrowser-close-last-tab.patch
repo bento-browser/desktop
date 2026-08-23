@@ -1,4 +1,4 @@
-From 450d8faf9dad5e2237dd56b234dae481d9958f2d Mon Sep 17 00:00:00 2001
+From c97f14da4f42784a7dd0bcecd0dac8da32d33d84 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:46 +1000
 Subject: [PATCH] Preserve Bento behavior when closing the last tab
@@ -8,11 +8,11 @@ Subject: [PATCH] Preserve Bento behavior when closing the last tab
  1 file changed, 11 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 366bce8ac222271010c7b0d8600d162a6d0b9e36..ae78a89e5fad917fff15c2da13ad241323c8467a 100644
+index 0461206d1cc91f57ea0c803ace4b62823996bc41..65c7582837461f71b8e43242b27fa2890a1cd59a 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -5550,11 +5550,16 @@
-         telemetrySource,
+@@ -5574,11 +5574,16 @@
+         metricsContext,
        } = {}
      ) {
 -      // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
@@ -31,7 +31,7 @@ index 366bce8ac222271010c7b0d8600d162a6d0b9e36..ae78a89e5fad917fff15c2da13ad2413
        ) {
          window.closeWindow(
            true,
-@@ -5872,8 +5877,9 @@
+@@ -5922,8 +5927,9 @@
          closeWindow =
            closeWindowWithLastTab != null
              ? closeWindowWithLastTab

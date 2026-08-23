@@ -1,4 +1,4 @@
-From ff2f4ac5e59b0e97d0a6f7a66d15b76cffd01893 Mon Sep 17 00:00:00 2001
+From ca364322f504cca3663b2fa7766932905ddc7ddd Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:43 +1000
 Subject: [PATCH] Track Bento browser windows
@@ -8,10 +8,10 @@ Subject: [PATCH] Track Bento browser windows
  1 file changed, 6 insertions(+)
 
 diff --git a/browser/modules/BrowserWindowTracker.sys.mjs b/browser/modules/BrowserWindowTracker.sys.mjs
-index 7e2f1d2b9ca10bd48fa1a0cd1f175a99b4169b90..237c1058d4aaa0b03871f6f600409c7946648a77 100644
+index e1a8f6d8d26d654ea1d2bb3d3dfab7a0839c24d1..af206935019205eaab82baa8c197788e9447787f 100644
 --- a/browser/modules/BrowserWindowTracker.sys.mjs
 +++ b/browser/modules/BrowserWindowTracker.sys.mjs
-@@ -330,6 +330,7 @@ export const BrowserWindowTracker = {
+@@ -342,6 +342,7 @@ export const BrowserWindowTracker = {
        args = null,
        remote = undefined,
        fission = undefined,
@@ -19,7 +19,7 @@ index 7e2f1d2b9ca10bd48fa1a0cd1f175a99b4169b90..237c1058d4aaa0b03871f6f600409c79
      } = options;
  
      args = lazy.AIWindow.handleAIWindowOptions(options);
-@@ -386,6 +387,11 @@ export const BrowserWindowTracker = {
+@@ -398,6 +399,11 @@ export const BrowserWindowTracker = {
        windowFeatures,
        args
      );

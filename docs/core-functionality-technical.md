@@ -40,7 +40,7 @@ Firefox's `browserLayout` setting group hidden and hidden from Settings search,
 so neither the horizontal/vertical picker nor the native Show sidebar toggle is
 offered in Bento.
 
-`bento-chrome-theme.css` also suppresses Firefox's revamp `#sidebar-main`,
+`bento-chrome-theme.css` also suppresses Firefox's revamp `#sidebar-container`,
 `#sidebar-launcher-splitter`, `#sidebar-button`, and
 `#wrapper-sidebar-button` whenever `bento-sidebar-addressbar` is active. The
 static `hidden="true"` markup is not sufficient because `SidebarController`
@@ -297,7 +297,7 @@ and writes `--bento-bookmarks-toolbar-offset` on `#PersonalToolbar` so Firefox's
 native bookmarks toolbar starts at the panel-strip edge instead of spanning over
 the sidebar. It also measures `#PersonalToolbar` height and writes
 `--bento-bookmarks-toolbar-height` so `#bento-shell-host`,
-`#bento-shell-splitter`, `#bento-shell-splitter-affordance`, `#sidebar-main`,
+`#bento-shell-splitter`, `#bento-shell-splitter-affordance`, `#sidebar-container`,
 `#sidebar-launcher-splitter`, `#sidebar-box`, and `#sidebar-splitter`
 counter-offset that height; otherwise Firefox pushes the entire `#browser` row
 down and leaves a blank gap above Bento's sidebar address field or Firefox's

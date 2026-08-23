@@ -5,8 +5,8 @@
   "binaryName": "bento",
   "version": {
     "product": "firefox",
-    "version": "152.0.6",
-    "candidate": "152.0.6",
+    "version": "154.0",
+    "candidate": "154.0",
     "candidateBuild": 1
   },
   "buildOptions": {

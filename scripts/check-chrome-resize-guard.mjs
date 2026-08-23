@@ -51,7 +51,7 @@ const settingsAboutWindowResizeLifecycle =
   /function attachWindowResizePerfMode\(\)[\s\S]*beginBentoSettingsAboutLiveResize\(\)[\s\S]*endBentoSettingsAboutLiveResize\(\)/;
 const generatedShadowToken = /--shadow-l:\s*[^;]+;/;
 const nativeSidebarLauncherSuppression =
-  /:root\[bento-sidebar-addressbar='true'\]\s+:is\(\s*#sidebar-main,\s*#sidebar-launcher-splitter,\s*#sidebar-button,\s*#wrapper-sidebar-button\s*\)\s*\{[^}]*display:\s*none\s*!important;[^}]*visibility:\s*collapse\s*!important;/s;
+  /:root\[bento-sidebar-addressbar='true'\]\s+:is\(\s*#sidebar-container,\s*#sidebar-launcher-splitter,\s*#sidebar-button,\s*#wrapper-sidebar-button\s*\)\s*\{[^}]*display:\s*none\s*!important;[^}]*visibility:\s*collapse\s*!important;/s;
 
 const failures = [];
 

@@ -24,8 +24,8 @@ importers:
         specifier: ^12.1.0
         version: 12.1.0(size-limit@12.1.0)
       '@zen-browser/surfer':
-        specifier: 1.14.6
-        version: 1.14.6
+        specifier: 1.14.7
+        version: 1.14.7
       eslint:
         specifier: ^9.0.0
         version: 9.39.4
@@ -1200,8 +1200,8 @@ packages:
   '@vitest/utils@4.1.7':
     resolution: {integrity: sha512-T532WBu791cBxJlCl6SO+J14l81DQx6uQHm1bQbmCDY7nqlEIgkza/UFnSBNaUtSf41unldDFjdOBYEQC4b5Hw==}
 
-  '@zen-browser/surfer@1.14.6':
-    resolution: {integrity: sha512-hgTKadIJ/9/9dizHn4229ZZHQckd7D4OR6e7HVkcmtuq1Jke3OAn6SH7u7NjvzvYy35Mb2sXjVUvZEG1ITIfgg==}
+  '@zen-browser/surfer@1.14.7':
+    resolution: {integrity: sha512-Ui2Chqvr4/+FmHM54eKOv7cQu8DRAK/uCX9o1GNi81hszxo/RSQwaw71eNW43Qcj7giK4U4x0IdCMht98iQ0rA==}
     hasBin: true
 
   accepts@1.3.8:
@@ -4852,7 +4852,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@zen-browser/surfer@1.14.6':
+  '@zen-browser/surfer@1.14.7':
     dependencies:
       '@resvg/resvg-js': 1.4.0
       async-icns: 1.0.2

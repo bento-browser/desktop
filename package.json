@@ -61,9 +61,9 @@
     "theme:sync": "node scripts/sync-theme-presets.mjs"
   },
   "devDependencies": {
-    "@zen-browser/surfer": "1.14.6",
     "@eslint/js": "^9.0.0",
     "@size-limit/file": "^12.1.0",
+    "@zen-browser/surfer": "1.14.7",
     "eslint": "^9.0.0",
     "husky": "^9.1.0",
     "lint-staged": "^15.2.0",

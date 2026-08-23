@@ -531,7 +531,7 @@ Use this shape for new or changed touchpoints:
   `#navigator-toolbox[tabs-hidden]`, `#nav-bar.browser-titlebar`, the nav-bar
   titlebar spacer/buttonbox copy, the native titlebar commands in
   `titlebar-items.inc.xhtml`, and the config-backed `browserLayout` preferences
-  group, plus `#sidebar-main`, `#sidebar-launcher-splitter`, `#sidebar-button`,
+  group, plus `#sidebar-container`, `#sidebar-launcher-splitter`, `#sidebar-button`,
   and `#wrapper-sidebar-button`.
 - Why this cannot stay extension-only: only Firefox chrome can collapse
   `#TabsToolbar`, mark the toolbox `tabs-hidden`, and promote the nav bar into

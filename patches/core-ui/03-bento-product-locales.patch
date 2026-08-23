@@ -1,4 +1,4 @@
-From 5fd828afaab68132e134af51da2ad526c34f7ea0 Mon Sep 17 00:00:00 2001
+From 4dbabadf5388ffe7c418c3fd50b1a91e3ba1e8f0 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:31 +1000
 Subject: [PATCH] Set Bento product locale strings
@@ -8,10 +8,10 @@ Subject: [PATCH] Set Bento product locale strings
  1 file changed, 9 insertions(+), 9 deletions(-)
 
 diff --git a/toolkit/locales/en-US/toolkit/branding/brandings.ftl b/toolkit/locales/en-US/toolkit/branding/brandings.ftl
-index 97f695334a1f342fd1d37b41aec0ab161bdf0d5d..cddc32239efe3b2d39ca791aba9a5ec8ce16f1fd 100644
+index 4562485f077db4db521e609b57babed380172760..68306559f680b38b686bb62a7bcbcab96830e3e0 100644
 --- a/toolkit/locales/en-US/toolkit/branding/brandings.ftl
 +++ b/toolkit/locales/en-US/toolkit/branding/brandings.ftl
-@@ -40,20 +40,20 @@
+@@ -42,23 +42,23 @@
  # The particle "by" can be localized, "Fakespot" and "Mozilla" should not be localized or transliterated.
  -fakespot-brand-full-name = Fakespot by Mozilla
  
@@ -41,6 +41,9 @@ index 97f695334a1f342fd1d37b41aec0ab161bdf0d5d..cddc32239efe3b2d39ca791aba9a5ec8
  # and kept in English.
 --firefoxlabs-brand-name = Firefox Labs
 +-firefoxlabs-brand-name = Bento Labs
+ 
+ -smart-window-brand-name =
+     { $plural-form ->
 -- 
 2.50.1 (Apple Git-155)
 

@@ -1,6 +1,6 @@
 # Firefox build tooling
 
-Bento pins the exact npm release `@zen-browser/surfer@1.14.6` as replaceable,
+Bento pins the exact npm release `@zen-browser/surfer@1.14.7` as replaceable,
 build-time infrastructure. It is not part of Bento's runtime, branding, product
 identity, or ancestry, and no generated branding or tool source ships in Bento.
 

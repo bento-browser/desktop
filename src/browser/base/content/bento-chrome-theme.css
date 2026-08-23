@@ -296,7 +296,7 @@
    * and its generic toolbar toggle; #sidebar-box remains available for
    * explicit native panels such as Bookmarks and History. */
   :root[bento-sidebar-addressbar='true']
-    :is(#sidebar-main, #sidebar-launcher-splitter, #sidebar-button, #wrapper-sidebar-button) {
+    :is(#sidebar-container, #sidebar-launcher-splitter, #sidebar-button, #wrapper-sidebar-button) {
     display: none !important;
     visibility: collapse !important;
   }

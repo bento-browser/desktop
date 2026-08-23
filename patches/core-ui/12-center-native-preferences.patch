@@ -1,15 +1,15 @@
-From e6bfd18493837ea64306ac8ecb091117232d49c6 Mon Sep 17 00:00:00 2001
+From 3e5c37d663a636c7be748f28404b8b1082a38afd Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
  .../components/preferences/preferences.xhtml  |   5 +-
- .../themes/shared/preferences/preferences.css | 216 +++++++++++++++++-
- 2 files changed, 212 insertions(+), 9 deletions(-)
+ .../themes/shared/preferences/preferences.css | 218 +++++++++++++++++-
+ 2 files changed, 213 insertions(+), 10 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..a7b50a3d68fd7e12bce1a9214e518baf50c02c83 100644
+index 61660d27e8376270f2bece694f774e4e209a3723..9e0585f95a46c72f0617c1f86e96d62546c5f33a 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
 @@ -20,6 +20,7 @@
@@ -20,7 +20,7 @@ index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..a7b50a3d68fd7e12bce1a9214e518baf
    <link
      rel="stylesheet"
      href="chrome://browser/skin/preferences/preferences.css"
-@@ -112,7 +113,7 @@
+@@ -111,7 +112,7 @@
                  src="chrome://browser/locale/browser.properties"/>
  
    <stack id="preferences-stack" flex="1">
@@ -29,7 +29,7 @@ index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..a7b50a3d68fd7e12bce1a9214e518baf
  
      <html:moz-page-nav id="categories" data-l10n-id="category-nav-heading" allownoselection="true">
        <html:moz-page-nav-button id="category-general"
-@@ -228,7 +229,7 @@
+@@ -226,7 +227,7 @@
        <key data-l10n-id="focus-search" key="" modifiers="accel" id="focusSearch1"/>
      </keyset>
  
@@ -39,14 +39,14 @@ index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..a7b50a3d68fd7e12bce1a9214e518baf
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b36bf61ed3 100644
+index d841289c997e1a1fa0ffbc81f04d5918b4c2d915..1273378a7b6d9493d206ed711726f32fdfe16816 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
-@@ -24,7 +24,160 @@
+@@ -22,7 +22,160 @@
+   --card-padding-block: var(--card-padding-inline);
  
-   /* stylelint-disable-next-line media-query-no-invalid */
    @media -moz-pref("browser.settings-redesign.enabled") {
--    --background-color-canvas: light-dark(var(--color-gray-05), var(--color-gray-90));
+-    --background-color-canvas: light-dark(var(--color-gray-0), var(--color-gray-90));
 +    @media not (forced-colors) {
 +      --background-color-canvas: var(--neutral-10);
 +    }
@@ -204,7 +204,7 @@ index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b3
    }
  
    user-select: text;
-@@ -109,7 +262,12 @@
+@@ -107,7 +260,12 @@
    padding-top: 0;
    scroll-padding-top: calc(calc(2 * var(--page-space-block-start)) + var(--search-container-padding) + var(--search-container-margin));
  
@@ -217,7 +217,7 @@ index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b3
      padding-inline: var(--space-medium);
    }
  }
-@@ -127,6 +285,50 @@
+@@ -125,6 +283,50 @@
    width: 100%;
  }
  
@@ -268,7 +268,7 @@ index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b3
  html|div[data-category],
  groupbox[data-category],
  setting-group[data-category] {
-@@ -656,7 +858,7 @@ html|dialog,
+@@ -650,7 +852,7 @@ html|dialog,
    @media not (forced-colors) {
      html|dialog,
      .dialogBox {
@@ -277,7 +277,7 @@ index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b3
      }
    }
  }
-@@ -755,11 +957,11 @@ html|dialog,
+@@ -749,11 +951,11 @@ html|dialog,
  }
  
  .fxaProfileImage.actionable:hover {
@@ -291,11 +291,13 @@ index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b3
  }
  
  #useFirefoxSync {
-@@ -1365,11 +1567,11 @@ richlistitem .text-link:hover {
+@@ -1364,12 +1566,12 @@ richlistitem .text-link:hover {
+ }
  
  @media (prefers-color-scheme: dark) {
-   .qr-code-box:not([hidden="true"]) {
+-  .qr-code-box {
 -    background-color: rgba(91, 91, 102, 0.45);
++  .qr-code-box:not([hidden="true"]) {
 +    background-color: color-mix(in srgb, var(--neutral-20) 45%, transparent);
    }
  
@@ -305,7 +307,7 @@ index bcede3342137a1655f48128181831ab34d7f6395..5bd3f029217f43989ad2dfede18763b3
    }
  }
  
-@@ -1471,7 +1673,7 @@ setting-group[groupid="aiFeatures"] {
+@@ -1498,7 +1700,7 @@ setting-group[groupid="aiFeatures"] {
  
  .ai-controls-description {
    --ai-controls-description-image-margin: calc(64px + var(--space-large));

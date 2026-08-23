@@ -1,4 +1,4 @@
-From 61ee6994e3d3c69fb78ccdcde90f0b983eeb17dc Mon Sep 17 00:00:00 2001
+From a5a85f021e0d3b8288dc5d387e6cac2abdef53c3 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 18 Jul 2026 18:43:30 +1000
 Subject: [PATCH] Add native Bento preferences
@@ -274,10 +274,10 @@ index 0000000000000000000000000000000000000000..d8ee763720e990ec0a001338ef2e7e20
 +
 +export const BentoShellDocumentRegistry = new Registry();
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
-index 0f615b2075566866c8d80bd30d65d896c3b71304..d67e01cf084c377390079d9d2aa92428bcb79aef 100644
+index 028421f9773113cb0aef8f6336d1a49454a2359f..7201c78ef1b4901f009072814fa4132247ea6116 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
-@@ -102,6 +102,7 @@ FINAL_TARGET_FILES.actors += [
+@@ -105,6 +105,7 @@ FINAL_TARGET_FILES.actors += [
      "AboutTabCrashedParent.sys.mjs",
      "BentoKeyChild.sys.mjs",
      "BentoKeyParent.sys.mjs",
@@ -2135,10 +2135,10 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +
 +document.dispatchEvent(new CustomEvent("bento-preferences-initialized"));
 diff --git a/browser/components/preferences/jar.mn b/browser/components/preferences/jar.mn
-index aec7888f59eeb5dbffc62b861fe223159ac42586..41f3c3c110b9d17239429c35db23b69d100ed92a 100644
+index a84468121d7efd38d7a877c81f08eeb2157e91bd..37b37ac162f370284138d3479676124e98e83549 100644
 --- a/browser/components/preferences/jar.mn
 +++ b/browser/components/preferences/jar.mn
-@@ -32,6 +32,10 @@ browser.jar:
+@@ -33,6 +33,10 @@ browser.jar:
     content/browser/preferences/config/account-sync.mjs                  (config/account-sync.mjs)
     content/browser/preferences/config/accessibility.mjs                 (config/accessibility.mjs)
     content/browser/preferences/config/appearance.mjs                    (config/appearance.mjs)
@@ -2146,14 +2146,14 @@ index aec7888f59eeb5dbffc62b861fe223159ac42586..41f3c3c110b9d17239429c35db23b69d
 +   content/browser/preferences/bento/bento.css                          (bento/bento.css)
 +   content/browser/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs (bento/generated/BentoNativePreferencesProtocol.sys.mjs)
 +   content/browser/preferences/bento/generated/native-preferences-protocol-fixtures.json (bento/generated/native-preferences-protocol-fixtures.json)
+    content/browser/preferences/config/browser-icon.mjs                  (config/browser-icon.mjs)
     content/browser/preferences/config/aiFeatures.mjs                    (config/aiFeatures.mjs)
     content/browser/preferences/config/firefoxLabs.mjs                   (config/firefoxLabs.mjs)
-    content/browser/preferences/config/moreFromMozilla.mjs               (config/moreFromMozilla.mjs)
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index e95831780d00111f27bb4ad78a6ed8ec39cf886e..ff9ebbc4e7b84fb3ac189e4c9bd6cbb4f4b2f30b 100644
+index a76699af75252bec31e17b562463c37236cbbfe5..4c1b76ead1177e22d21b80c69543ef9dd05cf7ef 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -223,6 +223,34 @@ var scrollOffsets;
+@@ -241,6 +241,34 @@ var gCurrentHistoryEntryId = null;
   * @type {Record<string, SettingPaneConfig>}
   */
  const CONFIG_PANES = Object.freeze({
@@ -2189,10 +2189,10 @@ index e95831780d00111f27bb4ad78a6ed8ec39cf886e..ff9ebbc4e7b84fb3ac189e4c9bd6cbb4
      l10nId: "about-firefox-header",
      iconSrc: "chrome://browser/skin/sidebar/firefox.svg",
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index a7b50a3d68fd7e12bce1a9214e518baf50c02c83..b64aed7a00ca1e5a651efa4febfb786c03529ffc 100644
+index 9e0585f95a46c72f0617c1f86e96d62546c5f33a..c4b1a30d76dd333b967a805ee6b7abee588fb6c9 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -42,6 +42,7 @@
+@@ -39,6 +39,7 @@
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-group.css" />
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-pane.css" />
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-control.css" />
@@ -2200,15 +2200,15 @@ index a7b50a3d68fd7e12bce1a9214e518baf50c02c83..b64aed7a00ca1e5a651efa4febfb786c
  
    <link rel="localization" href="branding/brand.ftl"/>
    <link rel="localization" href="browser/browser.ftl"/>
-@@ -49,6 +50,7 @@
+@@ -46,6 +47,7 @@
    <link rel="localization" href="browser/preferences/fonts.ftl"/>
    <link rel="localization" href="browser/preferences/moreFromMozilla.ftl"/>
    <link rel="localization" href="browser/preferences/preferences.ftl"/>
 +  <link rel="localization" href="browser/preferences/bento.ftl"/>
    <link rel="localization" href="toolkit/branding/brandings.ftl"/>
    <link rel="localization" href="toolkit/firefoxlabs/features.ftl"/>
- 
-@@ -163,6 +165,11 @@
+   <link rel="localization" href="toolkit/global/mozPageHeader.ftl"/>
+@@ -162,6 +164,11 @@
          iconsrc="chrome://global/skin/icons/cursor-arrow.svg"
          data-l10n-id="pane-tabs-browsing-title2">
        </html:moz-page-nav-button>
@@ -2220,8 +2220,8 @@ index a7b50a3d68fd7e12bce1a9214e518baf50c02c83..b64aed7a00ca1e5a651efa4febfb786c
        <html:hr class="nav-separator" id="nav-separator" role="presentation" />
        <html:moz-page-nav-button id="category-accessibility"
          view="paneAccessibility"
-@@ -208,6 +215,8 @@
-       <html:moz-page-nav-button class="hidden-category" view="paneContainers"/>
+@@ -206,6 +213,8 @@
+            navigated to from within other panes. -->
        <html:moz-page-nav-button class="hidden-category" view="paneProfiles"/>
        <html:moz-page-nav-button class="hidden-category" view="paneTranslations"/>
 +      <html:moz-page-nav-button class="hidden-category" view="paneBentoBackups"/>
@@ -2230,10 +2230,10 @@ index a7b50a3d68fd7e12bce1a9214e518baf50c02c83..b64aed7a00ca1e5a651efa4febfb786c
        <!-- Footer links -->
        <html:moz-page-nav-button id="addonsButton"
 diff --git a/browser/components/preferences/tests/browser.toml b/browser/components/preferences/tests/browser.toml
-index 92353bee15e0b056772065b09fc05f3847876af4..4e034ba6bdfdcd0db51475d0417781303f6c3492 100644
+index d9ea1e343d5da47cfa65b18a87f5c014cdfb5f6c..c9203ac30caa38110729cf3d78b244e91eb33f73 100644
 --- a/browser/components/preferences/tests/browser.toml
 +++ b/browser/components/preferences/tests/browser.toml
-@@ -28,6 +28,14 @@ run-if = ["updater"]
+@@ -29,6 +29,14 @@ run-if = ["updater"]
  
  ["browser_backup_warning_banner.js"]
  
@@ -2803,10 +2803,10 @@ index 5b520e23b9a934f3eb5afe110a584f7b205310bf..23a1875def32ed866e9f22c16d7b122f
          let target = await testHelpers.renderTemplate();
          let select = target.querySelector("moz-select");
 diff --git a/toolkit/content/widgets/moz-select/moz-select.mjs b/toolkit/content/widgets/moz-select/moz-select.mjs
-index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307bb6f2af06 100644
+index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c26c640a9d 100644
 --- a/toolkit/content/widgets/moz-select/moz-select.mjs
 +++ b/toolkit/content/widgets/moz-select/moz-select.mjs
-@@ -39,6 +39,8 @@ import { MozBaseInputElement, MozLitElement } from "../lit-utils.mjs";
+@@ -41,6 +41,8 @@ import { MozBaseInputElement, MozLitElement } from "../lit-utils.mjs";
   *     default slot. Do not set directly, these will be overridden by <moz-option> children.
   * @property {SelectOption} selectedOption - The currently selected option object.
   * @property {number} selectedIndex - The index of the currently selected option.
@@ -2815,7 +2815,7 @@ index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307b
   * @property {boolean} usePanelList - Whether or not to render a panel. Depends on options using icons.
   */
  export default class MozSelect extends MozBaseInputElement {
-@@ -46,6 +48,7 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -49,6 +51,7 @@ export default class MozSelect extends MozBaseInputElement {
      options: { type: Array, state: true },
      selectedOption: { type: Object, state: true },
      selectedIndex: { type: Number, state: true },
@@ -2823,15 +2823,15 @@ index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307b
      usePanelList: { type: Boolean, state: true },
    };
    static inputLayout = "block";
-@@ -59,6 +62,7 @@ export default class MozSelect extends MozBaseInputElement {
-     super();
+@@ -63,6 +66,7 @@ export default class MozSelect extends MozBaseInputElement {
+     this.size = "default";
      this.value = "";
      this.options = [];
 +    this.forcePanelList = false;
      this.usePanelList = false;
      this.selectedOption = null;
      this.selectedIndex = 0;
-@@ -87,6 +91,10 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -91,6 +95,10 @@ export default class MozSelect extends MozBaseInputElement {
  
    willUpdate(changedProperties) {
      super.willUpdate(changedProperties);
@@ -2842,7 +2842,7 @@ index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307b
      if (changedProperties.has("value") || changedProperties.has("options")) {
        this.selectedIndex = this.options.findIndex(
          opt => opt.value === this.value
-@@ -143,7 +151,7 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -147,7 +155,7 @@ export default class MozSelect extends MozBaseInputElement {
      }
  
      this.options = options;
@@ -2853,3 +2853,4 @@ index 8b2d424f80e8c3e6cf6975ec7923a6d4efcc9f77..c04a39ea673ad5d1f21ece56ad31307b
      if (this.usePanelList && !this.value && this.options.length) {
 -- 
 2.50.1 (Apple Git-155)
+
