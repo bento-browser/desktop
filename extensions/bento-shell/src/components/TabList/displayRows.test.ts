@@ -31,7 +31,7 @@ function folder(partial: Partial<TabFolder> & Pick<TabFolder, 'id' | 'order'>): 
 }
 
 describe('buildDisplayRows', () => {
-  it('places pinned tabs, folders, action rows, then regular tabs', () => {
+  it('places pinned tabs and folders before regular tabs', () => {
     const tabs = {
       1: tab({ id: 1, index: 0, pinned: true }),
       2: tab({ id: 2, index: 1, folderId: 'f-2' }),
@@ -51,7 +51,6 @@ describe('buildDisplayRows', () => {
       { kind: 'tab', id: 4, indent: true },
       { kind: 'folder', folderId: 'f-2' },
       { kind: 'tab', id: 2, indent: true },
-      { kind: 'new-tab', afterPinnedSection: true },
       { kind: 'tab', id: 3, indent: false },
     ]);
   });
@@ -71,7 +70,6 @@ describe('buildDisplayRows', () => {
     expect(rows).toEqual([
       { kind: 'folder', folderId: 'f-1' },
       { kind: 'peek', id: 2, folderId: 'f-1' },
-      { kind: 'new-tab', afterPinnedSection: true },
     ]);
   });
 
@@ -83,7 +81,6 @@ describe('buildDisplayRows', () => {
     expect(buildDisplayRows([1, 2], tabs, [folder({ id: 'f-1', order: 0 })], null, {})).toEqual([
       { kind: 'tab', id: 1, indent: false },
       { kind: 'folder', folderId: 'f-1' },
-      { kind: 'new-tab', afterPinnedSection: true },
       { kind: 'tab', id: 2, indent: false },
     ]);
   });
@@ -93,7 +90,6 @@ describe('buildDisplayRows', () => {
       { kind: 'tab' as const, id: 1, indent: false },
       { kind: 'folder' as const, folderId: 'f-1' },
       { kind: 'peek' as const, id: 3, folderId: 'f-1' },
-      { kind: 'new-tab' as const, afterPinnedSection: true },
       { kind: 'tab' as const, id: 4, indent: false },
     ];
     expect(flattenTabOrder(rows)).toEqual([1, 3, 4]);

@@ -906,18 +906,22 @@ selection exists, or once to clear a previously mirrored selection; repeated
 empty-selection title writes can stomp `BENTO_PANELS` before chrome polls it and
 hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
 assignment remains tools-owned.
-`TabList` also renders the visible `New tab` and `New panel` buttons above the
-virtualized pane. `New tab` calls `signalAddrbarOpen('newTab')` from `App.tsx`
+`TabList` also renders the visible `New tab` and `New panel` controls in a
+non-scrolling action header at the top of each pane, above the virtualized
+scroller and immediately below `SidebarAddressBar`. `New tab` calls
+`signalAddrbarOpen('newTab')` from `App.tsx`
 so the floating address/search bar opens and no blank tab is created until the
 user commits. Indexed context-menu commands still dispatch `tab/create` with a
 Firefox tab-strip `index` when a command needs a specific insertion point.
 `New panel` dispatches `panel/openAt` with `about:newtab`,
 `sourceTabId: null`, and `position: 'end'`. Tab and panel creation stay
 tools-owned and use the same active-window and active-workspace assignment paths
-as other entry points. Collapsed sidebar mode keeps the controls visible as
-square icon-only buttons in separate virtual rows so they do not crowd the
-collapsed rail. Each action row and each favicon-only tab row keeps the same
-`--bento-tab-row-height` as expanded mode so toggling the sidebar keeps row
+as other entry points. Because the action header is a flex sibling of the
+scroller rather than a virtual row, virtualization cannot unmount it and tab
+scrolling cannot move it. Collapsed sidebar mode keeps the New control visible
+as a square icon-only button and hides the search trigger so the controls do not
+crowd the collapsed rail. The action row and each favicon-only tab row keep the
+same `--bento-tab-row-height` as expanded mode so toggling the sidebar keeps row
 geometry predictable. The collapsed host width is
 `--bento-tab-strip-width-collapsed`, which reserves the favicon-only control
 width plus symmetric `--bento-sidebar-collapsed-inline-padding`; that collapsed
@@ -996,21 +1000,22 @@ particle layer abruptly for normal audio-off updates. The particle layer is
 parented to `#bento-panel-nav`, not inside each favicon button or
 `.bento-panel-nav__list`, because the favicon list is a horizontal scroll
 container and clips child overflow.
-`extensions/bento-shell/src/components/TabList/TabList.tsx` inserts the New menu
-row into the virtualized pane after pinned tabs and folder rows, before regular
-tabs. That Tale UI menu exposes the New tab and New panel actions from the same
-row in both expanded and collapsed sidebar modes. When the inserted New menu row
-has any pinned tab or folder row above it, `TabListPane` marks it with
-`bento-tab-list__row--after-pinned` for styling hooks, but no divider is painted
-between pinned tabs/folders and the New menu. The New/Search controls shift down
-by `--bento-tab-list-row-gap` in that state so their top inset matches the
-pinned/folder section's bottom gap without changing the virtualizer row height.
-The workspace-switcher header stays on the base neutral-5 sidebar surface, while
-the pinned/folder region above the New menu is neutral-12: `TabListPane` exposes
-the pre-New-row height to `TabList.css` so the tab-list viewport paints only
-that upper region. When that height is zero, the neutral-12 pseudo-element is not
-attached, so empty pinned/folder sections do not leave a colored strip above
-New/Search.
+`extensions/bento-shell/src/components/TabList/TabList.tsx` renders the New menu
+and Search trigger in `bento-tab-list-pane__sticky-actions`, a fixed-height flex
+sibling immediately before `bento-tab-list-pane__scroller`. The scroller alone
+owns overflow and virtualization, so the action header stays immediately below
+the persistent sidebar address row at every scroll offset. `displayRows.ts`
+therefore contains only pinned tabs, folder/peek rows, and regular tabs; do not
+reinsert creation controls into that virtual row model. `TabListPane` derives
+the leading pinned/folder row count and exposes its height to `TabList.css` so
+only that scrolling region receives the neutral-12 surface. When no pinned or
+folder rows exist, the pseudo-element is omitted.
+
+Manual verification must use a workspace long enough to scroll: record the
+action header rectangle, scroll the pane substantially, and confirm its
+rectangle is unchanged while the first visible tab changes. Repeat after
+opening Search, and confirm the fixed row is replaced by the focused search
+field and matching results without normal virtual rows remaining visible.
 
 Sidebar drag handling in `TabListPane` classifies tab drops before falling back
 to anchor-based reordering. A drop in slot `0` or within the current pinned run
@@ -2000,18 +2005,18 @@ matching here unless the command-palette UX is intentionally widened.
 ## Sidebar Tab And Panel Search
 
 `extensions/bento-shell/src/components/TabList/TabList.tsx` owns the inline
-sidebar search field shown from the action row beside `New tab` and `New panel`.
+sidebar search field shown from the fixed action row beside the New menu.
 The result set is derived locally from the shell mirrors: `useTabsStore` provides
 all tab snapshots, `usePanelsStore((s) => s.byWorkspace)` classifies panel tab
 ids by workspace, and `useWorkspacesStore` supplies workspace order, icons, and
 theme ids. The search is title-only by sidebar UX choice; do not add URL
 matching here unless that surface is intentionally widened.
 
-When `searchOpen` is true and the trimmed query is non-empty, `TabListPane`
-skips rendering the normal virtualized display rows and renders only the search
-field plus matching results. This avoids leaving tabs, folders, pinned sections,
-or creation controls visible behind the filtering surface. The clear affordance
-is a visible Tale UI ghost/sm `Button` labeled "Clear"; pressing it clears the
+When `searchOpen` is true, the search field overlays the fixed action row. When
+the trimmed query is non-empty, `TabListPane` skips rendering normal virtualized
+display rows and the action overlay renders matching results into the pane below
+the field. This avoids leaving tabs, folders, pinned sections, or creation
+controls visible behind the filtering surface. The clear affordance clears the
 local query, refocuses the search input, and returns the pane to the normal
 virtualized row path.
 

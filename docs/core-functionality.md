@@ -133,7 +133,10 @@ creating the tab only after the user commits. In collapsed sidebar mode, it
 opens the same centered address/search fallback. `New panel`
 opens a blank panel in the active workspace. A
 search icon beside those controls expands into a sidebar search field over the
-action row. Typing filters open tabs and side panels by title across all
+action row. The creation and search controls stay fixed immediately below the
+sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
+so the actions remain available anywhere in a long tab list. Typing filters
+open tabs and side panels by title across all
 workspaces. The field has a clear
 button labeled "Clear". While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
@@ -141,7 +144,7 @@ and creation controls are hidden until the query is cleared or search closes.
 Results use the same row footprint as sidebar tabs, identify each result's workspace with its
 workspace icon or initial, tint the workspace marker with that workspace's theme,
 and selecting a result switches to that tab or focuses that panel. When pinned
-tabs exist, these controls appear below the pinned run and above regular tabs.
+tabs exist, those tabs remain part of the scrolling list below the fixed controls.
 Workspace tabs can be grouped into collapsible tab folders from the sidebar
 context menu. Folders live below pinned tabs and above the regular tab section,
 can be renamed, deleted, collapsed, expanded, and reordered among themselves,
@@ -250,10 +253,10 @@ and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface and keeps
-its neutral border when clicked or focused. At the top of the tab list, the
-resting gap below the address field matches the gap above it below the workspace
-switcher. That lower gap scrolls away with the tabs so scrolled rows sit flush
-against the address field. The native
+its neutral border when clicked or focused. The fixed creation/search row sits
+directly below the address field with the same resting gap used above the
+address field below the workspace switcher. Only the tab and folder rows scroll;
+the address and action rows remain visible. The native
 top URL/search field, stock toolbar app-menu button, stock toolbar downloads
 button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without
