@@ -81,7 +81,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: engine/obj-*
-          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml') }}
+          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml') }}
 
       # Install dependencies in release mode so the @tale-ui/* deps
       # resolve from npm (not local link). build-release.sh re-runs this
