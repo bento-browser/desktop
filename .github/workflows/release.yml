@@ -32,12 +32,14 @@ jobs:
         include:
           - os: macos-26
             build-jobs: ''
-          # GitHub-hosted Linux and Windows runners can exhaust memory when
-          # Firefox uses its default native-build parallelism.
+          # Linux remains serial for hosted-runner memory stability. Windows uses
+          # two native build jobs because Rust ThinLTO bounds the single gkrust
+          # link, while serial native compilation exceeded the six-hour hosted
+          # runner ceiling.
           - os: ubuntu-latest
             build-jobs: '1'
           - os: windows-latest
-            build-jobs: '1'
+            build-jobs: '2'
     runs-on: ${{ matrix.os }}
     # A cold optimized Firefox build can exceed three hours on hosted macOS.
     # Keep the job at GitHub's six-hour hosted-runner ceiling so the first
