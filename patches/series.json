@@ -116,6 +116,11 @@
       "path": "patches/window-sync/04-splitview-disable.patch",
       "id": "splitview-disable",
       "subject": "Disable Firefox split view"
+    },
+    {
+      "path": "patches/experiments/02-rust-thin-lto-hosted-build.patch",
+      "id": "rust-thin-lto-hosted-build",
+      "subject": "Use ThinLTO for hosted release Rust linking"
     }
   ],
   "format": "git-format-patch"

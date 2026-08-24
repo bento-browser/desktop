@@ -59,6 +59,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      - name: Resolve pinned Rust toolchain
+        run: node scripts/check-rust-toolchain.mjs
+
       # Cache Firefox source between runs so the 6 GB+ download isn't
       # repeated for every release. Cache key includes surfer.json hash so
       # a Firefox version bump invalidates the cache.
@@ -78,7 +81,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: engine/obj-*
-          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json') }}
+          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml') }}
 
       # Install dependencies in release mode so the @tale-ui/* deps
       # resolve from npm (not local link). build-release.sh re-runs this

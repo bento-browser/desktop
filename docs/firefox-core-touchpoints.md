@@ -660,7 +660,7 @@ Use this shape for new or changed touchpoints:
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-07-17
+- Last updated: 2026-08-24
 - Files or patches:
   - `prefs/bento.js`
   - `engine/services/settings/dumps/main/search-config-v2.json`
@@ -668,6 +668,9 @@ Use this shape for new or changed touchpoints:
   - `surfer.json`
   - `branding/bento/**`
   - `configs/**`
+  - `rust-toolchain.toml`
+  - `.github/workflows/release.yml`
+  - `scripts/check-rust-toolchain.mjs`
   - `scripts/install-branding.mjs`
   - `scripts/firefox-patch-stack.mjs`
   - `patches/experiments/**`
@@ -678,18 +681,21 @@ Use this shape for new or changed touchpoints:
   query stripping, speculative networking off, remote search suggestions off,
   local Safe Browsing on, HTTPS-only mode on, remote Safe Browsing download
   checks off by default but independently user-toggleable, DoH disabled, and
-  AI/remote suggestion surfaces disabled.
+  AI/remote suggestion surfaces disabled. Release builds pin Firefox's official
+  Rust 1.94.1 toolchain and use a Bento-namespaced ThinLTO opt-in on Linux and
+  Windows to keep final Rust linking within standard hosted-runner memory
+  limits; macOS retains upstream's default fat LTO.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
   search service Remote Settings dumps, branding import paths, build
-  configuration, and patched build/runtime behavior covered by
-  `patches/experiments`.
+  configuration, `config/makefiles/rust.mk` release Rust flags, and patched
+  build/runtime behavior covered by `patches/experiments`.
 - Why this cannot stay extension-only: prefs, branding, and build behavior are
   consumed before or outside the privileged extension runtime. Fresh-profile
   default search is resolved by Firefox search configuration before Bento's
   extension UI can safely mutate it.
 - Firefox update risk: upstream pref renames, search config schema changes,
-  branding layout changes, build system changes, or obsolete temporary patches
-  can silently stop applying or block security update rebases.
+  branding layout changes, build system or Rust flag changes, or obsolete
+  temporary patches can silently stop applying or block security update rebases.
 - Regression checks for future updates: run `pnpm run build`, confirm
   `scripts/append-prefs.sh` still appends `prefs/bento.js`, inspect branding in
   the built app, confirm fresh-profile omnibar search uses DuckDuckGo, inspect
@@ -698,9 +704,15 @@ Use this shape for new or changed touchpoints:
   confirm an HTTP-only destination still offers Firefox's exception UI, confirm
   remote download reputation can be toggled without changing the detected
   privacy preset,
-  and re-evaluate whether each experiment patch is still needed.
-- Rollback or migration notes: remove temporary experiment patches as soon as
-  upstream Firefox no longer requires them.
+  and re-evaluate whether each experiment patch is still needed. Run
+  `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`, and
+  `node scripts/check-rust-toolchain.mjs`; inspect Linux and Windows release
+  logs for `BENTO_RUST_LTO=thin`, `-Clto=thin`, successful final linking, and
+  artifact upload. Confirm macOS still uses the upstream default LTO path.
+- Rollback or migration notes: remove the ThinLTO export from the Linux and
+  Windows mozconfigs and the associated experiment patch together, then export,
+  check, import, and invalidate the native object cache. Keep the Rust pin and
+  release verification aligned with the Firefox release's official toolchain.
 
 ### Built-In Extension Copy Surface
 

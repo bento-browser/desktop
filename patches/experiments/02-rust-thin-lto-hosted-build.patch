@@ -1,0 +1,36 @@
+From 2756474059010820d622c28e70c05ce1517ee843 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Mon, 24 Aug 2026 14:13:08 +1000
+Subject: [PATCH] Use ThinLTO for hosted release Rust linking
+
+---
+ config/makefiles/rust.mk | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
+index 06893db33c7e14a1cb4bd2af29b30623ab215148..e373c47cdadfdfad64b0523a4741328cb636f0a9 100644
+--- a/config/makefiles/rust.mk
++++ b/config/makefiles/rust.mk
+@@ -118,7 +118,9 @@ ifndef rustflags_sancov
+ # Never enable when coverage is enabled to work around https://github.com/rust-lang/rust/issues/90045.
+ ifndef MOZ_CODE_COVERAGE
+ ifeq (,$(findstring gkrust_gtest,$(RUST_LIBRARY_FILE)))
+-cargo_rustc_flags += -Clto$(if $(filter full,$(MOZ_LTO_RUST_CROSS)),=fat)
++# Keep Firefox's default fat LTO unless a Bento hosted builder opts into
++# standard Rust ThinLTO to reduce peak linker memory.
++cargo_rustc_flags += $(if $(filter thin,$(BENTO_RUST_LTO)),-Clto=thin,-Clto$(if $(filter full,$(MOZ_LTO_RUST_CROSS)),=fat))
+ endif
+ # We need -Cembed-bitcode=yes for all crates when using -Clto.
+ RUSTFLAGS += -Cembed-bitcode=yes
+@@ -562,7 +564,7 @@ ifndef MOZ_PROFILE_GENERATE
+ ifeq ($(OS_ARCH), Linux)
+ ifeq (,$(rustflags_sancov)$(MOZ_ASAN)$(MOZ_TSAN)$(MOZ_UBSAN))
+ ifndef MOZ_LTO_RUST_CROSS
+-ifneq (,$(filter -Clto,$(cargo_rustc_flags)))
++ifneq (,$(filter -Clto -Clto=thin -Clto=fat,$(cargo_rustc_flags)))
+ 	$(call py_action,check_binary $(@F),--networking $(RUST_LIBRARY_FILE))
+ endif
+ endif
+-- 
+2.50.1 (Apple Git-155)
+

@@ -12,6 +12,15 @@ Surfer remains responsible for generic Firefox orchestration:
 - builds, runs, packages, locales, and MAR/update generation;
 - license checking.
 
+Firefox's Rust toolchain is pinned in the repository root by
+[`rust-toolchain.toml`](../rust-toolchain.toml). Release CI resolves and verifies
+that pin before Surfer bootstrap or the native build. Linux and Windows release
+mozconfigs opt into Bento's narrow `BENTO_RUST_LTO=thin` compatibility setting;
+it changes only the top-level Rust release crate's LTO mode from Firefox's
+default fat LTO to standard Rust ThinLTO, keeping embed-bitcode and release
+codegen-unit settings unchanged. macOS keeps Firefox's default fat LTO because
+its hosted release build completes within its existing memory budget.
+
 All Bento-specific import behavior belongs in this repository. The authoritative
 wrapper, [scripts/import.sh](../scripts/import.sh), disables Surfer branding
 generation, installs [branding/bento](../branding/bento), packages the built-in
@@ -26,6 +35,11 @@ order. Bento scripts do not import Surfer modules.
 - `pnpm run build:release`: create a host-platform release-mode package.
 - `pnpm run brand:regen`: reinstall canonical tracked branding through the
   normal import pipeline.
+
+Hosted release cache keys include `configs/**` and `rust-toolchain.toml` along
+with the Firefox source, patch stack, and package configuration. A change to
+the LTO policy or Rust compiler therefore cannot reuse an object cache produced
+under a different native build configuration.
 
 Direct `surfer import` bypasses Bento's branding, add-on, patch, preference, and
 symlink steps. Use `pnpm run import` whenever the resulting engine state matters.
@@ -89,6 +103,12 @@ pnpm run build:release
 The upgrade is acceptable only after branding, built-in add-ons, manifest patch
 application, packaging, locales, installers, and MAR/update output have been
 checked. Run the source and artifact identity scanners as part of that review.
+
+For Linux and Windows hosted-builder changes, also run the patch-stack checks,
+verify `node scripts/check-rust-toolchain.mjs`, and confirm the release workflow
+reaches the final Rust/Firefox link and package steps without linker-memory or
+toolchain-version failures. Keep macOS on its existing default LTO path unless
+its own build evidence requires a separate change.
 
 ## Built-in add-ons
 
