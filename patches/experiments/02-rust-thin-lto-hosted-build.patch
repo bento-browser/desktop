@@ -1,12 +1,35 @@
-From 2756474059010820d622c28e70c05ce1517ee843 Mon Sep 17 00:00:00 2001
+From 8692df25de265f955fc96b39288e2c5da9a06409 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 24 Aug 2026 14:13:08 +1000
 Subject: [PATCH] Use ThinLTO for hosted release Rust linking
 
 ---
- config/makefiles/rust.mk | 6 ++++--
- 1 file changed, 4 insertions(+), 2 deletions(-)
+ browser/moz.configure    | 11 +++++++++++
+ config/makefiles/rust.mk |  6 ++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
 
+diff --git a/browser/moz.configure b/browser/moz.configure
+index 3ea3d88b93604f09067acbc4d26be5e8d4fda91b..ac3891832ba0b42b2afecf981eaa86b1e5f07561 100644
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -17,6 +17,17 @@ imply_option("MOZ_APP_ID", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}")
+ imply_option("MOZ_DEVTOOLS", "all")
+ imply_option("BROWSER_CHROME_URL", "chrome://browser/content/browser.xhtml")
+ 
++# Keep the hosted-build ThinLTO opt-in namespaced and explicit.  It is
++# consumed by config/makefiles/rust.mk after configure writes the value to
++# the generated make configuration.
++option(
++    env="BENTO_RUST_LTO",
++    nargs=1,
++    choices=("thin",),
++    help="Use Bento's hosted Rust ThinLTO mode",
++)
++set_config("BENTO_RUST_LTO", depends_if("BENTO_RUST_LTO")(lambda v: v[0]))
++
+ 
+ with only_when(target_has_linux_kernel & compile_environment):
+     option(env="MOZ_NO_PIE_COMPAT", help="Enable non-PIE wrapper")
 diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
 index 06893db33c7e14a1cb4bd2af29b30623ab215148..e373c47cdadfdfad64b0523a4741328cb636f0a9 100644
 --- a/config/makefiles/rust.mk

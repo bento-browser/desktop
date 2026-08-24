@@ -686,9 +686,10 @@ Use this shape for new or changed touchpoints:
   Windows to keep final Rust linking within standard hosted-runner memory
   limits; macOS retains upstream's default fat LTO.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
-  search service Remote Settings dumps, branding import paths, build
-  configuration, `config/makefiles/rust.mk` release Rust flags, and patched
-  build/runtime behavior covered by `patches/experiments`.
+  search service Remote Settings dumps, branding import paths, Firefox
+  configure's `browser/moz.configure` environment-to-config export,
+  `config/makefiles/rust.mk` release Rust flags, and patched build/runtime
+  behavior covered by `patches/experiments`.
 - Why this cannot stay extension-only: prefs, branding, and build behavior are
   consumed before or outside the privileged extension runtime. Fresh-profile
   default search is resolved by Firefox search configuration before Bento's
@@ -705,10 +706,12 @@ Use this shape for new or changed touchpoints:
   remote download reputation can be toggled without changing the detected
   privacy preset,
   and re-evaluate whether each experiment patch is still needed. Run
-  `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`, and
+  `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
+  `node --test scripts/rust-thin-lto.test.mjs`, and
   `node scripts/check-rust-toolchain.mjs`; inspect Linux and Windows release
-  logs for `BENTO_RUST_LTO=thin`, `-Clto=thin`, successful final linking, and
-  artifact upload. Confirm macOS still uses the upstream default LTO path.
+  logs for configure exporting `BENTO_RUST_LTO=thin`, generated make flags
+  containing `-Clto=thin`, successful final linking, and artifact upload.
+  Confirm macOS still uses the upstream default LTO path.
 - Rollback or migration notes: remove the ThinLTO export from the Linux and
   Windows mozconfigs and the associated experiment patch together, then export,
   check, import, and invalidate the native object cache. Keep the Rust pin and
