@@ -13,7 +13,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { readPlatformBuildId, updateMarUrl } from './bento-build.mjs';
+import { readApplicationBuildId, updateMarUrl } from './bento-build.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -56,22 +56,22 @@ function isPrimaryApplicationPackage(file, displayVersion) {
   return parts.length === 3 && parts[1].startsWith('win') && parts[1].length > 3;
 }
 
-function packagedBuildId(manifest, root, application) {
-  if (!manifest.platformIni || !manifest.buildId) fail('artifact metadata is missing the packaged platform.ini/build ID');
-  const platformIni = path.resolve(root, manifest.platformIni);
-  const relative = path.relative(root, platformIni);
+function packagedApplicationBuildId(manifest, root, application) {
+  if (!manifest.applicationIni || !manifest.buildId) fail('artifact metadata is missing the packaged application.ini/build ID');
+  const applicationIni = path.resolve(root, manifest.applicationIni);
+  const relative = path.relative(root, applicationIni);
   if (path.isAbsolute(relative) || relative.startsWith(`..${path.sep}`) || relative === '..') {
-    fail(`packaged platform.ini escapes the repository: ${manifest.platformIni}`);
+    fail(`packaged application.ini escapes the repository: ${manifest.applicationIni}`);
   }
-  if (!fs.existsSync(platformIni) || !fs.statSync(platformIni).isFile()) fail(`packaged platform.ini is missing: ${manifest.platformIni}`);
+  if (!fs.existsSync(applicationIni) || !fs.statSync(applicationIni).isFile()) fail(`packaged application.ini is missing: ${manifest.applicationIni}`);
   const expected = path.basename(application).endsWith('.app')
-    ? path.join(application, 'Contents', 'Resources', 'platform.ini')
-    : path.join(application, 'platform.ini');
-  if (path.resolve(platformIni) !== path.resolve(expected)) {
-    fail('packaged platform.ini is not the one inside the application');
+    ? path.join(application, 'Contents', 'Resources', 'application.ini')
+    : path.join(application, 'application.ini');
+  if (path.resolve(applicationIni) !== path.resolve(expected)) {
+    fail('packaged application.ini is not the one inside the application');
   }
-  const buildId = readPlatformBuildId(fs.readFileSync(platformIni, 'utf8'));
-  if (!buildId) fail(`packaged platform.ini has no BuildID: ${manifest.platformIni}`);
+  const buildId = readApplicationBuildId(fs.readFileSync(applicationIni, 'utf8'));
+  if (!buildId) fail(`packaged application.ini has no [App] BuildID: ${manifest.applicationIni}`);
   if (manifest.buildId !== buildId) fail('manifest build ID does not match the packaged application');
   return buildId;
 }
@@ -145,7 +145,7 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   const objDist = path.resolve(root, manifest.objDist);
   const packages = walkFiles(objDist).filter((file) => isPrimaryApplicationPackage(file, release.displayVersion));
   if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
-  const packagedId = packagedBuildId(manifest, root, application);
+  const packagedId = packagedApplicationBuildId(manifest, root, application);
 
   const targets = [...new Set(manifest.updateTargets || [])];
   if (targets.length === 0) fail('artifact metadata has no browser update targets');

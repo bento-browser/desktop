@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { readPlatformBuildId } from './bento-build.mjs';
+import { readApplicationBuildId } from './bento-build.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
 async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precomplete' } = {}) {
@@ -18,7 +18,8 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
   await fsp.mkdir(app, { recursive: true });
   await fsp.mkdir(path.dirname(marTool), { recursive: true });
   await fsp.writeFile(path.join(app, 'precomplete'), '');
-  await fsp.writeFile(path.join(app, 'platform.ini'), '[Build]\nMilestone=154.0\nBuildID=20260912000000\n');
+  await fsp.writeFile(path.join(app, 'platform.ini'), '[Build]\nMilestone=154.0\nBuildID=20260912000001\n');
+  await fsp.writeFile(path.join(app, 'application.ini'), '[App]\nBuildID=20260912000000\n[Build]\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), 'application');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'), 'application archive');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.xpt_artifacts.zip'), 'test artifacts');
@@ -46,9 +47,9 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
     mar: { path: 'dist/output.mar', name: 'Bento-0.0.1-macos.mar', url: 'https://updates.example.invalid/Bento-0.0.1-macos.mar' },
     marTool: 'engine/obj-test/dist/host/bin/mar',
     application: `engine/obj-test/dist/${applicationName}`,
-    platformIni: appBundle
-      ? 'engine/obj-test/dist/Bento.app/Contents/Resources/platform.ini'
-      : 'engine/obj-test/dist/bento/platform.ini',
+    applicationIni: appBundle
+      ? 'engine/obj-test/dist/Bento.app/Contents/Resources/application.ini'
+      : 'engine/obj-test/dist/bento/application.ini',
     buildId: '20260912000000',
     objDist: 'engine/obj-test/dist',
     updateTargets: ['Darwin_x86_64-gcc3'],
@@ -115,25 +116,25 @@ test('artifact validation binds BuildID and MAR URL to configured package metada
   }
 });
 
-test('artifact validation rejects a non-bundle platform.ini outside the application', async () => {
+test('artifact validation rejects a non-bundle application.ini outside the application', async () => {
   const { root, manifest } = await fixture({ appBundle: false });
   try {
     const metadata = JSON.parse(await fsp.readFile(manifest, 'utf8'));
     await fsp.mkdir(path.join(root, 'engine', 'obj-test', 'dist', 'bin'), { recursive: true });
-    await fsp.writeFile(path.join(root, 'engine', 'obj-test', 'dist', 'bin', 'platform.ini'), '[Build]\nBuildID=20260912000000\n');
-    metadata.platformIni = 'engine/obj-test/dist/bin/platform.ini';
+    await fsp.writeFile(path.join(root, 'engine', 'obj-test', 'dist', 'bin', 'application.ini'), '[App]\nBuildID=20260912000000\n');
+    metadata.applicationIni = 'engine/obj-test/dist/bin/application.ini';
     await fsp.writeFile(manifest, JSON.stringify(metadata));
-    assert.throws(() => validateArtifacts(root), /platform.ini is not the one inside the application/);
+    assert.throws(() => validateArtifacts(root), /application.ini is not the one inside the application/);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
 
-test('platform.ini parser reads BuildID from a multiline Build section', () => {
+test('application.ini parser reads BuildID from the App section', () => {
   assert.equal(
-    readPlatformBuildId('[App]\nBuildID=wrong\n[Build]\nMilestone=154.0\nBuildID = 20260913000000\n[Other]\nBuildID=also-wrong\n'),
+    readApplicationBuildId('[Build]\nBuildID=wrong\n[App]\nName=Bento\nBuildID = 20260913000000\n[Other]\nBuildID=also-wrong\n'),
     '20260913000000',
   );
-  assert.equal(readPlatformBuildId('[Build]\r\nBuildID=20260913000000\r\nMilestone=154.0\r\n'), '20260913000000');
-  assert.equal(readPlatformBuildId('[App]\nBuildID=wrong\n'), undefined);
+  assert.equal(readApplicationBuildId('[App]\r\nBuildID=20260913000000\r\nVersion=154.0\r\n'), '20260913000000');
+  assert.equal(readApplicationBuildId('[Build]\nBuildID=wrong\n'), undefined);
 });

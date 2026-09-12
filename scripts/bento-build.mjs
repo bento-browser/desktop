@@ -1251,15 +1251,15 @@ function updateTargets(objDist) {
   return architecture === 'arm64' ? ['Linux_aarch64-gcc3'] : PLATFORM_TARGETS.linux;
 }
 
-export function readPlatformBuildId(content) {
-  let inBuildSection = false;
+export function readApplicationBuildId(content) {
+  let inAppSection = false;
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      inBuildSection = trimmed.slice(1, -1).trim() === 'Build';
+      inAppSection = trimmed.slice(1, -1).trim() === 'App';
       continue;
     }
-    if (!inBuildSection) continue;
+    if (!inAppSection) continue;
     const separator = line.indexOf('=');
     if (separator < 0 || line.slice(0, separator).trim() !== 'BuildID') continue;
     const buildId = line.slice(separator + 1).trim();
@@ -1268,19 +1268,14 @@ export function readPlatformBuildId(content) {
   return undefined;
 }
 
-function platformIni(objDist, binaryName, application = undefined) {
-  const applicationCandidate = application
-    ? path.basename(application).endsWith('.app')
-      ? path.join(application, 'Contents', 'Resources', 'platform.ini')
-      : path.join(application, 'platform.ini')
-    : undefined;
-  const candidates = application
-    ? [applicationCandidate]
-    : [path.join(objDist, binaryName, 'platform.ini'), path.join(objDist, 'bin', 'platform.ini'), path.join(objDist, 'platform.ini')];
-  const file = candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
-  if (!file) fail(`package: platform.ini missing under ${objDist}`);
-  const buildId = readPlatformBuildId(fs.readFileSync(file, 'utf8'));
-  if (!buildId) fail(`package: BuildID missing from ${file}`);
+function applicationIni(application) {
+  if (!application) fail('package: packaged application is missing; cannot read application.ini');
+  const file = path.basename(application).endsWith('.app')
+    ? path.join(application, 'Contents', 'Resources', 'application.ini')
+    : path.join(application, 'application.ini');
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) fail(`package: application.ini missing from ${application}`);
+  const buildId = readApplicationBuildId(fs.readFileSync(file, 'utf8'));
+  if (!buildId) fail(`package: [App] BuildID missing from ${file}`);
   return { file, buildId };
 }
 
@@ -1367,7 +1362,7 @@ async function commandPackage(ctx) {
   await run('bash', ['scripts/mach-raw.sh', 'package-multi-locale', '--locales', ...readLocales(ctx, config)], { cwd: ctx.root });
   copyDirectoryFiles(ctx, objDist);
   const mar = await createMar(ctx, config, objDist);
-  const build = platformIni(objDist, config.binaryName, mar.application);
+  const build = applicationIni(mar.application);
   const update = await writeBrowserUpdateFiles(ctx, config, mar.path, build.buildId, objDist);
   await writeAddonUpdateFiles(ctx, config);
   writeJson(path.join(ctx.distDir, 'bento-artifacts.json'), {
@@ -1377,7 +1372,7 @@ async function commandPackage(ctx) {
     mar: { path: path.relative(ctx.root, mar.path), name: update.marName, url: update.url },
     marTool: path.relative(ctx.root, mar.tool),
     application: path.relative(ctx.root, mar.application),
-    platformIni: path.relative(ctx.root, build.file),
+    applicationIni: path.relative(ctx.root, build.file),
     buildId: build.buildId,
     objDist: path.relative(ctx.root, objDist),
     updateTargets: update.targets,
@@ -1394,7 +1389,7 @@ async function commandBrowserUpdates(ctx) {
   if (objects.length !== 1) fail('updates-browser: set BENTO_OBJDIR when more than one object directory exists');
   const objDist = path.join(objects[0], 'dist');
   const application = packagedApplication(objDist, config);
-  const build = platformIni(objDist, config.binaryName, application);
+  const build = applicationIni(application);
   const result = await writeBrowserUpdateFiles(ctx, config, marPath, build.buildId, objDist);
   process.stdout.write(`bento: wrote browser updates (${result.targets.length} targets)\n`);
 }
