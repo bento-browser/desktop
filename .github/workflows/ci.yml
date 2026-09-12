@@ -4,6 +4,25 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform for the manual application test build
+        required: true
+        default: linux-x64
+        type: choice
+        options:
+          - linux-x64
+          - macos-arm64
+          - windows-x64
+          - all
+
+concurrency:
+  # Manual native runs have a separate namespace so a routine PR update never
+  # cancels an explicitly requested application build.
+  group: ci-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'routine' }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -73,7 +92,7 @@ jobs:
         run: pnpm run firefox:patches:test
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -163,14 +182,45 @@ jobs:
       - name: Surfer license check
         run: pnpm run lc
 
+  prepare-build:
+    name: Select CI build platform
+    needs: [surfer-smoke, extensions]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      matrix: ${{ steps.select-matrix.outputs.matrix }}
+    steps:
+      - name: Select allowlisted platform matrix
+        id: select-matrix
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -euo pipefail
+          linux='{"platform":"linux-x64","os":"blacksmith-4vcpu-ubuntu-2404","build-jobs":"4"}'
+          macos='{"platform":"macos-arm64","os":"blacksmith-6vcpu-macos-26","build-jobs":""}'
+          windows='{"platform":"windows-x64","os":"blacksmith-4vcpu-windows-2025","build-jobs":"2"}'
+
+          case "$EVENT_NAME:$PLATFORM" in
+            workflow_dispatch:linux-x64) matrix="{\"include\":[$linux]}" ;;
+            workflow_dispatch:macos-arm64) matrix="{\"include\":[$macos]}" ;;
+            workflow_dispatch:windows-x64) matrix="{\"include\":[$windows]}" ;;
+            workflow_dispatch:all) matrix="{\"include\":[$linux,$macos,$windows]}" ;;
+            push:|pull_request:) matrix="{\"include\":[$linux]}" ;;
+            *) echo "Unsupported CI event/platform: $EVENT_NAME:$PLATFORM" >&2; exit 1 ;;
+          esac
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
-    name: Build (${{ matrix.os }})
-    needs: surfer-smoke
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Build' || 'Source import' }} (${{ matrix.platform }})
+    needs: prepare-build
     strategy:
       fail-fast: false
-      matrix:
-        os: [blacksmith-4vcpu-ubuntu-2404, blacksmith-6vcpu-macos-15, blacksmith-4vcpu-windows-2025]
+      matrix: ${{ fromJSON(needs.prepare-build.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
+    # Keep routine source validation bounded separately from paid native builds.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 120 || 20 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -196,11 +246,32 @@ jobs:
       - name: Cache Firefox source (engine/)
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: engine
-          key: ${{ runner.os }}-engine-${{ hashFiles('surfer.json') }}
+          # Keep the native object tree in its own cache below. The old source
+          # cache included engine/obj-* as well, doubling restore and save work.
+          path: |
+            engine/*
+            engine/.[!.]*
+            !engine/obj-*
+          key: ${{ runner.os }}-engine-source-v2-${{ hashFiles('surfer.json', 'patches/**') }}
 
       - name: Surfer download
         run: pnpm run download
+
+      - name: Cache Firefox object files (engine/obj-*)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: engine/obj-*
+          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml') }}
+
+      - name: Install MozillaBuild
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          choco install mozillabuild --version=4.2.1 --yes --no-progress
+          if (-not (Test-Path 'C:\mozilla-build\start-shell.bat')) {
+            throw 'MozillaBuild did not install at C:\mozilla-build'
+          }
 
       - name: Build extensions and import Bento sources
         env:
@@ -219,17 +290,86 @@ jobs:
       - name: Verify imported branding, add-ons, patches, and identity
         run: node scripts/check-import-output.mjs
 
-      # The full build (`pnpm run build`) requires the Mozilla build toolchain
-      # (Rust, clang, ~30 GB disk, ~30–60 min wall time on hosted runners).
-      # Disabled until self-hosted or beefier runners are wired up.
-      #
-      # - name: Surfer bootstrap
-      #   run: pnpm run bootstrap
-      # - name: Surfer build
-      #   run: pnpm run build
-      # - name: Surfer package
-      #   run: pnpm run package
-      # - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-      #   with:
-      #     name: bento-${{ runner.os }}
-      #     path: dist/
+      - name: Resolve pinned Rust toolchain
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/check-rust-toolchain.mjs
+
+      - name: Surfer bootstrap (Mozilla build toolchain)
+        if: github.event_name == 'workflow_dispatch'
+        run: pnpm run bootstrap
+
+      - name: Select bootstrapped Windows toolchain
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $stateDir = if ($env:MOZBUILD_STATE_PATH) {
+            $env:MOZBUILD_STATE_PATH
+          } else {
+            Join-Path $env:USERPROFILE '.mozbuild'
+          }
+          $msvcRoot = Join-Path $stateDir 'vs\VC\Tools\MSVC'
+          if (-not (Test-Path -LiteralPath $msvcRoot -PathType Container)) {
+            throw "Bootstrapped Visual C++ tree not found at $msvcRoot"
+          }
+
+          $msvcPath = Get-ChildItem -LiteralPath $msvcRoot -Directory |
+            Where-Object { $_.Name -match '^\d+(\.\d+)+$' } |
+            Sort-Object { [version]$_.Name } |
+            Select-Object -Last 1
+          if (-not $msvcPath) {
+            throw "No bootstrapped MSVC version found under $msvcRoot"
+          }
+
+          $vcBin = Join-Path $msvcPath.FullName 'bin\Hostx64\x64'
+          $required = @(
+            (Join-Path $vcBin 'cl.exe'),
+            (Join-Path $msvcPath.FullName 'atlmfc\include\atlbase.h'),
+            (Join-Path $msvcPath.FullName 'atlmfc\lib\x64\atls.lib')
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Bootstrapped Windows toolchain is incomplete: missing $path"
+            }
+          }
+
+          # configure searches the inherited PATH before its discovered VS
+          # path. GITHUB_PATH prepends the verified compiler directory so a
+          # partial machine Visual Studio install cannot win the lookup.
+          $vcBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "Using bootstrapped MSVC toolchain $($msvcPath.FullName)"
+
+      - name: Build manual release artifact
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          BENTO_RELEASE: '1'
+          BENTO_PR_BUILD: '1'
+          BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
+        run: bash scripts/build-release.sh
+
+      - name: Upload manual build artifact
+        id: upload-pr-artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bento-pr-${{ matrix.platform }}-attempt-${{ github.run_attempt }}
+          path: release-out/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Add manual build link to job summary
+        if: github.event_name == 'workflow_dispatch' && success()
+        shell: bash
+        env:
+          ARTIFACT_NAME: bento-pr-${{ matrix.platform }}-attempt-${{ github.run_attempt }}
+          ARTIFACT_URL: ${{ steps.upload-pr-artifact.outputs.artifact-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo '### Bento manual test build'
+            echo
+            echo "[${ARTIFACT_NAME}](${ARTIFACT_URL})"
+            echo
+            echo 'Unsigned PR-scoped test build; GitHub sign-in required. Artifact retention: 14 days.'
+            echo "[View CI run](${RUN_URL})"
+          } >> "$GITHUB_STEP_SUMMARY"

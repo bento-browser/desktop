@@ -12,8 +12,24 @@ for the implementation map.
 
 ## Status
 
-Pre-v0.1.0 development. Builds and release tooling exist for maintainer
-iteration across macOS, Linux, and Windows; public distribution is not enabled yet.
+Pre-v0.1.0 development. Pull requests receive automatic source-import and
+static checks. Optional unsigned application test builds can be requested
+manually for review. Stable public distribution is not enabled yet; these
+PR-scoped artifacts are the development policy exception and are not stable
+releases.
+
+Open **Actions → CI → Run workflow**, choose a branch in this repository, and
+choose `linux-x64` (the default), `macos-arm64`, `windows-x64`, or `all`. The
+manual workflow must be present on the default branch before the Actions UI
+offers it. Manual builds use hosted-runner time and upload artifacts retained
+for 14 days. A GitHub sign-in is required. They target Linux x64 (`.tar.xz` or
+`.tar.bz2`), Windows x64 (`.exe` installer and `.zip`), and macOS Apple Silicon
+(`.dmg`). Packages are unsigned and may trigger Gatekeeper or SmartScreen
+warnings or blocks.
+
+The trusted comment workflow must first be merged into the default branch.
+Until then, downloads are available from manual CI job summaries and artifacts;
+completed manual runs for an open PR update the bot comment automatically.
 
 ## Prerequisites
 

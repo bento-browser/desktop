@@ -263,16 +263,16 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 ## Versioning policy
 
-**Bento is pre-distribution until v0.1.0.** Every release built before v0.1.0 is for the maintainer's own iteration only — no user-facing distribution, no GitHub Release publish, no landing-page download links pointing at it. The release pipeline (build-release.sh, GitHub Actions release.yml, signing/notarization plans) exists during this period so that v0.1.0 is a small, well-rehearsed step rather than a cliff, but the artifacts it produces stay private.
+**Official releases stay private until v0.1.0.** Pre-v0.1.0 release builds are for maintainer iteration: do not publish GitHub Releases or link them from the landing page. Public PR test builds are allowed as an explicit exception. CI may upload unsigned application packages and link them in the associated PR comment for anyone signed into GitHub to download. These artifacts expire after 14 days and are not stable releases.
 
 **Concrete rules for agents:**
 
-- **Version bumps stay inside the v0.0.X range.** When bumping `brands.bento.release.displayVersion` in [surfer.json](surfer.json), increment the patch component only — `0.0.1` → `0.0.2` → `0.0.3` etc. Do NOT bump to `0.1.0` (or higher) unprompted, even if it would be conventional semver for a feature-complete cut.
-- **Only the maintainer flips to v0.1.0.** Wait for an explicit instruction like "bump to v0.1.0" before changing the major.minor. The cutover from v0.0.X → v0.1.0 is the moment Bento becomes a distributable artifact, with all the signing / notarization / public-release implications that carries — that's a deliberate handoff, not a routine bump.
-- **Don't suggest publishing v0.0.X publicly.** Don't propose `gh release create` against a `v0.0.X` tag, don't propose pushing artifacts to bentobrowser.app's hosting, don't propose announcing the release. Build and test locally; that's the v0.0.X scope.
-- **The release CI workflow can still run** on v0.0.X tags — that's how we exercise the pipeline. The draft GitHub Release that lands is for internal review only, not for publishing.
+- **Version bumps stay inside the v0.0.X range.** When bumping `brands.bento.release.displayVersion` in [surfer.json](surfer.json), increment the patch component only. Do not bump to v0.1.0 or higher without the maintainer's explicit instruction.
+- **Only the maintainer flips to v0.1.0.** That cutover enables official public releases, with their signing, notarization, and distribution requirements. Public PR test builds do not authorize this version bump.
+- **Keep v0.0.X public downloads limited to PR tests.** Do not publish a GitHub Release, push installers to bentobrowser.app, or announce an official release. The test-build exception covers the associated PR comment and CI artifacts only.
+- **The release CI workflow can still run** on v0.0.X tags to exercise the pipeline. Its draft GitHub Release is for internal review only and must not be published.
 
-**Why this matters**: every public installer creates obligations — Gatekeeper / SmartScreen warnings if unsigned (bad first impression), or a notarized cert chain that has to keep working (operational cost). Pre-v0.1.0 we get to iterate without those obligations. Once v0.1.0 ships, every subsequent release is a thing real users will reach for, with the support load that implies.
+PR comments must identify the source commit, platform, artifact expiration, and unsigned test-build status. This exception does not relax the signing or approval gates for official public releases.
 
 ## Tale UI: development ↔ release toggle
 
