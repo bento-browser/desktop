@@ -1,7 +1,8 @@
 name: Release
 
-# Tag-driven release. Tag the repo with `v0.1.0` (matching surfer.json's
-# version) and the workflow builds Bento for macOS, Linux, and Windows in parallel,
+# Tag-driven release. Tag the repo with `v0.0.1` (matching
+# bento.json's brands.bento.release.displayVersion) and the workflow builds Bento
+# for macOS, Linux, and Windows in parallel,
 # then attaches the artifacts to a draft GitHub Release. The Release stays
 # in draft until you publish it manually — final review of the artifacts +
 # notes before users see them.
@@ -73,13 +74,16 @@ jobs:
             engine/*
             engine/.[!.]*
             !engine/obj-*
-          key: ${{ runner.os }}-engine-source-v2-${{ hashFiles('surfer.json', 'patches/**') }}
+            .bento/source-state.json
+            .bento/import-manifest.json
+            .bento/engine-state.json
+          key: ${{ runner.os }}-bento-engine-source-v1-release-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/firefox-patch-stack.mjs') }}
 
       # Install dependencies in release mode so the @tale-ui/* deps
       # resolve from npm (not local link). build-release.sh re-runs this
-      # internally for safety, but we install up front because the
-      # `surfer download` / `surfer bootstrap` steps below need surfer
-      # itself on disk before they can invoke it.
+      # internally for safety, but we install up front because the Bento
+      # download and bootstrap steps below need the repository's
+      # build driver and its release dependency graph on disk first.
       - name: Install dependencies (release mode)
         run: bash scripts/install-release-deps.sh
 
@@ -99,21 +103,21 @@ jobs:
             throw 'MozillaBuild did not install at C:\mozilla-build'
           }
 
-      - name: Surfer download (Firefox source)
+      - name: Bento download (Firefox source)
         run: pnpm run download
 
       # Cache mach build artifacts so an incremental release that only
       # changes Bento extensions doesn't re-link the entire engine. The key
       # intentionally excludes github.sha so extension-only commits reuse it.
-      # Restore this only after source download: Surfer skips the download
-      # when engine/ already exists, even when only obj-* was restored.
+      # Restore this only after source download: Bento's source command checks
+      # the protected engine checkout before using the restored object tree.
       - name: Cache engine/obj-*
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: engine/obj-*
-          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml') }}
+          key: ${{ runner.os }}-bento-obj-v1-release-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml', 'scripts/bento-build.mjs', 'scripts/mach-raw.sh') }}
 
-      - name: Surfer bootstrap (Mozilla build toolchain)
+      - name: Bento bootstrap (Mozilla build toolchain)
         run: pnpm run bootstrap
 
       - name: Select bootstrapped Windows toolchain
@@ -159,11 +163,24 @@ jobs:
           BENTO_RELEASE: '1'
           BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
         # build-release.sh handles platform detection, runs the full
-        # ext:build → import → surfer build → surfer package chain, and
+        # ext:build → import → Bento build → Bento package chain, and
         # drops a versioned artifact into release-out/.
         # Bash on Windows runners is git-bash which handles the script
         # syntax fine.
         run: bash scripts/build-release.sh
+
+      - name: Validate Bento package, MAR, and update XML outputs
+        run: pnpm run artifacts:check
+
+      - name: Validate release-out collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mar_count="$(find release-out -maxdepth 1 -type f -name '*.mar' | wc -l | tr -d ' ')"
+          xml_count="$(find release-out -maxdepth 1 -type f -name '*-update.xml' | wc -l | tr -d ' ')"
+          [ "$mar_count" -eq 1 ] || { echo "expected one release-out MAR, found $mar_count" >&2; exit 1; }
+          [ "$xml_count" -gt 0 ] || { echo 'release-out is missing update XML' >&2; exit 1; }
+          echo "release-out contains one MAR and $xml_count update XML file(s)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -179,7 +196,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # Only create a Release on tag pushes. Manual workflow_dispatch runs
     # leave the artifacts on the workflow run page for inspection.
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
       id-token: write

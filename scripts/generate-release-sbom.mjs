@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 
 const root = path.resolve(import.meta.dirname, '..');
 const outputDir = path.resolve(root, process.argv[2] || 'release-out');
-const surfer = JSON.parse(fs.readFileSync(path.join(root, 'surfer.json'), 'utf8'));
+const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
 const ublock = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/ublock-origin/manifest.json'), 'utf8'),
 );
@@ -58,7 +58,7 @@ const components = [
   {
     type: 'application',
     name: 'Mozilla Firefox',
-    version: surfer.version.version,
+    version: bento.firefox.version,
     properties: [{ name: 'bento:role', value: 'upstream-browser-engine' }],
   },
   {
@@ -78,7 +78,7 @@ const sbom = {
     component: {
       type: 'application',
       name: 'Bento Browser',
-      version: surfer.brands.bento.release.displayVersion,
+      version: bento.brands.bento.release.displayVersion,
     },
     tools: {
       components: [{ type: 'application', name: 'Bento release tooling', version: '1' }],

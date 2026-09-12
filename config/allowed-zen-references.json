@@ -3,45 +3,15 @@
   "entries": [
     {
       "path": "package.json",
-      "pattern": "@zen-browser/surfer|check:zen-boundary",
+      "pattern": "check:zen-boundary",
       "category": "build-tool",
-      "reason": "Pins the upstream build tool and exposes its boundary check."
-    },
-    {
-      "path": "pnpm-lock.yaml",
-      "pattern": "@zen-browser/surfer",
-      "category": "build-tool",
-      "reason": "Records the exact upstream npm package resolution."
-    },
-    {
-      "path": "pnpm-lock.release.yaml",
-      "pattern": "@zen-browser/surfer",
-      "category": "build-tool",
-      "reason": "Records the same exact upstream npm package in the frozen release graph."
-    },
-    {
-      "path": "pnpm-workspace.yaml",
-      "pattern": "@zen-browser/surfer",
-      "category": "build-tool",
-      "reason": "Permits the pinned build tool's install scripts."
-    },
-    {
-      "path": "CLAUDE.md",
-      "pattern": "@zen-browser/surfer",
-      "category": "build-tool",
-      "reason": "Documents the exact dependency upgrade command."
+      "reason": "Exposes the build-time guard that protects the explicit Zen import boundary."
     },
     {
       "path": ".github/workflows/ci.yml",
       "pattern": "allowed-zen-references|Zen reference boundary|check:zen-boundary",
       "category": "build-tool",
       "reason": "Runs and validates the build-time reference guard in CI."
-    },
-    {
-      "path": "docs/build-tooling.md",
-      "pattern": "@zen-browser/surfer|zen-browser/surfer",
-      "category": "build-tool",
-      "reason": "Documents the internal build dependency and upgrade procedure."
     },
     {
       "path": "scripts/check-zen-boundary.mjs",
@@ -72,6 +42,12 @@
       "pattern": "browser\\.migrate\\.zen\\.enabled",
       "category": "import-compatibility",
       "reason": "Enables Firefox's explicit Zen profile migrator."
+    },
+    {
+      "path": "scripts/import-sources.test.mjs",
+      "pattern": "browser\\.migrate\\.zen\\.enabled",
+      "category": "import-compatibility",
+      "reason": "Tests preservation of the explicit Zen profile migrator preference during engine adoption."
     },
     {
       "path": "patches/core-ui/09-bento-firefox-profile-first-run-import.patch",

@@ -51,11 +51,11 @@ async function fixture(version = '1.0') {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-patch-stack-test-'));
   await fsp.mkdir(path.join(root, 'patches', 'area'), { recursive: true });
   await fsp.mkdir(path.join(root, 'src'), { recursive: true });
-  await fsp.mkdir(path.join(root, '.surfer'), { recursive: true });
+  await fsp.mkdir(path.join(root, '.bento'), { recursive: true });
   await fsp.mkdir(path.join(root, 'engine'), { recursive: true });
   fs.writeFileSync(
-    path.join(root, 'surfer.json'),
-    `${JSON.stringify({ version: { product: 'firefox', version } }, null, 2)}\n`,
+    path.join(root, 'bento.json'),
+    `${JSON.stringify({ schemaVersion: 1, firefox: { product: 'firefox', version }, build: { mode: 'dev' }, brand: 'bento', brands: { bento: {} } }, null, 2)}\n`,
   );
 
   const engine = path.join(root, 'engine');
@@ -107,7 +107,7 @@ test('source base staging includes files ignored by upstream Firefox', async () 
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-firefox-source-base-test-'));
   git(root, ['init']);
   fs.writeFileSync(path.join(root, '.gitignore'), 'ignored.txt\n');
-  fs.writeFileSync(path.join(root, 'ignored.txt'), 'tracked by Surfer\n');
+  fs.writeFileSync(path.join(root, 'ignored.txt'), 'tracked by the source baseline\n');
 
   stageFirefoxSourceBase(root);
 
@@ -247,8 +247,8 @@ test('successful rebase exports patches to the same manifest paths', async () =>
     entries: [{ path: 'patches/area/01.patch', id: 'one', subject: 'One' }],
   });
   fs.writeFileSync(
-    path.join(root, 'surfer.json'),
-    `${JSON.stringify({ version: { product: 'firefox', version: '2.0' } })}\n`,
+    path.join(root, 'bento.json'),
+    `${JSON.stringify({ schemaVersion: 1, firefox: { product: 'firefox', version: '2.0' }, build: { mode: 'dev' }, brand: 'bento', brands: { bento: {} } })}\n`,
   );
   git(engine, ['commit', '--allow-empty', '-m', 'Firefox 2.0']);
   git(engine, ['update-ref', 'refs/bento/firefox-base/2.0', 'HEAD']);
@@ -271,8 +271,8 @@ test('rebase conflict exits non-zero and preserves rebase worktree', async () =>
     entries: [{ path: 'patches/area/01.patch', id: 'one', subject: 'One' }],
   });
   fs.writeFileSync(
-    path.join(root, 'surfer.json'),
-    `${JSON.stringify({ version: { product: 'firefox', version: '2.0' } })}\n`,
+    path.join(root, 'bento.json'),
+    `${JSON.stringify({ schemaVersion: 1, firefox: { product: 'firefox', version: '2.0' }, build: { mode: 'dev' }, brand: 'bento', brands: { bento: {} } })}\n`,
   );
   fs.writeFileSync(path.join(engine, 'file.txt'), 'upstream\n');
   git(engine, ['commit', '-am', 'Firefox 2.0']);
@@ -280,7 +280,7 @@ test('rebase conflict exits non-zero and preserves rebase worktree', async () =>
   const result = runFixture(root, ['rebase']);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /rebase stopped/);
-  assert.equal(fs.existsSync(path.join(root, '.surfer', 'patch-stack-worktree')), true);
+  assert.equal(fs.existsSync(path.join(root, '.bento', 'patch-stack-worktree')), true);
 });
 
 test('materialize avoids dirty live engine state', async () => {
@@ -341,12 +341,12 @@ test('export refuses merge commits in the patch stack', async () => {
   assert.match(result.stderr, /contains merge commits/);
 });
 
-test('check --for-import fails when manifest base differs from surfer.json', async () => {
+test('check --for-import fails when manifest base differs from bento.json', async () => {
   const { root, engine, tree } = await fixture('1.0');
   writeLegacyPatch(root, engine, 'patches/area/01.patch', 'beta\n');
   fs.writeFileSync(
-    path.join(root, 'surfer.json'),
-    `${JSON.stringify({ version: { product: 'firefox', version: '2.0' } })}\n`,
+    path.join(root, 'bento.json'),
+    `${JSON.stringify({ schemaVersion: 1, firefox: { product: 'firefox', version: '2.0' }, build: { mode: 'dev' }, brand: 'bento', brands: { bento: {} } })}\n`,
   );
   writeManifest(root, {
     version: '1.0',

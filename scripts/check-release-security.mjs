@@ -13,15 +13,15 @@ if (!['preview', 'public'].includes(channel)) {
 }
 
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config/release-security.json'), 'utf8'));
-const surfer = JSON.parse(fs.readFileSync(path.join(root, 'surfer.json'), 'utf8'));
+const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
 
 if (config.schemaVersion !== 1) {
   throw new Error('Unsupported release-security schema version.');
 }
-if (config.updateService?.hostname !== surfer.updateHostname) {
-  throw new Error('Release security update hostname does not match surfer.json.');
+if (config.updateService?.hostname !== bento.updates?.hostname) {
+  throw new Error('Release security update hostname does not match bento.json.');
 }
-const expectedTag = `v${surfer.brands.bento.release.displayVersion}`;
+const expectedTag = `v${bento.brands.bento.release.displayVersion}`;
 if (process.env.GITHUB_REF_NAME?.startsWith('v') && process.env.GITHUB_REF_NAME !== expectedTag) {
   throw new Error(`Release tag must be ${expectedTag}, received ${process.env.GITHUB_REF_NAME}.`);
 }

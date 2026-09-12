@@ -15,7 +15,7 @@ The tree is selected by `--with-branding=browser/branding/bento` and includes:
 - `pref/firefox-branding.js` for branding-specific default prefs
 - `locales/en-US/brand.{ftl,properties}` for Bento Browser name strings
 
-Surfer branding generation is intentionally disabled. `pnpm run import` copies
-this tracked tree into `engine/browser/branding/bento`; it never regenerates the
-canonical files. When updating Firefox, compare this directory with the new
-upstream `browser/branding/unofficial` tree and review every upstream change.
+Build tooling does not generate branding. `pnpm run import` copies this tracked
+tree into `engine/browser/branding/bento`; it never regenerates the canonical
+files. When updating Firefox, compare this directory with the new upstream
+`browser/branding/unofficial` tree and review every upstream change.

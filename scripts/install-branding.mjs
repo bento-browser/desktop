@@ -86,17 +86,11 @@ export function installBranding(options = {}) {
   const repoRoot = path.resolve(
     options.repoRoot || process.env.BENTO_REPO_ROOT || DEFAULT_REPO_ROOT,
   );
-  const brandFile = path.join(repoRoot, '.surfer', 'dynamicConfig.brand.json');
-  if (!fs.existsSync(brandFile)) {
-    throw new Error(`install-branding: missing ${path.relative(repoRoot, brandFile)}`);
-  }
-
-  const brand = readJson(brandFile);
-  if (brand !== 'bento') {
-    throw new Error(
-      `install-branding: expected active brand "bento", received ${JSON.stringify(brand)}`,
-    );
-  }
+  const configPath = path.join(repoRoot, 'bento.json');
+  if (!fs.existsSync(configPath)) throw new Error('install-branding: missing bento.json');
+  const config = readJson(configPath);
+  const brand = config.brand;
+  if (brand !== 'bento') throw new Error(`install-branding: expected active brand "bento", received ${JSON.stringify(brand)}`);
 
   const source = path.join(repoRoot, 'branding', 'bento');
   const destination = path.join(repoRoot, 'engine', 'browser', 'branding', 'bento');

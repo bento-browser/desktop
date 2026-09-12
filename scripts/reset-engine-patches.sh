@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Revert any engine source files modified by Bento patches back to pristine
-# Firefox state, so `surfer import` can re-apply patches cleanly even after
+# Firefox state, so the Bento import pipeline can re-apply patches cleanly even after
 # a patch's content has changed between runs.
 #
-# Surfer's import doesn't reset target files before applying patches — if
-# you edit a .patch file and re-run import, the engine still has the OLD
+# The import pipeline resets target files before applying patches. If you edit
+# a .patch file and re-run import, the engine still has the old
 # patch applied and the new patch fails on context mismatch.
 #
 # Idempotent — safe to re-run. Skips silently if engine isn't a git repo

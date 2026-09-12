@@ -14,8 +14,8 @@ get Tale UI design tokens anyway, and how that pipeline absorbs future themes.
    reads those files and writes
    [src/browser/base/content/bento-chrome-tokens.css](../src/browser/base/content/bento-chrome-tokens.css)
    (gitignored — regenerated on every build).
-3. **Build wire-up:** [package.json](../package.json) `import` script runs
-   the generator before `surfer import`. Every `pnpm run dev` /
+3. **Build wire-up:** [scripts/import.sh](../scripts/import.sh) runs
+   the generator before Bento's source and patch import steps. Every `pnpm run dev` /
    `pnpm run build` pulls fresh values — drift = 0.
 4. **Chrome registration:** [patches/chrome-layout/01-bento-shell-mount.patch](../patches/chrome-layout/01-bento-shell-mount.patch)
    adds `content/browser/bento-chrome-tokens.css` to `browser/base/jar.mn`.

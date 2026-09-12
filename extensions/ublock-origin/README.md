@@ -17,4 +17,6 @@
 5. Confirm `manifest.json` still declares `uBlock0@raymondhill.net`.
 6. Build Bento and verify uBO appears in `about:addons`, is enabled by default, can be disabled by the user, and works in private windows.
 
-`META-INF/` from the downloaded XPI is not listed in `.bento-runtime-entries.json`; Surfer repackages built-in add-ons into Firefox's `builtin-addons/` jar layout.
+`META-INF/` from the downloaded XPI is not listed in `.bento-runtime-entries.json`;
+Bento's built-in add-on installer packages the declared runtime entries into
+Firefox's `builtin-addons/` jar layout.

@@ -1,7 +1,7 @@
 // Bento Browser — default pref overrides.
 //
 // Appended to engine/browser/branding/bento/pref/firefox-branding.js by
-// scripts/regen-branding.sh after `surfer import` runs. Firefox loads
+// scripts/regen-branding.sh after the Bento import pipeline runs. Firefox loads
 // firefox-branding.js automatically as default branding prefs, so anything
 // here ships as a Bento default (still overridable per-user via about:config).
 //

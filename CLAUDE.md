@@ -77,9 +77,10 @@ Do not give the user fragments and expect them to assemble the procedure. Do not
 ## What this project is
 
 Bento Browser is an independent Mozilla Firefox-derived browser. The active
-Firefox version is configured in `surfer.json`. Upstream Surfer is pinned as
-immutable build infrastructure; Bento-specific behavior belongs in Bento wrapper
-scripts. The UI shell ships as two privileged built-in extensions:
+Firefox version and source digest are configured in `bento.json`. Bento's
+build driver owns the lifecycle around Mozilla's `mach` entry point; Bento
+specific behavior belongs in Bento wrapper scripts. The UI shell ships as two
+privileged built-in extensions:
 
 - **bento-shell** — React + Tale UI, the visible chrome (vertical tabs, workspaces, panels, command palette).
 - **bento-tools** — plain TypeScript background logic (tab/keyboard/persistence).
@@ -267,7 +268,7 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 **Concrete rules for agents:**
 
-- **Version bumps stay inside the v0.0.X range.** When bumping `brands.bento.release.displayVersion` in [surfer.json](surfer.json), increment the patch component only. Do not bump to v0.1.0 or higher without the maintainer's explicit instruction.
+- **Version bumps stay inside the v0.0.X range.** When bumping `brands.bento.release.displayVersion` in [bento.json](bento.json), increment the patch component only. Do not bump to v0.1.0 or higher without the maintainer's explicit instruction.
 - **Only the maintainer flips to v0.1.0.** That cutover enables official public releases, with their signing, notarization, and distribution requirements. Public PR test builds do not authorize this version bump.
 - **Keep v0.0.X public downloads limited to PR tests.** Do not publish a GitHub Release, push installers to bentobrowser.app, or announce an official release. The test-build exception covers the associated PR comment and CI artifacts only.
 - **The release CI workflow can still run** on v0.0.X tags to exercise the pipeline. Its draft GitHub Release is for internal review only and must not be published.
@@ -290,18 +291,26 @@ Tale UI is published to npm at the versions Bento targets. The extension `packag
 
 **When updating the Tale UI version**: bump the version strings in both `extensions/bento-shell/package.json` and `extensions/bento-tools/package.json` (when bento-tools eventually pulls Tale UI). Run `pnpm install` to refresh the developer lock, then run `bash scripts/update-release-lock.sh`. Verify it with `bash scripts/install-release-deps.sh`.
 
-**Why this matters**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. Surfer is likewise pinned to an exact npm version; see [docs/build-tooling.md](docs/build-tooling.md).
+**Why this matters**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. See [docs/build-tooling.md](docs/build-tooling.md) for the release dependency and source-cache contracts.
 
-**Surfer upgrades**: treat the upstream package as immutable project
-infrastructure. Do not edit a local clone or create a Bento fork. Bento-specific
-behavior belongs in Bento wrapper scripts. No update is auto-merged; use:
+**Firefox updates**: use Bento's protected source-update workflow. For a newer
+version than the one in `bento.json`, copy the 64-character SHA-256 for
+`source/firefox-<target-version>.source.tar.xz` from Mozilla's
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
+file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`
+and pass it as `BENTO_SOURCE_SHA256`; the driver still verifies the archive and
+rejects a missing or mismatched digest. Inspect `git -C engine worktree list --porcelain`
+first, finish or export any patch work, then remove linked worktrees with
+`git -C engine worktree remove <worktree>` before retrying. The workflow
+preserves the previous checkout under `.bento/backups/`,
+updates `bento.json` and `config/firefox-versions.json`, and requires
+patch-stack validation before import:
 
 ```sh
-pnpm up --save-exact @zen-browser/surfer@<version>
-pnpm exec surfer --version
+BENTO_SOURCE_SHA256=<sha256-from-mozilla> pnpm run firefox:sync
+pnpm run firefox:patches:check
 pnpm run import
 pnpm run build
-pnpm run build:release
 ```
 
 ## Dev loop
@@ -340,16 +349,17 @@ Then iterate by what you changed:
 | `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && pnpm run import`                                            | Press **Alt+Shift+R** in Bento (triggers `browser.runtime.reload()` via the dev-reload command) |
 | `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                                              |
 | `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && pnpm run import`                                            | Quit + relaunch                                                                                 |
-| `patches/`, `src/browser/`, `prefs/bento.js`, `surfer.json` | `pnpm run build` (~15 s — mach build is mostly cached)                                           | Quit + relaunch                                                                                 |
-| Surfer dependency                                           | Follow the exact-pin upgrade and verification procedure in `docs/build-tooling.md`                | Quit + relaunch                                                                                 |
+| `patches/`, `src/browser/`, `prefs/bento.js`, `bento.json`  | `pnpm run build` (~15 s — mach build is mostly cached)                                           | Quit + relaunch                                                                                 |
+| Firefox source/build tooling                                | Follow the update and validation procedure in `docs/build-tooling.md`                            | Quit + relaunch                                                                                 |
 
-> **How the reload works**: `pnpm run import` runs the Bento import wrapper: theme preset sync, chrome token generation, patch-stack check/reset, upstream source-overlay import with branding disabled, canonical branding and built-in add-on installation, manifest patch application, prefs append, and built-in add-on symlink sync. Built extension files are live on disk immediately after import. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
+> **How the reload works**: `pnpm run import` runs the Bento import wrapper: theme preset sync, chrome token generation, engine-state verification, patch-stack check/reset, source-overlay import, canonical branding and built-in add-on installation, manifest patch application, prefs append, and built-in add-on symlink sync. Built extension files are live on disk immediately after import. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
 
 <!-- -->
 
 > **Manifest changes that need a version bump**: Firefox caches built-in addon metadata (commands, permissions list, name/description) keyed by `version`. A quit+relaunch alone WON'T re-read a changed manifest if the version stayed the same — the cached entry in the profile's `extensions.json` wins. Bump the addon's `manifest.json` version (e.g. `0.1.0` → `0.1.1`) whenever you add/remove/rename a command or change a permission. Code-only changes don't need a bump (background.js / dist/ are read fresh from disk).
 
-`pnpm run build` already chains: `ext:build` → `pnpm run import` → `surfer build` → built-in add-on symlink sync.
+`pnpm run build` already chains: `ext:build` → `pnpm run import` → Bento's
+`mach build` driver → built-in add-on symlink sync.
 
 `pnpm run brand:regen` is for changes under `branding/bento/**`. It reinstalls the tracked canonical branding through `pnpm run import`.
 
@@ -360,6 +370,9 @@ Then iterate by what you changed:
 - `extensions/` — `bento-shell`, `bento-tools`, and bundled `ublock-origin`. [scripts/install-builtin-addons.mjs](scripts/install-builtin-addons.mjs) performs Bento's runtime-filtered `builtin-addons/` installation.
 - `patches/` — git format-patch files applied to Firefox source. Keep small; bigger overlays = harder Firefox bumps.
 - `prefs/bento.js` — privacy defaults appended to the engine's branding prefs.
-- `surfer.json` — Firefox version, build identity, and release display version.
+- `bento.json` — canonical Firefox version and source digest, build identity,
+  branding, locale, license, and update configuration.
+- `.bento/` — local source cache, source state, import manifest, backups, and
+  generated engine state.
 - Tale UI lives **outside** this repo at `/Users/admin/Projects/tale-ui/tale-ui/`.
 - **Chrome design tokens**: chrome (Firefox `browser.xhtml`) consumes Tale UI tokens via an auto-generated stylesheet at `src/browser/base/content/bento-chrome-tokens.css` (gitignored). Regenerated from Tale UI source on every `pnpm run import`. Adding a new theme (Scale-app palette, etc.) is a one-line entry in [scripts/generate-chrome-tokens.mjs](scripts/generate-chrome-tokens.mjs)'s `SOURCES` list — see [docs/chrome-tokens.md](docs/chrome-tokens.md) for the end-to-end pipeline.

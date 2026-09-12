@@ -8,7 +8,7 @@ import process from 'node:process';
 
 const root = path.resolve(import.meta.dirname, '..');
 const outputDir = path.resolve(root, process.argv[2] || 'release-out');
-const surfer = JSON.parse(fs.readFileSync(path.join(root, 'surfer.json'), 'utf8'));
+const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
 const ublock = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/ublock-origin/manifest.json'), 'utf8'),
 );
@@ -39,8 +39,8 @@ if (!files.length) throw new Error('No release artifacts found.');
 const manifest = {
   schemaVersion: 1,
   product: 'Bento Browser',
-  displayVersion: surfer.brands.bento.release.displayVersion,
-  firefoxVersion: surfer.version.version,
+  displayVersion: bento.brands.bento.release.displayVersion,
+  firefoxVersion: bento.firefox.version,
   ublockOriginVersion: ublock.version,
   sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   files,

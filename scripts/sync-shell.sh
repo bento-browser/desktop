@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fast dev loop: copy bento-shell built dist directly into the compiled app
-# bundle, bypassing the full surfer build. Run after
+# bundle, bypassing the full Firefox build. Run after
 # `pnpm --filter @bento/shell build` (or use `npm run shell:sync`).
 #
 # After running this, reload the extension in the Browser Toolbox console:
