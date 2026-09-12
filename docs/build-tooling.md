@@ -41,6 +41,14 @@ with the Firefox source, patch stack, and package configuration. A change to
 the LTO policy or Rust compiler therefore cannot reuse an object cache produced
 under a different native build configuration.
 
+PR native builds use four workers on the existing 4 vCPU / 16 GiB Linux
+runner, two workers on the 4 vCPU / 14 GiB Windows runner, and the platform
+default on macOS. Each PR native job has a 120-minute bound. The PR source
+cache excludes `engine/obj-*`; native objects use a separate configuration
+key so source restores do not duplicate the large object archive. On Windows,
+the PR workflow verifies the bootstrapped MSVC ATL/MFC headers and libraries,
+then prepends that compiler directory with `GITHUB_PATH` before configure runs.
+
 Direct `surfer import` bypasses Bento's branding, add-on, patch, preference, and
 symlink steps. Use `pnpm run import` whenever the resulting engine state matters.
 
