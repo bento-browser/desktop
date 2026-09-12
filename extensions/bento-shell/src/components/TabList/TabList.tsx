@@ -353,9 +353,16 @@ function TabListPane({
       (row) => (row.kind === 'tab' || row.kind === 'peek') && row.id === revealTabId,
     );
   }, [revealTabId, rows]);
-  const newActionRowIndex = rows.findIndex((row) => row.kind === 'new-tab');
+  const topSectionRowCount = useMemo(() => {
+    let count = 0;
+    for (const row of rows) {
+      if (row.kind === 'tab' && !row.indent && !tabsById[row.id]?.pinned) break;
+      count += 1;
+    }
+    return count;
+  }, [rows, tabsById]);
   const topSurfaceHeight =
-    newActionRowIndex > 0 ? Math.max(0, newActionRowIndex * rowSlotSize - rowGap) : 0;
+    topSectionRowCount > 0 ? Math.max(0, topSectionRowCount * rowSlotSize - rowGap) : 0;
   const hasTopSurface = topSurfaceHeight > 0;
   const pinnedRunLength = useMemo(() => {
     let count = 0;
@@ -1010,6 +1017,13 @@ function TabListPane({
 
   return (
     <div className={className}>
+      <div className="bento-tab-list-pane__sticky-actions">
+        <div className="bento-tab-list__new-actions">
+          {renderNewButton()}
+          {renderSearchButton()}
+          {searchOpen && renderSearchOverlay(searchFiltering)}
+        </div>
+      </div>
       <div
         ref={parentRef}
         className="bento-tab-list-pane__scroller"
@@ -1033,33 +1047,10 @@ function TabListPane({
               aria-hidden="true"
             />
           )}
-          {searchFiltering && renderSearchOverlay(true)}
           {!searchFiltering &&
             virtualizer.getVirtualItems().map((vi) => {
               const row = rows[vi.index];
               if (!row) return null;
-              if (row.kind === 'new-tab') {
-                return (
-                  <div
-                    key={rowKey(row)}
-                    className={
-                      row.afterPinnedSection
-                        ? 'bento-tab-list__row bento-tab-list__row--new-tab bento-tab-list__row--after-pinned' +
-                          (searchOpen ? ' bento-tab-list__row--search-open' : '')
-                        : 'bento-tab-list__row bento-tab-list__row--new-tab' +
-                          (searchOpen ? ' bento-tab-list__row--search-open' : '')
-                    }
-                    style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
-                  >
-                    <div className="bento-tab-list__new-actions">
-                      {renderNewButton()}
-                      {renderSearchButton()}
-                      {searchOpen && renderSearchOverlay()}
-                    </div>
-                  </div>
-                );
-              }
-
               if (row.kind === 'folder') {
                 const folder = folders.find((candidate) => candidate.id === row.folderId);
                 if (!folder) return null;

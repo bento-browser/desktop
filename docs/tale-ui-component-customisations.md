@@ -273,10 +273,11 @@ Current drift:
   control.
 - The row keeps its neutral border while focused; it does not apply a
   workspace-brand `--color-60` focus outline.
-- The TabList scroller owns a `--space-3xs` top padding matching the gap between
-  the workspace switcher and this row. The padding must remain scrollable so tab
-  rows become flush with the row edge after scrolling; collapsed mode removes
-  it with the address row.
+- The TabList action header is a non-scrolling flex sibling above the virtualized
+  scroller. Its `--space-3xs` top padding matches the gap between the workspace
+  switcher and this row, keeping New and Search immediately below the address
+  field while tab and folder rows scroll independently. Collapsed mode removes
+  the address row and that top padding but keeps the square New control fixed.
 - Activating the row opens the shared `AddressBar` overlay anchored below the
   row. Keyboard shortcuts, the `New tab` action, and native top-urlbar fallback
   opens use the centered `AddressBar` overlay. The overlay owns the focused

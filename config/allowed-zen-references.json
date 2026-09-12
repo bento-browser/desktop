@@ -98,10 +98,22 @@
       "reason": "Keeps the stable Zen import-source protocol value."
     },
     {
+      "path": "rollback/legacy-source/extensions/_shared/protocol.ts",
+      "pattern": "['\"]zen['\"]",
+      "category": "import-compatibility",
+      "reason": "Preserves the legacy rollback source's stable Zen import-source protocol value."
+    },
+    {
       "path": "extensions/bento-shell/src/welcome/main.tsx",
       "pattern": "Firefox and Zen",
       "category": "import-compatibility",
       "reason": "Labels the explicit onboarding import action."
+    },
+    {
+      "path": "rollback/legacy-source/extensions/bento-shell/src/welcome/main.tsx",
+      "pattern": "Firefox and Zen",
+      "category": "import-compatibility",
+      "reason": "Preserves the legacy rollback source's onboarding import label."
     },
     {
       "path": "extensions/bento-shell/src/components/MergePalette/MergePalette.stories.tsx",
@@ -126,6 +138,12 @@
       "pattern": "Zen import",
       "category": "import-compatibility",
       "reason": "Explains ordering required while restoring imported Zen tabs."
+    },
+    {
+      "path": "rollback/legacy-source/extensions/bento-tools/src/background.ts",
+      "pattern": "Zen import",
+      "category": "import-compatibility",
+      "reason": "Preserves the legacy rollback source's imported Zen tab restore ordering note."
     },
     {
       "path": "extensions/bento-tools/src/panels/SessionMarker.test.ts",

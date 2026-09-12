@@ -3,8 +3,7 @@ import type { TabFolder, TabSnapshot } from '@shared/protocol';
 export type DisplayRow =
   | { kind: 'tab'; id: number; indent: boolean }
   | { kind: 'folder'; folderId: string }
-  | { kind: 'peek'; id: number; folderId: string }
-  | { kind: 'new-tab'; afterPinnedSection: boolean };
+  | { kind: 'peek'; id: number; folderId: string };
 
 interface BuildOptions {
   forceCollapsedFolders?: boolean;
@@ -50,7 +49,6 @@ export function buildDisplayRows(
     for (const id of members) rows.push({ kind: 'tab', id, indent: true });
   }
 
-  rows.push({ kind: 'new-tab', afterPinnedSection: rows.length > 0 });
   rows.push(...regularRows);
   return rows;
 }
@@ -71,8 +69,6 @@ export function rowKey(row: DisplayRow): string {
       return `folder:${row.folderId}`;
     case 'peek':
       return `peek:${row.folderId}:${row.id}`;
-    case 'new-tab':
-      return 'new-tab';
   }
 }
 

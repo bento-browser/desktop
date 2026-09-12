@@ -29,21 +29,45 @@
   .bento-tab-list-pane {
     position: absolute;
     inset: 0;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
     overflow: hidden;
   }
 
-  .bento-tab-list-pane__scroller {
-    position: absolute;
-    inset: 0;
+  .bento-tab-list-pane__sticky-actions {
+    position: relative;
+    z-index: 3;
     box-sizing: border-box;
+    flex: 0 0 auto;
+    min-width: 0;
+    height: calc(var(--bento-tab-row-height) + var(--space-3xs));
+    padding-block-start: var(--space-3xs);
+    padding-inline: var(--space-3xs);
+    background-color: var(--neutral-5);
+    transition:
+      padding-inline-start
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      padding-inline-end
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        );
+  }
+
+  .bento-tab-list-pane__scroller {
+    position: relative;
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    /* Match the workspace-switcher/address-row gap at rest. Because this
-       padding belongs to the scroller, it scrolls away and lets tab rows sit
-       flush against the address row once the list moves. */
-    padding-block-start: var(--space-3xs);
+    padding-block-start: var(--bento-tab-list-row-gap);
     padding-inline: var(--space-3xs);
     transition:
       padding-inline-start
@@ -58,8 +82,14 @@
         );
   }
 
-  html[data-bento-collapsed='true'] .bento-tab-list-pane__scroller {
+  html[data-bento-collapsed='true'] .bento-tab-list-pane__sticky-actions {
+    height: var(--bento-tab-row-height);
     padding-block-start: 0;
+    padding-inline: var(--bento-sidebar-collapsed-inline-padding);
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list-pane__scroller {
+    padding-block-start: var(--bento-tab-list-row-gap);
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);
     scrollbar-gutter: auto;
     scrollbar-width: none;
@@ -75,7 +105,8 @@
 
   html[data-bento-collapsed='true'] .bento-tab-list-pane__scrollbar {
     position: absolute;
-    inset-block: 0;
+    inset-block-start: var(--bento-tab-row-height);
+    inset-block-end: 0;
     inset-inline-end: 0;
     z-index: 4;
     display: block;
@@ -155,14 +186,6 @@
        positions rather than transitioning across them. Only data
        reorders (where the same id moves between slots) animate. */
     transition: transform var(--bento-duration-base) var(--bento-easing-standard);
-  }
-
-  .bento-tab-list__row--new-tab {
-    box-sizing: border-box;
-  }
-
-  .bento-tab-list__row--search-open {
-    z-index: 2;
   }
 
   html[data-bento-collapsed='true'] .bento-tab-list__row {

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
+/* global process */
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = 'config/allowed-zen-references.json';
-const REFERENCE = /\bzen\b|zen-browser|zen_|github\.com\/zen-browser|zen-browser\.app/i;
+const REFERENCE = /\bzen\b|zen-browser|\bzen_|github\.com\/zen-browser|zen-browser\.app/i;
 const ANCESTRY = /\b(?:built|based|derived|inspired)\s+(?:on|from|by)\s+zen\b|\bzen[- ]style\b/i;
 const competitor = 'ze' + 'n';
 const ALWAYS_FORBIDDEN = new RegExp(
@@ -35,6 +36,10 @@ function trackedFiles() {
 
 function isText(buffer) {
   return !buffer.subarray(0, 8192).includes(0);
+}
+
+export function containsZenReference(line) {
+  return REFERENCE.test(line);
 }
 
 function loadAllowlist() {
@@ -78,7 +83,7 @@ export function checkZenBoundary() {
     const lines = buffer.toString('utf8').split(/\r?\n/);
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
-      if (!REFERENCE.test(line)) continue;
+      if (!containsZenReference(line)) continue;
 
       const location = `${relative}:${index + 1}`;
       if (
@@ -115,10 +120,12 @@ export function checkZenBoundary() {
   return entries.reduce((total, entry) => total + entry.matches, 0);
 }
 
-try {
-  const count = checkZenBoundary();
-  process.stdout.write(`check-zen-boundary: ${count} permitted lines matched\n`);
-} catch (error) {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    const count = checkZenBoundary();
+    process.stdout.write(`check-zen-boundary: ${count} permitted lines matched\n`);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  }
 }

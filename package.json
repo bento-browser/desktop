@@ -34,6 +34,7 @@
     "import:branding": "node scripts/install-branding.mjs",
     "import:addons": "node scripts/install-builtin-addons.mjs",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
+    "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
     "security:check": "node scripts/check-security-invariants.mjs",
     "release:security-check": "node scripts/check-release-security.mjs --channel=preview",
@@ -76,9 +77,15 @@
   "pnpm": {
     "overrides": {
       "@babel/core": "7.29.6",
-      "brace-expansion@5.0.5": "5.0.7",
+      "brace-expansion@1.1.14": "1.1.18",
+      "brace-expansion@5.0.5": "5.0.9",
+      "browserslist": "4.28.7",
+      "axios": "1.18.0",
       "form-data": "4.0.6",
-      "js-yaml": "4.2.0",
+      "js-yaml": "4.3.2",
+      "nanoid": "3.3.18",
+      "postcss": "8.5.18",
+      "sharp": "0.35.4",
       "vite": "6.4.3"
     }
   },
