@@ -1,4 +1,4 @@
-From c9974da4f426f3ec8c0118a5bc1058353cb16895 Mon Sep 17 00:00:00 2001
+From 8b6a708c712e49c84176feda892d9dda8c85579e Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
@@ -10,10 +10,10 @@ Subject: [PATCH] Hide native Firefox tabs
  3 files changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
-index 0c03ff70f9784a3b12119326687dc12c99a7dd82..4e10cb1391cc29359ae134bb067b6a227a003c16 100644
+index 25fd62a706e75c9ff9588d87e3384ddc45e9ca22..60f6906b56da658df668c5fda7a279a14fcf37ac 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -584,6 +584,8 @@ SettingGroupManager.registerGroups({
+@@ -577,6 +577,8 @@ SettingGroupManager.registerGroups({
      l10nId: "browser-layout-header2",
      iconSrc: "chrome://browser/skin/sidebar-expanded.svg",
      headingLevel: 2,
@@ -23,10 +23,10 @@ index 0c03ff70f9784a3b12119326687dc12c99a7dd82..4e10cb1391cc29359ae134bb067b6a22
        {
          id: "browserLayoutRadioGroup",
 diff --git a/browser/components/preferences/tests/browser_appearance_pane.js b/browser/components/preferences/tests/browser_appearance_pane.js
-index 44d36fe8b55317a678cddeb62f143668a98f2f03..a6bc2d0747dff75ddf36108a5fc69cd5f95cb468 100644
+index b44ade63b7d916f11ffe5552f05277d81c4c624c..a519fe34ed3f713abe54a51e8e76e4481e46eac6 100644
 --- a/browser/components/preferences/tests/browser_appearance_pane.js
 +++ b/browser/components/preferences/tests/browser_appearance_pane.js
-@@ -136,7 +136,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
+@@ -334,7 +334,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
  
    let group = doc.querySelector('setting-group[groupid="browserLayout"]');
    ok(group, "browserLayout setting-group exists in tabs-browsing pane");
@@ -40,10 +40,10 @@ index 44d36fe8b55317a678cddeb62f143668a98f2f03..a6bc2d0747dff75ddf36108a5fc69cd5
    await BrowserTestUtils.removeTab(gBrowser.selectedTab);
  });
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 08b5b56e069d038d72c87355920c4ce8a55ed805..32b4aaa047f53e40ee324b9da7eb6cbcba8bff94 100644
+index 39b5babee5942427a82a7a64ad69e1b16efebcc1..5f3da65b46a5a5ff5db18fddbfd73a631a2a1ecf 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -10175,6 +10175,9 @@ var TabBarVisibility = {
+@@ -10301,6 +10301,9 @@ var TabBarVisibility = {
      let hasVerticalTabs =
        !isSingleTabWindow &&
        Services.prefs.getBoolPref("sidebar.verticalTabs", false);
@@ -53,7 +53,7 @@ index 08b5b56e069d038d72c87355920c4ce8a55ed805..32b4aaa047f53e40ee324b9da7eb6cbc
  
      // When `gBrowser` has not been initialized, we're opening a new window and
      // assume only a single tab is loading.
-@@ -10183,7 +10186,9 @@ var TabBarVisibility = {
+@@ -10309,7 +10312,9 @@ var TabBarVisibility = {
      // To prevent tabs being lost, hiding the tabs toolbar should only work
      // when only a single tab is visible or tabs are displayed elsewhere.
      let hideTabsToolbar =

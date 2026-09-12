@@ -1,4 +1,4 @@
-From 5d7886768670774fbc588bf8ce74278ab0121f32 Mon Sep 17 00:00:00 2001
+From bbe08bef89f78ea04adb0593a8a86fbab9041b68 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:35 +1000
 Subject: [PATCH] Skip Bento panel browsers in frame focus
@@ -8,10 +8,10 @@ Subject: [PATCH] Skip Bento panel browsers in frame focus
  1 file changed, 9 insertions(+)
 
 diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 32b4aaa047f53e40ee324b9da7eb6cbcba8bff94..c3a23506260d0c780c8dca4de64e219ff0e83a64 100644
+index 5f3da65b46a5a5ff5db18fddbfd73a631a2a1ecf..3f7fee40640035e08cfe3261a40de1cbea64207a 100644
 --- a/browser/components/tabbrowser/content/tabbrowser.js
 +++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -8259,6 +8259,15 @@
+@@ -8448,6 +8448,15 @@
          // preventDefault(). It will still raise the window if appropriate.
          return;
        }

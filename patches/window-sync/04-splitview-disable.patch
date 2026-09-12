@@ -1,19 +1,19 @@
-From a8848c2af52151464263b5e263046d6c4f1048b8 Mon Sep 17 00:00:00 2001
+From 468acde6511066fc26ee5daf32266bddb898d2b2 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:47 +1000
 Subject: [PATCH] Disable Firefox split view
 
 ---
- browser/base/content/nsContextMenu.sys.mjs          |  8 +++++---
- browser/components/tabbrowser/content/tab.js        |  4 +++-
- browser/components/tabbrowser/content/tabbrowser.js | 11 ++++++-----
+ browser/base/content/nsContextMenu.sys.mjs            |  8 +++++---
+ .../components/tabbrowser/content/tab-context-menu.js | 11 ++++++-----
+ browser/components/tabbrowser/content/tab.js          |  4 +++-
  3 files changed, 14 insertions(+), 9 deletions(-)
 
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index b2eb53b7b2fc10e2c64cb0d217d876d0d890f4c3..391c38d57c4c956d08b4a7f88f03f2513b17ef2a 100644
+index 22eda54acd5b7b4d5622a5f37c941ce47f61fc95..71077e3ae6886245f3447680db955e8f106ebaf1 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -498,9 +498,11 @@ export class nsContextMenu {
+@@ -507,9 +507,11 @@ export class nsContextMenu {
      let showContainers =
        Services.prefs.getBoolPref("privacy.userContext.enabled") &&
        lazy.ContextualIdentityService.getPublicIdentities().length;
@@ -28,26 +28,11 @@ index b2eb53b7b2fc10e2c64cb0d217d876d0d890f4c3..391c38d57c4c956d08b4a7f88f03f251
      let currentTabInSplitView = !!window.gBrowser?.selectedTab?.splitview;
      let showSmartWindow = lazy.AIWindow.isAIWindowEnabled();
      this.showItem("context-openlink", shouldShow && !isWindowPrivate);
-diff --git a/browser/components/tabbrowser/content/tab.js b/browser/components/tabbrowser/content/tab.js
-index 8f2ebf3a0bd4e2af01cf41024b16bd491e8ed961..2acf461892f3538aec8f624c791ea12782b37a72 100644
---- a/browser/components/tabbrowser/content/tab.js
-+++ b/browser/components/tabbrowser/content/tab.js
-@@ -604,7 +604,9 @@
-           !event.target.classList.contains("tab-audio-button") &&
-           !this.selected &&
-           !gBrowser.selectedTab.hidden &&
--          Services.prefs.getBoolPref("browser.tabs.splitView.enabled", false) &&
-+          // Bento: alt-click-to-split disabled — bento-tools owns split
-+          // creation via PanelStore so the alt-click route stays inert.
-+          false &&
-           !this.splitview &&
-           !gBrowser.selectedTab.splitview &&
-           !this.pinned &&
-diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index ae78a89e5fad917fff15c2da13ad241323c8467a..c4b86c05188d41d8ab98098781bfea019b089ce9 100644
---- a/browser/components/tabbrowser/content/tabbrowser.js
-+++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -10542,11 +10542,12 @@ var TabContextMenu = {
+diff --git a/browser/components/tabbrowser/content/tab-context-menu.js b/browser/components/tabbrowser/content/tab-context-menu.js
+index 4a7cb33a4d9067d469bbe09d4cd8844581642f7a..462fbea82665b2188db33afdd1d43fa2083f2d0e 100644
+--- a/browser/components/tabbrowser/content/tab-context-menu.js
++++ b/browser/components/tabbrowser/content/tab-context-menu.js
+@@ -752,11 +752,12 @@ var TabContextMenu = {
        contextEditNote.hidden = true;
      }
  
@@ -65,6 +50,21 @@ index ae78a89e5fad917fff15c2da13ad241323c8467a..c4b86c05188d41d8ab98098781bfea01
      let contextMoveTabToNewSplitView = document.getElementById(
        "context_moveTabToSplitView"
      );
+diff --git a/browser/components/tabbrowser/content/tab.js b/browser/components/tabbrowser/content/tab.js
+index 6fcef5bf0f4ac8c58515afd127c7065f26251c7c..3cceabc1911bda75f7a5dc7b45eb412198faefe9 100644
+--- a/browser/components/tabbrowser/content/tab.js
++++ b/browser/components/tabbrowser/content/tab.js
+@@ -612,7 +612,9 @@
+           !event.target.classList.contains("tab-audio-button") &&
+           !this.selected &&
+           !gBrowser.selectedTab.hidden &&
+-          Services.prefs.getBoolPref("browser.tabs.splitView.enabled", false) &&
++          // Bento: alt-click-to-split disabled — bento-tools owns split
++          // creation via PanelStore so the alt-click route stays inert.
++          false &&
+           !this.splitview &&
+           !gBrowser.selectedTab.splitview &&
+           !this.pinned &&
 -- 
 2.50.1 (Apple Git-155)
 

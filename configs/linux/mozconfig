@@ -1,4 +1,7 @@
 # Bento Browser — Linux mozconfig.
 . "$topsrcdir/../configs/common/mozconfig"
 
+# ThinLTO keeps peak Rust linker memory within standard hosted-runner limits.
+export BENTO_RUST_LTO=thin
+
 # TODO: Linux-specific flags (PGO, distribution dirs, packaging).

@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "base": {
     "product": "firefox",
-    "version": "152.0.6",
-    "tree": "3d0db3f1ece14b490d989797cbd279c170d11187",
-    "contentTree": "17c2beb22a95fbfde74a655c98e5ae9346e7a2bf79bf94a2f334a5bd3c3662fa"
+    "version": "154.0",
+    "tree": "9465411d7f66c468912c09464b960e209b5f2a71",
+    "contentTree": "83855237d24ced405f8c7f4b87320734e939b32a67eaf0456f573502781755ec"
   },
   "series": [
     {
@@ -116,6 +116,11 @@
       "path": "patches/window-sync/04-splitview-disable.patch",
       "id": "splitview-disable",
       "subject": "Disable Firefox split view"
+    },
+    {
+      "path": "patches/experiments/02-rust-thin-lto-hosted-build.patch",
+      "id": "rust-thin-lto-hosted-build",
+      "subject": "Use ThinLTO for hosted release Rust linking"
     }
   ],
   "format": "git-format-patch"

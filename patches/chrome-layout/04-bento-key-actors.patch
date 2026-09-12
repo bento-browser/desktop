@@ -1,4 +1,4 @@
-From 260b773a3f8d5f623673e72878f70284cc6446b2 Mon Sep 17 00:00:00 2001
+From ece5076a1ed1c8007a94a464562caa661ca34fde Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:28 +1000
 Subject: [PATCH] Register Bento key actors
@@ -8,10 +8,10 @@ Subject: [PATCH] Register Bento key actors
  1 file changed, 2 insertions(+)
 
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
-index 90365893ac0e85c7fe4be3567bca2b804fd04376..0f615b2075566866c8d80bd30d65d896c3b71304 100644
+index 74ce9247c8a85b1ef71568c8055d9992b757e573..028421f9773113cb0aef8f6336d1a49454a2359f 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
-@@ -100,6 +100,8 @@ FINAL_TARGET_FILES.actors += [
+@@ -103,6 +103,8 @@ FINAL_TARGET_FILES.actors += [
      "AboutReaderParent.sys.mjs",
      "AboutTabCrashedChild.sys.mjs",
      "AboutTabCrashedParent.sys.mjs",

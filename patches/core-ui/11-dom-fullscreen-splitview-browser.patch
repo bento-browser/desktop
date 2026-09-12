@@ -1,17 +1,17 @@
-From de933bc7f3860ad9aa11b66eeb9ecae94a0c7c7e Mon Sep 17 00:00:00 2001
+From 3dc536e22bff274072a5c279d9632236d17b0688 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 27 Jun 2026 16:35:00 +1000
 Subject: [PATCH] Allow DOM fullscreen from split view browsers
 
 ---
- .../browser-fullScreenAndPointerLock.js       | 21 ++++++++++++++-----
- 1 file changed, 16 insertions(+), 5 deletions(-)
+ .../browser-fullScreenAndPointerLock.js       | 22 ++++++++++++++-----
+ 1 file changed, 17 insertions(+), 5 deletions(-)
 
 diff --git a/browser/base/content/browser-fullScreenAndPointerLock.js b/browser/base/content/browser-fullScreenAndPointerLock.js
-index d0d3b6fc57800b073bb1c75f6e55212749815b0a..3e7829ba3e9bcbab34c6a45febf1392816ae2cea 100644
+index 991cbab1fca19bc20adabb73c146c26a57db68eb..14831f2f3de47c47d1a26f07089a1517d103ad91 100644
 --- a/browser/base/content/browser-fullScreenAndPointerLock.js
 +++ b/browser/base/content/browser-fullScreenAndPointerLock.js
-@@ -620,13 +620,13 @@ var FullScreen = {
+@@ -617,13 +617,13 @@ var FullScreen = {
        }
      }
  
@@ -30,7 +30,7 @@ index d0d3b6fc57800b073bb1c75f6e55212749815b0a..3e7829ba3e9bcbab34c6a45febf13928
        // The top-level window has lost focus since the request to enter
        // full-screen was made. Cancel full-screen.
        Services.focus.activeWindow != window
-@@ -635,6 +635,12 @@ var FullScreen = {
+@@ -632,6 +632,12 @@ var FullScreen = {
        return;
      }
  
@@ -43,18 +43,19 @@ index d0d3b6fc57800b073bb1c75f6e55212749815b0a..3e7829ba3e9bcbab34c6a45febf13928
      // Remove permission prompts when entering full-screen.
      if (!FullScreen.permissionsFullScreenAllowed) {
        let notifications = PopupNotifications.getNotification(
-@@ -748,6 +754,11 @@ var FullScreen = {
+@@ -758,6 +764,12 @@ var FullScreen = {
+       this._isChromeCollapsed
      );
  
-     document.documentElement.removeAttribute("inDOMFullscreen");
 +    try {
 +      window.BentoShellDomFullscreen?.clearRequester?.();
 +    } catch (ex) {
 +      Cu.reportError(ex);
 +    }
- 
++
      return needToWaitForChildExit;
    },
+ 
 -- 
 2.50.1 (Apple Git-155)
 

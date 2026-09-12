@@ -1,4 +1,4 @@
-From 7c3b88b0522c0f39f76f7143a5c49c00e4e792fd Mon Sep 17 00:00:00 2001
+From 0301400fee4dae1e3c12c197e1d5ec820cd1aafd Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome
@@ -9,7 +9,7 @@ Subject: [PATCH] Add Bento shell mount to browser chrome
  2 files changed, 60 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 31cd4f927c273573b38021f84417101c57377902..749310d44d093405091219e32adb0260a3cc0944 100644
+index cf35762fdcc4716932c7af7cf4af4b2f72aea038..6edf2c3837e24f2fd872058333e1970c8f5a1b09 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -2,7 +2,59 @@
@@ -70,14 +70,14 @@ index 31cd4f927c273573b38021f84417101c57377902..749310d44d093405091219e32adb0260
 +             style="background-color: transparent; -moz-appearance: none;"/>
 +  </vbox>
 +  <script src="chrome://browser/content/bento-shell-mount.js"></script>
-   <box context="sidebar-context-menu" id="sidebar-main" class="chrome-block" hidden="true">
+   <box context="sidebar-context-menu" id="sidebar-container" class="chrome-block" hidden="true">
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
 diff --git a/browser/base/jar.mn b/browser/base/jar.mn
-index dd0f873535224344c8015d00a00d56e0b9392951..6f516df122b8227c7fcf22f3a2ca8ca0a69d07cf 100644
+index 0212828fbe89b90a935e8771cf7da844f7ed1a5e..631559b1de665fb35c8aae57a1a3f00409df13bd 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
-@@ -51,6 +51,13 @@ browser.jar:
+@@ -46,6 +46,13 @@ browser.jar:
          content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
          content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
          content/browser/browser-init.js                     (content/browser-init.js)

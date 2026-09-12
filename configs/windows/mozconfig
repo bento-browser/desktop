@@ -1,4 +1,7 @@
 # Bento Browser — Windows mozconfig.
 . "$topsrcdir/../configs/common/mozconfig"
 
+# ThinLTO keeps peak Rust linker memory within standard hosted-runner limits.
+export BENTO_RUST_LTO=thin
+
 # TODO: Windows-specific flags (MSVC paths, installer signing, MOZ_AUTOMATION_PACKAGE_TESTS).

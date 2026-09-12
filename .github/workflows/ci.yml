@@ -73,7 +73,7 @@ jobs:
         run: pnpm run firefox:patches:test
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/release-security.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -159,7 +159,7 @@ jobs:
       - name: Surfer reads our config
         # `surfer --version` parses surfer.json end-to-end and exits non-zero
         # if any required field is missing. Our cheapest end-to-end check.
-        run: pnpm exec surfer --version | tee surfer-version.txt && grep -F '1.14.6' surfer-version.txt
+        run: pnpm exec surfer --version | tee surfer-version.txt && grep -F '1.14.7' surfer-version.txt
       - name: Surfer license check
         run: pnpm run lc
 

@@ -1,4 +1,4 @@
-From 56806f1a5b33850cca4b18388b57aa11cf22ef76 Mon Sep 17 00:00:00 2001
+From 1ada31dd107f983b0a743296dbc8c76bcb68f9ef Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:27 +1000
 Subject: [PATCH] Add Bento side panel host
@@ -8,7 +8,7 @@ Subject: [PATCH] Add Bento side panel host
  1 file changed, 1 insertion(+)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 749310d44d093405091219e32adb0260a3cc0944..512c748393270fbc0d98a900280f99f9991619d6 100644
+index 6edf2c3837e24f2fd872058333e1970c8f5a1b09..b447577c939003a23454bd987ccb7d6a649afc35 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -80,6 +80,7 @@
@@ -16,7 +16,7 @@ index 749310d44d093405091219e32adb0260a3cc0944..512c748393270fbc0d98a900280f99f9
      <tabpanels id="tabbrowser-tabpanels" flex="1" selectedIndex="0"/>
    </tabbox>
 +  <vbox id="bento-side-panel-host" flex="1"/>
-   <splitter id="ai-window-splitter" class="chromeclass-extrachrome sidebar-splitter" resizebefore="none" resizeafter="sibling" collapsed="true"/>
+   <splitter id="ai-window-splitter" class="chromeclass-extrachrome sidebar-splitter" resizebefore="sibling" resizeafter="sibling" collapsed="true"/>
    <vbox id="ai-window-box" collapsed="true" class="chromeclass-extrachrome ai-window-right-sidebar">
      <stack class="ai-window-browser-stack" flex="1">
 -- 

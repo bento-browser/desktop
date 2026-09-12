@@ -635,7 +635,7 @@
       :root[bento-sidebar-addressbar='true'] #bento-shell-host,
       :root[bento-sidebar-addressbar='true'] #bento-shell-splitter,
       :root[bento-sidebar-addressbar='true'] #bento-sidebar-hidden-hover-zone,
-      :root[bento-sidebar-addressbar='true'] #sidebar-main,
+      :root[bento-sidebar-addressbar='true'] #sidebar-container,
       :root[bento-sidebar-addressbar='true'] #sidebar-launcher-splitter,
       :root[bento-sidebar-addressbar='true'] #sidebar-box,
       :root[bento-sidebar-addressbar='true'] #sidebar-splitter {
