@@ -8,6 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   createContext,
+  canonicalPath,
   refContentTree,
   stageFirefoxSourceBase,
 } from './firefox-patch-stack.mjs';
@@ -112,6 +113,21 @@ test('source base staging includes files ignored by upstream Firefox', async () 
   stageFirefoxSourceBase(root);
 
   assert.deepEqual(git(root, ['ls-files']).split('\n'), ['.gitignore', 'ignored.txt']);
+});
+
+test('canonical worktree paths resolve filesystem aliases', async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-canonical-path-test-'));
+  const alias = `${root}-alias`;
+  try {
+    fs.symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.equal(canonicalPath(root), canonicalPath(alias));
+    if (process.platform === 'win32') {
+      assert.equal(canonicalPath(root.toUpperCase()), canonicalPath(root.toLowerCase()));
+    }
+  } finally {
+    fs.unlinkSync(alias);
+    await fsp.rm(root, { recursive: true, force: true });
+  }
 });
 
 function writeLegacyPatch(root, engine, patchPath, nextContent) {

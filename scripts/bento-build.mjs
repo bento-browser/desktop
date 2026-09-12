@@ -230,6 +230,26 @@ function engineIsGit(ctx) {
   return fs.existsSync(path.join(ctx.engineDir, '.git'));
 }
 
+function tryRealpath(target) {
+  for (const resolver of [fs.realpathSync.native, fs.realpathSync]) {
+    if (typeof resolver !== 'function') continue;
+    try {
+      return resolver(target);
+    } catch {
+      // Try the portable resolver before falling back to the lexical path.
+    }
+  }
+  return undefined;
+}
+
+function canonicalPath(target) {
+  const absolute = path.resolve(target);
+  const canonical = tryRealpath(absolute)
+    || path.join(tryRealpath(path.dirname(absolute)) || path.dirname(absolute), path.basename(absolute));
+  const normalized = path.normalize(canonical);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
 function linkedEngineWorktrees(ctx) {
   if (!engineIsGit(ctx)) return [];
   const result = spawnSync('git', ['worktree', 'list', '--porcelain'], {
@@ -240,14 +260,13 @@ function linkedEngineWorktrees(ctx) {
   if (result.status !== 0) {
     fail(`cannot inspect Firefox worktrees before replacing engine: ${result.stderr || ''}`.trim());
   }
-  const enginePath = fs.realpathSync(ctx.engineDir);
+  const enginePath = canonicalPath(ctx.engineDir);
   return result.stdout
     .split(/\r?\n/)
     .filter((line) => line.startsWith('worktree '))
     .map((line) => path.resolve(line.slice('worktree '.length)))
     .filter((worktree) => {
-      const canonical = fs.existsSync(worktree) ? fs.realpathSync(worktree) : worktree;
-      return canonical !== enginePath;
+      return canonicalPath(worktree) !== enginePath;
     });
 }
 

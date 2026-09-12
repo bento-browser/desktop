@@ -474,17 +474,24 @@ function registeredWorktrees(ctx) {
     .map((line) => canonicalPath(line.slice('worktree '.length)));
 }
 
-function canonicalPath(target) {
-  const absolute = path.resolve(target);
-  try {
-    return fs.realpathSync(absolute);
-  } catch {
+function tryRealpath(target) {
+  for (const resolver of [fs.realpathSync.native, fs.realpathSync]) {
+    if (typeof resolver !== 'function') continue;
     try {
-      return path.join(fs.realpathSync(path.dirname(absolute)), path.basename(absolute));
+      return resolver(target);
     } catch {
-      return absolute;
+      // Try the portable resolver before falling back to the lexical path.
     }
   }
+  return undefined;
+}
+
+export function canonicalPath(target) {
+  const absolute = path.resolve(target);
+  const canonical = tryRealpath(absolute)
+    || path.join(tryRealpath(path.dirname(absolute)) || path.dirname(absolute), path.basename(absolute));
+  const normalized = path.normalize(canonical);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 function removeWorktree(ctx, worktreeDir, options = {}) {
