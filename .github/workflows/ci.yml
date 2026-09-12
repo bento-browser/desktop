@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -169,6 +170,7 @@ jobs:
 
   build:
     name: Build (${{ matrix.platform }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     needs: surfer-smoke
     strategy:
       fail-fast: false
