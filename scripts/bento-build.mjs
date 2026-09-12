@@ -36,6 +36,13 @@ function fail(message) {
   throw error;
 }
 
+function isSupportedFirefoxVersion(version) {
+  return typeof version === 'string'
+    && version.length > 0
+    && version.length <= 128
+    && /^[0-9]+(?:\.[0-9]+)+(?:[A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?$/.test(version);
+}
+
 export function createContext(repoRoot = DEFAULT_ROOT) {
   const root = path.resolve(repoRoot);
   return {
@@ -87,7 +94,7 @@ export function sourceArchivePath(repoRoot, version) {
 }
 
 function validateVersion(version) {
-  if (typeof version !== 'string' || !/^[0-9]+(?:\.[0-9]+)+(?:[A-Za-z][0-9A-Za-z.-]*|[-.][0-9A-Za-z.-]+)*$/.test(version)) {
+  if (!isSupportedFirefoxVersion(version)) {
     fail(`unsupported Firefox version: ${JSON.stringify(version)}`);
   }
   return version;

@@ -310,10 +310,17 @@ async function validateManifest(ctx, manifest, options = {}) {
 }
 
 function getCachedArchive(ctx, version) {
-  if (typeof version !== 'string' || !/^[0-9]+(?:\.[0-9]+)+(?:[A-Za-z][0-9A-Za-z.-]*|[-.][0-9A-Za-z.-]+)*$/.test(version)) {
+  if (!isSupportedFirefoxVersion(version)) {
     throw new UserError(`unsupported Firefox version: ${JSON.stringify(version)}`);
   }
   return path.join(ctx.bentoSourceDir, version, `firefox-${version}.source.tar.xz`);
+}
+
+function isSupportedFirefoxVersion(version) {
+  return typeof version === 'string'
+    && version.length > 0
+    && version.length <= 128
+    && /^[0-9]+(?:\.[0-9]+)+(?:[A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?$/.test(version);
 }
 
 async function sha256File(file) {

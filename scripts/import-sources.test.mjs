@@ -58,6 +58,10 @@ async function lifecycleFixture() {
 test('source archive paths reject traversal and invalid Firefox versions', () => {
   assert.throws(() => sourceArchivePath('/tmp/bento', '../outside'), /unsupported Firefox version/);
   assert.throws(() => sourceArchivePath('/tmp/bento', '154'), /unsupported Firefox version/);
+  for (const version of ['154.0b1', '154.0esr', '154.0-rc1', '154.0.1']) {
+    assert.doesNotThrow(() => sourceArchivePath('/tmp/bento', version));
+  }
+  assert.throws(() => sourceArchivePath('/tmp/bento', `154.0${'a'.repeat(128)}`), /unsupported Firefox version/);
 });
 
 test('bad cached source is quarantined and a verified retry succeeds', async () => {
@@ -108,11 +112,12 @@ test('source update advances config and source state with the verified archive d
     git(['commit', '-m', 'Firefox 154.0']);
     git(['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
     const oldBase = git(['rev-parse', 'refs/bento/firefox-base/154.0']);
+    const baseBranch = git(['symbolic-ref', '--short', 'HEAD']);
     git(['switch', '-c', 'bento/patch-stack']);
     await fsp.writeFile(path.join(engine, 'toolkit', 'moz.build'), '# Firefox 154 patch\n');
     git(['add', 'toolkit/moz.build']);
     git(['commit', '-m', 'Bento patch']);
-    git(['switch', 'main']);
+    git(['switch', baseBranch]);
     await fsp.writeFile(path.join(root, '.bento', 'engine-state.json'), '{"schemaVersion":1,"entries":[]}\n');
     await fsp.writeFile(path.join(root, '.bento', 'import-manifest.json'), '{"schemaVersion":1,"entries":[]}\n');
 
