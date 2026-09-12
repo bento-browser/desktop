@@ -1,0 +1,42 @@
+name: PR build comment
+
+# This workflow is deliberately separate from CI. workflow_run executes the
+# workflow definition from the default branch and gives it write access to PR
+# comments, while the build workflow runs untrusted pull request code.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-build-comment-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  update-comment:
+    name: Update PR build comment
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      # workflow_run has the default branch as its trusted source. Keep this
+      # ref explicit and never use head_branch or head_sha as a checkout ref.
+      - name: Checkout trusted notifier code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Update the bot-owned PR comment
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { updatePrBuildComment } = await import(
+              `${process.env.GITHUB_WORKSPACE}/scripts/pr-build-comment.mjs`
+            );
+            await updatePrBuildComment({ github, context, core });

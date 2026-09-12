@@ -110,4 +110,17 @@ if (!releaseSecurity.publicReleaseReady && !/prerelease:\s*true/.test(releaseWor
   throw new Error('Unapproved public release configuration must remain a prerelease.');
 }
 
+const prCommentWorkflow = read('.github/workflows/pr-build-comment.yml');
+if (!/workflow_run:/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing trusted workflow_run comment trigger');
+if (!/actions:\s*read/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing read-only workflow metadata permission');
+if (!/pull-requests:\s*write/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing PR comment permission');
+if (!/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(prCommentWorkflow)) {
+  throw new Error('PR comment workflow: missing default-branch-only notifier checkout');
+}
+if (/pull_request_target/.test(prCommentWorkflow)) throw new Error('PR comment workflow: contains pull_request_target notifier trigger');
+if (/download-artifact/.test(prCommentWorkflow)) throw new Error('PR comment workflow: contains artifact download in trusted notifier');
+if (/ref:.*github\.event\.workflow_run\.head_(?:branch|sha)/.test(prCommentWorkflow)) {
+  throw new Error('PR comment workflow: contains PR metadata used as a checkout ref');
+}
+
 console.log('Bento security invariants passed.');

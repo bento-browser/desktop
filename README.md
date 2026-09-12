@@ -12,8 +12,20 @@ for the implementation map.
 
 ## Status
 
-Pre-v0.1.0 development. Builds and release tooling exist for maintainer
-iteration across macOS, Linux, and Windows; public distribution is not enabled yet.
+Pre-v0.1.0 development. Pull requests can produce public, unsigned test builds
+for review. Stable public distribution is not enabled yet; these PR-scoped
+artifacts are the development policy exception and are not stable releases.
+
+PR build artifacts are available from the CI run and the bot comment after a
+`pull_request` run completes. A GitHub sign-in is required. Artifacts are
+retained for 14 days. They target Linux x64 (`.tar.xz` or `.tar.bz2`), Windows
+x64 (`.exe` installer and `.zip`), and macOS Apple Silicon (`.dmg`). The
+packages are unsigned and may trigger Gatekeeper or SmartScreen warnings or
+blocks.
+
+The trusted comment workflow must first be merged into the default branch.
+Until then, downloads are available from the CI job summaries and artifacts;
+subsequent PR CI completions will update the bot comment automatically.
 
 ## Prerequisites
 

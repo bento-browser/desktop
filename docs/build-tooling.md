@@ -87,6 +87,34 @@ profile-import, icon-fetching, bundled-add-on, signing, and release invariants.
 CI also audits the full dependency graph and runs CodeQL over Bento JavaScript
 and TypeScript.
 
+## Pull request test builds
+
+Every `pull_request` CI run builds and packages three review artifacts in
+parallel: Linux x64 as a `.tar.xz` or `.tar.bz2`, Windows x64 as an unsigned
+`.exe` installer plus `.zip`, and macOS Apple Silicon as an unsigned `.dmg`.
+The Windows PR path runs the native package command without generating MAR or
+automatic-update metadata because the pinned Surfer package command cannot
+handle the hosted runner's `D:\a\...` path when it creates a MAR. Tag releases
+continue to use Surfer's normal package path and release metadata.
+
+Each successful platform job uploads a distinct attempt-scoped artifact with
+compression disabled and a 14-day retention period. The job summary links the
+artifact immediately; the trusted workflow then updates one bot-owned marker
+comment with the links for the current run. Retrying only failed jobs preserves
+the successful platforms' earlier artifacts from that same run and source
+commit, with their original attempt labels. GitHub sign-in is required to
+download these public repository artifacts. They are unsigned development
+builds, not stable releases: macOS Gatekeeper and Windows SmartScreen may
+warn or block installation. Linux receives an archive to extract and run.
+
+The comment workflow is triggered after CI completes and checks the exact open
+PR, source repository, source commit, and newest run attempt before writing.
+It runs trusted default-branch code and never downloads or executes a PR
+artifact. Because `workflow_run` definitions come from the default branch, the
+notifier must be merged before it can run. Until then, the introducing PR's
+downloads are available in CI job summaries and artifacts. Later PR CI
+completions will update the bot comment automatically.
+
 ## Upgrading Surfer
 
 No Surfer update is auto-merged. Do not create another Bento-maintained fork.

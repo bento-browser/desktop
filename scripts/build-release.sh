@@ -3,7 +3,7 @@
 #
 # Produces distributable packages (.dmg on macOS, .tar.xz/.tar.bz2 on
 # Linux, .exe and .zip on Windows) into release-out/ at the repo root. Used
-# both locally (sanity-check before tagging) and by .github/workflows/release.yml.
+# locally (sanity-check before tagging) and by the release and PR workflows.
 #
 # What's different from `npm run build`:
 #   1. Sets BENTO_RELEASE=1 so .pnpmfile.cjs's readPackage hook is a
@@ -25,6 +25,11 @@
 # Set BENTO_BUILD_JOBS to a positive integer to cap native build
 # parallelism on memory-constrained builders. When unset, Surfer retains
 # its normal platform default.
+#
+# Set BENTO_PR_BUILD=1 only for a PR test build. On Windows this uses mach
+# package directly and omits Surfer's MAR/update metadata because the pinned
+# Surfer package command strips the hosted runner's D:\\a drive to /a before
+# creating a MAR, which is not a valid Git Bash path.
 
 set -euo pipefail
 
@@ -117,7 +122,7 @@ else
 fi
 bash scripts/sync-builtin-addon-symlinks.sh
 
-step "3/4 Packaging artifact (surfer package)"
+step "3/4 Packaging artifact"
 case "$PLATFORM" in
   macos)
     # Remove stale macOS packages before packaging so the collected artifact
@@ -131,8 +136,20 @@ case "$PLATFORM" in
       \( -name 'bento-*.tar.bz2' -o -name 'bento-*.tar.xz' \) \
       -delete 2>/dev/null || true
     ;;
+  windows)
+    # The pinned Surfer release strips the D:\\a drive to /a before invoking
+    # make_full_update.sh. PR builds use mach package directly and intentionally
+    # omit MAR/update metadata. Tag releases keep Surfer's normal package path.
+    find engine/obj-*/dist -type f \
+      \( -name "bento-$VERSION*.installer.exe" -o -name "bento-$VERSION*.zip" \) \
+      -delete 2>/dev/null || true
+    ;;
 esac
-bash scripts/surfer-env.sh package
+if [ "$PLATFORM" = "windows" ] && [ "${BENTO_PR_BUILD:-}" = "1" ]; then
+  bash scripts/mach-raw.sh package
+else
+  bash scripts/surfer-env.sh package
+fi
 
 step "4/4 Collecting artifacts into $OUT_DIR"
 # Mach drops platform-specific artifacts under engine/obj-*/dist/.
@@ -162,22 +179,30 @@ case "$PLATFORM" in
     # On Windows mach package produces an installer .exe and a .zip.
     # Keep both: the .exe is the normal installer, while the .zip gives
     # unsigned developer-preview users an extract-and-run option.
-    EXE="$(find engine/obj-*/dist/install -name '*.exe' 2>/dev/null | head -n1)"
-    if [ -z "$EXE" ]; then
-      EXE="$(find engine/obj-*/dist -name '*.exe' 2>/dev/null | head -n1)"
-    fi
-    if [ -z "$EXE" ]; then
-      echo "build-release: no .exe found under engine/obj-*/dist" >&2
+    EXE_LIST="$(find engine/obj-*/dist -type f -name "bento-$VERSION*.installer.exe" ! -name '*stub*' | sort)"
+    EXE_COUNT="$(printf '%s\n' "$EXE_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
+    if [ "$EXE_COUNT" = "0" ]; then
+      echo "build-release: no version-matched Bento installer .exe found under engine/obj-*/dist" >&2
       exit 1
     fi
-    ZIP="$(find engine/obj-*/dist/install -name '*.zip' 2>/dev/null | head -n1)"
-    if [ -z "$ZIP" ]; then
-      ZIP="$(find engine/obj-*/dist -name 'bento-*.zip' 2>/dev/null | head -n1)"
-    fi
-    if [ -z "$ZIP" ]; then
-      echo "build-release: no .zip found under engine/obj-*/dist" >&2
+    if [ "$EXE_COUNT" != "1" ]; then
+      echo "build-release: expected one version-matched Bento installer .exe, found $EXE_COUNT:" >&2
+      printf '%s\n' "$EXE_LIST" >&2
       exit 1
     fi
+    ZIP_LIST="$(find engine/obj-*/dist -type f -name "bento-$VERSION*.zip" | sort)"
+    ZIP_COUNT="$(printf '%s\n' "$ZIP_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
+    if [ "$ZIP_COUNT" = "0" ]; then
+      echo "build-release: no version-matched Bento .zip found under engine/obj-*/dist" >&2
+      exit 1
+    fi
+    if [ "$ZIP_COUNT" != "1" ]; then
+      echo "build-release: expected one version-matched Bento .zip, found $ZIP_COUNT:" >&2
+      printf '%s\n' "$ZIP_LIST" >&2
+      exit 1
+    fi
+    EXE="$EXE_LIST"
+    ZIP="$ZIP_LIST"
     EXE_OUT="$OUT_DIR/Bento-$VERSION-windows.exe"
     ZIP_OUT="$OUT_DIR/Bento-$VERSION-windows.zip"
     cp "$EXE" "$EXE_OUT"
