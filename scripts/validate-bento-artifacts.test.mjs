@@ -8,7 +8,7 @@ import test from 'node:test';
 import { readPlatformBuildId } from './bento-build.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
-async function fixture({ appBundle = true } = {}) {
+async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precomplete' } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-artifact-test-'));
   const objDist = path.join(root, 'engine', 'obj-test', 'dist');
   const applicationName = appBundle ? 'Bento.app' : 'bento';
@@ -22,7 +22,7 @@ async function fixture({ appBundle = true } = {}) {
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), 'application');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'), 'application archive');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.xpt_artifacts.zip'), 'test artifacts');
-  await fsp.writeFile(marTool, '#!/bin/sh\nprintf "precomplete\\n"\n');
+  await fsp.writeFile(marTool, `#!/bin/sh\nprintf "SIZE\\tMODE\\tNAME\\n0\\t0644\\t${marEntry}\\n"\n`);
   await fsp.chmod(marTool, 0o755);
   const mar = path.join(root, 'dist', 'output.mar');
   await fsp.mkdir(path.dirname(mar), { recursive: true });
@@ -82,6 +82,15 @@ test('artifact validation ignores auxiliary archives when finding application pa
     await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'));
     await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'));
     assert.throws(() => validateArtifacts(root), /no primary application package found/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation parses a root precomplete entry from MAR table output', async () => {
+  const { root } = await fixture({ appBundle: false, marEntry: 'precomplete' });
+  try {
+    assert.equal(validateArtifacts(root).packages.length, 2);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

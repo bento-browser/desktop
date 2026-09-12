@@ -105,7 +105,13 @@ function assertMarContents(manifest, root) {
     maxBuffer: 64 * 1024 * 1024,
   });
   if (result.status !== 0) fail(`MAR listing failed: ${result.stderr || result.stdout || 'unknown error'}`);
-  if (!result.stdout.split(/\r?\n/).some((entry) => /(?:^|\/)precomplete$/.test(entry.trim()))) {
+  const hasPrecomplete = result.stdout.split(/\r?\n/).some((entry) => {
+    const fields = entry.split('\t');
+    if (fields.length < 3) return false;
+    const name = fields.slice(2).join('\t').trim();
+    return name === 'precomplete' || name === 'Contents/Resources/precomplete';
+  });
+  if (!hasPrecomplete) {
     fail('MAR does not contain the updater precomplete marker');
   }
   return { marPath, marHash: sha512(marPath), marSize: fs.statSync(marPath).size };
