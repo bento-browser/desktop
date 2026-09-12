@@ -20,13 +20,14 @@
 #
 # Locally: run from the repo root. Requires the surfer download +
 # bootstrap to have been done at least once before (the same prerequisite
-# `npm run build` has).
+# `npm run build` has). CI invokes this script for tag releases and manual
+# application test builds.
 #
 # Set BENTO_BUILD_JOBS to a positive integer to cap native build
 # parallelism on memory-constrained builders. When unset, Surfer retains
 # its normal platform default.
 #
-# Set BENTO_PR_BUILD=1 only for a PR test build. On Windows this uses mach
+# Set BENTO_PR_BUILD=1 only for a manual PR test build. On Windows this uses mach
 # package directly and omits Surfer's MAR/update metadata because the pinned
 # Surfer package command strips the hosted runner's D:\\a drive to /a before
 # creating a MAR, which is not a valid Git Bash path.
@@ -138,7 +139,7 @@ case "$PLATFORM" in
     ;;
   windows)
     # The pinned Surfer release strips the D:\\a drive to /a before invoking
-    # make_full_update.sh. PR builds use mach package directly and intentionally
+    # make_full_update.sh. Manual PR builds use mach package directly and intentionally
     # omit MAR/update metadata. Tag releases keep Surfer's normal package path.
     find engine/obj-*/dist -type f \
       \( -name "bento-$VERSION*.installer.exe" -o -name "bento-$VERSION*.zip" \) \

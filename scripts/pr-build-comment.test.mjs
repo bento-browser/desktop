@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   PR_BUILD_COMMENT_MARKER,
+  PR_BUILD_WORKFLOW_EVENT,
   artifactName,
+  classifyPlatform,
   commentUpsertAction,
   findMatchingPullRequest,
   isLatestRelevantRun,
@@ -21,7 +23,7 @@ function run(overrides = {}) {
     run_number: 20,
     run_attempt: 1,
     workflow_id: 7,
-    event: 'pull_request',
+    event: PR_BUILD_WORKFLOW_EVENT,
     head_sha: 'a'.repeat(40),
     head_repository: headRepository,
     repository,
@@ -70,6 +72,17 @@ test('older run or rerun cannot update the comment after a newer relevant run', 
     false,
   );
   assert.equal(isLatestRelevantRun(currentRun, [currentRun], 42), true);
+  assert.equal(
+    isLatestRelevantRun(currentRun, [currentRun, run({ id: 102, run_number: 22, event: 'pull_request' })], 42),
+    true,
+  );
+});
+
+test('manual platform status distinguishes unstarted jobs from failures', () => {
+  assert.deepEqual(classifyPlatform({}), { state: 'not run' });
+  assert.deepEqual(classifyPlatform({ artifact: { expired: true } }), { state: 'expired' });
+  assert.deepEqual(classifyPlatform({ job: { conclusion: 'skipped' } }), { state: 'not run' });
+  assert.deepEqual(classifyPlatform({ job: { conclusion: 'failure' } }), { state: 'failed' });
 });
 
 test('rendering links only allowlisted platform artifact names and preserves partial failures', () => {
@@ -118,14 +131,22 @@ test('a completed event cannot publish metadata from a newer in-progress retry',
       payload: {
         workflow_run: {
           id: currentRun.id,
-          event: 'pull_request',
+          event: PR_BUILD_WORKFLOW_EVENT,
           run_attempt: 1,
           pull_requests: [{ number: 42 }],
         },
       },
     },
   });
-  assert.deepEqual(result, { status: 'ignored', reason: 'workflow run metadata is not a completed PR run' });
+  assert.deepEqual(result, { status: 'ignored', reason: 'workflow run metadata is not a completed manual build run' });
+});
+
+test('automatic pull request runs never update the manual build comment', async () => {
+  const result = await updatePrBuildComment({
+    github: {},
+    context: { payload: { workflow_run: { event: 'pull_request' } }, repo: {} },
+  });
+  assert.deepEqual(result, { status: 'ignored', reason: 'not a manual build run' });
 });
 
 test('empty fork association is skipped when more than one open PR matches the source', async () => {
@@ -148,7 +169,7 @@ test('empty fork association is skipped when more than one open PR matches the s
     github,
     context: {
       repo: { owner: 'Bento-Browser', repo: 'desktop' },
-      payload: { workflow_run: { id: currentRun.id, event: 'pull_request', pull_requests: [] } },
+      payload: { workflow_run: { id: currentRun.id, event: PR_BUILD_WORKFLOW_EVENT, pull_requests: [] } },
     },
   });
   assert.deepEqual(result, { status: 'ignored', reason: 'no matching open pull request' });

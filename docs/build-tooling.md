@@ -41,13 +41,15 @@ with the Firefox source, patch stack, and package configuration. A change to
 the LTO policy or Rust compiler therefore cannot reuse an object cache produced
 under a different native build configuration.
 
-PR native builds use four workers on the existing 4 vCPU / 16 GiB Linux
-runner, two workers on the 4 vCPU / 14 GiB Windows runner, and the platform
-default on macOS. Each PR native job has a 120-minute bound. The PR source
-cache excludes `engine/obj-*`; native objects use a separate configuration
-key so source restores do not duplicate the large object archive. On Windows,
-the PR workflow verifies the bootstrapped MSVC ATL/MFC headers and libraries,
-then prepends that compiler directory with `GITHUB_PATH` before configure runs.
+Manual CI application builds use four workers on the existing 4 vCPU / 16 GiB
+Linux runner, two workers on the 4 vCPU / 14 GiB Windows runner, and the
+platform default on macOS. Each manual native job has a 120-minute bound. The
+source cache excludes `engine/obj-*`; native objects use a separate
+configuration key so source restores do not duplicate the large object
+archive. On Windows, CI verifies the bootstrapped MSVC ATL/MFC headers and
+libraries, then prepends that compiler directory with `GITHUB_PATH` before
+configure runs. Release jobs use the same worker, cache, and toolchain
+selection policy, with their existing six-hour cold-build bound.
 
 Direct `surfer import` bypasses Bento's branding, add-on, patch, preference, and
 symlink steps. Use `pnpm run import` whenever the resulting engine state matters.
@@ -97,31 +99,33 @@ and TypeScript.
 
 ## Pull request test builds
 
-Every `pull_request` CI run builds and packages three review artifacts in
-parallel: Linux x64 as a `.tar.xz` or `.tar.bz2`, Windows x64 as an unsigned
-`.exe` installer plus `.zip`, and macOS Apple Silicon as an unsigned `.dmg`.
-The Windows PR path runs the native package command without generating MAR or
-automatic-update metadata because the pinned Surfer package command cannot
-handle the hosted runner's `D:\a\...` path when it creates a MAR. Tag releases
-continue to use Surfer's normal package path and release metadata.
+Automatic `pull_request` and `push` CI runs perform static checks and one Linux
+source-import check. The Linux job downloads Firefox source, imports Bento,
+repeats the import to verify idempotence, and validates the generated output.
+Opening, updating, reopening, or marking a PR ready for review, and pushing to
+`main`, do not start native application builds for any platform. The routine
+source-import job has a 20-minute bound.
 
-Each successful platform job uploads a distinct attempt-scoped artifact with
-compression disabled and a 14-day retention period. The job summary links the
-artifact immediately; the trusted workflow then updates one bot-owned marker
-comment with the links for the current run. Retrying only failed jobs preserves
-the successful platforms' earlier artifacts from that same run and source
-commit, with their original attempt labels. GitHub sign-in is required to
-download these public repository artifacts. They are unsigned development
-builds, not stable releases: macOS Gatekeeper and Windows SmartScreen may
-warn or block installation. Linux receives an archive to extract and run.
+To build an unsigned application for review, open **Actions → CI → Run
+workflow**. Choose a branch in this repository and a platform: `linux-x64`
+(the default), `macos-arm64`, `windows-x64`, or `all`. The `workflow_dispatch`
+definition must first be present on the repository's default branch before the
+Actions UI offers the manual workflow. Manual native jobs use the worker and
+parallelism settings above, have a 120-minute bound, and consume hosted-runner
+time. Each selected platform uploads an attempt-scoped artifact with
+compression disabled and 14-day retention; the job summary links it
+immediately. GitHub sign-in is required to download these public repository
+artifacts. They are unsigned development builds, so macOS Gatekeeper and
+Windows SmartScreen may warn or block installation. Linux receives an archive
+to extract and run.
 
-The comment workflow is triggered after CI completes and checks the exact open
-PR, source repository, source commit, and newest run attempt before writing.
-It runs trusted default-branch code and never downloads or executes a PR
-artifact. Because `workflow_run` definitions come from the default branch, the
-notifier must be merged before it can run. Until then, the introducing PR's
-downloads are available in CI job summaries and artifacts. Later PR CI
-completions will update the bot comment automatically.
+The comment workflow runs after a manual CI run completes and checks the exact
+open PR, source repository, source commit, and newest manual run attempt before
+writing. It runs trusted default-branch code and never downloads or executes a
+PR artifact. Unselected or unstarted platforms are shown as `not run`. Because
+`workflow_run` definitions come from the default branch, the notifier must be
+merged before it can update the bot comment. Until then, downloads are
+available in the manual run's job summaries and artifacts.
 
 ## Upgrading Surfer
 

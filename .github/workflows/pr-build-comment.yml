@@ -1,8 +1,8 @@
 name: PR build comment
 
-# This workflow is deliberately separate from CI. workflow_run executes the
+# This workflow is deliberately separate from CI. workflow_run executes this
 # workflow definition from the default branch and gives it write access to PR
-# comments, while the build workflow runs untrusted pull request code.
+# comments, while CI runs untrusted build code.
 on:
   workflow_run:
     workflows: [CI]
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   update-comment:
     name: Update PR build comment
-    if: github.event.workflow_run.event == 'pull_request'
+    if: github.event.workflow_run.event == 'workflow_dispatch'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       # workflow_run has the default branch as its trusted source. Keep this

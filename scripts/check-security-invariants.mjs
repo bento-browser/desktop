@@ -110,8 +110,30 @@ if (!releaseSecurity.publicReleaseReady && !/prerelease:\s*true/.test(releaseWor
   throw new Error('Unapproved public release configuration must remain a prerelease.');
 }
 
+const ciWorkflow = read('.github/workflows/ci.yml');
+if (!/workflow_dispatch:\s*\n\s+inputs:\s*\n\s+platform:/.test(ciWorkflow)) {
+  throw new Error('CI workflow: missing manual platform selector');
+}
+for (const platform of ['linux-x64', 'macos-arm64', 'windows-x64', 'all']) {
+  if (!ciWorkflow.includes(`- ${platform}`)) {
+    throw new Error(`CI workflow: missing platform option ${platform}`);
+  }
+}
+if (!/matrix:\s*\$\{\{\s*fromJSON\(needs\.prepare-build\.outputs\.matrix\)\s*\}\}/.test(ciWorkflow)) {
+  throw new Error('CI workflow: build matrix is not selected by the allowlisted preparation job');
+}
+if (!/timeout-minutes:\s*\$\{\{[^\n]*&& 120 \|\| 20/.test(ciWorkflow)) {
+  throw new Error('CI workflow: native and source-import timeout bounds are missing');
+}
+if (!/name: Build manual release artifact\n\s+if: github\.event_name == 'workflow_dispatch'/.test(ciWorkflow)) {
+  throw new Error('CI workflow: native artifact build is not manual-only');
+}
+
 const prCommentWorkflow = read('.github/workflows/pr-build-comment.yml');
 if (!/workflow_run:/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing trusted workflow_run comment trigger');
+if (!/github\.event\.workflow_run\.event\s*==\s*'workflow_dispatch'/.test(prCommentWorkflow)) {
+  throw new Error('PR comment workflow: notifier must process manual CI runs only');
+}
 if (!/actions:\s*read/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing read-only workflow metadata permission');
 if (!/pull-requests:\s*write/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing PR comment permission');
 if (!/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(prCommentWorkflow)) {

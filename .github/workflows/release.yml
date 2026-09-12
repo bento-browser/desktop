@@ -32,12 +32,11 @@ jobs:
         include:
           - os: blacksmith-6vcpu-macos-26
             build-jobs: ''
-          # Linux remains serial for hosted-runner memory stability. Windows uses
-          # two native build jobs because Rust ThinLTO bounds the single gkrust
-          # link, while serial native compilation exceeded the six-hour hosted
-          # runner ceiling.
+          # Blacksmith Linux runners provide 16 GiB RAM; four native workers
+          # match the available vCPUs while Rust ThinLTO bounds the gkrust link.
+          # Windows keeps two workers on the 14 GiB runner.
           - os: blacksmith-4vcpu-ubuntu-2404
-            build-jobs: '1'
+            build-jobs: '4'
           - os: blacksmith-4vcpu-windows-2025
             build-jobs: '2'
     runs-on: ${{ matrix.os }}
@@ -65,25 +64,16 @@ jobs:
         run: node scripts/check-rust-toolchain.mjs
 
       # Cache Firefox source between runs so the 6 GB+ download isn't
-      # repeated for every release. Cache key includes surfer.json hash so
-      # a Firefox version bump invalidates the cache.
-      - name: Cache engine/
+      # repeated for every release. Keep native objects separate so source
+      # restores do not duplicate the multi-GB object cache.
+      - name: Cache Firefox source (engine/)
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: engine
-          key: ${{ runner.os }}-engine-${{ hashFiles('surfer.json', 'patches/**') }}
-
-      # Cache mach build artifacts so an incremental release that only
-      # changes Bento extensions doesn't re-link the entire engine. The
-      # key is keyed on the exact build-tool package/config + patches (the things that affect
-      # native compile output) and intentionally NOT on github.sha, so
-      # commits that only touch extensions/, scripts/, or branding/ hit
-      # the cache and skip the multi-hour relink step.
-      - name: Cache engine/obj-*
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: engine/obj-*
-          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml') }}
+          path: |
+            engine/*
+            engine/.[!.]*
+            !engine/obj-*
+          key: ${{ runner.os }}-engine-source-v2-${{ hashFiles('surfer.json', 'patches/**') }}
 
       # Install dependencies in release mode so the @tale-ui/* deps
       # resolve from npm (not local link). build-release.sh re-runs this
@@ -112,8 +102,57 @@ jobs:
       - name: Surfer download (Firefox source)
         run: pnpm run download
 
+      # Cache mach build artifacts so an incremental release that only
+      # changes Bento extensions doesn't re-link the entire engine. The key
+      # intentionally excludes github.sha so extension-only commits reuse it.
+      # Restore this only after source download: Surfer skips the download
+      # when engine/ already exists, even when only obj-* was restored.
+      - name: Cache engine/obj-*
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: engine/obj-*
+          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml') }}
+
       - name: Surfer bootstrap (Mozilla build toolchain)
         run: pnpm run bootstrap
+
+      - name: Select bootstrapped Windows toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stateDir = if ($env:MOZBUILD_STATE_PATH) {
+            $env:MOZBUILD_STATE_PATH
+          } else {
+            Join-Path $env:USERPROFILE '.mozbuild'
+          }
+          $msvcRoot = Join-Path $stateDir 'vs\VC\Tools\MSVC'
+          if (-not (Test-Path -LiteralPath $msvcRoot -PathType Container)) {
+            throw "Bootstrapped Visual C++ tree not found at $msvcRoot"
+          }
+
+          $msvcPath = Get-ChildItem -LiteralPath $msvcRoot -Directory |
+            Where-Object { $_.Name -match '^\d+(\.\d+)+$' } |
+            Sort-Object { [version]$_.Name } |
+            Select-Object -Last 1
+          if (-not $msvcPath) {
+            throw "No bootstrapped MSVC version found under $msvcRoot"
+          }
+
+          $vcBin = Join-Path $msvcPath.FullName 'bin\Hostx64\x64'
+          $required = @(
+            (Join-Path $vcBin 'cl.exe'),
+            (Join-Path $msvcPath.FullName 'atlmfc\include\atlbase.h'),
+            (Join-Path $msvcPath.FullName 'atlmfc\lib\x64\atls.lib')
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Bootstrapped Windows toolchain is incomplete: missing $path"
+            }
+          }
+
+          # configure searches inherited PATH before its discovered VS path.
+          $vcBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "Using bootstrapped MSVC toolchain $($msvcPath.FullName)"
 
       - name: Build release artifact
         env:

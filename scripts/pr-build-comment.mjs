@@ -10,6 +10,7 @@
 
 export const PR_BUILD_COMMENT_MARKER = '<!-- bento-pr-builds:v1 -->';
 export const PR_BUILD_RETENTION_DAYS = 14;
+export const PR_BUILD_WORKFLOW_EVENT = 'workflow_dispatch';
 
 export const PR_BUILD_PLATFORMS = Object.freeze([
   Object.freeze({
@@ -79,7 +80,7 @@ export function findMatchingPullRequest(pullRequests, run) {
 
 function sameRunIdentity(candidate, current) {
   return (
-    candidate?.event === 'pull_request' &&
+    candidate?.event === PR_BUILD_WORKFLOW_EVENT &&
     candidate.workflow_id === current.workflow_id &&
     candidate.head_sha === current.head_sha &&
     sameHeadRepository(candidate.head_repository, current.head_repository)
@@ -127,6 +128,8 @@ export function isLatestRelevantRun(current, runs, pullRequestNumber) {
 
 export function classifyPlatform({ artifact, job }) {
   if (artifact && !artifact.expired) return { state: 'available', artifact };
+
+  if (!job) return { state: artifact?.expired ? 'expired' : 'not run' };
 
   const conclusion = job?.conclusion;
   if (conclusion === 'failure' || conclusion === 'timed_out') return { state: 'failed' };
@@ -274,7 +277,7 @@ async function listWorkflowRuns(github, owner, repo, workflowId, headSha) {
     owner,
     repo,
     workflow_id: workflowId,
-    event: 'pull_request',
+    event: PR_BUILD_WORKFLOW_EVENT,
     head_sha: headSha,
     per_page: 100,
   });
@@ -282,7 +285,9 @@ async function listWorkflowRuns(github, owner, repo, workflowId, headSha) {
 
 export async function updatePrBuildComment({ github, context, core = console, now = new Date() }) {
   const eventRun = context.payload?.workflow_run;
-  if (eventRun?.event !== 'pull_request') return { status: 'ignored', reason: 'not a pull request run' };
+  if (eventRun?.event !== PR_BUILD_WORKFLOW_EVENT) {
+    return { status: 'ignored', reason: 'not a manual build run' };
+  }
 
   const owner = context.repo.owner;
   const repo = context.repo.repo;
@@ -294,13 +299,13 @@ export async function updatePrBuildComment({ github, context, core = console, no
   const runAttemptMismatch =
     Number.isSafeInteger(eventAttempt) && eventAttempt > 0 && Number(run.run_attempt) !== eventAttempt;
   if (
-    run.event !== 'pull_request' ||
+    run.event !== PR_BUILD_WORKFLOW_EVENT ||
     run.status !== 'completed' ||
     runAttemptMismatch ||
     !run.head_sha ||
     !run.head_repository
   ) {
-    return { status: 'ignored', reason: 'workflow run metadata is not a completed PR run' };
+    return { status: 'ignored', reason: 'workflow run metadata is not a completed manual build run' };
   }
 
   const pullRequest = await findRunPullRequest({ github, owner, repo, eventRun, run });
