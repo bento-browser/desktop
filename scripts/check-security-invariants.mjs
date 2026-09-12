@@ -122,7 +122,7 @@ for (const platform of ['linux-x64', 'macos-arm64', 'windows-x64', 'all']) {
 if (!/matrix:\s*\$\{\{\s*fromJSON\(needs\.prepare-build\.outputs\.matrix\)\s*\}\}/.test(ciWorkflow)) {
   throw new Error('CI workflow: build matrix is not selected by the allowlisted preparation job');
 }
-if (!/timeout-minutes:\s*\$\{\{[^\n]*&& 120 \|\| 20/.test(ciWorkflow)) {
+if (!/timeout-minutes:\s*\$\{\{[^\n]*&& 360 \|\| 20/.test(ciWorkflow)) {
   throw new Error('CI workflow: native and source-import timeout bounds are missing');
 }
 if (!/name: Build manual release artifact\n\s+if: github\.event_name == 'workflow_dispatch'/.test(ciWorkflow)) {

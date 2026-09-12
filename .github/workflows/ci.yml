@@ -30,7 +30,7 @@ permissions:
 jobs:
   static-checks:
     name: JSON, shell, prefs sanity
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -110,7 +110,7 @@ jobs:
 
   extensions:
     name: Extensions — typecheck, lint, build, size-limit
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -159,7 +159,7 @@ jobs:
   bento-smoke:
     name: Bento build tooling loads
     needs: static-checks
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -182,7 +182,7 @@ jobs:
   prepare-build:
     name: Select CI build platform
     needs: [bento-smoke, extensions]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.select-matrix.outputs.matrix }}
     steps:
@@ -194,9 +194,9 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
-          linux='{"platform":"linux-x64","os":"blacksmith-4vcpu-ubuntu-2404","build-jobs":"4"}'
-          macos='{"platform":"macos-arm64","os":"blacksmith-6vcpu-macos-26","build-jobs":""}'
-          windows='{"platform":"windows-x64","os":"blacksmith-4vcpu-windows-2025","build-jobs":"2"}'
+          linux='{"platform":"linux-x64","os":"ubuntu-24.04","build-jobs":"4"}'
+          macos='{"platform":"macos-arm64","os":"macos-26","build-jobs":"1"}'
+          windows='{"platform":"windows-x64","os":"windows-2025","build-jobs":"2"}'
 
           case "$EVENT_NAME:$PLATFORM" in
             workflow_dispatch:linux-x64) matrix="{\"include\":[$linux]}" ;;
@@ -216,8 +216,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare-build.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
-    # Keep routine source validation bounded separately from paid native builds.
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 120 || 20 }}
+    # Keep routine source validation bounded separately from manual native builds.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 360 || 20 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:

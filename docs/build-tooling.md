@@ -93,12 +93,14 @@ overlay inputs, relevant Bento build scripts, `configs/**`, and
 source tooling, LTO policy, or Rust compiler therefore cannot reuse an object
 cache produced under a different native build configuration.
 
-Manual CI application builds use four workers on the existing 4 vCPU / 16 GiB
-Linux runner, two workers on the 4 vCPU / 14 GiB Windows runner, and the
-platform default on macOS. Each manual native job has a 120-minute bound. The
-source cache excludes `engine/obj-*` and caches the paired
+Manual CI application builds use four workers on the public
+`ubuntu-24.04` runner (4 CPUs / 16 GiB), two workers on the public
+`windows-2025` runner (4 CPUs / 16 GiB), and one worker on the standard
+`macos-26` Apple Silicon runner (3 M1 CPUs / 7 GiB). Each manual native job
+has a 360-minute bound for a cold Firefox build. The source cache excludes
+`engine/obj-*` and caches the paired Bento state files
 `.bento/source-state.json`, `.bento/import-manifest.json`, and
-`.bento/engine-state.json` metadata with the engine checkout. Native objects
+`.bento/engine-state.json` with the engine checkout. Native objects
 use a separate release-mode configuration key so source restores do not
 duplicate the large object archive. Staging directories, backups, source
 archives, and patch-stack worktrees are not cached. On Windows, CI verifies the
@@ -164,7 +166,7 @@ workflow**. Choose a branch in this repository and a platform: `linux-x64`
 (the default), `macos-arm64`, `windows-x64`, or `all`. The `workflow_dispatch`
 definition must first be present on the repository's default branch before the
 Actions UI offers the manual workflow. Manual native jobs use the worker and
-parallelism settings above, have a 120-minute bound, and consume hosted-runner
+parallelism settings above, have a 360-minute bound, and consume hosted-runner
 time. Each selected platform uploads an attempt-scoped artifact with
 compression disabled and 14-day retention; the job summary links it
 immediately. GitHub sign-in is required to download these public repository

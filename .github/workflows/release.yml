@@ -26,19 +26,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-26 = Apple Silicon (aarch64) with Xcode 26.x / macOS SDK 26.x.
+        # GitHub-hosted public standard profiles: Linux and Windows x64 provide
+        # 4 CPUs / 16 GiB; macos-26 provides 3 M1 CPUs / 7 GiB on Apple Silicon.
+        # macos-26 uses the current macOS SDK for the Firefox 150+ build.
         # Firefox 150+ configure rejects the older macOS 14 SDK as too old.
-        # ubuntu-latest = Linux x86_64.
-        # windows-latest = Windows Server 2022 x86_64.
+        # ubuntu-24.04 = Linux x86_64; windows-2025 = Windows Server 2025 x86_64.
         include:
-          - os: blacksmith-6vcpu-macos-26
-            build-jobs: ''
-          # Blacksmith Linux runners provide 16 GiB RAM; four native workers
-          # match the available vCPUs while Rust ThinLTO bounds the gkrust link.
-          # Windows keeps two workers on the 14 GiB runner.
-          - os: blacksmith-4vcpu-ubuntu-2404
+          - os: macos-26
+            # The standard Apple Silicon image has 7 GiB RAM; keep its native
+            # build serial while macOS retains Firefox's default fat LTO.
+            build-jobs: '1'
+          # Keep the existing native worker caps for hosted-runner memory
+          # stability; Rust ThinLTO bounds the gkrust link on both platforms.
+          - os: ubuntu-24.04
             build-jobs: '4'
-          - os: blacksmith-4vcpu-windows-2025
+          - os: windows-2025
             build-jobs: '2'
     runs-on: ${{ matrix.os }}
     # A cold optimized Firefox build can exceed three hours on hosted macOS.
@@ -193,7 +195,7 @@ jobs:
   release:
     name: Draft GitHub Release
     needs: build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # Only create a Release on tag pushes. Manual workflow_dispatch runs
     # leave the artifacts on the workflow run page for inspection.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
