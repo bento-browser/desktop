@@ -1,22 +1,25 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { readPlatformBuildId } from './bento-build.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
-async function fixture() {
+async function fixture({ appBundle = true } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-artifact-test-'));
   const objDist = path.join(root, 'engine', 'obj-test', 'dist');
-  const app = path.join(objDist, 'Bento.app', 'Contents', 'Resources');
+  const applicationName = appBundle ? 'Bento.app' : 'bento';
+  const application = path.join(objDist, applicationName);
+  const app = appBundle ? path.join(application, 'Contents', 'Resources') : application;
   const marTool = path.join(objDist, 'host', 'bin', 'mar');
   await fsp.mkdir(app, { recursive: true });
   await fsp.mkdir(path.dirname(marTool), { recursive: true });
   await fsp.writeFile(path.join(app, 'precomplete'), '');
-  await fsp.writeFile(path.join(objDist, 'Bento-0.0.1.dmg'), 'application');
+  await fsp.writeFile(path.join(app, 'platform.ini'), '[Build]\nMilestone=154.0\nBuildID=20260912000000\n');
+  await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), 'application');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'), 'application archive');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.xpt_artifacts.zip'), 'test artifacts');
   await fsp.writeFile(marTool, '#!/bin/sh\nprintf "precomplete\\n"\n');
@@ -42,11 +45,20 @@ async function fixture() {
     firefoxVersion: '154.0',
     mar: { path: 'dist/output.mar', name: 'Bento-0.0.1-macos.mar', url: 'https://updates.example.invalid/Bento-0.0.1-macos.mar' },
     marTool: 'engine/obj-test/dist/host/bin/mar',
-    application: 'engine/obj-test/dist/Bento.app',
+    application: `engine/obj-test/dist/${applicationName}`,
+    platformIni: appBundle
+      ? 'engine/obj-test/dist/Bento.app/Contents/Resources/platform.ini'
+      : 'engine/obj-test/dist/bento/platform.ini',
+    buildId: '20260912000000',
     objDist: 'engine/obj-test/dist',
     updateTargets: ['Darwin_x86_64-gcc3'],
   }));
-  return { root, update: path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento', 'update.xml') };
+  return {
+    root,
+    objDist,
+    manifest: path.join(root, 'dist', 'bento-artifacts.json'),
+    update: path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento', 'update.xml'),
+  };
 }
 
 test('artifact validation binds update metadata to produced MAR bytes', async () => {
@@ -62,4 +74,57 @@ test('artifact validation binds update metadata to produced MAR bytes', async ()
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
+});
+
+test('artifact validation ignores auxiliary archives when finding application packages', async () => {
+  const { root, objDist } = await fixture();
+  try {
+    await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'));
+    await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'));
+    assert.throws(() => validateArtifacts(root), /no primary application package found/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation binds BuildID and MAR URL to configured package metadata', async () => {
+  const { root, manifest, update } = await fixture();
+  try {
+    const metadata = JSON.parse(await fsp.readFile(manifest, 'utf8'));
+    metadata.buildId = '20260913000000';
+    await fsp.writeFile(manifest, JSON.stringify(metadata));
+    assert.throws(() => validateArtifacts(root), /manifest build ID does not match/);
+
+    metadata.buildId = '20260912000000';
+    metadata.mar.url = 'https://wrong.example.invalid/Bento-0.0.1-macos.mar';
+    const xml = await fsp.readFile(update, 'utf8');
+    await fsp.writeFile(manifest, JSON.stringify(metadata));
+    await fsp.writeFile(update, xml.replaceAll('https://updates.example.invalid/Bento-0.0.1-macos.mar', metadata.mar.url));
+    assert.throws(() => validateArtifacts(root), /MAR URL does not match the configured release URL/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation rejects a non-bundle platform.ini outside the application', async () => {
+  const { root, manifest } = await fixture({ appBundle: false });
+  try {
+    const metadata = JSON.parse(await fsp.readFile(manifest, 'utf8'));
+    await fsp.mkdir(path.join(root, 'engine', 'obj-test', 'dist', 'bin'), { recursive: true });
+    await fsp.writeFile(path.join(root, 'engine', 'obj-test', 'dist', 'bin', 'platform.ini'), '[Build]\nBuildID=20260912000000\n');
+    metadata.platformIni = 'engine/obj-test/dist/bin/platform.ini';
+    await fsp.writeFile(manifest, JSON.stringify(metadata));
+    assert.throws(() => validateArtifacts(root), /platform.ini is not the one inside the application/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('platform.ini parser reads BuildID from a multiline Build section', () => {
+  assert.equal(
+    readPlatformBuildId('[App]\nBuildID=wrong\n[Build]\nMilestone=154.0\nBuildID = 20260913000000\n[Other]\nBuildID=also-wrong\n'),
+    '20260913000000',
+  );
+  assert.equal(readPlatformBuildId('[Build]\r\nBuildID=20260913000000\r\nMilestone=154.0\r\n'), '20260913000000');
+  assert.equal(readPlatformBuildId('[App]\nBuildID=wrong\n'), undefined);
 });

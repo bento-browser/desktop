@@ -13,6 +13,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { readPlatformBuildId, updateMarUrl } from './bento-build.mjs';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
 
@@ -39,6 +41,39 @@ function walkFiles(root, current = root) {
     if (entry.isDirectory()) return walkFiles(root, target);
     return entry.isFile() ? [path.relative(root, target)] : [];
   });
+}
+
+function isPrimaryApplicationPackage(file, displayVersion) {
+  const name = path.basename(file);
+  const prefix = `bento-${displayVersion}.`;
+  if (!name.startsWith(prefix)) return false;
+  const suffix = name.slice(prefix.length);
+  if (suffix.endsWith('.dmg') || suffix.endsWith('.tar.bz2') || suffix.endsWith('.tar.xz') || suffix.endsWith('.installer.exe')) {
+    return true;
+  }
+  if (!suffix.endsWith('.zip')) return false;
+  const parts = suffix.split('.');
+  return parts.length === 3 && parts[1].startsWith('win') && parts[1].length > 3;
+}
+
+function packagedBuildId(manifest, root, application) {
+  if (!manifest.platformIni || !manifest.buildId) fail('artifact metadata is missing the packaged platform.ini/build ID');
+  const platformIni = path.resolve(root, manifest.platformIni);
+  const relative = path.relative(root, platformIni);
+  if (path.isAbsolute(relative) || relative.startsWith(`..${path.sep}`) || relative === '..') {
+    fail(`packaged platform.ini escapes the repository: ${manifest.platformIni}`);
+  }
+  if (!fs.existsSync(platformIni) || !fs.statSync(platformIni).isFile()) fail(`packaged platform.ini is missing: ${manifest.platformIni}`);
+  const expected = path.basename(application).endsWith('.app')
+    ? path.join(application, 'Contents', 'Resources', 'platform.ini')
+    : path.join(application, 'platform.ini');
+  if (path.resolve(platformIni) !== path.resolve(expected)) {
+    fail('packaged platform.ini is not the one inside the application');
+  }
+  const buildId = readPlatformBuildId(fs.readFileSync(platformIni, 'utf8'));
+  if (!buildId) fail(`packaged platform.ini has no BuildID: ${manifest.platformIni}`);
+  if (manifest.buildId !== buildId) fail('manifest build ID does not match the packaged application');
+  return buildId;
 }
 
 function parseUpdateXml(file) {
@@ -92,6 +127,9 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   if (manifest.mar.url.endsWith('/') || !manifest.mar.url.endsWith(`/${manifest.mar.name}`)) {
     fail('MAR URL does not use the declared MAR filename');
   }
+  if (manifest.mar.url !== updateMarUrl(config, manifest.mar.name)) {
+    fail('MAR URL does not match the configured release URL');
+  }
 
   const application = path.resolve(root, manifest.application);
   if (!fs.existsSync(application) || !fs.statSync(application).isDirectory()) fail(`application bundle is missing: ${manifest.application}`);
@@ -99,10 +137,9 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
 
   if (!manifest.objDist) fail('artifact metadata is missing objDist');
   const objDist = path.resolve(root, manifest.objDist);
-  const packages = walkFiles(objDist).filter((file) => /(?:\.dmg|\.tar\.(?:bz2|xz)|\.installer\.exe|\.zip)$/i.test(file)
-    && !path.basename(file).endsWith('.xpt_artifacts.zip')
-    && !path.basename(file).endsWith('_xpt_artifacts.zip'));
-  if (packages.length === 0) fail(`no application package found under ${path.relative(root, objDist)}`);
+  const packages = walkFiles(objDist).filter((file) => isPrimaryApplicationPackage(file, release.displayVersion));
+  if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
+  const packagedId = packagedBuildId(manifest, root, application);
 
   const targets = [...new Set(manifest.updateTargets || [])];
   if (targets.length === 0) fail('artifact metadata has no browser update targets');
@@ -115,7 +152,7 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
     if (update.url !== manifest.mar.url || update.hashFunction !== 'sha512' || update.hashValue !== marHash || update.size !== marSize) {
       fail(`${file} does not describe the produced MAR bytes`);
     }
-    if (!update.buildId) fail(`${file} is missing the build ID`);
+    if (update.buildId !== packagedId) fail(`${file} build ID does not match the packaged application`);
   }
 
   const result = { mar: path.relative(root, marPath), marSize, updateTargets: targets, packages };

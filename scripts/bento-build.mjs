@@ -1236,6 +1236,14 @@ function updateMarName(config, objDist) {
   return `Bento-${config.brands[config.brand].release.displayVersion}-${platformLabel(objDist)}.mar`;
 }
 
+export function updateMarUrl(config, marName) {
+  const release = config.brands[config.brand].release;
+  const baseUrl = release.github
+    ? `https://github.com/${release.github.repo}/releases/download/v${release.displayVersion}`
+    : `https://${config.updates.hostname}`;
+  return `${baseUrl}/${marName}`;
+}
+
 function updateTargets(objDist) {
   const architecture = targetArchitecture(objDist);
   if (process.platform === 'darwin') return architecture === 'arm64' ? ['Darwin_aarch64-gcc3'] : PLATFORM_TARGETS.darwin.slice(1);
@@ -1243,25 +1251,54 @@ function updateTargets(objDist) {
   return architecture === 'arm64' ? ['Linux_aarch64-gcc3'] : PLATFORM_TARGETS.linux;
 }
 
-function platformIni(objDist, binaryName) {
-  const candidates = [path.join(objDist, binaryName, 'platform.ini'), path.join(objDist, 'bin', 'platform.ini'), path.join(objDist, 'platform.ini')];
-  const file = candidates.find((candidate) => fs.existsSync(candidate));
+export function readPlatformBuildId(content) {
+  let inBuildSection = false;
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      inBuildSection = trimmed.slice(1, -1).trim() === 'Build';
+      continue;
+    }
+    if (!inBuildSection) continue;
+    const separator = line.indexOf('=');
+    if (separator < 0 || line.slice(0, separator).trim() !== 'BuildID') continue;
+    const buildId = line.slice(separator + 1).trim();
+    if (buildId) return buildId;
+  }
+  return undefined;
+}
+
+function platformIni(objDist, binaryName, application = undefined) {
+  const applicationCandidate = application
+    ? path.basename(application).endsWith('.app')
+      ? path.join(application, 'Contents', 'Resources', 'platform.ini')
+      : path.join(application, 'platform.ini')
+    : undefined;
+  const candidates = application
+    ? [applicationCandidate]
+    : [path.join(objDist, binaryName, 'platform.ini'), path.join(objDist, 'bin', 'platform.ini'), path.join(objDist, 'platform.ini')];
+  const file = candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
   if (!file) fail(`package: platform.ini missing under ${objDist}`);
-  const section = fs.readFileSync(file, 'utf8').match(/^\[Build\]([\s\S]*?)(?=^\[|$)/m)?.[1] || '';
-  const buildId = section.match(/^BuildID\s*=\s*(\S+)/m)?.[1];
+  const buildId = readPlatformBuildId(fs.readFileSync(file, 'utf8'));
   if (!buildId) fail(`package: BuildID missing from ${file}`);
-  return buildId;
+  return { file, buildId };
+}
+
+function packagedApplication(objDist, config) {
+  if (process.platform !== 'darwin') {
+    const application = path.join(objDist, config.binaryName);
+    return fs.existsSync(application) ? application : undefined;
+  }
+  return [
+    path.join(objDist, config.binaryName, `${config.build.macosBundleName || 'Bento'}.app`),
+    path.join(objDist, `${config.build.macosBundleName || 'Bento'}.app`),
+  ].find((candidate) => fs.existsSync(path.join(candidate, 'Contents', 'Resources', 'precomplete')));
 }
 
 async function createMar(ctx, config, objDist) {
   const mar = process.platform === 'win32' ? path.join(objDist, 'host', 'bin', 'mar.exe') : path.join(objDist, 'host', 'bin', 'mar');
   if (!fs.existsSync(mar)) fail(`package: MAR tool missing at ${mar}`);
-  const appDir = process.platform === 'darwin'
-    ? [
-      path.join(objDist, config.binaryName, `${config.build.macosBundleName || 'Bento'}.app`),
-      path.join(objDist, `${config.build.macosBundleName || 'Bento'}.app`),
-    ].find((candidate) => fs.existsSync(path.join(candidate, 'Contents', 'Resources', 'precomplete')))
-    : path.join(objDist, config.binaryName);
+  const appDir = packagedApplication(objDist, config);
   if (!appDir || !fs.existsSync(appDir)) fail(`package: packaged ${config.binaryName} application is missing under ${objDist}`);
   fs.mkdirSync(ctx.distDir, { recursive: true });
   const output = path.join(ctx.distDir, 'output.mar');
@@ -1299,10 +1336,7 @@ export function findDirectory(root, predicate) {
 export async function writeBrowserUpdateFiles(ctx, config, marPath, buildId, objDist) {
   const marName = updateMarName(config, objDist);
   const release = config.brands[config.brand].release;
-  const baseUrl = release.github
-    ? `https://github.com/${release.github.repo}/releases/download/v${release.displayVersion}`
-    : `https://${config.updates.hostname}`;
-  const url = `${baseUrl}/${marName}`;
+  const url = updateMarUrl(config, marName);
   const hash = crypto.createHash('sha512').update(fs.readFileSync(marPath)).digest('hex');
   const size = fs.statSync(marPath).size;
   const targets = updateTargets(objDist);
@@ -1333,8 +1367,8 @@ async function commandPackage(ctx) {
   await run('bash', ['scripts/mach-raw.sh', 'package-multi-locale', '--locales', ...readLocales(ctx, config)], { cwd: ctx.root });
   copyDirectoryFiles(ctx, objDist);
   const mar = await createMar(ctx, config, objDist);
-  const buildId = platformIni(objDist, config.binaryName);
-  const update = await writeBrowserUpdateFiles(ctx, config, mar.path, buildId, objDist);
+  const build = platformIni(objDist, config.binaryName, mar.application);
+  const update = await writeBrowserUpdateFiles(ctx, config, mar.path, build.buildId, objDist);
   await writeAddonUpdateFiles(ctx, config);
   writeJson(path.join(ctx.distDir, 'bento-artifacts.json'), {
     schemaVersion: 1,
@@ -1343,6 +1377,8 @@ async function commandPackage(ctx) {
     mar: { path: path.relative(ctx.root, mar.path), name: update.marName, url: update.url },
     marTool: path.relative(ctx.root, mar.tool),
     application: path.relative(ctx.root, mar.application),
+    platformIni: path.relative(ctx.root, build.file),
+    buildId: build.buildId,
     objDist: path.relative(ctx.root, objDist),
     updateTargets: update.targets,
     locales: readLocales(ctx, config),
@@ -1357,8 +1393,9 @@ async function commandBrowserUpdates(ctx) {
   const objects = objDirs(ctx);
   if (objects.length !== 1) fail('updates-browser: set BENTO_OBJDIR when more than one object directory exists');
   const objDist = path.join(objects[0], 'dist');
-  const buildId = platformIni(objDist, config.binaryName);
-  const result = await writeBrowserUpdateFiles(ctx, config, marPath, buildId, objDist);
+  const application = packagedApplication(objDist, config);
+  const build = platformIni(objDist, config.binaryName, application);
+  const result = await writeBrowserUpdateFiles(ctx, config, marPath, build.buildId, objDist);
   process.stdout.write(`bento: wrote browser updates (${result.targets.length} targets)\n`);
 }
 
