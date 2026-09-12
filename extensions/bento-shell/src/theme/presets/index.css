@@ -92,7 +92,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']).tale-ui {
 
 /* ─── from @tale-ui/themes/themes.css ─────────────────────────────── */
 /*
- * @tale-ui/themes v2.0.0
+ * @tale-ui/themes v2.2.0
  * Generated from src/themes.ts. Run `pnpm generate` after changing theme definitions.
  * Import this stylesheet after @tale-ui/css or @tale-ui/react-styles.
  */
@@ -926,6 +926,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-harbour'],
   --color-100-fg: var(--color-5);
 }
 
+
+
 html[data-color-mode='dark'][data-bento-theme='standard-lagoon'],
 html[data-color-mode='dark'] [data-bento-theme='standard-lagoon'],
 .dark[data-bento-theme='standard-lagoon'],
@@ -942,6 +944,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-lagoon'],
   --color-90-fg: var(--color-5);
   --color-100-fg: var(--color-5);
 }
+
+
 
 html[data-color-mode='dark'][data-bento-theme='standard-blueprint'],
 html[data-color-mode='dark'] [data-bento-theme='standard-blueprint'],
@@ -960,6 +964,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-blueprint'],
   --color-100-fg: var(--color-5);
 }
 
+
+
 html[data-color-mode='dark'][data-bento-theme='standard-violet-dusk'],
 html[data-color-mode='dark'] [data-bento-theme='standard-violet-dusk'],
 .dark[data-bento-theme='standard-violet-dusk'],
@@ -976,6 +982,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-violet-dusk'],
   --color-90-fg: var(--color-5);
   --color-100-fg: var(--color-5);
 }
+
+
 
 html[data-color-mode='dark'][data-bento-theme='standard-wildflower'],
 html[data-color-mode='dark'] [data-bento-theme='standard-wildflower'],
@@ -994,6 +1002,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-wildflower'],
   --color-100-fg: var(--color-5);
 }
 
+
+
 html[data-color-mode='dark'][data-bento-theme='standard-terracotta'],
 html[data-color-mode='dark'] [data-bento-theme='standard-terracotta'],
 .dark[data-bento-theme='standard-terracotta'],
@@ -1010,6 +1020,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-terracotta'],
   --color-90-fg: var(--color-5);
   --color-100-fg: var(--color-5);
 }
+
+
 
 html[data-color-mode='dark'][data-bento-theme='standard-amber-grove'],
 html[data-color-mode='dark'] [data-bento-theme='standard-amber-grove'],
@@ -1028,6 +1040,8 @@ html[data-color-mode='dark'] [data-bento-theme='standard-amber-grove'],
   --color-100-fg: var(--color-5);
 }
 
+
+
 html[data-color-mode='dark'][data-bento-theme='standard-fern'],
 html[data-color-mode='dark'] [data-bento-theme='standard-fern'],
 .dark[data-bento-theme='standard-fern'],
@@ -1045,12 +1059,10 @@ html[data-color-mode='dark'] [data-bento-theme='standard-fern'],
   --color-100-fg: var(--color-5);
 }
 
-html[data-color-mode='dark']:is(
-    [data-bento-theme='monochrome-antique'],
-    [data-bento-theme='antique']
-  ),
-html[data-color-mode='dark']
-  :is([data-bento-theme='monochrome-antique'], [data-bento-theme='antique']),
+
+
+html[data-color-mode='dark']:is([data-bento-theme='monochrome-antique'], [data-bento-theme='antique']),
+html[data-color-mode='dark'] :is([data-bento-theme='monochrome-antique'], [data-bento-theme='antique']),
 .dark:is([data-bento-theme='monochrome-antique'], [data-bento-theme='antique']),
 .dark :is([data-bento-theme='monochrome-antique'], [data-bento-theme='antique']) {
   --color-5-fg: var(--color-100);
@@ -1066,12 +1078,10 @@ html[data-color-mode='dark']
   --color-100-fg: var(--color-5);
 }
 
-html[data-color-mode='dark']:is(
-    [data-bento-theme='monochrome-forest'],
-    [data-bento-theme='forest']
-  ),
-html[data-color-mode='dark']
-  :is([data-bento-theme='monochrome-forest'], [data-bento-theme='forest']),
+
+
+html[data-color-mode='dark']:is([data-bento-theme='monochrome-forest'], [data-bento-theme='forest']),
+html[data-color-mode='dark'] :is([data-bento-theme='monochrome-forest'], [data-bento-theme='forest']),
 .dark:is([data-bento-theme='monochrome-forest'], [data-bento-theme='forest']),
 .dark :is([data-bento-theme='monochrome-forest'], [data-bento-theme='forest']) {
   --color-5-fg: var(--color-100);
@@ -1086,6 +1096,8 @@ html[data-color-mode='dark']
   --color-90-fg: var(--color-5);
   --color-100-fg: var(--color-5);
 }
+
+
 
 html[data-color-mode='dark']:is([data-bento-theme='monochrome-mauve'], [data-bento-theme='mauve']),
 html[data-color-mode='dark'] :is([data-bento-theme='monochrome-mauve'], [data-bento-theme='mauve']),
@@ -1104,10 +1116,9 @@ html[data-color-mode='dark'] :is([data-bento-theme='monochrome-mauve'], [data-be
   --color-100-fg: var(--color-5);
 }
 
-html[data-color-mode='dark']:is(
-    [data-bento-theme='monochrome-mountain-meadow'],
-    [data-bento-theme='mountain-meadow']
-  ),
+
+
+html[data-color-mode='dark']:is([data-bento-theme='monochrome-mountain-meadow'], [data-bento-theme='mountain-meadow']),
 html[data-color-mode='dark']
   :is([data-bento-theme='monochrome-mountain-meadow'], [data-bento-theme='mountain-meadow']),
 .dark:is([data-bento-theme='monochrome-mountain-meadow'], [data-bento-theme='mountain-meadow']),
@@ -1125,10 +1136,9 @@ html[data-color-mode='dark']
   --color-100-fg: var(--color-5);
 }
 
-html[data-color-mode='dark']:is(
-    [data-bento-theme='monochrome-rosewater'],
-    [data-bento-theme='rosewater']
-  ),
+
+
+html[data-color-mode='dark']:is([data-bento-theme='monochrome-rosewater'], [data-bento-theme='rosewater']),
 html[data-color-mode='dark']
   :is([data-bento-theme='monochrome-rosewater'], [data-bento-theme='rosewater']),
 .dark:is([data-bento-theme='monochrome-rosewater'], [data-bento-theme='rosewater']),
@@ -1145,6 +1155,8 @@ html[data-color-mode='dark']
   --color-90-fg: var(--color-5);
   --color-100-fg: var(--color-5);
 }
+
+
 
 html[data-color-mode='dark']:is([data-bento-theme='monochrome-teal'], [data-bento-theme='teal']),
 html[data-color-mode='dark'] :is([data-bento-theme='monochrome-teal'], [data-bento-theme='teal']),
@@ -1163,10 +1175,9 @@ html[data-color-mode='dark'] :is([data-bento-theme='monochrome-teal'], [data-ben
   --color-100-fg: var(--color-5);
 }
 
-html[data-color-mode='dark']:is(
-    [data-bento-theme='monochrome-terracotta'],
-    [data-bento-theme='terracotta']
-  ),
+
+
+html[data-color-mode='dark']:is([data-bento-theme='monochrome-terracotta'], [data-bento-theme='terracotta']),
 html[data-color-mode='dark']
   :is([data-bento-theme='monochrome-terracotta'], [data-bento-theme='terracotta']),
 .dark:is([data-bento-theme='monochrome-terracotta'], [data-bento-theme='terracotta']),
