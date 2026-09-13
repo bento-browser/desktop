@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
-import { acquireSourceArchive, adoptExistingSource, createContext, findDirectory, main, sourceArchivePath, tarArchivePaths, verifyRecordedEngineState } from './bento-build.mjs';
+import { acquireSourceArchive, adoptExistingSource, createContext, engineStatus, findDirectory, main, sourceArchivePath, tarArchivePaths, verifyManagedEngine, verifyRecordedEngineState } from './bento-build.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -384,6 +384,124 @@ test('adoption accepts the legacy generated mozconfig and gitignore formatting',
     config.updates.hostname = 'updates.bentobrowser.app';
     await fsp.writeFile(ctx.configPath, JSON.stringify(config));
     assert.equal(adoptExistingSource(ctx, config, '154.0'), true);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('adopts a legacy imported README and extension registry without accepting edits', async () => {
+  const root = await fixture();
+  const ctx = createContext(root);
+  const engine = path.join(root, 'engine');
+  try {
+    await fsp.writeFile(path.join(root, 'src', 'README.md'), 'Bento source overlay\n');
+    await fsp.writeFile(path.join(engine, 'README.md'), 'Firefox source\n');
+    await fsp.writeFile(path.join(engine, '.gitignore'), 'base-ignore\n');
+    await fsp.mkdir(path.join(engine, 'browser', 'extensions'), { recursive: true });
+    await fsp.writeFile(path.join(engine, 'browser', 'extensions', 'moz.build'), 'DIRS = []\n');
+    const git = (args) => {
+      const result = spawnSync('git', args, { cwd: engine, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    git(['init']);
+    git(['config', 'user.name', 'Test']);
+    git(['config', 'user.email', 'test@example.invalid']);
+    git(['add', '-A']);
+    git(['commit', '-m', 'Firefox 154.0']);
+    git(['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
+
+    await fsp.rm(path.join(engine, 'README.md'));
+    await fsp.symlink(path.join(root, 'src', 'README.md'), path.join(engine, 'README.md'));
+    await fsp.writeFile(path.join(engine, '.gitignore'), 'base-ignore\n\nbrowser/base/one.js');
+    await fsp.writeFile(
+      path.join(engine, 'browser', 'extensions', 'moz.build'),
+      'DIRS = []\n\nDIRS += []\n\n# BEGIN BENTO BUILTIN ADDONS\nDIRS += []\n# END BENTO BUILTIN ADDONS\n',
+    );
+
+    await fsp.rm(path.join(engine, 'README.md'));
+    await fsp.writeFile(path.join(engine, 'README.md'), 'user README edit\n');
+    assert.throws(
+      () => adoptExistingSource(ctx, JSON.parse(fs.readFileSync(ctx.configPath, 'utf8')), '154.0'),
+      /unverified changes/,
+    );
+    assert.equal(await fsp.readFile(path.join(engine, 'README.md'), 'utf8'), 'user README edit\n');
+    assert.equal(fs.existsSync(ctx.sourceStatePath), false);
+    assert.equal(fs.existsSync(path.join(ctx.stateDir, 'engine-state.json')), false);
+
+    await fsp.rm(path.join(engine, 'README.md'));
+    await fsp.symlink(path.join(root, 'src', 'README.md'), path.join(engine, 'README.md'));
+    await fsp.appendFile(path.join(engine, '.gitignore'), '\nuser-ignore-pattern');
+    assert.throws(
+      () => adoptExistingSource(ctx, JSON.parse(fs.readFileSync(ctx.configPath, 'utf8')), '154.0'),
+      /unverified changes/,
+    );
+    assert.equal(await fsp.readFile(path.join(engine, '.gitignore'), 'utf8'), 'base-ignore\n\nbrowser/base/one.js\nuser-ignore-pattern');
+    assert.equal(fs.existsSync(ctx.sourceStatePath), false);
+    assert.equal(fs.existsSync(path.join(ctx.stateDir, 'engine-state.json')), false);
+
+    const unexpectedRegistry = 'DIRS = []\n\nDIRS += ["unexpected-addon"]\n\n# BEGIN BENTO BUILTIN ADDONS\nDIRS += []\n# END BENTO BUILTIN ADDONS\n';
+    await fsp.writeFile(path.join(engine, 'browser', 'extensions', 'moz.build'), unexpectedRegistry);
+    assert.throws(
+      () => adoptExistingSource(ctx, JSON.parse(fs.readFileSync(ctx.configPath, 'utf8')), '154.0'),
+      /unverified changes/,
+    );
+    assert.equal(await fsp.readFile(path.join(engine, 'browser', 'extensions', 'moz.build'), 'utf8'), unexpectedRegistry);
+    assert.equal(fs.existsSync(ctx.sourceStatePath), false);
+    assert.equal(fs.existsSync(path.join(ctx.stateDir, 'engine-state.json')), false);
+
+    await fsp.writeFile(path.join(engine, '.gitignore'), 'base-ignore\n\nbrowser/base/one.js');
+    await fsp.writeFile(
+      path.join(engine, 'browser', 'extensions', 'moz.build'),
+      'DIRS = []\n\nDIRS += []\n\n# BEGIN BENTO BUILTIN ADDONS\nDIRS += []\n# END BENTO BUILTIN ADDONS\n',
+    );
+    assert.deepEqual(engineStatus(root).unrecognizedFiles, []);
+    assert.equal(adoptExistingSource(ctx, JSON.parse(await fsp.readFile(ctx.configPath, 'utf8')), '154.0'), true);
+    assert.equal(verifyRecordedEngineState(root), true);
+    assert.equal(fs.existsSync(path.join(root, '.bento', 'engine-state.json')), true);
+
+    await fsp.rm(ctx.sourceStatePath);
+    await fsp.rm(path.join(ctx.stateDir, 'engine-state.json'));
+    await fsp.rm(path.join(engine, 'README.md'));
+    await fsp.copyFile(path.join(root, 'src', 'README.md'), path.join(engine, 'README.md'));
+    assert.deepEqual(engineStatus(root).unrecognizedFiles, []);
+    assert.equal(adoptExistingSource(ctx, JSON.parse(await fsp.readFile(ctx.configPath, 'utf8')), '154.0'), true);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    await fsp.rm(path.join(engine, 'README.md'));
+    await fsp.writeFile(path.join(engine, 'README.md'), 'user README edit\n');
+    assert.throws(
+      () => adoptExistingSource(ctx, JSON.parse(fs.readFileSync(ctx.configPath, 'utf8')), '154.0'),
+      /unverified changes/,
+    );
+    assert.equal(await fsp.readFile(path.join(engine, 'README.md'), 'utf8'), 'user README edit\n');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('accepts installer lexical ordering for add-on jar manifests', async () => {
+  const root = await fixture();
+  const extensionRoot = path.join(root, 'extensions', 'mixed');
+  const engineExtensionRoot = path.join(root, 'engine', 'browser', 'extensions', 'mixed');
+  try {
+    await fsp.mkdir(path.join(extensionRoot, 'dist'), { recursive: true });
+    await fsp.writeFile(
+      path.join(extensionRoot, 'manifest.json'),
+      JSON.stringify({ applications: { gecko: { id: 'mixed@example.invalid' } } }),
+    );
+    for (const name of ['1number.js', 'B.js', '_underscore.js', 'a.js']) {
+      await fsp.writeFile(path.join(extensionRoot, 'dist', name), `${name}\n`);
+    }
+    const runtimeFiles = ['dist/1number.js', 'dist/B.js', 'dist/_underscore.js', 'dist/a.js', 'manifest.json'];
+    const jar = [
+      'browser.jar:',
+      ...runtimeFiles.map((file) => `    builtin-addons/mixed/${file} (${file})`),
+      '',
+    ].join('\n');
+    await fsp.mkdir(engineExtensionRoot, { recursive: true });
+    await fsp.writeFile(path.join(engineExtensionRoot, 'jar.mn'), jar);
+    assert.equal(verifyManagedEngine(createContext(root), ['browser/extensions/mixed/jar.mn']), true);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

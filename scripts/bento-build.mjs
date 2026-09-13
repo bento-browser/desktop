@@ -29,6 +29,7 @@ const PLATFORM_TARGETS = {
   ],
   win32: ['WINNT_x86_64-msvc', 'WINNT_x86_64-msvc-x64'],
 };
+const compareNames = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
 
 function fail(message) {
   const error = new Error(message);
@@ -316,6 +317,7 @@ export function engineStatus(repoRoot = DEFAULT_ROOT) {
     const target = path.join(ctx.engineDir, file);
     if (displayVersion && fs.existsSync(target) && fs.readFileSync(target, 'utf8').trim() === displayVersion) owned.add(file);
   }
+  if (isExactReadmeOverlay(ctx, path.join(ctx.engineDir, 'README.md'))) owned.add('README.md');
   if (fs.existsSync(path.join(ctx.root, 'patches'))) {
     const patchFiles = [];
     const collect = (directory) => {
@@ -476,6 +478,23 @@ function generatedBrowserExtensionsMozBuild(ctx, config) {
   return `${base}\n\n# BEGIN BENTO BUILTIN ADDONS\nDIRS += [${names}]\n# END BENTO BUILTIN ADDONS\n`;
 }
 
+function generatedLegacyBrowserExtensionsMozBuild(ctx, config) {
+  const baseline = baselineText(ctx, 'browser/extensions/moz.build', config);
+  if (baseline === undefined) return undefined;
+  let base = baseline;
+  base = base.replace(/\n?# BEGIN BENTO BUILTIN ADDONS[\s\S]*?# END BENTO BUILTIN ADDONS\n?/g, '\n');
+  base = base.replace(/^DIRS \+= \["bento-shell", "bento-tools", "ublock-origin"\]\r?\n?/m, '');
+  base = base.trimEnd();
+  const names = extensionNames(ctx).map((name) => `"${name}"`).join(', ');
+  return `${base}\n\nDIRS += []\n\n# BEGIN BENTO BUILTIN ADDONS\nDIRS += [${names}]\n# END BENTO BUILTIN ADDONS\n`;
+}
+
+function isGeneratedBrowserExtensionsMozBuild(ctx, config, target) {
+  const actual = fs.readFileSync(target, 'utf8');
+  return actual === generatedBrowserExtensionsMozBuild(ctx, config)
+    || actual === generatedLegacyBrowserExtensionsMozBuild(ctx, config);
+}
+
 function generatedGitignore(ctx, config) {
   const baseline = baselineText(ctx, '.gitignore', config);
   if (baseline === undefined) return undefined;
@@ -484,6 +503,33 @@ function generatedGitignore(ctx, config) {
   const existing = new Set(base.split(/\r?\n/));
   const missing = managed.filter((relative) => !existing.has(relative));
   return missing.length ? `${base}\n${missing.join('\n')}\n` : baseline;
+}
+
+function generatedLegacyGitignore(ctx, config) {
+  const baseline = baselineText(ctx, '.gitignore', config);
+  if (baseline === undefined) return undefined;
+  const managed = sourceOverlayPaths(ctx);
+  const base = baseline.replace(/\r?\n+$/, '');
+  const existing = new Set(base.split(/\r?\n/));
+  const missing = managed.filter((relative) => !existing.has(relative));
+  return missing.length ? `${base}\n\n${missing.join('\n')}` : baseline;
+}
+
+function isGeneratedGitignore(ctx, config, target) {
+  const actual = fs.readFileSync(target, 'utf8');
+  const current = generatedGitignore(ctx, config);
+  const legacy = generatedLegacyGitignore(ctx, config);
+  return (current !== undefined && sameKnownFinalNewline(actual, current))
+    || (legacy !== undefined && sameKnownFinalNewline(actual, legacy));
+}
+
+function isExactReadmeOverlay(ctx, target) {
+  const source = path.join(ctx.srcDir, 'README.md');
+  if (!fs.existsSync(source) || !targetExistsSync(target)) return false;
+  const stat = fs.lstatSync(target);
+  return stat.isSymbolicLink()
+    ? fs.readlinkSync(target) === source
+    : stat.isFile() && sha256File(target) === sha256File(source);
 }
 
 function generatedMozconfigText(ctx, config, mode) {
@@ -588,14 +634,14 @@ function addonRuntimeEntries(ctx, name) {
   const root = path.join(ctx.root, 'extensions', name);
   const configPath = path.join(root, '.bento-runtime-entries.json');
   const entries = fs.existsSync(configPath) ? readJson(configPath) : DEFAULT_RUNTIME_ENTRIES;
-  return [...new Set([...entries, 'manifest.json'])].sort((left, right) => left.localeCompare(right));
+  return [...new Set([...entries, 'manifest.json'])].sort(compareNames);
 }
 
 function addonRuntimeFiles(ctx, name) {
   const root = path.join(ctx.root, 'extensions', name);
   const files = [];
   const collect = (directory, prefix = '') => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => compareNames(left.name, right.name))) {
       const relative = `${prefix}${entry.name}`;
       const target = path.join(directory, entry.name);
       if (entry.isDirectory()) collect(target, `${relative}/`);
@@ -609,7 +655,7 @@ function addonRuntimeFiles(ctx, name) {
       else if (fs.statSync(target).isFile()) files.push(entry);
     }
   }
-  return files.sort((left, right) => left.localeCompare(right));
+  return files.sort(compareNames);
 }
 
 function generatedAddonFiles(ctx, name) {
@@ -714,23 +760,22 @@ export function verifyManagedEngine(ctx, files) {
         const target = path.join(ctx.engineDir, relative);
         return fs.existsSync(expected) && fs.existsSync(target) && sha256File(expected) === sha256File(target);
       }
+      if (relative === 'README.md') return isExactReadmeOverlay(ctx, path.join(ctx.engineDir, relative));
       if (overlayEntries.has(relative) || fs.existsSync(path.join(ctx.srcDir, relative))) return sourceExact(relative);
       if (relative.startsWith('browser/branding/bento/')) return brandingExact(relative);
+      if (relative === 'browser/extensions/moz.build') {
+        return isGeneratedBrowserExtensionsMozBuild(ctx, config, path.join(ctx.engineDir, relative));
+      }
       if (relative.startsWith('browser/extensions/')) return addonExact(relative);
       if (relative === 'browser/app/profile/firefox.js') return managedPrefsExact(ctx, relative);
       if (relative === 'browser/config/version.txt' || relative === 'browser/config/version_display.txt') {
         return fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8') === config.brands.bento.release.displayVersion;
       }
-      if (relative === 'browser/extensions/moz.build') {
-        const expected = generatedBrowserExtensionsMozBuild(ctx, config);
-        return expected !== undefined && fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8') === expected;
-      }
       if (relative === 'mozconfig') {
         return isGeneratedMozconfig(ctx, config, path.join(ctx.engineDir, relative));
       }
       if (relative === '.gitignore') {
-        const expected = generatedGitignore(ctx, config);
-        return expected !== undefined && sameKnownFinalNewline(fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8'), expected);
+        return isGeneratedGitignore(ctx, config, path.join(ctx.engineDir, relative));
       }
       return false;
     });
