@@ -3,7 +3,7 @@
     {
       "channel": "release",
       "version": "154.0",
-      "surferConfig": "surfer.json"
+      "bentoConfig": "bento.json"
     }
   ]
 }

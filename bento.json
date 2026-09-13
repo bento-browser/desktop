@@ -1,18 +1,24 @@
 {
+  "schemaVersion": 1,
   "name": "Bento Browser",
   "vendor": "Bento Browser",
   "appId": "bento",
   "binaryName": "bento",
-  "version": {
+  "brand": "bento",
+  "firefox": {
     "product": "firefox",
     "version": "154.0",
     "candidate": "154.0",
-    "candidateBuild": 1
+    "candidateBuild": 1,
+    "source": {
+      "archiveBaseUrl": "https://archive.mozilla.org/pub/firefox/releases",
+      "sha256": "36cec5b3688a60f78a6d20dcaee15b598f84e03c66f6587056aead6cb498b99a"
+    }
   },
-  "buildOptions": {
+  "build": {
+    "mode": "dev",
     "windowsUseSymbolicLinks": false
   },
-  "addons": {},
   "brands": {
     "bento": {
       "backgroundColor": "#282A33",
@@ -27,11 +33,16 @@
       }
     }
   },
-  "license": {
-    "ignoredFiles": [
-      ".*\\.json"
-    ],
-    "licenseType": "MPL-2.0"
+  "locales": {
+    "supportedLanguages": "locales/supported-languages",
+    "languageMaps": "locales/language-maps"
   },
-  "updateHostname": "updates.bentobrowser.app"
+  "license": {
+    "licenseType": "MPL-2.0",
+    "ignoredFiles": [".*\\.json"]
+  },
+  "updates": {
+    "hostname": "updates.bentobrowser.app",
+    "channel": "bento"
+  }
 }

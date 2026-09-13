@@ -9,8 +9,10 @@ import { FORBIDDEN_IDENTITIES, scanProductIdentity } from './check-product-ident
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-branding-test-'));
-  fs.mkdirSync(path.join(root, '.surfer'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.surfer', 'dynamicConfig.brand.json'), '"bento"\n');
+  fs.writeFileSync(
+    path.join(root, 'bento.json'),
+    JSON.stringify({ schemaVersion: 1, brand: 'bento', build: {}, brands: { bento: {} } }),
+  );
   fs.mkdirSync(path.join(root, 'branding', 'bento', 'pref'), { recursive: true });
   fs.writeFileSync(
     path.join(root, 'branding', 'bento', 'pref', 'firefox-branding.js'),
@@ -39,7 +41,10 @@ test('installs canonical branding and removes stale files', () => {
 test('requires the bento active brand', () => {
   const root = fixture();
   try {
-    fs.writeFileSync(path.join(root, '.surfer', 'dynamicConfig.brand.json'), '"other"\n');
+    fs.writeFileSync(
+      path.join(root, 'bento.json'),
+      JSON.stringify({ schemaVersion: 1, brand: 'other', build: {}, brands: { other: {} } }),
+    );
     assert.throws(() => installBranding({ repoRoot: root }), /expected active brand/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

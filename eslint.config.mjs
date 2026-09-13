@@ -53,7 +53,7 @@ export default tseslint.config(
       '**/.ladle/**',
       'engine/**',
       'node_modules/**',
-      '.surfer/**',
+      '.bento/**',
       'branding/**',
     ],
   },

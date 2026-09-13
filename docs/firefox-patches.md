@@ -5,11 +5,11 @@ This guide covers two workflows:
 - adding or changing one Bento patch against Firefox core;
 - syncing Bento to a newer upstream Firefox release.
 
-Bento uses Surfer to download Firefox, copy Bento source into `engine/`, apply
-`patches/**/*.patch`, and build the browser. Treat `engine/` as generated
-working state. The durable Firefox patch source is the commit stack described by
-[`patches/series.json`](../patches/series.json), exported back to
-`patches/**/*.patch` for Surfer compatibility.
+Bento's build driver downloads Firefox, copies Bento source into `engine/`,
+applies `patches/**/*.patch`, and invokes Mozilla's `mach` build. Treat
+`engine/` as generated working state. The durable Firefox patch source is the
+commit stack described by [`patches/series.json`](../patches/series.json),
+exported back to `patches/**/*.patch` for standard `git apply` interoperability.
 
 ## Rules
 
@@ -45,11 +45,12 @@ so executable-bit differences introduced by platform-specific archive tools do
 not weaken source-content validation.
 
 `materialize` creates or resets `bento/patch-stack` from the manifest base and
-applies each patch as one commit. It uses isolated worktrees under `.surfer/` so
-the live generated `engine/` checkout is not reset.
+applies each patch as one commit. It uses the isolated worktree under
+`.bento/patch-stack-worktree` so the live generated `engine/` checkout is not
+reset.
 
 `rebase` materializes the stack from the old manifest base, rebases it onto the
-Firefox version in `surfer.json`, and exports the result when the rebase
+Firefox version in `bento.json`, and exports the result when the rebase
 finishes cleanly. It does not run automatically during `firefox:sync`.
 
 `export` writes each `bento/patch-stack` commit back to the existing manifest
@@ -67,7 +68,7 @@ the exported series sequentially to verify the result.
 2. Create a worktree from the materialized branch and edit there:
 
    ```sh
-   git -C engine worktree add ../.surfer/patch-stack-worktree bento/patch-stack
+   git -C engine worktree add ../.bento/patch-stack-worktree bento/patch-stack
    ```
 
    Keep one logical Firefox change per commit.
@@ -75,9 +76,9 @@ the exported series sequentially to verify the result.
 3. Commit the change in that worktree:
 
    ```sh
-   git -C .surfer/patch-stack-worktree status
-   git -C .surfer/patch-stack-worktree add <files>
-   git -C .surfer/patch-stack-worktree commit
+   git -C .bento/patch-stack-worktree status
+   git -C .bento/patch-stack-worktree add <files>
+   git -C .bento/patch-stack-worktree commit
    ```
 
 4. If adding or removing a patch commit, update `patches/series.json` so
@@ -98,7 +99,7 @@ the exported series sequentially to verify the result.
 6. Remove the temporary stack worktree if you created one:
 
    ```sh
-   git -C engine worktree remove ../.surfer/patch-stack-worktree
+   git -C engine worktree remove ../.bento/patch-stack-worktree
    ```
 
 7. Update [firefox-core-touchpoints.md](firefox-core-touchpoints.md) with:
@@ -115,19 +116,46 @@ Do not edit generated `engine/` state and stop there. Always export to
 
 ## One-Command Upstream Sync
 
-Use this when the goal is to bring in the latest Firefox release and security
-patches known to Surfer:
+Use this when the goal is to bring in the latest Firefox release and its
+security updates:
 
 ```sh
 pnpm run firefox:sync
 ```
 
+When the target is newer than the version in `bento.json`, obtain its trusted
+SHA-256 from Mozilla's per-release
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
+file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`.
+Use the row for
+`source/firefox-<target-version>.source.tar.xz` and pass the 64-character digest
+for this invocation:
+
+```sh
+BENTO_SOURCE_SHA256=<sha256-from-mozilla> pnpm run firefox:sync
+```
+
+The driver still verifies the downloaded archive and refuses a missing or
+mismatched digest. Before replacing the source, inspect linked engine worktrees:
+
+```sh
+git -C engine worktree list --porcelain
+```
+
+If one is listed, inspect it with `git -C <worktree> status`, finish or export
+any patch/rebase work, then remove it with
+`git -C engine worktree remove <worktree>` and retry the sync. For a rebase,
+finish conflict resolution and run `pnpm run firefox:patches:export` before
+removing its worktree. A successful source replacement preserves the previous
+checkout under `.bento/backups/`.
+
 The command runs [scripts/sync-firefox-upstream.sh](../scripts/sync-firefox-upstream.sh).
 It performs this sequence:
 
 1. asks Mozilla for the latest Firefox release;
-2. updates `engine/` through Surfer when a newer version exists;
-3. updates `surfer.json` and `config/firefox-versions.json`;
+2. updates `engine/` through Bento's protected source-update command when a
+   newer version exists;
+3. updates `bento.json` and `config/firefox-versions.json`;
 4. runs `node scripts/firefox-patch-stack.mjs check --for-import`;
 5. builds Bento's privileged extensions;
 6. runs `pnpm run import`;
@@ -170,13 +198,18 @@ Firefox version, and the rebase commands to run.
 
 Work remaining failures in this order:
 
-1. **Download/update failure**: rerun `pnpm run firefox:sync` after confirming
-   Mozilla has a source tarball for the release Surfer selected.
-2. **Patch rebase or replay failure**: inspect the failing commit and upstream
+1. **Download/update failure**: confirm Mozilla has published the source
+   tarball and its SHA-256 entry, then rerun with
+   `BENTO_SOURCE_SHA256=<sha256-from-mozilla> pnpm run firefox:sync` when the
+   target is newer than `bento.json`.
+2. **Linked worktree refusal**: inspect the printed worktree with
+   `git -C <worktree> status`, finish or export any patch/rebase work, remove
+   it with `git -C engine worktree remove <worktree>`, and rerun the sync.
+3. **Patch rebase or replay failure**: inspect the failing commit and upstream
    Firefox file, update the stack, export, and rerun `pnpm run import`.
-3. **Build failure**: fix API, build-system, localization, actor registration,
+4. **Build failure**: fix API, build-system, localization, actor registration,
    or pref/schema drift; rerun `pnpm run build`.
-4. **Runtime regression**: use the relevant touchpoint checks in
+5. **Runtime regression**: use the relevant touchpoint checks in
    [firefox-core-touchpoints.md](firefox-core-touchpoints.md); fix the patch or
    remove it if upstream Firefox now provides the behavior directly.
 
@@ -191,6 +224,6 @@ Before landing a Firefox patch or upstream sync:
 1. `pnpm run firefox:patches:check` succeeds.
 2. `pnpm run import` succeeds.
 3. `pnpm run build` or `pnpm run firefox:sync` succeeds.
-4. `config/firefox-versions.json` matches `surfer.json` after an upstream sync.
+4. `config/firefox-versions.json` matches `bento.json` after an upstream sync.
 5. [firefox-core-touchpoints.md](firefox-core-touchpoints.md) is current.
 6. All regression checks listed for affected touchpoints have passed.

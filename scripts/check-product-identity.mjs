@@ -12,9 +12,6 @@ export const FORBIDDEN_IDENTITIES = [
   ['github.com', `${competitor}-browser`, 'desktop'].join('/'),
   `${competitorName} Browser contributors`,
   `Bento Browser fork of ${competitorName}`,
-  'built using Surfer',
-  'built on Surfer',
-  `@bento-browser/${'sur' + 'fer'}`,
 ];
 
 function isWithin(root, candidate) {

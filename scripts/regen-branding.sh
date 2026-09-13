@@ -7,13 +7,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BRAND_FILE=".surfer/dynamicConfig.brand.json"
-if [ ! -f "$BRAND_FILE" ]; then
-  echo "error: $BRAND_FILE missing — set the active brand with 'pnpm exec surfer set brand <name>' first" >&2
+CONFIG_FILE="bento.json"
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "error: $CONFIG_FILE missing" >&2
   exit 1
 fi
 
-BRAND="$(node -p "require('./$BRAND_FILE')")"
+BRAND="$(node -p "require('./$CONFIG_FILE').brand")"
 if [ "$BRAND" != "bento" ]; then
   echo "error: active brand must be 'bento', found '$BRAND'" >&2
   exit 1

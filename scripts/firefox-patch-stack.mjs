@@ -76,9 +76,8 @@ function gitMaybe(args, cwd) {
 }
 
 export function stageFirefoxSourceBase(sourceDir) {
-  // Match Surfer's source initialization exactly. Firefox's source archive
-  // contains files covered by its own .gitignore; Surfer deliberately keeps
-  // them in the version base with `git add -f .`.
+  // Firefox archives contain files covered by their own .gitignore. Keep those
+  // files in the immutable source baseline so patch replay is reproducible.
   git(['add', '-f', '.'], { cwd: sourceDir });
 }
 
@@ -154,11 +153,11 @@ export function createContext(repoRoot = DEFAULT_REPO_ROOT) {
     patchesDir: path.join(root, 'patches'),
     srcDir: path.join(root, 'src'),
     engineDir: path.join(root, 'engine'),
-    surferDir: path.join(root, '.surfer'),
-    surferEngineDir: path.join(root, '.surfer', 'engine'),
+    bentoDir: path.join(root, '.bento'),
+    bentoSourceDir: path.join(root, '.bento', 'cache', 'source'),
     manifestPath: path.join(root, 'patches', 'series.json'),
-    surferPath: path.join(root, 'surfer.json'),
-    stackWorktreeDir: path.join(root, '.surfer', 'patch-stack-worktree'),
+    bentoPath: path.join(root, 'bento.json'),
+    stackWorktreeDir: path.join(root, '.bento', 'patch-stack-worktree'),
   };
 }
 
@@ -184,8 +183,8 @@ async function unmanagedSrcPatches(ctx) {
   return patches.map((patch) => `src/${patch.split(path.sep).join('/')}`);
 }
 
-function loadSurfer(ctx) {
-  return jsonRead(ctx.surferPath);
+function loadBento(ctx) {
+  return jsonRead(ctx.bentoPath);
 }
 
 function loadManifest(ctx) {
@@ -295,7 +294,7 @@ async function validateManifest(ctx, manifest, options = {}) {
   }
 
   if (options.forImport) {
-    const target = loadSurfer(ctx).version?.version;
+    const target = loadBento(ctx).firefox?.version;
     if (manifest.base.version !== target) {
       errors.push(
         [
@@ -311,13 +310,49 @@ async function validateManifest(ctx, manifest, options = {}) {
 }
 
 function getCachedArchive(ctx, version) {
-  return path.join(ctx.surferEngineDir, `firefox-${version}.source.tar.xz`);
+  if (!isSupportedFirefoxVersion(version)) {
+    throw new UserError(`unsupported Firefox version: ${JSON.stringify(version)}`);
+  }
+  return path.join(ctx.bentoSourceDir, version, `firefox-${version}.source.tar.xz`);
+}
+
+function isSupportedFirefoxVersion(version) {
+  return typeof version === 'string'
+    && version.length > 0
+    && version.length <= 128
+    && /^[0-9]+(?:\.[0-9]+)+(?:[A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?$/.test(version);
+}
+
+async function sha256File(file) {
+  const hash = crypto.createHash('sha256');
+  await new Promise((resolve, reject) => {
+    const stream = fs.createReadStream(file);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.once('error', reject);
+    stream.once('end', resolve);
+  });
+  return hash.digest('hex');
 }
 
 async function downloadFirefoxArchive(ctx, version) {
-  await fsp.mkdir(ctx.surferEngineDir, { recursive: true });
+  await fsp.mkdir(path.dirname(getCachedArchive(ctx, version)), { recursive: true });
   const archive = getCachedArchive(ctx, version);
+  const config = loadBento(ctx);
+  const expected = version === config.firefox?.version
+    ? config.firefox.source?.sha256
+    : process.env.BENTO_SOURCE_SHA256;
+  if (!expected || !/^[a-f0-9]{64}$/i.test(expected)) {
+    throw new UserError(
+      `no trusted SHA-256 digest is configured for Firefox ${version}; set BENTO_SOURCE_SHA256 before fetching another baseline`,
+    );
+  }
   if (fs.existsSync(archive)) {
+    const actual = await sha256File(archive);
+    if (actual !== expected.toLowerCase()) {
+      const quarantined = `${archive}.bad-${Date.now()}`;
+      await fsp.rename(archive, quarantined).catch(() => undefined);
+      throw new UserError(`Firefox ${version} source archive digest mismatch: expected ${expected}, got ${actual}`);
+    }
     return archive;
   }
   const url = `https://archive.mozilla.org/pub/firefox/releases/${version}/source/firefox-${version}.source.tar.xz`;
@@ -334,6 +369,11 @@ async function downloadFirefoxArchive(ctx, version) {
     file.on('finish', resolve);
     file.on('error', reject);
   });
+  const actual = await sha256File(archive);
+  if (actual !== expected.toLowerCase()) {
+    await fsp.rm(archive, { force: true });
+    throw new UserError(`Firefox ${version} source archive digest mismatch: expected ${expected}, got ${actual}`);
+  }
   return archive;
 }
 
@@ -421,10 +461,114 @@ async function ensureBaseRef(ctx, version, expectedTree, expectedContentTree) {
   }
 }
 
-function removeWorktree(ctx, worktreeDir) {
+function registeredWorktrees(ctx) {
+  const result = gitMaybe(['worktree', 'list', '--porcelain'], ctx.engineDir);
+  if (!result.ok) {
+    throw new UserError(
+      `cannot inspect registered Git worktrees before cleanup in ${ctx.engineDir}: ${result.stderr || result.stdout}`,
+    );
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => canonicalPath(line.slice('worktree '.length)));
+}
+
+function tryRealpath(target) {
+  for (const resolver of [fs.realpathSync.native, fs.realpathSync]) {
+    if (typeof resolver !== 'function') continue;
+    try {
+      return resolver(target);
+    } catch {
+      // Try the portable resolver before falling back to the lexical path.
+    }
+  }
+  return undefined;
+}
+
+export function canonicalPath(target) {
+  const absolute = path.resolve(target);
+  const canonical = tryRealpath(absolute)
+    || path.join(tryRealpath(path.dirname(absolute)) || path.dirname(absolute), path.basename(absolute));
+  const normalized = path.normalize(canonical);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function removeWorktree(ctx, worktreeDir, options = {}) {
+  const requested = canonicalPath(worktreeDir);
+  const registered = registeredWorktrees(ctx).includes(requested);
+  if (!fs.existsSync(worktreeDir)) {
+    if (registered) {
+      throw new UserError(
+        `registered patch worktree is missing: ${worktreeDir}. Inspect with git -C ${ctx.engineDir} worktree list --porcelain before pruning it.`,
+      );
+    }
+    return;
+  }
+  if (!registered) {
+    const entries = fs.readdirSync(worktreeDir);
+    if (entries.length > 0) {
+      throw new UserError(
+        `unregistered patch worktree directory contains files: ${worktreeDir}. Preserve or remove it explicitly before retrying.`,
+      );
+    }
+    fs.rmdirSync(worktreeDir);
+    return;
+  }
+  const status = gitMaybe(['status', '--porcelain', '--untracked-files=all'], worktreeDir);
+  if (!status.ok) {
+    throw new UserError(
+      `cannot inspect patch worktree before cleanup: ${worktreeDir}\n${status.stderr || status.stdout}`,
+    );
+  }
+  if (status.stdout.trim()) {
+    const dirtyPaths = status.stdout
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => line.slice(3).trim());
+    const expectedDirtyPaths = options.expectedDirtyPaths;
+    if (options.allowDirty && expectedDirtyPaths && dirtyPaths.every((relative) => expectedDirtyPaths.has(relative))) {
+      const removed = gitMaybe(['worktree', 'remove', '--force', worktreeDir], ctx.engineDir);
+      if (!removed.ok) {
+        throw new UserError(
+          `failed to deregister owned temporary patch worktree ${worktreeDir}; it was preserved.\n${removed.stderr || removed.stdout}`,
+        );
+      }
+      if (registeredWorktrees(ctx).includes(requested)) {
+        throw new UserError(`Git still registers patch worktree ${worktreeDir}; it was preserved.`);
+      }
+      if (fs.existsSync(worktreeDir)) {
+        const entries = fs.readdirSync(worktreeDir);
+        if (entries.length > 0) {
+          throw new UserError(
+            `owned temporary patch worktree still contains files: ${worktreeDir}. Preserve them before retrying.`,
+          );
+        }
+        fs.rmdirSync(worktreeDir);
+      }
+      return;
+    }
+    throw new UserError(
+      `refusing to delete dirty patch worktree: ${worktreeDir}\nPreserve or resolve it first.\n${status.stdout}`,
+    );
+  }
+  const removed = gitMaybe(['worktree', 'remove', worktreeDir], ctx.engineDir);
+  if (!removed.ok) {
+    throw new UserError(
+      `failed to deregister patch worktree ${worktreeDir}; it was preserved.\n${removed.stderr || removed.stdout}`,
+    );
+  }
+  if (registeredWorktrees(ctx).includes(requested)) {
+    throw new UserError(`Git still registers patch worktree ${worktreeDir}; it was preserved.`);
+  }
   if (fs.existsSync(worktreeDir)) {
-    gitMaybe(['worktree', 'remove', '--force', worktreeDir], ctx.engineDir);
-    fs.rmSync(worktreeDir, { recursive: true, force: true });
+    const entries = fs.readdirSync(worktreeDir);
+    if (entries.length > 0) {
+      throw new UserError(
+        `deregistered patch worktree still contains files: ${worktreeDir}. Preserve them before retrying.`,
+      );
+    }
+    fs.rmdirSync(worktreeDir);
   }
 }
 
@@ -463,12 +607,17 @@ function applyPatchToWorktree(ctx, worktreeDir, patchPath, { index = false } = {
 
 export async function replaySeries(ctx, manifest, ref) {
   const worktreeDir = addDetachedWorktree(ctx, ref);
+  const expectedDirtyPaths = new Set();
+  for (const entry of manifest.series) {
+    const patch = fs.readFileSync(path.join(ctx.repoRoot, entry.path), 'utf8');
+    for (const match of patch.matchAll(/^diff --git a\/(\S+) b\/\S+$/gm)) expectedDirtyPaths.add(match[1]);
+  }
   try {
     for (const entry of manifest.series) {
       applyPatchToWorktree(ctx, worktreeDir, entry.path);
     }
   } finally {
-    removeWorktree(ctx, worktreeDir);
+    removeWorktree(ctx, worktreeDir, { allowDirty: true, expectedDirtyPaths });
   }
 }
 
@@ -534,9 +683,9 @@ function branchExists(ctx, branch = STACK_BRANCH) {
 }
 
 async function exportStack(ctx, manifest, options = {}) {
-  const surfer = loadSurfer(ctx);
-  const targetVersion = surfer.version?.version;
-  const targetProduct = surfer.version?.product || manifest.base.product || 'firefox';
+  const bento = loadBento(ctx);
+  const targetVersion = bento.firefox?.version;
+  const targetProduct = bento.firefox?.product || manifest.base.product || 'firefox';
   const targetBase = await ensureBaseRef(ctx, targetVersion);
   if (!branchExists(ctx)) {
     throw new UserError(`missing ${STACK_BRANCH}; run pnpm run firefox:patches:materialize first.`);
@@ -631,8 +780,8 @@ async function commandRebase(ctx) {
   if (errors.length) {
     throw new UserError(errors.join('\n'));
   }
-  const surfer = loadSurfer(ctx);
-  const targetVersion = surfer.version?.version;
+  const bento = loadBento(ctx);
+  const targetVersion = bento.firefox?.version;
   const oldBase = await ensureBaseRef(
     ctx,
     manifest.base.version,

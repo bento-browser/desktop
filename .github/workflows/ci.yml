@@ -30,7 +30,7 @@ permissions:
 jobs:
   static-checks:
     name: JSON, shell, prefs sanity
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -49,25 +49,24 @@ jobs:
       - name: Validate JSON syntax
         run: |
           set -e
-          for f in surfer.json package.json config/firefox-versions.json config/allowed-zen-references.json tsconfig.json .surfer/dynamicConfig.brand.json .size-limit.json; do
+          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json tsconfig.json .size-limit.json; do
             echo "checking $f"
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
 
-      - name: Validate surfer.json brand schema
-        # Keep only fields understood by the pinned upstream package.
+      - name: Validate bento.json schema
         run: |
           node -e "
-            const c = JSON.parse(require('fs').readFileSync('surfer.json','utf8'));
-            const required = ['name','vendor','appId','binaryName','version','brands'];
-            for (const k of required) if (!(k in c)) throw new Error('surfer.json missing: ' + k);
-            for (const [name, b] of Object.entries(c.brands)) {
-              for (const k of ['backgroundColor','brandShorterName','brandShortName','brandFullName','release']) {
-                if (!(k in b)) throw new Error('brand ' + name + ' missing: ' + k);
-              }
-              if (!b.release.displayVersion) throw new Error('brand ' + name + ' missing release.displayVersion');
-            }
-            console.log('surfer.json brand schema OK');
+            const c = JSON.parse(require('fs').readFileSync('bento.json','utf8'));
+            const required = ['schemaVersion','name','vendor','appId','binaryName','brand','firefox','build','brands','locales','license','updates'];
+            for (const k of required) if (!(k in c)) throw new Error('bento.json missing: ' + k);
+            if (c.schemaVersion !== 1) throw new Error('bento.json schemaVersion must be 1');
+            if (c.brand !== 'bento' || !c.brands.bento) throw new Error('bento.json must select the bento brand');
+            if (!c.firefox.product || !c.firefox.version || !c.firefox.source?.archiveBaseUrl || !c.firefox.source?.sha256) throw new Error('bento.json Firefox source is incomplete');
+            if (!['dev','debug','release'].includes(c.build.mode)) throw new Error('bento.json build.mode is invalid');
+            if (!c.brands.bento.release?.displayVersion) throw new Error('bento.json release.displayVersion is missing');
+            if (!c.updates.hostname || !c.updates.channel) throw new Error('bento.json update configuration is incomplete');
+            console.log('bento.json schema OK');
           "
 
       - name: Shell script syntax (bash -n)
@@ -92,7 +91,7 @@ jobs:
         run: pnpm run firefox:patches:test
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -111,7 +110,7 @@ jobs:
 
   extensions:
     name: Extensions — typecheck, lint, build, size-limit
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -157,10 +156,10 @@ jobs:
         # .size-limit.json.
         run: pnpm run size:check
 
-  surfer-smoke:
-    name: Surfer config loads
+  bento-smoke:
+    name: Bento build tooling loads
     needs: static-checks
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -175,17 +174,15 @@ jobs:
       - name: Install dependencies
         # See `extensions` job above for the separate frozen release lock.
         run: bash scripts/install-release-deps.sh
-      - name: Surfer reads our config
-        # `surfer --version` parses surfer.json end-to-end and exits non-zero
-        # if any required field is missing. Our cheapest end-to-end check.
-        run: pnpm exec surfer --version | tee surfer-version.txt && grep -F '1.14.7' surfer-version.txt
-      - name: Surfer license check
+      - name: Bento build driver reads our config
+        run: node -e "import('./scripts/bento-build.mjs').then(({loadConfig}) => { const c = loadConfig(); if (c.firefox.version !== '154.0') throw new Error('unexpected Firefox version'); console.log('bento.json loaded for Firefox ' + c.firefox.version); })"
+      - name: Bento source license check
         run: pnpm run lc
 
   prepare-build:
     name: Select CI build platform
-    needs: [surfer-smoke, extensions]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: [bento-smoke, extensions]
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.select-matrix.outputs.matrix }}
     steps:
@@ -197,9 +194,9 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
-          linux='{"platform":"linux-x64","os":"blacksmith-4vcpu-ubuntu-2404","build-jobs":"4"}'
-          macos='{"platform":"macos-arm64","os":"blacksmith-6vcpu-macos-26","build-jobs":""}'
-          windows='{"platform":"windows-x64","os":"blacksmith-4vcpu-windows-2025","build-jobs":"2"}'
+          linux='{"platform":"linux-x64","os":"ubuntu-24.04","build-jobs":"4"}'
+          macos='{"platform":"macos-arm64","os":"macos-26","build-jobs":"1"}'
+          windows='{"platform":"windows-x64","os":"windows-2025","build-jobs":"2"}'
 
           case "$EVENT_NAME:$PLATFORM" in
             workflow_dispatch:linux-x64) matrix="{\"include\":[$linux]}" ;;
@@ -219,8 +216,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare-build.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
-    # Keep routine source validation bounded separately from paid native builds.
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 120 || 20 }}
+    # Keep routine source validation bounded separately from manual native builds.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 360 || 20 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -252,9 +249,12 @@ jobs:
             engine/*
             engine/.[!.]*
             !engine/obj-*
-          key: ${{ runner.os }}-engine-source-v2-${{ hashFiles('surfer.json', 'patches/**') }}
+            .bento/source-state.json
+            .bento/import-manifest.json
+            .bento/engine-state.json
+          key: ${{ runner.os }}-bento-engine-source-v1-${{ github.event_name == 'workflow_dispatch' && 'release' || 'source' }}-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/firefox-patch-stack.mjs') }}
 
-      - name: Surfer download
+      - name: Bento download (Firefox source)
         run: pnpm run download
 
       - name: Cache Firefox object files (engine/obj-*)
@@ -262,7 +262,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: engine/obj-*
-          key: ${{ runner.os }}-obj-${{ hashFiles('surfer.json', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml') }}
+          key: ${{ runner.os }}-bento-obj-v1-release-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml', 'scripts/bento-build.mjs', 'scripts/mach-raw.sh') }}
 
       - name: Install MozillaBuild
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
@@ -294,7 +294,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: node scripts/check-rust-toolchain.mjs
 
-      - name: Surfer bootstrap (Mozilla build toolchain)
+      - name: Bento bootstrap (Mozilla build toolchain)
         if: github.event_name == 'workflow_dispatch'
         run: pnpm run bootstrap
 

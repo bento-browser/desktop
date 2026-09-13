@@ -22,7 +22,7 @@ Record changes or dependencies involving:
 
 - `src/browser/**` and other `src/**` Firefox source files.
 - `patches/**` files applied to Firefox source.
-- `prefs/**`, `surfer.json`, build config, or branding files when they alter
+- `prefs/**`, `bento.json`, build config, or branding files when they alter
   Firefox behavior or core integration.
 - Chrome XHTML/CSS/JS hooks that depend on Firefox internals such as `gBrowser`,
   `tabpanels`, split view, SessionStore, browser chrome events, key actors, or
@@ -665,7 +665,7 @@ Use this shape for new or changed touchpoints:
   - `prefs/bento.js`
   - `engine/services/settings/dumps/main/search-config-v2.json`
   - `engine/third_party/application-services/components/remote_settings/dumps/main/search-config-v2.json`
-  - `surfer.json`
+  - `bento.json`
   - `branding/bento/**`
   - `configs/**`
   - `rust-toolchain.toml`
@@ -756,9 +756,9 @@ Use this shape for new or changed touchpoints:
   includes both tools experiments and the shell jar includes the chrome bridge, confirm
   `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
   `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
-  shows Bento Tools, Bento Shell, and uBlock Origin. Direct `surfer import`
-  does not prove this surface is valid because it bypasses Bento's import
-  wrapper and built-in add-on symlink sync.
+  shows Bento Tools, Bento Shell, and uBlock Origin. Running only the source
+  overlay helper does not prove this surface is valid because it bypasses
+  Bento's branding, built-in add-on installer, patch, and symlink steps.
 - Rollback or migration notes: if uBlock Origin is removed, remove
   `extensions/ublock-origin/` and its runtime-entry file. Keep the installer in
   Bento while Bento bundles privileged built-in extensions.

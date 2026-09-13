@@ -27,6 +27,11 @@ for 14 days. A GitHub sign-in is required. They target Linux x64 (`.tar.xz` or
 (`.dmg`). Packages are unsigned and may trigger Gatekeeper or SmartScreen
 warnings or blocks.
 
+The separate **Release** workflow's manual run always builds and packages all
+three release platforms, validates each MAR and update XML, and uploads the
+contents of `release-out/` without creating a GitHub Release. Tag pushes retain
+the existing draft prerelease and security gates.
+
 The trusted comment workflow must first be merged into the default branch.
 Until then, downloads are available from manual CI job summaries and artifacts;
 completed manual runs for an open PR update the bot comment automatically.
@@ -44,29 +49,56 @@ completed manual runs for an open PR update the bot comment automatically.
 
 ### macOS extras
 
-Surfer's `download` step shells out to GNU `tar` and `xz`, neither of which
-ship with macOS. Install both before running `pnpm run download`:
+Bento's source downloader tries `gtar` first and falls back to the system
+`tar`. If the system tar cannot unpack the Firefox `.tar.xz` archive, install
+GNU tar and xz before running `pnpm run download`:
 
 ```sh
 brew install gnu-tar xz
 ```
 
-Surfer detects `gtar` automatically once it's on `PATH`.
-
 ## Common commands
 
 ```sh
 pnpm install           # install the pinned build and extension dependencies
-pnpm run download      # fetch Firefox source (version configured in surfer.json)
+pnpm run download      # fetch Firefox source (version configured in bento.json)
 pnpm run bootstrap     # install Mozilla build deps via mach
 pnpm run build         # compile Bento Browser
 pnpm run build:ui      # incremental Firefox UI build
-pnpm run package       # produce platform packages/installers
+pnpm run package       # produce platform packages/installers, MAR, and update XML
+pnpm run artifacts:check # verify package, MAR, and update XML metadata
 pnpm run build:release # produce a release-mode artifact for the host platform
-pnpm run lc             # Surfer license check
+pnpm run lc             # Bento source license check
 pnpm run build:full    # download → bootstrap → build → package
 pnpm run brand:regen   # reinstall tracked branding/bento into the Firefox tree
 ```
+
+The build driver also supports `update` for a protected Firefox source update:
+
+```sh
+bash scripts/bento-env.sh update
+```
+
+For the currently configured Firefox version, `pnpm run firefox:sync` wraps that
+update with patch-stack validation, import, and a build. A newer version needs a
+trusted Mozilla source digest first. Mozilla publishes the target version in
+[`firefox_versions.json`](https://product-details.mozilla.org/1.0/firefox_versions.json)
+and the archive digest in the per-release
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
+file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`;
+copy the 64-character value from the line for
+`source/firefox-<target-version>.source.tar.xz`, then run:
+
+```sh
+BENTO_SOURCE_SHA256=<sha256-from-mozilla> pnpm run firefox:sync
+```
+
+The driver verifies the downloaded archive against that value and fails when it
+is missing or mismatched. Before an update, inspect linked engine worktrees with
+`git -C engine worktree list --porcelain`; finish or export any patch work,
+then remove the linked worktree with `git -C engine worktree remove <worktree>`
+before retrying. The previous source checkout is kept under `.bento/backups/`
+after a successful replacement.
 
 ## Local development
 
@@ -142,7 +174,7 @@ pnpm run shell:build && pnpm run import   # bento-shell UI: Alt+Shift+R; backgro
 pnpm run tools:build && pnpm run import   # bento-tools: quit/relaunch
 ```
 
-Changes under `patches/`, `src/browser/`, `prefs/`, or `surfer.json` require a
+Changes under `patches/`, `src/browser/`, `prefs/`, or `bento.json` require a
 native rebuild followed by a quit and relaunch:
 
 ```sh
@@ -152,17 +184,18 @@ pnpm run dev
 
 ## Layout
 
-| Path                                                         | Purpose                                               |
-| ------------------------------------------------------------ | ----------------------------------------------------- |
-| [surfer.json](surfer.json)                                   | Surfer config (Firefox version, branding identifiers) |
-| [configs/](configs/)                                         | Per-platform `mozconfig` fragments                    |
-| [branding/bento/](branding/bento/)                           | Canonical Mozilla-derived Bento branding              |
-| [extensions/](extensions/)                                   | Bundled privileged extensions (Phase 3)               |
-| [patches/](patches/)                                         | Surgical Firefox source patches (Phase 4)             |
-| [prefs/](prefs/)                                             | Default pref overrides                                |
-| [scripts/](scripts/)                                         | Build / release scripts                               |
-| [config/firefox-versions.json](config/firefox-versions.json) | Tracked upstream versions                             |
-| [.github/workflows/](.github/workflows/)                     | CI                                                    |
+| Path                                                                             | Purpose                                                                       |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [bento.json](bento.json)                                                         | Canonical Firefox, branding, build, locale, and update configuration          |
+| [Bento generated state](docs/build-tooling.md#generated-state-and-source-safety) | Local source cache, source state, import manifest, and generated engine state |
+| [configs/](configs/)                                                             | Per-platform `mozconfig` fragments                                            |
+| [branding/bento/](branding/bento/)                                               | Canonical Mozilla-derived Bento branding                                      |
+| [extensions/](extensions/)                                                       | Bundled privileged extensions (Phase 3)                                       |
+| [patches/](patches/)                                                             | Surgical Firefox source patches (Phase 4)                                     |
+| [prefs/](prefs/)                                                                 | Default pref overrides                                                        |
+| [scripts/](scripts/)                                                             | Build / release scripts                                                       |
+| [config/firefox-versions.json](config/firefox-versions.json)                     | Tracked upstream versions                                                     |
+| [.github/workflows/](.github/workflows/)                                         | CI                                                                            |
 
 ## License
 

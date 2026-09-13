@@ -4,7 +4,5 @@ packages:
 
 # pnpm 10 requires explicit opt-in for dependency build scripts.
 onlyBuiltDependencies:
-  - '@zen-browser/surfer'
-  - '@resvg/resvg-js'
   - sharp
   - esbuild

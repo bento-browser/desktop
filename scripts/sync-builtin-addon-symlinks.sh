@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Refresh deployed app-bundle resources that Surfer/mach leave stale during
+# Refresh deployed app-bundle resources that mach can leave stale during
 # local iteration.
 #
 # Built-in addon dist/ directories and chrome-process support files are safe
@@ -7,7 +7,7 @@
 # macOS content sandboxing refuses app-bundle symlinks that point back into
 # the source checkout.
 #
-# Surfer's extension-copy step generates a static moz.build with explicit
+# The extension-copy step generates a static moz.build with explicit
 # per-FILE listings at first build. Files emitted between builds (Vite shared
 # chunks with renamed names, new HTML entries, new code-split chunks) don't
 # get installed unless mach build re-runs. Directory symlinks bypass the
@@ -17,8 +17,8 @@
 # Idempotent — safe to re-run. Skips silently if the deployed app bundle
 # isn't present (CI / pre-build state).
 #
-# Wired into `pnpm run import` and post-build scripts. Direct `surfer import` /
-# `surfer build` invocations bypass this — use the package scripts instead.
+# Wired into `pnpm run import` and post-build scripts. Direct mach invocations
+# bypass this, so use the package scripts for the complete pipeline.
 
 set -euo pipefail
 

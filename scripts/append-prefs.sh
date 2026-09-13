@@ -8,12 +8,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BRAND_FILE=".surfer/dynamicConfig.brand.json"
-if [ ! -f "$BRAND_FILE" ]; then
-  echo "append-prefs: $BRAND_FILE missing — skipping" >&2
+CONFIG_FILE="bento.json"
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "append-prefs: $CONFIG_FILE missing — skipping" >&2
   exit 0
 fi
-BRAND="$(node -p "require('./$BRAND_FILE')")"
+BRAND="$(node -p "require('./$CONFIG_FILE').brand")"
 
 PREFS_SRC="prefs/bento.js"
 MARKER="// === Bento defaults (appended from prefs/bento.js)"

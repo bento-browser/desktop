@@ -13,24 +13,18 @@
 #   2. Installs from pnpm-lock.release.yaml with --frozen-lockfile.
 #      The committed release graph contains registry-backed Tale UI packages
 #      and cannot drift during CI or a later rebuild.
-#   3. Runs `surfer package` to produce platform artifacts, not just the
-#      app bundle.
+#   3. Runs Bento's package step to produce platform artifacts, MAR, locales,
+#      and update metadata, not just the app bundle.
 #   4. Restores the original lockfile + node_modules at the end so a dev
 #      machine isn't left in release-mode after running this.
 #
-# Locally: run from the repo root. Requires the surfer download +
+# Locally: run from the repo root. Requires the Firefox download +
 # bootstrap to have been done at least once before (the same prerequisite
 # `npm run build` has). CI invokes this script for tag releases and manual
 # application test builds.
 #
 # Set BENTO_BUILD_JOBS to a positive integer to cap native build
-# parallelism on memory-constrained builders. When unset, Surfer retains
-# its normal platform default.
-#
-# Set BENTO_PR_BUILD=1 only for a manual PR test build. On Windows this uses mach
-# package directly and omits Surfer's MAR/update metadata because the pinned
-# Surfer package command strips the hosted runner's D:\\a drive to /a before
-# creating a MAR, which is not a valid Git Bash path.
+# parallelism on memory-constrained builders.
 
 set -euo pipefail
 
@@ -54,41 +48,22 @@ case "$(uname -s)" in
     ;;
 esac
 
-# Read Bento's user-facing version from surfer.json so the artifact
-# filename matches what users see in About Bento. Avoids drift between
-# branding and release. Note: surfer.json's top-level .version is the
-# Firefox engine version (an object with product/version/candidate);
-# Bento's product version lives at brands.bento.release.displayVersion.
-VERSION="$(node -p "require('./surfer.json').brands.bento.release.displayVersion")"
+# Read Bento's user-facing version from bento.json so the artifact filename
+# matches what users see in About Bento. The Firefox engine version lives in
+# bento.json.firefox.version; Bento's product version is kept separately.
+VERSION="$(node -p "require('./bento.json').brands.bento.release.displayVersion")"
 if [ -z "$VERSION" ]; then
-  echo "build-release: missing brands.bento.release.displayVersion in surfer.json" >&2
+  echo "build-release: missing brands.bento.release.displayVersion in bento.json" >&2
   exit 1
 fi
 
 OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
 
-# Stash dev build mode so it can be restored at the end. Using a backup file
-# rather than git stash preserves intentional uncommitted user changes.
-BUILD_MODE_BACKUP=""
-BUILD_MODE_FILE=".surfer/dynamicConfig.buildMode.json"
-if [ -f "$BUILD_MODE_FILE" ]; then
-  BUILD_MODE_BACKUP="$(mktemp)"
-  cp "$BUILD_MODE_FILE" "$BUILD_MODE_BACKUP"
-fi
-
 # Restore dev state on exit so an interrupted release build doesn't
 # leave the workspace in release-mode. trap fires on success and failure.
 restore_dev_state() {
   step "Restoring dev state"
-  if [ -n "$BUILD_MODE_BACKUP" ]; then
-    cp "$BUILD_MODE_BACKUP" "$BUILD_MODE_FILE"
-    rm -f "$BUILD_MODE_BACKUP"
-  else
-    # No prior buildMode file — the user was on the surfer default.
-    # Remove the release-mode file we set so they go back to default.
-    rm -f "$BUILD_MODE_FILE"
-  fi
   # Re-install in dev mode (BENTO_RELEASE unset) so node_modules links
   # back to the local Tale UI checkout. Skip in CI — the runner is
   # ephemeral and re-installing is wasted time there.
@@ -103,23 +78,16 @@ step "1/4 Installing dependencies in release mode (BENTO_RELEASE=1)"
 bash scripts/install-release-deps.sh
 
 step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
-BENTO_RELEASE=1 pnpm run ext:build
-BENTO_RELEASE=1 pnpm run import
-# Switch surfer's buildMode to release for this build. Surfer's mozconfig
-# generation reads .surfer/dynamicConfig.buildMode.json — value "release"
-# enables --enable-release, disables --enable-debug, strips assertions.
-# The dev default ("dev" or unset) is faster to compile and surfaces more
-# debug output for daily iteration; release-mode is the right choice for
-# distributable artifacts. Restored by the trap on exit.
-bash scripts/surfer-env.sh set buildMode release >/dev/null
+BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
+BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
 if [ -n "${BENTO_BUILD_JOBS:-}" ]; then
   if ! [[ "$BENTO_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
     echo "build-release: BENTO_BUILD_JOBS must be a positive integer" >&2
     exit 1
   fi
-  BENTO_RELEASE=1 bash scripts/surfer-env.sh build --jobs "$BENTO_BUILD_JOBS"
+  BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh build --jobs "$BENTO_BUILD_JOBS"
 else
-  BENTO_RELEASE=1 bash scripts/surfer-env.sh build
+  BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh build
 fi
 bash scripts/sync-builtin-addon-symlinks.sh
 
@@ -138,19 +106,12 @@ case "$PLATFORM" in
       -delete 2>/dev/null || true
     ;;
   windows)
-    # The pinned Surfer release strips the D:\\a drive to /a before invoking
-    # make_full_update.sh. Manual PR builds use mach package directly and intentionally
-    # omit MAR/update metadata. Tag releases keep Surfer's normal package path.
     find engine/obj-*/dist -type f \
       \( -name "bento-$VERSION*.installer.exe" -o -name "bento-$VERSION*.zip" \) \
       -delete 2>/dev/null || true
     ;;
 esac
-if [ "$PLATFORM" = "windows" ] && [ "${BENTO_PR_BUILD:-}" = "1" ]; then
-  bash scripts/mach-raw.sh package
-else
-  bash scripts/surfer-env.sh package
-fi
+BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh package
 
 step "4/4 Collecting artifacts into $OUT_DIR"
 # Mach drops platform-specific artifacts under engine/obj-*/dist/.
@@ -191,7 +152,7 @@ case "$PLATFORM" in
       printf '%s\n' "$EXE_LIST" >&2
       exit 1
     fi
-    ZIP_LIST="$(find engine/obj-*/dist -type f -name "bento-$VERSION*.zip" | sort)"
+    ZIP_LIST="$(find engine/obj-*/dist -type f -name "bento-$VERSION*.zip" ! -name '*.xpt_artifacts.zip' ! -name '*_xpt_artifacts.zip' | sort)"
     ZIP_COUNT="$(printf '%s\n' "$ZIP_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
     if [ "$ZIP_COUNT" = "0" ]; then
       echo "build-release: no version-matched Bento .zip found under engine/obj-*/dist" >&2
@@ -236,6 +197,43 @@ case "$PLATFORM" in
     echo "build-release: produced $OUT"
     ;;
 esac
+
+# MAR and update metadata are release artifacts with the same provenance as
+# the application package. Keep names explicit so an unversioned output.mar
+# cannot be published accidentally.
+if [ ! -f "$REPO_ROOT/dist/output.mar" ]; then
+  echo "build-release: package did not produce dist/output.mar" >&2
+  exit 1
+fi
+ARTIFACT_METADATA="$REPO_ROOT/dist/bento-artifacts.json"
+if [ ! -f "$ARTIFACT_METADATA" ]; then
+  echo "build-release: package did not produce dist/bento-artifacts.json" >&2
+  exit 1
+fi
+MAR_NAME="$(node -p "require('./dist/bento-artifacts.json').mar.name")"
+if [ -z "$MAR_NAME" ] || [[ "$MAR_NAME" != Bento-*.mar ]]; then
+  echo "build-release: invalid MAR name in dist/bento-artifacts.json: $MAR_NAME" >&2
+  exit 1
+fi
+MAR_OUT="$OUT_DIR/$MAR_NAME"
+cp "$REPO_ROOT/dist/output.mar" "$MAR_OUT"
+echo "build-release: produced $MAR_OUT"
+
+UPDATE_COUNT=0
+while IFS= read -r UPDATE_FILE; do
+  [ -f "$UPDATE_FILE" ] || continue
+  TARGET="${UPDATE_FILE#"$REPO_ROOT/dist/update/browser/"}"
+  TARGET="${TARGET//\//-}"
+  cp "$UPDATE_FILE" "$OUT_DIR/Bento-$VERSION-$PLATFORM-$TARGET"
+  UPDATE_COUNT=$((UPDATE_COUNT + 1))
+done < <(find "$REPO_ROOT/dist/update/browser" -type f -name 'update.xml' -print 2>/dev/null | sort)
+if [ "$UPDATE_COUNT" -eq 0 ]; then
+  echo "build-release: package did not produce browser update metadata" >&2
+  exit 1
+fi
+echo "build-release: collected $UPDATE_COUNT update metadata files"
+
+node scripts/validate-bento-artifacts.mjs "$REPO_ROOT"
 
 node scripts/check-product-identity.mjs "$OUT_DIR"
 step "Done. Release artifact: $OUT"

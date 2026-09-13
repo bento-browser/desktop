@@ -4,13 +4,17 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Surfer / Firefox build outputs
+# Bento / Firefox build outputs
 engine/
 build/
 dist/
-.surfer/*
-!.surfer/dynamicConfig.brand.json
+.bento/
 obj-*/
+
+# Legacy Surfer state from pre-Bento checkouts. Keep it ignored during
+# migration so caches and worktrees cannot be added accidentally.
+.surfer/*
+extensions/*/.surfer/
 
 # Logs
 *.log
@@ -40,9 +44,6 @@ Thumbs.db
 # Local Claude session state
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
-
-# Stray Surfer state created by commands run from extension directories
-extensions/*/.surfer/
 
 # Release artifacts (built by scripts/build-release.sh / .github/workflows/release.yml)
 release-out/

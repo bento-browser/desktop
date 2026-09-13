@@ -21,7 +21,7 @@ jobs:
   update-comment:
     name: Update PR build comment
     if: github.event.workflow_run.event == 'workflow_dispatch'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       # workflow_run has the default branch as its trusted source. Keep this
       # ref explicit and never use head_branch or head_sha as a checkout ref.

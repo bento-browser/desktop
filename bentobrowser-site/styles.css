@@ -1,7 +1,7 @@
 /* bentobrowser.app — landing page styles.
  *
  * Vanilla CSS, no build step. Brand colors mirror the Bento app:
- *   --bento-bg:          #282A33  (matches surfer.json backgroundColor)
+ *   --bento-bg:          #282A33  (matches bento.json brand metadata)
  *   --bento-bg-2:        slightly lighter neutral for surface contrast
  *   --bento-fg:          near-white body text on dark
  *   --bento-fg-muted:    secondary text (descriptions, hints)

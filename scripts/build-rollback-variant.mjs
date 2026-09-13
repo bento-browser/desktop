@@ -229,8 +229,8 @@ try {
     await run('pnpm', ['run', 'build:release'], env);
   } else {
     if (!transition) throw new Error('final rollback updates are intentionally disabled');
-    await run('bash', ['scripts/surfer-env.sh', 'updates-browser'], env);
-    await run('bash', ['scripts/surfer-env.sh', 'updates-addons'], env);
+    await run('bash', ['scripts/bento-env.sh', 'updates-browser'], env);
+    await run('bash', ['scripts/bento-env.sh', 'updates-addons'], env);
   }
   await collectAudit();
 } finally {
