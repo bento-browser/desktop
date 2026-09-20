@@ -1657,21 +1657,21 @@
         background-color: var(--neutral-5);
         border-bottom-color: var(--neutral-5);
       }
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button,
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button {
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button,
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button {
         color: var(--neutral-80);
       }
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
         color: var(--neutral-90);
       }
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
         color: var(--neutral-90);
       }
@@ -1719,13 +1719,11 @@
           transition: none;
         }
       }
-      /* Chrome-side translation of Mux IconButton
-         variant="ghost" size="sm". These controls cannot render the
-         React component because they live in browser chrome, but they
-         carry the same BEM classes and mirror the same interactive
-         states with native pseudo-classes plus React-Aria-compatible
-         data-state selectors. */
-      .bento-panel-header .tale-icon-button.tale-button {
+      /* Bento-owned native icon-button styling uses Mux-derived ghost/small
+         tokens for controls that live in browser chrome. Native
+         pseudo-classes and React-Aria-compatible data-state selectors mirror
+         the interactive states without mounting a Mux runtime component. */
+      .bento-panel-header .bento-icon-button.bento-button {
         position: relative;
         display: inline-flex;
         align-items: center;
@@ -1754,30 +1752,30 @@
           color var(--bento-duration-fast) var(--bento-easing-standard),
           box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
       }
-      .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
         color: var(--neutral-90);
       }
-      .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
       }
-      .bento-panel-header .tale-icon-button.tale-button:focus-visible,
-      .bento-panel-header .tale-icon-button.tale-button[data-focus-visible] {
+      .bento-panel-header .bento-icon-button.bento-button:focus-visible,
+      .bento-panel-header .bento-icon-button.bento-button[data-focus-visible] {
         box-shadow:
           0 0 0 2px var(--neutral-100),
           0 0 0 4px var(--focus-ring-color);
       }
-      .bento-panel-header .tale-icon-button.tale-button[disabled],
-      .bento-panel-header .tale-icon-button.tale-button[data-disabled] {
+      .bento-panel-header .bento-icon-button.bento-button[disabled],
+      .bento-panel-header .bento-icon-button.bento-button[data-disabled] {
         opacity: 0.45;
         cursor: not-allowed;
       }
-      .bento-panel-header .tale-icon-button.tale-button[data-pending] {
+      .bento-panel-header .bento-icon-button.bento-button[data-pending] {
         cursor: default;
       }
-      .bento-panel-header .tale-icon-button > svg {
+      .bento-panel-header .bento-icon-button > svg {
         width: var(--bento-icon-size-sm);
         height: var(--bento-icon-size-sm);
         pointer-events: none;
@@ -1927,29 +1925,29 @@
           0 1px 4px rgba(0, 0, 0, 0.45),
           0 0 0 3px var(--focus-ring-color);
       }
-      .bento-panel-loading-overlay .tale-spinner {
+      .bento-panel-loading-overlay .bento-spinner {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         --_spinner-size: 2.25rem;
       }
-      .bento-panel-loading-overlay .tale-spinner__svg {
+      .bento-panel-loading-overlay .bento-spinner__svg {
         width: var(--_spinner-size);
         height: var(--_spinner-size);
-        animation: tale-spinner-rotate 1s linear infinite;
+        animation: bento-spinner-rotate 1s linear infinite;
       }
-      .bento-panel-loading-overlay .tale-spinner__track {
+      .bento-panel-loading-overlay .bento-spinner__track {
         stroke: var(--neutral-20);
       }
-      .bento-panel-loading-overlay .tale-spinner__arc {
+      .bento-panel-loading-overlay .bento-spinner__arc {
         stroke: var(--color-60);
         stroke-dasharray: 44, 63;
-        animation: tale-spinner-dash 1.2s ease-in-out infinite;
+        animation: bento-spinner-dash 1.2s ease-in-out infinite;
       }
-      @keyframes tale-spinner-rotate {
+      @keyframes bento-spinner-rotate {
         100% { transform: rotate(360deg); }
       }
-      @keyframes tale-spinner-dash {
+      @keyframes bento-spinner-dash {
         0% { stroke-dasharray: 1, 63; stroke-dashoffset: 0; }
         50% { stroke-dasharray: 44, 63; stroke-dashoffset: -16; }
         100% { stroke-dasharray: 44, 63; stroke-dashoffset: -62; }
@@ -5309,7 +5307,7 @@
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className =
-      'tale-button tale-button--ghost tale-icon-button tale-icon-button--sm bento-panel-header-button';
+      'bento-button bento-button--ghost bento-icon-button bento-icon-button--sm bento-panel-header-button';
     btn.title = title;
     btn.setAttribute('aria-label', title);
     btn.appendChild(makeIcon(iconD));
@@ -7920,7 +7918,7 @@
     // setupHeaderDrag's early return).
     const dragHandle = document.createXULElement('hbox');
     dragHandle.className =
-      'tale-button tale-button--ghost tale-icon-button tale-icon-button--sm bento-panel-header-drag-handle';
+      'bento-button bento-button--ghost bento-icon-button bento-icon-button--sm bento-panel-header-drag-handle';
     dragHandle.setAttribute('role', 'button');
     dragHandle.setAttribute('aria-label', 'Drag to reorder panel');
     dragHandle.appendChild(makeIcon(ICONS.gripVertical));
@@ -8014,25 +8012,25 @@
     overlay.hidden = true;
 
     const spinner = document.createElementNS(HTML_NS, 'div');
-    spinner.className = 'tale-spinner tale-spinner--lg';
+    spinner.className = 'bento-spinner bento-spinner--lg';
     spinner.setAttribute('role', 'status');
     spinner.setAttribute('aria-label', 'Loading');
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'tale-spinner__svg');
+    svg.setAttribute('class', 'bento-spinner__svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('aria-hidden', 'true');
 
     const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    track.setAttribute('class', 'tale-spinner__track');
+    track.setAttribute('class', 'bento-spinner__track');
     track.setAttribute('cx', '12');
     track.setAttribute('cy', '12');
     track.setAttribute('r', '10');
     track.setAttribute('stroke-width', '3');
 
     const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    arc.setAttribute('class', 'tale-spinner__arc');
+    arc.setAttribute('class', 'bento-spinner__arc');
     arc.setAttribute('cx', '12');
     arc.setAttribute('cy', '12');
     arc.setAttribute('r', '10');

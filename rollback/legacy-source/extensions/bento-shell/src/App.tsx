@@ -1,11 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import { Row } from '@tale-ui/react/row';
-import { Text } from '@tale-ui/react/text';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Icon } from '@tale-ui/react/icon';
-import { Spinner } from '@tale-ui/react/spinner';
-import { Tooltip } from '@tale-ui/react/tooltip';
+import type { ReactElement } from 'react';
+import { IconButton, ProgressCircle, Text, Tooltip } from '@muxui/react';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
 import Download from 'lucide-react/dist/esm/icons/download';
@@ -29,6 +24,8 @@ import { getPanelIdsForWorkspace, usePanelsStore } from './state/panels';
 import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
 import { useExternalMergeStore } from './state/externalMerge';
+import { BentoIcon } from './components/primitives/BentoIcon';
+import { Row } from './components/primitives/BentoRow';
 import type { UiColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
@@ -45,18 +42,10 @@ function FooterTooltip({
 }: {
   label: string;
   isDisabled?: boolean;
-  children: ReactNode;
+  children: ReactElement;
 }) {
   if (isDisabled) return <>{children}</>;
-  return (
-    <Tooltip.Root delay={400}>
-      {children}
-      <Tooltip.Popup placement="top" offset={8}>
-        <Tooltip.Arrow />
-        {label}
-      </Tooltip.Popup>
-    </Tooltip.Root>
-  );
+  return <Tooltip content={label} delay={400} placement="top" offset={8} trigger={children} />;
 }
 
 function settingsUrl(): string {
@@ -548,7 +537,7 @@ export function App() {
       <div className="bento-shell-app__main">
         {!ready && (
           <Row gap="xs" align="center" className="bento-shell-app__header">
-            <Text variant="text" size="xs" color="muted">
+            <Text variant="body" size="xs" color="muted">
               connecting…
             </Text>
           </Row>
@@ -584,9 +573,9 @@ export function App() {
               variant="ghost"
               size="sm"
               aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              onPress={toggleSidebarCollapsed}
+              onActivate={toggleSidebarCollapsed}
             >
-              <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
+              <BentoIcon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Open command palette" isDisabled={sidebarCollapsed}>
@@ -594,9 +583,9 @@ export function App() {
               variant="ghost"
               size="sm"
               aria-label="Open command palette (⌘⌥P)"
-              onPress={openCommandPalette}
+              onActivate={openCommandPalette}
             >
-              <Icon icon={Command} />
+              <BentoIcon icon={Command} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip
@@ -609,12 +598,18 @@ export function App() {
               aria-label={
                 importInProgress ? 'View session import progress' : 'Merge browser session'
               }
-              onPress={openMergePalette}
+              onActivate={openMergePalette}
             >
               {importInProgress ? (
-                <Spinner size="sm" label="Importing browser session" />
+                <ProgressCircle.Root
+                  size="sm"
+                  label="Importing browser session"
+                  className="bento-shell-app__merge-progress"
+                >
+                  <ProgressCircle.Track />
+                </ProgressCircle.Root>
               ) : (
-                <Icon icon={Merge} />
+                <BentoIcon icon={Merge} />
               )}
             </IconButton>
           </FooterTooltip>
@@ -632,9 +627,9 @@ export function App() {
               variant="ghost"
               size="sm"
               aria-label="Open Firefox menu"
-              onPress={onOpenFirefoxAppMenu}
+              onActivate={onOpenFirefoxAppMenu}
             >
-              <Icon icon={Menu} />
+              <BentoIcon icon={Menu} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Downloads" isDisabled={sidebarCollapsed}>
@@ -643,14 +638,14 @@ export function App() {
               variant="ghost"
               size="sm"
               aria-label="Downloads"
-              onPress={onOpenFirefoxDownloads}
+              onActivate={onOpenFirefoxDownloads}
             >
-              <Icon icon={Download} />
+              <BentoIcon icon={Download} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
-            <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={onOpenSettings}>
-              <Icon icon={Settings} />
+            <IconButton variant="ghost" size="sm" aria-label="Settings" onActivate={onOpenSettings}>
+              <BentoIcon icon={Settings} />
             </IconButton>
           </FooterTooltip>
         </Row>

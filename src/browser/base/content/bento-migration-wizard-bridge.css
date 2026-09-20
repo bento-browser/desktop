@@ -61,7 +61,7 @@ li:not(:last-child) {
   margin-block-end: var(--space-3xs);
 }
 
-.tale-button,
+.bento-button,
 button {
   position: relative;
   display: inline-flex;
@@ -87,19 +87,19 @@ button {
   outline: none;
 }
 
-.tale-button:hover:not([disabled]),
+.bento-button:hover:not([disabled]),
 button:hover:not([disabled]) {
   background-color: var(--neutral-18);
   color: var(--neutral-90);
 }
 
-.tale-button:active:not([disabled]),
+.bento-button:active:not([disabled]),
 button:active:not([disabled]) {
   background-color: var(--neutral-22);
   color: var(--neutral-90);
 }
 
-.tale-button:focus-visible,
+.bento-button:focus-visible,
 button:focus-visible {
   box-shadow:
     0 0 0 0.125rem var(--neutral-100),
@@ -107,26 +107,26 @@ button:focus-visible {
   outline: none;
 }
 
-.tale-button[disabled],
+.bento-button[disabled],
 button[disabled] {
   pointer-events: none;
   opacity: 0.45;
 }
 
-.tale-button--primary,
+.bento-button--primary,
 button.primary {
   border-color: transparent;
   background-color: var(--color-60);
   color: var(--color-60-fg);
 }
 
-.tale-button--primary:hover:not([disabled]),
+.bento-button--primary:hover:not([disabled]),
 button.primary:hover:not([disabled]) {
   background-color: var(--color-50);
   color: var(--color-50-fg);
 }
 
-.tale-button--primary:active:not([disabled]),
+.bento-button--primary:active:not([disabled]),
 button.primary:active:not([disabled]) {
   background-color: var(--color-40);
   color: var(--color-40-fg);

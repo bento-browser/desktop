@@ -34,8 +34,8 @@
  * Mux tokens flip with data-color-mode (set on chrome <window> by
  * bento-shell-mount's color-mode IPC), so a single attribute swap re-
  * themes both light/dark variants. Per-workspace theme (re-points
- * --brand-*, --neutral-default-*, and --color-N-fg) flows through Tale
- * UI's color cascade via data-bento-theme on the chrome window — set
+ * --brand-*, --neutral-default-*, and --color-N-fg) flows through Bento's Mux UI
+ * color cascade via data-bento-theme on the chrome window — set
  * by the BENTO_THEME title-IPC handler in bento-shell-mount.js. The
  * workspace theme presets ship inside bento-chrome-tokens.css
  * (concatenated by scripts/generate-chrome-tokens.mjs).
@@ -373,8 +373,8 @@
 
   /* ASRouter's app-menu default-browser nudge renders inside a shadow DOM
    * menu-message element. Theme it through inherited custom properties so
-   * the upstream component can keep its structure while Bento supplies Tale
-   * UI token colours. */
+   * the upstream component can keep its structure while Bento supplies Mux UI
+   * token colours. */
   #appMenu-menu-message > menu-message {
     --background-color-information: var(--neutral-12) !important;
     --text-color: var(--neutral-90) !important;

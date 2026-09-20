@@ -9,17 +9,15 @@
 // discoverable via Settings → Keyboard shortcuts.
 
 import { useState, type ReactNode } from 'react';
-import {
-  CommandPalette as TaleCommandPalette,
-  useCommandPalette,
-} from '@tale-ui/react/command-palette';
-import { Icon } from '@tale-ui/react/icon';
+import { Button, CommandPalette as MuxCommandPalette, useCommandPalette } from '@muxui/react';
 import LayersIcon from 'lucide-react/dist/esm/icons/layers';
 import PanelLeftCloseIcon from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
 import CommandIcon from 'lucide-react/dist/esm/icons/command';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
 import WrenchIcon from 'lucide-react/dist/esm/icons/wrench';
+
+import { BentoIcon } from '../../components/primitives/BentoIcon';
 
 import './ShortcutsDialog.css';
 
@@ -60,7 +58,7 @@ const ALT = IS_MAC ? '⌥' : 'Alt';
 const SHIFT = IS_MAC ? '⇧' : 'Shift';
 
 function commandIcon(icon: typeof LayersIcon): ReactNode {
-  return <Icon icon={icon} size="sm" />;
+  return <BentoIcon icon={icon} size="sm" />;
 }
 
 function shortcutAliases(key: string): string[] {
@@ -239,76 +237,80 @@ export function ShortcutsDialog({ isOpen, onOpenChange }: ShortcutsDialogProps) 
   }
 
   return (
-    <TaleCommandPalette.Root
+    <MuxCommandPalette.Root
       open={isOpen}
       size="lg"
       closeOnSelect={false}
       onOpenChange={handleOpenChange}
     >
-      <TaleCommandPalette.Backdrop isDismissable>
-        <TaleCommandPalette.Popup
+      <MuxCommandPalette.Backdrop dismissable>
+        <MuxCommandPalette.Popup
           aria-label="Keyboard shortcuts"
           className="bento-shortcuts-command-palette__dialog"
-          modalProps={{ className: 'bento-shortcuts-command-palette__popup' }}
         >
-          <TaleCommandPalette.Title className="bento-shortcuts-command-palette__sr-only">
+          <MuxCommandPalette.Title className="bento-shortcuts-command-palette__sr-only">
             Keyboard shortcuts
-          </TaleCommandPalette.Title>
-          <TaleCommandPalette.Close aria-label="Close keyboard shortcuts" />
-          <TaleCommandPalette.Content
-            className="bento-shortcuts-command-palette__content"
-            inputValue={palette.query}
-            onInputChange={palette.setQuery}
-          >
-            <TaleCommandPalette.SearchField>
-              <TaleCommandPalette.Input
+          </MuxCommandPalette.Title>
+          <MuxCommandPalette.Close aria-label="Close keyboard shortcuts" />
+          <MuxCommandPalette.Content className="bento-shortcuts-command-palette__content">
+            <MuxCommandPalette.SearchField>
+              <MuxCommandPalette.Input
                 placeholder="Search keyboard shortcuts…"
                 className="bento-shortcuts-command-palette__input"
+                value={palette.query}
+                onChange={(event) => palette.setQuery(event.currentTarget.value)}
                 autoFocus
               />
-              <TaleCommandPalette.ClearButton aria-label="Clear shortcut search">
-                Clear
-              </TaleCommandPalette.ClearButton>
-            </TaleCommandPalette.SearchField>
+              {palette.query.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Clear shortcut search"
+                  onActivate={() => palette.setQuery('')}
+                >
+                  Clear
+                </Button>
+              ) : null}
+            </MuxCommandPalette.SearchField>
             <div
               role="list"
               aria-label="Keyboard shortcuts"
-              className="tale-command-palette__listbox tale-command-palette__listbox--lg bento-shortcuts-command-palette__listbox"
+              className="muxui-command-palette__listbox muxui-command-palette__listbox--lg bento-shortcuts-command-palette__listbox"
             >
               {palette.groupedCommands.map((group) => (
-                <section className="tale-command-palette__section" key={group.id}>
-                  <div className="tale-command-palette__section-header">{group.title}</div>
+                <section className="muxui-command-palette__section" key={group.id}>
+                  <div className="muxui-command-palette__section-header">{group.title}</div>
                   {group.commands.map((command) => (
                     <div
                       key={command.id}
                       role="listitem"
                       aria-label={shortcutTextValue(command)}
-                      className="tale-command-palette__item bento-shortcuts-command-palette__item"
+                      className="muxui-command-palette__item bento-shortcuts-command-palette__item"
                     >
-                      <TaleCommandPalette.ItemIcon>{command.icon}</TaleCommandPalette.ItemIcon>
-                      <TaleCommandPalette.ItemContent>
-                        <TaleCommandPalette.ItemTitle>{command.title}</TaleCommandPalette.ItemTitle>
-                        <TaleCommandPalette.ItemDescription>
+                      <MuxCommandPalette.ItemIcon>{command.icon}</MuxCommandPalette.ItemIcon>
+                      <MuxCommandPalette.ItemContent>
+                        <MuxCommandPalette.ItemTitle>{command.title}</MuxCommandPalette.ItemTitle>
+                        <MuxCommandPalette.ItemDescription>
                           {command.subtitle}
-                        </TaleCommandPalette.ItemDescription>
-                      </TaleCommandPalette.ItemContent>
-                      <TaleCommandPalette.ItemMeta>
-                        <TaleCommandPalette.Shortcut keys={command.shortcut} />
-                      </TaleCommandPalette.ItemMeta>
+                        </MuxCommandPalette.ItemDescription>
+                      </MuxCommandPalette.ItemContent>
+                      <MuxCommandPalette.ItemMeta>
+                        <MuxCommandPalette.Shortcut keys={command.shortcut} />
+                      </MuxCommandPalette.ItemMeta>
                     </div>
                   ))}
                 </section>
               ))}
             </div>
             {palette.filteredCommands.length === 0 ? (
-              <TaleCommandPalette.Empty>No matching shortcuts.</TaleCommandPalette.Empty>
+              <MuxCommandPalette.Empty>No matching shortcuts.</MuxCommandPalette.Empty>
             ) : null}
-            <TaleCommandPalette.Footer>
+            <MuxCommandPalette.Footer>
               {resultLabel(palette.filteredCommands.length)}
-            </TaleCommandPalette.Footer>
-          </TaleCommandPalette.Content>
-        </TaleCommandPalette.Popup>
-      </TaleCommandPalette.Backdrop>
-    </TaleCommandPalette.Root>
+            </MuxCommandPalette.Footer>
+          </MuxCommandPalette.Content>
+        </MuxCommandPalette.Popup>
+      </MuxCommandPalette.Backdrop>
+    </MuxCommandPalette.Root>
   );
 }

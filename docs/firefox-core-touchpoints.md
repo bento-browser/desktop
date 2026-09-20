@@ -137,8 +137,8 @@ Use this shape for new or changed touchpoints:
   titlebar spacer, and aligns Firefox's native bookmarks toolbar with Bento's
   panel-strip start edge without pushing Bento or Firefox-native sidebar content
   down, maps Firefox's native Customize Toolbar screen surfaces, buttons, links,
-  palette items, and overflow-panel preview through the same generated Tale
-  UI/Bento chrome tokens, themes Firefox's Passwords `about:logins` documents,
+  palette items, and overflow-panel preview through the same generated Mux UI/Bento
+  chrome tokens, themes Firefox's Passwords `about:logins` documents,
   shared shadow-component stylesheet, and sidebar megalist surface through the
   generated Mux UI/Bento chrome tokens,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
@@ -573,7 +573,7 @@ Use this shape for new or changed touchpoints:
 - Bento functionality: the multi-step Bento onboarding overlay includes a
   browser-data import state. When the user chooses it, chrome code opens an
   embedded Bento chrome host that renders Firefox's reusable migration wizard for
-  ordinary in-window imports and injects Bento/Tale styling into its open shadow
+  ordinary in-window imports and injects Bento/Mux styling into its open shadow
   root. Full Mozilla Firefox or macOS Zen Browser profile imports remain an
   explicit startup handoff because those migrators copy profile databases before
   the new Bento profile is initialized. When the user takes that explicit

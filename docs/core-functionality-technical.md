@@ -588,8 +588,8 @@ floating fallback use those helpers so autocomplete behavior does not drift.
   focused so workspace management remains the active context.
 - Keep the address palette on the standard opaque CommandPalette recipe. Do not
   re-add a painting/full-window `CommandPalette.Backdrop`,
-  `tale-command-palette__popup--translucent`,
-  `tale-command-palette__backdrop--transparent`, `backdrop-filter`, or
+  `muxui-command-palette__popup--translucent`,
+  `muxui-command-palette__backdrop--transparent`, `backdrop-filter`, or
   chrome-side `drawSnapshot`/frost capture before open. Those paths delay
   shortcut-to-visible latency, dim the page behind the palette, or recreate the
   invisible full-window hit target that blocks scrolling.
@@ -811,8 +811,8 @@ global fallback is the active workspace for every window.
 Single-workspace editing uses `edit-workspace.html`; all-workspace management
 uses `workspace-palette.html`, opened from the workspace switcher through the
 `useWorkspacePalette` title sentinel. Both surfaces use
-`components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which adapts Tale
-UI's Emoji Picker recipe with `Popover` and `SearchField` over local
+`components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which composes the
+public Mux UI `Popover` and `SearchField` components over local
 `BENTO_THEMES` metadata. `scripts/sync-theme-presets.mjs` generates that metadata
 from Bento's repo-local Default theme plus the eight standard and seven
 monochromatic themes exported by `@muxui/react/themes`. The picker groups those

@@ -34,6 +34,8 @@ import { resolve, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { rewriteThemeSelectors } from './theme-selector.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const PRESETS_DIR = resolve(REPO_ROOT, 'extensions/bento-shell/src/theme/presets');
@@ -98,46 +100,7 @@ if (!neutralMatch) {
   );
   process.exit(1);
 }
-// ─── Selector transformations ──────────────────────────────────────────
-// Scale's fg-override blocks come in two selector-list shapes. We collapse
-// each into a single selector targeting <html> directly so the theme and
-// color-mode attributes are authoritative. Legacy class-based mode siblings
-// get dropped.
-
-let css = raw;
-
-// Light-mode fg overrides (with a legacy .light selector sibling).
-css = css.replace(
-  /:where\(html:not\(\[data-color-mode="dark"\]\)\)\s+\.tale-ui\s*,\s*\.light\s+\.tale-ui/g,
-  `html[data-bento-theme="${id}"]:not([data-color-mode="dark"])`,
-);
-
-// Light-mode fg overrides (already alone, without .light sibling).
-css = css.replace(
-  /:where\(html:not\(\[data-color-mode="dark"\]\)\)\s+\.tale-ui(?!\s*,)/g,
-  `html[data-bento-theme="${id}"]:not([data-color-mode="dark"])`,
-);
-
-// Dark-mode fg overrides (with a legacy .dark selector sibling).
-css = css.replace(
-  /html\[data-color-mode="dark"\]\s+\.tale-ui\s*,\s*\.dark\s+\.tale-ui/g,
-  `html[data-bento-theme="${id}"][data-color-mode="dark"]`,
-);
-
-// Dark-mode fg overrides (already alone).
-css = css.replace(
-  /html\[data-color-mode="dark"\]\s+\.tale-ui(?!\s*,)/g,
-  `html[data-bento-theme="${id}"][data-color-mode="dark"]`,
-);
-
-// @media (prefers-color-scheme: dark) inner selector.
-css = css.replace(
-  /:where\(html:not\(\[data-color-mode="light"\]\)\)\s+\.tale-ui/g,
-  `html[data-bento-theme="${id}"]:not([data-color-mode="light"])`,
-);
-
-// Top-level :root { … } scopes (start of a line, optional whitespace).
-css = css.replace(/^(\s*):root(\s*\{)/gm, `$1[data-bento-theme="${id}"]$2`);
+const css = rewriteThemeSelectors(raw, id, { attributeQuote: '"' });
 
 // ─── Write the preset file ─────────────────────────────────────────────
 const header =

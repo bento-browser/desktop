@@ -82,8 +82,8 @@
   /* Keep NumberField labels/descriptions at normal row width while capping the
      visible input group so controls line up without dominating compact rows. */
   .bento-settings__number-field {
-    --tale-number-field-width: 100%;
-    --tale-number-field-group-width: var(--bento-settings-number-field-max-width);
+    --muxui-component-number-field-width: 100%;
+    --muxui-component-number-field-group-width: var(--bento-settings-number-field-max-width);
 
     width: 100%;
     max-width: 100%;
@@ -91,8 +91,12 @@
     flex: 0 1 auto;
   }
 
-  .tale-row > .bento-settings__number-field {
+  .bento-row > .bento-settings__number-field {
     width: fit-content;
+  }
+
+  .bento-settings__accent {
+    color: var(--bento-workspace-accent);
   }
 
   .bento-settings__panel-radius-slider,

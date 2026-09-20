@@ -17,6 +17,16 @@ const muxuiProvenance = path.join(
   root,
   'artifacts/muxui/muxui-react-0.1.0-alpha.0.provenance.json',
 );
+const approvedShellRuntimeDependencies = {
+  '@muxui/react': 'file:../../artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz',
+  react: '^19.0.0',
+  'react-dom': '^19.0.0',
+  'react-aria-components': '1.20.0',
+  zustand: '^5.0.0',
+  '@tanstack/react-virtual': '^3.10.0',
+  'lucide-react': '^0.460.0',
+  'emojibase-data': '17.0.0',
+};
 
 test('Mux UI candidate provenance binds the committed tarball bytes', () => {
   const provenance = JSON.parse(fs.readFileSync(muxuiProvenance, 'utf8'));
@@ -54,6 +64,30 @@ test('release SBOM rejects a different Mux UI lock source', () => {
     });
     assert.notEqual(result.status, 0, result.stdout);
     assert.match(result.stderr, /resolution does not point to the committed local artifact/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('release SBOM rejects an unapproved shell runtime dependency', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-release-sbom-dependency-'));
+  const lockPath = path.join(tempDir, 'pnpm-lock.release.yaml');
+  const outputDir = path.join(tempDir, 'output');
+  try {
+    const lock = parse(fs.readFileSync(path.join(root, 'pnpm-lock.release.yaml'), 'utf8'));
+    lock.importers['extensions/bento-shell'].dependencies['neutral-runtime-sample'] = {
+      specifier: '1.0.0',
+      version: '1.0.0',
+    };
+    fs.writeFileSync(lockPath, stringify(lock));
+
+    const result = spawnSync(process.execPath, [sbomGenerator, outputDir], {
+      cwd: root,
+      env: { ...process.env, BENTO_RELEASE_LOCK_PATH: lockPath },
+      encoding: 'utf8',
+    });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /approved Bento shell runtime dependencies/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -163,10 +197,12 @@ test('release metadata covers the release-lock SBOM with valid checksums', () =>
     const sbom = JSON.parse(fs.readFileSync(path.join(outputDir, 'bento-sbom.cdx.json'), 'utf8'));
     assert.equal(sbom.bomFormat, 'CycloneDX');
     assert.ok(sbom.components.length > 100);
-    assert.equal(
-      sbom.components.some((component) => component.name.startsWith('@tale-ui/')),
-      false,
-    );
+    for (const dependencyName of Object.keys(approvedShellRuntimeDependencies)) {
+      assert.ok(
+        sbom.components.some((component) => component.name === dependencyName),
+        `SBOM is missing approved shell runtime dependency ${dependencyName}`,
+      );
+    }
     const muxui = sbom.components.find((component) => component.name === '@muxui/react');
     assert.deepEqual(muxui.hashes, [
       {

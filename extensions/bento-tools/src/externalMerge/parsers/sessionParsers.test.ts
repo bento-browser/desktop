@@ -89,7 +89,7 @@ describe('external merge session parsers', () => {
       format: 'zen-json',
       json: JSON.stringify({
         spaces: [{ uuid: 'space-a', name: 'Space A' }],
-        groups: [{ id: 'zen-group-1', name: 'Tale UI', collapsed: true }],
+        groups: [{ id: 'zen-group-1', name: 'Bento UI', collapsed: true }],
         tabs: [
           {
             zenWorkspace: 'space-a',
@@ -114,7 +114,7 @@ describe('external merge session parsers', () => {
     expect(session.windows).toHaveLength(1);
     expect(session.windows[0]!.workspaceId).toBe('space-a');
     expect(session.windows[0]!.groups).toEqual([
-      { id: 'zen-group-1', name: 'Tale UI', index: 0, collapsed: true },
+      { id: 'zen-group-1', name: 'Bento UI', index: 0, collapsed: true },
     ]);
     expect(session.windows[0]!.tabs.map((tab) => tab.url)).toEqual(['https://space.example/']);
     expect(session.windows[0]!.tabs[0]!.active).toBe(true);

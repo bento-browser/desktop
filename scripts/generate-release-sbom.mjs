@@ -17,6 +17,9 @@ const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'))
 const ublock = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/ublock-origin/manifest.json'), 'utf8'),
 );
+const shellPackage = JSON.parse(
+  fs.readFileSync(path.join(root, 'extensions/bento-shell/package.json'), 'utf8'),
+);
 const muxuiArtifact = 'artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz';
 const muxuiProvenance = JSON.parse(
   fs.readFileSync(path.join(root, muxuiArtifact.replace(/\.tgz$/u, '.provenance.json')), 'utf8'),
@@ -60,6 +63,43 @@ function integrityFor(bytes) {
 
 const muxui = readMuxuiCandidate();
 
+const APPROVED_SHELL_RUNTIME_DEPENDENCIES = Object.freeze({
+  '@muxui/react': 'file:../../artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz',
+  react: '^19.0.0',
+  'react-dom': '^19.0.0',
+  'react-aria-components': '1.20.0',
+  zustand: '^5.0.0',
+  '@tanstack/react-virtual': '^3.10.0',
+  'lucide-react': '^0.460.0',
+  'emojibase-data': '17.0.0',
+});
+
+function validateShellRuntimeDependencies(dependencies, label) {
+  if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+    throw new Error(`${label} is missing its approved Bento shell runtime dependencies.`);
+  }
+
+  const expectedNames = Object.keys(APPROVED_SHELL_RUNTIME_DEPENDENCIES).sort();
+  const actualNames = Object.keys(dependencies).sort();
+  if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
+    throw new Error(
+      `${label} must exactly match the approved Bento shell runtime dependencies (received ${actualNames.join(', ') || 'none'}).`,
+    );
+  }
+
+  for (const [name, expectedSpecifier] of Object.entries(APPROVED_SHELL_RUNTIME_DEPENDENCIES)) {
+    const entry = dependencies[name];
+    const actualSpecifier = typeof entry === 'string' ? entry : entry?.specifier;
+    if (actualSpecifier !== expectedSpecifier) {
+      throw new Error(
+        `${label} has an unapproved specifier for ${name} (received ${actualSpecifier || 'missing'}).`,
+      );
+    }
+  }
+}
+
+validateShellRuntimeDependencies(shellPackage.dependencies, 'extensions/bento-shell/package.json');
+
 function packageIdentity(key, metadata) {
   const sourceSeparator = key.search(/@(?:https?|git\+|file:)/);
   if (sourceSeparator > 0 && metadata?.version) {
@@ -93,6 +133,10 @@ if (!releaseLock?.packages || typeof releaseLock.packages !== 'object') {
 
 const muxuiSource = `file:${muxuiArtifact}`;
 const muxuiImporter = releaseLock.importers?.['extensions/bento-shell'];
+validateShellRuntimeDependencies(
+  muxuiImporter?.dependencies,
+  `${path.basename(releaseLockPath)} extensions/bento-shell importer`,
+);
 const muxuiDependency = muxuiImporter?.dependencies?.['@muxui/react'];
 const expectedImporterSpecifier = `file:${path.posix.relative('extensions/bento-shell', muxuiArtifact)}`;
 const importerSpecifier = muxuiDependency?.specifier;
@@ -137,10 +181,6 @@ const packages = Object.entries(releaseLock.packages).map(([key, metadata]) => {
     ...(hashes ? { hashes } : {}),
   };
 });
-
-if (packages.some((component) => component.name.startsWith('@tale-ui/'))) {
-  throw new Error('pnpm-lock.release.yaml still contains removed Tale UI packages.');
-}
 
 const muxuiPackage = packages.find((component) => component.name === '@muxui/react');
 if (!muxuiPackage || muxuiPackage.version !== muxuiProvenance.version) {

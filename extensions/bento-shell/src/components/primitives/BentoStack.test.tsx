@@ -56,7 +56,7 @@ describe('Bento layout primitives', () => {
     expect(markup).toContain('aria-label="Content"');
   });
 
-  it('matches Tale Row and Column defaults for current consumers', () => {
+  it('matches Bento Row and Column defaults for current consumers', () => {
     const rowMarkup = renderToStaticMarkup(<BentoRow />);
     const columnMarkup = renderToStaticMarkup(<BentoColumn />);
 

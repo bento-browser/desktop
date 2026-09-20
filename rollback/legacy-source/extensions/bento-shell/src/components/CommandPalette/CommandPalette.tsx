@@ -1,6 +1,6 @@
 // Layer-2 component: CommandPalette.
 //
-// Tale UI CommandPalette wrapped around Bento's command data. Default export
+// Mux CommandPalette wrapped around Bento's command data. Default export
 // so the entry chunk can React.lazy() it.
 //
 // Controlled by the parent via `onClose` — the parent decides when to mount
@@ -15,11 +15,11 @@
 
 import { useCallback, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  CommandPalette as TaleCommandPalette,
+  Button,
+  CommandPalette as MuxCommandPalette,
   useCommandPalette,
   type CommandPaletteCommand,
-} from '@tale-ui/react/command-palette';
-import { Icon } from '@tale-ui/react/icon';
+} from '@muxui/react';
 import { useShallow } from 'zustand/shallow';
 
 // Per-icon imports — barrel forbidden by eslint (bundle, §6.2).
@@ -38,6 +38,7 @@ import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
+import { BentoIcon } from '../primitives';
 import './CommandPalette.css';
 
 export interface CommandPaletteProps {
@@ -63,12 +64,8 @@ function settingsUrl(): string {
   return `${location.origin}/dist/settings.html`;
 }
 
-function privacyUrl(): string {
-  return `${location.origin}/dist/privacy.html`;
-}
-
 function commandIcon(icon: typeof SettingsIcon): ReactNode {
-  return <Icon icon={icon} size="sm" />;
+  return <BentoIcon icon={icon} size="sm" />;
 }
 
 function workspaceShortcut(index: number): readonly string[] | undefined {
@@ -123,13 +120,15 @@ function useCommands(): BentoCommand[] {
     });
     cmds.push({
       id: 'nav:privacy',
-      title: 'Open Privacy Dashboard',
-      subtitle: 'Review privacy state and site controls.',
+      title: 'Open Bento Privacy Settings',
+      subtitle: 'Manage Bento privacy and search settings.',
       group: 'Navigation',
       icon: commandIcon(ShieldIcon),
       keywords: ['privacy', 'dashboard', 'site controls'],
       action: () => {
-        dispatch({ type: 'tab/openUrl', url: privacyUrl(), focusExisting: true });
+        // Privacy controls live in the standalone Settings page in the
+        // rollback build; there is no separate privacy.html entrypoint.
+        dispatch({ type: 'tab/openUrl', url: settingsUrl(), focusExisting: true });
       },
     });
 
@@ -303,7 +302,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   // CommandPalette.Root is permanently open inside this component — the
   // chrome host overlay's visibility is what actually shows/hides the
   // palette. Keeping open=true means: (a) no remount on each show, so
-  // opening is instant after first paint, and (b) Tale UI's enter animation
+  // opening is instant after first paint, and (b) Mux's enter animation
   // only runs the first time, while subsequent opens fade via the chrome
   // opacity transition. close() only signals the parent (which signals
   // chrome).
@@ -358,7 +357,8 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   }, []);
 
   return (
-    <TaleCommandPalette.Root
+    <MuxCommandPalette.Root
+      className="bento-command-palette__popup"
       open={true}
       size="lg"
       closeOnSelect={false}
@@ -366,75 +366,76 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         if (!next) close();
       }}
     >
-      <TaleCommandPalette.Backdrop isDismissable>
-        <TaleCommandPalette.Popup
+      <MuxCommandPalette.Backdrop dismissable>
+        <MuxCommandPalette.Popup
           aria-label="Command palette"
           className="bento-command-palette__dialog"
-          modalProps={{ className: 'bento-command-palette__popup' }}
         >
-          <TaleCommandPalette.Title className="bento-command-palette__sr-only">
+          <MuxCommandPalette.Title className="bento-command-palette__sr-only">
             Command palette
-          </TaleCommandPalette.Title>
-          <TaleCommandPalette.Close aria-label="Close command palette" />
-          <TaleCommandPalette.Content
-            className="bento-command-palette__content"
-            inputValue={palette.query}
-            onInputChange={palette.setQuery}
-          >
-            <TaleCommandPalette.SearchField>
-              <TaleCommandPalette.Input
+          </MuxCommandPalette.Title>
+          <MuxCommandPalette.Close aria-label="Close command palette" />
+          <MuxCommandPalette.Content className="bento-command-palette__content">
+            <MuxCommandPalette.SearchField>
+              <MuxCommandPalette.Input
                 placeholder="Type a command, tab, or workspace…"
                 className="bento-command-palette__input"
+                value={palette.query}
+                onChange={(event) => palette.setQuery(event.currentTarget.value)}
                 autoFocus
                 onKeyDown={handleInputKeyDown}
               />
-              <TaleCommandPalette.ClearButton
-                aria-label="Clear search"
-                className="tale-button tale-button--ghost tale-button--sm"
-              >
-                Clear
-              </TaleCommandPalette.ClearButton>
-            </TaleCommandPalette.SearchField>
-            <TaleCommandPalette.ListBox
+              {palette.query.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Clear search"
+                  className="bento-command-palette__clear-button"
+                  onActivate={() => palette.setQuery('')}
+                >
+                  Clear
+                </Button>
+              ) : null}
+            </MuxCommandPalette.SearchField>
+            <MuxCommandPalette.ListBox
               aria-label="Commands"
               className="bento-command-palette__listbox"
             >
               {palette.groupedCommands.map((group) => (
-                <TaleCommandPalette.Section key={group.id}>
-                  <TaleCommandPalette.SectionHeader>{group.title}</TaleCommandPalette.SectionHeader>
+                <MuxCommandPalette.Section key={group.id}>
+                  <MuxCommandPalette.SectionHeader>{group.title}</MuxCommandPalette.SectionHeader>
                   {group.commands.map((command) => (
-                    <TaleCommandPalette.Item
+                    <MuxCommandPalette.Item
                       key={command.id}
-                      command={command}
+                      {...palette.getItemProps(command)}
                       textValue={commandTextValue(command)}
-                      onAction={() => void palette.runCommand(command)}
                     >
-                      <TaleCommandPalette.ItemIcon>{command.icon}</TaleCommandPalette.ItemIcon>
-                      <TaleCommandPalette.ItemContent>
-                        <TaleCommandPalette.ItemTitle>{command.title}</TaleCommandPalette.ItemTitle>
-                        <TaleCommandPalette.ItemDescription>
+                      <MuxCommandPalette.ItemIcon>{command.icon}</MuxCommandPalette.ItemIcon>
+                      <MuxCommandPalette.ItemContent>
+                        <MuxCommandPalette.ItemTitle>{command.title}</MuxCommandPalette.ItemTitle>
+                        <MuxCommandPalette.ItemDescription>
                           {command.subtitle}
-                        </TaleCommandPalette.ItemDescription>
-                      </TaleCommandPalette.ItemContent>
+                        </MuxCommandPalette.ItemDescription>
+                      </MuxCommandPalette.ItemContent>
                       {command.shortcut ? (
-                        <TaleCommandPalette.ItemMeta>
-                          <TaleCommandPalette.Shortcut keys={command.shortcut} />
-                        </TaleCommandPalette.ItemMeta>
+                        <MuxCommandPalette.ItemMeta>
+                          <MuxCommandPalette.Shortcut keys={command.shortcut} />
+                        </MuxCommandPalette.ItemMeta>
                       ) : command.meta ? (
-                        <TaleCommandPalette.ItemMeta>{command.meta}</TaleCommandPalette.ItemMeta>
+                        <MuxCommandPalette.ItemMeta>{command.meta}</MuxCommandPalette.ItemMeta>
                       ) : null}
-                    </TaleCommandPalette.Item>
+                    </MuxCommandPalette.Item>
                   ))}
-                </TaleCommandPalette.Section>
+                </MuxCommandPalette.Section>
               ))}
-            </TaleCommandPalette.ListBox>
+            </MuxCommandPalette.ListBox>
             {palette.filteredCommands.length === 0 ? (
-              <TaleCommandPalette.Empty>No matching commands.</TaleCommandPalette.Empty>
+              <MuxCommandPalette.Empty>No matching commands.</MuxCommandPalette.Empty>
             ) : null}
-            <TaleCommandPalette.Footer>{footerText}</TaleCommandPalette.Footer>
-          </TaleCommandPalette.Content>
-        </TaleCommandPalette.Popup>
-      </TaleCommandPalette.Backdrop>
-    </TaleCommandPalette.Root>
+            <MuxCommandPalette.Footer>{footerText}</MuxCommandPalette.Footer>
+          </MuxCommandPalette.Content>
+        </MuxCommandPalette.Popup>
+      </MuxCommandPalette.Backdrop>
+    </MuxCommandPalette.Root>
   );
 }

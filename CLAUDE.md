@@ -122,8 +122,8 @@ When adding, removing, or changing working core implementation behavior:
 
 Migrated React UI uses the public `@muxui/react` API and the shared Bento
 primitives under `extensions/bento-shell/src/components/primitives/`. The
-committed Mux artifact is the only UI package source; do not add Tale imports,
-MCP hooks, or compatibility dependencies.
+committed Mux artifact is the only UI package source; do not add unapproved UI
+package imports, MCP hooks, or compatibility dependencies.
 
 Before creating or modifying a component:
 
@@ -202,7 +202,7 @@ its public `styles.css`, `themes.css`, and documented component exports.
 
 The committed Mux artifact is the only UI dependency source. Keep its bytes,
 provenance, public exports, and pinned React Aria/Tiptap overrides unchanged.
-Do not add Tale imports, MCP hooks, or runtime/build assumptions.
+Do not add unapproved UI package imports, MCP hooks, or runtime/build assumptions.
 
 **Default install (dev loop)** — `pnpm install`:
 

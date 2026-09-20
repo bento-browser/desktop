@@ -1,24 +1,24 @@
 /* Layer-3 helper: searchable keyboard-shortcuts command palette. */
 
-/* Tale UI component CSS is unlayered, so these narrow unlayered selectors
- * intentionally beat its popup/listbox sizing rules. */
-.tale-command-palette__popup.bento-shortcuts-command-palette__popup {
+/* These narrow unlayered selectors keep the standalone rollback palette
+ * aligned with the shared Mux command-palette geometry. */
+.muxui-command-palette__popup:has(.bento-shortcuts-command-palette__dialog) {
   width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
   height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
-.tale-command-palette__dialog.bento-shortcuts-command-palette__dialog,
-.tale-command-palette__content.bento-shortcuts-command-palette__content,
-.tale-command-palette__listbox.bento-shortcuts-command-palette__listbox {
+.muxui-command-palette__dialog.bento-shortcuts-command-palette__dialog,
+.muxui-command-palette__content.bento-shortcuts-command-palette__content,
+.muxui-command-palette__listbox.bento-shortcuts-command-palette__listbox {
   min-height: 0;
   flex: 1 1 auto;
 }
 
-.tale-command-palette__listbox.bento-shortcuts-command-palette__listbox {
+.muxui-command-palette__listbox.bento-shortcuts-command-palette__listbox {
   max-height: none;
 }
 
-.tale-command-palette__item.bento-shortcuts-command-palette__item {
+.muxui-command-palette__item.bento-shortcuts-command-palette__item {
   cursor: default;
 }
 

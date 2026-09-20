@@ -129,11 +129,11 @@ body {
   line-height: var(--text-line-height);
 }
 
-.tale-dialog__popup {
+.bento-dialog__popup {
   outline: none;
 }
 
-.tale-card {
+.bento-card {
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-m);
@@ -141,37 +141,37 @@ body {
   overflow: hidden;
 }
 
-.tale-card--sm {
+.bento-card--sm {
   padding: var(--space-xs);
 }
 
-.tale-card--md {
+.bento-card--md {
   padding: var(--space-s);
 }
 
-.tale-card--outlined {
+.bento-card--outlined {
   border: 1px solid var(--neutral-22);
   background-color: var(--neutral-10);
 }
 
-.tale-card--filled {
+.bento-card--filled {
   background-color: var(--neutral-12);
 }
 
-.tale-card__header {
+.bento-card__header {
   color: var(--neutral-90);
   font-size: var(--label-m-font-size);
   font-weight: var(--label-font-weight);
   line-height: var(--label-line-height);
 }
 
-.tale-card__body {
+.bento-card__body {
   color: var(--neutral-70);
   font-size: var(--text-m-font-size);
   line-height: var(--text-line-height);
 }
 
-.tale-button {
+.bento-button {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -194,38 +194,38 @@ body {
   outline: none;
 }
 
-.tale-button:focus-visible {
+.bento-button:focus-visible {
   box-shadow:
     0 0 0 0.125rem var(--neutral-100),
     0 0 0 0.25rem var(--focus-ring-color);
 }
 
-.tale-button--primary {
+.bento-button--primary {
   border-color: transparent;
   background-color: var(--color-60);
   color: var(--color-60-fg);
 }
 
-.tale-button--primary:hover {
+.bento-button--primary:hover {
   background-color: var(--color-50);
   color: var(--color-50-fg);
 }
 
-.tale-button--primary:active {
+.bento-button--primary:active {
   background-color: var(--color-40);
   color: var(--color-40-fg);
 }
 
-.tale-button--neutral {
+.bento-button--neutral {
   background-color: var(--neutral-14);
   color: var(--neutral-90);
 }
 
-.tale-button--neutral:hover {
+.bento-button--neutral:hover {
   background-color: var(--neutral-18);
 }
 
-.tale-button--neutral:active {
+.bento-button--neutral:active {
   background-color: var(--neutral-22);
 }
 
