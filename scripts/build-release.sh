@@ -6,16 +6,12 @@
 # locally (sanity-check before tagging) and by the release and PR workflows.
 #
 # What's different from `npm run build`:
-#   1. Sets BENTO_RELEASE=1 so .pnpmfile.cjs's readPackage hook is a
-#      no-op, pulling @tale-ui/* from npm at the pinned versions instead
-#      of the local link target. Release artifacts must NOT depend on a
-#      working tree outside the repo.
-#   2. Installs from pnpm-lock.release.yaml with --frozen-lockfile.
-#      The committed release graph contains registry-backed Tale UI packages
-#      and cannot drift during CI or a later rebuild.
-#   3. Runs Bento's package step to produce platform artifacts, MAR, locales,
+#   1. Installs from pnpm-lock.release.yaml with --frozen-lockfile. Release
+#      artifacts consume the same frozen Mux candidate as developer builds and
+#      cannot drift during CI or a later rebuild.
+#   2. Runs Bento's package step to produce platform artifacts, MAR, locales,
 #      and update metadata, not just the app bundle.
-#   4. Restores the original lockfile + node_modules at the end so a dev
+#   3. Restores the original lockfile + node_modules at the end so a dev
 #      machine isn't left in release-mode after running this.
 #
 # Locally: run from the repo root. Requires the Firefox download +
@@ -64,11 +60,9 @@ mkdir -p "$OUT_DIR"
 # leave the workspace in release-mode. trap fires on success and failure.
 restore_dev_state() {
   step "Restoring dev state"
-  # Re-install in dev mode (BENTO_RELEASE unset) so node_modules links
-  # back to the local Tale UI checkout. Skip in CI — the runner is
+  # Re-install against the developer lock. Skip in CI — the runner is
   # ephemeral and re-installing is wasted time there.
   if [ -z "${CI:-}" ]; then
-    bash scripts/clear-tale-ui-links.sh || true
     pnpm install --force >/dev/null 2>&1 || true
   fi
 }

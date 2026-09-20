@@ -2,7 +2,7 @@
 //
 // The menu is hosted in its own chrome-mounted <browser>
 // (workspace-switcher.html) so it can render outside the sidebar — critical
-// when the rail is collapsed. Without this overlay the Tale UI Menu's
+// when the rail is collapsed. Without this overlay the Mux Menu's
 // popover renders inside the bento-shell-frame iframe
 // and gets clipped at the iframe boundary. iframes can't paint outside
 // their own bounds.

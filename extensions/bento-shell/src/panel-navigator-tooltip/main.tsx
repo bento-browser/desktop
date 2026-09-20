@@ -1,10 +1,8 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Tooltip } from '@tale-ui/react/tooltip';
+import { Button, Tooltip } from '@muxui/react';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/tooltip';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
@@ -41,29 +39,37 @@ function PanelNavigatorTooltipApp() {
   const top = payload.screenY - window.screenTop;
 
   return (
-    <Tooltip.Root isOpen>
-      <Tooltip.Trigger
-        aria-hidden
-        excludeFromTabOrder
-        style={{
-          position: 'fixed',
-          left,
-          top,
-          width: payload.width,
-          height: payload.height,
-          opacity: 0,
-          pointerEvents: 'none',
-          border: 0,
-          background: 'transparent',
-          padding: 0,
-          margin: 0,
-        }}
-      />
-      <Tooltip.Popup placement="bottom" offset={8}>
-        <Tooltip.Arrow />
-        {payload.label}
-      </Tooltip.Popup>
-    </Tooltip.Root>
+    <Tooltip
+      content={payload.label}
+      open={true}
+      placement="bottom"
+      offset={8}
+      trigger={
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-hidden
+          tabIndex={-1}
+          style={{
+            position: 'fixed',
+            left,
+            top,
+            width: payload.width,
+            height: payload.height,
+            minWidth: 0,
+            minHeight: 0,
+            minInlineSize: 0,
+            minBlockSize: 0,
+            opacity: 0,
+            pointerEvents: 'none',
+            border: 0,
+            background: 'transparent',
+            padding: 0,
+            margin: 0,
+          }}
+        />
+      }
+    />
   );
 }
 

@@ -86,6 +86,8 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run lc`: run Bento's source-overlay license check.
 - `pnpm run brand:regen`: reinstall canonical tracked branding through the
   normal import pipeline.
+- `pnpm run size:check`: report graph-aware JavaScript and direct-file size
+  ceilings; missing or malformed built assets still fail the check.
 
 Hosted release cache keys include `bento.json`, `config/**`, the patch and
 overlay inputs, relevant Bento build scripts, `configs/**`, and
@@ -111,15 +113,28 @@ cold-build bound.
 
 ## Reproducible release dependencies
 
-Developer installs use `pnpm-lock.yaml`, where Bento's pnpm hook records local
-Tale UI `link:` targets. Release and CI installs use the separate committed
-`pnpm-lock.release.yaml`, which records the registry-backed Tale UI graph.
+Developer installs use `pnpm-lock.yaml`. Release and CI installs use the
+separate committed `pnpm-lock.release.yaml`; both graphs consume the same
+committed Mux UI React candidate from
+`artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz`; its provenance sidecar records
+the source revision, bytes, digest, pack command, and that no publication was
+performed. The packed candidate exposes its public `./themes` and
+`./themes.css` entries alongside the root React renderer; consumers should use
+those exports rather than generated-file paths.
 `scripts/install-release-deps.sh` temporarily swaps in that root-format lock,
-sets `BENTO_RELEASE=1`, force-relinks with `--frozen-lockfile`, and restores the
-developer lock. The relink prevents an existing developer `link:` symlink from
-surviving into a release build; the cleanup helper deletes only verified Tale
-UI symlinks and refuses real directories. Any manifest or transitive-resolution
-drift fails the install instead of silently changing a release.
+force-relinks with `--frozen-lockfile`, and restores the developer lock. Any
+manifest or transitive-resolution drift fails the install instead of silently
+changing a release. The release SBOM includes the frozen Mux UI artifact's
+SHA-256 and source revision.
+
+The Mux UI candidate currently declares Tiptap `3.22.3`, whose
+`@tiptap/core` release is affected by
+[GHSA-j95f-988m-3j2f](https://github.com/advisories/GHSA-j95f-988m-3j2f).
+Bento applies explicit root overrides for the candidate's shipped Tiptap
+family at `3.31.3` in both dependency locks, including `@tiptap/core`,
+`@tiptap/pm`, and their peer packages. This keeps the runtime family on the
+patched line until a future Mux candidate updates its manifest; the committed
+Mux artifact and its provenance remain unchanged.
 
 After changing a dependency, update both graphs:
 

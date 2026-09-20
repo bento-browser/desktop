@@ -1,14 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Card } from '@tale-ui/react/card';
-import { ColorSwatch } from '@tale-ui/react/color-swatch';
-import { Column } from '@tale-ui/react/column';
-import { Icon } from '@tale-ui/react/icon';
-import { Popover } from '@tale-ui/react/popover';
-import { SearchField } from '@tale-ui/react/search-field';
-import { Text } from '@tale-ui/react/text';
-import { Tooltip } from '@tale-ui/react/tooltip';
+import { Card, ColorSwatch, Popover, SearchField, Text, Tooltip } from '@muxui/react';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
-import X from 'lucide-react/dist/esm/icons/x';
 
 import {
   BENTO_THEMES,
@@ -16,6 +8,8 @@ import {
   type BentoThemeCollection,
   type BentoThemeMeta,
 } from '../../theme/presets';
+import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
+import { BentoIcon, Column } from '../primitives';
 import './WorkspaceThemePicker.css';
 
 interface ThemePickerItem {
@@ -93,6 +87,7 @@ export function WorkspaceThemePicker({
   const [query, setQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedTheme = getThemeMeta(selectedThemeId);
+  const colorScheme = useResolvedColorScheme();
 
   const filteredThemes = useMemo(
     () => THEME_PICKER_ITEMS.filter((theme) => themeMatchesQuery(theme, query)),
@@ -130,122 +125,126 @@ export function WorkspaceThemePicker({
   }
 
   return (
-    <Popover.Root isOpen={isOpen} onOpenChange={handleOpenChange}>
-      <Popover.Trigger
-        className={`tale-button tale-button--neutral tale-button--sm bento-workspace-theme-picker__trigger${className ? ` ${className}` : ''}`}
-        aria-label={`Theme for ${workspaceName}: ${selectedTheme.name}`}
-      >
-        <ColorSwatch
-          color={selectedTheme.brand60}
-          secondaryColor={selectedTheme.neutral20}
-          shape="circle"
-          className="bento-workspace-theme-picker__trigger-swatch"
-        />
-        <Text variant="text" size="s" className="bento-workspace-theme-picker__trigger-label">
-          {selectedTheme.name}
-        </Text>
-        <Icon icon={ChevronDown} size="sm" className="bento-workspace-theme-picker__chevron" />
-      </Popover.Trigger>
-      <Popover.Popup
-        aria-label={`Choose theme for ${workspaceName}`}
-        className="tale-popover__popup--frameless bento-workspace-theme-picker__popover"
-        placement="bottom start"
-        offset={8}
-      >
-        <Column
-          gap="2xs"
-          className="bento-workspace-theme-picker__panel"
-          onKeyDown={(event) => event.stopPropagation()}
+    <Popover
+      open={isOpen}
+      onOpenChange={handleOpenChange}
+      aria-label={`Choose theme for ${workspaceName}`}
+      trigger={
+        <button
+          type="button"
+          className={`muxui-button bento-workspace-theme-picker__trigger${className ? ` ${className}` : ''}`}
+          data-variant="neutral"
+          data-size="sm"
+          aria-label={`Theme for ${workspaceName}: ${selectedTheme.name}`}
         >
+          <ColorSwatch
+            {...getThemeScopeAttributes(selectedTheme.id, colorScheme)}
+            color={selectedTheme.brand60}
+            secondaryColor={selectedTheme.neutral20}
+            shape="circle"
+            className="bento-workspace-theme-picker__trigger-swatch"
+          />
+          <Text variant="body" size="s" className="bento-workspace-theme-picker__trigger-label">
+            {selectedTheme.name}
+          </Text>
+          <BentoIcon
+            icon={ChevronDown}
+            size="sm"
+            className="bento-workspace-theme-picker__chevron"
+          />
+        </button>
+      }
+      placement="bottom-start"
+      offset={8}
+      className="bento-workspace-theme-picker__popover"
+    >
+      <Column
+        gap="2xs"
+        className="bento-workspace-theme-picker__panel"
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <Column gap="4xs" className="bento-workspace-theme-picker__search">
+          <SearchField
+            aria-label="Search themes"
+            value={query}
+            onChange={setQuery}
+            onClear={() => setQuery('')}
+            inputRef={searchInputRef}
+            className="bento-workspace-theme-picker__search-field"
+            inputProps={{ placeholder: 'Search themes...' }}
+          />
+        </Column>
+        {filteredThemes.length > 0 ? (
           <Column
-            gap="4xs"
-            className="tale-popover__search-container bento-workspace-theme-picker__search"
+            gap="3xs"
+            role="group"
+            aria-label="Theme results"
+            className="bento-workspace-theme-picker__list"
           >
-            <SearchField.Root slot={null} variant="inline" value={query} onChange={setQuery}>
-              <SearchField.Label>Search themes</SearchField.Label>
-              <SearchField.Input ref={searchInputRef} placeholder="Search themes..." />
-              <SearchField.ClearButton aria-label="Clear theme search">
-                <Icon icon={X} size="sm" />
-              </SearchField.ClearButton>
-            </SearchField.Root>
-          </Column>
-          {filteredThemes.length > 0 ? (
-            <Column
-              gap="3xs"
-              role="group"
-              aria-label="Theme results"
-              className="bento-workspace-theme-picker__list"
-            >
-              {filteredThemeGroups.map((collection) => (
-                <Column
-                  key={collection.id}
-                  gap="3xs"
-                  className="bento-workspace-theme-picker__group"
+            {filteredThemeGroups.map((collection) => (
+              <Column key={collection.id} gap="3xs" className="bento-workspace-theme-picker__group">
+                <Text
+                  as="div"
+                  variant="label"
+                  size="xs"
+                  color="muted"
+                  className="bento-workspace-theme-picker__group-label"
                 >
-                  <Text
-                    as="div"
-                    variant="label"
-                    size="xs"
-                    color="muted"
-                    className="bento-workspace-theme-picker__group-label"
-                  >
-                    {collection.label}
-                  </Text>
-                  <Column
-                    gap="3xs"
-                    role="group"
-                    aria-label={`${collection.label} themes`}
-                    className="bento-workspace-theme-picker__grid"
-                  >
-                    {collection.themes.map((theme) => {
-                      const isSelected = theme.id === selectedTheme.id;
-                      const accessibleName = `${theme.name}, ${collection.label}`;
-                      return (
-                        <Tooltip.Root key={theme.id} delay={400}>
+                  {collection.label}
+                </Text>
+                <Column
+                  gap="3xs"
+                  role="group"
+                  aria-label={`${collection.label} themes`}
+                  className="bento-workspace-theme-picker__grid"
+                >
+                  {collection.themes.map((theme) => {
+                    const isSelected = theme.id === selectedTheme.id;
+                    const accessibleName = `${theme.name}, ${collection.label}`;
+                    return (
+                      <Tooltip
+                        key={theme.id}
+                        delay={400}
+                        placement="top"
+                        offset={8}
+                        content={`${theme.name}: ${theme.description}`}
+                        trigger={
                           <Card.Button
                             aria-label={isSelected ? `${accessibleName}, selected` : accessibleName}
-                            isSelected={isSelected}
+                            selected={isSelected}
                             padding="sm"
                             className="bento-workspace-theme-picker__option"
-                            onPress={() => selectTheme(theme.id)}
+                            onActivate={() => selectTheme(theme.id)}
                           >
                             <ColorSwatch
+                              {...getThemeScopeAttributes(theme.id, colorScheme)}
                               color={theme.brand60}
                               secondaryColor={theme.neutral20}
                               shape="circle"
                               className="bento-workspace-theme-picker__option-swatch"
                             />
                             <Text
-                              variant="text"
+                              variant="body"
                               size="xs"
                               className="bento-workspace-theme-picker__option-name"
                             >
                               {theme.name}
                             </Text>
                           </Card.Button>
-                          <Tooltip.Popup placement="top" offset={8}>
-                            <Tooltip.Arrow />
-                            <Tooltip.Title>{theme.name}</Tooltip.Title>
-                            <Tooltip.Description>{theme.description}</Tooltip.Description>
-                          </Tooltip.Popup>
-                        </Tooltip.Root>
-                      );
-                    })}
-                  </Column>
+                        }
+                      />
+                    );
+                  })}
                 </Column>
-              ))}
-            </Column>
-          ) : (
-            <Text
-              as="div"
-              color="muted"
-              className="tale-popover__empty bento-workspace-theme-picker__empty"
-            >
-              No matching themes.
-            </Text>
-          )}
-        </Column>
-      </Popover.Popup>
-    </Popover.Root>
+              </Column>
+            ))}
+          </Column>
+        ) : (
+          <Text as="div" color="muted" className="bento-workspace-theme-picker__empty">
+            No matching themes.
+          </Text>
+        )}
+      </Column>
+    </Popover>
   );
 }

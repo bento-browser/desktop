@@ -16,14 +16,10 @@
     "ladle:build": "ladle build"
   },
   "dependencies": {
-    "@tale-ui/css": "2.0.0",
-    "@tale-ui/react": "2.0.0",
-    "@tale-ui/react-styles": "2.0.0",
-    "@tale-ui/themes": "2.0.0",
-    "@tale-ui/utils": "2.0.0",
+    "@muxui/react": "file:../../artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-aria-components": "^1.19.0",
+    "react-aria-components": "1.20.0",
     "zustand": "^5.0.0",
     "@tanstack/react-virtual": "^3.10.0",
     "lucide-react": "^0.460.0",

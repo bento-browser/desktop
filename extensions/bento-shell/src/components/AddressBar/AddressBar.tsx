@@ -3,7 +3,6 @@
 import {
   type ClipboardEvent,
   type CSSProperties,
-  type Key,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -12,13 +11,10 @@ import {
   useState,
 } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { CommandPalette, useCommandPalette } from '@tale-ui/react/command-palette';
-import { Icon } from '@tale-ui/react/icon';
-import { Image } from '@tale-ui/react/image';
-import { Row } from '@tale-ui/react/row';
-import { Select } from '@tale-ui/react/select';
+import { Button, CommandPalette, Image, Select, useCommandPalette } from '@muxui/react';
 
 import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
+import ChevronDownIcon from 'lucide-react/dist/esm/icons/chevron-down';
 import ClockIcon from 'lucide-react/dist/esm/icons/clock';
 import ClipboardIcon from 'lucide-react/dist/esm/icons/clipboard';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
@@ -40,6 +36,7 @@ import { useActiveWorkspaceIdForWindow } from '../../state/workspaces';
 import { applyDefaultEngineIfClean, chooseEngine, resetEngineSelection } from './engineSelection';
 import { buildOpenRows, type OpenAddressRowKind } from './openRows';
 import { replaceSelectionWithSafePaste } from './unsafeProtocol';
+import { BentoIcon, Row } from '../primitives';
 import {
   buildClipboardRow,
   buildSavedPanelRows,
@@ -65,6 +62,13 @@ export interface AddressBarProps {
   placement?: AddrbarPlacement | null;
 }
 
+type AddressBarBackdropStyle = CSSProperties & {
+  '--bento-address-bar-popup-left'?: string;
+  '--bento-address-bar-popup-top'?: string;
+  '--bento-address-bar-popup-width'?: string;
+  '--bento-address-bar-popup-height'?: string;
+};
+
 function rowIcon(kind: AddressRowKind | OpenAddressRowKind) {
   switch (kind) {
     case 'tab':
@@ -89,7 +93,7 @@ function ResultIcon({ row }: { row: AddressRow }) {
   if (row.favIconUrl) {
     return <Image className="bento-address-bar__favicon" src={row.favIconUrl} alt="" />;
   }
-  return <Icon icon={rowIcon(row.kind)} size="sm" />;
+  return <BentoIcon icon={rowIcon(row.kind)} size="sm" />;
 }
 
 function SearchEngineIcon({
@@ -100,7 +104,7 @@ function SearchEngineIcon({
   className: string;
 }) {
   if (engine?.iconUrl) return <Image className={className} src={engine.iconUrl} alt="" />;
-  return <Icon icon={SearchIcon} size="sm" className={className} />;
+  return <BentoIcon icon={SearchIcon} size="sm" className={className} />;
 }
 
 function ResultRow({ row }: { row: AddressRow }) {
@@ -268,7 +272,9 @@ export default function AddressBar({
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest('.bento-address-bar__popup, .bento-address-bar__engine-popover')) return;
+      if (target.closest('.muxui-command-palette__popup, .bento-address-bar__engine-popover')) {
+        return;
+      }
       onClose();
     };
     document.addEventListener('pointerdown', closeOnOutsidePointer, true);
@@ -284,18 +290,17 @@ export default function AddressBar({
   });
 
   const enginePickerDisabled = !searchEnginesHydrated || availableSearchEngines.length === 0;
-  const popupStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!placement) return undefined;
+  const backdropStyle = useMemo<AddressBarBackdropStyle>(() => {
+    if (!placement) return {};
     return {
-      left: placement.left,
-      top: placement.top,
-      width: placement.width,
-      height: placement.height,
+      '--bento-address-bar-popup-left': `${placement.left}px`,
+      '--bento-address-bar-popup-top': `${placement.top}px`,
+      '--bento-address-bar-popup-width': `${placement.width}px`,
+      '--bento-address-bar-popup-height': `${placement.height}px`,
     };
   }, [placement]);
-  const handleSearchEngineChange = useCallback((key: Key | null) => {
-    const next = typeof key === 'string' || typeof key === 'number' ? String(key) : null;
-    setEngineSelection((state) => chooseEngine(state, next));
+  const handleSearchEngineChange = useCallback((value?: string) => {
+    setEngineSelection((state) => chooseEngine(state, value ?? null));
   }, []);
 
   const handlePalettePointerDownCapture = useCallback(
@@ -372,26 +377,20 @@ export default function AddressBar({
         if (!next) onClose();
       }}
     >
-      <CommandPalette.Backdrop className="bento-address-bar__backdrop" isDismissable={false}>
+      <CommandPalette.Backdrop
+        className="bento-address-bar__backdrop"
+        dismissable={false}
+        style={backdropStyle}
+      >
         <CommandPalette.Popup
           aria-label="Address bar"
-          className="bento-address-bar__dialog"
+          className={`bento-address-bar__dialog bento-address-bar__popup${placement ? ' bento-address-bar__popup--anchored' : ''}`}
           onPointerDownCapture={handlePalettePointerDownCapture}
-          modalProps={{
-            className:
-              'bento-address-bar__popup' + (placement ? ' bento-address-bar__popup--anchored' : ''),
-            style: popupStyle,
-          }}
         >
           <CommandPalette.Title className="bento-address-bar__sr-only">
             Address bar
           </CommandPalette.Title>
-          <CommandPalette.Content
-            key={openVersion}
-            className="bento-address-bar__content"
-            inputValue={palette.query}
-            onInputChange={palette.setQuery}
-          >
+          <CommandPalette.Content key={openVersion} className="bento-address-bar__content">
             <Row gap="xs" align="center" className="bento-address-bar__toolbar">
               <CommandPalette.SearchField
                 aria-label="Search or enter address"
@@ -400,25 +399,32 @@ export default function AddressBar({
                 <CommandPalette.Input
                   placeholder="Search or enter address"
                   className="bento-address-bar__input"
+                  value={palette.query}
+                  onChange={(event) => palette.setQuery(event.currentTarget.value)}
                   autoFocus={!suppressFocus}
                   onKeyDown={handleInputKeyDown}
                   onPaste={handleInputPaste}
                 />
-                <CommandPalette.ClearButton
-                  aria-label="Clear search"
-                  className="tale-button tale-button--ghost tale-button--sm bento-address-bar__clear-button"
-                >
-                  Clear
-                </CommandPalette.ClearButton>
+                {palette.query.length > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Clear search"
+                    className="bento-address-bar__clear-button"
+                    onActivate={() => palette.setQuery('')}
+                  >
+                    Clear
+                  </Button>
+                ) : null}
               </CommandPalette.SearchField>
               <Select.Root
                 size="sm"
                 placeholder="Search"
-                selectedKey={selectedSearchEngineId}
-                onSelectionChange={handleSearchEngineChange}
-                isOpen={enginePickerOpen}
+                value={selectedSearchEngineId ?? undefined}
+                onChange={handleSearchEngineChange}
+                open={enginePickerOpen}
                 onOpenChange={setEnginePickerOpen}
-                isDisabled={enginePickerDisabled}
+                disabled={enginePickerDisabled}
                 className="bento-address-bar__engine-select"
               >
                 <Select.Label className="bento-address-bar__sr-only">Search engine</Select.Label>
@@ -430,10 +436,17 @@ export default function AddressBar({
                     engine={selectedEngine}
                     className="bento-address-bar__engine-icon"
                   />
-                  <Select.Icon />
+                  <Select.Value className="bento-address-bar__sr-only">
+                    {selectedEngine?.name ?? 'Search'}
+                  </Select.Value>
+                  <BentoIcon
+                    icon={ChevronDownIcon}
+                    size="sm"
+                    className="muxui-select-arrow bento-address-bar__engine-chevron"
+                  />
                 </Select.Trigger>
-                <Select.Popover className="bento-address-bar__engine-popover" isNonModal>
-                  <Select.ListBox>
+                <Select.Popup className="bento-address-bar__engine-popover" modal={false}>
+                  <Select.List>
                     {availableSearchEngines.map((engine) => (
                       <Select.Item key={engine.id} id={engine.id} textValue={engine.name}>
                         <span className="bento-address-bar__engine-option">
@@ -447,8 +460,8 @@ export default function AddressBar({
                         </span>
                       </Select.Item>
                     ))}
-                  </Select.ListBox>
-                </Select.Popover>
+                  </Select.List>
+                </Select.Popup>
               </Select.Root>
             </Row>
             <CommandPalette.ListBox
@@ -461,9 +474,8 @@ export default function AddressBar({
                   {group.commands.map((row) => (
                     <CommandPalette.Item
                       key={row.id}
-                      command={row}
+                      {...palette.getItemProps(row)}
                       textValue={rowTextValue(row)}
-                      onAction={() => void palette.runCommand(row)}
                     >
                       <ResultRow row={row} />
                     </CommandPalette.Item>

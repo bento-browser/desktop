@@ -1,18 +1,14 @@
 /*
- * Local @font-face declarations for the chrome-mounted shell.
+ * Local font declarations for the chrome-mounted shell.
  *
- * Tale UI's @tale-ui/css/index.css imports Google Fonts via @import url(...)
- * — that won't work in a Firefox privileged chrome context (strict CSP, no
- * network for chrome resources). We import only the token files we need
- * from @tale-ui/css/src/tokens/*.css (in main.tsx) and bundle WOFF2 fonts
- * locally here.
+ * The public Mux stylesheet ships self-hosted font assets. Extension entry
+ * points import that stylesheet, so no network font import is needed here.
+ * Native chrome deliberately omits package font-face rules and keeps its
+ * system fallback stack under the privileged document CSP.
  *
- * M0: relies on the system stack to keep the build small. M1+ will bundle
- * Inter (body) and JetBrains Mono (mono) WOFF2 files into ./fonts/ and
- * declare them here.
+ * Keep this layer available for Bento-specific overrides if native chrome
+ * later receives a packaged font asset mapping.
  */
 @layer bento.fonts {
-  /* TODO(M1): replace system stack with bundled Inter + JetBrains Mono.
-   * @font-face { font-family: 'Inter'; src: url('./fonts/Inter.woff2'); ... }
-   */
+  /* The Mux package owns the extension's bundled font assets. */
 }

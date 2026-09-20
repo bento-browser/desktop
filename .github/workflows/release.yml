@@ -81,11 +81,11 @@ jobs:
             .bento/engine-state.json
           key: ${{ runner.os }}-bento-engine-source-v1-release-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/firefox-patch-stack.mjs') }}
 
-      # Install dependencies in release mode so the @tale-ui/* deps
-      # resolve from npm (not local link). build-release.sh re-runs this
-      # internally for safety, but we install up front because the Bento
-      # download and bootstrap steps below need the repository's
-      # build driver and its release dependency graph on disk first.
+      # Install dependencies from the committed release lock while the
+      # @muxui/react candidate stays a frozen in-repo file. build-release.sh
+      # re-runs this internally for safety,
+      # but we install up front because the Bento download and bootstrap
+      # steps below need the repository's release graph on disk first.
       - name: Install dependencies (release mode)
         run: bash scripts/install-release-deps.sh
 
@@ -223,6 +223,9 @@ jobs:
 
       - name: Enforce preview release gate
         run: pnpm run release:security-check
+
+      - name: Verify release security assertions
+        run: node --test scripts/release-security.test.mjs
 
       - name: Download macOS artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

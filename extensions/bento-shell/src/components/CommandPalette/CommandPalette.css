@@ -1,22 +1,26 @@
-/* Layer-2 component: CommandPalette. Most visuals come from Tale UI's
+/* Layer-2 component: CommandPalette. Most visuals come from Mux UI's
  * CommandPalette recipe; Bento only constrains the chrome overlay frame. */
 
-/* Tale UI component CSS is unlayered, so these narrow unlayered selectors
+/* Mux UI component CSS is unlayered, so these narrow unlayered selectors
  * intentionally beat its popup/listbox sizing rules. */
-.tale-command-palette__popup.bento-command-palette__popup {
+.muxui-command-palette__popup {
   width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
   height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
-.tale-command-palette__dialog.bento-command-palette__dialog,
-.tale-command-palette__content.bento-command-palette__content,
-.tale-command-palette__listbox.bento-command-palette__listbox {
+.muxui-command-palette__dialog.bento-command-palette__dialog,
+.muxui-command-palette__content.bento-command-palette__content,
+.muxui-command-palette__listbox.bento-command-palette__listbox {
   min-height: 0;
   flex: 1 1 auto;
 }
 
-.tale-command-palette__listbox.bento-command-palette__listbox {
+.muxui-command-palette__listbox.bento-command-palette__listbox {
   max-height: none;
+}
+
+.bento-command-palette__clear-button {
+  flex: 0 0 auto;
 }
 
 @layer bento.components {

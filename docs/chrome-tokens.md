@@ -1,139 +1,71 @@
 # Chrome design tokens
 
-Bento's chrome (Firefox `browser.xhtml` + scripts under `src/browser/`) and
-privileged built-in pages such as native `about:preferences` are separate
-document trees from the `bento-shell` extension, so they can't read the
-extension's `:root` cascade. This doc covers how those Firefox-owned surfaces
-get Tale UI design tokens anyway, and how that pipeline absorbs future themes.
+Bento's Firefox chrome and the `bento-shell` extension have separate document
+trees. The native stylesheet therefore receives a generated copy of the
+public Mux token surface and Bento's compatibility aliases.
 
-## How it works today
+## Pipeline
 
-1. **Source of truth:** Tale UI CSS at
-   `/Users/admin/Projects/tale-ui/tale-ui/packages/css/src/{tokens,themes}/`.
-2. **Generator:** [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
-   reads those files and writes
-   [src/browser/base/content/bento-chrome-tokens.css](../src/browser/base/content/bento-chrome-tokens.css)
-   (gitignored — regenerated on every build).
-3. **Build wire-up:** [scripts/import.sh](../scripts/import.sh) runs
-   the generator before Bento's source and patch import steps. Every `pnpm run dev` /
-   `pnpm run build` pulls fresh values — drift = 0.
-4. **Chrome registration:** [patches/chrome-layout/01-bento-shell-mount.patch](../patches/chrome-layout/01-bento-shell-mount.patch)
-   adds `content/browser/bento-chrome-tokens.css` to `browser/base/jar.mn`.
-5. **Dev sync:** [scripts/sync-builtin-addon-symlinks.sh](../scripts/sync-builtin-addon-symlinks.sh)
-   creates a symlink under the deployed app's
-   `chrome/browser/content/browser/` so changes land without a full mach
-   rebuild.
-6. **Loaded by consumers:** [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
-   `injectChromeTokens()` adds a `<link rel="stylesheet">` to the chrome
-   `<window>` pointing at `chrome://browser/content/bento-chrome-tokens.css`.
-   Tale UI variable names (`--color-60`, `--neutral-90`, `--radius-m`, …)
-   are then available to chrome inline styles via `var()`. Native
-   `about:preferences` loads the same generated sheet from
-   [preferences.xhtml](../engine/browser/components/preferences/preferences.xhtml)
-   and maps Firefox's in-content semantic variables to those tokens in
-   [preferences.css](../engine/browser/themes/shared/preferences/preferences.css).
+1. The source is the pinned `@muxui/react` artifact consumed by
+   `extensions/bento-shell`. The generator reads its public `styles.css` and
+   `themes.css` exports, plus the Bento token layer and generated preset index.
+2. [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
+   writes [bento-chrome-tokens.css](../src/browser/base/content/bento-chrome-tokens.css).
+   Use `--output <path>` for an isolated package or proof run. This option is
+   required for checks that must not write the engine source tree.
+3. [scripts/import.sh](../scripts/import.sh) invokes the generator during the
+   normal source import workflow.
+4. The chrome layout patch registers the generated sheet in
+   `browser/base/jar.mn`.
+5. [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
+   loads the sheet and keeps `data-bento-theme` and `data-color-mode` on the
+   chrome root. No second theme controller is needed.
 
-## What gets included, what doesn't
+## Generated content
 
-The generator copies these files verbatim, in this order:
+The output includes the public Mux root, light and dark mode, contrast, and
+attribute-closure blocks. Mux theme selectors are adapted from
+`data-muxui-*` to the native `data-bento-theme`, `data-color-mode`, and
+optional `data-bento-contrast` attributes.
 
-```
-tokens/_colors.css        →  --brand-X primitives + per-hue scales
-tokens/_neutrals.css      →  --neutral-{cool,warm,…}-X scales
-tokens/_foreground.css    →  paired --color-X-fg / --neutral-X-fg text tokens
-tokens/_effects.css       →  --radius-X, --shadow-X, --scrim-X
-tokens/_spacing.css       →  --space-X
-tokens/_typography.css    →  --text-s-font-size, --text-font-weight, …
-themes/_color-modes.css   →  light/dark @media flips for --color-X
-themes/_color-themes.css  →  .color-red, .color-blue, … overrides
-themes/_neutral-themes.css→  .neutral-cool, .neutral-warm, … overrides
-```
+The Bento token layer supplies product-specific dimensions and surfaces. The
+generated preset index supplies the old short aliases used by existing Bento
+CSS and native chrome. The aliases are derived from public Mux declarations,
+so the bridge does not depend on a private Mux compiler or catalog.
 
-It deliberately **skips**:
+The generator omits package font-face rules because native chrome has no
+package URL base. Extension entry points consume Mux's self-hosted font assets
+through the package stylesheet. The native output contains no remote font or
+stylesheet import.
 
-- `tokens/_base.css`'s `html { font-size: 100% }` — chrome already uses
-  the browser-standard rem contract. The generator only needs token files,
-  not document-level defaults for HTML apps.
-- `index.css`'s Google Fonts `@import` — chrome CSP blocks the network
-  fetch and Bento bundles fonts locally for the extension.
-- All `foundations/`, `layout/`, `utilities/` — those style HTML/JSX
-  elements; chrome XUL has its own widget styling.
+Document and component styles are not copied into the native sheet. Chrome
+continues to provide its own widget styling while sharing the token values.
 
-It does not add root-size compensation. Tale UI now publishes tokens for the
-browser-standard root (`1rem = 16px`), and chrome consumes those values
-directly.
+## Theme behavior
 
-## Activating a different theme
+The chrome hook writes the persisted presentation id to `data-bento-theme` and
+the resolved light or dark mode to `data-color-mode`. The generated Mux theme
+rules then select the same canonical values as the extension. Bento's Default
+preset remains a scoped warm ladder with `--neutral-default-20: #e5e1dd`; the
+unscoped shell fallback can keep its cool neutral family.
 
-Tale UI's `_color-themes.css` and `_neutral-themes.css` ship CSS rules
-shaped like:
+Custom Scale imports remain supported by
+[scripts/import-theme.mjs](../scripts/import-theme.mjs). The importer preserves
+foreground overrides and rewrites them to the Bento theme and mode attributes.
+Run the theme sync before generating an isolated chrome stylesheet.
 
-```css
-.color-red {
-  --brand-5: var(--red-5);
-  --brand-10: var(--red-10);
-  /* … */
-}
-.neutral-cool {
-  --neutral-default-5: var(--neutral-cool-5);
-  /* … */
-}
+## Focused verification
+
+Use the repository Node 24.19 runtime and an isolated output path:
+
+```sh
+tmp_dir="$(mktemp -d)"
+/Users/admin/.vite-plus/js_runtime/node/24.19.0/bin/node scripts/sync-theme-presets.mjs
+/Users/admin/.vite-plus/js_runtime/node/24.19.0/bin/node \
+  scripts/generate-chrome-tokens.mjs \
+  --output "$tmp_dir/bento-chrome-tokens.css"
 ```
 
-To activate a theme on the chrome side, add the corresponding class to
-the chrome `<window>` element. The simplest spot is
-[bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js),
-right after `injectChromeTokens()`:
-
-```js
-document.documentElement.classList.add('color-red', 'neutral-cool');
-```
-
-Tale UI's cascade then redefines `--brand-X` (and through it, `--color-X`)
-to the chosen palette, and chrome inline styles using `var(--color-60)`
-re-render in the new accent. Same mechanism the extension uses on
-`<html data-workspace-color="…">`.
-
-## Adding a new theme via the Scale app
-
-When the Scale app's algorithm produces a new palette in Tale UI core:
-
-1. Generate the palette CSS with the Scale app and commit it as
-   `tale-ui/tale-ui/packages/css/src/themes/_<name>-themes.css` — same
-   shape as the existing `_color-themes.css` / `_neutral-themes.css`
-   (a top-level class selector that overrides `--brand-X` /
-   `--neutral-default-X` with calculated values).
-2. Add the new file to the `SOURCES` array in
-   [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
-   (preserve the order: tokens → color-modes → palette themes).
-3. Run `pnpm run import`. The generator picks the new file up; chrome
-   gets the rules.
-4. Activate via `documentElement.classList.add('<your-theme-class>')`
-   in the chrome script (or, eventually, drive the class from a
-   `bento.theme.*` pref + a runtime listener).
-
-The extension's [extensions/bento-shell/src/main.tsx](../extensions/bento-shell/src/main.tsx)
-already imports Tale UI's index.css indirectly via `@tale-ui/css`, so
-the same theme classes apply on the extension side without any extra
-plumbing — single source of truth across both surfaces.
-
-## Updating Tale UI
-
-When Tale UI's primitives shift (recolored brand, new neutral scale,
-added radius step, shadow tweak, etc.), the next `pnpm run import`
-regenerates the chrome stylesheet from the new source. Nothing manual.
-The only times this file needs human attention are:
-
-- A new file is added under `tokens/` or `themes/` that we want chrome
-  to consume — add it to the `SOURCES` array.
-- A new file under `tokens/` introduces something chrome should NOT
-  apply (a new `_base.css`-style document-root override, or content
-  styles that target HTML elements chrome doesn't have) — update the
-  "skips" list in this doc and the generator.
-- Tale UI changes its root font-size convention again. Re-audit Bento's
-  bespoke `rem` values and this generator before importing the update.
-
-If `pnpm run import` ever fails with `cannot read .../tokens/_X.css`,
-either Tale UI removed a file we're reading or the path to the Tale UI
-checkout changed — fix the `SOURCES` list or the `TALE_UI_CSS` constant
-at the top of the generator.
+The generated file should contain `--shadow-l`, `--font-size-root`, and
+`[data-bento-theme='standard-harbour']`, while containing no `@import`, remote
+font URL, or `data-muxui-*` selector.

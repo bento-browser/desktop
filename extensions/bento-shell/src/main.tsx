@@ -8,32 +8,10 @@ import { createRoot } from 'react-dom/client';
 // hooks. performance.mark is on globalThis in all Firefox processes.
 performance.mark('bento.boot');
 
-// @tale-ui/css defines the design token system + data-color-mode rules.
-// Without this loaded, tokens like --neutral-90 don't have values and
-// dark-mode selectors don't apply. Per-component @tale-ui/react-styles
-// imports use these tokens but don't define them.
-import '@tale-ui/css/src';
-
-// Tale UI shared primitives — provides the dropdown popup background,
-// dropdown item layout, separator, etc. Per-component CSS files (menu, select,
-// combobox, …) are additive and assume this is already loaded. Tale UI only
-// auto-loads it via the full @tale-ui/react-styles index, which we skip for
-// bundle-size reasons (§6.2).
-import '@tale-ui/react-styles/_primitives';
-
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/icon-button';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/column';
-import '@tale-ui/react-styles/row';
-import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/menu';
-import '@tale-ui/react-styles/avatar';
-import '@tale-ui/react-styles/dialog';
-import '@tale-ui/react-styles/autocomplete';
-import '@tale-ui/react-styles/search-field';
-import '@tale-ui/react-styles/spinner';
-import '@tale-ui/react-styles/tooltip';
+// Mux owns the public component selectors, tokens, and accessibility
+// behavior. The Bento token and preset layers below provide the existing
+// browser-specific appearance and workspace theme scopes.
+import './theme/muxui.css';
 
 import './theme/bento-tokens.css';
 import './theme/presets/index.css';

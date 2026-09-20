@@ -13,7 +13,7 @@
 //     document.title = BENTO_OPEN_WORKSPACE_SWITCHER_<ts>, which chrome's
 //     bento-shell-mount.js poll picks up and reveals this overlay frame.
 //   - This page's BroadcastChannel listener stores the payload + opens
-//     a Tale UI Menu anchored to an invisible trigger element positioned
+//     a Mux Menu anchored to an invisible trigger element positioned
 //     at the translated chrome-window coords.
 //   - On item action OR backdrop click: Menu's onOpenChange(false) fires
 //     close() which clears state and signals chrome to hide.
@@ -21,27 +21,21 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useShallow } from 'zustand/shallow';
-import { Menu } from '@tale-ui/react/menu';
-import { Avatar } from '@tale-ui/react/avatar';
-import { Text } from '@tale-ui/react/text';
-import { Icon } from '@tale-ui/react/icon';
+import { Avatar, Menu, Text } from '@muxui/react';
 import Check from 'lucide-react/dist/esm/icons/check';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
 import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/menu';
-import '@tale-ui/react-styles/avatar';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
+import { getThemeScopeAttributes, useResolvedColorScheme } from '../theme/themeScope';
 import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
 import { requestConfirm } from '../bridge/useConfirm';
 import { requestEditWorkspace } from '../bridge/useEditWorkspace';
@@ -56,6 +50,7 @@ import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/work
 import { useWorkspaceIdsWithPlayingAudio, useWorkspaceTabIds } from '../state/tabs';
 import { BENTO_THEMES, DEFAULT_THEME_ID } from '../theme/presets';
 import { WorkspaceAudioParticles } from '../components/WorkspaceSwitcher/WorkspaceAudioParticles';
+import { BentoIcon } from '../components/primitives/BentoIcon';
 // Reuse the inline menu's CSS — only the trigger styles in
 // WorkspaceSwitcher.css are unused here; the popover/avatar/item rules
 // all apply identically to this overlay's menu DOM.
@@ -67,7 +62,7 @@ const NEW_WORKSPACE_KEY = '__new__';
 const EDIT_ALL_WORKSPACES_KEY = '__edit_all__';
 const EDIT_WORKSPACE_KEY = '__edit__';
 const DELETE_WORKSPACE_KEY = '__delete__';
-const SMALL_MENU_CLASS = 'tale-menu__popup--sm';
+const SMALL_MENU_CLASS = 'bento-workspace-switcher__menu';
 
 // Themes new workspaces cycle through so each is visually distinct in the
 // switcher without the user having to open Edit Workspace. Excludes the
@@ -102,6 +97,7 @@ function looksLikeEmojiValue(value: string): boolean {
 function WorkspaceSwitcherOverlayApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
+  const colorScheme = useResolvedColorScheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   // Per-window active workspace (phase A.3). The chrome window that owns
   // this overlay determines which workspace is highlighted as "current".
@@ -216,7 +212,7 @@ function WorkspaceSwitcherOverlayApp() {
 
   return (
     <Menu.Root
-      isOpen={true}
+      open={true}
       onOpenChange={(open) => {
         if (!open) close();
       }}
@@ -230,7 +226,7 @@ function WorkspaceSwitcherOverlayApp() {
       <Menu.Trigger
         ref={triggerRef}
         aria-hidden
-        excludeFromTabOrder
+        tabIndex={-1}
         style={{
           position: 'fixed',
           top: triggerY,
@@ -245,12 +241,8 @@ function WorkspaceSwitcherOverlayApp() {
           margin: 0,
         }}
       />
-      <Menu.Popover
-        placement="bottom start"
-        offset={4}
-        className="bento-workspace-switcher__popover"
-      >
-        <Menu.MenuList className={SMALL_MENU_CLASS} aria-label="Workspaces">
+      <Menu.Popup placement="bottom-start" offset={4} className="bento-workspace-switcher__popover">
+        <Menu.List className={SMALL_MENU_CLASS} aria-label="Workspaces">
           {workspaces.map((w) => {
             const icon = w.icon?.trim();
             const hasEmojiIcon = !!icon && looksLikeEmojiValue(icon);
@@ -261,24 +253,24 @@ function WorkspaceSwitcherOverlayApp() {
                   <Avatar.Root
                     size="sm"
                     className="bento-workspace-switcher__avatar"
-                    data-bento-theme={w.themeId ?? DEFAULT_THEME_ID}
+                    {...getThemeScopeAttributes(w.themeId, colorScheme)}
                     data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
                   >
                     <Avatar.Fallback>{icon || workspaceInitial(w.name)}</Avatar.Fallback>
                   </Avatar.Root>
                   <WorkspaceAudioParticles active={hasPlayingAudio} variant="menu" />
                 </span>
-                <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+                <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
                   {w.name}
                 </Text>
-                {w.id === activeId ? <Icon icon={Check} size="sm" label="Active" /> : null}
+                {w.id === activeId ? <BentoIcon icon={Check} size="sm" label="Active" /> : null}
               </Menu.Item>
             );
           })}
           <Menu.Separator />
           <Menu.Item id={NEW_WORKSPACE_KEY} textValue="New workspace" onAction={onCreate}>
-            <Icon icon={Plus} size="sm" />
-            <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+            <BentoIcon icon={Plus} size="sm" />
+            <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
               New workspace
             </Text>
           </Menu.Item>
@@ -287,8 +279,8 @@ function WorkspaceSwitcherOverlayApp() {
             textValue="Edit all workspaces"
             onAction={onRequestEditAll}
           >
-            <Icon icon={SlidersHorizontal} size="sm" />
-            <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+            <BentoIcon icon={SlidersHorizontal} size="sm" />
+            <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
               Edit all workspaces
             </Text>
           </Menu.Item>
@@ -298,8 +290,8 @@ function WorkspaceSwitcherOverlayApp() {
               textValue="Edit this workspace"
               onAction={onRequestEdit}
             >
-              <Icon icon={Pencil} size="sm" />
-              <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+              <BentoIcon icon={Pencil} size="sm" />
+              <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
                 Edit this workspace
               </Text>
             </Menu.Item>
@@ -311,14 +303,14 @@ function WorkspaceSwitcherOverlayApp() {
               onAction={onRequestDelete}
               className="bento-workspace-switcher__delete-item"
             >
-              <Icon icon={Trash2} size="sm" />
-              <Text variant="text" size="s" className="bento-workspace-switcher__item-name">
+              <BentoIcon icon={Trash2} size="sm" />
+              <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
                 Delete {active!.name}
               </Text>
             </Menu.Item>
           ) : null}
-        </Menu.MenuList>
-      </Menu.Popover>
+        </Menu.List>
+      </Menu.Popup>
     </Menu.Root>
   );
 }

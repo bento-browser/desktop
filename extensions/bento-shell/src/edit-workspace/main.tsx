@@ -13,35 +13,16 @@
 //   - Cancel: set document.title = BENTO_CLOSE_EDIT_WORKSPACE_<ts>.
 //   - Save: dispatch workspace/update through the existing tools port,
 //     then close.
-// Dialog stays mounted with isOpen=true permanently — visibility is
+// Dialog stays mounted with open=true permanently — visibility is
 // purely a chrome concern via the host overlay (same pattern as palette
 // and confirm).
 
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Dialog } from '@tale-ui/react/dialog';
-import { Button } from '@tale-ui/react/button';
-import { TextField } from '@tale-ui/react/text-field';
-import { Text } from '@tale-ui/react/text';
-import { Column } from '@tale-ui/react/column';
-import { Row } from '@tale-ui/react/row';
+import { Button, Dialog, Text, TextField } from '@muxui/react';
+import { Column, Row } from '../components/primitives';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/card';
-import '@tale-ui/react-styles/column';
-import '@tale-ui/react-styles/dialog';
-import '@tale-ui/react-styles/text-field';
-import '@tale-ui/react-styles/color-swatch';
-import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/icon-button';
-import '@tale-ui/react-styles/list-box';
-import '@tale-ui/react-styles/popover';
-import '@tale-ui/react-styles/row';
-import '@tale-ui/react-styles/search-field';
-import '@tale-ui/react-styles/tooltip';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
@@ -114,62 +95,59 @@ function EditWorkspaceApp() {
   const workspaceName = draftName.trim() || payload?.name || 'workspace';
 
   return (
-    <Dialog.Root
-      isOpen={true}
+    <Dialog
+      open={true}
+      title="Edit workspace"
+      description="Rename, pick a theme, or set an emoji for this workspace."
+      dismissable
       onOpenChange={(open) => {
         if (!open) close();
       }}
+      actionsClassName="bento-edit-workspace__actions"
+      actions={
+        <>
+          <Button variant="neutral" onActivate={close}>
+            Cancel
+          </Button>
+          <Button variant="primary" onActivate={onSave}>
+            Save
+          </Button>
+        </>
+      }
     >
-      <Dialog.Backdrop isDismissable>
-        <Dialog.Popup>
-          <Dialog.Title>Edit workspace</Dialog.Title>
-          <Dialog.Description>
-            Rename, pick a theme, or set an emoji for this workspace.
-          </Dialog.Description>
-          <Column gap="m" className="bento-edit-workspace__form">
-            <Row gap="m" align="end" className="bento-edit-workspace__name-row">
-              <Column gap="2xs" className="bento-edit-workspace__icon-field">
-                <Text variant="label" size="s" as="span">
-                  Icon
-                </Text>
-                <WorkspaceIconField
-                  workspaceName={workspaceName}
-                  value={draftIcon || undefined}
-                  fallback={workspaceInitial(workspaceName)}
-                  onIconChange={(icon) => setDraftIcon(icon ?? '')}
-                />
-              </Column>
-              <TextField.Root
-                value={draftName}
-                onChange={setDraftName}
-                className="bento-edit-workspace__name-field"
-              >
-                <TextField.Label>Workspace name</TextField.Label>
-                <TextField.Input autoFocus />
-              </TextField.Root>
-            </Row>
-            <Column gap="2xs">
-              <Text variant="label" size="s">
-                Theme
-              </Text>
-              <WorkspaceThemePicker
-                workspaceName={workspaceName}
-                selectedThemeId={draftThemeId}
-                onThemeChange={setDraftThemeId}
-              />
-            </Column>
+      <Column gap="m" className="bento-edit-workspace__form">
+        <Row gap="m" align="end" className="bento-edit-workspace__name-row">
+          <Column gap="2xs" className="bento-edit-workspace__icon-field">
+            <Text variant="label" size="s" as="span">
+              Icon
+            </Text>
+            <WorkspaceIconField
+              workspaceName={workspaceName}
+              value={draftIcon || undefined}
+              fallback={workspaceInitial(workspaceName)}
+              onIconChange={(icon) => setDraftIcon(icon ?? '')}
+            />
           </Column>
-          <Dialog.Actions>
-            <Button variant="neutral" onPress={close}>
-              Cancel
-            </Button>
-            <Button variant="primary" onPress={onSave}>
-              Save
-            </Button>
-          </Dialog.Actions>
-        </Dialog.Popup>
-      </Dialog.Backdrop>
-    </Dialog.Root>
+          <TextField
+            label="Workspace name"
+            value={draftName}
+            onChange={setDraftName}
+            className="bento-edit-workspace__name-field"
+            autoFocus
+          />
+        </Row>
+        <Column gap="2xs">
+          <Text variant="label" size="s">
+            Theme
+          </Text>
+          <WorkspaceThemePicker
+            workspaceName={workspaceName}
+            selectedThemeId={draftThemeId}
+            onThemeChange={setDraftThemeId}
+          />
+        </Column>
+      </Column>
+    </Dialog>
   );
 }
 

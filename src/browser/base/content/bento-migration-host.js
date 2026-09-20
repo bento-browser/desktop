@@ -15,7 +15,7 @@
     const requestedMode = params.get('mode');
     const mode = requestedMode === 'dark' ? 'dark' : 'light';
     const root = document.documentElement;
-    root.classList.add('tale-ui');
+    root.setAttribute('data-bento-theme', 'default');
     root.setAttribute('data-color-mode', mode);
   }
 

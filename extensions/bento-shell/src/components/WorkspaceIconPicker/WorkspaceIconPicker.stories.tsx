@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Column } from '@tale-ui/react/column';
-import { Row } from '@tale-ui/react/row';
-import { Text } from '@tale-ui/react/text';
+import { Text } from '@muxui/react';
 
 import { WorkspaceIconField } from './WorkspaceIconPicker';
+import { Column, Row } from '../primitives';
 
 function StoryFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -31,7 +30,7 @@ function StatefulField({
         fallback={fallback}
         onIconChange={setValue}
       />
-      <Text variant="text" size="s">
+      <Text variant="body" size="s">
         {name}
       </Text>
     </Row>

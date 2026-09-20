@@ -1,5 +1,5 @@
-// Tale UI Menu wrapper used inside the chrome-menu overlay page. Takes
-// a serializable items payload from chrome and renders a Tale UI menu
+// Mux Menu wrapper used inside the chrome-menu overlay page. Takes
+// a serializable items payload from chrome and renders a Mux menu
 // anchored to an invisible trigger positioned at the chrome-window
 // coords of the original click target.
 //
@@ -9,8 +9,8 @@
 // well-known itemId conventions or by extending this schema later.
 
 import { useRef } from 'react';
-import { Menu } from '@tale-ui/react/menu';
-import { SubmenuTrigger } from 'react-aria-components';
+import { Menu } from '@muxui/react';
+import './menu.css';
 
 export interface ChromeMenuItem {
   /** Stable id echoed back to chrome on selection. */
@@ -37,7 +37,7 @@ export interface ChromeMenuOpenPayload {
   contextId: string;
   anchor: ChromeMenuAnchor;
   items: ChromeMenuItem[];
-  placement?: 'bottom start' | 'bottom end';
+  placement?: 'bottom-start' | 'bottom-end';
 }
 
 interface ChromeMenuProps {
@@ -46,7 +46,12 @@ interface ChromeMenuProps {
   onClose: () => void;
 }
 
-const SMALL_MENU_CLASS = 'tale-menu__popup--sm';
+const SMALL_MENU_CLASS = 'bento-chrome-menu--sm';
+const SUBMENU_ITEM_CLASS = 'bento-chrome-menu__submenu-item';
+
+function itemId(item: { id?: string; key?: string; value?: string } | undefined): string {
+  return String(item?.id ?? item?.key ?? item?.value ?? '');
+}
 
 function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
   return items.map((item, index) => {
@@ -54,31 +59,29 @@ function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
       return <Menu.Separator key={item.id || `sep-${index}`} />;
     }
     if (item.items && item.items.length > 0) {
-      // Submenu: wrap a styled Menu.Item trigger and the nested Menu.Popover
-      // in react-aria-components' SubmenuTrigger. Tale UI's
-      // Menu.SubmenuTrigger styles the trigger ITEM (chevron, etc.); the
-      // OUTER wrapper that wires up open-on-hover/click belongs to
-      // react-aria-components.
-      //
-      // `id` MUST be present on Menu.SubmenuTrigger (it's a styled
-      // AriaMenuItem and react-aria's collection layer dereferences a
-      // null id during keyboard-navigation map lookups — symptom is
-      // "t is null" in the minified bundle the first time the menu
-      // renders). The React `key` is unrelated; it satisfies the
-      // children-array diff, not the collection identity.
       return (
-        <SubmenuTrigger key={item.id}>
-          <Menu.SubmenuTrigger id={item.id}>{item.label ?? ''}</Menu.SubmenuTrigger>
-          <Menu.Popover>
-            <Menu.MenuList className={SMALL_MENU_CLASS} onAction={(key) => onSelect(String(key))}>
+        <Menu.Submenu key={item.id}>
+          <Menu.Item
+            id={item.id}
+            textValue={item.label ?? ''}
+            disabled={item.isDisabled}
+            className={SUBMENU_ITEM_CLASS}
+          >
+            {item.label ?? ''}
+          </Menu.Item>
+          <Menu.Popup>
+            <Menu.List
+              className={SMALL_MENU_CLASS}
+              onAction={(selected) => onSelect(itemId(selected))}
+            >
               {renderItems(item.items, onSelect)}
-            </Menu.MenuList>
-          </Menu.Popover>
-        </SubmenuTrigger>
+            </Menu.List>
+          </Menu.Popup>
+        </Menu.Submenu>
       );
     }
     return (
-      <Menu.Item key={item.id} id={item.id} isDisabled={item.isDisabled}>
+      <Menu.Item key={item.id} id={item.id} textValue={item.label ?? ''} disabled={item.isDisabled}>
         {item.label ?? ''}
       </Menu.Item>
     );
@@ -86,7 +89,7 @@ function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
 }
 
 export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
-  // Invisible anchor positioned at the chrome trigger's rect. react-aria
+  // Invisible anchor positioned at the chrome trigger's rect. Mux
   // uses the trigger element's getBoundingClientRect() to position the
   // popover; an opacity:0, pointer-events:none button still has a rect
   // for that math. Same trick as workspace-switcher/main.tsx, but no
@@ -94,11 +97,11 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
   // rect is already in chrome-window coords (this overlay frame covers
   // the whole window, so its DOM coords == chrome-window coords).
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { anchor, items, placement = 'bottom end' } = payload;
+  const { anchor, items, placement = 'bottom-end' } = payload;
 
   return (
     <Menu.Root
-      isOpen={true}
+      open={true}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
@@ -106,7 +109,7 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
       <Menu.Trigger
         ref={triggerRef}
         aria-hidden
-        excludeFromTabOrder
+        tabIndex={-1}
         style={{
           position: 'fixed',
           top: anchor.top,
@@ -121,11 +124,11 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
           margin: 0,
         }}
       />
-      <Menu.Popover placement={placement} offset={4}>
-        <Menu.MenuList className={SMALL_MENU_CLASS} onAction={(key) => onSelect(String(key))}>
+      <Menu.Popup placement={placement} offset={4}>
+        <Menu.List className={SMALL_MENU_CLASS} onAction={(selected) => onSelect(itemId(selected))}>
           {renderItems(items, onSelect)}
-        </Menu.MenuList>
-      </Menu.Popover>
+        </Menu.List>
+      </Menu.Popup>
     </Menu.Root>
   );
 }

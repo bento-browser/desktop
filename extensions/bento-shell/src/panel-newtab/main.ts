@@ -1,4 +1,4 @@
-import '@tale-ui/css/src';
+import '../theme/muxui.css';
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';

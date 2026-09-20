@@ -13,10 +13,6 @@ export default defineConfig({
     },
   },
 
-  optimizeDeps: {
-    exclude: ['@tale-ui/react', '@tale-ui/react-styles', '@tale-ui/utils'],
-  },
-
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
   },

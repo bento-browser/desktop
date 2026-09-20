@@ -51,6 +51,7 @@ import { useAddressBarStore } from '../state/addressBar';
 import { useSearchEnginesStore } from '../state/searchEngines';
 import { usePanelFocusStore } from '../state/panelFocus';
 import { useExternalMergeStore } from '../state/externalMerge';
+import { resolveThemeId } from '../theme/presets';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -255,7 +256,10 @@ function ensureConnection(): void {
               payload.windowId = state.windowId;
             }
             const activeWorkspace = wsState.byId[event.workspaceId];
-            payload.themeId = event.themeId ?? activeWorkspace?.themeId ?? 'default';
+            // This payload is the extension-to-chrome presentation hint. Keep
+            // the tools event and persisted workspace id raw, but resolve
+            // unknown/legacy ids before chrome applies its scoped stylesheet.
+            payload.themeId = resolveThemeId(event.themeId ?? activeWorkspace?.themeId);
             if (typeof event.mainWidthPx === 'number') {
               payload.mainWidthPx = event.mainWidthPx;
             }
@@ -264,7 +268,7 @@ function ensureConnection(): void {
             }
             // Bundle chrome-bound settings into the panels payload so
             // they reach chrome via the single BENTO_PANELS title-IPC
-            // channel. uiColorMode flips Tale UI tokens on the chrome
+            // channel. uiColorMode flips Mux/Bento tokens on the chrome
             // window root; sidebarCollapsed toggles the narrow-rail
             // class on #bento-shell-host; sidebarHidden and
             // sidebarShortcutBehavior drive Cmd/Ctrl+S hide/restore;

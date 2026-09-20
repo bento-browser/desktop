@@ -9,34 +9,35 @@
  * for the rest of the shell via useWorkspaceTheme; chrome receives it
  * through the active BENTO_PANELS payload. */
 
-/* Avatar accent override — Tale UI's .tale-avatar { background-color }
+/* Avatar accent override — Mux UI's .muxui-avatar { background-color }
  * rule is UNLAYERED, so a @layer-wrapped rule loses regardless of
  * specificity (CSS spec: any unlayered rule outranks any layered rule).
- * Keep these rules outside @layer so they can override Tale UI's defaults.
+ * Keep these rules outside @layer so they can override Mux UI's defaults.
  *
  * Pair: --bento-workspace-accent (--{hue}-60) for the saturated bg,
  * --bento-workspace-accent-fg (--{hue}-5) for the lightest tint of the
- * same hue as foreground. Mirrors Tale UI's --color-60 / --color-60-fg
+ * same hue as foreground. Mirrors Mux UI's --color-60 / --color-60-fg
  * convention so contrast stays legible across every workspace color.
  *
- * The fallback (initial / icon) text needs its own selector — Tale UI
- * sets `color: var(--neutral-70)` directly on `.tale-avatar__fallback`,
+ * The fallback (initial / icon) text needs its own selector — Mux UI
+ * sets `color: var(--neutral-70)` directly on `.muxui-avatar__fallback`,
  * which beats inherited color from our wrapper rule. Compound selector
- * (3 classes) is more specific than Tale UI's `.tale-avatar__fallback`
+ * (3 classes) is more specific than Mux UI's `.muxui-avatar__fallback`
  * (1 class) so we win on specificity. */
-.tale-avatar.bento-workspace-switcher__avatar {
+.muxui-avatar.bento-workspace-switcher__avatar {
   background-color: var(--bento-workspace-accent);
   color: var(--bento-workspace-accent-fg);
 }
-.tale-avatar.bento-workspace-switcher__avatar .tale-avatar__fallback {
+.muxui-avatar.bento-workspace-switcher__avatar .muxui-avatar__fallback {
   color: var(--bento-workspace-accent-fg);
 }
 
-.tale-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] {
+.muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] {
   background-color: #fff;
   color: var(--neutral-90);
 }
-.tale-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] .tale-avatar__fallback {
+.muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true']
+  .muxui-avatar__fallback {
   color: var(--neutral-90);
 }
 
@@ -54,7 +55,7 @@
   pointer-events: none;
   overflow: visible;
 }
-.tale-icon.bento-workspace-switcher__audio-particle {
+.bento-icon.bento-workspace-switcher__audio-particle {
   position: absolute;
   inset-inline-end: calc(-1 * var(--space-3xs));
   inset-block-start: var(--space-4xs);
@@ -64,23 +65,23 @@
   opacity: 0;
   animation: bento-workspace-switcher-audio-particle 1500ms linear forwards;
 }
-.tale-icon.bento-workspace-switcher__audio-particle--1 {
+.bento-icon.bento-workspace-switcher__audio-particle--1 {
   --bento-workspace-switcher-audio-x: calc(-1 * var(--space-2xs));
   --bento-workspace-switcher-audio-y: calc(-1 * var(--space-s));
   --bento-workspace-switcher-audio-rotation: -12deg;
 }
-.tale-icon.bento-workspace-switcher__audio-particle--2 {
+.bento-icon.bento-workspace-switcher__audio-particle--2 {
   --bento-workspace-switcher-audio-x: var(--space-2xs);
   --bento-workspace-switcher-audio-y: calc(-1 * var(--space-m));
   --bento-workspace-switcher-audio-rotation: 10deg;
 }
-.tale-icon.bento-workspace-switcher__audio-particle--3 {
+.bento-icon.bento-workspace-switcher__audio-particle--3 {
   --bento-workspace-switcher-audio-x: var(--space-s);
   --bento-workspace-switcher-audio-y: calc(-1 * var(--space-xs));
   --bento-workspace-switcher-audio-rotation: 16deg;
 }
 .bento-workspace-switcher__audio-particles--menu
-  .tale-icon.bento-workspace-switcher__audio-particle {
+  .bento-icon.bento-workspace-switcher__audio-particle {
   color: var(--neutral-30);
 }
 @keyframes bento-workspace-switcher-audio-particle {
@@ -104,17 +105,17 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tale-icon.bento-workspace-switcher__audio-particle {
+  .bento-icon.bento-workspace-switcher__audio-particle {
     animation-duration: 1100ms;
   }
 }
 
 /* Collapsed sidebar — hide the chevron, fade out the trigger-name.
- * Unlayered because Tale UI's .tale-icon { display: inline-block } and
- * .tale-text defaults are unlayered too — a layered display: none would
+ * Unlayered because Mux UI's .bento-icon { display: inline-block } and
+ * .muxui-text defaults are unlayered too — a layered display: none would
  * lose regardless of specificity (CSS spec: unlayered > any layer). The
- * compound .tale-icon.bento-* / .tale-text.bento-* selectors also win
- * on specificity over Tale UI's single-class rules.
+ * compound .bento-icon.bento-* / .muxui-text.bento-* selectors also win
+ * on specificity over Mux UI's single-class rules.
  *
  * The chevron snaps via display:none — losing it doesn't shift the
  * avatar's position because the chevron's grid/flex slot collapses
@@ -123,19 +124,19 @@
  * abruptly disappearing. The text already shrinks to 0 width via
  * flex:1 + min-width:0 as the rail narrows, so opacity:0 doesn't
  * disturb the layout — the avatar stays where it is. */
-html[data-bento-collapsed='true'] .tale-icon.bento-workspace-switcher__chevron {
+html[data-bento-collapsed='true'] .bento-icon.bento-workspace-switcher__chevron {
   display: none;
 }
-html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-name {
+html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-name {
   display: none;
   opacity: 0;
   pointer-events: none;
 }
 
-/* Trigger label optical centering. Tale UI typography utilities are
+/* Trigger label optical centering. Mux UI typography utilities are
  * unlayered, so keep this unlayered too; otherwise .text--body-s keeps
  * its 1.5 line-height and the glyphs sit high next to the avatar. */
-.tale-text.bento-workspace-switcher__trigger-name {
+.muxui-text.bento-workspace-switcher__trigger-name {
   color: var(--color-90);
   line-height: 1;
   position: relative;
@@ -143,7 +144,7 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
 }
 
 /* Cap the menu popup so it sits exactly under the trigger's outer width.
- * Tale UI's .tale-menu__popup defaults to `min-width: 10rem;
+ * Mux UI's .muxui-menu-popup defaults to `min-width: 10rem;
  * max-width: 20rem; width: max-content` — a long "Delete <very long
  * name>" item pushes it up to 320px regardless of the sidebar.
  *
@@ -155,29 +156,29 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
  * Symmetric.
  *
  * Targets the popup (not the popover wrapper, which is unstyled) and
- * is unlayered because Tale UI's defaults are unlayered too — layered
+ * is unlayered because Mux UI's defaults are unlayered too — layered
  * rules lose to unlayered regardless of specificity. min-width:0
  * unlocks the 10rem floor for narrow sidebars (persist=width allows
  * down to 200px). */
-.bento-workspace-switcher__popover .tale-menu__popup {
+.bento-workspace-switcher__popover.muxui-menu-popup {
   min-width: 0;
   max-width: calc(100vw - 2 * var(--space-s));
 }
 
-/* Menu item labels must inherit the Menu.Item foreground. Tale UI's
+/* Menu item labels must inherit the Menu.Item foreground. Mux UI's
  * typography utilities are unlayered and set their own color, so this
  * override must also stay unlayered; otherwise @layer bento.components
  * loses regardless of specificity. */
-.bento-workspace-switcher__popover .tale-text.bento-workspace-switcher__item-name {
+.bento-workspace-switcher__popover .muxui-text.bento-workspace-switcher__item-name {
   color: inherit;
 }
 
-/* Menu.Trigger renders a real button. It keeps Tale UI's neutral button class
+/* Menu.Trigger renders a real button. It keeps Mux UI's neutral button class
  * for the subtle secondary shape, then swaps that variant's neutral color
  * source for brand tokens so the workspace control follows the active theme.
- * These rules are unlayered because Tale UI's button variant rules are
+ * These rules are unlayered because Mux UI's button variant rules are
  * unlayered too. */
-.tale-button.bento-workspace-switcher__trigger {
+.muxui-button.bento-workspace-switcher__trigger {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -223,21 +224,21 @@ html[data-bento-collapsed='true'] .tale-text.bento-workspace-switcher__trigger-n
     color var(--bento-duration-fast) var(--bento-easing-standard);
 }
 
-.tale-button.bento-workspace-switcher__trigger:hover:not([data-disabled], [data-pending]),
-.tale-button.bento-workspace-switcher__trigger[data-hovered]:not([data-disabled], [data-pending]) {
+.muxui-button.bento-workspace-switcher__trigger:hover:not([data-disabled], [data-pending]),
+.muxui-button.bento-workspace-switcher__trigger[data-hovered]:not([data-disabled], [data-pending]) {
   background-color: color-mix(in srgb, var(--color-60) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 22%, transparent);
   color: var(--color-90);
 }
 
-.tale-button.bento-workspace-switcher__trigger:active:not([data-disabled], [data-pending]),
-.tale-button.bento-workspace-switcher__trigger[data-pressed]:not([data-disabled], [data-pending]) {
+.muxui-button.bento-workspace-switcher__trigger:active:not([data-disabled], [data-pending]),
+.muxui-button.bento-workspace-switcher__trigger[data-pressed]:not([data-disabled], [data-pending]) {
   background-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
   color: var(--color-90);
 }
 
-html[data-bento-collapsed='true'] .tale-button.bento-workspace-switcher__trigger {
+html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigger {
   width: var(--bento-tab-row-height);
   min-width: var(--bento-tab-row-height);
   max-width: var(--bento-tab-row-height);
@@ -308,12 +309,12 @@ html[data-bento-collapsed='true'] .tale-button.bento-workspace-switcher__trigger
     transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
   }
 
-  /* Each Menu.Item is a flex row (Tale UI default). min-width:0 stops the
+  /* Each Menu.Item is a flex row (Mux UI default). min-width:0 stops the
      row from refusing to shrink below its intrinsic content width, which
      is what lets the inner __item-name truncate via text-overflow once
-     the popup itself is capped (see the unlayered .tale-menu__popup rule
+     the popup itself is capped (see the unlayered .muxui-menu-popup rule
      above). */
-  .bento-workspace-switcher__popover .tale-menu__item {
+  .bento-workspace-switcher__popover .muxui-menu-item {
     min-width: 0;
   }
 
@@ -325,14 +326,91 @@ html[data-bento-collapsed='true'] .tale-button.bento-workspace-switcher__trigger
     white-space: nowrap;
   }
 
-  /* Destructive menu item — Tale UI's --red-* family signals "danger" so
+  /* Destructive menu item — Mux UI's --red-* family signals "danger" so
      the row reads as different from the neutral New/Switch options without
      screaming. Color the text + icon directly; the AlertDialog handles the
      actual confirmation friction. */
   .bento-workspace-switcher__delete-item {
     color: var(--red-60);
   }
-  .bento-workspace-switcher__delete-item .tale-text {
+  .bento-workspace-switcher__delete-item .muxui-text {
     color: inherit;
   }
+}
+
+/* Mux overlay pilot. Keep the Mux selectors above for the inline trigger
+ * and the other entry points that still render it. The overlay uses the
+ * corresponding Mux class selectors below while sharing the same Bento
+ * layout and token intent. */
+.muxui-avatar.bento-workspace-switcher__avatar {
+  background-color: var(--muxui-semantic-color-color-60);
+  color: var(--muxui-semantic-color-color-5);
+}
+.muxui-avatar.bento-workspace-switcher__avatar .muxui-avatar__fallback {
+  color: var(--muxui-semantic-color-color-5);
+}
+.muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] {
+  background-color: var(--muxui-semantic-color-neutral-5);
+  color: var(--muxui-semantic-color-neutral-90);
+}
+.muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true']
+  .muxui-avatar__fallback {
+  color: var(--muxui-semantic-color-neutral-90);
+}
+
+.bento-workspace-switcher__audio-particles .bento-icon.bento-workspace-switcher__audio-particle {
+  position: absolute;
+  inset-inline-end: calc(-1 * var(--space-3xs));
+  inset-block-start: var(--space-4xs);
+  width: var(--bento-icon-size-xs);
+  height: var(--bento-icon-size-xs);
+  color: var(--muxui-semantic-color-color-70);
+  opacity: 0;
+  animation: bento-workspace-switcher-audio-particle 1500ms linear forwards;
+}
+.bento-workspace-switcher__audio-particle--1 {
+  --bento-workspace-switcher-audio-x: calc(-1 * var(--space-2xs));
+  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-s));
+  --bento-workspace-switcher-audio-rotation: -12deg;
+}
+.bento-workspace-switcher__audio-particle--2 {
+  --bento-workspace-switcher-audio-x: var(--space-2xs);
+  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-m));
+  --bento-workspace-switcher-audio-rotation: 10deg;
+}
+.bento-workspace-switcher__audio-particle--3 {
+  --bento-workspace-switcher-audio-x: var(--space-s);
+  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-xs));
+  --bento-workspace-switcher-audio-rotation: 16deg;
+}
+.bento-workspace-switcher__audio-particles--menu
+  .bento-icon.bento-workspace-switcher__audio-particle {
+  color: var(--muxui-semantic-color-neutral-30);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bento-workspace-switcher__audio-particles .bento-icon.bento-workspace-switcher__audio-particle {
+    animation-duration: 1100ms;
+  }
+}
+
+.bento-workspace-switcher__popover.muxui-menu-popup {
+  min-width: 0;
+  max-width: calc(100vw - 2 * var(--space-s));
+}
+.bento-workspace-switcher__popover .muxui-menu-item {
+  min-width: 0;
+}
+.bento-workspace-switcher__popover .muxui-text.bento-workspace-switcher__item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+.bento-workspace-switcher__popover .muxui-menu-item.bento-workspace-switcher__delete-item {
+  color: var(--muxui-reference-color-error-60);
+}
+.bento-workspace-switcher__popover .bento-icon {
+  flex: 0 0 auto;
 }

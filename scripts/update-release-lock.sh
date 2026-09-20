@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate pnpm-lock.release.yaml from registry-backed package manifests
-# without replacing the developer lock that records local Tale UI links.
+# Regenerate pnpm-lock.release.yaml without replacing the developer lock.
 
 set -euo pipefail
 
@@ -15,5 +14,5 @@ restore_dev_lock() {
 }
 trap restore_dev_lock EXIT
 
-BENTO_RELEASE=1 pnpm install --lockfile-only --no-frozen-lockfile
+pnpm install --lockfile-only --no-frozen-lockfile
 cp pnpm-lock.yaml pnpm-lock.release.yaml

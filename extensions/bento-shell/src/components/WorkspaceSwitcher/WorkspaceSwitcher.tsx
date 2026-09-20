@@ -10,10 +10,7 @@
 // of workspace/* actions, re-anchoring, etc.).
 
 import { useEffect, useRef, useState } from 'react';
-import { Menu } from '@tale-ui/react/menu';
-import { Text } from '@tale-ui/react/text';
-import { Icon } from '@tale-ui/react/icon';
-import { Avatar } from '@tale-ui/react/avatar';
+import { Avatar, Menu, Text } from '@muxui/react';
 import ChevronsUpDown from 'lucide-react/dist/esm/icons/chevrons-up-down';
 
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
@@ -24,6 +21,8 @@ import {
 } from '../../bridge/useWorkspaceSwitcher';
 import { useCurrentWindowId } from '../../bridge/useToolsPort';
 import { DEFAULT_THEME_ID } from '../../theme/presets';
+import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
+import { BentoIcon } from '../primitives';
 import { WorkspaceAudioParticles } from './WorkspaceAudioParticles';
 import './WorkspaceSwitcher.css';
 
@@ -42,10 +41,10 @@ export function WorkspaceSwitcher() {
   const active = useWorkspacesStore((s) =>
     activeWorkspaceId ? s.byId[activeWorkspaceId] : undefined,
   );
-  // Menu.Trigger (Tale UI's styled AriaButton) used standalone here — the
+  // Menu.Trigger is used standalone here — the
   // popover lives in a chrome-mounted overlay rather than a Menu.Popover
   // child, so we don't need the surrounding Menu.Root (MenuTrigger)
-  // context. AriaButton accepts onPress + ref directly.
+  // context. It still forwards the native trigger ref directly.
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Mirror the overlay's open state so the trigger can paint its active
@@ -54,6 +53,7 @@ export function WorkspaceSwitcher() {
   // and listen for the overlay's notifyClosed broadcast (fired on Esc /
   // click-outside / item action) to flip back to false.
   const [isOpen, setIsOpen] = useState(false);
+  const colorScheme = useResolvedColorScheme();
   useEffect(() => {
     return subscribeToWorkspaceSwitcherClose(() => setIsOpen(false));
   }, []);
@@ -62,7 +62,7 @@ export function WorkspaceSwitcher() {
   const hasEmojiIcon = !!activeIcon && looksLikeEmojiValue(activeIcon);
   const activeWorkspaceHasPlayingAudio = useWorkspaceHasPlayingAudio(activeWorkspaceId);
 
-  const onPress = () => {
+  const onActivate = () => {
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
@@ -83,28 +83,30 @@ export function WorkspaceSwitcher() {
     <Menu.Trigger
       ref={triggerRef}
       className={
-        'tale-button tale-button--neutral tale-button--md bento-workspace-switcher__trigger' +
+        'muxui-button bento-workspace-switcher__trigger' +
         (isOpen ? ' bento-workspace-switcher__trigger--open' : '')
       }
+      data-variant="neutral"
+      data-size="md"
       aria-label={active ? `Workspace ${active.name} — switch workspace` : 'Switch workspace'}
       aria-expanded={isOpen}
-      onPress={onPress}
+      onActivate={onActivate}
     >
       <span className="bento-workspace-switcher__avatar-frame">
         <Avatar.Root
           size="sm"
           className="bento-workspace-switcher__avatar"
-          data-bento-theme={active?.themeId ?? DEFAULT_THEME_ID}
+          {...getThemeScopeAttributes(active?.themeId ?? DEFAULT_THEME_ID, colorScheme)}
           data-bento-emoji-icon={hasEmojiIcon ? 'true' : undefined}
         >
           <Avatar.Fallback>{activeIcon || workspaceInitial(active?.name ?? '?')}</Avatar.Fallback>
         </Avatar.Root>
         <WorkspaceAudioParticles active={activeWorkspaceHasPlayingAudio} />
       </span>
-      <Text variant="text" size="s" className="bento-workspace-switcher__trigger-name">
+      <Text variant="body" size="s" className="bento-workspace-switcher__trigger-name">
         {active?.name ?? 'No workspace'}
       </Text>
-      <Icon icon={ChevronsUpDown} size="sm" className="bento-workspace-switcher__chevron" />
+      <BentoIcon icon={ChevronsUpDown} size="sm" className="bento-workspace-switcher__chevron" />
     </Menu.Trigger>
   );
 }

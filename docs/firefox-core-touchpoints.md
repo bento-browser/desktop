@@ -140,7 +140,7 @@ Use this shape for new or changed touchpoints:
   palette items, and overflow-panel preview through the same generated Tale
   UI/Bento chrome tokens, themes Firefox's Passwords `about:logins` documents,
   shared shadow-component stylesheet, and sidebar megalist surface through the
-  generated Tale UI/Bento chrome tokens,
+  generated Mux UI/Bento chrome tokens,
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -275,10 +275,10 @@ Use this shape for new or changed touchpoints:
   moving the window, while dragging unused top-bar space still moves the
   window, verify rapid clicks on the panel navigator's previous/next controls
   cycle panels without maximizing or restoring the window, and verify hovering
-  each navigator button opens its Tale UI tooltip at that button without
+  each navigator button opens its Mux UI tooltip at that button without
   blocking clicks or drag reorder, with the main slot showing the selected
   page title,
-  verify Customize Toolbar mode uses Tale UI/Bento token surfaces for the main
+  verify Customize Toolbar mode uses Mux UI/Bento token surfaces for the main
   palette, bottom footer, Restore Defaults/Done buttons, Manage Themes link,
   and overflow-menu preview in light and dark modes,
   verify the expanded sidebar cannot be dragged narrower than the
@@ -294,14 +294,14 @@ Use this shape for new or changed touchpoints:
   strip/main content while editing, stays smaller than the centered shortcut
   overlay, and closes after Escape, submit, and outside
   click,
-  verify the native Bookmarks sidebar title uses Tale UI `label-l` typography,
+  verify the native Bookmarks sidebar title uses Mux UI `label-l` typography,
   its icon/title/chevron are vertically centered, and its search field matches
   the Bento sidebar address field in light and dark modes, verify History and
   Synced Tabs sidebar search fields use the same search field colors and that
   the sidebar switcher dropdown text is consistent across Bookmarks, History,
   Synced Tabs, and Passwords, verify the Passwords sidebar megalist search
   field, cards, actions, alerts, and the full-page Passwords page/import report
-  resolve through forced light neutral Tale UI token colors instead of OS
+  resolve through forced light neutral Mux UI token colors instead of OS
   dark/native defaults,
   verify regular bookmarks outside the "Saved panels" folder fill the sidebar
   star while saved-panel-only bookmarks do not, verify rapid navigation or tab
@@ -426,9 +426,9 @@ Use this shape for new or changed touchpoints:
 - Bento functionality: centers Firefox's native `about:preferences` content pane
   and category navigation as one unit in the available browser content area, so
   the settings controls do not sit flush against the side nav on wide windows.
-  The native preferences page also loads Bento's generated Tale UI token sheet
+  The native preferences page also loads Bento's generated Mux UI token sheet
   and maps Firefox in-content semantic variables for surfaces, text, borders,
-  buttons, fields, panels, and focus rings onto Tale UI/Bento tokens while
+  buttons, fields, panels, and focus rings onto Mux UI/Bento tokens while
   rendering preferences cards and box groups as borderless neutral-5 tiles.
 - Vanilla Firefox surface touched or depended on: the native preferences XHTML
   layout and in-content theme cascade, including `#categories`,
@@ -440,7 +440,7 @@ Use this shape for new or changed touchpoints:
 - Firefox update risk: upstream preferences markup, XUL box alignment behavior,
   settings redesign layout changes, in-content variable names, or preferences
   widget token dependencies can reintroduce left alignment, alter the content
-  pane width, or disconnect preferences controls from Bento's Tale UI palette.
+  pane width, or disconnect preferences controls from Bento's Mux UI palette.
 - Regression checks for future updates: open `about:preferences` in a wide
   Bento window and confirm the search field and settings pane are centered in
   the area beside the category nav; narrow the window and confirm the pane still

@@ -1,11 +1,11 @@
-/* Edit-workspace dialog form layout. Tale UI Dialog popups have their
+/* Edit-workspace dialog form layout. Mux Dialog panels have their
  * own padding; this just spaces the form sections. */
 @layer bento.components {
   .bento-edit-workspace__form {
     padding-block: var(--space-xs);
   }
 
-  .tale-row.bento-edit-workspace__name-row {
+  .bento-row.bento-edit-workspace__name-row {
     align-items: flex-end;
   }
 

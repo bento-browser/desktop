@@ -28,9 +28,9 @@
     background: var(--neutral-5);
   }
 
-  .tale-icon-button.bento-sidebar-address-bar__security-button,
-  .tale-icon-button.bento-sidebar-address-bar__copy-button,
-  .tale-icon-button.bento-sidebar-address-bar__bookmark-button {
+  .muxui-icon-button.bento-sidebar-address-bar__security-button,
+  .muxui-icon-button.bento-sidebar-address-bar__copy-button,
+  .muxui-icon-button.bento-sidebar-address-bar__bookmark-button {
     width: var(--bento-sidebar-address-button-size);
     height: var(--bento-sidebar-address-button-size);
     min-width: var(--bento-sidebar-address-button-size);
@@ -132,4 +132,16 @@
 .bento-sidebar-address-bar__input {
   font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family) !important;
   letter-spacing: var(--text-letter-spacing);
+}
+
+/* The loading affordance occupies the same 1.5rem slot as the sidebar
+ * address actions, while the Mux sm track defaults to 2rem. */
+.bento-sidebar-address-bar__loading .muxui-progress-circle {
+  width: var(--bento-sidebar-address-button-size);
+  height: var(--bento-sidebar-address-button-size);
+}
+
+.bento-sidebar-address-bar__loading .muxui-progress-circle__track {
+  width: 100%;
+  height: 100%;
 }

@@ -1,0 +1,10 @@
+{
+  "sourceCommit": "146f75b6ecbac1ceedb7af3ffed009568bd7c9a2",
+  "package": "@muxui/react",
+  "version": "0.1.0-alpha.0",
+  "artifact": "muxui-react-0.1.0-alpha.0.tgz",
+  "sha256": "16c382ece9dea1de8bdfcae0482cf7fc511da7b8eefcc313ff8cc83200be3f4e",
+  "bytes": 1761302,
+  "packCommand": "pnpm --filter @muxui/react pack --pack-destination artifacts/muxui",
+  "publicationPerformed": false
+}

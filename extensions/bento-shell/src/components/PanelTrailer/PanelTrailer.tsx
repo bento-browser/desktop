@@ -5,25 +5,23 @@
 //
 // Lives inside a moz-extension iframe hosted by the chrome XUL trailer
 // (see ensureAddPanelTrailer in bento-shell-mount.js). Renders inside
-// the chrome window, so Tale UI tooltips can pop up freely without the
+// the chrome window, so Mux UI tooltips can pop up freely without the
 // sidebar-iframe clipping problem.
 //
-// CLAUDE.md / Tale UI guardrails honoured here:
-//   - Buttons use Tale UI IconButton directly so the trailer shares the
+// CLAUDE.md / Mux UI guardrails honoured here:
+//   - Buttons use the Mux IconButton directly so the trailer shares the
 //     same neutral button styling as the rest of the chrome UI.
 //   - No raw design values — favicon size, gap, padding all come from
-//     Tale UI / Bento token vars (see PanelTrailer.css).
+//     Mux UI / Bento token vars (see PanelTrailer.css).
 //   - Each saved-panel favicon uses the tools-resolved `favIconUrl`
 //     when available, and falls back to a placeholder when no icon can
 //     be resolved.
 
 import { useEffect, useState } from 'react';
-import { Tooltip } from '@tale-ui/react/tooltip';
-import { Icon } from '@tale-ui/react/icon';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { SelectNative } from '@tale-ui/react/select-native';
+import { IconButton, SelectNative, Tooltip } from '@muxui/react';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import type { SavedPanelEntry } from '@shared/protocol';
+import { BentoIcon } from '../primitives/BentoIcon';
 import './PanelTrailer.css';
 
 export interface PanelTrailerProps {
@@ -64,22 +62,24 @@ export function PanelTrailer({ items, onAddBlank, onOpenSaved }: PanelTrailerPro
             onOpen={onOpenSaved}
           />
         ))}
-        <Tooltip.Root delay={400}>
-          <IconButton
-            variant="neutral"
-            size="sm"
-            className="bento-panel-trailer__btn bento-panel-trailer__btn--add"
-            style={{ gridArea: gridAreaForIndex(4) }}
-            aria-label="New tab panel"
-            onPress={onAddBlank}
-          >
-            <Icon icon={Plus} />
-          </IconButton>
-          <Tooltip.Popup placement="bottom" offset={8}>
-            <Tooltip.Arrow />
-            New tab panel
-          </Tooltip.Popup>
-        </Tooltip.Root>
+        <Tooltip
+          content="New tab panel"
+          delay={400}
+          placement="bottom"
+          offset={8}
+          trigger={
+            <IconButton
+              variant="neutral"
+              size="sm"
+              className="bento-panel-trailer__btn bento-panel-trailer__btn--add"
+              style={{ gridArea: gridAreaForIndex(4) }}
+              aria-label="New tab panel"
+              onActivate={onAddBlank}
+            >
+              <BentoIcon icon={Plus} size="sm" />
+            </IconButton>
+          }
+        />
       </div>
       {overflowItems.length > 0 ? (
         <MoreSavedPanelsSelect items={overflowItems} onOpen={onOpenSaved} />
@@ -114,31 +114,33 @@ function SavedPanelButton({ item, gridIndex, onOpen }: SavedPanelButtonProps) {
   }, [iconSrc]);
 
   return (
-    <Tooltip.Root delay={400}>
-      <IconButton
-        variant="neutral"
-        size="sm"
-        className="bento-panel-trailer__btn bento-panel-trailer__btn--saved"
-        style={{ gridArea: gridAreaForIndex(gridIndex) }}
-        aria-label={labelText}
-        onPress={() => onOpen(item.url)}
-      >
-        {!iconSrc || iconFailed ? (
-          <span className="bento-panel-trailer__favicon bento-panel-trailer__favicon--placeholder" />
-        ) : (
-          <img
-            className="bento-panel-trailer__favicon"
-            src={iconSrc}
-            alt=""
-            onError={() => setIconFailed(true)}
-          />
-        )}
-      </IconButton>
-      <Tooltip.Popup placement="bottom" offset={8}>
-        <Tooltip.Arrow />
-        {labelText}
-      </Tooltip.Popup>
-    </Tooltip.Root>
+    <Tooltip
+      content={labelText}
+      delay={400}
+      placement="bottom"
+      offset={8}
+      trigger={
+        <IconButton
+          variant="neutral"
+          size="sm"
+          className="bento-panel-trailer__btn bento-panel-trailer__btn--saved"
+          style={{ gridArea: gridAreaForIndex(gridIndex) }}
+          aria-label={labelText}
+          onActivate={() => onOpen(item.url)}
+        >
+          {!iconSrc || iconFailed ? (
+            <span className="bento-panel-trailer__favicon bento-panel-trailer__favicon--placeholder" />
+          ) : (
+            <img
+              className="bento-panel-trailer__favicon"
+              src={iconSrc}
+              alt=""
+              onError={() => setIconFailed(true)}
+            />
+          )}
+        </IconButton>
+      }
+    />
   );
 }
 

@@ -10,12 +10,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/icon-button';
-import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/command-palette';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';

@@ -1,7 +1,7 @@
-// Drives <html data-color-mode> (+ data-theme for Tale UI compat) from
-// uiColorMode in BentoSettings. 'system' stores the user's Auto choice but
-// resolves to 'light' or 'dark' on the DOM because Tale UI token selectors
-// key off the resolved mode.
+// Drives <html data-color-mode> (+ data-theme for existing chrome consumers)
+// from uiColorMode in BentoSettings. 'system' stores the user's Auto choice
+// but resolves to 'light' or 'dark' on the DOM so token selectors have an
+// explicit mode.
 //
 // boot.js sets the initial attribute before any CSS loads using
 // localStorage as a hint; this hook keeps things in sync once React is
@@ -50,6 +50,10 @@ function applyMode(mode: UiColorModePref, options: FirefoxThemeOptions = {}): 'l
   html.setAttribute('data-color-mode', resolved);
   html.setAttribute('data-theme', resolved);
   html.setAttribute('data-bento-color-mode-pref', mode);
+  // Mux requires an explicit scheme/contrast on the same themed element.
+  // Bento currently exposes only the standard contrast mode.
+  html.setAttribute('data-muxui-color-scheme', resolved);
+  html.setAttribute('data-muxui-contrast', 'standard');
   return resolved;
 }
 

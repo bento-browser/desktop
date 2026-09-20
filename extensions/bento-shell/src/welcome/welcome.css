@@ -21,7 +21,13 @@
     border-radius: var(--radius-l);
   }
 
-  .bento-welcome > .tale-column {
+  .bento-welcome > .muxui-dialog-content {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .bento-welcome > .muxui-dialog-content > .bento-column {
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -110,12 +116,22 @@
     min-width: 0;
   }
 
-  .bento-welcome__copy :where(.tale-dialog__title) {
-    margin: 0;
+  .bento-welcome__eyebrow {
+    color: var(--bento-workspace-accent);
   }
 
-  .bento-welcome__copy :where(.tale-dialog__description) {
-    margin-block-start: 0;
+  .bento-welcome__copy-title {
+    margin: 0;
+    color: var(--muxui-modal-title-color);
+    font-family: var(--muxui-semantic-typography-label-font-family);
+    font-size: var(--muxui-modal-title-font-size);
+    font-weight: var(--muxui-semantic-typography-label-font-weight);
+    line-height: 1.3;
+  }
+
+  .bento-welcome__copy-description {
+    margin: 0;
+    color: var(--muxui-semantic-content-muted);
   }
 
   .bento-welcome__theme-picker {
@@ -127,7 +143,7 @@
     max-width: 17.5rem;
   }
 
-  .bento-welcome__choice :where(.tale-toggle-button-group) {
+  .bento-welcome__choice :where(.muxui-toggle-button-group) {
     flex-wrap: wrap;
   }
 
@@ -149,14 +165,14 @@
     white-space: nowrap;
   }
 
-  .bento-welcome :where(.tale-dialog__actions) {
+  .bento-welcome :where(.muxui-dialog-actions) {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-xs);
     justify-content: space-between;
   }
 
-  .bento-welcome :where(.tale-dialog__actions) > .tale-row {
+  .bento-welcome :where(.muxui-dialog-actions) > .bento-row {
     flex: 1 1 auto;
   }
 
@@ -211,21 +227,21 @@
       grid-row: span 1;
     }
 
-    .bento-welcome :where(.tale-dialog__actions),
-    .bento-welcome :where(.tale-dialog__actions) > .tale-row {
+    .bento-welcome :where(.muxui-dialog-actions),
+    .bento-welcome :where(.muxui-dialog-actions) > .bento-row {
       justify-content: stretch;
     }
 
-    .bento-welcome :where(.tale-dialog__actions) .tale-button {
+    .bento-welcome :where(.muxui-dialog-actions) .muxui-button {
       flex: 1 1 100%;
     }
   }
 }
 
-/* Tale UI's dialog popup sizing is unlayered. Keep this override unlayered
+/* Mux UI's dialog surface sizing is unlayered. Keep this override unlayered
  * too so Bento onboarding can take over the chrome overlay instead of
  * inheriting the default 30rem modal width. */
-.tale-dialog__popup.bento-welcome {
+.muxui-dialog.bento-welcome {
   --bento-welcome-viewport-gap: 2rem;
 
   box-sizing: border-box;
@@ -245,7 +261,7 @@
 }
 
 @media (max-width: 980px) {
-  .tale-dialog__popup.bento-welcome {
+  .muxui-dialog.bento-welcome {
     --bento-welcome-viewport-gap: 1.25rem;
 
     padding: var(--space-m);
@@ -253,7 +269,7 @@
 }
 
 @media (max-width: 480px) {
-  .tale-dialog__popup.bento-welcome {
+  .muxui-dialog.bento-welcome {
     --bento-welcome-viewport-gap: 0.5rem;
 
     padding: var(--space-s);

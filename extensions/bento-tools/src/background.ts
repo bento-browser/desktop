@@ -739,7 +739,10 @@ async function emitPanelsSync(
   } = {
     type: 'panels/sync',
     workspaceId,
-    themeId: themeId || 'default',
+    // Preserve any explicit raw workspace id on the event; shell/chrome
+    // presentation boundaries resolve aliases and unknown ids without
+    // mutating storage. Undefined still has an explicit Default hint.
+    themeId: themeId ?? 'default',
     panels: valid,
     savedPanelCount,
     savedPanelItems,

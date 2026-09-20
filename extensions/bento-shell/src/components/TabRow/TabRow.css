@@ -124,11 +124,11 @@
     background-color: var(--color-60);
   }
 
-  .bento-tab-row--selected .tale-text {
+  .bento-tab-row--selected .muxui-text {
     color: var(--neutral-100);
   }
 
-  .bento-tab-row--active .tale-text {
+  .bento-tab-row--active .muxui-text {
     color: var(--color-5);
   }
 
@@ -143,7 +143,7 @@
     background-color: var(--neutral-30);
   }
 
-  /* Loading state replaces the favicon with the Tale UI Spinner. The slot
+  /* Loading state replaces the favicon with the Mux UI progress circle. The slot
      keeps its 0.625rem footprint so the title doesn't reflow as the throbber
      toggles on/off during a normal page load. */
   .bento-tab-row__favicon--loading {
@@ -152,7 +152,7 @@
     justify-content: center;
     background: transparent;
   }
-  .bento-tab-row__favicon--loading .tale-spinner {
+  .bento-tab-row__favicon--loading .muxui-progress-circle {
     width: var(--bento-favicon-size);
     height: var(--bento-favicon-size);
   }
@@ -166,7 +166,7 @@
     opacity: 0.3;
     filter: grayscale(1);
   }
-  .bento-tab-row--discarded > .tale-text {
+  .bento-tab-row--discarded > .muxui-text {
     opacity: 0.5;
   }
 
@@ -187,11 +187,11 @@
     height: var(--bento-tab-row-height);
   }
 
-  .bento-tab-row--active .bento-tab-row__audio-control .tale-icon-button {
+  .bento-tab-row--active .bento-tab-row__audio-control .muxui-icon-button {
     color: var(--color-60-fg);
   }
 
-  .bento-tab-row > .tale-text {
+  .bento-tab-row > .muxui-text {
     color: var(--neutral-100);
     user-select: none;
     -moz-user-select: none;
@@ -275,34 +275,34 @@
 
   .bento-tab-row--selected
     .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost']:not([data-disabled], [data-pending]),
   .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost:hover:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost']:hover:not([data-disabled], [data-pending]),
   .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost:active:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost']:active:not([data-disabled], [data-pending]),
   .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost[data-hovered]:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost'][data-hovered]:not([data-disabled], [data-pending]),
   .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost[data-pressed]:not([data-disabled], [data-pending]) {
+    .muxui-icon-button[data-variant='ghost'][data-pressed]:not([data-disabled], [data-pending]) {
     background-color: color-mix(in srgb, var(--neutral-90) 10%, transparent);
     color: var(--neutral-90);
   }
 
   .bento-tab-row--active
     .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost']:not([data-disabled], [data-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost:hover:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost']:hover:not([data-disabled], [data-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost:active:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost']:active:not([data-disabled], [data-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost[data-hovered]:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-variant='ghost'][data-hovered]:not([data-disabled], [data-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .tale-icon-button.tale-button--ghost[data-pressed]:not([data-disabled], [data-pending]) {
+    .muxui-icon-button[data-variant='ghost'][data-pressed]:not([data-disabled], [data-pending]) {
     background-color: color-mix(in srgb, var(--color-60-fg) 16%, transparent);
     color: var(--color-60-fg);
   }
@@ -362,7 +362,7 @@
     padding-inline: 0;
     margin-inline-start: 0;
   }
-  html[data-bento-collapsed='true'] .bento-tab-row > .tale-text {
+  html[data-bento-collapsed='true'] .bento-tab-row > .muxui-text {
     display: none;
     opacity: 0;
     pointer-events: none;
@@ -373,7 +373,7 @@
   }
 }
 
-/* Unlayered by design: raw form controls and Tale UI utilities are
+/* Unlayered by design: raw form controls and Mux UI utilities are
  * unlayered, so this must be unlayered too or the rename input can keep
  * browser/input typography instead of matching the sidebar row label. */
 .bento-tab-row__rename-input {
@@ -382,40 +382,46 @@
   caret-color: var(--neutral-90);
 }
 
-/* Unlayered by design: Tale UI text utilities are unlayered, so the sidebar
+/* Unlayered by design: Mux UI text utilities are unlayered, so the sidebar
  * tab label foreground must be unlayered too. */
-.bento-tab-row > .tale-text {
+.bento-tab-row > .muxui-text {
   color: var(--neutral-100);
 }
 
-.bento-tab-row--selected > .tale-text {
+.bento-tab-row--selected > .muxui-text {
   color: var(--neutral-100);
 }
 
-.bento-tab-row--active > .tale-text {
+.bento-tab-row--active > .muxui-text {
   color: var(--color-5);
 }
 
-/* Unlayered by design: Tale UI text/button/icon utilities are unlayered, so
+/* Unlayered by design: Mux UI text/button/icon utilities are unlayered, so
  * active-row foreground overrides must be unlayered too. Keep every foreground
  * affordance on the accent row tied to the matching contrast token. */
 .bento-tab-row--active,
-.bento-tab-row--active .tale-icon,
-.bento-tab-row--active .bento-tab-row__audio-control .tale-icon-button,
+.bento-tab-row--active .bento-icon,
+.bento-tab-row--active .bento-tab-row__audio-control .muxui-icon-button,
 .bento-tab-row--active
   .bento-tab-row__actions
-  .tale-icon-button.tale-button--ghost:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-variant='ghost']:not([data-disabled], [data-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .tale-icon-button.tale-button--ghost:hover:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-variant='ghost']:hover:not([data-disabled], [data-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .tale-icon-button.tale-button--ghost:active:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-variant='ghost']:active:not([data-disabled], [data-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .tale-icon-button.tale-button--ghost[data-hovered]:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-variant='ghost'][data-hovered]:not([data-disabled], [data-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .tale-icon-button.tale-button--ghost[data-pressed]:not([data-disabled], [data-pending]) {
+  .muxui-icon-button[data-variant='ghost'][data-pressed]:not([data-disabled], [data-pending]) {
   color: var(--color-60-fg);
+}
+
+/* The Mux sm track is 2rem; this favicon slot remains 1rem. */
+.bento-tab-row__favicon--loading .muxui-progress-circle__track {
+  width: var(--bento-favicon-size);
+  height: var(--bento-favicon-size);
 }

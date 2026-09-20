@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Icon } from '@tale-ui/react/icon';
-import { Text } from '@tale-ui/react/text';
+import { Text } from '@muxui/react';
+import { BentoIcon } from '../primitives/BentoIcon';
 import Folder from 'lucide-react/dist/esm/icons/folder';
 import FolderOpen from 'lucide-react/dist/esm/icons/folder-open';
 import type { TabFolder } from '@shared/protocol';
@@ -117,7 +117,7 @@ function FolderRowImpl({
       }}
     >
       <span className="bento-folder-row__icon">
-        <Icon icon={folder.collapsed ? Folder : FolderOpen} size="sm" />
+        <BentoIcon icon={folder.collapsed ? Folder : FolderOpen} size="sm" />
       </span>
       {renaming ? (
         <input
@@ -141,12 +141,12 @@ function FolderRowImpl({
           onBlur={commitRename}
         />
       ) : (
-        <Text className="bento-folder-row__label" variant="text" size="s" color="muted">
+        <Text className="bento-folder-row__label" variant="body" size="s" color="muted">
           {folder.name}
         </Text>
       )}
       {!renaming && (
-        <Text className="bento-folder-row__count" variant="text" size="xs">
+        <Text className="bento-folder-row__count" variant="body" size="xs">
           {tabCount}
         </Text>
       )}

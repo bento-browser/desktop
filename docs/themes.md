@@ -4,7 +4,7 @@ Bento workspaces can each pick a theme — a swap of the `--brand-*`,
 `--neutral-default-*`, and `--color-N-fg` CSS variables that re-skins
 the entire UI (sidebar, overlays, and Firefox chrome) when that
 workspace is active. Bento consumes the curated Standard and Monochromatic
-collections from `@tale-ui/themes`; repo-local CSS remains available for the
+collections from `@muxui/react/themes`; repo-local CSS remains available for the
 Bento Default palette and custom developer themes. Users pick a theme in the
 Edit Workspace dialog or all-workspaces palette.
 
@@ -15,7 +15,7 @@ troubleshoot.
 ## Mental model
 
 - The eight **Standard** and seven **Monochromatic** shipped themes are sourced
-  from `@tale-ui/themes` metadata and production CSS.
+  from the public `@muxui/react/themes` metadata and `themes.css` export.
 - `scripts/sync-theme-presets.mjs` rewrites the package selectors to Bento's
   `[data-bento-theme="<id>"]` contract and generates
   `theme/presets/index.css` plus `index.ts`.
@@ -26,7 +26,7 @@ troubleshoot.
   Undefined means "use the Default theme" (`default`).
 - The **Default theme** is repo-local too:
   `extensions/bento-shell/src/theme/presets/default.css`. Updating it
-  does not require changing Tale UI upstream.
+  does not require changing the Mux artifact.
 - `useWorkspaceTheme()` mirrors the active workspace's `themeId` onto
   `<html data-bento-theme="…">` in every shell document. The sidebar
   also pushes it to the Firefox chrome window via the `BENTO_THEME:`
@@ -36,35 +36,27 @@ troubleshoot.
   `theme/presets/index.css`, while `pnpm run import` includes that same generated
   artifact in `bento-chrome-tokens.css` for Firefox chrome.
 
-Switching themes is a single `setAttribute` call. No runtime CSS
-generation, no `<style>` element churn.
+Switching themes synchronously updates the shared scope's theme, mode, and
+contrast attributes. No runtime CSS generation or `<style>` element churn is
+needed.
 
-## Generating a custom Bento theme with Scale
+## Generating a custom Bento theme with a static Scale export
 
-The [Tale UI Scale app](file:///Users/admin/Projects/tale-ui/tale-ui/playground/scale)
-generates the canonical palette CSS that Bento's converter consumes.
+The converter accepts a static Scale-compatible CSS export. Keep that source
+file outside the repository and pass its path to the importer.
 
-1. From the tale-ui repo:
-
-   ```sh
-   cd /Users/admin/Projects/tale-ui/tale-ui
-   pnpm --filter scale dev   # opens Scale at http://localhost:<port>
-   ```
-
-2. In the Scale UI, pick a brand colour (the `--brand-60` BASE shade).
+1. In the Scale UI, pick a brand colour (the `--brand-60` base shade).
    Scale auto-derives the 11-stop brand palette.
 
-3. Switch Scale's mode to "neutral" and pick a neutral hue. Scale
+2. Switch Scale's mode to "neutral" and pick a neutral hue. Scale
    derives the 27-stop `--neutral-default-*` palette (with the
    intermediate 12/14/16/18/22/24/26/28/82/84/86/88/92/94/96/98 stops
    that bento-tokens consumers expect).
 
-4. Click **Copy CSS** in Scale to copy the combined output. Paste it
+3. Click **Copy CSS** in Scale to copy the combined output. Paste it
    into a file you control, e.g. `~/Desktop/sunset.css`.
 
-The CSS shape Scale emits is documented in the
-[Scale source](file:///Users/admin/Projects/tale-ui/tale-ui/playground/scale/src/utils.js)
-— roughly:
+The CSS shape is roughly:
 
 ```css
 :root {
@@ -73,21 +65,21 @@ The CSS shape Scale emits is documented in the
   --brand-100: …;
 }
 
-:where(html:not([data-color-mode="dark"])) .tale-ui,
-.light .tale-ui {
+:where(html:not([data-color-mode="dark"])) .legacy-theme-root,
+.light .legacy-theme-root {
   --color-60-fg: var(--color-100);
   …
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode="light"])) .tale-ui {
+  :where(html:not([data-color-mode="light"])) .legacy-theme-root {
     --color-60-fg: var(--color-5);
     …
   }
 }
 
-html[data-color-mode="dark"] .tale-ui,
-.dark .tale-ui {
+html[data-color-mode="dark"] .legacy-theme-root,
+.dark .legacy-theme-root {
   --color-30-fg: var(--color-5);
   …
 }
@@ -128,15 +120,15 @@ does three things:
 1. **Writes** `extensions/bento-shell/src/theme/presets/<id>.css`,
    rewriting Scale's selectors so the overrides are scoped:
    - `:root { … }` → `[data-bento-theme="<id>"] { … }`
-   - Light fg overrides → `html[data-bento-theme="<id>"]:not([data-color-mode="dark"]).tale-ui`
-   - Dark fg overrides → `html[data-bento-theme="<id>"][data-color-mode="dark"].tale-ui`
+   - Light fg overrides → `html[data-bento-theme="<id>"]:not([data-color-mode="dark"])`
+   - Dark fg overrides → `html[data-bento-theme="<id>"][data-color-mode="dark"]`
    - `@media (prefers-color-scheme: dark)` inner selector → similar compound form
-   - Legacy `.light .tale-ui` / `.dark .tale-ui` siblings are dropped
+   - Legacy class-based mode siblings are dropped
      (Bento uses `data-color-mode`, not those class names)
 
 2. **Runs** `scripts/sync-theme-presets.mjs`, which discovers the new sibling
    CSS file and regenerates `index.css` and `index.ts` alongside the installed
-   `@tale-ui/themes` collections. `brand60` and `neutral20` are parsed for the
+   `@muxui/react/themes` collections. `brand60` and `neutral20` are parsed for the
    split picker swatch.
 
 Re-running with the same `<id>` overwrites the `.css` file and deterministically
@@ -144,7 +136,7 @@ regenerates both generated artifacts.
 
 ### Updating the Default theme
 
-Default is not a Tale UI upstream edit. Generate CSS in Scale, then run:
+Default is a Bento-owned preset. Generate CSS in Scale, then run:
 
 ```sh
 pnpm theme:import default ~/Desktop/default.css \
@@ -207,7 +199,7 @@ If you need finer control than Scale offers (e.g. matching an
 existing brand exactly), you can author a repo-local preset by hand. Use
 [default.css](../extensions/bento-shell/src/theme/presets/default.css) as the
 local template; shipped Standard and Monochromatic CSS remains owned by
-`@tale-ui/themes`.
+`@muxui/react/themes`.
 
 Minimum required structure:
 
@@ -239,23 +231,23 @@ Add the neutral palette for a full UI re-skin:
 }
 ```
 
-Add fg overrides if your brand-60 doesn't pass contrast with Tale
-UI's default `--color-60-fg`:
+Add fg overrides if your brand-60 doesn't pass contrast with Mux UI's
+default `--color-60-fg`:
 
 ```css
-html[data-bento-theme='<id>']:not([data-color-mode='dark']).tale-ui {
+html[data-bento-theme='<id>']:not([data-color-mode='dark']) {
   --color-60-fg: var(--color-100);
   --color-70-fg: var(--color-100);
 }
 
-html[data-bento-theme='<id>'][data-color-mode='dark'].tale-ui {
+html[data-bento-theme='<id>'][data-color-mode='dark'] {
   --color-30-fg: var(--color-5);
   --color-40-fg: var(--color-5);
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-bento-theme='<id>']:not([data-color-mode='light']).tale-ui {
+  html[data-bento-theme='<id>']:not([data-color-mode='light']) {
     /* Mirror the explicit-dark block here so the theme still reacts
        to the OS preference when the user hasn't pinned light mode. */
     --color-30-fg: var(--color-5);
@@ -272,18 +264,18 @@ Run `pnpm run theme:sync` to regenerate `index.css` and `index.ts`, then
 
 A theme can override:
 
-| Token family          | Stops                                                                                                      | Effect                                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--brand-N`           | 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100                                                                 | Accent palette. Tale UI aliases `--color-N` to `--brand-N`, so this also retunes Bento's workspace accent. |
-| `--neutral-default-N` | 5, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 40, 50, 60, 70, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 100 | Neutral palette. Drives sidebar bg, text colour, dividers, etc.                                            |
-| `--color-N-fg`        | per-stop, light + dark                                                                                     | Foreground contrast pairs against brand backgrounds (e.g. text on `--color-60`-tinted buttons).            |
-| `--display-color`     | single                                                                                                     | Top-level heading colour alias.                                                                            |
-| `--text-color`        | single                                                                                                     | Body text colour alias.                                                                                    |
-| `--mono-color`        | single                                                                                                     | Mono / code text colour alias.                                                                             |
+| Token family          | Stops                                                                                                      | Effect                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `--brand-N`           | 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100                                                                 | Accent palette. Mux UI aliases `--color-N` to `--brand-N`, so this also retunes Bento's workspace accent. |
+| `--neutral-default-N` | 5, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 40, 50, 60, 70, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 100 | Neutral palette. Drives sidebar bg, text colour, dividers, etc.                                           |
+| `--color-N-fg`        | per-stop, light + dark                                                                                     | Foreground contrast pairs against brand backgrounds (e.g. text on `--color-60`-tinted buttons).           |
+| `--display-color`     | single                                                                                                     | Top-level heading colour alias.                                                                           |
+| `--text-color`        | single                                                                                                     | Body text colour alias.                                                                                   |
+| `--mono-color`        | single                                                                                                     | Mono / code text colour alias.                                                                            |
 
 A theme does **not** need to override every token in a family — Scale
 emits the full ladder, but a hand-authored theme can supply only the
-slots it wants to change and let the others fall back to Tale UI
+slots it wants to change and let the others fall back to Mux UI
 defaults via inheritance.
 
 ## How it works (under the hood)
@@ -292,12 +284,10 @@ For maintainers — skip this if you're just adding themes.
 
 ### Shell side
 
-- Every shell entry (`main.tsx`, `palette/main.tsx`, `confirm/main.tsx`,
-  `settings/main.tsx`, `welcome/main.tsx`, `workspace-switcher/main.tsx`,
-  `menu/main.tsx`, `edit-workspace/main.tsx`) imports
-  `theme/presets/index.css`. The generated file contains the adapted
-  `@tale-ui/themes` CSS plus any repo-local presets, so every scoped rule ships
-  in every shell bundle.
+- Every shell entry imports `theme/muxui.css`, followed by Bento tokens,
+  `theme/presets/index.css`, and the local font boundary. The generated preset
+  file contains public Mux compatibility projections plus repo-local presets,
+  so every scoped rule ships in every shell bundle.
 - `useWorkspaceTheme()` ([theme/useWorkspaceTheme.ts](../extensions/bento-shell/src/theme/useWorkspaceTheme.ts))
   subscribes to the active workspace via the existing Zustand store
   and calls `document.documentElement.setAttribute('data-bento-theme',
@@ -394,7 +384,7 @@ removed independently:
 3. Run `pnpm run import` to drop the rules from `bento-chrome-tokens.css`.
 
 Shipped Standard and Monochromatic themes are controlled by the pinned
-`@tale-ui/themes` version and are not edited in Bento.
+`@muxui/react/themes` version and are not edited in Bento.
 
 Workspaces still carrying the deleted `themeId` will fall back to the
 Default theme at runtime (see `getThemeMeta` in
@@ -408,7 +398,7 @@ keeps the old id, so users need to re-pick the theme in Edit Workspace.
 **The new theme doesn't show up in the picker.**
 Run `pnpm run theme:sync`, then open
 `extensions/bento-shell/src/theme/presets/index.ts` and confirm the generated
-metadata entry is present. A package-resolution error means the local Tale UI
+metadata entry is present. A package-resolution error means the local Mux UI
 build or registry install is incomplete.
 
 **The picker shows the theme but selecting it changes nothing.**
@@ -425,9 +415,9 @@ chrome stylesheet (`bento-chrome-tokens.css`) is rebuilt by
 stylesheet is loaded at boot, not hot-swapped.
 
 **Foreground text reads poorly on a tinted button.**
-Tale UI's defaults for `--color-N-fg` aren't tuned for your custom
+Mux UI's defaults for `--color-N-fg` aren't tuned for your custom
 brand. Add explicit `--color-N-fg` overrides under the
-`html[data-bento-theme="<id>"]:not([data-color-mode="dark"]).tale-ui`
+`html[data-bento-theme="<id>"]:not([data-color-mode="dark"])`
 selector (and the dark + `@media` variants). The generated package section in
 `presets/index.css` shows the pattern.
 
@@ -464,11 +454,11 @@ to hex and re-import.
 
 ## Reference
 
-- Source-of-truth Scale generator:
-  [`/Users/admin/Projects/tale-ui/tale-ui/playground/scale/`](file:///Users/admin/Projects/tale-ui/tale-ui/playground/scale/)
+- Source input: a static Scale-compatible CSS export passed to
+  [`scripts/import-theme.mjs`](../scripts/import-theme.mjs)
 - Theme converter script:
   [`scripts/import-theme.mjs`](../scripts/import-theme.mjs)
-- Shipped theme source: `@tale-ui/themes`
+- Shipped theme source: `@muxui/react/themes`
 - Theme artifact generator:
   [`scripts/sync-theme-presets.mjs`](../scripts/sync-theme-presets.mjs)
 - Theme presets registry:

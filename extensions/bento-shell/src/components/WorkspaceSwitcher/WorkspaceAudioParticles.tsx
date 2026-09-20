@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Icon } from '@tale-ui/react/icon';
 import Music2 from 'lucide-react/dist/esm/icons/music-2';
 import Music3 from 'lucide-react/dist/esm/icons/music-3';
 import Music4 from 'lucide-react/dist/esm/icons/music-4';
+import { BentoIcon } from '../primitives/BentoIcon';
 
 const PARTICLE_ICONS = [Music2, Music3, Music4];
 const EMIT_INTERVAL_MS = 540;
@@ -49,15 +49,17 @@ export function WorkspaceAudioParticles({
     >
       {particles.map((particle) => {
         const ParticleIcon = PARTICLE_ICONS[particle.variation]!;
+        const className = `bento-workspace-switcher__audio-particle bento-workspace-switcher__audio-particle--${particle.variation + 1}`;
+        const onAnimationEnd = () => {
+          setParticles((current) => current.filter((item) => item.id !== particle.id));
+        };
         return (
-          <Icon
+          <BentoIcon
             key={particle.id}
             icon={ParticleIcon}
             size="sm"
-            className={`bento-workspace-switcher__audio-particle bento-workspace-switcher__audio-particle--${particle.variation + 1}`}
-            onAnimationEnd={() => {
-              setParticles((current) => current.filter((item) => item.id !== particle.id));
-            }}
+            className={className}
+            onAnimationEnd={onAnimationEnd}
           />
         );
       })}

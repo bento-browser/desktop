@@ -1,4 +1,4 @@
-import type { CommandPaletteCommand } from '@tale-ui/react/command-palette';
+import type { CommandPaletteCommand } from '@muxui/react';
 import type { AddrResult, SavedPanelEntry, SearchEngineId } from '@shared/protocol';
 import type { AddrbarMode } from '../../bridge/useAddrbar';
 import type { OpenAddressRowKind } from './openRows';

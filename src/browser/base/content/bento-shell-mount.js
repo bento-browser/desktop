@@ -147,19 +147,18 @@
     true /* capture */,
   );
 
-  // Tale UI design tokens for chrome. The token CSS is generated from
-  // tale-ui source by scripts/generate-chrome-tokens.mjs (runs as part
-  // of `pnpm run import`) and registered in chrome via patches/chrome-
-  // layout/01-bento-shell-mount.patch's jar.mn entry. Loading it as a
-  // <link> stylesheet exposes Tale UI's variable cascade on the chrome
+  // Public Mux design tokens for chrome. The token CSS is generated from
+  // @muxui/react's public styles and themes by
+  // scripts/generate-chrome-tokens.mjs (runs as part of `pnpm run import`)
+  // and registered in chrome via the jar.mn entry. Loading it as a <link>
+  // stylesheet exposes the generated Bento alias bridge on the chrome
   // <window>'s :root, so chrome inline styles can use `var(--color-60)`,
-  // `var(--neutral-90)`, `var(--radius-m)`, etc. — auto-themable via
-  // future Scale-app-driven theme files, auto-flipping with the OS
-  // color scheme via Tale UI's _color-modes.css cascade.
+  // `var(--neutral-90)`, `var(--radius-m)`, etc. The existing data-bento-theme
+  // and data-color-mode attributes select the same values as the shell.
   //
-  // We keep `var()` references (no manual hex constants) so any change
-  // to Tale UI's primitives flows in on the next import without anyone
-  // touching this file.
+  // We keep `var()` references (no manual hex constants) so changes to the
+  // public Mux primitives flow in on the next import without touching this
+  // hook.
   function injectChromeTokens() {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -170,7 +169,7 @@
 
   // Map Firefox's chrome color variables (--toolbar-bgcolor,
   // --toolbar-field-background-color, --toolbox-textcolor, etc.) to
-  // Tale UI tokens so the visible chrome (toolbar, URL bar, titlebar)
+  // Bento's generated Mux aliases so the visible chrome (toolbar, URL bar, titlebar)
   // re-themes from the same source as the rest of Bento. Loaded AFTER
   // tokens so the var() references it makes resolve. See the file
   // header at chrome://browser/content/bento-chrome-theme.css for the
@@ -1682,7 +1681,7 @@
       }
 
       /* Per-panel header: compact urlbar (back/fwd/reload, URL input,
-         bookmark / pin). All sizing via Bento/Tale UI tokens — no raw values. */
+         bookmark / pin). All sizing via Bento/Mux tokens — no raw values. */
       .bento-panel-header {
         display: flex;
         flex-direction: row;
@@ -1720,7 +1719,7 @@
           transition: none;
         }
       }
-      /* Chrome-side translation of Tale UI IconButton
+      /* Chrome-side translation of Mux IconButton
          variant="ghost" size="sm". These controls cannot render the
          React component because they live in browser chrome, but they
          carry the same BEM classes and mirror the same interactive
@@ -2224,7 +2223,7 @@
          The ID rule overrides the .split-view-panel-active rule's
          min-width (which would force 380px, way wider than we want
          for a slim trailer slot).
-         Colours: --neutral-* tokens flip with Tale UI's color-mode
+         Colours: --neutral-* tokens flip with the public Mux mode
          cascade (data-color-mode on the chrome window), so the
          trailer adapts to light + dark mode automatically. SVG
          currentColor inherits from the trailer's color property so
@@ -3339,40 +3338,98 @@
 
   const PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_SRC =
     '"use strict";' +
-    'addMessageListener("BentoPanelNavigatorTooltip", function(msg) {' +
-    '  content.postMessage({ kind: "bento-panel-navigator-tooltip", payload: msg.data || null }, "*");' +
-    '});';
+    'if (!globalThis.__bentoPanelNavigatorTooltipRelayInstalled) {' +
+    '  globalThis.__bentoPanelNavigatorTooltipRelayInstalled = true;' +
+    '  addMessageListener("BentoPanelNavigatorTooltip", function(msg) {' +
+    '    try {' +
+    '      content.postMessage({ kind: "bento-panel-navigator-tooltip", payload: msg.data || null }, "*");' +
+    '    } catch (e) {}' +
+    '  });' +
+    '}';
   const PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL =
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_SRC);
   let panelNavigatorTooltipPayload = null;
 
+  function installPanelNavigatorTooltipFrameScript(frame) {
+    const messageManager = frame?.messageManager;
+    const windowGlobal = frame?.browsingContext?.currentWindowGlobal;
+    if (!messageManager || typeof messageManager.loadFrameScript !== 'function') return false;
+    if (
+      frame._bentoPanelNavigatorTooltipFrameScriptManager === messageManager &&
+      frame._bentoPanelNavigatorTooltipFrameScriptWindowGlobal === windowGlobal
+    ) {
+      return true;
+    }
+    const registerForDelayedLoad =
+      frame._bentoPanelNavigatorTooltipFrameScriptDelayedManager !== messageManager;
+    messageManager.loadFrameScript(
+      PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL,
+      registerForDelayedLoad,
+    );
+    if (registerForDelayedLoad) {
+      frame._bentoPanelNavigatorTooltipFrameScriptDelayedManager = messageManager;
+    }
+    frame._bentoPanelNavigatorTooltipFrameScriptManager = messageManager;
+    frame._bentoPanelNavigatorTooltipFrameScriptWindowGlobal = windowGlobal;
+    frame._bentoPanelNavigatorTooltipFrameScriptLoaded = true;
+    return true;
+  }
+
+  function replayPanelNavigatorTooltipPayload(frame) {
+    if (!panelNavigatorTooltipPayload) return;
+    const messageManager = frame?.messageManager;
+    if (!messageManager || typeof messageManager.sendAsyncMessage !== 'function') return;
+    try {
+      messageManager.sendAsyncMessage('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
+    } catch {
+      // The remote frame can disappear during a browser-window teardown.
+    }
+  }
+
   function ensurePanelNavigatorTooltipFrameScript() {
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
-    if (!frame || frame._bentoPanelNavigatorTooltipFrameScriptLoaded) return;
-    try {
-      frame.messageManager?.loadFrameScript?.(PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL, true);
-      frame._bentoPanelNavigatorTooltipFrameScriptLoaded = true;
-      frame.addEventListener(
-        'load',
-        () => {
-          if (panelNavigatorTooltipPayload) {
-            frame.messageManager?.sendAsyncMessage?.(
-              'BentoPanelNavigatorTooltip',
-              panelNavigatorTooltipPayload,
-            );
+    if (!frame) return;
+    if (!frame._bentoPanelNavigatorTooltipFrameScriptProgressListenerAttached) {
+      const progressListener = {
+        QueryInterface: ChromeUtils.generateQI([
+          'nsIWebProgressListener',
+          'nsISupportsWeakReference',
+        ]),
+        onStateChange(webProgress, request, stateFlags) {
+          if (webProgress && !webProgress.isTopLevel) return;
+          if (stateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
+            ensurePanelNavigatorTooltipFrameScript();
+            replayPanelNavigatorTooltipPayload(frame);
           }
         },
-        true,
-      );
+        onLocationChange() {},
+        onProgressChange() {},
+        onStatusChange() {},
+        onSecurityChange() {},
+        onContentBlockingEvent() {},
+      };
+      try {
+        frame.addProgressListener(progressListener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
+        frame._bentoPanelNavigatorTooltipFrameScriptProgressListener = progressListener;
+        frame._bentoPanelNavigatorTooltipFrameScriptProgressListenerAttached = true;
+      } catch (err) {
+        console.warn('[bento-shell-mount] panel navigator tooltip progress listener failed:', err);
+      }
+    }
+    try {
+      installPanelNavigatorTooltipFrameScript(frame);
     } catch (err) {
       console.warn('[bento-shell-mount] panel navigator tooltip frame setup failed:', err);
     }
   }
 
   function setBentoPanelNavigatorTooltipSrc() {
-    setFrameSrc('bento-panel-navigator-tooltip-frame', '/dist/panel-navigator-tooltip.html');
+    // Attach the progress listener before navigation. Firefox can replace the
+    // remote frame's message manager during the first extension load, so the
+    // relay is reinstalled when the document reaches STATE_STOP.
     ensurePanelNavigatorTooltipFrameScript();
+    setFrameSrc('bento-panel-navigator-tooltip-frame', '/dist/panel-navigator-tooltip.html');
   }
 
   // Create overlay host elements dynamically rather than in the patch.
@@ -3451,7 +3508,7 @@
     scrim.setAttribute('popover', 'manual');
     // Override the UA popover layout (centered, fit-content) into a
     // top strip. Height is set on show from the live toolbar rect.
-    // background = --scrim (neutral-100 @ 48%), the SAME token Tale UI's
+    // background = --scrim (neutral-100 @ 48%), the SAME token Mux's
     // Dialog.Backdrop uses (--modal-backdrop-bg: var(--scrim)), so the
     // toolbar dim matches the content dim exactly. Painted once.
     scrim.style.cssText =
@@ -3506,7 +3563,7 @@
     remote: false,
   });
 
-  // Workspace-switcher overlay. The Tale UI Menu popover would otherwise
+  // Workspace-switcher overlay. The Mux Menu popover would otherwise
   // be clipped at the sidebar iframe boundary — useless when the rail is
   // collapsed to 4rem. Lifting the menu into a chrome-mounted <browser>
   // lets it render anywhere in the chrome window.
@@ -3562,10 +3619,11 @@
 
   const panelNavigatorTooltipHostInit = document.getElementById('bento-panel-navigator-tooltip-host');
   if (panelNavigatorTooltipHostInit) {
+    panelNavigatorTooltipHostInit.removeAttribute('hidden');
     panelNavigatorTooltipHostInit.style.display = 'flex';
     panelNavigatorTooltipHostInit.style.pointerEvents = 'none';
     // Unlike modal overlays this host has no backdrop; keep it painted so
-    // the transparent frame can show its Tale UI tooltip popup.
+    // the transparent frame can show its Mux tooltip popup.
     panelNavigatorTooltipHostInit.style.opacity = '1';
   }
 
@@ -4130,7 +4188,7 @@
   }
 
   // ─── Workspace-switcher overlay ────────────────────────────────────────
-  // The Tale UI Menu popover would otherwise be clipped at the sidebar
+  // The Mux Menu popover would otherwise be clipped at the sidebar
   // iframe boundary — useless when the rail is collapsed to 4rem and the
   // menu would render entirely outside the visible sidebar. Lifting it
   // into a chrome-mounted <browser> lets the menu render anywhere in the
@@ -4420,7 +4478,7 @@
   }
 
   // ─── Generic chrome-menu overlay ───────────────────────────────────────
-  // showChromeMenu({ anchor, items, onSelect, placement }) opens a Tale UI Menu over
+  // showChromeMenu({ anchor, items, onSelect, placement }) opens a Mux Menu over
   // the entire chrome window, positioned next to `anchor` (a DOMRect-ish
   // {left, top, width, height} from the trigger element's
   // getBoundingClientRect). Each open generates a unique contextId so
@@ -4671,13 +4729,12 @@
   const TAB_MOVE_PREFIX = 'BENTO_TAB_MOVE:';
   let currentSidebarSelectedTabIds = [];
 
-  // Drive Tale UI's color-mode cascade in chrome by setting explicit
+  // Drive the public Mux color-mode cascade in chrome by setting explicit
   // data-color-mode on the chrome window's <window> root.
-  // _color-modes.css selectors are rewritten from `html` to `:root` by
-  // scripts/generate-chrome-tokens.mjs, so the same cascade that flips
-  // shell tokens flips chrome tokens. 'system' is stored as Auto but
-  // resolved here to light/dark because Tale UI expects an explicit
-  // rendered mode once the user has a persisted preference.
+  // public mode selectors are rewritten from `html` to `:root` by
+  // scripts/generate-chrome-tokens.mjs, so the same cascade that flips shell
+  // tokens flips chrome tokens. 'system' is stored as Auto but resolved here
+  // to light/dark because native chrome renders an explicit mode.
   let chromeColorModePref = null;
   function resolveChromeColorMode(mode) {
     if (mode === 'system') {
@@ -7720,7 +7777,7 @@
       closeBtn = makeHeaderButton('Close panel', ICONS.x, () => removePanel(tabId));
     }
 
-    // Kebab "more" button: opens a Tale UI Menu (via the generic
+    // Kebab "more" button: opens a Mux Menu (via the generic
     // chrome-menu overlay) of panel-scoped options. First population
     // is the custom panel sizes from Bento Settings; future items
     // (e.g., move to workspace, duplicate panel) — including SUBMENUS —
@@ -7749,7 +7806,7 @@
         // Size presets nest under a "Custom panel widths" submenu so
         // the menu has room for new top-level actions — `items.items`
         // makes ChromeMenu.tsx render a SubmenuTrigger via
-        // react-aria-components (no Tale UI Menu change needed).
+        // react-aria-components (no Mux Menu change needed).
         // "Save panel" sits as a sibling below a separator; clicking
         // dispatches `savedPanels/save` and bento-tools inserts the
         // bookmark into the "Saved panels" folder (de-dupes silently).
@@ -10610,7 +10667,7 @@
     };
     ensurePanelNavigatorTooltipFrameScript();
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
-    frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
+    replayPanelNavigatorTooltipPayload(frame);
   }
 
   function attachPanelNavigatorTooltip(btn) {
@@ -13782,7 +13839,7 @@
       // Removed (vs. pre-iframe trailer):
       //   - role="button": the vbox is now a CONTAINER; the iframe
       //     child renders the actual button widgets.
-      //   - inline `title`: replaced by the iframe's Tale UI Tooltip.
+      //   - inline `title`: replaced by the iframe's Mux Tooltip.
       //   - click handler: the iframe captures mouse clicks before
       //     they reach the vbox. The keydown handler stays only for
       //     keyboard cycle-Enter while the OUTER vbox itself is

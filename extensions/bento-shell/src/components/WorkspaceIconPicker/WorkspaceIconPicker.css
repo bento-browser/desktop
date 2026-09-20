@@ -1,13 +1,13 @@
 /* Shared workspace icon picker used by the single-workspace dialog and
  * all-workspaces command palette. */
 
-.tale-row.bento-workspace-icon-picker__field {
+.bento-row.bento-workspace-icon-picker__field {
   position: relative;
   width: var(--bento-workspace-palette-icon-field-width);
   height: var(--bento-workspace-palette-icon-field-width);
 }
 
-.tale-button.bento-workspace-icon-picker__trigger {
+.muxui-button.bento-workspace-icon-picker__trigger {
   width: var(--bento-workspace-palette-icon-field-width);
   height: var(--bento-workspace-palette-icon-field-width);
   aspect-ratio: 1;
@@ -30,7 +30,7 @@
   line-height: 1;
 }
 
-.tale-button.bento-workspace-icon-picker__trigger[data-bento-custom-icon='true']
+.muxui-button.bento-workspace-icon-picker__trigger[data-bento-custom-icon='true']
   .bento-workspace-icon-picker__trigger-value {
   display: block;
   width: auto;
@@ -44,11 +44,52 @@
   white-space: nowrap;
 }
 
-.tale-popover__popup.bento-workspace-icon-picker__popover {
+.muxui-popover.bento-workspace-icon-picker__popover {
+  padding: var(--space-2xs);
   width: min(var(--bento-workspace-icon-picker-popover-width), calc(100vw - var(--space-m)));
+  max-width: calc(100vw - var(--space-m));
+  background-color: var(--neutral-5);
+  border-color: transparent;
+  box-shadow: var(--popup-shadow);
+  color: inherit;
+  outline: 1px solid var(--neutral-14);
 }
 
-.tale-icon-button.bento-workspace-icon-picker__clear-button {
+/* Keep the picker search field and empty state aligned with the former
+ * frameless popover recipe while using Mux's supported field surface. */
+.bento-workspace-icon-picker__search-container {
+  padding-inline: var(--space-2xs);
+  margin-bottom: var(--space-4xs);
+  background-color: var(--neutral-12);
+  border-radius: var(--field-radius);
+}
+
+/* Keep the picker search label hidden and its field chrome borderless. */
+.muxui-search-field.bento-workspace-icon-picker__search-field {
+  gap: 0;
+}
+
+.muxui-search-field.bento-workspace-icon-picker__search-field .muxui-field-input {
+  padding-inline: 0;
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.muxui-search-field.bento-workspace-icon-picker__search-field
+  .muxui-field-input:hover:not(:focus, [data-disabled], [data-invalid]),
+.muxui-search-field.bento-workspace-icon-picker__search-field .muxui-field-input:focus,
+.muxui-search-field.bento-workspace-icon-picker__search-field .muxui-field-input[data-focused],
+.muxui-search-field.bento-workspace-icon-picker__search-field .muxui-field-input[data-invalid],
+.muxui-search-field.bento-workspace-icon-picker__search-field
+  .muxui-field-input[data-invalid]:focus,
+.muxui-search-field.bento-workspace-icon-picker__search-field
+  .muxui-field-input[data-invalid][data-focused] {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.muxui-icon-button.bento-workspace-icon-picker__clear-button {
   position: absolute;
   inset-block-start: var(--bento-workspace-icon-picker-clear-offset);
   inset-inline-end: var(--bento-workspace-icon-picker-clear-offset);
@@ -62,7 +103,7 @@
   color: var(--neutral-90);
 }
 
-.tale-row.bento-workspace-icon-picker__emoji-tab-list {
+.bento-row.bento-workspace-icon-picker__emoji-tab-list {
   padding-block-start: var(--space-4xs);
   border-block-start: 1px solid var(--neutral-20);
   overflow-x: auto;
@@ -81,7 +122,7 @@
   background-color: var(--neutral-90);
 }
 
-.tale-list-box.bento-workspace-icon-picker__emoji-list {
+.muxui-list-box.bento-workspace-icon-picker__emoji-list {
   grid-template-columns: repeat(
     auto-fill,
     minmax(var(--bento-workspace-icon-picker-item-size), 1fr)
@@ -90,17 +131,23 @@
   gap: var(--space-4xs);
   height: var(--bento-workspace-icon-picker-list-height);
   max-height: var(--bento-workspace-icon-picker-list-height);
+  padding: 0;
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
   overflow-y: auto;
   scrollbar-width: none;
 }
 
-.tale-popover__empty.bento-workspace-icon-picker__empty {
+.bento-workspace-icon-picker__empty {
   display: flex;
   align-items: center;
   min-height: var(--bento-workspace-icon-picker-list-height);
+  padding-inline: var(--space-2xs);
+  padding-block: var(--space-2xs);
 }
 
-.tale-list-box__header.bento-workspace-icon-picker__emoji-section-header {
+.muxui-list-box-section-header.bento-workspace-icon-picker__emoji-section-header {
   display: flex;
   grid-column: 1 / -1;
   flex-direction: column;

@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
-import { Button } from '@tale-ui/react/button';
-import { Column } from '@tale-ui/react/column';
-import { Dialog } from '@tale-ui/react/dialog';
-import { Icon } from '@tale-ui/react/icon';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Row } from '@tale-ui/react/row';
-import { Text } from '@tale-ui/react/text';
-import { TextField } from '@tale-ui/react/text-field';
+import { Button, Dialog, IconButton, Text, TextField } from '@muxui/react';
 import Check from 'lucide-react/dist/esm/icons/check';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
@@ -20,6 +13,7 @@ import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/w
 import { BENTO_THEMES, DEFAULT_THEME_ID } from '../../theme/presets';
 import { WorkspaceIconField } from '../WorkspaceIconPicker/WorkspaceIconPicker';
 import { WorkspaceThemePicker } from '../WorkspaceThemePicker/WorkspaceThemePicker';
+import { BentoIcon, Column, Row } from '../primitives';
 import './WorkspacePalette.css';
 
 export interface WorkspacePaletteProps {
@@ -92,24 +86,21 @@ function WorkspaceEditorRow({
         onIconChange={(icon) => onIconChange(workspace, icon)}
       />
       <Row gap="s" align="center" className="bento-workspace-palette__name-cell">
-        <TextField.Root
+        <TextField
+          aria-label="Workspace name"
           value={draft.name}
           onChange={(name) => onDraftChange(workspace.id, { name })}
           className="bento-workspace-palette__name-field"
-        >
-          <TextField.Label className="bento-workspace-palette__sr-only">
-            Workspace name
-          </TextField.Label>
-          <TextField.Input
-            className="bento-workspace-palette__field-input"
-            onBlur={() => onCommitName(workspace)}
-            onKeyDown={(event) => {
+          inputProps={{
+            className: 'bento-workspace-palette__field-input',
+            onBlur: () => onCommitName(workspace),
+            onKeyDown: (event) => {
               if (!isEnterKey(event.key)) return;
               event.preventDefault();
               event.currentTarget.blur();
-            }}
-          />
-        </TextField.Root>
+            },
+          }}
+        />
       </Row>
       <WorkspaceThemePicker
         workspaceName={workspace.name}
@@ -120,12 +111,12 @@ function WorkspaceEditorRow({
         variant={active ? 'ghost' : 'neutral'}
         size="sm"
         className="bento-workspace-palette__status-button"
-        onPress={() => onActivate(workspace.id)}
-        isDisabled={active}
+        onActivate={() => onActivate(workspace.id)}
+        disabled={active}
       >
         {active ? (
           <>
-            <Icon icon={Check} size="sm" />
+            <BentoIcon icon={Check} size="sm" />
             Active
           </>
         ) : (
@@ -137,12 +128,12 @@ function WorkspaceEditorRow({
         size="sm"
         aria-label={`Delete ${workspace.name}`}
         className="bento-workspace-palette__delete-button"
-        isDisabled={!canDelete}
-        onPress={() => onDelete(workspace)}
+        disabled={!canDelete}
+        onActivate={() => onDelete(workspace)}
       >
-        <Icon icon={Trash2} size="sm" />
+        <BentoIcon icon={Trash2} size="sm" />
       </IconButton>
-      <Text variant="text" size="s" color="muted" className="bento-workspace-palette__sr-only">
+      <Text variant="body" size="s" color="muted" className="bento-workspace-palette__sr-only">
         {tabCount} tabs
       </Text>
     </Row>
@@ -245,84 +236,86 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
   }
 
   return (
-    <Dialog.Root
-      isOpen={true}
+    <Dialog
+      open={true}
+      title="Edit workspaces"
+      dismissable
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
+      panelClassName="bento-workspace-palette__dialog"
+      titleClassName="bento-workspace-palette__title"
+      actionsClassName="bento-workspace-palette__footer"
+      actions={
+        <Row align="center" className="bento-workspace-palette__footer-content">
+          <Text
+            variant="body"
+            size="s"
+            color="muted"
+            className="bento-workspace-palette__footer-text"
+          >
+            {resultLabel(workspaces.length)}
+          </Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="bento-workspace-palette__close-button"
+            onActivate={onClose}
+          >
+            Close
+          </Button>
+        </Row>
+      }
+      contentClassName="bento-workspace-palette__dialog-content"
     >
-      <Dialog.Backdrop isDismissable>
-        <Dialog.Popup className="bento-workspace-palette__dialog">
-          <Dialog.Close aria-label="Close" />
-          <Dialog.Title className="bento-workspace-palette__title">Edit workspaces</Dialog.Title>
-          <Column gap="xs" className="bento-workspace-palette__content">
-            <Column gap="xs" className="bento-workspace-palette__list">
-              <Row gap="s" align="center" className="bento-workspace-palette__heading-row">
-                <Text variant="label" size="s" color="muted">
-                  Icon
-                </Text>
-                <Text variant="label" size="s" color="muted">
-                  Workspace
-                </Text>
-                <Text variant="label" size="s" color="muted">
-                  Theme
-                </Text>
-                <Text variant="label" size="s" color="muted">
-                  Status
-                </Text>
-                <Text variant="label" size="s" color="muted">
-                  Delete
-                </Text>
-              </Row>
-              {workspaces.map((workspace) => (
-                <WorkspaceEditorRow
-                  key={workspace.id}
-                  workspace={workspace}
-                  draft={drafts[workspace.id] ?? { name: workspace.name }}
-                  active={workspace.id === activeId}
-                  canDelete={workspaces.length > 1}
-                  tabCount={tabCounts[workspace.id] ?? 0}
-                  onDraftChange={setDraft}
-                  onCommitName={commitName}
-                  onIconChange={updateIcon}
-                  onThemeChange={updateTheme}
-                  onActivate={activateWorkspace}
-                  onDelete={deleteWorkspace}
-                />
-              ))}
-              <Row align="center" className="bento-workspace-palette__list-actions">
-                <Button
-                  variant="neutral"
-                  size="sm"
-                  className="bento-workspace-palette__new-button"
-                  onPress={createWorkspace}
-                >
-                  <Icon icon={Plus} size="sm" />
-                  Add workspace
-                </Button>
-              </Row>
-            </Column>
-            <Dialog.Actions className="bento-workspace-palette__footer">
-              <Text
-                variant="text"
-                size="s"
-                color="muted"
-                className="bento-workspace-palette__footer-text"
-              >
-                {resultLabel(workspaces.length)}
-              </Text>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="bento-workspace-palette__close-button"
-                onPress={onClose}
-              >
-                Close
-              </Button>
-            </Dialog.Actions>
-          </Column>
-        </Dialog.Popup>
-      </Dialog.Backdrop>
-    </Dialog.Root>
+      <Column gap="xs" className="bento-workspace-palette__content">
+        <Column gap="xs" className="bento-workspace-palette__list">
+          <Row gap="s" align="center" className="bento-workspace-palette__heading-row">
+            <Text variant="label" size="s" color="muted">
+              Icon
+            </Text>
+            <Text variant="label" size="s" color="muted">
+              Workspace
+            </Text>
+            <Text variant="label" size="s" color="muted">
+              Theme
+            </Text>
+            <Text variant="label" size="s" color="muted">
+              Status
+            </Text>
+            <Text variant="label" size="s" color="muted">
+              Delete
+            </Text>
+          </Row>
+          {workspaces.map((workspace) => (
+            <WorkspaceEditorRow
+              key={workspace.id}
+              workspace={workspace}
+              draft={drafts[workspace.id] ?? { name: workspace.name }}
+              active={workspace.id === activeId}
+              canDelete={workspaces.length > 1}
+              tabCount={tabCounts[workspace.id] ?? 0}
+              onDraftChange={setDraft}
+              onCommitName={commitName}
+              onIconChange={updateIcon}
+              onThemeChange={updateTheme}
+              onActivate={activateWorkspace}
+              onDelete={deleteWorkspace}
+            />
+          ))}
+          <Row align="center" className="bento-workspace-palette__list-actions">
+            <Button
+              variant="neutral"
+              size="sm"
+              className="bento-workspace-palette__new-button"
+              onActivate={createWorkspace}
+            >
+              <BentoIcon icon={Plus} size="sm" />
+              Add workspace
+            </Button>
+          </Row>
+        </Column>
+      </Column>
+    </Dialog>
   );
 }

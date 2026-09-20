@@ -1,27 +1,31 @@
-/* Layer-2 component: MergePalette. Tale UI CommandPalette styles are unlayered,
+/* Layer-2 component: MergePalette. Mux UI CommandPalette styles are unlayered,
  * so Bento's popup sizing and in-palette import overlay overrides stay
  * unlayered with scoped selectors. */
 
-.tale-command-palette__popup.bento-merge-palette__popup {
+.muxui-command-palette__popup {
   width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
   height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
-.tale-command-palette__dialog.bento-merge-palette__dialog {
+.muxui-command-palette__dialog.bento-merge-palette__dialog {
   position: relative;
   overflow: hidden;
 }
 
-.tale-command-palette__dialog.bento-merge-palette__dialog,
-.tale-command-palette__content.bento-merge-palette__content,
-.tale-column.bento-merge-palette__source-list {
+.muxui-command-palette__dialog.bento-merge-palette__dialog,
+.muxui-command-palette__content.bento-merge-palette__content,
+.bento-column.bento-merge-palette__source-list {
   min-height: 0;
   flex: 1 1 auto;
 }
 
-.tale-column.bento-merge-palette__source-list {
+.bento-column.bento-merge-palette__source-list {
   overflow: auto;
   padding: var(--space-xs);
+}
+
+.bento-merge-palette__clear-button {
+  flex: 0 0 auto;
 }
 
 .bento-merge-palette__refresh {
@@ -29,7 +33,7 @@
   margin-inline-end: var(--space-xs);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__status {
+.muxui-command-palette__popup .bento-merge-palette__status {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
@@ -37,79 +41,79 @@
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__section-label {
+.muxui-command-palette__popup .bento-merge-palette__section-label {
   padding-inline: var(--space-xs);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-card {
+.muxui-command-palette__popup .bento-merge-palette__source-card {
   padding: var(--space-xs);
   background-color: var(--neutral-10);
   border: 1px solid var(--neutral-20);
   border-radius: var(--radius-s);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-row,
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-row {
+.muxui-command-palette__popup .bento-merge-palette__source-row,
+.muxui-command-palette__popup .bento-merge-palette__target-row {
   min-width: 0;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-main,
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-main {
+.muxui-command-palette__popup .bento-merge-palette__source-main,
+.muxui-command-palette__popup .bento-merge-palette__target-main {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-title,
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-title {
+.muxui-command-palette__popup .bento-merge-palette__source-title,
+.muxui-command-palette__popup .bento-merge-palette__target-title {
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__source-meta {
+.muxui-command-palette__popup .bento-merge-palette__source-meta {
   flex: 0 0 auto;
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-list {
+.muxui-command-palette__popup .bento-merge-palette__target-list {
   padding-inline-start: var(--space-l);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__target-item {
+.muxui-command-palette__popup .bento-merge-palette__target-item {
   padding: var(--space-xs);
   border-block-start: 1px solid var(--neutral-20);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-preview-list {
+.muxui-command-palette__popup .bento-merge-palette__tab-preview-list {
   padding-inline-start: var(--space-xl);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-preview-row {
+.muxui-command-palette__popup .bento-merge-palette__tab-preview-row {
   min-width: 0;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-title {
+.muxui-command-palette__popup .bento-merge-palette__tab-title {
   flex: 0 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__tab-url {
+.muxui-command-palette__popup .bento-merge-palette__tab-url {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__more-tabs {
+.muxui-command-palette__popup .bento-merge-palette__more-tabs {
   padding-inline-start: var(--space-xs);
 }
 
-.tale-command-palette__dialog.bento-merge-palette__dialog[data-merging='true']
-  .tale-command-palette__close,
-.tale-command-palette__dialog.bento-merge-palette__dialog[data-merging='true']
+.muxui-command-palette__dialog.bento-merge-palette__dialog[data-merging='true']
+  .muxui-command-palette__close,
+.muxui-command-palette__dialog.bento-merge-palette__dialog[data-merging='true']
   .bento-merge-palette__content {
   visibility: hidden;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__import-overlay {
+.muxui-command-palette__popup .bento-merge-palette__import-overlay {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -118,29 +122,25 @@
   color: var(--neutral-90);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__loader {
+.muxui-command-palette__popup .bento-merge-palette__loader {
   width: 100%;
   gap: var(--space-xs);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup
-  .bento-merge-palette__loader
-  .tale-progress-bar__header {
+.muxui-command-palette__popup .bento-merge-palette__loader .muxui-progress-bar-header {
   text-align: start;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup
-  .bento-merge-palette__loader
-  .tale-progress-bar__label {
+.muxui-command-palette__popup .bento-merge-palette__loader .muxui-value-label {
   flex: 1 1 auto;
   text-align: start;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__progress-detail {
+.muxui-command-palette__popup .bento-merge-palette__progress-detail {
   text-align: center;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__progress-log {
+.muxui-command-palette__popup .bento-merge-palette__progress-log {
   box-sizing: border-box;
   width: 100%;
   min-height: var(--bento-merge-progress-log-min-height);
@@ -153,37 +153,35 @@
   border-radius: var(--radius-s);
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__progress-log-entry {
+.muxui-command-palette__popup .bento-merge-palette__progress-log-entry {
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__cancel-button {
+.muxui-command-palette__popup .bento-merge-palette__cancel-button {
   flex: 0 0 auto;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__overlay-close-button {
+.muxui-command-palette__popup .bento-merge-palette__overlay-close-button {
   position: absolute;
   top: var(--space-2xs);
   right: var(--space-2xs);
   z-index: 1;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup
-  .bento-merge-palette__loader
-  .tale-progress-bar__label {
+.muxui-command-palette__popup .bento-merge-palette__loader .muxui-value-label {
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__footer {
+.muxui-command-palette__popup .bento-merge-palette__footer {
   align-items: flex-start;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__footer-text {
+.muxui-command-palette__popup .bento-merge-palette__footer-text {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.tale-command-palette__popup.bento-merge-palette__popup .bento-merge-palette__close-button {
+.muxui-command-palette__popup .bento-merge-palette__close-button {
   flex: 0 0 auto;
 }
 

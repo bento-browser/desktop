@@ -18,7 +18,7 @@ html {
   color-scheme: light;
 }
 
-html.tale-ui:not(.system-font-size) {
+html:not(.system-font-size) {
   font-size: 100%;
 }
 

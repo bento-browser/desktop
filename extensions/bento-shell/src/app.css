@@ -123,26 +123,38 @@
  * position as the leftmost slot of the expanded horizontal row. The
  * user's cursor doesn't have to move between collapse and expand.
  *
- * UNLAYERED because Tale UI's .tale-row { display: flex;
+ * UNLAYERED because the Bento .bento-row primitive { display: flex;
  * flex-direction: row } is unlayered too — a layered flex-direction
  * loses regardless of specificity (CSS spec: unlayered > any layer).
- * Compound selector (html[data-bento-collapsed] .tale-row.bento-*)
- * also wins on specificity over .tale-row alone. */
-html[data-bento-collapsed='true'] .tale-row.bento-shell-app__footer {
+ * Compound selector (html[data-bento-collapsed] .bento-row.bento-*)
+ * also wins on specificity over .bento-row alone. */
+html[data-bento-collapsed='true'] .bento-row.bento-shell-app__footer {
   flex-direction: column-reverse !important;
   /* align-items:center (the cross-axis is horizontal in a column flex)
      keeps the stacked buttons centered inside the rail's padded content
      column after the host width collapses. The collapsed section padding
      gives the narrow rail extra inline breathing room on both sides.
-     !important because Tale UI's Row component applies alignItems,
+     !important because the Row primitive applies align-items,
      justifyContent, and gap as INLINE STYLES via the React prop
      (align="center" on the footer JSX → style="align-items:center").
      Inline styles beat any non-!important CSS rule regardless of
      specificity or layer; !important in the stylesheet is the only
      way to override them without prop-drilling sidebarCollapsed
-     down to change the prop at React level. Same reason applied
+     down to change the prop at React level. Same reason applies
      to justify-content and flex-direction below. */
   align-items: center !important;
   justify-content: flex-start !important;
   gap: var(--space-4xs) !important;
+}
+
+/* Mux's sm ProgressCircle track is 2rem by default. Keep the footer import
+ * indicator at the same 1rem footprint as the other small icon affordances. */
+.muxui-progress-circle.bento-shell-app__merge-progress {
+  width: var(--bento-icon-size-sm);
+  height: var(--bento-icon-size-sm);
+}
+
+.muxui-progress-circle.bento-shell-app__merge-progress .muxui-progress-circle__track {
+  width: 100%;
+  height: 100%;
 }

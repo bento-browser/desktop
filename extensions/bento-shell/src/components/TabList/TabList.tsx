@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Button } from '@tale-ui/react/button';
-import { Icon } from '@tale-ui/react/icon';
-import { IconButton } from '@tale-ui/react/icon-button';
+import { Button, IconButton } from '@muxui/react';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
 import X from 'lucide-react/dist/esm/icons/x';
@@ -24,6 +22,7 @@ import {
   rowKey,
 } from './displayRows';
 import { getThemeMeta } from '../../theme/presets';
+import { BentoIcon } from '../primitives';
 import './TabList.css';
 
 export interface TabListProps {
@@ -890,9 +889,9 @@ function TabListPane({
         size="sm"
         className="bento-tab-list__search-button"
         aria-label="Search tabs and panels"
-        onPress={onOpenSearch}
+        onActivate={onOpenSearch}
       >
-        <Icon icon={Search} size="sm" />
+        <BentoIcon icon={Search} size="sm" />
       </IconButton>
     </span>
   );
@@ -904,12 +903,12 @@ function TabListPane({
       ref={newMenuTriggerRef}
       className="bento-tab-list__new-action-button"
       aria-label="New"
-      onPress={() => {
+      onActivate={() => {
         const rect = newMenuTriggerRef.current?.getBoundingClientRect();
         if (rect) onOpenNewMenu(rect);
       }}
     >
-      <Icon icon={Plus} size="sm" />
+      <BentoIcon icon={Plus} size="sm" />
       <span className="bento-tab-list__new-action-label">New</span>
     </Button>
   );
@@ -924,7 +923,7 @@ function TabListPane({
       }}
     >
       <div className="bento-tab-list-search__field-row">
-        <Icon icon={Search} size="sm" className="bento-tab-list-search__field-icon" />
+        <BentoIcon icon={Search} size="sm" className="bento-tab-list-search__field-icon" />
         <input
           ref={searchInputRef}
           className="bento-tab-list-search__input"
@@ -947,12 +946,12 @@ function TabListPane({
           size="sm"
           className="bento-tab-list-search__clear-button"
           aria-label="Clear search"
-          onPress={() => {
+          onActivate={() => {
             onSearchQueryChange('');
             searchInputRef.current?.focus();
           }}
         >
-          <Icon icon={X} size="sm" />
+          <BentoIcon icon={X} size="sm" />
         </IconButton>
       </div>
       {searchQuery.trim().length > 0 && (
@@ -974,7 +973,7 @@ function TabListPane({
                   aria-label={`${result.kind === 'panel' ? 'Panel' : 'Tab'}: ${result.title} in ${
                     result.workspaceName
                   }`}
-                  onPress={() => onRunSearchResult(result)}
+                  onActivate={() => onRunSearchResult(result)}
                 >
                   <span className="bento-tab-list-search__workspace-avatar" aria-hidden="true">
                     {result.workspaceIcon}
@@ -999,12 +998,12 @@ function TabListPane({
                     size="sm"
                     className="bento-tab-list-search__result-close"
                     aria-label={`Close ${result.kind === 'panel' ? 'panel' : 'tab'}`}
-                    onPress={() => {
+                    onActivate={() => {
                       onClose(result.id);
                       searchInputRef.current?.focus();
                     }}
                   >
-                    <Icon icon={X} size="sm" />
+                    <BentoIcon icon={X} size="sm" />
                   </IconButton>
                 </span>
               </div>

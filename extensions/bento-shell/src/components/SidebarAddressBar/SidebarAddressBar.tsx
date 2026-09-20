@@ -1,8 +1,5 @@
 import { type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { Icon } from '@tale-ui/react/icon';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Spinner } from '@tale-ui/react/spinner';
-import { Tooltip } from '@tale-ui/react/tooltip';
+import { IconButton, ProgressCircle, Tooltip } from '@muxui/react';
 
 import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import CopyIcon from 'lucide-react/dist/esm/icons/copy';
@@ -16,6 +13,7 @@ import {
   type SidebarAddressScope,
 } from '../../bridge/useSidebarAddress';
 import { useSidebarAddressStore, type SidebarAddressSnapshot } from '../../state/sidebarAddress';
+import { BentoIcon } from '../primitives';
 import './SidebarAddressBar.css';
 
 const COPY_FEEDBACK_MS = 1400;
@@ -195,24 +193,26 @@ export function SidebarAddressBar() {
         data-loading={snapshot?.loading ? 'true' : 'false'}
         onSubmit={handleSubmit}
       >
-        <Tooltip.Root delay={350}>
-          <IconButton
-            ref={securityButtonRef}
-            variant="ghost"
-            size="sm"
-            aria-label={securityLabel}
-            isDisabled={!snapshot?.security.canOpenIdentity}
-            className="bento-sidebar-address-bar__security-button"
-            data-security={securityKind}
-            onPress={handleSecurityPress}
-          >
-            <span className="bento-sidebar-address-bar__security-glyph" aria-hidden="true" />
-          </IconButton>
-          <Tooltip.Popup placement="bottom" offset={6}>
-            <Tooltip.Arrow />
-            {snapshot?.security.tooltip || securityLabel}
-          </Tooltip.Popup>
-        </Tooltip.Root>
+        <Tooltip
+          delay={350}
+          placement="bottom"
+          offset={6}
+          content={snapshot?.security.tooltip || securityLabel}
+          trigger={
+            <IconButton
+              ref={securityButtonRef}
+              variant="ghost"
+              size="sm"
+              aria-label={securityLabel}
+              disabled={!snapshot?.security.canOpenIdentity}
+              className="bento-sidebar-address-bar__security-button"
+              data-security={securityKind}
+              onActivate={handleSecurityPress}
+            >
+              <span className="bento-sidebar-address-bar__security-glyph" aria-hidden="true" />
+            </IconButton>
+          }
+        />
         <input
           className="bento-sidebar-address-bar__input"
           aria-label="Search or enter address"
@@ -225,36 +225,41 @@ export function SidebarAddressBar() {
         />
         {snapshot?.loading ? (
           <span className="bento-sidebar-address-bar__loading" aria-hidden="true">
-            <Spinner size="sm" label="Loading page" />
+            <ProgressCircle.Root size="sm" aria-label="Loading page">
+              <ProgressCircle.Track />
+            </ProgressCircle.Root>
           </span>
         ) : null}
-        <Tooltip.Root delay={0} isOpen={copyFeedbackVisible}>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label={copyLabel}
-            isDisabled={copyDisabled}
-            className="bento-sidebar-address-bar__copy-button"
-            onPress={handleCopyPress}
-          >
-            <Icon icon={CopyIcon} size="sm" />
-          </IconButton>
-          <Tooltip.Popup placement="bottom" offset={6}>
-            <Tooltip.Arrow />
-            Copied
-          </Tooltip.Popup>
-        </Tooltip.Root>
+        <Tooltip
+          delay={0}
+          open={copyFeedbackVisible}
+          placement="bottom"
+          offset={6}
+          content="Copied"
+          trigger={
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label={copyLabel}
+              disabled={copyDisabled}
+              className="bento-sidebar-address-bar__copy-button"
+              onActivate={handleCopyPress}
+            >
+              <BentoIcon icon={CopyIcon} size="sm" />
+            </IconButton>
+          }
+        />
         <IconButton
           variant="ghost"
           size="sm"
           aria-label={bookmarkLabel}
-          isDisabled={!snapshot?.bookmark.canBookmark || bookmarkPending}
+          disabled={!snapshot?.bookmark.canBookmark || bookmarkPending}
           pending={bookmarkPending}
           className="bento-sidebar-address-bar__bookmark-button"
           data-bookmarked={snapshot?.bookmark.isBookmarked ? 'true' : 'false'}
-          onPress={handleBookmarkPress}
+          onActivate={handleBookmarkPress}
         >
-          <Icon icon={BookmarkIcon} size="sm" />
+          <BentoIcon icon={BookmarkIcon} size="sm" />
         </IconButton>
       </form>
     </section>

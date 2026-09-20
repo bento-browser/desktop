@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CommandPalette as TaleCommandPalette } from '@tale-ui/react/command-palette';
-import { Button } from '@tale-ui/react/button';
-import { Column } from '@tale-ui/react/column';
-import { Icon } from '@tale-ui/react/icon';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { ProgressBar } from '@tale-ui/react/progress-bar';
-import { Row } from '@tale-ui/react/row';
-import { Text } from '@tale-ui/react/text';
+import { Button, CommandPalette, IconButton, ProgressBar, Text } from '@muxui/react';
 import MergeIcon from 'lucide-react/dist/esm/icons/merge';
 import GlobeIcon from 'lucide-react/dist/esm/icons/globe';
 import AlertCircleIcon from 'lucide-react/dist/esm/icons/alert-circle';
@@ -26,6 +19,7 @@ import type {
   ExternalMergeSource,
   ExternalMergeSummary,
 } from '@shared/protocol';
+import { BentoIcon, Column, Row } from '../primitives';
 import './MergePalette.css';
 
 export interface MergePaletteProps {
@@ -65,7 +59,7 @@ function sourceSubtitle(source: ExternalMergeSource): string {
 }
 
 function commandIcon(icon: typeof GlobeIcon) {
-  return <Icon icon={icon} size="sm" />;
+  return <BentoIcon icon={icon} size="sm" />;
 }
 
 function summaryText(summary: ExternalMergeSummary): string {
@@ -187,12 +181,12 @@ interface TargetItemProps {
   source: ExternalMergeSource;
   target: ExternalMergeImportTarget;
   expanded: boolean;
-  isDisabled: boolean;
+  disabled: boolean;
   onToggle: () => void;
   onImport: () => void;
 }
 
-function TargetItem({ source, target, expanded, isDisabled, onToggle, onImport }: TargetItemProps) {
+function TargetItem({ source, target, expanded, disabled, onToggle, onImport }: TargetItemProps) {
   const moreCount = Math.max(0, target.tabCount - target.previewTabs.length);
   const icon = target.kind === 'workspace' ? LayoutPanelTopIcon : AppWindowIcon;
   const kind = targetKindLabel(target);
@@ -204,20 +198,20 @@ function TargetItem({ source, target, expanded, isDisabled, onToggle, onImport }
           variant="ghost"
           size="sm"
           aria-label={`${expanded ? 'Hide' : 'Show'} ${target.name} tabs`}
-          onPress={onToggle}
+          onActivate={onToggle}
         >
-          <Icon icon={expanded ? ChevronDownIcon : ChevronRightIcon} size="sm" />
+          <BentoIcon icon={expanded ? ChevronDownIcon : ChevronRightIcon} size="sm" />
         </IconButton>
-        <Icon icon={icon} size="sm" />
+        <BentoIcon icon={icon} size="sm" />
         <Column gap="4xs" className="bento-merge-palette__target-main">
           <Text variant="label" size="s" className="bento-merge-palette__target-title">
             {target.name}
           </Text>
-          <Text variant="text" size="s" color="muted">
+          <Text variant="body" size="s" color="muted">
             {kind} - {targetSubtitle(target)}
           </Text>
         </Column>
-        <Button variant="neutral" size="sm" isDisabled={isDisabled} onPress={onImport}>
+        <Button variant="neutral" size="sm" disabled={disabled} onActivate={onImport}>
           Import
         </Button>
       </Row>
@@ -230,10 +224,10 @@ function TargetItem({ source, target, expanded, isDisabled, onToggle, onImport }
               align="baseline"
               className="bento-merge-palette__tab-preview-row"
             >
-              <Text variant="text" size="s" className="bento-merge-palette__tab-title">
+              <Text variant="body" size="s" className="bento-merge-palette__tab-title">
                 {tab.title || tab.url}
               </Text>
-              <Text variant="text" size="s" color="muted" className="bento-merge-palette__tab-url">
+              <Text variant="body" size="s" color="muted" className="bento-merge-palette__tab-url">
                 {tab.url}
               </Text>
               {tab.pinned ? (
@@ -244,7 +238,7 @@ function TargetItem({ source, target, expanded, isDisabled, onToggle, onImport }
             </Row>
           ))}
           {moreCount > 0 ? (
-            <Text variant="text" size="s" color="muted" className="bento-merge-palette__more-tabs">
+            <Text variant="body" size="s" color="muted" className="bento-merge-palette__more-tabs">
               {moreCount} more {moreCount === 1 ? 'tab' : 'tabs'}
             </Text>
           ) : null}
@@ -337,7 +331,8 @@ export function MergePalette({ onClose }: MergePaletteProps) {
             : `${plural(filteredSources.length, 'source')} - ${plural(filteredTargetCount, 'import option')}`;
 
   return (
-    <TaleCommandPalette.Root
+    <CommandPalette.Root
+      className="bento-merge-palette__popup"
       open={true}
       size="lg"
       closeOnSelect={false}
@@ -345,45 +340,47 @@ export function MergePalette({ onClose }: MergePaletteProps) {
         if (!next && !isMerging) close();
       }}
     >
-      <TaleCommandPalette.Backdrop isDismissable={!isMerging}>
-        <TaleCommandPalette.Popup
+      <CommandPalette.Backdrop dismissable={!isMerging}>
+        <CommandPalette.Popup
           aria-label="Merge browser session"
           className="bento-merge-palette__dialog"
           data-merging={isMerging || undefined}
-          modalProps={{ className: 'bento-merge-palette__popup' }}
         >
-          <TaleCommandPalette.Title className="bento-merge-palette__sr-only">
+          <CommandPalette.Title className="bento-merge-palette__sr-only">
             Merge browser session
-          </TaleCommandPalette.Title>
-          <TaleCommandPalette.Close aria-label="Close merge browser session" />
-          <TaleCommandPalette.Content
-            className="bento-merge-palette__content"
-            inputValue={query}
-            onInputChange={setQuery}
-          >
-            <TaleCommandPalette.SearchField>
-              <TaleCommandPalette.Input
+          </CommandPalette.Title>
+          <CommandPalette.Close aria-label="Close merge browser session" />
+          <CommandPalette.Content className="bento-merge-palette__content">
+            <CommandPalette.SearchField>
+              <CommandPalette.Input
                 placeholder="Search browser sessions..."
                 className="bento-merge-palette__input"
+                value={query}
+                onChange={(event) => setQuery(event.currentTarget.value)}
                 autoFocus
               />
-              <TaleCommandPalette.ClearButton
-                aria-label="Clear search"
-                className="tale-button tale-button--ghost tale-button--sm"
-              >
-                Clear
-              </TaleCommandPalette.ClearButton>
+              {query.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Clear search"
+                  className="bento-merge-palette__clear-button"
+                  onActivate={() => setQuery('')}
+                >
+                  Clear
+                </Button>
+              ) : null}
               <IconButton
                 variant="ghost"
                 size="sm"
                 className="bento-merge-palette__refresh"
                 aria-label="Refresh browser sessions"
-                isDisabled={loadingSources || !!activeOperationId}
-                onPress={refreshSources}
+                disabled={loadingSources || !!activeOperationId}
+                onActivate={refreshSources}
               >
-                <Icon icon={RefreshCwIcon} size="sm" />
+                <BentoIcon icon={RefreshCwIcon} size="sm" />
               </IconButton>
-            </TaleCommandPalette.SearchField>
+            </CommandPalette.SearchField>
             <Column
               gap="xs"
               className="bento-merge-palette__source-list"
@@ -411,7 +408,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                     data-unavailable={isUnavailable || undefined}
                   >
                     <Row gap="s" align="center" className="bento-merge-palette__source-row">
-                      <Icon icon={GlobeIcon} size="sm" />
+                      <BentoIcon icon={GlobeIcon} size="sm" />
                       <Column gap="4xs" className="bento-merge-palette__source-main">
                         <Text
                           variant="label"
@@ -420,7 +417,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                         >
                           {sourceLabel(source)}
                         </Text>
-                        <Text variant="text" size="s" color="muted">
+                        <Text variant="body" size="s" color="muted">
                           {sourceSubtitle(source)}
                         </Text>
                       </Column>
@@ -441,11 +438,11 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                           variant="ghost"
                           size="sm"
                           aria-label={`${sourceExpanded ? 'Hide' : 'Show'} ${sourceLabel(source)} spaces and windows`}
-                          onPress={() => {
+                          onActivate={() => {
                             setExpandedSourceIds((current) => toggleKey(current, source.id));
                           }}
                         >
-                          <Icon
+                          <BentoIcon
                             icon={sourceExpanded ? ChevronDownIcon : ChevronRightIcon}
                             size="sm"
                           />
@@ -454,8 +451,8 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                       <Button
                         variant="primary"
                         size="sm"
-                        isDisabled={importDisabled}
-                        onPress={() => startSourceMerge(source)}
+                        disabled={importDisabled}
+                        onActivate={() => startSourceMerge(source)}
                       >
                         Import all
                       </Button>
@@ -470,7 +467,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                               source={source}
                               target={target}
                               expanded={expandedTargetIds.has(key)}
-                              isDisabled={importDisabled}
+                              disabled={importDisabled}
                               onToggle={() => {
                                 setExpandedTargetIds((current) => toggleKey(current, key));
                               }}
@@ -485,41 +482,41 @@ export function MergePalette({ onClose }: MergePaletteProps) {
               })}
             </Column>
             {loadingSources ? (
-              <TaleCommandPalette.LoadMoreItem>
+              <CommandPalette.LoadMoreItem>
                 {commandIcon(MergeIcon)} Finding browser sessions...
-              </TaleCommandPalette.LoadMoreItem>
+              </CommandPalette.LoadMoreItem>
             ) : null}
             {!loadingSources && error ? (
-              <TaleCommandPalette.LoadMoreItem className="bento-merge-palette__status">
+              <CommandPalette.LoadMoreItem className="bento-merge-palette__status">
                 {commandIcon(AlertCircleIcon)} {error.message}
-              </TaleCommandPalette.LoadMoreItem>
+              </CommandPalette.LoadMoreItem>
             ) : null}
             {!loadingSources && summary ? (
-              <TaleCommandPalette.LoadMoreItem className="bento-merge-palette__status">
+              <CommandPalette.LoadMoreItem className="bento-merge-palette__status">
                 {commandIcon(CheckCircleIcon)} {summaryText(summary)}
-              </TaleCommandPalette.LoadMoreItem>
+              </CommandPalette.LoadMoreItem>
             ) : null}
             {!loadingSources && !error && !summary && filteredSources.length === 0 ? (
-              <TaleCommandPalette.Empty>
+              <CommandPalette.Empty>
                 {sources.length === 0
                   ? 'No mergeable browser sessions found.'
                   : 'No matching browser sessions found.'}
-              </TaleCommandPalette.Empty>
+              </CommandPalette.Empty>
             ) : null}
-            <TaleCommandPalette.Footer className="bento-merge-palette__footer">
-              <Text variant="text" size="s" className="bento-merge-palette__footer-text">
+            <CommandPalette.Footer className="bento-merge-palette__footer">
+              <Text variant="body" size="s" className="bento-merge-palette__footer-text">
                 {footerText}
               </Text>
               <Button
                 variant="neutral"
                 size="sm"
                 className="bento-merge-palette__close-button"
-                onPress={close}
+                onActivate={close}
               >
                 Close
               </Button>
-            </TaleCommandPalette.Footer>
-          </TaleCommandPalette.Content>
+            </CommandPalette.Footer>
+          </CommandPalette.Content>
           {isMerging ? (
             <Column
               gap="m"
@@ -533,29 +530,19 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 size="sm"
                 className="bento-merge-palette__overlay-close-button"
                 aria-label="Close merge browser session"
-                onPress={close}
+                onActivate={close}
               >
-                <Icon icon={XIcon} size="sm" />
+                <BentoIcon icon={XIcon} size="sm" />
               </IconButton>
-              <ProgressBar.Root
-                isIndeterminate={!hasDeterminateProgress}
+              <ProgressBar
+                label={importStatus}
                 value={hasDeterminateProgress ? progressValue : undefined}
                 minValue={0}
                 maxValue={100}
                 className="bento-merge-palette__loader"
-              >
-                <ProgressBar.Header>
-                  <ProgressBar.Label>{importStatus}</ProgressBar.Label>
-                  {hasDeterminateProgress ? (
-                    <ProgressBar.Value>{progressValue}%</ProgressBar.Value>
-                  ) : null}
-                </ProgressBar.Header>
-                <ProgressBar.Track>
-                  <ProgressBar.Indicator value={hasDeterminateProgress ? progressValue : null} />
-                </ProgressBar.Track>
-              </ProgressBar.Root>
+              />
               <Text
-                variant="text"
+                variant="body"
                 size="s"
                 color="muted"
                 className="bento-merge-palette__progress-detail"
@@ -572,14 +559,14 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 aria-label="Import activity"
               >
                 {progressLog.length === 0 ? (
-                  <Text variant="text" size="s" color="muted">
+                  <Text variant="body" size="s" color="muted">
                     Preparing the import...
                   </Text>
                 ) : (
                   progressLog.map((activity, index) => (
                     <Text
                       key={`${activity.kind}-${index}`}
-                      variant="text"
+                      variant="body"
                       size="s"
                       color="muted"
                       className="bento-merge-palette__progress-log-entry"
@@ -594,15 +581,15 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                   variant="neutral"
                   size="sm"
                   className="bento-merge-palette__cancel-button"
-                  onPress={cancelMerge}
+                  onActivate={cancelMerge}
                 >
                   Cancel
                 </Button>
               </Row>
             </Column>
           ) : null}
-        </TaleCommandPalette.Popup>
-      </TaleCommandPalette.Backdrop>
-    </TaleCommandPalette.Root>
+        </CommandPalette.Popup>
+      </CommandPalette.Backdrop>
+    </CommandPalette.Root>
   );
 }

@@ -1,11 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
-import { Row } from '@tale-ui/react/row';
-import { Text } from '@tale-ui/react/text';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Icon } from '@tale-ui/react/icon';
-import { Spinner } from '@tale-ui/react/spinner';
-import { Tooltip } from '@tale-ui/react/tooltip';
+import type { ReactElement } from 'react';
+import { IconButton, ProgressCircle, Text, Tooltip } from '@muxui/react';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import Command from 'lucide-react/dist/esm/icons/command';
 import Download from 'lucide-react/dist/esm/icons/download';
@@ -32,6 +27,8 @@ import { useExternalMergeStore } from './state/externalMerge';
 import type { UiColorModePref } from '@shared/protocol';
 import type { ToolsToShellTargeted } from '@shared/shell-client-protocol';
 import { applyGraphProjection } from './state/graph';
+import { BentoIcon } from './components/primitives/BentoIcon';
+import { Row } from './components/primitives/BentoRow';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -42,23 +39,15 @@ const UI_COLOR_MODE_ORDER: readonly UiColorModePref[] = ['light', 'dark', 'syste
 
 function FooterTooltip({
   label,
-  isDisabled = false,
+  disabled = false,
   children,
 }: {
   label: string;
-  isDisabled?: boolean;
-  children: ReactNode;
+  disabled?: boolean;
+  children: ReactElement;
 }) {
-  if (isDisabled) return <>{children}</>;
-  return (
-    <Tooltip.Root delay={400}>
-      {children}
-      <Tooltip.Popup placement="top" offset={8}>
-        <Tooltip.Arrow />
-        {label}
-      </Tooltip.Popup>
-    </Tooltip.Root>
-  );
+  if (disabled) return <>{children}</>;
+  return <Tooltip content={label} delay={400} placement="top" offset={8} trigger={children} />;
 }
 
 function openSettings() {
@@ -571,7 +560,7 @@ export function App() {
       <div className="bento-shell-app__main">
         {!ready && (
           <Row gap="xs" align="center" className="bento-shell-app__header">
-            <Text variant="text" size="xs" color="muted">
+            <Text variant="body" size="xs" color="muted">
               connecting…
             </Text>
           </Row>
@@ -599,30 +588,30 @@ export function App() {
               land at the same cursor position as clicking collapse. */}
           <FooterTooltip
             label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            isDisabled={sidebarCollapsed}
+            disabled={sidebarCollapsed}
           >
             <IconButton
               variant="ghost"
               size="sm"
               aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              onPress={toggleSidebarCollapsed}
+              onActivate={toggleSidebarCollapsed}
             >
-              <Icon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
+              <BentoIcon icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose} />
             </IconButton>
           </FooterTooltip>
-          <FooterTooltip label="Open command palette" isDisabled={sidebarCollapsed}>
+          <FooterTooltip label="Open command palette" disabled={sidebarCollapsed}>
             <IconButton
               variant="ghost"
               size="sm"
               aria-label="Open command palette (⌘⌥P)"
-              onPress={openCommandPalette}
+              onActivate={openCommandPalette}
             >
-              <Icon icon={Command} />
+              <BentoIcon icon={Command} />
             </IconButton>
           </FooterTooltip>
           <FooterTooltip
             label={importInProgress ? 'Importing browser session' : 'Merge browser session'}
-            isDisabled={sidebarCollapsed}
+            disabled={sidebarCollapsed}
           >
             <IconButton
               variant="ghost"
@@ -630,16 +619,22 @@ export function App() {
               aria-label={
                 importInProgress ? 'View session import progress' : 'Merge browser session'
               }
-              onPress={openMergePalette}
+              onActivate={openMergePalette}
             >
               {importInProgress ? (
-                <Spinner size="sm" label="Importing browser session" />
+                <ProgressCircle.Root
+                  size="sm"
+                  label="Importing browser session"
+                  className="bento-shell-app__merge-progress"
+                >
+                  <ProgressCircle.Track />
+                </ProgressCircle.Root>
               ) : (
-                <Icon icon={Merge} />
+                <BentoIcon icon={Merge} />
               )}
             </IconButton>
           </FooterTooltip>
-          <FooterTooltip label="Color mode" isDisabled={sidebarCollapsed}>
+          <FooterTooltip label="Color mode" disabled={sidebarCollapsed}>
             <ColorModeCycle
               value={uiColorMode}
               onChange={setUiColorMode}
@@ -647,31 +642,31 @@ export function App() {
               surfaceLabel="Bento UI"
             />
           </FooterTooltip>
-          <FooterTooltip label="Firefox menu" isDisabled={sidebarCollapsed}>
+          <FooterTooltip label="Firefox menu" disabled={sidebarCollapsed}>
             <IconButton
               ref={appMenuButtonRef}
               variant="ghost"
               size="sm"
               aria-label="Open Firefox menu"
-              onPress={onOpenFirefoxAppMenu}
+              onActivate={onOpenFirefoxAppMenu}
             >
-              <Icon icon={Menu} />
+              <BentoIcon icon={Menu} />
             </IconButton>
           </FooterTooltip>
-          <FooterTooltip label="Downloads" isDisabled={sidebarCollapsed}>
+          <FooterTooltip label="Downloads" disabled={sidebarCollapsed}>
             <IconButton
               ref={downloadsButtonRef}
               variant="ghost"
               size="sm"
               aria-label="Downloads"
-              onPress={onOpenFirefoxDownloads}
+              onActivate={onOpenFirefoxDownloads}
             >
-              <Icon icon={Download} />
+              <BentoIcon icon={Download} />
             </IconButton>
           </FooterTooltip>
-          <FooterTooltip label="Settings" isDisabled={sidebarCollapsed}>
-            <IconButton variant="ghost" size="sm" aria-label="Settings" onPress={onOpenSettings}>
-              <Icon icon={Settings} />
+          <FooterTooltip label="Settings" disabled={sidebarCollapsed}>
+            <IconButton variant="ghost" size="sm" aria-label="Settings" onActivate={onOpenSettings}>
+              <BentoIcon icon={Settings} />
             </IconButton>
           </FooterTooltip>
         </Row>

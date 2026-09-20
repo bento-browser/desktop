@@ -518,7 +518,7 @@ The theme system should support:
 
 - curated accessible presets;
 - a grouped selector containing Bento's Default palette plus the eight standard
-  and seven monochromatic palettes shipped by `@tale-ui/themes`;
+  and seven monochromatic palettes shipped by `@muxui/react/themes`;
 - per-workspace theme selection;
 - light, dark, and Auto UI modes;
 - independent content color-scheme preference where possible;

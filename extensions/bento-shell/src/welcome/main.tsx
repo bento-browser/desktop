@@ -16,21 +16,13 @@
 //     it stores the next onboarding step in extension storage, signals
 //     chrome to open the embedded Firefox migration host, and leaves
 //     onboarding mounted.
-//   - Dialog stays mounted with isOpen=true permanently — visibility is
+//   - Dialog stays mounted with open=true permanently — visibility is
 //     purely a chrome concern (same pattern as the other overlays). React
 //     state inside this page never tracks open/closed.
 
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Dialog } from '@tale-ui/react/dialog';
-import { Button } from '@tale-ui/react/button';
-import { Select } from '@tale-ui/react/select';
-import { ToggleButtonGroup } from '@tale-ui/react/toggle-group';
-import { ToggleButton } from '@tale-ui/react/toggle-button';
-import { Text } from '@tale-ui/react/text';
-import { Column } from '@tale-ui/react/column';
-import { Row } from '@tale-ui/react/row';
-import { Icon } from '@tale-ui/react/icon';
+import { Button, Dialog, Select, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
 import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left';
 import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
 import Check from 'lucide-react/dist/esm/icons/check';
@@ -51,16 +43,7 @@ import type {
 } from '@shared/protocol';
 import { PRIVACY_LEVELS, PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/select';
-import '@tale-ui/react-styles/toggle-button';
-import '@tale-ui/react-styles/column';
-import '@tale-ui/react-styles/row';
-import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/dialog';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
@@ -75,6 +58,9 @@ import {
 } from '../bridge/useWelcome';
 import { useSettingsStore } from '../state/settings';
 import { usePrivacyStore } from '../state/privacy';
+import { Column } from '../components/primitives/BentoColumn';
+import { BentoIcon } from '../components/primitives/BentoIcon';
+import { Row } from '../components/primitives/BentoRow';
 import './welcome.css';
 
 initToolsPort();
@@ -102,6 +88,8 @@ const TIPS: Array<{ shortcut: string; description: string }> = [
 
 const WELCOME_STEP_STORAGE_KEY = 'bento-welcome-step';
 const WELCOME_STEP_HASH_KEY = 'bentoWelcomeStep';
+const WELCOME_TITLE_ID = 'bento-welcome-title';
+const WELCOME_DESCRIPTION_ID = 'bento-welcome-description';
 
 type BentoBox = readonly [string, string];
 type ThemeModeOption = {
@@ -342,12 +330,12 @@ function BentoTray({
     <div className="bento-welcome__tray" aria-hidden="true">
       <div className="bento-welcome__tray-cell bento-welcome__tray-cell--hero">
         <span className="bento-welcome__tray-icon">
-          <Icon icon={activeStep.icon} size="lg" />
+          <BentoIcon icon={activeStep.icon} size="lg" />
         </span>
         <Text variant="label" size="m">
           {activeStep.eyebrow}
         </Text>
-        <Text variant="text" size="s" color="muted">
+        <Text variant="body" size="s" color="muted">
           Bento keeps the browser surface divided into useful, durable compartments.
         </Text>
       </div>
@@ -356,7 +344,7 @@ function BentoTray({
           <Text variant="label" size="s">
             {label}
           </Text>
-          <Text variant="text" size="xs" color="muted">
+          <Text variant="body" size="xs" color="muted">
             {detail}
           </Text>
         </div>
@@ -402,10 +390,10 @@ function ThemeModePicker({
               variant={selected ? 'primary' : 'neutral'}
               size="sm"
               aria-pressed={selected}
-              onPress={() => onChange(option.value)}
+              onActivate={() => onChange(option.value)}
               className="bento-welcome__theme-option"
             >
-              <Icon icon={option.icon} size="sm" />
+              <BentoIcon icon={option.icon} size="sm" />
               {option.label}
             </Button>
           );
@@ -415,11 +403,8 @@ function ThemeModePicker({
   );
 }
 
-function firstSelectedKey(keys: unknown): string | null {
-  if (keys === 'all') return null;
-  if (!(keys instanceof Set)) return null;
-  const first = Array.from(keys)[0];
-  return typeof first === 'string' ? first : null;
+function firstSelectedKey(keys: readonly string[]): string | null {
+  return keys[0] ?? null;
 }
 
 function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel | undefined }) {
@@ -431,7 +416,7 @@ function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel
       <ToggleButtonGroup
         aria-label="Privacy protection level"
         selectionMode="single"
-        selectedKeys={new Set([current])}
+        selectedIds={[current]}
         onSelectionChange={(keys) => {
           const next = firstSelectedKey(keys);
           if (!next) return;
@@ -451,13 +436,13 @@ function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel
         <Text variant="label" size="s">
           {detail.label}
         </Text>
-        <Text variant="text" size="s" color="muted">
+        <Text variant="body" size="s" color="muted">
           {detail.bestFor}
         </Text>
-        <Text variant="text" size="s" color="muted">
+        <Text variant="body" size="s" color="muted">
           Benefit: {detail.benefits[0]}
         </Text>
-        <Text variant="text" size="s" color="muted">
+        <Text variant="body" size="s" color="muted">
           Caveat: {detail.caveats[0]}
         </Text>
       </Column>
@@ -486,7 +471,7 @@ function SearchPrivacyRecommendation({
 }) {
   if (availableSearchEngines.length === 0) {
     return (
-      <Text variant="text" size="s" color="muted">
+      <Text variant="body" size="s" color="muted">
         Loading Firefox search engines…
       </Text>
     );
@@ -495,7 +480,7 @@ function SearchPrivacyRecommendation({
   const recommended = availableSearchEngines.filter(isPrivacyOrientedSearchEngine);
   if (recommended.length === 0) {
     return (
-      <Text variant="text" size="s" color="muted">
+      <Text variant="body" size="s" color="muted">
         For privacy, prefer a provider with minimal profiling and clear retention limits. Bento uses
         Firefox&rsquo;s visible search engines without adding its own provider list.
       </Text>
@@ -504,7 +489,7 @@ function SearchPrivacyRecommendation({
 
   const names = recommended.map((engine) => engine.name).join(', ');
   return (
-    <Text variant="text" size="s" color="muted">
+    <Text variant="body" size="s" color="muted">
       Recommended for privacy: {names}. These are generally better choices when you want less search
       profiling; choose another engine when account integration or result preference matters more.
     </Text>
@@ -528,30 +513,21 @@ function SearchEnginePicker({
   return (
     <Column gap="xs" className="bento-welcome__choice">
       <Select.Root
+        label="Default search engine"
         placeholder="Select search engine"
-        selectedKey={selectedKey}
-        onSelectionChange={(key) => {
-          if (typeof key !== 'string') return;
+        value={selectedKey}
+        items={availableSearchEngines.map((engine) => ({
+          id: engine.id,
+          label: engine.name,
+          textValue: engine.name,
+        }))}
+        onChange={(key) => {
+          if (!key) return;
           const next = key as SearchEngineId;
           setOptimisticValue(next);
           dispatch({ type: 'privacy/setDefaultSearchEngine', id: next });
         }}
-      >
-        <Select.Label>Default search engine</Select.Label>
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Icon />
-        </Select.Trigger>
-        <Select.Popover>
-          <Select.ListBox>
-            {availableSearchEngines.map((engine) => (
-              <Select.Item id={engine.id} textValue={engine.name} key={engine.id}>
-                {engine.name}
-              </Select.Item>
-            ))}
-          </Select.ListBox>
-        </Select.Popover>
-      </Select.Root>
+      />
       <SearchPrivacyRecommendation availableSearchEngines={availableSearchEngines} />
     </Column>
   );
@@ -635,71 +611,92 @@ function WelcomeApp() {
   if (!hasLoadedStoredStep) return null;
 
   return (
-    <Dialog.Root isOpen={true}>
-      <Dialog.Backdrop isDismissable={false} isKeyboardDismissDisabled>
-        <Dialog.Popup className="bento-welcome">
-          <Column gap="l">
-            <Row align="center" justify="between" gap="m" className="bento-welcome__topline">
-              <Row align="center" gap="xs">
-                <span className="bento-welcome__brand-mark" aria-hidden="true">
-                  <Icon icon={Grid3X3} />
-                </span>
-                <Text variant="label" size="s" color="muted">
-                  Bento onboarding
-                </Text>
-              </Row>
-              <StepRail current={stepIndex} />
+    <Dialog
+      open={true}
+      dismissable={false}
+      aria-labelledby={WELCOME_TITLE_ID}
+      aria-describedby={WELCOME_DESCRIPTION_ID}
+      className="bento-welcome"
+      actionsClassName={isIntro ? 'bento-welcome__actions--intro' : undefined}
+      actions={
+        <>
+          {!isIntro ? (
+            <Button variant="neutral" onActivate={previousStep}>
+              <BentoIcon icon={ArrowLeft} size="sm" />
+              Back
+            </Button>
+          ) : null}
+
+          {isImport ? (
+            <Row gap="xs" wrap justify="end">
+              <Button variant="neutral" onActivate={nextStep}>
+                Skip import
+              </Button>
+              <Button variant="primary" onActivate={startBrowserDataImport}>
+                <BentoIcon icon={Download} size="sm" />
+                Import browser data
+              </Button>
             </Row>
+          ) : (
+            <Button variant="primary" onActivate={nextStep}>
+              {isFinish ? 'Start browsing' : 'Next'}
+              {!isFinish ? <BentoIcon icon={ArrowRight} size="sm" /> : null}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <Column gap="l">
+        <Row align="center" justify="between" gap="m" className="bento-welcome__topline">
+          <Row align="center" gap="xs">
+            <span className="bento-welcome__brand-mark" aria-hidden="true">
+              <BentoIcon icon={Grid3X3} />
+            </span>
+            <Text variant="label" size="s" color="muted">
+              Bento onboarding
+            </Text>
+          </Row>
+          <StepRail current={stepIndex} />
+        </Row>
 
-            <div className="bento-welcome__layout">
-              <BentoTray activeStep={activeStep} boxes={activeStep.boxes} />
+        <div className="bento-welcome__layout">
+          <BentoTray activeStep={activeStep} boxes={activeStep.boxes} />
 
-              <Column gap="m" className="bento-welcome__copy">
-                <Text variant="label" size="s" color="accent">
-                  {activeStep.eyebrow}
-                </Text>
-                <Dialog.Title>{activeStep.title}</Dialog.Title>
-                <Dialog.Description>{activeStep.description}</Dialog.Description>
-                {isIntro ? <ThemeModePicker value={uiColorMode} onChange={setUiColorMode} /> : null}
-                {isPrivacy ? <PrivacyLevelPicker value={privacyProtectionLevel} /> : null}
-                {isSearch ? (
-                  <SearchEnginePicker
-                    value={privacy?.defaultSearchEngine ?? defaultSearchEngine}
-                    availableSearchEngines={privacy?.availableSearchEngines ?? []}
-                  />
-                ) : null}
-              </Column>
-            </div>
-          </Column>
-
-          <Dialog.Actions className={isIntro ? 'bento-welcome__actions--intro' : undefined}>
-            {!isIntro ? (
-              <Button variant="neutral" onPress={previousStep}>
-                <Icon icon={ArrowLeft} size="sm" />
-                Back
-              </Button>
+          <Column gap="m" className="bento-welcome__copy">
+            <Text variant="label" size="s" className="bento-welcome__eyebrow">
+              {activeStep.eyebrow}
+            </Text>
+            <Text
+              as="h1"
+              variant="label"
+              size="l"
+              id={WELCOME_TITLE_ID}
+              className="bento-welcome__copy-title"
+            >
+              {activeStep.title}
+            </Text>
+            <Text
+              as="p"
+              variant="body"
+              size="m"
+              color="muted"
+              id={WELCOME_DESCRIPTION_ID}
+              className="bento-welcome__copy-description"
+            >
+              {activeStep.description}
+            </Text>
+            {isIntro ? <ThemeModePicker value={uiColorMode} onChange={setUiColorMode} /> : null}
+            {isPrivacy ? <PrivacyLevelPicker value={privacyProtectionLevel} /> : null}
+            {isSearch ? (
+              <SearchEnginePicker
+                value={privacy?.defaultSearchEngine ?? defaultSearchEngine}
+                availableSearchEngines={privacy?.availableSearchEngines ?? []}
+              />
             ) : null}
-
-            {isImport ? (
-              <Row gap="xs" wrap justify="end">
-                <Button variant="neutral" onPress={nextStep}>
-                  Skip import
-                </Button>
-                <Button variant="primary" onPress={startBrowserDataImport}>
-                  <Icon icon={Download} size="sm" />
-                  Import browser data
-                </Button>
-              </Row>
-            ) : (
-              <Button variant="primary" onPress={nextStep}>
-                {isFinish ? 'Start browsing' : 'Next'}
-                {!isFinish ? <Icon icon={ArrowRight} size="sm" /> : null}
-              </Button>
-            )}
-          </Dialog.Actions>
-        </Dialog.Popup>
-      </Dialog.Backdrop>
-    </Dialog.Root>
+          </Column>
+        </div>
+      </Column>
+    </Dialog>
   );
 }
 

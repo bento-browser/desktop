@@ -82,7 +82,8 @@ build driver owns the lifecycle around Mozilla's `mach` entry point; Bento
 specific behavior belongs in Bento wrapper scripts. The UI shell ships as two
 privileged built-in extensions:
 
-- **bento-shell** — React + Tale UI, the visible chrome (vertical tabs, workspaces, panels, command palette).
+- **bento-shell** — React + Mux UI and Bento primitives, the visible chrome
+  (vertical tabs, workspaces, panels, command palette).
 - **bento-tools** — plain TypeScript background logic (tab/keyboard/persistence).
 
 Chrome modification surface is intentionally tiny (~4 patches in M1+M2) to keep Firefox security-patch adoption fast. The architecture is documented in the plan; this file captures only the rules contributors must not violate.
@@ -117,149 +118,66 @@ When adding, removing, or changing working core implementation behavior:
 4. For future regressions, consult the recorded solutions and pitfalls before implementing a new approach, and reuse the recorded solution unless it is demonstrably unrelated to the current failure.
 5. Remove obsolete pitfalls only when the underlying implementation no longer depends on them.
 
-## Tale UI MCP server
+## UI components (Mux UI + Bento primitives)
 
-A project-scoped MCP server is registered in [.mcp.json](.mcp.json) pointing at Tale UI's own server at `/Users/admin/Projects/tale-ui/tale-ui/tools/mcp-server.mjs`. It exposes the `mcp__tale-ui__*` tool family used by the Tale UI consumer workflow below. **Project-scoped MCP servers require one-time user approval on first use in a fresh Claude Code session.**
+Migrated React UI uses the public `@muxui/react` API and the shared Bento
+primitives under `extensions/bento-shell/src/components/primitives/`. The
+committed Mux artifact is the only UI package source; do not add Tale imports,
+MCP hooks, or compatibility dependencies.
 
-## UI Components (@tale-ui/react)
+Before creating or modifying a component:
 
-This project uses `@tale-ui/react` for all UI components.
+1. Read `node_modules/@muxui/react/README.md` and the relevant generated
+   declaration in `node_modules/@muxui/react/generated/`. The package README
+   and generated public declarations are the API authority.
+2. Use the root `@muxui/react` export or a documented public subpath. Do not
+   import private package files or copy generated package output into Bento.
+3. Import `src/theme/muxui.css` once from each entry point. It places the public
+   Mux styles and themes in the low-precedence `muxui` layer; keep Bento tokens
+   and the generated preset bridge after that boundary.
+4. Put `data-muxui-theme`, `data-muxui-color-scheme`, and
+   `data-muxui-contrast` on the same theme scope. `themeScope.ts` resolves
+   persisted aliases and unknown ids at the presentation boundary while the
+   tools store keeps the original id.
+5. Build repeated layout and icon behavior with the Bento primitives. Keep
+   React Aria Components as an implementation detail of those adapters; Bento
+   composites must consume the public Mux API or a Bento primitive.
+6. Preserve the browser-standard root contract: `1rem = 16px`, external
+   `public/boot.js` bootstrap, explicit mode attributes, and the transparent
+   site/frame separation. Do not add a remote font import or weaken CSP.
+7. Keep component-specific guidance in
+   [docs/mux-ui-component-customisations.md](docs/mux-ui-component-customisations.md)
+   and update it when a reusable Mux or Bento customization changes.
 
-Before generating or modifying component code, you MUST:
+### Public composition rules
 
-0. **Plan before generating JSX.** The Tale UI MCP tools are registered as deferred tools — you MUST call `ToolSearch` with `"mcp__tale-ui__plan_ui"` to load the schema before you can invoke them. Then call `mcp__tale-ui__plan_ui` with the UI description. It returns which components to use, a matching recipe if one exists, and key pitfalls — so you choose the right components before writing a single line of JSX. Skip this step only if you are making a trivial single-component change.
-
-1. **Read the setup guide** in `node_modules/@tale-ui/react/README.md` — it contains critical configuration (font-size base, style imports, dark mode, theme overrides) that will produce broken output if skipped.
-
-2. **Check the JSDoc `@example` on each component's .d.ts export** before using it. Every component's Root export includes a `@example` block showing the correct import path, sub-parts, and composition pattern. Read the `.d.ts` file for each component you intend to use:
-
-   ```text
-   node_modules/@tale-ui/react/esm/{name}/{Name}.styled.d.ts
-   ```
-
-   > **Exception:** A few components use `{Name}.d.ts` (not `.styled.d.ts`): `CSPProvider`, `CheckboxGroup`, `RadioGroup`, `Container`, and `mergeProps`.
-
-   The `@example` block at the top of each file is the authoritative usage reference.
-
-3. **For deeper details** (all props, all variants, advanced patterns), read the local component doc:
-
-   ```text
-   node_modules/@tale-ui/react/docs/{name}.md
-   ```
-
-4. **Do not guess component APIs.** Always check the `@example` block first. Incorrect usage (wrong sub-part names, missing wrapper components, wrong import paths) causes build failures.
-
-5. **Component pitfalls:** Use `ToolSearch` with `"mcp__tale-ui__get_component"` to load the schema, then call `mcp__tale-ui__get_component` for each component you intend to use — it returns the full pitfall list including anti-patterns and fixes. Cross-component pitfalls (trigger styling, date types, import paths) are surfaced by `mcp__tale-ui__plan_ui` automatically.
-
-### Namespace vs Simple components
-
-**Namespace** (use `<Component.Root>`, never `<Component>` directly):
-Accordion, AlertDialog, Autocomplete, Avatar, BadgeGroup, Banner, Breadcrumbs, Calendar, Card, Carousel, Checkbox, ColorArea, ColorField, ColorPicker, ColorSlider, ColorSwatchPicker, ColorWheel, Combobox, ContextMenu, CreditCard, DateField, DatePicker, DateRangePicker, Dialog, Disclosure, Drawer, EmptyState, Field, Fieldset, FileUpload, GridList, HeaderNav, ImageCropper, Input, InputGroup, InputTags, List, Menu, Menubar, Meter, MultiSelect, NavigationMenu, NumberField, Pagination, PaymentInput, PinInput, Popover, PreviewCard, ProgressBar, ProgressCircle, QRCode, Radio, RangeCalendar, ScrollArea, SearchField, Select, Sidebar, Slider, Switch, Table, Tabs, TagGroup, TagSelect, TextArea, TextEditor, TextField, TimeField, Toolbar, Tooltip, Tree, VideoPlayer.
-
-**Simple** (direct use, no `.Root`):
-AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, ColorModeToggle, ColorSwatch, Column, Container, DotIcon, DropZone, FeaturedIcon, FileTrigger, Form, I18nProvider, Icon, IconButton, Illustration, Image, IphoneMockup, Link, PaginationDot, PaginationLine, RadioGroup, RatingBadge, RatingStars, Row, SectionDivider, SelectNative, Separator, SocialButton, SocialButtonGroup, Spinner, Text, ToggleButton, ToggleButtonGroup, mergeProps.
-
-### General conventions
-
-- **No `JSX.Element` return types or `React.FC`** — plain functions with no return type: `export function MyComponent() { ... }`
-- **Token suffixes:** CSS tokens use `-s`/`-m`/`-l`; component `size` props use `-sm`/`-md`/`-lg`
-- **Max gap:** `Row`/`Column` `gap` max is `'2xl'` — `'3xl'`/`'4xl'` do not exist
-- **Layout:** Use `<Row>` (horizontal flex) and `<Column>` (vertical flex) — import each separately; `Column` is NOT re-exported from `@tale-ui/react/row`
-- **Triggers:** Never nest `<Button>`/`<IconButton>` inside overlay triggers — triggers render their own `<button>`. Style with `className="tale-button tale-button--primary tale-button--md"`
-- **Imports:** Use per-component import paths — `import { Button } from '@tale-ui/react/button'`, not barrel imports
-- **No global styles on semantic HTML** — Tale UI renders `<section>`, `<header>`, etc. internally; global element rules leak into overlays
-
-6. **Charts (separate package):** Install `@tale-ui/charts` and `recharts` separately. Import chart styles via `import '@tale-ui/charts/styles';`. Charts use the same compound parts pattern: `BarChart.Root`, `BarChart.Bar`, etc.
-
-7. **A2UI protocol support (optional):** If this project uses AI agents that render UI via the [A2UI protocol](https://a2ui.org/), install `@tale-ui/a2ui`. It maps A2UI agent messages to Tale UI components. See `node_modules/@tale-ui/a2ui/README.md` or the [integration guide](https://github.com/Tale-UI/tale-ui/blob/main/docs/a2ui-integration.md). Quick setup:
-
-   ```tsx
-   import { A2UIProvider, A2UISurface } from '@tale-ui/a2ui/renderer';
-   import { taleUICatalog } from '@tale-ui/a2ui/catalog';
-
-   <A2UIProvider catalog={taleUICatalog} onAction={handleAction}>
-     <A2UISurface surfaceId="main" />
-   </A2UIProvider>;
-   ```
-
-   Common catalog types include `TextInput`, `TextAreaInput`, `NumberInput`, `SliderInput`, `SearchInput`, and `Progress` in addition to shared layout/content types like `Column`, `Text`, and `Button`.
-
-8. **Dark mode must persist between refreshes.** Every new app must:
-
-   a. Add `class="tale-ui"` and `data-color-mode` to `<html>`:
-
-   ```html
-   <html class="tale-ui" data-color-mode="light"></html>
-   ```
-
-   b. Include this inline script in `<head>` before any CSS or JS to avoid a flash of wrong theme:
-
-   ```html
-   <script>
-     (function () {
-       var mode =
-         localStorage.getItem('color-mode') ||
-         (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-       document.documentElement.setAttribute('data-color-mode', mode);
-     })();
-   </script>
-   ```
-
-   c. Use `ColorModeToggle` for the toggle UI — it handles `localStorage` and `data-color-mode` automatically:
-
-   ```tsx
-   import { ColorModeToggle } from '@tale-ui/react/color-mode-toggle';
-
-   <ColorModeToggle />;
-   ```
-
-9. **Theming with category tokens.** Override component families in one place by setting category tokens on `:root`. These tokens are defined in `@tale-ui/react-styles` and default to the same semantic token values they replace — so changing them shifts the entire family simultaneously:
-
-   ```css
-   :root {
-     /* Retheme all form field inputs at once */
-     --field-bg: var(--neutral-10);
-     --field-border-color: var(--neutral-20);
-     --field-radius: var(--radius-s);
-
-     /* Retheme all dropdown popups and menus */
-     --popup-bg: var(--neutral-12);
-     --popup-radius: var(--radius-m);
-     --popup-shadow: var(--shadow-l);
-
-     /* Retheme all modal dialogs and drawers */
-     --modal-title-color: var(--color-80);
-     --modal-backdrop-bg: var(--scrim-strong);
-
-     /* Retheme all progress bars and meters */
-     --progress-track-height: 0.4rem;
-     --progress-indicator-bg: var(--color-60);
-   }
-   ```
-
-   **Available category token families:**
-
-   | Family            | Tokens                                                                                                                                                                                                                                                                                                                                                                                                     | Components                                                                                                                     |
-   | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-   | `--field-*`       | `--field-min-height`, `--field-padding-block`, `--field-padding-inline`, `--field-border-color`, `--field-radius`, `--field-bg`, `--field-color`, `--field-font-family`, `--field-font-size`, `--field-focus-border`, `--field-focus-glow`, `--field-placeholder-color`, `--field-label-color`, `--field-label-font-size`, `--field-label-font-weight`, `--field-description-color`, `--field-error-color` | Input, Select, Combobox, Autocomplete, SearchField, TextField, DateField, TimeField, PaymentInput + labels/descriptions/errors |
-   | `--popup-*`       | `--popup-bg`, `--popup-border-color`, `--popup-radius`, `--popup-shadow`                                                                                                                                                                                                                                                                                                                                   | Select, Combobox, Autocomplete, Menu, ContextMenu, Popover popups                                                              |
-   | `--item-*`        | `--item-padding-block`, `--item-padding-inline`, `--item-gap`, `--item-radius`, `--item-color`, `--item-font-size`, `--item-focus-bg`, `--item-focus-color`                                                                                                                                                                                                                                                | All dropdown/menu items                                                                                                        |
-   | `--group-label-*` | `--group-label-color`, `--group-label-font-size`                                                                                                                                                                                                                                                                                                                                                           | Section headers in dropdowns/menus                                                                                             |
-   | `--modal-*`       | `--modal-title-color`, `--modal-title-font-size`, `--modal-description-color`, `--modal-description-font-size`, `--modal-backdrop-bg`, `--modal-actions-gap`                                                                                                                                                                                                                                               | AlertDialog, Dialog, Drawer                                                                                                    |
-   | `--progress-*`    | `--progress-track-height`, `--progress-track-bg`, `--progress-indicator-bg`, `--progress-radius`                                                                                                                                                                                                                                                                                                           | ProgressBar, Meter                                                                                                             |
-
-> **Bento note**: the snippet above is mirrored from [tale-ui's canonical source](/Users/admin/Projects/tale-ui/tale-ui/docs/consumer-claude-md-snippet.md). When tale-ui updates that file, re-sync this section. The Bento-specific layered design-system rules below build on top of these base rules — they don't replace them.
+- Use the documented Mux component parts and public props. Do not guess a
+  subpart name or pass React Aria props that the Mux declaration does not
+  expose.
+- Use Bento `Row`, `Column`, and icon adapters for shared layout and icons.
+  Keep product-specific composition in the owning component.
+- Overlay triggers must use the component's documented trigger part. Do not
+  nest a second button inside a trigger that already renders a button.
+- Keep global selectors away from semantic elements and overlay internals.
+  Scope component rules to the owning class and place them in the appropriate
+  CSS layer.
+- Use the generated legacy token aliases (`--neutral-*`, `--color-*`,
+  `--space-*`, `--radius-*`, `--shadow-*`) only where existing Bento CSS
+  requires them. New theme roles should use the public Mux semantic tokens or
+  a `--bento-*` token with a clear owner.
+- New HTML entry points keep bootstrap logic in the external `public/boot.js`;
+  do not add inline scripts that bypass the CSP contract.
 
 ## Hard guardrails (ESLint or CI enforce these)
 
-- **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from `@tale-ui/react/*` and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
-- **Per-component imports only**: `import { Button } from '@tale-ui/react/button'`. Never `from '@tale-ui/react'` (the barrel). Same rule for `@tale-ui/react-styles` and `lucide-react`.
-- **Tale UI customisation docs stay current**: any change that adds or changes Bento-specific Tale UI component customisations, token usage patterns, CSS layer/override rules, or reusable component styling conventions must update [docs/tale-ui-component-customisations.md](docs/tale-ui-component-customisations.md) in the same change.
+- **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from the public `@muxui/react` API, Bento primitives, and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
+- **Public imports only**: use the root `@muxui/react` export or a documented public subpath. Never import private generated files or a copied registry. `lucide-react` remains per-icon and documented.
+- **Mux customisation docs stay current**: any change that adds or changes Bento-specific Mux customisations, token usage patterns, CSS layer/override rules, or reusable component styling conventions must update [docs/mux-ui-component-customisations.md](docs/mux-ui-component-customisations.md) in the same change.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
 - **Firefox core touchpoint log**: any feature work that changes or depends on Firefox core files, patches, prefs, or chrome internals must update [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) in the same change, including the regression checks future Firefox updates must run.
-- **Perf budgets** (CI fails on regression via [scripts/check-size-budgets.mjs](scripts/check-size-budgets.mjs) and direct file limits in [.size-limit.json](.size-limit.json)): shell cold-start JS < 215 KB gz; settings cold-start JS < 205 KB gz; palette/address-bar/confirm/edit-workspace/welcome/menu/workspace-palette/merge-palette cold-start JS < 200 KB gz; shell CSS < 40 KB gz; bento-tools background < 55 KB gz; cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
+- **Perf budgets** (CI reports regressions via [scripts/check-size-budgets.mjs](scripts/check-size-budgets.mjs) and direct file limits in [.size-limit.json](.size-limit.json); missing or malformed built assets still fail): shell cold-start JS < 215 KB gz; settings cold-start JS < 205 KB gz; palette/address-bar/confirm/edit-workspace/welcome/menu/workspace-palette/merge-palette cold-start JS < 200 KB gz; shell CSS < 40 KB gz; bento-tools background < 55 KB gz; cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
-- **No raw design values in component CSS**: components reference Tale UI tokens (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, etc.) or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a needed value doesn't exist as a token, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired `--neutral-N-fg` token, not a raw neutral.
+- **No raw design values in component CSS**: components reference public Mux semantic tokens, generated legacy aliases (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, and similar), or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a reusable value is missing, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired foreground token for that role, not a raw neutral.
 - **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
 
 ## Versioning policy
@@ -275,23 +193,37 @@ AppStoreButton, BackgroundPattern, Badge, Button, CSPProvider, CheckboxGroup, Co
 
 PR comments must identify the source commit, platform, artifact expiration, and unsigned test-build status. This exception does not relax the signing or approval gates for official public releases.
 
-## Tale UI: development ↔ release toggle
+## UI dependencies: development ↔ release toggle
 
-Tale UI is published to npm at the versions Bento targets. The extension `package.json` files pin those exact versions (`@tale-ui/react`, `@tale-ui/themes`, `@tale-ui/css`, etc. are currently `2.0.0`) so release builds are byte-reproducible. For the dev loop, those pins get rewritten to local `link:` paths by [.pnpmfile.cjs](.pnpmfile.cjs) at install time.
+The pinned Mux candidate is the public UI source for migrated entry points.
+The exact local artifact, provenance record, and package exports are owned by
+the repository manifests. Keep the Mux artifact bytes immutable and consume
+its public `styles.css`, `themes.css`, and documented component exports.
+
+The committed Mux artifact is the only UI dependency source. Keep its bytes,
+provenance, public exports, and pinned React Aria/Tiptap overrides unchanged.
+Do not add Tale imports, MCP hooks, or runtime/build assumptions.
 
 **Default install (dev loop)** — `pnpm install`:
 
-- The `readPackage` hook in `.pnpmfile.cjs` rewrites every `@tale-ui/*` dep in `@bento/shell` and `@bento/tools` to `link:/Users/admin/Projects/tale-ui/tale-ui/packages/*`. Packages consumed through their published export shape, including `@tale-ui/react` and `@tale-ui/themes`, link to their local `build/` output. Source edits in `tale-ui/tale-ui` hot-reload after rebuilding the affected Tale UI package.
-- The lockfile records the `link:` paths.
+- The lockfile records the committed Mux artifact path and the pinned public
+  dependency graph. It must not contain working-tree links.
 
 **Release install** — `bash scripts/install-release-deps.sh` (used by `scripts/build-release.sh` and GitHub Actions):
 
-- The hook detects `BENTO_RELEASE=1` and is a no-op. pnpm sees the npm-pinned versions in `package.json` and resolves from the registry.
-- The helper temporarily installs against `pnpm-lock.release.yaml` with `--frozen-lockfile`, then restores the developer lock while leaving the registry-backed release graph installed in `node_modules`. Resolution cannot drift across CI runs or later rebuilds.
+- The helper temporarily installs against `pnpm-lock.release.yaml` with
+  `--frozen-lockfile`, then restores the developer lock while leaving the
+  release graph installed in `node_modules`. Resolution cannot drift across
+  CI runs or later rebuilds.
 
-**When updating the Tale UI version**: bump the version strings in both `extensions/bento-shell/package.json` and `extensions/bento-tools/package.json` (when bento-tools eventually pulls Tale UI). Run `pnpm install` to refresh the developer lock, then run `bash scripts/update-release-lock.sh`. Verify it with `bash scripts/install-release-deps.sh`.
+**When changing UI dependencies**: keep the Mux artifact manifest,
+`package.json` overrides, and both frozen locks aligned. Run the repository's
+frozen install and release-security checks before regenerating either lock.
 
-**Why this matters**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. See [docs/build-tooling.md](docs/build-tooling.md) for the release dependency and source-cache contracts.
+**Why this matters**: release builds must be byte-reproducible across
+machines, CI runs, and time. A working-tree link captures whatever is on disk
+and can't be audited or hotfix-rebuilt. See [docs/build-tooling.md](docs/build-tooling.md)
+for the release dependency and source-cache contracts.
 
 **Firefox updates**: use Bento's protected source-update workflow. For a newer
 version than the one in `bento.json`, copy the 64-character SHA-256 for
@@ -374,5 +306,9 @@ Then iterate by what you changed:
   branding, locale, license, and update configuration.
 - `.bento/` — local source cache, source state, import manifest, backups, and
   generated engine state.
-- Tale UI lives **outside** this repo at `/Users/admin/Projects/tale-ui/tale-ui/`.
-- **Chrome design tokens**: chrome (Firefox `browser.xhtml`) consumes Tale UI tokens via an auto-generated stylesheet at `src/browser/base/content/bento-chrome-tokens.css` (gitignored). Regenerated from Tale UI source on every `pnpm run import`. Adding a new theme (Scale-app palette, etc.) is a one-line entry in [scripts/generate-chrome-tokens.mjs](scripts/generate-chrome-tokens.mjs)'s `SOURCES` list — see [docs/chrome-tokens.md](docs/chrome-tokens.md) for the end-to-end pipeline.
+- **Chrome design tokens**: chrome (Firefox `browser.xhtml`) consumes public
+  Mux tokens and the generated Bento legacy bridge via
+  `src/browser/base/content/bento-chrome-tokens.css` (gitignored). The file is
+  regenerated by [scripts/generate-chrome-tokens.mjs](scripts/generate-chrome-tokens.mjs)
+  during import. Use its `--output` option for isolated packaging and proof;
+  see [docs/chrome-tokens.md](docs/chrome-tokens.md) for the pipeline.
