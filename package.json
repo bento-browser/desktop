@@ -36,6 +36,7 @@
     "import:addons": "node scripts/install-builtin-addons.mjs",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
+    "test:agent-skills": "node --test .agents/skills/bento-upgrade-firefox/scripts/*.test.mjs",
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
     "security:check": "node scripts/check-security-invariants.mjs",
     "release:security-check": "node scripts/check-release-security.mjs --channel=preview",

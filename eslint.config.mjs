@@ -70,6 +70,14 @@ export default tseslint.config(
     },
   },
 
+  // Repo-scoped agent skill scripts run under Node.
+  {
+    files: ['.agents/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+
   // Bundle discipline — applies to all extension source
   {
     files: ['extensions/**/*.{ts,tsx,js,jsx,mjs}'],

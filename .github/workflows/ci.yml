@@ -90,6 +90,9 @@ jobs:
       - name: Firefox patch stack tests
         run: pnpm run firefox:patches:test
 
+      - name: Agent skill script tests
+        run: pnpm run test:agent-skills
+
       - name: Branding and built-in add-on installer tests
         run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs
 

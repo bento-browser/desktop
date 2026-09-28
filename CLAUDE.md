@@ -36,6 +36,13 @@ untracked; they are local-development artifacts only. Do not put working plans
 in `docs/` or any other tracked documentation directory unless the user
 explicitly asks for a tracked document.
 
+## Agent skills
+
+Repo-scoped agent skills live in `.agents/skills/` (`.claude/skills` links to
+it). Each `SKILL.md` owns its step-by-step procedure:
+
+- `bento-upgrade-firefox`: upgrade, assess, or repair the Firefox engine version.
+
 ## Backticks inside JS template literals
 
 When writing CSS/HTML inside a JS template literal (a backtick string), **never use backticks in the embedded content** — they terminate the template literal early and produce confusing TS/JS syntax errors that are easy to misdiagnose. This has happened repeatedly in [src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js) where chrome CSS is injected via a `style.textContent = ...` template literal.
@@ -293,25 +300,13 @@ Tale UI is published to npm at the versions Bento targets. The extension `packag
 
 **Why this matters**: release builds must be byte-reproducible across machines, CI runs, and time. A `link:` to a working tree captures whatever is on disk — uncommitted edits, WIP branches, platform variance — and can't be audited or hotfix-rebuilt. See [docs/build-tooling.md](docs/build-tooling.md) for the release dependency and source-cache contracts.
 
-**Firefox updates**: use Bento's protected source-update workflow. For a newer
-version than the one in `bento.json`, copy the 64-character SHA-256 for
-`source/firefox-<target-version>.source.tar.xz` from Mozilla's
-[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
-file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`
-and pass it as `BENTO_SOURCE_SHA256`; the driver still verifies the archive and
-rejects a missing or mismatched digest. Inspect `git -C engine worktree list --porcelain`
-first, finish or export any patch work, then remove linked worktrees with
-`git -C engine worktree remove <worktree>` before retrying. The workflow
-preserves the previous checkout under `.bento/backups/`,
-updates `bento.json` and `config/firefox-versions.json`, and requires
-patch-stack validation before import:
-
-```sh
-BENTO_SOURCE_SHA256=<sha256-from-mozilla> pnpm run firefox:sync
-pnpm run firefox:patches:check
-pnpm run import
-pnpm run build
-```
+**Firefox updates**: always use Bento's protected source-update workflow
+(`pnpm run firefox:sync`); never replace `engine/` source directly. For a newer
+version than the one in `bento.json`, pass the SHA-256 of
+`source/firefox-<target-version>.source.tar.xz` from Mozilla's per-release
+`SHA256SUMS` as `BENTO_SOURCE_SHA256`. Before syncing, finish or export patch
+work and remove linked engine worktrees (`git -C engine worktree list --porcelain`).
+The `bento-upgrade-firefox` skill owns the full procedure.
 
 ## Dev loop
 
