@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Bento Firefox Upgrade'
+  short_description: 'Bento Firefox upgrades with ready PRs'
+  default_prompt: 'Use $bento-upgrade-firefox to upgrade Bento to the latest stable Firefox, validate it, and open a ready PR.'
