@@ -120,11 +120,13 @@ Before any source mutation, inspect linked worktrees:
 git -C engine worktree list --porcelain
 ```
 
-Finish or export any patch/rebase work and remove linked worktrees before
-retrying. The driver refuses to replace an engine with a linked worktree and
-preserves unknown or dirty user edits. Successful replacement keeps recoverable
-source and patch refs under `.bento/backups/` and carries forward the relevant
-Bento refs so patch rebase can recover the old base.
+Finish or export any patch/rebase work and remove linked worktrees
+(`git -C engine worktree remove <worktree>`) before retrying. The driver refuses
+to replace an engine with a linked worktree and preserves unknown or dirty user
+edits. Successful replacement keeps recoverable source and patch refs under
+`.bento/backups/`, carries forward the relevant Bento refs so patch rebase can
+recover the old base, and updates `bento.json` and
+`config/firefox-versions.json`.
 
 When the target is the version already configured in `bento.json`, use its
 recorded `firefox.source.sha256`; do not refetch a digest for an unchanged
