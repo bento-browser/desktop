@@ -132,6 +132,18 @@
       "pattern": "Zen workspace|zen-space",
       "category": "import-compatibility",
       "reason": "Tests adoption of workspaces imported from Zen."
+    },
+    {
+      "path": ".agents/skills/bento-upgrade-firefox/SKILL.md",
+      "pattern": "check:zen-boundary",
+      "category": "build-tool",
+      "reason": "Runs the build-time reference guard during Firefox upgrade validation."
+    },
+    {
+      "path": ".agents/skills/bento-upgrade-firefox/SKILL.md",
+      "pattern": "Zen profile",
+      "category": "import-compatibility",
+      "reason": "Requires Firefox upgrades to preserve Zen profile import interoperability."
     }
   ]
 }

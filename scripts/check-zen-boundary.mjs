@@ -77,7 +77,9 @@ export function checkZenBoundary() {
     if (relative === CONFIG_PATH || relative.startsWith('extensions/ublock-origin/')) continue;
 
     const absolute = path.join(REPO_ROOT, relative);
-    if (!fs.existsSync(absolute)) continue;
+    // Symlinks such as .claude/skills point at files scanned under their real paths.
+    const stat = fs.lstatSync(absolute, { throwIfNoEntry: false });
+    if (!stat?.isFile()) continue;
     const buffer = fs.readFileSync(absolute);
     if (!isText(buffer)) continue;
     const lines = buffer.toString('utf8').split(/\r?\n/);
