@@ -114,29 +114,30 @@ cold-build bound.
 ## Reproducible release dependencies
 
 Developer installs use `pnpm-lock.yaml`. Release and CI installs use the
-separate committed `pnpm-lock.release.yaml`; both graphs consume the same
-committed Mux UI React candidate from
-`artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz`; its provenance sidecar records
-the source revision, bytes, digest, pack command, and that no publication was
-performed. The packed candidate exposes its public `./themes` and
-`./themes.css` entries alongside the root React renderer; consumers should use
-those exports rather than generated-file paths.
-`scripts/install-release-deps.sh` temporarily swaps in that root-format lock,
-force-relinks with `--frozen-lockfile`, and restores the developer lock. Any
-manifest or transitive-resolution drift fails the install instead of silently
-changing a release. The release SBOM includes the frozen Mux UI artifact's
-SHA-256 and source revision.
+separate committed `pnpm-lock.release.yaml`; both graphs consume the exact
+published npm package `@muxui/react@0.1.0-rc.1` and record its registry integrity.
+The package exposes public `./themes` and `./themes.css` entries alongside the
+root React renderer; consumers use those exports rather than generated-file
+paths. Bento has no committed Mux tarball or local provenance sidecar.
 
-The Mux UI candidate currently declares Tiptap `3.22.3`, whose
-`@tiptap/core` release is affected by
+`scripts/install-release-deps.sh` temporarily swaps in the root-format release
+lock, force-relinks with `--frozen-lockfile`, and restores the developer lock.
+Manifest or transitive-resolution drift fails the install. The release SBOM
+requires the approved shell runtime dependency set, exact published Mux version,
+and verified npm integrity; it rejects a substituted tarball or digest. Mux is
+reported like other npm components with its registry SHA-512 integrity digest.
+
+Bento keeps one React Aria substrate graph for menu context identity and pins
+Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
+This is later than the patch for
 [GHSA-j95f-988m-3j2f](https://github.com/advisories/GHSA-j95f-988m-3j2f).
-Bento applies explicit root overrides for the candidate's shipped Tiptap
-family at `3.31.3` in both dependency locks, including `@tiptap/core`,
-`@tiptap/pm`, and their peer packages. This keeps the runtime family on the
-patched line until a future Mux candidate updates its manifest; the committed
-Mux artifact and its provenance remain unchanged.
+React Aria remains an internal Mux dependency; Bento composites use the public
+Mux API, with shared Bento primitives for layout and icons.
 
-After changing a dependency, update both graphs:
+Run frozen developer/release installs and release-security checks before
+regenerating locks, then verify the updated graphs. In an isolated source copy:
+
+After the baseline checks, update both graphs:
 
 ```sh
 pnpm install

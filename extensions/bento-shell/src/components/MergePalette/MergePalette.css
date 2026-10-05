@@ -24,7 +24,9 @@
   padding: var(--space-xs);
 }
 
-.bento-merge-palette__clear-button {
+/* Reserve a real search-row position so Clear/Refresh cannot cover Close. */
+.muxui-command-palette__close.bento-merge-palette__close {
+  position: static;
   flex: 0 0 auto;
 }
 

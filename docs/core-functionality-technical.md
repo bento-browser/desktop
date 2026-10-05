@@ -955,6 +955,31 @@ collapsed rail slides over the content without changing the content layout.
 While `sidebarHidden` is true, the divider, toolbar-navigation, and
 bookmarks-toolbar alignment paths must treat the sidebar width as zero even
 during hover reveal.
+Expanded tab scrolling relies on the virtualizer's visible-range updates and
+the native scrollbar. `TabListPane` reads the existing effective collapsed
+setting (`sidebarCollapsed` or `sidebarHidden`) and skips its custom-scrollbar
+pixel metrics, React state updates, and hide timer while expanded. Those updates
+belong to the collapsed custom scrollbar, which remains responsible for thumb
+position, hover visibility and pointer dragging. A layout effect synchronizes
+current metrics when collapsing after an expanded scroll; the existing resize
+observer keeps them current as the pane changes size. Expanding clears a pending
+hide timer and scrolling visibility state. Keep the virtualizer, row slots,
+active-tab reveal and folder anchoring independent of that pixel-only state.
+Verify fine and large up/down direction changes, collapse at a nonzero scroll
+position, thumb alignment/dragging, and return to expanded mode without a jump.
+
+Tab rows remain fully paintable while mounted. Do not add
+`content-visibility: auto` or intrinsic-size placeholders to these already
+virtualized rows: Gecko can translate an existing row background into view
+before its skipped label and favicon are painted. The virtualizer keeps a
+bounded fifteen-row overscan on each side so native asynchronous scrolling
+has painted adjacent rows while React updates its range. This adds twenty
+mounted rows compared with the previous five-row buffer at an interior scroll
+position, without mounting the entire list. Verify native six- and fourteen-row
+wheel steps, rapid reversals, and collapsed scrolling; capture moving window
+frames because settled DOM screenshots miss one-frame blanks. Check the first
+native wheel separately from warmed scrolling.
+
 Folder expand/collapse records the clicked folder row's offset inside the
 virtualized scroller before dispatching `tabFolder/setCollapsed`, restores that
 offset on the next row-model render, and suppresses the pane's one-shot
@@ -3097,3 +3122,43 @@ When changing core functionality, manually verify at least the affected subset:
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.
+
+### Chrome submenu placement
+
+The chrome menu overlay (`extensions/bento-shell/src/menu/ChromeMenu.tsx`)
+composes public Mux `Menu.Submenu`, `Menu.Item`, `Menu.Popup`, and `Menu.List`
+parts from serialized chrome menu payloads. Nested popups explicitly use
+`placement="end-top"`. In `@muxui/react@0.1.0-rc.1`, relying on the submenu
+default can resolve to a bottom popup anchored to the correct item, overlapping
+subsequent root rows. Keep placement explicit when changing menu composition.
+Verify in the `menu.html` overlay that pointer travel from a submenu trigger
+reaches visible child rows, keyboard ArrowRight opens the child, and selection
+preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome poll.
+
+### Palette search headers and rollback file selection
+
+Command and merge palettes, including the archived command palette, compose
+public ClearButton and Close parts inside the search flex row. A scoped static
+Close position prevents the sticky Input/Clear/Refresh row from covering its
+pointer target. Verify pointer Close with empty/nonempty queries and Clear
+reset before changing that geometry.
+
+Standalone rollback Settings uses the same published Mux renderer as the
+normal shell. Shortcuts uses the same search-row composition and public
+CommandPalette collection parts.
+The controlled Input explicitly dismisses on Escape outside IME composition;
+the RC SearchField can otherwise intercept the key without updating the leaf
+query. Verify nonempty search, native Escape, and native Close in both rollback
+variants. Backup import uses public `FileTrigger`; verify invalid/oversize
+files, a valid preview, and selecting the same file again after reopening.
+
+### Workspace picker category focus
+
+The published RC Tabs renderer can update the selected emoji category while
+leaving DOM focus on an inactive tab. WorkspaceIconPicker uses the public root
+ref and standard `tablist`/`tab` roles to follow the committed ARIA selection
+in the selection effect. Animation-frame scheduling can delay the correction
+in Firefox overlay windows, so it runs directly, only when focus is already in
+that category list. It does not implement arrow selection or move focus from search/results/outside. Verify Home/End/arrows from
+the current focused tab, Enter/Space keeping that selection, and search typing
+preserving input focus when changing the package.

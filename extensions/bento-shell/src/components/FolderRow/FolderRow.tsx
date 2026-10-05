@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Text } from '@muxui/react';
-import { BentoIcon } from '../primitives/BentoIcon';
+import { Input, Text } from '@muxui/react';
+import { BentoIcon, Row } from '../primitives';
 import Folder from 'lucide-react/dist/esm/icons/folder';
 import FolderOpen from 'lucide-react/dist/esm/icons/folder-open';
 import type { TabFolder } from '@shared/protocol';
@@ -82,7 +82,8 @@ function FolderRowImpl({
   }, [renaming]);
 
   return (
-    <div
+    <Row
+      gap="xs"
       className={
         'bento-folder-row' +
         (dragging ? ' bento-folder-row--dragging' : '') +
@@ -120,9 +121,10 @@ function FolderRowImpl({
         <BentoIcon icon={folder.collapsed ? Folder : FolderOpen} size="sm" />
       </span>
       {renaming ? (
-        <input
+        <Input.Input
           ref={renameInputRef}
           className="bento-folder-row__rename-input"
+          aria-label="Folder name"
           value={draftTitle}
           autoFocus
           onFocus={(event) => event.currentTarget.select()}
@@ -141,7 +143,7 @@ function FolderRowImpl({
           onBlur={commitRename}
         />
       ) : (
-        <Text className="bento-folder-row__label" variant="body" size="s" color="muted">
+        <Text className="bento-folder-row__label" variant="body" size="sm" color="muted">
           {folder.name}
         </Text>
       )}
@@ -150,7 +152,7 @@ function FolderRowImpl({
           {tabCount}
         </Text>
       )}
-    </div>
+    </Row>
   );
 }
 

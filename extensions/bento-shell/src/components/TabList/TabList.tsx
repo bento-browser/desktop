@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Button, IconButton } from '@muxui/react';
+import { Button, IconButton, Input } from '@muxui/react';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
 import X from 'lucide-react/dist/esm/icons/x';
@@ -9,6 +9,7 @@ import X from 'lucide-react/dist/esm/icons/x';
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
+import { useSettingsStore } from '../../state/settings';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders';
 import { TabRow } from '../TabRow/TabRow';
@@ -237,6 +238,9 @@ function TabListPane({
 }: TabListPaneProps) {
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
   const folders = useWorkspaceFolders(workspaceId);
+  const sidebarCollapsed = useSettingsStore((s) =>
+    Boolean(s.current?.sidebarCollapsed || s.current?.sidebarHidden),
+  );
   const parentRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const scrollbarDragRef = useRef<{
@@ -293,6 +297,19 @@ function TabListPane({
         : next,
     );
   }, []);
+
+  useLayoutEffect(() => {
+    // The custom scrollbar is visible only when collapsed. Read its current
+    // position before showing it after an expanded scroll.
+    if (sidebarCollapsed) updateScrollMetrics();
+    else {
+      if (scrollbarHideTimerRef.current !== null) {
+        window.clearTimeout(scrollbarHideTimerRef.current);
+        scrollbarHideTimerRef.current = null;
+      }
+      setScrollbarScrolling(false);
+    }
+  }, [sidebarCollapsed, updateScrollMetrics]);
 
   // Persistent probe + ResizeObserver. Vite injects CSS asynchronously in
   // dev, so a one-shot read can race the stylesheet and fall back. Watching
@@ -398,7 +415,8 @@ function TabListPane({
     count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: useCallback(() => rowSlotSize, [rowSlotSize]),
-    overscan: 5,
+    // Keep adjacent rows painted while native scrolling advances before React's range update.
+    overscan: 15,
   });
   const totalSize = virtualizer.getTotalSize();
   const viewportStyle = {
@@ -754,6 +772,7 @@ function TabListPane({
   };
 
   const handlePaneScroll = useCallback(() => {
+    if (!sidebarCollapsed) return;
     updateScrollMetrics();
     setScrollbarScrolling(true);
     if (scrollbarHideTimerRef.current !== null) {
@@ -763,7 +782,7 @@ function TabListPane({
       scrollbarHideTimerRef.current = null;
       setScrollbarScrolling(false);
     }, SCROLLBAR_SCROLL_VISIBLE_MS);
-  }, [updateScrollMetrics]);
+  }, [sidebarCollapsed, updateScrollMetrics]);
 
   const handleCollapsedScrollbarPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -924,9 +943,10 @@ function TabListPane({
     >
       <div className="bento-tab-list-search__field-row">
         <BentoIcon icon={Search} size="sm" className="bento-tab-list-search__field-icon" />
-        <input
+        <Input.Input
           ref={searchInputRef}
           className="bento-tab-list-search__input"
+          aria-label="Search tabs and panels"
           value={searchQuery}
           placeholder="Search tabs and panels"
           onChange={(e) => onSearchQueryChange(e.currentTarget.value)}

@@ -109,7 +109,7 @@ function advancedBoolean(key: PrivacyAdvancedKey, value: boolean, label: string,
     <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
       <Column gap="3xs" style={{ flex: 1 }}>
         <Text>{label}</Text>
-        <Text variant="body" size="s" color="muted">
+        <Text variant="body" size="sm" color="muted">
           {detail}
         </Text>
       </Column>
@@ -136,34 +136,34 @@ function ProtectionLevelDetailList({ current }: { current: PrivacyProtectionLeve
               key={level.id}
             >
               <Row style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Text variant="label" size="m">
+                <Text variant="label" size="md">
                   {detail.label}
                 </Text>
                 {current === level.id ? (
-                  <Text variant="label" size="s" className="bento-settings__accent">
+                  <Text variant="label" size="sm" className="bento-settings__accent">
                     Current
                   </Text>
                 ) : null}
               </Row>
-              <Text variant="body" size="s" color="muted">
+              <Text variant="body" size="sm" color="muted">
                 {detail.bestFor}
               </Text>
               <Column gap="2xs">
-                <Text variant="label" size="s">
+                <Text variant="label" size="sm">
                   Benefits
                 </Text>
                 {detail.benefits.map((benefit) => (
-                  <Text variant="body" size="s" color="muted" key={benefit}>
+                  <Text variant="body" size="sm" color="muted" key={benefit}>
                     - {benefit}
                   </Text>
                 ))}
               </Column>
               <Column gap="2xs">
-                <Text variant="label" size="s">
+                <Text variant="label" size="sm">
                   Caveats
                 </Text>
                 {detail.caveats.map((caveat) => (
-                  <Text variant="body" size="s" color="muted" key={caveat}>
+                  <Text variant="body" size="sm" color="muted" key={caveat}>
                     - {caveat}
                   </Text>
                 ))}
@@ -172,10 +172,10 @@ function ProtectionLevelDetailList({ current }: { current: PrivacyProtectionLeve
           );
         })}
         <Column gap="2xs" className="bento-settings__protection-detail">
-          <Text variant="label" size="m">
+          <Text variant="label" size="md">
             Custom
           </Text>
-          <Text variant="body" size="s" color="muted">
+          <Text variant="body" size="sm" color="muted">
             Bento shows Custom when live privacy settings no longer exactly match Standard,
             Enhanced, or Hardened. Your manual settings stay in place until you select a preset.
           </Text>
@@ -256,7 +256,7 @@ export function Settings() {
         style={{ alignItems: 'center' }}
         className="bento-settings bento-settings--loading"
       >
-        <Text variant="body" size="m" color="muted">
+        <Text variant="body" size="md" color="muted">
           Loading settings…
         </Text>
       </Column>
@@ -342,10 +342,10 @@ export function Settings() {
   return (
     <Column gap="l" className="bento-settings">
       <Column gap="xs" className="bento-settings__header">
-        <Text variant="heading" size="m" as="h1">
+        <Text variant="heading" size="md" as="h1">
           Settings
         </Text>
-        <Text variant="body" size="m" color="muted">
+        <Text variant="body" size="md" color="muted">
           Configure how Bento behaves. Changes save automatically.
         </Text>
       </Column>
@@ -355,10 +355,10 @@ export function Settings() {
           <Card.Root className="bento-settings__tile bento-settings__tile--performance">
             <Card.Header>
               <Column gap="2xs">
-                <Text variant="title" size="m">
+                <Text variant="title" size="md">
                   Performance
                 </Text>
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Idle tabs are unloaded to free memory. Pinned tabs and the active tab in each
                   workspace stay loaded.
                 </Text>
@@ -405,15 +405,15 @@ export function Settings() {
           <Card.Root className="bento-settings__tile">
             <Card.Header>
               <Column gap="2xs">
-                <Text variant="title" size="m">
+                <Text variant="title" size="md">
                   Privacy
                 </Text>
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Bento disables telemetry, sponsored content, crash reporting, studies, remote
                   suggestions, and speculative connections by default.
                 </Text>
                 {privacy ? (
-                  <Text variant="label" size="s" className="bento-settings__accent">
+                  <Text variant="label" size="sm" className="bento-settings__accent">
                     Current protection level: {privacyLevelLabel(privacy.protectionLevel)}
                   </Text>
                 ) : null}
@@ -421,13 +421,13 @@ export function Settings() {
             </Card.Header>
             <Card.Body>
               {privacy === null ? (
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Loading privacy settings…
                 </Text>
               ) : (
                 <Column gap="l">
                   <Column gap="xs">
-                    <Text variant="label" size="s" color="muted">
+                    <Text variant="label" size="sm" color="muted">
                       Protection level
                     </Text>
                     <ToggleButtonGroup
@@ -450,7 +450,7 @@ export function Settings() {
                         </ToggleButton>
                       ))}
                     </ToggleButtonGroup>
-                    <Text variant="body" size="s" color="muted">
+                    <Text variant="body" size="sm" color="muted">
                       Select Standard, Enhanced, or Hardened to apply that preset. Bento shows
                       Custom when live settings differ from every preset.
                     </Text>
@@ -634,7 +634,7 @@ export function Settings() {
         <div className="bento-settings__stack">
           <Card.Root className="bento-settings__tile bento-settings__tile--narrow">
             <Card.Header>
-              <Text variant="title" size="m">
+              <Text variant="title" size="md">
                 Workspaces
               </Text>
             </Card.Header>
@@ -656,10 +656,10 @@ export function Settings() {
           <Card.Root className="bento-settings__tile bento-settings__tile--narrow">
             <Card.Header>
               <Column gap="2xs">
-                <Text variant="title" size="m">
+                <Text variant="title" size="md">
                   Keyboard shortcuts
                 </Text>
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Searchable reference for Bento hotkeys and standard Firefox tab shortcuts.
                 </Text>
               </Column>
@@ -696,7 +696,7 @@ export function Settings() {
                     </Select.List>
                   </Select.Popup>
                 </Select.Root>
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Chooses the minimized sidebar state used by Cmd/Ctrl+S.
                 </Text>
               </Column>
@@ -709,7 +709,7 @@ export function Settings() {
         <div className="bento-settings__stack">
           <Card.Root className="bento-settings__tile bento-settings__tile--panel">
             <Card.Header>
-              <Text variant="title" size="m">
+              <Text variant="title" size="md">
                 Panels
               </Text>
             </Card.Header>
@@ -738,7 +738,7 @@ export function Settings() {
                 <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <Column gap="3xs" style={{ flex: 1 }}>
                     <Text>Wrap panel shortcut cycling at the ends</Text>
-                    <Text variant="body" size="s" color="muted">
+                    <Text variant="body" size="sm" color="muted">
                       When on, Cmd/Ctrl+Shift+Right past the Add-panel button cycles back to the
                       main content slot. When off, the Add-panel button is the rightmost stop.
                     </Text>
@@ -752,7 +752,7 @@ export function Settings() {
                 <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <Column gap="3xs" style={{ flex: 1 }}>
                     <Text>Panel shadows</Text>
-                    <Text variant="body" size="s" color="muted">
+                    <Text variant="body" size="sm" color="muted">
                       Show the outer shadows around panels in the split-view strip.
                     </Text>
                   </Column>
@@ -775,7 +775,7 @@ export function Settings() {
                     className="bento-settings__panel-radius-slider"
                     label={'Panel roundness'}
                   />
-                  <Text variant="body" size="s" color="muted">
+                  <Text variant="body" size="sm" color="muted">
                     Changes the rounded corners on Bento panel frames and their focus rings.
                   </Text>
                 </Column>
@@ -792,13 +792,13 @@ export function Settings() {
                     className="bento-settings__panel-splitter-slider"
                     label={'Panel gaps'}
                   />
-                  <Text variant="body" size="s" color="muted">
+                  <Text variant="body" size="sm" color="muted">
                     Controls the drag target and visual gap between Bento panels.
                   </Text>
                 </Column>
                 <Column gap="2xs">
                   <Text>Custom panel sizes (px)</Text>
-                  <Text variant="body" size="s" color="muted">
+                  <Text variant="body" size="sm" color="muted">
                     Presets shown in each side panel header&rsquo;s kebab menu. Clicking a size
                     resizes only that panel.
                   </Text>

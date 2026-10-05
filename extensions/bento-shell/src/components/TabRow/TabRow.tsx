@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useRef, useState } from 'react';
-import { IconButton, ProgressCircle, Text } from '@muxui/react';
+import { IconButton, Input, ProgressCircle, Text } from '@muxui/react';
 // Per-icon imports (no lucide-react barrel — see eslint config + §6.2).
 import X from 'lucide-react/dist/esm/icons/x';
 import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
@@ -10,7 +10,7 @@ import type { TabSnapshot } from '@shared/protocol';
 import { dispatch } from '../../bridge/useToolsPort';
 import { useTab } from '../../state/tabs';
 import { useUiStore } from '../../state/ui';
-import { BentoIcon } from '../primitives';
+import { BentoIcon, Row } from '../primitives';
 import './TabRow.css';
 
 export interface TabRowProps {
@@ -118,7 +118,8 @@ function TabRowImpl({
   }, [clearRenameRequest, displayTitle, dragging, id, removing, renameRequest]);
 
   return (
-    <div
+    <Row
+      gap="xs"
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
@@ -218,8 +219,9 @@ function TabRowImpl({
         <span className="bento-tab-row__favicon bento-tab-row__favicon--placeholder" />
       )}
       {renaming ? (
-        <input
+        <Input.Input
           className="bento-tab-row__rename-input"
+          aria-label="Tab title"
           value={draftTitle}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
@@ -238,7 +240,7 @@ function TabRowImpl({
           onBlur={commitRename}
         />
       ) : (
-        <Text variant="body" size="s" color={active ? 'default' : 'muted'}>
+        <Text variant="body" size="sm" color={active ? 'default' : 'muted'}>
           {displayTitle}
         </Text>
       )}
@@ -277,7 +279,7 @@ function TabRowImpl({
           </span>
         </span>
       </div>
-    </div>
+    </Row>
   );
 }
 

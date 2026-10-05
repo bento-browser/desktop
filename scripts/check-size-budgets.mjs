@@ -27,6 +27,7 @@ const jsEntryBudgets = [
   {
     name: 'bento-shell · settings cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/settings.js',
+    document: 'extensions/bento-shell/settings.html',
     limit: '205 KB',
   },
   {
@@ -59,6 +60,13 @@ const jsEntryBudgets = [
     entry: 'extensions/bento-shell/dist/assets/merge-palette.js',
     limit: '200 KB',
   },
+  ...['workspace-switcher', 'panel-trailer', 'panel-navigator-tooltip', 'panel-newtab'].map(
+    (name) => ({
+      name: `bento-shell · ${name} cold-start JS (gz)`,
+      entry: `extensions/bento-shell/dist/assets/${name}.js`,
+      limit: '200 KB',
+    }),
+  ),
 ];
 
 function bytesForLimit(limit) {
@@ -140,6 +148,8 @@ function checkBudget({ name, size, limit }) {
 }
 
 for (const budget of jsEntryBudgets) {
+  // Standalone Settings is emitted only by the supported rollback variants.
+  if (budget.document && !existsSync(budget.document)) continue;
   const files = collectEntryGraph(budget.entry);
   const size = files.reduce((sum, filePath) => sum + gzipSize(filePath), 0);
   checkBudget({ name: budget.name, size, limit: budget.limit });

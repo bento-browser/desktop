@@ -103,23 +103,42 @@
   color: var(--neutral-90);
 }
 
-.bento-row.bento-workspace-icon-picker__emoji-tab-list {
-  padding-block-start: var(--space-4xs);
+.muxui-tabs.bento-workspace-icon-picker__emoji-tabs {
+  --muxui-semantic-action-neutral-background: transparent;
+  flex-direction: column-reverse;
+  gap: var(--space-2xs);
+}
+
+.bento-workspace-icon-picker__emoji-tabs .muxui-tab-list {
+  gap: var(--space-4xs);
+  padding: var(--space-4xs) 0 0;
+  border: 0;
   border-block-start: 1px solid var(--neutral-20);
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.bento-workspace-icon-picker__emoji-tab {
+.bento-workspace-icon-picker__emoji-tabs .muxui-tab {
   flex: 0 0 var(--bento-workspace-icon-picker-tab-size);
   width: var(--bento-workspace-icon-picker-tab-size);
   height: var(--bento-workspace-icon-picker-tab-size);
+  min-height: var(--bento-workspace-icon-picker-tab-size);
+  padding: 0;
+  border-radius: var(--radius-s);
   color: var(--neutral-60);
 }
 
-.bento-workspace-icon-picker__emoji-tab[data-selected] {
-  color: var(--neutral-5);
-  background-color: var(--neutral-90);
+.bento-workspace-icon-picker__emoji-tabs .muxui-tab-panel {
+  padding: 0;
+}
+
+.bento-workspace-icon-picker__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .muxui-list-box.bento-workspace-icon-picker__emoji-list {

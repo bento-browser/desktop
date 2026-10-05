@@ -92,15 +92,15 @@
       "react-aria": "3.51.0",
       "react-aria-components": "1.20.0",
       "react-stately": "3.49.0",
-      "@tiptap/core": "3.31.3",
-      "@tiptap/extension-image": "3.31.3",
-      "@tiptap/extension-placeholder": "3.31.3",
-      "@tiptap/extension-text-align": "3.31.3",
-      "@tiptap/extension-text-style": "3.31.3",
-      "@tiptap/extensions": "3.31.3",
-      "@tiptap/pm": "3.31.3",
-      "@tiptap/react": "3.31.3",
-      "@tiptap/starter-kit": "3.31.3"
+      "@tiptap/core": "3.31.4",
+      "@tiptap/extension-image": "3.31.4",
+      "@tiptap/extension-placeholder": "3.31.4",
+      "@tiptap/extension-text-align": "3.31.4",
+      "@tiptap/extension-text-style": "3.31.4",
+      "@tiptap/extensions": "3.31.4",
+      "@tiptap/pm": "3.31.4",
+      "@tiptap/react": "3.31.4",
+      "@tiptap/starter-kit": "3.31.4"
     }
   },
   "license": "MPL-2.0"

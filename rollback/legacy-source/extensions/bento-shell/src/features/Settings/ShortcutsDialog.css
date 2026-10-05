@@ -22,6 +22,12 @@
   cursor: default;
 }
 
+/* Keep Close in the search row so Clear cannot cover its pointer target. */
+.muxui-command-palette__close.bento-shortcuts-command-palette__close {
+  position: static;
+  flex: 0 0 auto;
+}
+
 @layer bento.components {
   .bento-shortcuts-command-palette__sr-only {
     position: absolute;

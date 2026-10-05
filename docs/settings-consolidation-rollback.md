@@ -56,3 +56,17 @@ After a transition profile reports `ready-for-final`, invoke the explicit prepar
 Build the manual/staged final artifact with `pnpm rollback:build-final`, `rollback:package-final`, or `rollback:release-final`. Final r2 uses tools `0.1.13`, shell `0.0.5`, restores the standalone Settings runtime, removes patch 15 and the native experiments from the staged package, and restores the pre-consolidation mount overlay. The variant builder restores the developer worktree and replayed engine afterward.
 
 No command generates a final-r2 automatic update. If preparation was skipped or Bento restarted before installation, reinstall transition r1 and repeat the gate.
+
+## Mux dependency validation
+
+Both supported rollback variants compile their archived React source against
+the same exact published `@muxui/react` npm dependency as the normal shell. The
+archive keeps rollback behavior and Settings routes; it uses the current public
+Mux Text sizes (`sm`, `md`, `lg`). Run each isolated check after a UI package
+upgrade. These checks create temporary source/build directories and report their
+paths without importing into the developer engine:
+
+```sh
+node scripts/build-rollback-variant.mjs rollback-transition-r1 check
+node scripts/build-rollback-variant.mjs rollback-final-r2 check
+```

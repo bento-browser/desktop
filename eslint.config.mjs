@@ -5,11 +5,10 @@
 //   1. Bundle discipline: forbid private Mux generated imports and the
 //      lucide-react barrel — keeps shell.js bundle boundaries explicit (§6.2).
 //
-//   2. Layered design system: inside extensions/bento-shell/src/components/
-//      and extensions/bento-shell/src/features/, forbid direct imports of
-//      react-aria-components and bare HTML element styling — composite
-//      components must build only on the public Mux API and Bento primitives
-//      (§3.1).
+//   2. Public design-system boundary: shell source, Ladle, and rollback UI
+//      cannot import React Aria directly. Structural HTML and product-specific
+//      row/drag hosts remain allowed; generic controls use public Mux parts.
+//      This config checks imports, not intrinsic JSX or CSS values (§3.1).
 
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
@@ -47,7 +46,6 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/build/**',
-      '**/.ladle/**',
       'engine/**',
       'node_modules/**',
       '.bento/**',
@@ -61,7 +59,10 @@ export default tseslint.config(
   // Browser-context files (extension public/, react sources, etc.) get
   // browser globals so ESLint stops complaining about localStorage/document.
   {
-    files: ['extensions/**/*.{ts,tsx,js,jsx,mjs}'],
+    files: [
+      'extensions/**/*.{ts,tsx,js,jsx,mjs}',
+      'rollback/legacy-source/extensions/**/*.{ts,tsx,js,jsx,mjs}',
+    ],
     languageOptions: {
       globals: { ...globals.browser, ...globals.webextensions },
     },
@@ -69,7 +70,10 @@ export default tseslint.config(
 
   // Bundle discipline — applies to all extension source
   {
-    files: ['extensions/**/*.{ts,tsx,js,jsx,mjs}'],
+    files: [
+      'extensions/**/*.{ts,tsx,js,jsx,mjs}',
+      'rollback/legacy-source/extensions/**/*.{ts,tsx,js,jsx,mjs}',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -81,11 +85,11 @@ export default tseslint.config(
     },
   },
 
-  // Layered design system — composites and features only
+  // Public Mux boundary — every shell entry, story, and rollback source
   {
     files: [
-      'extensions/bento-shell/src/components/**/*.{ts,tsx}',
-      'extensions/bento-shell/src/features/**/*.{ts,tsx}',
+      'extensions/bento-shell/**/*.{ts,tsx,js,jsx,mjs}',
+      'rollback/legacy-source/extensions/bento-shell/**/*.{ts,tsx,js,jsx,mjs}',
     ],
     rules: {
       'no-restricted-imports': [

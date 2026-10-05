@@ -7,7 +7,7 @@
 #
 # What's different from `npm run build`:
 #   1. Installs from pnpm-lock.release.yaml with --frozen-lockfile. Release
-#      artifacts consume the same frozen Mux candidate as developer builds and
+#      artifacts consume the same pinned npm Mux release as developer builds and
 #      cannot drift during CI or a later rebuild.
 #   2. Runs Bento's package step to produce platform artifacts, MAR, locales,
 #      and update metadata, not just the app bundle.

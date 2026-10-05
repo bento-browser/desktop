@@ -1,4 +1,4 @@
-/* global process */
+/* global Buffer, process */
 
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -12,58 +12,52 @@ import { parse, stringify } from 'yaml';
 const root = path.resolve(import.meta.dirname, '..');
 const releaseGate = path.join(root, 'scripts/check-release-security.mjs');
 const sbomGenerator = path.join(root, 'scripts/generate-release-sbom.mjs');
-const muxuiArtifact = path.join(root, 'artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz');
-const muxuiProvenance = path.join(
-  root,
-  'artifacts/muxui/muxui-react-0.1.0-alpha.0.provenance.json',
-);
+const muxuiVersion = '0.1.0-rc.1';
+const muxuiIntegrity =
+  'sha512-J7MB0roUffNcwygIxEO1KmTR0vW5Eh5IY1naCOahJjDsYMlR/OIp1QGzHs2zWCP/DQo4dDUnTHVZwzoCYgefJQ==';
 const approvedShellRuntimeDependencies = {
-  '@muxui/react': 'file:../../artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz',
+  '@muxui/react': muxuiVersion,
   react: '^19.0.0',
   'react-dom': '^19.0.0',
-  'react-aria-components': '1.20.0',
   zustand: '^5.0.0',
   '@tanstack/react-virtual': '^3.10.0',
   'lucide-react': '^0.460.0',
   'emojibase-data': '17.0.0',
 };
 
-test('Mux UI candidate provenance binds the committed tarball bytes', () => {
-  const provenance = JSON.parse(fs.readFileSync(muxuiProvenance, 'utf8'));
-  const bytes = fs.readFileSync(muxuiArtifact);
-  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-
-  assert.equal(provenance.sourceCommit, '146f75b6ecbac1ceedb7af3ffed009568bd7c9a2');
-  assert.equal(provenance.package, '@muxui/react');
-  assert.equal(provenance.version, '0.1.0-alpha.0');
-  assert.equal(provenance.artifact, 'muxui-react-0.1.0-alpha.0.tgz');
-  assert.equal(provenance.sha256, sha256);
-  assert.equal(provenance.bytes, bytes.byteLength);
-  assert.match(provenance.packCommand, /^pnpm --filter @muxui\/react pack /);
-  assert.equal(provenance.publicationPerformed, false);
-});
-
-test('release SBOM rejects a different Mux UI lock source', () => {
+test('release SBOM rejects a different Mux UI source or integrity', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-release-sbom-source-'));
   const lockPath = path.join(tempDir, 'pnpm-lock.release.yaml');
   const outputDir = path.join(tempDir, 'output');
   try {
-    const lock = parse(fs.readFileSync(path.join(root, 'pnpm-lock.release.yaml'), 'utf8'));
-    const lockKey = `@muxui/react@file:${path
-      .relative(root, muxuiArtifact)
-      .split(path.sep)
-      .join('/')}`;
-    lock.packages[lockKey].resolution.tarball =
-      'https://registry.npmjs.org/@muxui/react/-/react-0.1.0-alpha.0.tgz';
-    fs.writeFileSync(lockPath, stringify(lock));
-
-    const result = spawnSync(process.execPath, [sbomGenerator, outputDir], {
-      cwd: root,
-      env: { ...process.env, BENTO_RELEASE_LOCK_PATH: lockPath },
-      encoding: 'utf8',
-    });
-    assert.notEqual(result.status, 0, result.stdout);
-    assert.match(result.stderr, /resolution does not point to the committed local artifact/);
+    for (const [field, value, message] of [
+      [
+        'tarball',
+        'file:unapproved-package.tgz',
+        /resolution does not point to the published npm package/,
+      ],
+      [
+        'tarball',
+        'https://example.com/react.tgz',
+        /resolution does not point to the published npm package/,
+      ],
+      [
+        'integrity',
+        `sha512-${Buffer.alloc(64).toString('base64')}`,
+        /integrity does not match the published npm package/,
+      ],
+    ]) {
+      const lock = parse(fs.readFileSync(path.join(root, 'pnpm-lock.release.yaml'), 'utf8'));
+      lock.packages[`@muxui/react@${muxuiVersion}`].resolution[field] = value;
+      fs.writeFileSync(lockPath, stringify(lock));
+      const result = spawnSync(process.execPath, [sbomGenerator, outputDir], {
+        cwd: root,
+        env: { ...process.env, BENTO_RELEASE_LOCK_PATH: lockPath },
+        encoding: 'utf8',
+      });
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.match(result.stderr, message);
+    }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -109,11 +103,16 @@ test('developer and release locks pin one React Aria substrate graph', () => {
       lockfile,
     );
     const shell = lock.importers['extensions/bento-shell'];
+    assert.equal(shell.dependencies['@muxui/react'].specifier, muxuiVersion, lockfile);
     assert.equal(
-      shell.dependencies['@muxui/react'].specifier,
-      'file:../../artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz',
-      lockfile,
+      lock.packages[`@muxui/react@${muxuiVersion}`]?.resolution?.integrity,
+      muxuiIntegrity,
     );
+    assert.equal(
+      Object.keys(lock.packages).filter((key) => key.startsWith('@muxui/react@')).length,
+      1,
+    );
+    assert.equal('react-aria-components' in shell.dependencies, false);
     for (const [name, version] of Object.entries(expected)) {
       assert.ok(lock.packages[`${name}@${version}`], `${lockfile}: missing ${name}@${version}`);
     }
@@ -126,15 +125,15 @@ test('developer and release locks pin one React Aria substrate graph', () => {
 
 test('developer and release locks pin the shipped Tiptap family past GHSA-j95f-988m-3j2f', () => {
   const expected = {
-    '@tiptap/core': '3.31.3',
-    '@tiptap/extension-image': '3.31.3',
-    '@tiptap/extension-placeholder': '3.31.3',
-    '@tiptap/extension-text-align': '3.31.3',
-    '@tiptap/extension-text-style': '3.31.3',
-    '@tiptap/extensions': '3.31.3',
-    '@tiptap/pm': '3.31.3',
-    '@tiptap/react': '3.31.3',
-    '@tiptap/starter-kit': '3.31.3',
+    '@tiptap/core': '3.31.4',
+    '@tiptap/extension-image': '3.31.4',
+    '@tiptap/extension-placeholder': '3.31.4',
+    '@tiptap/extension-text-align': '3.31.4',
+    '@tiptap/extension-text-style': '3.31.4',
+    '@tiptap/extensions': '3.31.4',
+    '@tiptap/pm': '3.31.4',
+    '@tiptap/react': '3.31.4',
+    '@tiptap/starter-kit': '3.31.4',
   };
 
   for (const lockfile of ['pnpm-lock.yaml', 'pnpm-lock.release.yaml']) {
@@ -204,20 +203,11 @@ test('release metadata covers the release-lock SBOM with valid checksums', () =>
       );
     }
     const muxui = sbom.components.find((component) => component.name === '@muxui/react');
+    assert.equal(muxui.version, muxuiVersion);
     assert.deepEqual(muxui.hashes, [
-      {
-        alg: 'SHA-256',
-        content: '16c382ece9dea1de8bdfcae0482cf7fc511da7b8eefcc313ff8cc83200be3f4e',
-      },
+      { alg: 'SHA-512', content: Buffer.from(muxuiIntegrity.slice(7), 'base64').toString('hex') },
     ]);
-    assert.equal(
-      muxui.properties.find((property) => property.name === 'bento:source-commit').value,
-      '146f75b6ecbac1ceedb7af3ffed009568bd7c9a2',
-    );
-    assert.equal(
-      muxui.properties.find((property) => property.name === 'bento:publication-performed').value,
-      'false',
-    );
+    assert.equal(muxui.purl, `pkg:npm/%40muxui/react@${muxuiVersion}`);
     assert.ok(sbom.components.some((component) => component.hashes?.length));
     assert.equal(
       sbom.components.some((component) =>

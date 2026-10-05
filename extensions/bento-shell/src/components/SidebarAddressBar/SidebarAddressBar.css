@@ -28,6 +28,10 @@
     background: var(--neutral-5);
   }
 
+  .bento-sidebar-address-bar__row > .muxui-button {
+    margin: 0;
+  }
+
   .muxui-icon-button.bento-sidebar-address-bar__security-button,
   .muxui-icon-button.bento-sidebar-address-bar__copy-button,
   .muxui-icon-button.bento-sidebar-address-bar__bookmark-button {

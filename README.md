@@ -39,10 +39,9 @@ completed manual runs for an open PR update the bot comment automatically.
 ## Prerequisites
 
 - Node.js 24.19.0 (`nvm use` reads `.nvmrc`)
-- The Mux UI React candidate is committed at
-  `artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz`; it is installed from that
-  frozen file in both developer and release dependency graphs. It has not
-  been published to a registry.
+- Mux UI React is installed from npm as the exact published version
+  `@muxui/react@0.1.0-rc.1`. Both frozen dependency graphs record its registry
+  integrity. No local Mux archive is required.
 - Mozilla build prerequisites — installed by `pnpm run bootstrap` (calls
   `mach bootstrap` under the hood). Expect Python 3, Rust, clang, and several
   GB of disk space.

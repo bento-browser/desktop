@@ -18,7 +18,7 @@
 //     be resolved.
 
 import { useEffect, useState } from 'react';
-import { IconButton, SelectNative, Tooltip } from '@muxui/react';
+import { IconButton, SelectNative, Toolbar, Tooltip } from '@muxui/react';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import type { SavedPanelEntry } from '@shared/protocol';
 import { BentoIcon } from '../primitives/BentoIcon';
@@ -42,7 +42,7 @@ export function PanelTrailer({ items, onAddBlank, onOpenSaved }: PanelTrailerPro
   ]);
 
   return (
-    <div className="bento-panel-trailer" role="toolbar" aria-label="Add panel">
+    <Toolbar className="bento-panel-trailer" aria-label="Add panel">
       <div className="bento-panel-trailer__grid" aria-label="Saved panels">
         {Array.from({ length: 9 }, (_value, index) =>
           filledGridPositions.has(index) ? null : (
@@ -84,7 +84,7 @@ export function PanelTrailer({ items, onAddBlank, onOpenSaved }: PanelTrailerPro
       {overflowItems.length > 0 ? (
         <MoreSavedPanelsSelect items={overflowItems} onOpen={onOpenSaved} />
       ) : null}
-    </div>
+    </Toolbar>
   );
 }
 

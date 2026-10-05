@@ -6,7 +6,7 @@ public Mux token surface and Bento's compatibility aliases.
 
 ## Pipeline
 
-1. The source is the pinned `@muxui/react` artifact consumed by
+1. The source is the pinned npm `@muxui/react` package consumed by
    `extensions/bento-shell`. The generator reads its public `styles.css` and
    `themes.css` exports, plus the Bento token layer and generated preset index.
 2. [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)

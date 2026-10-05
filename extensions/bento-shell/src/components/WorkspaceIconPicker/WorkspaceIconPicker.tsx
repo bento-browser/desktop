@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Key, type KeyboardEvent } from 'react';
-import { IconButton, ListBox, Popover, SearchField, Text } from '@muxui/react';
+import { Button, IconButton, ListBox, Popover, SearchField, Tabs, Text } from '@muxui/react';
 import emojiDataUrl from 'emojibase-data/en/data.json?url';
 import emojiMessagesUrl from 'emojibase-data/en/messages.json?url';
 import Flag from 'lucide-react/dist/esm/icons/flag';
@@ -356,6 +356,7 @@ export function WorkspaceIconPicker({
     workspaceEmojiItemsCache ? 'loaded' : 'idle',
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const categoryTabsRef = useRef<HTMLDivElement>(null);
   const normalizedValue = value?.trim() || undefined;
   const selectedEmoji = findEmojiByValue(normalizedValue, emojiItems);
   const displayedIcon = normalizedValue ?? fallback;
@@ -383,6 +384,19 @@ export function WorkspaceIconPicker({
       : (emojiCategories[0]?.id ?? null);
   const activeCategory =
     emojiCategories.find((category) => category.id === selectedCategoryKey) ?? null;
+
+  // The RC can leave focus on an inactive tab. Sync its committed selection
+  // directly; an animation frame can be delayed in background overlay windows.
+  useEffect(() => {
+    const root = categoryTabsRef.current;
+    const focused = document.activeElement;
+    if (!root || !(focused instanceof HTMLElement) || !root.contains(focused)) return;
+    if (focused.getAttribute('role') !== 'tab') return;
+    const tabList = focused.closest('[role="tablist"]');
+    if (!tabList || !root.contains(tabList)) return;
+    const selectedTab = tabList.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (selectedTab && selectedTab !== focused) selectedTab.focus();
+  }, [selectedCategoryKey]);
 
   useEffect(() => {
     if (!isOpen || emojiLoadState === 'loaded' || emojiLoadState === 'error') return undefined;
@@ -443,35 +457,6 @@ export function WorkspaceIconPicker({
     closePicker();
   }
 
-  function handleEmojiTabListKeyDown(event: KeyboardEvent) {
-    if (emojiCategories.length === 0) return;
-
-    const currentIndex = Math.max(
-      0,
-      emojiCategories.findIndex((category) => category.id === selectedCategoryKey),
-    );
-    let nextIndex: number | undefined;
-
-    if (event.key === 'ArrowLeft') {
-      nextIndex = (currentIndex - 1 + emojiCategories.length) % emojiCategories.length;
-    } else if (event.key === 'ArrowRight') {
-      nextIndex = (currentIndex + 1) % emojiCategories.length;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = emojiCategories.length - 1;
-    }
-
-    if (nextIndex === undefined) return;
-    event.preventDefault();
-    const nextCategory = emojiCategories[nextIndex];
-    if (!nextCategory) return;
-    setActiveCategoryKey(nextCategory.id);
-    requestAnimationFrame(() => {
-      document.getElementById(`${nextCategory.id}-tab`)?.focus();
-    });
-  }
-
   const selectedKeys = selectedEmoji ? [selectedEmoji.emoji] : [];
   const triggerDescription = selectedEmoji
     ? `${selectedEmoji.label} icon`
@@ -488,16 +473,16 @@ export function WorkspaceIconPicker({
       onOpenChange={handleOpenChange}
       aria-label={`Choose icon for ${workspaceName}`}
       trigger={
-        <button
+        <Button
           type="button"
-          className="muxui-button bento-workspace-icon-picker__trigger"
-          data-variant="neutral"
-          data-size="sm"
+          className="bento-workspace-icon-picker__trigger"
+          variant="neutral"
+          size="sm"
           aria-label={`Icon for ${workspaceName}: ${triggerDescription}`}
           data-bento-custom-icon={isLegacyIcon ? 'true' : undefined}
         >
           <span className="bento-workspace-icon-picker__trigger-value">{displayedIcon}</span>
-        </button>
+        </Button>
       }
       placement="bottom-start"
       offset={8}
@@ -528,69 +513,55 @@ export function WorkspaceIconPicker({
             Loading emoji...
           </Text>
         ) : activeCategory ? (
-          <Column gap="2xs">
-            <Column
-              role="tabpanel"
-              id="emoji-category-panel"
-              aria-labelledby={`${activeCategory.id}-tab`}
-            >
-              <ListBox
-                aria-label={`${activeCategory.label} emoji results`}
-                layout="grid"
-                selectionMode="single"
-                selectedIds={selectedKeys}
-                className="bento-workspace-icon-picker__emoji-list"
-                onSelectionChange={(keys) => {
-                  const key = keys === 'all' ? null : (keys[0] ?? null);
-                  selectEmoji(key);
-                }}
-              >
-                {activeCategory.sections.map((section) => (
-                  <ListBox.Section key={section.id} id={`emoji-section-${section.id}`}>
-                    <ListBox.Header className="bento-workspace-icon-picker__emoji-section-header">
-                      {section.subgroup}
-                    </ListBox.Header>
-                    {section.items.map((item) => (
-                      <ListBox.Item
-                        key={item.emoji}
-                        className="bento-workspace-icon-picker__emoji-item"
-                        id={item.emoji}
-                        textValue={item.label}
-                      >
-                        {item.emoji}
-                      </ListBox.Item>
-                    ))}
-                  </ListBox.Section>
-                ))}
-              </ListBox>
-            </Column>
-            <Row
-              role="tablist"
-              aria-label="Emoji categories"
-              gap="4xs"
-              className="bento-workspace-icon-picker__emoji-tab-list"
-              onKeyDown={handleEmojiTabListKeyDown}
-            >
-              {emojiCategories.map((category) => (
-                <button
-                  key={category.id}
-                  id={`${category.id}-tab`}
-                  type="button"
-                  role="tab"
-                  aria-label={category.label}
-                  aria-selected={category.id === selectedCategoryKey}
-                  aria-controls="emoji-category-panel"
-                  className="muxui-button muxui-icon-button bento-workspace-icon-picker__emoji-tab"
-                  data-variant="ghost"
-                  data-size="sm"
-                  data-selected={category.id === selectedCategoryKey ? 'true' : undefined}
-                  onClick={() => setActiveCategoryKey(category.id)}
-                >
+          <Tabs
+            ref={categoryTabsRef}
+            aria-label="Emoji categories"
+            className="bento-workspace-icon-picker__emoji-tabs"
+            size="sm"
+            variant="segment"
+            value={selectedCategoryKey ?? undefined}
+            onChange={setActiveCategoryKey}
+            items={emojiCategories.map((category) => ({
+              id: category.id,
+              label: (
+                <>
                   <BentoIcon icon={category.icon} size="sm" />
-                </button>
-              ))}
-            </Row>
-          </Column>
+                  <span className="bento-workspace-icon-picker__sr-only">{category.label}</span>
+                </>
+              ),
+              panel: (
+                <ListBox
+                  aria-label={`${category.label} emoji results`}
+                  layout="grid"
+                  selectionMode="single"
+                  selectedIds={selectedKeys}
+                  className="bento-workspace-icon-picker__emoji-list"
+                  onSelectionChange={(keys) => {
+                    const key = keys === 'all' ? null : (keys[0] ?? null);
+                    selectEmoji(key);
+                  }}
+                >
+                  {category.sections.map((section) => (
+                    <ListBox.Section key={section.id} id={`emoji-section-${section.id}`}>
+                      <ListBox.Header className="bento-workspace-icon-picker__emoji-section-header">
+                        {section.subgroup}
+                      </ListBox.Header>
+                      {section.items.map((item) => (
+                        <ListBox.Item
+                          key={item.emoji}
+                          className="bento-workspace-icon-picker__emoji-item"
+                          id={item.emoji}
+                          textValue={item.label}
+                        >
+                          {item.emoji}
+                        </ListBox.Item>
+                      ))}
+                    </ListBox.Section>
+                  ))}
+                </ListBox>
+              ),
+            }))}
+          />
         ) : (
           <Text as="div" color="muted" className="bento-workspace-icon-picker__empty">
             No emoji found.

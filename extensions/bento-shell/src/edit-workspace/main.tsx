@@ -118,7 +118,7 @@ function EditWorkspaceApp() {
       <Column gap="m" className="bento-edit-workspace__form">
         <Row gap="m" align="end" className="bento-edit-workspace__name-row">
           <Column gap="2xs" className="bento-edit-workspace__icon-field">
-            <Text variant="label" size="s" as="span">
+            <Text variant="label" size="sm" as="span">
               Icon
             </Text>
             <WorkspaceIconField
@@ -137,7 +137,7 @@ function EditWorkspaceApp() {
           />
         </Row>
         <Column gap="2xs">
-          <Text variant="label" size="s">
+          <Text variant="label" size="sm">
             Theme
           </Text>
           <WorkspaceThemePicker

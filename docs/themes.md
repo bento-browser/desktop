@@ -26,7 +26,7 @@ troubleshoot.
   Undefined means "use the Default theme" (`default`).
 - The **Default theme** is repo-local too:
   `extensions/bento-shell/src/theme/presets/default.css`. Updating it
-  does not require changing the Mux artifact.
+  does not require changing the Mux package.
 - `useWorkspaceTheme()` mirrors the active workspace's `themeId` onto
   `<html data-bento-theme="…">` in every shell document. The sidebar
   also pushes it to the Firefox chrome window via the `BENTO_THEME:`

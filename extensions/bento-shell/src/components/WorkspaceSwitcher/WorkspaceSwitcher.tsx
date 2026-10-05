@@ -103,7 +103,7 @@ export function WorkspaceSwitcher() {
         </Avatar.Root>
         <WorkspaceAudioParticles active={activeWorkspaceHasPlayingAudio} />
       </span>
-      <Text variant="body" size="s" className="bento-workspace-switcher__trigger-name">
+      <Text variant="body" size="sm" className="bento-workspace-switcher__trigger-name">
         {active?.name ?? 'No workspace'}
       </Text>
       <BentoIcon icon={ChevronsUpDown} size="sm" className="bento-workspace-switcher__chevron" />

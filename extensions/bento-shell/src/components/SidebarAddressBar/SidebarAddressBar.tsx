@@ -1,5 +1,5 @@
 import { type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { IconButton, ProgressCircle, Tooltip } from '@muxui/react';
+import { Form, IconButton, Input, ProgressCircle, Tooltip } from '@muxui/react';
 
 import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import CopyIcon from 'lucide-react/dist/esm/icons/copy';
@@ -187,7 +187,7 @@ export function SidebarAddressBar() {
 
   return (
     <section className="bento-sidebar-address-bar" aria-label="Address bar">
-      <form
+      <Form
         ref={rowRef}
         className="bento-sidebar-address-bar__row"
         data-loading={snapshot?.loading ? 'true' : 'false'}
@@ -213,7 +213,7 @@ export function SidebarAddressBar() {
             </IconButton>
           }
         />
-        <input
+        <Input.Input
           className="bento-sidebar-address-bar__input"
           aria-label="Search or enter address"
           value={displayValue(snapshot)}
@@ -261,7 +261,7 @@ export function SidebarAddressBar() {
         >
           <BentoIcon icon={BookmarkIcon} size="sm" />
         </IconButton>
-      </form>
+      </Form>
     </section>
   );
 }

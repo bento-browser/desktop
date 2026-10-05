@@ -134,7 +134,7 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
 }
 
 /* Trigger label optical centering. Mux UI typography utilities are
- * unlayered, so keep this unlayered too; otherwise .text--body-s keeps
+ * unlayered, so keep this unlayered too; otherwise .muxui-text--body-sm keeps
  * its 1.5 line-height and the glyphs sit high next to the avatar. */
 .muxui-text.bento-workspace-switcher__trigger-name {
   color: var(--color-90);

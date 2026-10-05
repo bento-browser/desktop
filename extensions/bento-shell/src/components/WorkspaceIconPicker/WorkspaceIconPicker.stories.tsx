@@ -30,7 +30,7 @@ function StatefulField({
         fallback={fallback}
         onIconChange={setValue}
       />
-      <Text variant="body" size="s">
+      <Text variant="body" size="sm">
         {name}
       </Text>
     </Row>

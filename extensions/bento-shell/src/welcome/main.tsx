@@ -332,16 +332,16 @@ function BentoTray({
         <span className="bento-welcome__tray-icon">
           <BentoIcon icon={activeStep.icon} size="lg" />
         </span>
-        <Text variant="label" size="m">
+        <Text variant="label" size="md">
           {activeStep.eyebrow}
         </Text>
-        <Text variant="body" size="s" color="muted">
+        <Text variant="body" size="sm" color="muted">
           Bento keeps the browser surface divided into useful, durable compartments.
         </Text>
       </div>
       {boxes.map(([label, detail]) => (
         <div className="bento-welcome__tray-cell" key={`${label}-${detail}`}>
-          <Text variant="label" size="s">
+          <Text variant="label" size="sm">
             {label}
           </Text>
           <Text variant="body" size="xs" color="muted">
@@ -378,7 +378,7 @@ function ThemeModePicker({
 
   return (
     <Column gap="xs" className="bento-welcome__theme-picker">
-      <Text variant="label" size="s" color="muted">
+      <Text variant="label" size="sm" color="muted">
         Theme
       </Text>
       <Row gap="xs" wrap className="bento-welcome__theme-options">
@@ -433,16 +433,16 @@ function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel
         ))}
       </ToggleButtonGroup>
       <Column gap="2xs" className="bento-welcome__privacy-summary">
-        <Text variant="label" size="s">
+        <Text variant="label" size="sm">
           {detail.label}
         </Text>
-        <Text variant="body" size="s" color="muted">
+        <Text variant="body" size="sm" color="muted">
           {detail.bestFor}
         </Text>
-        <Text variant="body" size="s" color="muted">
+        <Text variant="body" size="sm" color="muted">
           Benefit: {detail.benefits[0]}
         </Text>
-        <Text variant="body" size="s" color="muted">
+        <Text variant="body" size="sm" color="muted">
           Caveat: {detail.caveats[0]}
         </Text>
       </Column>
@@ -471,7 +471,7 @@ function SearchPrivacyRecommendation({
 }) {
   if (availableSearchEngines.length === 0) {
     return (
-      <Text variant="body" size="s" color="muted">
+      <Text variant="body" size="sm" color="muted">
         Loading Firefox search engines…
       </Text>
     );
@@ -480,7 +480,7 @@ function SearchPrivacyRecommendation({
   const recommended = availableSearchEngines.filter(isPrivacyOrientedSearchEngine);
   if (recommended.length === 0) {
     return (
-      <Text variant="body" size="s" color="muted">
+      <Text variant="body" size="sm" color="muted">
         For privacy, prefer a provider with minimal profiling and clear retention limits. Bento uses
         Firefox&rsquo;s visible search engines without adding its own provider list.
       </Text>
@@ -489,7 +489,7 @@ function SearchPrivacyRecommendation({
 
   const names = recommended.map((engine) => engine.name).join(', ');
   return (
-    <Text variant="body" size="s" color="muted">
+    <Text variant="body" size="sm" color="muted">
       Recommended for privacy: {names}. These are generally better choices when you want less search
       profiling; choose another engine when account integration or result preference matters more.
     </Text>
@@ -652,7 +652,7 @@ function WelcomeApp() {
             <span className="bento-welcome__brand-mark" aria-hidden="true">
               <BentoIcon icon={Grid3X3} />
             </span>
-            <Text variant="label" size="s" color="muted">
+            <Text variant="label" size="sm" color="muted">
               Bento onboarding
             </Text>
           </Row>
@@ -663,13 +663,13 @@ function WelcomeApp() {
           <BentoTray activeStep={activeStep} boxes={activeStep.boxes} />
 
           <Column gap="m" className="bento-welcome__copy">
-            <Text variant="label" size="s" className="bento-welcome__eyebrow">
+            <Text variant="label" size="sm" className="bento-welcome__eyebrow">
               {activeStep.eyebrow}
             </Text>
             <Text
               as="h1"
               variant="label"
-              size="l"
+              size="lg"
               id={WELCOME_TITLE_ID}
               className="bento-welcome__copy-title"
             >
@@ -678,7 +678,7 @@ function WelcomeApp() {
             <Text
               as="p"
               variant="body"
-              size="m"
+              size="md"
               color="muted"
               id={WELCOME_DESCRIPTION_ID}
               className="bento-welcome__copy-description"

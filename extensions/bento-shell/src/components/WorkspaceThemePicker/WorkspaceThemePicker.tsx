@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Card, ColorSwatch, Popover, SearchField, Text, Tooltip } from '@muxui/react';
+import { Button, Card, ColorSwatch, Popover, SearchField, Text, Tooltip } from '@muxui/react';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 
 import {
@@ -130,11 +130,11 @@ export function WorkspaceThemePicker({
       onOpenChange={handleOpenChange}
       aria-label={`Choose theme for ${workspaceName}`}
       trigger={
-        <button
+        <Button
           type="button"
-          className={`muxui-button bento-workspace-theme-picker__trigger${className ? ` ${className}` : ''}`}
-          data-variant="neutral"
-          data-size="sm"
+          className={`bento-workspace-theme-picker__trigger${className ? ` ${className}` : ''}`}
+          variant="neutral"
+          size="sm"
           aria-label={`Theme for ${workspaceName}: ${selectedTheme.name}`}
         >
           <ColorSwatch
@@ -144,7 +144,7 @@ export function WorkspaceThemePicker({
             shape="circle"
             className="bento-workspace-theme-picker__trigger-swatch"
           />
-          <Text variant="body" size="s" className="bento-workspace-theme-picker__trigger-label">
+          <Text variant="body" size="sm" className="bento-workspace-theme-picker__trigger-label">
             {selectedTheme.name}
           </Text>
           <BentoIcon
@@ -152,7 +152,7 @@ export function WorkspaceThemePicker({
             size="sm"
             className="bento-workspace-theme-picker__chevron"
           />
-        </button>
+        </Button>
       }
       placement="bottom-start"
       offset={8}

@@ -9,7 +9,7 @@
 // discoverable via Settings → Keyboard shortcuts.
 
 import { useState, type ReactNode } from 'react';
-import { Button, CommandPalette as MuxCommandPalette, useCommandPalette } from '@muxui/react';
+import { CommandPalette as MuxCommandPalette, useCommandPalette } from '@muxui/react';
 import LayersIcon from 'lucide-react/dist/esm/icons/layers';
 import PanelLeftCloseIcon from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
@@ -251,7 +251,6 @@ export function ShortcutsDialog({ isOpen, onOpenChange }: ShortcutsDialogProps) 
           <MuxCommandPalette.Title className="bento-shortcuts-command-palette__sr-only">
             Keyboard shortcuts
           </MuxCommandPalette.Title>
-          <MuxCommandPalette.Close aria-label="Close keyboard shortcuts" />
           <MuxCommandPalette.Content className="bento-shortcuts-command-palette__content">
             <MuxCommandPalette.SearchField>
               <MuxCommandPalette.Input
@@ -260,32 +259,39 @@ export function ShortcutsDialog({ isOpen, onOpenChange }: ShortcutsDialogProps) 
                 value={palette.query}
                 onChange={(event) => palette.setQuery(event.currentTarget.value)}
                 autoFocus
+                onKeyDown={(event) => {
+                  // The controlled query must not let SearchField consume dismissal.
+                  if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleOpenChange(false);
+                  }
+                }}
               />
               {palette.query.length > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <MuxCommandPalette.ClearButton
                   aria-label="Clear shortcut search"
-                  onActivate={() => palette.setQuery('')}
-                >
-                  Clear
-                </Button>
+                  onClick={() => palette.setQuery('')}
+                />
               ) : null}
+              <MuxCommandPalette.Close
+                aria-label="Close keyboard shortcuts"
+                className="bento-shortcuts-command-palette__close"
+              />
             </MuxCommandPalette.SearchField>
-            <div
-              role="list"
+            <MuxCommandPalette.ListBox
               aria-label="Keyboard shortcuts"
-              className="muxui-command-palette__listbox muxui-command-palette__listbox--lg bento-shortcuts-command-palette__listbox"
+              className="bento-shortcuts-command-palette__listbox"
             >
               {palette.groupedCommands.map((group) => (
-                <section className="muxui-command-palette__section" key={group.id}>
-                  <div className="muxui-command-palette__section-header">{group.title}</div>
+                <MuxCommandPalette.Section key={group.id}>
+                  <MuxCommandPalette.SectionHeader>{group.title}</MuxCommandPalette.SectionHeader>
                   {group.commands.map((command) => (
-                    <div
+                    <MuxCommandPalette.Item
                       key={command.id}
-                      role="listitem"
-                      aria-label={shortcutTextValue(command)}
-                      className="muxui-command-palette__item bento-shortcuts-command-palette__item"
+                      {...palette.getItemProps(command)}
+                      textValue={shortcutTextValue(command)}
+                      className="bento-shortcuts-command-palette__item"
                     >
                       <MuxCommandPalette.ItemIcon>{command.icon}</MuxCommandPalette.ItemIcon>
                       <MuxCommandPalette.ItemContent>
@@ -297,11 +303,11 @@ export function ShortcutsDialog({ isOpen, onOpenChange }: ShortcutsDialogProps) 
                       <MuxCommandPalette.ItemMeta>
                         <MuxCommandPalette.Shortcut keys={command.shortcut} />
                       </MuxCommandPalette.ItemMeta>
-                    </div>
+                    </MuxCommandPalette.Item>
                   ))}
-                </section>
+                </MuxCommandPalette.Section>
               ))}
-            </div>
+            </MuxCommandPalette.ListBox>
             {palette.filteredCommands.length === 0 ? (
               <MuxCommandPalette.Empty>No matching shortcuts.</MuxCommandPalette.Empty>
             ) : null}

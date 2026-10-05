@@ -41,6 +41,7 @@ export const Provider: GlobalProvider = ({ children }) => {
       mq.addEventListener('change', apply);
       return () => mq.removeEventListener('change', apply);
     }
+    return undefined;
   }, [theme]);
 
   return (

@@ -69,7 +69,7 @@ function renderItems(items: ChromeMenuItem[], onSelect: (id: string) => void) {
           >
             {item.label ?? ''}
           </Menu.Item>
-          <Menu.Popup>
+          <Menu.Popup placement="end-top">
             <Menu.List
               className={SMALL_MENU_CLASS}
               onAction={(selected) => onSelect(itemId(selected))}

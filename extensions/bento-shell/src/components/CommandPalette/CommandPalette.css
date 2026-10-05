@@ -19,7 +19,9 @@
   max-height: none;
 }
 
-.bento-command-palette__clear-button {
+/* Reserve a real search-row position so Input/Clear cannot cover Close. */
+.muxui-command-palette__close.bento-command-palette__close {
+  position: static;
   flex: 0 0 auto;
 }
 

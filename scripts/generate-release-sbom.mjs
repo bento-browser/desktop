@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /* global Buffer, console */
 
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -20,54 +19,16 @@ const ublock = JSON.parse(
 const shellPackage = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/bento-shell/package.json'), 'utf8'),
 );
-const muxuiArtifact = 'artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz';
-const muxuiProvenance = JSON.parse(
-  fs.readFileSync(path.join(root, muxuiArtifact.replace(/\.tgz$/u, '.provenance.json')), 'utf8'),
-);
-
-function readMuxuiCandidate() {
-  const artifactPath = path.join(root, muxuiArtifact);
-  const bytes = fs.readFileSync(artifactPath);
-  const sha256 = hashBytes(bytes);
-  if (muxuiProvenance.package !== '@muxui/react') {
-    throw new Error('Mux UI candidate provenance names an unexpected package.');
-  }
-  if (muxuiProvenance.artifact !== path.basename(artifactPath)) {
-    throw new Error('Mux UI candidate provenance names an unexpected artifact.');
-  }
-  if (!/^[0-9a-f]{40}$/.test(muxuiProvenance.sourceCommit || '')) {
-    throw new Error('Mux UI candidate provenance is missing a source commit.');
-  }
-  if (!/^[0-9a-f]{64}$/.test(muxuiProvenance.sha256 || '')) {
-    throw new Error('Mux UI candidate provenance is missing a SHA-256 digest.');
-  }
-  if (muxuiProvenance.sha256 !== sha256) {
-    throw new Error('Mux UI candidate provenance does not match the artifact bytes.');
-  }
-  if (muxuiProvenance.bytes !== bytes.byteLength) {
-    throw new Error('Mux UI candidate provenance does not match the artifact size.');
-  }
-  if (!muxuiProvenance.packCommand || muxuiProvenance.publicationPerformed !== false) {
-    throw new Error('Mux UI candidate provenance is missing the pack/publication assertion.');
-  }
-  return { bytes, sha256 };
-}
-
-function hashBytes(bytes) {
-  return crypto.createHash('sha256').update(bytes).digest('hex');
-}
-
-function integrityFor(bytes) {
-  return `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}`;
-}
-
-const muxui = readMuxuiCandidate();
+// Pin the published package and registry integrity so lock tampering fails offline.
+const muxuiVersion = '0.1.0-rc.1';
+const muxuiIntegrity =
+  'sha512-J7MB0roUffNcwygIxEO1KmTR0vW5Eh5IY1naCOahJjDsYMlR/OIp1QGzHs2zWCP/DQo4dDUnTHVZwzoCYgefJQ==';
+const muxuiTarball = `https://registry.npmjs.org/@muxui/react/-/react-${muxuiVersion}.tgz`;
 
 const APPROVED_SHELL_RUNTIME_DEPENDENCIES = Object.freeze({
-  '@muxui/react': 'file:../../artifacts/muxui/muxui-react-0.1.0-alpha.0.tgz',
+  '@muxui/react': muxuiVersion,
   react: '^19.0.0',
   'react-dom': '^19.0.0',
-  'react-aria-components': '1.20.0',
   zustand: '^5.0.0',
   '@tanstack/react-virtual': '^3.10.0',
   'lucide-react': '^0.460.0',
@@ -131,43 +92,36 @@ if (!releaseLock?.packages || typeof releaseLock.packages !== 'object') {
   throw new Error(`${path.basename(releaseLockPath)} does not contain a packages map.`);
 }
 
-const muxuiSource = `file:${muxuiArtifact}`;
 const muxuiImporter = releaseLock.importers?.['extensions/bento-shell'];
 validateShellRuntimeDependencies(
   muxuiImporter?.dependencies,
   `${path.basename(releaseLockPath)} extensions/bento-shell importer`,
 );
 const muxuiDependency = muxuiImporter?.dependencies?.['@muxui/react'];
-const expectedImporterSpecifier = `file:${path.posix.relative('extensions/bento-shell', muxuiArtifact)}`;
-const importerSpecifier = muxuiDependency?.specifier;
-if (importerSpecifier !== expectedImporterSpecifier) {
-  throw new Error(
-    `extensions/bento-shell must resolve @muxui/react from the committed local artifact (received ${importerSpecifier || 'missing specifier'}).`,
-  );
-}
-const importerSource = String(muxuiDependency?.version || '').split('(', 1)[0];
-if (importerSource !== muxuiSource) {
-  throw new Error('extensions/bento-shell @muxui/react importer resolves a different source.');
+const importerVersion = String(muxuiDependency?.version || '').split('(', 1)[0];
+if (importerVersion !== muxuiVersion) {
+  throw new Error('extensions/bento-shell @muxui/react importer resolves a different version.');
 }
 
-const muxuiLockKey = `@muxui/react@${muxuiSource}`;
+const muxuiLockKey = `@muxui/react@${muxuiVersion}`;
 const muxuiLockEntries = Object.entries(releaseLock.packages).filter(([key]) =>
   key.startsWith('@muxui/react@'),
 );
 if (muxuiLockEntries.length !== 1 || muxuiLockEntries[0][0] !== muxuiLockKey) {
   throw new Error(
-    'pnpm-lock.release.yaml must contain exactly one local @muxui/react package entry.',
+    'pnpm-lock.release.yaml must contain exactly one published @muxui/react package entry.',
   );
 }
-const muxuiLockMetadata = muxuiLockEntries[0][1];
-if (muxuiLockMetadata?.resolution?.tarball !== muxuiSource) {
+const muxuiResolution = muxuiLockEntries[0][1]?.resolution;
+// pnpm omits the tarball for the default npm registry; an explicit source must agree.
+if (muxuiResolution?.tarball && muxuiResolution.tarball !== muxuiTarball) {
   throw new Error(
-    'pnpm-lock.release.yaml @muxui/react resolution does not point to the committed local artifact.',
+    'pnpm-lock.release.yaml @muxui/react resolution does not point to the published npm package.',
   );
 }
-if (muxuiLockMetadata?.resolution?.integrity !== integrityFor(muxui.bytes)) {
+if (muxuiResolution?.integrity !== muxuiIntegrity) {
   throw new Error(
-    'pnpm-lock.release.yaml @muxui/react integrity does not match the committed artifact bytes.',
+    'pnpm-lock.release.yaml @muxui/react integrity does not match the published npm package.',
   );
 }
 const packages = Object.entries(releaseLock.packages).map(([key, metadata]) => {
@@ -181,18 +135,6 @@ const packages = Object.entries(releaseLock.packages).map(([key, metadata]) => {
     ...(hashes ? { hashes } : {}),
   };
 });
-
-const muxuiPackage = packages.find((component) => component.name === '@muxui/react');
-if (!muxuiPackage || muxuiPackage.version !== muxuiProvenance.version) {
-  throw new Error('pnpm-lock.release.yaml does not contain the committed Mux UI candidate.');
-}
-muxuiPackage.hashes = [{ alg: 'SHA-256', content: muxui.sha256 }];
-muxuiPackage.properties = [
-  { name: 'bento:artifact', value: muxuiArtifact },
-  { name: 'bento:source-commit', value: muxuiProvenance.sourceCommit },
-  { name: 'bento:publication-performed', value: 'false' },
-  { name: 'bento:bytes', value: String(muxui.bytes.byteLength) },
-];
 
 const components = [
   {

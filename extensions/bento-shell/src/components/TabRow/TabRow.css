@@ -58,9 +58,6 @@
           var(--bento-duration-base) var(--bento-easing-standard)
         ),
       padding var(--bento-duration-base) var(--bento-easing-standard);
-    /* Skip layout/paint when scrolled off-screen (§6.4). */
-    content-visibility: auto;
-    contain-intrinsic-size: var(--bento-tab-row-height);
   }
 
   /* Removal animation. TabList keeps the row mounted for ~220ms after the

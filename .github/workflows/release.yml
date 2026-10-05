@@ -81,9 +81,8 @@ jobs:
             .bento/engine-state.json
           key: ${{ runner.os }}-bento-engine-source-v1-release-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/firefox-patch-stack.mjs') }}
 
-      # Install dependencies from the committed release lock while the
-      # @muxui/react candidate stays a frozen in-repo file. build-release.sh
-      # re-runs this internally for safety,
+      # Install the exact npm dependency graph from the committed release lock.
+      # build-release.sh re-runs this internally for safety,
       # but we install up front because the Bento download and bootstrap
       # steps below need the repository's release graph on disk first.
       - name: Install dependencies (release mode)

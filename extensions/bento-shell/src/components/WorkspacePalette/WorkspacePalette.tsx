@@ -133,7 +133,7 @@ function WorkspaceEditorRow({
       >
         <BentoIcon icon={Trash2} size="sm" />
       </IconButton>
-      <Text variant="body" size="s" color="muted" className="bento-workspace-palette__sr-only">
+      <Text variant="body" size="sm" color="muted" className="bento-workspace-palette__sr-only">
         {tabCount} tabs
       </Text>
     </Row>
@@ -250,7 +250,7 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
         <Row align="center" className="bento-workspace-palette__footer-content">
           <Text
             variant="body"
-            size="s"
+            size="sm"
             color="muted"
             className="bento-workspace-palette__footer-text"
           >
@@ -271,19 +271,19 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
       <Column gap="xs" className="bento-workspace-palette__content">
         <Column gap="xs" className="bento-workspace-palette__list">
           <Row gap="s" align="center" className="bento-workspace-palette__heading-row">
-            <Text variant="label" size="s" color="muted">
+            <Text variant="label" size="sm" color="muted">
               Icon
             </Text>
-            <Text variant="label" size="s" color="muted">
+            <Text variant="label" size="sm" color="muted">
               Workspace
             </Text>
-            <Text variant="label" size="s" color="muted">
+            <Text variant="label" size="sm" color="muted">
               Theme
             </Text>
-            <Text variant="label" size="s" color="muted">
+            <Text variant="label" size="sm" color="muted">
               Status
             </Text>
-            <Text variant="label" size="s" color="muted">
+            <Text variant="label" size="sm" color="muted">
               Delete
             </Text>
           </Row>

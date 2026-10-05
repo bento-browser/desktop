@@ -31,6 +31,9 @@
       calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
     );
     --bento-panel-trailer-wide-width: 16rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     /* Fill the iframe — chrome controls the outer vbox width. */
     display: flex;
     flex-direction: column;

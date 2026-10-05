@@ -204,10 +204,10 @@ function TargetItem({ source, target, expanded, disabled, onToggle, onImport }: 
         </IconButton>
         <BentoIcon icon={icon} size="sm" />
         <Column gap="4xs" className="bento-merge-palette__target-main">
-          <Text variant="label" size="s" className="bento-merge-palette__target-title">
+          <Text variant="label" size="sm" className="bento-merge-palette__target-title">
             {target.name}
           </Text>
-          <Text variant="body" size="s" color="muted">
+          <Text variant="body" size="sm" color="muted">
             {kind} - {targetSubtitle(target)}
           </Text>
         </Column>
@@ -224,10 +224,10 @@ function TargetItem({ source, target, expanded, disabled, onToggle, onImport }: 
               align="baseline"
               className="bento-merge-palette__tab-preview-row"
             >
-              <Text variant="body" size="s" className="bento-merge-palette__tab-title">
+              <Text variant="body" size="sm" className="bento-merge-palette__tab-title">
                 {tab.title || tab.url}
               </Text>
-              <Text variant="body" size="s" color="muted" className="bento-merge-palette__tab-url">
+              <Text variant="body" size="sm" color="muted" className="bento-merge-palette__tab-url">
                 {tab.url}
               </Text>
               {tab.pinned ? (
@@ -238,7 +238,7 @@ function TargetItem({ source, target, expanded, disabled, onToggle, onImport }: 
             </Row>
           ))}
           {moreCount > 0 ? (
-            <Text variant="body" size="s" color="muted" className="bento-merge-palette__more-tabs">
+            <Text variant="body" size="sm" color="muted" className="bento-merge-palette__more-tabs">
               {moreCount} more {moreCount === 1 ? 'tab' : 'tabs'}
             </Text>
           ) : null}
@@ -349,7 +349,6 @@ export function MergePalette({ onClose }: MergePaletteProps) {
           <CommandPalette.Title className="bento-merge-palette__sr-only">
             Merge browser session
           </CommandPalette.Title>
-          <CommandPalette.Close aria-label="Close merge browser session" />
           <CommandPalette.Content className="bento-merge-palette__content">
             <CommandPalette.SearchField>
               <CommandPalette.Input
@@ -360,15 +359,10 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 autoFocus
               />
               {query.length > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <CommandPalette.ClearButton
                   aria-label="Clear search"
-                  className="bento-merge-palette__clear-button"
-                  onActivate={() => setQuery('')}
-                >
-                  Clear
-                </Button>
+                  onClick={() => setQuery('')}
+                />
               ) : null}
               <IconButton
                 variant="ghost"
@@ -380,6 +374,10 @@ export function MergePalette({ onClose }: MergePaletteProps) {
               >
                 <BentoIcon icon={RefreshCwIcon} size="sm" />
               </IconButton>
+              <CommandPalette.Close
+                aria-label="Close merge browser session"
+                className="bento-merge-palette__close"
+              />
             </CommandPalette.SearchField>
             <Column
               gap="xs"
@@ -388,7 +386,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
             >
               <Text
                 variant="label"
-                size="s"
+                size="sm"
                 color="muted"
                 className="bento-merge-palette__section-label"
               >
@@ -412,18 +410,18 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                       <Column gap="4xs" className="bento-merge-palette__source-main">
                         <Text
                           variant="label"
-                          size="s"
+                          size="sm"
                           className="bento-merge-palette__source-title"
                         >
                           {sourceLabel(source)}
                         </Text>
-                        <Text variant="body" size="s" color="muted">
+                        <Text variant="body" size="sm" color="muted">
                           {sourceSubtitle(source)}
                         </Text>
                       </Column>
                       <Text
                         variant="label"
-                        size="s"
+                        size="sm"
                         color="muted"
                         className="bento-merge-palette__source-meta"
                       >
@@ -504,7 +502,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
               </CommandPalette.Empty>
             ) : null}
             <CommandPalette.Footer className="bento-merge-palette__footer">
-              <Text variant="body" size="s" className="bento-merge-palette__footer-text">
+              <Text variant="body" size="sm" className="bento-merge-palette__footer-text">
                 {footerText}
               </Text>
               <Button
@@ -543,7 +541,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
               />
               <Text
                 variant="body"
-                size="s"
+                size="sm"
                 color="muted"
                 className="bento-merge-palette__progress-detail"
               >
@@ -559,7 +557,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                 aria-label="Import activity"
               >
                 {progressLog.length === 0 ? (
-                  <Text variant="body" size="s" color="muted">
+                  <Text variant="body" size="sm" color="muted">
                     Preparing the import...
                   </Text>
                 ) : (
@@ -567,7 +565,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                     <Text
                       key={`${activity.kind}-${index}`}
                       variant="body"
-                      size="s"
+                      size="sm"
                       color="muted"
                       className="bento-merge-palette__progress-log-entry"
                     >

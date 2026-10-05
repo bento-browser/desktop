@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import {
   AlertDialog,
   Button,
   Card,
+  FileTrigger,
   IconButton,
   NumberField,
   Switch,
@@ -87,7 +88,6 @@ export function BackupSection() {
     .map((id) => byId[id])
     .filter((w): w is NonNullable<typeof w> => w != null);
   const backups = useBackupStore((s) => s.backups);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
@@ -158,18 +158,13 @@ export function BackupSection() {
     });
   }, []);
 
-  const handleFileSelect = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileSelect = useCallback((files: File[]) => {
+    const file = files[0];
     if (!file) return;
     setParseError(false);
     setImportStatus(null);
     if (file.size > MAX_BACKUP_FILE_BYTES) {
       setImportStatus('Import failed: backup files must be 10 MB or smaller.');
-      e.target.value = '';
       return;
     }
     const reader = new FileReader();
@@ -185,7 +180,6 @@ export function BackupSection() {
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
   }, []);
 
   const handleImportConfirm = useCallback(() => {
@@ -228,10 +222,10 @@ export function BackupSection() {
     <Card.Root className="bento-settings__tile bento-settings__tile--narrow">
       <Card.Header>
         <Column gap="2xs">
-          <Text variant="title" size="m">
+          <Text variant="title" size="md">
             Backup &amp; export
           </Text>
-          <Text variant="body" size="s" color="muted">
+          <Text variant="body" size="sm" color="muted">
             Export workspaces to a JSON file or restore from automatic backups. The exported file
             contains your tab URLs, titles, panel layout, and settings.
           </Text>
@@ -240,7 +234,7 @@ export function BackupSection() {
       <Card.Body>
         <Column gap="l">
           <Column gap="s">
-            <Text variant="label" size="m">
+            <Text variant="label" size="md">
               Export
             </Text>
             <Row gap="s">
@@ -251,7 +245,7 @@ export function BackupSection() {
             </Row>
             {workspaces.length > 1 && (
               <Column gap="xs" className="bento-backup__ws-select">
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Or select specific workspaces:
                 </Text>
                 {workspaces.map((ws) => (
@@ -261,7 +255,7 @@ export function BackupSection() {
                     align="center"
                     style={{ justifyContent: 'space-between' }}
                   >
-                    <Text variant="body" size="s">
+                    <Text variant="body" size="sm">
                       {ws.icon ? `${ws.icon} ${ws.name}` : ws.name}
                     </Text>
                     <Switch
@@ -287,30 +281,25 @@ export function BackupSection() {
           </Column>
 
           <Column gap="s">
-            <Text variant="label" size="m">
+            <Text variant="label" size="md">
               Import
             </Text>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleFileChange}
-              style={{ display: 'none' }}
-            />
             <Row gap="s">
-              <Button variant="neutral" onActivate={handleFileSelect}>
-                <BentoIcon icon={Upload} size="sm" />
-                Import from file
-              </Button>
+              <FileTrigger acceptedFileTypes={['.json']} onSelect={handleFileSelect}>
+                <Button variant="neutral">
+                  <BentoIcon icon={Upload} size="sm" />
+                  Import from file
+                </Button>
+              </FileTrigger>
             </Row>
             {parseError && (
-              <Text variant="body" size="s" color="muted">
+              <Text variant="body" size="sm" color="muted">
                 Invalid file. Expected a Bento export JSON file.
               </Text>
             )}
             {importPreview && (
               <Column gap="s" className="bento-backup__preview">
-                <Text variant="body" size="s">
+                <Text variant="body" size="sm">
                   {importPreview.workspaceCount} workspace
                   {importPreview.workspaceCount !== 1 ? 's' : ''}, {importPreview.tabCount} tab
                   {importPreview.tabCount !== 1 ? 's' : ''}, {importPreview.panelCount} panel
@@ -318,7 +307,7 @@ export function BackupSection() {
                 </Text>
                 <Column gap="3xs">
                   {importPreview.data.workspaces.map((ws) => (
-                    <Text key={ws.id} variant="body" size="s" color="muted">
+                    <Text key={ws.id} variant="body" size="sm" color="muted">
                       {ws.icon ? `${ws.icon} ` : ''}
                       {ws.name} — {ws.tabs.length} tab
                       {ws.tabs.length !== 1 ? 's' : ''}, {ws.panels.length} panel
@@ -328,10 +317,10 @@ export function BackupSection() {
                 </Column>
                 <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <Column gap="3xs" style={{ flex: 1 }}>
-                    <Text variant="body" size="s">
+                    <Text variant="body" size="sm">
                       Replace all existing workspaces
                     </Text>
-                    <Text variant="body" size="s" color="muted">
+                    <Text variant="body" size="sm" color="muted">
                       Imports the backup first, then removes current workspaces and tabs.
                     </Text>
                   </Column>
@@ -343,7 +332,7 @@ export function BackupSection() {
                 </Row>
                 {importPreview.hasSettings && (
                   <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text variant="body" size="s">
+                    <Text variant="body" size="sm">
                       Apply settings from export
                     </Text>
                     <Switch
@@ -355,7 +344,7 @@ export function BackupSection() {
                 )}
                 {importPreview.hasSavedPanels && (
                   <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text variant="body" size="s">
+                    <Text variant="body" size="sm">
                       Import saved panels ({importPreview.data.savedPanels.length})
                     </Text>
                     <Switch
@@ -376,20 +365,20 @@ export function BackupSection() {
               </Column>
             )}
             {importStatus && (
-              <Text variant="body" size="s" color="muted">
+              <Text variant="body" size="sm" color="muted">
                 {importStatus}
               </Text>
             )}
           </Column>
 
           <Column gap="s">
-            <Text variant="label" size="m">
+            <Text variant="label" size="md">
               Automatic backups
             </Text>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Column gap="3xs" style={{ flex: 1 }}>
                 <Text>Backup workspaces automatically</Text>
-                <Text variant="body" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Periodic snapshots stored in the browser profile. Restored as new workspaces.
                 </Text>
               </Column>
@@ -433,7 +422,7 @@ export function BackupSection() {
 
           {backups.length > 0 && (
             <Column gap="s">
-              <Text variant="label" size="m">
+              <Text variant="label" size="md">
                 Stored backups
               </Text>
               <Column gap="m">
@@ -446,10 +435,10 @@ export function BackupSection() {
                     className="bento-backup__entry"
                   >
                     <Column gap="3xs" style={{ flex: 1, minWidth: 0 }}>
-                      <Text variant="body" size="s">
+                      <Text variant="body" size="sm">
                         {formatDate(b.createdAt)}
                       </Text>
-                      <Text variant="body" size="s" color="muted">
+                      <Text variant="body" size="sm" color="muted">
                         {b.workspaceCount} workspace{b.workspaceCount !== 1 ? 's' : ''},{' '}
                         {b.tabCount} tab{b.tabCount !== 1 ? 's' : ''}
                       </Text>

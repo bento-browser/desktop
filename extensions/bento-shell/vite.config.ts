@@ -4,7 +4,7 @@
 // XHTML <browser src="chrome://bento-shell/content/index.html"> will load
 // these by URL — hashes would break the chrome.manifest registration.
 //
-// The committed @muxui/react candidate is consumed from its packed public
+// The pinned npm @muxui/react release is consumed from its public
 // output. The aliases below keep every entrypoint on Bento's pinned React Aria
 // substrate so providers and consumers share one module identity.
 

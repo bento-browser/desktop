@@ -260,7 +260,7 @@ function WorkspaceSwitcherOverlayApp() {
                   </Avatar.Root>
                   <WorkspaceAudioParticles active={hasPlayingAudio} variant="menu" />
                 </span>
-                <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
+                <Text variant="body" size="sm" className="bento-workspace-switcher__item-name">
                   {w.name}
                 </Text>
                 {w.id === activeId ? <BentoIcon icon={Check} size="sm" label="Active" /> : null}
@@ -270,7 +270,7 @@ function WorkspaceSwitcherOverlayApp() {
           <Menu.Separator />
           <Menu.Item id={NEW_WORKSPACE_KEY} textValue="New workspace" onAction={onCreate}>
             <BentoIcon icon={Plus} size="sm" />
-            <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
+            <Text variant="body" size="sm" className="bento-workspace-switcher__item-name">
               New workspace
             </Text>
           </Menu.Item>
@@ -280,7 +280,7 @@ function WorkspaceSwitcherOverlayApp() {
             onAction={onRequestEditAll}
           >
             <BentoIcon icon={SlidersHorizontal} size="sm" />
-            <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
+            <Text variant="body" size="sm" className="bento-workspace-switcher__item-name">
               Edit all workspaces
             </Text>
           </Menu.Item>
@@ -291,7 +291,7 @@ function WorkspaceSwitcherOverlayApp() {
               onAction={onRequestEdit}
             >
               <BentoIcon icon={Pencil} size="sm" />
-              <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
+              <Text variant="body" size="sm" className="bento-workspace-switcher__item-name">
                 Edit this workspace
               </Text>
             </Menu.Item>
@@ -304,7 +304,7 @@ function WorkspaceSwitcherOverlayApp() {
               className="bento-workspace-switcher__delete-item"
             >
               <BentoIcon icon={Trash2} size="sm" />
-              <Text variant="body" size="s" className="bento-workspace-switcher__item-name">
+              <Text variant="body" size="sm" className="bento-workspace-switcher__item-name">
                 Delete {active!.name}
               </Text>
             </Menu.Item>

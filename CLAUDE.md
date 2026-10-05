@@ -122,8 +122,8 @@ When adding, removing, or changing working core implementation behavior:
 
 Migrated React UI uses the public `@muxui/react` API and the shared Bento
 primitives under `extensions/bento-shell/src/components/primitives/`. The
-committed Mux artifact is the only UI package source; do not add unapproved UI
-package imports, MCP hooks, or compatibility dependencies.
+published npm package is pinned to an exact version in both dependency locks;
+do not add unapproved UI package imports, MCP hooks, or compatibility dependencies.
 
 Before creating or modifying a component:
 
@@ -139,9 +139,9 @@ Before creating or modifying a component:
    `data-muxui-contrast` on the same theme scope. `themeScope.ts` resolves
    persisted aliases and unknown ids at the presentation boundary while the
    tools store keeps the original id.
-5. Build repeated layout and icon behavior with the Bento primitives. Keep
-   React Aria Components as an implementation detail of those adapters; Bento
-   composites must consume the public Mux API or a Bento primitive.
+5. Build repeated layout and icon behavior with the Bento primitives. Mux
+   owns its internal React Aria implementation; Bento composites consume the
+   public Mux API or a Bento primitive.
 6. Preserve the browser-standard root contract: `1rem = 16px`, external
    `public/boot.js` bootstrap, explicit mode attributes, and the transparent
    site/frame separation. Do not add a remote font import or weaken CSP.
@@ -168,9 +168,9 @@ Before creating or modifying a component:
 - New HTML entry points keep bootstrap logic in the external `public/boot.js`;
   do not add inline scripts that bypass the CSP contract.
 
-## Hard guardrails (ESLint or CI enforce these)
+## Contributor guardrails and automated checks
 
-- **Layered design system**: Bento composite components (`extensions/bento-shell/src/components/`) import only from the public `@muxui/react` API, Bento primitives, and other composites. Never bare HTML elements. Never `react-aria-components` directly. Never CSS-in-JS.
+- **Layered design system**: generic shell controls use public `@muxui/react` parts; repeated layout/icons use Bento primitives. Semantic structure, host roots, favicon images, skeletons, public `SelectNative` options, and product-specific virtualized tab/folder row drag, selection, and context handlers may retain native HTML. Tab/folder structural rows use Bento `Row` and Mux inner controls. Never import `react-aria-components` directly or recreate Mux controls with class names. ESLint checks public import boundaries across shell source, Ladle, and rollback UI; it does not ban intrinsic JSX or inspect CSS values. Never CSS-in-JS.
 - **Public imports only**: use the root `@muxui/react` export or a documented public subpath. Never import private generated files or a copied registry. `lucide-react` remains per-icon and documented.
 - **Mux customisation docs stay current**: any change that adds or changes Bento-specific Mux customisations, token usage patterns, CSS layer/override rules, or reusable component styling conventions must update [docs/mux-ui-component-customisations.md](docs/mux-ui-component-customisations.md) in the same change.
 - **Sole chrome touchpoint**: `extensions/bento-shell/src/experiments/chrome-bridge/api.js` is the ONLY file allowed to reach into Firefox chrome XHTML. New chrome interactions go through new `bentoChrome.*` API methods, not ad-hoc.
@@ -193,37 +193,37 @@ Before creating or modifying a component:
 
 PR comments must identify the source commit, platform, artifact expiration, and unsigned test-build status. This exception does not relax the signing or approval gates for official public releases.
 
-## UI dependencies: development ↔ release toggle
+## UI dependencies: development and release
 
-The pinned Mux candidate is the public UI source for migrated entry points.
-The exact local artifact, provenance record, and package exports are owned by
-the repository manifests. Keep the Mux artifact bytes immutable and consume
-its public `styles.css`, `themes.css`, and documented component exports.
-
-The committed Mux artifact is the only UI dependency source. Keep its bytes,
-provenance, public exports, and pinned React Aria/Tiptap overrides unchanged.
-Do not add unapproved UI package imports, MCP hooks, or runtime/build assumptions.
+Bento consumes the published `@muxui/react@0.1.0-rc.1` npm package. Use its
+public `styles.css`, `themes.css`, and documented component exports. Pin the
+exact package version; do not use dist-tags, local archives, or working-tree
+links in manifests or locks.
 
 **Default install (dev loop)** — `pnpm install`:
 
-- The lockfile records the committed Mux artifact path and the pinned public
-  dependency graph. It must not contain working-tree links.
+- `pnpm-lock.yaml` records the exact npm version and registry integrity.
 
-**Release install** — `bash scripts/install-release-deps.sh` (used by `scripts/build-release.sh` and GitHub Actions):
+**Release install** — `bash scripts/install-release-deps.sh` (used by
+`scripts/build-release.sh` and GitHub Actions):
 
 - The helper temporarily installs against `pnpm-lock.release.yaml` with
   `--frozen-lockfile`, then restores the developer lock while leaving the
   release graph installed in `node_modules`. Resolution cannot drift across
   CI runs or later rebuilds.
 
-**When changing UI dependencies**: keep the Mux artifact manifest,
-`package.json` overrides, and both frozen locks aligned. Run the repository's
-frozen install and release-security checks before regenerating either lock.
+**When changing UI dependencies**: keep the exact package pin, the approved
+shell runtime dependency set in the SBOM generator, required substrate/security
+overrides, and both frozen locks aligned. Run frozen installs and
+release-security checks before regenerating either lock, then repeat them
+against the new graph. The SBOM verifies the approved npm version and registry
+integrity offline and records the lock's integrity digest.
 
-**Why this matters**: release builds must be byte-reproducible across
-machines, CI runs, and time. A working-tree link captures whatever is on disk
-and can't be audited or hotfix-rebuilt. See [docs/build-tooling.md](docs/build-tooling.md)
-for the release dependency and source-cache contracts.
+Bento pins React Aria to one compatible graph and aliases it in Vite so menu
+providers and consumers share module identity. Tiptap overrides match the
+published Mux version (`3.31.4`) and keep its core and peer family aligned on the
+patched line. See [docs/build-tooling.md](docs/build-tooling.md) for the release
+dependency and source-cache contracts.
 
 **Firefox updates**: use Bento's protected source-update workflow. For a newer
 version than the one in `bento.json`, copy the 64-character SHA-256 for

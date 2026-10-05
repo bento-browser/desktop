@@ -15,7 +15,6 @@
 
 import { useCallback, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  Button,
   CommandPalette as MuxCommandPalette,
   useCommandPalette,
   type CommandPaletteCommand,
@@ -374,7 +373,6 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
           <MuxCommandPalette.Title className="bento-command-palette__sr-only">
             Command palette
           </MuxCommandPalette.Title>
-          <MuxCommandPalette.Close aria-label="Close command palette" />
           <MuxCommandPalette.Content className="bento-command-palette__content">
             <MuxCommandPalette.SearchField>
               <MuxCommandPalette.Input
@@ -386,16 +384,15 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
                 onKeyDown={handleInputKeyDown}
               />
               {palette.query.length > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <MuxCommandPalette.ClearButton
                   aria-label="Clear search"
-                  className="bento-command-palette__clear-button"
-                  onActivate={() => palette.setQuery('')}
-                >
-                  Clear
-                </Button>
+                  onClick={() => palette.setQuery('')}
+                />
               ) : null}
+              <MuxCommandPalette.Close
+                aria-label="Close command palette"
+                className="bento-command-palette__close"
+              />
             </MuxCommandPalette.SearchField>
             <MuxCommandPalette.ListBox
               aria-label="Commands"
