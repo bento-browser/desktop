@@ -151,7 +151,7 @@ function packageFixture(objdirStamp) {
     path.join(root, 'engine', 'browser', 'extensions', 'bento-shell', 'dist', 'muxui-source.json'),
     npm,
   );
-  const browser = path.join(root, 'engine', 'obj-test', 'dist', 'bin', 'browser');
+  const browser = path.join(root, 'engine', 'obj-bento', 'dist', 'bin', 'browser');
   fs.mkdirSync(browser, { recursive: true });
   if (objdirStamp !== undefined) {
     write(path.join(browser, ...STAMP_ENTRY.split('/')), objdirStamp);

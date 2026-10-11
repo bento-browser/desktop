@@ -279,19 +279,24 @@ The `bridge/` layer should mock `browser.*` here (M1+ work — not built yet). U
 Launch once with `--jsdebugger` so the Browser Toolbox is open (the dev prefs `devtools.cache.disabled` and `devtools.debugger.prompt-connection` rely on this — set in `prefs/bento.js`):
 
 ```sh
-engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento \
+engine/obj-bento/dist/Bento.app/Contents/MacOS/bento \
   --new-instance --jsdebugger --profile $(mktemp -d)
 ```
+
+Every build mode compiles into `engine/obj-bento` (the generated mozconfig sets `MOZ_OBJDIR`), so the path no longer changes with the host OS version. A platform-named `engine/obj-<triple>` directory from an earlier build is not used any more: the first `pnpm run build` compiles from scratch into `engine/obj-bento`, and the old directory can be deleted by hand.
+
+`node scripts/bento-build.mjs objdir` prints the directory mach builds into; `package`, `updates-browser` and `build-release.sh` use only that directory and fail if it does not exist. `dev-launch.sh`, `sync-shell.sh` and `sync-builtin-addon-symlinks.sh` also accept a single legacy `engine/obj-*` build while `obj-bento` does not exist yet, and say so on stderr; several legacy directories are an error. `BENTO_OBJDIR=obj-<name>` changes the name written into the mozconfig at the next build (it must be an `obj-*` directory directly under `engine/`). A `MOZ_OBJDIR` in `configs/` or the root `mozconfig`, or a `MOZCONFIG` pointing at another file, would send mach somewhere else and is rejected.
 
 Then iterate by what you changed:
 
 | Changed                                                     | Build command                                                                                    | Reload                                                                                          |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && pnpm run import`                                            | Press **Alt+Shift+R** in Bento (triggers `browser.runtime.reload()` via the dev-reload command) |
+| Shell UI only, no theme, chrome token or manifest change    | `pnpm run shell:sync` (shell build, then copy `dist/` into the built app; no import)             | Press **Alt+Shift+R** in Bento                                                                  |
 | `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                                              |
 | Local Mux (`~/Projects/muxui`) and the shell UI against it  | `pnpm run shell:import:mux` (Mux generate, type check, shell build, import)                      | Press **Alt+Shift+R** in Bento                                                                  |
 | `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && pnpm run import`                                            | Quit + relaunch                                                                                 |
-| `patches/`, `src/browser/`, `prefs/bento.js`, `bento.json`  | `pnpm run build` (~15 s — mach build is mostly cached)                                           | Quit + relaunch                                                                                 |
+| `patches/`, `src/browser/`, `prefs/bento.js`, `bento.json`  | `pnpm run build` (compile time depends on what mach must rebuild)                                | Quit + relaunch                                                                                 |
 | Firefox source/build tooling                                | Follow the update and validation procedure in `docs/build-tooling.md`                            | Quit + relaunch                                                                                 |
 
 > **How the reload works**: `pnpm run import` runs the Bento import wrapper: theme preset sync, chrome token generation, engine-state verification, patch-stack check/reset, source-overlay import, canonical branding and built-in add-on installation, manifest patch application, prefs append, and built-in add-on symlink sync. Built extension files are live on disk immediately after import. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
@@ -305,7 +310,14 @@ Then iterate by what you changed:
 
 `pnpm run brand:regen` is for changes under `branding/bento/**`. It reinstalls the tracked canonical branding through `pnpm run import`.
 
-**Don't run `pnpm run build` on every UI change** — the table above's build+import loop is ~3 seconds. Reserve full builds for chrome / engine changes.
+**Don't run `pnpm run build` on every UI change.** Use the build+import row, or `pnpm run shell:sync` for shell-only edits. Reserve full builds for chrome / engine changes.
+
+What `pnpm run import` costs depends on what changed:
+
+- The patch-stack check validates the series in a scratch Git index instead of a checked-out worktree (with its whitespace and line-ending settings pinned with `git -c`, also for `apply`), and is skipped while `patches/**` and the Firefox base commit match the last passing check (recorded in `.bento/patch-check.json`; `node scripts/firefox-patch-stack.mjs check --force` replays anyway). Measured on the Firefox 154.0 tree (471,508 files): 5.0 to 7.3 s over nine runs for a full validation, 0.5 to 0.65 s when skipped.
+- Engine-state hashing runs in-process: 871 recorded files took 0.095 s, against 8.5 s when each file spawned `shasum`.
+- Branding, built-in add-on files, `jar.mn`/`moz.build`, prefs, `engine/mozconfig` and the version files are rewritten only when their content changes, so unchanged inputs keep their mtimes. Patched files are still reset and re-applied on every import, so they get new mtimes and mach rebuilds whatever depends on them.
+- `engine/mozconfig`, `version.txt` and `version_display.txt` are regenerated by every build, so engine-state verification accepts freshly generated output or the exact bytes recorded at import, rather than only the recorded hash. A build, a mode switch or a `configs/` or `bento.json` change between two imports no longer fails the next `pnpm run import`; hand edits still do.
 
 ## Repo crosswalk
 

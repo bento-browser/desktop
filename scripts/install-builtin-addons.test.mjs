@@ -169,3 +169,54 @@ test('rejects malformed marker blocks', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+function listTree(root, current = root) {
+  return fs.readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(current, entry.name);
+    return entry.isDirectory() ? listTree(root, absolute) : [path.relative(root, absolute)];
+  });
+}
+
+test('reinstalling rewrites only what changed and keeps other mtimes', (t) => {
+  const root = fixture();
+  try {
+    const extension = addExtension(root, 'bento-shell');
+    const [addon] = installBuiltinAddons({ repoRoot: root });
+    const engineMozBuild = path.join(root, 'engine', 'browser', 'extensions', 'moz.build');
+    const tracked = () => [...listTree(addon.destination).map((file) => path.join(addon.destination, file)), engineMozBuild];
+    const past = new Date('2020-01-01T00:00:00Z');
+    for (const file of tracked()) fs.utimesSync(file, past, past);
+    const mtimes = () => Object.fromEntries(tracked().map((file) => [path.relative(root, file), fs.statSync(file).mtimeMs]));
+
+    installBuiltinAddons({ repoRoot: root });
+    assert.ok(Object.values(mtimes()).every((mtime) => mtime === past.getTime()));
+
+    fs.writeFileSync(path.join(extension, 'dist', 'a.js'), 'changed');
+    installBuiltinAddons({ repoRoot: root });
+    const changed = Object.entries(mtimes()).filter(([, mtime]) => mtime !== past.getTime());
+    assert.deepEqual(changed.map(([file]) => path.basename(file)), ['a.js']);
+
+    // A new file, a removed file, and non-runtime leftovers in the destination.
+    fs.writeFileSync(path.join(extension, 'dist', 'new.js'), 'new');
+    fs.rmSync(path.join(extension, 'dist', 'z.js'));
+    fs.writeFileSync(path.join(addon.destination, 'dist', 'stale.js'), 'stale');
+    fs.mkdirSync(path.join(addon.destination, 'leftover'));
+    fs.writeFileSync(path.join(addon.destination, 'leftover', 'file'), 'stale');
+    if (process.platform === 'win32') t.diagnostic('symlink leftover skipped on Windows');
+    else fs.symlinkSync('/tmp', path.join(addon.destination, 'dist', 'link'));
+    installBuiltinAddons({ repoRoot: root });
+
+    assert.deepEqual(listTree(addon.destination).sort(), [
+      'dist/a.js',
+      'dist/new.js',
+      'jar.mn',
+      'manifest.json',
+      'moz.build',
+    ].map((file) => file.split('/').join(path.sep)));
+    const jar = fs.readFileSync(path.join(addon.destination, 'jar.mn'), 'utf8');
+    assert.match(jar, /dist\/new\.js/);
+    assert.doesNotMatch(jar, /z\.js|jar\.mn|moz\.build/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

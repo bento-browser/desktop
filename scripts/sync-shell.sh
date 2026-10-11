@@ -10,15 +10,10 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Use `find -maxdepth 1` instead of `ls -d` so non-alphanumeric paths
-# don't bite (ShellCheck SC2012). `engine/obj-*` is a single
-# platform-suffixed dir in practice (obj-aarch64-apple-darwin25.4.0
-# locally) — head -n1 picks the first match.
-OBJ_DIR="$(find "$REPO/engine" -maxdepth 1 -name 'obj-*' -type d 2>/dev/null | head -n1)"
-if [ -z "$OBJ_DIR" ]; then
-  echo "error: no engine/obj-* directory found — run \`npm run build\` first." >&2
-  exit 1
-fi
+# The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
+# another name). Before it exists, a single old engine/obj-* build is used and the
+# driver says so; several old ones, or none, is an error.
+OBJ_DIR="$(node "$REPO/scripts/bento-build.mjs" objdir --allow-legacy)"
 
 DEST="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/builtin-addons/bento-shell"
 if [ ! -d "$DEST" ]; then
@@ -32,5 +27,5 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-cp -r "$SRC/" "$DEST/dist/"
+cp -R "$SRC/." "$DEST/dist/"
 echo "synced: extensions/bento-shell/dist → builtin-addons/bento-shell/dist"

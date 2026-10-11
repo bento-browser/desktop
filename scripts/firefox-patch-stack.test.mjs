@@ -448,3 +448,199 @@ test('apply supports new text files and binary patches', async () => {
   assert.equal(fs.readFileSync(path.join(engine, 'added.txt'), 'utf8'), 'new file\n');
   assert.deepEqual(fs.readFileSync(path.join(engine, 'added.bin')), binary);
 });
+
+async function twoDependentPatches() {
+  const setup = await fixture();
+  writeLegacyPatch(setup.root, setup.engine, 'patches/area/01.patch', 'beta\n');
+  spawnSync('git', ['apply', path.join(setup.root, 'patches/area/01.patch')], { cwd: setup.engine });
+  git(setup.engine, ['commit', '-am', 'Patch one']);
+  writeLegacyPatch(setup.root, setup.engine, 'patches/area/02.patch', 'gamma\n');
+  git(setup.engine, ['reset', '--hard', 'refs/bento/firefox-base/1.0']);
+  writeManifest(setup.root, {
+    tree: setup.tree,
+    entries: [
+      { path: 'patches/area/01.patch', id: 'one', subject: 'One' },
+      { path: 'patches/area/02.patch', id: 'two', subject: 'Two' },
+    ],
+  });
+  return setup;
+}
+
+test('check --for-import validates in a scratch index and leaves the engine untouched', async () => {
+  const { root, engine } = await twoDependentPatches();
+  const snapshot = () => ({
+    // Status first: it may refresh the index, which is then read in its final form.
+    status: git(engine, ['status', '--porcelain', '--untracked-files=all']),
+    index: fs.readFileSync(path.join(engine, '.git', 'index')).toString('base64'),
+    objects: git(engine, ['count-objects', '-v']),
+    worktrees: git(engine, ['worktree', 'list', '--porcelain']),
+  });
+  const before = snapshot();
+
+  const result = runFixture(root, ['check', '--for-import']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /check passed$/m);
+  assert.deepEqual(snapshot(), before);
+  assert.equal(fs.readFileSync(path.join(engine, 'file.txt'), 'utf8'), 'alpha\n');
+});
+
+test('check fails with the manifest entry of a patch that conflicts with an earlier one', async () => {
+  const { root, engine, tree } = await fixture();
+  // Both patches rewrite the same base line, so the second cannot apply after the first.
+  writeLegacyPatch(root, engine, 'patches/area/01.patch', 'beta\n');
+  writeLegacyPatch(root, engine, 'patches/area/02.patch', 'gamma\n');
+  writeManifest(root, {
+    tree,
+    entries: [
+      { path: 'patches/area/01.patch', id: 'one', subject: 'One' },
+      { path: 'patches/area/02.patch', id: 'two', subject: 'Two' },
+    ],
+  });
+
+  const result = runFixture(root, ['check', '--for-import']);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /failed to apply patches\/area\/02\.patch \(two\)/);
+  assert.match(result.stderr, /patch does not apply/);
+  assert.equal(fs.existsSync(path.join(root, '.bento', 'patch-check.json')), false);
+});
+
+test('check skips the replay while patches and base are unchanged', async () => {
+  const { root, engine } = await twoDependentPatches();
+  const first = runFixture(root, ['check', '--for-import']);
+  assert.equal(first.status, 0, first.stderr);
+  assert.doesNotMatch(first.stdout, /unchanged/);
+
+  const second = runFixture(root, ['check', '--for-import']);
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(second.stdout, /unchanged since the last successful check/);
+
+  const forced = runFixture(root, ['check', '--for-import', '--force']);
+  assert.equal(forced.status, 0, forced.stderr);
+  assert.doesNotMatch(forced.stdout, /unchanged/);
+
+  // A new base commit with the same tree changes the resolved base, so it replays.
+  git(engine, ['commit', '--allow-empty', '-m', 'Rebuilt base']);
+  git(engine, ['update-ref', 'refs/bento/firefox-base/1.0', 'HEAD']);
+  const rebased = runFixture(root, ['check', '--for-import']);
+  assert.equal(rebased.status, 0, rebased.stderr);
+  assert.doesNotMatch(rebased.stdout, /unchanged/);
+});
+
+test('check replays and fails after a patch changes following a recorded pass', async () => {
+  const { root, engine } = await twoDependentPatches();
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+
+  writeLegacyPatch(root, engine, 'patches/area/02.patch', 'delta\n');
+  const result = runFixture(root, ['check', '--for-import']);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /failed to apply patches\/area\/02\.patch \(two\)/);
+});
+
+test('check handles added, binary and deleted files in the scratch index', async () => {
+  const { root, engine, tree } = await fixture();
+  fs.writeFileSync(path.join(engine, 'added.txt'), 'new file\n');
+  fs.writeFileSync(path.join(engine, 'added.bin'), Buffer.from([0, 255, 1, 254, 2, 253]));
+  git(engine, ['add', 'added.txt', 'added.bin']);
+  git(engine, ['rm', '-q', 'file.txt']);
+  fs.writeFileSync(
+    path.join(root, 'patches/area/01.patch'),
+    gitRaw(engine, ['diff', '--cached', '--full-index', '--binary']),
+  );
+  git(engine, ['reset', '--hard', 'refs/bento/firefox-base/1.0']);
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/01.patch', id: 'mixed', subject: 'Mixed' }],
+  });
+
+  const result = runFixture(root, ['check', '--for-import']);
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
+/** Recursive listing of everything inside a directory, for "gains no files" assertions. */
+function listFiles(root, current = root) {
+  return fs.readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(current, entry.name);
+    return entry.isDirectory() ? listFiles(root, absolute) : [path.relative(root, absolute)];
+  });
+}
+
+test('git configuration cannot change the outcome of check or apply', async () => {
+  const { root, engine, tree } = await fixture();
+  // A patch that adds a line with trailing whitespace.
+  fs.writeFileSync(path.join(engine, 'file.txt'), 'alpha\nbeta   \n');
+  fs.writeFileSync(path.join(root, 'patches/area/01.patch'), gitRaw(engine, ['diff', '--full-index']));
+  git(engine, ['checkout', '--', 'file.txt']);
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/01.patch', id: 'whitespace', subject: 'Whitespace' }],
+  });
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+
+  git(engine, ['config', 'apply.whitespace', 'error']);
+
+  // The recorded pass must not hide a different outcome, and neither path may differ.
+  const skipped = runFixture(root, ['check', '--for-import']);
+  assert.equal(skipped.status, 0, skipped.stderr);
+  const forced = runFixture(root, ['check', '--for-import', '--force']);
+  assert.equal(forced.status, 0, forced.stderr);
+  const applied = runFixture(root, ['apply']);
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.equal(fs.readFileSync(path.join(engine, 'file.txt'), 'utf8'), 'alpha\nbeta   \n');
+});
+
+test('the scratch replay writes nothing into the engine git directory', async () => {
+  const { root, engine } = await twoDependentPatches();
+  // A split index writes sharedindex.* files into the git directory.
+  git(engine, ['config', 'core.splitIndex', 'true']);
+  const gitDir = path.join(engine, '.git');
+  const before = listFiles(gitDir).sort();
+
+  const result = runFixture(root, ['check', '--for-import', '--force']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(listFiles(gitDir).sort(), before);
+});
+
+test('check refuses patches that touch symlinks when the engine cannot check them out', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('symlink creation requires elevated Windows privileges');
+    return;
+  }
+  const { root, engine } = await fixture();
+  fs.symlinkSync('file.txt', path.join(engine, 'link'));
+  git(engine, ['add', 'link']);
+  git(engine, ['commit', '-m', 'Add a tracked symlink']);
+  git(engine, ['update-ref', 'refs/bento/firefox-base/1.0', 'HEAD']);
+  const tree = git(engine, ['rev-parse', 'HEAD^{tree}']);
+  fs.rmSync(path.join(engine, 'link'));
+  fs.symlinkSync('elsewhere', path.join(engine, 'link'));
+  fs.writeFileSync(path.join(root, 'patches/area/01.patch'), gitRaw(engine, ['diff', '--full-index', '--', 'link']));
+  git(engine, ['checkout', '--', 'link']);
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/01.patch', id: 'retarget', subject: 'Retarget the link' }],
+  });
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+
+  // The live apply would fail with "wrong type" on a checkout without symlinks, so
+  // preflight must fail too, including when the recorded pass would skip the replay.
+  git(engine, ['config', 'core.symlinks', 'false']);
+  for (const args of [['check', '--for-import'], ['check', '--for-import', '--force'], ['apply']]) {
+    const result = runFixture(root, args);
+    assert.notEqual(result.status, 0, args.join(' '));
+    assert.match(result.stderr, /core\.symlinks=false.*patches\/area\/01\.patch|patches\/area\/01\.patch.*core\.symlinks=false/s, args.join(' '));
+  }
+
+  // A series that never touches a symlink is unaffected.
+  fs.rmSync(path.join(root, 'patches/area/01.patch'));
+  writeLegacyPatch(root, engine, 'patches/area/02.patch', 'beta\n');
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/02.patch', id: 'plain', subject: 'Plain file' }],
+  });
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+});
