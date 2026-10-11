@@ -1866,13 +1866,25 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   new triggers through `flushNow` or `schedule`; never call `#flush` directly or
   add a second writer of `bento.panels`.
 - Do not persist private-window state. Panel entries and layout slots
-  (`bento.panels`), parked panel URLs, and parked sidebar tabs
-  (`bento.parkedWorkspaceTabs`, including titles) all skip tabs where
-  `tab.incognito` is true or `TabRegistry.isPrivate` is true. A new storage path
-  that records tab URLs, titles, or favicons must apply the same check at the
-  point it resolves a live tab or a closing-window snapshot. Pinned panels
-  (`PinnedPanelsStore.#resolveAndPersist`) have their own tab read and need their
-  own check.
+  (`bento.panels`), parked panel URLs, parked sidebar tabs
+  (`bento.parkedWorkspaceTabs`, including titles), and pinned panels
+  (`bento.pinnedPanels`: URL, title, favicon) all skip private tabs.
+  `PinnedPanelsStore.#resolveAndPersist` skips `tab.incognito` tabs and
+  remembers their ids, because its closed-tab fallback would otherwise write the
+  in-memory URL, title, and favicon after the tab is gone. A new storage path
+  that records tab URLs, titles, or favicons must apply the same check where it
+  resolves a live tab (`tab.incognito`) or a closing-window snapshot
+  (`TabRegistry.isPrivate`, valid only while the closing listeners run). The
+  other `storage.local` writers in `bento-tools` were audited and hold no tab
+  data: workspaces, tab folders (user-chosen names), settings, native-operation
+  and session records, graph journal and rollback state (ids and hashes plus the
+  backup JSON being restored), and the graph publication (already filtered by
+  `tab.incognito`). `BackupStore` builds each snapshot from live state, skips
+  incognito tabs when it resolves URLs, and omits private panels, pins, and
+  layout slots; it does not copy stored state. Data written by earlier builds is
+  not scrubbed. The `shell/hello` handler has no private check, so a private
+  window whose shell sends it claims an unclaimed workspace or creates a
+  default-named one in `bento.workspaces` (a name, not browsing data).
 - Do not call `persistCurrentState` from a high-frequency listener. Panel URL
   changes used to flush the whole graph on every event (one `tabs.get` per panel
   plus two or three storage calls each); they now use

@@ -126,3 +126,50 @@ describe('PinnedPanelsStore', () => {
     ).toBe(false);
   });
 });
+
+describe('PinnedPanelsStore private tabs', () => {
+  const set = vi.fn<(payload: Record<string, unknown>) => Promise<void>>(async () => undefined);
+  let privateTabGone: boolean;
+
+  beforeEach(() => {
+    set.mockClear();
+    privateTabGone = false;
+    vi.stubGlobal('browser', {
+      storage: { local: { get: vi.fn(async () => ({})), set } },
+      tabs: {
+        get: vi.fn(async (tabId: number) => {
+          if (tabId === 11 && privateTabGone) throw new Error('tab gone');
+          return {
+            id: tabId,
+            url: tabId === 11 ? 'https://private.example.test/secret' : `https://${tabId}.test/`,
+            title: tabId === 11 ? 'Private secret title' : `Tab ${tabId}`,
+            incognito: tabId === 11,
+          };
+        }),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('never stores a private pin, including after its tab closes', async () => {
+    const store = new PinnedPanelsStore();
+    store.add('ws', 11, {
+      url: 'https://private.example.test/secret',
+      title: 'Private secret title',
+      favIconUrl: 'https://private.example.test/favicon.ico',
+    });
+    store.add('ws', 12, { url: 'https://12.test/' });
+
+    await store.persistCurrentState();
+    privateTabGone = true;
+    await store.persistCurrentState();
+
+    const written = JSON.stringify(set.mock.calls);
+    expect(written).toContain('https://12.test/');
+    expect(written).not.toContain('private');
+    expect(written).not.toContain('Private');
+  });
+});

@@ -108,9 +108,10 @@ Closing a window that is showing a workspace should release that workspace for
 another window without clearing its tabs, panels, or panel layout.
 In a single-window session, relaunch should reopen on the workspace that was
 visible when Bento was quit.
-Panels and tabs from private windows are never written to the saved panel layout
-or to the tabs kept when a window closes. Their URLs, titles, and panel slots do
-not come back after relaunch, matching Firefox private-browsing behavior.
+Panels, pinned panels, and tabs from private windows are never written to the
+saved panel layout, the pinned panel rail, or the tabs kept when a window closes.
+Their URLs, titles, favicons, and panel slots do not come back after relaunch,
+matching Firefox private-browsing behavior.
 
 Workspace export/import and automatic backups should preserve the same browsing
 layout state as restart persistence: tabs, panels, panel order, panel widths,
