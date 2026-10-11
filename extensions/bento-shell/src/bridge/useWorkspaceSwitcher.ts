@@ -12,7 +12,8 @@
 // reacts to.
 
 import { sendChromeTitle } from './chromeTitle';
-import { resendWhenOverlayReady } from './overlayReady';
+import { createShowBus, type OverlayRequest } from './overlayRequest';
+import { readWindowIdFromHash } from './windowId';
 
 export const WORKSPACE_SWITCHER_BUS_NAME = 'bento-workspace-switcher-bus';
 export const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
@@ -34,55 +35,38 @@ export interface WorkspaceSwitcherOpenPayload {
   sidebarScreenY: number;
 }
 
-interface ShowMessage {
-  kind: 'show';
-  payload: WorkspaceSwitcherOpenPayload;
-}
-
 interface ClosedMessage {
   kind: 'closed';
+  windowId: number | null;
 }
 
-type BusMessage = ShowMessage | ClosedMessage;
-
-let channel: BroadcastChannel | null = null;
-function bus(): BroadcastChannel | null {
-  if (channel) return channel;
-  if (typeof BroadcastChannel === 'undefined') return null;
-  channel = new BroadcastChannel(WORKSPACE_SWITCHER_BUS_NAME);
-  return channel;
-}
+const switcherBus = createShowBus<WorkspaceSwitcherOpenPayload>(
+  WORKSPACE_SWITCHER_BUS_NAME,
+  'workspace-switcher',
+);
+// Fixed for the document's life: the hash chrome stamps on the frame URL.
+const windowId = readWindowIdFromHash();
 
 /** Open the workspace-switcher menu overlay anchored to a trigger element.
  * Caller passes the trigger's bounding rect in its own window's coords +
  * the sidebar's screen position so the overlay can position the menu
- * exactly next to the trigger as it appears on screen. The payload is sent
- * again if the overlay's document was not ready yet (overlayReady.ts). */
+ * exactly next to the trigger as it appears on screen. The request is for this
+ * document's window only; it is posted again if the overlay's document was not
+ * ready yet (overlayRequest.ts). */
 export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload): void {
-  const ch = bus();
-  if (!ch) {
+  if (!switcherBus.request(payload)) {
     console.warn('[bento-shell] requestWorkspaceSwitcher: no BroadcastChannel');
     return;
   }
-  const show = { kind: 'show', payload } satisfies ShowMessage;
-  ch.postMessage(show);
-  resendWhenOverlayReady('workspace-switcher', () => ch.postMessage(show));
   sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to workspace-switcher open requests. Called by the overlay's
- * main.tsx; returns an unsubscribe. */
+/** Subscribe to workspace-switcher open requests for this window. Called by the
+ * overlay's main.tsx; returns an unsubscribe. */
 export function subscribeToWorkspaceSwitcherRequests(
-  handler: (payload: WorkspaceSwitcherOpenPayload) => void,
+  handler: (payload: WorkspaceSwitcherOpenPayload, request: OverlayRequest) => void,
 ): () => void {
-  const ch = bus();
-  if (!ch) return () => {};
-  const listener = (e: MessageEvent) => {
-    const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'show') handler(data.payload);
-  };
-  ch.addEventListener('message', listener);
-  return () => ch.removeEventListener('message', listener);
+  return switcherBus.subscribe(handler);
 }
 
 /** Overlay → sidebar: announce that the menu has closed (Esc, click-
@@ -91,18 +75,16 @@ export function subscribeToWorkspaceSwitcherRequests(
  * the overlay too — this bus message is only for the sidebar's UI
  * mirror. */
 export function notifyWorkspaceSwitcherClosed(): void {
-  const ch = bus();
-  if (!ch) return;
-  ch.postMessage({ kind: 'closed' } satisfies ClosedMessage);
+  switcherBus.channel()?.postMessage({ kind: 'closed', windowId } satisfies ClosedMessage);
 }
 
-/** Sidebar subscription for overlay close notifications. */
+/** Sidebar subscription for overlay close notifications of its own window. */
 export function subscribeToWorkspaceSwitcherClose(handler: () => void): () => void {
-  const ch = bus();
+  const ch = switcherBus.channel();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
-    const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'closed') handler();
+    const data = e.data as Partial<ClosedMessage> | undefined;
+    if (data?.kind === 'closed' && data.windowId === windowId) handler();
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

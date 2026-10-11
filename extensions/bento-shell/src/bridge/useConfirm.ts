@@ -15,7 +15,7 @@
 
 import type { Action } from '@shared/protocol';
 import { sendChromeTitle } from './chromeTitle';
-import { resendWhenOverlayReady } from './overlayReady';
+import { createShowBus, type OverlayRequest } from './overlayRequest';
 
 export const CONFIRM_BUS_NAME = 'bento-confirm-bus';
 export const CONFIRM_OPEN_PREFIX = 'BENTO_OPEN_CONFIRM';
@@ -35,46 +35,29 @@ export interface ConfirmPayload {
   action: Action;
 }
 
-interface ShowMessage {
-  kind: 'show';
-  payload: ConfirmPayload;
-}
-
-let channel: BroadcastChannel | null = null;
-function bus(): BroadcastChannel | null {
-  if (channel) return channel;
-  if (typeof BroadcastChannel === 'undefined') return null;
-  channel = new BroadcastChannel(CONFIRM_BUS_NAME);
-  return channel;
-}
+const confirmBus = createShowBus<ConfirmPayload>(CONFIRM_BUS_NAME, 'confirm');
 
 /** Open the chrome confirm overlay with the given payload. Safe to call
  * before the overlay's document exists: chrome creates it on the first open,
- * and the payload is sent again when the document announces it is ready
- * (overlayReady.ts). */
+ * and the request is posted again when the document announces it is ready
+ * (overlayRequest.ts). The request is for this document's window only, and a
+ * newer request for the same window replaces it. */
 export function requestConfirm(payload: ConfirmPayload): void {
-  const ch = bus();
-  if (!ch) {
+  if (!confirmBus.request(payload)) {
     console.warn('[bento-shell] requestConfirm: no BroadcastChannel — cannot open');
     return;
   }
-  const show = { kind: 'show', payload } satisfies ShowMessage;
-  ch.postMessage(show);
-  resendWhenOverlayReady('confirm', () => ch.postMessage(show));
   // Timestamp suffix so successive opens always change the title string
   // (and therefore are picked up by the chrome script's title poll).
   sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to confirm-show payloads. Called by the confirm content's
- * main.tsx; returns an unsubscribe. */
-export function subscribeToConfirmRequests(handler: (payload: ConfirmPayload) => void): () => void {
-  const ch = bus();
-  if (!ch) return () => {};
-  const listener = (e: MessageEvent) => {
-    const data = e.data as ShowMessage | undefined;
-    if (data?.kind === 'show') handler(data.payload);
-  };
-  ch.addEventListener('message', listener);
-  return () => ch.removeEventListener('message', listener);
+/** Subscribe to confirm requests for this window. Called by the confirm
+ * content's main.tsx; returns an unsubscribe. The handler sees each request
+ * once and never an older one, so the payload the dialog shows, and the action
+ * its button dispatches, always belong to the newest request. */
+export function subscribeToConfirmRequests(
+  handler: (payload: ConfirmPayload, request: OverlayRequest) => void,
+): () => void {
+  return confirmBus.subscribe(handler);
 }

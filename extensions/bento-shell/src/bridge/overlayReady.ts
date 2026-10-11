@@ -1,30 +1,28 @@
-// Readiness handshake for lazily created overlay documents.
+// Lifecycle channel between overlay documents, the documents that send them a
+// payload, and chrome.
 //
 // Chrome creates most overlay documents on demand or at idle, not at window
 // startup (docs/core-functionality-technical.md, "Overlay documents"). A message
 // sent to an overlay whose React tree has not subscribed yet is lost:
-// BroadcastChannel and the frame-script relays chrome uses do not queue. Each
-// overlay therefore announces that its subscriptions exist, once, in two ways:
+// BroadcastChannel and the frame-script relays chrome uses do not queue. So:
 //
-// - A BENTO_OVERLAY_READY title. Chrome holds an open (and any payload chrome
-//   itself sends to the overlay) until it arrives.
-// - A message on 'bento-overlay-ready', for the documents that send a payload to
-//   the overlay (sidebar, workspace switcher, workspace palette). They keep the
-//   latest payload and send it again on that message, which covers a payload
-//   posted before the overlay existed.
+// - An overlay announces once that its subscriptions exist (signalOverlayReady).
+//   That is a BENTO_OVERLAY_READY title for chrome, which holds an open and any
+//   payload it sends itself until then, and a 'ready' message here for senders.
+// - A document that sends a payload (overlayRequest.ts) keeps it and posts it
+//   again on 'ready', until the overlay acknowledges it ('ack'), a newer request
+//   replaces it, or chrome cancels the open ('cancel', sent when a hide or Esc
+//   arrives while the open still waits for the document).
 //
-// Both carry the chrome window's id where it matters: one extension origin
-// serves every window, so another window's overlay becoming ready must not
-// release this window's payload.
+// One extension origin serves every window, so each message names the chrome
+// window it belongs to and receivers ignore other windows'.
 
 import { useEffect } from 'react';
 import { sendChromeTitle } from './chromeTitle';
 import { readWindowIdFromHash } from './windowId';
 
 export const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
-export const OVERLAY_READY_BUS_NAME = 'bento-overlay-ready';
-/** A payload older than this is not sent again: its open was long since abandoned. */
-export const OVERLAY_RESEND_WINDOW_MS = 10_000;
+export const OVERLAY_LIFECYCLE_BUS_NAME = 'bento-overlay-lifecycle';
 
 /** Names match the chrome frame ids: `bento-<name>-frame`. */
 export type OverlayName =
@@ -39,29 +37,33 @@ export type OverlayName =
   | 'menu'
   | 'panel-navigator-tooltip';
 
-interface ReadyMessage {
-  kind: 'ready';
-  overlay: OverlayName;
-  windowId: number | null;
+type LifecycleMessage =
+  | { kind: 'ready'; overlay: OverlayName; windowId: number | null }
+  | { kind: 'ack'; overlay: OverlayName; windowId: number | null; requestId: number }
+  | { kind: 'cancel'; overlay: OverlayName; windowId: number | null };
+
+// Fixed for the document's life: the hash chrome stamps on the frame URL.
+const windowId = readWindowIdFromHash();
+
+function isLifecycleMessage(data: unknown): data is LifecycleMessage {
+  if (typeof data !== 'object' || data === null) return false;
+  const message = data as Partial<LifecycleMessage>;
+  if (typeof message.overlay !== 'string') return false;
+  if (message.kind === 'ack')
+    return typeof (message as { requestId?: unknown }).requestId === 'number';
+  return message.kind === 'ready' || message.kind === 'cancel';
 }
 
-function isReadyMessage(data: unknown): data is ReadyMessage {
-  if (typeof data !== 'object' || data === null) return false;
-  const message = data as Partial<ReadyMessage>;
-  return message.kind === 'ready' && typeof message.overlay === 'string';
+function broadcast(message: LifecycleMessage): void {
+  if (typeof BroadcastChannel === 'undefined') return;
+  const channel = new BroadcastChannel(OVERLAY_LIFECYCLE_BUS_NAME);
+  channel.postMessage(message);
+  channel.close();
 }
 
 /** Announces that this overlay document is subscribed and can receive an open. */
 export function signalOverlayReady(overlay: OverlayName): void {
-  if (typeof BroadcastChannel !== 'undefined') {
-    const channel = new BroadcastChannel(OVERLAY_READY_BUS_NAME);
-    channel.postMessage({
-      kind: 'ready',
-      overlay,
-      windowId: readWindowIdFromHash(),
-    } satisfies ReadyMessage);
-    channel.close();
-  }
+  broadcast({ kind: 'ready', overlay, windowId });
   sendChromeTitle(`${OVERLAY_READY_PREFIX}_${Date.now()}`);
 }
 
@@ -72,32 +74,39 @@ export function useOverlayReadySignal(overlay: OverlayName): void {
   }, [overlay]);
 }
 
-interface PendingSend {
-  send: () => void;
-  expiresAt: number;
+/** Receiver side: tells senders that every request up to `requestId` is handled. */
+export function acknowledgeOverlayRequest(overlay: OverlayName, requestId: number): void {
+  broadcast({ kind: 'ack', overlay, windowId, requestId });
 }
 
-const pending = new Map<OverlayName, PendingSend>();
-let readyChannel: BroadcastChannel | null = null;
+export interface OverlayWatcher {
+  /** The overlay in this window announced it can receive. */
+  onReady(): void;
+  /** The overlay in this window handled every request up to `requestId`. */
+  onAck(requestId: number): void;
+  /** Chrome dropped the open of this window's overlay while it was still waiting. */
+  onCancel(): void;
+}
 
-function onReadyMessage(event: MessageEvent): void {
+const watchers = new Map<OverlayName, OverlayWatcher>();
+let lifecycleChannel: BroadcastChannel | null = null;
+
+function onLifecycleMessage(event: MessageEvent): void {
   const data: unknown = event.data;
-  if (!isReadyMessage(data) || data.windowId !== readWindowIdFromHash()) return;
-  const entry = pending.get(data.overlay);
-  if (!entry) return;
-  pending.delete(data.overlay);
-  if (Date.now() <= entry.expiresAt) entry.send();
+  if (!isLifecycleMessage(data) || data.windowId !== windowId) return;
+  const watcher = watchers.get(data.overlay);
+  if (!watcher) return;
+  if (data.kind === 'ready') watcher.onReady();
+  else if (data.kind === 'ack') watcher.onAck(data.requestId);
+  else watcher.onCancel();
 }
 
-/** Sends a payload again when `overlay` in this window announces it is ready.
- * Call right after the first post. Only the latest payload per overlay is kept;
- * an overlay that was already mounted never announces again, so the payload is
- * not sent twice in the normal case. */
-export function resendWhenOverlayReady(overlay: OverlayName, send: () => void): void {
+/** Sender side: one watcher per overlay per document (a later call replaces it). */
+export function watchOverlayLifecycle(overlay: OverlayName, watcher: OverlayWatcher): void {
   if (typeof BroadcastChannel === 'undefined') return;
-  if (!readyChannel) {
-    readyChannel = new BroadcastChannel(OVERLAY_READY_BUS_NAME);
-    readyChannel.addEventListener('message', onReadyMessage);
+  if (!lifecycleChannel) {
+    lifecycleChannel = new BroadcastChannel(OVERLAY_LIFECYCLE_BUS_NAME);
+    lifecycleChannel.addEventListener('message', onLifecycleMessage);
   }
-  pending.set(overlay, { send, expiresAt: Date.now() + OVERLAY_RESEND_WINDOW_MS });
+  watchers.set(overlay, watcher);
 }

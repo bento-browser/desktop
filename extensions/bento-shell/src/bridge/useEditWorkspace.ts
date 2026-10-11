@@ -15,7 +15,7 @@
 // each overlay subscribes only to its own bus.
 
 import { sendChromeTitle } from './chromeTitle';
-import { resendWhenOverlayReady } from './overlayReady';
+import { createShowBus, type OverlayRequest } from './overlayRequest';
 
 export const EDIT_WORKSPACE_BUS_NAME = 'bento-edit-workspace-bus';
 export const EDIT_WORKSPACE_OPEN_PREFIX = 'BENTO_OPEN_EDIT_WORKSPACE';
@@ -34,46 +34,25 @@ export interface EditWorkspacePayload {
   icon?: string;
 }
 
-interface ShowMessage {
-  kind: 'show';
-  payload: EditWorkspacePayload;
-}
-
-let channel: BroadcastChannel | null = null;
-function bus(): BroadcastChannel | null {
-  if (channel) return channel;
-  if (typeof BroadcastChannel === 'undefined') return null;
-  channel = new BroadcastChannel(EDIT_WORKSPACE_BUS_NAME);
-  return channel;
-}
+const editBus = createShowBus<EditWorkspacePayload>(EDIT_WORKSPACE_BUS_NAME, 'edit-workspace');
 
 /** Open the chrome edit-workspace overlay with a snapshot of the workspace
  * being edited. Safe to call before the overlay's document exists: chrome
- * creates it on the first open, and the payload is sent again when the
- * document announces it is ready (overlayReady.ts). */
+ * creates it on the first open, and the request is posted again when the
+ * document announces it is ready (overlayRequest.ts). The request is for this
+ * document's window only, and a newer request for the same window replaces it. */
 export function requestEditWorkspace(payload: EditWorkspacePayload): void {
-  const ch = bus();
-  if (!ch) {
+  if (!editBus.request(payload)) {
     console.warn('[bento-shell] requestEditWorkspace: no BroadcastChannel — cannot open');
     return;
   }
-  const show = { kind: 'show', payload } satisfies ShowMessage;
-  ch.postMessage(show);
-  resendWhenOverlayReady('edit-workspace', () => ch.postMessage(show));
   sendChromeTitle(`${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to edit-workspace requests. Called by the overlay content's
- * main.tsx; returns an unsubscribe. */
+/** Subscribe to edit-workspace requests for this window. Called by the overlay
+ * content's main.tsx; returns an unsubscribe. */
 export function subscribeToEditWorkspaceRequests(
-  handler: (payload: EditWorkspacePayload) => void,
+  handler: (payload: EditWorkspacePayload, request: OverlayRequest) => void,
 ): () => void {
-  const ch = bus();
-  if (!ch) return () => {};
-  const listener = (e: MessageEvent) => {
-    const data = e.data as ShowMessage | undefined;
-    if (data?.kind === 'show') handler(data.payload);
-  };
-  ch.addEventListener('message', listener);
-  return () => ch.removeEventListener('message', listener);
+  return editBus.subscribe(handler);
 }

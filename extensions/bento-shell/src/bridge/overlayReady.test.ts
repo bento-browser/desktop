@@ -1,156 +1,93 @@
-// The overlay readiness handshake: a payload posted before an overlay document
-// exists reaches it once it announces itself, and only in the window it belongs to.
+// The overlay side of the lifecycle channel: the ready announcement and the
+// acknowledgement, scoped to one chrome window.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installFakeChromeTitle } from './fakeChromeTitle';
+import { FakeBroadcastChannel, installFakeNetwork } from './overlayTestKit';
 
-/** In-memory BroadcastChannel: delivers to every other instance of the same name. */
-class FakeBroadcastChannel {
-  static instances: FakeBroadcastChannel[] = [];
-  readonly #listeners = new Set<(event: MessageEvent) => void>();
-  closed = false;
+const LIFECYCLE = 'bento-overlay-lifecycle';
 
-  constructor(readonly name: string) {
-    FakeBroadcastChannel.instances.push(this);
-  }
+let chrome: ReturnType<typeof installFakeChromeTitle>;
 
-  addEventListener(_type: 'message', listener: (event: MessageEvent) => void): void {
-    this.#listeners.add(listener);
-  }
+beforeEach(() => {
+  chrome = installFakeChromeTitle();
+  installFakeNetwork();
+});
 
-  postMessage(data: unknown): void {
-    for (const other of FakeBroadcastChannel.instances) {
-      if (other === this || other.closed || other.name !== this.name) continue;
-      for (const listener of other.#listeners) listener({ data } as MessageEvent);
-    }
-  }
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
-  close(): void {
-    this.closed = true;
-  }
+/** Loads the module as a document that sits in `windowId`. */
+async function loadAs(windowId: number | null) {
+  vi.stubGlobal('location', { hash: windowId === null ? '' : `#bentoWindowId=${windowId}` });
+  vi.resetModules();
+  return import('./overlayReady');
 }
 
-describe('overlay readiness handshake', () => {
-  let chrome: ReturnType<typeof installFakeChromeTitle>;
+function listen(): unknown[] {
+  const seen: unknown[] = [];
+  new FakeBroadcastChannel(LIFECYCLE).addEventListener('message', (event) => seen.push(event.data));
+  return seen;
+}
 
-  beforeEach(() => {
-    FakeBroadcastChannel.instances = [];
-    chrome = installFakeChromeTitle();
-    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
-    vi.stubGlobal('location', { hash: '#bentoWindowId=1' });
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
-
-  /** Loads the module as a document that sits in `windowId`. */
-  async function loadAs(windowId: number | null) {
-    vi.stubGlobal('location', { hash: windowId === null ? '' : `#bentoWindowId=${windowId}` });
-    vi.resetModules();
-    return import('./overlayReady');
-  }
-
-  it('tells chrome with a title and tells senders on the bus', async () => {
-    const listener = vi.fn();
-    const watcher = new FakeBroadcastChannel('bento-overlay-ready');
-    watcher.addEventListener('message', (event) => listener(event.data));
-
+describe('overlay lifecycle channel', () => {
+  it('announces readiness to chrome with a title and to senders on the bus', async () => {
+    const seen = listen();
     const { signalOverlayReady, OVERLAY_READY_PREFIX } = await loadAs(1);
+
     signalOverlayReady('confirm');
     chrome.settle();
 
-    expect(listener).toHaveBeenCalledWith({ kind: 'ready', overlay: 'confirm', windowId: 1 });
+    expect(seen).toEqual([{ kind: 'ready', overlay: 'confirm', windowId: 1 }]);
     expect(chrome.observed).toHaveLength(1);
     expect(chrome.observed[0]).toMatch(new RegExp(`^${OVERLAY_READY_PREFIX}_\\d+$`));
   });
 
-  it('sends the payload again when the overlay in this window becomes ready', async () => {
-    const sender = await loadAs(1);
-    const send = vi.fn();
-    sender.resendWhenOverlayReady('confirm', send);
-    expect(send).not.toHaveBeenCalled();
+  it('acknowledges a request for this window', async () => {
+    const seen = listen();
+    const { acknowledgeOverlayRequest } = await loadAs(2);
 
-    const overlay = new FakeBroadcastChannel('bento-overlay-ready');
-    overlay.postMessage({ kind: 'ready', overlay: 'confirm', windowId: 1 });
-    expect(send).toHaveBeenCalledTimes(1);
+    acknowledgeOverlayRequest('edit-workspace', 42);
 
-    // The overlay announces once; a second announcement finds nothing pending.
-    overlay.postMessage({ kind: 'ready', overlay: 'confirm', windowId: 1 });
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([{ kind: 'ack', overlay: 'edit-workspace', windowId: 2, requestId: 42 }]);
   });
 
-  it('ignores an overlay of another window or another name', async () => {
+  it('tells a watcher only about its own overlay in its own window', async () => {
     const sender = await loadAs(1);
-    const send = vi.fn();
-    sender.resendWhenOverlayReady('confirm', send);
+    const watcher = { onReady: vi.fn(), onAck: vi.fn(), onCancel: vi.fn() };
+    sender.watchOverlayLifecycle('confirm', watcher);
+    const overlay = new FakeBroadcastChannel(LIFECYCLE);
 
-    const overlay = new FakeBroadcastChannel('bento-overlay-ready');
     overlay.postMessage({ kind: 'ready', overlay: 'confirm', windowId: 2 });
     overlay.postMessage({ kind: 'ready', overlay: 'edit-workspace', windowId: 1 });
     overlay.postMessage({ kind: 'ready', overlay: 'confirm', windowId: null });
-    expect(send).not.toHaveBeenCalled();
+    overlay.postMessage({ kind: 'cancel', overlay: 'confirm', windowId: 2 });
+    expect(watcher.onReady).not.toHaveBeenCalled();
+    expect(watcher.onCancel).not.toHaveBeenCalled();
 
-    // The payload is still waiting for its own window's overlay.
     overlay.postMessage({ kind: 'ready', overlay: 'confirm', windowId: 1 });
-    expect(send).toHaveBeenCalledTimes(1);
+    overlay.postMessage({ kind: 'ack', overlay: 'confirm', windowId: 1, requestId: 7 });
+    overlay.postMessage({ kind: 'cancel', overlay: 'confirm', windowId: 1 });
+    expect(watcher.onReady).toHaveBeenCalledTimes(1);
+    expect(watcher.onAck).toHaveBeenCalledWith(7);
+    expect(watcher.onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it('matches documents that have no window id with each other', async () => {
-    const sender = await loadAs(null);
-    const send = vi.fn();
-    sender.resendWhenOverlayReady('menu', send);
-
-    new FakeBroadcastChannel('bento-overlay-ready').postMessage({
-      kind: 'ready',
-      overlay: 'menu',
-      windowId: null,
-    });
-    expect(send).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps only the latest payload per overlay', async () => {
+  it('ignores malformed messages', async () => {
     const sender = await loadAs(1);
-    const first = vi.fn();
-    const second = vi.fn();
-    sender.resendWhenOverlayReady('edit-workspace', first);
-    sender.resendWhenOverlayReady('edit-workspace', second);
+    const watcher = { onReady: vi.fn(), onAck: vi.fn(), onCancel: vi.fn() };
+    sender.watchOverlayLifecycle('confirm', watcher);
+    const overlay = new FakeBroadcastChannel(LIFECYCLE);
 
-    new FakeBroadcastChannel('bento-overlay-ready').postMessage({
-      kind: 'ready',
-      overlay: 'edit-workspace',
-      windowId: 1,
-    });
-    expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledTimes(1);
-  });
+    overlay.postMessage(null);
+    overlay.postMessage({ kind: 'ready' });
+    overlay.postMessage({ kind: 'ack', overlay: 'confirm', windowId: 1 });
+    overlay.postMessage({ kind: 'other', overlay: 'confirm', windowId: 1 });
 
-  it('drops a payload whose open was abandoned long ago', async () => {
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
-    const sender = await loadAs(1);
-    const send = vi.fn();
-    sender.resendWhenOverlayReady('confirm', send);
-
-    clock.mockReturnValue(1_000_000 + sender.OVERLAY_RESEND_WINDOW_MS + 1);
-    new FakeBroadcastChannel('bento-overlay-ready').postMessage({
-      kind: 'ready',
-      overlay: 'confirm',
-      windowId: 1,
-    });
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('ignores messages that are not ready announcements', async () => {
-    const sender = await loadAs(1);
-    const send = vi.fn();
-    sender.resendWhenOverlayReady('confirm', send);
-
-    const bus = new FakeBroadcastChannel('bento-overlay-ready');
-    bus.postMessage(null);
-    bus.postMessage('ready');
-    bus.postMessage({ kind: 'closed', overlay: 'confirm', windowId: 1 });
-    expect(send).not.toHaveBeenCalled();
+    expect(watcher.onReady).not.toHaveBeenCalled();
+    expect(watcher.onAck).not.toHaveBeenCalled();
+    expect(watcher.onCancel).not.toHaveBeenCalled();
   });
 });
