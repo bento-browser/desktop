@@ -89,6 +89,28 @@ jobs:
         # errors before they become runtime failures inside the browser.
         run: node --check prefs/bento.js
 
+      - name: Verify Firefox-side JavaScript parses
+        # The chrome mount script, migration host, and JSWindowActors load
+        # inside Firefox, where a syntax error disables the whole shell. The
+        # find guard fails the step if the directory ever moves.
+        run: |
+          set -e
+          files=$(find src/browser \( -name '*.js' -o -name '*.mjs' \) | sort)
+          test -n "$files"
+          for f in $files; do
+            echo "node --check $f"
+            node --check "$f"
+          done
+
+      - name: Lint scripts, Firefox-side sources, and agent skills
+        # The extension packages lint themselves in the extensions job; this
+        # covers the code outside them with the root ESLint config.
+        run: pnpm run lint:repo
+
+      - name: Native preferences protocol drift
+        # Fails when the generated protocol copies no longer match their source.
+        run: pnpm run native-protocol:check
+
       - name: Firefox patch stack tests
         run: pnpm run firefox:patches:test
 
@@ -145,6 +167,12 @@ jobs:
       - name: Lint (tools)
         run: pnpm --filter @bento/tools lint
 
+      - name: Test (shell)
+        run: pnpm --filter @bento/shell test
+
+      - name: Test (tools)
+        run: pnpm --filter @bento/tools test
+
       - name: Build extensions
         env:
           BENTO_RELEASE: '1'
@@ -177,7 +205,21 @@ jobs:
         # See `extensions` job above for the separate frozen release lock.
         run: bash scripts/install-release-deps.sh
       - name: Bento build driver reads our config
-        run: node -e "import('./scripts/bento-build.mjs').then(({loadConfig}) => { const c = loadConfig(); if (c.firefox.version !== '154.0') throw new Error('unexpected Firefox version'); console.log('bento.json loaded for Firefox ' + c.firefox.version); })"
+        # Proves bento.json loads, the Firefox version is well formed, and the
+        # release channel in config/firefox-versions.json agrees with it. No
+        # version literal, so Firefox upgrades do not need to edit this step.
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { loadConfig } from './scripts/bento-build.mjs';
+            const c = loadConfig();
+            const version = c.firefox.version;
+            if (!/^[0-9]+(\.[0-9]+)+([A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?\$/.test(version)) throw new Error('malformed Firefox version: ' + version);
+            const versions = JSON.parse(fs.readFileSync('config/firefox-versions.json', 'utf8'));
+            const release = versions.channels?.find((entry) => entry.channel === 'release');
+            if (release?.version !== version) throw new Error('config/firefox-versions.json release version ' + release?.version + ' does not match bento.json ' + version);
+            console.log('bento.json loaded for Firefox ' + version);
+          "
       - name: Bento source license check
         run: pnpm run lc
 
