@@ -1,4 +1,4 @@
-// Top-level App stories. Beyond proving Tale UI renders inside Ladle, the
+// Top-level App stories. Beyond proving Mux UI renders inside Ladle, the
 // Collapsed and CollapseToggle stories are how we iterate on the narrow-rail
 // behaviour without rebuilding the whole browser. CollapseToggle is the
 // interactive demo: clicking the collapse/expand IconButton in the footer

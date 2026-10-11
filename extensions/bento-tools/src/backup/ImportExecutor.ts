@@ -260,7 +260,13 @@ export async function executeImport(
     while (importedWorkspaceIds.length < regularWindows.length) {
       const ordinal = importedWorkspaceIds.length;
       const fallback = ctx.workspaces.create(
-        { name: `${ctx.settings.snapshot().defaultWorkspaceName} (${ordinal + 1})` },
+        {
+          name: `${ctx.settings.snapshot().defaultWorkspaceName} (${ordinal + 1})`,
+          // Replacement imports may need one workspace per regular window.
+          // Carry the source presentation id onto those synthetic workspaces
+          // so the import cannot silently erase the selected palette.
+          themeId: data.workspaces[0]?.themeId,
+        },
         null,
         { activate: false, id: ctx.operation?.plannedWorkspaceIds[ordinal] },
       );

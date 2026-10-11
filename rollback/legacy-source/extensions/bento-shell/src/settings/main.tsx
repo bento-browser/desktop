@@ -1,5 +1,5 @@
 // Settings page entry. Separate Vite entry from the main shell + privacy
-// page. Imports only the Tale UI components Settings actually uses.
+// page. Imports the shared Mux theme boundary once for this document.
 //
 // Connects to bento-tools via initToolsPort() so the SettingsStore mirror
 // hydrates from the live tools-side store and write-backs work.
@@ -7,24 +7,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/column';
-import '@tale-ui/react-styles/row';
-import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/icon-button';
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/card';
-import '@tale-ui/react-styles/switch';
-import '@tale-ui/react-styles/select';
-import '@tale-ui/react-styles/slider';
-import '@tale-ui/react-styles/disclosure';
-import '@tale-ui/react-styles/toggle-button';
-import '@tale-ui/react-styles/number-field';
-import '@tale-ui/react-styles/text-field';
-import '@tale-ui/react-styles/command-palette';
-
+import '../theme/muxui.css';
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';

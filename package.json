@@ -5,7 +5,7 @@
   "description": "Bento Browser — an independent browser derived from Mozilla Firefox.",
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.19.0 <25"
   },
   "scripts": {
     "native-protocol:generate": "node scripts/generate-native-preferences-protocol.mjs --write --targets=tools,experiment",
@@ -56,6 +56,9 @@
     "shell:build": "pnpm --filter @bento/shell build",
     "shell:sync": "pnpm run shell:build && bash scripts/sync-shell.sh",
     "shell:ladle": "pnpm --filter @bento/shell ladle:serve",
+    "shell:ladle:mux": "node scripts/muxui-dev.mjs ladle",
+    "shell:dev:mux": "node scripts/muxui-dev.mjs dev",
+    "shell:import:mux": "node scripts/muxui-dev.mjs import",
     "tools:build": "pnpm --filter @bento/tools build",
     "ext:build": "pnpm run theme:sync && pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
     "size": "pnpm run ext:build && pnpm run size:check",
@@ -93,7 +96,20 @@
       "proxy-addr": "2.0.8",
       "sharp": "0.35.4",
       "source-map-js": "1.2.2",
-      "vite": "6.4.3"
+      "vite": "6.4.3",
+      "@react-types/shared": "3.36.1",
+      "react-aria": "3.51.0",
+      "react-aria-components": "1.20.0",
+      "react-stately": "3.49.0",
+      "@tiptap/core": "3.31.4",
+      "@tiptap/extension-image": "3.31.4",
+      "@tiptap/extension-placeholder": "3.31.4",
+      "@tiptap/extension-text-align": "3.31.4",
+      "@tiptap/extension-text-style": "3.31.4",
+      "@tiptap/extensions": "3.31.4",
+      "@tiptap/pm": "3.31.4",
+      "@tiptap/react": "3.31.4",
+      "@tiptap/starter-kit": "3.31.4"
     },
     "auditConfig": {
       "ignoreGhsas": [

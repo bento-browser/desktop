@@ -83,7 +83,7 @@
     color: var(--color-60);
   }
 
-  .bento-folder-row__icon .tale-icon {
+  .bento-folder-row__icon .bento-icon {
     width: var(--bento-favicon-size);
     height: var(--bento-favicon-size);
   }
@@ -138,13 +138,13 @@
     padding-inline: 0;
   }
 
-  :root[data-bento-collapsed='true'] .bento-folder-row > .tale-text,
+  :root[data-bento-collapsed='true'] .bento-folder-row > .muxui-text,
   :root[data-bento-collapsed='true'] .bento-folder-row__rename-input {
     display: none;
   }
 }
 
-/* Unlayered by design: raw form controls and Tale UI utilities are
+/* Unlayered by design: raw form controls and Mux UI utilities are
  * unlayered, so this must be unlayered too or the rename input can keep
  * browser/input typography instead of matching the sidebar row label. */
 .bento-folder-row__rename-input {

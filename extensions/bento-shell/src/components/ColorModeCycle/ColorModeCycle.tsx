@@ -4,8 +4,8 @@
 //
 // Component name is kept as ColorModeCycle (not ColorModeToggle) to
 // avoid touching every consumer; the file lives under the same path.
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Icon } from '@tale-ui/react/icon';
+import { IconButton } from '@muxui/react';
+import { BentoIcon } from '../primitives/BentoIcon';
 import Monitor from 'lucide-react/dist/esm/icons/monitor';
 import Moon from 'lucide-react/dist/esm/icons/moon';
 import Sun from 'lucide-react/dist/esm/icons/sun';
@@ -50,8 +50,8 @@ export function ColorModeCycle<TMode extends UiColorModePref = ColorModePref>({
   const IconComponent = ICON_BY_MODE[current];
   const ariaLabel = `${surfaceLabel} color mode: ${ARIA_LABEL_BY_MODE[current]} (click to toggle)`;
   return (
-    <IconButton variant="ghost" size="sm" aria-label={ariaLabel} onPress={() => onChange(next)}>
-      <Icon icon={IconComponent} />
+    <IconButton variant="ghost" size="sm" aria-label={ariaLabel} onActivate={() => onChange(next)}>
+      <BentoIcon icon={IconComponent} />
     </IconButton>
   );
 }

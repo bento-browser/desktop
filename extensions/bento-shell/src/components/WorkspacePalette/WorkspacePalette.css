@@ -1,7 +1,7 @@
-/* Layer-2 component: WorkspacePalette. Uses Tale UI Dialog visuals with inline
+/* Layer-2 component: WorkspacePalette. Uses Mux UI Dialog visuals with inline
  * workspace editing controls. */
 
-.tale-dialog__popup.bento-workspace-palette__dialog {
+.muxui-dialog.bento-workspace-palette__dialog {
   width: min(var(--bento-workspace-palette-width), var(--bento-workspace-palette-max-inline));
   height: min(var(--bento-workspace-palette-height), var(--bento-workspace-palette-max-block));
   max-height: min(var(--bento-workspace-palette-height), var(--bento-workspace-palette-max-block));
@@ -9,24 +9,32 @@
   padding: var(--space-s);
 }
 
-.tale-column.bento-workspace-palette__content {
+.muxui-dialog-content.bento-workspace-palette__dialog-content {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bento-column.bento-workspace-palette__content {
   min-height: 0;
   flex: 1 1 auto;
 }
 
-.tale-dialog__title.bento-workspace-palette__title {
+.muxui-dialog-title.bento-workspace-palette__title {
   margin: 0;
 }
 
-.tale-column.bento-workspace-palette__list {
+.bento-column.bento-workspace-palette__list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: var(--space-xs);
 }
 
-.tale-row.bento-workspace-palette__row,
-.tale-row.bento-workspace-palette__heading-row {
+.bento-row.bento-workspace-palette__row,
+.bento-row.bento-workspace-palette__heading-row {
   display: grid;
   grid-template-columns:
     var(--bento-workspace-palette-icon-field-width)
@@ -38,7 +46,7 @@
   align-items: center;
 }
 
-.tale-row.bento-workspace-palette__row {
+.bento-row.bento-workspace-palette__row {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -47,13 +55,13 @@
   box-shadow: none;
 }
 
-.tale-row.bento-workspace-palette__list-actions {
+.bento-row.bento-workspace-palette__list-actions {
   justify-content: flex-start;
   min-width: var(--bento-workspace-palette-row-min-width);
   margin-top: auto;
 }
 
-.tale-row.bento-workspace-palette__name-cell {
+.bento-row.bento-workspace-palette__name-cell {
   min-width: 0;
   min-height: var(--bento-workspace-palette-icon-field-width);
 }
@@ -71,25 +79,25 @@
   min-height: var(--bento-workspace-palette-icon-field-width);
 }
 
-.tale-icon-button.bento-workspace-palette__delete-button {
+.muxui-icon-button.bento-workspace-palette__delete-button {
   width: var(--bento-workspace-palette-icon-field-width);
   height: var(--bento-workspace-palette-icon-field-width);
   min-height: var(--bento-workspace-palette-icon-field-width);
 }
 
-.tale-button.bento-workspace-palette__status-button {
+.muxui-button.bento-workspace-palette__status-button {
   width: 100%;
   height: var(--bento-workspace-palette-icon-field-width);
   justify-content: center;
   min-height: var(--bento-workspace-palette-icon-field-width);
 }
 
-.tale-button.bento-workspace-theme-picker__trigger {
+.muxui-button.bento-workspace-theme-picker__trigger {
   height: var(--bento-workspace-palette-icon-field-width);
   min-height: var(--bento-workspace-palette-icon-field-width);
 }
 
-.tale-dialog__actions.bento-workspace-palette__footer {
+.muxui-dialog-actions.bento-workspace-palette__footer {
   display: flex;
   align-items: center;
   gap: var(--space-xs);

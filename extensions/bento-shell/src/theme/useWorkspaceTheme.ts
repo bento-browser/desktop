@@ -1,8 +1,8 @@
-// Drives `data-bento-theme` on the shell document's `<html>` from the
-// active workspace's `themeId`. The theme presets at
-// theme/presets/<id>.css are scoped by `[data-bento-theme="<id>"]`, so
-// flipping the attribute swaps the entire palette atomically — no
-// runtime CSS construction, no `<style>` element churn.
+// Drives the resolved presentation scope on the shell document's `<html>`
+// from the active workspace's raw `themeId`. The persisted id remains
+// untouched while undefined, aliases, unknown, and deleted ids resolve to an
+// explicit Default presentation. Mode mutations update the scope closure
+// atomically.
 //
 // Chrome receives the active workspace theme through the BENTO_PANELS
 // payload. Do not write a separate BENTO_THEME title sentinel here: title
@@ -13,7 +13,7 @@
 import { useEffect } from 'react';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import { useCurrentWindowId } from '../bridge/useToolsPort';
-import { DEFAULT_THEME_ID } from './presets';
+import { getThemeScopeAttributes, useResolvedColorScheme } from './themeScope';
 
 export function useWorkspaceTheme(): void {
   const windowId = useCurrentWindowId();
@@ -21,9 +21,13 @@ export function useWorkspaceTheme(): void {
   const themeId = useWorkspacesStore((s) =>
     activeWorkspaceId ? s.byId[activeWorkspaceId]?.themeId : undefined,
   );
+  const colorScheme = useResolvedColorScheme();
 
   useEffect(() => {
-    const resolved = themeId ?? DEFAULT_THEME_ID;
-    document.documentElement.setAttribute('data-bento-theme', resolved);
-  }, [themeId]);
+    const html = document.documentElement;
+    const attributes = getThemeScopeAttributes(themeId, colorScheme);
+    for (const [name, value] of Object.entries(attributes)) {
+      html.setAttribute(name, value);
+    }
+  }, [colorScheme, themeId]);
 }

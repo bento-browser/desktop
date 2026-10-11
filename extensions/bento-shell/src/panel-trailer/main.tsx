@@ -1,5 +1,5 @@
 // Panel-trailer chrome-overlay entry. Lives in its OWN Vite chunk + chrome
-// <browser> frame so the "+ saved-panel-favicons" row can use Tale UI
+// <browser> frame so the "+ saved-panel-favicons" row can use Mux UI
 // tooltips without being clipped to the sidebar iframe.
 //
 // Unlike the other overlays (welcome / confirm / palette / etc.) this one
@@ -21,14 +21,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/icon-button';
-import '@tale-ui/react-styles/icon';
-import '@tale-ui/react-styles/tooltip';
-import '@tale-ui/react-styles/select-native';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';

@@ -130,8 +130,8 @@ export const Merging = () => {
         { kind: 'workspace', name: 'Chrome: Research', status: 'started' },
         {
           kind: 'site',
-          title: 'Tale UI component documentation',
-          url: 'https://tale-ui.dev/components/progress-bar',
+          title: 'Bento UI component documentation',
+          url: 'https://example.com/bento-ui/components/progress-bar',
           status: 'opened',
         },
         {

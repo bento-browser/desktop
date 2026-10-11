@@ -27,7 +27,7 @@
     border-top-right-radius: var(--bento-sidebar-corner-radius, var(--radius-l));
   }
 
-  .bento-pinned-panels__button.tale-icon-button {
+  .bento-pinned-panels__button.muxui-icon-button {
     width: var(--bento-pinned-panels-button-size);
     height: var(--bento-pinned-panels-button-size);
     min-width: var(--bento-pinned-panels-button-size);
@@ -58,7 +58,7 @@
     cursor: grabbing;
   }
 
-  .bento-pinned-panels__button--dragging.tale-icon-button {
+  .bento-pinned-panels__button--dragging.muxui-icon-button {
     opacity: 0.45;
     transform: scale(0.92);
   }
@@ -89,19 +89,19 @@
   }
 }
 
-/* Unlayered so these state overrides beat Tale UI's unlayered IconButton
+/* Unlayered so these state overrides beat Mux UI's unlayered IconButton
    variant rules while staying scoped to the pinned-panel rail. */
-.bento-pinned-panels__button.tale-icon-button,
-.bento-pinned-panels__button.tale-icon-button:hover,
-.bento-pinned-panels__button.tale-icon-button:active,
-.bento-pinned-panels__button.tale-icon-button[data-hovered],
-.bento-pinned-panels__button.tale-icon-button[data-pressed],
-.bento-pinned-panels__button.tale-icon-button[data-focus-visible],
-.bento-pinned-panels__button.tale-icon-button[data-bento-focused='true'] {
+.bento-pinned-panels__button.muxui-icon-button,
+.bento-pinned-panels__button.muxui-icon-button:hover,
+.bento-pinned-panels__button.muxui-icon-button:active,
+.bento-pinned-panels__button.muxui-icon-button[data-hovered],
+.bento-pinned-panels__button.muxui-icon-button[data-pressed],
+.bento-pinned-panels__button.muxui-icon-button[data-focus-visible],
+.bento-pinned-panels__button.muxui-icon-button[data-bento-focused='true'] {
   border-radius: 0 !important;
 }
 
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral {
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'] {
   background-color: var(--color-20);
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   cursor: grab;
@@ -109,11 +109,11 @@
   transition: all var(--bento-pinned-panels-state-transition-duration) var(--bento-easing-standard);
 }
 
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral:hover:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral']:hover:not(
     [data-disabled],
     [data-pending]
   ),
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-hovered]:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-hovered]:not(
     [data-disabled],
     [data-pending]
   ) {
@@ -121,11 +121,11 @@
   border-color: color-mix(in srgb, var(--color-60) 22%, transparent);
 }
 
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral:active:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral']:active:not(
     [data-disabled],
     [data-pending]
   ),
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-pressed]:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-pressed]:not(
     [data-disabled],
     [data-pending]
   ) {
@@ -133,23 +133,23 @@
   border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
 }
 
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-bento-focused='true']:not(
     [data-disabled],
     [data-pending]
   ),
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:hover:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-bento-focused='true']:hover:not(
     [data-disabled],
     [data-pending]
   ),
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true']:active:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-bento-focused='true']:active:not(
     [data-disabled],
     [data-pending]
   ),
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true'][data-hovered]:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-bento-focused='true'][data-hovered]:not(
     [data-disabled],
     [data-pending]
   ),
-.bento-pinned-panels__button.tale-icon-button.tale-button--neutral[data-bento-focused='true'][data-pressed]:not(
+.bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'][data-bento-focused='true'][data-pressed]:not(
     [data-disabled],
     [data-pending]
   ) {
@@ -158,8 +158,8 @@
   color: var(--color-60-fg);
 }
 
-.bento-pinned-panels__button--dragging.tale-icon-button,
-.bento-pinned-panels__button--dragging.tale-icon-button:hover {
+.bento-pinned-panels__button--dragging.muxui-icon-button,
+.bento-pinned-panels__button--dragging.muxui-icon-button:hover {
   background-color: var(--color-20);
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   transform: scale(0.92);

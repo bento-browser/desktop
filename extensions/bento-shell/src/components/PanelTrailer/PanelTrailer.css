@@ -5,11 +5,11 @@
  * sizes itself via the savedPanelCount-derived flexBasis; this CSS only
  * lays out the buttons inside the iframe.
  */
-/* Tale UI component styles are unlayered, so these button overrides stay
+/* Mux UI component styles are unlayered, so these button overrides stay
  * unlayered too. They keep the actual IconButton boxes matched to the grid
  * tracks that the chrome host reserves. */
-.tale-icon-button.bento-panel-trailer__btn {
-  --tale-button-padding-inline: var(--space-2xs);
+.muxui-icon-button.bento-panel-trailer__btn {
+  --muxui-component-button-padding-inline: var(--space-2xs);
   box-sizing: border-box;
   flex: 0 0 auto;
   width: var(--bento-panel-trailer-button-size, var(--space-l));
@@ -18,8 +18,8 @@
   border-radius: var(--radius-s);
 }
 
-.tale-icon-button.bento-panel-trailer__btn .tale-icon,
-.tale-icon-button.bento-panel-trailer__btn svg {
+.muxui-icon-button.bento-panel-trailer__btn .bento-icon,
+.muxui-icon-button.bento-panel-trailer__btn svg {
   width: 0.625rem;
   height: 0.625rem;
 }
@@ -31,6 +31,9 @@
       calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
     );
     --bento-panel-trailer-wide-width: 16rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     /* Fill the iframe — chrome controls the outer vbox width. */
     display: flex;
     flex-direction: column;
@@ -53,7 +56,7 @@
     flex: 0 0 auto;
   }
 
-  /* Common button shape for "+" and favicon buttons. tale-button base
+  /* Common button shape for "+" and favicon buttons. muxui-button base
    * classes (applied alongside) handle hover/active/focus rings. The
    * BEM modifiers force a square aspect for icon-only triggers. */
   .bento-panel-trailer__btn {

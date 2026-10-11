@@ -23,7 +23,7 @@ export const MANY_SAVED_PANELS: SavedPanelEntry[] = [
   {
     id: 'fixture-11',
     title:
-      'A very long bookmark title that should still render readably inside the Tale UI tooltip popup',
+      'A very long bookmark title that should still render readably inside the Bento tooltip popup',
     url: 'https://example.com/long-title',
   },
   { id: 'fixture-12', title: 'Bento Settings', url: 'https://bento-browser.com/settings' },

@@ -1,0 +1,28 @@
+/* Compact chrome menus retain the old menu density through Mux item tokens. */
+.bento-chrome-menu--sm {
+  --muxui-item-padding-block: var(--space-4xs);
+  --muxui-item-padding-inline: var(--space-2xs);
+  --muxui-item-gap: var(--space-4xs);
+  --muxui-item-font-size: var(--muxui-semantic-typography-text-s-font-size);
+  --muxui-group-label-font-size: var(--muxui-semantic-typography-label-xs-font-size);
+  padding: 0.125rem;
+  min-width: 8.75rem;
+}
+
+.bento-chrome-menu--sm .muxui-menu-section-header {
+  padding: var(--space-4xs) var(--space-2xs);
+}
+
+.bento-chrome-menu--sm .muxui-menu-separator {
+  margin-block: 2px;
+}
+
+.bento-chrome-menu__submenu-item::after {
+  content: '›';
+  margin-inline-start: auto;
+  color: var(--muxui-semantic-content-muted);
+}
+
+.bento-chrome-menu__submenu-item[data-focused]::after {
+  color: var(--muxui-semantic-action-foreground);
+}

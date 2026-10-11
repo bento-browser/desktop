@@ -307,7 +307,7 @@
   }
 }
 
-/* Unlayered to override Tale UI's unlayered .tale-button alignment. */
+/* Unlayered to override Mux UI's unlayered button alignment. */
 .bento-tab-list__new-actions {
   position: relative;
   display: flex;
@@ -393,7 +393,7 @@
   height: 100%;
 }
 
-.tale-icon-button.bento-tab-list__search-button {
+.muxui-icon-button.bento-tab-list__search-button {
   width: var(--bento-tab-row-height);
   min-width: var(--bento-tab-row-height);
   height: 100%;
@@ -446,7 +446,7 @@
   color: var(--neutral-60);
 }
 
-.tale-icon-button.bento-tab-list-search__clear-button {
+.muxui-icon-button.bento-tab-list-search__clear-button {
   justify-self: center;
   width: var(--bento-tab-row-height);
   min-width: var(--bento-tab-row-height);
@@ -492,7 +492,7 @@
   background-color: var(--bento-search-result-hover-bg);
 }
 
-.tale-button.bento-tab-list-search__result-main {
+.muxui-button.bento-tab-list-search__result-main {
   display: grid;
   grid-template-columns: var(--bento-favicon-size) var(--bento-favicon-size) minmax(0, 1fr) auto;
   align-items: center;
@@ -508,10 +508,13 @@
   color: var(--neutral-90);
 }
 
-.tale-button.bento-tab-list-search__result-main:hover:not([data-disabled], [data-pending]),
-.tale-button.bento-tab-list-search__result-main:active:not([data-disabled], [data-pending]),
-.tale-button.bento-tab-list-search__result-main[data-hovered]:not([data-disabled], [data-pending]),
-.tale-button.bento-tab-list-search__result-main[data-pressed]:not([data-disabled], [data-pending]) {
+.muxui-button.bento-tab-list-search__result-main:hover:not([data-disabled], [data-pending]),
+.muxui-button.bento-tab-list-search__result-main:active:not([data-disabled], [data-pending]),
+.muxui-button.bento-tab-list-search__result-main[data-hovered]:not([data-disabled], [data-pending]),
+.muxui-button.bento-tab-list-search__result-main[data-pressed]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
   background-color: transparent;
   color: var(--neutral-90);
 }
@@ -539,7 +542,7 @@
   pointer-events: auto;
 }
 
-.tale-icon-button.bento-tab-list-search__result-close {
+.muxui-icon-button.bento-tab-list-search__result-close {
   width: var(--bento-tab-row-height);
   min-width: var(--bento-tab-row-height);
   height: var(--bento-tab-row-height);
@@ -547,13 +550,13 @@
   color: var(--neutral-70);
 }
 
-.tale-icon-button.bento-tab-list-search__result-close:hover:not([data-disabled], [data-pending]),
-.tale-icon-button.bento-tab-list-search__result-close:active:not([data-disabled], [data-pending]),
-.tale-icon-button.bento-tab-list-search__result-close[data-hovered]:not(
+.muxui-icon-button.bento-tab-list-search__result-close:hover:not([data-disabled], [data-pending]),
+.muxui-icon-button.bento-tab-list-search__result-close:active:not([data-disabled], [data-pending]),
+.muxui-icon-button.bento-tab-list-search__result-close[data-hovered]:not(
     [data-disabled],
     [data-pending]
   ),
-.tale-icon-button.bento-tab-list-search__result-close[data-pressed]:not(
+.muxui-icon-button.bento-tab-list-search__result-close[data-pressed]:not(
     [data-disabled],
     [data-pending]
   ) {

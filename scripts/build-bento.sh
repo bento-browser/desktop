@@ -5,6 +5,12 @@
 
 set -euo pipefail
 
+# Fail before the native build: packaging rejects a local-Mux shell.
+if [ -n "${MUXUI_LOCAL:-}" ]; then
+  echo "build-bento: MUXUI_LOCAL is set; the full pipeline packages the published npm @muxui/react only. Unset it and retry." >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 

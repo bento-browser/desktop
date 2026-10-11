@@ -184,9 +184,9 @@ export interface BentoSettings {
   welcomeSeen: boolean;
   /** Color mode for Bento's chrome + shell UI. Plumbed by setting
    * data-color-mode on the shell's <html> AND on the chrome window's
-   * <window> root — Tale UI's _color-modes.css cascade (rewritten to
-   * :root selectors by scripts/generate-chrome-tokens.mjs) does the
-   * rest. 'system' resolves to the current OS color scheme at render time
+   * <window> root — Bento's generated public Mux theme projection onto
+   * :root selectors does the rest. 'system' resolves to the current OS color
+   * scheme at render time
    * while preserving the user-facing Auto setting. */
   uiColorMode: UiColorModePref;
   /** Color mode hint forwarded to web content via
@@ -237,7 +237,7 @@ export interface BentoSettings {
    * users who prefer flatter panels or want less visual separation. */
   panelShadowsEnabled: boolean;
   /** Rounded corner radius, in CSS pixels, for Bento split-view panel
-   * frames. The default matches the current Tale UI `--radius-m` panel
+   * frames. The default matches the current Mux UI `--radius-m` panel
    * corner value. */
   panelCornerRadiusPx: number;
   /** Splitter hit target size, in CSS pixels, for Bento split-view

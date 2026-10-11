@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Card } from '@tale-ui/react/card';
-import { Switch } from '@tale-ui/react/switch';
-import { NumberField } from '@tale-ui/react/number-field';
-import { Button } from '@tale-ui/react/button';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { AlertDialog } from '@tale-ui/react/alert-dialog';
-import { Tooltip } from '@tale-ui/react/tooltip';
-import { Column } from '@tale-ui/react/column';
-import { Row } from '@tale-ui/react/row';
-import { Text } from '@tale-ui/react/text';
-import { Icon } from '@tale-ui/react/icon';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import {
+  AlertDialog,
+  Button,
+  Card,
+  FileTrigger,
+  IconButton,
+  NumberField,
+  Switch,
+  Text,
+  Tooltip,
+} from '@muxui/react';
 import Download from 'lucide-react/dist/esm/icons/download';
 import Upload from 'lucide-react/dist/esm/icons/upload';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
@@ -21,6 +21,9 @@ import { useSettingsStore } from '../../state/settings';
 import { useWorkspacesStore } from '../../state/workspaces';
 import { useBackupStore } from '../../state/backup';
 import { dispatch } from '../../bridge/useToolsPort';
+import { BentoIcon } from '../../components/primitives/BentoIcon';
+import { Column } from '../../components/primitives/BentoColumn';
+import { Row } from '../../components/primitives/BentoRow';
 import { validateExportSchema } from './validateExport';
 import './BackupSection.css';
 
@@ -39,6 +42,10 @@ function formatDate(ts: number): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function BackupTooltip({ label, children }: { label: string; children: ReactElement }) {
+  return <Tooltip content={label} delay={400} placement="top" offset={8} trigger={children} />;
 }
 
 interface ImportPreview {
@@ -81,7 +88,6 @@ export function BackupSection() {
     .map((id) => byId[id])
     .filter((w): w is NonNullable<typeof w> => w != null);
   const backups = useBackupStore((s) => s.backups);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
@@ -152,18 +158,13 @@ export function BackupSection() {
     });
   }, []);
 
-  const handleFileSelect = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileSelect = useCallback((files: File[]) => {
+    const file = files[0];
     if (!file) return;
     setParseError(false);
     setImportStatus(null);
     if (file.size > MAX_BACKUP_FILE_BYTES) {
       setImportStatus('Import failed: backup files must be 10 MB or smaller.');
-      e.target.value = '';
       return;
     }
     const reader = new FileReader();
@@ -179,7 +180,6 @@ export function BackupSection() {
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
   }, []);
 
   const handleImportConfirm = useCallback(() => {
@@ -222,10 +222,10 @@ export function BackupSection() {
     <Card.Root className="bento-settings__tile bento-settings__tile--narrow">
       <Card.Header>
         <Column gap="2xs">
-          <Text variant="title" size="m">
+          <Text variant="title" size="md">
             Backup &amp; export
           </Text>
-          <Text variant="text" size="s" color="muted">
+          <Text variant="body" size="sm" color="muted">
             Export workspaces to a JSON file or restore from automatic backups. The exported file
             contains your tab URLs, titles, panel layout, and settings.
           </Text>
@@ -234,18 +234,18 @@ export function BackupSection() {
       <Card.Body>
         <Column gap="l">
           <Column gap="s">
-            <Text variant="label" size="m">
+            <Text variant="label" size="md">
               Export
             </Text>
             <Row gap="s">
-              <Button variant="neutral" onPress={handleExportAll}>
-                <Icon icon={Download} size="sm" />
+              <Button variant="neutral" onActivate={handleExportAll}>
+                <BentoIcon icon={Download} size="sm" />
                 Export all workspaces
               </Button>
             </Row>
             {workspaces.length > 1 && (
               <Column gap="xs" className="bento-backup__ws-select">
-                <Text variant="text" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Or select specific workspaces:
                 </Text>
                 {workspaces.map((ws) => (
@@ -255,26 +255,24 @@ export function BackupSection() {
                     align="center"
                     style={{ justifyContent: 'space-between' }}
                   >
-                    <Text variant="text" size="s">
+                    <Text variant="body" size="sm">
                       {ws.icon ? `${ws.icon} ${ws.name}` : ws.name}
                     </Text>
-                    <Switch.Root
-                      isSelected={exportSelection.has(ws.id)}
+                    <Switch
+                      selected={exportSelection.has(ws.id)}
                       onChange={() => toggleExportWorkspace(ws.id)}
                       aria-label={`Include ${ws.name}`}
-                    >
-                      <Switch.Thumb />
-                    </Switch.Root>
+                    />
                   </Row>
                 ))}
                 <Row>
                   <Button
                     variant="neutral"
                     size="sm"
-                    isDisabled={exportSelection.size === 0}
-                    onPress={handleExportSelected}
+                    disabled={exportSelection.size === 0}
+                    onActivate={handleExportSelected}
                   >
-                    <Icon icon={Download} size="sm" />
+                    <BentoIcon icon={Download} size="sm" />
                     Export selected ({exportSelection.size})
                   </Button>
                 </Row>
@@ -283,30 +281,25 @@ export function BackupSection() {
           </Column>
 
           <Column gap="s">
-            <Text variant="label" size="m">
+            <Text variant="label" size="md">
               Import
             </Text>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleFileChange}
-              style={{ display: 'none' }}
-            />
             <Row gap="s">
-              <Button variant="neutral" onPress={handleFileSelect}>
-                <Icon icon={Upload} size="sm" />
-                Import from file
-              </Button>
+              <FileTrigger acceptedFileTypes={['.json']} onSelect={handleFileSelect}>
+                <Button variant="neutral">
+                  <BentoIcon icon={Upload} size="sm" />
+                  Import from file
+                </Button>
+              </FileTrigger>
             </Row>
             {parseError && (
-              <Text variant="text" size="s" color="muted">
+              <Text variant="body" size="sm" color="muted">
                 Invalid file. Expected a Bento export JSON file.
               </Text>
             )}
             {importPreview && (
               <Column gap="s" className="bento-backup__preview">
-                <Text variant="text" size="s">
+                <Text variant="body" size="sm">
                   {importPreview.workspaceCount} workspace
                   {importPreview.workspaceCount !== 1 ? 's' : ''}, {importPreview.tabCount} tab
                   {importPreview.tabCount !== 1 ? 's' : ''}, {importPreview.panelCount} panel
@@ -314,7 +307,7 @@ export function BackupSection() {
                 </Text>
                 <Column gap="3xs">
                   {importPreview.data.workspaces.map((ws) => (
-                    <Text key={ws.id} variant="text" size="s" color="muted">
+                    <Text key={ws.id} variant="body" size="sm" color="muted">
                       {ws.icon ? `${ws.icon} ` : ''}
                       {ws.name} — {ws.tabs.length} tab
                       {ws.tabs.length !== 1 ? 's' : ''}, {ws.panels.length} panel
@@ -324,75 +317,79 @@ export function BackupSection() {
                 </Column>
                 <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <Column gap="3xs" style={{ flex: 1 }}>
-                    <Text variant="text" size="s">
+                    <Text variant="body" size="sm">
                       Replace all existing workspaces
                     </Text>
-                    <Text variant="text" size="s" color="muted">
+                    <Text variant="body" size="sm" color="muted">
                       Imports the backup first, then removes current workspaces and tabs.
                     </Text>
                   </Column>
-                  <Switch.Root isSelected={replaceExisting} onChange={setReplaceExisting}>
-                    <Switch.Thumb />
-                  </Switch.Root>
+                  <Switch
+                    selected={replaceExisting}
+                    onChange={setReplaceExisting}
+                    aria-label="Replace all existing workspaces"
+                  />
                 </Row>
                 {importPreview.hasSettings && (
                   <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text variant="text" size="s">
+                    <Text variant="body" size="sm">
                       Apply settings from export
                     </Text>
-                    <Switch.Root isSelected={importSettings} onChange={setImportSettings}>
-                      <Switch.Thumb />
-                    </Switch.Root>
+                    <Switch
+                      selected={importSettings}
+                      onChange={setImportSettings}
+                      aria-label="Apply settings from export"
+                    />
                   </Row>
                 )}
                 {importPreview.hasSavedPanels && (
                   <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text variant="text" size="s">
+                    <Text variant="body" size="sm">
                       Import saved panels ({importPreview.data.savedPanels.length})
                     </Text>
-                    <Switch.Root isSelected={importSavedPanels} onChange={setImportSavedPanels}>
-                      <Switch.Thumb />
-                    </Switch.Root>
+                    <Switch
+                      selected={importSavedPanels}
+                      onChange={setImportSavedPanels}
+                      aria-label="Import saved panels"
+                    />
                   </Row>
                 )}
                 <Row gap="s">
-                  <Button variant="primary" size="sm" onPress={handleImportConfirm}>
+                  <Button variant="primary" size="sm" onActivate={handleImportConfirm}>
                     Import
                   </Button>
-                  <Button variant="neutral" size="sm" onPress={() => setImportPreview(null)}>
+                  <Button variant="neutral" size="sm" onActivate={() => setImportPreview(null)}>
                     Cancel
                   </Button>
                 </Row>
               </Column>
             )}
             {importStatus && (
-              <Text variant="text" size="s" color="muted">
+              <Text variant="body" size="sm" color="muted">
                 {importStatus}
               </Text>
             )}
           </Column>
 
           <Column gap="s">
-            <Text variant="label" size="m">
+            <Text variant="label" size="md">
               Automatic backups
             </Text>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Column gap="3xs" style={{ flex: 1 }}>
                 <Text>Backup workspaces automatically</Text>
-                <Text variant="text" size="s" color="muted">
+                <Text variant="body" size="sm" color="muted">
                   Periodic snapshots stored in the browser profile. Restored as new workspaces.
                 </Text>
               </Column>
-              <Switch.Root
-                isSelected={settings.autoBackupEnabled}
+              <Switch
+                selected={settings.autoBackupEnabled}
                 onChange={(v) => update('autoBackupEnabled', v)}
                 aria-label="Automatic backups"
-              >
-                <Switch.Thumb />
-              </Switch.Root>
+              />
             </Row>
             <Row gap="m" wrap>
-              <NumberField.Root
+              <NumberField
                 value={settings.autoBackupIntervalMinutes}
                 onChange={(v) => {
                   if (!Number.isFinite(v) || v < 5) return;
@@ -402,17 +399,11 @@ export function BackupSection() {
                 maxValue={1440}
                 step={5}
                 formatOptions={{ useGrouping: false, maximumFractionDigits: 0 }}
-                isDisabled={!settings.autoBackupEnabled}
+                disabled={!settings.autoBackupEnabled}
                 className="bento-settings__number-field"
-              >
-                <NumberField.Label>Interval (minutes)</NumberField.Label>
-                <NumberField.Group>
-                  <NumberField.Decrement />
-                  <NumberField.Input />
-                  <NumberField.Increment />
-                </NumberField.Group>
-              </NumberField.Root>
-              <NumberField.Root
+                label={'Interval (minutes)'}
+              />
+              <NumberField
                 value={settings.autoBackupMaxCount}
                 onChange={(v) => {
                   if (!Number.isFinite(v) || v < 1) return;
@@ -422,22 +413,16 @@ export function BackupSection() {
                 maxValue={20}
                 step={1}
                 formatOptions={{ useGrouping: false, maximumFractionDigits: 0 }}
-                isDisabled={!settings.autoBackupEnabled}
+                disabled={!settings.autoBackupEnabled}
                 className="bento-settings__number-field"
-              >
-                <NumberField.Label>Keep (max)</NumberField.Label>
-                <NumberField.Group>
-                  <NumberField.Decrement />
-                  <NumberField.Input />
-                  <NumberField.Increment />
-                </NumberField.Group>
-              </NumberField.Root>
+                label={'Keep (max)'}
+              />
             </Row>
           </Column>
 
           {backups.length > 0 && (
             <Column gap="s">
-              <Text variant="label" size="m">
+              <Text variant="label" size="md">
                 Stored backups
               </Text>
               <Column gap="m">
@@ -450,43 +435,37 @@ export function BackupSection() {
                     className="bento-backup__entry"
                   >
                     <Column gap="3xs" style={{ flex: 1, minWidth: 0 }}>
-                      <Text variant="text" size="s">
+                      <Text variant="body" size="sm">
                         {formatDate(b.createdAt)}
                       </Text>
-                      <Text variant="text" size="s" color="muted">
+                      <Text variant="body" size="sm" color="muted">
                         {b.workspaceCount} workspace{b.workspaceCount !== 1 ? 's' : ''},{' '}
                         {b.tabCount} tab{b.tabCount !== 1 ? 's' : ''}
                       </Text>
                     </Column>
                     <Row gap="xs">
-                      <Tooltip.Root delay={400}>
+                      <BackupTooltip label="Restore backup">
                         <IconButton
                           variant="ghost"
                           size="sm"
                           aria-label="Restore backup"
-                          onPress={() => setPendingBackupAction({ action: 'restore', backup: b })}
+                          onActivate={() =>
+                            setPendingBackupAction({ action: 'restore', backup: b })
+                          }
                         >
-                          <Icon icon={RotateCcw} size="sm" />
+                          <BentoIcon icon={RotateCcw} size="sm" />
                         </IconButton>
-                        <Tooltip.Popup placement="top" offset={8}>
-                          <Tooltip.Arrow />
-                          Restore backup
-                        </Tooltip.Popup>
-                      </Tooltip.Root>
-                      <Tooltip.Root delay={400}>
+                      </BackupTooltip>
+                      <BackupTooltip label="Delete backup">
                         <IconButton
                           variant="ghost"
                           size="sm"
                           aria-label="Delete backup"
-                          onPress={() => setPendingBackupAction({ action: 'delete', backup: b })}
+                          onActivate={() => setPendingBackupAction({ action: 'delete', backup: b })}
                         >
-                          <Icon icon={Trash2} size="sm" />
+                          <BentoIcon icon={Trash2} size="sm" />
                         </IconButton>
-                        <Tooltip.Popup placement="top" offset={8}>
-                          <Tooltip.Arrow />
-                          Delete backup
-                        </Tooltip.Popup>
-                      </Tooltip.Root>
+                      </BackupTooltip>
                     </Row>
                   </Row>
                 ))}
@@ -497,7 +476,7 @@ export function BackupSection() {
       </Card.Body>
       {pendingBackup && (
         <AlertDialog.Root
-          isOpen={true}
+          open={true}
           onOpenChange={(open) => {
             if (!open) closeBackupActionDialog();
           }}
@@ -514,12 +493,12 @@ export function BackupSection() {
                     : `Delete ${pendingBackupLabel}. This removes the stored snapshot and cannot be undone.`}
                 </AlertDialog.Description>
                 <AlertDialog.Actions>
-                  <Button variant="neutral" onPress={closeBackupActionDialog}>
+                  <Button variant="neutral" onActivate={closeBackupActionDialog}>
                     Cancel
                   </Button>
                   <Button
                     variant={isRestoreAction ? 'primary' : 'danger'}
-                    onPress={handleBackupActionConfirm}
+                    onActivate={handleBackupActionConfirm}
                   >
                     {isRestoreAction ? 'Restore' : 'Delete'}
                   </Button>

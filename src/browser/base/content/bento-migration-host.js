@@ -15,7 +15,7 @@
     const requestedMode = params.get('mode');
     const mode = requestedMode === 'dark' ? 'dark' : 'light';
     const root = document.documentElement;
-    root.classList.add('tale-ui');
+    root.setAttribute('data-bento-theme', 'default');
     root.setAttribute('data-color-mode', mode);
   }
 
@@ -39,12 +39,12 @@
   }
 
   function classifyWizardButton(button) {
-    addClasses(button, ['tale-button', 'tale-button--md']);
+    addClasses(button, ['bento-button', 'bento-button--md']);
     if (button.classList.contains('primary')) {
-      addClasses(button, ['tale-button--primary']);
+      addClasses(button, ['bento-button--primary']);
       return;
     }
-    addClasses(button, ['tale-button--neutral']);
+    addClasses(button, ['bento-button--neutral']);
   }
 
   function applyWizardBemClasses(wizard) {
@@ -53,24 +53,24 @@
 
     root.querySelectorAll('button').forEach(classifyWizardButton);
     addClasses(root.getElementById('browser-profile-selector'), [
-      'tale-button',
-      'tale-button--neutral',
-      'tale-button--md',
+      'bento-button',
+      'bento-button--neutral',
+      'bento-button--md',
       'bento-migration-wizard__profile-trigger',
     ]);
     addClasses(root.querySelector('.resource-selection-details'), [
-      'tale-card',
-      'tale-card--filled',
-      'tale-card--sm',
+      'bento-card',
+      'bento-card--filled',
+      'bento-card--sm',
     ]);
-    addClasses(root.querySelector('#resource-selection-summary'), ['tale-card__header']);
-    addClasses(root.querySelector('#resource-type-list'), ['tale-list', 'tale-list--divided']);
+    addClasses(root.querySelector('#resource-selection-summary'), ['bento-card__header']);
+    addClasses(root.querySelector('#resource-type-list'), ['bento-list', 'bento-list--divided']);
     root.querySelectorAll('#resource-type-list > label').forEach((label) => {
-      addClasses(label, ['tale-list__item']);
+      addClasses(label, ['bento-list__item']);
     });
-    addClasses(root.querySelector('.resource-progress'), ['tale-list', 'tale-list--divided']);
+    addClasses(root.querySelector('.resource-progress'), ['bento-list', 'bento-list--divided']);
     root.querySelectorAll('.resource-progress-group').forEach((group) => {
-      addClasses(group, ['tale-list__item']);
+      addClasses(group, ['bento-list__item']);
     });
   }
 

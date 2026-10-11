@@ -15,6 +15,8 @@ Build, packaging, and release helper scripts.
   contents, MAR digest and size, browser update XML, and artifact metadata.
   Run it with `pnpm run artifacts:check`; release builds run it before
   collecting `release-out/`.
+- `muxui-dev.mjs` — local Mux UI dev loops (`pnpm run shell:ladle:mux`,
+  `shell:dev:mux`, `shell:import:mux`); see `docs/build-tooling.md`.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit
   stack:
   - `pnpm run firefox:patches:check` validates `patches/series.json` and

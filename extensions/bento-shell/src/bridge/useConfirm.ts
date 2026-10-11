@@ -24,7 +24,7 @@ export interface ConfirmPayload {
   description: string;
   /** Label for the confirming button (e.g. "Delete workspace"). */
   confirmLabel: string;
-  /** Tale UI Button variant for the confirm button — typically 'danger' for
+  /** Mux Button variant for the confirm button — typically 'danger' for
    * destructive ops. The Cancel button is always 'neutral'. */
   variant: 'danger' | 'primary';
   /** Action dispatched to bento-tools when the user confirms. The confirm

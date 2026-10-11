@@ -10,13 +10,11 @@
  * put on the document root. Result: Default workspaces visually
  * mirror the active theme instead of identifying as their own thing.
  *
- * This file pins the Default theme's --brand-* so any element with
- * `data-bento-theme="default"` shows the Default look regardless of
- * the document-root theme. Only --brand-* is re-declared today —
- * neutrals stay on bento-tokens.css's cool-neutral pinning, which is
- * the Bento default and applies via :root inheritance as before.
+ * This file pins the Default theme's --brand-* and warm neutral ladders so
+ * any element with `data-bento-theme="default"` shows the measured Bento
+ * baseline regardless of the document-root theme.
  *
- * Regenerate this file from Tale UI Scale with:
+ * Regenerate this file from a static Scale export with:
  *   pnpm theme:import default <scale.css>
  */
 
@@ -34,15 +32,14 @@
   --brand-100: #00222a;
 }
 
-/* Light-mode fg overrides — requires class="tale-ui" on <html> */
+/* Light-mode fg overrides follow the Bento theme and mode attributes. */
 
-:where(html:not([data-color-mode='dark'])) .tale-ui,
-.light .tale-ui {
+html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --color-50-fg: var(--color-5);
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(html:not([data-color-mode='light'])) .tale-ui {
+  html[data-bento-theme='default']:not([data-color-mode='light']) {
     --color-50-fg: var(--color-100);
   }
 }

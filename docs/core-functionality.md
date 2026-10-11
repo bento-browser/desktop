@@ -494,10 +494,10 @@ The intended behavior is:
   drag-reorderable from that top toolbar while unused top-bar space remains
   available for moving the browser window, and rapid clicks on previous/next
   cycle panels without changing the window state;
-- sidebar footer icon buttons show Tale UI tooltips on hover;
+- sidebar footer icon buttons show Bento tooltips on hover;
 - the divider between the fixed main content slot button and draggable
   side-panel buttons is centered in their shared gap;
-- panel navigator buttons show Tale UI tooltips with their panel names; the
+- panel navigator buttons show Bento tooltips with their panel names; the
   main content slot uses the current page title;
 - grouped panel navigator icons show and refresh the favicons for visible
   panels inside a vertical or 2x2 group;
@@ -518,7 +518,7 @@ The theme system should support:
 
 - curated accessible presets;
 - a grouped selector containing Bento's Default palette plus the eight standard
-  and seven monochromatic palettes shipped by `@tale-ui/themes`;
+  and seven monochromatic palettes shipped by `@muxui/react/themes`;
 - per-workspace theme selection;
 - light, dark, and Auto UI modes;
 - independent content color-scheme preference where possible;

@@ -83,7 +83,7 @@ sync_addon() {
 # shell-mount.patch's jar.mn entry). The first full mach build creates the
 # install-time symlinks under chrome/browser/content/browser/; new chrome
 # files added between full builds (like bento-chrome-tokens.css after we
-# wired up the Tale UI token bridge) won't appear in the deployed app
+# wired up the Mux/Bento token bridge) won't appear in the deployed app
 # until either a full rebuild OR we symlink them ourselves. Same approach
 # the addon-dist sync above uses.
 SRC_CHROME_ROOT="engine/browser/base/content"

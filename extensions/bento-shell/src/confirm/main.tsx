@@ -12,20 +12,14 @@
 //   - Cancel: set document.title = BENTO_CLOSE_CONFIRM_<ts>; chrome hides.
 //   - Confirm: dispatch payload.action through the existing tools port,
 //     then close.
-// AlertDialog stays mounted with isOpen=true permanently (same pattern as
+// AlertDialog stays mounted with open=true permanently (same pattern as
 // palette) — visibility is purely a chrome concern via the host overlay.
 
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { AlertDialog } from '@tale-ui/react/alert-dialog';
-import { Button } from '@tale-ui/react/button';
+import { AlertDialog, Button } from '@muxui/react';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/button';
-import '@tale-ui/react-styles/dialog';
-import '@tale-ui/react-styles/alert-dialog';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
@@ -66,7 +60,7 @@ function ConfirmApp() {
 
   return (
     <AlertDialog.Root
-      isOpen={true}
+      open={true}
       onOpenChange={(open) => {
         // AlertDialog tries to close on Escape / backdrop click. Forward
         // that intent to chrome so the overlay frame hides too — without
@@ -75,16 +69,32 @@ function ConfirmApp() {
         if (!open) close();
       }}
     >
+      <AlertDialog.Trigger
+        aria-hidden="true"
+        tabIndex={-1}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: 0,
+          height: 0,
+          opacity: 0,
+          pointerEvents: 'none',
+          border: 0,
+          padding: 0,
+        }}
+      >
+        Open confirmation
+      </AlertDialog.Trigger>
       <AlertDialog.Backdrop>
         <AlertDialog.Popup>
           <AlertDialog.Content>
             <AlertDialog.Title>{payload?.title ?? ''}</AlertDialog.Title>
             <AlertDialog.Description>{payload?.description ?? ''}</AlertDialog.Description>
             <AlertDialog.Actions>
-              <Button variant="neutral" onPress={close}>
+              <Button variant="neutral" onActivate={close}>
                 Cancel
               </Button>
-              <Button variant={payload?.variant ?? 'danger'} onPress={onConfirm}>
+              <Button variant={payload?.variant ?? 'danger'} onActivate={onConfirm}>
                 {payload?.confirmLabel ?? 'Confirm'}
               </Button>
             </AlertDialog.Actions>

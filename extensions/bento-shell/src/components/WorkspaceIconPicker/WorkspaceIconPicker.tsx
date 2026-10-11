@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Key, type KeyboardEvent } from 'react';
-import { Column } from '@tale-ui/react/column';
-import { Icon } from '@tale-ui/react/icon';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { ListBox } from '@tale-ui/react/list-box';
-import { Popover } from '@tale-ui/react/popover';
-import { Row } from '@tale-ui/react/row';
-import { SearchField } from '@tale-ui/react/search-field';
-import { Text } from '@tale-ui/react/text';
+import { Button, IconButton, ListBox, Popover, SearchField, Tabs, Text } from '@muxui/react';
 import emojiDataUrl from 'emojibase-data/en/data.json?url';
 import emojiMessagesUrl from 'emojibase-data/en/messages.json?url';
 import Flag from 'lucide-react/dist/esm/icons/flag';
@@ -22,6 +15,7 @@ import Utensils from 'lucide-react/dist/esm/icons/utensils';
 import XIcon from 'lucide-react/dist/esm/icons/x';
 
 import './WorkspaceIconPicker.css';
+import { BentoIcon, Column, Row } from '../primitives';
 
 type EmojiItem = {
   emoji: string;
@@ -362,6 +356,7 @@ export function WorkspaceIconPicker({
     workspaceEmojiItemsCache ? 'loaded' : 'idle',
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const categoryTabsRef = useRef<HTMLDivElement>(null);
   const normalizedValue = value?.trim() || undefined;
   const selectedEmoji = findEmojiByValue(normalizedValue, emojiItems);
   const displayedIcon = normalizedValue ?? fallback;
@@ -389,6 +384,19 @@ export function WorkspaceIconPicker({
       : (emojiCategories[0]?.id ?? null);
   const activeCategory =
     emojiCategories.find((category) => category.id === selectedCategoryKey) ?? null;
+
+  // The RC can leave focus on an inactive tab. Sync its committed selection
+  // directly; an animation frame can be delayed in background overlay windows.
+  useEffect(() => {
+    const root = categoryTabsRef.current;
+    const focused = document.activeElement;
+    if (!root || !(focused instanceof HTMLElement) || !root.contains(focused)) return;
+    if (focused.getAttribute('role') !== 'tab') return;
+    const tabList = focused.closest('[role="tablist"]');
+    if (!tabList || !root.contains(tabList)) return;
+    const selectedTab = tabList.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (selectedTab && selectedTab !== focused) selectedTab.focus();
+  }, [selectedCategoryKey]);
 
   useEffect(() => {
     if (!isOpen || emojiLoadState === 'loaded' || emojiLoadState === 'error') return undefined;
@@ -449,35 +457,6 @@ export function WorkspaceIconPicker({
     closePicker();
   }
 
-  function handleEmojiTabListKeyDown(event: KeyboardEvent) {
-    if (emojiCategories.length === 0) return;
-
-    const currentIndex = Math.max(
-      0,
-      emojiCategories.findIndex((category) => category.id === selectedCategoryKey),
-    );
-    let nextIndex: number | undefined;
-
-    if (event.key === 'ArrowLeft') {
-      nextIndex = (currentIndex - 1 + emojiCategories.length) % emojiCategories.length;
-    } else if (event.key === 'ArrowRight') {
-      nextIndex = (currentIndex + 1) % emojiCategories.length;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = emojiCategories.length - 1;
-    }
-
-    if (nextIndex === undefined) return;
-    event.preventDefault();
-    const nextCategory = emojiCategories[nextIndex];
-    if (!nextCategory) return;
-    setActiveCategoryKey(nextCategory.id);
-    requestAnimationFrame(() => {
-      document.getElementById(`${nextCategory.id}-tab`)?.focus();
-    });
-  }
-
   const selectedKeys = selectedEmoji ? [selectedEmoji.emoji] : [];
   const triggerDescription = selectedEmoji
     ? `${selectedEmoji.label} icon`
@@ -489,69 +468,80 @@ export function WorkspaceIconPicker({
   const isEmojiLoading = emojiLoadState === 'idle' || emojiLoadState === 'loading';
 
   return (
-    <Popover.Root isOpen={isOpen} onOpenChange={handleOpenChange}>
-      <Popover.Trigger
-        className="tale-button tale-button--neutral tale-button--sm bento-workspace-icon-picker__trigger"
-        aria-label={`Icon for ${workspaceName}: ${triggerDescription}`}
-        data-bento-custom-icon={isLegacyIcon ? 'true' : undefined}
-      >
-        <span className="bento-workspace-icon-picker__trigger-value">{displayedIcon}</span>
-      </Popover.Trigger>
-      <Popover.Popup
-        aria-label={`Choose icon for ${workspaceName}`}
-        className="tale-popover__popup--frameless bento-workspace-icon-picker__popover"
-        placement="bottom start"
-        offset={8}
-      >
-        <Column
-          gap="2xs"
-          onKeyDownCapture={handlePanelKeyDownCapture}
-          onKeyDown={(event) => event.stopPropagation()}
+    <Popover
+      open={isOpen}
+      onOpenChange={handleOpenChange}
+      aria-label={`Choose icon for ${workspaceName}`}
+      trigger={
+        <Button
+          type="button"
+          className="bento-workspace-icon-picker__trigger"
+          variant="neutral"
+          size="sm"
+          aria-label={`Icon for ${workspaceName}: ${triggerDescription}`}
+          data-bento-custom-icon={isLegacyIcon ? 'true' : undefined}
         >
-          <Column gap="4xs" className="tale-popover__search-container">
-            <SearchField.Root slot={null} variant="inline" value={query} onChange={setQuery}>
-              <SearchField.Label>Search workspace icons</SearchField.Label>
-              <SearchField.Input ref={searchInputRef} placeholder="Search emoji..." />
-              <SearchField.ClearButton aria-label="Clear icon search">
-                <Icon icon={XIcon} size="sm" />
-              </SearchField.ClearButton>
-            </SearchField.Root>
-          </Column>
-          {emojiLoadState === 'error' ? (
-            <Text
-              as="div"
-              color="muted"
-              className="tale-popover__empty bento-workspace-icon-picker__empty"
-            >
-              Emoji data unavailable.
-            </Text>
-          ) : isEmojiLoading ? (
-            <Text
-              as="div"
-              color="muted"
-              className="tale-popover__empty bento-workspace-icon-picker__empty"
-            >
-              Loading emoji...
-            </Text>
-          ) : activeCategory ? (
-            <Column gap="2xs">
-              <Column
-                role="tabpanel"
-                id="emoji-category-panel"
-                aria-labelledby={`${activeCategory.id}-tab`}
-              >
-                <ListBox.Root
-                  aria-label={`${activeCategory.label} emoji results`}
+          <span className="bento-workspace-icon-picker__trigger-value">{displayedIcon}</span>
+        </Button>
+      }
+      placement="bottom-start"
+      offset={8}
+      className="bento-workspace-icon-picker__popover"
+    >
+      <Column
+        gap="2xs"
+        onKeyDownCapture={handlePanelKeyDownCapture}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <Column gap="4xs" className="bento-workspace-icon-picker__search-container">
+          <SearchField
+            aria-label="Search workspace icons"
+            value={query}
+            onChange={setQuery}
+            onClear={() => setQuery('')}
+            inputRef={searchInputRef}
+            className="bento-workspace-icon-picker__search-field"
+            inputProps={{ placeholder: 'Search emoji...' }}
+          />
+        </Column>
+        {emojiLoadState === 'error' ? (
+          <Text as="div" color="muted" className="bento-workspace-icon-picker__empty">
+            Emoji data unavailable.
+          </Text>
+        ) : isEmojiLoading ? (
+          <Text as="div" color="muted" className="bento-workspace-icon-picker__empty">
+            Loading emoji...
+          </Text>
+        ) : activeCategory ? (
+          <Tabs
+            ref={categoryTabsRef}
+            aria-label="Emoji categories"
+            className="bento-workspace-icon-picker__emoji-tabs"
+            size="sm"
+            variant="segment"
+            value={selectedCategoryKey ?? undefined}
+            onChange={setActiveCategoryKey}
+            items={emojiCategories.map((category) => ({
+              id: category.id,
+              label: (
+                <>
+                  <BentoIcon icon={category.icon} size="sm" />
+                  <span className="bento-workspace-icon-picker__sr-only">{category.label}</span>
+                </>
+              ),
+              panel: (
+                <ListBox
+                  aria-label={`${category.label} emoji results`}
                   layout="grid"
                   selectionMode="single"
-                  selectedKeys={selectedKeys}
-                  className="tale-list-box--frameless bento-workspace-icon-picker__emoji-list"
+                  selectedIds={selectedKeys}
+                  className="bento-workspace-icon-picker__emoji-list"
                   onSelectionChange={(keys) => {
-                    const key = keys === 'all' ? null : ([...keys][0] ?? null);
+                    const key = keys === 'all' ? null : (keys[0] ?? null);
                     selectEmoji(key);
                   }}
                 >
-                  {activeCategory.sections.map((section) => (
+                  {category.sections.map((section) => (
                     <ListBox.Section key={section.id} id={`emoji-section-${section.id}`}>
                       <ListBox.Header className="bento-workspace-icon-picker__emoji-section-header">
                         {section.subgroup}
@@ -559,7 +549,7 @@ export function WorkspaceIconPicker({
                       {section.items.map((item) => (
                         <ListBox.Item
                           key={item.emoji}
-                          className="tale-list-box__item--emoji bento-workspace-icon-picker__emoji-item"
+                          className="bento-workspace-icon-picker__emoji-item"
                           id={item.emoji}
                           textValue={item.label}
                         >
@@ -568,47 +558,17 @@ export function WorkspaceIconPicker({
                       ))}
                     </ListBox.Section>
                   ))}
-                </ListBox.Root>
-              </Column>
-              <Row
-                role="tablist"
-                aria-label="Emoji categories"
-                gap="4xs"
-                className="bento-workspace-icon-picker__emoji-tab-list"
-                onKeyDown={handleEmojiTabListKeyDown}
-              >
-                {emojiCategories.map((category) => (
-                  <button
-                    key={category.id}
-                    id={`${category.id}-tab`}
-                    type="button"
-                    role="tab"
-                    aria-label={category.label}
-                    aria-selected={category.id === selectedCategoryKey}
-                    aria-controls="emoji-category-panel"
-                    className="tale-icon-button tale-button tale-button--ghost tale-icon-button--sm bento-workspace-icon-picker__emoji-tab"
-                    data-selected={category.id === selectedCategoryKey ? 'true' : undefined}
-                    onClick={() => setActiveCategoryKey(category.id)}
-                  >
-                    <span className="tale-button__content">
-                      <Icon icon={category.icon} size="sm" />
-                    </span>
-                  </button>
-                ))}
-              </Row>
-            </Column>
-          ) : (
-            <Text
-              as="div"
-              color="muted"
-              className="tale-popover__empty bento-workspace-icon-picker__empty"
-            >
-              No emoji found.
-            </Text>
-          )}
-        </Column>
-      </Popover.Popup>
-    </Popover.Root>
+                </ListBox>
+              ),
+            }))}
+          />
+        ) : (
+          <Text as="div" color="muted" className="bento-workspace-icon-picker__empty">
+            No emoji found.
+          </Text>
+        )}
+      </Column>
+    </Popover>
   );
 }
 
@@ -634,9 +594,9 @@ export function WorkspaceIconField({
           size="sm"
           aria-label={`Clear icon for ${workspaceName}`}
           className="bento-workspace-icon-picker__clear-button"
-          onPress={() => onIconChange(undefined)}
+          onActivate={() => onIconChange(undefined)}
         >
-          <Icon icon={XIcon} size="sm" strokeWidth={3} />
+          <BentoIcon icon={XIcon} size="sm" strokeWidth={3} />
         </IconButton>
       ) : null}
     </Row>

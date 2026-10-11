@@ -1,6 +1,6 @@
 // Generic chrome-menu overlay entry. Sibling to confirm/palette/edit-
 // workspace/workspace-switcher — its own chrome-mounted <browser> that
-// covers the full window so a Tale UI Menu can render at arbitrary
+// covers the full window so a Mux Menu can render at arbitrary
 // chrome-window coordinates without being clipped to the sidebar.
 //
 // Unlike the other overlays, this one is GENERIC: chrome decides which
@@ -14,7 +14,7 @@
 //     shell-bus (the SHELL_ACTION_FRAME_SCRIPT path that already
 //     plumbs chrome → bento-shell-bus).
 //   - This page's BroadcastChannel listener stores {anchor, items,
-//     contextId} and ChromeMenu renders Tale UI's Menu anchored to
+//     contextId} and ChromeMenu renders Mux's Menu anchored to
 //     an invisible Menu.Trigger positioned at the anchor rect.
 //   - Item selection: document.title = BENTO_MENU_SELECT:<ctx>:<id>.
 //     Chrome's poll parses that, looks up the handler by contextId,
@@ -26,10 +26,7 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@tale-ui/css/src';
-import '@tale-ui/react-styles/_primitives';
-import '@tale-ui/react-styles/text';
-import '@tale-ui/react-styles/menu';
+import '../theme/muxui.css';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
@@ -45,7 +42,7 @@ function MenuApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const [payload, setPayload] = useState<ChromeMenuOpenPayload | null>(null);
-  // react-aria's Menu fires onAction (our onSelect) FIRST, then closes the
+  // Mux Menu fires onAction (our onSelect) FIRST, then closes the
   // menu in the same synchronous frame which fires onOpenChange(false)
   // (our onClose). Both handlers write document.title; chrome polls at
   // 60ms and only sees the LAST value, so a naive impl would always
@@ -74,7 +71,7 @@ function MenuApp() {
         contextId: action.contextId,
         anchor: action.anchor,
         items: action.items,
-        placement: action.placement === 'bottom start' ? 'bottom start' : undefined,
+        placement: action.placement === 'bottom start' ? 'bottom-start' : 'bottom-end',
       });
     }
     channel.addEventListener('message', onMessage);

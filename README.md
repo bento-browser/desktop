@@ -38,10 +38,10 @@ completed manual runs for an open PR update the bot comment automatically.
 
 ## Prerequisites
 
-- Node.js 20+ (`nvm use` reads `.nvmrc`)
-- A sibling Tale UI checkout at `../tale-ui/tale-ui`; the default `pnpm install`
-  links Bento's Tale UI packages there, including the built React and themes
-  packages.
+- Node.js 24.19.0 (`nvm use` reads `.nvmrc`)
+- Mux UI React is installed from npm as the exact published version
+  `@muxui/react@0.1.0-rc.1`. Both frozen dependency graphs record its registry
+  integrity. No local Mux archive is required.
 - Mozilla build prerequisites — installed by `pnpm run bootstrap` (calls
   `mach bootstrap` under the hood). Expect Python 3, Rust, clang, and several
   GB of disk space.

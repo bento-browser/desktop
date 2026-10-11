@@ -1,8 +1,5 @@
 import { memo, useEffect, useId, useRef, useState } from 'react';
-import { Text } from '@tale-ui/react/text';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Icon } from '@tale-ui/react/icon';
-import { Spinner } from '@tale-ui/react/spinner';
+import { IconButton, Input, ProgressCircle, Text } from '@muxui/react';
 // Per-icon imports (no lucide-react barrel — see eslint config + §6.2).
 import X from 'lucide-react/dist/esm/icons/x';
 import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
@@ -13,6 +10,7 @@ import type { TabSnapshot } from '@shared/protocol';
 import { dispatch } from '../../bridge/useToolsPort';
 import { useTab } from '../../state/tabs';
 import { useUiStore } from '../../state/ui';
+import { BentoIcon, Row } from '../primitives';
 import './TabRow.css';
 
 export interface TabRowProps {
@@ -120,7 +118,8 @@ function TabRowImpl({
   }, [clearRenameRequest, displayTitle, dragging, id, removing, renameRequest]);
 
   return (
-    <div
+    <Row
+      gap="xs"
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
@@ -199,9 +198,9 @@ function TabRowImpl({
             variant="ghost"
             size="sm"
             aria-label={audioLabel}
-            onPress={() => dispatch({ type: 'tab/toggleMuted', id })}
+            onActivate={() => dispatch({ type: 'tab/toggleMuted', id })}
           >
-            <Icon icon={muted ? VolumeX : Volume2} />
+            <BentoIcon icon={muted ? VolumeX : Volume2} />
           </IconButton>
         </span>
       )}
@@ -210,7 +209,9 @@ function TabRowImpl({
        * (handled via the row modifier in CSS). */}
       {loading ? (
         <span className="bento-tab-row__favicon bento-tab-row__favicon--loading">
-          <Spinner size="sm" label="Loading" />
+          <ProgressCircle.Root size="sm" aria-label="Loading">
+            <ProgressCircle.Track />
+          </ProgressCircle.Root>
         </span>
       ) : tab.favIconUrl ? (
         <img className="bento-tab-row__favicon" src={tab.favIconUrl} alt="" />
@@ -218,8 +219,9 @@ function TabRowImpl({
         <span className="bento-tab-row__favicon bento-tab-row__favicon--placeholder" />
       )}
       {renaming ? (
-        <input
+        <Input.Input
           className="bento-tab-row__rename-input"
+          aria-label="Tab title"
           value={draftTitle}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
@@ -238,7 +240,7 @@ function TabRowImpl({
           onBlur={commitRename}
         />
       ) : (
-        <Text variant="text" size="s" color={active ? 'default' : 'muted'}>
+        <Text variant="body" size="sm" color={active ? 'default' : 'muted'}>
           {displayTitle}
         </Text>
       )}
@@ -253,9 +255,9 @@ function TabRowImpl({
               size="sm"
               aria-label={convertToPanelLabel}
               aria-describedby={convertToPanelDescriptionId}
-              onPress={() => onOpenInSidePanel(id)}
+              onActivate={() => onOpenInSidePanel(id)}
             >
-              <Icon icon={PanelRightOpen} />
+              <BentoIcon icon={PanelRightOpen} />
             </IconButton>
             <span id={convertToPanelDescriptionId} className="bento-tab-row__sr-only">
               Convert this tab into a side panel
@@ -268,16 +270,16 @@ function TabRowImpl({
             size="sm"
             aria-label={closeTabLabel}
             aria-describedby={closeTabDescriptionId}
-            onPress={() => onClose(id)}
+            onActivate={() => onClose(id)}
           >
-            <Icon icon={X} />
+            <BentoIcon icon={X} />
           </IconButton>
           <span id={closeTabDescriptionId} className="bento-tab-row__sr-only">
             Close this tab
           </span>
         </span>
       </div>
-    </div>
+    </Row>
   );
 }
 

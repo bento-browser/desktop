@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Column } from '@tale-ui/react/column';
 
 import { WorkspaceThemePicker } from './WorkspaceThemePicker';
+import { Column } from '../primitives';
 
 export const Default = () => {
   const [themeId, setThemeId] = useState('standard-blueprint');

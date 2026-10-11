@@ -448,7 +448,7 @@ the `bento.chrome-theme` layer where it needs to beat the static chrome theme.
 Do not fix this by changing panel headers; panel headers are separate surfaces.
 The same chrome theme keeps Firefox's native Bookmarks
 sidebar visually aligned with Bento by sizing the native `#sidebar-title` with
-Tale UI `label-l` typography, vertically centering the header icon/title/chevron,
+Mux UI `label-l` typography, vertically centering the header icon/title/chevron,
 and replacing the legacy Places
 `moz-input-search` search box with a native HTML search input through
 `syncNativeBookmarksSearchInput()`. The replacement keeps the `search-box` ID
@@ -464,7 +464,7 @@ Bento token/theme links into the native sidebar component roots and lets
 `moz-input-search` consume the same inherited input variables as Bookmarks.
 Firefox's sidebar switcher header and menupopup are styled in
 `bento-chrome-theme.css` so Bookmarks, History, Synced Tabs, Passwords, and
-extension rows share the same Tale UI label, shortcut, hover, and selected
+extension rows share the same Mux UI label, shortcut, hover, and selected
 colors. The visible header button is `#sidebar-switcher-target` in
 `browser-box.inc.xhtml`; styling only `#sidebarMenu-popup` changes the dropdown
 menu, not the title shown at the top of the sidebar.
@@ -475,7 +475,7 @@ The Passwords sidebar surface is Firefox's
 `bento-chrome-tokens.css` into that document and maps the megalist's semantic
 variables (`--background-color-*`, `--text-color`, `--button-*`,
 `--input-text-*`, link/icon/warning variables, panel shadows, and sidebar card
-variables) to light neutral Tale UI/Bento tokens. The Passwords documents set
+variables) to light neutral Mux UI/Bento tokens. The Passwords documents set
 `data-color-mode="light"` and `color-scheme: light` deliberately so macOS or
 browser dark mode cannot flip `--neutral-5`, `--neutral-10`, and `--neutral-90`
 back to dark surfaces and light text. The full-page Passwords manager and
@@ -492,7 +492,7 @@ and still receives open requests through `bento-addrbar-bus`.
 
 The React entry in `extensions/bento-shell/src/address-bar/main.tsx` stores that
 initial query and clipboard URL with the open version and passes them to
-`components/AddressBar/AddressBar.tsx`, which controls Tale UI's
+`components/AddressBar/AddressBar.tsx`, which controls Mux UI's
 `CommandPalette` input with the query state and keys the palette content by open
 version so selected text resets predictably. The entry dispatches
 `searchEngines/requestSnapshot` and `savedPanels/requestSnapshot` on mount and on
@@ -505,12 +505,12 @@ or Firefox's default search engine.
 `extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
 new-tab top-sites request using `browser.topSites.get({ newtab: true })`, with
 recent history as a fallback if the top-sites API is unavailable or not ready.
-The address palette uses Tale UI's standard opaque `CommandPalette` popup with
+The address palette uses Mux UI's standard opaque `CommandPalette` popup with
 an explicit `var(--neutral-5)` background. Its `CommandPalette.Backdrop` is a
 non-painting wrapper used only for React Aria modal context, and the chrome
 address overlay frame is sized around the popup plus transparent shadow gutters
 instead of covering the full browser window. The bottom gutter is intentionally
-larger than the top gutter so Tale UI's long popup shadow is not clipped by the
+larger than the top gutter so Mux UI's long popup shadow is not clipped by the
 chrome `<browser>` frame. The browser content, sidebar, and toolbar do not
 receive a modal scrim when the palette opens. It does not use the translucent
 CommandPalette recipe, local `backdrop-filter`, or a chrome-side frosted bitmap
@@ -588,8 +588,8 @@ floating fallback use those helpers so autocomplete behavior does not drift.
   focused so workspace management remains the active context.
 - Keep the address palette on the standard opaque CommandPalette recipe. Do not
   re-add a painting/full-window `CommandPalette.Backdrop`,
-  `tale-command-palette__popup--translucent`,
-  `tale-command-palette__backdrop--transparent`, `backdrop-filter`, or
+  `muxui-command-palette__popup--translucent`,
+  `muxui-command-palette__backdrop--transparent`, `backdrop-filter`, or
   chrome-side `drawSnapshot`/frost capture before open. Those paths delay
   shortcut-to-visible latency, dim the page behind the palette, or recreate the
   invisible full-window hit target that blocks scrolling.
@@ -604,7 +604,7 @@ floating fallback use those helpers so autocomplete behavior does not drift.
   host opacity to `0` with transitions disabled before changing host geometry.
   Otherwise the previous centered popup can briefly paint in the full-window
   anchored host at top center.
-- Keep the address `CommandPalette` animation opacity-only. Tale UI's default
+- Keep the address `CommandPalette` animation opacity-only. Mux UI's default
   command-palette transform transition causes visible movement when switching
   between anchored sidebar opens and centered shortcut/new-tab opens.
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
@@ -811,12 +811,12 @@ global fallback is the active workspace for every window.
 Single-workspace editing uses `edit-workspace.html`; all-workspace management
 uses `workspace-palette.html`, opened from the workspace switcher through the
 `useWorkspacePalette` title sentinel. Both surfaces use
-`components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which adapts Tale
-UI's Emoji Picker recipe with `Popover` and `SearchField` over local
+`components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which composes the
+public Mux UI `Popover` and `SearchField` components over local
 `BENTO_THEMES` metadata. `scripts/sync-theme-presets.mjs` generates that metadata
 from Bento's repo-local Default theme plus the eight standard and seven
-monochromatic themes exported by `@tale-ui/themes`. The picker groups those
-collections and renders compact interactive Tale UI `Card.Button` options with
+monochromatic themes exported by `@muxui/react/themes`. The picker groups those
+collections and renders compact interactive Mux UI `Card.Button` options with
 the component's standard selected state. Each option exposes the package
 description in a `Tooltip` on hover/focus. Standard ids use `standard-*`;
 monochromatic ids use
@@ -834,7 +834,7 @@ picker.
 `edit-workspace.html` and `workspace-palette.html` re-icon workspaces with the
 shared emoji picker in
 `components/WorkspaceIconPicker/WorkspaceIconPicker.tsx`. The picker adapts
-Tale UI's Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over
+Mux UI's Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over
 `emojibase-data`'s English dataset. Vite emits `en/data.json` and
 `en/messages.json` as local extension assets, and the picker fetches them only
 when opened so the workspace editor cold-start JS budget does not absorb the
@@ -859,7 +859,7 @@ Workspace avatars that render emoji icons set `data-bento-emoji-icon="true"` in
 the sidebar trigger and workspace switcher menu, then override the themed avatar
 background to persistent white in both color modes. Initials and legacy custom
 strings keep the workspace theme background. The sidebar workspace switcher
-trigger keeps Tale UI's neutral button shape but overrides that variant's
+trigger keeps Mux UI's neutral button shape but overrides that variant's
 background, border, and text colors with `--color-*` tokens so the control
 follows the active workspace brand instead of the neutral palette. The trigger
 is rendered as a fixed top sidebar section before the URL address field, so
@@ -955,6 +955,31 @@ collapsed rail slides over the content without changing the content layout.
 While `sidebarHidden` is true, the divider, toolbar-navigation, and
 bookmarks-toolbar alignment paths must treat the sidebar width as zero even
 during hover reveal.
+Expanded tab scrolling relies on the virtualizer's visible-range updates and
+the native scrollbar. `TabListPane` reads the existing effective collapsed
+setting (`sidebarCollapsed` or `sidebarHidden`) and skips its custom-scrollbar
+pixel metrics, React state updates, and hide timer while expanded. Those updates
+belong to the collapsed custom scrollbar, which remains responsible for thumb
+position, hover visibility and pointer dragging. A layout effect synchronizes
+current metrics when collapsing after an expanded scroll; the existing resize
+observer keeps them current as the pane changes size. Expanding clears a pending
+hide timer and scrolling visibility state. Keep the virtualizer, row slots,
+active-tab reveal and folder anchoring independent of that pixel-only state.
+Verify fine and large up/down direction changes, collapse at a nonzero scroll
+position, thumb alignment/dragging, and return to expanded mode without a jump.
+
+Tab rows remain fully paintable while mounted. Do not add
+`content-visibility: auto` or intrinsic-size placeholders to these already
+virtualized rows: Gecko can translate an existing row background into view
+before its skipped label and favicon are painted. The virtualizer keeps a
+bounded fifteen-row overscan on each side so native asynchronous scrolling
+has painted adjacent rows while React updates its range. This adds twenty
+mounted rows compared with the previous five-row buffer at an interior scroll
+position, without mounting the entire list. Verify native six- and fourteen-row
+wheel steps, rapid reversals, and collapsed scrolling; capture moving window
+frames because settled DOM screenshots miss one-frame blanks. Check the first
+native wheel separately from warmed scrolling.
+
 Folder expand/collapse records the clicked folder row's offset inside the
 virtualized scroller before dispatching `tabFolder/setCollapsed`, restores that
 offset on the next row-model render, and suppresses the pane's one-shot
@@ -969,11 +994,11 @@ the activation render reveals the clicked tab. Structural changes such as pin,
 folder, reorder, and collapsed-peek changes still produce a new layout key and
 retain the folder-anchor suppression path above.
 The active/current sidebar tab row is styled in
-`extensions/bento-shell/src/components/TabRow/TabRow.css` with Tale UI
+`extensions/bento-shell/src/components/TabRow/TabRow.css` with Mux UI
 `--color-60` and `--color-60-fg`, not neutral surface tokens, so the browser
 current tab remains visually distinct from hover and multi-selection states.
 The foreground override for active-row text and icons must stay unlayered
-because Tale UI text, button, and icon utility styles are also unlayered; keeping
+because Mux UI text, button, and icon utility styles are also unlayered; keeping
 the override only inside `@layer bento.components` lets neutral utility colors
 win.
 Sidebar audio controls are driven by `TabSnapshot.audible` and
@@ -1210,9 +1235,9 @@ opening `#bento-embedded-import-frame`, an in-process chrome `browser` that load
 `chrome://browser/content/bento-migration-host.html`. That static Bento host lives
 under `src/browser/base/content/bento-migration-host.{html,css,js}`, embeds
 Firefox's reusable `<migration-wizard>` component, loads Bento's generated
-chrome Tale token stylesheet, maps Firefox in-content wizard variables to those
+chrome public Mux token stylesheet, maps Firefox in-content wizard variables to those
 tokens, installs `bento-migration-wizard-bridge.css` into the wizard's open
-shadow root so the native selector, buttons, cards, and lists follow Tale-like
+shadow root so the native selector, buttons, cards, and lists follow Mux-compatible
 BEM styling, mirrors the resolved chrome light/dark mode through the iframe URL,
 suppresses Esc, and signals close/restart back to chrome through
 `BENTO_CLOSE_EMBEDDED_IMPORT` and `BENTO_RESTART_EMBEDDED_IMPORT` title
@@ -1282,7 +1307,7 @@ appended to `<body>`; its UA popover layout is overridden into a top strip
 (`position: fixed; top:0; left:0; right:0; bottom:auto`) with its `height` set
 on show from the live toolbar rect (the gap above `#browser`), so it dims
 exactly the toolbar strip and never overlaps the content backdrop. Its dim is
-`background-color: var(--scrim)` — the SAME token Tale UI's `Dialog.Backdrop`
+`background-color: var(--scrim)` — the SAME token Mux UI's `Dialog.Backdrop`
 uses (`--modal-backdrop-bg: var(--scrim)`), so the toolbar dim matches the
 content dim exactly. The popover background represents the first active modal;
 when a modal is stacked over another modal, `bento-shell-mount.js` adds matching
@@ -1433,7 +1458,7 @@ refresh button that dispatches a new `externalMerge/requestSources` request
 through the same store path while keeping the current source rows visible until
 the replacement response arrives; refresh is disabled while a merge operation is
 active. While `activeOperationId` is set, the shell renders an opaque absolute
-overlay inside the Tale UI command palette popup. The overlay covers the search,
+overlay inside the Mux UI command palette popup. The overlay covers the search,
 source rows, footer, and close control, names the source being imported, and
 shows an indeterminate `ProgressBar` plus Close and Cancel buttons. The Close
 button hides the palette without cancelling the active import, and the Cancel
@@ -1446,7 +1471,7 @@ read. Once `ExternalMergeExecutor` has built its filtered import plans, progress
 events carry the real workspace and tab totals, processed counts, the current
 workspace name, and optional workspace/site activity. The shell store accepts
 only progress for its active operation, retains the latest progress snapshot,
-and keeps the latest 100 activity entries. The overlay switches its Tale UI
+and keeps the latest 100 activity entries. The overlay switches its Mux UI
 `ProgressBar` to a determinate percentage, shows completed/total spaces and
 sites, and auto-scrolls an accessible activity log containing imported site
 titles and hostnames. Completion, cancellation, error, and a new operation clear
@@ -1977,7 +2002,7 @@ overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 
 `extensions/bento-shell/src/components/CommandPalette/CommandPalette.tsx` builds
 its tab and panel results from the same tab and panel mirrors used by the
-sidebar, then renders them through Tale UI's `CommandPalette` recipe and
+sidebar, then renders them through Mux UI's `CommandPalette` recipe and
 `useCommandPalette` filtering/grouping hook. Panel tab ids from
 `usePanelsStore.byWorkspace` are excluded from the Tabs section and listed in a
 separate Panels section. Normal tab results dispatch `tab/activate`; the tools
@@ -1997,7 +2022,7 @@ external-store snapshot can spin the React tree or crash the palette frame befor
 the overlay paints. Subscribe to stable store references such as
 `usePanelsStore((s) => s.byWorkspace)` and derive object arrays with `useMemo`.
 
-Palette command records carry Tale UI `title`, `subtitle`, `keywords`, `group`,
+Palette command records carry Mux UI `title`, `subtitle`, `keywords`, `group`,
 `shortcut`, and `action` fields. The full command palette remains title-oriented
 even though `TabSnapshot.url` exists for address autocomplete; do not add URL
 matching here unless the command-palette UX is intentionally widened.
@@ -2073,7 +2098,7 @@ and bookmark matches. Favicons are best-effort: open tabs provide
 but history and bookmark APIs do not return favicons.
 The React overlay renders typed-only active-workspace tab/panel rows, async
 top-site/history/bookmark rows, an empty-new-tab clipboard URL row, and
-synthetic search/open row through Tale UI's `CommandPalette` recipe and
+synthetic search/open row through Mux UI's `CommandPalette` recipe and
 `useCommandPalette` hook. Empty new-tab mode also renders saved-panel rows from
 the saved-panel mirror and opens them through `panel/openAt`. Sorting is
 disabled so the groups keep Bento's fixed order: clipboard when present, saved
@@ -2384,7 +2409,7 @@ Top-level panel resizing:
   rects, root splitters, and the strip scroll extent remain aligned to the old
   width until a later reconcile.
 - Panel corner radius path: `BentoSettings.panelCornerRadiusPx` defaults to 8,
-  matching the current Tale UI `--radius-m` panel frame radius. Settings writes
+  matching the current Mux UI `--radius-m` panel frame radius. Settings writes
   it through `settings/update`; `background.ts` treats it as chrome-bound and
   re-emits `panels/sync`; `useToolsPort.ts` includes it in the `BENTO_PANELS`
   title payload; `bento-shell-mount.js` clamps it to `0-36px` and writes
@@ -2648,7 +2673,7 @@ Top-row splits and 2x2 groups:
   the side-panel buttons instead of an outline/border treatment, and must not
   receive `data-bento-nav-draggable`; side-panel buttons are the only navigator
   entries that participate in drag reorder. Navigator button hover labels are
-  rendered by the `panel-navigator-tooltip.html` chrome overlay using Tale UI's
+  rendered by the `panel-navigator-tooltip.html` chrome overlay using Mux UI's
   `Tooltip` component: chrome sends the button's screen rect and label through
   its frame message manager, and the overlay positions an invisible trigger at
   that rect. Center the divider within the
@@ -2994,10 +3019,11 @@ Workspace theme metadata is stored as `Workspace.themeId`.
 
 Shell theme flow:
 
-- `scripts/sync-theme-presets.mjs` reads the installed `@tale-ui/themes`
-  metadata and production CSS, rewrites its standard/monochromatic selectors to
-  canonical `data-bento-theme` ids, adds legacy monochromatic aliases, and emits
-  the shared `theme/presets/index.ts` and `index.css` artifacts.
+- `scripts/sync-theme-presets.mjs` reads public `@muxui/react/themes`
+  metadata and its `styles.css` projection, rewrites standard/monochromatic
+  selectors to canonical `data-bento-theme` ids, adds legacy monochromatic
+  aliases, and emits the shared `theme/presets/index.ts` and `index.css`
+  artifacts.
 - `extensions/bento-shell/src/theme/useWorkspaceTheme.ts` mirrors the active
   workspace theme to `<html data-bento-theme="...">`.
 - `useToolsPort.ts` includes the active workspace theme id in the active
@@ -3047,7 +3073,7 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome polls it.
-- Keep Auto mode resolved to explicit `light`/`dark` on DOM roots. Tale UI's
+- Keep Auto mode resolved to explicit `light`/`dark` on DOM roots. Mux UI's
   runtime styling expects `data-color-mode` to carry the rendered mode; the
   stored user preference is mirrored separately as `data-bento-color-mode-pref`.
 - Workspace themes are static scoped CSS. Do not generate runtime style elements
@@ -3096,3 +3122,43 @@ When changing core functionality, manually verify at least the affected subset:
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.
+
+### Chrome submenu placement
+
+The chrome menu overlay (`extensions/bento-shell/src/menu/ChromeMenu.tsx`)
+composes public Mux `Menu.Submenu`, `Menu.Item`, `Menu.Popup`, and `Menu.List`
+parts from serialized chrome menu payloads. Nested popups explicitly use
+`placement="end-top"`. In `@muxui/react@0.1.0-rc.1`, relying on the submenu
+default can resolve to a bottom popup anchored to the correct item, overlapping
+subsequent root rows. Keep placement explicit when changing menu composition.
+Verify in the `menu.html` overlay that pointer travel from a submenu trigger
+reaches visible child rows, keyboard ArrowRight opens the child, and selection
+preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome poll.
+
+### Palette search headers and rollback file selection
+
+Command and merge palettes, including the archived command palette, compose
+public ClearButton and Close parts inside the search flex row. A scoped static
+Close position prevents the sticky Input/Clear/Refresh row from covering its
+pointer target. Verify pointer Close with empty/nonempty queries and Clear
+reset before changing that geometry.
+
+Standalone rollback Settings uses the same published Mux renderer as the
+normal shell. Shortcuts uses the same search-row composition and public
+CommandPalette collection parts.
+The controlled Input explicitly dismisses on Escape outside IME composition;
+the RC SearchField can otherwise intercept the key without updating the leaf
+query. Verify nonempty search, native Escape, and native Close in both rollback
+variants. Backup import uses public `FileTrigger`; verify invalid/oversize
+files, a valid preview, and selecting the same file again after reopening.
+
+### Workspace picker category focus
+
+The published RC Tabs renderer can update the selected emoji category while
+leaving DOM focus on an inactive tab. WorkspaceIconPicker uses the public root
+ref and standard `tablist`/`tab` roles to follow the committed ARIA selection
+in the selection effect. Animation-frame scheduling can delay the correction
+in Firefox overlay windows, so it runs directly, only when focus is already in
+that category list. It does not implement arrow selection or move focus from search/results/outside. Verify Home/End/arrows from
+the current focused tab, Enter/Space keeping that selection, and search typing
+preserving input focus when changing the package.

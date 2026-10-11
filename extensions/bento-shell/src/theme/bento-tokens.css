@@ -1,23 +1,18 @@
 /*
- * Bento token layer — extends @tale-ui/css CSS custom properties with
- * Bento-specific ones. All tokens derive from Tale UI scales (§3.2) so
- * the design system stays unified.
+ * Bento token layer — extends the public Mux CSS custom properties with
+ * Bento-specific ones. The short names below are the compatibility surface
+ * used by existing Bento CSS while the generated preset index supplies their
+ * public-Mux values.
  *
- * Tale UI tokens have NO --tale- prefix and use a 5/10/20/30/40/50/60/70/
- * 80/90/100 scale (NOT 1-9). Color families: --neutral-N, --color-N
- * (semantic accent, aliases --brand-N), --blue-N, --emerald-N, --amber-N,
- * --red-N, etc.
+ * Mux reference ramps retain the 5/10/20/30/40/50/60/70/80/90/100 scale.
+ * The bridge also preserves Bento's legacy aliases such as --neutral-N,
+ * --color-N, --brand-N, and the component role names used by native chrome.
  */
 @layer bento.tokens {
   :root {
-    /* Bento uses the COOL neutral family across the whole UI (slate tint,
-       matches the brand). Tale UI defaults --neutral-default-N to the WARM
-       family (beige). Re-point the defaults to cool here so every Tale UI
-       --neutral-N consumer (and our --bento-* tokens that derive from
-       --neutral-N) inherits the cool flavor automatically. The
-       --neutral-default-N indirection is exactly what Tale UI provides
-       for this kind of brand-tinted theme override — see
-       packages/css/src/tokens/_neutrals.css. */
+    /* The unscoped Bento shell uses the cool public Mux neutral family. A
+       scoped Default preset is intentionally unlayered and reasserts Bento's
+       measured warm ladder, so this fallback must not replace that source. */
     --neutral-default-5: var(--neutral-cool-5);
     --neutral-default-10: var(--neutral-cool-10);
     --neutral-default-12: var(--neutral-cool-12);
@@ -46,9 +41,8 @@
     --neutral-default-98: var(--neutral-cool-98);
     --neutral-default-100: var(--neutral-cool-100);
 
-    /* Workspace accent — derived directly from Tale UI's --color-60 /
-       --color-5 contrast pair, which themselves alias to --brand-60 /
-       --brand-5. Workspace theme presets (see theme/presets/<id>.css)
+    /* Workspace accent — derived from the legacy aliases emitted by the
+       public Mux bridge. Workspace theme presets (see theme/presets/<id>.css)
        redefine --brand-* under [data-bento-theme="<id>"] scopes, so
        this token automatically retunes per active workspace via the
        [data-bento-theme] re-link rule below.
@@ -86,7 +80,7 @@
 
     /* Brand background. Matches the chrome's --toolbox-bgcolor, top
        toolbar, sidebar, and window background. Auto-flips with
-       data-color-mode via Tale UI's color-modes mechanism. */
+       data-color-mode through the public Mux mode projection. */
     --bento-brand-bg: var(--neutral-5);
 
     /* Component dimensions */
@@ -136,7 +130,7 @@
 
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay
-       neutral-tone-aware when Tale UI's palette flips. */
+       neutral-tone-aware when the public Mux palette flips. */
     --bento-surface-hover: color-mix(in srgb, var(--neutral-90) 8%, transparent);
     --bento-surface-active: color-mix(in srgb, var(--neutral-90) 16%, transparent);
 
@@ -175,7 +169,7 @@
 
     /* Motion. Three named curves cover every Bento-authored transition;
        new motion should pick from these rather than introduce new ones.
-       Tale UI components ship their own hardcoded curves internally —
+       Mux components ship their own hardcoded curves internally —
        we don't override those.
          standard: general-purpose hover/idle/fade. Symmetric, gentle.
          snappy:   discrete state changes (workspace switch, slide,
@@ -202,7 +196,7 @@
     --bento-icon-size-sm: 16px;
 
     /* Compact icon-button (24×24) used in the panel header and the
-       favicon navigator. Matches Tale UI's IconButton size="sm". */
+       favicon navigator. Matches the shared IconButton size="sm". */
     --bento-control-size-sm: 24px;
 
     /* Panel header strip (back/fwd/url-input/star). Sized so a 24px
@@ -285,7 +279,7 @@
   }
 }
 
-/* Unlayered so raw form controls and Tale UI's unlayered component styles
+/* Unlayered so raw form controls and shared unlayered component styles
    cannot override Bento's selection foreground/background pairing. */
 ::selection,
 input::selection,

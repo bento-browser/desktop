@@ -10,7 +10,7 @@ const SAMPLE_TITLES = [
   'Google',
   'OzBargain: Deals, Coupons, Vouchers, Discounts and Freebies',
   'A Very Long Tab Title That Should Definitely Get Truncated With An Ellipsis When It Runs Out Of Space',
-  'Tale UI Documentation',
+  'Bento UI Documentation',
   'Mozilla Developer Network',
   'Hacker News',
   'Stack Overflow — How do I…',
@@ -28,7 +28,7 @@ const FAVICON_URLS: Record<number, string | undefined> = {
   1: 'https://www.google.com/favicon.ico',
   2: 'https://files.ozbargain.com.au/favicon.ico',
   // 3 has no favicon to test the placeholder
-  4: 'https://tale.dev/favicon.ico',
+  4: 'https://example.com/bento-ui/favicon.ico',
   5: 'https://developer.mozilla.org/favicon.ico',
 };
 

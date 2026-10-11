@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Install the registry-backed release dependency graph from its committed
-# root-format lockfile. BENTO_RELEASE disables local Tale UI links;
+# Install the release dependency graph from its committed root-format lockfile.
 # --frozen-lockfile makes dependency drift a hard failure. The developer lock
 # is restored immediately after installation, while node_modules keeps the
 # release graph for the caller's subsequent build steps.
@@ -24,8 +23,6 @@ restore_lockfile() {
 trap restore_lockfile EXIT
 
 cp pnpm-lock.release.yaml pnpm-lock.yaml
-# --force is required when switching an existing developer checkout: pnpm can
-# otherwise leave package-level link: symlinks in place after seeing a
-# resolution-complete node_modules tree from the developer lock.
-bash scripts/clear-tale-ui-links.sh
-BENTO_RELEASE=1 pnpm install --force --frozen-lockfile
+# --force is required when switching an existing developer checkout so pnpm
+# relinks packages against the committed release graph.
+pnpm install --force --frozen-lockfile

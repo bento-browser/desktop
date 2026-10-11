@@ -5,28 +5,7 @@
       "WebFetch(domain:docs.gluon.dev)",
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:gluon.org)",
-      "Bash(jq *)",
-      "mcp__tale-ui__list_components",
-      "mcp__tale-ui__get_component",
-      "mcp__tale-ui__plan_ui"
-    ],
-    "additionalDirectories": [
-      "/Users/admin/Projects/bento-browser/.claude",
-      "/Users/admin/Projects/tale-ui/tale-ui/packages/styles"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "./.claude/hooks/enforce-tale-ui-mcp.sh",
-            "timeout": 10
-          }
-        ]
-      }
+      "Bash(jq *)"
     ]
   }
 }

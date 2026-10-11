@@ -94,7 +94,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -127,12 +127,8 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        # BENTO_RELEASE=1 short-circuits the .pnpmfile.cjs readPackage hook
-        # so @tale-ui/* resolve from npm at the pinned versions in
-        # package.json. Without it the hook would rewrite them to
-        # `link:/Users/admin/Projects/tale-ui/tale-ui/packages/*` (the local
-        # dev path) which doesn't exist on the runner. The helper installs
-        # the committed registry-backed release lock without permitting drift.
+        # The helper installs the committed release lock without permitting
+        # dependency drift and restores the developer lock afterward.
         run: bash scripts/install-release-deps.sh
 
       - name: Typecheck (shell)
@@ -152,9 +148,10 @@ jobs:
           BENTO_RELEASE: '1'
         run: pnpm run ext:build
 
-      - name: Size budget
-        # Fails the job if any bundle breaches its graph-aware JS budget or
-        # direct file budget. JS entry budgets live in
+      - name: Report size budgets
+        # Reports graph-aware JS and direct-file size ceilings without making
+        # an overage a gate. Missing or malformed built assets still fail.
+        # JS entry budgets live in
         # scripts/check-size-budgets.mjs; CSS/background budgets live in
         # .size-limit.json.
         run: pnpm run size:check

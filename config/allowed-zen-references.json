@@ -68,6 +68,12 @@
       "reason": "Hands the explicit Firefox and Zen import action to startup migration."
     },
     {
+      "path": "rollback/legacy-source/src/browser/base/content/bento-shell-mount.js",
+      "pattern": "Import Firefox or Zen|Firefox/Zen|firefox-zen|scopeFirefoxZen|MIGRATION_SCOPE",
+      "category": "import-compatibility",
+      "reason": "Preserves the legacy rollback source's Firefox/Zen migration scope."
+    },
+    {
       "path": "extensions/_shared/protocol.ts",
       "pattern": "['\"]zen['\"]",
       "category": "import-compatibility",

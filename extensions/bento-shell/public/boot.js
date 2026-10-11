@@ -22,6 +22,13 @@
   }
   document.documentElement.setAttribute('data-color-mode', mode);
   document.documentElement.setAttribute('data-theme', mode);
+  // Mux consumes explicit scheme/contrast attributes on the same element as
+  // its theme. Default is the measured Bento baseline until the workspace
+  // store resolves the active workspace after React mounts.
+  document.documentElement.setAttribute('data-bento-theme', 'default');
+  document.documentElement.setAttribute('data-muxui-theme', 'default');
+  document.documentElement.setAttribute('data-muxui-color-scheme', mode);
+  document.documentElement.setAttribute('data-muxui-contrast', 'standard');
   document.documentElement.setAttribute(
     'data-bento-color-mode-pref',
     stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'light',

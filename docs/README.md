@@ -12,7 +12,7 @@ contributor-facing guides.
 
 ## Contributor docs
 
-- [Tale UI component customisations](tale-ui-component-customisations.md)
+- [Mux UI and Bento component customisations](mux-ui-component-customisations.md)
 - [Workspace themes](themes.md)
 - [Chrome tokens](chrome-tokens.md)
 - [Implementing Firefox patches](firefox-patches.md)

@@ -64,6 +64,7 @@ describe('WorkspaceStore active workspace persistence', () => {
         id: '{zen-space-1}',
         name: 'Research',
         icon: 'R',
+        themeId: 'teal',
         createdAt: 100,
       },
       {
@@ -82,6 +83,7 @@ describe('WorkspaceStore active workspace persistence', () => {
         id: '{zen-space-1}',
         name: 'Research',
         icon: 'R',
+        themeId: 'teal',
         createdAt: 100,
       },
       {
@@ -105,11 +107,13 @@ describe('WorkspaceStore active workspace persistence', () => {
           {
             id: '{zen-space-1}',
             name: 'Research',
+            themeId: 'legacy-custom',
             createdAt: 100,
           },
           {
             id: '{zen-space-2}',
             name: 'Personal',
+            themeId: 'standard-harbour',
             createdAt: 101,
           },
         ];
@@ -124,16 +128,33 @@ describe('WorkspaceStore active workspace persistence', () => {
       {
         id: '{zen-space-1}',
         name: 'Research',
+        themeId: 'legacy-custom',
         createdAt: 100,
       },
       {
         id: '{zen-space-2}',
         name: 'Personal',
+        themeId: 'standard-harbour',
         createdAt: 101,
       },
     ]);
     expect(store.snapshot().activeId).toBe('{zen-space-2}');
     expect(store.snapshot().activeIdByWindow).toEqual({ 7: '{zen-space-2}' });
     expect(browser.sessions.removeWindowValue).toHaveBeenCalledWith(7, 'bento.importedWorkspaces');
+  });
+
+  it('preserves an explicitly empty imported theme id for presentation-time fallback', async () => {
+    vi.mocked(browser.windows.getAll).mockResolvedValue([{ id: 7 } as browser.windows.Window]);
+    vi.mocked(browser.sessions.getWindowValue).mockResolvedValue([
+      { id: '{zen-space-1}', name: 'Research', themeId: '' },
+    ]);
+
+    const store = new WorkspaceStore();
+    await store.init();
+
+    expect(store.snapshot().workspaces[0]).toMatchObject({
+      id: '{zen-space-1}',
+      themeId: '',
+    });
   });
 });

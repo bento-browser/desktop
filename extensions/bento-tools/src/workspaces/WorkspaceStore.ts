@@ -24,6 +24,8 @@ interface ImportedWorkspace {
   id: string;
   name: string;
   icon?: string;
+  /** Raw persisted id from the source workspace; resolve only at render time. */
+  themeId?: string;
   createdAt?: number;
 }
 
@@ -124,6 +126,9 @@ export class WorkspaceStore {
       };
       if (typeof candidate.icon === 'string' && candidate.icon.trim()) {
         workspace.icon = candidate.icon.trim();
+      }
+      if (typeof candidate.themeId === 'string') {
+        workspace.themeId = candidate.themeId;
       }
       parsed.push(workspace);
     }

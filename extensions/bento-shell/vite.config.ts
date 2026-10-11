@@ -4,16 +4,19 @@
 // XHTML <browser src="chrome://bento-shell/content/index.html"> will load
 // these by URL — hashes would break the chrome.manifest registration.
 //
-// `optimizeDeps.exclude: ['@tale-ui/react']` lets Vite consume Tale UI's
-// raw TS sources directly through the pnpm `link:` symlink for fastest
-// HMR. CI prod builds should consider switching the link target to Tale UI's
-// build/ directory to surface @babel/runtime drift before release (see
-// CLAUDE.md Tale UI release-migration callout).
+// The pinned npm @muxui/react release is consumed from its public
+// output. The aliases below keep every entrypoint on Bento's pinned React Aria
+// substrate so providers and consumers share one module identity. With
+// MUXUI_LOCAL set (local Mux development only), muxui-local.mjs swaps the npm
+// package for a local Mux checkout and the build stamps dist/muxui-source.json.
 
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, mergeConfig, searchForWorkspaceRoot, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
+import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
+
+const muxLocal = resolveMuxLocal();
 
 // Strip `crossorigin` from emitted <script> and <link> tags. moz-extension://
 // resources don't reliably handle CORS preflight, so the attribute makes
@@ -47,25 +50,27 @@ function copyChromeBridgeExperiment(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [react({ jsxRuntime: 'automatic' }), stripCrossOrigin(), copyChromeBridgeExperiment()],
+const shellConfig = defineConfig(({ mode }) => ({
+  plugins: [
+    react({ jsxRuntime: 'automatic' }),
+    stripCrossOrigin(),
+    copyChromeBridgeExperiment(),
+    muxSourcePlugin(muxLocal, resolve(__dirname, '../../node_modules/@muxui/react/package.json')),
+  ],
 
   ...(process.env.BENTO_RELEASE === '1'
     ? { esbuild: { drop: ['console', 'debugger'] as const } }
     : {}),
 
   resolve: {
-    alias: {
-      '@shared': resolve(__dirname, '../_shared'),
-      '@bento': resolve(__dirname, 'src'),
+    alias: [
+      { find: '@shared', replacement: resolve(__dirname, '../_shared') },
+      { find: '@bento', replacement: resolve(__dirname, 'src') },
       // Force `react-aria-components` (and the helper umbrellas) to
-      // resolve from bento-browser's node_modules, never Tale UI's.
-      // Tale UI is consumed as raw TS via a `link:` symlink and
-      // brings its OWN pnpm-resolved copies of react-aria-components,
-      // react-aria, and react-stately. When Tale UI's `<Menu>` ends
-      // up bundled from tale-ui's copy of react-aria-components but
-      // ChromeMenu's directly-imported `<SubmenuTrigger>` resolves to
-      // bento's copy, the two copies' module-level
+      // resolve from bento-browser's node_modules, never a package's nested
+      // dependency paths. If one entrypoint bundled a second copy of
+      // react-aria-components while ChromeMenu's Mux `Menu.Submenu` consumer
+      // resolved to Bento's copy, the two copies' module-level
       // `SubmenuTriggerContext` constants (`createContext(null)`) are
       // independent React contexts. The parent menu provides one;
       // the child consumes the other; the destructure of `null`
@@ -77,15 +82,20 @@ export default defineConfig(({ mode }) => ({
       // — those carry their own state contexts too) and
       // `@react-types/shared` (shared TypeScript symbol slots that
       // can also produce identity drift across duplicate copies).
-      'react-aria-components': resolve(__dirname, '../../node_modules/react-aria-components'),
-      'react-aria': resolve(__dirname, '../../node_modules/react-aria'),
-      'react-stately': resolve(__dirname, '../../node_modules/react-stately'),
-      '@react-types/shared': resolve(__dirname, '../../node_modules/@react-types/shared'),
-    },
-  },
-
-  optimizeDeps: {
-    exclude: ['@tale-ui/react', '@tale-ui/react-styles', '@tale-ui/utils'],
+      {
+        find: 'react-aria-components',
+        replacement: resolve(__dirname, '../../node_modules/react-aria-components'),
+      },
+      { find: 'react-aria', replacement: resolve(__dirname, '../../node_modules/react-aria') },
+      {
+        find: 'react-stately',
+        replacement: resolve(__dirname, '../../node_modules/react-stately'),
+      },
+      {
+        find: '@react-types/shared',
+        replacement: resolve(__dirname, '../../node_modules/@react-types/shared'),
+      },
+    ],
   },
 
   // Relative-path emission (./) so the bundle works when index.html is loaded
@@ -136,10 +146,10 @@ export default defineConfig(({ mode }) => ({
         // copy carries its own module-local React contexts — most
         // visibly `SubmenuTriggerContext`, which is created via
         // `createContext(null)` and read by `SubmenuTrigger`'s render
-        // function. When the parent `<Menu>` (loaded via Tale UI's
+        // function. When the parent `<Menu>` (loaded via a public Mux
         // wrapper, ending up in the shared chunk) provides the context
-        // but `<SubmenuTrigger>` (imported directly by ChromeMenu.tsx,
-        // ending up in menu.js's copy) reads from a DIFFERENT context
+        // but ChromeMenu.tsx's `Menu.Submenu` consumer (ending up in menu.js's
+        // copy) reads from a DIFFERENT context
         // instance, the read returns null and the destructure throws
         // "Cannot destructure property 'parentMenuRef' of '<null>'" —
         // surfaced in the minified bundle as "t is null" on every kebab
@@ -171,3 +181,9 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
   },
 }));
+
+// Local Mux mode adds its aliases, React dedupe, and fs.allow on top of the
+// base config; with MUXUI_LOCAL unset the fragment is empty.
+export default defineConfig((env) =>
+  mergeConfig(shellConfig(env), muxLocalViteConfig(muxLocal, searchForWorkspaceRoot(__dirname))),
+);

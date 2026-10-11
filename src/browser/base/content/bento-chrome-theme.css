@@ -3,13 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * Bento chrome theme — maps Firefox's chrome color variables to Tale UI
+ * Bento chrome theme — maps Firefox's chrome color variables to Mux/Bento
  * design tokens so the entire visible chrome (toolbar, URL bar, window
  * background) re-themes from a single source of truth.
  *
  * Loaded as a chrome stylesheet via injectChromeTheme() in
  * src/browser/base/content/bento-shell-mount.js, AFTER bento-chrome-tokens
- * (which exposes the Tale UI variables on :root). Registered in jar.mn at
+ * (which exposes the Mux/Bento variables on :root). Registered in jar.mn at
  * `chrome://browser/content/bento-chrome-theme.css`.
  *
  * !important is required because Firefox's LightweightThemeManager writes
@@ -31,11 +31,11 @@
  *   - find-in-page bar
  *   - devtools chrome
  *
- * Tale UI tokens flip with data-color-mode (set on chrome <window> by
+ * Mux tokens flip with data-color-mode (set on chrome <window> by
  * bento-shell-mount's color-mode IPC), so a single attribute swap re-
  * themes both light/dark variants. Per-workspace theme (re-points
- * --brand-*, --neutral-default-*, and --color-N-fg) flows through Tale
- * UI's color cascade via data-bento-theme on the chrome window — set
+ * --brand-*, --neutral-default-*, and --color-N-fg) flows through Bento's Mux UI
+ * color cascade via data-bento-theme on the chrome window — set
  * by the BENTO_THEME title-IPC handler in bento-shell-mount.js. The
  * workspace theme presets ship inside bento-chrome-tokens.css
  * (concatenated by scripts/generate-chrome-tokens.mjs).
@@ -373,8 +373,8 @@
 
   /* ASRouter's app-menu default-browser nudge renders inside a shadow DOM
    * menu-message element. Theme it through inherited custom properties so
-   * the upstream component can keep its structure while Bento supplies Tale
-   * UI token colours. */
+   * the upstream component can keep its structure while Bento supplies Mux UI
+   * token colours. */
   #appMenu-menu-message > menu-message {
     --background-color-information: var(--neutral-12) !important;
     --text-color: var(--neutral-90) !important;
@@ -429,7 +429,7 @@
 
   /* Native bookmark surfaces use a mix of toolbar menupopups, app-menu
    * panelviews, and Places sidebars. Pin their inherited text and menu
-   * variables to Tale UI tokens so labels do not fall back to OS menu text
+   * variables to Mux/Bento tokens so labels do not fall back to OS menu text
    * colours on Bento's neutral surfaces. */
   :is(
     #BMB_bookmarksPopup,
@@ -956,7 +956,7 @@
 
   /* ─── Customize Toolbar mode ───────────────────────────────────────
    * Firefox builds this screen in browser.xhtml from native XUL, so it
-   * consumes chrome tokens rather than @tale-ui/react components. Keep it
+   * consumes chrome tokens rather than React components. Keep it
    * scoped to [customizing] so ordinary chrome keeps its existing layout. */
   :root[customizing] {
     --drag-drop-transition-duration: var(--bento-duration-slow) !important;

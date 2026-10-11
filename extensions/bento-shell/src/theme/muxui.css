@@ -1,0 +1,12 @@
+/*
+ * Single public Mux stylesheet boundary for every Bento document.
+ *
+ * Mux owns the low-precedence component defaults; Bento's token, preset, and
+ * component layers follow in the `bento` layer so existing shell overrides
+ * retain their authority. Keep the package imports here so entry points do
+ * not accidentally establish different cascade orderings.
+ */
+@layer muxui, bento;
+
+@import '@muxui/react/styles.css' layer(muxui);
+@import '@muxui/react/themes.css' layer(muxui);

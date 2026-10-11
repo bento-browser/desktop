@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MouseEvent, PointerEvent } from 'react';
-import { IconButton } from '@tale-ui/react/icon-button';
-import { Tooltip } from '@tale-ui/react/tooltip';
+import { IconButton, Tooltip } from '@muxui/react';
 
 import { usePinnedPanelsStore } from '../../state/pinnedPanels';
 import { usePanelFocusStore } from '../../state/panelFocus';
@@ -10,6 +9,7 @@ import { useWorkspace } from '../../state/workspaces';
 import { dispatch } from '../../bridge/useToolsPort';
 import type { PinnedPanelEntry } from '@shared/protocol';
 import { DEFAULT_THEME_ID } from '../../theme/presets';
+import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
 import './PinnedPanels.css';
 
 interface PinnedPanelRowProps {
@@ -44,6 +44,7 @@ function PinnedPanelRowImpl({
   const tab = useTab(entry.tabId);
   const workspace = useWorkspace(entry.workspaceId);
   const focusedTabId = usePanelFocusStore((s) => s.focusedTabId);
+  const colorScheme = useResolvedColorScheme();
   const title = tab?.customTitle || tab?.title || entry.title || entry.url || 'Pinned panel';
   const favIconUrl = tab?.favIconUrl || entry.favIconUrl;
   const isFocused = focusedTabId === entry.tabId;
@@ -67,45 +68,40 @@ function PinnedPanelRowImpl({
     document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encoded}`;
   };
 
-  return (
-    <Tooltip.Root delay={400}>
-      <IconButton
-        className={`bento-pinned-panels__button${dragging ? ' bento-pinned-panels__button--dragging' : ''}`}
-        data-bento-pinned-panel-key={entryKey}
-        data-bento-theme={workspace?.themeId ?? DEFAULT_THEME_ID}
-        data-bento-focused={isFocused ? 'true' : undefined}
-        variant="neutral"
-        size="sm"
-        aria-label={`Open pinned panel: ${title}`}
-        onPress={() => {
-          if (!shouldSuppressOpen(entryKey)) openPinnedPanel();
-        }}
-        onPointerDown={(event) => onPointerDown(event, entryKey)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onLostPointerCapture={onLostPointerCapture}
-        onAuxClick={(e) => {
-          if (e.button === 1) {
-            e.preventDefault();
-            e.stopPropagation();
-            closePinnedPanel();
-          }
-        }}
-        onContextMenu={openContextMenu}
-      >
-        {favIconUrl ? (
-          <img className="bento-pinned-panels__favicon" src={favIconUrl} alt="" draggable={false} />
-        ) : (
-          <span className="bento-pinned-panels__favicon bento-pinned-panels__favicon--placeholder" />
-        )}
-      </IconButton>
-      <Tooltip.Popup placement="right" offset={8}>
-        <Tooltip.Arrow />
-        {title}
-      </Tooltip.Popup>
-    </Tooltip.Root>
+  const button = (
+    <IconButton
+      className={`bento-pinned-panels__button${dragging ? ' bento-pinned-panels__button--dragging' : ''}`}
+      data-bento-pinned-panel-key={entryKey}
+      {...getThemeScopeAttributes(workspace?.themeId ?? DEFAULT_THEME_ID, colorScheme)}
+      data-bento-focused={isFocused ? 'true' : undefined}
+      variant="neutral"
+      size="sm"
+      aria-label={`Open pinned panel: ${title}`}
+      onActivate={() => {
+        if (!shouldSuppressOpen(entryKey)) openPinnedPanel();
+      }}
+      onPointerDown={(event) => onPointerDown(event, entryKey)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onLostPointerCapture}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          closePinnedPanel();
+        }
+      }}
+      onContextMenu={openContextMenu}
+    >
+      {favIconUrl ? (
+        <img className="bento-pinned-panels__favicon" src={favIconUrl} alt="" draggable={false} />
+      ) : (
+        <span className="bento-pinned-panels__favicon bento-pinned-panels__favicon--placeholder" />
+      )}
+    </IconButton>
   );
+  return <Tooltip content={title} delay={400} placement="end" offset={8} trigger={button} />;
 }
 
 const PinnedPanelRow = memo(PinnedPanelRowImpl);

@@ -5,6 +5,8 @@
 // hover-tooltip placement can be eyeballed without running the browser.
 
 import { useEffect } from 'react';
+import '../../theme/muxui.css';
+
 import { PanelTrailer } from './PanelTrailer';
 import {
   MANY_SAVED_PANELS,

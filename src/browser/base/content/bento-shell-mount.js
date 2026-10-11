@@ -147,19 +147,18 @@
     true /* capture */,
   );
 
-  // Tale UI design tokens for chrome. The token CSS is generated from
-  // tale-ui source by scripts/generate-chrome-tokens.mjs (runs as part
-  // of `pnpm run import`) and registered in chrome via patches/chrome-
-  // layout/01-bento-shell-mount.patch's jar.mn entry. Loading it as a
-  // <link> stylesheet exposes Tale UI's variable cascade on the chrome
+  // Public Mux design tokens for chrome. The token CSS is generated from
+  // @muxui/react's public styles and themes by
+  // scripts/generate-chrome-tokens.mjs (runs as part of `pnpm run import`)
+  // and registered in chrome via the jar.mn entry. Loading it as a <link>
+  // stylesheet exposes the generated Bento alias bridge on the chrome
   // <window>'s :root, so chrome inline styles can use `var(--color-60)`,
-  // `var(--neutral-90)`, `var(--radius-m)`, etc. — auto-themable via
-  // future Scale-app-driven theme files, auto-flipping with the OS
-  // color scheme via Tale UI's _color-modes.css cascade.
+  // `var(--neutral-90)`, `var(--radius-m)`, etc. The existing data-bento-theme
+  // and data-color-mode attributes select the same values as the shell.
   //
-  // We keep `var()` references (no manual hex constants) so any change
-  // to Tale UI's primitives flows in on the next import without anyone
-  // touching this file.
+  // We keep `var()` references (no manual hex constants) so changes to the
+  // public Mux primitives flow in on the next import without touching this
+  // hook.
   function injectChromeTokens() {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -170,7 +169,7 @@
 
   // Map Firefox's chrome color variables (--toolbar-bgcolor,
   // --toolbar-field-background-color, --toolbox-textcolor, etc.) to
-  // Tale UI tokens so the visible chrome (toolbar, URL bar, titlebar)
+  // Bento's generated Mux aliases so the visible chrome (toolbar, URL bar, titlebar)
   // re-themes from the same source as the rest of Bento. Loaded AFTER
   // tokens so the var() references it makes resolve. See the file
   // header at chrome://browser/content/bento-chrome-theme.css for the
@@ -1658,21 +1657,21 @@
         background-color: var(--neutral-5);
         border-bottom-color: var(--neutral-5);
       }
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button,
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button {
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button,
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button {
         color: var(--neutral-80);
       }
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
         color: var(--neutral-90);
       }
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
         color: var(--neutral-90);
       }
@@ -1682,7 +1681,7 @@
       }
 
       /* Per-panel header: compact urlbar (back/fwd/reload, URL input,
-         bookmark / pin). All sizing via Bento/Tale UI tokens — no raw values. */
+         bookmark / pin). All sizing via Bento/Mux tokens — no raw values. */
       .bento-panel-header {
         display: flex;
         flex-direction: row;
@@ -1720,13 +1719,11 @@
           transition: none;
         }
       }
-      /* Chrome-side translation of Tale UI IconButton
-         variant="ghost" size="sm". These controls cannot render the
-         React component because they live in browser chrome, but they
-         carry the same BEM classes and mirror the same interactive
-         states with native pseudo-classes plus React-Aria-compatible
-         data-state selectors. */
-      .bento-panel-header .tale-icon-button.tale-button {
+      /* Bento-owned native icon-button styling uses Mux-derived ghost/small
+         tokens for controls that live in browser chrome. Native
+         pseudo-classes and React-Aria-compatible data-state selectors mirror
+         the interactive states without mounting a Mux runtime component. */
+      .bento-panel-header .bento-icon-button.bento-button {
         position: relative;
         display: inline-flex;
         align-items: center;
@@ -1755,30 +1752,30 @@
           color var(--bento-duration-fast) var(--bento-easing-standard),
           box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
       }
-      .bento-panel-header .tale-icon-button.tale-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel-header .tale-icon-button.tale-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
         color: var(--neutral-90);
       }
-      .bento-panel-header .tale-icon-button.tale-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel-header .tale-icon-button.tale-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
+      .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
+      .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
         background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
       }
-      .bento-panel-header .tale-icon-button.tale-button:focus-visible,
-      .bento-panel-header .tale-icon-button.tale-button[data-focus-visible] {
+      .bento-panel-header .bento-icon-button.bento-button:focus-visible,
+      .bento-panel-header .bento-icon-button.bento-button[data-focus-visible] {
         box-shadow:
           0 0 0 2px var(--neutral-100),
           0 0 0 4px var(--focus-ring-color);
       }
-      .bento-panel-header .tale-icon-button.tale-button[disabled],
-      .bento-panel-header .tale-icon-button.tale-button[data-disabled] {
+      .bento-panel-header .bento-icon-button.bento-button[disabled],
+      .bento-panel-header .bento-icon-button.bento-button[data-disabled] {
         opacity: 0.45;
         cursor: not-allowed;
       }
-      .bento-panel-header .tale-icon-button.tale-button[data-pending] {
+      .bento-panel-header .bento-icon-button.bento-button[data-pending] {
         cursor: default;
       }
-      .bento-panel-header .tale-icon-button > svg {
+      .bento-panel-header .bento-icon-button > svg {
         width: var(--bento-icon-size-sm);
         height: var(--bento-icon-size-sm);
         pointer-events: none;
@@ -1928,29 +1925,29 @@
           0 1px 4px rgba(0, 0, 0, 0.45),
           0 0 0 3px var(--focus-ring-color);
       }
-      .bento-panel-loading-overlay .tale-spinner {
+      .bento-panel-loading-overlay .bento-spinner {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         --_spinner-size: 2.25rem;
       }
-      .bento-panel-loading-overlay .tale-spinner__svg {
+      .bento-panel-loading-overlay .bento-spinner__svg {
         width: var(--_spinner-size);
         height: var(--_spinner-size);
-        animation: tale-spinner-rotate 1s linear infinite;
+        animation: bento-spinner-rotate 1s linear infinite;
       }
-      .bento-panel-loading-overlay .tale-spinner__track {
+      .bento-panel-loading-overlay .bento-spinner__track {
         stroke: var(--neutral-20);
       }
-      .bento-panel-loading-overlay .tale-spinner__arc {
+      .bento-panel-loading-overlay .bento-spinner__arc {
         stroke: var(--color-60);
         stroke-dasharray: 44, 63;
-        animation: tale-spinner-dash 1.2s ease-in-out infinite;
+        animation: bento-spinner-dash 1.2s ease-in-out infinite;
       }
-      @keyframes tale-spinner-rotate {
+      @keyframes bento-spinner-rotate {
         100% { transform: rotate(360deg); }
       }
-      @keyframes tale-spinner-dash {
+      @keyframes bento-spinner-dash {
         0% { stroke-dasharray: 1, 63; stroke-dashoffset: 0; }
         50% { stroke-dasharray: 44, 63; stroke-dashoffset: -16; }
         100% { stroke-dasharray: 44, 63; stroke-dashoffset: -62; }
@@ -2224,7 +2221,7 @@
          The ID rule overrides the .split-view-panel-active rule's
          min-width (which would force 380px, way wider than we want
          for a slim trailer slot).
-         Colours: --neutral-* tokens flip with Tale UI's color-mode
+         Colours: --neutral-* tokens flip with the public Mux mode
          cascade (data-color-mode on the chrome window), so the
          trailer adapts to light + dark mode automatically. SVG
          currentColor inherits from the trailer's color property so
@@ -3339,40 +3336,98 @@
 
   const PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_SRC =
     '"use strict";' +
-    'addMessageListener("BentoPanelNavigatorTooltip", function(msg) {' +
-    '  content.postMessage({ kind: "bento-panel-navigator-tooltip", payload: msg.data || null }, "*");' +
-    '});';
+    'if (!globalThis.__bentoPanelNavigatorTooltipRelayInstalled) {' +
+    '  globalThis.__bentoPanelNavigatorTooltipRelayInstalled = true;' +
+    '  addMessageListener("BentoPanelNavigatorTooltip", function(msg) {' +
+    '    try {' +
+    '      content.postMessage({ kind: "bento-panel-navigator-tooltip", payload: msg.data || null }, "*");' +
+    '    } catch (e) {}' +
+    '  });' +
+    '}';
   const PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL =
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_SRC);
   let panelNavigatorTooltipPayload = null;
 
+  function installPanelNavigatorTooltipFrameScript(frame) {
+    const messageManager = frame?.messageManager;
+    const windowGlobal = frame?.browsingContext?.currentWindowGlobal;
+    if (!messageManager || typeof messageManager.loadFrameScript !== 'function') return false;
+    if (
+      frame._bentoPanelNavigatorTooltipFrameScriptManager === messageManager &&
+      frame._bentoPanelNavigatorTooltipFrameScriptWindowGlobal === windowGlobal
+    ) {
+      return true;
+    }
+    const registerForDelayedLoad =
+      frame._bentoPanelNavigatorTooltipFrameScriptDelayedManager !== messageManager;
+    messageManager.loadFrameScript(
+      PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL,
+      registerForDelayedLoad,
+    );
+    if (registerForDelayedLoad) {
+      frame._bentoPanelNavigatorTooltipFrameScriptDelayedManager = messageManager;
+    }
+    frame._bentoPanelNavigatorTooltipFrameScriptManager = messageManager;
+    frame._bentoPanelNavigatorTooltipFrameScriptWindowGlobal = windowGlobal;
+    frame._bentoPanelNavigatorTooltipFrameScriptLoaded = true;
+    return true;
+  }
+
+  function replayPanelNavigatorTooltipPayload(frame) {
+    if (!panelNavigatorTooltipPayload) return;
+    const messageManager = frame?.messageManager;
+    if (!messageManager || typeof messageManager.sendAsyncMessage !== 'function') return;
+    try {
+      messageManager.sendAsyncMessage('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
+    } catch {
+      // The remote frame can disappear during a browser-window teardown.
+    }
+  }
+
   function ensurePanelNavigatorTooltipFrameScript() {
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
-    if (!frame || frame._bentoPanelNavigatorTooltipFrameScriptLoaded) return;
-    try {
-      frame.messageManager?.loadFrameScript?.(PANEL_NAVIGATOR_TOOLTIP_FRAME_SCRIPT_URL, true);
-      frame._bentoPanelNavigatorTooltipFrameScriptLoaded = true;
-      frame.addEventListener(
-        'load',
-        () => {
-          if (panelNavigatorTooltipPayload) {
-            frame.messageManager?.sendAsyncMessage?.(
-              'BentoPanelNavigatorTooltip',
-              panelNavigatorTooltipPayload,
-            );
+    if (!frame) return;
+    if (!frame._bentoPanelNavigatorTooltipFrameScriptProgressListenerAttached) {
+      const progressListener = {
+        QueryInterface: ChromeUtils.generateQI([
+          'nsIWebProgressListener',
+          'nsISupportsWeakReference',
+        ]),
+        onStateChange(webProgress, request, stateFlags) {
+          if (webProgress && !webProgress.isTopLevel) return;
+          if (stateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
+            ensurePanelNavigatorTooltipFrameScript();
+            replayPanelNavigatorTooltipPayload(frame);
           }
         },
-        true,
-      );
+        onLocationChange() {},
+        onProgressChange() {},
+        onStatusChange() {},
+        onSecurityChange() {},
+        onContentBlockingEvent() {},
+      };
+      try {
+        frame.addProgressListener(progressListener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
+        frame._bentoPanelNavigatorTooltipFrameScriptProgressListener = progressListener;
+        frame._bentoPanelNavigatorTooltipFrameScriptProgressListenerAttached = true;
+      } catch (err) {
+        console.warn('[bento-shell-mount] panel navigator tooltip progress listener failed:', err);
+      }
+    }
+    try {
+      installPanelNavigatorTooltipFrameScript(frame);
     } catch (err) {
       console.warn('[bento-shell-mount] panel navigator tooltip frame setup failed:', err);
     }
   }
 
   function setBentoPanelNavigatorTooltipSrc() {
-    setFrameSrc('bento-panel-navigator-tooltip-frame', '/dist/panel-navigator-tooltip.html');
+    // Attach the progress listener before navigation. Firefox can replace the
+    // remote frame's message manager during the first extension load, so the
+    // relay is reinstalled when the document reaches STATE_STOP.
     ensurePanelNavigatorTooltipFrameScript();
+    setFrameSrc('bento-panel-navigator-tooltip-frame', '/dist/panel-navigator-tooltip.html');
   }
 
   // Create overlay host elements dynamically rather than in the patch.
@@ -3451,7 +3506,7 @@
     scrim.setAttribute('popover', 'manual');
     // Override the UA popover layout (centered, fit-content) into a
     // top strip. Height is set on show from the live toolbar rect.
-    // background = --scrim (neutral-100 @ 48%), the SAME token Tale UI's
+    // background = --scrim (neutral-100 @ 48%), the SAME token Mux's
     // Dialog.Backdrop uses (--modal-backdrop-bg: var(--scrim)), so the
     // toolbar dim matches the content dim exactly. Painted once.
     scrim.style.cssText =
@@ -3506,7 +3561,7 @@
     remote: false,
   });
 
-  // Workspace-switcher overlay. The Tale UI Menu popover would otherwise
+  // Workspace-switcher overlay. The Mux Menu popover would otherwise
   // be clipped at the sidebar iframe boundary — useless when the rail is
   // collapsed to 4rem. Lifting the menu into a chrome-mounted <browser>
   // lets it render anywhere in the chrome window.
@@ -3562,10 +3617,11 @@
 
   const panelNavigatorTooltipHostInit = document.getElementById('bento-panel-navigator-tooltip-host');
   if (panelNavigatorTooltipHostInit) {
+    panelNavigatorTooltipHostInit.removeAttribute('hidden');
     panelNavigatorTooltipHostInit.style.display = 'flex';
     panelNavigatorTooltipHostInit.style.pointerEvents = 'none';
     // Unlike modal overlays this host has no backdrop; keep it painted so
-    // the transparent frame can show its Tale UI tooltip popup.
+    // the transparent frame can show its Mux tooltip popup.
     panelNavigatorTooltipHostInit.style.opacity = '1';
   }
 
@@ -4130,7 +4186,7 @@
   }
 
   // ─── Workspace-switcher overlay ────────────────────────────────────────
-  // The Tale UI Menu popover would otherwise be clipped at the sidebar
+  // The Mux Menu popover would otherwise be clipped at the sidebar
   // iframe boundary — useless when the rail is collapsed to 4rem and the
   // menu would render entirely outside the visible sidebar. Lifting it
   // into a chrome-mounted <browser> lets the menu render anywhere in the
@@ -4420,7 +4476,7 @@
   }
 
   // ─── Generic chrome-menu overlay ───────────────────────────────────────
-  // showChromeMenu({ anchor, items, onSelect, placement }) opens a Tale UI Menu over
+  // showChromeMenu({ anchor, items, onSelect, placement }) opens a Mux Menu over
   // the entire chrome window, positioned next to `anchor` (a DOMRect-ish
   // {left, top, width, height} from the trigger element's
   // getBoundingClientRect). Each open generates a unique contextId so
@@ -4671,13 +4727,12 @@
   const TAB_MOVE_PREFIX = 'BENTO_TAB_MOVE:';
   let currentSidebarSelectedTabIds = [];
 
-  // Drive Tale UI's color-mode cascade in chrome by setting explicit
+  // Drive the public Mux color-mode cascade in chrome by setting explicit
   // data-color-mode on the chrome window's <window> root.
-  // _color-modes.css selectors are rewritten from `html` to `:root` by
-  // scripts/generate-chrome-tokens.mjs, so the same cascade that flips
-  // shell tokens flips chrome tokens. 'system' is stored as Auto but
-  // resolved here to light/dark because Tale UI expects an explicit
-  // rendered mode once the user has a persisted preference.
+  // public mode selectors are rewritten from `html` to `:root` by
+  // scripts/generate-chrome-tokens.mjs, so the same cascade that flips shell
+  // tokens flips chrome tokens. 'system' is stored as Auto but resolved here
+  // to light/dark because native chrome renders an explicit mode.
   let chromeColorModePref = null;
   function resolveChromeColorMode(mode) {
     if (mode === 'system') {
@@ -5252,7 +5307,7 @@
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className =
-      'tale-button tale-button--ghost tale-icon-button tale-icon-button--sm bento-panel-header-button';
+      'bento-button bento-button--ghost bento-icon-button bento-icon-button--sm bento-panel-header-button';
     btn.title = title;
     btn.setAttribute('aria-label', title);
     btn.appendChild(makeIcon(iconD));
@@ -7720,7 +7775,7 @@
       closeBtn = makeHeaderButton('Close panel', ICONS.x, () => removePanel(tabId));
     }
 
-    // Kebab "more" button: opens a Tale UI Menu (via the generic
+    // Kebab "more" button: opens a Mux Menu (via the generic
     // chrome-menu overlay) of panel-scoped options. First population
     // is the custom panel sizes from Bento Settings; future items
     // (e.g., move to workspace, duplicate panel) — including SUBMENUS —
@@ -7749,7 +7804,7 @@
         // Size presets nest under a "Custom panel widths" submenu so
         // the menu has room for new top-level actions — `items.items`
         // makes ChromeMenu.tsx render a SubmenuTrigger via
-        // react-aria-components (no Tale UI Menu change needed).
+        // react-aria-components (no Mux Menu change needed).
         // "Save panel" sits as a sibling below a separator; clicking
         // dispatches `savedPanels/save` and bento-tools inserts the
         // bookmark into the "Saved panels" folder (de-dupes silently).
@@ -7863,7 +7918,7 @@
     // setupHeaderDrag's early return).
     const dragHandle = document.createXULElement('hbox');
     dragHandle.className =
-      'tale-button tale-button--ghost tale-icon-button tale-icon-button--sm bento-panel-header-drag-handle';
+      'bento-button bento-button--ghost bento-icon-button bento-icon-button--sm bento-panel-header-drag-handle';
     dragHandle.setAttribute('role', 'button');
     dragHandle.setAttribute('aria-label', 'Drag to reorder panel');
     dragHandle.appendChild(makeIcon(ICONS.gripVertical));
@@ -7957,25 +8012,25 @@
     overlay.hidden = true;
 
     const spinner = document.createElementNS(HTML_NS, 'div');
-    spinner.className = 'tale-spinner tale-spinner--lg';
+    spinner.className = 'bento-spinner bento-spinner--lg';
     spinner.setAttribute('role', 'status');
     spinner.setAttribute('aria-label', 'Loading');
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'tale-spinner__svg');
+    svg.setAttribute('class', 'bento-spinner__svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('aria-hidden', 'true');
 
     const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    track.setAttribute('class', 'tale-spinner__track');
+    track.setAttribute('class', 'bento-spinner__track');
     track.setAttribute('cx', '12');
     track.setAttribute('cy', '12');
     track.setAttribute('r', '10');
     track.setAttribute('stroke-width', '3');
 
     const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    arc.setAttribute('class', 'tale-spinner__arc');
+    arc.setAttribute('class', 'bento-spinner__arc');
     arc.setAttribute('cx', '12');
     arc.setAttribute('cy', '12');
     arc.setAttribute('r', '10');
@@ -10610,7 +10665,7 @@
     };
     ensurePanelNavigatorTooltipFrameScript();
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
-    frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
+    replayPanelNavigatorTooltipPayload(frame);
   }
 
   function attachPanelNavigatorTooltip(btn) {
@@ -13782,7 +13837,7 @@
       // Removed (vs. pre-iframe trailer):
       //   - role="button": the vbox is now a CONTAINER; the iframe
       //     child renders the actual button widgets.
-      //   - inline `title`: replaced by the iframe's Tale UI Tooltip.
+      //   - inline `title`: replaced by the iframe's Mux Tooltip.
       //   - click handler: the iframe captures mouse clicks before
       //     they reach the vbox. The keydown handler stays only for
       //     keyboard cycle-Enter while the OUTER vbox itself is

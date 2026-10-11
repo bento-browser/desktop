@@ -121,6 +121,7 @@ describe('workspace backup import/export', () => {
     expect(snapshot.workspaces).toHaveLength(1);
     expect(snapshot.workspaces[0]).toMatchObject({
       id: 'workspace-1',
+      themeId: 'ocean',
       mainWidthPx: 720,
       stripScrollLeft: 144,
       tabs: [{ url: 'https://main.example.test/' }],
@@ -194,6 +195,7 @@ describe('workspace backup import/export', () => {
         {
           id: 'source-workspace',
           name: 'Imported',
+          themeId: 'teal',
           createdAt: 123,
           tabs: [],
           panels: [
@@ -223,6 +225,11 @@ describe('workspace backup import/export', () => {
       panelsRestored: 4,
     });
     expect(setMainWidth).toHaveBeenCalledWith('imported-workspace', 720);
+    expect(ctx.workspaces.create).toHaveBeenCalledWith(
+      { name: 'Imported', themeId: 'teal', icon: undefined },
+      null,
+      { activate: false, id: undefined },
+    );
     expect(setStripScroll).toHaveBeenCalledWith('imported-workspace', 144);
     expect(setWidth).toHaveBeenCalledWith(100, 360);
     expect(setWidth).toHaveBeenCalledWith(101, 460);
@@ -320,6 +327,7 @@ describe('workspace backup import/export', () => {
         {
           id: 'source-workspace',
           name: 'Workspace 1',
+          themeId: 'teal',
           createdAt: 123,
           tabs: [
             {
@@ -343,7 +351,7 @@ describe('workspace backup import/export', () => {
     );
 
     expect(createWorkspace).toHaveBeenCalledWith(
-      { name: 'Workspace 1', themeId: undefined, icon: undefined },
+      { name: 'Workspace 1', themeId: 'teal', icon: undefined },
       null,
       { activate: false, id: undefined },
     );
@@ -451,6 +459,82 @@ describe('workspace backup import/export', () => {
     expect(assignWorkspace).toHaveBeenCalledWith(300, 'empty-workspace');
     expect(createTab.mock.invocationCallOrder[0]).toBeLessThan(
       removeTabs.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('preserves the source theme on replacement-window fallback workspaces', async () => {
+    let nextTabId = 500;
+    vi.stubGlobal('browser', {
+      windows: {
+        get: vi.fn(async () => ({ id: 42, type: 'normal', incognito: false })),
+        getAll: vi.fn(async () => [
+          { id: 42, type: 'normal', incognito: false },
+          { id: 43, type: 'normal', incognito: false },
+        ]),
+      },
+      tabs: {
+        create: vi.fn(async (options: { url: string }) => ({
+          id: nextTabId++,
+          url: options.url,
+          active: false,
+          pinned: false,
+        })),
+        move: vi.fn(async () => []),
+      },
+    });
+
+    const createWorkspace = vi.fn((input: { name: string; themeId?: string }) => ({
+      id: `workspace-${createWorkspace.mock.calls.length}`,
+      name: input.name,
+      createdAt: 456,
+    }));
+    const ctx = {
+      workspaces: {
+        snapshot: () => ({ workspaces: [] }),
+        create: createWorkspace,
+        activate: vi.fn(() => 'activated'),
+      },
+      tabs: { snapshot: () => [], assignWorkspace: vi.fn(async () => undefined) },
+      panels: {
+        setWidth: vi.fn(),
+        setMainWidth: vi.fn(),
+        setStripScroll: vi.fn(),
+        restorePersistedLayout: vi.fn(),
+      },
+      pinnedPanels: { add: vi.fn() },
+      settings: { update: vi.fn(), snapshot: () => DEFAULT_SETTINGS },
+      savedPanels: { save: vi.fn() },
+      targetWindowId: 42,
+    } as unknown as ImportContext;
+
+    await executeImport(
+      {
+        schemaVersion: 2,
+        bentoVersion: '0.0.0',
+        exportedAt: 789,
+        workspaces: [
+          {
+            id: 'source-workspace',
+            name: 'Imported',
+            themeId: 'legacy-custom',
+            createdAt: 123,
+            tabs: [],
+            panels: [],
+            panelLayout: { root: [] },
+            pinnedPanels: [],
+          },
+        ],
+        savedPanels: [],
+      },
+      { importSettings: false, importSavedPanels: false, replaceExisting: true },
+      ctx,
+    );
+
+    expect(createWorkspace).toHaveBeenNthCalledWith(
+      2,
+      { name: 'Personal (2)', themeId: 'legacy-custom' },
+      null,
+      { activate: false, id: undefined },
     );
   });
 
