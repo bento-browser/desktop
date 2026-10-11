@@ -3111,8 +3111,11 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
   and the theme sync and chrome token generators do not emit them. Do not add
   `contrast='more'` CSS to Bento files while that is true.
 - `public/panel-newtab.html` is a plain page: no script, no Mux stylesheet. The
-  Vite config bundles `src/panel-newtab/panel-newtab.css` into
-  `assets/panel-newtab.css` with esbuild. Its heading keeps Inter through a
+  `panelNewtabCss` plugin (`panel-newtab-css.ts`, shared with the archived
+  rollback Vite config, which has no `panel-newtab` entry) bundles
+  `src/panel-newtab/panel-newtab.css` into `assets/panel-newtab.css` with
+  esbuild. Run both `build-rollback-variant.mjs <variant> check` actions after
+  changing shell entries, because the archived config lists its own entries. Its heading keeps Inter through a
   page-local `@font-face` (weight 650) that points at the Inter file the Mux
   stylesheet makes the build emit into `assets/`; the Vite plugin fails the
   build if that file name stops existing. A hashed or renamed Inter file would

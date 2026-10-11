@@ -164,9 +164,11 @@ unchanged.
 
 The shell build keeps `cssCodeSplit: false`, so every entry shares one
 `style.css`. `public/panel-newtab.html` is the exception: a plain page with no
-script and no Mux stylesheet. The Vite config bundles
-`src/panel-newtab/panel-newtab.css` (tokens, presets, document base, page rules)
-into `assets/panel-newtab.css` with esbuild and the page links only that file.
+script and no Mux stylesheet. The `panelNewtabCss` Vite plugin
+(`extensions/bento-shell/panel-newtab-css.ts`, also used by the archived rollback
+config) bundles `src/panel-newtab/panel-newtab.css` (tokens, presets, document
+base, page rules) into `assets/panel-newtab.css` with esbuild and the page links
+only that file.
 It uses `--bento-panel-newtab-*` and `--bento-font-system` tokens. Because Mux
 is absent, the page restates the Mux foundation defaults it relied on (body
 line height, heading color). Its heading keeps Inter through a page-local

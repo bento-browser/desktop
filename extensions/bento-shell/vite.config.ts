@@ -13,12 +13,12 @@
 
 import { defineConfig, mergeConfig, searchForWorkspaceRoot, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { build as esbuild } from 'esbuild';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { stripContrastMore } from './contrast-more.mjs';
 import { moduleIdentityGuard } from './module-identity-guard';
 import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
+import { panelNewtabCss } from './panel-newtab-css';
 
 const muxLocal = resolveMuxLocal();
 
@@ -34,42 +34,6 @@ function stripCrossOrigin(): Plugin {
     enforce: 'post',
     transformIndexHtml(html) {
       return html.replace(/\s+crossorigin(="[^"]*")?/g, '');
-    },
-  };
-}
-
-// public/panel-newtab.html is a plain page that must not link the shared Mux
-// stylesheet. `cssCodeSplit: false` folds every Vite-processed stylesheet into
-// that one sheet, so this page's CSS is bundled on its own and emitted beside
-// the page. The build target is shared with the rest of the shell.
-//
-// Font files are left as relative URLs: the page reuses the Inter file the Mux
-// stylesheet already makes the build emit into assets/. Because that name is
-// derived from the Mux package path, fail the build if it ever stops existing.
-function panelNewtabCss(target: string): Plugin {
-  return {
-    name: 'bento-panel-newtab-css',
-    apply: 'build',
-    async generateBundle(_options, bundle) {
-      const { outputFiles } = await esbuild({
-        entryPoints: [resolve(__dirname, 'src/panel-newtab/panel-newtab.css')],
-        outfile: 'panel-newtab.css',
-        bundle: true,
-        minify: true,
-        target,
-        write: false,
-        external: ['*.ttf'],
-      });
-      const source = outputFiles[0]!.text;
-      for (const [, file] of source.matchAll(/url\(\s*["']?\.\/([^"')\s]+)["']?\s*\)/g)) {
-        if (!(`assets/${file}` in bundle)) {
-          this.error(
-            `panel-newtab.css references ./${file}, but the build emitted no assets/${file}. ` +
-              'Update the @font-face in src/panel-newtab/panel-newtab.css to the current file name.',
-          );
-        }
-      }
-      this.emitFile({ type: 'asset', fileName: 'assets/panel-newtab.css', source });
     },
   };
 }
