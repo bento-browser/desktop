@@ -453,6 +453,9 @@ exact published Mux version, and verified npm integrity; it rejects a substitute
 tarball or digest. Mux is reported like other npm components with its registry
 SHA-512 integrity digest.
 
+Bento's `react` and `react-dom` ranges (`^19.2.0`) sit inside Mux's peer range
+(`>=19.2.0 <20`).
+
 Bento keeps one React Aria substrate graph for menu context identity and pins
 Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
 This is later than the patch for
@@ -584,9 +587,11 @@ Guards keep local Mux out of releases:
    `pnpm run release:security-check` against the current pin and lock must pass.
 3. Update the inputs the new graph is checked against: the exact pin in
    `extensions/bento-shell/package.json`; the root `pnpm.overrides` (React Aria,
-   Tiptap) if Mux's dependencies changed; and the expected release metadata, the
-   version and registry integrity in `scripts/generate-release-sbom.mjs`
-   (`muxuiVersion`, `muxuiIntegrity`) and `scripts/release-security.test.mjs`.
+   Tiptap) if Mux's dependencies changed; the `react`/`react-dom` ranges (inside
+   Mux's `peerDependencies`) in `extensions/bento-shell/package.json`; and the
+   expected release metadata, the version and registry integrity in
+   `scripts/generate-release-sbom.mjs` (`muxuiVersion`, `muxuiIntegrity`, and the
+   approved runtime dependency specifiers) and `scripts/release-security.test.mjs`.
 4. Regenerate the lock: `pnpm install`. (Frozen installs fail between steps 3
    and 4 by design.)
 5. Verify the new graph: `pnpm install --frozen-lockfile`,

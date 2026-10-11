@@ -18,8 +18,8 @@ const muxuiIntegrity =
   'sha512-J7MB0roUffNcwygIxEO1KmTR0vW5Eh5IY1naCOahJjDsYMlR/OIp1QGzHs2zWCP/DQo4dDUnTHVZwzoCYgefJQ==';
 const approvedShellRuntimeDependencies = {
   '@muxui/react': muxuiVersion,
-  react: '^19.0.0',
-  'react-dom': '^19.0.0',
+  react: '^19.2.0',
+  'react-dom': '^19.2.0',
   zustand: '^5.0.0',
   '@tanstack/react-virtual': '^3.10.0',
   'lucide-react': '^0.460.0',
