@@ -33,8 +33,14 @@ the generated Mux token projection.
 Text uses the public `xs`, `sm`, `md`, and `lg` size values. There is no
 Bento compatibility wrapper for the old Text API. React Aria is an internal Mux
 dependency; shared Vite aliases and graph overrides preserve one menu context
-identity. Release SBOM validation binds the exact published version and npm
-integrity and retains the approved shell runtime dependency policy.
+identity. Vite no longer forces React Aria into one `react-aria` chunk: Rollup
+already places each module in one chunk, and the forced chunk made every
+overlay download the whole package. `module-identity-guard.ts` fails the build
+instead when a context-bearing package (React, React Aria, `@internationalized`)
+is bundled from two install paths, which is how the original
+`SubmenuTriggerContext` defect arose. Release SBOM validation binds the exact
+published version and npm integrity and retains the approved shell runtime
+dependency policy.
 
 On 2026-10-05, isolated Node 24.21 validation passed both frozen installs,
 normal shell typecheck/lint/build, the active and archived Settings Ladle

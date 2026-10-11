@@ -3093,6 +3093,19 @@ Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 
 Theme authoring and import workflow is documented in [themes.md](themes.md).
 
+### Shell bundle and stylesheet
+
+- Source of truth: `extensions/bento-shell/vite.config.ts`. All React entries
+  share one `style.css` (`cssCodeSplit: false`) and chunk by Rollup's default
+  rules. There is no `manualChunks`; `module-identity-guard.ts` fails the build
+  when React, React Aria, or `@internationalized` would be bundled from two
+  install paths (the cause of the `SubmenuTriggerContext` "is null" defect).
+  Keep the `resolve.alias` entries and run the menu/submenu check below after
+  any change to chunking or to the Mux, React Aria, or React versions.
+- The build targets `firefox150` (`gecko.strict_min_version`) and disables the
+  modulepreload polyfill. Sourcemaps stay `mode !== 'production'`; the package
+  scripts always build in production mode, so none are emitted.
+
 ### Theme pitfalls
 
 - Do not add standalone theme title writes on shell mount. Theme and
@@ -3119,6 +3132,8 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 
 When changing core functionality, manually verify at least the affected subset:
 
+- shell menus and submenus (kebab, context, New menu with nested items) in a
+  running browser after any Vite chunking or Mux/React Aria change;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;
