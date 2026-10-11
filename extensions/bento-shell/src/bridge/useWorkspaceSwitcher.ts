@@ -9,11 +9,11 @@
 //
 // Same shape as useConfirm / useEditWorkspace: BroadcastChannel for the
 // payload, document.title sentinel for the show/hide signal that chrome
-// reacts to.
+// reacts to. Every bus message names its window (windowId.ts) and a receiver
+// ignores other windows': the channel reaches every Bento window's documents.
 
 import { sendChromeTitle } from './chromeTitle';
-import { createShowBus, type OverlayRequest } from './overlayRequest';
-import { readWindowIdFromHash } from './windowId';
+import { isForThisWindow, thisWindowId } from './windowId';
 
 export const WORKSPACE_SWITCHER_BUS_NAME = 'bento-workspace-switcher-bus';
 export const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
@@ -35,38 +35,54 @@ export interface WorkspaceSwitcherOpenPayload {
   sidebarScreenY: number;
 }
 
+interface ShowMessage {
+  kind: 'show';
+  windowId: number | null;
+  payload: WorkspaceSwitcherOpenPayload;
+}
+
 interface ClosedMessage {
   kind: 'closed';
   windowId: number | null;
 }
 
-const switcherBus = createShowBus<WorkspaceSwitcherOpenPayload>(
-  WORKSPACE_SWITCHER_BUS_NAME,
-  'workspace-switcher',
-);
-// Fixed for the document's life: the hash chrome stamps on the frame URL.
-const windowId = readWindowIdFromHash();
+type BusMessage = ShowMessage | ClosedMessage;
+
+let channel: BroadcastChannel | null = null;
+function bus(): BroadcastChannel | null {
+  if (channel) return channel;
+  if (typeof BroadcastChannel === 'undefined') return null;
+  channel = new BroadcastChannel(WORKSPACE_SWITCHER_BUS_NAME);
+  return channel;
+}
 
 /** Open the workspace-switcher menu overlay anchored to a trigger element.
  * Caller passes the trigger's bounding rect in its own window's coords +
  * the sidebar's screen position so the overlay can position the menu
- * exactly next to the trigger as it appears on screen. The request is for this
- * document's window only; it is posted again if the overlay's document was not
- * ready yet (overlayRequest.ts). */
+ * exactly next to the trigger as it appears on screen. */
 export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload): void {
-  if (!switcherBus.request(payload)) {
+  const ch = bus();
+  if (!ch) {
     console.warn('[bento-shell] requestWorkspaceSwitcher: no BroadcastChannel');
     return;
   }
+  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
   sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to workspace-switcher open requests for this window. Called by the
- * overlay's main.tsx; returns an unsubscribe. */
+/** Subscribe to workspace-switcher open requests. Called by the overlay's
+ * main.tsx; returns an unsubscribe. */
 export function subscribeToWorkspaceSwitcherRequests(
-  handler: (payload: WorkspaceSwitcherOpenPayload, request: OverlayRequest) => void,
+  handler: (payload: WorkspaceSwitcherOpenPayload) => void,
 ): () => void {
-  return switcherBus.subscribe(handler);
+  const ch = bus();
+  if (!ch) return () => {};
+  const listener = (e: MessageEvent) => {
+    const data = e.data as BusMessage | undefined;
+    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
+  };
+  ch.addEventListener('message', listener);
+  return () => ch.removeEventListener('message', listener);
 }
 
 /** Overlay → sidebar: announce that the menu has closed (Esc, click-
@@ -75,16 +91,18 @@ export function subscribeToWorkspaceSwitcherRequests(
  * the overlay too — this bus message is only for the sidebar's UI
  * mirror. */
 export function notifyWorkspaceSwitcherClosed(): void {
-  switcherBus.channel()?.postMessage({ kind: 'closed', windowId } satisfies ClosedMessage);
+  const ch = bus();
+  if (!ch) return;
+  ch.postMessage({ kind: 'closed', windowId: thisWindowId } satisfies ClosedMessage);
 }
 
-/** Sidebar subscription for overlay close notifications of its own window. */
+/** Sidebar subscription for overlay close notifications. */
 export function subscribeToWorkspaceSwitcherClose(handler: () => void): () => void {
-  const ch = switcherBus.channel();
+  const ch = bus();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
-    const data = e.data as Partial<ClosedMessage> | undefined;
-    if (data?.kind === 'closed' && data.windowId === windowId) handler();
+    const data = e.data as BusMessage | undefined;
+    if (data?.kind === 'closed' && isForThisWindow(data.windowId)) handler();
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

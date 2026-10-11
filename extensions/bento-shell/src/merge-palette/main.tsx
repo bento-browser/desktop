@@ -18,11 +18,11 @@ import { MergePalette } from '../components/MergePalette/MergePalette';
 import { useExternalMergeStore } from '../state/externalMerge';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
+import { subscribeToMergePaletteLifecycle } from '../bridge/useMergePaletteBus';
 
 initToolsPort();
 
 const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
-const BUS_NAME = 'bento-merge-palette';
 
 function close() {
   sendChromeTitle(`${CLOSE_TITLE_PREFIX}_${Date.now()}`);
@@ -32,25 +32,17 @@ function MergePaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
 
-  useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return;
-    const channel = new BroadcastChannel(BUS_NAME);
-    const onMessage = (message: MessageEvent) => {
-      const data = message.data as { type?: unknown; nonce?: unknown } | null;
-      if (!data || typeof data.type !== 'string') return;
-      const nonce = typeof data.nonce === 'string' ? data.nonce : String(Date.now());
-      if (data.type === 'open') {
-        useExternalMergeStore.getState().requestSourcesForOpen(nonce, dispatch);
-      } else if (data.type === 'close') {
-        useExternalMergeStore.getState().handleClose();
-      }
-    };
-    channel.addEventListener('message', onMessage);
-    return () => {
-      channel.removeEventListener('message', onMessage);
-      channel.close();
-    };
-  }, []);
+  useEffect(
+    () =>
+      subscribeToMergePaletteLifecycle(({ type, nonce }) => {
+        if (type === 'open') {
+          useExternalMergeStore.getState().requestSourcesForOpen(nonce, dispatch);
+        } else {
+          useExternalMergeStore.getState().handleClose();
+        }
+      }),
+    [],
+  );
 
   // After the effect above: chrome sends its open nonce once this is announced.
   useOverlayReadySignal('merge-palette');

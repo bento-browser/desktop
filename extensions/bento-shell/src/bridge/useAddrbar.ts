@@ -1,5 +1,6 @@
 import type { AddrbarNavigatePayload } from '@shared/protocol';
 import { sendChromeTitle } from './chromeTitle';
+import { isForThisWindow } from './windowId';
 
 export type AddrbarMode = 'current' | 'newTab';
 
@@ -30,6 +31,8 @@ export interface AddrbarOpenOptions {
 
 interface OpenMessage {
   kind: 'open';
+  /** The chrome window the open is for; chrome stamps it (windowId.ts). */
+  windowId?: number | null;
   openId?: string;
   mode: AddrbarMode;
   initialQuery?: string;
@@ -107,7 +110,7 @@ export function subscribeToAddrbarOpenRequests(
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'open') {
+    if (data?.kind === 'open' && isForThisWindow(data.windowId)) {
       handler(data.mode, data.initialQuery, {
         openId: typeof data.openId === 'string' ? data.openId : '',
         suppressFocus: data.suppressFocus === true,

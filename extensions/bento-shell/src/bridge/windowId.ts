@@ -18,3 +18,20 @@ export function readWindowIdFromHash(): number | null {
     return null;
   }
 }
+
+/** This document's window id, fixed for the document's life (the frame URL hash). */
+export const thisWindowId = readWindowIdFromHash();
+
+/**
+ * Whether a message addressed to window `target` is for the window hosting this
+ * document.
+ *
+ * One extension origin serves every Bento window, and a BroadcastChannel reaches
+ * every document of that origin, so each message on an overlay bus names its
+ * window and receivers ignore other windows'. An unknown id on either side (Ladle,
+ * the standalone preview, a failed chrome-side lookup) accepts the message, as an
+ * unscoped bus always did.
+ */
+export function isForThisWindow(target: unknown): boolean {
+  return thisWindowId === null || typeof target !== 'number' || thisWindowId === target;
+}

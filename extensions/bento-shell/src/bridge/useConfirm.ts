@@ -12,10 +12,14 @@
 // New BroadcastChannel name (separate from 'bento-shell-bus' which is the
 // tools port) so the confirm payload doesn't collide with action/event
 // traffic to bento-tools.
+//
+// The channel reaches the confirm document of every Bento window, so each
+// payload names the window it is for and a receiver ignores other windows'.
+// Without that, window B's request replaced the dialog window A was showing.
 
 import type { Action } from '@shared/protocol';
 import { sendChromeTitle } from './chromeTitle';
-import { createShowBus, type OverlayRequest } from './overlayRequest';
+import { isForThisWindow, thisWindowId } from './windowId';
 
 export const CONFIRM_BUS_NAME = 'bento-confirm-bus';
 export const CONFIRM_OPEN_PREFIX = 'BENTO_OPEN_CONFIRM';
@@ -35,29 +39,46 @@ export interface ConfirmPayload {
   action: Action;
 }
 
-const confirmBus = createShowBus<ConfirmPayload>(CONFIRM_BUS_NAME, 'confirm');
+interface ShowMessage {
+  kind: 'show';
+  /** The chrome window the request is for (windowId.ts). */
+  windowId: number | null;
+  payload: ConfirmPayload;
+}
+
+let channel: BroadcastChannel | null = null;
+function bus(): BroadcastChannel | null {
+  if (channel) return channel;
+  if (typeof BroadcastChannel === 'undefined') return null;
+  channel = new BroadcastChannel(CONFIRM_BUS_NAME);
+  return channel;
+}
 
 /** Open the chrome confirm overlay with the given payload. Safe to call
- * before the overlay's document exists: chrome creates it on the first open,
- * and the request is posted again when the document announces it is ready
- * (overlayRequest.ts). The request is for this document's window only, and a
- * newer request for the same window replaces it. */
+ * before the overlay's content has booted — the broadcast and the title
+ * change race the chrome script's reveal, and the confirm content listens
+ * for the payload as soon as its main.tsx runs. */
 export function requestConfirm(payload: ConfirmPayload): void {
-  if (!confirmBus.request(payload)) {
+  const ch = bus();
+  if (!ch) {
     console.warn('[bento-shell] requestConfirm: no BroadcastChannel — cannot open');
     return;
   }
+  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
   // Timestamp suffix so successive opens always change the title string
   // (and therefore are picked up by the chrome script's title poll).
   sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to confirm requests for this window. Called by the confirm
- * content's main.tsx; returns an unsubscribe. The handler sees each request
- * once and never an older one, so the payload the dialog shows, and the action
- * its button dispatches, always belong to the newest request. */
-export function subscribeToConfirmRequests(
-  handler: (payload: ConfirmPayload, request: OverlayRequest) => void,
-): () => void {
-  return confirmBus.subscribe(handler);
+/** Subscribe to confirm-show payloads. Called by the confirm content's
+ * main.tsx; returns an unsubscribe. */
+export function subscribeToConfirmRequests(handler: (payload: ConfirmPayload) => void): () => void {
+  const ch = bus();
+  if (!ch) return () => {};
+  const listener = (e: MessageEvent) => {
+    const data = e.data as ShowMessage | undefined;
+    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
+  };
+  ch.addEventListener('message', listener);
+  return () => ch.removeEventListener('message', listener);
 }
