@@ -55,7 +55,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-07-17
+- Last updated: 2026-10-12
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
@@ -115,7 +115,8 @@ Use this shape for new or changed touchpoints:
   do not paint above Bento modal scrims, leaves that toolbar scrim disabled for
   the floating address bar, keeps the address palette on an opaque neutral
   CommandPalette surface without content scrim or chrome-side frost capture,
-  reads global clipboard text for empty new-tab address opens and forwards only
+  reads global clipboard text for empty new-tab address opens, only while
+  Firefox's `browser.urlbar.suggest.clipboard` pref is true, and forwards only
   validated `http`/`https` clipboard URL specs into the extension frame,
   keeps the floating address bar below the workspace manager, suppresses
   address-bar autofocus when an empty workspace created from that manager
@@ -175,7 +176,8 @@ Use this shape for new or changed touchpoints:
   chrome (`gIdentityHandler`, `#identity-box`, `#identity-icon-box`,
   `#identity-popup`, `PanelMultiView.openPopup`), Firefox app-menu chrome
   (`PanelUI`, `#appMenu-popup`, `#PanelUI-button`), Places bookmark APIs and
-  Places observer events, `gURLBar.view.close()`, frame focus, title/actor messaging paths,
+  Places observer events, `gURLBar.view.close()`, the `browser.urlbar.suggest.clipboard`
+  pref (default true in `browser/app/profile/firefox.js`), frame focus, title/actor messaging paths,
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
   split-view `.browserContainer` click events and `<browser>` focus/click
   events,
@@ -351,7 +353,10 @@ Use this shape for new or changed touchpoints:
   address bar does not dim the native toolbar/address bar, sidebar, or page
   content and opens as an opaque neutral CommandPalette surface without waiting
   for a frost snapshot, verify copying `https://example.com/` and pressing
-  `Cmd/Ctrl+T` shows the clipboard URL as the first new-tab address result,
+  `Cmd/Ctrl+T` shows the clipboard URL as the first new-tab address result and
+  that setting `browser.urlbar.suggest.clipboard` to false removes the row
+  without reading the clipboard (the pref must still exist and keep its
+  boolean type in `browser/app/profile/firefox.js`),
   verify creating a workspace from the workspace manager
   keeps that manager above and focused if the address palette opens underneath,
   verify sidebar tab and folder

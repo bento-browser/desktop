@@ -2097,7 +2097,15 @@ content actor so the current-tab address dialog opens while web content owns
 focus. Empty new-tab opens read `text/plain` from the global clipboard in
 chrome, sanitize it with Firefox URL bar paste handling when available, resolve
 it through `Services.uriFixup`, reject keyword-search results, and forward only
-`http`/`https` specs as `clipboardUrl`.
+`http`/`https` specs as `clipboardUrl`. `resolveClipboardUrlSuggestion` first
+reads `browser.urlbar.suggest.clipboard` with `Services.prefs.getBoolPref(name,
+true)` at call time and returns without touching the clipboard when it is
+false (a wrong-typed pref also disables the read). Do not gate on
+`browser.urlbar.clipboard.featureGate`: that pref controls Firefox's own
+clipboard provider rollout, while this suggestion is an intentional Bento
+feature. Manual check: with the pref false, `Cmd/Ctrl+T` shows no clipboard row
+for a copied URL and the pasteboard is not read; with the pref true, the row
+appears.
 
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
 actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the

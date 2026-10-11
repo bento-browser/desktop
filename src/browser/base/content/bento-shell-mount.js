@@ -4015,7 +4015,24 @@
     return raw.replace(/[\r\n]/g, '').trim();
   }
 
+  // Firefox's own clipboard-suggestion setting also governs this Bento
+  // suggestion. Read at call time so a pref change applies to the next open,
+  // and skip the clipboard read entirely when the setting is off. A pref of
+  // the wrong type disables the read. Do not gate on
+  // browser.urlbar.clipboard.featureGate: that controls Firefox's own
+  // provider rollout, not this intentional Bento feature.
+  const CLIPBOARD_SUGGEST_PREF = 'browser.urlbar.suggest.clipboard';
+
+  function isClipboardUrlSuggestionEnabled() {
+    try {
+      return Services.prefs.getBoolPref(CLIPBOARD_SUGGEST_PREF, true);
+    } catch {
+      return false;
+    }
+  }
+
   function resolveClipboardUrlSuggestion() {
+    if (!isClipboardUrlSuggestionEnabled()) return '';
     const value = sanitizeClipboardUrlText(readGlobalClipboardText());
     if (!value || value.length > 2048 || /\s/.test(value)) return '';
     try {
