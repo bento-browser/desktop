@@ -15345,7 +15345,7 @@
   // splitViewBrowsers / shouldDeactivateDocShell respect our panels.
   //
   // Several pieces of Firefox's per-tab activation lifecycle don't
-  // hold up under this usage. The fix is four coordinated mechanisms;
+  // hold up under this usage. The fix is three coordinated mechanisms;
   // removing any one re-introduces a specific failure mode:
   //
   // 1. tab.splitview marker (set via Object.defineProperty per-tab,
@@ -15364,17 +15364,7 @@
   //    hold. preserveLayers caches the layer so re-entry paints
   //    immediately.
   //
-  // 3. setSplitViewPanelActive(false, panelId) before
-  //    removeTabsFromSplitview on departing tabs (cleanup loop).
-  //    Firefox's removeTabsFromSplitview only strips .split-view-panel,
-  //    NOT .split-view-panel-active — and the xul.css rule
-  //    `tabpanels > .split-view-panel-active { visibility: inherit }`
-  //    keeps the stale class visible. Combined with (2)'s preserved
-  //    layer, the departing tab renders as a ghost overlay on top of
-  //    the new mainTab. Stripping the class puts it back to default
-  //    visibility: hidden.
-  //
-  // 4. gBrowser.warmupTab(tab) for every tab in tabsToKeepActive (after
+  // 3. gBrowser.warmupTab(tab) for every tab in tabsToKeepActive (after
   //    showSplitViewPanels). The AsyncTabSwitcher (gBrowser._switcher)
   //    is created lazily and DESTROYS itself after every successful
   //    tab switch (AsyncTabSwitcher.sys.mjs:343 finish() calls
@@ -16173,28 +16163,13 @@
         liveBrowser.preserveLayers(true);
         liveBrowser.docShellIsActive = false;
       }
-      // Explicitly remove .split-view-panel-active. Firefox's
-      // removeTabsFromSplitview (tabbox.js:516) removes
-      // .split-view-panel but NOT .split-view-panel-active. The
-      // stale class keeps the departing panel visible via the
-      // xul.css rule:
-      //
-      //   tabpanels > .split-view-panel-active { visibility: inherit; }
-      //
-      // Combined with our preserveLayers(true) above (which keeps the
-      // browser's compositor layer alive), the result is a ghost
-      // panel rendered on top of the new mainTab's slot — observed
-      // as "I can see the first tab beneath the new tab". Strip the
-      // class explicitly to make the panel invisible the instant it
-      // leaves the split.
-      if (!stillKeepActive) {
-        try {
-          tabpanels.setSplitViewPanelActive(false, panelId);
-        } catch (err) {
-          console.warn('[bento-shell-mount] setSplitViewPanelActive(false) failed:', err);
-        }
-      }
     }
+    // removeTabsFromSplitview strips both .split-view-panel and
+    // .split-view-panel-active (Firefox 154 tabbox.js). A stale
+    // .split-view-panel-active keeps a departing panel visible via
+    // `tabpanels > .split-view-panel-active { visibility: inherit }`
+    // and, with preserveLayers(true) above, shows as a ghost overlay on
+    // the new mainTab's slot.
     if (departingTabs.length) {
       try {
         tabpanels.removeTabsFromSplitview(departingTabs);
@@ -20081,6 +20056,35 @@
   setBentoWorkspaceSwitcherSrc();
   setBentoMenuSrc();
   setBentoPanelNavigatorTooltipSrc();
+  // unifyMainWithStrip() and setupPanelNavigator() re-parent
+  // #tabbrowser-tabbox after Tabbrowser.init() created the first tab. A DOM
+  // move recreates the tab <browser>'s frameloader (a new BrowsingContext with
+  // an empty nsIWebProgress) without the remoteness-change events Tabbrowser
+  // uses to move its per-tab progress filter, so the filter stays on the
+  // discarded BrowsingContext. The first tab then gets no progress events, and
+  // removeProgressListener throws NS_ERROR_FAILURE in the
+  // WillChangeBrowserRemoteness handler and in Tabbrowser.destroy() (which
+  // aborts before cleaning up later tabs). The filter keeps its
+  // TabProgressListener, so only the filter needs re-adding, exactly as
+  // Tabbrowser does after a remoteness change.
+  function reattachTabProgressFilters() {
+    const gb = window.gBrowser;
+    if (!gb?._getTabProgressFilter) return;
+    for (const tab of gb.tabs) {
+      const filter = gb._getTabProgressFilter(tab);
+      const progress = tab.linkedBrowser?.webProgress;
+      if (!filter || !progress) continue;
+      try {
+        progress.addProgressListener(filter, Ci.nsIWebProgress.NOTIFY_ALL);
+      } catch (err) {
+        // NS_ERROR_FAILURE means the filter is already attached.
+        if (err?.result !== Cr.NS_ERROR_FAILURE) {
+          console.warn('[bento-shell-mount] tab progress filter re-attach failed:', err);
+        }
+      }
+    }
+  }
+
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so
   // the strip is ready by the first reconcilePanels(). Wrapped in
@@ -20101,6 +20105,7 @@
     normalizeInitialSidebarWidth();
     unifyMainWithStrip();
     setupPanelNavigator();
+    reattachTabProgressFilters();
     attachSidebarSplitterFeedback();
     attachHiddenSidebarHoverZone();
     attachNativeSidebarSplitterFeedback();
@@ -20174,8 +20179,9 @@
   // other keys pass through naturally so extensions still work.
   //
   // registerWindowActor is process-wide — the second window's
-  // bento-shell-mount.js boot would throw NS_ERROR_NOT_AVAILABLE
-  // because the actor is already registered. Guard idempotently.
+  // bento-shell-mount.js boot would throw because the actor is already
+  // registered (NotSupportedError in Firefox 154's JSActorService). Guard
+  // idempotently.
   function registerContentKeyActor() {
     try {
       ChromeUtils.registerWindowActor('BentoKey', {
@@ -20197,8 +20203,9 @@
         matches: ['*://*/*', 'file:///*', 'moz-extension://*/*', 'about:newtab', 'about:blank'],
       });
     } catch (err) {
-      // NS_ERROR_NOT_AVAILABLE = already registered (second window).
-      if (!String(err).includes('NS_ERROR_NOT_AVAILABLE')) {
+      // Already registered (second window): NotSupportedError, or
+      // NS_ERROR_NOT_AVAILABLE on older engines.
+      if (err?.name !== 'NotSupportedError' && !String(err).includes('NS_ERROR_NOT_AVAILABLE')) {
         console.warn('[bento-shell-mount] registerContentKeyActor failed:', err);
       }
     }

@@ -212,8 +212,15 @@ Use this shape for new or changed touchpoints:
   `gContextMenu.targetIdentifier`, `toolbox.commands.descriptorFront.browserId`,
   `toolbox.selectTool`, inspector front
   `getNodeActorFromContentDomReference`, inspector selection `setNodeFront`,
-  accessibility-panel `selectAccessibleForNode`, and injected side-panel
-  header/restore-handle chrome elements.
+  accessibility-panel `selectAccessibleForNode`, Tabbrowser's per-tab progress
+  filter through the private `gBrowser._getTabProgressFilter(tab)` accessor
+  (over `Tabbrowser`'s `#tabFilters` map in `tabbrowser.js`), the filter's
+  `nsIWebProgress.addProgressListener` / `NOTIFY_ALL` registration on
+  `<browser>.webProgress` (`BrowsingContextWebProgress` reports an
+  already-attached listener as `NS_ERROR_FAILURE`), the frameloader recreation
+  `XULFrameElement` performs on a non-`moveBefore` DOM move, the duplicate
+  `ChromeUtils.registerWindowActor` `NotSupportedError` from `JSActorService`,
+  and injected side-panel header/restore-handle chrome elements.
 - Why this cannot stay extension-only: privileged extension UI cannot directly
   reparent, size, or reconcile Firefox browser panels inside the chrome document
   without a small chrome-side mount and bridge.
@@ -236,7 +243,11 @@ Use this shape for new or changed touchpoints:
   names, native navigation-button alignment, or visibility. A rename or
   semantic change to AddonManager listener removal, `PlacesObservers.removeListener`,
   or the chrome window `unload` event silently brings back per-window leaks:
-  closed Bento windows stay alive until quit.
+  closed Bento windows stay alive until quit. If `_getTabProgressFilter` is
+  renamed or removed, `reattachTabProgressFilters()` silently does nothing and
+  the first tab again receives no progress events while `Tabbrowser.destroy()`
+  throws on window close; if Tabbrowser starts moving its filters on frameloader
+  recreation itself, the re-attach becomes a harmless no-op that can be deleted.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -417,7 +428,13 @@ Use this shape for new or changed touchpoints:
   listeners are released on window close (wrap `AddonManager.addAddonListener` /
   `removeAddonListener` and `PlacesUtils.observers.addListener` / `removeListener`
   from the Browser Toolbox Console, open a second Bento window, close it, and
-  confirm the live Bento listener count returns to its prior value), run
+  confirm the live Bento listener count returns to its prior value), verify the
+  first tab's progress filter survives the startup re-parenting (open several
+  windows, navigate the first tab and confirm `onLocationChange` /
+  `onStateChange` reach the tab label, urlbar, and sidebar address, then close
+  each window with the Browser Toolbox Console open: no `Tabbrowser.destroy` or
+  `removeProgressListener` error, no `'BentoKey' actor is already registered`
+  warning, no `setSplitViewPanelActive` message), run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase, and verify title-IPC
   delivery after any Firefox update that touches `WindowGlobalParent.cpp`,

@@ -2614,9 +2614,11 @@ The following mechanisms are load-bearing:
   active.
 - `preserveLayers(true)` must happen before deactivating departing panel
   browsers, or returning panels can paint blank for a frame.
-- `.split-view-panel-active` must be removed from departing panels. Firefox's
-  `removeTabsFromSplitview` removes `.split-view-panel` but can leave the active
-  class behind, producing ghost overlays.
+- `.split-view-panel-active` must be removed from departing panels, or a stale
+  class produces ghost overlays. Firefox 154's `removeTabsFromSplitview` removes
+  both `.split-view-panel` and `.split-view-panel-active`, so the reconciler only
+  calls it. The old `MozTabpanels.setSplitViewPanelActive` helper no longer
+  exists; do not call it.
 - `gBrowser.warmupTab(tab)` must run for active split tabs. Without an
   `AsyncTabSwitcher`, Firefox's visibility fallback can deactivate panel
   docShells.
@@ -2633,6 +2635,37 @@ The following mechanisms are load-bearing:
   hidden tabs render as black or blank split-view slots.
 - Do not move or swap a tab's `linkedBrowser`. Extension content scripts depend
   on stable tab/browser identity.
+- Reparenting a tab `<browser>` strands Tabbrowser's progress filter. Moving a
+  connected `<browser>` (or an ancestor) with `insertBefore` / `appendChild`
+  unbinds and rebinds it, which destroys and recreates its frameloader (only
+  `moveBefore` keeps it), so `browser.webProgress` becomes a new
+  BrowsingContext's empty `nsIWebProgress`. Tabbrowser only moves its per-tab
+  browser status filter on remoteness change, so the filter stays on the
+  discarded BrowsingContext. Source of truth: Tabbrowser's private
+  `#tabFilters` / `#tabListeners` maps (the filter keeps its
+  `TabProgressListener`; only the filter-to-webProgress link is lost), read
+  through `gBrowser._getTabProgressFilter(tab)`. Symptoms in every window:
+  the first tab gets no `onLocationChange` / `onStateChange`, the
+  `WillChangeBrowserRemoteness` handler throws, and `Tabbrowser.destroy()` on
+  window close throws `NS_ERROR_FAILURE [nsIWebProgress.removeProgressListener]`
+  and skips later tabs' cleanup and `AsyncTabSwitcher.destroy()`.
+  `unifyMainWithStrip()` and `setupPanelNavigator()` move `#tabbrowser-tabbox`
+  after `Tabbrowser.init()` created the first tab, so
+  `configureSidePanelOnce()` calls `reattachTabProgressFilters()` right after
+  them. It re-adds each tab's filter to `tab.linkedBrowser.webProgress` with
+  `NOTIFY_ALL` and ignores `NS_ERROR_FAILURE` (already attached). Re-attach
+  after any other move that recreates a tab browser's frameloader. Manual
+  check: open several windows, navigate the first tab and confirm the tab label,
+  urlbar, and sidebar address update, then close each window with the Browser
+  Toolbox Console open and confirm no `Tabbrowser.destroy` or
+  `removeProgressListener` error.
+- The `removeProgressListener` suppressors (the capture-phase window `error`
+  filter, the `<browser>` prototype `removeProgressListener` guard, and the
+  `_beginRemoveTab` wrapper in `bento-shell-mount.js`) predate the progress
+  filter re-attach. They may be removable once the re-attach is verified across
+  window close, tab close, and split-view panel moves. Follow-up, not part of
+  the re-attach change; remove them one at a time and watch the console for the
+  errors above.
 - Do not register nested sub-panels directly in `splitViewPanels`. Firefox
   assumes split-view panels are direct children of `tabpanels`.
 - Do not put inter-panel splitter elements directly in `tabpanels`. XUL deck
@@ -3147,7 +3180,10 @@ Panel traversal is split between chrome focus tracking and a JSWindowActor pair:
   `BentoKey:Cycle` or `BentoKey:PanelHistory` event.
 - `bento-shell-mount.js` registers the actor with `ChromeUtils.registerWindowActor`
   and handles the custom events by calling the private `navigatePanels` closure
-  or the focused panel browser's `goBack()` / `goForward()` methods.
+  or the focused panel browser's `goBack()` / `goForward()` methods. The
+  registration is process-wide, so every window after the first gets Firefox
+  154's `NotSupportedError` ("'BentoKey' actor is already registered");
+  `registerContentKeyActor()` ignores it.
 
 The actor forwards `Cmd/Ctrl+Shift+ArrowLeft` and
 `Cmd/Ctrl+Shift+ArrowRight` for panel cycling and `Cmd/Ctrl+ArrowLeft` /
