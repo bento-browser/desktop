@@ -189,8 +189,8 @@ Before creating or modifying a component:
 - **Checks CI runs** (`.github/workflows/ci.yml`; run the same commands locally before pushing):
   - `static-checks` job: JSON and `bento.json` validation; `bash -n` and ShellCheck on `scripts/*.sh`; `node --check` on `prefs/bento.js` and every `.js`/`.mjs` under `src/browser`; `pnpm run lint:repo` (root ESLint over `scripts/`, `src/browser`, and `.agents/` with Node, Firefox system-module, and Firefox chrome-window globals; add a real global to `eslint.config.mjs`, never disable `no-undef`); `pnpm run native-protocol:check` (generated native-preferences protocol copies match their source); the `node --test` suites under `scripts/` and `.agents/`; the competitor-reference boundary check; then `bento.json` loads, its Firefox version is well formed and matches `config/firefox-versions.json` (no hard-coded version), and `pnpm run lc`.
   - `security-gate` job: `pnpm run security:check`, `pnpm run release:security-check`, and `pnpm audit --audit-level high`. It installs no dependencies and selects the build platforms. `release.yml` has its own gate (the same checks plus `node --test scripts/release-security.test.mjs`) before any native build.
-  - `extensions` job: typecheck, ESLint, and the Vitest suites (`pnpm --filter @bento/shell test`, `pnpm --filter @bento/tools test`) for both extensions, then the extension build and the size report.
-  - `build` job ("Source import" on pushes and pull requests): starts after `security-gate`, `static-checks`, and `extensions` pass. It restores or downloads the pristine Firefox source, runs `pnpm run ext:build` and `pnpm run import`, checks that a second import is idempotent, and runs `node scripts/check-import-output.mjs`. A manual `workflow_dispatch` run continues into the native build. Cache keys and behavior: [docs/build-tooling.md](docs/build-tooling.md#ci-jobs-and-caches).
+  - `extensions` job: typecheck, ESLint, and the Vitest suites (`pnpm --filter @bento/shell test`, `pnpm --filter @bento/tools test`) for both extensions, then the extension build, the release-shell check (`pnpm run release:security-check:shell`), and the size report.
+  - `build` job ("Source import" on pushes and pull requests): starts after `security-gate`, `static-checks`, and `extensions` pass. It restores or downloads the pristine Firefox source, runs `pnpm run ext:build` and `pnpm run import`, checks that a second import is idempotent, and runs `node scripts/check-import-output.mjs` and the release-shell check (`pnpm run release:security-check:shell`), which also covers the manifest the import copied into the engine. A manual `workflow_dispatch` run continues into the native build. Cache keys and behavior: [docs/build-tooling.md](docs/build-tooling.md#ci-jobs-and-caches).
   - In `bento-shell-mount.js`, `no-empty`, `no-redeclare`, `no-self-assign`, and the unused-variable and unused-expression rules are warnings tracked for the mount-script split; every other rule is an error.
 
 ## Versioning policy
@@ -218,24 +218,25 @@ Local Mux development never reaches a release. `MUXUI_LOCAL` (set only by the
 throw on it, and packaging rejects a packaged shell whose `muxui-source.json` stamp
 is not `npm`. See [docs/build-tooling.md](docs/build-tooling.md#local-mux-ui).
 
-**Default install (dev loop)** — `pnpm install`:
+**Install** — `pnpm install` for the dev loop; `pnpm install --frozen-lockfile`
+for CI and release builds (`.github/actions/setup`, `scripts/build-release.sh`):
 
-- `pnpm-lock.yaml` records the exact npm version and registry integrity.
-
-**Release install** — `bash scripts/install-release-deps.sh` (used by
-`scripts/build-release.sh` and GitHub Actions):
-
-- The helper temporarily installs against `pnpm-lock.release.yaml` with
-  `--frozen-lockfile`, then restores the developer lock while leaving the
-  release graph installed in `node_modules`. Resolution cannot drift across
-  CI runs or later rebuilds.
+- `pnpm-lock.yaml` is the only lockfile. It records the exact npm version and
+  registry integrity of `@muxui/react`, and a frozen install fails on any drift
+  from the manifests. Release builds install the same full graph (the build needs
+  the dev tooling), and the SBOM and release security checks read the same file.
+  pnpm owns the lockfile format; do not run Prettier on it.
+- Dependabot (`.github/dependabot.yml`) opens weekly lockfile-only npm PRs. It
+  ignores major versions, `@muxui/react`, and the React Aria and Tiptap families,
+  whose pins and overrides change only through the Mux release procedure in
+  [docs/build-tooling.md](docs/build-tooling.md).
 
 **When changing UI dependencies**: keep the exact package pin, the approved
 shell runtime dependency set in the SBOM generator, required substrate/security
-overrides, and both frozen locks aligned. Run frozen installs and
-release-security checks before regenerating either lock, then repeat them
-against the new graph. The SBOM verifies the approved npm version and registry
-integrity offline and records the lock's integrity digest.
+overrides, and the lock aligned. Run a frozen install and the release-security
+checks before regenerating the lock, then repeat them against the new graph. The
+SBOM verifies the approved npm version and registry integrity offline and
+records the lock's integrity digest.
 
 Bento pins React Aria to one compatible graph and aliases it in Vite so menu
 providers and consumers share module identity. Tiptap overrides match the
@@ -303,6 +304,8 @@ Then iterate by what you changed:
 > **How the reload works**: `pnpm run import` runs the Bento import wrapper: theme preset sync, chrome token generation, engine-state verification, patch-stack check/reset, source-overlay import, canonical branding and built-in add-on installation, manifest patch application, prefs append, and built-in add-on symlink sync. Built extension files are live on disk immediately after import. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
 
 <!-- -->
+
+> **Release builds drop Alt+Shift+R**: the `dev-reload` command and its handler exist only in dev builds. A release build (`BENTO_RELEASE=1`, `BENTO_BUILD_MODE=release`, or `build.mode: "release"` in `bento.json`, resolved by `scripts/build-mode.mjs`, the one resolver the native and extension builds share; `BENTO_RELEASE=1` selects release for both) compiles the handler out of the background bundle and removes the command from the imported manifest. `pnpm run release:security-check:shell` fails if either remains in the staged sources, and a release `package` fails if the object directory's shell add-on still has it. See [docs/build-tooling.md](docs/build-tooling.md#dev-only-reload-command).
 
 > **Manifest changes that need a version bump**: Firefox caches built-in addon metadata (commands, permissions list, name/description) keyed by `version`. A quit+relaunch alone WON'T re-read a changed manifest if the version stayed the same — the cached entry in the profile's `extensions.json` wins. Bump the addon's `manifest.json` version (e.g. `0.1.0` → `0.1.1`) whenever you add/remove/rename a command or change a permission. Code-only changes don't need a bump (background.js / dist/ are read fresh from disk).
 

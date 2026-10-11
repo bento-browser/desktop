@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { MUX_SOURCE_STAMP, rollbackMuxStamp } from '../extensions/bento-shell/muxui-local.mjs';
+import { findDevReload } from './dev-reload.mjs';
 import { ROLLBACK_VARIANTS } from './rollback-variants.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -307,6 +308,12 @@ async function runIsolatedCheck() {
     ],
     env,
   );
+  // The check builds in release mode, so the archived background must compile out
+  // the dev-only reload handler like the current one.
+  const devReload = findDevReload([path.join(shellRoot, 'dist')]);
+  if (devReload.length > 0) {
+    throw new Error(`${variant} release shell still contains the dev-only reload command`);
+  }
 
   const stagedTypeConfig = path.join(toolsRoot, 'tsconfig.rollback-staging.json');
   await writeJsonFile(stagedTypeConfig, {

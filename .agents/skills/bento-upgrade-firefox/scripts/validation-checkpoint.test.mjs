@@ -29,7 +29,7 @@ function fixture() {
     '{"firefox":{"product":"firefox","version":"152.0.6"}}\n',
   );
   fs.writeFileSync(path.join(root, 'patches', 'series.json'), '{"base":{"version":"152.0.6"}}\n');
-  fs.writeFileSync(path.join(root, 'pnpm-lock.release.yaml'), 'lockfileVersion: 9.0\n');
+  fs.writeFileSync(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
   fs.writeFileSync(path.join(root, 'rust-toolchain.toml'), '[toolchain]\nchannel = "stable"\n');
   fs.writeFileSync(path.join(root, '.nvmrc'), '20\n');
   fs.writeFileSync(path.join(root, 'configs', 'common'), 'common\n');

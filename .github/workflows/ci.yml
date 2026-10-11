@@ -160,7 +160,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -221,6 +221,11 @@ jobs:
         env:
           BENTO_RELEASE: '1'
         run: pnpm run ext:build
+
+      - name: Release shell has no dev-only reload command
+        # The release bundle must not ship the Alt+Shift+R handler
+        # (scripts/dev-reload.mjs).
+        run: pnpm run release:security-check:shell
 
       - name: Check size budgets
         # Fails when an entry grows past .size-baseline.json by more than
@@ -306,6 +311,10 @@ jobs:
 
       - name: Verify imported branding, add-ons, patches, and identity
         run: node scripts/check-import-output.mjs
+
+      - name: Imported release shell has no dev-only reload command
+        # Covers the manifest the installer copies into the engine as well.
+        run: pnpm run release:security-check:shell
 
       - name: Resolve pinned Rust toolchain
         if: github.event_name == 'workflow_dispatch'

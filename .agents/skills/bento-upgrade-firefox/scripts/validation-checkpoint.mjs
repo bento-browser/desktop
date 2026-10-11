@@ -10,7 +10,6 @@ const relevantPaths = [
   'bento.json',
   'package.json',
   'pnpm-lock.yaml',
-  'pnpm-lock.release.yaml',
   'config',
   'configs',
   'patches',
