@@ -2401,19 +2401,19 @@ created on first use, or at idle after the launch veil lifts, so a window pays
 for the ones it opens instead of eleven documents at startup (audit findings
 R-03, R-13, R-14, M-03).
 
-| Overlay (frame id `bento-<name>-frame`) | Document                                             | Opened by                                                                                            | Strategy                   | What the open depends on                                                                                                                          |
-| --------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `addrbar`                               | `address-bar.html`                                   | `Cmd/Ctrl+L/E/T`, native urlbar focus or click, `BentoKey:AddrbarOpen`, sidebar `BENTO_OPEN_ADDRBAR` | idle, 1st                  | Open nonce from chrome through the `BentoAddrbarOpen` frame script onto `bento-addrbar-bus`; `BENTO_ADDRBAR_READY` (per open id) reveals the host |
-| `palette`                               | `palette.html`                                       | `Cmd/Ctrl+Alt+P`, sidebar `BENTO_OPEN_PALETTE`                                                       | idle, 2nd                  | Nothing: the dialog stays open inside the document, chrome only toggles the host                                                                  |
-| `workspace-switcher`                    | `workspace-switcher.html`                            | Sidebar trigger, `BENTO_OPEN_WORKSPACE_SWITCHER`                                                     | idle, 3rd                  | Payload on `bento-workspace-switcher-bus`, sent again by the sidebar on readiness; the host stays laid out so `window.screenLeft` is right        |
-| `menu`                                  | `menu.html`                                          | `showChromeMenu` (sidebar, trailer, panel and splitter menus)                                        | idle, 4th                  | `menu/open` on `bento-shell-bus` through the `BentoShellAction` frame script; held until ready                                                    |
-| `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                   | first use                  | Nothing                                                                                                                                           |
-| `merge-palette`                         | `merge-palette.html`                                 | Sidebar footer `BENTO_OPEN_MERGE_PALETTE`                                                            | first use                  | Open nonce through the `BentoMergePaletteLifecycle` frame script; sent after readiness                                                            |
-| `confirm`                               | `confirm.html`                                       | `BENTO_OPEN_CONFIRM` from sidebar, switcher, or workspace palette                                    | first use                  | Payload on `bento-confirm-bus`, sent again by the sender on readiness                                                                             |
-| `edit-workspace`                        | `edit-workspace.html`                                | `BENTO_OPEN_EDIT_WORKSPACE` from sidebar or switcher                                                 | first use                  | Payload on `bento-edit-workspace-bus`, sent again by the sender on readiness                                                                      |
-| `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                  | first use (first run only) | Resume step hash, read from the environment at window startup                                                                                     |
-| `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                  | first use                  | None: a non-remote chrome page with no handshake, src set on every open                                                                           |
-| `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                           | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script, sent again on readiness                                                      |
+| Overlay (frame id `bento-<name>-frame`) | Document                                             | Opened by                                                                                            | Strategy                   | What the open depends on                                                                                                                                 |
+| --------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `addrbar`                               | `address-bar.html`                                   | `Cmd/Ctrl+L/E/T`, native urlbar focus or click, `BentoKey:AddrbarOpen`, sidebar `BENTO_OPEN_ADDRBAR` | idle, 1st                  | Open nonce from chrome through the `BentoAddrbarOpen` frame script onto `bento-addrbar-bus`; `BENTO_ADDRBAR_READY` (per open id) reveals the host        |
+| `palette`                               | `palette.html`                                       | `Cmd/Ctrl+Alt+P`, sidebar `BENTO_OPEN_PALETTE`                                                       | idle, 2nd                  | Nothing: the dialog stays open inside the document, chrome only toggles the host                                                                         |
+| `workspace-switcher`                    | `workspace-switcher.html`                            | Sidebar trigger, `BENTO_OPEN_WORKSPACE_SWITCHER`                                                     | idle, 3rd                  | Window-scoped request on `bento-workspace-switcher-bus`, sent again by the sidebar on readiness; the host stays laid out so `window.screenLeft` is right |
+| `menu`                                  | `menu.html`                                          | `showChromeMenu` (sidebar, trailer, panel and splitter menus)                                        | idle, 4th                  | `menu/open` on `bento-shell-bus` through the `BentoShellAction` frame script; queued with `deliver` until the document announces                         |
+| `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                   | first use                  | Nothing                                                                                                                                                  |
+| `merge-palette`                         | `merge-palette.html`                                 | Sidebar footer `BENTO_OPEN_MERGE_PALETTE`                                                            | first use                  | Open nonce through the `BentoMergePaletteLifecycle` frame script; queued with `deliver` until the document announces                                     |
+| `confirm`                               | `confirm.html`                                       | `BENTO_OPEN_CONFIRM` from sidebar, switcher, or workspace palette                                    | first use                  | Window-scoped request on `bento-confirm-bus`, sent again by the sender on readiness                                                                      |
+| `edit-workspace`                        | `edit-workspace.html`                                | `BENTO_OPEN_EDIT_WORKSPACE` from sidebar or switcher                                                 | first use                  | Window-scoped request on `bento-edit-workspace-bus`, sent again by the sender on readiness                                                               |
+| `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                  | first use (first run only) | Resume step hash, read from the environment at window startup                                                                                            |
+| `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                  | first use                  | None: a non-remote chrome page with no handshake, src set on every open                                                                                  |
+| `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                           | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script, sent again on readiness                                                             |
 
 Source of truth: `bento-tools` and the shell mirrors are unchanged; overlay
 documents hold no persistent state. Chrome renderer path: the host `vbox`
@@ -2428,20 +2428,41 @@ only get their `src` later; the other hosts get their `<browser>` from
 
 `createOverlayManager` in `bento-shell-mount.js` (the `@bento-overlays` section,
 evaluated by `scripts/overlay-manager.test.mjs`) owns one record per overlay:
-`absent` (nothing requested), `loading` (navigation started), `ready`.
+`absent` (nothing requested), `loading` (navigation started), `ready`. Two kinds
+of work wait on a loading overlay, with different deadlines:
 
-- `overlays.open(id, reason, run)` creates the frame if needed, starts the
-  navigation once, and runs `run` as soon as the overlay is ready, at once for a
-  ready one. Every `show*` function reveals its host inside `run` through
-  `openOverlay(id, reveal)`, so the dim, the host fade, and the focus land after
-  the document can render instead of before it. The matching `hide*` function
-  calls `overlays.cancel(id)` first, so a hide that arrives while an open waits
-  wins, and the stack rules that close the palette or merge palette when another
-  overlay opens (`dismissPalette`, `dismissMergePalette`) cancel a queued open
-  of those too. Queued work is keyed: the welcome requests repeat for a second,
-  and the repeats replace the queued open.
-- `overlays.whenReady(id, key, fn)` holds a chrome-to-overlay send (address bar
-  open nonce, merge-palette lifecycle) behind the same wait.
+- `overlays.open(id, reason, run)` is the reveal: it creates the frame if needed,
+  starts the navigation once, and runs `run` as soon as the overlay is ready, at
+  once for a ready one. Every `show*` function reveals its host inside `run`
+  through `openOverlay(id, reveal)`, so the dim, the host fade, and the focus land
+  after the document can render instead of before it. It also runs when the 5 s
+  fallback fires, so a document that never announces delays the first open
+  instead of blocking it. Queued reveals are keyed: the welcome requests repeat
+  for a second, and the repeats replace the queued open.
+- `overlays.deliver(id, key, fn)` is a chrome-to-overlay message (the menu
+  payload, the address bar open, the merge palette nonce). It runs only on the
+  document's real announcement. The frame scripts that carry these messages post
+  on a `BroadcastChannel` inside the overlay's content process and nothing queues
+  there, so a message sent at the fallback would be lost. A delivery stays queued
+  until the real announcement, `overlays.cancel(id)`, or window teardown, with no
+  timeout; its lifetime is the pending open's. It is keyed like a reveal, so the
+  newest request is the one delivered, and one announcement delivers it once (a
+  second announcement finds the queue empty).
+- `overlays.hasPendingOpen(id)` is true while a reveal waits. A pending open is an
+  open overlay as far as the user is concerned. Every dismissal, toggle,
+  outside-click, and focus-preserving path asks `isOverlayOpen(hostId, isVisible,
+overlayId)`, which is "visible or pending". The Escape handler consumes Esc for
+  a pending open and cancels it through the overlay's `hide*` function, and
+  `togglePalette` / `toggleMergePalette` close a pending open instead of queueing
+  a second one. The welcome and embedded import overlays consume Esc without
+  dismissing. Every `hide*` function calls `overlays.cancel(id)` first, so a hide
+  that arrives while an open waits wins: both queues are dropped and a late
+  announcement reveals and delivers nothing.
+- Newest open wins. Stack rules run when the open is requested, not when the
+  document becomes ready: `showPalette`, `showWorkspacePalette`, `showMergePalette`
+  and `showAddrbar` close (or cancel a pending open of) the other palette-class
+  overlays at that moment, so the order in which cold documents finish loading
+  cannot let an older request cancel a newer one.
 - An overlay document announces itself once its subscriptions exist
   (`useOverlayReadySignal(name)` in `bridge/overlayReady.ts`, called by the
   top-level component of every overlay entry after its subscribing effects).
@@ -2449,18 +2470,11 @@ evaluated by `scripts/overlay-manager.test.mjs`) owns one record per overlay:
   through `sendChromeTitle`, which the mount's title listener handles for every
   overlay frame before the frame's own handler (it calls
   `overlays.markFrameReady`), and it posts `{ kind: 'ready', overlay, windowId }`
-  on `bento-overlay-ready`.
-- Senders of a payload that travels over a `BroadcastChannel` (`requestConfirm`,
-  `requestEditWorkspace`, `requestWorkspaceSwitcher`) keep the latest payload per
-  overlay with `resendWhenOverlayReady` and post it again when that overlay
-  announces in the same window, within 10 s. An overlay that was already mounted
-  never announces again, so a normal open posts once. The window id match matters
-  because one extension origin serves every window: another window's overlay
-  becoming ready must not consume this window's payload.
-- A document that never announces is treated as ready after 5 s
-  (`OVERLAY_READY_FALLBACK_MS`, one warning in the Browser Console), so a missing
-  signal delays the first open instead of blocking it. The embedded import frame
-  has no handshake and is ready as soon as it exists.
+  on `bento-overlay-lifecycle`.
+- A document that never announces reveals after 5 s
+  (`OVERLAY_READY_FALLBACK_MS`, one warning in the Browser Console). The
+  deliveries stay queued, and a late real announcement delivers them once. The
+  embedded import frame has no handshake and is ready as soon as it exists.
 - Prewarm: `hideStartupVeil()` calls `overlays.onVeilLifted()` (first call
   only). The manager then creates the idle overlays one at a time, in table
   order, each in a `requestIdleCallback` (timeout 1.5 s), and starts the next only
@@ -2469,11 +2483,41 @@ evaluated by `scripts/overlay-manager.test.mjs`) owns one record per overlay:
   first is skipped. There is no interval, no polling, and nothing runs after the
   queue is empty.
 
+Document-originated payloads (confirm, edit workspace, workspace switcher) use
+`createShowBus` in `bridge/overlayRequest.ts`. One extension origin serves every
+window and every document that can send, and a `BroadcastChannel` does not queue,
+so the protocol is:
+
+- Every message is `{ kind: 'show', payload, request: { id, from, windowId } }`.
+  `windowId` is the chrome window id from the `#bentoWindowId=<N>` URL hash and
+  `id` is `max(last + 1, Date.now() * 1000)`, so it grows across documents and
+  strictly within one. Receivers ignore other windows' requests, and ignore any
+  request older than the latest one they applied (an equal id from the same
+  sender is a duplicate). Every request, applied or not, is acknowledged with
+  `{ kind: 'ack', overlay, windowId, requestId }` on `bento-overlay-lifecycle`.
+- The sender keeps only its latest request per overlay. It posts it again when
+  that overlay announces in its own window, and drops it on the acknowledgement,
+  when a newer request replaces it, or on `{ kind: 'cancel', overlay, windowId }`.
+  There is no timeout.
+- Chrome sends the cancel. `overlays.cancel(id)` relays `onCancelPending` to the
+  `BentoOverlayCancel` frame script (`broadcastOverlayCancel`), which posts the
+  cancel on `bento-overlay-lifecycle` from inside the sender's content process,
+  but only when the overlay never announced; an overlay that is up has already
+  acknowledged. A dismissed delete confirmation therefore cannot be replayed into
+  a later session of the same dialog.
+- Before this protocol, `useConfirm` posted bare payloads on an origin-wide
+  channel: window B's confirmation reached window A's already open confirm
+  document and replaced the dialog whose action the user was about to confirm.
+  The chrome-originated sends (`bento-addrbar-bus` open nonces,
+  `bento-merge-palette` lifecycle, `menu/open`) are broadcast the same way inside
+  the content process and are not window-scoped by this change; scoping them is
+  a separate change.
+
 Not-yet-created frames, by code path:
 
 - Open paths (`show*`, `showChromeMenu`, `showAddrbar`, `showEmbeddedBrowserImportFromWelcome`,
-  the tooltip hover) call `ensure` or `open`. They are the only code that
-  creates a frame.
+  the tooltip hover) call `ensure`, `open`, or `deliver`. They are the only code
+  that creates a frame.
 - Hide, Escape, outside-click, toggle, and the visibility checks work on the
   host elements, which always exist, and treat a missing frame as nothing to do
   (`document.getElementById(frameId)?.`). A hide never creates a frame.
@@ -2486,7 +2530,7 @@ Not-yet-created frames, by code path:
 - Dev add-on reload (`reloadFrames`) skips overlays that were never opened and
   marks started ones not ready until the reloaded document announces again.
 - Window teardown: `overlays.dispose()` runs on `unload`; pending idle and
-  fallback callbacks die with the window.
+  fallback callbacks and both queues die with the window.
 - The welcome resume step (`BENTO_WELCOME_STEP_ENV`) is read and cleared at
   window startup, not when the welcome frame is created, as before.
 
@@ -2505,9 +2549,11 @@ document announces readiness.
 
 `window.BentoOverlayStats` (Browser Toolbox Console, chrome window) returns a
 snapshot: the veil lift time, the creation order, and per overlay the state,
-strategy, creation reason (`idle`, `show`, `hover`, `send`), creation and
-readiness times relative to the veil lift, load time, how the overlay became
-ready (`signal`, `timeout`, `no-handshake`), the number of opens, and how long
+strategy, whether the real announcement arrived (`signalled`), creation reason
+(`idle`, `show`, `hover`, `send`), creation and readiness times relative to the
+veil lift, load time, how the overlay became ready (`signal`, `timeout`,
+`no-handshake`), whether an open is waiting (`pendingOpen`), how many deliveries
+wait for the announcement (`pendingDeliveries`), the number of opens, and how long
 the first and the slowest open waited for readiness. It is a getter: reading it
 costs one object, and nothing samples in the background.
 
@@ -2524,7 +2570,21 @@ Overlay document pitfalls:
 - Do not send a payload to an overlay with a bare `BroadcastChannel` post or a
   frame-script relay and assume it arrives. Neither queues, and a lazily created
   document is not listening yet. Chrome-originated sends go through
-  `overlays.whenReady`; document-originated payloads call `resendWhenOverlayReady`.
+  `overlays.deliver`; document-originated payloads go through `createShowBus`.
+- Do not post a payload without the window id and a request id. The channel is
+  shared by every window, and an unordered replay can overwrite a newer request,
+  including the destructive confirmation another window is showing.
+- Do not give a payload a fixed lifetime. A cold document can take longer than
+  any constant; the payload lives as long as the pending open, and ends on the
+  acknowledgement, a newer request, or the chrome cancel.
+- Do not run a queued delivery at the readiness fallback. The fallback reveals
+  the host; the message still needs the real announcement.
+- Do not decide "is this overlay open" from the host visibility alone. A cold
+  open has no visible host yet: use `isOverlayOpen` (visible or pending) in every
+  Esc, toggle, outside-click, and focus path, and call `overlays.cancel(id)` from
+  every hide.
+- Do not apply stack rules when an overlay becomes ready. Apply them when the
+  open is requested, or whichever document loads last cancels the other.
 - Do not call `ensure` or `open` from a hide, resize, or teardown path: it would
   create a document the user never asked for. Look the frame up and skip when it
   is null.
@@ -2538,6 +2598,13 @@ Overlay document pitfalls:
   the table, the title handlers, and the shell names drift apart.
 - The READY title is deduped per frame like every other title, so it keeps its
   timestamp suffix.
+
+Tests: `scripts/overlay-manager.test.mjs` runs the real manager under fake timers.
+`scripts/overlay-surfaces.test.mjs` extracts the real `show*`, `hide*`, toggle,
+Esc, and outside-click functions and the real overlay table from the mount and
+drives them with a fake DOM (cold open then Esc, palette then merge palette in
+both readiness orders, the menu fallback). `src/bridge/overlayRequest.test.ts`
+runs the real bridge modules for several windows on an in-memory channel.
 
 ## Command Palette
 

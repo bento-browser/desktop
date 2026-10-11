@@ -508,8 +508,8 @@ document`), then in a built app open the command palette, address bar, a sidebar
   - `patches/chrome-layout/01-bento-shell-mount.patch` (unchanged: the palette,
     merge-palette, confirm, and menu `<browser>` elements it declares stay
     in the window, but are navigated on first use)
-  - `extensions/bento-shell/src/bridge/overlayReady.ts` (shell side of the
-    handshake)
+  - `extensions/bento-shell/src/bridge/overlayReady.ts` and `overlayRequest.ts`
+    (shell side of the handshake and of window-scoped payload requests)
   - No new Firefox patch.
 - Bento functionality: only the sidebar shell and the panel trailer load at window
   startup. The other overlay documents (address bar, command palette, workspace
@@ -517,7 +517,9 @@ document`), then in a built app open the command palette, address bar, a sidebar
   welcome, embedded import, panel navigator tooltip) are created on first use, or
   for the first four at idle after the launch veil lifts. Chrome waits for a
   document's `BENTO_OVERLAY_READY` title before revealing it or sending it a
-  payload. `window.BentoOverlayStats` reports what exists and when.
+  payload, and an open that is still waiting counts as open for Esc, the toggle,
+  and every other dismissal. `window.BentoOverlayStats` reports what exists and
+  when.
 - Vanilla Firefox surface touched or depended on:
   `document.createXULElement('browser')` creating a `type="content"`,
   `remote="true"`, `remoteType="extension"` `<browser>` in an already loaded
@@ -528,8 +530,11 @@ document`), then in a built app open the command palette, address bar, a sidebar
   `src` staying inert until navigated; `window.requestIdleCallback`;
   `<browser>.messageManager.sendAsyncMessage` and `loadFrameScript` reaching a
   document that is still loading (they do not queue, which is why the handshake
-  exists); the `pagetitlechanged` event for a frame created after startup. No
-  private member is used, so the firefox-compat registry has no new entry.
+  exists, and why a chrome cancel is relayed to the sender documents with a
+  `BentoOverlayCancel` frame script loaded through `loadFrameScript` and posting
+  on a `BroadcastChannel`); the `pagetitlechanged` event for a frame created
+  after startup. No private member is used, so the firefox-compat registry has no
+  new entry.
 - Why this cannot stay extension-only: the overlay `<browser>` elements live in
   the chrome document and only chrome can create them.
 - Firefox update risk: if a `<browser>` created after window load stops
@@ -550,7 +555,13 @@ document`), then in a built app open the command palette, address bar, a sidebar
   overlay appears on first run. Hover a panel navigator button and confirm the
   tooltip follows the workspace theme and color mode after changing both in
   Settings. Open and close a second window and confirm its overlays are created
-  independently.
+  independently. Then, in the Bento window: press the palette shortcut on a
+  fresh profile and Esc at once (nothing may appear later), press the palette
+  shortcut and the merge palette trigger back to back (only the merge palette
+  may end up open, whichever loads first), open a delete confirmation in two
+  windows at the same time (each window's dialog keeps its own request and runs
+  only its own action), and open a menu in the first second of a new window (it
+  appears once its document is up and shows the items of the last request).
 - Rollback or migration notes: restoring the previous behavior is calling every
   `setBento*Src()` at startup again, as the end of `bento-shell-mount.js` did
   before this change.
