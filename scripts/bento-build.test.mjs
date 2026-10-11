@@ -17,6 +17,7 @@ import {
   writeBrowserUpdateFiles,
   writeMozconfig,
 } from './bento-build.mjs';
+import { isReleaseBuild } from './build-mode.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -514,6 +515,51 @@ async function objdirCommand(root, ...args) {
   }
   return writes;
 }
+
+test('the native build, the extension build, and the release guards resolve the same mode', async () => {
+  const root = await fixture();
+  const shell = path.join(repoRoot, 'extensions', 'bento-shell');
+  const clean = { BENTO_OBJDIR: undefined, BENTO_RELEASE: undefined, BENTO_BUILD_MODE: undefined };
+  const setBuildMode = (mode) => {
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
+    config.build.mode = mode;
+    fs.writeFileSync(path.join(root, 'bento.json'), JSON.stringify(config));
+  };
+  // The real background build script reads bento.json from BENTO_REPO_ROOT; an undefined value unsets a variable.
+  const bundleKeepsReloadHandler = (env) => {
+    const out = path.join(root, 'background.js');
+    const result = spawnSync(
+      process.execPath,
+      [path.join(repoRoot, 'scripts', 'build-extension-background.mjs'), 'src/background.ts', out],
+      { cwd: shell, env: { ...process.env, BENTO_REPO_ROOT: root, ...env }, encoding: 'utf8' },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    return fs.readFileSync(out, 'utf8').includes('dev-reload');
+  };
+  try {
+    await withEnv(clean, async () => {
+      for (const jsonMode of ['dev', 'release']) {
+        setBuildMode(jsonMode);
+        for (const release of [undefined, '0', '1']) {
+          for (const buildMode of [undefined, 'dev', 'debug', 'release']) {
+            const env = { BENTO_RELEASE: release, BENTO_BUILD_MODE: buildMode };
+            const label = `bento.json ${jsonMode}, BENTO_RELEASE=${release}, BENTO_BUILD_MODE=${buildMode}`;
+            // BENTO_RELEASE=1 means release; otherwise BENTO_BUILD_MODE, then bento.json.
+            const expected = release === '1' ? 'release' : buildMode ?? jsonMode;
+
+            const native = await withEnv(env, () => writeMozconfig(root).mode);
+            assert.equal(native, expected, label);
+            assert.match(fs.readFileSync(engineFile(root, 'mozconfig'), 'utf8'), new RegExp(`^# Bento ${expected} build settings$`, 'm'), label);
+            assert.equal(await withEnv(env, () => isReleaseBuild(root)), expected === 'release', label);
+            assert.equal(bundleKeepsReloadHandler(env), expected !== 'release', label);
+          }
+        }
+      }
+    });
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
 
 test('the objdir command prints the directory mach builds into; --allow-legacy and --allow-missing relax it', async () => {
   const root = await fixture();

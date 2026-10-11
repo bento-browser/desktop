@@ -1,7 +1,8 @@
 // The one place that decides which build mode Bento is building. The build
-// driver (scripts/bento-build.mjs) writes it into engine/mozconfig; the shell
-// background build, the built-in add-on installer, and the packaging guard use
-// `isReleaseBuild` so a release is a release in every step, however it was asked for.
+// driver (scripts/bento-build.mjs) uses `resolveBuildMode` for engine/mozconfig;
+// the shell background build, the built-in add-on installer, the packaging guard,
+// and the MUXUI_LOCAL guard use `isReleaseBuild`, so the native build and the
+// extension builds always agree on release, however it was asked for.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,23 +10,24 @@ import path from 'node:path';
 export const BUILD_MODES = ['dev', 'debug', 'release'];
 
 /**
- * The mode the build driver builds: an explicit `mode`, else BENTO_BUILD_MODE, else
- * `build.mode` of bento.json. `config` is the parsed bento.json.
+ * The mode a build runs in. Precedence:
+ *   1. an explicit `mode` argument;
+ *   2. BENTO_RELEASE=1, which means release;
+ *   3. BENTO_BUILD_MODE;
+ *   4. `build.mode` of bento.json (`config` is the parsed file).
+ * So BENTO_BUILD_MODE=dev turns a release bento.json into a dev build, but not
+ * BENTO_RELEASE=1: that variable plus BENTO_BUILD_MODE=dev (or debug) is
+ * contradictory and resolves to release, the mode that ships fewer dev-only
+ * affordances. BENTO_BUILD_MODE is still validated when BENTO_RELEASE=1 overrides it.
  */
 export function resolveBuildMode(config, mode = undefined, env = process.env) {
-  const selected = mode || env.BENTO_BUILD_MODE || config.build?.mode;
-  if (!BUILD_MODES.includes(selected)) throw new Error(`unsupported build mode ${selected}`);
-  return selected;
+  const requested = mode || env.BENTO_BUILD_MODE || config.build?.mode;
+  if (!BUILD_MODES.includes(requested)) throw new Error(`unsupported build mode ${requested}`);
+  return !mode && env.BENTO_RELEASE === '1' ? 'release' : requested;
 }
 
-/**
- * True when the build at `repoRoot` is a release build: the driver's mode (see
- * resolveBuildMode, so `build.mode: "release"` in bento.json counts) is release, or
- * BENTO_RELEASE=1, which extension builds and CI set without BENTO_BUILD_MODE.
- * Either signal is enough; neither can downgrade the other.
- */
+/** True when the build at `repoRoot` resolves to release (see resolveBuildMode). */
 export function isReleaseBuild(repoRoot, env = process.env) {
-  const configPath = path.join(repoRoot, 'bento.json');
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  return resolveBuildMode(config, undefined, env) === 'release' || env.BENTO_RELEASE === '1';
+  const config = JSON.parse(fs.readFileSync(path.join(repoRoot, 'bento.json'), 'utf8'));
+  return resolveBuildMode(config, undefined, env) === 'release';
 }

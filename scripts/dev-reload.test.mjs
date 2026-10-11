@@ -63,13 +63,23 @@ function modeRoot(mode) {
   return dir;
 }
 
-test('the build mode resolves like the build driver: BENTO_BUILD_MODE over bento.json', () => {
+test('the build mode resolves in one place: explicit mode, BENTO_RELEASE, BENTO_BUILD_MODE, bento.json', () => {
   const config = { build: { mode: 'release' } };
   assert.equal(resolveBuildMode(config, undefined, {}), 'release');
   assert.equal(resolveBuildMode(config, undefined, { BENTO_BUILD_MODE: 'dev' }), 'dev');
   assert.equal(resolveBuildMode(config, 'debug', { BENTO_BUILD_MODE: 'dev' }), 'debug');
   assert.throws(() => resolveBuildMode(config, undefined, { BENTO_BUILD_MODE: 'fast' }), /unsupported build mode fast/);
   assert.throws(() => resolveBuildMode({ build: {} }, undefined, {}), /unsupported build mode undefined/);
+
+  // BENTO_RELEASE=1 means release for every consumer. It outranks BENTO_BUILD_MODE (the
+  // pair with dev or debug is contradictory, so release wins) but not an explicit mode.
+  const dev = { build: { mode: 'dev' } };
+  assert.equal(resolveBuildMode(dev, undefined, { BENTO_RELEASE: '1' }), 'release');
+  assert.equal(resolveBuildMode(dev, undefined, { BENTO_RELEASE: '1', BENTO_BUILD_MODE: 'dev' }), 'release');
+  assert.equal(resolveBuildMode(dev, undefined, { BENTO_RELEASE: '1', BENTO_BUILD_MODE: 'debug' }), 'release');
+  assert.equal(resolveBuildMode(dev, 'debug', { BENTO_RELEASE: '1' }), 'debug');
+  assert.equal(resolveBuildMode(config, undefined, { BENTO_RELEASE: '0', BENTO_BUILD_MODE: 'dev' }), 'dev');
+  assert.throws(() => resolveBuildMode(dev, undefined, { BENTO_RELEASE: '1', BENTO_BUILD_MODE: 'fast' }), /unsupported build mode fast/);
 });
 
 test('bento.json build.mode release is a release build without any environment variable', () => {

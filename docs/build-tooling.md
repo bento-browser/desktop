@@ -514,15 +514,22 @@ manifest differs from its source.
 `src/background.ts` answers it with `browser.runtime.reload()`. That is the
 dev-loop reload in `CLAUDE.md`; it must not ship.
 
-**What counts as a release build.** `scripts/build-mode.mjs` decides, and every
-step below uses it. It resolves the mode as the build driver does for
-`engine/mozconfig`: `BENTO_BUILD_MODE` if set, else `build.mode` in `bento.json`.
-The build is a release build when that mode is `release`, or when `BENTO_RELEASE=1`
-(set by `ext:build` callers and CI without `BENTO_BUILD_MODE`). So `build.mode:
-"release"` in `bento.json` alone is a release build for the shell bundle, the
-installer, and the package guard, and `BENTO_BUILD_MODE=dev` turns a release config
-back into a dev build, exactly as it does for the native build. Either signal alone
-is enough: `BENTO_RELEASE=1` still wins over `BENTO_BUILD_MODE=dev`.
+**What counts as a release build.** `scripts/build-mode.mjs` is the one resolver:
+the build driver uses it for the mode in `engine/mozconfig`, and the shell
+background build, the installer, the package guard, and the `MUXUI_LOCAL` guard use
+it to ask whether the build is a release. Precedence: an explicit mode argument
+(internal callers), then `BENTO_RELEASE=1` (release), then `BENTO_BUILD_MODE`, then
+`build.mode` in `bento.json`. So `build.mode: "release"` in `bento.json` alone makes
+a release build everywhere, native build included, and `BENTO_BUILD_MODE=dev` turns
+a release config back into a dev build everywhere. `BENTO_RELEASE=1` also selects
+release everywhere, so `BENTO_RELEASE=1 pnpm run build` builds a release native
+build; it does not build the dev mode that earlier drivers did. `BENTO_RELEASE=1`
+with `BENTO_BUILD_MODE=dev` (or `debug`) is contradictory and resolves to release,
+the mode that ships fewer dev-only affordances; an unknown `BENTO_BUILD_MODE` still
+fails. `BENTO_RELEASE=1 pnpm run ext:build`, which `size` and CI use, builds only
+the extensions and is unaffected. `scripts/bento-build.test.mjs` checks that the
+native build, the background bundle, and `isReleaseBuild` agree for every
+combination.
 `scripts/build-release.sh` sets both variables.
 
 Dev builds keep both halves of the feature; release builds remove each one at the
