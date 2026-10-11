@@ -56,6 +56,7 @@ function makeWorld(specs) {
   const frames = new Map();
   const navigations = [];
   const hostsMissing = new Set();
+  const cancelled = [];
 
   const entries = specs.map((spec) => {
     const frameId = `bento-${spec.id}-frame`;
@@ -93,6 +94,7 @@ function makeWorld(specs) {
     },
     clearTimer: (id) => timers.delete(id),
     warn: (...args) => warnings.push(args.map(String).join(' ')),
+    onCancelPending: (id) => cancelled.push(id),
   });
 
   return {
@@ -100,6 +102,7 @@ function makeWorld(specs) {
     frames,
     navigations,
     warnings,
+    cancelled,
     idle,
     hostsMissing,
     /** Moves the clock and fires the timers that fall due. */
@@ -248,10 +251,10 @@ test('onReady runs for every announcement, not for the timeout', () => {
   assert.equal(announced, 2);
 });
 
-test('whenReady creates the document and holds a chrome-to-overlay send behind readiness', () => {
+test('deliver creates the document and holds a chrome-to-overlay message behind readiness', () => {
   const world = makeWorld([{ id: 'merge-palette' }]);
   const sent = [];
-  world.manager.whenReady('merge-palette', 'open', () => sent.push('open'));
+  world.manager.deliver('merge-palette', 'open', () => sent.push('open'));
   assert.deepEqual(world.navigations, ['merge-palette']);
   assert.deepEqual(sent, []);
   world.ready('merge-palette');
@@ -261,10 +264,10 @@ test('whenReady creates the document and holds a chrome-to-overlay send behind r
 test('a callback that throws does not stop the others', () => {
   const world = makeWorld([{ id: 'confirm' }]);
   const calls = [];
-  world.manager.whenReady('confirm', 'a', () => {
+  world.manager.deliver('confirm', 'a', () => {
     throw new Error('boom');
   });
-  world.manager.whenReady('confirm', 'b', () => calls.push('b'));
+  world.manager.deliver('confirm', 'b', () => calls.push('b'));
   world.ready('confirm');
   assert.deepEqual(calls, ['b']);
   assert.equal(world.warnings.length, 1);
@@ -278,7 +281,7 @@ test('reset holds sends until a reloaded document announces again', () => {
   assert.equal(world.manager.isReady('menu'), false);
 
   const sent = [];
-  world.manager.whenReady('menu', 'open', () => sent.push('open'));
+  world.manager.deliver('menu', 'open', () => sent.push('open'));
   assert.deepEqual(sent, []);
   world.ready('menu');
   assert.deepEqual(sent, ['open']);
@@ -388,6 +391,116 @@ test('a disposed manager creates nothing and runs no queued work', () => {
   world.runIdle();
   assert.equal(world.manager.hasStarted('addrbar'), false);
   assert.equal(world.manager.ensure('addrbar', 'show'), null);
+});
+
+test('hasPendingOpen is true while an open waits and false once it ran or was cancelled', () => {
+  const world = makeWorld([{ id: 'palette' }, { id: 'confirm' }]);
+  assert.equal(world.manager.hasPendingOpen('palette'), false);
+
+  world.manager.open('palette', 'show', () => {});
+  assert.equal(world.manager.hasPendingOpen('palette'), true);
+  world.ready('palette');
+  assert.equal(world.manager.hasPendingOpen('palette'), false);
+
+  world.manager.open('confirm', 'show', () => {});
+  assert.equal(world.manager.hasPendingOpen('confirm'), true);
+  world.manager.cancel('confirm');
+  assert.equal(world.manager.hasPendingOpen('confirm'), false);
+  assert.equal(world.manager.hasPendingOpen('unknown'), false);
+});
+
+test('the readiness fallback reveals but keeps queued messages for the real announcement', () => {
+  const world = makeWorld([{ id: 'menu' }]);
+  const events = [];
+  world.manager.open('menu', 'show', () => events.push('reveal'));
+  world.manager.deliver('menu', 'open', () => events.push('deliver'));
+
+  world.advance(OVERLAY_READY_FALLBACK_MS);
+  assert.deepEqual(events, ['reveal']);
+  assert.equal(world.manager.isReady('menu'), true);
+  assert.equal(plain(world.manager.stats().overlays.menu).pendingDeliveries, 1);
+
+  // The document's listener mounts after the fallback: the message is delivered
+  // then, exactly once.
+  world.advance(2000);
+  world.ready('menu');
+  assert.deepEqual(events, ['reveal', 'deliver']);
+  world.ready('menu');
+  assert.deepEqual(events, ['reveal', 'deliver']);
+  assert.equal(world.manager.stats().overlays.menu.readyBy, 'signal');
+});
+
+test('a message queued after the fallback still waits for the announcement', () => {
+  const world = makeWorld([{ id: 'menu' }]);
+  world.manager.open('menu', 'show', () => {});
+  world.advance(OVERLAY_READY_FALLBACK_MS);
+
+  const sent = [];
+  world.manager.deliver('menu', 'open', () => sent.push('open'));
+  assert.deepEqual(sent, []);
+  world.ready('menu');
+  assert.deepEqual(sent, ['open']);
+
+  // Once announced, messages go out at once.
+  world.manager.deliver('menu', 'open', () => sent.push('again'));
+  assert.deepEqual(sent, ['open', 'again']);
+});
+
+test('a repeated message replaces the queued one and is delivered once', () => {
+  const world = makeWorld([{ id: 'merge-palette' }]);
+  const sent = [];
+  world.manager.deliver('merge-palette', 'open', () => sent.push('first'));
+  world.manager.deliver('merge-palette', 'open', () => sent.push('second'));
+  world.ready('merge-palette');
+  assert.deepEqual(sent, ['second']);
+});
+
+test('cancel drops queued messages too', () => {
+  const world = makeWorld([{ id: 'menu' }]);
+  const sent = [];
+  world.manager.open('menu', 'show', () => {});
+  world.manager.deliver('menu', 'open', () => sent.push('open'));
+  world.manager.cancel('menu');
+  world.ready('menu');
+  assert.deepEqual(sent, []);
+});
+
+test('cancel tells payload senders while the document has not announced itself', () => {
+  const world = makeWorld([{ id: 'confirm' }, { id: 'edit-workspace', created: true }]);
+
+  world.manager.cancel('confirm');
+  assert.deepEqual(world.cancelled, [], 'nothing was requested yet');
+
+  world.manager.open('confirm', 'show', () => {});
+  world.manager.cancel('confirm');
+  assert.deepEqual(world.cancelled, ['confirm']);
+
+  // After the fallback revealed it, the senders may still hold a payload.
+  world.manager.open('edit-workspace', 'show', () => {});
+  world.advance(OVERLAY_READY_FALLBACK_MS);
+  world.manager.cancel('edit-workspace');
+  assert.deepEqual(world.cancelled, ['confirm', 'edit-workspace']);
+
+  // A document that announced has its payload; nothing to cancel.
+  world.ready('confirm');
+  world.manager.cancel('confirm');
+  assert.deepEqual(world.cancelled, ['confirm', 'edit-workspace']);
+});
+
+test('stats report queued work', () => {
+  const world = makeWorld([{ id: 'menu' }]);
+  world.manager.open('menu', 'show', () => {});
+  world.manager.deliver('menu', 'open', () => {});
+  const waiting = plain(world.manager.stats().overlays.menu);
+  assert.equal(waiting.pendingOpen, true);
+  assert.equal(waiting.pendingDeliveries, 1);
+  assert.equal(waiting.signalled, false);
+
+  world.ready('menu');
+  const done = plain(world.manager.stats().overlays.menu);
+  assert.equal(done.pendingOpen, false);
+  assert.equal(done.pendingDeliveries, 0);
+  assert.equal(done.signalled, true);
 });
 
 // Drift guards between the manager's table, the title table and the shell.
