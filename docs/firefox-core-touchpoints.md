@@ -65,6 +65,7 @@ Use this shape for new or changed touchpoints:
 - Last updated: 2026-10-12
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
+  - `src/browser/base/content/bento-shell-mount.css` (see Chrome Layout Stylesheet)
   - `src/browser/base/content/bento-chrome-theme.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
   - `src/browser/base/content/bento-chrome-themes/*.css` (see Chrome Theme Sheets)
@@ -621,6 +622,65 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   function, and running `generate-chrome-tokens.mjs --monolithic` as the default,
   restores the single-sheet layout. The rollback-final-r2 variant already builds
   that layout, because its archived mount script loads only the base sheet.
+
+### Chrome Layout Stylesheet
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.css`
+  - `src/browser/base/content/bento-shell-mount.js` (`injectChromeStyles`)
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (one `browser/base/jar.mn`
+    line: `content/browser/bento-shell-mount.css (content/bento-shell-mount.css)`)
+  - `scripts/check-chrome-resize-guard.mjs`, `scripts/check-import-output.mjs`,
+    `scripts/sync-builtin-addon-symlinks.sh`
+- Bento functionality: the chrome layout rules (panel strip, splitters,
+  navigator, overlays, startup veil, fullscreen overrides; about 2,500 lines and
+  100 kB) are a static chrome stylesheet instead of a template literal in the
+  mount script. `injectChromeStyles()` appends one `<link rel="stylesheet">` to
+  the window root at the point where the former inline `<style>` was appended, so
+  the rules, their order, and their place in the cascade are unchanged. The mount
+  script lost 114 kB (866,038 to 751,825 bytes), and each window no longer
+  copies and hashes that 100 kB string for Gecko's inline-sheet cache lookup
+  (`Loader::LoadInlineStyle`); the linked sheet is parsed once per process.
+- Vanilla Firefox surface touched or depended on: `browser.jar` content
+  registration through `browser/base/jar.mn`; the `chrome://browser/content/`
+  package; the CSS loader's handling of a script-inserted stylesheet link in a
+  chrome document (`layout/style/Loader.cpp`: the sheet is inserted by document
+  order of its owner node, so a link keeps the place the `<style>` held; the
+  load joins the document load group and blocks the load event; a sheet already
+  complete in the shared sheet cache is inserted synchronously); and
+  `AppWindow` showing a chrome window only after its document
+  finishes loading (`xpfe/appshell/AppWindow.cpp`, `SetVisibility` and
+  `OnChromeLoaded`). No private Firefox member is used, so the firefox-compat
+  registry has no entry for it.
+- Why this cannot stay extension-only: the rules style Firefox's own chrome
+  elements (`#browser`, `#tabbrowser-tabpanels`, `.browserContainer`,
+  `:root[inDOMFullscreen]`), and Bento has no extension-served stylesheet path
+  into the browser window. It follows the jar.mn route of `bento-chrome-theme.css`.
+- Firefox update risk: low. The jar.mn line sits in the hunk that already adds
+  the other Bento chrome files. Upstream would have to change how chrome
+  documents order or block on script-inserted stylesheet links to affect it.
+- Regression checks for future updates: `pnpm run firefox:patches:check`;
+  `pnpm run import` then `node scripts/check-import-output.mjs` (fails when any
+  `src/browser/base/content` file is missing from the engine or from
+  `browser/base/jar.mn`); after a build,
+  `chrome/browser/content/browser/bento-shell-mount.css` exists in the app
+  resources. In a running build, in the Browser Toolbox Console run
+  `[...document.styleSheets].map((s) => s.href)` and confirm
+  `bento-chrome-tokens.css`, `bento-chrome-theme.css`, then
+  `bento-shell-mount.css` appear in that order, ahead of any
+  `bento-chrome-themes/` sheet, with no inline `<style>` from the mount script.
+  Cold-start the first window and open a second one: the panel strip, splitters,
+  navigator, and startup veil are styled at first paint and there is no
+  unstyled frame. After a Firefox bump also re-read `Loader::InsertSheetInTree`,
+  `Loader::LoadStyleLink`, and `AppWindow::OnChromeLoaded`, and run
+  `git apply --check` on the jar.mn hunk against the new `browser/base/jar.mn`.
+- Rollback or migration notes: restoring the sheet as a template literal inside
+  `injectChromeStyles()` and dropping the jar.mn line returns to the inline
+  `<style>`. The rollback-final-r2 variant already does: its archived mount
+  script keeps its own inline template and ignores this file, which stays in
+  `jar.mn` harmlessly.
 
 ### Native Preferences Layout
 
@@ -1257,7 +1317,7 @@ below is generated; edit the registry, then run
 - Not listed. Stable platform APIs (`Services.*`, `PlacesUtils`, `SessionStore`
   calls, `<browser>` navigation such as `loadURI`, XPCOM interface constants
   such as `Ci.nsIWebProgress.NOTIFY_ALL`, the WebExtension API), prefs
-  read by name, and the CSS selectors in `injectChromeStyles`. Patches are
+  read by name, and the CSS selectors in `bento-shell-mount.css`. Patches are
   covered by `pnpm run firefox:patches:check`; members that code added by a
   patch calls elsewhere in Firefox are listed here.
 

@@ -29,6 +29,12 @@ Bento's core browsing model is split across three layers:
   `scripts/check-firefox-compat.mjs` checks against a Firefox source tree; the
   table is in `docs/firefox-core-touchpoints.md`. The mount ships only a compact
   probe list of the runtime-probable members, which each window probes once.
+- `bento-shell-mount.css` holds the chrome layout rules (panel strip, splitters,
+  navigator, overlays, startup veil, fullscreen overrides). `injectChromeStyles()`
+  in the mount script links it to the window root; `jar.mn` (patch
+  `chrome-layout/01-bento-shell-mount.patch`) ships it as
+  `chrome://browser/content/bento-shell-mount.css`. See "Chrome layout
+  stylesheet" under Chrome rendering pitfalls.
 
 The state contract is declared in `extensions/_shared/protocol.ts`. UI code
 dispatches `Action` messages through `extensions/bento-shell/src/bridge/useToolsPort.ts`.
@@ -2229,8 +2235,8 @@ The panel shadow setting toggles `bento-panel-shadows-disabled` on both
 `gBrowser.tabpanels` and `#bento-strip-container`. Split-view panels read the
 class from `tabpanels`; the no-side-panels, tabs-only main content slot reads it
 from the strip container because its shadow is applied outside `tabpanels`.
-The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.js`
-inside `injectChromeStyles()`. `:root` defines
+The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.css`.
+`:root` defines
 `--bento-panel-frame-outline-shadow` and `--bento-panel-frame-shadow`; the
 disabled class overrides `--bento-panel-frame-shadow` to the outline-only value.
 Do not use live resize root attributes (`bento-window-resizing`,
@@ -2744,6 +2750,38 @@ adds its entry, and its id in the mount probe list, in the same change.
 
 ### Chrome rendering pitfalls
 
+- Chrome layout stylesheet. Source of truth: `src/browser/base/content/bento-shell-mount.css`,
+  a static file, not a template literal in the mount script. Chrome bridge:
+  `injectChromeStyles()` appends one `<link rel="stylesheet" href="chrome://browser/content/bento-shell-mount.css">`
+  to the window root. Persistence: none. Manual verification: in the Browser
+  Toolbox Console run `[...document.styleSheets].map((s) => s.href)` and check
+  `bento-chrome-tokens.css`, `bento-chrome-theme.css`, `bento-shell-mount.css`
+  appear in that order, ahead of any `bento-chrome-themes/` sheet, then cold-start
+  the first window and open a second one and look for an unstyled frame. Pitfalls:
+  - The file ships only through the `browser/base/jar.mn` line in
+    `patches/chrome-layout/01-bento-shell-mount.patch`. Without the line the
+    import succeeds and the app loads with no layout CSS.
+    `scripts/check-import-output.mjs` fails on any `src/browser/base/content`
+    file the engine `jar.mn` does not register.
+  - Keep the link where the former inline `<style>` was appended (after the
+    tokens and theme links, before any theme sheet). Stylesheets order by owner
+    node position, and the file's `@layer bento.chrome-theme` blocks must follow
+    the ones in `bento-chrome-theme.css`. A parser-created link in
+    `browser-box.inc.xhtml` would sort the file before the tokens and theme
+    links, and an `<?xml-stylesheet?>` instruction before every other sheet, which
+    changes which rule wins on equal specificity.
+  - Do not move the rules back into a JS template literal or an inline
+    `<style>`: one stray backtick or dollar-brace breaks the whole mount script,
+    and each window then copies and hashes the 100 kB string for Gecko's
+    inline-sheet cache.
+  - The first window is not shown until the link has loaded (`AppWindow` shows
+    a chrome window after its document finishes loading, and the link is part
+    of that load), so there is no unstyled first frame; later windows take the
+    parsed sheet from the shared sheet cache. A stylesheet that fails to load
+    (missing jar.mn line, bad URL) shows up as an unstyled but visible window and
+    a Browser Console load error.
+  - `scripts/check-chrome-resize-guard.mjs` matches the shadow-token rules in
+    this file, not in the mount script.
 - The gBrowser hooks are guarded by `typeof` and a `__bento*` flag, so a Firefox
   rename silently disables them (ghost panels, wrong tab focus after a close).
   After a Firefox update, run `pnpm run firefox:compat:engine` before anything
@@ -2887,7 +2925,7 @@ adds its entry, and its id in the mount probe list, in the same change.
   `#bento-shell-splitter`, `#bento-panel-nav`, `#bento-strip-scrollbar`,
   chrome-injected panel headers/loading overlays, the add-panel trailer, or
   flat-layout overlay splitters. Keep the
-  `:root[inDOMFullscreen]` rules in `injectChromeStyles()` so the selected
+  `:root[inDOMFullscreen]` rules in `bento-shell-mount.css` so the selected
   deck panel overrides stale flat-layout inline rects, loses rounded corners and
   shadows, suppresses Bento focus-ring pseudo-elements and loading overlays,
   hides non-selected panel slots, removes strip padding, clears the outer strip

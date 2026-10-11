@@ -17,9 +17,11 @@ function readRepoFile(relativePath) {
 }
 
 const chromeMountPath = 'src/browser/base/content/bento-shell-mount.js';
+const chromeMountCssPath = 'src/browser/base/content/bento-shell-mount.css';
 const chromeTokensPath = 'src/browser/base/content/bento-chrome-tokens.css';
 const chromeThemePath = 'src/browser/base/content/bento-chrome-theme.css';
 const chromeMount = readRepoFile(chromeMountPath);
+const chromeMountCss = readRepoFile(chromeMountCssPath);
 const chromeTokens = readRepoFile(chromeTokensPath);
 const chromeTheme = readRepoFile(chromeThemePath);
 
@@ -55,22 +57,25 @@ const nativeSidebarLauncherSuppression =
 
 const failures = [];
 
-if (!normalPanelShadow.test(chromeMount)) {
+if (!normalPanelShadow.test(chromeMountCss)) {
   failures.push(
-    `${chromeMountPath} must define normal panel frames with ` +
+    `${chromeMountCssPath} must define normal panel frames with ` +
       '`--bento-panel-frame-outline-shadow, var(--shadow-l)`.',
   );
 }
 
-if (globalLiveResizeShadowOverride.test(chromeMount)) {
+if (globalLiveResizeShadowOverride.test(chromeMountCss)) {
   failures.push(
-    `${chromeMountPath} must not override --bento-panel-frame-shadow during live resize; panel elevation stays enabled for the full gesture.`,
+    `${chromeMountCssPath} must not override --bento-panel-frame-shadow during live resize; panel elevation stays enabled for the full gesture.`,
   );
 }
 
-if (!noPanelFrameFullShadow.test(chromeMount) || noPanelLiveResizeOutlineShadow.test(chromeMount)) {
+if (
+  !noPanelFrameFullShadow.test(chromeMountCss) ||
+  noPanelLiveResizeOutlineShadow.test(chromeMountCss)
+) {
   failures.push(
-    `${chromeMountPath} must keep the full no-side-panels browserSidebarContainer shadow during live window/sidebar resize without an outline-only override.`,
+    `${chromeMountCssPath} must keep the full no-side-panels browserSidebarContainer shadow during live window/sidebar resize without an outline-only override.`,
   );
 }
 

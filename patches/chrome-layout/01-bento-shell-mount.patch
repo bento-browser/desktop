@@ -5,8 +5,8 @@ Subject: [PATCH] Add Bento shell mount to browser chrome
 
 ---
  browser/base/content/browser-box.inc.xhtml | 54 +++++++++++++++++++++-
- browser/base/jar.mn                        |  8 ++++
- 2 files changed, 61 insertions(+), 1 deletion(-)
+ browser/base/jar.mn                        |  9 +++++
+ 2 files changed, 62 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
 index cf35762fdcc4716932c7af7cf4af4b2f72aea038..6edf2c3837e24f2fd872058333e1970c8f5a1b09 100644
@@ -74,14 +74,15 @@ index cf35762fdcc4716932c7af7cf4af4b2f72aea038..6edf2c3837e24f2fd872058333e1970c
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
 diff --git a/browser/base/jar.mn b/browser/base/jar.mn
-index 0212828fbe89b90a935e8771cf7da844f7ed1a5e..9482b8b735800cb2e4667eadc3469bca598d40bb 100644
+index 0212828fbe89b90a935e8771cf7da844f7ed1a5e..4286b7c27ddbb6a0adbdc73bf6f8e853e2b9c21c 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
-@@ -46,6 +46,14 @@ browser.jar:
+@@ -46,6 +46,15 @@ browser.jar:
          content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
          content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
          content/browser/browser-init.js                     (content/browser-init.js)
 +        content/browser/bento-shell-mount.js                (content/bento-shell-mount.js)
++        content/browser/bento-shell-mount.css               (content/bento-shell-mount.css)
 +        content/browser/bento-chrome-tokens.css             (content/bento-chrome-tokens.css)
 +        content/browser/bento-chrome-theme.css              (content/bento-chrome-theme.css)
 +        content/browser/bento-chrome-themes/                (content/bento-chrome-themes/*.css)
