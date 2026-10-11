@@ -18,7 +18,7 @@ import {
   writeMozconfig,
 } from './bento-build.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
-import { mozconfigUpdaterState } from './update-readiness.mjs';
+import { activeMozconfigLines, mozconfigUpdaterState } from './update-readiness.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -316,9 +316,10 @@ async function packagingFixture() {
   return { root };
 }
 
-/** Stands in for configure's record of the updater in the object directory. */
-function configured(root, updater) {
-  fs.writeFileSync(engineFile(root, 'obj-bento', 'config.status.json'), JSON.stringify({ substs: updater ? { MOZ_UPDATER: '1' } : {} }));
+/** Stands in for configure's record of the updater and update channel in the object directory. */
+function configured(root, updater, channel = 'bento') {
+  const substs = { MOZ_UPDATE_CHANNEL: channel, ...(updater ? { MOZ_UPDATER: '1' } : {}) };
+  fs.writeFileSync(engineFile(root, 'obj-bento', 'config.status.json'), JSON.stringify({ substs }));
 }
 
 test('package writes a MAR and update metadata only while the updater is enabled', async (t) => {
@@ -416,6 +417,14 @@ test('package takes the updater state from the last flag in engine/mozconfig and
       writeMozconfig(root, 'dev');
       configured(root, true);
       await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the updater in, but bento\.json updates\.enabled is false/);
+
+      // The channel configure recorded must be bento.json's: Mozilla's names select Mozilla's certificates.
+      for (const updater of [false, true]) {
+        if (updater) enableUpdater(root);
+        writeMozconfig(root, 'dev');
+        configured(root, updater, 'release');
+        await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the update channel "release", but bento\.json updates\.channel is "bento"/);
+      }
     });
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
@@ -435,11 +444,35 @@ test('the updater state of a mozconfig is its last updater flag, and Firefox bui
     ['ac_add_options --disable-updater\nac_add_options "--enable-updater"\n', true],
     ['ac_add_options --disable-updater\r\nac_add_options --enable-updater # on again\r\n', true],
     ['ac_add_options --disable-updater\n# ac_add_options --enable-updater\n', false],
+    ['ac_add_options --disable-updater # ac_add_options --enable-updater\n', false],
+    ['ac_add_options --enable-updater # --disable-updater\n', true],
   ];
   for (const [text, expected] of cases) assert.equal(mozconfigUpdaterState(text), expected, JSON.stringify(text));
 });
 
-test('a mozconfig fragment that sets the updater or unverified updates is rejected, in any spelling', async () => {
+test('mozconfig lines lose full-line and trailing shell comments, but not a quoted or attached #', () => {
+  const text = [
+    '# full line',
+    '   # indented full line',
+    'ac_add_options --enable-optimize # trailing note',
+    'ac_add_options --enable-optimize\t#tab then note',
+    'export A=b#c',
+    'export B="x # y"',
+    "export C='x # y'",
+    'export D=x\\ # y',
+    '',
+  ].join('\n');
+  assert.deepEqual(activeMozconfigLines(text), [
+    'ac_add_options --enable-optimize',
+    'ac_add_options --enable-optimize',
+    'export A=b#c',
+    'export B="x # y"',
+    "export C='x # y'",
+    'export D=x\\ # y',
+  ]);
+});
+
+test('a mozconfig fragment that sets the updater, unverified updates or the update channel is rejected, in any spelling', async () => {
   const root = await fixture();
   try {
     await withObjdirEnv(undefined, async () => {
@@ -452,7 +485,8 @@ test('a mozconfig fragment that sets the updater or unverified updates is reject
           if (error.code !== 'ENOENT') throw error;
         }
         fs.mkdirSync(path.dirname(fragment), { recursive: true });
-        fs.appendFileSync(fragment, '\n# --enable-updater and --enable-unverified-updates in a comment are fine\n');
+        // Comments never count, whole-line or trailing, even when they name an option.
+        fs.writeFileSync(fragment, `${original ?? ''}\n# --enable-updater and --enable-unverified-updates in a comment are fine\nac_add_options --enable-optimize # updater remains disabled\n`);
         writeMozconfig(root, 'dev');
         for (const line of [
           'ac_add_options --enable-updater',
@@ -460,15 +494,25 @@ test('a mozconfig fragment that sets the updater or unverified updates is reject
           'ac_add_options --with-updater',
           'ac_add_options --without-updater',
           'ac_add_options "--enable-updater"',
+          'ac_add_options --enable-updater # note',
           'export MOZ_UPDATER=1',
           'ac_add_options --enable-unverified-updates',
           'ac_add_options --disable-unverified-updates',
           'ac_add_options --with-unverified-updates',
           'ac_add_options --without-unverified-updates',
           'export MOZ_VERIFY_MAR_SIGNATURE=',
+          'ac_add_options --enable-update-channel=release',
+          'ac_add_options --disable-update-channel',
+          'ac_add_options --with-update-channel=release',
+          'ac_add_options --without-update-channel',
+          'ac_add_options --enable-update-channel=release # note',
+          'export MOZ_UPDATE_CHANNEL=release',
+          'export MAR_CHANNEL_ID=release',
+          'export ACCEPTED_MAR_CHANNEL_IDS=release',
+          'mk_add_options ACCEPTED_MAR_CHANNEL_IDS=release',
         ]) {
           fs.writeFileSync(fragment, `${original ?? ''}\n${line}\n`);
-          assert.throws(() => writeMozconfig(root, 'dev'), /sets the updater or MAR signature verification; bento\.json updates\.enabled is the only switch/, `${path.relative(root, fragment)}: ${line}`);
+          assert.throws(() => writeMozconfig(root, 'dev'), /sets the updater, its update channel or MAR signature verification; bento\.json updates\.enabled and updates\.channel are the only switches/, `${path.relative(root, fragment)}: ${line}`);
         }
         if (original === undefined) fs.rmSync(fragment);
         else fs.writeFileSync(fragment, original);

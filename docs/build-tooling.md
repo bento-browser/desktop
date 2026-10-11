@@ -186,22 +186,28 @@ release tooling treats a build as unable to update:
   last occurrence of an option and a first-match scan would miss a later flag, and
   `MOZ_UPDATER` in the object directory's `config.status.json`, which is what
   configure actually built and cannot be disguised by how a mozconfig spells a flag.
+  It also refuses a `config.status.json` whose `MOZ_UPDATE_CHANNEL` is not
+  `updates.channel` (configure lowercases it).
 - `updates-browser` and `updates-addons` fail with a message naming the switch.
 - `pnpm run artifacts:check` expects the primary packages and a matching
   `bento-artifacts.json`, still requires the application's `precomplete` file
   (Firefox's packager writes it whether or not the updater is built, and the
   Windows installer and uninstaller read it to remove files), checks that the
-  object directory's `config.status.json` agrees with `updates.enabled`, and
-  fails if a MAR or update metadata exists in `dist/` or the manifest.
+  object directory's `config.status.json` agrees with `updates.enabled` and
+  `updates.channel`, and fails if a MAR or update metadata exists in `dist/` or
+  the manifest.
 - `configs/common/mozconfig`, the platform fragment and the root `mozconfig`
   are appended to `engine/mozconfig` after Bento's options, so they may not set
-  the updater or MAR signature verification: any active line that mentions
-  either (`--enable-updater`, `--disable-updater`, `--with-updater`,
-  `--without-updater`, the same four spellings of `unverified-updates`, a
-  `MOZ_UPDATER` or `MOZ_VERIFY_MAR_SIGNATURE` export) makes the mozconfig writer
-  fail, the same way a `MOZ_OBJDIR` line does. `updates.enabled` is the only
-  switch, and unverified updates would bypass MAR signature checks if the
-  updater were re-enabled.
+  the updater, MAR signature verification or the update channel: any active line
+  that mentions one (`--enable-updater`, `--disable-updater`, `--with-updater`,
+  `--without-updater`, the same four spellings of `unverified-updates` and of
+  `update-channel`, a `MOZ_UPDATER`, `MOZ_VERIFY_MAR_SIGNATURE` or
+  `MOZ_UPDATE_CHANNEL` export, `MAR_CHANNEL_ID`, `ACCEPTED_MAR_CHANNEL_IDS`) makes
+  the mozconfig writer fail, the same way a `MOZ_OBJDIR` line does. Full-line and
+  trailing `#` comments are ignored first, so a note that names an option is
+  fine. `updates.enabled` and `updates.channel` are the only switches: unverified
+  updates would bypass MAR signature checks if the updater were re-enabled, and a
+  channel such as `release` compiles Mozilla's certificates into the updater.
 - `scripts/build-release.sh` collects no MAR or update XML and fails if
   `release-out/` or `dist/` holds one; the release workflow checks the same
   before uploading.

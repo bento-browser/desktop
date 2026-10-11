@@ -64,20 +64,47 @@ export function updaterReadinessProblems(bento, security) {
   return problems;
 }
 
-/** The lines of a mozconfig fragment that are neither blank nor comments. */
+/** A mozconfig line without its trailing shell comment: an unquoted '#' that starts a word. */
+function withoutComment(line) {
+  let quote = '';
+  let startsWord = true;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (quote) {
+      if (char === quote) quote = '';
+      else if (char === '\\' && quote === '"') i++;
+    } else if (/\s/.test(char)) {
+      startsWord = true;
+      continue;
+    } else if (char === '#' && startsWord) {
+      return line.slice(0, i);
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === '\\') {
+      i++;
+    }
+    startsWord = false;
+  }
+  return line;
+}
+
+/** The lines of a mozconfig fragment that still say something once comments are removed. */
 export function activeMozconfigLines(text) {
-  return text.split(/\r?\n/).filter((line) => line.trim() && !line.trimStart().startsWith('#'));
+  return text.split(/\r?\n/).map((line) => withoutComment(line).trimEnd()).filter((line) => line.trim());
 }
 
 /**
- * Whether an active mozconfig line touches the updater or turns off MAR signature
- * verification, in any spelling (--enable-updater, --without-updater,
- * --enable-unverified-updates, an export of MOZ_UPDATER or MOZ_VERIFY_MAR_SIGNATURE).
- * bento.json `updates.enabled` is the only switch, and unverified updates would
- * bypass signature checks if the updater came back, so Bento's fragments may carry none.
+ * Whether an active mozconfig line sets something Bento's generator owns about updates:
+ * the updater (--enable-updater, --without-updater, an export of MOZ_UPDATER), MAR
+ * signature verification (--enable-unverified-updates, MOZ_VERIFY_MAR_SIGNATURE), or
+ * the update channel (--enable-update-channel, MOZ_UPDATE_CHANNEL, MAR_CHANNEL_ID,
+ * ACCEPTED_MAR_CHANNEL_IDS), in any spelling. bento.json `updates.enabled` and
+ * `updates.channel` are the only switches: unverified updates would bypass signature
+ * checks if the updater came back, and a channel such as 'release' compiles Mozilla's
+ * certificates into the updater. Bento's fragments may carry none of them.
  */
-export function overridesUpdater(line) {
-  return /updater|unverified[-_]updates|verify_mar_signature/i.test(line);
+export function overridesUpdateSettings(line) {
+  return /updater|unverified[-_]updates|verify_mar_signature|update[-_]channel|mar_channel_id/i.test(line);
 }
 
 // configure keys its arguments by option name, so the last updater flag wins;
@@ -91,7 +118,7 @@ const UPDATER_FLAG = /^--(enable|with|disable|without)-updater(?:=.*)?$/;
 export function mozconfigUpdaterState(text) {
   let enabled = true;
   for (const line of activeMozconfigLines(text)) {
-    const words = line.replace(/(^|\s)#.*/, '').trim().split(/\s+/);
+    const words = line.trim().split(/\s+/);
     if (words[0] !== 'ac_add_options') continue;
     for (const word of words.slice(1)) {
       const prefix = UPDATER_FLAG.exec(word.replace(/^["']|["']$/g, ''))?.[1];
@@ -102,13 +129,19 @@ export function mozconfigUpdaterState(text) {
 }
 
 /**
- * The updater state configure recorded in an object directory (MOZ_UPDATER in
- * config.status.json is '1' when the updater is built), or undefined before the
- * first configure. It is the ground truth: a mozconfig can set the flag in ways
- * a text scan misses.
+ * What configure recorded in an object directory's config.status.json, or undefined
+ * before the first configure: whether the updater is built (MOZ_UPDATER is '1') and
+ * the update channel (MOZ_UPDATE_CHANNEL, already lowercased by configure). It is the
+ * ground truth: a mozconfig can set either in ways a text scan misses.
  */
-export function configuredUpdaterState(objDir) {
+export function configuredUpdateState(objDir) {
   const file = path.join(objDir, 'config.status.json');
   if (!fs.existsSync(file)) return undefined;
-  return Boolean(JSON.parse(fs.readFileSync(file, 'utf8')).substs?.MOZ_UPDATER);
+  const substs = JSON.parse(fs.readFileSync(file, 'utf8')).substs ?? {};
+  return { updater: Boolean(substs.MOZ_UPDATER), channel: substs.MOZ_UPDATE_CHANNEL };
+}
+
+/** Whether a channel recorded by configure is the one bento.json names (configure lowercases it). */
+export function isBentoChannel(recorded, config) {
+  return recorded === String(config.updates?.channel).toLowerCase();
 }

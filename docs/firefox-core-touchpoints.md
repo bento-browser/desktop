@@ -859,11 +859,13 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     is lowercased in `build/moz.configure/init.configure` before
     `toolkit/mozapps/update/updater/moz.build` compares it. Configure records the
     result as `MOZ_UPDATER` in the object directory's `config.status.json`
-    (`configure.py`), which `package` and `artifacts:check` read. The same file
-    defines `--enable-unverified-updates`, which sets `MOZ_VERIFY_MAR_SIGNATURE`
-    off; Bento's mozconfig fragments are rejected if they mention either name, so
-    a rename of these options needs `overridesUpdater` in
-    `scripts/update-readiness.mjs` updated.
+    (`configure.py`) beside `MOZ_UPDATE_CHANNEL`; `package` and `artifacts:check`
+    read both and require the channel to be `bento.json` `updates.channel`. The
+    same file defines `--enable-unverified-updates`, which sets
+    `MOZ_VERIFY_MAR_SIGNATURE` off. Bento's mozconfig fragments are rejected if
+    they mention the updater, unverified updates, `update-channel`,
+    `MAR_CHANNEL_ID` or `ACCEPTED_MAR_CHANNEL_IDS`, so a rename of any of these
+    needs `overridesUpdateSettings` in `scripts/update-readiness.mjs` updated.
   - `precomplete` is not tied to the updater: `toolkit/mozapps/installer/packager.py`
     calls `generate_precomplete` unconditionally after copying the package,
     `python/mozbuild/mozpack/packager/l10n.py` regenerates it for repacked locales,

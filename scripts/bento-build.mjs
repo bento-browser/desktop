@@ -17,9 +17,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
 import {
   activeMozconfigLines,
-  configuredUpdaterState,
+  configuredUpdateState,
+  isBentoChannel,
   mozconfigUpdaterState,
-  overridesUpdater,
+  overridesUpdateSettings,
   updaterReadinessProblems,
 } from './update-readiness.mjs';
 import { writeFileIfChanged } from './write-if-changed.mjs';
@@ -656,8 +657,8 @@ function mozconfigObjDirName(ctx) {
  * The fragments Bento appends to engine/mozconfig. They land after the options Bento
  * writes, and configure takes the last occurrence, so a fragment must not set what
  * Bento owns: a MOZ_OBJDIR would send mach somewhere resolveObjDir does not look, and
- * an updater flag would undo bento.json `updates.enabled` after its readiness checks (and
- * unverified updates would drop MAR signature checks if the updater came back).
+ * an updater, signature-verification or update-channel setting would undo bento.json
+ * `updates` after its readiness checks (see overridesUpdateSettings).
  */
 function assertFragmentsDoNotOverrideBento(ctx) {
   const fragments = [
@@ -672,8 +673,8 @@ function assertFragmentsDoNotOverrideBento(ctx) {
     if (lines.some((line) => /\bMOZ_OBJDIR\b/.test(line))) {
       fail(`${name} sets MOZ_OBJDIR; Bento chooses the object directory (set BENTO_OBJDIR to use another obj-* name)`);
     }
-    if (lines.some(overridesUpdater)) {
-      fail(`${name} sets the updater or MAR signature verification; bento.json updates.enabled is the only switch (docs/build-tooling.md, Updater)`);
+    if (lines.some(overridesUpdateSettings)) {
+      fail(`${name} sets the updater, its update channel or MAR signature verification; bento.json updates.enabled and updates.channel are the only switches (docs/build-tooling.md, Updater)`);
     }
   }
 }
@@ -1697,21 +1698,27 @@ export async function writeAddonUpdateFiles(ctx, config) {
  * has run, the object directory's config.status.json (what the last configure used,
  * and the one a mozconfig cannot disguise). Packaging a build whose updater differs
  * from bento.json would ship an updater the metadata says is absent, or the reverse.
+ * The update channel configure recorded must also be bento.json's: a different one
+ * (such as Mozilla's release) selects different update certificates.
  */
 function builtUpdaterState(ctx, config, objDir) {
   const expected = updatesEnabled(config);
   const mozconfig = path.join(ctx.engineDir, 'mozconfig');
   const fromMozconfig = fs.existsSync(mozconfig) ? mozconfigUpdaterState(fs.readFileSync(mozconfig, 'utf8')) : true;
-  const fromConfigure = configuredUpdaterState(objDir);
+  const configure = configuredUpdateState(objDir);
+  const recorded = `engine/${path.basename(objDir)}/config.status.json`;
   for (const [source, state] of [
     ['engine/mozconfig compiled', fromMozconfig],
-    [`engine/${path.basename(objDir)}/config.status.json configured`, fromConfigure],
+    [`${recorded} configured`, configure?.updater],
   ]) {
     if (state !== undefined && state !== expected) {
       fail(`package: ${source} the updater ${state ? 'in' : 'out'}, but bento.json updates.enabled is ${expected}; run pnpm run build first`);
     }
   }
-  return fromConfigure ?? fromMozconfig;
+  if (configure && !isBentoChannel(configure.channel, config)) {
+    fail(`package: ${recorded} configured the update channel ${JSON.stringify(configure.channel)}, but bento.json updates.channel is ${JSON.stringify(config.updates.channel)}; run pnpm run build first`);
+  }
+  return configure?.updater ?? fromMozconfig;
 }
 
 /** A build that cannot update must not leave MARs or update metadata from an earlier package behind. */

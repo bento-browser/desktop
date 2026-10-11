@@ -203,7 +203,7 @@ test('the bundle needs precomplete whether or not the updater is enabled', async
   }
 });
 
-test('artifact validation checks the updater state configure recorded in the object directory', async () => {
+test('artifact validation checks the updater state and channel configure recorded in the object directory', async () => {
   const disabled = await fixture({ updates: false });
   const enabled = await fixture();
   const configureRecorded = (root, substs) => fsp.writeFile(path.join(root, 'engine', 'obj-test', 'config.status.json'), JSON.stringify({ substs }));
@@ -211,14 +211,22 @@ test('artifact validation checks the updater state configure recorded in the obj
     // Agreeing with bento.json, or no configure output yet, passes.
     await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
     validateArtifacts(disabled.root);
-    await configureRecorded(enabled.root, { MOZ_UPDATER: '1' });
+    await configureRecorded(enabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento' });
     validateArtifacts(enabled.root);
 
     // Metadata and bento.json both say off, but configure built the updater in.
-    await configureRecorded(disabled.root, { MOZ_UPDATER: '1' });
+    await configureRecorded(disabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento' });
     assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the updater in, but bento\.json updates\.enabled is false/);
-    await configureRecorded(enabled.root, {});
+    await configureRecorded(enabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
     assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the updater out, but bento\.json updates\.enabled is true/);
+
+    // The updater state agrees, but configure used another channel (Mozilla's names select Mozilla's certificates).
+    for (const channel of ['release', undefined]) {
+      await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: channel });
+      assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the update channel .*, but bento\.json updates\.channel is "bento"/);
+      await configureRecorded(enabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: channel });
+      assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the update channel .*, but bento\.json updates\.channel is "bento"/);
+    }
   } finally {
     await fsp.rm(disabled.root, { recursive: true, force: true });
     await fsp.rm(enabled.root, { recursive: true, force: true });
