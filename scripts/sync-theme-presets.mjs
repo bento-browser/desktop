@@ -298,9 +298,7 @@ function legacyAliasForMuxToken(token) {
 
   match = token.match(/^--muxui-semantic-typography-(.+)$/);
   if (match) {
-    const name = match[1]
-      .replace(/-font-family$/, '-font-family')
-      .replace(/-font-size$/, '-font-size');
+    const name = match[1];
     return { name: `--${name}`, scoped: true };
   }
 

@@ -13,7 +13,7 @@ const MEDIA_DARK_SCOPE_SELECTOR = new RegExp(
 );
 
 const ROOT_SELECTOR = /^:root$/;
-const LEADING_TRIVIA = /^(?:(?:\s|\/\*[\s\S]*?\*\/)*)(?:)/u;
+const LEADING_TRIVIA = /^(?:\s|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/)*/u;
 
 function scopedRoot(id, quote, mode) {
   const scope = `[data-bento-theme=${quote}${id}${quote}]`;

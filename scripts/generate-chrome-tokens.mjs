@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global console, process */
+/* global Buffer, console, process */
 /**
  * Generate the native chrome token stylesheet from the public Mux CSS surface.
  *
@@ -11,7 +11,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -244,10 +244,16 @@ ${normalizeNativeCss(presetsIndexCss)}
 
 const output = header + muxBaseSection + muxThemesSection + bentoSection + presetsSection;
 mkdirSync(dirname(outputPath), { recursive: true });
-const unchanged = existsSync(outputPath) && readFileSync(outputPath, 'utf-8') === output;
+let previous;
+try {
+  previous = readFileSync(outputPath, 'utf-8');
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
+const unchanged = previous === output;
 if (!unchanged) writeFileSync(outputPath, output);
 
-const sizeKb = (statSync(outputPath).size / 1024).toFixed(1);
+const sizeKb = (Buffer.byteLength(output) / 1024).toFixed(1);
 console.log(
   `generate-chrome-tokens: ${unchanged ? 'unchanged' : 'wrote'} ${outputPath} (${sizeKb} kB)`,
 );
