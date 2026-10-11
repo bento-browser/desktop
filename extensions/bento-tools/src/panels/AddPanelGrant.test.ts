@@ -15,15 +15,30 @@ afterEach(() => {
 /** Lets the handler's async consume/apply chain settle. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function setup(consume: (tabId: number, token: string) => Promise<unknown>) {
+/** The window every grant in these tests names; the tab is in it unless a test says otherwise. */
+const GRANT_WINDOW = 7;
+
+function setup(
+  consume: (tabId: number, token: string) => Promise<unknown>,
+  getTabWindowId: (tabId: number) => Promise<number | null> = async () => GRANT_WINDOW,
+) {
   const consumeSpy = vi.fn(consume);
   const apply = vi.fn();
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   return {
-    handler: createAddPanelMarkerHandler({ consume: consumeSpy, apply }),
+    handler: createAddPanelMarkerHandler({ consume: consumeSpy, getTabWindowId, apply }),
     consumeSpy,
     apply,
   };
+}
+
+/** A promise the test settles by hand, to hold an async step open. */
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
 }
 
 describe('parseAddPanelMarker', () => {
@@ -146,5 +161,63 @@ describe('createAddPanelMarkerHandler', () => {
     handler.handle(41, MARKER);
     await settle();
     expect(consumeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a grant result that arrives after the tab was removed', async () => {
+    const result = deferred<unknown>();
+    const { handler, apply } = setup(() => result.promise);
+    handler.handle(41, MARKER);
+    await settle();
+    handler.forget(41); // tabs.onRemoved cleanup runs before the result
+    result.resolve({ windowId: GRANT_WINDOW, source: 'end' });
+    await settle();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('drops the grant when the tab is removed during the liveness check', async () => {
+    const lookup = deferred<number | null>();
+    const { handler, apply } = setup(
+      async () => ({ windowId: GRANT_WINDOW, source: 'end' }),
+      () => lookup.promise,
+    );
+    handler.handle(41, MARKER);
+    await settle();
+    handler.forget(41);
+    lookup.resolve(GRANT_WINDOW);
+    await settle();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('does not let a cancelled attempt apply under a newer attempt for the same tab', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const results = [first.promise, second.promise];
+    const { handler, apply } = setup(() => results.shift() ?? Promise.resolve(null));
+    handler.handle(41, MARKER);
+    handler.forget(41);
+    handler.handle(41, MARKER);
+    first.resolve({ windowId: GRANT_WINDOW, source: 'main' });
+    await settle();
+    expect(apply).not.toHaveBeenCalled();
+    second.resolve({ windowId: GRANT_WINDOW, source: 'end' });
+    await settle();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(41, { windowId: GRANT_WINDOW, source: 'end' });
+  });
+
+  it('ignores a grant whose tab is gone or now lives in another window', async () => {
+    const closed = setup(
+      async () => ({ windowId: GRANT_WINDOW, source: 'end' }),
+      async () => null,
+    );
+    closed.handler.handle(41, MARKER);
+    const moved = setup(
+      async () => ({ windowId: GRANT_WINDOW, source: 'end' }),
+      async () => GRANT_WINDOW + 1,
+    );
+    moved.handler.handle(41, MARKER);
+    await settle();
+    expect(closed.apply).not.toHaveBeenCalled();
+    expect(moved.apply).not.toHaveBeenCalled();
   });
 });

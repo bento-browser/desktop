@@ -1357,6 +1357,13 @@ savedPanels.onChange((items) => {
 // tab so a marker seen on both events is consumed once.
 const addPanelMarker = createAddPanelMarkerHandler({
   consume: (tabId, token) => browser.bentoPrivacy.consumeAddPanelGrant(tabId, token),
+  getTabWindowId: async (tabId) => {
+    try {
+      return (await browser.tabs.get(tabId)).windowId ?? null;
+    } catch {
+      return null;
+    }
+  },
   apply: applyAddPanelGrant,
 });
 

@@ -38,6 +38,8 @@ export function readAddPanelGrant(value: unknown): AddPanelGrant | null {
 interface AddPanelMarkerHandlerDeps {
   /** Privileged check-and-delete of the chrome-issued grant. */
   consume(tabId: number, token: string): Promise<unknown>;
+  /** The window that currently holds the tab, or null once the tab is gone. */
+  getTabWindowId(tabId: number): Promise<number | null>;
   /** Adds the tab to the grant window's active workspace. */
   apply(tabId: number, grant: AddPanelGrant): void;
 }
@@ -46,26 +48,47 @@ interface AddPanelMarkerHandlerDeps {
  * Handles tab URLs from tabs.onCreated and tabs.onUpdated. Each tab gets one
  * consume attempt, so onCreated and onUpdated for the same marker do not race
  * and a page cannot make repeated guesses on a tab.
+ *
+ * The tab can close (or its window go away) while the consume result is in
+ * flight. forget() cancels the pending attempt, and the grant is applied only
+ * if the tab still lives in the grant's window afterwards.
  */
-export function createAddPanelMarkerHandler({ consume, apply }: AddPanelMarkerHandlerDeps) {
-  const attempted = new Set<number>();
+export function createAddPanelMarkerHandler({
+  consume,
+  getTabWindowId,
+  apply,
+}: AddPanelMarkerHandlerDeps) {
+  // The per-tab token tells a cancelled (or superseded) attempt from the live one.
+  const attempts = new Map<number, symbol>();
   return {
     handle(tabId: number, url: string): void {
       const token = parseAddPanelMarker(url);
-      if (token === null || attempted.has(tabId)) return;
-      attempted.add(tabId);
+      if (token === null || attempts.has(tabId)) return;
+      const attempt = Symbol();
+      attempts.set(tabId, attempt);
       void (async () => {
         try {
           const grant = readAddPanelGrant(await consume(tabId, token));
-          if (grant) apply(tabId, grant);
-          else console.warn('[bento-tools] add-as-panel: no matching grant, ignoring marker URL');
+          if (!grant) {
+            console.warn('[bento-tools] add-as-panel: no matching grant, ignoring marker URL');
+            return;
+          }
+          const windowId = await getTabWindowId(tabId);
+          if (attempts.get(tabId) !== attempt || windowId !== grant.windowId) {
+            console.warn(
+              '[bento-tools] add-as-panel: tab closed or moved before the grant applied',
+            );
+            return;
+          }
+          apply(tabId, grant);
         } catch (err) {
           console.warn('[bento-tools] add-as-panel: grant check failed:', err);
         }
       })();
     },
+    /** Called when the tab is removed: drops dedup state and cancels any pending attempt. */
     forget(tabId: number): void {
-      attempted.delete(tabId);
+      attempts.delete(tabId);
     },
   };
 }
