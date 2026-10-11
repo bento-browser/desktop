@@ -675,7 +675,11 @@ privileged surface that normal WebExtension APIs cannot provide:
 
 - allowlisted pref reads/writes/clears;
 - visible Firefox search engine discovery;
-- default search engine reads/writes through Firefox `SearchService`.
+- default search engine reads/writes through Firefox `SearchService`;
+- `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
+  handshake (see "Add-panel grant" below). It is not a privacy operation; it
+  lives here because this experiment is present in every shipped tools manifest,
+  including the rollback variants.
 
 The experiment rejects prefs outside its static allowlist. Search writes use
 `SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
@@ -2506,6 +2510,50 @@ Add-panel trailer visibility:
   actions create new panel nodes.
 - Manual verification surface: checklist item 4, create root panels.
 
+Add-panel grant:
+
+- Source of truth: chrome. `addNewPanel` in `bento-shell-mount.js` generates a
+  `crypto.randomUUID()` token, creates the tab at
+  `about:blank?bento_add_as_panel=<token>` (the URL carries only the token), and
+  sets `newTab.bentoAddPanelGrant = { token, windowId, source, expiresAt,
+acknowledge }` on the native XUL tab element in the same synchronous turn as
+  `gBrowser.addTab`. `source` is `'main'` (insert before the main slot), a
+  non-negative integer tab id (insert after that panel), or `'end'`; the
+  trailer click passes its click Event, which maps to `'end'`. `expiresAt` is
+  two seconds out.
+- Consumer: `bento-tools` `maybeHandleAddPanelMarker` ->
+  `createAddPanelMarkerHandler` in `src/panels/AddPanelGrant.ts`. Only a URL
+  matching `^about:blank\?bento_add_as_panel=<lowercase uuid>$` triggers a
+  check, once per tab (`onCreated` and `onUpdated` share it). The check is
+  `browser.bentoPrivacy.consumeAddPanelGrant(tabId, token)`, which resolves the
+  native tab with `extension.tabManager.get(tabId, null)`, compares the token,
+  deletes the property before any further check (single use; a mismatch leaves
+  the live grant alone), calls `acknowledge()`, then rejects expired grants,
+  a recorded window id that differs from the tab's current window, and
+  malformed sources. It returns `{ windowId, source }` or `null`, and tools
+  validates that shape again before inserting the panel into
+  `workspaces.getActiveId(windowId)`.
+- Redirect timing: chrome navigates the tab to the panel new-tab page after at
+  least 250 ms and after the grant is acknowledged (or after the two second
+  expiry, so a stalled tools background cannot leave the sentinel URL up).
+- Pitfalls: never accept the URL alone as authority (the old
+  `bento_add_as_panel=1` substring check let any page, including
+  `location.hash`, turn its tab into a panel and persist that layout). Do not
+  move the grant into the URL, a title, or SessionStore data that content or
+  other extensions can influence. Do not move the grant off the native tab
+  element without another chrome-only, tab-bound store. The experiment reads an
+  expando across system-principal compartments, so an Xray wrapper or a rename
+  of the native tab's window accessor would make every lookup return `null` and
+  silently disable the button; the manual checks below catch that. A profile
+  that already ran an older tools build can serve a stale cached experiment
+  schema without `consumeAddPanelGrant`; verify in a fresh profile.
+- Manual verification surface: click Add panel, press Enter on the focused
+  trailer, and use "Insert panel here"; each adds one panel in the right slot
+  and the tab ends on the panel new-tab page. In a content tab, set
+  `location.hash = 'bento_add_as_panel=1'`, and navigate to
+  `about:blank?bento_add_as_panel=3f1c2a4e-9b7d-4c1a-8e5f-0a1b2c3d4e5f`; neither
+  becomes a panel and the second logs `add-as-panel: no matching grant`.
+
 Subdivision splitter resizing:
 
 - Source of truth: group ratios live in the `PanelLayout` tree and are persisted
@@ -2857,8 +2905,8 @@ The outer Add-panel trailer `keydown` handler is only for cycle-Enter or
 cycle-Space while the outer XUL host itself is focused. When focus has moved
 inside the trailer iframe, the iframe buttons own Enter/Space. Do not let saved
 panel button keyboard activation bubble back to the outer host, or a saved-panel
-Enter press will create a blank `about:blank?bento_add_as_panel=1...` marker
-panel instead of opening the saved URL.
+Enter press will create a blank add-as-panel marker panel (see "Add-panel
+grant") instead of opening the saved URL.
 
 The chrome `Cmd/Ctrl+W` intercept closes the focused side panel before falling
 back to main-slot close. Resolve the panel first from `document.activeElement`,

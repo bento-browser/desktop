@@ -393,6 +393,53 @@ Use this shape for new or changed touchpoints:
   possible. If upstream Firefox grows a supported API for the needed panel
   operation, prefer migrating to that API and shrinking this mount.
 
+### Add-Panel Grant (Chrome Tab Record)
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (`addNewPanel`)
+  - `extensions/bento-tools/experiments/bento-privacy/api.js`
+    (`consumeAddPanelGrant`) and `schema.json`
+  - `extensions/bento-tools/src/panels/AddPanelGrant.ts`
+  - No Firefox patch.
+- Bento functionality: the Add panel button, the Enter key on the focused
+  trailer, and the splitter "Insert panel here" menu create a tab that bento-tools
+  adopts as a side panel. Chrome creates the tab at
+  `about:blank?bento_add_as_panel=<uuid>` and stores a one-time grant
+  `{ token, windowId, source, expiresAt, acknowledge }` as the
+  `bentoAddPanelGrant` property on the native XUL tab element. bento-tools adds
+  the tab as a panel only when `browser.bentoPrivacy.consumeAddPanelGrant(tabId,
+token)` finds a live grant for that exact tab and token, deletes it, and
+  returns its window and insertion source. A web page that navigates to a
+  marker-shaped URL, replays a consumed URL, or uses another tab's token has no
+  grant and is ignored.
+- Vanilla Firefox surface touched or depended on: `gBrowser.addTab` returning
+  the native tab element synchronously, the native tab element accepting a
+  chrome-side expando property that a different system-principal compartment
+  (the extension experiment) can read and delete, the WebExtension
+  `tabManager.get(tabId, null).nativeTab` and `.windowId` lookup in
+  `browser/components/extensions/parent/ext-browser.js`, and
+  `windowTracker.getId(window)` (via the mount's `getChromeWindowId`) matching
+  the extension window id.
+- Why this cannot stay extension-only: only chrome can mint authority that web
+  content cannot forge. The grant lives on a chrome-owned tab element and the
+  experiment is the privileged reader.
+- Firefox update risk: a tabbrowser change that makes `addTab` asynchronous, a
+  rename of the native tab's window accessor (`documentGlobal` in 154), or
+  Xray wrappers between chrome compartments would make every grant lookup miss
+  and silently disable the Add panel button.
+- Regression checks for future updates: click Add panel, press Enter on the
+  focused trailer, and use "Insert panel here" on a splitter and confirm each
+  creates a panel in the expected slot; in a content tab run
+  `location.hash = 'bento_add_as_panel=1'` and navigate a tab to
+  `about:blank?bento_add_as_panel=3f1c2a4e-9b7d-4c1a-8e5f-0a1b2c3d4e5f` and
+  confirm neither becomes a panel; confirm the Browser Console logs
+  `add-as-panel: no matching grant` for the second case.
+- Rollback or migration notes: the old `bento_add_as_panel=1` URL marker is no
+  longer accepted by current builds. Rollback variants carry the same grant
+  handshake (see `docs/settings-consolidation-rollback.md`).
+
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
