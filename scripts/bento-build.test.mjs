@@ -18,6 +18,7 @@ import {
   writeMozconfig,
 } from './bento-build.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
+import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const MODES = ['dev', 'debug', 'release'];
@@ -79,6 +80,296 @@ test('every build mode builds into the fixed object directory', async () => {
         /^mk_add_options MOZ_OBJDIR=@TOPSRCDIR@\/obj-bento$/m,
       );
     }
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/** The `ac_add_options` flags of a mozconfig, without the leading `ac_add_options `. */
+function configureOptions(text) {
+  return text.split('\n').filter((line) => line.startsWith('ac_add_options ')).map((line) => line.slice('ac_add_options '.length));
+}
+
+/** Runs `fn` as if the host were `platform`; the generator reads process.platform. */
+function withPlatform(platform, fn) {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: platform });
+  try {
+    return fn();
+  } finally {
+    Object.defineProperty(process, 'platform', original);
+  }
+}
+
+function patchBentoJson(root, edit) {
+  const file = path.join(root, 'bento.json');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  edit(config);
+  fs.writeFileSync(file, JSON.stringify(config));
+}
+
+/** Records every readiness input, then turns the updater on. */
+function enableUpdater(root) {
+  const fingerprint = 'a'.repeat(64);
+  fs.mkdirSync(path.join(root, 'config'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'config', 'release-security.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      updateService: {
+        hostname: 'updates.example.invalid',
+        marSigningKeyFingerprint: fingerprint,
+        updaterCertificateFingerprint: fingerprint,
+        hostCompiledIn: true,
+        isolatedRoundTripVerified: true,
+      },
+    }),
+  );
+  patchBentoJson(root, (config) => {
+    config.updates.enabled = true;
+  });
+}
+
+test('the shared fragment sets no compiler policy; each mode sets its own', async () => {
+  const common = fs.readFileSync(path.join(repoRoot, 'configs', 'common', 'mozconfig'), 'utf8');
+  assert.deepEqual(
+    configureOptions(common).filter((option) => /release|debug|optimize/.test(option)),
+    [],
+  );
+
+  const root = await fixture();
+  try {
+    const optionsFor = (mode) => configureOptions(fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8'));
+    const dev = optionsFor('dev');
+    assert.ok(dev.includes('--disable-release'));
+    assert.ok(dev.includes('--disable-debug'));
+    assert.equal(dev.includes('--enable-release'), false);
+
+    // Debug is a developer build too: it must not carry release policy.
+    const debug = optionsFor('debug');
+    assert.deepEqual(
+      debug.filter((option) => /release|debug|optimize/.test(option)),
+      ['--enable-debug', '--disable-optimize', '--disable-release'],
+    );
+
+    const release = optionsFor('release');
+    assert.deepEqual(
+      release.filter((option) => /release|debug|optimize|simd/.test(option)),
+      ['--disable-debug', '--enable-optimize', '--enable-rust-simd', '--enable-release'],
+    );
+    assert.equal(release.some((option) => option.startsWith('--enable-macos-target')), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('developer builds pin the macOS deployment target only on macOS', async () => {
+  const root = await fixture();
+  try {
+    for (const [platform, expected] of [['darwin', true], ['linux', false], ['win32', false]]) {
+      for (const mode of ['dev', 'debug']) {
+        const options = withPlatform(platform, () => configureOptions(fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8')));
+        assert.equal(options.includes('--enable-macos-target=11.0'), expected, `${platform} ${mode}`);
+      }
+      const release = withPlatform(platform, () => configureOptions(fs.readFileSync(writeMozconfig(root, 'release').destination, 'utf8')));
+      assert.equal(release.some((option) => option.startsWith('--enable-macos-target')), false, `${platform} release`);
+    }
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('the updater is compiled out in every mode unless bento.json enables it', async () => {
+  const root = await fixture();
+  try {
+    for (const mode of MODES) {
+      const text = fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8');
+      const options = configureOptions(text);
+      assert.ok(options.includes('--disable-updater'), mode);
+      // The channel stays set so enabling the updater later needs no other change.
+      assert.ok(options.includes('--enable-update-channel=bento'), mode);
+    }
+    patchBentoJson(root, (config) => {
+      config.updates.enabled = false;
+    });
+    assert.ok(configureOptions(fs.readFileSync(writeMozconfig(root, 'dev').destination, 'utf8')).includes('--disable-updater'));
+
+    enableUpdater(root);
+    for (const mode of MODES) {
+      const text = fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8');
+      assert.equal(configureOptions(text).includes('--disable-updater'), false, mode);
+      assert.match(text, /^# Updater: compiled in/m);
+    }
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('enabling the updater is refused until every readiness input is recorded', async () => {
+  const root = await fixture();
+  try {
+    patchBentoJson(root, (config) => {
+      config.updates.enabled = true;
+    });
+    assert.throws(() => writeMozconfig(root, 'dev'), /config\/release-security\.json is missing/);
+    assert.equal(fs.existsSync(engineFile(root, 'mozconfig')), false);
+
+    enableUpdater(root);
+    const security = path.join(root, 'config', 'release-security.json');
+    const ready = JSON.parse(fs.readFileSync(security, 'utf8'));
+    const cases = [
+      [(service) => { service.marSigningKeyFingerprint = ''; }, /marSigningKeyFingerprint must be the SHA-256/],
+      [(service) => { service.updaterCertificateFingerprint = 'b'.repeat(64); }, /updaterCertificateFingerprint must equal marSigningKeyFingerprint/],
+      [(service) => { service.hostCompiledIn = false; }, /hostCompiledIn must be true/],
+      [(service) => { service.isolatedRoundTripVerified = false; }, /isolatedRoundTripVerified must be true/],
+    ];
+    for (const [unready, message] of cases) {
+      const candidate = structuredClone(ready);
+      unready(candidate.updateService);
+      fs.writeFileSync(security, JSON.stringify(candidate));
+      assert.throws(() => writeMozconfig(root, 'release'), message);
+      assert.equal(fs.existsSync(engineFile(root, 'mozconfig')), false);
+    }
+
+    // Mozilla's channel names select Mozilla's update certificates.
+    fs.writeFileSync(security, JSON.stringify(ready));
+    patchBentoJson(root, (config) => {
+      config.updates.channel = 'release';
+    });
+    assert.throws(() => writeMozconfig(root, 'release'), /must be a Bento-owned channel/);
+
+    patchBentoJson(root, (config) => {
+      config.updates.channel = 'bento';
+    });
+    writeMozconfig(root, 'release');
+    assert.ok(fs.existsSync(engineFile(root, 'mozconfig')));
+
+    patchBentoJson(root, (config) => {
+      config.updates.enabled = 'yes';
+    });
+    assert.throws(() => loadConfig(root), /updates\.enabled must be true or false/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('update metadata commands refuse to run while the updater is disabled', async () => {
+  const root = await fixture();
+  try {
+    for (const command of ['updates-browser', 'updates-addons']) {
+      await assert.rejects(() => main([command], root), new RegExp(`${command}: the updater is disabled`));
+    }
+    assert.equal(fs.existsSync(path.join(root, 'dist')), false);
+
+    // Enabled but not ready is refused as well; no metadata for an updater that cannot be trusted.
+    patchBentoJson(root, (config) => {
+      config.updates.enabled = true;
+    });
+    await assert.rejects(() => main(['updates-addons'], root), /config\/release-security\.json is missing/);
+    enableUpdater(root);
+    await main(['updates-addons'], root);
+    assert.ok(fs.existsSync(path.join(root, 'dist', 'update', 'browser', 'addons', 'bento', 'update.xml')));
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A root whose `package` can run without Firefox: scripts/mach-raw.sh and the MAR tooling
+ * are stubs, and engine/obj-bento holds a staged application with the npm Mux stamp.
+ */
+async function packagingFixture() {
+  const root = await fixture();
+  const dist = engineFile(root, 'obj-bento', 'dist');
+  const stamp = ['chrome', 'browser', 'builtin-addons', 'bento-shell', 'dist', 'muxui-source.json'];
+  const application = process.platform === 'darwin' ? path.join(dist, 'bento', 'Bento.app') : path.join(dist, 'bento');
+  const resources = process.platform === 'darwin' ? path.join(application, 'Contents', 'Resources') : application;
+  for (const browserDir of [path.join(dist, 'bin', 'browser'), path.join(resources, 'browser')]) {
+    fs.mkdirSync(path.dirname(path.join(browserDir, ...stamp)), { recursive: true });
+    fs.writeFileSync(path.join(browserDir, ...stamp), '{"source":"npm","version":"0.1.0-rc.1"}');
+  }
+  fs.writeFileSync(path.join(resources, 'application.ini'), '[App]\nBuildID=20260912000000\n');
+  fs.writeFileSync(path.join(dist, 'bento-0.0.7.en-US.mac.dmg'), 'application');
+  fs.mkdirSync(path.join(dist, 'host', 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(dist, 'host', 'bin', 'mar'), '#!/bin/sh\nprintf "SIZE\\tMODE\\tNAME\\n0\\t0644\\tprecomplete\\n"\n', { mode: 0o755 });
+  fs.mkdirSync(engineFile(root, 'tools', 'update-packaging'), { recursive: true });
+  fs.writeFileSync(engineFile(root, 'tools', 'update-packaging', 'make_full_update.sh'), '#!/bin/sh\nprintf mar > "$1/output.mar"\n');
+  fs.writeFileSync(engineFile(root, 'mach'), '');
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.writeFileSync(path.join(root, 'scripts', 'mach-raw.sh'), '#!/bin/sh\nexit 0\n');
+  fs.mkdirSync(path.join(root, 'locales'));
+  fs.writeFileSync(path.join(root, 'locales', 'supported-languages'), 'en-US\n');
+  patchBentoJson(root, (config) => {
+    config.binaryName = 'bento';
+    config.locales = { supportedLanguages: 'locales/supported-languages', languageMaps: 'locales/language-maps' };
+  });
+  return { root, resources };
+}
+
+test('package writes a MAR and update metadata only while the updater is enabled', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('packaging shells out through bash and cygpath on Windows');
+    return;
+  }
+  const { root, resources } = await packagingFixture();
+  const variant = process.env.BENTO_RELEASE_VARIANT;
+  delete process.env.BENTO_RELEASE_VARIANT;
+  try {
+    await withObjdirEnv(undefined, async () => {
+      const dist = path.join(root, 'dist');
+      const manifest = () => JSON.parse(fs.readFileSync(path.join(dist, 'bento-artifacts.json'), 'utf8'));
+
+      // Disabled (the default): a MAR and update XML from an earlier package are removed, none are written.
+      writeMozconfig(root, 'dev');
+      fs.mkdirSync(path.join(dist, 'update', 'browser', 'Darwin_aarch64-gcc3', 'bento'), { recursive: true });
+      fs.writeFileSync(path.join(dist, 'output.mar'), 'stale');
+      await main(['package'], root);
+      const off = manifest();
+      assert.deepEqual(off.updates, { enabled: false });
+      assert.equal(off.buildId, '20260912000000');
+      for (const field of ['mar', 'marTool', 'updateTargets']) assert.equal(field in off, false, field);
+      assert.equal(fs.existsSync(path.join(dist, 'output.mar')), false);
+      assert.equal(fs.existsSync(path.join(dist, 'update')), false);
+      assert.equal(fs.existsSync(path.join(resources, 'precomplete')), false);
+      assert.equal(validateArtifacts(root).updates, false);
+
+      // Enabled: the same package also gets a MAR and update XML, and validates against them.
+      enableUpdater(root);
+      writeMozconfig(root, 'dev');
+      fs.writeFileSync(path.join(resources, 'precomplete'), '');
+      await main(['package'], root);
+      const on = manifest();
+      assert.deepEqual(on.updates, { enabled: true });
+      assert.equal(on.mar.path, 'dist/output.mar');
+      assert.ok(on.updateTargets.length > 0);
+      for (const target of on.updateTargets) {
+        assert.ok(fs.existsSync(path.join(dist, 'update', 'browser', target, 'bento', 'update.xml')), target);
+      }
+      assert.ok(fs.existsSync(path.join(dist, 'update', 'browser', 'addons', 'bento', 'update.xml')));
+      assert.equal(validateArtifacts(root).updates, true);
+    });
+  } finally {
+    if (variant !== undefined) process.env.BENTO_RELEASE_VARIANT = variant;
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('package refuses a build whose updater setting differs from bento.json', async () => {
+  const { root } = await packagingFixture();
+  try {
+    await withObjdirEnv(undefined, async () => {
+      // Configured with the updater compiled out, then bento.json turned it on.
+      writeMozconfig(root, 'dev');
+      enableUpdater(root);
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater out, but bento\.json updates\.enabled is true; run pnpm run build first/);
+
+      // Configured with it compiled in, then bento.json turned it off.
+      writeMozconfig(root, 'dev');
+      patchBentoJson(root, (config) => {
+        config.updates.enabled = false;
+      });
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater in, but bento\.json updates\.enabled is false; run pnpm run build first/);
+    });
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
@@ -155,6 +446,60 @@ test('recorded state accepts a mozconfig written before the fixed object directo
 
     writeMozconfig(root, 'dev');
     assert.equal(verifyRecordedEngineState(root), true);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/** What drivers wrote before the dev/release split and the updater switch. */
+function mozconfigBeforeTheSplit(text) {
+  return text
+    .split('\n')
+    .filter((line) => !/^ac_add_options --(disable-release|disable-updater|enable-macos-target=.*)$/.test(line) && !line.startsWith('# Updater:'))
+    .join('\n')
+    .replace(/^ac_add_options --enable-release\n/m, '');
+}
+
+test('recorded state accepts a mozconfig written before the dev/release split', async () => {
+  const root = await fixture();
+  try {
+    const mozconfig = engineFile(root, 'mozconfig');
+    for (const mode of MODES) {
+      writeMozconfig(root, mode);
+      const current = fs.readFileSync(mozconfig, 'utf8');
+      const previous = mozconfigBeforeTheSplit(current);
+      assert.notEqual(previous, current, mode);
+      fs.writeFileSync(mozconfig, previous);
+      assert.equal(verifyRecordedEngineState(root), true, mode);
+    }
+
+    // The same file after the import recorded it, and the next build rewrites it.
+    writeMozconfig(root, 'dev');
+    fs.writeFileSync(mozconfig, mozconfigBeforeTheSplit(fs.readFileSync(mozconfig, 'utf8')));
+    await main(['verify'], root);
+    writeMozconfig(root, 'dev');
+    assert.equal(verifyRecordedEngineState(root), true);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('recorded state rejects a mozconfig that quietly turns the updater or release policy back on', async () => {
+  const root = await fixture();
+  try {
+    const mozconfig = engineFile(root, 'mozconfig');
+    writeMozconfig(root, 'dev');
+    await main(['verify'], root);
+    const generated = fs.readFileSync(mozconfig, 'utf8');
+    for (const [from, to] of [
+      ['ac_add_options --disable-updater', 'ac_add_options --enable-updater'],
+      ['ac_add_options --disable-release', 'ac_add_options --enable-release'],
+      ['ac_add_options --disable-updater\n', ''],
+    ]) {
+      fs.writeFileSync(mozconfig, generated.replace(from, to));
+      assert.notEqual(fs.readFileSync(mozconfig, 'utf8'), generated);
+      assert.equal(verifyRecordedEngineState(root), false, to || 'removed updater line');
+    }
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
@@ -410,6 +755,8 @@ test('a mozconfig fragment or MOZCONFIG that would redirect mach is rejected', a
 test('package and updates-browser use only the directory mach builds into', async () => {
   const root = await fixture();
   try {
+    // updates-browser exists only while the updater is on.
+    enableUpdater(root);
     await withObjdirEnv(undefined, async () => {
       fs.writeFileSync(engineFile(root, 'mach'), '');
       fs.mkdirSync(path.join(root, 'dist'));

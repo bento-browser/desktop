@@ -65,8 +65,8 @@ pnpm run download      # fetch Firefox source (version configured in bento.json)
 pnpm run bootstrap     # install Mozilla build deps via mach
 pnpm run build         # compile Bento Browser
 pnpm run build:ui      # incremental Firefox UI build
-pnpm run package       # produce platform packages/installers, MAR, and update XML
-pnpm run artifacts:check # verify package, MAR, and update XML metadata
+pnpm run package       # produce platform packages/installers (MAR and update XML only if the updater is enabled)
+pnpm run artifacts:check # verify package outputs (and MAR and update XML if the updater is enabled)
 pnpm run build:release # produce a release-mode artifact for the host platform
 pnpm run lc             # Bento source license check
 pnpm run build:full    # download → bootstrap → build → package

@@ -21,10 +21,15 @@ Build, packaging, and release helper scripts.
   `package` and `updates-browser` do not.
 - `write-if-changed.mjs` — helpers the build driver and the add-on and branding
   installers use to leave unchanged files, and their mtimes, alone.
-- `validate-bento-artifacts.mjs` — verifies the packaged application, MAR
-  contents, MAR digest and size, browser update XML, and artifact metadata.
-  Run it with `pnpm run artifacts:check`; release builds run it before
-  collecting `release-out/`.
+- `validate-bento-artifacts.mjs` — verifies the packaged application and artifact
+  metadata and, while the updater is enabled, the MAR contents, MAR digest and
+  size, and browser update XML. With the updater disabled (`bento.json`
+  `updates.enabled`, the default) it expects no MAR or update metadata and fails
+  if any exists. Run it with `pnpm run artifacts:check`; release builds run it
+  before collecting `release-out/`.
+- `update-readiness.mjs` — the inputs `config/release-security.json` must record
+  before `updates.enabled` may be `true`; shared by `check-release-security.mjs`
+  and `bento-build.mjs`. See `docs/build-tooling.md`, "Updater".
 - `muxui-dev.mjs` — local Mux UI dev loops (`pnpm run shell:ladle:mux`,
   `shell:dev:mux`, `shell:import:mux`); see `docs/build-tooling.md`.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit

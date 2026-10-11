@@ -302,11 +302,15 @@ node scripts/check-import-output.mjs
 
 Run `pnpm run build:release` on the current host when the release build is in
 scope. Inspect actual application packages, built-in extensions, installer
-metadata, locales, channel IDs, MAR contents, and update XML. `pnpm run
-artifacts:check` binds the MAR and XML to the packaged application's
-`application.ini` `[App] BuildID`, checks the primary application package, and
-checks the configured release URL. The application BuildID is authoritative;
-`platform.ini` may contain a different build timestamp.
+metadata, locales, and channel IDs. While `bento.json` `updates.enabled` is
+`false` (the default) the build has no updater and `package` writes no MAR or
+update XML; when it is `true`, also inspect the MAR contents and update XML.
+`pnpm run artifacts:check` checks the primary application package and the
+packaged application's `application.ini` `[App] BuildID`, and with the updater
+enabled binds the MAR and XML to that BuildID and checks the configured release
+URL. The application BuildID is authoritative; `platform.ini` may contain a
+different build timestamp. Re-run the configure-flag checks listed under "Build
+Configure Flags And Updater" in `docs/firefox-core-touchpoints.md`.
 
 Use GitHub-hosted, non-publishing validation for other operating systems when
 available. It must inspect application packages, MAR contents, build IDs,

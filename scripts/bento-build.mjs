@@ -15,6 +15,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
+import { updaterReadinessProblems } from './update-readiness.mjs';
 import { writeFileIfChanged } from './write-if-changed.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -96,7 +97,36 @@ export function loadConfig(repoRoot = DEFAULT_ROOT) {
   if (!['dev', 'debug', 'release'].includes(config.build?.mode)) {
     fail('bento.json build.mode must be dev, debug, or release');
   }
+  if (config.updates?.enabled !== undefined && typeof config.updates.enabled !== 'boolean') {
+    fail('bento.json updates.enabled must be true or false');
+  }
   return config;
+}
+
+/**
+ * Whether the updater is compiled in. It stays off until Bento owns a signed update
+ * path; enabling it also needs the readiness inputs (assertUpdaterReady).
+ */
+export function updatesEnabled(config) {
+  return config.updates?.enabled === true;
+}
+
+/** Refuses an enabled updater while config/release-security.json lacks a readiness input. */
+function assertUpdaterReady(ctx, config) {
+  const file = path.join(ctx.root, 'config', 'release-security.json');
+  if (!fs.existsSync(file)) fail('bento.json updates.enabled is true, but config/release-security.json is missing');
+  const problems = updaterReadinessProblems(config, readJson(file));
+  if (problems.length) {
+    fail(`bento.json updates.enabled is true, but the updater is not ready (docs/build-tooling.md, Updater):\n- ${problems.join('\n- ')}`);
+  }
+}
+
+/** The update commands and packaging have nothing to write for a build that cannot update. */
+function requireUpdatesEnabled(ctx, config, command) {
+  if (!updatesEnabled(config)) {
+    fail(`${command}: the updater is disabled (bento.json updates.enabled is false), so this build cannot update and Bento writes no update metadata for it; see docs/build-tooling.md, Updater`);
+  }
+  assertUpdaterReady(ctx, config);
 }
 
 export function sourceArchivePath(repoRoot, version) {
@@ -563,6 +593,33 @@ function isExactReadmeOverlay(ctx, target) {
     : stat.isFile() && sha256File(target) === sha256File(source);
 }
 
+// configs/common/mozconfig as the legacy generator inlined it into engine/mozconfig,
+// before the debug, optimize and release flags moved from that file into the driver.
+const LEGACY_COMMON_MOZCONFIG = `# Bento Browser — shared mozconfig fragment.
+# Sourced by every per-platform mozconfig under configs/{linux,macos,windows}/.
+
+ac_add_options --enable-application=browser
+ac_add_options --with-app-name=bento
+ac_add_options --with-app-basename=Bento
+ac_add_options --with-branding=browser/branding/bento
+
+ac_add_options --disable-crashreporter
+ac_add_options --disable-tests
+ac_add_options --disable-debug
+ac_add_options --enable-release
+
+# Disable Mozilla telemetry reporting for the fork build. Keep release add-on
+# signature enforcement compiled in; Bento's own extensions are registered in
+# Firefox's built-in add-on location, which does not require normal XPI signing.
+# MOZ_SERVICES_HEALTHREPORT is intentionally NOT set here — it is an "implied"
+# configure option that mach derives from other settings and rejects when
+# overridden via mozconfig. Disable health-report at runtime via prefs/bento.js
+# (datareporting.healthreport.uploadEnabled = false) instead.
+export MOZ_REQUIRE_SIGNING=1
+export MOZ_TELEMETRY_REPORTING=
+export MOZ_DATA_REPORTING=
+`;
+
 // mach reads this line from engine/mozconfig to choose the object directory.
 const MOZ_OBJDIR_LINE = /^mk_add_options MOZ_OBJDIR=@TOPSRCDIR@\/(obj-[A-Za-z0-9._-]+)$/m;
 
@@ -611,8 +668,38 @@ function assertGeneratedMozconfigInUse(ctx) {
   }
 }
 
-/** `objdir` is a directory name, or undefined for the output of drivers that predate the fixed directory. */
-function generatedMozconfigText(ctx, config, mode, objdir) {
+// Firefox lowers its macOS deployment target default from 11.0 to 10.15 when developer
+// options are on; dev and debug builds pin it to what release builds use.
+const MACOS_DEPLOYMENT_TARGET = '11.0';
+
+/**
+ * The configure options that depend on the build mode. `dev` and `debug` turn on
+ * Firefox's developer options (--disable-release), which skip the serial fat-LTO Rust
+ * link and allow incremental Rust builds; `release` keeps release codegen.
+ * `previous` reproduces what drivers wrote before that split, which verification
+ * still has to accept.
+ */
+function modeOptions(mode, previous) {
+  const options = {
+    dev: ['--disable-debug'],
+    debug: ['--enable-debug', '--disable-optimize'],
+    release: ['--disable-debug', '--enable-optimize', '--enable-rust-simd'],
+  }[mode];
+  if (previous) return options;
+  if (mode === 'release') return [...options, '--enable-release'];
+  return [
+    ...options,
+    '--disable-release',
+    ...(process.platform === 'darwin' ? [`--enable-macos-target=${MACOS_DEPLOYMENT_TARGET}`] : []),
+  ];
+}
+
+/**
+ * `objdir` is a directory name, or undefined for the output of drivers that predate the
+ * fixed directory. `previous` reproduces the output of drivers that predate the
+ * dev/release split and the updater switch.
+ */
+function generatedMozconfigText(ctx, config, mode, objdir, previous = false) {
   const platformName = platformConfigName();
   const platformPath = path.join(ctx.root, 'configs', platformName, 'mozconfig');
   if (!fs.existsSync(platformPath)) fail(`missing ${path.relative(ctx.root, platformPath)}`);
@@ -623,10 +710,8 @@ function generatedMozconfigText(ctx, config, mode, objdir) {
     fs.readFileSync(platformPath, 'utf8').trimEnd(),
     '',
     `# Bento ${selectedMode} build settings`,
+    ...modeOptions(selectedMode, previous).map((option) => `ac_add_options ${option}`),
   ];
-  if (selectedMode === 'dev') lines.push('ac_add_options --disable-debug');
-  if (selectedMode === 'debug') lines.push('ac_add_options --enable-debug', 'ac_add_options --disable-optimize');
-  if (selectedMode === 'release') lines.push('ac_add_options --disable-debug', 'ac_add_options --enable-optimize', 'ac_add_options --enable-rust-simd');
   // Every mode builds into one directory. An undefined name reproduces the output
   // of drivers that predate it, which verification still has to accept.
   if (objdir) lines.push('', `mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${objdir}`);
@@ -634,6 +719,16 @@ function generatedMozconfigText(ctx, config, mode, objdir) {
     '',
     `ac_add_options --with-branding=browser/branding/${config.brand}`,
     `ac_add_options --enable-update-channel=${config.updates.channel}`,
+  );
+  if (!previous) {
+    lines.push(
+      updatesEnabled(config)
+        ? '# Updater: compiled in (bento.json updates.enabled)'
+        : '# Updater: compiled out until the signed Bento update path exists (bento.json updates.enabled)',
+    );
+    if (!updatesEnabled(config)) lines.push('ac_add_options --disable-updater');
+  }
+  lines.push(
     `export ACCEPTED_MAR_CHANNEL_IDS=${config.updates.channel}`,
     `export MAR_CHANNEL_ID=${config.updates.channel}`,
     `mk_add_options ACCEPTED_MAR_CHANNEL_IDS=${config.updates.channel}`,
@@ -647,15 +742,14 @@ function generatedMozconfigText(ctx, config, mode, objdir) {
 }
 
 function legacyMozconfigText(ctx, config) {
-  const commonPath = path.join(ctx.root, 'configs', 'common', 'mozconfig');
   const platformPath = path.join(ctx.root, 'configs', platformConfigName(), 'mozconfig');
-  if (!fs.existsSync(commonPath) || !fs.existsSync(platformPath)) return undefined;
+  if (!fs.existsSync(platformPath)) return undefined;
   const platform = fs.readFileSync(platformPath, 'utf8').trim();
   const legacyVersionVariable = `${String.fromCharCode(90, 69, 78)}_FIREFOX_VERSION`;
   const lines = [
     '# This file is automatically generated. You should only modify this if you know what you are doing!',
     '',
-    fs.readFileSync(commonPath, 'utf8').trimEnd(),
+    LEGACY_COMMON_MOZCONFIG.trimEnd(),
     '',
     '',
     platform,
@@ -705,10 +799,10 @@ function isGeneratedMozconfig(ctx, config, actual) {
     : normalizedLegacy;
   // Which obj-* name a build used (BENTO_OBJDIR) does not make the file hand-edited.
   const anyObjDir = actual.replace(MOZ_OBJDIR_LINE, `mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${FIXED_OBJDIR}`);
-  return ['dev', 'debug', 'release'].some((mode) => (
-    anyObjDir === generatedMozconfigText(ctx, config, mode, FIXED_OBJDIR)
-    || actual === generatedMozconfigText(ctx, config, mode, undefined)
-  ))
+  return ['dev', 'debug', 'release'].some((mode) => [false, true].some((previous) => (
+    anyObjDir === generatedMozconfigText(ctx, config, mode, FIXED_OBJDIR, previous)
+    || actual === generatedMozconfigText(ctx, config, mode, undefined, previous)
+  )))
     || sameKnownFinalNewline(withoutLegacyTrailingSpaces, legacyMozconfigText(ctx, config) || '');
 }
 
@@ -1332,6 +1426,7 @@ export function writeMozconfig(repoRoot = DEFAULT_ROOT, mode = undefined) {
   const platformName = platformConfigName();
   const selectedMode = mode || process.env.BENTO_BUILD_MODE || config.build.mode;
   assertObjDirNotOverridden(ctx);
+  if (updatesEnabled(config)) assertUpdaterReady(ctx, config);
   const content = generatedMozconfigText(ctx, config, selectedMode, requestedObjDirName(ctx) || FIXED_OBJDIR);
   const destination = path.join(ctx.engineDir, 'mozconfig');
   // Unchanged files keep their mtime: configure depends on version.txt by mtime.
@@ -1504,15 +1599,21 @@ function applicationIni(application) {
   return { file, buildId };
 }
 
-function packagedApplication(objDist, config) {
+/**
+ * The packaged application. On macOS it is the bundle the packager staged: the updater's
+ * `precomplete` file marks it when updates are on, `application.ini` when they are off
+ * (nothing else needs `precomplete` then).
+ */
+function packagedApplication(objDist, config, updates = true) {
   if (process.platform !== 'darwin') {
     const application = path.join(objDist, config.binaryName);
     return fs.existsSync(application) ? application : undefined;
   }
+  const marker = updates ? 'precomplete' : 'application.ini';
   return [
     path.join(objDist, config.binaryName, `${config.build.macosBundleName || 'Bento'}.app`),
     path.join(objDist, `${config.build.macosBundleName || 'Bento'}.app`),
-  ].find((candidate) => fs.existsSync(path.join(candidate, 'Contents', 'Resources', 'precomplete')));
+  ].find((candidate) => fs.existsSync(path.join(candidate, 'Contents', 'Resources', marker)));
 }
 
 async function createMar(ctx, config, objDist) {
@@ -1577,10 +1678,31 @@ export async function writeAddonUpdateFiles(ctx, config) {
   return file;
 }
 
+/**
+ * engine/mozconfig records how the object directory was last configured, and `build`
+ * rewrites it from bento.json. Packaging a build whose updater setting differs from
+ * bento.json would ship an updater that the metadata says is absent, or the reverse.
+ */
+function assertUpdaterMatchesBuild(ctx, config) {
+  const mozconfig = path.join(ctx.engineDir, 'mozconfig');
+  const compiledOut = fs.existsSync(mozconfig) && /^ac_add_options --disable-updater$/m.test(fs.readFileSync(mozconfig, 'utf8'));
+  if (compiledOut === updatesEnabled(config)) {
+    fail(`package: engine/mozconfig compiled the updater ${compiledOut ? 'out' : 'in'}, but bento.json updates.enabled is ${updatesEnabled(config)}; run pnpm run build first`);
+  }
+}
+
+/** A build that cannot update must not leave MARs or update metadata from an earlier package behind. */
+function removeUpdateOutputs(ctx) {
+  fs.rmSync(path.join(ctx.distDir, 'output.mar'), { force: true });
+  fs.rmSync(path.join(ctx.distDir, 'update'), { recursive: true, force: true });
+}
+
 async function commandPackage(ctx) {
   requireEngine(ctx);
   const config = loadConfig(ctx.root);
+  const updates = updatesEnabled(config);
   assertGeneratedMozconfigInUse(ctx);
+  if (updates) assertUpdaterReady(ctx, config);
   const objDist = path.join(requireConfiguredObjDir(ctx, 'package'), 'dist');
   // Releases ship only the published npm Mux, or a rollback variant's own shell
   // (docs/build-tooling.md, "Local Mux UI"). Packaging copies the shell from the
@@ -1589,34 +1711,46 @@ async function commandPackage(ctx) {
   // mach package; the staged application below is the authoritative check.
   const variant = process.env.BENTO_RELEASE_VARIANT || undefined;
   assertShellMuxSource(path.join(objDist, 'bin', 'browser'), variant);
+  assertUpdaterMatchesBuild(ctx, config);
   await run('bash', ['scripts/mach-raw.sh', 'package'], { cwd: ctx.root });
   await run('bash', ['scripts/mach-raw.sh', 'package-multi-locale', '--locales', ...readLocales(ctx, config)], { cwd: ctx.root });
-  const application = packagedApplication(objDist, config);
+  const application = packagedApplication(objDist, config, updates);
   if (!application) fail(`package: packaged ${config.binaryName} application is missing under ${objDist}`);
   assertShellMuxSource(stagedBrowserDir(application), variant);
   copyDirectoryFiles(ctx, objDist);
-  const mar = await createMar(ctx, config, objDist);
-  const build = applicationIni(mar.application);
-  const update = await writeBrowserUpdateFiles(ctx, config, mar.path, build.buildId, objDist);
-  await writeAddonUpdateFiles(ctx, config);
-  writeJson(path.join(ctx.distDir, 'bento-artifacts.json'), {
+  const build = applicationIni(application);
+  const manifest = {
     schemaVersion: 1,
     displayVersion: config.brands[config.brand].release.displayVersion,
     firefoxVersion: config.firefox.version,
-    mar: { path: path.relative(ctx.root, mar.path), name: update.marName, url: update.url },
-    marTool: path.relative(ctx.root, mar.tool),
-    application: path.relative(ctx.root, mar.application),
+    updates: { enabled: updates },
+    application: path.relative(ctx.root, application),
     applicationIni: path.relative(ctx.root, build.file),
     buildId: build.buildId,
     objDist: path.relative(ctx.root, objDist),
-    updateTargets: update.targets,
     locales: readLocales(ctx, config),
-  });
-  process.stdout.write(`bento: package, MAR, locale, and update metadata complete\n`);
+  };
+  if (updates) {
+    const mar = await createMar(ctx, config, objDist);
+    const update = await writeBrowserUpdateFiles(ctx, config, mar.path, build.buildId, objDist);
+    await writeAddonUpdateFiles(ctx, config);
+    Object.assign(manifest, {
+      mar: { path: path.relative(ctx.root, mar.path), name: update.marName, url: update.url },
+      marTool: path.relative(ctx.root, mar.tool),
+      updateTargets: update.targets,
+    });
+  } else {
+    removeUpdateOutputs(ctx);
+  }
+  writeJson(path.join(ctx.distDir, 'bento-artifacts.json'), manifest);
+  process.stdout.write(updates
+    ? 'bento: package, MAR, locale, and update metadata complete\n'
+    : 'bento: package and locales complete; the updater is disabled, so no MAR or update metadata was written\n');
 }
 
 async function commandBrowserUpdates(ctx) {
   const config = loadConfig(ctx.root);
+  requireUpdatesEnabled(ctx, config, 'updates-browser');
   const marPath = path.join(ctx.distDir, 'output.mar');
   if (!fs.existsSync(marPath)) fail('updates-browser: dist/output.mar is missing; run package first');
   const objDist = path.join(requireConfiguredObjDir(ctx, 'updates-browser'), 'dist');
@@ -1641,6 +1775,7 @@ function commandObjDir(ctx, { allowLegacy, allowMissing }) {
 
 async function commandAddonUpdates(ctx) {
   const config = loadConfig(ctx.root);
+  requireUpdatesEnabled(ctx, config, 'updates-addons');
   await writeAddonUpdateFiles(ctx, config);
   process.stdout.write('bento: wrote add-on update metadata\n');
 }

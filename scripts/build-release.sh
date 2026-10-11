@@ -9,8 +9,10 @@
 #   1. Installs from pnpm-lock.release.yaml with --frozen-lockfile. Release
 #      artifacts consume the same pinned npm Mux release as developer builds and
 #      cannot drift during CI or a later rebuild.
-#   2. Runs Bento's package step to produce platform artifacts, MAR, locales,
-#      and update metadata, not just the app bundle.
+#   2. Runs Bento's package step to produce platform artifacts and locales,
+#      not just the app bundle. MAR and update metadata are produced and
+#      collected only when bento.json updates.enabled is true; the updater is
+#      compiled out until Bento owns a signed update path.
 #   3. Restores the original lockfile + node_modules at the end so a dev
 #      machine isn't left in release-mode after running this.
 #
@@ -206,40 +208,52 @@ case "$PLATFORM" in
     ;;
 esac
 
-# MAR and update metadata are release artifacts with the same provenance as
-# the application package. Keep names explicit so an unversioned output.mar
-# cannot be published accidentally.
-if [ ! -f "$REPO_ROOT/dist/output.mar" ]; then
-  echo "build-release: package did not produce dist/output.mar" >&2
-  exit 1
-fi
+# The package step records whether the updater was compiled in. A build that
+# cannot update must not carry or publish a MAR or update metadata.
 ARTIFACT_METADATA="$REPO_ROOT/dist/bento-artifacts.json"
 if [ ! -f "$ARTIFACT_METADATA" ]; then
   echo "build-release: package did not produce dist/bento-artifacts.json" >&2
   exit 1
 fi
-MAR_NAME="$(node -p "require('./dist/bento-artifacts.json').mar.name")"
-if [ -z "$MAR_NAME" ] || [[ "$MAR_NAME" != Bento-*.mar ]]; then
-  echo "build-release: invalid MAR name in dist/bento-artifacts.json: $MAR_NAME" >&2
-  exit 1
-fi
-MAR_OUT="$OUT_DIR/$MAR_NAME"
-cp "$REPO_ROOT/dist/output.mar" "$MAR_OUT"
-echo "build-release: produced $MAR_OUT"
+UPDATES_ENABLED="$(node -p "require('./dist/bento-artifacts.json').updates?.enabled === true")"
+if [ "$UPDATES_ENABLED" != "true" ]; then
+  STALE_UPDATES="$(find "$OUT_DIR" -maxdepth 1 -type f \( -name '*.mar' -o -name '*-update.xml' \) -print -quit)"
+  if [ -e "$REPO_ROOT/dist/output.mar" ] || [ -e "$REPO_ROOT/dist/update" ] || [ -n "$STALE_UPDATES" ]; then
+    echo "build-release: the updater is disabled but a MAR or update metadata exists in dist/ or $OUT_DIR; remove it before collecting artifacts" >&2
+    exit 1
+  fi
+  echo "build-release: the updater is disabled (bento.json updates.enabled); collecting no MAR or update metadata"
+else
+  # MAR and update metadata are release artifacts with the same provenance as
+  # the application package. Keep names explicit so an unversioned output.mar
+  # cannot be published accidentally.
+  if [ ! -f "$REPO_ROOT/dist/output.mar" ]; then
+    echo "build-release: package did not produce dist/output.mar" >&2
+    exit 1
+  fi
+  MAR_NAME="$(node -p "require('./dist/bento-artifacts.json').mar.name")"
+  if [ -z "$MAR_NAME" ] || [[ "$MAR_NAME" != Bento-*.mar ]]; then
+    echo "build-release: invalid MAR name in dist/bento-artifacts.json: $MAR_NAME" >&2
+    exit 1
+  fi
+  MAR_OUT="$OUT_DIR/$MAR_NAME"
+  cp "$REPO_ROOT/dist/output.mar" "$MAR_OUT"
+  echo "build-release: produced $MAR_OUT"
 
-UPDATE_COUNT=0
-while IFS= read -r UPDATE_FILE; do
-  [ -f "$UPDATE_FILE" ] || continue
-  TARGET="${UPDATE_FILE#"$REPO_ROOT/dist/update/browser/"}"
-  TARGET="${TARGET//\//-}"
-  cp "$UPDATE_FILE" "$OUT_DIR/Bento-$VERSION-$PLATFORM-$TARGET"
-  UPDATE_COUNT=$((UPDATE_COUNT + 1))
-done < <(find "$REPO_ROOT/dist/update/browser" -type f -name 'update.xml' -print 2>/dev/null | sort)
-if [ "$UPDATE_COUNT" -eq 0 ]; then
-  echo "build-release: package did not produce browser update metadata" >&2
-  exit 1
+  UPDATE_COUNT=0
+  while IFS= read -r UPDATE_FILE; do
+    [ -f "$UPDATE_FILE" ] || continue
+    TARGET="${UPDATE_FILE#"$REPO_ROOT/dist/update/browser/"}"
+    TARGET="${TARGET//\//-}"
+    cp "$UPDATE_FILE" "$OUT_DIR/Bento-$VERSION-$PLATFORM-$TARGET"
+    UPDATE_COUNT=$((UPDATE_COUNT + 1))
+  done < <(find "$REPO_ROOT/dist/update/browser" -type f -name 'update.xml' -print 2>/dev/null | sort)
+  if [ "$UPDATE_COUNT" -eq 0 ]; then
+    echo "build-release: package did not produce browser update metadata" >&2
+    exit 1
+  fi
+  echo "build-release: collected $UPDATE_COUNT update metadata files"
 fi
-echo "build-release: collected $UPDATE_COUNT update metadata files"
 
 node scripts/validate-bento-artifacts.mjs "$REPO_ROOT"
 

@@ -17,7 +17,7 @@ mount with the current native-settings mount.
 
 Profiles with a nonterminal or ambiguous native operation remain on transition r1 in `blocked-corrupt`; legacy hydration does not start. Clean profiles remove native operational artifacts with storage set/get read-back, start the bundled legacy runtime, and reach locally inspectable `ready-for-final`. The transition add-on opens its packaged recovery page for both outcomes.
 
-Transition browser/add-on updates are generated only with `pnpm rollback:updates-transition`. Transition r1 remains the supported recovery build for blocked profiles.
+Transition browser/add-on updates are generated only with `pnpm rollback:updates-transition`, and only while `bento.json` has `updates.enabled: true`; with the updater compiled out (the default) the update commands refuse to run. Transition r1 remains the supported recovery build for blocked profiles.
 
 ## Isolated Mux validation
 

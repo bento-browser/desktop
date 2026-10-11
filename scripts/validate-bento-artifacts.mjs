@@ -5,6 +5,8 @@
  * Validate the package outputs produced by Bento's direct mach wrapper.
  * This intentionally checks metadata against the bytes on disk so a release
  * job cannot pass with an application package and an unrelated MAR/XML set.
+ * While the updater is disabled (bento.json updates.enabled), the build cannot
+ * update, so the check expects no MAR or update metadata and fails if any exists.
  */
 
 import crypto from 'node:crypto';
@@ -117,17 +119,10 @@ function assertMarContents(manifest, root) {
   return { marPath, marHash: sha512(marPath), marSize: fs.statSync(marPath).size };
 }
 
-export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
-  const root = path.resolve(repoRoot);
-  const config = readJson(path.join(root, 'bento.json'));
-  const manifest = readJson(path.join(root, 'dist', 'bento-artifacts.json'));
-  const release = config.brands?.[config.brand]?.release;
-  if (!release || manifest.schemaVersion !== 1) fail('invalid Bento artifact/config metadata');
-  if (manifest.displayVersion !== release.displayVersion || manifest.firefoxVersion !== config.firefox.version) {
-    fail('artifact versions do not match bento.json');
-  }
-  if (path.basename(manifest.mar.path) !== 'output.mar') fail('MAR metadata path must be dist/output.mar');
-  if (!manifest.mar.name || !manifest.mar.url || !manifest.marTool || !manifest.application) fail('artifact metadata is incomplete');
+/** The MAR and update XML checks that apply only to a build with the updater compiled in. */
+function validateUpdateOutputs(manifest, config, root, release, packagedId) {
+  if (path.basename(manifest.mar?.path ?? '') !== 'output.mar') fail('MAR metadata path must be dist/output.mar');
+  if (!manifest.mar.name || !manifest.mar.url || !manifest.marTool) fail('artifact metadata is incomplete');
 
   const { marPath, marHash, marSize } = assertMarContents(manifest, root);
   if (manifest.mar.url.endsWith('/') || !manifest.mar.url.endsWith(`/${manifest.mar.name}`)) {
@@ -136,16 +131,6 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   if (manifest.mar.url !== updateMarUrl(config, manifest.mar.name)) {
     fail('MAR URL does not match the configured release URL');
   }
-
-  const application = path.resolve(root, manifest.application);
-  if (!fs.existsSync(application) || !fs.statSync(application).isDirectory()) fail(`application bundle is missing: ${manifest.application}`);
-  if (!walkFiles(application).some((file) => path.basename(file) === 'precomplete')) fail('application bundle is missing precomplete');
-
-  if (!manifest.objDist) fail('artifact metadata is missing objDist');
-  const objDist = path.resolve(root, manifest.objDist);
-  const packages = walkFiles(objDist).filter((file) => isPrimaryApplicationPackage(file, release.displayVersion));
-  if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
-  const packagedId = packagedApplicationBuildId(manifest, root, application);
 
   const targets = [...new Set(manifest.updateTargets || [])];
   if (targets.length === 0) fail('artifact metadata has no browser update targets');
@@ -160,8 +145,48 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
     }
     if (update.buildId !== packagedId) fail(`${file} build ID does not match the packaged application`);
   }
+  return { marPath, marSize, targets };
+}
 
-  const result = { mar: path.relative(root, marPath), marSize, updateTargets: targets, packages };
+export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
+  const root = path.resolve(repoRoot);
+  const config = readJson(path.join(root, 'bento.json'));
+  const manifest = readJson(path.join(root, 'dist', 'bento-artifacts.json'));
+  const release = config.brands?.[config.brand]?.release;
+  if (!release || manifest.schemaVersion !== 1) fail('invalid Bento artifact/config metadata');
+  if (manifest.displayVersion !== release.displayVersion || manifest.firefoxVersion !== config.firefox.version) {
+    fail('artifact versions do not match bento.json');
+  }
+  const updates = config.updates?.enabled === true;
+  if (typeof manifest.updates?.enabled !== 'boolean') fail('artifact metadata does not record the updater state; rerun pnpm run package');
+  if (manifest.updates.enabled !== updates) {
+    fail(`artifact metadata was produced with the updater ${manifest.updates.enabled ? 'enabled' : 'disabled'}, but bento.json updates.enabled is ${updates}; rerun pnpm run package`);
+  }
+  if (!manifest.application) fail('artifact metadata is incomplete');
+  if (!updates) {
+    // Nothing may describe or ship an update for a build that cannot update.
+    if (manifest.mar || manifest.marTool || manifest.updateTargets) fail('artifact metadata lists update outputs, but the updater is disabled');
+    if (fs.existsSync(path.join(root, 'dist', 'output.mar')) || fs.existsSync(path.join(root, 'dist', 'update'))) {
+      fail('dist holds a MAR or update metadata, but the updater is disabled; rerun pnpm run package to clear it');
+    }
+  }
+
+  const application = path.resolve(root, manifest.application);
+  if (!fs.existsSync(application) || !fs.statSync(application).isDirectory()) fail(`application bundle is missing: ${manifest.application}`);
+  if (updates && !walkFiles(application).some((file) => path.basename(file) === 'precomplete')) fail('application bundle is missing precomplete');
+
+  if (!manifest.objDist) fail('artifact metadata is missing objDist');
+  const objDist = path.resolve(root, manifest.objDist);
+  const packages = walkFiles(objDist).filter((file) => isPrimaryApplicationPackage(file, release.displayVersion));
+  if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
+  const packagedId = packagedApplicationBuildId(manifest, root, application);
+
+  if (!updates) {
+    process.stdout.write(`validate-bento-artifacts: verified ${packages.length} package(s); the updater is disabled, so no MAR or update metadata is expected\n`);
+    return { updates, packages };
+  }
+  const { marPath, marSize, targets } = validateUpdateOutputs(manifest, config, root, release, packagedId);
+  const result = { updates, mar: path.relative(root, marPath), marSize, updateTargets: targets, packages };
   process.stdout.write(`validate-bento-artifacts: verified ${result.mar}, ${targets.length} update target(s), and ${packages.length} package(s)\n`);
   return result;
 }

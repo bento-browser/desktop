@@ -764,6 +764,82 @@ Use this shape for new or changed touchpoints:
   check, import, and invalidate the native object cache. Keep the Rust pin and
   release verification aligned with the Firefox release's official toolchain.
 
+### Build Configure Flags And Updater
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `configs/common/mozconfig` and `configs/{linux,macos,windows}/mozconfig`
+  - `scripts/bento-build.mjs` (the options appended to the generated
+    `engine/mozconfig` per build mode, and the updater switch)
+  - `bento.json` (`updates.enabled`, `updates.channel`, `updates.hostname`)
+  - `config/release-security.json` (`updateService` readiness inputs)
+  - `scripts/update-readiness.mjs`, `scripts/check-release-security.mjs`
+  - `scripts/validate-bento-artifacts.mjs`, `scripts/build-release.sh`,
+    `.github/workflows/release.yml`
+- Bento functionality: `dev` and `debug` builds compile with
+  `--disable-release` (plus `--enable-macos-target=11.0` on macOS) so they skip
+  the final-crate Rust LTO link and can build Rust incrementally; `release`
+  builds keep `--enable-release`, `--enable-optimize`, and `--enable-rust-simd`.
+  Every mode compiles with `--disable-updater` while `bento.json`
+  `updates.enabled` is `false`, because Bento does not yet have a signed update
+  path. The `bento` channel (`--enable-update-channel=bento`), the MAR channel
+  exports, and `MOZ_APPUPDATE_HOST` are still written so enabling the updater
+  later needs no other configure change.
+- Vanilla Firefox surface touched or depended on (paths recorded from the
+  2026-10-12 audit; re-verify them in the target tree):
+  - `--enable-release` / `--disable-release`: `moz.configure` (`developer_options`
+    follows it), whose default is on for a release-milestone source tarball, which
+    is why dev builds need the explicit `--disable-release`.
+  - What developer options change: `config/makefiles/rust.mk` (final-crate LTO and
+    `-C codegen-units=1` only when `DEVELOPER_OPTIONS` is unset),
+    `build/moz.configure/rust.configure` (cargo incremental only with developer
+    options), `build/moz.configure/flags.configure` (function sections and
+    identical-code folding only for release), and `build/moz.configure/toolchain.configure`
+    (the `--enable-macos-target` default is 11.0 normally and 10.15 under developer
+    options).
+  - `--disable-updater` and `MOZ_UPDATER` (`build/moz.configure/update-programs.configure`)
+    and everything the packager derives from it (updater binary, `precomplete`).
+  - Update trust: `toolkit/mozapps/update/updater/moz.build` selects compiled-in
+    certificates by `MOZ_UPDATE_CHANNEL` (Mozilla's release certificate for
+    release, beta, and esr, its nightly certificates for nightly and aurora names,
+    and `dep1.der` and `dep2.der` for any other channel, including `bento`), and
+    `build/moz.build` plus `build/application.ini.in` default the update URL to
+    `aus5.mozilla.org` because no stock configure code consumes
+    `MOZ_APPUPDATE_HOST`.
+- Why this cannot stay extension-only: these are compile-time configure options
+  that decide what Firefox builds and whether it contains an updater.
+- Firefox update risk: a renamed or removed configure option fails configure for
+  every mode; a changed developer-options default silently changes dev codegen or
+  the macOS deployment target; a new minimum macOS target above 11.0 breaks dev
+  and debug configure until `MACOS_DEPLOYMENT_TARGET` in `scripts/bento-build.mjs`
+  is raised; a changed packaging rule for `precomplete` or the updater breaks
+  `package` and `artifacts:check`.
+- Regression checks for future updates:
+  1. Run `node --test scripts/bento-build.test.mjs scripts/release-security.test.mjs scripts/validate-bento-artifacts.test.mjs`.
+  2. Run `pnpm run build` in `dev` mode, then confirm `engine/mozconfig` holds
+     `ac_add_options --disable-release`, `--disable-updater`, and on macOS
+     `--enable-macos-target=11.0`, and that configure printed no unknown-option or
+     conflicting-option error.
+  3. In the object directory's `config.status.json`, confirm the updater is off
+     (`MOZ_UPDATER` is not `1`), developer options are on (`DEVELOPER_OPTIONS` set)
+     for `dev` and `debug` and unset for `release`, and `MACOSX_DEPLOYMENT_TARGET` is
+     `11.0` in every mode. If a name moved, find its new home in the new tree.
+  4. Compare `toolchain.configure` `--enable-macos-target`: its default and minimum
+     must still allow 11.0.
+  5. Run `BENTO_BUILD_MODE=release pnpm run build` (or a manual CI build) and
+     `pnpm run package`; confirm the package has no updater, that `precomplete` may
+     be absent without failing, and that `pnpm run artifacts:check` passes with no
+     MAR or update XML.
+  6. Re-read the update-trust paths above. If the updater is enabled in the target
+     state, re-check cert selection and the update URL before trusting it.
+- Rollback or migration notes: to restore release policy in dev builds, move
+  `--enable-release` back into `configs/common/mozconfig` and drop the
+  `--disable-release` branch in `modeOptions`; invalidate the native object cache.
+  To ship the updater, follow "Re-enabling the updater" in
+  [build-tooling.md](build-tooling.md) and add the new surfaces (certificate
+  patch, update-host wiring, MAR signing) to this entry.
+
 ### Built-In Extension Copy Surface
 
 - Status: Active

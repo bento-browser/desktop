@@ -4,7 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-const root = path.resolve(import.meta.dirname, '..');
+import { updaterReadinessProblems } from './update-readiness.mjs';
+
+// --root points the gate at another checkout layout; the tests use it.
+const rootArg = process.argv.find((arg) => arg.startsWith('--root='));
+const root = path.resolve(
+  rootArg ? rootArg.slice('--root='.length) : path.join(import.meta.dirname, '..'),
+);
 const channelArg = process.argv.find((arg) => arg.startsWith('--channel='));
 const channel = channelArg?.split('=', 2)[1] || 'preview';
 
@@ -21,18 +27,35 @@ if (config.schemaVersion !== 1) {
 if (config.updateService?.hostname !== bento.updates?.hostname) {
   throw new Error('Release security update hostname does not match bento.json.');
 }
+if (bento.updates?.enabled !== undefined && typeof bento.updates.enabled !== 'boolean') {
+  throw new Error('bento.json updates.enabled must be true or false.');
+}
+// The updater is compiled out until Bento owns a signed update path. Enabling it
+// is refused here, for every channel, until the readiness inputs are recorded.
+const updatesEnabled = bento.updates?.enabled === true;
+if (updatesEnabled) {
+  const problems = updaterReadinessProblems(bento, config);
+  if (problems.length) {
+    throw new Error(
+      `bento.json updates.enabled is true, but the updater is not ready:\n- ${problems.join('\n- ')}`,
+    );
+  }
+}
 const expectedTag = `v${bento.brands.bento.release.displayVersion}`;
 if (process.env.GITHUB_REF_NAME?.startsWith('v') && process.env.GITHUB_REF_NAME !== expectedTag) {
   throw new Error(`Release tag must be ${expectedTag}, received ${process.env.GITHUB_REF_NAME}.`);
 }
 
 if (channel === 'preview') {
-  console.log('Preview release gate passed (draft + prerelease artifacts only).');
+  console.log(
+    `Preview release gate passed (draft + prerelease artifacts only; updater ${updatesEnabled ? 'enabled' : 'disabled'}).`,
+  );
   process.exit(0);
 }
 
 const required = [
   ['publicReleaseReady', config.publicReleaseReady === true],
+  ['bento.json updates.enabled', updatesEnabled],
   ['updateService.marSigningKeyFingerprint', config.updateService?.marSigningKeyFingerprint],
   [
     'platformSigning.linuxManifestKeyFingerprint',
