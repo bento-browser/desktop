@@ -10,7 +10,7 @@
 
 /*
  * The heading keeps Mux's Inter. The shell build already emits this file next
- * to the sheet (from the Mux font-face), so the page reuses it by relative URL
+ * to the sheet (the Mux font-face, converted to WOFF2), so the page reuses it by relative URL
  * instead of redeclaring the whole family. Descriptors cannot read custom
  * properties: the weight mirrors --bento-panel-newtab-title-font-weight. The
  * Vite config fails the build if the file name stops existing.
@@ -20,7 +20,7 @@
   font-style: normal;
   font-weight: 650;
   font-display: swap;
-  src: url('./Inter_opsz_wght_.ttf') format('truetype');
+  src: url('./Inter_opsz_wght_.woff2') format('woff2');
 }
 
 body {

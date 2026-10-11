@@ -6,8 +6,9 @@
 // their own build target.
 //
 // Font files are left as relative URLs: the page reuses the Inter file the Mux
-// stylesheet already makes the build emit into assets/. Because that name is
-// derived from the Mux package path, fail the build if it ever stops existing.
+// stylesheet already makes the build emit into assets/ (woff2-fonts.ts converts
+// it to WOFF2, so this plugin runs after it). Because that name is derived from
+// the Mux package path, fail the build if it ever stops existing.
 
 import { build as esbuild } from 'esbuild';
 import { resolve } from 'node:path';
@@ -17,6 +18,8 @@ export function panelNewtabCss(target: string): Plugin {
   return {
     name: 'bento-panel-newtab-css',
     apply: 'build',
+    // After woff2Fonts, which renames the font files this page references.
+    enforce: 'post',
     async generateBundle(_options, bundle) {
       const { outputFiles } = await esbuild({
         entryPoints: [resolve(__dirname, 'src/panel-newtab/panel-newtab.css')],
@@ -25,7 +28,7 @@ export function panelNewtabCss(target: string): Plugin {
         minify: true,
         target,
         write: false,
-        external: ['*.ttf'],
+        external: ['*.woff2'],
       });
       const source = outputFiles[0]!.text;
       for (const [, file] of source.matchAll(/url\(\s*["']?\.\/([^"')\s]+)["']?\s*\)/g)) {
