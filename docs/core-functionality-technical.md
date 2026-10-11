@@ -2123,9 +2123,65 @@ event that resets the per-frame dedupe. `DOMTitleChanged`, which earlier code
 tried and found unreliable, is dispatched inside the content process and does
 not reach chrome for remote frames; do not confuse the two.
 
-The channel is still a single title slot per document: it remains
-last-write-wins, and the content process coalesces title writes made in the same
-task. The event removes the polling window, not that loss.
+The channel is a single title slot per document, and the content process
+reports it to the parent from a runnable queued by the first write, reading the
+title when that runnable runs. A write made before then replaces the pending
+title, so chrome never gets a `pagetitlechanged` for the replaced value. That
+covers two writes in one synchronous block and also a write in an earlier task
+followed by another task that was already queued (the next bus message, a React
+effect flushed in a microtask). The event removes the polling window, not that
+loss.
+
+Every producer in a shell document therefore sends titles through
+`sendChromeTitle` (`bridge/chromeTitle.ts`) instead of assigning
+`document.title`. The writer sets the first title immediately and holds any
+title sent before the report has run. It releases the next title from a private
+`MessageChannel` (one per document, created on first use and reused): each write
+is followed by `port1.postMessage(null)`, and the `port2` message handler writes
+the next held title. The write dispatches the report runnable and the
+postMessage dispatches the delivery runnable afterwards. Both are
+Normal-priority main-thread dispatches that run in dispatch order, so each title
+is reported before the next one is written. Titles reach chrome in send order
+with no drops and no polling; the per-frame dedupe in chrome still drops a title
+identical to the previous one, which is why sentinels keep their timestamp
+suffix. The chrome receive path and the
+`BENTO_*` wire format are unchanged. ESLint (`no-restricted-syntax` in
+`eslint.config.mjs`) rejects `document.title =` anywhere under
+`extensions/bento-shell/src` except the writer.
+
+The ordering rests on Firefox 154 engine behavior (also listed in
+`docs/firefox-core-touchpoints.md`): `Document::NotifyPossibleTitleChange`
+(`dom/base/Document.cpp`) dispatches the report runnable synchronously from the
+title write, and `DoNotifyPossibleTitleChange` reads the title when it runs;
+`MessagePort::Dispatch` (`dom/messagechannel/MessagePort.cpp`) dispatches the
+delivery runnable at `postMessage` time on an unshipped entangled port with
+`NS_DispatchToCurrentThread`. Neither runnable sets a priority
+(`ThreadEventTarget::Dispatch` puts both in the Normal queue) and equal-priority
+main-thread tasks run in creation order (`Task::PriorityCompare` in
+`xpcom/threads/TaskController.h`). A timer cannot give this guarantee:
+`TimeoutManager::RunTimeout` (`dom/base/TimeoutManager.cpp`) selects every
+expired timeout before running any callback and runs them in one executor task,
+so a `setTimeout(0)` created after an earlier zero-delay callback joins that
+batch and can write the next title before the report runs. The port's handler
+must be assigned with `onmessage` (which starts the port); an
+`addEventListener('message')` listener would not receive messages until
+`start()`.
+
+The writer holds only an in-document queue and persists nothing; `bento-tools`
+stays the source of truth and each `BENTO_PANELS` forward is rebuilt from the
+shell mirrors. `bridge/fakeChromeTitle.ts` models the same engine rules (one
+FIFO task queue carrying the report, MessagePort deliveries and the timer
+executor, and a timer executor that fires all expired timeouts in one task), so
+`bridge/chromeTitle.test.ts` fails a timer-based writer.
+
+Manual verification: with a profile whose welcome flow is hidden but not
+completed (`welcomeSeen` false), open the Browser Toolbox Console and paste a
+capture-phase `pagetitlechanged` listener on `window` that logs
+`event.target.id` and `event.target.contentTitle` for `bento-shell-frame`, then
+reload only the sidebar frame. The log must contain at least one
+`BENTO_PANELS:` title whose decoded payload carries the settings fields
+(`uiColorMode`, `sidebarCollapsed`, ...) as well as the `BENTO_OPEN_WELCOME_`
+titles, and the panel strip must show the saved panels.
 
 The main channel is `BENTO_PANELS:<ts>:<base64-json>`, written by
 `useToolsPort.ts` when a `panels/sync` event matches the shell document's active
@@ -2452,9 +2508,9 @@ submitted while viewing side panels.
 
 Load-bearing pitfalls:
 
-- Submit writes exactly one navigate sentinel. Do not also write
-  `BENTO_CLOSE_ADDRBAR_*` in the same tick; `document.title` is last-write-wins
-  and chrome may only see the close sentinel.
+- Submit sends exactly one navigate sentinel. Do not also send
+  `BENTO_CLOSE_ADDRBAR_*`; chrome's navigate handler already hides the overlay,
+  and the extra title is one more handler run.
 - Do not remove the explicit main-slot reveal after submit. Current-tab address
   loads do not necessarily change `gBrowser.selectedTab`, so the reconcile-time
   selected-tab auto-scroll path may not run.
@@ -2493,17 +2549,37 @@ Load-bearing pitfalls:
 
 ### Title IPC pitfalls
 
-- `document.title` is last-write-wins. Do not reintroduce separate title writes
-  for chrome-bound settings that can ride inside `BENTO_PANELS`.
+- Title writes coalesce: a title replaced before the content process reports it
+  never produces a `pagetitlechanged` in chrome. This is not limited to one
+  synchronous block. Reload of a profile with `welcomeSeen` false lost
+  `BENTO_PANELS` because the settings snapshot handler forwarded the full
+  `BENTO_PANELS` payload and, in the same task, the React welcome effect (flushed
+  in a microtask) assigned `BENTO_OPEN_WELCOME_<ts>` over it, so chrome never
+  saw the settings or panel state. Always send titles with `sendChromeTitle`
+  (`bridge/chromeTitle.ts`), never `document.title =`; the writer is covered by
+  `bridge/chromeTitle.test.ts` and the welcome case by `bridge/busBootstrap.test.ts`
+  ("first-run welcome request follows in the same task"). A new producer in any
+  shell document (overlay frames included) needs no workaround for ordering
+  against other titles.
+- Do not release held titles from `setTimeout(0)`, `setInterval`, or a promise.
+  A zero-delay timeout created after an earlier one joins that timeout's
+  executor batch, which can run the next write before the report runnable (a
+  timer-based writer loses `BENTO_PANELS` to a zero-delay welcome callback this
+  way). The `MessageChannel` release is dispatched after the report. A microtask
+  runs before the report, so it is worse.
+- Do not reintroduce separate title writes
+  for chrome-bound settings that can ride inside `BENTO_PANELS`; one payload is
+  still cheaper for chrome than several reconciles.
 - `BENTO_PANELS` is the canonical chrome state payload for panel visibility,
   layout, theme, color mode, sidebar collapsed/hidden state, sidebar shortcut
   behavior, and related active workspace chrome state. Any extra sidebar title
   channel must be sparse: emit
   only for a real event/state transition, never on ordinary renders, snapshots,
-  or empty steady state. A harmless-looking repeated sentinel such as an empty
-  selection payload can overwrite `BENTO_PANELS` before chrome's
-  `pagetitlechanged` handler reads it, leaving the main content visible but
-  hiding all side panels.
+  or empty steady state. Before `sendChromeTitle`, a harmless-looking repeated
+  sentinel such as an empty selection payload could overwrite `BENTO_PANELS`
+  before chrome's `pagetitlechanged` handler read it, leaving the main content
+  visible but hiding all side panels. The writer now delivers both, but every
+  extra title still costs a chrome handler run and a queued task.
 - If a title channel needs a clear/reset signal, send that reset only after the
   channel previously sent a non-empty/non-default value. Do not continuously
   announce "nothing selected", "closed", "default", or similar no-op state.
@@ -2621,9 +2697,11 @@ The following mechanisms are load-bearing:
   active.
 - `preserveLayers(true)` must happen before deactivating departing panel
   browsers, or returning panels can paint blank for a frame.
-- `.split-view-panel-active` must be removed from departing panels. Firefox's
-  `removeTabsFromSplitview` removes `.split-view-panel` but can leave the active
-  class behind, producing ghost overlays.
+- `.split-view-panel-active` must be removed from departing panels, or a stale
+  class produces ghost overlays. Firefox 154's `removeTabsFromSplitview` removes
+  both `.split-view-panel` and `.split-view-panel-active`, so the reconciler only
+  calls it. The old `MozTabpanels.setSplitViewPanelActive` helper no longer
+  exists; do not call it.
 - `gBrowser.warmupTab(tab)` must run for active split tabs. Without an
   `AsyncTabSwitcher`, Firefox's visibility fallback can deactivate panel
   docShells.
@@ -2681,6 +2759,56 @@ adds its entry, and its id in the mount probe list, in the same change.
   hidden tabs render as black or blank split-view slots.
 - Do not move or swap a tab's `linkedBrowser`. Extension content scripts depend
   on stable tab/browser identity.
+- Reparenting a tab `<browser>` strands Tabbrowser's progress filter. Moving a
+  connected `<browser>` (or an ancestor) with `insertBefore` / `appendChild`
+  unbinds and rebinds it, which destroys and recreates its frameloader (only
+  `moveBefore` keeps it), so `browser.webProgress` becomes a new
+  BrowsingContext's empty `nsIWebProgress`. Tabbrowser only moves its per-tab
+  browser status filter on remoteness change, so the filter stays on the
+  discarded BrowsingContext. Source of truth: Tabbrowser's private
+  `#tabFilters` / `#tabListeners` maps (the filter keeps its
+  `TabProgressListener`; only the filter-to-webProgress link is lost), read
+  through `gBrowser._getTabProgressFilter(tab)`. Symptoms in every window:
+  the first tab gets no `onLocationChange` / `onStateChange`, the
+  `WillChangeBrowserRemoteness` handler throws, and `Tabbrowser.destroy()` on
+  window close throws `NS_ERROR_FAILURE [nsIWebProgress.removeProgressListener]`
+  and skips later tabs' cleanup and `AsyncTabSwitcher.destroy()`.
+  `unifyMainWithStrip()` and `setupPanelNavigator()` move `#tabbrowser-tabbox`
+  after `Tabbrowser.init()` created the first tab, so both go through
+  `moveNodeBefore()`: `Element.moveBefore` (the node must share the parent's
+  composed root, must not be an ancestor of it, and the reference child must be
+  a child of the parent; otherwise it throws `HierarchyRequestError` /
+  `NotFoundError`), falling back to `insertBefore` if `moveBefore` is missing or
+  throws. `XULFrameElement` and `MozBrowser.connectedMoveCallback` skip
+  frameloader teardown on a move, so the first tab keeps its BrowsingContext and
+  filter. `configureSidePanelOnce()` still calls `reattachTabProgressFilters()`
+  right after the moves as a safety net for the `insertBefore` fallback: it
+  re-adds each tab's filter to `tab.linkedBrowser.webProgress` with
+  `NOTIFY_ALL`, and is a no-op (`NS_ERROR_FAILURE`, already attached) when the
+  filter survived. Any other move of a tab panel or `<browser>` must use
+  `moveBefore` and re-attach after a fallback. The legacy subdivision and
+  promotion paths still use `insertBefore` / `appendChild` on tab panels
+  (`applySubdivisions` parent and bottom containers, `detachSubPanelsBeforeParentRemoval`,
+  and the nested-panel promotion in `reconcilePanelsSplitView`). They are
+  inactive in the flat renderer (`currentSubdivisions` is only ever assigned an
+  empty `Map`), but if reactivated they would strand filters and must move to
+  `moveNodeBefore()` plus a re-attach. Manual check: open several windows and
+  confirm, with a `browsing-context-attached` / `browsing-context-discarded`
+  observer registered in the Browser Toolbox Console before opening a window,
+  that the new window's first tab logs one attach, no discard, and the same
+  `gBrowser.tabs[0].linkedBrowser.browsingContext.id` (no frameloader
+  recreation, so no extra process switch) and that the layout is unchanged;
+  navigate the first tab and confirm the tab label, urlbar, and sidebar address
+  update; then close each window and confirm no `Tabbrowser.destroy` or
+  `removeProgressListener` error.
+- The `removeProgressListener` suppressors (the capture-phase window `error`
+  filter, the `<browser>` prototype `removeProgressListener` guard, and the
+  `_beginRemoveTab` wrapper in `bento-shell-mount.js`) predate the progress
+  filter fix. They may be removable once the `moveBefore` relocation and
+  re-attach are verified across window close, tab close, and split-view panel
+  moves. Follow-up, not part of
+  the re-attach change; remove them one at a time and watch the console for the
+  errors above.
 - Do not register nested sub-panels directly in `splitViewPanels`. Firefox
   assumes split-view panels are direct children of `tabpanels`.
 - Do not put inter-panel splitter elements directly in `tabpanels`. XUL deck
@@ -3195,7 +3323,10 @@ Panel traversal is split between chrome focus tracking and a JSWindowActor pair:
   `BentoKey:Cycle` or `BentoKey:PanelHistory` event.
 - `bento-shell-mount.js` registers the actor with `ChromeUtils.registerWindowActor`
   and handles the custom events by calling the private `navigatePanels` closure
-  or the focused panel browser's `goBack()` / `goForward()` methods.
+  or the focused panel browser's `goBack()` / `goForward()` methods. The
+  registration is process-wide, so every window after the first gets Firefox
+  154's `NotSupportedError` ("'BentoKey' actor is already registered");
+  `registerContentKeyActor()` ignores it.
 
 The actor forwards `Cmd/Ctrl+Shift+ArrowLeft` and
 `Cmd/Ctrl+Shift+ArrowRight` for panel cycling and `Cmd/Ctrl+ArrowLeft` /

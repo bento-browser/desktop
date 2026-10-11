@@ -39,6 +39,7 @@ import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
 import './CommandPalette.css';
+import { sendChromeTitle } from '../../bridge/chromeTitle';
 
 export interface CommandPaletteProps {
   /** Invoked whenever the palette is dismissed (Esc, backdrop click, or
@@ -59,11 +60,12 @@ interface BentoCommand extends CommandPaletteCommand {
   meta?: string;
 }
 
-async function signalOpenSettings(privacy = false): Promise<void> {
-  document.title = `${privacy ? 'BENTO_OPEN_SETTINGS_PRIVACY' : 'BENTO_OPEN_SETTINGS'}_${Date.now()}`;
-  // The palette closes by writing another title sentinel. Keep this signal
-  // visible for one chrome polling interval before that close overwrites it.
-  await new Promise((resolve) => setTimeout(resolve, 250));
+function signalOpenSettings(privacy = false): void {
+  // The palette's own close title follows right after; the shared writer
+  // delivers both to chrome in order.
+  sendChromeTitle(
+    `${privacy ? 'BENTO_OPEN_SETTINGS_PRIVACY' : 'BENTO_OPEN_SETTINGS'}_${Date.now()}`,
+  );
 }
 
 function commandIcon(icon: typeof SettingsIcon): ReactNode {

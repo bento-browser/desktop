@@ -1,4 +1,5 @@
 import type { AddrbarNavigatePayload } from '@shared/protocol';
+import { sendChromeTitle } from './chromeTitle';
 
 export type AddrbarMode = 'current' | 'newTab';
 
@@ -56,13 +57,13 @@ export function encodeTitlePayload(value: string): string {
 }
 
 export function signalAddrbarClose(): void {
-  document.title = `${ADDRBAR_CLOSE_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${ADDRBAR_CLOSE_PREFIX}_${Date.now()}`);
 }
 
 export function signalAddrbarReady(openId: string): void {
-  document.title = `${ADDRBAR_READY_PREFIX}:${encodeTitlePayload(
-    JSON.stringify({ openId, timestamp: Date.now() }),
-  )}`;
+  sendChromeTitle(
+    `${ADDRBAR_READY_PREFIX}:${encodeTitlePayload(JSON.stringify({ openId, timestamp: Date.now() }))}`,
+  );
 }
 
 export function signalAddrbarOpen(
@@ -70,14 +71,16 @@ export function signalAddrbarOpen(
   initialQuery = '',
   options: AddrbarOpenOptions = {},
 ): void {
-  document.title = `${ADDRBAR_OPEN_PREFIX}${Date.now()}:${encodeTitlePayload(
-    JSON.stringify({
-      mode,
-      initialQuery,
-      ...(options.anchorRect ? { anchorRect: options.anchorRect } : {}),
-      ...(options.clipboardUrl ? { clipboardUrl: options.clipboardUrl } : {}),
-    }),
-  )}`;
+  sendChromeTitle(
+    `${ADDRBAR_OPEN_PREFIX}${Date.now()}:${encodeTitlePayload(
+      JSON.stringify({
+        mode,
+        initialQuery,
+        ...(options.anchorRect ? { anchorRect: options.anchorRect } : {}),
+        ...(options.clipboardUrl ? { clipboardUrl: options.clipboardUrl } : {}),
+      }),
+    )}`,
+  );
 }
 
 export function signalAddrbarNavigate(value: string | AddrbarNavigatePayload): void {
@@ -85,7 +88,7 @@ export function signalAddrbarNavigate(value: string | AddrbarNavigatePayload): v
     typeof value === 'string'
       ? value
       : JSON.stringify({ value: value.value, searchEngineId: value.searchEngineId });
-  document.title = `${ADDRBAR_NAVIGATE_PREFIX}_${Date.now()}:${encodeTitlePayload(payload)}`;
+  sendChromeTitle(`${ADDRBAR_NAVIGATE_PREFIX}_${Date.now()}:${encodeTitlePayload(payload)}`);
 }
 
 export function subscribeToAddrbarOpenRequests(

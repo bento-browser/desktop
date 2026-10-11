@@ -11,6 +11,8 @@
 // payload, document.title sentinel for the show/hide signal that chrome
 // reacts to.
 
+import { sendChromeTitle } from './chromeTitle';
+
 export const WORKSPACE_SWITCHER_BUS_NAME = 'bento-workspace-switcher-bus';
 export const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
 export const WORKSPACE_SWITCHER_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_SWITCHER';
@@ -61,7 +63,7 @@ export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload):
     return;
   }
   ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
-  document.title = `${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
 }
 
 /** Subscribe to workspace-switcher open requests. Called by the overlay's
