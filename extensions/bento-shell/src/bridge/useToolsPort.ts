@@ -53,6 +53,7 @@ import { usePanelFocusStore } from '../state/panelFocus';
 import { useExternalMergeStore } from '../state/externalMerge';
 import { resolveThemeId } from '../theme/presets';
 import { sendChromeTitle } from './chromeTitle';
+import { readWindowIdFromHash } from './windowId';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -94,23 +95,6 @@ interface BusState {
    * had hydrated. Re-forwarded by forwardPendingPanelsToChrome once the
    * missing input arrives, whichever order the events come in. */
   pendingPanelsSync: Map<string, PanelsSyncEvent>;
-}
-
-function readWindowIdFromHash(): number | null {
-  try {
-    // location.hash includes the leading "#" — strip it before parsing.
-    // The hash is shaped like "#bentoWindowId=42" (single key); URLSearchParams
-    // is overkill but tolerant of extra params, so we use it for forward-
-    // compatibility if more flags get added later.
-    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
-    const params = new URLSearchParams(hash);
-    const raw = params.get('bentoWindowId');
-    if (!raw) return null;
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 0 ? n : null;
-  } catch {
-    return null;
-  }
 }
 
 const state: BusState = {

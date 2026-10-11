@@ -12,6 +12,7 @@
 // reacts to.
 
 import { sendChromeTitle } from './chromeTitle';
+import { resendWhenOverlayReady } from './overlayReady';
 
 export const WORKSPACE_SWITCHER_BUS_NAME = 'bento-workspace-switcher-bus';
 export const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
@@ -55,14 +56,17 @@ function bus(): BroadcastChannel | null {
 /** Open the workspace-switcher menu overlay anchored to a trigger element.
  * Caller passes the trigger's bounding rect in its own window's coords +
  * the sidebar's screen position so the overlay can position the menu
- * exactly next to the trigger as it appears on screen. */
+ * exactly next to the trigger as it appears on screen. The payload is sent
+ * again if the overlay's document was not ready yet (overlayReady.ts). */
 export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload): void {
   const ch = bus();
   if (!ch) {
     console.warn('[bento-shell] requestWorkspaceSwitcher: no BroadcastChannel');
     return;
   }
-  ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
+  const show = { kind: 'show', payload } satisfies ShowMessage;
+  ch.postMessage(show);
+  resendWhenOverlayReady('workspace-switcher', () => ch.postMessage(show));
   sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
 }
 

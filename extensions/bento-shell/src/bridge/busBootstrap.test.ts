@@ -9,7 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Action, BentoSettings, Event } from '@shared/protocol';
 import { installFakeChromeTitle } from './fakeChromeTitle';
 
-const DOCUMENTS = 11;
+/** Every shell document that calls initToolsPort(): sidebar, address bar, panel
+ * trailer, workspace switcher, edit workspace, confirm, welcome, menu, workspace
+ * palette, merge palette, palette, and the panel navigator tooltip. */
+const DOCUMENTS = 12;
 /** tabs, workspaces, settings, pinnedPanels, tabFolders, savedPanels. */
 const SNAPSHOTS_PER_DOCUMENT = 6;
 
@@ -89,6 +92,7 @@ function createFakeTools() {
   const listeners = new Set<(message: object) => void>();
   const requests: string[] = [];
   let workspaceIds = [...WORKSPACE_IDS];
+  const themeIds: Record<string, string> = {};
   let activeId: string | null | undefined;
   let settings = {} as BentoSettings;
   const activeIdByWindow: Record<number, string> = {};
@@ -116,7 +120,12 @@ function createFakeTools() {
     }),
     'workspaces/requestSnapshot': (): Event => ({
       type: 'workspaces/snapshot',
-      workspaces: workspaceIds.map((id, index) => ({ id, name: id, createdAt: index })),
+      workspaces: workspaceIds.map((id, index) => ({
+        id,
+        name: id,
+        createdAt: index,
+        ...(themeIds[id] ? { themeId: themeIds[id] } : {}),
+      })),
       activeId: activeId === undefined ? (workspaceIds[0] ?? null) : activeId,
       activeIdByWindow: { ...activeIdByWindow },
     }),
@@ -156,6 +165,10 @@ function createFakeTools() {
     assignWindow(windowId: number, workspaceId: string): void {
       activeIdByWindow[windowId] = workspaceId;
     },
+    /** Gives a workspace a theme in every later snapshot. */
+    setWorkspaceTheme(workspaceId: string, themeId: string): void {
+      themeIds[workspaceId] = themeId;
+    },
     /** Replaces the settings every later snapshot carries. */
     setSettings(next: BentoSettings): void {
       settings = next;
@@ -167,21 +180,34 @@ function createFakeTools() {
   };
 }
 
-/** Joins as the sidebar (title bridge on) when given the window it lives in. */
-async function joinDocument({ sidebarWindowId }: { sidebarWindowId?: number } = {}) {
+/** Joins as the sidebar (title bridge on) when given the window it lives in.
+ * `windowId` places an overlay document in a window without the title bridge. */
+async function joinDocument({
+  sidebarWindowId,
+  windowId = sidebarWindowId,
+}: { sidebarWindowId?: number; windowId?: number } = {}) {
   vi.resetModules();
   vi.stubGlobal('location', {
-    hash: sidebarWindowId === undefined ? '' : `#bentoWindowId=${sidebarWindowId}`,
+    hash: windowId === undefined ? '' : `#bentoWindowId=${windowId}`,
   });
   const { initToolsPort, enableSidePanelTitleBridge } = await import('./useToolsPort');
   const { useTabsStore } = await import('../state/tabs');
   const { usePanelsStore } = await import('../state/panels');
+  const { useSettingsStore } = await import('../state/settings');
+  const { useWorkspacesStore, selectActiveIdForWindow } = await import('../state/workspaces');
   const applied = { panels: 0 };
   usePanelsStore.subscribe(() => (applied.panels += 1));
   initToolsPort();
   if (sidebarWindowId !== undefined) enableSidePanelTitleBridge();
   bus.drain();
-  return { useTabsStore, usePanelsStore, applied };
+  return {
+    useTabsStore,
+    usePanelsStore,
+    useSettingsStore,
+    useWorkspacesStore,
+    selectActiveIdForWindow,
+    applied,
+  };
 }
 
 function snapshotDeliveriesToDocuments(): number {
@@ -249,6 +275,36 @@ describe('shell bus bootstrap', () => {
       expect(document.useTabsStore.getState().hydrated).toBe(true);
     }
     expect(tools.requests).toHaveLength(0);
+  });
+
+  // The panel navigator tooltip used to skip initToolsPort(), so its stores stayed
+  // empty and useWorkspaceTheme/useFirefoxTheme never had a theme or mode to apply.
+  it('hydrates the inputs of the theme hooks in an overlay that only joins the bus', async () => {
+    tools.assignWindow(7, 'ws-2');
+    tools.setWorkspaceTheme('ws-2', 'teal');
+    tools.setSettings({ uiColorMode: 'dark' } as BentoSettings);
+    tools.boot();
+
+    const tooltip = await joinDocument({ windowId: 7 });
+
+    const workspaces = tooltip.useWorkspacesStore.getState();
+    expect(tooltip.selectActiveIdForWindow(workspaces, 7)).toBe('ws-2');
+    expect(workspaces.byId['ws-2']?.themeId).toBe('teal');
+    expect(tooltip.useSettingsStore.getState().current?.uiColorMode).toBe('dark');
+  });
+
+  it('follows a later color mode change in that overlay', async () => {
+    tools.setSettings({ uiColorMode: 'light' } as BentoSettings);
+    tools.boot();
+    const tooltip = await joinDocument({ windowId: 7 });
+    expect(tooltip.useSettingsStore.getState().current?.uiColorMode).toBe('light');
+
+    tools.emit({
+      type: 'settings/changed',
+      settings: { uiColorMode: 'dark' } as BentoSettings,
+    });
+
+    expect(tooltip.useSettingsStore.getState().current?.uiColorMode).toBe('dark');
   });
 
   it('replays cached panels to the joining document only', async () => {

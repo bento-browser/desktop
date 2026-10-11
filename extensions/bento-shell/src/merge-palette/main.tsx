@@ -17,6 +17,7 @@ import { dispatch, initToolsPort } from '../bridge/useToolsPort';
 import { MergePalette } from '../components/MergePalette/MergePalette';
 import { useExternalMergeStore } from '../state/externalMerge';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -50,6 +51,9 @@ function MergePaletteApp() {
       channel.close();
     };
   }, []);
+
+  // After the effect above: chrome sends its open nonce once this is announced.
+  useOverlayReadySignal('merge-palette');
 
   return <MergePalette onClose={close} />;
 }

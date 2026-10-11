@@ -37,6 +37,7 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -80,6 +81,9 @@ function MenuApp() {
       channel.close();
     };
   }, []);
+
+  // After the bus subscription above: chrome sends menu/open once this is announced.
+  useOverlayReadySignal('menu');
 
   useEffect(() => {
     const preventNativeContextMenu = (event: MouseEvent) => {

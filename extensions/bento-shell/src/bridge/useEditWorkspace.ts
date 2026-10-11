@@ -15,6 +15,7 @@
 // each overlay subscribes only to its own bus.
 
 import { sendChromeTitle } from './chromeTitle';
+import { resendWhenOverlayReady } from './overlayReady';
 
 export const EDIT_WORKSPACE_BUS_NAME = 'bento-edit-workspace-bus';
 export const EDIT_WORKSPACE_OPEN_PREFIX = 'BENTO_OPEN_EDIT_WORKSPACE';
@@ -47,16 +48,18 @@ function bus(): BroadcastChannel | null {
 }
 
 /** Open the chrome edit-workspace overlay with a snapshot of the workspace
- * being edited. Safe to call before the overlay's content has booted —
- * the broadcast races the chrome reveal and the overlay's listener picks
- * up the payload as soon as its main.tsx runs. */
+ * being edited. Safe to call before the overlay's document exists: chrome
+ * creates it on the first open, and the payload is sent again when the
+ * document announces it is ready (overlayReady.ts). */
 export function requestEditWorkspace(payload: EditWorkspacePayload): void {
   const ch = bus();
   if (!ch) {
     console.warn('[bento-shell] requestEditWorkspace: no BroadcastChannel — cannot open');
     return;
   }
-  ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
+  const show = { kind: 'show', payload } satisfies ShowMessage;
+  ch.postMessage(show);
+  resendWhenOverlayReady('edit-workspace', () => ch.postMessage(show));
   sendChromeTitle(`${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
 }
 

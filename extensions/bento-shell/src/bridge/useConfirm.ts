@@ -15,6 +15,7 @@
 
 import type { Action } from '@shared/protocol';
 import { sendChromeTitle } from './chromeTitle';
+import { resendWhenOverlayReady } from './overlayReady';
 
 export const CONFIRM_BUS_NAME = 'bento-confirm-bus';
 export const CONFIRM_OPEN_PREFIX = 'BENTO_OPEN_CONFIRM';
@@ -48,16 +49,18 @@ function bus(): BroadcastChannel | null {
 }
 
 /** Open the chrome confirm overlay with the given payload. Safe to call
- * before the overlay's content has booted — the broadcast and the title
- * change race the chrome script's reveal, and the confirm content listens
- * for the payload as soon as its main.tsx runs. */
+ * before the overlay's document exists: chrome creates it on the first open,
+ * and the payload is sent again when the document announces it is ready
+ * (overlayReady.ts). */
 export function requestConfirm(payload: ConfirmPayload): void {
   const ch = bus();
   if (!ch) {
     console.warn('[bento-shell] requestConfirm: no BroadcastChannel — cannot open');
     return;
   }
-  ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
+  const show = { kind: 'show', payload } satisfies ShowMessage;
+  ch.postMessage(show);
+  resendWhenOverlayReady('confirm', () => ch.postMessage(show));
   // Timestamp suffix so successive opens always change the title string
   // (and therefore are picked up by the chrome script's title poll).
   sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
