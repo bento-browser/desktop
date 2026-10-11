@@ -7908,12 +7908,9 @@
               } catch {
                 favIconUrl = '';
               }
-              dispatchShellAction({
-                type: 'savedPanels/save',
-                url: uri.spec,
-                title,
-                favIconUrl,
-              });
+              const metadata = boundSavedPanelMetadata(uri.spec, title, favIconUrl);
+              if (!metadata) return;
+              dispatchShellAction({ type: 'savedPanels/save', ...metadata });
               return;
             }
             if (itemId.startsWith('size:')) {
@@ -11016,6 +11013,31 @@
   const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_URL =
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC);
+
+  // bento-tools rejects a whole action when any field exceeds its cap in
+  // extensions/_shared/wire-action.ts (the validator stays strict), and a page
+  // controls its title, URL, and favicon. Keep these in step with those caps.
+  const SAVED_PANEL_MAX_TITLE_LENGTH = 4096;
+  const SAVED_PANEL_MAX_URL_LENGTH = 32768;
+  const SAVED_PANEL_MAX_FAVICON_URL_LENGTH = 262144;
+
+  // Bounds the savedPanels/save fields to those caps. A long title is cut (as
+  // Firefox does for bookmark titles) without splitting a surrogate pair, an
+  // oversized favicon is dropped because it is optional, and a URL that is too
+  // long returns null because a truncated URL would save a different address.
+  function boundSavedPanelMetadata(url, title, favIconUrl) {
+    if (url.length > SAVED_PANEL_MAX_URL_LENGTH) return null;
+    let boundedTitle = title;
+    if (boundedTitle.length > SAVED_PANEL_MAX_TITLE_LENGTH) {
+      boundedTitle = boundedTitle.slice(0, SAVED_PANEL_MAX_TITLE_LENGTH);
+      if (/[\uD800-\uDBFF]$/.test(boundedTitle)) boundedTitle = boundedTitle.slice(0, -1);
+    }
+    return {
+      url,
+      title: boundedTitle,
+      favIconUrl: favIconUrl.length > SAVED_PANEL_MAX_FAVICON_URL_LENGTH ? '' : favIconUrl,
+    };
+  }
 
   function dispatchShellAction(action) {
     const shellFrame = document.getElementById('bento-shell-frame');

@@ -222,3 +222,89 @@ test('add-panel grant survives a throwing acknowledgement', () => {
   });
   assert.equal(api.consumeAddPanelGrant(extension, 41, GRANT_TOKEN).windowId, 7);
 });
+
+const MOUNT_SOURCES = {
+  current: '../src/browser/base/content/bento-shell-mount.js',
+  rollback: '../rollback/legacy-source/src/browser/base/content/bento-shell-mount.js',
+};
+
+/** Source of a top-level (2-space indented) function in the mount script. */
+function mountFunction(source, name) {
+  const start = source.indexOf(`\n  function ${name}(`);
+  assert.notEqual(start, -1, `${name} is missing`);
+  return source.slice(start, source.indexOf('\n  }\n', start) + 5);
+}
+
+/** Source of a single-line top-level `const` in the mount script. */
+function mountConstant(source, name) {
+  const match = new RegExp(`^  const ${name} = [^\\n]*;$`, 'm').exec(source);
+  assert.ok(match, `${name} is missing`);
+  return match[0];
+}
+
+/** Gecko pref types and getBoolPref's default-on-failure contract. */
+function fakePrefs(type, value) {
+  const types = { bool: 128, int: 64, string: 32, missing: 0 };
+  return {
+    PREF_INVALID: 0,
+    PREF_STRING: 32,
+    PREF_INT: 64,
+    PREF_BOOL: 128,
+    getPrefType: () => {
+      if (type === 'throws') throw new Error('prefs unavailable');
+      return types[type];
+    },
+    getBoolPref: (_name, fallback) => {
+      if (type === 'bool') return value;
+      if (fallback !== undefined) return fallback;
+      throw new Error('NS_ERROR_UNEXPECTED');
+    },
+  };
+}
+
+test('Save panel bounds its metadata to the validator caps', () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, MOUNT_SOURCES.current), 'utf8');
+  const code = `${[
+    'SAVED_PANEL_MAX_TITLE_LENGTH',
+    'SAVED_PANEL_MAX_URL_LENGTH',
+    'SAVED_PANEL_MAX_FAVICON_URL_LENGTH',
+  ]
+    .map((name) => mountConstant(source, name))
+    .join('\n')}
+${mountFunction(source, 'boundSavedPanelMetadata')}
+({ bound: boundSavedPanelMetadata, titleMax: SAVED_PANEL_MAX_TITLE_LENGTH, urlMax: SAVED_PANEL_MAX_URL_LENGTH, faviconMax: SAVED_PANEL_MAX_FAVICON_URL_LENGTH });`;
+  const { bound, titleMax, urlMax, faviconMax } = vm.runInNewContext(code);
+
+  // The producer caps mirror the wire validator, which stays strict.
+  const cap = (file, name) => {
+    const text = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../extensions/_shared', file),
+      'utf8',
+    );
+    const match = new RegExp(`${name} = ([\\d_]+);`).exec(text);
+    assert.ok(match, `${name} is missing from ${file}`);
+    return Number(match[1].replaceAll('_', ''));
+  };
+  assert.equal(titleMax, cap('export-schema.ts', 'MAX_TITLE_LENGTH'));
+  assert.equal(urlMax, cap('wire-action.ts', 'MAX_ACTION_URL_LENGTH'));
+  assert.equal(faviconMax, cap('wire-action.ts', 'MAX_FAVICON_URL_LENGTH'));
+
+  const url = 'https://example.com/';
+  assert.deepEqual(
+    { ...bound(url, 'Title', 'https://example.com/i.png') },
+    {
+      url,
+      title: 'Title',
+      favIconUrl: 'https://example.com/i.png',
+    },
+  );
+  assert.equal(bound(url, 'a'.repeat(titleMax), '').title.length, titleMax);
+  assert.equal(bound(url, 'a'.repeat(titleMax + 1), '').title.length, titleMax);
+  // The cut never leaves half of a surrogate pair.
+  const split = bound(url, `${'a'.repeat(titleMax - 1)}\u{1F600}`, '').title;
+  assert.equal(split, 'a'.repeat(titleMax - 1));
+  assert.equal(bound(url, 't', 'd'.repeat(faviconMax)).favIconUrl.length, faviconMax);
+  assert.equal(bound(url, 't', 'd'.repeat(faviconMax + 1)).favIconUrl, '');
+  // A URL is never truncated into a different address.
+  assert.equal(bound(`https://example.com/${'a'.repeat(urlMax)}`, 't', ''), null);
+});

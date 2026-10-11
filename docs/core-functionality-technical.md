@@ -53,6 +53,14 @@ message goes through `createShellActionIntake`
   dispatches (`useToolsPort.ts`) must send exactly the declared fields. Manual
   check: after any change to an action shape, exercise that UI path and watch the
   tools console for `dropped invalid shell message`.
+- Page-controlled strings must fit the caps before they are dispatched, because
+  one over-cap field drops the whole action. Save panel
+  (`boundSavedPanelMetadata` in `bento-shell-mount.js`) cuts the page title to
+  the title cap, drops a favicon over its cap, and skips a URL over the URL cap
+  (a truncated URL would be a different address). Pitfall: forwarding
+  `contentTitle` untouched made Save panel fail silently on a page with a title
+  over 4,096 characters. Keep the mount constants equal to the validator caps;
+  `scripts/bento-privacy-security.test.mjs` compares them.
 
 ## Native Tabs And Titlebar Controls
 
