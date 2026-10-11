@@ -36,6 +36,7 @@ import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -45,12 +46,10 @@ function MenuApp() {
   const [payload, setPayload] = useState<ChromeMenuOpenPayload | null>(null);
   // Mux Menu fires onAction (our onSelect) FIRST, then closes the
   // menu in the same synchronous frame which fires onOpenChange(false)
-  // (our onClose). Both handlers write document.title; chrome polls at
-  // 60ms and only sees the LAST value, so a naive impl would always
-  // observe CLOSE and never SELECT — the panel never resizes. This ref
-  // lets onClose detect that a select just happened and skip its title
-  // write, leaving SELECT as the observable signal. Cleared by the
-  // poll's natural reset (next open allocates a new contextId).
+  // (our onClose). Both handlers send a title and chrome receives both, in
+  // order. SELECT already hides the overlay and drops the handler, so this
+  // ref lets onClose skip the redundant CLOSE after a select. Reset when the
+  // next open allocates a new contextId.
   const justSelectedRef = useRef(false);
 
   useEffect(() => {
@@ -104,12 +103,12 @@ function MenuApp() {
           setPayload(null);
           return;
         }
-        document.title = `BENTO_MENU_CLOSE:${payload.contextId}`;
+        sendChromeTitle(`BENTO_MENU_CLOSE:${payload.contextId}`);
         setPayload(null);
       }}
       onSelect={(itemId) => {
         justSelectedRef.current = true;
-        document.title = `BENTO_MENU_SELECT:${payload.contextId}:${itemId}`;
+        sendChromeTitle(`BENTO_MENU_SELECT:${payload.contextId}:${itemId}`);
         setPayload(null);
       }}
     />

@@ -25,6 +25,7 @@ import {
 import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
+import { sendChromeTitle } from '../../bridge/chromeTitle';
 
 export interface TabListProps {
   revealTabUrl?: string;
@@ -1303,7 +1304,7 @@ export function TabList({
   useEffect(() => {
     const ids = visualTabOrder.filter((id) => selectedIds.has(id));
     if (ids.length === 0 && !mirroredSelectedTitleRef.current) return;
-    document.title = `${SELECTED_TABS_TITLE_PREFIX}${Date.now()}:${encodeSelectedTabIds(ids)}`;
+    sendChromeTitle(`${SELECTED_TABS_TITLE_PREFIX}${Date.now()}:${encodeSelectedTabIds(ids)}`);
     mirroredSelectedTitleRef.current = ids.length > 0;
   }, [selectedIds, visualTabOrder]);
 

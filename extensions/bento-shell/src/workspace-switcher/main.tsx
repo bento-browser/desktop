@@ -57,6 +57,7 @@ import { BentoIcon } from '../components/primitives/BentoIcon';
 // WorkspaceSwitcher.css are unused here; the popover/avatar/item rules
 // all apply identically to this overlay's menu DOM.
 import '../components/WorkspaceSwitcher/WorkspaceSwitcher.css';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -117,14 +118,11 @@ function WorkspaceSwitcherOverlayApp() {
   const [openPayload, setOpenPayload] = useState<WorkspaceSwitcherOpenPayload | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   // Set true when an item action forwards to another chrome overlay
-  // (edit-workspace, confirm). In that case close() must NOT overwrite
-  // document.title — react-aria's Menu.Item fires onAction then closes
-  // the menu in the same JS tick, so a CLOSE title written here would
-  // clobber the OPEN_EDIT_WORKSPACE / OPEN_CONFIRM title that the
-  // forwarding call just set, and the chrome poll on this frame would
-  // only ever see the close sentinel. Skipping the close-title in that
-  // case lets the chrome poll see the forward sentinel and call the
-  // matching show*() + hideWorkspaceSwitcher() pair.
+  // (edit-workspace, confirm). react-aria's Menu.Item fires onAction then
+  // closes the menu in the same JS tick, so close() would follow the
+  // OPEN_EDIT_WORKSPACE / OPEN_CONFIRM title the forwarding call just sent.
+  // Chrome handles the forward sentinel with the matching show*() +
+  // hideWorkspaceSwitcher() pair, so close() skips its redundant CLOSE title.
   const forwardingRef = useRef(false);
 
   useEffect(() => {
@@ -146,7 +144,7 @@ function WorkspaceSwitcherOverlayApp() {
       notifyWorkspaceSwitcherClosed();
       return;
     }
-    document.title = `${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`;
+    sendChromeTitle(`${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`);
     // Tell the sidebar trigger to drop its "open" visual state. The
     // chrome hide is signalled by the title above; this is purely for
     // the React UI mirror — chrome IPC and the sidebar's Zustand-style

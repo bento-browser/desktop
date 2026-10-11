@@ -14,6 +14,7 @@
 // traffic to bento-tools.
 
 import type { Action } from '@shared/protocol';
+import { sendChromeTitle } from './chromeTitle';
 
 export const CONFIRM_BUS_NAME = 'bento-confirm-bus';
 export const CONFIRM_OPEN_PREFIX = 'BENTO_OPEN_CONFIRM';
@@ -59,7 +60,7 @@ export function requestConfirm(payload: ConfirmPayload): void {
   ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
   // Timestamp suffix so successive opens always change the title string
   // (and therefore are picked up by the chrome script's title poll).
-  document.title = `${CONFIRM_OPEN_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
 }
 
 /** Subscribe to confirm-show payloads. Called by the confirm content's

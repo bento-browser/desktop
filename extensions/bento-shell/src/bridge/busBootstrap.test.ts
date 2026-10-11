@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Action, BentoSettings, Event } from '@shared/protocol';
+import { installFakeChromeTitle } from './fakeChromeTitle';
 
 const DOCUMENTS = 11;
 /** tabs, workspaces, settings, pinnedPanels, tabFolders, savedPanels. */
@@ -310,18 +311,20 @@ describe('shell bus bootstrap', () => {
       windowId?: number;
       panels: unknown[];
     } & Partial<typeof CHROME_SETTINGS>;
-    /** Every BENTO_PANELS title the sidebar wrote, decoded. */
-    let chromePanels: ChromePanels[];
+    let chromeTitle: ReturnType<typeof installFakeChromeTitle>;
+
+    /** Every BENTO_PANELS title chrome observed from the sidebar, decoded. */
+    function chromePanels(): ChromePanels[] {
+      chromeTitle.settle();
+      return chromeTitle.observed
+        .filter((title) => title.startsWith('BENTO_PANELS:'))
+        .map((title) =>
+          JSON.parse(Buffer.from(title.split(':')[2] ?? '', 'base64').toString('utf8')),
+        );
+    }
 
     beforeEach(() => {
-      chromePanels = [];
-      vi.stubGlobal('document', {
-        documentElement: { getAttribute: () => null },
-        set title(value: string) {
-          const payload = value.split(':')[2] ?? '';
-          chromePanels.push(JSON.parse(Buffer.from(payload, 'base64').toString('utf8')));
-        },
-      });
+      chromeTitle = installFakeChromeTitle({ documentElement: { getAttribute: () => null } });
     });
 
     it('forwards the active workspace with settings to a late sidebar whose cached panels arrive first', async () => {
@@ -331,10 +334,10 @@ describe('shell bus bootstrap', () => {
 
       await joinDocument({ sidebarWindowId: WINDOW_ID });
 
-      expect(new Set(chromePanels.map(({ workspaceId }) => workspaceId))).toEqual(
+      expect(new Set(chromePanels().map(({ workspaceId }) => workspaceId))).toEqual(
         new Set(['ws-2']),
       );
-      expect(chromePanels.at(-1)).toMatchObject({
+      expect(chromePanels().at(-1)).toMatchObject({
         windowId: WINDOW_ID,
         panels: [{ tabId: 1 }],
         ...CHROME_SETTINGS,
@@ -346,14 +349,14 @@ describe('shell bus bootstrap', () => {
       tools.boot();
 
       await joinDocument({ sidebarWindowId: WINDOW_ID });
-      expect(chromePanels).toEqual([]);
+      expect(chromePanels()).toEqual([]);
 
       tools.emit({
         type: 'workspaces/changed',
         deltas: [{ kind: 'activated', id: 'ws-2', windowId: WINDOW_ID }],
       });
 
-      expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
+      expect(chromePanels().map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
     });
 
     it('forwards a live boot once, without a held duplicate', async () => {
@@ -362,7 +365,7 @@ describe('shell bus bootstrap', () => {
 
       tools.boot();
 
-      expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
+      expect(chromePanels().map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
     });
 
     // A late sidebar in an assigned window can see these three arrive in any
@@ -399,11 +402,54 @@ describe('shell bus bootstrap', () => {
         }
       }
 
-      expect(chromePanels.length).toBeGreaterThan(0);
-      expect(chromePanels.every(({ workspaceId }) => workspaceId === 'ws-2')).toBe(true);
-      expect(chromePanels.at(-1)).toMatchObject({ panels: [{ tabId: 2 }], ...CHROME_SETTINGS });
+      const written = chromePanels();
+      expect(written.length).toBeGreaterThan(0);
+      expect(written.every(({ workspaceId }) => workspaceId === 'ws-2')).toBe(true);
+      expect(written.at(-1)).toMatchObject({ panels: [{ tabId: 2 }], ...CHROME_SETTINGS });
       // A re-forward must carry something new, never repeat the last write.
-      chromePanels.slice(1).forEach((write, i) => expect(write).not.toEqual(chromePanels[i]));
+      written.slice(1).forEach((write, i) => expect(write).not.toEqual(written[i]));
+    });
+
+    // Profile with the welcome flow not completed: the settings snapshot both
+    // re-forwards the held panels and flips welcomeShouldShow. App.tsx's welcome
+    // effect then runs after the handler, still in the same task, and its
+    // BENTO_OPEN_WELCOME title used to replace the BENTO_PANELS one before chrome
+    // could observe it, leaving chrome without panels and settings.
+    it('delivers panels and settings when the first-run welcome request follows in the same task', async () => {
+      await joinDocument({ sidebarWindowId: WINDOW_ID });
+      const sidebar = bus.channels.at(-1);
+      if (!sidebar) throw new Error('sidebar did not connect');
+      const { useSettingsStore } = await import('../state/settings');
+      const { startWelcomeRequests } = await import('./useWelcome');
+      let welcomeStarted = false;
+      useSettingsStore.subscribe((state) => {
+        if (welcomeStarted || state.current === null || state.current.welcomeSeen) return;
+        welcomeStarted = true;
+        queueMicrotask(startWelcomeRequests);
+      });
+      const arrive = (event: Event) => {
+        bus.queue.push({ to: sidebar, data: { kind: 'event', event } });
+        bus.drain();
+      };
+
+      arrive(panelsSync('ws-2', 2));
+      arrive({
+        type: 'workspaces/snapshot',
+        workspaces: WORKSPACE_IDS.map((id, index) => ({ id, name: id, createdAt: index })),
+        activeId: 'ws-1',
+        activeIdByWindow: { [WINDOW_ID]: 'ws-2' },
+      });
+      chromeTitle.settle();
+      arrive({
+        type: 'settings/snapshot',
+        settings: { ...persistedSettings, welcomeSeen: false },
+      });
+      await Promise.resolve();
+
+      expect(chromePanels().at(-1)).toMatchObject({ panels: [{ tabId: 2 }], ...CHROME_SETTINGS });
+      expect(chromeTitle.observed.some((title) => title.startsWith('BENTO_OPEN_WELCOME_'))).toBe(
+        true,
+      );
     });
   });
 });
