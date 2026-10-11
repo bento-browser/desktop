@@ -11,6 +11,7 @@ import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
+import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
@@ -521,7 +522,7 @@ async function restorePanelsForWorkspace(
   // broadcast — without this, downstream boot code (or onConnect's
   // bootReady await) can race ahead and the panels/sync gets dropped
   // when the addon-upgrade-mid-init kills the bg port.
-  await emitPanelsSync(workspaceId);
+  await emitPanelsSyncNow(workspaceId);
 }
 
 async function restorePanelsFromSessionMarkersAtBoot(): Promise<Set<string>> {
@@ -589,7 +590,7 @@ async function restorePanelsFromSessionMarkersAtBoot(): Promise<Set<string>> {
 
   for (const workspaceId of restoredWorkspaceIds) {
     syncPanelMarkersForWorkspace(workspaceId);
-    await emitPanelsSync(workspaceId);
+    await emitPanelsSyncNow(workspaceId);
   }
 
   return restoredWorkspaceIds;
@@ -634,7 +635,11 @@ async function readPanelMarkersForTabsWithRetries(
 // to all connected shells. Each shell forwards the snapshot to chrome via
 // title-IPC; chrome reconciles its panel strip. Only the ACTIVE workspace's
 // panels render — emitting for an inactive workspace is wasted work.
-async function emitPanelsSync(
+//
+// This is the immediate emit. Boot/restore paths that must not continue
+// before the broadcast has gone out await it directly; everything else goes
+// through the coalescing `emitPanelsSync` below.
+async function emitPanelsSyncNow(
   workspaceId: string,
   options: {
     scrollToPanelTabId?: number;
@@ -703,7 +708,7 @@ async function emitPanelsSync(
     for (const id of missingPanelIds) {
       panels.remove(workspaceId, id);
     }
-    await emitPanelsSync(workspaceId, options);
+    await emitPanelsSyncNow(workspaceId, options);
     return;
   }
   const mainWidthPx = panels.getMainWidth(workspaceId);
@@ -774,6 +779,14 @@ async function emitPanelsSync(
   }
   broadcastEvent(event);
 }
+
+// Coalesced entry point for every other caller: requests for one workspace
+// made in the same task (for example the two refreshes a tab-delta batch can
+// issue, or a handler that mutates layout and width) become one panels/sync
+// broadcast that reads state after the whole burst. Every shell document's
+// BENTO_PANELS title write sits downstream of this, so each avoided emit
+// saves work in all documents of all windows.
+const emitPanelsSync = createPanelsSyncScheduler(emitPanelsSyncNow);
 
 const keys = new KeyRegistry({ workspaces, broadcastEvent });
 
