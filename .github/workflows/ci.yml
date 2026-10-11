@@ -358,7 +358,6 @@ jobs:
         timeout-minutes: 320
         env:
           BENTO_RELEASE: '1'
-          BENTO_PR_BUILD: '1'
           BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
           # Dependencies, extensions, and the import already ran above.
           BENTO_RELEASE_PREPARED: '1'
