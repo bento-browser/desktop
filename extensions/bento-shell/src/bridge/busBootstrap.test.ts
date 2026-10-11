@@ -88,6 +88,8 @@ function createFakeTools() {
   const listeners = new Set<(message: object) => void>();
   const requests: string[] = [];
   let workspaceIds = [...WORKSPACE_IDS];
+  let activeId: string | null | undefined;
+  const activeIdByWindow: Record<number, string> = {};
 
   const emit = (event: Event) => {
     for (const listener of listeners) listener(event);
@@ -113,8 +115,8 @@ function createFakeTools() {
     'workspaces/requestSnapshot': (): Event => ({
       type: 'workspaces/snapshot',
       workspaces: workspaceIds.map((id, index) => ({ id, name: id, createdAt: index })),
-      activeId: workspaceIds[0] ?? null,
-      activeIdByWindow: {},
+      activeId: activeId === undefined ? (workspaceIds[0] ?? null) : activeId,
+      activeIdByWindow: { ...activeIdByWindow },
     }),
     'settings/requestSnapshot': (): Event => ({
       type: 'settings/snapshot',
@@ -148,17 +150,30 @@ function createFakeTools() {
     removeWorkspace(id: string): void {
       workspaceIds = workspaceIds.filter((candidate) => candidate !== id);
     },
+    /** Gives a window its own active workspace in every later snapshot. */
+    assignWindow(windowId: number, workspaceId: string): void {
+      activeIdByWindow[windowId] = workspaceId;
+    },
+    /** Overrides the global fallback workspace (default: the first one). */
+    setGlobalActive(workspaceId: string | null): void {
+      activeId = workspaceId;
+    },
   };
 }
 
-async function joinDocument() {
+/** Joins as the sidebar (title bridge on) when given the window it lives in. */
+async function joinDocument({ sidebarWindowId }: { sidebarWindowId?: number } = {}) {
   vi.resetModules();
-  const { initToolsPort } = await import('./useToolsPort');
+  vi.stubGlobal('location', {
+    hash: sidebarWindowId === undefined ? '' : `#bentoWindowId=${sidebarWindowId}`,
+  });
+  const { initToolsPort, enableSidePanelTitleBridge } = await import('./useToolsPort');
   const { useTabsStore } = await import('../state/tabs');
   const { usePanelsStore } = await import('../state/panels');
   const applied = { panels: 0 };
   usePanelsStore.subscribe(() => (applied.panels += 1));
   initToolsPort();
+  if (sidebarWindowId !== undefined) enableSidePanelTitleBridge();
   bus.drain();
   return { useTabsStore, usePanelsStore, applied };
 }
@@ -263,6 +278,57 @@ describe('shell bus bootstrap', () => {
       const joiner = await joinDocument();
 
       expect([...joiner.usePanelsStore.getState().byWorkspace.keys()]).toEqual(['ws-1']);
+    });
+  });
+
+  describe('sidebar forwarding of panels to chrome', () => {
+    const WINDOW_ID = 7;
+    /** Every BENTO_PANELS title the sidebar wrote, decoded. */
+    let chromePanels: Array<{ workspaceId: string; windowId?: number; panels: unknown[] }>;
+
+    beforeEach(() => {
+      chromePanels = [];
+      vi.stubGlobal('document', {
+        documentElement: { getAttribute: () => null },
+        set title(value: string) {
+          const payload = value.split(':')[2] ?? '';
+          chromePanels.push(JSON.parse(Buffer.from(payload, 'base64').toString('utf8')));
+        },
+      });
+    });
+
+    it('forwards once for a late sidebar whose cached panels arrive before its workspace', async () => {
+      tools.assignWindow(WINDOW_ID, 'ws-2');
+      tools.boot();
+
+      await joinDocument({ sidebarWindowId: WINDOW_ID });
+
+      expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
+      expect(chromePanels[0]).toMatchObject({ windowId: WINDOW_ID, panels: [{ tabId: 1 }] });
+    });
+
+    it('forwards a held replay when the window is assigned a workspace afterwards', async () => {
+      tools.setGlobalActive(null);
+      tools.boot();
+
+      await joinDocument({ sidebarWindowId: WINDOW_ID });
+      expect(chromePanels).toEqual([]);
+
+      tools.emit({
+        type: 'workspaces/changed',
+        deltas: [{ kind: 'activated', id: 'ws-2', windowId: WINDOW_ID }],
+      });
+
+      expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
+    });
+
+    it('forwards a live boot once, without a held duplicate', async () => {
+      tools.assignWindow(WINDOW_ID, 'ws-2');
+      await joinDocument({ sidebarWindowId: WINDOW_ID });
+
+      tools.boot();
+
+      expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
     });
   });
 });

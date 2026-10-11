@@ -2122,6 +2122,13 @@ only port to `bento-tools` and relays events and actions both ways.
   `BENTO_PANELS` title write. The joiner requests the six snapshots once, on
   the replayed boot, and only if it had not already seen a live boot. Tools
   answers each request with a snapshot broadcast to every document.
+- Chrome forwarding is order independent: the sidebar writes `BENTO_PANELS`
+  only for its window's active workspace, which it learns from the workspace
+  snapshot. A replayed `panels/sync` can arrive first, while that workspace is
+  still unknown, so the sidebar holds the latest one per workspace
+  (`heldPanelsSync` in `bridge/useToolsPort.ts`) and forwards the matching one
+  when `workspaces/snapshot` or `workspaces/changed` makes the workspace
+  known. Held syncs for other workspaces are discarded.
 - Cache pruning: the background drops a workspace's cached `panels/sync` on a
   `workspaces/changed` removal delta and on any `workspaces/snapshot` that
   lacks it, so replays never resurrect deleted workspaces.
@@ -2159,6 +2166,12 @@ Bus bootstrap pitfalls:
 - Do not gate the joiner's `panels/sync` replay on the live-boot check. The
   joiner is already ready when the replayed `panels/sync` messages arrive, and
   they are its only source of panel state for non-active workspaces.
+- Do not drop a `panels/sync` because the sidebar's active workspace is still
+  null. Hello replays are targeted, so no later overlay's `hello` re-broadcasts
+  panels, and chrome would keep showing main only until the next panel change
+  or workspace switch. Hold the sync and forward it when the workspace becomes
+  known (covered by `bridge/busBootstrap.test.ts`, "sidebar forwarding of
+  panels to chrome").
 - Do not put a timer in front of `emitPanelsSync`. Callers time follow-up work
   against the emit (the 80 ms delay before closing the old main tab after a
   panel promotion), and chrome reconciles against stale panel payloads if the
