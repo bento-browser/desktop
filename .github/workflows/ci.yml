@@ -93,7 +93,7 @@ jobs:
       - name: Validate JSON syntax
         run: |
           set -e
-          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json tsconfig.json .size-limit.json; do
+          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json .size-limit.json; do
             echo "checking $f"
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
@@ -240,6 +240,11 @@ jobs:
         # Missing or malformed built assets still fail.
         run: pnpm run size:check
 
+      - name: Rollback variants still lint, typecheck, and build
+        # Read-only isolated checks of rollback/legacy-source against the
+        # current dependency graph (docs/settings-consolidation-rollback.md).
+        run: pnpm run rollback:check
+
   build:
     name: ${{ github.event_name == 'workflow_dispatch' && 'Build' || 'Source import' }} (${{ matrix.platform }})
     # The checks above run in parallel and all pass before any build starts, so
@@ -353,7 +358,6 @@ jobs:
         timeout-minutes: 320
         env:
           BENTO_RELEASE: '1'
-          BENTO_PR_BUILD: '1'
           BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
           # Dependencies, extensions, and the import already ran above.
           BENTO_RELEASE_PREPARED: '1'

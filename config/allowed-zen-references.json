@@ -50,6 +50,12 @@
       "reason": "Tests preservation of the explicit Zen profile migrator preference during engine adoption."
     },
     {
+      "path": "scripts/bento-build.mjs",
+      "pattern": "ZEN_FIREFOX_VERSION",
+      "category": "import-compatibility",
+      "reason": "Recognises the engine/mozconfig written by the previous build tool, so source adoption can verify engines created before the Bento driver."
+    },
+    {
       "path": "patches/core-ui/09-bento-firefox-profile-first-run-import.patch",
       "pattern": "zen|Zen",
       "category": "import-compatibility",

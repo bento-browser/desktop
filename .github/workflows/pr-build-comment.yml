@@ -22,6 +22,7 @@ jobs:
     name: Update PR build comment
     if: github.event.workflow_run.event == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       # workflow_run has the default branch as its trusted source. Keep this
       # ref explicit and never use head_branch or head_sha as a checkout ref.
