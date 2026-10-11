@@ -14,6 +14,8 @@
 // Separate channel name from useConfirm's bus so payloads don't collide;
 // each overlay subscribes only to its own bus.
 
+import { sendChromeTitle } from './chromeTitle';
+
 export const EDIT_WORKSPACE_BUS_NAME = 'bento-edit-workspace-bus';
 export const EDIT_WORKSPACE_OPEN_PREFIX = 'BENTO_OPEN_EDIT_WORKSPACE';
 export const EDIT_WORKSPACE_CLOSE_PREFIX = 'BENTO_CLOSE_EDIT_WORKSPACE';
@@ -55,7 +57,7 @@ export function requestEditWorkspace(payload: EditWorkspacePayload): void {
     return;
   }
   ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
-  document.title = `${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
 }
 
 /** Subscribe to edit-workspace requests. Called by the overlay content's

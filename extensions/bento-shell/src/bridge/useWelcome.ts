@@ -8,13 +8,13 @@
 // Trigger flow:
 //   - App.tsx and welcome.html both watch the SettingsStore mirror. When
 //     the first snapshot arrives and welcomeSeen=false, they call
-//     requestWelcome() — sets document.title = BENTO_OPEN_WELCOME_<ts>,
-//     which the chrome poll picks up and reveals the overlay frame. The
-//     duplicate signal covers cold-start title races and showWelcome()
-//     is idempotent.
+//     requestWelcome() — sends BENTO_OPEN_WELCOME_<ts> through the shared
+//     title writer, which chrome's pagetitlechanged listener picks up to
+//     reveal the overlay frame. The duplicate signal covers cold-start
+//     races and showWelcome() is idempotent.
 //   - Welcome content dispatches settings/update {welcomeSeen: true} only
-//     from final dismiss paths, then sets its own document.title =
-//     BENTO_CLOSE_WELCOME_<ts> for chrome to hide.
+//     from final dismiss paths, then sends BENTO_CLOSE_WELCOME_<ts> for
+//     chrome to hide.
 //   - The import action stores the next onboarding step in extension storage,
 //     uses BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>, and lets chrome show the
 //     embedded Firefox migration host above the still-mounted onboarding flow.
@@ -23,13 +23,34 @@
 // No BroadcastChannel needed — the welcome carries no payload, just a
 // visibility signal.
 
+import { sendChromeTitle } from './chromeTitle';
+
 export const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
 export const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
 export const WELCOME_IMPORT_BROWSER_DATA_PREFIX = 'BENTO_IMPORT_BROWSER_DATA';
 
 /** Reveal the chrome welcome overlay. Idempotent at the chrome layer
- * (showWelcome no-ops if already visible). Timestamp suffix forces a
- * DOMTitleChanged-equivalent poll detection even on repeat calls. */
+ * (showWelcome no-ops if already visible). The timestamp suffix keeps repeat
+ * calls from being dropped as an unchanged title. */
 export function requestWelcome(): void {
-  document.title = `${WELCOME_OPEN_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${WELCOME_OPEN_PREFIX}_${Date.now()}`);
+}
+
+const WELCOME_REQUEST_ATTEMPTS = 5;
+const WELCOME_REQUEST_INTERVAL_MS = 200;
+
+/** Requests the overlay now and repeats for about a second. The repeats
+ * predate the shared title writer (a BENTO_PANELS write could displace the
+ * first request) and are harmless because showWelcome() is idempotent.
+ * Returns a function that stops them. */
+export function startWelcomeRequests(): () => void {
+  let attempts = 0;
+  const fire = () => {
+    requestWelcome();
+    attempts += 1;
+    if (attempts >= WELCOME_REQUEST_ATTEMPTS) clearInterval(handle);
+  };
+  fire();
+  const handle = setInterval(fire, WELCOME_REQUEST_INTERVAL_MS);
+  return () => clearInterval(handle);
 }

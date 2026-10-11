@@ -52,6 +52,7 @@ import { useSearchEnginesStore } from '../state/searchEngines';
 import { usePanelFocusStore } from '../state/panelFocus';
 import { useExternalMergeStore } from '../state/externalMerge';
 import { resolveThemeId } from '../theme/presets';
+import { sendChromeTitle } from './chromeTitle';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
@@ -270,7 +271,7 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
   const json = JSON.stringify(payload);
   // btoa needs latin1; encodeURIComponent first to handle multibyte.
   const b64 = btoa(unescape(encodeURIComponent(json)));
-  document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
+  sendChromeTitle(`BENTO_PANELS:${Date.now()}:${b64}`);
 }
 
 /** Forwards the pending panels/sync for this window's workspace once the

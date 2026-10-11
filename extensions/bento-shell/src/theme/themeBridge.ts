@@ -13,8 +13,10 @@
 // confirm, edit-workspace, settings) all share document.title for
 // their OWN sentinels and must not stomp this one.
 
+import { sendChromeTitle } from '../bridge/chromeTitle';
+
 export const THEME_TITLE_PREFIX = 'BENTO_THEME:';
 
 export function pushChromeTheme(themeId: string): void {
-  document.title = `${THEME_TITLE_PREFIX}${Date.now()}:${themeId}`;
+  sendChromeTitle(`${THEME_TITLE_PREFIX}${Date.now()}:${themeId}`);
 }

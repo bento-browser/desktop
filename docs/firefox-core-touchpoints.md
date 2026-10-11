@@ -236,7 +236,21 @@ Use this shape for new or changed touchpoints:
   synchronously with an updated `contentTitle`, or stops bubbling to the chrome
   window, every shell and overlay message is lost because nothing polls; if
   `currentURI` lags the first title event of a new document or stops matching
-  the extension host, the document check ignores legitimate titles),
+  the extension host, the document check ignores legitimate titles; the shell's
+  `sendChromeTitle` writer also assumes the content process reports a title from
+  a runnable queued by the first write (`Document::NotifyPossibleTitleChange` and
+  `DoNotifyPossibleTitleChange` in `dom/base/Document.cpp`) and that a
+  `MessagePort` message posted afterwards (`MessagePort::Dispatch`,
+  `dom/messagechannel/MessagePort.cpp`) runs after it, both being Normal-priority
+  main-thread dispatches ordered by creation (`ThreadEventTarget::Dispatch` in
+  `xpcom/threads/ThreadEventTarget.cpp`, `Task::PriorityCompare` in
+  `xpcom/threads/TaskController.h`). If either runnable gains a different
+  priority or event queue, or the report starts reading the title earlier, a sent
+  title is lost again. Timers cannot replace the port because
+  `TimeoutManager::RunTimeout` (`dom/base/TimeoutManager.cpp`) batches every
+  expired timeout into one task. Rerun the sidebar-reload check in
+  `docs/core-functionality-technical.md` ("Shell to chrome bridge") on a profile
+  with `welcomeSeen` false after any change to document title reporting),
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, panel focus detection on
   privileged `about:*` pages, sidebar address scoping,
