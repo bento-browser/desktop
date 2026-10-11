@@ -1300,7 +1300,17 @@ intermittently choppy. A stale, unopened `.parentlock` from an already-exited
 instance remains cleanable. Because the cleaner recursively removes every
 non-allowlisted entry, it also resolves the configured profile path and refuses
 to clean the repository root, a symlink target outside the checkout, or any
-other path outside the Bento repository.
+other path outside the Bento repository. Inside the checkout it refuses a path
+that contains git-tracked files (`git ls-files`), whose first component below
+the root is a tracked top-level entry, `.git`, `engine`, `node_modules`, or
+`.bento` (compared case-insensitively), or that cannot be checked because git
+fails. It cleans an existing directory only if that directory is empty, holds
+the `.bento-dev-profile-marker` file the script writes on first use, or already
+has `times.json` or `prefs.js` (profiles from before the marker). A missing
+directory is created and marked. The marker is in the `KEEP` allowlist. Session
+recovery files (`recovery.jsonlz4`, `recovery.baklz4`) are still deleted on
+purpose. `scripts/dev-profile-clean.test.mjs` exercises these rules against
+temporary git repositories.
 The welcome overlay browser stays mounted under `#browser` so its title-IPC
 open/close signals stay reliable. Bento modal overlays also share a separate
 `bento-overlay-toolbar-scrim` for the native toolbar/urlbar strip, which
