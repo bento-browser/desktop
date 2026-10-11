@@ -1,6 +1,6 @@
 /* global console, process */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,9 +42,20 @@ function readArgs(argv) {
   return args;
 }
 
+// Missing paths are read and caught rather than checked first, so nothing can
+// change between a check and the read or write that follows it.
+function readOrNull(read) {
+  try {
+    return read();
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 function cssFiles(directory, root) {
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  const entries = readOrNull(() => readdirSync(directory, { withFileTypes: true })) ?? [];
+  return entries.flatMap((entry) => {
     const path = join(directory, entry.name);
     const relativePath = relative(root, path).split('\\').join('/');
     if (entry.isDirectory()) return relativePath === SKIPPED_DIR ? [] : cssFiles(path, root);
@@ -66,7 +77,8 @@ function main() {
   const { root, writeCap, acceptGrowth } = readArgs(process.argv.slice(2));
   const capPath = resolve(root, CAP_FILE);
   const measured = measure(root);
-  const previous = existsSync(capPath) ? parseCap(readFileSync(capPath, 'utf8')) : null;
+  const capText = readOrNull(() => readFileSync(capPath, 'utf8'));
+  const previous = capText === null ? null : parseCap(capText);
 
   if (writeCap) {
     // Without a cap file the current counts become the first cap.
