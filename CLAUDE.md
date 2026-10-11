@@ -140,8 +140,10 @@ Before creating or modifying a component:
 2. Use the root `@muxui/react` export or a documented public subpath. Do not
    import private package files or copy generated package output into Bento.
 3. Import `src/theme/muxui.css` once from each entry point. It places the public
-   Mux styles and themes in the low-precedence `muxui` layer; keep Bento tokens
-   and the generated preset bridge after that boundary.
+   Mux styles in the low-precedence `muxui` layer; keep Bento tokens and the
+   generated preset bridge after that boundary. Mux themes are not imported
+   there: each non-Default theme is its own `public/themes/<id>.css` sheet that
+   `src/theme/themeSheets.ts` loads when a document shows it.
 4. Put `data-muxui-theme`, `data-muxui-color-scheme`, and
    `data-muxui-contrast` on the same theme scope. `themeScope.ts` resolves
    persisted aliases and unknown ids at the presentation boundary while the
@@ -208,6 +210,7 @@ Before creating or modifying a component:
 - **Only the maintainer flips to v0.1.0.** That cutover enables official public releases, with their signing, notarization, and distribution requirements. Public PR test builds do not authorize this version bump.
 - **Keep v0.0.X public downloads limited to PR tests.** Do not publish a GitHub Release, push installers to bentobrowser.app, or announce an official release. The test-build exception covers the associated PR comment and CI artifacts only.
 - **The release CI workflow can still run** on v0.0.X tags to exercise the pipeline. Its draft GitHub Release is for internal review only and must not be published.
+- **The updater stays disabled.** Do not set `updates.enabled` to `true` in [bento.json](bento.json), or publish a MAR or update metadata, until the readiness inputs in `docs/build-tooling.md` ("Updater") exist. The release gate and the build driver refuse it, and builds with the updater disabled produce and collect no MAR or update XML.
 
 PR comments must identify the source commit, platform, artifact expiration, and unsigned test-build status. This exception does not relax the signing or approval gates for official public releases.
 
@@ -293,6 +296,8 @@ engine/obj-bento/dist/Bento.app/Contents/MacOS/bento \
 Every build mode compiles into `engine/obj-bento` (the generated mozconfig sets `MOZ_OBJDIR`), so the path no longer changes with the host OS version. A platform-named `engine/obj-<triple>` directory from an earlier build is not used any more: the first `pnpm run build` compiles from scratch into `engine/obj-bento`, and the old directory can be deleted by hand.
 
 `node scripts/bento-build.mjs objdir` prints the directory mach builds into; `package`, `updates-browser` and `build-release.sh` use only that directory and fail if it does not exist. `dev-launch.sh`, `sync-shell.sh` and `sync-builtin-addon-symlinks.sh` also accept a single legacy `engine/obj-*` build while `obj-bento` does not exist yet, and say so on stderr; several legacy directories are an error. `BENTO_OBJDIR=obj-<name>` changes the name written into the mozconfig at the next build (it must be an `obj-*` directory directly under `engine/`). A `MOZ_OBJDIR` in `configs/` or the root `mozconfig`, or a `MOZCONFIG` pointing at another file, would send mach somewhere else and is rejected.
+
+Build modes: `dev` (the default) and `debug` compile with `--disable-release` (and `--enable-macos-target=11.0` on macOS), so dev binaries do not exercise release codegen; only `release`, which `scripts/build-release.sh` and CI release builds select, uses `--enable-release`. The mode's options are appended by `scripts/bento-build.mjs`, not set in `configs/common/mozconfig`. Switching modes in `engine/obj-bento` makes mach reconfigure and rebuild; use `BENTO_OBJDIR` for a second tree. Every mode also compiles with `--disable-updater` while `bento.json` `updates.enabled` is `false`. See `docs/build-tooling.md` ("Build modes and configure flags", "Updater") before changing either, and log configure-flag changes in `docs/firefox-core-touchpoints.md`.
 
 Then iterate by what you changed:
 

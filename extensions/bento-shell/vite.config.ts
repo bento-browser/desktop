@@ -17,8 +17,10 @@ import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { stripContrastMore } from './contrast-more.mjs';
 import { moduleIdentityGuard } from './module-identity-guard';
+import { pruneMuxCss } from './mux-css-prune';
 import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
 import { panelNewtabCss } from './panel-newtab-css';
+import { woff2Fonts } from './woff2-fonts';
 
 const muxLocal = resolveMuxLocal();
 
@@ -62,6 +64,8 @@ const shellConfig = defineConfig(({ mode }) => ({
     react({ jsxRuntime: 'automatic' }),
     stripCrossOrigin(),
     copyChromeBridgeExperiment(),
+    woff2Fonts(),
+    pruneMuxCss(),
     panelNewtabCss(BUILD_TARGET),
     moduleIdentityGuard(),
     muxSourcePlugin(muxLocal, resolve(__dirname, '../../node_modules/@muxui/react/package.json')),

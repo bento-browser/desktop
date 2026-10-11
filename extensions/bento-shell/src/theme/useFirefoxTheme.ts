@@ -13,6 +13,8 @@
 // light/dark value for Auto. Regular extension tabs can have their
 // matchMedia result skewed by Bento's content color-scheme override, so
 // pages like Settings should prefer this cached value.
+// localStorage 'workspace-theme' (written by applyRootTheme.ts, not here) is the matching
+// hint for the workspace theme's stylesheet; boot.js requests that sheet pre-React.
 
 import { useEffect } from 'react';
 import type { UiColorModePref } from '@shared/protocol';

@@ -42,6 +42,7 @@
     "ignoredFiles": [".*\\.json"]
   },
   "updates": {
+    "enabled": false,
     "hostname": "updates.bentobrowser.app",
     "channel": "bento"
   }

@@ -32,13 +32,20 @@ troubleshoot.
   also pushes it to the Firefox chrome window via the `BENTO_THEME:`
   document.title sentinel; `bento-shell-mount.js` picks it up and
   copies it to the chrome `<window>` root.
-- Both surfaces share the generated theme stylesheet bundle — Vite consumes
-  `theme/presets/index.css`, while `pnpm run import` includes that same generated
-  artifact in `bento-chrome-tokens.css` for Firefox chrome.
+- Each theme except Default is its own stylesheet, so a document loads only the
+  theme it shows. `pnpm run theme:sync` writes `theme/presets/index.css` (Default
+  and the shared token bridge, imported by every entry) and
+  `extensions/bento-shell/public/themes/<id>.css` (one sheet per other theme,
+  tracked). `theme/themeSheets.ts` attaches the sheet as a `<link>`; for a new
+  window, `public/boot.js` requests the last applied theme's sheet before React
+  mounts (localStorage `workspace-theme`) and `themeSheets.ts` adopts that link.
+  `pnpm run import` writes the chrome equivalents: `bento-chrome-tokens.css`
+  (shared tokens and Default) and `bento-chrome-themes/<id>.css`.
 
-Switching themes synchronously updates the shared scope's theme, mode, and
-contrast attributes. No runtime CSS generation or `<style>` element churn is
-needed.
+Switching themes attaches the new theme's sheet, then updates the shared scope's
+theme, mode, and contrast attributes once it has loaded; the old sheet is removed
+after that. No runtime CSS generation or `<style>` element churn is needed. If a
+sheet cannot load, the document stays on Default.
 
 ## Generating a custom Bento theme with a static Scale export
 
@@ -152,11 +159,13 @@ theme.
 After importing:
 
 ```sh
-pnpm run import   # regenerate bento-chrome-tokens.css with the new theme
+pnpm run import   # regenerate the chrome token sheets with the new theme
 ```
 
-This rebuilds the chrome stylesheet so the new theme reaches the
-Firefox chrome window too — required if you want the URL bar /
+The importer's sync step wrote the shell sheet
+(`public/themes/<id>.css`). `import` rebuilds the chrome stylesheets
+(`bento-chrome-tokens.css` and `bento-chrome-themes/<id>.css`) so the new theme
+reaches the Firefox chrome window too — required if you want the URL bar /
 tabstrip / titlebar to re-skin alongside the shell.
 
 ## Picking a theme inside Bento
@@ -257,8 +266,9 @@ html[data-bento-theme='<id>'][data-color-mode='dark'] {
 }
 ```
 
-Run `pnpm run theme:sync` to regenerate `index.css` and `index.ts`, then
-`pnpm run import` to regenerate `bento-chrome-tokens.css`.
+Run `pnpm run theme:sync` to regenerate `index.css`, `index.ts` and the theme's
+sheet in `public/themes/`, then `pnpm run import` to regenerate the chrome
+stylesheets.
 
 ## Token surface
 
@@ -304,13 +314,15 @@ themeId ?? 'default')`. Flipping that attribute swaps which scoped
 
 - [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
   reads generated `presets/index.css` into the chrome-side
-  `bento-chrome-tokens.css`. The existing
+  `bento-chrome-tokens.css`, and each `public/themes/<id>.css` sheet into
+  `bento-chrome-themes/<id>.css`. The existing
   `rewriteHtmlToRoot` regex converts bare `html` selectors to `:root`
   so the chrome `<window>` element matches.
 - [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
-  injects that stylesheet at boot, then polls the shell sidebar's
-  `document.title`. When it sees `BENTO_THEME:`, `handleThemeTitle`
-  copies the `themeId` onto chrome's `documentElement[data-bento-theme]`.
+  injects the base stylesheet at boot, then polls the shell sidebar's
+  `document.title`. When it sees `BENTO_THEME:` (or a `BENTO_PANELS` payload),
+  `applyChromeThemeToDocument` attaches the theme's chrome sheet and, once it has
+  loaded, sets the `themeId` on chrome's `documentElement[data-bento-theme]`.
 
 ### Why this shape
 
@@ -380,8 +392,8 @@ There is no `pnpm theme:remove` script. Only repo-local custom themes can be
 removed independently:
 
 1. Delete `extensions/bento-shell/src/theme/presets/<id>.css`.
-2. Run `pnpm run theme:sync`.
-3. Run `pnpm run import` to drop the rules from `bento-chrome-tokens.css`.
+2. Run `pnpm run theme:sync` (this deletes `public/themes/<id>.css`).
+3. Run `pnpm run import` to delete `bento-chrome-themes/<id>.css`.
 
 Shipped Standard and Monochromatic themes are controlled by the pinned
 `@muxui/react/themes` version and are not edited in Bento.
@@ -402,17 +414,21 @@ metadata entry is present. A package-resolution error means the local Mux UI
 build or registry install is incomplete.
 
 **The picker shows the theme but selecting it changes nothing.**
-Run `pnpm run theme:sync` and check `presets/index.css` for the theme's
-`[data-bento-theme]` selector. Then check the dev server / built bundle — Vite's
-CSS pipeline may have a stale cache; restart
+Run `pnpm run theme:sync` and check `public/themes/<id>.css` for the theme's
+`[data-bento-theme]` selector (the Default theme lives in `presets/index.css`).
+Then check the network panel for `themes/<id>.css` — a missing file leaves the
+document on Default. Vite's CSS pipeline may also have a stale cache; restart
 `pnpm --filter @bento/shell dev` or rebuild.
 
 **Shell re-skins but chrome stays default.**
 You haven't re-run `pnpm run import` since adding the theme. The
-chrome stylesheet (`bento-chrome-tokens.css`) is rebuilt by
+chrome stylesheets (`bento-chrome-tokens.css` and
+`bento-chrome-themes/<id>.css`) are rebuilt by
 `scripts/generate-chrome-tokens.mjs`, which is wired into the
 `import` script. After rebuilding, restart Bento — the chrome
-stylesheet is loaded at boot, not hot-swapped.
+stylesheets are registered at build time (jar.mn), not hot-swapped. A new theme
+sheet added since the last full build only appears in a dev app after
+`pnpm run import` links the `bento-chrome-themes/` directory.
 
 **Foreground text reads poorly on a tinted button.**
 Mux UI's defaults for `--color-N-fg` aren't tuned for your custom
@@ -467,8 +483,11 @@ to hex and re-import.
   [`extensions/bento-shell/src/theme/useWorkspaceTheme.ts`](../extensions/bento-shell/src/theme/useWorkspaceTheme.ts)
 - Chrome bridge:
   [`extensions/bento-shell/src/theme/themeBridge.ts`](../extensions/bento-shell/src/theme/themeBridge.ts)
-- Chrome-tokens generator (loads every preset into the chrome
-  stylesheet): [`scripts/generate-chrome-tokens.mjs`](../scripts/generate-chrome-tokens.mjs)
+- Shell theme sheet loader:
+  [`extensions/bento-shell/src/theme/themeSheets.ts`](../extensions/bento-shell/src/theme/themeSheets.ts)
+- Chrome-tokens generator (shared tokens and Default into the base chrome
+  stylesheet, every other preset into its own sheet):
+  [`scripts/generate-chrome-tokens.mjs`](../scripts/generate-chrome-tokens.mjs)
 - Chrome title-IPC handler: search
   [`src/browser/base/content/bento-shell-mount.js`](../src/browser/base/content/bento-shell-mount.js)
   for `THEME_PREFIX` and `handleThemeTitle`.

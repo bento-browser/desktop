@@ -3,7 +3,10 @@
   "publicReleaseReady": false,
   "updateService": {
     "hostname": "updates.bentobrowser.app",
-    "marSigningKeyFingerprint": ""
+    "marSigningKeyFingerprint": "",
+    "updaterCertificateFingerprint": "",
+    "hostCompiledIn": false,
+    "isolatedRoundTripVerified": false
   },
   "platformSigning": {
     "linuxManifestKeyFingerprint": "",

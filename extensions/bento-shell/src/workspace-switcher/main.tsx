@@ -37,6 +37,7 @@ import '../theme/document-base.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../theme/themeScope';
+import { useThemeSheets } from '../theme/themeSheets';
 import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
 import { requestConfirm } from '../bridge/useConfirm';
 import { requestEditWorkspace } from '../bridge/useEditWorkspace';
@@ -101,6 +102,8 @@ function WorkspaceSwitcherOverlayApp() {
   useWorkspaceTheme();
   const colorScheme = useResolvedColorScheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
+  // Each avatar renders in its own workspace's theme scope.
+  useThemeSheets(workspaces.map((w) => w.themeId));
   // Per-window active workspace (phase A.3). The chrome window that owns
   // this overlay determines which workspace is highlighted as "current".
   const windowId = useCurrentWindowId();

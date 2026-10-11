@@ -5,8 +5,12 @@
  * component layers follow in the `bento` layer so existing shell overrides
  * retain their authority. Keep the package imports here so entry points do
  * not accidentally establish different cascade orderings.
+ *
+ * The selectable preset palettes (@muxui/react/themes.css) are not imported
+ * here. scripts/sync-theme-presets.mjs splits them into one sheet per theme
+ * (public/themes/<id>.css, same `muxui` layer) and src/theme/themeSheets.ts
+ * attaches only the sheets a document shows.
  */
 @layer muxui, bento;
 
 @import '@muxui/react/styles.css' layer(muxui);
-@import '@muxui/react/themes.css' layer(muxui);

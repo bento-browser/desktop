@@ -4,7 +4,9 @@
  * Canonical metadata comes from @muxui/react/themes. Repo-local sibling CSS
  * files supply Bento-specific themes. Selectors are adapted to
  * data-bento-theme, and the public Mux base blocks are scoped to
- * data-muxui-theme for default/custom compatibility. Do not edit by hand.
+ * data-muxui-theme for default/custom compatibility. This file carries the
+ * Default theme only; every other theme is a sheet in public/themes/ that
+ * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
  *
  * @muxui/react/styles.css sha256:2f83e5d84de03a69bbba224d206436504bc6a267cb8dd3ad96b348514c23feb3
  * @muxui/react/themes.css sha256:8beb3598389f46d389e2f644f508f049becaa46569ab945f548093245ee2d460
@@ -1228,7 +1230,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --space-xxsmall: var(--space-4xs);
 }
 
-/* ─── Mux public base projection for Bento default/custom themes ───── */
+/* ─── Mux public base projection for the Default theme ─────────────── */
 [data-muxui-theme='default'] {
   --muxui-component-button-background: var(--muxui-semantic-action-background);
   --muxui-component-button-danger-ghost-foreground: var(--muxui-semantic-action-danger-foreground);

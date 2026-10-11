@@ -9,6 +9,7 @@ import {
   type BentoThemeMeta,
 } from '../../theme/presets';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
+import { ALL_THEME_IDS, useThemeSheets } from '../../theme/themeSheets';
 import { BentoIcon, Column } from '../primitives';
 import './WorkspaceThemePicker.css';
 
@@ -88,6 +89,8 @@ export function WorkspaceThemePicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedTheme = getThemeMeta(selectedThemeId);
   const colorScheme = useResolvedColorScheme();
+  // The trigger and every swatch render their own theme's scope.
+  useThemeSheets(ALL_THEME_IDS);
 
   const filteredThemes = useMemo(
     () => THEME_PICKER_ITEMS.filter((theme) => themeMatchesQuery(theme, query)),
