@@ -97,13 +97,15 @@
   // Runtime half of the firefox-compat check; scripts/firefox-compat-registry.mjs
   // holds the use, call sites, and Firefox locators, and a test keeps this list
   // equal to its runtime entries. After delayed startup each window probes the
-  // list once and logs '[bento-compat] missing <id>', never throwing, changing
-  // behaviour, or loading a lazy script or module. It sits above the patch
-  // sites because they call bentoCompatNoteNative.
-  // window.BentoFirefoxCompat.check() re-runs it.
+  // list once and logs '[bento-compat] missing <id>', never throwing or
+  // changing behaviour. The probe is passive: it reads properties through
+  // descriptors and never calls an accessor (a lazy global stays unloaded and
+  // is deferred) and imports a module only once Cu.isESModuleLoaded says it is
+  // loaded. It sits above the patch sites because they call
+  // bentoCompatNoteNative. window.BentoFirefoxCompat.check() re-runs it.
   const BENTO_COMPAT_PROBES = {
-    // owner: members. 'name()' is a method (typeof is function); the rest are
-    // present per the in operator, so getters never run. '' is the window.
+    // owner: members. 'name()' is a method (a function-valued data property);
+    // the rest need only exist, accessors included. '' is the window.
     members: {
       gBrowser: [
         'on_visibilitychange()', '_beginRemoveTab()', '_endRemoveTab()', '_findTabToBlurTo()',
@@ -153,29 +155,20 @@
     },
     // members that need more than presence
     custom: {
-      delayedStartupPromise: (win) => typeof win.delayedStartupPromise?.then === 'function',
+      delayedStartupPromise: (win) =>
+        typeof bentoCompatData(bentoCompatData(win, 'delayedStartupPromise'), 'then') === 'function',
       'MozTabbrowserTab.linkedPanel': (win) =>
-        typeof win.gBrowser?.selectedTab?.linkedPanel === 'string',
-      'MozBrowser.mIconURL': (win) => 'mIconURL' in Object(win.gBrowser?.selectedBrowser),
+        typeof bentoCompatData(BENTO_COMPAT_ROOTS.MozTabbrowserTab(win), 'linkedPanel') === 'string',
+      'MozBrowser.mIconURL': (win) =>
+        !!bentoCompatPeek(win.document?.querySelector('browser'), 'mIconURL'),
     },
-    // Probed once loaded: an absent lazy global is missing, one still behind
-    // its getter is deferred.
-    lazy: [
-      'DownloadsButton',
-      'DownloadsPanel',
-      'DownloadsView',
-      'PrivateDownloadsSubview',
-      'PlacesUIUtils',
-      'resource:///modules/MigrationUtils.sys.mjs',
-      'chrome://devtools-startup/content/DevToolsShim.sys.mjs',
-    ],
-    // a lazy global whose script is loaded through another global's getter
+    // a global assigned by a script that another global's getter loads
     gate: { PrivateDownloadsSubview: 'DownloadsPanel' },
   };
-  // Owners that are not window globals.
+  // Owners that are not window globals, found by native calls, not gBrowser getters.
   const BENTO_COMPAT_ROOTS = {
     MozBrowser: (win) => win.customElements?.get('browser'),
-    MozTabbrowserTab: (win) => win.gBrowser?.selectedTab,
+    MozTabbrowserTab: (win) => win.document?.querySelector('.tabbrowser-tab[selected]'),
   };
   // Patch sites record Firefox's original member here (id -> value) before
   // replacing it, so the probe judges Firefox's member, not Bento's wrapper.
@@ -200,71 +193,92 @@
       entries.push({ id, kind: 'module', exported });
     });
     Object.keys(probes.custom).forEach((id) => entries.push({ id, kind: 'custom' }));
-    for (const entry of entries) {
-      entry.lazy = probes.lazy.includes(entry.kind === 'module' ? entry.id : entry.id.split('.')[0]);
-    }
     return entries;
   }
 
-  // 'ok' | 'missing' | 'deferred' (lazy object not loaded yet). A probe that
-  // throws counts as missing.
-  function bentoCompatProbe(win, { id, kind, lazy, exported }) {
+  // The descriptor for key along the prototype chain. Unlike a property read it
+  // never calls an accessor: 'value' in it means data, else an untriggered getter.
+  function bentoCompatPeek(object, key) {
+    for (let o = object; o != null; o = Object.getPrototypeOf(o)) {
+      const descriptor = Object.getOwnPropertyDescriptor(o, key);
+      if (descriptor) return descriptor;
+    }
+    return undefined;
+  }
+
+  const bentoCompatData = (object, key) => bentoCompatPeek(object, key)?.value;
+
+  // 'ok' | 'missing' | 'deferred' (behind an untriggered accessor, or a module
+  // not loaded yet). A probe that throws counts as missing.
+  function bentoCompatProbe(win, { id, kind, exported }) {
     try {
       if (BENTO_COMPAT_NATIVE.has(id)) {
         return typeof BENTO_COMPAT_NATIVE.get(id) === 'function' ? 'ok' : 'missing';
       }
       if (kind === 'module') {
-        if (lazy && !(typeof Cu !== 'undefined' && Cu.isESModuleLoaded?.(id))) return 'deferred';
+        if (!Cu.isESModuleLoaded(id)) return 'deferred';
         return exported in ChromeUtils.importESModule(id) ? 'ok' : 'missing';
       }
       if (kind === 'element') return win.document.getElementById(id) ? 'ok' : 'missing';
-      if (lazy) {
-        // A lazy getter stays an accessor until first read; do not trigger it.
-        const root = id.split('.')[0];
-        const descriptor = Object.getOwnPropertyDescriptor(win, BENTO_COMPAT_PROBES.gate[root] ?? root);
-        if (!descriptor) return 'missing';
-        if (!('value' in descriptor)) return 'deferred';
-      }
       if (kind === 'custom') return BENTO_COMPAT_PROBES.custom[id](win) ? 'ok' : 'missing';
       const dot = id.lastIndexOf('.');
-      const [head, ...path] = (dot === -1 ? '' : id.slice(0, dot)).split('.');
-      let owner = win;
-      if (head) owner = Object.hasOwn(BENTO_COMPAT_ROOTS, head) ? BENTO_COMPAT_ROOTS[head](win) : win[head];
-      for (const part of path) owner = owner?.[part];
-      if (BENTO_COMPAT_PROBES.proto.includes(id)) owner = Object.getPrototypeOf(Object(owner));
       const member = id.slice(dot + 1);
-      const present = kind === 'method' ? typeof owner?.[member] === 'function' : member in Object(owner);
-      return present ? 'ok' : 'missing';
+      let owner = win;
+      for (const [index, key] of (dot === -1 ? [] : id.slice(0, dot).split('.')).entries()) {
+        const step =
+          index === 0 && Object.hasOwn(BENTO_COMPAT_ROOTS, key)
+            ? { value: BENTO_COMPAT_ROOTS[key](win) }
+            : bentoCompatPeek(owner, key);
+        if (!step) {
+          // Absent is missing, unless the global's script is not loaded yet.
+          const gate = index === 0 && BENTO_COMPAT_PROBES.gate[key];
+          const loader = gate && bentoCompatPeek(win, gate);
+          return loader && !('value' in loader) ? 'deferred' : 'missing';
+        }
+        if (!('value' in step)) return 'deferred';
+        owner = step.value;
+      }
+      const target =
+        BENTO_COMPAT_PROBES.proto.includes(id) && owner != null ? Object.getPrototypeOf(owner) : owner;
+      const found = bentoCompatPeek(target, member);
+      if (!found) return 'missing';
+      if (kind !== 'method') return 'ok';
+      if (!('value' in found)) return 'deferred';
+      return typeof found.value === 'function' ? 'ok' : 'missing';
     } catch {
       return 'missing';
     }
   }
 
-  function runBentoFirefoxCompat(win = window) {
+  // Lists the ids of each outcome; probed counts present plus missing. Before
+  // delayed startup (started false) every member is deferred.
+  function runBentoFirefoxCompat(win = window, started = true) {
+    const present = [];
     const missing = [];
     const deferred = [];
-    let probed = 0;
+    const lists = { ok: present, missing, deferred };
     for (const entry of bentoCompatEntries()) {
-      const state = bentoCompatProbe(win, entry);
-      if (state === 'deferred') {
-        deferred.push(entry.id);
-        continue;
-      }
-      probed += 1;
-      if (state === 'ok') continue;
-      missing.push(entry.id);
-      console.error(`[bento-compat] missing ${entry.id}`);
+      const state = started ? bentoCompatProbe(win, entry) : 'deferred';
+      lists[state].push(entry.id);
+      if (state === 'missing') console.error(`[bento-compat] missing ${entry.id}`);
     }
+    const probed = present.length + missing.length;
     console.info(
       `[bento-compat] probed ${probed} members on Firefox ${Services.appinfo.version}: ${missing.length} missing, ${deferred.length} deferred`,
     );
-    return { probed, missing, deferred };
+    return { probed, present, missing, deferred };
   }
 
   function scheduleBentoFirefoxCompatChecks() {
-    window.BentoFirefoxCompat = Object.freeze({ check: () => runBentoFirefoxCompat(window) });
-    const run = () => runBentoFirefoxCompat(window);
-    const ready = window.delayedStartupPromise;
+    let started = false;
+    window.BentoFirefoxCompat = Object.freeze({
+      check: () => runBentoFirefoxCompat(window, started),
+    });
+    const run = () => {
+      started = true;
+      runBentoFirefoxCompat(window);
+    };
+    const ready = bentoCompatData(window, 'delayedStartupPromise');
     if (typeof ready?.then === 'function') ready.then(run);
     else window.addEventListener('load', () => window.setTimeout(run, 0), { once: true });
   }

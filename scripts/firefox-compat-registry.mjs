@@ -13,8 +13,8 @@
 //     (node scripts/check-firefox-compat.mjs --write-docs).
 //   - A test keeps the compact probe list in the @bento-firefox-compat section of
 //     src/browser/base/content/bento-shell-mount.js equal to the entries whose
-//     probe is R or R-lazy. Adding a runtime-probable entry means adding its id
-//     to that list too.
+//     probe is R. Adding a runtime-probable entry means adding its id to that
+//     list too.
 //
 // Entry fields:
 //   id      unique. 'Owner.member' for members, the id for elements, the URL
@@ -23,14 +23,15 @@
 //   kind    method | member | element | module | source.
 //   how     wraps | overrides | calls | reads | writes | queries | listens |
 //           dispatches | imports.
-//   probe   R: probed in a live window by the mount. R-lazy: probed only once
-//           the object is already loaded, so the check never forces a lazy
-//           script or module to load (a lazy global that is absent altogether
-//           is missing; one still behind its getter is deferred). E: engine
-//           check only (events, markup, instance fields assigned late,
-//           elements inside an <html:template> until their owner expands it,
-//           members of documents other than the browser window,
-//           user-customizable toolbar items); kind is source.
+//   probe   R: probed in a live window by the mount, passively. The probe
+//           reads properties through descriptors and never calls an accessor
+//           or imports a module that is not loaded, so a lazy global or module
+//           is never forced to load: an owner that is absent is missing, one
+//           that is still an untriggered accessor (or a module that is not
+//           loaded yet) is deferred. E: engine check only (events, markup,
+//           instance fields assigned late, elements inside an <html:template>
+//           until their owner expands it, members of documents other than the
+//           browser window, user-customizable toolbar items); kind is source.
 //   native  Required when how is wraps or overrides: Bento replaces or shadows
 //           the member, so a plain presence probe would find Bento's own copy.
 //           'note': the patch site calls bentoCompatNoteNative(id, original)
@@ -552,7 +553,7 @@ export const MEMBERS = [
     kind: 'method',
     how: 'wraps',
     native: 'note',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['patchDownloadsButtonAnchorForSidebar'],
     use: 'Automatic downloads panel opens anchor to a sidebar fallback element.',
     at: [FF.indicator, '^\\s+getAnchor\\(\\)', 100],
@@ -562,7 +563,7 @@ export const MEMBERS = [
     kind: 'method',
     how: 'wraps',
     native: 'note',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['patchDownloadsButtonAnchorForSidebar'],
     use: 'Removes the sidebar fallback anchor when Firefox releases the downloads anchor.',
     at: [FF.indicator, '^\\s+releaseAnchor\\(\\)', 113],
@@ -571,7 +572,7 @@ export const MEMBERS = [
     id: 'DownloadsPanel.initialize',
     kind: 'method',
     how: 'calls',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openNativeDownloadsPanelFromSidebar'],
     use: 'Initializes the downloads panel before Bento opens it from the sidebar.',
     at: [FF.downloads, '^\\s+initialize\\(\\) \\{', 79],
@@ -580,7 +581,7 @@ export const MEMBERS = [
     id: 'DownloadsPanel.panel',
     kind: 'member',
     how: 'reads',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openNativeDownloadsPanelFromSidebar'],
     use: 'The downloads popup element Bento anchors to the sidebar.',
     at: [FF.downloads, '^\\s+get panel\\(', 174],
@@ -589,7 +590,7 @@ export const MEMBERS = [
     id: 'DownloadsPanel.isPanelShowing',
     kind: 'member',
     how: 'reads',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openNativeDownloadsPanelFromSidebar'],
     use: 'Detects an already open downloads panel to focus it instead of reopening.',
     at: [FF.downloads, '^\\s+get isPanelShowing\\(', 234],
@@ -598,7 +599,7 @@ export const MEMBERS = [
     id: 'DownloadsPanel.showPanel',
     kind: 'method',
     how: 'calls',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openNativeDownloadsPanelFromSidebar'],
     use: 'Fallback that opens the downloads panel natively when no sidebar anchor exists.',
     at: [FF.downloads, '^\\s+showPanel\\(', 185],
@@ -607,7 +608,7 @@ export const MEMBERS = [
     id: 'DownloadsPanel._focusPanel',
     kind: 'method',
     how: 'calls',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openNativeDownloadsPanelFromSidebar'],
     use: 'Focuses the downloads panel after it opens (optional call).',
     at: [FF.downloads, '^\\s+_focusPanel\\(', 569],
@@ -634,7 +635,7 @@ export const MEMBERS = [
     id: 'DownloadsView.loading',
     kind: 'member',
     how: 'reads',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['waitForDownloadsViewReady'],
     use: 'Bento waits for the downloads view to finish loading before opening the panel.',
     at: [FF.downloads, '^  loading: false', 756],
@@ -643,7 +644,7 @@ export const MEMBERS = [
     id: 'DownloadsView._visibleViewItems',
     kind: 'member',
     how: 'reads',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openNativeDownloadsPanelFromSidebar'],
     use: 'Map of visible download items; Bento refreshes each before showing the panel.',
     at: [FF.downloads, '^  _visibleViewItems: new Map', 771],
@@ -652,7 +653,7 @@ export const MEMBERS = [
     id: 'PrivateDownloadsSubview.openWhenReady',
     kind: 'method',
     how: 'calls',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['openPrivateDownloadsChoiceIfNeeded'],
     use: 'Shows the private-downloads choice subview when the sidebar opens the panel.',
     at: [FF.downloads, '^  openWhenReady\\(', 1839],
@@ -771,7 +772,7 @@ export const MEMBERS = [
     id: 'PlacesUIUtils.lastContextMenuTriggerNode',
     kind: 'member',
     how: 'reads',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['installOpenInNewPanelBookmarkMenuItem'],
     use: 'Trigger node of the Places context menu, used to read managed-bookmark URLs.',
     at: [FF.placesUIUtils, '^\\s+lastContextMenuTriggerNode: null', 357],
@@ -1232,7 +1233,7 @@ export const MEMBERS = [
     id: 'resource:///modules/MigrationUtils.sys.mjs',
     kind: 'module',
     how: 'imports',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['showEmbeddedBrowserImportFromWelcome', 'restartToBrowserImportFromWelcome'],
     use: 'Opens the migration wizard from the welcome flow.',
     exports: ['MigrationUtils'],
@@ -1345,7 +1346,7 @@ export const MEMBERS = [
     id: 'chrome://devtools-startup/content/DevToolsShim.sys.mjs',
     kind: 'module',
     how: 'imports',
-    probe: 'R-lazy',
+    probe: 'R',
     sites: ['getDevToolsShim'],
     use: 'Entry point to the devtools toolbox list for Inspect in Panel.',
     exports: ['DevToolsShim'],

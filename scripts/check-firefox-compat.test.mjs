@@ -44,19 +44,29 @@ function capture() {
   };
 }
 
-// A window where every property exists.
-function universal() {
-  return new Proxy(function () {}, {
-    // linkedPanel is the one member the probe requires to be a string.
+// A window where every property exists as a data property. The probe reads
+// Firefox objects through descriptors only, so with `strict` any plain get on
+// one throws. `document` and `customElements` stay readable at the top level:
+// the probe uses their native calls on purpose.
+function universal({ strict = false, top = true } = {}) {
+  const child = () => universal({ strict, top: false });
+  const natives = {
+    document: { getElementById: () => ({}), querySelector: child },
+    customElements: { get: child },
+  };
+  return new Proxy(() => {}, {
     get: (_target, key) => {
       if (typeof key === 'symbol') return undefined;
-      return key === 'linkedPanel' ? 'panel-1' : universal();
+      if (top && Object.hasOwn(natives, key)) return natives[key];
+      if (strict) throw new Error(`plain read of ${key} on a Firefox object`);
+      return child();
     },
-    apply: () => universal(),
+    apply: child,
     has: () => true,
-    getPrototypeOf: () => universal(),
-    getOwnPropertyDescriptor: () => ({
-      value: universal(),
+    getPrototypeOf: child,
+    getOwnPropertyDescriptor: (_target, key) => ({
+      // linkedPanel is the one member the probe requires to be a string.
+      value: key === 'linkedPanel' ? 'panel-1' : child(),
       writable: true,
       enumerable: true,
       configurable: true,
@@ -64,7 +74,13 @@ function universal() {
   });
 }
 
-function runtimeGlobals(logs, { modulesLoaded }) {
+// `imports` records every importESModule call with whether the module was
+// loaded at that moment; importing one that is not loaded would load it.
+function runtimeGlobals(
+  logs,
+  { modulesLoaded = false, loaded = new Set(), imports = [], window } = {},
+) {
+  const isLoaded = (url) => modulesLoaded || loaded.has(url);
   return {
     console: {
       error: (message) => logs.error.push(String(message)),
@@ -72,12 +88,14 @@ function runtimeGlobals(logs, { modulesLoaded }) {
     },
     Services: { appinfo: { version: '154.0' } },
     ChromeUtils: {
-      importESModule: () => {
-        if (!modulesLoaded) throw new Error('module not found');
+      importESModule: (url) => {
+        imports.push({ url, loaded: isLoaded(url) });
+        if (!isLoaded(url)) throw new Error('module not found');
         return universal();
       },
     },
-    Cu: { isESModuleLoaded: () => modulesLoaded },
+    Cu: { isESModuleLoaded: isLoaded },
+    window,
   };
 }
 
@@ -95,15 +113,11 @@ test('the real registry, its call sites, the probe list, and the docs table agre
   assert.deepEqual(checkDocs(registry), []);
 });
 
-test('the mount probe ids equal the registry entries marked R or R-lazy', () => {
+test('the mount probe ids equal the registry entries marked R', () => {
   // The section runs in another realm; copy its entries before comparing.
   const mounted = Array.from(loadProbes().entries);
   const ids = (entries) => entries.map((entry) => entry.id).sort();
   assert.deepEqual(ids(mounted), ids(runtimeEntries));
-  assert.deepEqual(
-    ids(mounted.filter((entry) => entry.lazy)),
-    ids(registry.members.filter((entry) => entry.probe === 'R-lazy')),
-  );
 });
 
 test('the shipped probe section stays compact', () => {
@@ -128,11 +142,7 @@ test('probe list drift against the registry is reported', () => {
   );
   assert.match(
     validateProbeList(source, mutate([...others, { ...first, probe: 'E', kind: 'source' }]))[0],
-    new RegExp(`${first.id.replaceAll('.', '\\.')}: probed in .* no R or R-lazy entry`),
-  );
-  assert.match(
-    validateProbeList(source, mutate([...others, { ...first, probe: 'R-lazy' }]))[0],
-    /lazy is false .* registry probe is R-lazy/,
+    new RegExp(`${first.id.replaceAll('.', '\\.')}: probed in .* no R entry`),
   );
   assert.match(
     validateProbeList(source, mutate([...others, { ...first, kind: 'element' }]))[0],
@@ -177,6 +187,7 @@ test('the runtime probe stays quiet on a window that has every member', () => {
   // Arrays from the evaluated section belong to another realm; copy to compare.
   assert.deepEqual([...result.missing], []);
   assert.deepEqual([...result.deferred], []);
+  assert.equal(result.present.length, runtimeEntries.length);
   assert.equal(result.probed, runtimeEntries.length);
   assert.deepEqual(logs.error, []);
   assert.match(
@@ -185,82 +196,105 @@ test('the runtime probe stays quiet on a window that has every member', () => {
   );
 });
 
-test('the runtime probe logs one id per missing member and defers unloaded lazy modules', () => {
+test('the probe reads Firefox objects only through descriptors', () => {
+  // Any plain property read on a Firefox object in this window throws.
+  const logs = { error: [], info: [] };
+  const result = loadProbes(runtimeGlobals(logs, { modulesLoaded: true })).run(
+    universal({ strict: true }),
+  );
+  assert.deepEqual([...result.missing], []);
+  assert.deepEqual([...result.deferred], []);
+  assert.equal(result.present.length, runtimeEntries.length);
+});
+
+test('the runtime probe logs one id per missing member and defers modules that are not loaded', () => {
   const logs = { error: [], info: [] };
   const probes = loadProbes(runtimeGlobals(logs, { modulesLoaded: false }));
   const result = probes.run({ document: { getElementById: () => null } });
 
-  const lazyModules = runtimeEntries
-    .filter((entry) => entry.probe === 'R-lazy' && entry.kind === 'module')
+  const modules = runtimeEntries
+    .filter((entry) => entry.kind === 'module')
     .map((entry) => entry.id);
   const absent = runtimeEntries
     .map((entry) => entry.id)
-    .filter((id) => !lazyModules.includes(id))
+    .filter((id) => !modules.includes(id))
     .sort();
-  assert.deepEqual([...result.deferred].sort(), lazyModules.sort());
+  assert.ok(modules.length > 1);
+  assert.deepEqual([...result.deferred].sort(), modules.sort());
   // A window with no DownloadsPanel at all is missing it, not waiting for it.
   assert.deepEqual([...result.missing].sort(), absent);
   assert.equal(logs.error.length, absent.length);
   assert.ok(logs.error.includes('[bento-compat] missing gBrowser._beginRemoveTab'));
   assert.ok(logs.error.includes('[bento-compat] missing DownloadsPanel.initialize'));
+  assert.match(logs.info[0], new RegExp(`: ${absent.length} missing, ${modules.length} deferred$`));
 });
 
-test('probes resolve roots, never run getters, and leave lazy globals unloaded', () => {
-  const logs = { error: [], info: [] };
-  const probes = loadProbes(runtimeGlobals(logs, { modulesLoaded: true }));
+const never = () => {
+  throw new Error('a probe invoked an accessor');
+};
+
+test('probes resolve roots without gBrowser getters and never call an accessor', () => {
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
   const probe = (win, id) =>
     probes.probe(
       win,
       probes.entries.find((entry) => entry.id === id),
     );
-  const never = () => {
-    throw new Error('a probe invoked a getter');
-  };
 
+  // The selected tab and browser come from native DOM calls: the class getters
+  // that gBrowser has for them must not be needed.
+  const tab = Object.create({
+    get isEmpty() {
+      return never();
+    },
+  });
+  Object.defineProperty(tab, 'linkedPanel', { value: 'panel-1' });
+  const tabpanels = Object.create({ splitViewPanels: [] });
+  Object.defineProperty(tabpanels, 'removeTabsFromSplitview', { value() {} });
+  Object.defineProperty(tabpanels, 'handleEvent', { value() {} });
   const win = {
     OpenBrowserWindow() {},
     gBrowser: {
       _beginRemoveTab() {},
-      tabpanels: Object.create({
-        splitViewPanels: [],
-      }),
-      selectedTab: Object.create({
-        linkedPanel: 'panel-1',
-        get isEmpty() {
-          return never();
-        },
-      }),
-      selectedBrowser: { mIconURL: null },
+      tabpanels,
+      get selectedTab() {
+        return never();
+      },
+      get selectedBrowser() {
+        return never();
+      },
     },
     gURLBar: { view: { close() {} } },
     customElements: { get: () => ({ prototype: { removeProgressListener() {} } }) },
-    document: { getElementById: (id) => (id === 'nav-bar' ? {} : null) },
+    document: {
+      getElementById: (id) => (id === 'nav-bar' ? {} : null),
+      querySelector: (selector) => (selector.includes('tabbrowser-tab') ? tab : { mIconURL: null }),
+    },
   };
-  Object.defineProperty(win.gBrowser.tabpanels, 'removeTabsFromSplitview', {
-    value() {},
-  });
-  Object.defineProperty(win.gBrowser.tabpanels, 'handleEvent', { value() {} });
-  Object.defineProperty(win.gBrowser.selectedTab, 'linkedPanel', { value: 'panel-1' });
-  Object.defineProperty(win, 'DownloadsPanel', { get: never, configurable: true });
 
   assert.equal(probe(win, 'gBrowser._beginRemoveTab'), 'ok');
   assert.equal(probe(win, 'gBrowser._findTabToBlurTo'), 'missing');
   assert.equal(probe(win, 'gBrowser.tabpanels.removeTabsFromSplitview'), 'ok');
   assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'ok');
   assert.equal(probe(win, 'gURLBar.view.close'), 'ok');
+  // A getter is present without being called.
   assert.equal(probe(win, 'MozTabbrowserTab.isEmpty'), 'ok');
+  assert.equal(probe(win, 'gBrowser.selectedBrowsers'), 'missing');
   assert.equal(probe(win, 'MozTabbrowserTab.linkedPanel'), 'ok');
   assert.equal(probe(win, 'MozBrowser.prototype.removeProgressListener'), 'ok');
   assert.equal(probe(win, 'MozBrowser.prototype.preserveLayers'), 'missing');
   assert.equal(probe(win, 'MozBrowser.mIconURL'), 'ok');
   assert.equal(probe(win, 'nav-bar'), 'ok');
   assert.equal(probe(win, 'urlbar'), 'missing');
-  assert.equal(probe(win, 'DownloadsPanel.initialize'), 'deferred');
   assert.equal(probe(win, 'OpenBrowserWindow'), 'ok');
   assert.equal(probe({}, 'OpenBrowserWindow'), 'missing');
 
-  Object.defineProperty(win, 'DownloadsPanel', { value: { initialize() {} }, configurable: true });
-  assert.equal(probe(win, 'DownloadsPanel.initialize'), 'ok');
+  // Only presence is judged for a getter, but a method that sits behind an
+  // accessor cannot be judged without calling it.
+  Object.defineProperty(win.gBrowser, '_endRemoveTab', { get: never });
+  Object.defineProperty(win.gBrowser, 'warmupTab', { value: 1 });
+  assert.equal(probe(win, 'gBrowser._endRemoveTab'), 'deferred');
+  assert.equal(probe(win, 'gBrowser.warmupTab'), 'missing');
 });
 
 test('a lazy global is missing when absent, deferred behind its getter, and probed once loaded', () => {
@@ -270,35 +304,181 @@ test('a lazy global is missing when absent, deferred behind its getter, and prob
       win,
       probes.entries.find((entry) => entry.id === id),
     );
-  const never = () => {
-    throw new Error('a probe invoked a getter');
-  };
   const lazyGlobal = (win, name) =>
     Object.defineProperty(win, name, { get: never, set() {}, configurable: true });
+  const loaded = (win, name, value) =>
+    Object.defineProperty(win, name, { value, configurable: true });
+  const lazyIds = {
+    DownloadsPanel: 'DownloadsPanel.initialize',
+    DownloadsButton: 'DownloadsButton.getAnchor',
+    PlacesUIUtils: 'PlacesUIUtils.lastContextMenuTriggerNode',
+    // Firefox defines these with defineLazyScriptGetter, defineLazyGetter, or
+    // defineESModuleGetters too.
+    PanelUI: 'PanelUI.show',
+    PanelMultiView: 'PanelMultiView.openPopup',
+    gIdentityHandler: 'gIdentityHandler.refreshIdentityPopup',
+    gURLBar: 'gURLBar.view',
+    PopupNotifications: 'PopupNotifications._isActiveBrowser',
+  };
+  assert.ok(
+    Object.values(lazyIds).every((id) => probes.entries.some((entry) => entry.id === id)),
+    'every lazy owner under test is in the probe list',
+  );
 
   // No property at all: a deleted DownloadsPanel must not wait forever.
-  assert.equal(probe({}, 'DownloadsPanel.initialize'), 'missing');
-  assert.equal(probe({}, 'DownloadsButton.getAnchor'), 'missing');
-  assert.equal(probe({}, 'PlacesUIUtils.lastContextMenuTriggerNode'), 'missing');
+  for (const id of Object.values(lazyIds)) assert.equal(probe({}, id), 'missing', id);
 
   const win = {};
-  lazyGlobal(win, 'DownloadsPanel');
-  lazyGlobal(win, 'DownloadsButton');
-  lazyGlobal(win, 'PlacesUIUtils');
-  assert.equal(probe(win, 'DownloadsPanel.initialize'), 'deferred');
-  assert.equal(probe(win, 'DownloadsButton.getAnchor'), 'deferred');
-  assert.equal(probe(win, 'PlacesUIUtils.lastContextMenuTriggerNode'), 'deferred');
+  for (const name of Object.keys(lazyIds)) lazyGlobal(win, name);
+  for (const id of Object.values(lazyIds)) assert.equal(probe(win, id), 'deferred', id);
   // PrivateDownloadsSubview is a plain var in the downloads script, so it
   // waits on DownloadsPanel's getter instead of counting as absent.
   assert.equal(probe(win, 'PrivateDownloadsSubview.openWhenReady'), 'deferred');
 
-  Object.defineProperty(win, 'DownloadsPanel', { value: { initialize() {} }, configurable: true });
+  loaded(win, 'DownloadsPanel', { initialize() {} });
   assert.equal(probe(win, 'DownloadsPanel.initialize'), 'ok');
   assert.equal(probe(win, 'PrivateDownloadsSubview.openWhenReady'), 'missing');
   win.PrivateDownloadsSubview = { openWhenReady() {} };
   assert.equal(probe(win, 'PrivateDownloadsSubview.openWhenReady'), 'ok');
-  Object.defineProperty(win, 'PlacesUIUtils', { value: {}, configurable: true });
+  loaded(win, 'PlacesUIUtils', {});
   assert.equal(probe(win, 'PlacesUIUtils.lastContextMenuTriggerNode'), 'missing');
+  loaded(win, 'PanelUI', { show() {} });
+  assert.equal(probe(win, 'PanelUI.show'), 'ok');
+  assert.equal(probe(win, 'PanelUI.hide'), 'missing');
+});
+
+// A window where every Firefox owner the probe list names is an untriggered
+// accessor, the shape defineLazyGetter and defineESModuleGetters leave behind.
+// `counts.accessors` counts how many times any of them runs.
+function lazyWindow(probes, counts) {
+  const counting = () => {
+    counts.accessors += 1;
+    return {};
+  };
+  const owners = new Set(
+    Object.keys(probes.probes.members)
+      .map((owner) => owner.split('.')[0])
+      .filter((owner) => owner !== '' && !['MozBrowser', 'MozTabbrowserTab'].includes(owner)),
+  );
+  // PrivateDownloadsSubview exists only after DownloadsPanel's script loads.
+  owners.delete('PrivateDownloadsSubview');
+  const win = {
+    OpenBrowserWindow() {},
+    delayedStartupPromise: Promise.resolve(),
+    customElements: {
+      get: () =>
+        Object.create(null, {
+          prototype: {
+            value: Object.create(null, {
+              removeProgressListener: { value() {} },
+              preserveLayers: { value() {} },
+              docShellIsActive: { get: counting },
+              renderLayers: { get: counting },
+              messageManager: { get: counting },
+              contentTitle: { get: counting },
+            }),
+          },
+        }),
+    },
+    document: {
+      getElementById: () => ({}),
+      querySelector: (selector) =>
+        selector.includes('tabbrowser-tab')
+          ? Object.create(
+              Object.create(null, {
+                isEmpty: { get: counting },
+                splitview: { get: counting },
+              }),
+              { linkedPanel: { value: 'panel-1' } },
+            )
+          : { mIconURL: null },
+    },
+  };
+  for (const owner of owners) {
+    Object.defineProperty(win, owner, { get: counting, set() {}, configurable: true });
+  }
+  return { win, owners };
+}
+
+test('a probe pass imports no unloaded module and calls no accessor', () => {
+  // Review finding: seven imports ran while isESModuleLoaded was false, and a
+  // PanelMultiView getter ran, before anything had loaded.
+  const logs = { error: [], info: [] };
+  const imports = [];
+  const loaded = new Set();
+  const counts = { accessors: 0 };
+  const probes = loadProbes(runtimeGlobals(logs, { loaded, imports }));
+  const { win, owners } = lazyWindow(probes, counts);
+
+  const result = probes.run(win);
+  assert.deepEqual(imports, []);
+  assert.equal(counts.accessors, 0);
+
+  const ids = (list) => [...list].sort();
+  // PrivateDownloadsSubview is absent, but only until DownloadsPanel's getter runs.
+  const waiting = new Set([...owners, 'PrivateDownloadsSubview']);
+  const behindOwner = (entry) =>
+    (entry.kind === 'method' || entry.kind === 'member') && waiting.has(entry.id.split('.')[0]);
+  const expectedDeferred = runtimeEntries
+    .filter((entry) => entry.kind === 'module' || behindOwner(entry))
+    .map((entry) => entry.id);
+  assert.ok(expectedDeferred.length > 50);
+  assert.deepEqual(ids(result.deferred), ids(expectedDeferred));
+  // Three distinct outcomes: nothing here is absent, so nothing is missing.
+  assert.deepEqual([...result.missing], []);
+  assert.equal(
+    result.present.length + result.deferred.length + result.missing.length,
+    runtimeEntries.length,
+  );
+  assert.equal(result.probed, result.present.length);
+  assert.ok(result.present.includes('OpenBrowserWindow'));
+  assert.ok(result.present.includes('MozTabbrowserTab.isEmpty'));
+  assert.match(
+    logs.info[0],
+    new RegExp(
+      `probed ${result.probed} members on Firefox 154\\.0: 0 missing, ${result.deferred.length} deferred$`,
+    ),
+  );
+
+  // Modules load one at a time: each is imported once, after it reports loaded.
+  const [first, second] = runtimeEntries.filter((entry) => entry.kind === 'module');
+  loaded.add(first.id).add(second.id);
+  const again = probes.run(win);
+  assert.deepEqual(imports.map((entry) => entry.url).sort(), [first.id, second.id].sort());
+  assert.ok(imports.every((entry) => entry.loaded));
+  assert.equal(counts.accessors, 0);
+  assert.equal(again.deferred.length, result.deferred.length - 2);
+  assert.ok(again.present.includes(first.id));
+});
+
+test('check() before delayed startup defers everything and stays passive', async () => {
+  const logs = { error: [], info: [] };
+  const imports = [];
+  const counts = { accessors: 0 };
+  let startup;
+  const window = {};
+  const probes = loadProbes(runtimeGlobals(logs, { imports, window }));
+  Object.assign(window, lazyWindow(probes, counts).win, {
+    delayedStartupPromise: new Promise((resolve) => (startup = resolve)),
+  });
+  probes.schedule();
+  const check = () => window.BentoFirefoxCompat.check();
+
+  const early = check();
+  assert.equal(early.probed, 0);
+  assert.equal(early.deferred.length, runtimeEntries.length);
+  assert.deepEqual([...early.missing], []);
+  assert.deepEqual(logs.error, []);
+
+  startup();
+  await window.delayedStartupPromise;
+  const late = check();
+  assert.ok(late.probed > 0);
+  assert.ok(late.deferred.length < runtimeEntries.length);
+  // One log line from the early check, one from the scheduled run, one from the late check.
+  assert.equal(logs.info.length, 3);
+  assert.deepEqual(imports, []);
+  assert.equal(counts.accessors, 0);
 });
 
 test('elements that live inside a template until their owner expands them are not probed', () => {
@@ -367,26 +547,22 @@ test('Bento writes to a member never satisfy a probe on that member', () => {
   tabpanels.splitViewPanels = [];
   const selectedTab = Object.create({});
   Object.defineProperty(selectedTab, 'splitview', { value: {}, configurable: true });
-  const win = { gBrowser: { tabpanels, selectedTab } };
+  const win = { gBrowser: { tabpanels }, document: { querySelector: () => selectedTab } };
   assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'missing');
   assert.equal(probe(win, 'MozTabbrowserTab.splitview'), 'missing');
 
   win.gBrowser.tabpanels = Object.create({ splitViewPanels: [] });
-  win.gBrowser.selectedTab = Object.create({ splitview: null });
+  win.document.querySelector = () => Object.create({ splitview: null });
   assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'ok');
   assert.equal(probe(win, 'MozTabbrowserTab.splitview'), 'ok');
 });
 
 test('a probe that throws counts as missing instead of breaking the run', () => {
   const logs = { error: [], info: [] };
-  const hostile = new Proxy(
-    {},
-    {
-      get() {
-        throw new Error('boom');
-      },
-    },
-  );
+  const boom = () => {
+    throw new Error('boom');
+  };
+  const hostile = new Proxy({}, { get: boom, getOwnPropertyDescriptor: boom });
   const result = loadProbes(runtimeGlobals(logs, { modulesLoaded: true })).run(hostile);
   assert.ok(result.missing.length > 0);
   assert.equal(logs.error.length, result.missing.length);

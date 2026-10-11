@@ -905,27 +905,42 @@ also lists the members that code added by a patch calls elsewhere in Firefox. It
 lives in `scripts/firefox-compat-registry.mjs`,
 a repo-only module that is never shipped, so no browser window parses it. Each
 entry records the member, what Bento does with it, where Bento uses it, how it
-is detected (probe `R`, `R-lazy`, or engine-only `E`), and where vanilla Firefox
+is detected (probe `R` or engine-only `E`), and where vanilla Firefox
 defines it (the version is `BASELINE`, shown in the table header). The table
 below is generated; edit the registry, then run
 `node scripts/check-firefox-compat.mjs --write-docs`.
 
 - Runtime. The `@bento-firefox-compat` section of
   `src/browser/base/content/bento-shell-mount.js` carries only a compact list
-  (ids, a presence check, a lazy flag) of the entries marked runtime, plus the
-  probe runner, about 7 KB with no call-site, use, or locator text. After
-  Firefox's delayed startup, each window probes the list once and logs one
+  (ids and a presence check) of the entries marked runtime, plus the probe
+  runner, about 9 KB with no call-site, use, or locator text. After Firefox's
+  delayed startup, each window probes the list once and logs one
   `console.error('[bento-compat] missing <id>')` per absent member plus one
-  `[bento-compat] probed N members` line. It never throws and changes no
-  behavior; the guarded hooks keep skipping silently. Entries marked lazy are
-  probed only after their object has loaded, so the check never forces a lazy
-  script or module to load: a lazy window global that is absent altogether is
-  reported missing, one still behind its getter is counted as deferred.
-  `window.BentoFirefoxCompat.check()` re-runs it from the Browser Toolbox.
-  Entries marked engine only have no runtime probe (events, markup, fields
-  assigned late, elements that stay inside an `<html:template>` until their
-  owner expands them, such as `identity-popup`, members of other documents).
-  Look up a logged id in the table below for what Bento does with it.
+  `[bento-compat] probed N members on Firefox <version>: M missing, D deferred`
+  line. It never throws and changes no behavior; the guarded hooks keep
+  skipping silently.
+  The probe is passive. It reads every property through
+  `Object.getOwnPropertyDescriptor` along the prototype chain and never calls
+  an accessor, so a lazy window global (`gURLBar`, `PopupNotifications`,
+  `PanelUI`, `PanelMultiView`, `DownloadsPanel`, `PlacesUIUtils`, and the rest
+  Firefox defines with `defineLazyGetter`, `defineLazyScriptGetter`, or
+  `defineESModuleGetters`) stays unloaded. It imports a module only after
+  `Cu.isESModuleLoaded(url)` is true. The selected tab and a `<browser>` come
+  from native DOM calls (`.tabbrowser-tab[selected]`, `browser`,
+  `customElements.get('browser')`), not from the `gBrowser.selectedTab` getter.
+  Each entry ends in one of three outcomes: present; missing (the owner or the
+  member is absent, including a lazy global with no property at all); or
+  deferred (the owner is still an untriggered accessor, a module is not loaded
+  yet, a method sits behind an accessor, `PrivateDownloadsSubview` before the
+  downloads script loads, or the window has not finished delayed startup).
+  Deferred is not an error: the entry is probed by a later check once the owner
+  has loaded. `window.BentoFirefoxCompat.check()` re-runs it from the Browser
+  Toolbox and returns `{ probed, present, missing, deferred }`, the last three
+  as id lists. Entries marked engine only have no runtime probe (events,
+  markup, fields assigned late, elements that stay inside an `<html:template>`
+  until their owner expands them, such as `identity-popup`, members of other
+  documents). Look up a logged id in the table below for what Bento does with
+  it.
 - Replaced members. Bento wraps or shadows some Firefox members, which would
   satisfy a presence probe by themselves. Each patch site calls
   `bentoCompatNoteNative(id, original)` before replacing (registry
@@ -943,15 +958,15 @@ below is generated; edit the registry, then run
 - Consistency. `pnpm run firefox:compat:check` (also run by
   `scripts/check-firefox-compat.test.mjs` in CI) fails when an entry is
   malformed, a call site named by an entry no longer exists, the mount probe
-  list differs from the registry's `R` and `R-lazy` entries (ids, kinds, lazy
-  flags, module exports), a wrapped or overridden runtime entry has no
+  list differs from the registry's `R` entries (ids, kinds, module exports), a
+  wrapped or overridden runtime entry has no
   `bentoCompatNoteNative` call or prototype lookup, the mount script reaches an
   underscore or `on_*`
   member of a known Firefox global that has no entry, or this table is stale.
 - Adding a hook. Add its entry to `scripts/firefox-compat-registry.mjs` in the
-  same change, add its id to the mount probe list when its probe is `R` or
-  `R-lazy`, call `bentoCompatNoteNative` before replacing a Firefox member, and
-  regenerate this table. A new `addEventListener` for an event Firefox
+  same change, add its id to the mount probe list when its probe is `R`, call
+  `bentoCompatNoteNative` before replacing a Firefox member, and regenerate
+  this table. A new `addEventListener` for an event Firefox
   dispatches, a new underscore member a patch calls, or a new query parameter
   Bento sends to a Firefox page gets an engine-only entry located at the
   dispatch, definition, or parsing site.
@@ -1011,18 +1026,18 @@ below is generated; edit the registry, then run
 | `PanelUI._ensureShortcutsShown` | method (runtime) | Refreshes keyboard-shortcut labels before the app menu opens (optional call). | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:1335` |
 | `PanelMultiView.openPopup` | method (runtime) | Opens native panels (app menu, downloads, identity) at a sidebar anchor. | `openNativeAppMenuFromSidebar`, `openNativeDownloadsPanelFromSidebar`, `openNativeIdentityPopupForSidebar` | `browser/components/customizableui/PanelMultiView.sys.mjs:393` |
 | `PanelMultiView.hidePopup` | method (runtime) | Closes other open panels before the identity popup opens. | `openNativeIdentityPopupForSidebar` | `browser/components/customizableui/PanelMultiView.sys.mjs:417` |
-| `DownloadsButton.getAnchor` | method (runtime, lazy) | Automatic downloads panel opens anchor to a sidebar fallback element. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:100` |
-| `DownloadsButton.releaseAnchor` | method (runtime, lazy) | Removes the sidebar fallback anchor when Firefox releases the downloads anchor. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:113` |
-| `DownloadsPanel.initialize` | method (runtime, lazy) | Initializes the downloads panel before Bento opens it from the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:79` |
-| `DownloadsPanel.panel` | member (runtime, lazy) | The downloads popup element Bento anchors to the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:174` |
-| `DownloadsPanel.isPanelShowing` | member (runtime, lazy) | Detects an already open downloads panel to focus it instead of reopening. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:234` |
-| `DownloadsPanel.showPanel` | method (runtime, lazy) | Fallback that opens the downloads panel natively when no sidebar anchor exists. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:185` |
-| `DownloadsPanel._focusPanel` | method (runtime, lazy) | Focuses the downloads panel after it opens (optional call). | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:569` |
+| `DownloadsButton.getAnchor` | method (runtime) | Automatic downloads panel opens anchor to a sidebar fallback element. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:100` |
+| `DownloadsButton.releaseAnchor` | method (runtime) | Removes the sidebar fallback anchor when Firefox releases the downloads anchor. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:113` |
+| `DownloadsPanel.initialize` | method (runtime) | Initializes the downloads panel before Bento opens it from the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:79` |
+| `DownloadsPanel.panel` | member (runtime) | The downloads popup element Bento anchors to the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:174` |
+| `DownloadsPanel.isPanelShowing` | member (runtime) | Detects an already open downloads panel to focus it instead of reopening. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:234` |
+| `DownloadsPanel.showPanel` | method (runtime) | Fallback that opens the downloads panel natively when no sidebar anchor exists. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:185` |
+| `DownloadsPanel._focusPanel` | method (runtime) | Focuses the downloads panel after it opens (optional call). | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:569` |
 | `DownloadsPanel._openedManually` | source (engine only) | Field set before initialize() to mimic a manual open; showPanel assigns it, so no runtime probe. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:190` |
 | `DownloadsPanel._preventFocusRing` | source (engine only) | Field set before initialize() to suppress the focus ring; showPanel assigns it, so no runtime probe. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:191` |
-| `DownloadsView.loading` | member (runtime, lazy) | Bento waits for the downloads view to finish loading before opening the panel. | `waitForDownloadsViewReady` | `browser/components/downloads/content/downloads.js:756` |
-| `DownloadsView._visibleViewItems` | member (runtime, lazy) | Map of visible download items; Bento refreshes each before showing the panel. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:771` |
-| `PrivateDownloadsSubview.openWhenReady` | method (runtime, lazy) | Shows the private-downloads choice subview when the sidebar opens the panel. | `openPrivateDownloadsChoiceIfNeeded` | `browser/components/downloads/content/downloads.js:1839` |
+| `DownloadsView.loading` | member (runtime) | Bento waits for the downloads view to finish loading before opening the panel. | `waitForDownloadsViewReady` | `browser/components/downloads/content/downloads.js:756` |
+| `DownloadsView._visibleViewItems` | member (runtime) | Map of visible download items; Bento refreshes each before showing the panel. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:771` |
+| `PrivateDownloadsSubview.openWhenReady` | method (runtime) | Shows the private-downloads choice subview when the sidebar opens the panel. | `openPrivateDownloadsChoiceIfNeeded` | `browser/components/downloads/content/downloads.js:1839` |
 | `gIdentityHandler._initializePopup` | method (runtime) | Builds the identity popup before Bento anchors it to the sidebar (optional call). | `openNativeIdentityPopupForSidebar` | `browser/base/content/browser-siteIdentity.js:206` |
 | `gIdentityHandler._identityPopup` | member (runtime) | The identity popup element (falls back to getElementById when absent). | `openNativeIdentityPopupForSidebar` | `browser/base/content/browser-siteIdentity.js:254` |
 | `gIdentityHandler.refreshIdentityPopup` | method (runtime) | Refreshes the identity popup contents for the selected tab (optional call). | `openNativeIdentityPopupForSidebar` | `browser/base/content/browser-siteIdentity.js:1037` |
@@ -1035,7 +1050,7 @@ below is generated; edit the registry, then run
 | `gContextMenu.onLink` | source (engine only) | Open in New Panel shows only for link targets. | `installOpenInNewPanelMenuItem` | `browser/base/content/nsContextMenu.sys.mjs:244` |
 | `gContextMenu.browser` | source (engine only) | Resolves the panel container the context menu opened in; patch 04 resolves its tab. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/nsContextMenu.sys.mjs:283` |
 | `gContextMenu.targetIdentifier` | source (engine only) | Content DOM reference passed to the devtools inspector for Inspect in Panel. | `installInspectInPanelMenuItems` | `browser/base/content/nsContextMenu.sys.mjs:258` |
-| `PlacesUIUtils.lastContextMenuTriggerNode` | member (runtime, lazy) | Trigger node of the Places context menu, used to read managed-bookmark URLs. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/PlacesUIUtils.sys.mjs:357` |
+| `PlacesUIUtils.lastContextMenuTriggerNode` | member (runtime) | Trigger node of the Places context menu, used to read managed-bookmark URLs. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/PlacesUIUtils.sys.mjs:357` |
 | `placesContext._view` | source (engine only) | placesContextShowing stashes the resolved view on the menupopup; Bento reads its selectedNode. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/PlacesUIUtils.sys.mjs:1452` |
 | `searchBookmarks` | source (engine only) | Bento injects a search box into the native bookmarks sidebar and calls its filter function. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.js:144` |
 | `bookmarks-view` | source (engine only) | Tree of the native bookmarks sidebar document that Bento re-queries. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:67` |
@@ -1084,7 +1099,7 @@ below is generated; edit the registry, then run
 | `moz-src:///toolkit/components/search/SearchUtils.sys.mjs` | module (runtime) | Fetches engine icons for the search settings. | `extensions/bento-tools/experiments/bento-privacy/api.js#SearchUtils` | `toolkit/components/search/SearchUtils.sys.mjs:150` |
 | `SearchUtils.fetchIcon` | source (engine only) | Fetches an engine icon over a privileged channel. | `extensions/bento-tools/experiments/bento-privacy/api.js#iconUrlToDataUrl` | `toolkit/components/search/SearchUtils.sys.mjs:578` |
 | `SearchEngine.getIconURL` | source (engine only) | Reads an engine icon URL (optional call). | `extensions/bento-tools/experiments/bento-privacy/api.js#getEngineIconUrl` | `toolkit/components/search/SearchEngine.sys.mjs:1576` |
-| `resource:///modules/MigrationUtils.sys.mjs` | module (runtime, lazy) | Opens the migration wizard from the welcome flow. | `showEmbeddedBrowserImportFromWelcome`, `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:1206` |
+| `resource:///modules/MigrationUtils.sys.mjs` | module (runtime) | Opens the migration wizard from the welcome flow. | `showEmbeddedBrowserImportFromWelcome`, `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:1206` |
 | `MigrationUtils.showMigrationWizard` | source (engine only) | Shows the migration wizard with the NEWTAB entrypoint. | `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:593` |
 | `resource:///modules/ExtensionsUI.sys.mjs` | module (runtime) | Bento re-subscribes ExtensionsUI to the permission-prompt topics when startup missed them. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:65` |
 | `ExtensionsUI observer topics` | source (engine only) | The four webextension-*-prompt topics ExtensionsUI observes; Bento adds the observer for each if missing. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:73` |
@@ -1095,7 +1110,7 @@ below is generated; edit the registry, then run
 | `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
 | `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId` | `toolkit/components/extensions/parent/ext-tabs-base.js:1820` |
-| `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime, lazy) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
+| `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
 | `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
 | `DevToolsShim.on` | source (engine only) | Waits for the toolbox-ready event of the toolbox opened in a panel. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:135` |
 | `DevToolsShim.off` | source (engine only) | Removes the toolbox-ready listener. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:150` |

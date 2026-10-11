@@ -2650,10 +2650,23 @@ adds its entry, and its id in the mount probe list, in the same change.
   else and check the Browser Console of a built app for
   `[bento-compat] missing <id>` lines (the table in
   `docs/firefox-core-touchpoints.md` explains each id). The runtime probe runs
-  after delayed startup, never throws, and changes no behavior; lazy objects such as the
-  downloads panel are probed only once loaded, so
+  after delayed startup, never throws, and changes no behavior. It is passive
+  (see the pitfall below), so objects Firefox has not loaded yet, such as the
+  downloads panel, are counted as `deferred` instead of probed;
   `window.BentoFirefoxCompat.check()` in the Browser Toolbox re-runs it after
-  opening them.
+  opening them and returns the `present`, `missing`, and `deferred` id lists.
+- A compat probe must not trigger what it probes. Reading `window.gURLBar`,
+  `PanelUI`, or `PanelMultiView` runs the lazy getter that loads them,
+  `ChromeUtils.importESModule` loads a module that is not loaded yet, and
+  `gBrowser.selectedTab` is a getter too. The probe reads every property with
+  `Object.getOwnPropertyDescriptor` along the prototype chain (a data property
+  has a `value`, an accessor does not and is never called), imports a module
+  only after `Cu.isESModuleLoaded(url)` is true, and finds the selected tab and
+  a `<browser>` with native DOM calls. A review found seven imports and a
+  `PanelMultiView` getter call from a check made before anything had loaded;
+  the passive test in `scripts/check-firefox-compat.test.mjs` counts both and
+  expects zero. A new probe goes through `bentoCompatPeek`, never `owner[key]`
+  or `key in owner` on a Firefox object.
 - A compat probe must not be satisfied by Bento's own code. Wrapping a Firefox
   member and then checking `typeof gBrowser.x === 'function'` finds the wrapper;
   patch sites call `bentoCompatNoteNative(id, original)` first and the probe
@@ -2662,7 +2675,8 @@ adds its entry, and its id in the mount probe list, in the same change.
   `<html:template>` (`identity-popup` until `gIdentityHandler._initializePopup()`
   runs) and lazy globals that Firefox has not materialised must not be probed as
   if present: the former are engine-only, and a lazy global that is absent is
-  `missing` while one still behind its getter is `deferred`.
+  `missing` while one still behind its getter (or a module that is not loaded
+  yet) is `deferred`.
 - Do not call `gBrowser.hideTab(tab)` for active panel tabs. Smoke testing showed
   hidden tabs render as black or blank split-view slots.
 - Do not move or swap a tab's `linkedBrowser`. Extension content scripts depend

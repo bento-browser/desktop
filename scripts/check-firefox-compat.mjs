@@ -12,8 +12,8 @@
 //   node scripts/check-firefox-compat.mjs --write-docs     regenerate the docs table
 //
 // The self-check validates entries, confirms every call site still exists in
-// the repo, requires the mount probe list to equal the registry's R and R-lazy
-// entries, requires an entry for each underscore or on_* member the mount
+// the repo, requires the mount probe list to equal the registry's R entries,
+// requires an entry for each underscore or on_* member the mount
 // script reaches on a known Firefox global, and requires the table in
 // docs/firefox-core-touchpoints.md to match the registry. --engine verifies
 // every entry's `at` pattern in the given source tree (run it on the imported
@@ -35,7 +35,7 @@ const DOCS_BEGIN = '<!-- firefox-compat:begin -->';
 const DOCS_END = '<!-- firefox-compat:end -->';
 
 const KINDS = new Set(['method', 'member', 'element', 'module', 'source']);
-const PROBES = new Set(['R', 'R-lazy', 'E']);
+const PROBES = new Set(['R', 'E']);
 const NATIVES = new Set(['note', 'proto']);
 const HOWS = new Set([
   'wraps',
@@ -84,7 +84,7 @@ export function extractSection(source) {
 /**
  * Evaluates only the compact probe section of the mount script. `globals`
  * supplies what its probes need when a test runs them (console, Services,
- * ChromeUtils, Cu). `entries` is the flat probe list the runner iterates.
+ * ChromeUtils, Cu, window). `entries` is the flat probe list the runner iterates.
  */
 export function evaluateProbeSection(section, globals = {}) {
   const context = vm.createContext({ ...globals });
@@ -94,6 +94,7 @@ export function evaluateProbeSection(section, globals = {}) {
     note: bentoCompatNoteNative,
     run: runBentoFirefoxCompat,
     probe: bentoCompatProbe,
+    schedule: scheduleBentoFirefoxCompatChecks,
   };\n})()`;
   return vm.runInContext(wrapped, context, { filename: `${MOUNT_PATH}#firefox-compat` });
 }
@@ -218,7 +219,7 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
 
 /**
  * Requires the mount script's probe list to equal the registry's runtime
- * entries (probe R or R-lazy): same ids, kinds, lazy flags, and module exports.
+ * entries (probe R): same ids, kinds, and module exports.
  */
 export function validateProbeList(mountSource, registry) {
   let mounted;
@@ -252,18 +253,13 @@ export function validateProbeList(mountSource, registry) {
         : probe.kind === entry.kind;
     if (!kindOk)
       errors.push(`${entry.id}: probed as ${probe.kind} but registry kind is ${entry.kind}`);
-    if (probe.lazy !== (entry.probe === 'R-lazy')) {
-      errors.push(
-        `${entry.id}: lazy is ${probe.lazy} in ${MOUNT_PATH} but registry probe is ${entry.probe}`,
-      );
-    }
     if (entry.kind === 'module' && !(entry.exports ?? []).includes(probe.exported)) {
       errors.push(`${entry.id}: probed export ${probe.exported} is not in the registry exports`);
     }
   }
   for (const id of byId.keys()) {
     if (!expectedIds.has(id)) {
-      errors.push(`${id}: probed in ${MOUNT_PATH} but the registry has no R or R-lazy entry`);
+      errors.push(`${id}: probed in ${MOUNT_PATH} but the registry has no R entry`);
     }
   }
 
@@ -331,8 +327,7 @@ export function renderDocsTable(registry) {
   for (const entry of registry.members) {
     const [file, , line] = entry.at;
     const sites = entry.sites.map((site) => `\`${escapeCell(site)}\``).join(', ');
-    const probe =
-      entry.probe === 'E' ? 'engine only' : entry.probe === 'R-lazy' ? 'runtime, lazy' : 'runtime';
+    const probe = entry.probe === 'E' ? 'engine only' : 'runtime';
     lines.push(
       `| \`${escapeCell(entry.id)}\` | ${entry.kind} (${probe}) | ${escapeCell(entry.use)} | ${sites} | \`${escapeCell(file)}:${line}\` |`,
     );
