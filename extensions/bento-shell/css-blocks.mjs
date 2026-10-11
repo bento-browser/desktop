@@ -42,6 +42,24 @@ export function findClosingBrace(css, openIndex) {
   return -1;
 }
 
+/** Index of the first `{` at or after `from` that is not inside a comment or string, or -1. */
+function nextOpenBrace(css, from) {
+  let quote = null;
+  for (let index = from; index < css.length; index += 1) {
+    const character = css[index];
+    if (quote) {
+      if (character === '\\') index += 1;
+      else if (character === quote) quote = null;
+    } else if (character === '/' && css[index + 1] === '*') {
+      const end = css.indexOf('*/', index + 2);
+      if (end < 0) return -1;
+      index = end + 1;
+    } else if (character === '"' || character === "'") quote = character;
+    else if (character === '{') return index;
+  }
+  return -1;
+}
+
 /**
  * Split CSS into its top-level blocks. Each entry has the prelude text (selector list or
  * at-rule header, comments removed and trimmed) and the raw body between the braces. A
@@ -51,7 +69,7 @@ export function splitTopLevelBlocks(css) {
   const blocks = [];
   let cursor = 0;
   while (cursor < css.length) {
-    const openIndex = css.indexOf('{', cursor);
+    const openIndex = nextOpenBrace(css, cursor);
     if (openIndex < 0) break;
     const closeIndex = findClosingBrace(css, openIndex);
     if (closeIndex < 0) throw new Error('CSS has an unterminated block');
@@ -73,7 +91,7 @@ export function unwrapTopLevelLayers(css) {
   let output = '';
   let cursor = 0;
   while (cursor < css.length) {
-    const openIndex = css.indexOf('{', cursor);
+    const openIndex = nextOpenBrace(css, cursor);
     if (openIndex < 0) return output + css.slice(cursor);
     const closeIndex = findClosingBrace(css, openIndex);
     if (closeIndex < 0) throw new Error('CSS has an unterminated block');

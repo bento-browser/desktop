@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { MUXUI_THEME_PRESETS } from '@muxui/react/themes';
+
 import {
   createFakeDocument,
   createFakeStorage,
@@ -304,6 +306,7 @@ describe('theme sheets', () => {
   it('lists every registered theme for preview documents', () => {
     expect(sheets.ALL_THEME_IDS).toContain('default');
     expect(sheets.ALL_THEME_IDS).toContain('standard-harbour');
-    expect(sheets.ALL_THEME_IDS).toHaveLength(16);
+    // Bento Default plus every theme the pinned Mux package ships.
+    expect(sheets.ALL_THEME_IDS).toHaveLength(MUXUI_THEME_PRESETS.length + 1);
   });
 });

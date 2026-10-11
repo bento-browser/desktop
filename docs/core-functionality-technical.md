@@ -887,8 +887,9 @@ uses `workspace-palette.html`, opened from the workspace switcher through the
 `components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which composes the
 public Mux UI `Popover` and `SearchField` components over local
 `BENTO_THEMES` metadata. `scripts/sync-theme-presets.mjs` generates that metadata
-from Bento's repo-local Default theme plus the eight standard and seven
-monochromatic themes exported by `@muxui/react/themes`. The picker groups those
+from Bento's repo-local Default theme plus the standard and monochromatic
+themes exported by `@muxui/react/themes`; the count is whatever the pinned
+package ships. The picker groups those
 collections and renders compact interactive Mux UI `Card.Button` options with
 the component's standard selected state. Each option exposes the package
 description in a `Tooltip` on hover/focus. Standard ids use `standard-*`;
@@ -3860,7 +3861,11 @@ Workspace theme metadata is stored as `Workspace.themeId`.
 Shell theme flow:
 
 - `scripts/sync-theme-presets.mjs` reads public `@muxui/react/themes`
-  metadata, its `themes.css` rules, and its `styles.css` projection. It emits
+  metadata, its `themes.css` rules, and its `styles.css` projection. All reading
+  of Mux's CSS shape and theme list lives in `scripts/mux-css.mjs`, which
+  `scripts/generate-chrome-tokens.mjs` shares; it derives the theme list from the
+  package (no fixed count) and fails with a message naming the file and block
+  when a rule, token or color-scheme pair is missing. It emits
   the shared `theme/presets/index.ts` registry (canonical ids, legacy
   monochromatic aliases), `theme/presets/index.css` (the Default theme and the
   legacy token bridge, imported by every entry), and one sheet per other theme,
@@ -3978,7 +3983,7 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 
 - Source of truth: `extensions/bento-shell/vite.config.ts`. All React entries
   share one `style.css` (`cssCodeSplit: false`, Default theme only; the other
-  15 themes are `dist/themes/<id>.css`) and chunk by Rollup's default
+  themes are `dist/themes/<id>.css`) and chunk by Rollup's default
   rules. There is no `manualChunks`; `module-identity-guard.ts` fails the build
   when React, React Aria, or `@internationalized` would be bundled from two
   install paths (the cause of the `SubmenuTriggerContext` "is null" defect).
@@ -4075,8 +4080,9 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
   requested, B finishing first would otherwise drop A while C still loads.
 - Canonical sheets keep their rules in `@layer muxui`, after the layer order
   declared in `theme/muxui.css`. An unlayered theme rule would beat Bento's
-  component layers. `scripts/sync-theme-presets.mjs` fails on any `themes.css`
-  rule it cannot assign to one canonical theme.
+  component layers. `scripts/mux-css.mjs` (called by `sync-theme-presets.mjs`)
+  fails on any `themes.css` rule it cannot assign to one canonical theme and on a
+  theme that lacks a light or dark rule.
 - Chrome token updates require regenerating/importing the chrome stylesheets
   (`bento-chrome-tokens.css` and `bento-chrome-themes/`); the shell CSS bundle
   alone is not enough. A new Bento theme needs `pnpm run theme:sync` (shell
