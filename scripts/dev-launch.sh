@@ -7,18 +7,13 @@ set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit
 
+# Launch the app in the object directory the build driver selects (BENTO_OBJDIR,
+# else engine/obj-bento, else a single legacy engine/obj-*). It exits with an
+# error when the choice is ambiguous; with no object directory yet, the
+# missing-executable check below reports it.
 if [ -z "${BENTO_BIN:-}" ]; then
-  BENTO_BIN="$(
-    find "$REPO_ROOT/engine" -maxdepth 6 \
-      -path "$REPO_ROOT/engine/obj-*/dist/Bento.app/Contents/MacOS/bento" \
-      -type f -perm -111 -print 2>/dev/null |
-      while IFS= read -r candidate; do
-        printf '%s\t%s\n' "$(stat -f '%m' "$candidate")" "$candidate"
-      done |
-      sort -nr |
-      head -n1 |
-      cut -f2-
-  )"
+  OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-missing)" || exit 1
+  BENTO_BIN="${OBJ_DIR:+$OBJ_DIR/dist/Bento.app/Contents/MacOS/bento}"
 fi
 PROFILE="${1:-${BENTO_DEV_PROFILE:-.bento-dev-profile}}"
 if [ "$#" -gt 0 ]; then
@@ -35,7 +30,7 @@ if { [ -e "$PROFILE_LOCK" ] || [ -L "$PROFILE_LOCK" ]; } &&
 fi
 
 if [ ! -x "$BENTO_BIN" ]; then
-  echo "dev-launch: missing executable $BENTO_BIN; run a full build first" >&2
+  echo "dev-launch: missing executable ${BENTO_BIN:-in engine/obj-bento}; run a full build first" >&2
   exit 1
 fi
 
