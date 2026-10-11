@@ -34,6 +34,7 @@
     "chrome:resize-check": "node scripts/check-chrome-resize-guard.mjs",
     "import:branding": "node scripts/install-branding.mjs",
     "import:addons": "node scripts/install-builtin-addons.mjs",
+    "lint:repo": "eslint scripts src/browser .agents",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
     "test:agent-skills": "node --test .agents/skills/bento-upgrade-firefox/scripts/*.test.mjs",
