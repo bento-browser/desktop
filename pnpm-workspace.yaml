@@ -4,5 +4,4 @@ packages:
 
 # pnpm 10 requires explicit opt-in for dependency build scripts.
 onlyBuiltDependencies:
-  - sharp
   - esbuild

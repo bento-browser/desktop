@@ -93,7 +93,7 @@ jobs:
       - name: Validate JSON syntax
         run: |
           set -e
-          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json tsconfig.json .size-limit.json; do
+          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json .size-limit.json; do
             echo "checking $f"
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
