@@ -63,9 +63,6 @@ describe('workspace theme presets', () => {
     expect(generatedThemeCss).toContain(
       "[data-muxui-theme='default'][data-muxui-contrast='standard'] {",
     );
-    expect(generatedThemeCss).toContain(
-      "[data-muxui-theme='default'][data-muxui-contrast='more'] {",
-    );
     expect(generatedThemeCss).toContain('--muxui-reference-effect-shadow-s:');
     expect(generatedThemeCss).toContain('color-mix(in srgb');
     expect(generatedThemeCss).toContain('--muxui-reference-color-brand-60: var(--brand-60);');

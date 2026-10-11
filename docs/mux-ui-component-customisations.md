@@ -33,8 +33,14 @@ the generated Mux token projection.
 Text uses the public `xs`, `sm`, `md`, and `lg` size values. There is no
 Bento compatibility wrapper for the old Text API. React Aria is an internal Mux
 dependency; shared Vite aliases and graph overrides preserve one menu context
-identity. Release SBOM validation binds the exact published version and npm
-integrity and retains the approved shell runtime dependency policy.
+identity. Vite no longer forces React Aria into one `react-aria` chunk: Rollup
+already places each module in one chunk, and the forced chunk made every
+overlay download the whole package. `module-identity-guard.ts` fails the build
+instead when a context-bearing package (React, React Aria, `@internationalized`)
+is bundled from two install paths, which is how the original
+`SubmenuTriggerContext` defect arose. Release SBOM validation binds the exact
+published version and npm integrity and retains the approved shell runtime
+dependency policy.
 
 On 2026-10-05, isolated Node 24.21 validation passed both frozen installs,
 normal shell typecheck/lint/build, the active and archived Settings Ladle
@@ -47,8 +53,9 @@ vulnerabilities, and the release SBOM contains 709 components with the npm Mux
 integrity digest. These results cover the published RC; prior alpha test counts
 and screenshots are not evidence for it.
 
-The size checker covers all 13 normal entries and includes standalone Settings
-when the rollback source stages it. Existing advisory ceilings remain unchanged.
+The size checker covers the 12 normal JavaScript entries, `style.css`, the
+plain `panel-newtab.css`, and standalone Settings when the rollback source
+stages it. Existing advisory ceilings remain unchanged.
 An unchanged alpha baseline built in a separate source copy measured shell
 JavaScript at 386.09 KB gzipped and CSS at 91.41 KB. The RC measures 364.64 KB and
 107.41 KB respectively: JavaScript decreases 21.45 KB, while CSS increases
@@ -58,6 +65,17 @@ that those budgets pass. Public Mux styles alone are 79.92 KB gzipped, with
 public themes at 30.83 KB and Bento's generated aliases at 17.54 KB; combined
 compression means these source sizes do not add directly to the bundle size.
 Full public component/theme coverage is retained.
+
+On 2026-10-12 the shell build dropped the forced React Aria chunk, the
+modulepreload polyfill, and the contrast `more` CSS, and `panel-newtab` became a
+plain page. The summed gzip closure of the 12 JavaScript entries fell from
+3,959 KB to 3,233 KB (-18.4%), and palette, confirm, merge-palette, and
+panel-navigator-tooltip now fit their 200 KB ceilings while the other overlays
+still exceed them. `style.css` fell from 107.37 KB to 103.13 KB gzipped (1.45 MB
+to 1.08 MB raw); gzip had already collapsed most of the repeated contrast
+blocks. `panel-newtab` now loads a 17.92 KB gzipped sheet instead of the shared
+sheet (its heading still loads the Inter file). The generated chrome token sheet
+fell from 1,045 kB to 664 kB.
 
 Firefox validation uses a disposable app/profile and legitimate protocol fixtures
 to activate the normal entries and both rollback Settings variants. Entry coverage
@@ -136,12 +154,28 @@ handler closes the controlled dialog, since the RC SearchField can otherwise
 consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
-Each HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
+Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places public Mux styles and themes in the low-precedence `muxui` layer, then
-the entry point loads Bento tokens and generated preset layers. Theme and mode
+the entry point loads Bento tokens, generated preset layers, and
+`theme/document-base.css`, the shared `html`/`body` defaults. Theme and mode
 attributes belong on the same scope element. `themeScope.ts` resolves aliases
 and unknown ids for presentation while `bento-tools` keeps persisted ids
 unchanged.
+
+The shell build keeps `cssCodeSplit: false`, so every entry shares one
+`style.css`. `public/panel-newtab.html` is the exception: a plain page with no
+script and no Mux stylesheet. The `panelNewtabCss` Vite plugin
+(`extensions/bento-shell/panel-newtab-css.ts`, also used by the archived rollback
+config) bundles `src/panel-newtab/panel-newtab.css` (tokens, presets, document
+base, page rules) into `assets/panel-newtab.css` with esbuild and the page links
+only that file.
+It uses `--bento-panel-newtab-*` and `--bento-font-system` tokens. Because Mux
+is absent, the page restates the Mux foundation defaults it relied on (body
+line height, heading color). Its heading keeps Inter through a page-local
+`@font-face`, limited to weight 650, that points by relative URL at the Inter
+file the shell build already emits into `assets/` from the Mux font-face. The
+Vite plugin fails the build if that file name stops existing, since it derives
+from the Mux package path.
 
 ## CSS and tokens
 
@@ -168,6 +202,21 @@ Add a missing reusable value to `bento-tokens.css` before using it. Avoid raw
 colors, durations, easings, or unexplained dimensions. Pair a tinted surface
 with its foreground role. Keep the browser-standard root contract of
 `1rem = 16px`.
+
+Contrast is fixed to `standard` (`themeScope.ts`, `useFirefoxTheme.ts`,
+`public/boot.js`), so Bento drops every rule that requires
+`data-muxui-contrast='more'` instead of shipping unreachable CSS. The shell build
+removes them with the `stripContrastMore` PostCSS plugin
+(`extensions/bento-shell/contrast-more.mjs`), which only removes a selector that
+tests the attribute at its top level; `:not(...)` forms and standard-contrast
+rules stay. A rule with nested rules is never removed or rewritten, because a
+nested `:not(&)` is still reachable and `&` takes its specificity from the whole
+parent selector list. A `@layer name { }` block the plugin empties becomes
+`@layer name;` so the layer keeps its place in the layer order. `scripts/sync-theme-presets.mjs` and
+`scripts/generate-chrome-tokens.mjs` no longer emit those blocks. Mux keeps them
+upstream, so adding a contrast setting later means removing the plugin and
+restoring the generator selectors. Do not add `contrast='more'` styling in
+Bento CSS while the plugin is active; it would be stripped.
 
 Firefox-owned chrome cannot import React components. Map native variables in
 `bento-chrome-theme.css` to the generated aliases from

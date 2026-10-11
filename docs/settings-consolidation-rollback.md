@@ -35,9 +35,12 @@ Each check stages the current shell, tools, and shared protocol into a
 temporary directory, overlays the rollback sources, and uses the repository's
 existing `node_modules` through a temporary symlink. It typechecks the shell,
 the staged tools entry, and the transition entry, runs the existing backup
-privacy tests against the staged `BackupStore`, builds all 14 Vite HTML
-entries (including standalone Settings), and bundles the selected background
-entry. Transition r1 keeps the current privacy and chrome experiment entries;
+privacy tests against the staged `BackupStore`, builds the 13 Vite HTML
+entries (including standalone Settings), confirms the plain `panel-newtab.html`
+page and its `assets/panel-newtab.css` were emitted, and bundles the selected
+background entry. The archived Vite config does not list `panel-newtab` as an
+entry: it is the live `public/` page, and the archived config imports the live
+`panel-newtab-css.ts` plugin that emits its stylesheet. Transition r1 keeps the current privacy and chrome experiment entries;
 final r2 uses the legacy tools manifest, removes the native-preferences and
 chrome-bridge experiment files from the staged tree, and requires the archived
 native mount to pass `node --check`.

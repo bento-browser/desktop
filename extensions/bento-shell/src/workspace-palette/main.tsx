@@ -10,6 +10,7 @@ import '../theme/muxui.css';
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
+import '../theme/document-base.css';
 import '../components/WorkspaceSwitcher/WorkspaceSwitcher.css';
 import { WorkspacePalette } from '../components/WorkspacePalette/WorkspacePalette';
 import { WORKSPACE_PALETTE_CLOSE_PREFIX } from '../bridge/useWorkspacePalette';

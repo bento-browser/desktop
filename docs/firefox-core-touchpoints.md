@@ -185,6 +185,14 @@ Use this shape for new or changed touchpoints:
   (`enumerateObservers` / `addObserver` for the ExtensionsUI permission-prompt
   topics, added once per process for the shared ExtensionsUI singleton, never
   per window),
+  the chrome-only, bubbling `pagetitlechanged` event that
+  `WindowGlobalParent::RecvUpdateDocumentTitle` (`dom/ipc/WindowGlobalParent.cpp`)
+  dispatches on a top-level document's embedding `<browser>`, and the
+  `<browser>.contentTitle` and `<browser>.currentURI` getters
+  (`toolkit/content/widgets/browser-custom-element.mjs`),
+  which the mount script's one delegated `window` listener uses to receive every
+  `BENTO_*` title-IPC sentinel from the shell and overlay frames (the same event
+  and getter `tabbrowser.js` uses for tab labels),
   chrome-hosted extension frame lifecycle messaging through `messageManager`,
   split-view `.browserContainer` click events and `<browser>` focus/click
   events,
@@ -210,6 +218,12 @@ Use this shape for new or changed touchpoints:
 - Firefox update risk: upstream changes to `browser.xhtml`, tabbrowser panel
   structure, split-view implementation, browser actor messaging, URI fixup, or
   chrome event ordering can break panel layout, focus, inline sidebar rename,
+  title-IPC delivery (if `pagetitlechanged` is renamed, stops firing for
+  extension-process or in-process `<browser>` elements, stops being dispatched
+  synchronously with an updated `contentTitle`, or stops bubbling to the chrome
+  window, every shell and overlay message is lost because nothing polls; if
+  `currentURI` lags the first title event of a new document or stops matching
+  the extension host, the document check ignores legitimate titles),
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, panel focus detection on
   privileged `about:*` pages, sidebar address scoping,
@@ -399,10 +413,27 @@ Use this shape for new or changed touchpoints:
   from the Browser Toolbox Console, open a second Bento window, close it, and
   confirm the live Bento listener count returns to its prior value), run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
-  extension typecheck/lint/build commands after any rebase.
+  extension typecheck/lint/build commands after any rebase, and verify title-IPC
+  delivery after any Firefox update that touches `WindowGlobalParent.cpp`,
+  `browser-custom-element.mjs`, or `tabbrowser.js` title handling: confirm
+  `RecvUpdateDocumentTitle` still dispatches `pagetitlechanged` with
+  `CanBubble::eYes` and `ChromeOnlyDispatch::eYes` on the embedder element and
+  that `currentURI` already reflects the new document when its title event
+  arrives (the Browser Console must not show `ignoring title from unexpected
+  document`), then in a built app open the command palette, address bar, a sidebar context menu,
+  the workspace switcher, a confirm dialog, and the welcome flow and confirm each
+  opens and closes (those paths cross the shell, overlay, menu, and panel-trailer
+  frames), and confirm a `BENTO_PANELS` change such as toggling Auto/Light/Dark
+  or adding a panel reaches chrome in the same paint as the sidebar. Idle CPU
+  wakeups with all overlays hidden must stay near zero (no title timers or
+  `requestAnimationFrame` loop).
 - Rollback or migration notes: keep fallback behavior extension-driven where
   possible. If upstream Firefox grows a supported API for the needed panel
-  operation, prefer migrating to that API and shrinking this mount.
+  operation, prefer migrating to that API and shrinking this mount. If
+  `pagetitlechanged` is removed or changes semantics, the previous receiver was
+  per-frame `setInterval` (60 ms and 200 ms) and shell-frame
+  `requestAnimationFrame` loops reading `contentTitle` (see git history of
+  `attachPaletteCloseListener`).
 
 ### Core UI And Window Sync Patch Stack
 

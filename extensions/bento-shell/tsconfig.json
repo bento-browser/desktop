@@ -7,5 +7,5 @@
     "types": ["vite/client", "firefox-webext-browser"],
     "preserveSymlinks": true
   },
-  "include": ["src/**/*", "../_shared/**/*", "vite.config.ts", ".ladle/**/*"]
+  "include": ["src/**/*", "../_shared/**/*", "*.ts", ".ladle/**/*"]
 }

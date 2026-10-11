@@ -12,6 +12,9 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
+// Live file in the staged shell root: rollback staging overlays this archive onto
+// the live extension, which keeps panel-newtab as a plain public/ page.
+import { panelNewtabCss } from './panel-newtab-css';
 
 // Strip `crossorigin` from emitted <script> and <link> tags. moz-extension://
 // resources don't reliably handle CORS preflight, so the attribute makes
@@ -50,7 +53,12 @@ function copyChromeBridgeExperiment(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react({ jsxRuntime: 'automatic' }), stripCrossOrigin(), copyChromeBridgeExperiment()],
+  plugins: [
+    react({ jsxRuntime: 'automatic' }),
+    stripCrossOrigin(),
+    copyChromeBridgeExperiment(),
+    panelNewtabCss('firefox128'),
+  ],
 
   ...(process.env.BENTO_RELEASE === '1'
     ? { esbuild: { drop: ['console', 'debugger'] as const } }
@@ -103,7 +111,8 @@ export default defineConfig(({ mode }) => ({
       // Multi-entry: shell is the chrome-mounted sidebar; settings is the
       // standalone rollback settings page; palette, confirm,
       // and edit-workspace are chrome-mounted overlay <browser> elements
-      // covering the whole window.
+      // covering the whole window. panel-newtab is not an entry: it is the plain
+      // page public/panel-newtab.html, and panelNewtabCss emits its stylesheet.
       input: {
         shell: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
@@ -118,7 +127,6 @@ export default defineConfig(({ mode }) => ({
         menu: resolve(__dirname, 'menu.html'),
         'panel-trailer': resolve(__dirname, 'panel-trailer.html'),
         'panel-navigator-tooltip': resolve(__dirname, 'panel-navigator-tooltip.html'),
-        'panel-newtab': resolve(__dirname, 'panel-newtab.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

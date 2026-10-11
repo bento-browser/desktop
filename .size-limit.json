@@ -6,6 +6,12 @@
     "gzip": true
   },
   {
+    "name": "bento-shell · panel-newtab.css (gz)",
+    "path": "extensions/bento-shell/dist/assets/panel-newtab.css",
+    "limit": "40 KB",
+    "gzip": true
+  },
+  {
     "name": "bento-shell · background.js (gz)",
     "path": "extensions/bento-shell/dist/assets/background.js",
     "limit": "5 KB",

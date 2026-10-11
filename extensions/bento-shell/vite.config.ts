@@ -6,7 +6,8 @@
 //
 // The pinned npm @muxui/react release is consumed from its public
 // output. The aliases below keep every entrypoint on Bento's pinned React Aria
-// substrate so providers and consumers share one module identity. With
+// substrate so providers and consumers share one module identity, and
+// moduleIdentityGuard fails the build if that identity ever splits. With
 // MUXUI_LOCAL set (local Mux development only), muxui-local.mjs swaps the npm
 // package for a local Mux checkout and the build stamps dist/muxui-source.json.
 
@@ -14,7 +15,10 @@ import { defineConfig, mergeConfig, searchForWorkspaceRoot, type Plugin } from '
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
+import { stripContrastMore } from './contrast-more.mjs';
+import { moduleIdentityGuard } from './module-identity-guard';
 import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
+import { panelNewtabCss } from './panel-newtab-css';
 
 const muxLocal = resolveMuxLocal();
 
@@ -50,11 +54,16 @@ function copyChromeBridgeExperiment(): Plugin {
   };
 }
 
+// Matches gecko.strict_min_version in manifest.json.
+const BUILD_TARGET = 'firefox150';
+
 const shellConfig = defineConfig(({ mode }) => ({
   plugins: [
     react({ jsxRuntime: 'automatic' }),
     stripCrossOrigin(),
     copyChromeBridgeExperiment(),
+    panelNewtabCss(BUILD_TARGET),
+    moduleIdentityGuard(),
     muxSourcePlugin(muxLocal, resolve(__dirname, '../../node_modules/@muxui/react/package.json')),
   ],
 
@@ -82,6 +91,7 @@ const shellConfig = defineConfig(({ mode }) => ({
       // — those carry their own state contexts too) and
       // `@react-types/shared` (shared TypeScript symbol slots that
       // can also produce identity drift across duplicate copies).
+      // moduleIdentityGuard fails the build if a second copy still slips in.
       {
         find: 'react-aria-components',
         replacement: resolve(__dirname, '../../node_modules/react-aria-components'),
@@ -107,7 +117,9 @@ const shellConfig = defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'firefox128',
+    target: BUILD_TARGET,
+    // Firefox loads modulepreload natively, so skip Vite's polyfill chunk.
+    modulePreload: { polyfill: false },
     cssCodeSplit: false,
     sourcemap: mode !== 'production',
     rollupOptions: {
@@ -131,46 +143,19 @@ const shellConfig = defineConfig(({ mode }) => ({
         menu: resolve(__dirname, 'menu.html'),
         'panel-trailer': resolve(__dirname, 'panel-trailer.html'),
         'panel-navigator-tooltip': resolve(__dirname, 'panel-navigator-tooltip.html'),
-        'panel-newtab': resolve(__dirname, 'panel-newtab.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name].js',
         assetFileNames: 'assets/[name][extname]',
         format: 'es',
-        // Force react-aria-* into a single shared chunk. Without this,
-        // Rollup's default heuristics can inline copies of an internal
-        // module (e.g. react-aria-components/dist/private/Menu.mjs) into
-        // BOTH a per-entry chunk AND a shared chunk when different entry
-        // points consume different exports from the same package. Each
-        // copy carries its own module-local React contexts — most
-        // visibly `SubmenuTriggerContext`, which is created via
-        // `createContext(null)` and read by `SubmenuTrigger`'s render
-        // function. When the parent `<Menu>` (loaded via a public Mux
-        // wrapper, ending up in the shared chunk) provides the context
-        // but ChromeMenu.tsx's `Menu.Submenu` consumer (ending up in menu.js's
-        // copy) reads from a DIFFERENT context
-        // instance, the read returns null and the destructure throws
-        // "Cannot destructure property 'parentMenuRef' of '<null>'" —
-        // surfaced in the minified bundle as "t is null" on every kebab
-        // menu open. Routing all react-aria-* into one chunk gives every
-        // consumer a single SubmenuTriggerContext identity.
-        manualChunks: (id) => {
-          if (
-            id.includes('node_modules/react-aria-components') ||
-            id.includes('node_modules/react-aria/') ||
-            id.includes('node_modules/react-stately/') ||
-            id.includes('node_modules/@react-aria/') ||
-            id.includes('node_modules/@react-stately/') ||
-            id.includes('node_modules/@react-types/')
-          ) {
-            return 'react-aria';
-          }
-          return undefined;
-        },
       },
     },
   },
+
+  // Contrast is fixed to 'standard', so drop the unreachable contrast='more'
+  // rules (Mux base blocks and its 15 theme presets) from the shipped sheet.
+  css: { postcss: { plugins: [stripContrastMore] } },
 
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
