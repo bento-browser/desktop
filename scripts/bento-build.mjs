@@ -988,9 +988,15 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
     const target = path.join(ctx.engineDir, relative);
     if (REGENERABLE_ENGINE_FILES.has(relative) && targetExistsSync(target)) {
       // Builds rewrite these from repository config, so the hash recorded at the
-      // last import goes stale after a mode switch or the first build. Compare
-      // with freshly generated output; any other content is a hand edit.
-      if (!isRegeneratedEngineFile(ctx, config, relative)) return false;
+      // last import goes stale after a mode switch or the first build. Accept
+      // freshly generated output, or the exact bytes recorded at import (the file a
+      // repository config change has not been rebuilt into yet). Anything else is
+      // a hand edit.
+      if (isRegeneratedEngineFile(ctx, config, relative)) continue;
+      const stat = fs.lstatSync(target);
+      const unchanged = expected && !expected.missing && expected.type !== 'symlink'
+        && stat.isFile() && sha256File(target) === expected.sha256;
+      if (!unchanged) return false;
       continue;
     }
     if (!expected) {

@@ -188,6 +188,36 @@ test('recorded state still rejects hand edits of regenerable and other recorded 
   }
 });
 
+test('recorded state accepts the recorded mozconfig after repository config changes, until the build regenerates it', async () => {
+  const root = await fixture();
+  try {
+    writeMozconfig(root, 'dev');
+    await main(['verify'], root);
+    const mozconfig = engineFile(root, 'mozconfig');
+    const recorded = fs.readFileSync(mozconfig, 'utf8');
+
+    // The pipeline verifies before the build can regenerate the file.
+    fs.appendFileSync(path.join(root, 'configs', platformName, 'mozconfig'), '\nac_add_options --enable-example\n');
+    assert.equal(verifyRecordedEngineState(root), true);
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
+    config.updates.hostname = 'moved.example.invalid';
+    fs.writeFileSync(path.join(root, 'bento.json'), JSON.stringify(config));
+    assert.equal(fs.readFileSync(mozconfig, 'utf8'), recorded);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // After the build regenerates it, the fresh content is what verification accepts.
+    writeMozconfig(root, 'dev');
+    assert.notEqual(fs.readFileSync(mozconfig, 'utf8'), recorded);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // A hand edit is neither the recorded nor the generated content.
+    fs.appendFileSync(mozconfig, 'ac_add_options --enable-hand-edit\n');
+    assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 /** Runs fn with BENTO_OBJDIR cleared (or set) and restores it afterwards. */
 async function withObjdirEnv(value, fn) {
   const previous = process.env.BENTO_OBJDIR;
