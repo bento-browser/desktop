@@ -49,6 +49,9 @@ export class PinnedPanelsStore {
   #flushScheduled = false;
   #listeners = new Set<Listener>();
   #persistence = new Persistence();
+  /** Pinned tabs seen in a private window. Their metadata never reaches storage,
+   * including the in-memory fallback used after the tab closes. */
+  #privateTabIds = new Set<number>();
   #getPanelKey: ((workspaceId: string, tabId: number) => string | undefined) | undefined;
 
   constructor(options: PinnedPanelsStoreOptions = {}) {
@@ -418,8 +421,13 @@ export class PinnedPanelsStore {
   async #resolveAndPersist(snapshot: PinnedPanelEntry[], immediate = false): Promise<void> {
     const resolved: PersistedPinnedEntry[] = [];
     for (const entry of snapshot) {
+      if (this.#privateTabIds.has(entry.tabId)) continue;
       try {
         const tab = await browser.tabs.get(entry.tabId);
+        if (tab.incognito === true) {
+          this.#privateTabIds.add(entry.tabId);
+          continue;
+        }
         const url = tab.url || entry.url;
         if (!isPersistablePinnedPanelUrl(url)) continue;
         resolved.push({

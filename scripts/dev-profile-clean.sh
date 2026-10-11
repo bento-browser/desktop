@@ -17,6 +17,11 @@
 #
 # To preserve more state, add a glob to KEEP. To force a wipe of
 # something currently kept, remove it from KEEP.
+#
+# Safety: this script only cleans a directory that is clearly a dev profile
+# (see "Profile identity" below). It never cleans a directory that contains
+# git-tracked files or sits in a protected checkout location such as src/ or
+# extensions/.
 
 set -euo pipefail
 
@@ -24,11 +29,32 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PROFILE_INPUT="${BENTO_DEV_PROFILE:-.bento-dev-profile}"
 PROFILE_ABS="$(node -p "require('node:path').resolve(process.argv[1])" "$PROFILE_INPUT")"
 
+# Written into every profile this script creates or first cleans. Its presence
+# marks the directory as safe to clean on later runs.
+PROFILE_MARKER=".bento-dev-profile-marker"
+
+refuse() {
+  echo "dev-profile-clean: $1" >&2
+  exit 1
+}
+
+lowercase() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+write_profile_marker() {
+  if [ ! -f "$PROFILE/$PROFILE_MARKER" ]; then
+    printf '%s\n' "Bento dev profile. scripts/dev-profile-clean.sh may delete everything here except its allowlist." \
+      >"$PROFILE/$PROFILE_MARKER"
+  fi
+}
+
 # This script recursively removes almost everything below PROFILE. Keep that
 # destructive scope inside the Bento checkout, even when BENTO_DEV_PROFILE is
 # supplied by a shell environment or CI wrapper. Resolve existing symlinks so a
 # checkout-local link cannot redirect cleanup into an unrelated directory.
 if [ -e "$PROFILE_ABS" ]; then
+  [ -d "$PROFILE_ABS" ] || refuse "profile is not a directory: $PROFILE_ABS"
   PROFILE="$(cd "$PROFILE_ABS" && pwd -P)"
 else
   PROFILE_PARENT="$(dirname "$PROFILE_ABS")"
@@ -52,9 +78,50 @@ case "$PROFILE" in
     ;;
 esac
 
+# Any git-tracked file below the target means it holds source, not profile data.
+if ! TRACKED_IN_PROFILE="$(git -C "$REPO_ROOT" --literal-pathspecs ls-files -- "$PROFILE")"; then
+  refuse "cannot list tracked files in $REPO_ROOT; refusing to clean $PROFILE"
+fi
+if [ -n "$TRACKED_IN_PROFILE" ]; then
+  refuse "refusing to clean $PROFILE: it contains git-tracked files (for example $(printf '%s\n' "$TRACKED_IN_PROFILE" | head -n 1))"
+fi
+
+# Protected locations. The first path component below the checkout root must
+# not be a tracked top-level entry (src, extensions, scripts, ...) or one of
+# the repository metadata, Firefox source, dependency, and local cache
+# directories. Compared case-insensitively because macOS volumes usually are.
+# Fail closed when git cannot list tracked files.
+if ! TRACKED_TOP="$(git -C "$REPO_ROOT" -c core.quotePath=false ls-files | cut -d/ -f1 | sort -u)"; then
+  refuse "cannot list tracked files in $REPO_ROOT; refusing to clean $PROFILE"
+fi
+PROFILE_TOP="${PROFILE#"$REPO_ROOT"/}"
+PROFILE_TOP="$(lowercase "${PROFILE_TOP%%/*}")"
+while IFS= read -r protected; do
+  if [ -n "$protected" ] && [ "$PROFILE_TOP" = "$(lowercase "$protected")" ]; then
+    refuse "refusing to clean $PROFILE: it is or is inside protected checkout path '$protected' (use a dedicated directory such as .bento-dev-profile)"
+  fi
+done <<PROTECTED
+.bento
+.git
+engine
+node_modules
+$TRACKED_TOP
+PROTECTED
+
 if [ ! -d "$PROFILE" ]; then
   mkdir -p "$PROFILE"
+  write_profile_marker
   exit 0
+fi
+
+# Profile identity: clean an existing directory only if it carries our marker,
+# already looks like a Firefox profile (profiles that predate the marker), or
+# is empty. Anything else is an unrelated directory.
+if [ ! -f "$PROFILE/$PROFILE_MARKER" ] &&
+  [ ! -f "$PROFILE/times.json" ] &&
+  [ ! -f "$PROFILE/prefs.js" ] &&
+  [ -n "$(ls -A "$PROFILE")" ]; then
+  refuse "refusing to clean $PROFILE: it is not empty and not a dev profile (no $PROFILE_MARKER, times.json, or prefs.js). Use a new or empty directory."
 fi
 
 PROFILE_LOCK="$PROFILE/.parentlock"
@@ -66,8 +133,13 @@ if { [ -e "$PROFILE_LOCK" ] || [ -L "$PROFILE_LOCK" ]; } &&
   exit 1
 fi
 
+# Past the guards and the lock check: mark the profile as ours.
+write_profile_marker
+
 # User data we WANT to persist between launches.
 KEEP=(
+  # Marks this directory as a dev profile this script may clean
+  "$PROFILE_MARKER"
   # Browser identity / certs / passwords
   "key4.db"
   "cert9.db"

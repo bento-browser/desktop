@@ -28,10 +28,6 @@ class UserError extends Error {
   }
 }
 
-function rel(root, file) {
-  return path.relative(root, file).split(path.sep).join('/');
-}
-
 function jsonRead(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -669,8 +665,6 @@ export async function materialize(ctx, manifest, options = {}) {
       }
     }
     return { worktreeDir, base };
-  } catch (error) {
-    throw error;
   } finally {
     if (options.keepWorktree !== true) {
       removeWorktree(ctx, worktreeDir);

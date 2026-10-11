@@ -3,6 +3,7 @@
     "eslint --fix",
     "prettier --write"
   ],
+  "{scripts,src/browser,.agents}/**/*.{js,mjs}": ["eslint --fix"],
   "{docs,extensions/_shared,extensions/bento-shell,extensions/bento-tools}/**/*.{json,md,yaml,yml,css}": [
     "prettier --write"
   ],
