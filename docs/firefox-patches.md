@@ -225,5 +225,8 @@ Before landing a Firefox patch or upstream sync:
 2. `pnpm run import` succeeds.
 3. `pnpm run build` or `pnpm run firefox:sync` succeeds.
 4. `config/firefox-versions.json` matches `bento.json` after an upstream sync.
-5. [firefox-core-touchpoints.md](firefox-core-touchpoints.md) is current.
-6. All regression checks listed for affected touchpoints have passed.
+5. `pnpm run firefox:compat:engine` finds every member in the
+   [firefox-compat registry](firefox-core-touchpoints.md#private-and-internal-firefox-members)
+   in the new `engine/` source.
+6. [firefox-core-touchpoints.md](firefox-core-touchpoints.md) is current.
+7. All regression checks listed for affected touchpoints have passed.

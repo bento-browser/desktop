@@ -104,6 +104,7 @@ failures separately:
 pnpm install
 pnpm run firefox:patches:test
 pnpm run firefox:patches:check
+pnpm run firefox:compat:check
 pnpm run check:zen-boundary
 pnpm run check:product-identity
 ```
@@ -182,6 +183,21 @@ focused diffs for:
   built-in add-on registration;
 - APIs, chrome DOM, actors, SessionStore, DevTools, search, Places, and other
   dependencies recorded in `docs/firefox-core-touchpoints.md`.
+
+Run the firefox-compat check against the target source in `engine/` before
+resolving conflicts:
+
+```sh
+pnpm run firefox:compat:engine
+```
+
+It greps the target source for every upstream-private or internal Firefox
+member Bento depends on (the registry in `scripts/firefox-compat-registry.mjs`,
+tabulated in `docs/firefox-core-touchpoints.md`) and lists each one that is gone, including
+modules that are no longer registered. Each missing member is a hook that would
+otherwise stop working silently: fix or remove the hook, then update the
+registry entry. A pass proves the definition still exists, not that the hook
+still behaves the same, so keep the touchpoint regression checks.
 
 Review official Mozilla release notes and security advisories for intent and
 risk. Classify the change as a low-risk fast path, targeted review,
@@ -279,12 +295,14 @@ pnpm run firefox:patches:check
 node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs
 pnpm run check:zen-boundary
 pnpm run check:product-identity
+pnpm run firefox:compat:test
 pnpm --filter @bento/shell typecheck
 pnpm --filter @bento/tools typecheck
 pnpm --filter @bento/shell lint
 pnpm --filter @bento/tools lint
 pnpm run ext:build
 pnpm run import
+pnpm run firefox:compat:engine
 pnpm run build
 pnpm run package
 pnpm run artifacts:check
@@ -319,6 +337,11 @@ disabled; `CLAUDE.md` "Versioning policy" owns release rules. Run
 `pnpm run release:security-check` for preview artifacts; the public gate remains
 blocked until the required signing identities are provisioned.
 
+After the upgrade, set `BASELINE` and the `at` lines of
+`scripts/firefox-compat-registry.mjs` to the new version (`node scripts/check-firefox-compat.mjs --engine
+engine --verbose` prints each member's current line), then regenerate the table
+with `node scripts/check-firefox-compat.mjs --write-docs`.
+
 Run the bundled headless smoke against the built binary:
 
 ```sh
@@ -326,8 +349,13 @@ bash .agents/skills/bento-upgrade-firefox/scripts/headless-smoke.sh <path-to-bui
 ```
 
 Require a zero exit and a non-empty PNG. Treat isolated-profile network
-diagnostics as warnings only when startup and rendering succeed. Run focused
-manual checks for every affected Firefox touchpoint before declaring completion.
+diagnostics as warnings only when startup and rendering succeed. In a built app,
+the Browser Console must show `[bento-compat] probed N members on Firefox
+<platform version>` (the new Gecko version, not Bento's app version) and no
+`[bento-compat] missing` errors. Deferred members (objects Firefox has not
+loaded yet) are not errors; `window.BentoFirefoxCompat.check()` lists them and
+probes them once opened. Run focused manual checks for every affected
+Firefox touchpoint before declaring completion.
 
 ## Land the upgrade
 

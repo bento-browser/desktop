@@ -21,7 +21,14 @@ Bento's core browsing model is split across three layers:
 - `bento-shell-mount.js` is the chrome process reconciler. It receives
   title-IPC sentinels from the shell and mutates Firefox chrome UI, including
   `gBrowser`, `tabpanels.splitViewPanels`, panel headers, splitters, and chrome
-  overlays.
+  overlays. It is one of the supported chrome surfaces named in `CLAUDE.md`
+  (with the other `src/browser/` overlays, the key actors, the experiments, and
+  the patch stack). Every upstream-private or internal Firefox member it relies
+  on is listed in the repo-only firefox-compat registry
+  (`scripts/firefox-compat-registry.mjs`), which
+  `scripts/check-firefox-compat.mjs` checks against a Firefox source tree; the
+  table is in `docs/firefox-core-touchpoints.md`. The mount ships only a compact
+  probe list of the runtime-probable members, which each window probes once.
 
 The state contract is declared in `extensions/_shared/protocol.ts`. UI code
 dispatches `Action` messages through `extensions/bento-shell/src/bridge/useToolsPort.ts`.
@@ -2728,8 +2735,66 @@ The following mechanisms are load-bearing:
   Otherwise clicking a side panel sets it as `gBrowser.selectedTab`, which
   promotes the side panel into the main slot and reorders the strip.
 
+Every private Firefox member these shims touch (`on_visibilitychange`,
+`_beginRemoveTab`, `_findTabToBlurTo`, `_insertBrowser`, the `isEmpty` and
+`splitview` tab getters, `activeSplitView`, the `TabSplitView*` handlers,
+`splitViewPanels`, `removeTabsFromSplitview`, `PopupNotifications._isActiveBrowser`,
+and the rest) is an entry in the firefox-compat registry
+(`scripts/firefox-compat-registry.mjs`). A new shim that reaches a private member
+adds its entry, and its id in the mount probe list, in the same change.
+
 ### Chrome rendering pitfalls
 
+- The gBrowser hooks are guarded by `typeof` and a `__bento*` flag, so a Firefox
+  rename silently disables them (ghost panels, wrong tab focus after a close).
+  After a Firefox update, run `pnpm run firefox:compat:engine` before anything
+  else and check the Browser Console of a built app for
+  `[bento-compat] missing <id>` lines (the table in
+  `docs/firefox-core-touchpoints.md` explains each id). The runtime probe runs
+  after delayed startup, never throws, and changes no behavior. It is passive
+  (see the pitfall below), so objects Firefox has not loaded yet, such as the
+  downloads panel, are counted as `deferred` instead of probed;
+  `window.BentoFirefoxCompat.check()` in the Browser Toolbox re-runs it after
+  opening them and returns the `present`, `missing`, and `deferred` id lists.
+- A compat probe must not trigger what it probes. Reading `window.gURLBar`,
+  `PanelUI`, or `PanelMultiView` runs the lazy getter that loads them,
+  `ChromeUtils.importESModule` loads a module that is not loaded yet, and
+  `gBrowser.selectedTab` is a getter too. The probe reads every property with
+  `Object.getOwnPropertyDescriptor` along the prototype chain (a data property
+  has a `value`, an accessor does not and is never called), imports a module
+  only after `Cu.isESModuleLoaded(url)` is true, and finds the selected tab and
+  a `<browser>` with native DOM calls. A review found seven imports and a
+  `PanelMultiView` getter call from a check made before anything had loaded;
+  the passive test in `scripts/check-firefox-compat.test.mjs` counts both and
+  expects zero. A new probe goes through `bentoCompatPeek`, never `owner[key]`
+  or `key in owner` on a Firefox object.
+- Passive does not mean data-only. A first runtime check logged
+  `missing MozTabbrowserTab.linkedPanel` because the probe required a string
+  data value, but `linkedPanel` is a get/set accessor on the `MozTab` prototype
+  (`tabbox.js`), so it was present and working. A descriptor found anywhere on
+  the prototype chain, data or accessor, counts as present; only an owner that
+  is still an untriggered lazy accessor is `deferred`. A method found as a data
+  property must be a function, and one found as an accessor counts as present
+  because checking it would mean calling the getter. The same run printed
+  `Firefox 0.0.1`: the summary line uses `Services.appinfo.platformVersion`
+  (`154.0`), not Bento's app version. The tests build fixtures whose members are
+  prototype accessors that throw if invoked; keep new fixtures in that shape,
+  because a data-property fixture hides this bug.
+- The private-member scan follows local aliases such as
+  `const gb = window.gBrowser;` (`reattachTabProgressFilters` reaches
+  `_getTabProgressFilter` only through `gb`, which the direct-access scan
+  missed). It does not follow destructuring, parameters, bracket access, or
+  helper return values; register those members by hand.
+- A compat probe must not be satisfied by Bento's own code. Wrapping a Firefox
+  member and then checking `typeof gBrowser.x === 'function'` finds the wrapper;
+  patch sites call `bentoCompatNoteNative(id, original)` first and the probe
+  judges that, and members Bento assigns on an instance (`splitViewPanels`, the
+  per-tab `splitview` getter) are probed on the prototype. Elements inside a
+  `<html:template>` (`identity-popup` until `gIdentityHandler._initializePopup()`
+  runs) and lazy globals that Firefox has not materialised must not be probed as
+  if present: the former are engine-only, and a lazy global that is absent is
+  `missing` while one still behind its getter (or a module that is not loaded
+  yet) is `deferred`.
 - Do not call `gBrowser.hideTab(tab)` for active panel tabs. Smoke testing showed
   hidden tabs render as black or blank split-view slots.
 - Do not move or swap a tab's `linkedBrowser`. Extension content scripts depend
@@ -3850,7 +3915,10 @@ When changing core functionality, manually verify at least the affected subset:
   (compare the `data-bento-theme` change with the veil lift over several windows;
   the first window of a launch waits for `bento-tools` and is slower);
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
-  positions restored.
+  positions restored;
+- after any Firefox update, the Browser Console shows
+  `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
+  version, for example `154.0`) and no `[bento-compat] missing` lines.
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.
