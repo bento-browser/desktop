@@ -13,17 +13,21 @@ const { BentoShellDocumentRegistry } = ChromeUtils.importESModule(
   'resource:///actors/BentoShellDocumentRegistry.sys.mjs',
 );
 
+// Firefox 157 only lets loadSubScript take chrome:, resource: and moz-src: URLs
+// unless the caller passes allowUnsafeURL (ExtensionCommon does the same for
+// experiment_apis scripts), so these moz-extension: scripts need the option.
+function loadExtensionScript(extension, name, target) {
+  Services.scriptloader.loadSubScriptWithOptions(
+    extension.baseURI.resolve(`experiments/bento-native-preferences/${name}`),
+    { target, allowUnsafeURL: true },
+  );
+}
+
 function loadProtocol(extension) {
   const constantsScope = Object.create(null);
   const protocolScope = Object.create(null);
-  Services.scriptloader.loadSubScript(
-    extension.baseURI.resolve('experiments/bento-native-preferences/loader-contract-constants.js'),
-    constantsScope,
-  );
-  Services.scriptloader.loadSubScript(
-    extension.baseURI.resolve('experiments/bento-native-preferences/generated-protocol.js'),
-    protocolScope,
-  );
+  loadExtensionScript(extension, 'loader-contract-constants.js', constantsScope);
+  loadExtensionScript(extension, 'generated-protocol.js', protocolScope);
   const constants = constantsScope.BentoNativePreferencesLoaderContract;
   const protocol = protocolScope.BentoNativePreferencesProtocol;
   if (
