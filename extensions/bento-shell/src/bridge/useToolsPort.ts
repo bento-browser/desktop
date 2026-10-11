@@ -55,6 +55,8 @@ import { resolveThemeId } from '../theme/presets';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 
+type PanelsSyncEvent = Extract<Event, { type: 'panels/sync' }>;
+
 interface BusState {
   channel: BroadcastChannel | null;
   ready: boolean;
@@ -82,6 +84,15 @@ interface BusState {
    * In both cases bento-tools falls back to legacy global behaviour
    * (single-window semantics). */
   windowId: number | null;
+  /** Identifies this document's `hello`. The background tags its bootstrap
+   * replay with it so only the joining document applies the replay. */
+  helloId: string;
+  /** Sidebar only: latest panels/sync per workspace that chrome has not
+   * received in full yet: held while this window's active workspace is
+   * unknown, or forwarded before the settings (or workspace theme) it embeds
+   * had hydrated. Re-forwarded by forwardPendingPanelsToChrome once the
+   * missing input arrives, whichever order the events come in. */
+  pendingPanelsSync: Map<string, PanelsSyncEvent>;
 }
 
 function readWindowIdFromHash(): number | null {
@@ -106,6 +117,8 @@ const state: BusState = {
   ready: false,
   sidePanelTitleBridge: false,
   windowId: readWindowIdFromHash(),
+  helloId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+  pendingPanelsSync: new Map(),
 };
 const subscribers = new Set<() => void>();
 
@@ -124,6 +137,155 @@ function markToolsReady() {
   performance.measure('bento.bootToToolsReady', 'bento.boot', 'bento.toolsReady');
 }
 
+/** Writes one workspace's panels/sync to chrome as a BENTO_PANELS title.
+ * Callers have already decided the event belongs to this window's active
+ * workspace. The payload embeds settings and the workspace theme, so an event
+ * written before they hydrated stays pending for one re-forward. */
+function forwardPanelsToChrome(event: PanelsSyncEvent): void {
+  const wsState = useWorkspacesStore.getState();
+  const payload: {
+    workspaceId: string;
+    panels: typeof event.panels;
+    windowId?: number;
+    themeId?: string;
+    mainWidthPx?: number;
+    defaultPanelWidthPx?: number;
+    uiColorMode?: string;
+    sidebarCollapsed?: boolean;
+    sidebarHidden?: boolean;
+    sidebarShortcutBehavior?: SidebarShortcutBehavior;
+    customPanelSizes?: number[];
+    panelCycleWraparound?: boolean;
+    panelShadowsEnabled?: boolean;
+    panelCornerRadiusPx?: number;
+    panelSplitterSizePx?: number;
+    stripScrollLeft?: number;
+    pinnedTabIdsInWorkspace?: number[];
+    savedPanelCount?: number;
+    savedPanelItems?: typeof event.savedPanelItems;
+    devtoolsPairs?: typeof event.devtoolsPairs;
+    scrollToPanelTabId?: number;
+    scrollToPanelReveal?: 'full' | 'right-edge';
+    layout: typeof event.layout;
+    panelStatusByTabId: typeof event.panelStatusByTabId;
+  } = {
+    workspaceId: event.workspaceId,
+    panels: event.panels,
+    layout: event.layout,
+    panelStatusByTabId: event.panelStatusByTabId,
+  };
+  if (state.windowId !== null) {
+    payload.windowId = state.windowId;
+  }
+  const activeWorkspace = wsState.byId[event.workspaceId];
+  // This payload is the extension-to-chrome presentation hint. Keep
+  // the tools event and persisted workspace id raw, but resolve
+  // unknown/legacy ids before chrome applies its scoped stylesheet.
+  payload.themeId = resolveThemeId(event.themeId ?? activeWorkspace?.themeId);
+  if (typeof event.mainWidthPx === 'number') {
+    payload.mainWidthPx = event.mainWidthPx;
+  }
+  if (typeof event.stripScrollLeft === 'number' && event.stripScrollLeft >= 0) {
+    payload.stripScrollLeft = event.stripScrollLeft;
+  }
+  // Bundle chrome-bound settings into the panels payload so
+  // they reach chrome via the single BENTO_PANELS title-IPC
+  // channel. uiColorMode flips Mux/Bento tokens on the chrome
+  // window root; sidebarCollapsed toggles the narrow-rail
+  // class on #bento-shell-host; sidebarHidden and
+  // sidebarShortcutBehavior drive Cmd/Ctrl+S hide/restore;
+  // customPanelSizes populates
+  // each side panel header's kebab "more" menu;
+  // panelCornerRadiusPx sets split-view panel frame radius;
+  // panelSplitterSizePx sets split-view splitter/gap size; and
+  // defaultPanelWidthPx sets the main slot's default minimum
+  // width. Single channel = no race with separate title
+  // writes (the COLOR_MODE channel was dropped earlier for
+  // this reason).
+  const cur = useSettingsStore.getState().current;
+  if (cur !== null && (event.themeId !== undefined || activeWorkspace !== undefined)) {
+    state.pendingPanelsSync.delete(event.workspaceId);
+  } else {
+    state.pendingPanelsSync.set(event.workspaceId, event);
+  }
+  const bootUiColorMode =
+    document.documentElement.getAttribute('data-bento-color-mode-pref') ??
+    document.documentElement.getAttribute('data-color-mode');
+  if (cur?.uiColorMode) payload.uiColorMode = cur.uiColorMode;
+  else if (bootUiColorMode) payload.uiColorMode = bootUiColorMode;
+  if (typeof cur?.sidebarCollapsed === 'boolean') {
+    payload.sidebarCollapsed = cur.sidebarCollapsed;
+  }
+  if (typeof cur?.sidebarHidden === 'boolean') {
+    payload.sidebarHidden = cur.sidebarHidden;
+  }
+  if (cur?.sidebarShortcutBehavior === 'collapse' || cur?.sidebarShortcutBehavior === 'hide') {
+    payload.sidebarShortcutBehavior = cur.sidebarShortcutBehavior;
+  }
+  if (Array.isArray(cur?.customPanelSizes)) {
+    payload.customPanelSizes = cur.customPanelSizes;
+  }
+  if (typeof event.defaultPanelWidthPx === 'number') {
+    payload.defaultPanelWidthPx = event.defaultPanelWidthPx;
+  } else if (typeof cur?.defaultPanelWidthPx === 'number') {
+    payload.defaultPanelWidthPx = cur.defaultPanelWidthPx;
+  }
+  if (typeof cur?.panelCycleWraparound === 'boolean') {
+    payload.panelCycleWraparound = cur.panelCycleWraparound;
+  }
+  if (typeof cur?.panelShadowsEnabled === 'boolean') {
+    payload.panelShadowsEnabled = cur.panelShadowsEnabled;
+  }
+  if (typeof cur?.panelCornerRadiusPx === 'number') {
+    payload.panelCornerRadiusPx = cur.panelCornerRadiusPx;
+  }
+  if (typeof cur?.panelSplitterSizePx === 'number') {
+    payload.panelSplitterSizePx = cur.panelSplitterSizePx;
+  }
+  // Pinned-panel set for THIS workspace (Set.has(tabId) drives
+  // the chrome panel-header pin button state), per-panel audio
+  // state, and the global count of bookmarks in the "Saved panels"
+  // folder (chrome reads this to size the Add-panel trailer's inline
+  // favicon row). These ride on this single chrome-bound channel —
+  // tools is the source of truth and populates them directly on the
+  // event.
+  if (Array.isArray(event.pinnedTabIdsInWorkspace)) {
+    payload.pinnedTabIdsInWorkspace = event.pinnedTabIdsInWorkspace;
+  }
+  if (typeof event.savedPanelCount === 'number') {
+    payload.savedPanelCount = event.savedPanelCount;
+  }
+  if (Array.isArray(event.savedPanelItems)) {
+    payload.savedPanelItems = event.savedPanelItems;
+  }
+  if (Array.isArray(event.devtoolsPairs)) {
+    payload.devtoolsPairs = event.devtoolsPairs;
+  }
+  if (typeof event.scrollToPanelTabId === 'number') {
+    payload.scrollToPanelTabId = event.scrollToPanelTabId;
+    if (event.scrollToPanelReveal === 'right-edge') {
+      payload.scrollToPanelReveal = 'right-edge';
+    }
+  }
+  const json = JSON.stringify(payload);
+  // btoa needs latin1; encodeURIComponent first to handle multibyte.
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
+}
+
+/** Forwards the pending panels/sync for this window's workspace once the
+ * workspace is known, and drops the rest (other workspaces never reach
+ * chrome). forwardPanelsToChrome keeps the event pending while an input is
+ * still missing, so call this after every workspaces and settings update. */
+function forwardPendingPanelsToChrome(): void {
+  if (state.pendingPanelsSync.size === 0) return;
+  const activeId = selectActiveIdForWindow(useWorkspacesStore.getState(), state.windowId);
+  if (activeId === null) return;
+  const pending = state.pendingPanelsSync.get(activeId);
+  state.pendingPanelsSync.clear();
+  if (pending) forwardPanelsToChrome(pending);
+}
+
 function ensureConnection(): void {
   if (state.channel) return;
   if (typeof BroadcastChannel === 'undefined') {
@@ -137,18 +299,25 @@ function ensureConnection(): void {
   channel.addEventListener('message', (msg) => {
     const { data } = msg;
     if (!data || data.kind !== 'event') return;
+    // The background replays cached state per `hello`. Documents that did
+    // not say hello already hold it, so only the joiner applies the replay.
+    const isReplay = typeof data.replayFor === 'string';
+    if (isReplay && data.replayFor !== state.helloId) return;
     const event = data.event as Event;
     switch (event.type) {
-      case 'tools/booted':
+      case 'tools/booted': {
+        const wasReady = state.ready;
         state.ready = true;
         // The sidebar has bento.boot from main.tsx; secondary entries also
         // connect to this bus, but do not own that startup mark.
         markToolsReady();
         notify();
-        // The cached snapshot relayed by bento-shell background may be from
-        // a moment when tools' TabRegistry hadn't yet captured all startup
-        // tabs. Ask for a fresh one — applySnapshot replaces, not merges,
-        // so this can only fix things, never lose tabs.
+        // Only a replayed boot means this document may have missed the
+        // snapshots tools sends right after a live `tools/booted`, so only
+        // that case asks for them. A document that already saw the live boot
+        // is complete, and requests would make tools broadcast every
+        // snapshot to every document again.
+        if (!isReplay || wasReady) return;
         dispatch({ type: 'tabs/requestSnapshot' });
         dispatch({ type: 'workspaces/requestSnapshot' });
         dispatch({ type: 'settings/requestSnapshot' });
@@ -156,6 +325,7 @@ function ensureConnection(): void {
         dispatch({ type: 'tabFolders/requestSnapshot' });
         dispatch({ type: 'savedPanels/requestSnapshot' });
         return;
+      }
       case 'tabs/snapshot':
         useTabsStore.getState().applySnapshot(event.tabs);
         return;
@@ -166,9 +336,11 @@ function ensureConnection(): void {
         useWorkspacesStore
           .getState()
           .applySnapshot(event.workspaces, event.activeId, event.activeIdByWindow);
+        forwardPendingPanelsToChrome();
         return;
       case 'workspaces/changed':
         useWorkspacesStore.getState().applyDeltas(event.deltas);
+        forwardPendingPanelsToChrome();
         return;
       case 'settings/snapshot':
       case 'settings/changed':
@@ -183,7 +355,11 @@ function ensureConnection(): void {
         // user manually triggers a fresh panels/sync (workspace switch).
         // Instead bento-tools' settings.onChange fires emitPanelsSync,
         // which produces a fresh BENTO_PANELS title carrying the new
-        // uiColorMode — single channel, no race.
+        // uiColorMode — single channel, no race. The one case tools'
+        // emit cannot cover is a late sidebar whose panels were forwarded
+        // before its first settings snapshot; that payload is pending and
+        // goes out again now.
+        forwardPendingPanelsToChrome();
         return;
       case 'panels/sync': {
         usePanelsStore.getState().apply(
@@ -221,132 +397,13 @@ function ensureConnection(): void {
             state.windowId !== null &&
             event.windowId === state.windowId;
           if (event.workspaceId === activeId || (isTargetedAtThisWindow && activeId === null)) {
-            const payload: {
-              workspaceId: string;
-              panels: typeof event.panels;
-              windowId?: number;
-              themeId?: string;
-              mainWidthPx?: number;
-              defaultPanelWidthPx?: number;
-              uiColorMode?: string;
-              sidebarCollapsed?: boolean;
-              sidebarHidden?: boolean;
-              sidebarShortcutBehavior?: SidebarShortcutBehavior;
-              customPanelSizes?: number[];
-              panelCycleWraparound?: boolean;
-              panelShadowsEnabled?: boolean;
-              panelCornerRadiusPx?: number;
-              panelSplitterSizePx?: number;
-              stripScrollLeft?: number;
-              pinnedTabIdsInWorkspace?: number[];
-              savedPanelCount?: number;
-              savedPanelItems?: typeof event.savedPanelItems;
-              devtoolsPairs?: typeof event.devtoolsPairs;
-              scrollToPanelTabId?: number;
-              scrollToPanelReveal?: 'full' | 'right-edge';
-              layout: typeof event.layout;
-              panelStatusByTabId: typeof event.panelStatusByTabId;
-            } = {
-              workspaceId: event.workspaceId,
-              panels: event.panels,
-              layout: event.layout,
-              panelStatusByTabId: event.panelStatusByTabId,
-            };
-            if (state.windowId !== null) {
-              payload.windowId = state.windowId;
-            }
-            const activeWorkspace = wsState.byId[event.workspaceId];
-            // This payload is the extension-to-chrome presentation hint. Keep
-            // the tools event and persisted workspace id raw, but resolve
-            // unknown/legacy ids before chrome applies its scoped stylesheet.
-            payload.themeId = resolveThemeId(event.themeId ?? activeWorkspace?.themeId);
-            if (typeof event.mainWidthPx === 'number') {
-              payload.mainWidthPx = event.mainWidthPx;
-            }
-            if (typeof event.stripScrollLeft === 'number' && event.stripScrollLeft >= 0) {
-              payload.stripScrollLeft = event.stripScrollLeft;
-            }
-            // Bundle chrome-bound settings into the panels payload so
-            // they reach chrome via the single BENTO_PANELS title-IPC
-            // channel. uiColorMode flips Mux/Bento tokens on the chrome
-            // window root; sidebarCollapsed toggles the narrow-rail
-            // class on #bento-shell-host; sidebarHidden and
-            // sidebarShortcutBehavior drive Cmd/Ctrl+S hide/restore;
-            // customPanelSizes populates
-            // each side panel header's kebab "more" menu;
-            // panelCornerRadiusPx sets split-view panel frame radius;
-            // panelSplitterSizePx sets split-view splitter/gap size; and
-            // defaultPanelWidthPx sets the main slot's default minimum
-            // width. Single channel = no race with separate title
-            // writes (the COLOR_MODE channel was dropped earlier for
-            // this reason).
-            const cur = useSettingsStore.getState().current;
-            const bootUiColorMode =
-              document.documentElement.getAttribute('data-bento-color-mode-pref') ??
-              document.documentElement.getAttribute('data-color-mode');
-            if (cur?.uiColorMode) payload.uiColorMode = cur.uiColorMode;
-            else if (bootUiColorMode) payload.uiColorMode = bootUiColorMode;
-            if (typeof cur?.sidebarCollapsed === 'boolean') {
-              payload.sidebarCollapsed = cur.sidebarCollapsed;
-            }
-            if (typeof cur?.sidebarHidden === 'boolean') {
-              payload.sidebarHidden = cur.sidebarHidden;
-            }
-            if (
-              cur?.sidebarShortcutBehavior === 'collapse' ||
-              cur?.sidebarShortcutBehavior === 'hide'
-            ) {
-              payload.sidebarShortcutBehavior = cur.sidebarShortcutBehavior;
-            }
-            if (Array.isArray(cur?.customPanelSizes)) {
-              payload.customPanelSizes = cur.customPanelSizes;
-            }
-            if (typeof event.defaultPanelWidthPx === 'number') {
-              payload.defaultPanelWidthPx = event.defaultPanelWidthPx;
-            } else if (typeof cur?.defaultPanelWidthPx === 'number') {
-              payload.defaultPanelWidthPx = cur.defaultPanelWidthPx;
-            }
-            if (typeof cur?.panelCycleWraparound === 'boolean') {
-              payload.panelCycleWraparound = cur.panelCycleWraparound;
-            }
-            if (typeof cur?.panelShadowsEnabled === 'boolean') {
-              payload.panelShadowsEnabled = cur.panelShadowsEnabled;
-            }
-            if (typeof cur?.panelCornerRadiusPx === 'number') {
-              payload.panelCornerRadiusPx = cur.panelCornerRadiusPx;
-            }
-            if (typeof cur?.panelSplitterSizePx === 'number') {
-              payload.panelSplitterSizePx = cur.panelSplitterSizePx;
-            }
-            // Pinned-panel set for THIS workspace (Set.has(tabId) drives
-            // the chrome panel-header pin button state), per-panel audio
-            // state, and the global count of bookmarks in the "Saved panels"
-            // folder (chrome reads this to size the Add-panel trailer's inline
-            // favicon row). These ride on this single chrome-bound channel —
-            // tools is the source of truth and populates them directly on the
-            // event.
-            if (Array.isArray(event.pinnedTabIdsInWorkspace)) {
-              payload.pinnedTabIdsInWorkspace = event.pinnedTabIdsInWorkspace;
-            }
-            if (typeof event.savedPanelCount === 'number') {
-              payload.savedPanelCount = event.savedPanelCount;
-            }
-            if (Array.isArray(event.savedPanelItems)) {
-              payload.savedPanelItems = event.savedPanelItems;
-            }
-            if (Array.isArray(event.devtoolsPairs)) {
-              payload.devtoolsPairs = event.devtoolsPairs;
-            }
-            if (typeof event.scrollToPanelTabId === 'number') {
-              payload.scrollToPanelTabId = event.scrollToPanelTabId;
-              if (event.scrollToPanelReveal === 'right-edge') {
-                payload.scrollToPanelReveal = 'right-edge';
-              }
-            }
-            const json = JSON.stringify(payload);
-            // btoa needs latin1; encodeURIComponent first to handle multibyte.
-            const b64 = btoa(unescape(encodeURIComponent(json)));
-            document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
+            forwardPanelsToChrome(event);
+          } else if (activeId === null) {
+            // This window's workspace isn't known yet (late bootstrap: the
+            // cached replay beats the workspace snapshot). Hold the latest
+            // sync per workspace; workspace hydration forwards the one that
+            // matches. Without this the replay is dropped for good.
+            state.pendingPanelsSync.set(event.workspaceId, event);
           }
         }
         return;
@@ -423,8 +480,9 @@ function ensureConnection(): void {
     }
   });
 
-  // Tell the background we're alive so it replays last booted + snapshot.
-  channel.postMessage({ kind: 'hello' });
+  // Tell the background we're alive so it replays last booted + panels/sync
+  // to this document only (tagged with helloId).
+  channel.postMessage({ kind: 'hello', helloId: state.helloId });
 
   // windowId was already captured synchronously from `?bentoWindowId=` at
   // module load. Send shell/hello so bento-tools logs the windowId for

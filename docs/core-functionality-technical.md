@@ -2208,6 +2208,99 @@ start still loads every frame, and gives up after about 30 s
 frame, leaving that frame unloaded instead of polling forever. The two budgets
 are separate: waiting for the policy does not consume window id retries.
 
+### Shell bus bootstrap
+
+All shell documents in all windows (the 11 entries that call `initToolsPort()`:
+sidebar, address bar, panel trailer, workspace switcher, edit workspace,
+confirm, welcome, menu, workspace palette, merge palette, palette) share one
+`BroadcastChannel('bento-shell-bus')`. `bento-shell/src/background.ts` owns the
+only port to `bento-tools` and relays events and actions both ways.
+
+- Live boot: when the port connects, `bento-tools` sends `tools/booted`, then
+  the six snapshots (tabs, workspaces, settings, pinnedPanels, tabFolders,
+  savedPanels), then one `panels/sync` per workspace. Every document that is
+  already listening receives them and sends no snapshot requests.
+- Late join: a document posts `{ kind: 'hello', helloId }`. The background
+  replays the cached `tools/booted` and the last `panels/sync` per workspace,
+  tagged `replayFor: helloId`. `BroadcastChannel` still delivers the replay to
+  every document, but each one drops replays tagged for another id, so a join
+  costs the other documents no store update, snapshot request, or
+  `BENTO_PANELS` title write. The joiner requests the six snapshots once, on
+  the replayed boot, and only if it had not already seen a live boot. Tools
+  answers each request with a snapshot broadcast to every document.
+- Chrome forwarding is order independent: the sidebar writes `BENTO_PANELS`
+  only for its window's active workspace, which it learns from the workspace
+  snapshot, and the payload embeds the settings snapshot (every settings field
+  `handlePanelsTitle` in `bento-shell-mount.js` reads: `uiColorMode`,
+  `sidebarCollapsed`, `sidebarHidden`, `sidebarShortcutBehavior`,
+  `defaultPanelWidthPx`, `customPanelSizes`, `panelCycleWraparound`,
+  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`) and the
+  workspace theme. A replayed `panels/sync` can arrive before any of them, so
+  the sidebar keeps the latest incomplete sync per workspace
+  (`pendingPanelsSync` in `bridge/useToolsPort.ts`): held while the active
+  workspace is unknown, or kept after a forward that went out before settings
+  had hydrated. `workspaces/snapshot`, `workspaces/changed`, and
+  `settings/snapshot` or `settings/changed` re-forward the pending sync for the
+  active workspace, so the last write always carries the full payload. A
+  forward with every input present clears the entry, so live boot and later
+  settings changes (which tools answers with its own `panels/sync`) write
+  nothing extra. Pending syncs for other workspaces are discarded.
+- Cache pruning: the background drops a workspace's cached `panels/sync` on a
+  `workspaces/changed` removal delta and on any `workspaces/snapshot` that
+  lacks it, so replays never resurrect deleted workspaces.
+- `emitPanelsSync` in `bento-tools/src/background.ts` is coalesced per
+  workspace and target window within one task
+  (`panels/PanelsSyncScheduler.ts`); the one-shot scroll target survives the
+  merge. Boot and restore paths that must not continue before the broadcast has
+  gone out call `emitPanelsSyncNow` directly.
+
+Message counts for one window with N documents joining one at a time after
+tools booted (`bridge/busBootstrap.test.ts`, N = 11): 66 snapshot requests and
+396 snapshot deliveries. Before the guard it was 396 requests and 3036
+deliveries, because every replayed `tools/booted` made every document request
+all six snapshots again. With all 11 documents listening when tools boots: 0
+requests (previously 66).
+
+Manual verification: in the bento-shell background console (about:debugging,
+Inspect), attach a `BroadcastChannel('bento-shell-bus')` listener that counts
+messages with `kind === 'action'` and an `action.type` ending in
+`/requestSnapshot`, and messages with `kind === 'event'` and an `event.type`
+ending in `/snapshot`, then open a window. A document that joined after tools
+booted adds 6 requests; documents that were listening at boot add none.
+
+Bus bootstrap pitfalls:
+
+- Do not replay the background's cached tabs, workspaces, or settings
+  snapshots on `hello`. The cache lags live state (deltas do not update it), and
+  every document would `applySnapshot` the stale value, dropping recently
+  created tabs from the sidebar for a few frames.
+- Do not make documents request snapshots on every `tools/booted`, or accept a
+  replay that is not tagged for them. Each replay would fan out six full
+  snapshot requests per document, and each reply is broadcast to all documents:
+  requests grow with the square and snapshot deliveries with the cube of the
+  document count, and both multiply across windows.
+- Do not gate the joiner's `panels/sync` replay on the live-boot check. The
+  joiner is already ready when the replayed `panels/sync` messages arrive, and
+  they are its only source of panel state for non-active workspaces.
+- Do not drop a `panels/sync` because the sidebar's active workspace is still
+  null, and do not forward it once and forget it. Hello replays are targeted,
+  so no later overlay's `hello` re-broadcasts panels, and chrome would keep
+  showing main only until the next panel change or workspace switch. The
+  forwarded `BENTO_PANELS` payload must be re-sent when any of its inputs
+  hydrate (active workspace, settings, workspace theme): a forward that beat
+  the settings snapshot left `sidebarHidden`, custom size presets, and panel
+  cycle wraparound at chrome defaults, because settings hydration sent no
+  replacement. Covered for all six arrival orders by
+  `bridge/busBootstrap.test.ts`, "sidebar forwarding of panels to chrome".
+- Do not put a timer in front of `emitPanelsSync`. Callers time follow-up work
+  against the emit (the 80 ms delay before closing the old main tab after a
+  panel promotion), and chrome reconciles against stale panel payloads if the
+  close beats the sync.
+- Snapshot replies are not targeted at the requester. Tools' `ctx.send`
+  broadcasts, requests carry no correlation id, and `savedPanels/snapshot` is
+  also emitted unsolicited, so matching replies to requesters by order would
+  mis-tag broadcasts. Targeting needs a request id in `Action` and `Event`.
+
 ## Command Palette
 
 `extensions/bento-shell/src/components/CommandPalette/CommandPalette.tsx` builds
