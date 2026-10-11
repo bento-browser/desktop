@@ -906,9 +906,15 @@ token)` finds a live grant for that exact tab and token, deletes it, and
      `--enable-macos-target=11.0`, and that configure printed no unknown-option or
      conflicting-option error.
   3. In the object directory's `config.status.json`, confirm the updater is off
-     (`MOZ_UPDATER` is absent; `package` and `artifacts:check` fail otherwise), developer options are on (`DEVELOPER_OPTIONS` set)
-     for `dev` and `debug` and unset for `release`, and `MACOSX_DEPLOYMENT_TARGET` is
-     `11.0` in every mode. If a name moved, find its new home in the new tree.
+     (`MOZ_UPDATER` is absent; `package` and `artifacts:check` fail otherwise) and
+     developer options are on (`DEVELOPER_OPTIONS` set) for `dev` and `debug` and
+     unset for `release`. On macOS confirm the 11.0 target in every mode:
+     `-mmacosx-version-min=11.0` is in the compiler flags (`substs` `CC`, `CXX`,
+     `CC_BASE_FLAGS`), and the `bento` and `XUL` binaries under
+     `engine/obj-bento/dist/Bento.app/Contents/MacOS/` report `minos 11.0`
+     (`otool -l <binary> | grep -A4 LC_BUILD_VERSION`, or `vtool -show-build <binary>`).
+     `MACOSX_DEPLOYMENT_TARGET` is not a `config.status.json` key. If a name
+     moved, find its new home in the new tree.
   4. Compare `toolchain.configure` `--enable-macos-target`: its default and minimum
      must still allow 11.0.
   5. Run `BENTO_BUILD_MODE=release pnpm run build` (or a manual CI build) and
@@ -918,6 +924,12 @@ token)` finds a live grant for that exact tab and token, deletes it, and
      Re-confirm that `packager.py` still generates `precomplete` unconditionally.
   6. Re-read the update-trust paths above. If the updater is enabled in the target
      state, re-check cert selection and the update URL before trusting it.
+- Reused object directories: reconfiguring an `obj-bento` that was built with the
+  updater keeps updater leftovers. The dev tree's `chrome.manifest` keeps a
+  `nsUpdateService.manifest` line (an info-level "Could not read chrome manifest"
+  console message) and `dist/Bento.app/Contents/MacOS/updater.app` stays. The
+  packaged app has neither, so judge the updater's absence from the packaged app or
+  a fresh `BENTO_OBJDIR`, not from a reused dev tree.
 - Rollback or migration notes: to restore release policy in dev builds, move
   `--enable-release` back into `configs/common/mozconfig` and drop the
   `--disable-release` branch in `modeOptions`; invalidate the native object cache.
