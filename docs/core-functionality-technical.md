@@ -2650,20 +2650,39 @@ The following mechanisms are load-bearing:
   window close throws `NS_ERROR_FAILURE [nsIWebProgress.removeProgressListener]`
   and skips later tabs' cleanup and `AsyncTabSwitcher.destroy()`.
   `unifyMainWithStrip()` and `setupPanelNavigator()` move `#tabbrowser-tabbox`
-  after `Tabbrowser.init()` created the first tab, so
-  `configureSidePanelOnce()` calls `reattachTabProgressFilters()` right after
-  them. It re-adds each tab's filter to `tab.linkedBrowser.webProgress` with
-  `NOTIFY_ALL` and ignores `NS_ERROR_FAILURE` (already attached). Re-attach
-  after any other move that recreates a tab browser's frameloader. Manual
-  check: open several windows, navigate the first tab and confirm the tab label,
-  urlbar, and sidebar address update, then close each window with the Browser
-  Toolbox Console open and confirm no `Tabbrowser.destroy` or
+  after `Tabbrowser.init()` created the first tab, so both go through
+  `moveNodeBefore()`: `Element.moveBefore` (the node must share the parent's
+  composed root, must not be an ancestor of it, and the reference child must be
+  a child of the parent; otherwise it throws `HierarchyRequestError` /
+  `NotFoundError`), falling back to `insertBefore` if `moveBefore` is missing or
+  throws. `XULFrameElement` and `MozBrowser.connectedMoveCallback` skip
+  frameloader teardown on a move, so the first tab keeps its BrowsingContext and
+  filter. `configureSidePanelOnce()` still calls `reattachTabProgressFilters()`
+  right after the moves as a safety net for the `insertBefore` fallback: it
+  re-adds each tab's filter to `tab.linkedBrowser.webProgress` with
+  `NOTIFY_ALL`, and is a no-op (`NS_ERROR_FAILURE`, already attached) when the
+  filter survived. Any other move of a tab panel or `<browser>` must use
+  `moveBefore` and re-attach after a fallback. The legacy subdivision and
+  promotion paths still use `insertBefore` / `appendChild` on tab panels
+  (`applySubdivisions` parent and bottom containers, `detachSubPanelsBeforeParentRemoval`,
+  and the nested-panel promotion in `reconcilePanelsSplitView`). They are
+  inactive in the flat renderer (`currentSubdivisions` is only ever assigned an
+  empty `Map`), but if reactivated they would strand filters and must move to
+  `moveNodeBefore()` plus a re-attach. Manual check: open several windows and
+  confirm, with a `browsing-context-attached` / `browsing-context-discarded`
+  observer registered in the Browser Toolbox Console before opening a window,
+  that the new window's first tab logs one attach, no discard, and the same
+  `gBrowser.tabs[0].linkedBrowser.browsingContext.id` (no frameloader
+  recreation, so no extra process switch) and that the layout is unchanged;
+  navigate the first tab and confirm the tab label, urlbar, and sidebar address
+  update; then close each window and confirm no `Tabbrowser.destroy` or
   `removeProgressListener` error.
 - The `removeProgressListener` suppressors (the capture-phase window `error`
   filter, the `<browser>` prototype `removeProgressListener` guard, and the
   `_beginRemoveTab` wrapper in `bento-shell-mount.js`) predate the progress
-  filter re-attach. They may be removable once the re-attach is verified across
-  window close, tab close, and split-view panel moves. Follow-up, not part of
+  filter fix. They may be removable once the `moveBefore` relocation and
+  re-attach are verified across window close, tab close, and split-view panel
+  moves. Follow-up, not part of
   the re-attach change; remove them one at a time and watch the console for the
   errors above.
 - Do not register nested sub-panels directly in `splitViewPanels`. Firefox

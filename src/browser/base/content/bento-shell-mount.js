@@ -5614,6 +5614,24 @@
     });
   }
 
+  // Re-parent a node with Element.moveBefore so a tab <browser> inside it keeps
+  // its frameloader (insertBefore/appendChild unbind and recreate it; see
+  // reattachTabProgressFilters). moveBefore throws HierarchyRequestError or
+  // NotFoundError when the node and parent are not connected under one root or
+  // the reference child is wrong, and is missing on older engines, so fall back
+  // to insertBefore. A null ref appends.
+  function moveNodeBefore(parent, node, ref) {
+    if (typeof parent.moveBefore === 'function') {
+      try {
+        parent.moveBefore(node, ref);
+        return;
+      } catch (err) {
+        console.warn('[bento-shell-mount] moveBefore failed, using insertBefore:', err);
+      }
+    }
+    parent.insertBefore(node, ref);
+  }
+
   // Move the main tab content (#tabbrowser-tabbox) into the strip as
   // its first child. The strip becomes the entire content area right
   // of the sidebar — main + side panels + Add-panel button share one
@@ -5635,7 +5653,7 @@
     // Same tabindex treatment as side panels so the cycle nav can
     // focus main without inserting it into the natural Tab order.
     if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
-    host.insertBefore(main, host.firstChild);
+    moveNodeBefore(host, main, host.firstChild);
   }
 
   // Strip layout is fully driven by injected CSS (#bento-side-panel-host
@@ -13663,7 +13681,7 @@
     wrap.id = 'bento-strip-container';
     wrap.setAttribute('flex', '1');
     host.parentNode.insertBefore(wrap, host);
-    wrap.appendChild(host);
+    moveNodeBefore(wrap, host, null);
     wrap.addEventListener('contextmenu', showPanelStripContextMenu);
 
     // Custom scrollbar between strip and navigator.
@@ -20057,15 +20075,17 @@
   setBentoMenuSrc();
   setBentoPanelNavigatorTooltipSrc();
   // unifyMainWithStrip() and setupPanelNavigator() re-parent
-  // #tabbrowser-tabbox after Tabbrowser.init() created the first tab. A DOM
-  // move recreates the tab <browser>'s frameloader (a new BrowsingContext with
-  // an empty nsIWebProgress) without the remoteness-change events Tabbrowser
-  // uses to move its per-tab progress filter, so the filter stays on the
-  // discarded BrowsingContext. The first tab then gets no progress events, and
-  // removeProgressListener throws NS_ERROR_FAILURE in the
+  // #tabbrowser-tabbox after Tabbrowser.init() created the first tab, using
+  // moveBefore so the tab <browser> keeps its frameloader. If they fall back to
+  // insertBefore/appendChild, the move recreates the frameloader (a new
+  // BrowsingContext with an empty nsIWebProgress) without the remoteness-change
+  // events Tabbrowser uses to move its per-tab progress filter, so the filter
+  // stays on the discarded BrowsingContext. The first tab then gets no progress
+  // events, and removeProgressListener throws NS_ERROR_FAILURE in the
   // WillChangeBrowserRemoteness handler and in Tabbrowser.destroy() (which
-  // aborts before cleaning up later tabs). The filter keeps its
-  // TabProgressListener, so only the filter needs re-adding, exactly as
+  // aborts before cleaning up later tabs). This safety net re-adds the filter in
+  // that case and is a no-op when the filter is still attached. The filter keeps
+  // its TabProgressListener, so only the filter needs re-adding, exactly as
   // Tabbrowser does after a remoteness change.
   function reattachTabProgressFilters() {
     const gb = window.gBrowser;

@@ -217,8 +217,12 @@ Use this shape for new or changed touchpoints:
   (over `Tabbrowser`'s `#tabFilters` map in `tabbrowser.js`), the filter's
   `nsIWebProgress.addProgressListener` / `NOTIFY_ALL` registration on
   `<browser>.webProgress` (`BrowsingContextWebProgress` reports an
-  already-attached listener as `NS_ERROR_FAILURE`), the frameloader recreation
-  `XULFrameElement` performs on a non-`moveBefore` DOM move, the duplicate
+  already-attached listener as `NS_ERROR_FAILURE`), `Element.moveBefore`
+  (`ParentNode.webidl`, no pref) for the startup `#tabbrowser-tabbox` and
+  `#bento-side-panel-host` relocations, the frameloader preservation
+  `XULFrameElement` (`BindToTree` / `UnbindFromTree` `IsMove()`) and
+  `MozBrowser.connectedMoveCallback` provide on a move (an
+  `insertBefore` / `appendChild` move recreates it), the duplicate
   `ChromeUtils.registerWindowActor` `NotSupportedError` from `JSActorService`,
   and injected side-panel header/restore-handle chrome elements.
 - Why this cannot stay extension-only: privileged extension UI cannot directly
@@ -243,10 +247,14 @@ Use this shape for new or changed touchpoints:
   names, native navigation-button alignment, or visibility. A rename or
   semantic change to AddonManager listener removal, `PlacesObservers.removeListener`,
   or the chrome window `unload` event silently brings back per-window leaks:
-  closed Bento windows stay alive until quit. If `_getTabProgressFilter` is
-  renamed or removed, `reattachTabProgressFilters()` silently does nothing and
-  the first tab again receives no progress events while `Tabbrowser.destroy()`
-  throws on window close; if Tabbrowser starts moving its filters on frameloader
+  closed Bento windows stay alive until quit. If `moveBefore` stops preserving a
+  `<browser>`'s frameloader (`XULFrameElement` move handling or
+  `MozBrowser.connectedMoveCallback` changes), the first tab silently gets a new
+  BrowsingContext on every window open, and only the re-attach keeps its
+  progress events. If `_getTabProgressFilter` is renamed or removed,
+  `reattachTabProgressFilters()` silently does nothing, so that fallback case
+  again leaves the first tab without progress events while `Tabbrowser.destroy()`
+  throws on window close. If Tabbrowser starts moving its filters on frameloader
   recreation itself, the re-attach becomes a harmless no-op that can be deleted.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
@@ -429,7 +437,10 @@ Use this shape for new or changed touchpoints:
   `removeAddonListener` and `PlacesUtils.observers.addListener` / `removeListener`
   from the Browser Toolbox Console, open a second Bento window, close it, and
   confirm the live Bento listener count returns to its prior value), verify the
-  first tab's progress filter survives the startup re-parenting (open several
+  first tab keeps its frameloader and progress filter through the startup
+  re-parenting (a `browsing-context-attached` / `-discarded` observer shows one
+  attach and no discard for a new window's first tab, and its
+  `browsingContext.id` is unchanged), then open several
   windows, navigate the first tab and confirm `onLocationChange` /
   `onStateChange` reach the tab label, urlbar, and sidebar address, then close
   each window with the Browser Toolbox Console open: no `Tabbrowser.destroy` or
