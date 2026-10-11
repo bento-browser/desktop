@@ -140,8 +140,10 @@ Before creating or modifying a component:
 2. Use the root `@muxui/react` export or a documented public subpath. Do not
    import private package files or copy generated package output into Bento.
 3. Import `src/theme/muxui.css` once from each entry point. It places the public
-   Mux styles and themes in the low-precedence `muxui` layer; keep Bento tokens
-   and the generated preset bridge after that boundary.
+   Mux styles in the low-precedence `muxui` layer; keep Bento tokens and the
+   generated preset bridge after that boundary. Mux themes are not imported
+   there: each non-Default theme is its own `public/themes/<id>.css` sheet that
+   `src/theme/themeSheets.ts` loads when a document shows it.
 4. Put `data-muxui-theme`, `data-muxui-color-scheme`, and
    `data-muxui-contrast` on the same theme scope. `themeScope.ts` resolves
    persisted aliases and unknown ids at the presentation boundary while the

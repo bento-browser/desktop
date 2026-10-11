@@ -60,6 +60,7 @@ Use this shape for new or changed touchpoints:
   - `src/browser/base/content/bento-shell-mount.js`
   - `src/browser/base/content/bento-chrome-theme.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
+  - `src/browser/base/content/bento-chrome-themes/*.css` (see Chrome Theme Sheets)
   - `engine/browser/base/content/browser-fullScreenAndPointerLock.js`
   - `engine/toolkit/content/widgets/infobar.css`
   - `patches/core-ui/10-bento-infobar-accent-token.patch`
@@ -461,6 +462,56 @@ Use this shape for new or changed touchpoints:
 - Rollback or migration notes: keep each patch small and independently skippable;
   if a Firefox update makes a patch unnecessary, remove the patch and record the
   removal here.
+
+### Chrome Theme Sheets
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (one `browser/base/jar.mn`
+    line: `content/browser/bento-chrome-themes/ (content/bento-chrome-themes/*.css)`)
+  - `src/browser/base/content/bento-chrome-themes/*.css` (generated, ignored)
+  - `src/browser/base/content/bento-shell-mount.js`
+    (`applyChromeThemeToDocument`, `syncChromeThemeAttributes`)
+  - `scripts/generate-chrome-tokens.mjs`,
+    `scripts/sync-builtin-addon-symlinks.sh`
+- Bento functionality: each non-Default workspace theme is its own native
+  stylesheet, so a chrome window parses the shared tokens plus only the theme it
+  shows instead of every theme (the base sheet fell from 664 kB to 284 kB). The
+  mount script attaches the active theme's sheet to the chrome root and to the
+  native sidebar and Places documents, and sets `data-bento-theme` once the sheet
+  has loaded.
+- Vanilla Firefox surface touched or depended on: `browser.jar` content
+  registration through `browser/base/jar.mn` (wildcard entries are expanded by
+  `python/mozbuild/mozbuild/jar.py` at build time, so only files present at build
+  time are listed), the `chrome://browser/content/` package, `<link
+  rel="stylesheet">` load and error events on chrome documents, and the
+  `chrome://browser/content/sidebar/` and `places/` documents the mount script
+  already themes.
+- Why this cannot stay extension-only: chrome and the native sidebar and Places
+  documents already take their tokens from jar-registered
+  `chrome://browser/content/` files, and Bento has no extension-served stylesheet
+  path into those documents, so the per-theme files follow the base sheet's
+  jar.mn route. Loading `moz-extension://` styles into chrome documents was not
+  tried.
+- Firefox update risk: low. The jar.mn line sits in the hunk that already adds
+  the other Bento chrome files; a change to the surrounding upstream lines is the
+  only likely conflict. A change to jar wildcard handling would drop the sheets
+  and leave non-Default workspaces on the base palette.
+- Regression checks for future updates: `pnpm run firefox:patches:check`;
+  `pnpm run import` and confirm
+  `engine/browser/base/content/bento-chrome-themes/` holds 15 sheets; after a
+  build, `chrome/browser/content/browser/bento-chrome-themes/` in the app
+  resources lists the same files. In a running build set a non-Default workspace
+  theme, then check the window root's `data-bento-theme`, one
+  `link[data-bento-chrome-theme-sheet]` on the root and in the native sidebar
+  document, a clean switch between two themes (no unthemed frame, no duplicate
+  links), and light and dark. After a Firefox bump also run
+  `git apply --check` of the jar.mn hunk against the new `browser/base/jar.mn`.
+- Rollback or migration notes: removing the wildcard line and the mount
+  function, and running `generate-chrome-tokens.mjs --monolithic` as the default,
+  restores the single-sheet layout. The rollback-final-r2 variant already builds
+  that layout, because its archived mount script loads only the base sheet.
 
 ### Native Preferences Layout
 
