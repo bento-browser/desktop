@@ -10,10 +10,10 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-# The one object directory the build driver selects: BENTO_OBJDIR, else
-# engine/obj-bento, else a single legacy engine/obj-*. It errors when there is
-# none or the choice is ambiguous.
-OBJ_DIR="$(node "$REPO/scripts/bento-build.mjs" objdir)"
+# The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
+# another name). Before it exists, a single old engine/obj-* build is used and the
+# driver says so; several old ones, or none, is an error.
+OBJ_DIR="$(node "$REPO/scripts/bento-build.mjs" objdir --allow-legacy)"
 
 DEST="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/builtin-addons/bento-shell"
 if [ ! -d "$DEST" ]; then

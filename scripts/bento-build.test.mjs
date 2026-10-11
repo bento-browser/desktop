@@ -21,6 +21,7 @@ import { importSourceOverlays } from './import-sources.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const MODES = ['dev', 'debug', 'release'];
+const platformName = { darwin: 'macos', win32: 'windows' }[process.platform] || 'linux';
 
 function git(cwd, args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -200,76 +201,176 @@ async function withObjdirEnv(value, fn) {
   }
 }
 
-test('the object directory resolver picks obj-bento, then one legacy directory, else fails clearly', async () => {
+test('the resolver returns the directory mach builds into and uses a legacy build only when allowed', async () => {
   const root = await fixture();
   try {
     await withObjdirEnv(undefined, () => {
       const ctx = createContext(root);
       const engine = (name) => path.join(root, 'engine', name);
-      assert.equal(resolveObjDir(ctx), undefined);
+      const legacyOk = { allowLegacy: true };
 
-      // One legacy directory (an older checkout) is used as is.
+      // Nothing built yet.
+      assert.deepEqual(resolveObjDir(ctx), { dir: undefined, configured: engine('obj-bento'), note: undefined });
+      assert.equal(resolveObjDir(ctx, legacyOk).dir, undefined);
+
+      // One legacy directory (an older checkout): launch and sync may use it, and say so.
+      // Packaging must not, since mach does not build into it.
       fs.mkdirSync(engine('obj-aarch64-apple-darwin25.5.0'));
-      assert.equal(resolveObjDir(ctx), engine('obj-aarch64-apple-darwin25.5.0'));
+      assert.equal(resolveObjDir(ctx).dir, undefined);
+      const legacy = resolveObjDir(ctx, legacyOk);
+      assert.equal(legacy.dir, engine('obj-aarch64-apple-darwin25.5.0'));
+      assert.match(legacy.note, /engine\/obj-bento does not exist; using the legacy object directory engine\/obj-aarch64-apple-darwin25\.5\.0/);
 
       // Several legacy directories: refuse to guess.
       fs.mkdirSync(engine('obj-aarch64-apple-darwin27.0.0'));
       assert.throws(
-        () => resolveObjDir(ctx),
+        () => resolveObjDir(ctx, legacyOk),
         /engine\/obj-bento does not exist and several legacy Firefox object directories.*darwin25\.5\.0, obj-aarch64-apple-darwin27\.0\.0/,
       );
+      assert.equal(resolveObjDir(ctx).dir, undefined);
 
-      // obj-bento wins over every legacy directory.
+      // obj-bento wins over every legacy directory, in both modes.
       fs.mkdirSync(engine('obj-bento'));
-      assert.equal(resolveObjDir(ctx), engine('obj-bento'));
-    });
-    await withObjdirEnv('obj-aarch64-apple-darwin25.5.0', () => {
-      assert.equal(
-        resolveObjDir(createContext(root)),
-        path.join(root, 'engine', 'obj-aarch64-apple-darwin25.5.0'),
-      );
-    });
-    await withObjdirEnv('obj-missing', () => {
-      assert.throws(
-        () => resolveObjDir(createContext(root)),
-        /BENTO_OBJDIR=obj-missing is not a Firefox object directory/,
-      );
+      for (const options of [undefined, legacyOk]) {
+        assert.deepEqual(resolveObjDir(ctx, options), { dir: engine('obj-bento'), configured: engine('obj-bento'), note: undefined });
+      }
     });
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
 
-/** Runs `bento-build objdir` and returns what it wrote to stdout. */
-async function objdirCommand(root, ...args) {
-  const write = process.stdout.write;
-  let output = '';
-  process.stdout.write = (chunk) => {
-    output += chunk;
-    return true;
-  };
+test('BENTO_OBJDIR reaches the generated mozconfig, so mach and the resolver agree', async () => {
+  const root = await fixture();
   try {
-    await main(['objdir', ...args], root);
-  } finally {
-    process.stdout.write = write;
-  }
-  return output;
-}
+    const ctx = createContext(root);
+    const mozconfig = engineFile(root, 'mozconfig');
 
-test('the objdir command prints the resolved directory and honors --allow-missing', async () => {
+    // A mozconfig generated without BENTO_OBJDIR sends mach to obj-bento. Naming an
+    // existing legacy directory later must not redirect packaging to it.
+    await withObjdirEnv(undefined, () => writeMozconfig(root, 'dev'));
+    fs.mkdirSync(engineFile(root, 'obj-legacy'));
+    await withObjdirEnv('obj-legacy', () => {
+      assert.throws(() => resolveObjDir(ctx), /BENTO_OBJDIR=obj-legacy differs from engine\/obj-bento, the directory engine\/mozconfig builds into/);
+      const launch = resolveObjDir(ctx, { allowLegacy: true });
+      assert.equal(launch.dir, engineFile(root, 'obj-legacy'));
+      assert.match(launch.note, /using engine\/obj-legacy as BENTO_OBJDIR asks/);
+    });
+
+    // Generated with BENTO_OBJDIR, the mozconfig builds there and every reader agrees,
+    // with or without the variable set afterwards.
+    await withObjdirEnv('obj-legacy', () => writeMozconfig(root, 'dev'));
+    assert.match(fs.readFileSync(mozconfig, 'utf8'), /^mk_add_options MOZ_OBJDIR=@TOPSRCDIR@\/obj-legacy$/m);
+    for (const value of ['obj-legacy', undefined]) {
+      await withObjdirEnv(value, () => {
+        assert.equal(resolveObjDir(ctx).dir, engineFile(root, 'obj-legacy'));
+      });
+    }
+    // A mozconfig built under another name is not a hand edit.
+    assert.equal(await withObjdirEnv(undefined, () => verifyRecordedEngineState(root)), true);
+
+    for (const value of ['../escape', 'plain', 'obj-a/b']) {
+      await withObjdirEnv(value, () => {
+        assert.throws(() => writeMozconfig(root, 'dev'), /must name a directory directly under engine\/ that starts with obj-/, value);
+      });
+    }
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a mozconfig fragment or MOZCONFIG that would redirect mach is rejected', async () => {
+  const root = await fixture();
+  const previous = process.env.MOZCONFIG;
+  try {
+    await withObjdirEnv(undefined, async () => {
+      for (const fragment of [path.join(root, 'mozconfig'), path.join(root, 'configs', platformName, 'mozconfig'), path.join(root, 'configs', 'common', 'mozconfig')]) {
+        const original = fs.existsSync(fragment) ? fs.readFileSync(fragment) : undefined;
+        fs.mkdirSync(path.dirname(fragment), { recursive: true });
+        fs.appendFileSync(fragment, '\n# MOZ_OBJDIR in a comment is fine\n');
+        writeMozconfig(root, 'dev');
+        fs.appendFileSync(fragment, 'mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/elsewhere\n');
+        assert.throws(() => writeMozconfig(root, 'dev'), /sets MOZ_OBJDIR; Bento chooses the object directory/, fragment);
+        if (original === undefined) fs.rmSync(fragment);
+        else fs.writeFileSync(fragment, original);
+      }
+
+      fs.writeFileSync(engineFile(root, 'mach'), '');
+      process.env.MOZCONFIG = path.join(root, 'other-mozconfig');
+      await assert.rejects(() => main(['build'], root), /MOZCONFIG=.* would make mach ignore the generated engine\/mozconfig/);
+      await assert.rejects(() => main(['package'], root), /MOZCONFIG=.* would make mach ignore the generated engine\/mozconfig/);
+
+      // Naming the generated file itself is fine: packaging gets as far as the object directory.
+      process.env.MOZCONFIG = engineFile(root, 'mozconfig');
+      await assert.rejects(() => main(['package'], root), /package: engine\/obj-bento does not exist/);
+    });
+  } finally {
+    if (previous === undefined) delete process.env.MOZCONFIG;
+    else process.env.MOZCONFIG = previous;
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('package and updates-browser use only the directory mach builds into', async () => {
   const root = await fixture();
   try {
     await withObjdirEnv(undefined, async () => {
-      await assert.rejects(() => objdirCommand(root), /no Firefox object directory found under engine\//);
-      assert.equal(await objdirCommand(root, '--allow-missing'), '');
+      fs.writeFileSync(engineFile(root, 'mach'), '');
+      fs.mkdirSync(path.join(root, 'dist'));
+      fs.writeFileSync(path.join(root, 'dist', 'output.mar'), 'mar');
+      // An old build is not what mach builds into, so it is never packaged.
+      fs.mkdirSync(engineFile(root, 'obj-aarch64-apple-darwin25.5.0', 'dist'), { recursive: true });
+      await assert.rejects(() => main(['package'], root), /package: engine\/obj-bento does not exist; run pnpm run build first \(it is the directory mach builds into\)/);
+      await assert.rejects(() => main(['updates-browser'], root), /updates-browser: engine\/obj-bento does not exist; run pnpm run build first/);
 
+      // Neither may BENTO_OBJDIR point them elsewhere than engine/mozconfig does.
+      writeMozconfig(root, 'dev');
+      await withObjdirEnv('obj-aarch64-apple-darwin25.5.0', async () => {
+        await assert.rejects(() => main(['package'], root), /BENTO_OBJDIR=obj-aarch64-apple-darwin25\.5\.0 differs from engine\/obj-bento/);
+        await assert.rejects(() => main(['updates-browser'], root), /differs from engine\/obj-bento/);
+      });
+    });
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/** Runs `bento-build objdir` and returns what it wrote to stdout and stderr. */
+async function objdirCommand(root, ...args) {
+  const outWrite = process.stdout.write;
+  const errWrite = process.stderr.write;
+  const writes = { out: '', err: '' };
+  process.stdout.write = (chunk) => ((writes.out += chunk), true);
+  process.stderr.write = (chunk) => ((writes.err += chunk), true);
+  try {
+    await main(['objdir', ...args], root);
+  } finally {
+    process.stdout.write = outWrite;
+    process.stderr.write = errWrite;
+  }
+  return writes;
+}
+
+test('the objdir command prints the directory mach builds into; --allow-legacy and --allow-missing relax it', async () => {
+  const root = await fixture();
+  try {
+    await withObjdirEnv(undefined, async () => {
+      await assert.rejects(() => objdirCommand(root), /no Firefox object directory: engine\/obj-bento does not exist/);
+      assert.deepEqual(await objdirCommand(root, '--allow-missing'), { out: '', err: '' });
+
+      // A legacy build is used only on request, and the fallback is announced.
       fs.mkdirSync(engineFile(root, 'obj-old'));
+      await assert.rejects(() => objdirCommand(root), /no Firefox object directory/);
+      const legacy = await objdirCommand(root, '--allow-legacy');
+      assert.equal(legacy.out, `${engineFile(root, 'obj-old')}\n`);
+      assert.match(legacy.err, /^bento: engine\/obj-bento does not exist; using the legacy object directory engine\/obj-old/);
+
       fs.mkdirSync(engineFile(root, 'obj-bento'));
-      assert.equal(await objdirCommand(root), `${engineFile(root, 'obj-bento')}\n`);
+      assert.deepEqual(await objdirCommand(root), { out: `${engineFile(root, 'obj-bento')}\n`, err: '' });
 
       fs.rmSync(engineFile(root, 'obj-bento'), { recursive: true });
       fs.mkdirSync(engineFile(root, 'obj-other'));
-      await assert.rejects(() => objdirCommand(root, '--allow-missing'), /several legacy Firefox object directories/);
+      await assert.rejects(() => objdirCommand(root, '--allow-legacy', '--allow-missing'), /several legacy Firefox object directories/);
     });
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
@@ -318,8 +419,14 @@ test('shell scripts act on the one selected object directory, never on every obj
     assert.equal(fs.existsSync(path.join(actors('obj-bento'), 'BentoKeyChild.sys.mjs')), true);
     assert.equal(fs.existsSync(path.join(actors('obj-legacy'), 'BentoKeyChild.sys.mjs')), false);
 
-    // Without obj-bento, two legacy directories are an error rather than a pick.
+    // Without obj-bento, a single legacy build is used and announced...
     fs.rmSync(engineFile(root, 'obj-bento'), { recursive: true });
+    const fallback = runScript(root, 'sync-shell.sh');
+    assert.equal(fallback.status, 0, fallback.stderr);
+    assert.match(fallback.stderr, /engine\/obj-bento does not exist; using the legacy object directory engine\/obj-legacy/);
+    assert.equal(fs.existsSync(path.join(shellDest('obj-legacy'), 'app.js')), true);
+
+    // ...but two legacy directories are an error rather than a pick.
     fs.mkdirSync(engineFile(root, 'obj-legacy-two'));
     for (const script of ['sync-shell.sh', 'sync-builtin-addon-symlinks.sh']) {
       const result = runScript(root, script);

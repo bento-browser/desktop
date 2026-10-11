@@ -91,8 +91,8 @@ else
 fi
 bash scripts/sync-builtin-addon-symlinks.sh
 
-# The one object directory the build driver selects (BENTO_OBJDIR, else
-# engine/obj-bento, else a single legacy engine/obj-*); it errors when ambiguous.
+# Packaging reads exactly the directory mach built into (engine/obj-bento unless
+# BENTO_OBJDIR chose another name); the driver fails if it does not exist.
 OBJ_DIR="$(node scripts/bento-build.mjs objdir)"
 if command -v cygpath >/dev/null 2>&1; then
   OBJ_DIR="$(cygpath -u "$OBJ_DIR")"

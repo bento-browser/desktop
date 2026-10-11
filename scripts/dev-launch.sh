@@ -7,12 +7,12 @@ set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit
 
-# Launch the app in the object directory the build driver selects (BENTO_OBJDIR,
-# else engine/obj-bento, else a single legacy engine/obj-*). It exits with an
-# error when the choice is ambiguous; with no object directory yet, the
-# missing-executable check below reports it.
+# Launch the app in the object directory mach builds into (engine/obj-bento unless
+# BENTO_OBJDIR chose another name). Before it exists, a single old engine/obj-*
+# build is launched and the driver says so; several old ones is an error. With no
+# object directory at all, the missing-executable check below reports it.
 if [ -z "${BENTO_BIN:-}" ]; then
-  OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-missing)" || exit 1
+  OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-legacy --allow-missing)" || exit 1
   BENTO_BIN="${OBJ_DIR:+$OBJ_DIR/dist/Bento.app/Contents/MacOS/bento}"
 fi
 PROFILE="${1:-${BENTO_DEV_PROFILE:-.bento-dev-profile}}"

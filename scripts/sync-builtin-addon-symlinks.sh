@@ -150,10 +150,11 @@ copy_content_actor() {
   return 0
 }
 
-# The one object directory the build driver selects (BENTO_OBJDIR, else
-# engine/obj-bento, else a single legacy engine/obj-*). It errors when the choice
-# is ambiguous; with no object directory yet there is nothing to sync.
-OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-missing)"
+# The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
+# another name). Before it exists, a single old engine/obj-* build is synced and the
+# driver says so; several old ones is an error. With no object directory yet there
+# is nothing to sync.
+OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-legacy --allow-missing)"
 
 if [ -z "$OBJ_DIR" ]; then
   echo "sync-symlinks: no engine object directory found — nothing to do (run a full build first)"
