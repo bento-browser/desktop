@@ -1864,14 +1864,25 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   strip-scroll record) overwrites the newer state. The fix is the single-flight
   queue in `Persistence`: one write in flight, newest queued snapshot wins. Route
   new triggers through `flushNow` or `schedule`; never call `#flush` directly or
-  add a second writer of `bento.panels`.
+  add a second writer of `bento.panels`. This covers panels only. The same race
+  is still open for pinned panels and is tracked as a follow-up:
+  `PinnedPanelsStore.#resolveAndPersist` awaits a `tabs.get` per pin and then
+  hands the result to `pinnedPanels/Persistence`, whose writes are not
+  serialized, so two persists can resolve out of order or interleave their
+  backup and primary writes and an older pin list can overwrite a newer one. The
+  panel queue does not help there. A fix has to serialize resolution as well as
+  the write, and must keep reading each pin's tab at change time: deferring the
+  reads to the debounce timer drops pins added without metadata and loses
+  privacy and fallback metadata when the tab closes first.
 - Do not persist private-window state. Panel entries and layout slots
   (`bento.panels`), parked panel URLs, parked sidebar tabs
   (`bento.parkedWorkspaceTabs`, including titles), and pinned panels
   (`bento.pinnedPanels`: URL, title, favicon) all skip private tabs.
-  `PinnedPanelsStore.#resolveAndPersist` skips `tab.incognito` tabs and
-  remembers their ids, because its closed-tab fallback would otherwise write the
-  in-memory URL, title, and favicon after the tab is gone. A new storage path
+  `PinnedPanelsStore.#resolveAndPersist` reads each pin's tab when a change is
+  made and skips `tab.incognito` tabs, remembering their ids, because its
+  closed-tab fallback would otherwise write the in-memory URL, title, and
+  favicon after the tab is gone. A pin whose tab is already gone on its very
+  first read still falls back to the metadata its caller passed to `add`. A new storage path
   that records tab URLs, titles, or favicons must apply the same check where it
   resolves a live tab (`tab.incognito`) or a closing-window snapshot
   (`TabRegistry.isPrivate`, valid only while the closing listeners run). The

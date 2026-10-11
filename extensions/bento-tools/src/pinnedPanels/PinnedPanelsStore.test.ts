@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { load } from './Persistence';
 import { PinnedPanelsStore } from './PinnedPanelsStore';
 
 const STORAGE_KEY = 'bento.pinnedPanels';
@@ -171,5 +172,107 @@ describe('PinnedPanelsStore private tabs', () => {
     expect(written).toContain('https://12.test/');
     expect(written).not.toContain('private');
     expect(written).not.toContain('Private');
+  });
+});
+
+describe('PinnedPanelsStore tab closed right after a change', () => {
+  interface LiveTab {
+    url: string;
+    title: string;
+    favIconUrl?: string;
+    incognito?: boolean;
+  }
+
+  let storage: Record<string, unknown>;
+  let setMock: ReturnType<typeof vi.fn>;
+  const liveTabs = new Map<number, LiveTab>();
+  const closedTabIds = new Set<number>();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    storage = {};
+    liveTabs.clear();
+    closedTabIds.clear();
+    setMock = vi.fn(async (payload: Record<string, unknown>) => {
+      Object.assign(storage, payload);
+    });
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: storage[key] })),
+          set: setMock,
+        },
+      },
+      tabs: {
+        // Open or closed is decided when the call is made, like an IPC request
+        // already in flight when the tab goes away.
+        get: vi.fn(async (tabId: number) => {
+          const tab = liveTabs.get(tabId);
+          if (!tab || closedTabIds.has(tabId)) throw new Error('tab gone');
+          return { id: tabId, ...tab };
+        }),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('never writes a private pin whose tab closed after it was added', async () => {
+    const privateTab = {
+      url: 'https://private.example.test/secret',
+      title: 'Private secret title',
+      favIconUrl: 'https://private.example.test/favicon.ico',
+    };
+    liveTabs.set(11, { ...privateTab, incognito: true });
+    liveTabs.set(12, { url: 'https://12.example.test/', title: 'Regular' });
+    const store = new PinnedPanelsStore();
+
+    store.add('ws', 11, privateTab);
+    await vi.advanceTimersByTimeAsync(0);
+    closedTabIds.add(11);
+    store.add('ws', 12, { url: 'https://12.example.test/' });
+    await vi.advanceTimersByTimeAsync(500);
+
+    const written = JSON.stringify(setMock.mock.calls);
+    expect(written).toContain('https://12.example.test/');
+    expect(written).not.toMatch(/private|Private/);
+  });
+
+  it('persists a pin added without metadata when its regular tab closes right away', async () => {
+    liveTabs.set(21, { url: 'https://21.example.test/', title: 'Tab 21' });
+    const store = new PinnedPanelsStore();
+
+    store.add('ws', 21);
+    closedTabIds.add(21);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect((await load())?.entries).toEqual([
+      expect.objectContaining({
+        workspaceId: 'ws',
+        url: 'https://21.example.test/',
+        title: 'Tab 21',
+      }),
+    ]);
+  });
+
+  it('writes the URL a pinned tab navigated to before it closed', async () => {
+    const page = { url: 'https://21.example.test/', title: 'Tab 21' };
+    liveTabs.set(21, page);
+    liveTabs.set(22, { url: 'https://22.example.test/', title: 'Tab 22' });
+    const store = new PinnedPanelsStore();
+    store.add('ws', 21, page);
+    await vi.advanceTimersByTimeAsync(0);
+
+    page.url = 'https://21.example.test/next';
+    store.add('ws', 22);
+    closedTabIds.add(21);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect((await load())?.entries).toContainEqual(
+      expect.objectContaining({ url: 'https://21.example.test/next' }),
+    );
   });
 });
