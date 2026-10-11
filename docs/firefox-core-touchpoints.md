@@ -852,7 +852,23 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     (the `--enable-macos-target` default is 11.0 normally and 10.15 under developer
     options).
   - `--disable-updater` and `MOZ_UPDATER` (`build/moz.configure/update-programs.configure`)
-    and everything the packager derives from it (updater binary, `precomplete`).
+    and what the packager derives from it (the updater binary). The option is
+    `--enable-updater` with `--with`, `--disable` and `--without` spellings
+    (`python/mozbuild/mozbuild/configure/options.py`); configure keys arguments by
+    name, so the last occurrence in `engine/mozconfig` wins. `MOZ_UPDATE_CHANNEL`
+    is lowercased in `build/moz.configure/init.configure` before
+    `toolkit/mozapps/update/updater/moz.build` compares it. Configure records the
+    result as `MOZ_UPDATER` in the object directory's `config.status.json`
+    (`configure.py`), which `package` and `artifacts:check` read.
+  - `precomplete` is not tied to the updater: `toolkit/mozapps/installer/packager.py`
+    calls `generate_precomplete` unconditionally after copying the package,
+    `python/mozbuild/mozpack/packager/l10n.py` regenerates it for repacked locales,
+    and `config/createprecomplete.py` writes `precomplete` (or
+    `Contents/Resources/precomplete` inside a macOS bundle). The Windows installer
+    and uninstaller read it (`RemovePrecompleteEntries` in
+    `toolkit/mozapps/installer/windows/nsis/common.nsh`, called from
+    `browser/installer/windows/nsis/installer.nsi`, `uninstaller.nsi` and
+    `stub.nsh`). `artifacts:check` requires it with the updater on or off.
   - Update trust: `toolkit/mozapps/update/updater/moz.build` selects compiled-in
     certificates by `MOZ_UPDATE_CHANNEL` (Mozilla's release certificate for
     release, beta, and esr, its nightly certificates for nightly and aurora names,
@@ -867,7 +883,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   the macOS deployment target; a new minimum macOS target above 11.0 breaks dev
   and debug configure until `MACOS_DEPLOYMENT_TARGET` in `scripts/bento-build.mjs`
   is raised; a changed packaging rule for `precomplete` or the updater breaks
-  `package` and `artifacts:check`.
+  `package` and `artifacts:check`; a moved or renamed `MOZ_UPDATER` key in
+  `config.status.json`, or a changed rule for lowercasing the update channel,
+  breaks the updater-state and channel checks in `scripts/update-readiness.mjs`.
 - Regression checks for future updates:
   1. Run `node --test scripts/bento-build.test.mjs scripts/release-security.test.mjs scripts/validate-bento-artifacts.test.mjs`.
   2. Run `pnpm run build` in `dev` mode, then confirm `engine/mozconfig` holds
@@ -875,15 +893,16 @@ token)` finds a live grant for that exact tab and token, deletes it, and
      `--enable-macos-target=11.0`, and that configure printed no unknown-option or
      conflicting-option error.
   3. In the object directory's `config.status.json`, confirm the updater is off
-     (`MOZ_UPDATER` is not `1`), developer options are on (`DEVELOPER_OPTIONS` set)
+     (`MOZ_UPDATER` is absent; `package` and `artifacts:check` fail otherwise), developer options are on (`DEVELOPER_OPTIONS` set)
      for `dev` and `debug` and unset for `release`, and `MACOSX_DEPLOYMENT_TARGET` is
      `11.0` in every mode. If a name moved, find its new home in the new tree.
   4. Compare `toolchain.configure` `--enable-macos-target`: its default and minimum
      must still allow 11.0.
   5. Run `BENTO_BUILD_MODE=release pnpm run build` (or a manual CI build) and
-     `pnpm run package`; confirm the package has no updater, that `precomplete` may
-     be absent without failing, and that `pnpm run artifacts:check` passes with no
-     MAR or update XML.
+     `pnpm run package`; confirm the package has no updater, that `precomplete` is
+     still present in the application (root, or `Contents/Resources` on macOS), and
+     that `pnpm run artifacts:check` passes with no MAR or update XML.
+     Re-confirm that `packager.py` still generates `precomplete` unconditionally.
   6. Re-read the update-trust paths above. If the updater is enabled in the target
      state, re-check cert selection and the update URL before trusting it.
 - Rollback or migration notes: to restore release policy in dev builds, move

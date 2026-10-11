@@ -177,14 +177,28 @@ release tooling treats a build as unable to update:
 
 - `package` writes no MAR, update XML, or add-on update XML, deletes any
   `dist/output.mar` and `dist/update/` an earlier package left, and records
-  `"updates": { "enabled": false }` in `dist/bento-artifacts.json`. It refuses to
-  package when `engine/mozconfig` disagrees with `updates.enabled` (run
-  `pnpm run build`), so an object directory configured with a different updater
-  setting is never described by the wrong metadata.
+  `"updates": { "enabled": false }` in `dist/bento-artifacts.json`. It records the
+  updater state the build was configured with, and refuses to package when that
+  disagrees with `updates.enabled` (run `pnpm run build`), so an object directory
+  configured with a different updater setting is never described by the wrong
+  metadata. Two sources are read: the last `--enable-updater` or `--disable-updater`
+  (or `--with` and `--without`) in `engine/mozconfig`, because configure keeps the
+  last occurrence of an option and a first-match scan would miss a later flag, and
+  `MOZ_UPDATER` in the object directory's `config.status.json`, which is what
+  configure actually built and cannot be disguised by how a mozconfig spells a flag.
 - `updates-browser` and `updates-addons` fail with a message naming the switch.
 - `pnpm run artifacts:check` expects the primary packages and a matching
-  `bento-artifacts.json`, requires no `precomplete` marker, and fails if a MAR or
-  update metadata exists in `dist/` or the manifest.
+  `bento-artifacts.json`, still requires the application's `precomplete` file
+  (Firefox's packager writes it whether or not the updater is built, and the
+  Windows installer and uninstaller read it to remove files), checks that the
+  object directory's `config.status.json` agrees with `updates.enabled`, and
+  fails if a MAR or update metadata exists in `dist/` or the manifest.
+- `configs/common/mozconfig`, the platform fragment and the root `mozconfig`
+  are appended to `engine/mozconfig` after Bento's options, so they may not set
+  the updater: any active line that mentions it (`--enable-updater`,
+  `--disable-updater`, `--with-updater`, `--without-updater`, a `MOZ_UPDATER`
+  export) makes the mozconfig writer fail, the same way a `MOZ_OBJDIR` line does.
+  `updates.enabled` is the only switch.
 - `scripts/build-release.sh` collects no MAR or update XML and fails if
   `release-out/` or `dist/` holds one; the release workflow checks the same
   before uploading.
@@ -220,7 +234,10 @@ the `updates-*` commands. The checks live in
 
 `bento.json` `updates.channel` must also be a Bento-owned name; `release`, `beta`,
 `esr`, `nightly*`, `aurora` and `default` select Mozilla's certificates and are
-refused. A public release additionally requires `updates.enabled`
+refused. configure lowercases the channel before choosing certificates, so the
+check compares the lowercased, trimmed name (`Release`, `NIGHTLY` and `nightly`
+with padding are refused), and a channel that is not already lowercase and
+trimmed is refused as well. A public release additionally requires `updates.enabled`
 (`pnpm run release:security-check:public`).
 
 These fields are recorded attestations. Nothing yet checks them against a built

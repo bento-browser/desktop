@@ -28,8 +28,10 @@ Build, packaging, and release helper scripts.
   if any exists. Run it with `pnpm run artifacts:check`; release builds run it
   before collecting `release-out/`.
 - `update-readiness.mjs` — the inputs `config/release-security.json` must record
-  before `updates.enabled` may be `true`; shared by `check-release-security.mjs`
-  and `bento-build.mjs`. See `docs/build-tooling.md`, "Updater".
+  before `updates.enabled` may be `true`, and the readers of the updater state a
+  mozconfig and an object directory configure; shared by `check-release-security.mjs`,
+  `bento-build.mjs` and `validate-bento-artifacts.mjs`. See `docs/build-tooling.md`,
+  "Updater".
 - `muxui-dev.mjs` — local Mux UI dev loops (`pnpm run shell:ladle:mux`,
   `shell:dev:mux`, `shell:import:mux`); see `docs/build-tooling.md`.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit

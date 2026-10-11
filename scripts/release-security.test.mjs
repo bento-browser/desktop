@@ -262,16 +262,19 @@ test('the release gate refuses to enable the updater until every readiness input
     assert.match(result.stderr, message, name);
   }
 
-  // Mozilla's channel names compile Mozilla's update certificates into the updater.
-  const mozillaChannel = gateWith({
-    bento: (bento) => {
-      enableUpdates(bento);
-      bento.updates.channel = 'release';
-    },
-    security: readyUpdater,
-  });
-  assert.notEqual(mozillaChannel.status, 0);
-  assert.match(mozillaChannel.stderr, /must be a Bento-owned channel/);
+  // Mozilla's channel names compile Mozilla's update certificates into the updater,
+  // and configure lowercases the channel first, so case and padding do not escape this.
+  for (const channel of ['release', 'Release', 'NIGHTLY', ' nightly ']) {
+    const mozillaChannel = gateWith({
+      bento: (bento) => {
+        enableUpdates(bento);
+        bento.updates.channel = channel;
+      },
+      security: readyUpdater,
+    });
+    assert.notEqual(mozillaChannel.status, 0, JSON.stringify(channel));
+    assert.match(mozillaChannel.stderr, /must be a Bento-owned channel/, JSON.stringify(channel));
+  }
 
   const malformed = gateWith({ bento: (bento) => { bento.updates.enabled = 'yes'; } });
   assert.notEqual(malformed.status, 0);

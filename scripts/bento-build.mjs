@@ -15,7 +15,13 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
-import { updaterReadinessProblems } from './update-readiness.mjs';
+import {
+  activeMozconfigLines,
+  configuredUpdaterState,
+  mozconfigUpdaterState,
+  overridesUpdater,
+  updaterReadinessProblems,
+} from './update-readiness.mjs';
 import { writeFileIfChanged } from './write-if-changed.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -646,8 +652,13 @@ function mozconfigObjDirName(ctx) {
   return MOZ_OBJDIR_LINE.exec(fs.readFileSync(file, 'utf8'))?.[1];
 }
 
-/** A fragment that sets MOZ_OBJDIR would send mach somewhere resolveObjDir does not look. */
-function assertObjDirNotOverridden(ctx) {
+/**
+ * The fragments Bento appends to engine/mozconfig. They land after the options Bento
+ * writes, and configure takes the last occurrence, so a fragment must not set what
+ * Bento owns: a MOZ_OBJDIR would send mach somewhere resolveObjDir does not look, and
+ * an updater flag would undo bento.json `updates.enabled` after its readiness checks.
+ */
+function assertFragmentsDoNotOverrideBento(ctx) {
   const fragments = [
     path.join(ctx.root, 'configs', 'common', 'mozconfig'),
     path.join(ctx.root, 'configs', platformConfigName(), 'mozconfig'),
@@ -655,8 +666,14 @@ function assertObjDirNotOverridden(ctx) {
   ];
   for (const fragment of fragments) {
     if (!fs.existsSync(fragment)) continue;
-    const sets = fs.readFileSync(fragment, 'utf8').split(/\r?\n/).some((line) => !line.trimStart().startsWith('#') && /\bMOZ_OBJDIR\b/.test(line));
-    if (sets) fail(`${path.relative(ctx.root, fragment)} sets MOZ_OBJDIR; Bento chooses the object directory (set BENTO_OBJDIR to use another obj-* name)`);
+    const lines = activeMozconfigLines(fs.readFileSync(fragment, 'utf8'));
+    const name = path.relative(ctx.root, fragment);
+    if (lines.some((line) => /\bMOZ_OBJDIR\b/.test(line))) {
+      fail(`${name} sets MOZ_OBJDIR; Bento chooses the object directory (set BENTO_OBJDIR to use another obj-* name)`);
+    }
+    if (lines.some(overridesUpdater)) {
+      fail(`${name} sets the updater; bento.json updates.enabled is the only switch (docs/build-tooling.md, Updater)`);
+    }
   }
 }
 
@@ -1425,7 +1442,7 @@ export function writeMozconfig(repoRoot = DEFAULT_ROOT, mode = undefined) {
   const config = loadConfig(repoRoot);
   const platformName = platformConfigName();
   const selectedMode = mode || process.env.BENTO_BUILD_MODE || config.build.mode;
-  assertObjDirNotOverridden(ctx);
+  assertFragmentsDoNotOverrideBento(ctx);
   if (updatesEnabled(config)) assertUpdaterReady(ctx, config);
   const content = generatedMozconfigText(ctx, config, selectedMode, requestedObjDirName(ctx) || FIXED_OBJDIR);
   const destination = path.join(ctx.engineDir, 'mozconfig');
@@ -1599,21 +1616,15 @@ function applicationIni(application) {
   return { file, buildId };
 }
 
-/**
- * The packaged application. On macOS it is the bundle the packager staged: the updater's
- * `precomplete` file marks it when updates are on, `application.ini` when they are off
- * (nothing else needs `precomplete` then).
- */
-function packagedApplication(objDist, config, updates = true) {
+function packagedApplication(objDist, config) {
   if (process.platform !== 'darwin') {
     const application = path.join(objDist, config.binaryName);
     return fs.existsSync(application) ? application : undefined;
   }
-  const marker = updates ? 'precomplete' : 'application.ini';
   return [
     path.join(objDist, config.binaryName, `${config.build.macosBundleName || 'Bento'}.app`),
     path.join(objDist, `${config.build.macosBundleName || 'Bento'}.app`),
-  ].find((candidate) => fs.existsSync(path.join(candidate, 'Contents', 'Resources', marker)));
+  ].find((candidate) => fs.existsSync(path.join(candidate, 'Contents', 'Resources', 'precomplete')));
 }
 
 async function createMar(ctx, config, objDist) {
@@ -1679,16 +1690,27 @@ export async function writeAddonUpdateFiles(ctx, config) {
 }
 
 /**
- * engine/mozconfig records how the object directory was last configured, and `build`
- * rewrites it from bento.json. Packaging a build whose updater setting differs from
- * bento.json would ship an updater that the metadata says is absent, or the reverse.
+ * The updater state the build was configured with, which is what the package would
+ * contain. Two sources are read, and each must agree with bento.json: engine/mozconfig
+ * (its last updater flag wins; it is what the next configure uses) and, once configure
+ * has run, the object directory's config.status.json (what the last configure used,
+ * and the one a mozconfig cannot disguise). Packaging a build whose updater differs
+ * from bento.json would ship an updater the metadata says is absent, or the reverse.
  */
-function assertUpdaterMatchesBuild(ctx, config) {
+function builtUpdaterState(ctx, config, objDir) {
+  const expected = updatesEnabled(config);
   const mozconfig = path.join(ctx.engineDir, 'mozconfig');
-  const compiledOut = fs.existsSync(mozconfig) && /^ac_add_options --disable-updater$/m.test(fs.readFileSync(mozconfig, 'utf8'));
-  if (compiledOut === updatesEnabled(config)) {
-    fail(`package: engine/mozconfig compiled the updater ${compiledOut ? 'out' : 'in'}, but bento.json updates.enabled is ${updatesEnabled(config)}; run pnpm run build first`);
+  const fromMozconfig = fs.existsSync(mozconfig) ? mozconfigUpdaterState(fs.readFileSync(mozconfig, 'utf8')) : true;
+  const fromConfigure = configuredUpdaterState(objDir);
+  for (const [source, state] of [
+    ['engine/mozconfig compiled', fromMozconfig],
+    [`engine/${path.basename(objDir)}/config.status.json configured`, fromConfigure],
+  ]) {
+    if (state !== undefined && state !== expected) {
+      fail(`package: ${source} the updater ${state ? 'in' : 'out'}, but bento.json updates.enabled is ${expected}; run pnpm run build first`);
+    }
   }
+  return fromConfigure ?? fromMozconfig;
 }
 
 /** A build that cannot update must not leave MARs or update metadata from an earlier package behind. */
@@ -1700,10 +1722,10 @@ function removeUpdateOutputs(ctx) {
 async function commandPackage(ctx) {
   requireEngine(ctx);
   const config = loadConfig(ctx.root);
-  const updates = updatesEnabled(config);
   assertGeneratedMozconfigInUse(ctx);
-  if (updates) assertUpdaterReady(ctx, config);
-  const objDist = path.join(requireConfiguredObjDir(ctx, 'package'), 'dist');
+  if (updatesEnabled(config)) assertUpdaterReady(ctx, config);
+  const objDir = requireConfiguredObjDir(ctx, 'package');
+  const objDist = path.join(objDir, 'dist');
   // Releases ship only the published npm Mux, or a rollback variant's own shell
   // (docs/build-tooling.md, "Local Mux UI"). Packaging copies the shell from the
   // objdir, not from the imported source, so the stamp is read there. The
@@ -1711,10 +1733,10 @@ async function commandPackage(ctx) {
   // mach package; the staged application below is the authoritative check.
   const variant = process.env.BENTO_RELEASE_VARIANT || undefined;
   assertShellMuxSource(path.join(objDist, 'bin', 'browser'), variant);
-  assertUpdaterMatchesBuild(ctx, config);
+  const updates = builtUpdaterState(ctx, config, objDir);
   await run('bash', ['scripts/mach-raw.sh', 'package'], { cwd: ctx.root });
   await run('bash', ['scripts/mach-raw.sh', 'package-multi-locale', '--locales', ...readLocales(ctx, config)], { cwd: ctx.root });
-  const application = packagedApplication(objDist, config, updates);
+  const application = packagedApplication(objDist, config);
   if (!application) fail(`package: packaged ${config.binaryName} application is missing under ${objDist}`);
   assertShellMuxSource(stagedBrowserDir(application), variant);
   copyDirectoryFiles(ctx, objDist);

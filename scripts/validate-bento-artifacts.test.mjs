@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,7 +18,8 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
   const marTool = path.join(objDist, 'host', 'bin', 'mar');
   await fsp.mkdir(app, { recursive: true });
   await fsp.mkdir(path.dirname(marTool), { recursive: true });
-  if (updates) await fsp.writeFile(path.join(app, 'precomplete'), '');
+  // Firefox's packager writes precomplete whether or not the updater is built.
+  await fsp.writeFile(path.join(app, 'precomplete'), '');
   await fsp.writeFile(path.join(app, 'platform.ini'), '[Build]\nMilestone=154.0\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(app, 'application.ini'), '[App]\nBuildID=20260912000000\n[Build]\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), 'application');
@@ -188,17 +188,40 @@ test('artifact validation rejects metadata whose updater state differs from bent
   }
 });
 
-test('with the updater disabled the bundle needs no precomplete marker, with it enabled it does', async () => {
+test('the bundle needs precomplete whether or not the updater is enabled', async () => {
   const off = await fixture({ updates: false });
   const on = await fixture();
   try {
-    assert.equal(fs.existsSync(path.join(off.objDist, 'Bento.app', 'Contents', 'Resources', 'precomplete')), false);
-    validateArtifacts(off.root);
-    await fsp.rm(path.join(on.objDist, 'Bento.app', 'Contents', 'Resources', 'precomplete'));
-    assert.throws(() => validateArtifacts(on.root), /application bundle is missing precomplete/);
+    for (const { root, objDist } of [off, on]) {
+      validateArtifacts(root);
+      await fsp.rm(path.join(objDist, 'Bento.app', 'Contents', 'Resources', 'precomplete'));
+      assert.throws(() => validateArtifacts(root), /application bundle is missing precomplete/);
+    }
   } finally {
     await fsp.rm(off.root, { recursive: true, force: true });
     await fsp.rm(on.root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation checks the updater state configure recorded in the object directory', async () => {
+  const disabled = await fixture({ updates: false });
+  const enabled = await fixture();
+  const configureRecorded = (root, substs) => fsp.writeFile(path.join(root, 'engine', 'obj-test', 'config.status.json'), JSON.stringify({ substs }));
+  try {
+    // Agreeing with bento.json, or no configure output yet, passes.
+    await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
+    validateArtifacts(disabled.root);
+    await configureRecorded(enabled.root, { MOZ_UPDATER: '1' });
+    validateArtifacts(enabled.root);
+
+    // Metadata and bento.json both say off, but configure built the updater in.
+    await configureRecorded(disabled.root, { MOZ_UPDATER: '1' });
+    assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the updater in, but bento\.json updates\.enabled is false/);
+    await configureRecorded(enabled.root, {});
+    assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the updater out, but bento\.json updates\.enabled is true/);
+  } finally {
+    await fsp.rm(disabled.root, { recursive: true, force: true });
+    await fsp.rm(enabled.root, { recursive: true, force: true });
   }
 });
 

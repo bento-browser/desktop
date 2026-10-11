@@ -7,6 +7,8 @@
  * job cannot pass with an application package and an unrelated MAR/XML set.
  * While the updater is disabled (bento.json updates.enabled), the build cannot
  * update, so the check expects no MAR or update metadata and fails if any exists.
+ * The package still carries `precomplete`: Firefox's packager writes it
+ * unconditionally and the Windows installer and uninstaller read it.
  */
 
 import crypto from 'node:crypto';
@@ -16,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { readApplicationBuildId, updateMarUrl } from './bento-build.mjs';
+import { configuredUpdaterState } from './update-readiness.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -173,10 +176,16 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
 
   const application = path.resolve(root, manifest.application);
   if (!fs.existsSync(application) || !fs.statSync(application).isDirectory()) fail(`application bundle is missing: ${manifest.application}`);
-  if (updates && !walkFiles(application).some((file) => path.basename(file) === 'precomplete')) fail('application bundle is missing precomplete');
+  if (!walkFiles(application).some((file) => path.basename(file) === 'precomplete')) fail('application bundle is missing precomplete');
 
   if (!manifest.objDist) fail('artifact metadata is missing objDist');
   const objDist = path.resolve(root, manifest.objDist);
+  // The metadata and bento.json must also agree with what configure built, when it has run.
+  const objDir = path.dirname(objDist);
+  const configured = configuredUpdaterState(objDir);
+  if (configured !== undefined && configured !== updates) {
+    fail(`${path.relative(root, objDir)} was configured with the updater ${configured ? 'in' : 'out'}, but bento.json updates.enabled is ${updates}; rebuild and rerun pnpm run package`);
+  }
   const packages = walkFiles(objDist).filter((file) => isPrimaryApplicationPackage(file, release.displayVersion));
   if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
   const packagedId = packagedApplicationBuildId(manifest, root, application);
