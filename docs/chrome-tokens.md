@@ -29,12 +29,14 @@ public Mux token surface and Bento's compatibility aliases.
    `scripts/sync-builtin-addon-symlinks.sh` links that directory into a dev app
    bundle, because the build lists wildcard files once.
 5. [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
-   links the base sheet and `bento-chrome-theme.css`, loads the chrome layout
+   links the base sheet, `bento-chrome-theme.css`, and then the chrome layout
    sheet [bento-shell-mount.css](../src/browser/base/content/bento-shell-mount.css)
-   (registered in `jar.mn` like the others) synchronously as an author sheet,
-   keeps `data-color-mode` on the chrome root, and attaches the active theme's
-   sheet before setting `data-bento-theme`. The layout sheet consumes these
-   tokens; it is not generated.
+   (registered in `jar.mn` like the others), keeps the chrome root invisible
+   while any of those links has no complete sheet yet (a paint gate; see
+   `docs/core-functionality-technical.md`), keeps `data-color-mode` on the
+   chrome root, and attaches the active theme's sheet before setting
+   `data-bento-theme`. The layout sheet consumes these tokens; it is not
+   generated.
 
 ## Generated content
 
@@ -97,19 +99,11 @@ theme rules select the same canonical values as the extension. Bento's Default
 preset remains a scoped warm ladder with `--neutral-default-20: #e5e1dd`; the
 unscoped shell fallback can keep its cool neutral family.
 
-Theme sheets load after `bento-chrome-theme.css`, so a theme rule now follows
-rules it used to precede. That is safe because no property is set by a theme rule
-and by another rule of equal or higher specificity (theme selectors have
-specificity 0,3,0; the base blocks 0,1,0; `bento-chrome-theme.css` is layered).
-Recheck this if a theme or base selector gains specificity.
-
-`bento-shell-mount.css` is the opposite case. It is an additional author sheet,
-which Gecko sorts after every document sheet, so it follows the theme sheets
-although it used to precede them as an inline `<style>`. The theme sheets set only
-`--muxui-*` custom properties and are unlayered, the mount sheet sets none of
-those, and the only layer it names (`bento.chrome-theme`) is declared by
-`bento-chrome-theme.css` first, so the move changes nothing.
-`scripts/mount-sheet-order.test.mjs` fails if either stops being true.
+Theme sheets load after `bento-chrome-theme.css` and `bento-shell-mount.css`, so a
+theme rule now follows rules it used to precede. That is safe because no property
+is set by a theme rule and by another rule of equal or higher specificity (theme
+selectors have specificity 0,3,0; the base blocks 0,1,0; `bento-chrome-theme.css`
+is layered). Recheck this if a theme or base selector gains specificity.
 
 Custom Scale imports remain supported by
 [scripts/import-theme.mjs](../scripts/import-theme.mjs). The importer preserves

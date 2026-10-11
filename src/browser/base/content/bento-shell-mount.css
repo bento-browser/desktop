@@ -7,13 +7,13 @@
  * navigator, overlays, startup veil, and fullscreen overrides.
  *
  * Loaded by injectChromeStyles() in src/browser/base/content/bento-shell-mount.js
- * with windowUtils.loadSheetUsingURIString as an author sheet, so it applies
- * synchronously and sorts after every document sheet: bento-chrome-tokens.css,
- * bento-chrome-theme.css, and the per-theme bento-chrome-themes/<id>.css.
- * Registered in jar.mn as chrome://browser/content/bento-shell-mount.css. The
- * bento.chrome-theme rules below follow the ones in bento-chrome-theme.css.
- * Because this file comes last, scripts/mount-sheet-order.test.mjs fails if it
- * and a per-theme sheet ever set the same property.
+ * as a <link> appended to the root, after bento-chrome-tokens.css and
+ * bento-chrome-theme.css and before any bento-chrome-themes/<id>.css. Registered
+ * in jar.mn as chrome://browser/content/bento-shell-mount.css. Source order
+ * decides ties with those sheets, and the bento.chrome-theme rules below follow
+ * the ones in bento-chrome-theme.css, so keep the link position when changing
+ * how this file loads. The mount script's paint gate keeps the chrome hidden until
+ * this sheet has loaded when it is not yet in the shared sheet cache.
  */
 
 /* Consistent chrome gaps and splitter slots. Panel boundaries all

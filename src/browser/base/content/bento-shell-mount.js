@@ -363,8 +363,9 @@
     link.rel = 'stylesheet';
     link.href = 'chrome://browser/content/bento-chrome-tokens.css';
     document.documentElement.appendChild(link);
+    return link;
   }
-  injectChromeTokens();
+  const bentoTokensLink = injectChromeTokens();
 
   // Map Firefox's chrome color variables (--toolbar-bgcolor,
   // --toolbar-field-background-color, --toolbox-textcolor, etc.) to
@@ -379,8 +380,9 @@
     link.rel = 'stylesheet';
     link.href = 'chrome://browser/content/bento-chrome-theme.css';
     document.documentElement.appendChild(link);
+    return link;
   }
-  injectChromeTheme();
+  const bentoThemeLink = injectChromeTheme();
 
   const BENTO_CHROME_THEME_ATTRS = [
     'data-color-mode',
@@ -706,44 +708,95 @@
   );
   requestAnimationFrame(syncArrowPanelsTheme);
 
+  // The three Bento chrome sheets (tokens, theme, and the layout sheet below)
+  // are <link> elements inserted by this script. Gecko starts a window's
+  // initial layout without waiting for such links: only parser-created links
+  // count toward the prototype sink's pending sheets. A window that is already
+  // visible when browser.xhtml loads (the early blank window,
+  // browser.startup.blankWindow, on by default on Windows) can then paint for
+  // up to the 5 ms paint suppression delay before a cold sheet arrives, which
+  // shows unstyled chrome. A normal first window is hidden until the document
+  // load event and the links block that event, so it needs no help.
+  //
+  // This gate keeps the root invisible while any of the links still has no
+  // complete sheet. LinkStyle.sheet is null until the sheet is complete, and a
+  // sheet already in the shared sheet cache is complete as soon as its link is
+  // inserted, so later windows never hide. A pending link fires load or error
+  // before the document load event (the event dispatch itself blocks it), so
+  // on the normal path the gate is released before the window is shown and
+  // adds no delay. It can only fail to release if no event ever arrives; a
+  // timeout then shows the window anyway. visibility hides paint without
+  // changing layout and needs no stylesheet. window.__bentoSheetGate records
+  // the outcome for the runtime checks.
+  const BENTO_SHEET_GATE_TIMEOUT_MS = 2000;
+  function gateFirstPaintOnSheets(links) {
+    const pending = links.filter((link) => !link.sheet);
+    if (pending.length === 0) return;
+
+    const style = document.documentElement.style;
+    const previous = style.getPropertyValue('visibility');
+    const previousPriority = style.getPropertyPriority('visibility');
+    const startedAt = window.performance.now();
+    let remaining = pending.length;
+    let sawError = false;
+    let timer = 0;
+    let released = false;
+    window.__bentoSheetGate = { pending: pending.length, releasedBy: null, heldMs: null };
+
+    const release = (releasedBy) => {
+      if (released) return;
+      released = true;
+      window.clearTimeout(timer);
+      if (previous) style.setProperty('visibility', previous, previousPriority);
+      else style.removeProperty('visibility');
+      window.__bentoSheetGate.releasedBy = releasedBy;
+      window.__bentoSheetGate.heldMs = Math.round(window.performance.now() - startedAt);
+    };
+
+    try {
+      style.setProperty('visibility', 'hidden', 'important');
+      timer = window.setTimeout(() => {
+        console.warn(
+          `[bento-shell-mount] chrome stylesheets still loading after ${BENTO_SHEET_GATE_TIMEOUT_MS} ms; showing the window anyway`,
+        );
+        release('timeout');
+      }, BENTO_SHEET_GATE_TIMEOUT_MS);
+      window.addEventListener('unload', () => release('unload'), { once: true });
+      for (const link of pending) {
+        let settled = false;
+        const settle = (event) => {
+          if (settled) return;
+          settled = true;
+          if (event.type === 'error') sawError = true;
+          remaining -= 1;
+          if (remaining === 0) release(sawError ? 'error' : 'load');
+        };
+        link.addEventListener('load', settle, { once: true });
+        link.addEventListener('error', settle, { once: true });
+      }
+    } catch (err) {
+      console.error('[bento-shell-mount] chrome sheet gate failed:', err);
+      release('exception');
+    }
+  }
+
   // Layout-shape CSS that depends on the tokens above lives in
   // bento-shell-mount.css, a static chrome stylesheet registered in jar.mn.
   // Its rules cover per-tab elements such as .browserContainer that tabbrowser
-  // creates later, so there is no need to hook tab creation.
-  //
-  // The sheet is loaded with windowUtils.loadSheetUsingURIString as an author
-  // sheet. That call is synchronous, so the rules exist before this script
-  // returns, as the former inline <style> did. A <link> is not enough: the
-  // tokens and theme links above are inserted by script, so they hold back
-  // only the document's load event, not the initial layout of a window that is
-  // already visible. That is the Windows early blank window
-  // (browser.startup.blankWindow): its paint suppression can expire before a
-  // cold link completes. A normal first window stays hidden until its load
-  // event, and later windows take the tokens and theme sheets from the shared
-  // sheet cache. The tokens and theme links keep their blank-window exposure,
-  // as they had before this sheet moved out of the script.
-  //
-  // Cascade: additional author sheets sort after every document sheet, so this
-  // one now follows the per-theme sheets that applyChromeThemeToDocument
-  // appends later. None of their properties overlap this sheet's, and the only
-  // layer it names is already declared by bento-chrome-theme.css; the order
-  // test scripts/mount-sheet-order.test.mjs keeps both true. A loader without a
-  // document has no shared sheet cache, so each window parses the sheet itself.
-  let bentoMountSheetLoaded = false;
-  function injectChromeStyles() {
-    // loadSheet throws NS_ERROR_INVALID_ARG for a sheet the window already has.
-    if (bentoMountSheetLoaded) return;
-    try {
-      window.windowUtils.loadSheetUsingURIString(
-        'chrome://browser/content/bento-shell-mount.css',
-        window.windowUtils.AUTHOR_SHEET,
-      );
-      bentoMountSheetLoaded = true;
-    } catch (err) {
-      console.error('[bento-shell-mount] could not load bento-shell-mount.css:', err);
-    }
+  // creates later, so there is no need to hook tab creation. The link is
+  // appended to the root at this point in the script, the position the former
+  // inline <style> held, so it stays after the tokens and theme links above
+  // and before any bento-chrome-themes/<id>.css link added later. It is a
+  // document sheet, so it comes from the shared sheet cache in later windows
+  // and DevTools lists it.
+  function injectChromeStyles(earlierLinks) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'chrome://browser/content/bento-shell-mount.css';
+    document.documentElement.appendChild(link);
+    gateFirstPaintOnSheets([...earlierLinks, link]);
   }
-  injectChromeStyles();
+  injectChromeStyles([bentoTokensLink, bentoThemeLink]);
 
 	  let __startupVeilHideTimer = null;
 	  function setStartupVeilClass(element, className) {
