@@ -457,8 +457,13 @@ exact published Mux version, and verified npm integrity; it rejects a substitute
 tarball or digest. Mux is reported like other npm components with its registry
 SHA-512 integrity digest.
 
-Bento's `react` and `react-dom` ranges (`^19.2.0`) sit inside Mux's peer range
-(`>=19.2.0 <20`).
+Bento also installs one copy of `lucide-react` and one React. The shell pins
+`lucide-react` to the exact version `@muxui/react` depends on (1.37.0), so pnpm
+resolves a single copy and Mux controls and Bento icons draw the same glyphs; the
+release bundle contains one `createLucideIcon` factory. Bento's `react` and
+`react-dom` ranges (`^19.2.0`) sit inside Mux's peer range (`>=19.2.0 <20`).
+Bento still imports icons per file (`lucide-react/dist/esm/icons/<name>`), never
+the barrel.
 
 Bento keeps one React Aria substrate graph for menu context identity and pins
 Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
@@ -487,7 +492,8 @@ runtime dependency set that the SBOM generator pins stays intact, and exact pins
 (for example `vite`, `@ladle/react`, `emojibase-data`) are left for manual
 updates. `@muxui/react`, the React Aria family, and the Tiptap family are
 ignored, because their pins and overrides move together through the Mux release
-procedure below.
+procedure below. `lucide-react` is an exact pin, so the lockfile-only strategy
+leaves it on Mux's version.
 
 ## Local Mux UI
 
@@ -525,8 +531,8 @@ How the checkout is used:
 - React and React DOM resolve from Bento (`resolve.dedupe`), and the existing
   React Aria aliases stay, so Mux and Bento share one React and one React Aria.
   Mux's own `lucide-react`, `motion`, Tiptap, and `shiki` resolve from the Mux
-  checkout; they are intentionally not aliased (Mux uses a newer lucide than the
-  shell).
+  checkout; they are intentionally not aliased (the npm build shares one lucide
+  copy because Bento pins Mux's version, but a local checkout can depend on another).
 - `server.fs.allow` lists the workspace root and the local package root, since
   Mux's CSS loads fonts from its `assets/`.
 - `shell:import:mux` writes the gitignored
@@ -591,11 +597,13 @@ Guards keep local Mux out of releases:
    `pnpm run release:security-check` against the current pin and lock must pass.
 3. Update the inputs the new graph is checked against: the exact pin in
    `extensions/bento-shell/package.json`; the root `pnpm.overrides` (React Aria,
-   Tiptap) if Mux's dependencies changed; the `react`/`react-dom` ranges (inside
-   Mux's `peerDependencies`) in `extensions/bento-shell/package.json`; and the
-   expected release metadata, the version and registry integrity in
+   Tiptap) if Mux's dependencies changed; the exact `lucide-react` pin (the version
+   in the new Mux manifest's `dependencies`) and the `react`/`react-dom` ranges
+   (inside Mux's `peerDependencies`) in `extensions/bento-shell/package.json`; and
+   the expected release metadata, the version and registry integrity in
    `scripts/generate-release-sbom.mjs` (`muxuiVersion`, `muxuiIntegrity`, and the
    approved runtime dependency specifiers) and `scripts/release-security.test.mjs`.
+   Check that every icon Bento imports still exists in the new lucide version.
 4. Regenerate the lock: `pnpm install`. (Frozen installs fail between steps 3
    and 4 by design.)
 5. Verify the new graph: `pnpm install --frozen-lockfile`,
