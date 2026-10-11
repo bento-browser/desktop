@@ -176,6 +176,15 @@ Use this shape for new or changed touchpoints:
   `#identity-popup`, `PanelMultiView.openPopup`), Firefox app-menu chrome
   (`PanelUI`, `#appMenu-popup`, `#PanelUI-button`), Places bookmark APIs and
   Places observer events, `gURLBar.view.close()`, frame focus, title/actor messaging paths,
+  process-wide listener registries that outlive a chrome window and must be
+  released on the window `unload` event:
+  `AddonManager.addAddonListener` / `removeAddonListener` (a strong `Set` in
+  `AddonManager.sys.mjs`), `PlacesUtils.observers` (`PlacesObservers`)
+  `addListener` / `removeListener` (strong JS listener list; removal matches the
+  same callback and event-type list), and the `Services.obs` observer service
+  (`enumerateObservers` / `addObserver` for the ExtensionsUI permission-prompt
+  topics, added once per process for the shared ExtensionsUI singleton, never
+  per window),
   the chrome-only, bubbling `pagetitlechanged` event that
   `WindowGlobalParent::RecvUpdateDocumentTitle` (`dom/ipc/WindowGlobalParent.cpp`)
   dispatches on a top-level document's embedding `<browser>`, and the
@@ -222,7 +231,10 @@ Use this shape for new or changed touchpoints:
   toolbar app-menu hiding, native toolbar surface/separator/sidebar-divider styling,
   native Customize Toolbar markup and token variable names, Passwords
   `about:logins` and megalist stylesheet load order and semantic color variable
-  names, native navigation-button alignment, or visibility.
+  names, native navigation-button alignment, or visibility. A rename or
+  semantic change to AddonManager listener removal, `PlacesObservers.removeListener`,
+  or the chrome window `unload` event silently brings back per-window leaks:
+  closed Bento windows stay alive until quit.
 - Regression checks for future updates: run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
@@ -395,7 +407,11 @@ Use this shape for new or changed touchpoints:
   reorders the global sidebar rail with the same dimmed source, accent insertion
   marker, and settle animation as the top panel navigator while a normal click
   still opens the pin, and close ephemeral toolbox tabs on
-  caller removal, inspected-tab closure, and restart, run
+  caller removal, inspected-tab closure, and restart, verify process-wide
+  listeners are released on window close (wrap `AddonManager.addAddonListener` /
+  `removeAddonListener` and `PlacesUtils.observers.addListener` / `removeListener`
+  from the Browser Toolbox Console, open a second Bento window, close it, and
+  confirm the live Bento listener count returns to its prior value), run
   `node --check src/browser/base/content/bento-shell-mount.js`, and the relevant
   extension typecheck/lint/build commands after any rebase, and verify title-IPC
   delivery after any Firefox update that touches `WindowGlobalParent.cpp`,

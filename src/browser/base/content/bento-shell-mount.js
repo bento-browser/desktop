@@ -3132,6 +3132,12 @@
   // __windowId=null and bento-tools falls back to legacy global semantics
   // — degraded but still functional (matches pre-A.1 behaviour).
   const SET_FRAME_SRC_MAX_RETRIES = 20; // ~1s @ 50ms
+  // The extension policy can register well after a slow cold start, so that
+  // branch backs off (50 ms doubling to a 2 s ceiling) and only gives up after
+  // ~30 s in total, rather than using the short windowId cap above.
+  const SET_FRAME_SRC_POLICY_RETRY_MIN_MS = 50;
+  const SET_FRAME_SRC_POLICY_RETRY_MAX_MS = 2000;
+  const SET_FRAME_SRC_POLICY_GIVE_UP_MS = 30000;
   let __bentoSidebarAddressBridgeToken = null;
 
   function getBentoSidebarAddressBridgeToken() {
@@ -3169,12 +3175,37 @@
     frame.setAttribute('src', finalUrl);
   }
 
-  function setFrameSrc(frameId, path, attempt, extraHashParams) {
+  // `attempt` counts windowId retries only. `policyWaitedMs` is the time already
+  // spent waiting for the extension policy; it is tracked separately so a slow
+  // policy does not use up the windowId retry budget.
+  function setFrameSrc(frameId, path, attempt, extraHashParams, policyWaitedMs) {
     const tries = typeof attempt === 'number' ? attempt : 0;
+    const waitedMs = typeof policyWaitedMs === 'number' ? policyWaitedMs : 0;
     const url = moz(path);
     if (!url) {
-      // Extension hasn't loaded yet; try again on the next tick.
-      setTimeout(() => setFrameSrc(frameId, path, tries + 1, extraHashParams), 50);
+      // Extension hasn't loaded yet; back off and try again. With no delay yet
+      // spent this waits 50 ms, then waitedMs + 50 (100, 200, 400, ...) up to
+      // the ceiling, and gives up once ~30 s have elapsed.
+      if (waitedMs < SET_FRAME_SRC_POLICY_GIVE_UP_MS) {
+        const delayMs = Math.min(
+          waitedMs + SET_FRAME_SRC_POLICY_RETRY_MIN_MS,
+          SET_FRAME_SRC_POLICY_RETRY_MAX_MS,
+        );
+        setTimeout(
+          () => setFrameSrc(frameId, path, tries, extraHashParams, waitedMs + delayMs),
+          delayMs,
+        );
+        return;
+      }
+      console.warn(
+        '[bento-shell-mount] setFrameSrc(' +
+          frameId +
+          '): giving up after ' +
+          waitedMs +
+          ' ms; extension policy ' +
+          ADDON_ID +
+          ' is not registered.',
+      );
       return;
     }
     const frame = document.getElementById(frameId);
@@ -19710,9 +19741,19 @@
 
     try {
       const PlacesUtils = getPlacesUtils();
-      PlacesUtils.observers.addListener(
-        ['bookmark-added', 'bookmark-removed', 'bookmark-moved', 'bookmark-url-changed'],
-        scheduleSidebarAddressSnapshot,
+      const bookmarkEvents = [
+        'bookmark-added',
+        'bookmark-removed',
+        'bookmark-moved',
+        'bookmark-url-changed',
+      ];
+      PlacesUtils.observers.addListener(bookmarkEvents, scheduleSidebarAddressSnapshot);
+      // PlacesObservers holds strong process-wide references to JS listeners;
+      // remove ours on unload so a closed window is not kept alive until quit.
+      window.addEventListener(
+        'unload',
+        () => PlacesUtils.observers.removeListener(bookmarkEvents, scheduleSidebarAddressSnapshot),
+        { once: true },
       );
     } catch (err) {
       console.warn('[bento-shell-mount] sidebar address Places listener failed:', err);
@@ -19885,11 +19926,17 @@
     const { AddonManager } = ChromeUtils.importESModule(
       'resource://gre/modules/AddonManager.sys.mjs',
     );
-    AddonManager.addAddonListener({
+    const addonListener = {
       onEnabled(addon) {
         if (addon.id !== ADDON_ID) return;
         reloadFrames();
       },
+    };
+    AddonManager.addAddonListener(addonListener);
+    // AddonManager holds listeners in a process-wide Set, so without this a
+    // closed window (captured by reloadFrames) stays alive until quit.
+    window.addEventListener('unload', () => AddonManager.removeAddonListener(addonListener), {
+      once: true,
     });
 
     function reloadFrames() {

@@ -2140,6 +2140,30 @@ Cmd/Ctrl+Shift+Left/Right and Shift-wheel will skip the chooser entirely.
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
 
+Process-wide listener pitfall: `bento-shell-mount.js` runs once per browser
+window, but `AddonManager.addAddonListener` (a strong process-wide `Set`) and
+`PlacesUtils.observers.addListener` (a strong process-wide JS listener list)
+keep each listener, and every window its closure captures, alive until quit.
+`attachReloadListener()` and `attachSidebarAddressSnapshotListeners()` therefore
+remove their listener in a window `unload` handler, using the same listener
+object (and, for Places, the same event-type list). Any new per-window
+registration on a process-wide registry (observer service, Places,
+AddonManager, preference observers, window mediators) must do the same or
+register once per process. The ExtensionsUI observer topics and the `BentoKey`
+window actor are intentionally process-wide singletons and are registered
+once. Manual check: in the Browser Toolbox Console, wrap the add/remove methods
+above to count live Bento listeners, open a second window, close it, and
+confirm the count returns to its prior value.
+
+`setFrameSrc` retries while the extension policy (`WebExtensionPolicy.getByID`)
+or the chrome window id is unresolved. The window id branch retries every 50 ms,
+capped at `SET_FRAME_SRC_MAX_RETRIES`, then loads without the window id. The
+policy branch backs off instead (50 ms doubling to a 2 s ceiling) so a slow cold
+start still loads every frame, and gives up after about 30 s
+(`SET_FRAME_SRC_POLICY_GIVE_UP_MS`) with one `giving up after N ms` warning per
+frame, leaving that frame unloaded instead of polling forever. The two budgets
+are separate: waiting for the policy does not consume window id retries.
+
 ## Command Palette
 
 `extensions/bento-shell/src/components/CommandPalette/CommandPalette.tsx` builds
