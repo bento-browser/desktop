@@ -99,12 +99,14 @@
   // equal to its runtime entries. After delayed startup each window probes the
   // list once and logs '[bento-compat] missing <id>', never throwing or
   // changing behaviour. The probe is passive: it reads properties through
-  // descriptors and never calls an accessor (a lazy global stays unloaded and
-  // is deferred) and imports a module only once Cu.isESModuleLoaded says it is
-  // loaded. It sits above the patch sites because they call
-  // bentoCompatNoteNative. window.BentoFirefoxCompat.check() re-runs it.
+  // descriptors and never calls an accessor. A member whose descriptor exists
+  // anywhere on the prototype chain, data or accessor, is present; an owner
+  // that is still a lazy accessor is deferred, and a module is imported only
+  // once Cu.isESModuleLoaded says it is loaded. It sits above the patch sites
+  // because they call bentoCompatNoteNative. window.BentoFirefoxCompat.check()
+  // re-runs it.
   const BENTO_COMPAT_PROBES = {
-    // owner: members. 'name()' is a method (a function-valued data property);
+    // owner: members. 'name()' is a method (a function when a data property);
     // the rest need only exist, accessors included. '' is the window.
     members: {
       gBrowser: [
@@ -112,8 +114,9 @@
         '_insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
         'on_TabSplitViewDeactivate()', 'warmupTab()', 'tabpanels', 'tabContainer', 'addTrustedTab()',
         'addTab()', 'getTabForBrowser()', 'selectedBrowsers', 'moveTabBefore()', 'moveTabAfter()',
+        '_getTabProgressFilter()',
       ],
-      MozTabbrowserTab: ['isEmpty', 'splitview'],
+      MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
         'removeProgressListener()', 'docShellIsActive', 'renderLayers', 'preserveLayers()',
         'messageManager', 'contentTitle',
@@ -130,6 +133,7 @@
       gURLBar: ['view', 'untrimmedValue', 'value'],
       'gURLBar.view': ['close()'],
       '': ['OpenBrowserWindow()'],
+      'Element.prototype': ['moveBefore()'],
       PlacesUIUtils: ['lastContextMenuTriggerNode'],
     },
     // ids Bento assigns or shadows on the instance: looked up on the prototype
@@ -153,14 +157,11 @@
       'resource://gre/modules/ExtensionParent.sys.mjs': 'ExtensionParent',
       'chrome://devtools-startup/content/DevToolsShim.sys.mjs': 'DevToolsShim',
     },
-    // members that need more than presence
+    // members that need more than the owner path
     custom: {
       delayedStartupPromise: (win) =>
-        typeof bentoCompatData(bentoCompatData(win, 'delayedStartupPromise'), 'then') === 'function',
-      'MozTabbrowserTab.linkedPanel': (win) =>
-        typeof bentoCompatData(BENTO_COMPAT_ROOTS.MozTabbrowserTab(win), 'linkedPanel') === 'string',
-      'MozBrowser.mIconURL': (win) =>
-        !!bentoCompatPeek(win.document?.querySelector('browser'), 'mIconURL'),
+        bentoCompatHas(win, 'delayedStartupPromise', (p) => typeof bentoCompatData(p, 'then') === 'function'),
+      'MozBrowser.mIconURL': (win) => bentoCompatHas(win.document?.querySelector('browser'), 'mIconURL'),
     },
     // a global assigned by a script that another global's getter loads
     gate: { PrivateDownloadsSubview: 'DownloadsPanel' },
@@ -208,8 +209,15 @@
 
   const bentoCompatData = (object, key) => bentoCompatPeek(object, key)?.value;
 
-  // 'ok' | 'missing' | 'deferred' (behind an untriggered accessor, or a module
-  // not loaded yet). A probe that throws counts as missing.
+  // Present when a descriptor exists. A data value must also pass check; an
+  // accessor's value cannot be read without calling it, so it passes.
+  function bentoCompatHas(object, key, check = () => true) {
+    const found = bentoCompatPeek(object, key);
+    return !!found && (!('value' in found) || check(found.value));
+  }
+
+  // 'ok' | 'missing' | 'deferred' (behind an untriggered accessor owner, or a
+  // module not loaded yet). A probe that throws counts as missing.
   function bentoCompatProbe(win, { id, kind, exported }) {
     try {
       if (BENTO_COMPAT_NATIVE.has(id)) {
@@ -240,11 +248,10 @@
       }
       const target =
         BENTO_COMPAT_PROBES.proto.includes(id) && owner != null ? Object.getPrototypeOf(owner) : owner;
-      const found = bentoCompatPeek(target, member);
-      if (!found) return 'missing';
-      if (kind !== 'method') return 'ok';
-      if (!('value' in found)) return 'deferred';
-      return typeof found.value === 'function' ? 'ok' : 'missing';
+      // A method behind an accessor cannot be call-checked without invoking
+      // the getter, so it counts as present.
+      const isFunction = kind === 'method' ? (value) => typeof value === 'function' : undefined;
+      return bentoCompatHas(target, member, isFunction) ? 'ok' : 'missing';
     } catch {
       return 'missing';
     }
@@ -264,7 +271,7 @@
     }
     const probed = present.length + missing.length;
     console.info(
-      `[bento-compat] probed ${probed} members on Firefox ${Services.appinfo.version}: ${missing.length} missing, ${deferred.length} deferred`,
+      `[bento-compat] probed ${probed} members on Firefox ${Services.appinfo.platformVersion}: ${missing.length} missing, ${deferred.length} deferred`,
     );
     return { probed, present, missing, deferred };
   }

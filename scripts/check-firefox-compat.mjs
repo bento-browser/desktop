@@ -287,26 +287,52 @@ export function validateProbeList(mountSource, registry) {
   return errors;
 }
 
+const PRIVATE_MEMBER = '(_(?!_?bento)\\w+|on_\\w+|#\\w+)';
+// `const gb = window.gBrowser;` (also let/var, a trailing ?? or ||).
+const ALIAS_DECLARATION = new RegExp(
+  `^\\s*(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:window\\.)?(${GUARDED_GLOBALS.join('|')})\\s*(?:;|$|\\?\\?|\\|\\|)`,
+);
+
 /**
  * Finds `Global._member` / `Global.on_member` accesses on guarded Firefox
  * globals in the mount script (outside the registry section and comments)
- * that have no registry entry. Bento's own `_bento*` flags are ignored.
+ * that have no registry entry. Bento's own `_bento*` flags are ignored. A local
+ * alias declaration such as `const gb = window.gBrowser;` stands for the
+ * global until a line indented less than the declaration ends its block.
+ * Destructuring, parameters, and values returned by helpers are not followed.
  */
 export function findUndeclaredPrivateMembers(source, registry) {
   const section = extractSection(source);
   const code = source.replace(section, '');
   const declared = new Set(registry.members.map((entry) => entry.id));
-  const pattern = new RegExp(
-    `\\b(?:window\\.)?(${GUARDED_GLOBALS.join('|')})\\??\\.(_(?!_?bento)\\w+|on_\\w+|#\\w+)`,
+  const direct = new RegExp(
+    `\\b(?:window\\.)?(${GUARDED_GLOBALS.join('|')})\\??\\.${PRIVATE_MEMBER}`,
     'g',
   );
   const found = new Map();
+  let aliases = [];
   code.split('\n').forEach((line, index) => {
     const trimmed = line.trimStart();
-    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return;
-    for (const match of line.matchAll(pattern)) {
-      const id = `${match[1]}.${match[2]}`;
+    if (
+      trimmed === '' ||
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('*') ||
+      trimmed.startsWith('/*')
+    )
+      return;
+    const indent = line.length - trimmed.length;
+    aliases = aliases.filter((alias) => alias.indent <= indent);
+    const declaration = ALIAS_DECLARATION.exec(line);
+    if (declaration) aliases.push({ name: declaration[1], global: declaration[2], indent });
+
+    const report = (global, member) => {
+      const id = `${global}.${member}`;
       if (!declared.has(id) && !found.has(id)) found.set(id, index + 1);
+    };
+    for (const match of line.matchAll(direct)) report(match[1], match[2]);
+    for (const { name, global } of aliases) {
+      const viaAlias = new RegExp(`(?<![\\w.$])${name}\\??\\.${PRIVATE_MEMBER}`, 'g');
+      for (const match of line.matchAll(viaAlias)) report(global, match[1]);
     }
   });
   return [...found].map(

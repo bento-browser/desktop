@@ -18,17 +18,22 @@
 //
 // Entry fields:
 //   id      unique. 'Owner.member' for members, the id for elements, the URL
-//           for modules. Owner is a window global, or MozBrowser.prototype /
-//           MozTabbrowserTab (the roots the mount probe resolves specially).
+//           for modules. Owner is a window global (a path such as
+//           Element.prototype walks its interface object), or
+//           MozBrowser.prototype / MozTabbrowserTab (the roots the mount probe
+//           resolves specially).
 //   kind    method | member | element | module | source.
 //   how     wraps | overrides | calls | reads | writes | queries | listens |
 //           dispatches | imports.
 //   probe   R: probed in a live window by the mount, passively. The probe
 //           reads properties through descriptors and never calls an accessor
 //           or imports a module that is not loaded, so a lazy global or module
-//           is never forced to load: an owner that is absent is missing, one
-//           that is still an untriggered accessor (or a module that is not
-//           loaded yet) is deferred. E: engine check only (events, markup,
+//           is never forced to load. A member whose descriptor exists anywhere
+//           on the prototype chain, data or accessor, is present (a method
+//           found as an accessor cannot be call-checked and counts as
+//           present). An owner that is absent is missing, one that is still an
+//           untriggered accessor (or a module that is not loaded yet) is
+//           deferred. E: engine check only (events, markup,
 //           instance fields assigned late, elements inside an <html:template>
 //           until their owner expands it, members of documents other than the
 //           browser window, user-customizable toolbar items); kind is source.
@@ -76,6 +81,8 @@ const FF = {
   bookmarksSidebarJs: 'browser/components/places/content/bookmarksSidebar.js',
   bookmarksSidebarXhtml: 'browser/components/places/content/bookmarksSidebar.xhtml',
   windowGlobalParent: 'dom/ipc/WindowGlobalParent.cpp',
+  parentNodeWebidl: 'dom/webidl/ParentNode.webidl',
+  xulFrameElement: 'dom/xul/XULFrameElement.cpp',
   messageManagerIdl: 'dom/chrome-webidl/MessageManager.webidl',
   searchService: 'toolkit/components/search/SearchService.sys.mjs',
   searchUtils: 'toolkit/components/search/SearchUtils.sys.mjs',
@@ -328,8 +335,44 @@ export const MEMBERS = [
     how: 'reads',
     probe: 'R',
     sites: ['reconcilePanelsSplitView', 'getLivePanelBrowser'],
-    use: 'Id of the tab panel; Bento resolves it with getElementById to reach the panel DOM.',
-    at: [FF.tabbrowser, '^\\s+aTab\\.linkedPanel = uniqueId', 3026],
+    use: 'Id of the tab panel (a get/set accessor on the MozTab prototype); Bento resolves it with getElementById to reach the panel DOM.',
+    at: [FF.tabbox, '^\\s+get linkedPanel\\(', 799],
+  },
+  {
+    id: 'gBrowser._getTabProgressFilter',
+    kind: 'method',
+    how: 'calls',
+    probe: 'R',
+    sites: ['reattachTabProgressFilters'],
+    use: "Returns a tab's nsIWebProgress filter (over Tabbrowser's private #tabFilters map) so the startup re-attach can add it back to the browser element's webProgress.",
+    at: [FF.tabbrowser, '^\\s+_getTabProgressFilter\\(', 6697],
+  },
+  {
+    id: 'Element.prototype.moveBefore',
+    kind: 'method',
+    how: 'calls',
+    probe: 'R',
+    sites: ['moveNodeBefore'],
+    use: 'Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback.',
+    at: [FF.parentNodeWebidl, '^\\s+undefined moveBefore\\(', 34],
+  },
+  {
+    id: 'MozBrowser.connectedMoveCallback',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: ['moveNodeBefore'],
+    use: 'moveBefore on a browser element ends in this no-op callback instead of destruct() and construct().',
+    at: [FF.browserEl, '^\\s+connectedMoveCallback\\(', 412],
+  },
+  {
+    id: 'XULFrameElement UnbindFromTree IsMove',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: ['moveNodeBefore'],
+    use: 'UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it.',
+    at: [FF.xulFrameElement, '^\\s+if \\(!aContext\\.IsMove\\(\\)\\) \\{', 165],
   },
   {
     id: 'gBrowser.addTrustedTab',

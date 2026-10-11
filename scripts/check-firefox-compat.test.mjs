@@ -64,9 +64,8 @@ function universal({ strict = false, top = true } = {}) {
     apply: child,
     has: () => true,
     getPrototypeOf: child,
-    getOwnPropertyDescriptor: (_target, key) => ({
-      // linkedPanel is the one member the probe requires to be a string.
-      value: key === 'linkedPanel' ? 'panel-1' : child(),
+    getOwnPropertyDescriptor: () => ({
+      value: child(),
       writable: true,
       enumerable: true,
       configurable: true,
@@ -86,7 +85,8 @@ function runtimeGlobals(
       error: (message) => logs.error.push(String(message)),
       info: (message) => logs.info.push(String(message)),
     },
-    Services: { appinfo: { version: '154.0' } },
+    // The app version differs from the platform version on purpose.
+    Services: { appinfo: { version: '0.0.1', platformVersion: '154.0' } },
     ChromeUtils: {
       importESModule: (url) => {
         imports.push({ url, loaded: isLoaded(url) });
@@ -190,6 +190,7 @@ test('the runtime probe stays quiet on a window that has every member', () => {
   assert.equal(result.present.length, runtimeEntries.length);
   assert.equal(result.probed, runtimeEntries.length);
   assert.deepEqual(logs.error, []);
+  // Bento's own app version (0.0.1 here) is not the Firefox version.
   assert.match(
     logs.info[0],
     /^\[bento-compat\] probed \d+ members on Firefox 154\.0: 0 missing, 0 deferred$/,
@@ -247,8 +248,14 @@ test('probes resolve roots without gBrowser getters and never call an accessor',
     get isEmpty() {
       return never();
     },
+    // MozTab defines linkedPanel as a get/set pair on its prototype.
+    get linkedPanel() {
+      return never();
+    },
+    set linkedPanel(value) {
+      never(value);
+    },
   });
-  Object.defineProperty(tab, 'linkedPanel', { value: 'panel-1' });
   const tabpanels = Object.create({ splitViewPanels: [] });
   Object.defineProperty(tabpanels, 'removeTabsFromSplitview', { value() {} });
   Object.defineProperty(tabpanels, 'handleEvent', { value() {} });
@@ -289,12 +296,102 @@ test('probes resolve roots without gBrowser getters and never call an accessor',
   assert.equal(probe(win, 'OpenBrowserWindow'), 'ok');
   assert.equal(probe({}, 'OpenBrowserWindow'), 'missing');
 
-  // Only presence is judged for a getter, but a method that sits behind an
-  // accessor cannot be judged without calling it.
-  Object.defineProperty(win.gBrowser, '_endRemoveTab', { get: never });
+  // A method found as a data property must be a function.
   Object.defineProperty(win.gBrowser, 'warmupTab', { value: 1 });
-  assert.equal(probe(win, 'gBrowser._endRemoveTab'), 'deferred');
   assert.equal(probe(win, 'gBrowser.warmupTab'), 'missing');
+});
+
+test('a member that is an accessor on its owner is present and the accessor never runs', () => {
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
+  const probe = (win, id) =>
+    probes.probe(
+      win,
+      probes.entries.find((entry) => entry.id === id),
+    );
+  let calls = 0;
+  const run = () => {
+    calls += 1;
+    return 'value';
+  };
+  // Firefox 154 shapes: MozTab's get/set linkedPanel (tabbox.js), Tabbrowser's
+  // getter members, a <browser> field behind a getter, and a method that sits
+  // behind an accessor.
+  const tab = Object.create({
+    get linkedPanel() {
+      return run();
+    },
+    set linkedPanel(value) {
+      run(value);
+    },
+  });
+  const win = {
+    gBrowser: Object.create({
+      get selectedBrowsers() {
+        return run();
+      },
+      get _getTabProgressFilter() {
+        return run;
+      },
+    }),
+    document: {
+      querySelector: (selector) =>
+        selector.includes('tabbrowser-tab')
+          ? tab
+          : Object.create({
+              get mIconURL() {
+                return run();
+              },
+            }),
+    },
+  };
+  Object.defineProperty(win, 'delayedStartupPromise', { get: run, configurable: true });
+
+  assert.equal(probe(win, 'MozTabbrowserTab.linkedPanel'), 'ok');
+  assert.equal(probe(win, 'gBrowser.selectedBrowsers'), 'ok');
+  assert.equal(probe(win, 'gBrowser._getTabProgressFilter'), 'ok');
+  assert.equal(probe(win, 'MozBrowser.mIconURL'), 'ok');
+  assert.equal(probe(win, 'delayedStartupPromise'), 'ok');
+  assert.equal(calls, 0);
+
+  // Absent is still missing, and a data value that fails its check too.
+  assert.equal(probe(win, 'gBrowser.addTab'), 'missing');
+  assert.equal(
+    probe({ document: { querySelector: () => ({}) } }, 'MozTabbrowserTab.linkedPanel'),
+    'missing',
+  );
+  assert.equal(probe({ delayedStartupPromise: {} }, 'delayedStartupPromise'), 'missing');
+  assert.equal(probe({ delayedStartupPromise: Promise.resolve() }, 'delayedStartupPromise'), 'ok');
+});
+
+test('the DOM and tab-progress members the startup re-parenting depends on are probed', () => {
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
+  const probe = (win, id) =>
+    probes.probe(
+      win,
+      probes.entries.find((entry) => entry.id === id),
+    );
+  for (const id of ['Element.prototype.moveBefore', 'gBrowser._getTabProgressFilter']) {
+    const entry = registry.members.find((member) => member.id === id);
+    assert.ok(entry, `${id} is in the registry`);
+    assert.equal(entry.kind, 'method');
+    assert.equal(entry.probe, 'R');
+  }
+
+  assert.equal(
+    probe({ Element: { prototype: { moveBefore() {} } } }, 'Element.prototype.moveBefore'),
+    'ok',
+  );
+  assert.equal(probe({ Element: { prototype: {} } }, 'Element.prototype.moveBefore'), 'missing');
+  assert.equal(
+    probe({ Element: { prototype: { moveBefore: true } } }, 'Element.prototype.moveBefore'),
+    'missing',
+  );
+  assert.equal(probe({}, 'Element.prototype.moveBefore'), 'missing');
+  assert.equal(
+    probe({ gBrowser: { _getTabProgressFilter() {} } }, 'gBrowser._getTabProgressFilter'),
+    'ok',
+  );
+  assert.equal(probe({ gBrowser: {} }, 'gBrowser._getTabProgressFilter'), 'missing');
 });
 
 test('a lazy global is missing when absent, deferred behind its getter, and probed once loaded', () => {
@@ -358,12 +455,16 @@ function lazyWindow(probes, counts) {
   const owners = new Set(
     Object.keys(probes.probes.members)
       .map((owner) => owner.split('.')[0])
-      .filter((owner) => owner !== '' && !['MozBrowser', 'MozTabbrowserTab'].includes(owner)),
+      .filter(
+        (owner) => owner !== '' && !['Element', 'MozBrowser', 'MozTabbrowserTab'].includes(owner),
+      ),
   );
   // PrivateDownloadsSubview exists only after DownloadsPanel's script loads.
   owners.delete('PrivateDownloadsSubview');
   const win = {
     OpenBrowserWindow() {},
+    // A DOM interface is never a lazy accessor.
+    Element: { prototype: { moveBefore() {} } },
     delayedStartupPromise: Promise.resolve(),
     customElements: {
       get: () =>
@@ -388,8 +489,8 @@ function lazyWindow(probes, counts) {
               Object.create(null, {
                 isEmpty: { get: counting },
                 splitview: { get: counting },
+                linkedPanel: { get: counting, set: counting },
               }),
-              { linkedPanel: { value: 'panel-1' } },
             )
           : { mIconURL: null },
     },
@@ -583,6 +684,47 @@ window.gBrowser.__bentoOwnFlag = true;
       `${MOUNT_PATH}:N reaches gBrowser._newHook but the registry has no entry`,
       `${MOUNT_PATH}:N reaches PanelUI.on_newEvent but the registry has no entry`,
     ],
+  );
+});
+
+test('a private member reached through a local alias of a Firefox global needs an entry', () => {
+  const source = `${readMount()}
+function aliased() {
+  const gb = window.gBrowser;
+  gb._aliasedHook();
+  gb?.on_aliasedEvent;
+  let handler = window.gIdentityHandler ?? null;
+  handler._aliasedPopup();
+  gb._bentoOwnFlag = true;
+  return gb.tabs;
+}
+function afterTheBlock() {
+  gb._outOfScope();
+  handler._outOfScope();
+  const unrelated = somethingElse;
+  unrelated._notFirefox();
+  other.gb._notAlias();
+}
+`;
+  assert.deepEqual(
+    findUndeclaredPrivateMembers(source, registry).map((problem) =>
+      problem.replace(/:\d+ /, ':N '),
+    ),
+    [
+      `${MOUNT_PATH}:N reaches gBrowser._aliasedHook but the registry has no entry`,
+      `${MOUNT_PATH}:N reaches gBrowser.on_aliasedEvent but the registry has no entry`,
+      `${MOUNT_PATH}:N reaches gIdentityHandler._aliasedPopup but the registry has no entry`,
+    ],
+  );
+
+  // The mount reaches _getTabProgressFilter only through `const gb = window.gBrowser`.
+  const withoutEntry = {
+    ...registry,
+    members: registry.members.filter((entry) => entry.id !== 'gBrowser._getTabProgressFilter'),
+  };
+  assert.match(
+    findUndeclaredPrivateMembers(readMount(), withoutEntry).join('\n'),
+    /reaches gBrowser\._getTabProgressFilter but the registry has no entry/,
   );
 });
 

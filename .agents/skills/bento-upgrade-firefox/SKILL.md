@@ -346,7 +346,8 @@ bash .agents/skills/bento-upgrade-firefox/scripts/headless-smoke.sh <path-to-bui
 
 Require a zero exit and a non-empty PNG. Treat isolated-profile network
 diagnostics as warnings only when startup and rendering succeed. In a built app,
-the Browser Console must show `[bento-compat] probed N members` and no
+the Browser Console must show `[bento-compat] probed N members on Firefox
+<platform version>` (the new Gecko version, not Bento's app version) and no
 `[bento-compat] missing` errors. Deferred members (objects Firefox has not
 loaded yet) are not errors; `window.BentoFirefoxCompat.check()` lists them and
 probes them once opened. Run focused manual checks for every affected

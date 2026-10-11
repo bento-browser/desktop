@@ -956,12 +956,13 @@ below is generated; edit the registry, then run
 - Runtime. The `@bento-firefox-compat` section of
   `src/browser/base/content/bento-shell-mount.js` carries only a compact list
   (ids and a presence check) of the entries marked runtime, plus the probe
-  runner, about 9 KB with no call-site, use, or locator text. After Firefox's
+  runner, under 10 KB with no call-site, use, or locator text. After Firefox's
   delayed startup, each window probes the list once and logs one
   `console.error('[bento-compat] missing <id>')` per absent member plus one
-  `[bento-compat] probed N members on Firefox <version>: M missing, D deferred`
-  line. It never throws and changes no behavior; the guarded hooks keep
-  skipping silently.
+  `[bento-compat] probed N members on Firefox <platform version>: M missing, D deferred`
+  line, where the version is `Services.appinfo.platformVersion` (the Gecko
+  version such as `154.0`), not Bento's own app version. It never throws and
+  changes no behavior; the guarded hooks keep skipping silently.
   The probe is passive. It reads every property through
   `Object.getOwnPropertyDescriptor` along the prototype chain and never calls
   an accessor, so a lazy window global (`gURLBar`, `PopupNotifications`,
@@ -971,10 +972,15 @@ below is generated; edit the registry, then run
   `Cu.isESModuleLoaded(url)` is true. The selected tab and a `<browser>` come
   from native DOM calls (`.tabbrowser-tab[selected]`, `browser`,
   `customElements.get('browser')`), not from the `gBrowser.selectedTab` getter.
+  A member whose descriptor exists anywhere on the prototype chain, data or
+  accessor, is present: passive means never invoking an accessor, not ignoring
+  one (`tab.linkedPanel` is a get/set pair on the `MozTab` prototype). A method
+  found as a data property must be a function; one found as an accessor counts
+  as present because it cannot be call-checked without running the getter.
   Each entry ends in one of three outcomes: present; missing (the owner or the
   member is absent, including a lazy global with no property at all); or
-  deferred (the owner is still an untriggered accessor, a module is not loaded
-  yet, a method sits behind an accessor, `PrivateDownloadsSubview` before the
+  deferred (the owner, or a step on the way to it, is still an untriggered
+  accessor, a module is not loaded yet, `PrivateDownloadsSubview` before the
   downloads script loads, or the window has not finished delayed startup).
   Deferred is not an error: the entry is probed by a later check once the owner
   has loaded. `window.BentoFirefoxCompat.check()` re-runs it from the Browser
@@ -1006,6 +1012,11 @@ below is generated; edit the registry, then run
   `bentoCompatNoteNative` call or prototype lookup, the mount script reaches an
   underscore or `on_*`
   member of a known Firefox global that has no entry, or this table is stale.
+  The member scan follows direct access (`gBrowser._x`, `window.gBrowser._x`)
+  and a local alias declared as `const gb = window.gBrowser;` (also `let`,
+  `var`, or a trailing `??` / `||`) until its block ends by indentation. It does
+  not follow destructuring, function parameters, bracket access, or values
+  returned by helpers, so give such a use its entry by hand.
 - Adding a hook. Add its entry to `scripts/firefox-compat-registry.mjs` in the
   same change, add its id to the mount probe list when its probe is `R`, call
   `bentoCompatNoteNative` before replacing a Firefox member, and regenerate
@@ -1014,7 +1025,8 @@ below is generated; edit the registry, then run
   Bento sends to a Firefox page gets an engine-only entry located at the
   dispatch, definition, or parsing site.
 - Not listed. Stable platform APIs (`Services.*`, `PlacesUtils`, `SessionStore`
-  calls, `<browser>` navigation such as `loadURI`, the WebExtension API), prefs
+  calls, `<browser>` navigation such as `loadURI`, XPCOM interface constants
+  such as `Ci.nsIWebProgress.NOTIFY_ALL`, the WebExtension API), prefs
   read by name, and the CSS selectors in `injectChromeStyles`. Patches are
   covered by `pnpm run firefox:patches:check`; members that code added by a
   patch calls elsewhere in Firefox are listed here.
@@ -1046,7 +1058,11 @@ below is generated; edit the registry, then run
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/content/tabbrowser.js:2884` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/content/tabbrowser.js:193` |
 | `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tabbrowser.js:189` |
-| `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel; Bento resolves it with getElementById to reach the panel DOM. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/content/tabbrowser.js:3026` |
+| `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel (a get/set accessor on the MozTab prototype); Bento resolves it with getElementById to reach the panel DOM. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `toolkit/content/widgets/tabbox.js:799` |
+| `gBrowser._getTabProgressFilter` | method (runtime) | Returns a tab's nsIWebProgress filter (over Tabbrowser's private #tabFilters map) so the startup re-attach can add it back to the browser element's webProgress. | `reattachTabProgressFilters` | `browser/components/tabbrowser/content/tabbrowser.js:6697` |
+| `Element.prototype.moveBefore` | method (runtime) | Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback. | `moveNodeBefore` | `dom/webidl/ParentNode.webidl:34` |
+| `MozBrowser.connectedMoveCallback` | source (engine only) | moveBefore on a browser element ends in this no-op callback instead of destruct() and construct(). | `moveNodeBefore` | `toolkit/content/widgets/browser-custom-element.mjs:412` |
+| `XULFrameElement UnbindFromTree IsMove` | source (engine only) | UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it. | `moveNodeBefore` | `dom/xul/XULFrameElement.cpp:165` |
 | `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects. | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor` | `browser/components/tabbrowser/content/tabbrowser.js:3313` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/content/tabbrowser.js:3337` |
 | `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser` | `browser/components/tabbrowser/content/tabbrowser.js:1254` |

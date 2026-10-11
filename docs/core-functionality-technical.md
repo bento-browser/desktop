@@ -2745,6 +2745,23 @@ adds its entry, and its id in the mount probe list, in the same change.
   the passive test in `scripts/check-firefox-compat.test.mjs` counts both and
   expects zero. A new probe goes through `bentoCompatPeek`, never `owner[key]`
   or `key in owner` on a Firefox object.
+- Passive does not mean data-only. A first runtime check logged
+  `missing MozTabbrowserTab.linkedPanel` because the probe required a string
+  data value, but `linkedPanel` is a get/set accessor on the `MozTab` prototype
+  (`tabbox.js`), so it was present and working. A descriptor found anywhere on
+  the prototype chain, data or accessor, counts as present; only an owner that
+  is still an untriggered lazy accessor is `deferred`. A method found as a data
+  property must be a function, and one found as an accessor counts as present
+  because checking it would mean calling the getter. The same run printed
+  `Firefox 0.0.1`: the summary line uses `Services.appinfo.platformVersion`
+  (`154.0`), not Bento's app version. The tests build fixtures whose members are
+  prototype accessors that throw if invoked; keep new fixtures in that shape,
+  because a data-property fixture hides this bug.
+- The private-member scan follows local aliases such as
+  `const gb = window.gBrowser;` (`reattachTabProgressFilters` reaches
+  `_getTabProgressFilter` only through `gb`, which the direct-access scan
+  missed). It does not follow destructuring, parameters, bracket access, or
+  helper return values; register those members by hand.
 - A compat probe must not be satisfied by Bento's own code. Wrapping a Firefox
   member and then checking `typeof gBrowser.x === 'function'` finds the wrapper;
   patch sites call `bentoCompatNoteNative(id, original)` first and the probe
@@ -3740,7 +3757,8 @@ When changing core functionality, manually verify at least the affected subset:
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored;
 - after any Firefox update, the Browser Console shows
-  `[bento-compat] probed N members` and no `[bento-compat] missing` lines.
+  `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
+  version, for example `154.0`) and no `[bento-compat] missing` lines.
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.
