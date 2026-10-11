@@ -1979,6 +1979,9 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   tabs, otherwise every dev/browser relaunch can duplicate the parked tabs. Do
   not let removed-tab deltas or `emitPanelsSync` prune closing-window panel ids
   before this parking step runs.
+  Deleting a workspace removes its parked sidebar tabs, panel entries, strip
+  scroll, and queued activation preferences; closing a window drops that window's
+  queued activation preferences.
 
 ## Shell to chrome bridge
 

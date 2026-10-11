@@ -125,6 +125,20 @@ function takePreferredWorkspaceActivationTab(
   return tabId;
 }
 
+// Entries are keyed "<windowId|global>:<workspaceId>" (the window part never
+// contains a colon). Drop the ones a removed workspace or closed window can no
+// longer consume.
+function prunePreferredActivationTabs(
+  shouldDrop: (windowKey: string, workspaceId: string) => boolean,
+): void {
+  for (const key of preferredActivationTabByWorkspace.keys()) {
+    const split = key.indexOf(':');
+    if (shouldDrop(key.slice(0, split), key.slice(split + 1))) {
+      preferredActivationTabByWorkspace.delete(key);
+    }
+  }
+}
+
 async function sweepStaleFolderIds(): Promise<void> {
   const snapshot = tabs.snapshot();
   for (const tab of snapshot) {
@@ -1797,6 +1811,7 @@ tabs.onWindowClosing(({ windowId, tabs: closingTabs }) => {
 // would throw, but the activation would have been refused anyway).
 browser.windows.onRemoved.addListener((windowId) => {
   workspaces.forgetWindow(windowId);
+  prunePreferredActivationTabs((windowKey) => windowKey === String(windowId));
 });
 
 async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Promise<void> {
@@ -2055,6 +2070,10 @@ workspaces.onDeltas((deltas) => {
     if (d.kind === 'removed') {
       panels.removeWorkspace(d.id);
       lastActiveTabByWorkspace.delete(d.id);
+      prunePreferredActivationTabs((_windowKey, workspaceId) => workspaceId === d.id);
+      // A deleted workspace never activates again, so its parked sidebar tabs
+      // would otherwise stay in storage forever.
+      if (parkedWorkspaceTabs.delete(d.id)) persistParkedWorkspaceTabs();
       continue;
     }
     if (d.kind !== 'activated') continue;

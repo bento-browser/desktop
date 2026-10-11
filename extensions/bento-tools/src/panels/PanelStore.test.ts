@@ -227,4 +227,20 @@ describe('PanelStore persistence triggers', () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(set).toHaveBeenCalledTimes(1);
   });
+
+  it('drops a removed workspace strip scroll from storage', async () => {
+    const store = new PanelStore();
+    store.setStripScroll('ws', 120);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(set).toHaveBeenLastCalledWith(
+      expect.objectContaining({ 'bento.panelStripScroll': { ws: 120 } }),
+    );
+
+    store.removeWorkspace('ws');
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(set).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ 'bento.panelStripScroll': expect.anything() }),
+    );
+  });
 });

@@ -470,9 +470,9 @@ export class PanelStore {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     const hadPersisted = this.#persistedWorkspaces.delete(workspaceId);
     const hadMainWidth = this.#mainWidthByWorkspace.delete(workspaceId);
-    this.#stripScrollByWorkspace.delete(workspaceId);
+    const hadStripScroll = this.#stripScrollByWorkspace.delete(workspaceId);
     if (!layout && !hadPersisted) {
-      if (hadMainWidth) this.#schedulePersist();
+      if (hadMainWidth || hadStripScroll) this.#schedulePersist();
       return [];
     }
     const victims = layout ? removeWorkspace(layout) : [];
