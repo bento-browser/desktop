@@ -145,7 +145,7 @@ The virtualized tab/folder composite is browser-specific structure. Its Bento
 its inner generic controls use Mux. Semantic headings/sections, host roots,
 favicon images, skeletons, and native `SelectNative` options remain ordinary
 HTML. ESLint enforces public imports in all shell source, Ladle, and rollback
-UI. It does not claim to ban every intrinsic JSX element.
+UI (CI lints the rollback sources through `pnpm run rollback:check`). It does not claim to ban every intrinsic JSX element.
 
 Tab and folder labels use the row's center alignment with single-line leading.
 Keep them free of relative vertical offsets: the former `top: 2px` adjustment
