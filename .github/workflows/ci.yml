@@ -30,23 +30,65 @@ permissions:
   contents: read
 
 jobs:
+  security-gate:
+    name: Security gate
+    # Runs first and alone: the build job needs it, so an invariant, release
+    # gate, or advisory failure stops the build before it starts. It reads the
+    # tree and the lockfile only, so it installs no dependencies. It also
+    # selects the build platforms, which keeps that allowlist out of the build.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.select-matrix.outputs.matrix }}
+    steps:
+      - name: Select allowlisted platform matrix
+        id: select-matrix
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -euo pipefail
+          linux='{"platform":"linux-x64","os":"ubuntu-24.04","build-jobs":"4"}'
+          macos='{"platform":"macos-arm64","os":"macos-26","build-jobs":"1"}'
+          windows='{"platform":"windows-x64","os":"windows-2025","build-jobs":"2"}'
+
+          case "$EVENT_NAME:$PLATFORM" in
+            workflow_dispatch:linux-x64) matrix="{\"include\":[$linux]}" ;;
+            workflow_dispatch:macos-arm64) matrix="{\"include\":[$macos]}" ;;
+            workflow_dispatch:windows-x64) matrix="{\"include\":[$windows]}" ;;
+            workflow_dispatch:all) matrix="{\"include\":[$linux,$macos,$windows]}" ;;
+            push:|pull_request:) matrix="{\"include\":[$linux]}" ;;
+            *) echo "Unsupported CI event/platform: $EVENT_NAME:$PLATFORM" >&2; exit 1 ;;
+          esac
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          install: 'false'
+
+      - name: Bento security invariants
+        run: pnpm run security:check
+
+      - name: Preview release security gate
+        run: pnpm run release:security-check
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level high
+
   static-checks:
     name: JSON, shell, prefs sanity
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 10.33.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: bash scripts/install-release-deps.sh
+      - uses: ./.github/actions/setup
 
       - name: Validate JSON syntax
         run: |
@@ -126,34 +168,36 @@ jobs:
       - name: Zen reference boundary tests
         run: pnpm run test:boundary-detector
 
-      - name: Bento security invariants
-        run: pnpm run security:check
+      - name: Bento build driver reads our config
+        # Proves bento.json loads, the Firefox version is well formed, and the
+        # release channel in config/firefox-versions.json agrees with it. No
+        # version literal, so Firefox upgrades do not need to edit this step.
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { loadConfig } from './scripts/bento-build.mjs';
+            const c = loadConfig();
+            const version = c.firefox.version;
+            if (!/^[0-9]+(\.[0-9]+)+([A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?\$/.test(version)) throw new Error('malformed Firefox version: ' + version);
+            const versions = JSON.parse(fs.readFileSync('config/firefox-versions.json', 'utf8'));
+            const release = versions.channels?.find((entry) => entry.channel === 'release');
+            if (release?.version !== version) throw new Error('config/firefox-versions.json release version ' + release?.version + ' does not match bento.json ' + version);
+            console.log('bento.json loaded for Firefox ' + version);
+          "
 
-      - name: Preview release security gate
-        run: pnpm run release:security-check
-
-      - name: Dependency audit
-        run: pnpm audit --audit-level high
+      - name: Bento source license check
+        # Last: it regenerates theme presets and chrome tokens in the worktree.
+        run: pnpm run lc
 
   extensions:
     name: Extensions — typecheck, lint, build, size-limit
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 10.33.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        # The helper installs the committed release lock without permitting
-        # dependency drift and restores the developer lock afterward.
-        run: bash scripts/install-release-deps.sh
+      - uses: ./.github/actions/setup
 
       - name: Typecheck (shell)
         run: pnpm --filter @bento/shell typecheck
@@ -189,79 +233,14 @@ jobs:
         # Missing or malformed built assets still fail.
         run: pnpm run size:check
 
-  bento-smoke:
-    name: Bento build tooling loads
-    needs: static-checks
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 10.33.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - name: Install dependencies
-        # See `extensions` job above for the separate frozen release lock.
-        run: bash scripts/install-release-deps.sh
-      - name: Bento build driver reads our config
-        # Proves bento.json loads, the Firefox version is well formed, and the
-        # release channel in config/firefox-versions.json agrees with it. No
-        # version literal, so Firefox upgrades do not need to edit this step.
-        run: |
-          node --input-type=module -e "
-            import fs from 'node:fs';
-            import { loadConfig } from './scripts/bento-build.mjs';
-            const c = loadConfig();
-            const version = c.firefox.version;
-            if (!/^[0-9]+(\.[0-9]+)+([A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?\$/.test(version)) throw new Error('malformed Firefox version: ' + version);
-            const versions = JSON.parse(fs.readFileSync('config/firefox-versions.json', 'utf8'));
-            const release = versions.channels?.find((entry) => entry.channel === 'release');
-            if (release?.version !== version) throw new Error('config/firefox-versions.json release version ' + release?.version + ' does not match bento.json ' + version);
-            console.log('bento.json loaded for Firefox ' + version);
-          "
-      - name: Bento source license check
-        run: pnpm run lc
-
-  prepare-build:
-    name: Select CI build platform
-    needs: [bento-smoke, extensions]
-    runs-on: ubuntu-24.04
-    outputs:
-      matrix: ${{ steps.select-matrix.outputs.matrix }}
-    steps:
-      - name: Select allowlisted platform matrix
-        id: select-matrix
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PLATFORM: ${{ inputs.platform }}
-        run: |
-          set -euo pipefail
-          linux='{"platform":"linux-x64","os":"ubuntu-24.04","build-jobs":"4"}'
-          macos='{"platform":"macos-arm64","os":"macos-26","build-jobs":"1"}'
-          windows='{"platform":"windows-x64","os":"windows-2025","build-jobs":"2"}'
-
-          case "$EVENT_NAME:$PLATFORM" in
-            workflow_dispatch:linux-x64) matrix="{\"include\":[$linux]}" ;;
-            workflow_dispatch:macos-arm64) matrix="{\"include\":[$macos]}" ;;
-            workflow_dispatch:windows-x64) matrix="{\"include\":[$windows]}" ;;
-            workflow_dispatch:all) matrix="{\"include\":[$linux,$macos,$windows]}" ;;
-            push:|pull_request:) matrix="{\"include\":[$linux]}" ;;
-            *) echo "Unsupported CI event/platform: $EVENT_NAME:$PLATFORM" >&2; exit 1 ;;
-          esac
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
   build:
     name: ${{ github.event_name == 'workflow_dispatch' && 'Build' || 'Source import' }} (${{ matrix.platform }})
-    needs: prepare-build
+    # The checks above run in parallel and all pass before any build starts, so
+    # a failing tree never costs a long native build.
+    needs: [security-gate, static-checks, extensions]
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare-build.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.security-gate.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     # Keep routine source validation bounded separately from manual native builds.
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 360 || 20 }}
@@ -269,16 +248,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 10.33.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - name: Install dependencies
-        # See `extensions` job above for the separate frozen release lock.
-        run: bash scripts/install-release-deps.sh
+      - uses: ./.github/actions/setup
 
       - name: Configure deterministic Firefox source checkout
         run: |
@@ -287,29 +257,34 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.longpaths true
 
-      - name: Cache Firefox source (engine/)
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          # Keep the native object tree in its own cache below. The old source
-          # cache included engine/obj-* as well, doubling restore and save work.
-          path: |
-            engine/*
-            engine/.[!.]*
-            !engine/obj-*
-            .bento/source-state.json
-            .bento/import-manifest.json
-            .bento/engine-state.json
-          key: ${{ runner.os }}-bento-engine-source-v1-${{ github.event_name == 'workflow_dispatch' && 'release' || 'source' }}-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/build-mode.mjs', 'scripts/dev-reload.mjs', 'scripts/firefox-patch-stack.mjs') }}
+      # Pristine source keyed by Firefox version and source digest. The caches
+      # below are restored only after it, because Bento's source command checks
+      # the protected engine checkout before using a restored object tree.
+      - name: Firefox source (engine/)
+        id: engine-source
+        uses: ./.github/actions/engine-source
 
-      - name: Bento download (Firefox source)
-        run: pnpm run download
-
-      - name: Cache Firefox object files (engine/obj-*)
+      - name: Native cache keys
+        id: native-keys
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: ./.github/actions/native-cache-keys
+
+      - name: Restore Mozilla toolchain state (~/.mozbuild)
+        id: mozbuild-cache
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: engine/obj-*
-          key: ${{ runner.os }}-bento-obj-v1-release-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'package.json', 'configs/**', 'rust-toolchain.toml', 'pnpm-lock.release.yaml', 'scripts/bento-build.mjs', 'scripts/mach-raw.sh') }}
+          path: ${{ steps.native-keys.outputs.mozbuild-path }}
+          key: ${{ steps.native-keys.outputs.mozbuild-key }}
+
+      - name: Restore native object tree (engine/obj-bento)
+        id: object-cache
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.native-keys.outputs.object-path }}
+          key: ${{ steps.native-keys.outputs.object-key }}
+          restore-keys: ${{ steps.native-keys.outputs.object-restore-keys }}
 
       - name: Install MozillaBuild
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
@@ -349,52 +324,32 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: pnpm run bootstrap
 
+      # Saved right after a successful bootstrap so a later failure cannot
+      # store a half-installed toolchain. A hit is never saved again.
+      - name: Save Mozilla toolchain state (~/.mozbuild)
+        if: github.event_name == 'workflow_dispatch' && steps.mozbuild-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.native-keys.outputs.mozbuild-path }}
+          key: ${{ steps.native-keys.outputs.mozbuild-key }}
+
       - name: Select bootstrapped Windows toolchain
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
-        shell: pwsh
-        run: |
-          $stateDir = if ($env:MOZBUILD_STATE_PATH) {
-            $env:MOZBUILD_STATE_PATH
-          } else {
-            Join-Path $env:USERPROFILE '.mozbuild'
-          }
-          $msvcRoot = Join-Path $stateDir 'vs\VC\Tools\MSVC'
-          if (-not (Test-Path -LiteralPath $msvcRoot -PathType Container)) {
-            throw "Bootstrapped Visual C++ tree not found at $msvcRoot"
-          }
-
-          $msvcPath = Get-ChildItem -LiteralPath $msvcRoot -Directory |
-            Where-Object { $_.Name -match '^\d+(\.\d+)+$' } |
-            Sort-Object { [version]$_.Name } |
-            Select-Object -Last 1
-          if (-not $msvcPath) {
-            throw "No bootstrapped MSVC version found under $msvcRoot"
-          }
-
-          $vcBin = Join-Path $msvcPath.FullName 'bin\Hostx64\x64'
-          $required = @(
-            (Join-Path $vcBin 'cl.exe'),
-            (Join-Path $msvcPath.FullName 'atlmfc\include\atlbase.h'),
-            (Join-Path $msvcPath.FullName 'atlmfc\lib\x64\atls.lib')
-          )
-          foreach ($path in $required) {
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw "Bootstrapped Windows toolchain is incomplete: missing $path"
-            }
-          }
-
-          # configure searches the inherited PATH before its discovered VS
-          # path. GITHUB_PATH prepends the verified compiler directory so a
-          # partial machine Visual Studio install cannot win the lookup.
-          $vcBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          "Using bootstrapped MSVC toolchain $($msvcPath.FullName)"
+        uses: ./.github/actions/select-windows-toolchain
 
       - name: Build manual release artifact
         if: github.event_name == 'workflow_dispatch'
+        id: native-build
+        # Stop the build with time left in the job to save the partial object
+        # tree below; the next run resumes from it.
+        timeout-minutes: 320
         env:
           BENTO_RELEASE: '1'
           BENTO_PR_BUILD: '1'
           BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
+          # Dependencies, extensions, and the import already ran above.
+          BENTO_RELEASE_PREPARED: '1'
         run: bash scripts/build-release.sh
 
       - name: Upload manual build artifact
@@ -423,4 +378,41 @@ jobs:
             echo
             echo 'Unsigned PR-scoped test build; GitHub sign-in required. Artifact retention: 14 days.'
             echo "[View CI run](${RUN_URL})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Saved even when the build failed or timed out: mach is incremental, so
+      # a partial tree still shortens the next run. Every save is a new entry
+      # (the key holds the run id); GitHub evicts the oldest at the size cap.
+      - name: Save native object tree (engine/obj-bento)
+        if: always() && github.event_name == 'workflow_dispatch' && steps.native-build.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.native-keys.outputs.object-path }}
+          key: ${{ steps.native-keys.outputs.object-key }}
+
+      - name: Cache summary
+        if: always()
+        shell: bash
+        env:
+          IS_NATIVE: ${{ github.event_name == 'workflow_dispatch' }}
+          SOURCE_HIT: ${{ steps.engine-source.outputs.cache-hit }}
+          MOZBUILD_HIT: ${{ steps.mozbuild-cache.outputs.cache-hit }}
+          OBJECT_HIT: ${{ steps.object-cache.outputs.cache-hit }}
+          OBJECT_MATCHED: ${{ steps.object-cache.outputs.cache-matched-key }}
+        run: |
+          {
+            echo '### Build caches'
+            echo
+            echo "- Firefox source: $([ "$SOURCE_HIT" = true ] && echo hit || echo miss)"
+            if [ "$IS_NATIVE" = true ]; then
+              echo "- Mozilla toolchain (~/.mozbuild): $([ "$MOZBUILD_HIT" = true ] && echo hit || echo miss)"
+              if [ "$OBJECT_HIT" = true ]; then
+                echo "- Native objects: exact hit (\`$OBJECT_MATCHED\`)"
+              elif [ -n "$OBJECT_MATCHED" ]; then
+                echo "- Native objects: restored near-miss (\`$OBJECT_MATCHED\`)"
+              else
+                echo '- Native objects: cold build'
+              fi
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
