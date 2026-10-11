@@ -21,6 +21,11 @@
 #
 # Set BENTO_BUILD_JOBS to a positive integer to cap native build
 # parallelism on memory-constrained builders.
+#
+# Set BENTO_RELEASE_PREPARED=1 when the caller already ran
+# `bash scripts/install-release-deps.sh`, `pnpm run ext:build`, and
+# `pnpm run import` with BENTO_RELEASE=1 in this checkout (the CI workflow does,
+# to verify the import before the long build). Steps 1 and 2 are then skipped.
 
 set -euo pipefail
 
@@ -74,12 +79,16 @@ restore_dev_state() {
 }
 trap restore_dev_state EXIT
 
-step "1/4 Installing dependencies in release mode (BENTO_RELEASE=1)"
-bash scripts/install-release-deps.sh
+if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
+  step "1/4 Skipping install, extension build, and import (BENTO_RELEASE_PREPARED is set)"
+else
+  step "1/4 Installing dependencies in release mode (BENTO_RELEASE=1)"
+  bash scripts/install-release-deps.sh
 
-step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
-BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
-BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
+  step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
+  BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
+  BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
+fi
 if [ -n "${BENTO_BUILD_JOBS:-}" ]; then
   if ! [[ "$BENTO_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
     echo "build-release: BENTO_BUILD_JOBS must be a positive integer" >&2

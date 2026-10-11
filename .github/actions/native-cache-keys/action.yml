@@ -1,0 +1,80 @@
+name: Native cache keys
+description: >-
+  Define the cache keys and paths for the Mozilla toolchain state (~/.mozbuild)
+  and the rolling native object tree (engine/obj-bento).
+
+# ci.yml and release.yml share these definitions, so a manual run on main seeds
+# the caches a later release run restores. The restore and save steps must pass
+# identical paths (GitHub derives the cache version from them), which is why
+# the paths are outputs here rather than copies in each workflow.
+#
+# mozbuild-key: one entry per Firefox version. Toolchains change with the
+#   version, so there is no restore key; a version bump bootstraps from scratch
+#   and saves a fresh entry.
+# object-key: unique per run attempt, so every run saves a new entry. Restore
+#   tries the same mozconfig inputs first, then any entry for the same version
+#   and patch stack, and takes the newest match. mach rebuilds only what
+#   changed. Objects from another Firefox version are never restored: a version
+#   bump is the cold build that proves the tree builds from scratch. Objects
+#   from another patch stack are never restored either: removing a patch
+#   restores a pristine source file with an older mtime than the object
+#   compiled from the patched one, and mach would keep that stale object.
+
+outputs:
+  mozbuild-path:
+    description: Paths cached for ~/.mozbuild, without srcdirs.
+    value: ${{ steps.keys.outputs.mozbuild-path }}
+  object-path:
+    description: Path cached for the native object tree.
+    value: ${{ steps.keys.outputs.object-path }}
+  mozbuild-key:
+    description: Exact key for ~/.mozbuild.
+    value: ${{ steps.keys.outputs.mozbuild-key }}
+  object-key:
+    description: Unique key under which this run saves engine/obj-bento.
+    value: ${{ steps.keys.outputs.object-key }}
+  object-restore-keys:
+    description: Newline-separated key prefixes for restoring a near-miss object tree.
+    value: ${{ steps.keys.outputs.object-restore-keys }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute keys
+      id: keys
+      shell: bash
+      env:
+        PLATFORM: ${{ runner.os }}-${{ runner.arch }}
+        RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        version="$(node -p "require('./bento.json').firefox.version")"
+        [[ "$version" =~ ^[0-9][0-9A-Za-z.-]*$ ]] || { echo "bento.json firefox.version is malformed: $version" >&2; exit 1; }
+        # Anything that changes how the native tree is configured or compiled:
+        # the git tree of configs/ and the blob of rust-toolchain.toml, so line
+        # endings on the runner cannot change it. Other inputs are handled by
+        # mach's own rebuild.
+        config_hash="$(printf '%s\n%s\n' "$(git rev-parse HEAD:configs)" "$(git rev-parse HEAD:rust-toolchain.toml)" | git hash-object --stdin)"
+        config_hash="${config_hash:0:16}"
+        # The patch stack (every patches/ blob except documentation, so series.json
+        # and each .patch count). Part of every prefix: a changed patch set is a
+        # cold native build, never a restore of objects compiled from other patches.
+        patches_hash="$(git ls-tree -r HEAD -- patches | awk -F'\t' '$2 !~ /\.md$/' | git hash-object --stdin)"
+        patches_hash="${patches_hash:0:16}"
+        object_prefix="bento-obj-v1-$PLATFORM-$version-$patches_hash-"
+        {
+          # Children are listed one by one so srcdirs (mach virtual
+          # environments with absolute paths, rebuilt in seconds) is left out.
+          echo "mozbuild-path<<BENTO_KEYS_EOF"
+          echo '~/.mozbuild/*'
+          echo '~/.mozbuild/.[!.]*'
+          echo '!~/.mozbuild/srcdirs'
+          echo "BENTO_KEYS_EOF"
+          echo "object-path=engine/obj-bento"
+          echo "mozbuild-key=bento-mozbuild-v1-$PLATFORM-$version"
+          echo "object-key=$object_prefix$config_hash-$RUN"
+          echo "object-restore-keys<<BENTO_KEYS_EOF"
+          echo "$object_prefix$config_hash-"
+          echo "$object_prefix"
+          echo "BENTO_KEYS_EOF"
+        } >> "$GITHUB_OUTPUT"

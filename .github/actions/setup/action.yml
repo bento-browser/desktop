@@ -1,0 +1,25 @@
+name: Set up Bento
+description: Install pnpm and Node (from .nvmrc), then the frozen release dependency graph unless install is false.
+
+inputs:
+  install:
+    description: Run scripts/install-release-deps.sh after the toolchain setup ('true' or 'false').
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      with:
+        version: 10.33.0
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version-file: .nvmrc
+        # Restore the pnpm store only when this job installs from it.
+        cache: ${{ inputs.install == 'true' && 'pnpm' || '' }}
+    - name: Install dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      # The helper installs the committed release lock without permitting
+      # dependency drift and restores the developer lock afterward.
+      run: bash scripts/install-release-deps.sh
