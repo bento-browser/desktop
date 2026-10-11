@@ -5,12 +5,15 @@
 // initial snapshot + tools/booted Event, then streams batched deltas.
 
 import { handle } from './messaging/protocol-handler';
+import { createShellActionIntake, createWindowRegistry } from './messaging/shell-action-intake';
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
+import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
+import type { AddPanelGrant } from './panels/AddPanelGrant';
 import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
 import { parkableWorkspaceTabs, type ParkedWorkspaceTab } from './panels/ParkedWorkspace';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
@@ -28,7 +31,7 @@ import {
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
-import type { BentoSettings, Event, PinnedPanelDelta, WireAction } from '@shared/protocol';
+import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
 import { NativePreferencesService } from './native-preferences/NativePreferencesService';
 import { BentoMutationCoordinator } from './mutations/BentoMutationCoordinator';
@@ -1410,22 +1413,34 @@ savedPanels.onChange((items) => {
   for (const wsId of targets) void emitPanelsSync(wsId);
 });
 
-// "Add panel" trailer button (bento-shell-mount.js) creates the tab at
-//   about:blank?bento_add_as_panel=1&ts=<ms>
-// — the URL is the marker. Chrome → bento-tools IPC has no direct
-// channel, so the URL doubles as the signal. We see the marker here,
-// redirect the panel browser to about:newtab, and add the tab to the
-// active workspace's panel list. The active flag pulls Firefox focus
-// into the new tab — chrome's reconciler then scrolls + focuses the
-// matching panel browser.
+// "Add panel" trailer button (bento-shell-mount.js addNewPanel) creates the
+// tab at
+//   about:blank?bento_add_as_panel=<uuid>
+// and attaches a one-time, tab-bound grant for that token in chrome. The URL
+// is only a hint a web page can imitate: AddPanelGrant.ts asks the
+// bentoPrivacy.consumeAddPanelGrant experiment to check and delete the grant
+// for (tabId, token) and returns chrome's recorded window and insertion
+// source. URLs without a live grant are ignored. Chrome then redirects the
+// tab to the new-tab page once the grant is consumed (or expires). The active
+// flag pulls Firefox focus into the new tab — chrome's reconciler then scrolls
+// + focuses the matching panel browser.
 //
 // Listen on BOTH onCreated and onUpdated: the WebExtension API can fire
 // onCreated before the URL is committed (the tab object's url is empty
 // or about:blank initially), then onUpdated when the URL lands. We'd
-// miss the marker if we only watched onCreated. handledTabs dedupes so
-// we don't run the redirect twice if the URL is already there at
-// onCreated time.
-const handledAddPanelMarker = new Set<number>();
+// miss the marker if we only watched onCreated. The handler dedupes per
+// tab so a marker seen on both events is consumed once.
+const addPanelMarker = createAddPanelMarkerHandler({
+  consume: (tabId, token) => browser.bentoPrivacy.consumeAddPanelGrant(tabId, token),
+  getTabWindowId: async (tabId) => {
+    try {
+      return (await browser.tabs.get(tabId)).windowId ?? null;
+    } catch {
+      return null;
+    }
+  },
+  apply: applyAddPanelGrant,
+});
 
 function maybeHandleAddPanelMarker(
   tabId: number,
@@ -1433,34 +1448,31 @@ function maybeHandleAddPanelMarker(
   source: string,
   windowId: number | null,
 ): void {
-  if (handledAddPanelMarker.has(tabId)) return;
-  if (!url.includes('bento_add_as_panel=1')) return;
-  handledAddPanelMarker.add(tabId);
   void source;
+  void windowId;
+  addPanelMarker.handle(tabId, url);
+}
+
+function applyAddPanelGrant(tabId: number, grant: AddPanelGrant): void {
   // Chrome (bento-shell-mount.js) owns the redirect of the underlying
   // tab away from the marker URL — its loadURI bypasses any
-  // WebExtension API restrictions on about:newtab. The panel <browser>
-  // substitutes about:newtab in createPanelElement when it sees the
-  // marker URL, so the panel renders the new-tab page regardless of
-  // chrome's redirect timing. Our only job here is to add the tab to
-  // THAT WINDOW's active workspace's panel list and broadcast — the
-  // "+" button lives in a per-window chrome strip so the panel belongs
-  // to the window's own active workspace, not the global fallback.
-  const wsId = workspaces.getActiveId(windowId);
+  // WebExtension API restrictions on about:newtab. Our only job here is to
+  // add the tab to THAT WINDOW's active workspace's panel list and
+  // broadcast — the "+" button lives in a per-window chrome strip so the
+  // panel belongs to the window's own active workspace, not the global
+  // fallback.
+  const wsId = workspaces.getActiveId(grant.windowId);
   if (!wsId) {
     console.warn('[bento-tools] add-as-panel: no active workspace, dropping');
     return;
   }
-  const sourceTabIdMatch = /[?&]bento_source_tab_id=([^&#]+)/.exec(url);
-  const sourceTabIdRaw = sourceTabIdMatch ? decodeURIComponent(sourceTabIdMatch[1] ?? '') : '';
   let inserted = false;
-  if (sourceTabIdRaw === 'main') {
+  if (grant.source === 'main') {
     inserted = panels.insertAt(wsId, tabId, 0);
-  } else if (sourceTabIdRaw) {
-    const sourceTabId = Number(sourceTabIdRaw);
-    inserted = insertPanelAfterSource(wsId, tabId, sourceTabId);
-  } else {
+  } else if (grant.source === 'end') {
     inserted = insertPanelAtEnd(wsId, tabId);
+  } else {
+    inserted = insertPanelAfterSource(wsId, tabId, grant.source);
   }
   if (inserted) {
     tabs.assignWorkspaceEagerly(tabId, wsId);
@@ -1956,7 +1968,7 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
-  handledAddPanelMarker.delete(tabId);
+  addPanelMarker.forget(tabId);
 });
 
 // Workspace activation orchestrator. Two responsibilities the WorkspaceStore
@@ -2078,6 +2090,8 @@ workspaces.onDeltas((deltas) => {
   }
 });
 
+const shellWindows = createWindowRegistry(browser.windows);
+
 browser.runtime.onConnectExternal.addListener((port) => {
   if (!isAuthorizedShellPort(port)) {
     console.warn('[bento-tools] rejecting unauthorized external port:', {
@@ -2123,34 +2137,39 @@ browser.runtime.onConnectExternal.addListener((port) => {
     send({ type: 'tabFolders/changed', deltas });
   });
 
-  port.onMessage.addListener((message: object) => {
+  // Every other message is a shell Action. shellActionIntake validates it
+  // (exact keys, bounded fields, allowed URL schemes), drops claims of a source
+  // window that no longer exists, and never throws. The shell document stamps
+  // each dispatch with the WebExtension windowId of its chrome window; tools
+  // uses it to scope per-window state (active workspace, panels/sync
+  // emission). It is null on older shell builds, on actions that fired before
+  // the document resolved its windowId, or in dev-loop scenarios where the bus
+  // is mocked. Handlers that need it fall back to legacy global semantics when
+  // null (no breaking change for single-window use).
+  const shellActionIntake = createShellActionIntake({
+    windows: shellWindows,
+    run: (action, sourceWindowId) =>
+      handle(action, {
+        tabs,
+        workspaces,
+        settings,
+        panels,
+        pinnedPanels,
+        tabFolders,
+        savedPanels,
+        backup,
+        send,
+        broadcast: broadcastEvent,
+        emitPanelsSync,
+        syncPanelMarkers: syncPanelMarkersForWorkspace,
+        preferWorkspaceActivationTab,
+        sourceWindowId,
+      }),
+  });
+
+  port.onMessage.addListener((message: unknown) => {
     if (isShellClientMessage(message) && graphPublications.handle(port, message)) return;
-    const wireAction = message as WireAction;
-    // Extract the routing envelope's __windowId once and expose it on the
-    // handler context. The shell document stamps every dispatch with the
-    // WebExtension windowId of its chrome window; tools uses this to scope
-    // per-window state (active workspace, panels/sync emission). Null on
-    // older shell builds, on actions that fired before the document
-    // resolved its windowId, or in dev-loop scenarios where the bus is
-    // mocked. Handlers that need it should fall back to legacy global
-    // semantics when null (no breaking change for single-window use).
-    const sourceWindowId = typeof wireAction.__windowId === 'number' ? wireAction.__windowId : null;
-    handle(wireAction, {
-      tabs,
-      workspaces,
-      settings,
-      panels,
-      pinnedPanels,
-      tabFolders,
-      savedPanels,
-      backup,
-      send,
-      broadcast: broadcastEvent,
-      emitPanelsSync,
-      syncPanelMarkers: syncPanelMarkersForWorkspace,
-      preferWorkspaceActivationTab,
-      sourceWindowId,
-    });
+    shellActionIntake(message);
   });
 
   port.onDisconnect.addListener(() => {

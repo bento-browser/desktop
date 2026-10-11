@@ -28,6 +28,46 @@ dispatches `Action` messages through `extensions/bento-shell/src/bridge/useTools
 `bento-tools` mutates stores and broadcasts `Event` payloads back. Shell Zustand
 stores are mirrors only.
 
+Port validation: `bento-tools` never trusts the `Action` type on the shell port.
+After `isAuthorizedShellPort` and the targeted `shell-client/*` handshake, every
+message goes through `createShellActionIntake`
+(`extensions/bento-tools/src/messaging/shell-action-intake.ts`) and
+`parseWireAction` (`extensions/_shared/wire-action.ts`):
+
+- `ACTION_FIELDS` has one entry per `Action` type and one guard per field, typed
+  so a new action type or field fails to compile until it has a validator. Keys
+  are exact (plus the `__windowId` routing envelope); ids are safe integers
+  (non-negative, except the negative placeholder ids of `pinnedPanel/*` and
+  `pinnedPanels/reorder`); strings, arrays, and numeric ranges are bounded;
+  URL-bearing actions accept only `http`, `https`, `file`, `ftp`, `about`,
+  `view-source`, and `moz-extension` (favicons also `data`, `chrome`, and a few
+  icon schemes), and never `javascript:`, `data:`, or `blob:` page URLs.
+  `settings/update` reuses `isValidBentoSettingsPatch`; `backup/import` keeps
+  `validateExportSchema` for the payload so the user still gets an import error.
+- A message that claims a source window (`__windowId`, or the payload window of
+  `shell/hello`) is dropped unless `browser.windows.get` confirms the window.
+  Confirmed windows are cached until `windows.onRemoved`, and a removed id is
+  remembered so a lookup still pending at removal cannot mark the closed window
+  live again (a queued `shell/hello` would reassign workspace ownership to it).
+  Messages queue behind a pending check so arrival order is kept.
+- Invalid messages are logged by type only (never payloads) and dropped; the
+  listener cannot throw. Mount-script dispatches (`dispatchShellAction`) and React
+  dispatches (`useToolsPort.ts`) must send exactly the declared fields. Manual
+  check: after any change to an action shape, exercise that UI path and watch the
+  tools console for `dropped invalid shell message`.
+- Page-controlled strings must fit the caps before they are dispatched, because
+  one over-cap field drops the whole action. Save panel
+  (`boundSavedPanelMetadata` in `bento-shell-mount.js`) cuts the page title to
+  the title cap, drops a favicon over its cap, and skips a URL over the URL cap
+  (a truncated URL would be a different address). The URL cap is
+  `MAX_URL_LENGTH` in `extensions/_shared/export-schema.ts`, shared by the port
+  validator and backup import; it mirrors Firefox's
+  `network.standard-url.max-length` (1,048,576), so recheck it on Firefox
+  updates. Pitfall: forwarding `contentTitle` untouched made Save panel fail
+  silently on a page with a title over 4,096 characters. Keep the mount
+  constants equal to the validator caps; `scripts/bento-privacy-security.test.mjs`
+  compares them.
+
 ## Native Tabs And Titlebar Controls
 
 Bento hides Firefox's native horizontal tab strip through Firefox's own
@@ -675,7 +715,11 @@ privileged surface that normal WebExtension APIs cannot provide:
 
 - allowlisted pref reads/writes/clears;
 - visible Firefox search engine discovery;
-- default search engine reads/writes through Firefox `SearchService`.
+- default search engine reads/writes through Firefox `SearchService`;
+- `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
+  handshake (see "Add-panel grant" below). It is not a privacy operation; it
+  lives here because this experiment is present in every shipped tools manifest,
+  including the rollback variants.
 
 The experiment rejects prefs outside its static allowlist. Search writes use
 `SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
@@ -725,7 +769,7 @@ list, focus, action, and reorder affordances. Native component labels use
 Fluent `.label` attributes, while dynamic row text is assigned through the
 component properties. Chrome-bound title signals must not be written twice in
 one synchronous handler because the later title replaces the earlier one
-before the shell-frame polling bridge observes it.
+before the shell-frame title handler reads it.
 
 `bento-size-list` names its native `moz-box-group[type="reorderable-list"]`
 with a `label[is="moz-label"]`. Firefox supplies drag reordering and
@@ -903,7 +947,7 @@ Cmd/Ctrl+W close command is handled by chrome before the sidebar iframe can
 reliably intercept it; chrome closes the mirrored multi-selection before falling
 back to single active-tab close behavior. The mirror must only emit when a
 selection exists, or once to clear a previously mirrored selection; repeated
-empty-selection title writes can stomp `BENTO_PANELS` before chrome polls it and
+empty-selection title writes can stomp `BENTO_PANELS` before chrome reads it and
 hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
 assignment remains tools-owned.
 `TabList` also renders the visible `New tab` and `New panel` controls in a
@@ -1071,7 +1115,7 @@ the current `visualTabOrder`, so selection remains transient shell UI state and
 continues to mirror through `BENTO_SELECTED_TABS`.
 Right-clicking an unselected row does not mutate sidebar selection, because
 doing so emits `BENTO_SELECTED_TABS` and can overwrite the context-menu title IPC
-before chrome polls it.
+before chrome reads it.
 For single rows, the shell includes "New tab below" with the clicked row's
 `TabSnapshot.index`, includes "Mute tab" or "Unmute tab" from
 `TabSnapshot.muted`, includes "Unload tab" disabled when `TabSnapshot.active` or
@@ -2038,6 +2082,44 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
 Chrome-bound state travels through title IPC because WebExtension UI documents
 cannot directly mutate Firefox chrome.
 
+Chrome receives titles from Firefox's `pagetitlechanged` event, not from
+polling. Whenever a top-level document in a chrome `<browser>` changes its
+title, `WindowGlobalParent::RecvUpdateDocumentTitle` stores the new title in
+the parent and dispatches a chrome-only, bubbling `pagetitlechanged` event on
+the embedding `<browser>` element. `attachPaletteCloseListener()` in
+`bento-shell-mount.js` installs one capture-phase `window` listener that looks
+up `event.target.id` in a frame-id to handler table (shell, palette, merge
+palette, workspace palette, address bar, confirm, edit-workspace, welcome,
+embedded import, menu, workspace switcher, and panel trailer frames), checks
+that the frame is showing its expected Bento document (a `moz-extension://` URL
+whose host is the bento-shell add-on's `mozExtensionHostname`, or the
+`chrome://browser/content/bento-migration-host.html` URL for the non-remote
+embedded import frame; otherwise the title is ignored and logged once per
+frame), reads `frame.contentTitle || ''`, drops a title equal to that frame's
+last seen title, and calls the same `BENTO_*` prefix handler the old interval and
+`requestAnimationFrame` pollers called. The shell frame, which carries
+`BENTO_PANELS`, is one more table entry, so there is no per-frame timer and no
+idle wakeup.
+
+Why the event is reliable for these frames: the dispatch happens in the parent,
+for every extension-process and in-process top-level frame, whenever the
+content process reports a changed title; it adds no visibility, focus, or
+layout dependency beyond the document reporting its title (the old pollers had
+the same one). `RunDOMEventWhenSafe` dispatches synchronously from the IPC handler unless
+script is blocked, after the parent-side title is updated, so `contentTitle` is
+the title that triggered it.
+The table is keyed by id on a window-level listener, so frames created after
+mount (the panel trailer, `ensureOverlayHost` frames), reloaded frames, and
+frames that switch process need no re-attachment; they keep the same `<browser>`
+element and every Bento page has a static `<title>`, so each load normally fires an
+event that resets the per-frame dedupe. `DOMTitleChanged`, which earlier code
+tried and found unreliable, is dispatched inside the content process and does
+not reach chrome for remote frames; do not confuse the two.
+
+The channel is still a single title slot per document: it remains
+last-write-wins, and the content process coalesces title writes made in the same
+task. The event removes the polling window, not that loss.
+
 The main channel is `BENTO_PANELS:<ts>:<base64-json>`, written by
 `useToolsPort.ts` when a `panels/sync` event matches the shell document's active
 workspace for its window. The payload carries:
@@ -2101,6 +2183,30 @@ Cmd/Ctrl+Shift+Left/Right and Shift-wheel will skip the chooser entirely.
 
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
+
+Process-wide listener pitfall: `bento-shell-mount.js` runs once per browser
+window, but `AddonManager.addAddonListener` (a strong process-wide `Set`) and
+`PlacesUtils.observers.addListener` (a strong process-wide JS listener list)
+keep each listener, and every window its closure captures, alive until quit.
+`attachReloadListener()` and `attachSidebarAddressSnapshotListeners()` therefore
+remove their listener in a window `unload` handler, using the same listener
+object (and, for Places, the same event-type list). Any new per-window
+registration on a process-wide registry (observer service, Places,
+AddonManager, preference observers, window mediators) must do the same or
+register once per process. The ExtensionsUI observer topics and the `BentoKey`
+window actor are intentionally process-wide singletons and are registered
+once. Manual check: in the Browser Toolbox Console, wrap the add/remove methods
+above to count live Bento listeners, open a second window, close it, and
+confirm the count returns to its prior value.
+
+`setFrameSrc` retries while the extension policy (`WebExtensionPolicy.getByID`)
+or the chrome window id is unresolved. The window id branch retries every 50 ms,
+capped at `SET_FRAME_SRC_MAX_RETRIES`, then loads without the window id. The
+policy branch backs off instead (50 ms doubling to a 2 s ceiling) so a slow cold
+start still loads every frame, and gives up after about 30 s
+(`SET_FRAME_SRC_POLICY_GIVE_UP_MS`) with one `giving up after N ms` warning per
+frame, leaving that frame unloaded instead of polling forever. The two budgets
+are separate: waiting for the policy does not consume window id retries.
 
 ### Shell bus bootstrap
 
@@ -2281,7 +2387,18 @@ content actor so the current-tab address dialog opens while web content owns
 focus. Empty new-tab opens read `text/plain` from the global clipboard in
 chrome, sanitize it with Firefox URL bar paste handling when available, resolve
 it through `Services.uriFixup`, reject keyword-search results, and forward only
-`http`/`https` specs as `clipboardUrl`.
+`http`/`https` specs as `clipboardUrl`. `resolveClipboardUrlSuggestion` first
+reads `browser.urlbar.suggest.clipboard` at call time and returns without
+touching the clipboard unless the pref is enabled. It checks
+`Services.prefs.getPrefType` first: a boolean pref uses its value, a missing
+pref takes Firefox's own default (true), and any other type (or a failed read)
+disables the read. Do not call `getBoolPref(name, true)` for this gate, because
+Firefox returns the supplied default for a wrong-typed pref. Do not gate on
+`browser.urlbar.clipboard.featureGate`: that pref controls Firefox's own
+clipboard provider rollout, while this suggestion is an intentional Bento
+feature. Manual check: with the pref false, `Cmd/Ctrl+T` shows no clipboard row
+for a copied URL and the pasteboard is not read; with the pref true, the row
+appears.
 
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
 actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the
@@ -2330,7 +2447,7 @@ Load-bearing pitfalls:
 
 - Submit writes exactly one navigate sentinel. Do not also write
   `BENTO_CLOSE_ADDRBAR_*` in the same tick; `document.title` is last-write-wins
-  and chrome polling may only see the close sentinel.
+  and chrome may only see the close sentinel.
 - Do not remove the explicit main-slot reveal after submit. Current-tab address
   loads do not necessarily change `gBrowser.selectedTab`, so the reconcile-time
   selected-tab auto-scroll path may not run.
@@ -2377,8 +2494,9 @@ Load-bearing pitfalls:
   channel must be sparse: emit
   only for a real event/state transition, never on ordinary renders, snapshots,
   or empty steady state. A harmless-looking repeated sentinel such as an empty
-  selection payload can overwrite `BENTO_PANELS` before chrome's polling loop
-  reads it, leaving the main content visible but hiding all side panels.
+  selection payload can overwrite `BENTO_PANELS` before chrome's
+  `pagetitlechanged` handler reads it, leaving the main content visible but
+  hiding all side panels.
 - If a title channel needs a clear/reset signal, send that reset only after the
   channel previously sent a non-empty/non-default value. Do not continuously
   announce "nothing selected", "closed", "default", or similar no-op state.
@@ -2396,6 +2514,33 @@ Load-bearing pitfalls:
   activation delta; this keeps the first chrome theme/color payload from being
   dropped when a new window auto-creates a workspace because all existing
   workspaces are occupied.
+- Do not reintroduce `setInterval` or `requestAnimationFrame` title polling.
+  The chrome window listens to `pagetitlechanged` once; polling every frame
+  cost about 90 timer callbacks per second per window plus a callback at the
+  display refresh rate, forever, including minimized windows (chrome timers are
+  not background-throttled). Add a new title-IPC frame by registering its id and
+  handler in the table inside `attachPaletteCloseListener()`, not by adding a
+  timer or a per-element listener.
+- Title handlers only run for a frame whose `currentURI` is its own Bento page,
+  so a frame that navigates somewhere else cannot drive chrome by setting
+  `document.title`. Each frame in the table must keep loading only Bento pages
+  (`moz()` URLs, or the migration host for the embedded import frame); if a
+  frame legitimately needs another origin, change the check rather than
+  removing it. A rejected title logs `ignoring title from unexpected document`
+  once per frame in the Browser Console.
+- Handlers run synchronously inside Firefox's IPC handler for the title update.
+  Keep them non-blocking: no nested event loops such as modal prompts and no
+  synchronous waits. Reloading the frame that just wrote the title from inside
+  its own handler is the case to check first if a handler ever misbehaves.
+- Listen for `pagetitlechanged`, never `DOMTitleChanged`. `DOMTitleChanged` is a
+  content-process event and does not reach chrome for remote frames. The
+  parent-side event only fires for top-level browsing contexts and only when the
+  title differs from the previous one for that document, so keep the timestamp
+  suffix on sentinels that can repeat.
+- The handler reads `frame.contentTitle`, not an event payload (the event has
+  none). It normally sees the title that triggered the event because the
+  dispatch is synchronous in the IPC handler; do not move the read behind a timer or
+  microtask, or two quick writes collapse into the later one.
 
 ### Chrome overlay transparency
 
@@ -2414,9 +2559,10 @@ Load-bearing details:
   `confirm.html`, `welcome.html`, and `panel-trailer.html`, must force `html`,
   `body`, and `#root` to
   `background: transparent !important`. The shell build uses
-  `cssCodeSplit: false`, so unrelated entry CSS such as `panel-newtab.css` can
-  arrive later in the shared `style.css` bundle and otherwise override plain
-  transparent background declarations.
+  `cssCodeSplit: false`, so unrelated entry CSS such as
+  `theme/document-base.css` (the shared `html`/`body` background, color, font,
+  and min-height) can arrive later in the shared `style.css` bundle and
+  otherwise override plain transparent background declarations.
 - Sidebar-owned menus that need to overhang the collapsed rail must route
   through the chrome-mounted menu overlay, not an iframe-local `Menu.Popover`.
   The sidebar New menu uses `BENTO_SIDEBAR_CONTEXT_MENU` with
@@ -2681,6 +2827,53 @@ Add-panel trailer visibility:
   iframe, which can make the Add panels cluster blink when subdivision fill
   actions create new panel nodes.
 - Manual verification surface: checklist item 4, create root panels.
+
+Add-panel grant:
+
+- Source of truth: chrome. `addNewPanel` in `bento-shell-mount.js` generates a
+  `crypto.randomUUID()` token, creates the tab at
+  `about:blank?bento_add_as_panel=<token>` (the URL carries only the token), and
+  sets `newTab.bentoAddPanelGrant = { token, windowId, source, expiresAt,
+acknowledge }` on the native XUL tab element in the same synchronous turn as
+  `gBrowser.addTab`. `source` is `'main'` (insert before the main slot), a
+  non-negative integer tab id (insert after that panel), or `'end'`; the
+  trailer click passes its click Event, which maps to `'end'`. `expiresAt` is
+  two seconds out.
+- Consumer: `bento-tools` `maybeHandleAddPanelMarker` ->
+  `createAddPanelMarkerHandler` in `src/panels/AddPanelGrant.ts`. Only a URL
+  matching `^about:blank\?bento_add_as_panel=<lowercase uuid>$` triggers a
+  check, once per tab (`onCreated` and `onUpdated` share it). The check is
+  `browser.bentoPrivacy.consumeAddPanelGrant(tabId, token)`, which resolves the
+  native tab with `extension.tabManager.get(tabId, null)`, compares the token,
+  deletes the property before any further check (single use; a mismatch leaves
+  the live grant alone), calls `acknowledge()`, then rejects expired grants,
+  a recorded window id that differs from the tab's current window, and
+  malformed sources. It returns `{ windowId, source }` or `null`, and tools
+  validates that shape again before inserting the panel into
+  `workspaces.getActiveId(windowId)`. The tab can close while the result is in
+  flight, so `tabs.onRemoved` (`forget`) cancels the pending attempt and
+  tools applies the grant only if `browser.tabs.get` still places the tab in
+  the grant's window; otherwise a closed tab would be inserted into panel state.
+- Redirect timing: chrome navigates the tab to the panel new-tab page after at
+  least 250 ms and after the grant is acknowledged (or after the two second
+  expiry, so a stalled tools background cannot leave the sentinel URL up).
+- Pitfalls: never accept the URL alone as authority (the old
+  `bento_add_as_panel=1` substring check let any page, including
+  `location.hash`, turn its tab into a panel and persist that layout). Do not
+  move the grant into the URL, a title, or SessionStore data that content or
+  other extensions can influence. Do not move the grant off the native tab
+  element without another chrome-only, tab-bound store. The experiment reads an
+  expando across system-principal compartments, so an Xray wrapper or a rename
+  of the native tab's window accessor would make every lookup return `null` and
+  silently disable the button; the manual checks below catch that. A profile
+  that already ran an older tools build can serve a stale cached experiment
+  schema without `consumeAddPanelGrant`; verify in a fresh profile.
+- Manual verification surface: click Add panel, press Enter on the focused
+  trailer, and use "Insert panel here"; each adds one panel in the right slot
+  and the tab ends on the panel new-tab page. In a content tab, set
+  `location.hash = 'bento_add_as_panel=1'`, and navigate to
+  `about:blank?bento_add_as_panel=3f1c2a4e-9b7d-4c1a-8e5f-0a1b2c3d4e5f`; neither
+  becomes a panel and the second logs `add-as-panel: no matching grant`.
 
 Subdivision splitter resizing:
 
@@ -3033,8 +3226,8 @@ The outer Add-panel trailer `keydown` handler is only for cycle-Enter or
 cycle-Space while the outer XUL host itself is focused. When focus has moved
 inside the trailer iframe, the iframe buttons own Enter/Space. Do not let saved
 panel button keyboard activation bubble back to the outer host, or a saved-panel
-Enter press will create a blank `about:blank?bento_add_as_panel=1...` marker
-panel instead of opening the saved URL.
+Enter press will create a blank add-as-panel marker panel (see "Add-panel
+grant") instead of opening the saved URL.
 
 The chrome `Cmd/Ctrl+W` intercept closes the focused side panel before falling
 back to main-slot close. Resolve the panel first from `document.activeElement`,
@@ -3277,11 +3470,48 @@ Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 
 Theme authoring and import workflow is documented in [themes.md](themes.md).
 
+### Shell bundle and stylesheet
+
+- Source of truth: `extensions/bento-shell/vite.config.ts`. All React entries
+  share one `style.css` (`cssCodeSplit: false`) and chunk by Rollup's default
+  rules. There is no `manualChunks`; `module-identity-guard.ts` fails the build
+  when React, React Aria, or `@internationalized` would be bundled from two
+  install paths (the cause of the `SubmenuTriggerContext` "is null" defect).
+  Keep the `resolve.alias` entries and run the menu/submenu check below after
+  any change to chunking or to the Mux, React Aria, or React versions.
+- The build targets `firefox150` (`gecko.strict_min_version`) and disables the
+  modulepreload polyfill. Sourcemaps stay `mode !== 'production'`; the package
+  scripts always build in production mode, so none are emitted.
+- Contrast is fixed to `standard`. The shell build strips every rule that
+  requires `data-muxui-contrast='more'` (`contrast-more.mjs`, a PostCSS plugin),
+  and the theme sync and chrome token generators do not emit them. Do not add
+  `contrast='more'` CSS to Bento files while that is true. The plugin leaves
+  rules with nested rules alone and turns an emptied `@layer name { }` block into
+  `@layer name;`; deleting either would change the cascade for `standard`.
+- `public/panel-newtab.html` is a plain page: no script, no Mux stylesheet. The
+  `panelNewtabCss` plugin (`panel-newtab-css.ts`, shared with the archived
+  rollback Vite config, which has no `panel-newtab` entry) bundles
+  `src/panel-newtab/panel-newtab.css` into `assets/panel-newtab.css` with
+  esbuild. Run both `build-rollback-variant.mjs <variant> check` actions after
+  changing shell entries, because the archived config lists its own entries. Its heading keeps Inter through a
+  page-local `@font-face` (weight 650) that points at the Inter file the Mux
+  stylesheet makes the build emit into `assets/`; the Vite plugin fails the
+  build if that file name stops existing. A hashed or renamed Inter file would
+  otherwise silently fall back to the system font.
+- `theme/document-base.css` holds the `html`/`body` defaults every entry
+  inherits. They used to sit in `panel-newtab.css`, which the shared sheet
+  carried into every document, so removing that file's global rules changed the
+  sidebar background, the tooltip font, and the root color. When moving or
+  deleting CSS that reaches the shared sheet, diff `html` and `body` computed
+  styles for every entry in light and dark before accepting the change.
+- Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
+  serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
+
 ### Theme pitfalls
 
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
-  theme-only title can overwrite the first panel sync before chrome polls it.
+  theme-only title can overwrite the first panel sync before chrome reads it.
 - Keep Auto mode resolved to explicit `light`/`dark` on DOM roots. Mux UI's
   runtime styling expects `data-color-mode` to carry the rendered mode; the
   stored user preference is mirrored separately as `data-bento-color-mode-pref`.
@@ -3303,6 +3533,8 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 
 When changing core functionality, manually verify at least the affected subset:
 
+- shell menus and submenus (kebab, context, New menu with nested items) in a
+  running browser after any Vite chunking or Mux/React Aria change;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;
@@ -3342,7 +3574,7 @@ default can resolve to a bottom popup anchored to the correct item, overlapping
 subsequent root rows. Keep placement explicit when changing menu composition.
 Verify in the `menu.html` overlay that pointer travel from a submenu trigger
 reaches visible child rows, keyboard ArrowRight opens the child, and selection
-preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome poll.
+preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome title handler.
 
 ### Palette search headers and rollback file selection
 

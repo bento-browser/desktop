@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_URL_LENGTH } from '@shared/export-schema';
 import type { BentoExportSchema } from '@shared/protocol';
 import { DEFAULT_SETTINGS } from '../settings/SettingsStore';
 import { BackupStore, type BackupContext } from './BackupStore';
@@ -620,6 +621,29 @@ describe('workspace backup import/export', () => {
     ).toBeNull();
     expect(validateExportSchema({ ...valid, settings: { autoBackupMaxCount: 1000 } })).toBeNull();
     expect(validateExportSchema({ ...valid, settings: { unexpected: true } })).toBeNull();
+  });
+
+  it('accepts tab URLs up to the Firefox standard-URL length', () => {
+    const backupWithTabUrl = (url: string): BentoExportSchema => ({
+      schemaVersion: 2,
+      bentoVersion: '0.0.0',
+      exportedAt: 1,
+      workspaces: [
+        {
+          id: 'workspace-1',
+          name: 'Workspace 1',
+          createdAt: 1,
+          tabs: [{ url, title: 'Long', pinned: false }],
+          panels: [],
+          pinnedPanels: [],
+        },
+      ],
+      savedPanels: [],
+    });
+    const urlOfLength = (length: number) => 'https://example.test/'.padEnd(length, 'a');
+
+    expect(validateExportSchema(backupWithTabUrl(urlOfLength(MAX_URL_LENGTH)))).not.toBeNull();
+    expect(validateExportSchema(backupWithTabUrl(urlOfLength(MAX_URL_LENGTH + 1)))).toBeNull();
   });
 
   it('rejects exports with excessive collection sizes', () => {

@@ -13,7 +13,8 @@ commands exposed through [`scripts/bento-env.sh`](../scripts/bento-env.sh):
 - `update` obtains the current Mozilla version, replaces the protected source
   checkout, and updates `bento.json` and `config/firefox-versions.json`;
 - `bootstrap` invokes Firefox's Mozilla build dependency bootstrap;
-- `build` and `build --ui` write the platform mozconfig and invoke `mach build`
+- `build` and `build --ui` write the platform mozconfig (rewriting `engine/mozconfig`
+  and the version files only when their content changes) and invoke `mach build`
   or `mach build faster`;
 - `package` invokes the Firefox package and multi-locale package steps, creates
   a MAR, and writes browser and add-on update metadata;
@@ -77,7 +78,8 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run bootstrap`: install Mozilla build dependencies through `mach`.
 - `pnpm run import`: run the complete Bento import wrapper.
 - `pnpm run build`: build extensions, import Bento sources, and compile Firefox.
-- `pnpm run build:ui`: run the incremental Firefox UI build.
+- `pnpm run build:ui`: write the mozconfig and run `mach build faster`, the
+  incremental Firefox UI build. It does not run `pnpm run import`.
 - `pnpm run package`: produce platform packages, MAR, locales, and update XML.
 - `pnpm run artifacts:check`: verify the packaged application, MAR contents,
   and update XML against `dist/bento-artifacts.json`.
@@ -97,11 +99,15 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   `pnpm run size:baseline -- --accept-growth <entry path>` (repeatable). Commit
   the refreshed file.
 
-Hosted release cache keys include `bento.json`, `config/**`, the patch and
-overlay inputs, relevant Bento build scripts, `configs/**`, and
-`rust-toolchain.toml` along with the package configuration. A change to the
-source tooling, LTO policy, or Rust compiler therefore cannot reuse an object
-cache produced under a different native build configuration.
+Hosted cache keys (`ci.yml`, `release.yml`) are exact-match hashes. The source
+key covers `bento.json`, `config/**`, `patches/**`, `src/**`,
+`branding/bento/**`, `extensions/**`, `prefs/**`, and the build, import and patch-stack
+scripts. The object key covers `bento.json`, `config/**`, `patches/**`,
+`package.json`, `configs/**`, `rust-toolchain.toml`, `pnpm-lock.release.yaml`,
+`scripts/bento-build.mjs`, and `scripts/mach-raw.sh`; it does not include
+`src/**`, `extensions/**`, `prefs/**`, or `branding/**`. A change to the source
+tooling, mozconfig generation, LTO policy, or Rust compiler therefore cannot
+reuse an object cache produced under a different native build configuration.
 
 Manual CI application builds use four workers on the public
 `ubuntu-24.04` runner (4 CPUs / 16 GiB), two workers on the public
@@ -118,6 +124,98 @@ bootstrapped MSVC ATL/MFC headers and libraries, then prepends that compiler
 directory with `GITHUB_PATH` before configure runs. Release jobs use the same
 worker, cache, and toolchain selection policy, with their existing six-hour
 cold-build bound.
+
+## Object directory
+
+The generated mozconfig sets `mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-bento` in
+every build mode. Firefox's default name embeds the host OS version
+(`obj-aarch64-apple-darwin25.5.0`), so an OS update started a cold build in a new
+directory and left two behind. `obj-bento` still matches the `engine/obj-*`
+cache paths in CI.
+
+Generation and resolution come from one place in `bento-build.mjs`. The mozconfig
+names `obj-bento`, or `BENTO_OBJDIR=obj-<name>` when that is set during the build
+(it must be an `obj-*` directory directly under `engine/`). `resolveObjDir` reads
+the `MOZ_OBJDIR` back out of `engine/mozconfig`, so every tool uses the directory
+mach builds into even if `BENTO_OBJDIR` is unset or changed later. A `BENTO_OBJDIR`
+that disagrees with the mozconfig fails `package` and `updates-browser`
+(rebuild with the same value or unset it). Three things would send mach somewhere
+else, so they are rejected up front: a `MOZ_OBJDIR` line in `configs/common/mozconfig`,
+the platform mozconfig or the root `mozconfig` (when the mozconfig is written), and a
+`MOZCONFIG` environment variable naming a file other than `engine/mozconfig` (before
+`build` or `package` run mach).
+
+`package`, `updates-browser` and `build-release.sh` use only that directory and fail
+if it does not exist. The launch and sync scripts (`dev-launch.sh`, `sync-shell.sh`,
+`sync-builtin-addon-symlinks.sh`) call `node scripts/bento-build.mjs objdir
+--allow-legacy`: while the configured directory does not exist they accept a single
+legacy platform-named `engine/obj-*` build from an older checkout (or an existing
+directory named by `BENTO_OBJDIR`), print which one on stderr, and fail when several
+legacy directories exist. `sync-builtin-addon-symlinks.sh` also passes
+`--allow-missing`, so an import before any build still succeeds.
+`package` and `updates-browser` read the target architecture from the object
+directory's `mozinfo.json` (`processor`), because `obj-bento` carries no target
+triple in its name. A checkout built before this change keeps its old directory
+untouched; the first build compiles from scratch into `obj-bento`, and the old
+directory can be deleted by hand.
+
+## Import cost and mtimes
+
+`pnpm run import` is part of the UI loop, so its fixed costs are kept small:
+
+- **Patch check.** `firefox-patch-stack.mjs check` (with or without
+  `--for-import`) reads the base commit into a temporary Git index
+  (`GIT_INDEX_FILE` and `git read-tree`) and runs `git apply --cached` for each
+  patch in manifest order, with the same whitespace arguments as `apply`. The
+  settings that can change an outcome (`apply.whitespace=warn`,
+  `core.autocrlf=false`, `core.safecrlf=false`) are pinned with `git -c` for the
+  replay and the live `apply`, so user or system git configuration cannot make
+  one pass and the other fail, and the replay also pins `core.splitIndex=false`
+  so nothing is written into the engine's git directory. No
+  worktree is checked out, and the engine's index, working tree and object
+  store are untouched: blobs the patches create are written to a scratch object
+  directory that reads the engine's objects as an alternate. A failure names
+  the manifest entry (`failed to apply patches/<area>/<name>.patch (<id>)`) and
+  includes Git's output. After a pass, the SHA-256 of every file under
+  `patches/` (including `series.json`), the resolved base commit, and the apply
+  arguments and the pinned git settings is stored in `.bento/patch-check.json`; while
+  it still matches, the replay is skipped. `check --force` ignores the record, and `export` always
+  replays. Measured on the Firefox 154.0 tree (471,508 files): 5.0 to 7.3 s over nine runs for a
+  replay and 0.5 to 0.65 s when skipped. Because the replay never
+  checks anything out, `check` and `apply` refuse to run when the engine repository
+  has `core.symlinks=false` and a patch changes a tracked symlink (the checkout
+  holds a plain file, so `apply` would fail with "wrong type" after the import has
+  already started); series that touch no symlink are unaffected.
+- **Materialized trees are unchanged.** `materialize` and `rebase` still create
+  a real checkout in `.bento/patch-stack-worktree`, and
+  `pnpm native-protocol:check:all` still reads it. The old replay used its own
+  temporary worktree outside `.bento/`, so nothing that needs a materialized
+  tree depended on it.
+- **Hashing.** `bento-build.mjs` hashes with streaming `node:crypto` SHA-256 in
+  process instead of spawning `shasum`, `sha256sum` or `certutil` per file.
+  Hashing the 871 files in `.bento/engine-state.json` took 0.095 s against 8.5 s
+  with `shasum`, with identical digests.
+- **Write-if-changed.** `engine/mozconfig`, `browser/config/version.txt`,
+  `version_display.txt`, built-in add-on files, their `jar.mn` and `moz.build`,
+  `browser/extensions/moz.build`, the branding tree, and the prefs files are
+  rewritten only when their bytes differ, and add-on and branding trees are
+  synced in place (stale files are removed) instead of deleted and copied.
+  Mach decides what to reconfigure and rebuild from mtimes, so inputs that are
+  not rewritten no longer look changed. The patch reset (`reset-engine-patches.sh`) and `apply` still
+  rewrite every patched file on each import.
+- **Regenerated files in verification.** `engine/mozconfig` and the two version
+  files are rewritten from `bento.json` and `configs/` by every build, in
+  whichever mode that build uses. Recorded-state verification therefore
+  accepts freshly generated content (any build mode, any `obj-*` name, with or
+  without the object directory line, or the legacy format) or the exact bytes
+  recorded at the last import, which is what the file still holds when
+  `configs/` or `bento.json` changed and the build has not regenerated it yet.
+  Any other content, such as a hand edit, still fails. `engine/mozconfig` is
+  validated whenever it exists, even though Firefox ignores it in Git and an
+  import before the first build records nothing for it; a version file is
+  validated once it differs from Git. The bytes recorded at import also count as
+  owned, so a `displayVersion` bump does not fail the next import before the
+  build rewrites the files. Every other recorded file keeps the hash comparison.
 
 ## Reproducible release dependencies
 
@@ -216,13 +314,13 @@ Guards keep local Mux out of releases:
   re-importing the shell does not refresh native resources that were already
   built. It checks two places, both at
   `chrome/browser/builtin-addons/bento-shell/dist/muxui-source.json`:
-  1. the packager's input, `engine/obj-*/dist/bin/browser/`, before `mach package`,
+  1. the packager's input, `engine/obj-bento/dist/bin/browser/`, before `mach package`,
      only to fail fast on the common mistake instead of after the long package step;
   2. the staged application after `mach package` and `package-multi-locale`,
      before the distributables are collected or the MAR is made. This is the
      authoritative check: it reads inside `omni.ja`
-     (`engine/obj-*/dist/bento/Bento.app/Contents/Resources/browser/omni.ja` on
-     macOS, `engine/obj-*/dist/bento/browser/omni.ja` elsewhere), or the loose `chrome/` tree when
+     (`engine/obj-bento/dist/bento/Bento.app/Contents/Resources/browser/omni.ja` on
+     macOS, `engine/obj-bento/dist/bento/browser/omni.ja` elsewhere), or the loose `chrome/` tree when
      there is no `omni.ja`.
 
   A missing or `local` stamp is rejected, so a local build packaged after
@@ -391,9 +489,11 @@ its own build evidence requires a separate change.
 ## Built-in add-ons
 
 [scripts/install-builtin-addons.mjs](../scripts/install-builtin-addons.mjs)
-discovers top-level extension directories with a Gecko add-on ID, copies only
-their declared runtime entries, generates deterministic `jar.mn` and `moz.build`
-files, and registers one marker block in Firefox's `browser/extensions/moz.build`.
+discovers top-level extension directories with a Gecko add-on ID, syncs only
+their declared runtime entries into `engine/browser/extensions/<name>` (changed
+files are copied, stale files removed), generates deterministic `jar.mn` and
+`moz.build` files, and registers one marker block in Firefox's
+`browser/extensions/moz.build`. Files whose content is unchanged are not touched.
 An extension may replace the default runtime list with a safe top-level string
 array in `.bento-runtime-entries.json`; `manifest.json` is always included.
 
@@ -401,8 +501,8 @@ array in `.bento-runtime-entries.json`; `manifest.json` is always included.
 
 [branding/bento](../branding/bento) is based on Mozilla Firefox's unofficial
 branding layout plus Bento-owned metadata and visual assets. The tracked tree is
-copied into the engine by `pnpm run import`; it is never generated by the build
-driver. Firefox upgrades must compare the canonical tree with the new upstream
+synced into the engine by `pnpm run import` (unchanged files keep their
+mtimes); it is never generated by the build driver. Firefox upgrades must compare the canonical tree with the new upstream
 branding layout. Mozilla-authored files retain their Mozilla Public License
 headers, and the repository's [NOTICE](../NOTICE) records required third-party
 attribution.

@@ -91,22 +91,30 @@ else
 fi
 bash scripts/sync-builtin-addon-symlinks.sh
 
+# Packaging reads exactly the directory mach built into (engine/obj-bento unless
+# BENTO_OBJDIR chose another name); the driver fails if it does not exist.
+OBJ_DIR="$(node scripts/bento-build.mjs objdir)"
+if command -v cygpath >/dev/null 2>&1; then
+  OBJ_DIR="$(cygpath -u "$OBJ_DIR")"
+fi
+OBJ_DIST="$OBJ_DIR/dist"
+
 step "3/4 Packaging artifact"
 case "$PLATFORM" in
   macos)
     # Remove stale macOS packages before packaging so the collected artifact
     # always comes from this build's configured Bento release version.
-    find engine/obj-*/dist -maxdepth 2 -name 'bento-*.dmg' -delete 2>/dev/null || true
+    find "$OBJ_DIST" -maxdepth 2 -name 'bento-*.dmg' -delete 2>/dev/null || true
     ;;
   linux)
     # Remove stale Linux packages before packaging so the collected artifact
     # always comes from this build's configured Bento release version.
-    find engine/obj-*/dist -maxdepth 2 \
+    find "$OBJ_DIST" -maxdepth 2 \
       \( -name 'bento-*.tar.bz2' -o -name 'bento-*.tar.xz' \) \
       -delete 2>/dev/null || true
     ;;
   windows)
-    find engine/obj-*/dist -type f \
+    find "$OBJ_DIST" -type f \
       \( -name "bento-$VERSION*.installer.exe" -o -name "bento-$VERSION*.zip" \) \
       -delete 2>/dev/null || true
     ;;
@@ -114,17 +122,17 @@ esac
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh package
 
 step "4/4 Collecting artifacts into $OUT_DIR"
-# Mach drops platform-specific artifacts under engine/obj-*/dist/.
+# Mach drops platform-specific artifacts under $OBJ_DIST/.
 # Hunt for them by extension and copy with a versioned name. The exact
 # subpath varies per platform — find handles that without hard-coding.
 case "$PLATFORM" in
   macos)
-    # Apple Silicon (aarch64) and Intel (x86_64) both end up under obj-*/dist.
+    # Apple Silicon (aarch64) and Intel (x86_64) both end up under the object directory's dist.
     # mach package on macOS produces a .dmg directly.
-    DMG_LIST="$(find engine/obj-*/dist -maxdepth 2 -name "bento-$VERSION.*.dmg" | sort)"
+    DMG_LIST="$(find "$OBJ_DIST" -maxdepth 2 -name "bento-$VERSION.*.dmg" | sort)"
     DMG_COUNT="$(printf '%s\n' "$DMG_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
     if [ "$DMG_COUNT" = "0" ]; then
-      echo "build-release: no bento-$VERSION .dmg found under engine/obj-*/dist" >&2
+      echo "build-release: no bento-$VERSION .dmg found under $OBJ_DIST" >&2
       exit 1
     fi
     if [ "$DMG_COUNT" != "1" ]; then
@@ -141,10 +149,10 @@ case "$PLATFORM" in
     # On Windows mach package produces an installer .exe and a .zip.
     # Keep both: the .exe is the normal installer, while the .zip gives
     # unsigned developer-preview users an extract-and-run option.
-    EXE_LIST="$(find engine/obj-*/dist -type f -name "bento-$VERSION*.installer.exe" ! -name '*stub*' | sort)"
+    EXE_LIST="$(find "$OBJ_DIST" -type f -name "bento-$VERSION*.installer.exe" ! -name '*stub*' | sort)"
     EXE_COUNT="$(printf '%s\n' "$EXE_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
     if [ "$EXE_COUNT" = "0" ]; then
-      echo "build-release: no version-matched Bento installer .exe found under engine/obj-*/dist" >&2
+      echo "build-release: no version-matched Bento installer .exe found under $OBJ_DIST" >&2
       exit 1
     fi
     if [ "$EXE_COUNT" != "1" ]; then
@@ -152,10 +160,10 @@ case "$PLATFORM" in
       printf '%s\n' "$EXE_LIST" >&2
       exit 1
     fi
-    ZIP_LIST="$(find engine/obj-*/dist -type f -name "bento-$VERSION*.zip" ! -name '*.xpt_artifacts.zip' ! -name '*_xpt_artifacts.zip' | sort)"
+    ZIP_LIST="$(find "$OBJ_DIST" -type f -name "bento-$VERSION*.zip" ! -name '*.xpt_artifacts.zip' ! -name '*_xpt_artifacts.zip' | sort)"
     ZIP_COUNT="$(printf '%s\n' "$ZIP_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
     if [ "$ZIP_COUNT" = "0" ]; then
-      echo "build-release: no version-matched Bento .zip found under engine/obj-*/dist" >&2
+      echo "build-release: no version-matched Bento .zip found under $OBJ_DIST" >&2
       exit 1
     fi
     if [ "$ZIP_COUNT" != "1" ]; then
@@ -176,13 +184,13 @@ case "$PLATFORM" in
   linux)
     # Mach on Linux produces a .tar.bz2 (or .tar.xz on newer Firefox).
     TAR_LIST="$(
-      find engine/obj-*/dist -maxdepth 2 \
+      find "$OBJ_DIST" -maxdepth 2 \
         \( -name "bento-$VERSION*.tar.bz2" -o -name "bento-$VERSION*.tar.xz" \) |
         sort
     )"
     TAR_COUNT="$(printf '%s\n' "$TAR_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
     if [ "$TAR_COUNT" = "0" ]; then
-      echo "build-release: no bento-$VERSION .tar.bz2 / .tar.xz found under engine/obj-*/dist" >&2
+      echo "build-release: no bento-$VERSION .tar.bz2 / .tar.xz found under $OBJ_DIST" >&2
       exit 1
     fi
     if [ "$TAR_COUNT" != "1" ]; then

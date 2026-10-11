@@ -3132,6 +3132,12 @@
   // __windowId=null and bento-tools falls back to legacy global semantics
   // — degraded but still functional (matches pre-A.1 behaviour).
   const SET_FRAME_SRC_MAX_RETRIES = 20; // ~1s @ 50ms
+  // The extension policy can register well after a slow cold start, so that
+  // branch backs off (50 ms doubling to a 2 s ceiling) and only gives up after
+  // ~30 s in total, rather than using the short windowId cap above.
+  const SET_FRAME_SRC_POLICY_RETRY_MIN_MS = 50;
+  const SET_FRAME_SRC_POLICY_RETRY_MAX_MS = 2000;
+  const SET_FRAME_SRC_POLICY_GIVE_UP_MS = 30000;
   let __bentoSidebarAddressBridgeToken = null;
 
   function getBentoSidebarAddressBridgeToken() {
@@ -3169,12 +3175,37 @@
     frame.setAttribute('src', finalUrl);
   }
 
-  function setFrameSrc(frameId, path, attempt, extraHashParams) {
+  // `attempt` counts windowId retries only. `policyWaitedMs` is the time already
+  // spent waiting for the extension policy; it is tracked separately so a slow
+  // policy does not use up the windowId retry budget.
+  function setFrameSrc(frameId, path, attempt, extraHashParams, policyWaitedMs) {
     const tries = typeof attempt === 'number' ? attempt : 0;
+    const waitedMs = typeof policyWaitedMs === 'number' ? policyWaitedMs : 0;
     const url = moz(path);
     if (!url) {
-      // Extension hasn't loaded yet; try again on the next tick.
-      setTimeout(() => setFrameSrc(frameId, path, tries + 1, extraHashParams), 50);
+      // Extension hasn't loaded yet; back off and try again. With no delay yet
+      // spent this waits 50 ms, then waitedMs + 50 (100, 200, 400, ...) up to
+      // the ceiling, and gives up once ~30 s have elapsed.
+      if (waitedMs < SET_FRAME_SRC_POLICY_GIVE_UP_MS) {
+        const delayMs = Math.min(
+          waitedMs + SET_FRAME_SRC_POLICY_RETRY_MIN_MS,
+          SET_FRAME_SRC_POLICY_RETRY_MAX_MS,
+        );
+        setTimeout(
+          () => setFrameSrc(frameId, path, tries, extraHashParams, waitedMs + delayMs),
+          delayMs,
+        );
+        return;
+      }
+      console.warn(
+        '[bento-shell-mount] setFrameSrc(' +
+          frameId +
+          '): giving up after ' +
+          waitedMs +
+          ' ms; extension policy ' +
+          ADDON_ID +
+          ' is not registered.',
+      );
       return;
     }
     const frame = document.getElementById(frameId);
@@ -3600,7 +3631,7 @@
   // window.screenLeft inside the overlay frame is accurate from the
   // start. Without this, the first menu open mis-positions: the overlay
   // React app receives the bus payload and re-renders BEFORE chrome's
-  // 200ms title-poll fires showWorkspaceSwitcher(); inside a display:
+  // title handler fires showWorkspaceSwitcher(); inside a display:
   // none host, the iframe's content has no laid-out screen position
   // and window.screenLeft returns stale zeros, so the trigger-to-
   // overlay coord translation collapses and the menu ends up at the
@@ -4015,7 +4046,34 @@
     return raw.replace(/[\r\n]/g, '').trim();
   }
 
+  // Firefox's own clipboard-suggestion setting also governs this Bento
+  // suggestion. Read at call time so a pref change applies to the next open,
+  // and skip the clipboard read entirely when the setting is off. Only a
+  // boolean pref is trusted: getBoolPref(name, default) would return the
+  // default for a wrong-typed pref, so check the type first. A missing pref
+  // takes Firefox's own default (true, browser/app/profile/firefox.js); any
+  // other type, or a failed read, disables the read. Do not gate on
+  // browser.urlbar.clipboard.featureGate: that controls Firefox's own
+  // provider rollout, not this intentional Bento feature.
+  const CLIPBOARD_SUGGEST_PREF = 'browser.urlbar.suggest.clipboard';
+
+  function isClipboardUrlSuggestionEnabled() {
+    try {
+      switch (Services.prefs.getPrefType(CLIPBOARD_SUGGEST_PREF)) {
+        case Services.prefs.PREF_BOOL:
+          return Services.prefs.getBoolPref(CLIPBOARD_SUGGEST_PREF);
+        case Services.prefs.PREF_INVALID:
+          return true;
+        default:
+          return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
   function resolveClipboardUrlSuggestion() {
+    if (!isClipboardUrlSuggestionEnabled()) return '';
     const value = sanitizeClipboardUrlText(readGlobalClipboardText());
     if (!value || value.length > 2048 || /\s/.test(value)) return '';
     try {
@@ -4537,13 +4595,14 @@
     host.setAttribute('hidden', 'true');
   }
 
-  // Cross-process IPC via document.title + DOMTitleChanged. Content in a
+  // Cross-process IPC via document.title + 'pagetitlechanged'. Content in a
   // remote=true <browser> can't postMessage to the chrome process, but
-  // title changes DO bubble cross-process to the chrome <browser>
-  // element. Sidebar/palette content set document.title to a sentinel-
-  // prefixed string with timestamp suffix; chrome reacts here. Timestamp
-  // matters because DOMTitleChanged only fires when the title actually
-  // changes — same value twice would be silent.
+  // top-level title changes are forwarded to the parent, which dispatches
+  // 'pagetitlechanged' on the chrome <browser> element (see
+  // attachPaletteCloseListener). Sidebar/palette content set document.title
+  // to a sentinel-prefixed string with timestamp suffix; chrome reacts there.
+  // Timestamp matters because the parent drops a title identical to the
+  // current one — same value twice would be silent.
   const PALETTE_OPEN_PREFIX = 'BENTO_OPEN_PALETTE';
   const PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_PALETTE';
   const WORKSPACE_PALETTE_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_PALETTE';
@@ -4627,7 +4686,7 @@
   // Empty array hides the strip; non-empty rebuilds it via the
   // reconcilePanels() diff. Base64 because URLs can contain delimiter
   // chars; timestamp ensures repeated identical states still trigger
-  // the title-change poll.
+  // the title-change event.
   const PANELS_PREFIX = 'BENTO_PANELS:';
   const GRAPH_COMMIT_PREFIX = 'BENTO_GRAPH_COMMIT:';
 
@@ -7891,12 +7950,9 @@
               } catch {
                 favIconUrl = '';
               }
-              dispatchShellAction({
-                type: 'savedPanels/save',
-                url: uri.spec,
-                title,
-                favIconUrl,
-              });
+              const metadata = boundSavedPanelMetadata(uri.spec, title, favIconUrl);
+              if (!metadata) return;
+              dispatchShellAction({ type: 'savedPanels/save', ...metadata });
               return;
             }
             if (itemId.startsWith('size:')) {
@@ -11000,6 +11056,32 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC);
 
+  // bento-tools rejects a whole action when any field exceeds its cap in
+  // extensions/_shared/wire-action.ts (the validator stays strict), and a page
+  // controls its title, URL, and favicon. Keep these in step with those caps.
+  // The URL cap mirrors Firefox's network.standard-url.max-length.
+  const SAVED_PANEL_MAX_TITLE_LENGTH = 4096;
+  const SAVED_PANEL_MAX_URL_LENGTH = 1048576;
+  const SAVED_PANEL_MAX_FAVICON_URL_LENGTH = 262144;
+
+  // Bounds the savedPanels/save fields to those caps. A long title is cut (as
+  // Firefox does for bookmark titles) without splitting a surrogate pair, an
+  // oversized favicon is dropped because it is optional, and a URL that is too
+  // long returns null because a truncated URL would save a different address.
+  function boundSavedPanelMetadata(url, title, favIconUrl) {
+    if (url.length > SAVED_PANEL_MAX_URL_LENGTH) return null;
+    let boundedTitle = title;
+    if (boundedTitle.length > SAVED_PANEL_MAX_TITLE_LENGTH) {
+      boundedTitle = boundedTitle.slice(0, SAVED_PANEL_MAX_TITLE_LENGTH);
+      if (/[\uD800-\uDBFF]$/.test(boundedTitle)) boundedTitle = boundedTitle.slice(0, -1);
+    }
+    return {
+      url,
+      title: boundedTitle,
+      favIconUrl: favIconUrl.length > SAVED_PANEL_MAX_FAVICON_URL_LENGTH ? '' : favIconUrl,
+    };
+  }
+
   function dispatchShellAction(action) {
     const shellFrame = document.getElementById('bento-shell-frame');
     if (!shellFrame) return false;
@@ -13707,42 +13789,63 @@
   }
 
   // The "Add panel" trailer at the end of the strip. Click creates a new
-  // tab via gBrowser.addTab and stamps SessionStore extData
-  // "bentoAddAsPanel=1" on it. bento-tools' tabs.onCreated handler reads
-  // that marker (via browser.sessions.getTabValue) and adds the tab to
-  // the active workspace's panels list, then emits panels/sync — which
-  // round-trips back to chrome and the next reconcilePanels pass renders
+  // tab at a sentinel URL and attaches a one-time grant to the native tab.
+  // bento-tools' tabs.onCreated handler sees the sentinel, consumes the
+  // grant through bentoPrivacy.consumeAddPanelGrant, adds the tab to the
+  // window's active workspace panel list and emits panels/sync, which
+  // round-trips back to chrome so the next reconcilePanels pass renders
   // the new panel.
+  //
+  // Grant IPC: chrome creates the tab at about:blank?bento_add_as_panel=<token>
+  // and stores { token, windowId, source, expiresAt, acknowledge } on the
+  // XUL tab element (newTab.bentoAddPanelGrant). Web content cannot reach
+  // that element, so the URL alone is never authority: a page that navigates
+  // to a marker-shaped URL has no grant, and bento-tools ignores it. The
+  // tools side resolves the native tab through the extension tabManager and
+  // atomically checks (tabId, token), deletes the grant and reads
+  // windowId/source from it (consumeAddPanelGrant in
+  // extensions/bento-tools/experiments/bento-privacy/api.js), so a replayed
+  // URL or another tab's token is rejected. We tried SessionStore.setTabValue
+  // first but the SessionStore module's exported shape is not stable across
+  // Firefox versions in chrome scripts loaded via jar.mn from inc.xhtml.
+  const ADD_AS_PANEL_MARKER_PREFIX = 'about:blank?bento_add_as_panel=';
+  // Minimum time on the sentinel URL before navigating to the new-tab page;
+  // keeps the pre-grant timing (bento-tools normally consumes the grant
+  // within a few milliseconds of onCreated).
+  const ADD_AS_PANEL_REDIRECT_MIN_DELAY_MS = 250;
+  // A grant not consumed within this window is discarded and the tab is
+  // redirected anyway, so a stalled bento-tools cannot leave the sentinel up.
+  const ADD_AS_PANEL_GRANT_TTL_MS = 2000;
 
-  // URL-marker IPC: chrome creates the tab at a sentinel URL; bento-tools'
-  // tabs.onCreated handler reads tab.url, redirects to the real new-tab
-  // page, and adds the tab to the active workspace's panels. We tried
-  // SessionStore.setTabValue first but the SessionStore module's exported
-  // shape is not stable across Firefox versions in chrome scripts loaded
-  // via jar.mn from inc.xhtml — `mod.SessionStore.setTabValue` is
-  // sometimes undefined even after a successful import. URL markers go
-  // through the WebExtension API and are visible to bento-tools without
-  // any chrome-side privilege juggling.
-  const ADD_AS_PANEL_MARKER = 'bento_add_as_panel=1';
+  // 'main' inserts before the main slot, a tab id inserts after that panel,
+  // and 'end' appends. The "+" click handler passes the click Event here, so
+  // anything that is not null or a tab id means 'end'.
+  function resolveAddPanelSource(sourceTabId) {
+    if (sourceTabId === null) return 'main';
+    if (Number.isInteger(sourceTabId) && sourceTabId >= 0) return sourceTabId;
+    return 'end';
+  }
 
   function addNewPanel(sourceTabId) {
     if (!window.gBrowser || typeof window.gBrowser.addTab !== 'function') {
       console.warn('[bento-shell-mount] addNewPanel: gBrowser unavailable');
       return;
     }
-    // about:blank with the marker query string. bento-tools sees the URL,
-    // adds the tab to the active workspace's panel list. Adding a
-    // timestamp to the URL keeps consecutive Add-panel clicks distinct
-    // (otherwise tabs.onUpdated may collapse them as the same URL).
-    let markerUrl = 'about:blank?' + ADD_AS_PANEL_MARKER + '&ts=' + Date.now();
-    if (sourceTabId === null) {
-      markerUrl += '&bento_source_tab_id=main';
-    } else if (Number.isFinite(sourceTabId)) {
-      markerUrl += '&bento_source_tab_id=' + encodeURIComponent(String(sourceTabId));
-    }
     let newTab;
+    let grant;
+    let consumed;
     try {
-      newTab = window.gBrowser.addTab(markerUrl, {
+      grant = {
+        token: crypto.randomUUID(),
+        windowId: getChromeWindowId(),
+        source: resolveAddPanelSource(sourceTabId),
+        expiresAt: Date.now() + ADD_AS_PANEL_GRANT_TTL_MS,
+        acknowledge: null,
+      };
+      consumed = new Promise((resolve) => {
+        grant.acknowledge = resolve;
+      });
+      newTab = window.gBrowser.addTab(ADD_AS_PANEL_MARKER_PREFIX + grant.token, {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
         skipAnimation: true,
         inBackground: true,
@@ -13752,21 +13855,28 @@
       return;
     }
     if (!newTab) return;
-    // The newly-created tab needs to navigate away from the marker
-    // URL so the tab title and main URL bar (when this tab becomes
-    // active) show a clean state. Chrome's loadURI bypasses any
-    // WebExtension API restrictions on privileged/new-tab navigation. The
-    // 250ms delay gives bento-tools' tabs.onCreated listener time to
-    // fire with the marker URL and add the tab to the panel list
-    // before we navigate away.
-    setTimeout(() => {
+    // Set in the same synchronous turn as addTab: bento-tools only sees the
+    // tab through an asynchronous extension event, after this assignment.
+    newTab.bentoAddPanelGrant = grant;
+    // The newly-created tab needs to navigate away from the marker URL so
+    // the tab title and main URL bar (when this tab becomes active) show a
+    // clean state. Chrome's loadURI bypasses any WebExtension API
+    // restrictions on privileged/new-tab navigation. Navigate once the
+    // minimum delay has passed AND bento-tools has consumed the grant (or
+    // the grant expired), so the panel is added before the URL changes.
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    Promise.all([
+      wait(ADD_AS_PANEL_REDIRECT_MIN_DELAY_MS),
+      Promise.race([consumed, wait(ADD_AS_PANEL_GRANT_TTL_MS)]),
+    ]).then(() => {
+      if (newTab.bentoAddPanelGrant === grant) delete newTab.bentoAddPanelGrant;
       try {
         const browserEl = newTab.linkedBrowser;
         loadDefaultNewTabInBrowser(browserEl);
       } catch (err) {
         console.warn('[bento-shell-mount] addNewPanel: post-create navigate failed:', err);
       }
-    }, 250);
+    });
   }
 
   // Add-panel trailer at the end of the strip. Idempotent — created on
@@ -18173,7 +18283,7 @@
       // Workspace just changed — flag the next reconcile so the main
       // panel gets a one-shot CSS width transition. Without this the
       // sequence is: TabSelect fires immediately (new tab content swaps
-      // in), then up to 200ms later the title-IPC poll picks up the new
+      // in), then a moment later the title-IPC handler picks up the new
       // mainWidthPx and the panel snaps to the new width. The snap
       // reads as two-stage. The transition makes it feel synchronized
       // even though the underlying messages aren't.
@@ -18245,7 +18355,7 @@
       __mainWidthTransitionForNextReconcile = wsChanged;
       // Self-correcting backstop for the dedicated BENTO_COLOR_MODE
       // path: if a panels/sync raced with a color-mode change and
-      // overwrote the title before chrome polled it, the next reconcile
+      // overwrote the title before chrome read it, the next reconcile
       // re-applies. Idempotent — applyChromeColorMode short-circuits
       // when the attribute already matches.
       if (typeof decoded.uiColorMode === 'string') {
@@ -18325,7 +18435,7 @@
       // Saved-panel count drives the Add-panel trailer's flex-basis
       // so the inline favicon row has room to render. Global (not
       // workspace-scoped) but rides on this payload because chrome
-      // already polls BENTO_PANELS — see SavedPanelsStore in
+      // already reads BENTO_PANELS — see SavedPanelsStore in
       // bento-tools. Missing key resets to 0 (legacy tools builds
       // that haven't been rebuilt with the bookmarks permission).
       if (typeof decoded.savedPanelCount === 'number' && decoded.savedPanelCount >= 0) {
@@ -18825,260 +18935,249 @@
       ?.classList.toggle('bento-panel-shadows-disabled', !enabled);
   }
 
+  // Receive side of the title IPC (BENTO_* prefixes above). Shell and overlay
+  // documents write a sentinel into document.title. For every top-level title
+  // change, Firefox's WindowGlobalParent::RecvUpdateDocumentTitle stores the
+  // title in the parent and dispatches a chrome-only, bubbling
+  // 'pagetitlechanged' event on the embedding <browser> element (tabbrowser
+  // uses the same event for tab labels). The event runs synchronously inside
+  // that IPC handler, after the parent-side title is updated, so
+  // frame.contentTitle is the title that triggered it. DOMTitleChanged is a
+  // different event: it fires inside the content process and does not reach
+  // chrome for remote frames, which is why it looked unreliable.
+  //
+  // One capture-phase window listener routes by frame id. Frames created
+  // later (the panel trailer), reloaded frames, and frames that change process
+  // keep the same <browser> element and id, so nothing needs re-attaching.
+  // Each handler below is the body of the interval/rAF poller it replaced, and
+  // lastSeen keeps the old per-frame dedupe of repeated titles.
   function attachPaletteCloseListener() {
     registerBentoShellDocument();
-    const paletteFrame = document.getElementById('bento-palette-frame');
-    // Both frames use polling for title-based IPC. DOMTitleChanged is
-    // unreliable for our remote=true moz-extension content — the event
-    // doesn't fire for either the persistent shell frame or the
-    // reload-on-show palette frame in our setup. A 200ms poll loop is
-    // cheap (one string comparison per tick), reliable across all
-    // mount/reload states, and adds at most 200ms perceived latency
-    // to palette open/close (which is fine for a manually-triggered UI).
-    if (paletteFrame) {
-      let lastSeenPaletteTitle = '';
-      setInterval(() => {
-        const title = paletteFrame.contentTitle || '';
-        if (title === lastSeenPaletteTitle) return;
-        lastSeenPaletteTitle = title;
-        if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
-        else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
-          hidePalette();
-          void openBentoSettings(true);
-        } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
-          hidePalette();
-          void openBentoSettings(false);
-        }
-      }, 200);
-    }
 
-    const mergePaletteFrame = document.getElementById('bento-merge-palette-frame');
-    if (mergePaletteFrame) {
-      let lastSeenMergePaletteTitle = '';
-      setInterval(() => {
-        const title = mergePaletteFrame.contentTitle || '';
-        if (title === lastSeenMergePaletteTitle) return;
-        lastSeenMergePaletteTitle = title;
-        if (title.startsWith(MERGE_PALETTE_CLOSE_PREFIX)) hideMergePalette();
-      }, 200);
-    }
-
-    const workspacePaletteFrame = document.getElementById('bento-workspace-palette-frame');
-    if (workspacePaletteFrame) {
-      let lastSeenWorkspacePaletteTitle = '';
-      setInterval(() => {
-        const title = workspacePaletteFrame.contentTitle || '';
-        if (title === lastSeenWorkspacePaletteTitle) return;
-        lastSeenWorkspacePaletteTitle = title;
-        if (title.startsWith(WORKSPACE_PALETTE_CLOSE_PREFIX)) {
-          hideWorkspacePalette();
-        } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
-          showConfirm();
-        }
-      }, 200);
-    }
-
-    const addrbarFrame = document.getElementById('bento-addrbar-frame');
-    if (addrbarFrame) {
-      let lastSeenAddrbarTitle = '';
-      setInterval(() => {
-        const title = addrbarFrame.contentTitle || '';
-        if (title === lastSeenAddrbarTitle) return;
-        lastSeenAddrbarTitle = title;
-        if (title.startsWith(ADDRBAR_CLOSE_PREFIX)) hideAddrbar();
-        else if (title.startsWith(ADDRBAR_READY_PREFIX)) handleAddrbarReadyTitle(title);
-        else if (title.startsWith(ADDRBAR_NAVIGATE_PREFIX)) handleAddrbarNavigateTitle(title);
-      }, 60);
-    }
-
-    const confirmFrame = document.getElementById('bento-confirm-frame');
-    if (confirmFrame) {
-      let lastSeenConfirmTitle = '';
-      setInterval(() => {
-        const title = confirmFrame.contentTitle || '';
-        if (title === lastSeenConfirmTitle) return;
-        lastSeenConfirmTitle = title;
-        if (title.startsWith(CONFIRM_CLOSE_PREFIX)) hideConfirm();
-      }, 200);
-    }
-
-    const editWorkspaceFrame = document.getElementById('bento-edit-workspace-frame');
-    if (editWorkspaceFrame) {
-      let lastSeenEditTitle = '';
-      setInterval(() => {
-        const title = editWorkspaceFrame.contentTitle || '';
-        if (title === lastSeenEditTitle) return;
-        lastSeenEditTitle = title;
-        if (title.startsWith(EDIT_WORKSPACE_CLOSE_PREFIX)) hideEditWorkspace();
-      }, 200);
-    }
-
-    const welcomeFrame = document.getElementById('bento-welcome-frame');
-    if (welcomeFrame) {
-      let lastSeenWelcomeTitle = '';
-      setInterval(() => {
-        const title = welcomeFrame.contentTitle || '';
-        if (title === lastSeenWelcomeTitle) return;
-        lastSeenWelcomeTitle = title;
-        if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
-        else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
-        else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
-          __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(title);
-          showEmbeddedBrowserImportFromWelcome();
-        }
-      }, 200);
-    }
-
-    const embeddedImportFrame = document.getElementById('bento-embedded-import-frame');
-    if (embeddedImportFrame) {
-      let lastSeenEmbeddedImportTitle = '';
-      setInterval(() => {
-        const title = embeddedImportFrame.contentTitle || '';
-        if (title === lastSeenEmbeddedImportTitle) return;
-        lastSeenEmbeddedImportTitle = title;
-        if (title.startsWith(EMBEDDED_IMPORT_CLOSE_PREFIX)) hideEmbeddedBrowserImport();
-        else if (title.startsWith(EMBEDDED_IMPORT_RESTART_PREFIX)) {
-          restartToBrowserImportFromWelcome(true);
-        }
-      }, 200);
-    }
+    // Palette: CLOSE hides it; the two SETTINGS prefixes hide it and open
+    // Settings.
+    const handlePaletteFrameTitle = (title) => {
+      if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
+      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
+        hidePalette();
+        void openBentoSettings(true);
+      } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
+        hidePalette();
+        void openBentoSettings(false);
+      }
+    };
 
     // Menu overlay: SELECT routes the chosen itemId back to the chrome
     // onSelect handler registered when showChromeMenu was called; CLOSE
     // just hides the overlay (Esc / outside-click in the React menu).
-    // Faster poll than the modal overlays (60ms vs 200ms) — a menu
-    // selection should feel immediate. Body is still cheap (string
-    // startsWith + small map lookup) so the higher frequency is fine.
-    const menuFrame = document.getElementById('bento-menu-frame');
-    if (menuFrame) {
-      let lastSeenMenuTitle = '';
-      setInterval(() => {
-        const title = menuFrame.contentTitle || '';
-        if (title === lastSeenMenuTitle) return;
-        lastSeenMenuTitle = title;
-        if (title.startsWith(MENU_SELECT_PREFIX)) {
-          const rest = title.slice(MENU_SELECT_PREFIX.length);
-          const firstColon = rest.indexOf(':');
-          if (firstColon < 0) {
-            hideChromeMenu();
-            return;
-          }
-          const contextId = rest.slice(0, firstColon);
-          const itemId = rest.slice(firstColon + 1);
-          const handler = menuOnSelectByContext.get(contextId);
-          menuOnSelectByContext.delete(contextId);
+    const handleMenuFrameTitle = (title) => {
+      if (title.startsWith(MENU_SELECT_PREFIX)) {
+        const rest = title.slice(MENU_SELECT_PREFIX.length);
+        const firstColon = rest.indexOf(':');
+        if (firstColon < 0) {
           hideChromeMenu();
-          if (handler) {
-            try {
-              handler(itemId);
-            } catch (err) {
-              console.warn('[bento-shell-mount] chrome menu select handler threw:', err);
-            }
+          return;
+        }
+        const contextId = rest.slice(0, firstColon);
+        const itemId = rest.slice(firstColon + 1);
+        const handler = menuOnSelectByContext.get(contextId);
+        menuOnSelectByContext.delete(contextId);
+        hideChromeMenu();
+        if (handler) {
+          try {
+            handler(itemId);
+          } catch (err) {
+            console.warn('[bento-shell-mount] chrome menu select handler threw:', err);
           }
-        } else if (title.startsWith(MENU_CLOSE_PREFIX)) {
-          const contextId = title.slice(MENU_CLOSE_PREFIX.length);
-          menuOnSelectByContext.delete(contextId);
-          hideChromeMenu();
         }
-      }, 60);
-    }
-
-    const wsSwitcherFrame = document.getElementById('bento-workspace-switcher-frame');
-    if (wsSwitcherFrame) {
-      let lastSeenWsSwitcherTitle = '';
-      setInterval(() => {
-        const title = wsSwitcherFrame.contentTitle || '';
-        if (title === lastSeenWsSwitcherTitle) return;
-        lastSeenWsSwitcherTitle = title;
-        if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) {
-          hideWorkspaceSwitcher();
-        } else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
-          // "Edit <workspace>" menu item: the overlay set this title
-          // when forwarding to the edit-workspace modal. The payload
-          // already reached the edit overlay via BroadcastChannel;
-          // we just need to swap the visible host here.
-          hideWorkspaceSwitcher();
-          showEditWorkspace();
-        } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
-          // "Delete <workspace>" menu item with tabs: forwards to the
-          // destructive-confirm modal. Same swap as edit above.
-          hideWorkspaceSwitcher();
-          showConfirm();
-        } else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) {
-          hideWorkspaceSwitcher();
-          showWorkspacePalette();
-        }
-      }, 200);
-    }
-
-    let lastSeenPanelTrailerTitle = '';
-    setInterval(() => {
-      const panelTrailerFrame = document.getElementById('bento-panel-trailer-frame');
-      const title = panelTrailerFrame?.contentTitle || '';
-      if (title === lastSeenPanelTrailerTitle) return;
-      lastSeenPanelTrailerTitle = title;
-      if (title.startsWith(PANEL_TRAILER_CONTEXT_MENU_PREFIX)) {
-        handlePanelTrailerContextMenuTitle(title);
-      } else if (title.startsWith(PANEL_TRAILER_ADD_BLANK_PREFIX)) {
-        addNewPanel();
+      } else if (title.startsWith(MENU_CLOSE_PREFIX)) {
+        const contextId = title.slice(MENU_CLOSE_PREFIX.length);
+        menuOnSelectByContext.delete(contextId);
+        hideChromeMenu();
       }
-    }, 60);
+    };
 
-    const shellFrame = document.getElementById('bento-shell-frame');
-    if (shellFrame) {
-      let lastSeenShellTitle = '';
-      // requestAnimationFrame loop (~60Hz, paint-aligned). setInterval
-      // at 200ms (or even 32ms) leaves a visible lag between the
-      // sidebar flipping color modes locally and the chrome catching
-      // up via the title-IPC channel — users perceive sidebar
-      // changing first. rAF guarantees the chrome's data-color-mode
-      // mutation lands in the SAME paint frame as the sidebar's, so
-      // the entire chrome flips in one visual transition. The poll
-      // body (a property read + string compare) is well within a
-      // frame budget. Other modal frames stay on setInterval at 200ms
-      // — they're user-triggered open/close, no sync requirement.
-      const pollShellFrame = () => {
-        const title = shellFrame.contentTitle || '';
-        if (title !== lastSeenShellTitle) {
-          lastSeenShellTitle = title;
-          if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
-          else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
-          else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
-          else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
-            void openBentoSettings(true);
-          } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
-            void openBentoSettings(false);
+    // The persistent sidebar shell frame: opens overlays and carries the
+    // BENTO_PANELS state payload, so its dispatch order is load-bearing.
+    const handleShellFrameTitle = (title) => {
+      if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
+      else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
+      else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
+      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
+        void openBentoSettings(true);
+      } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
+        void openBentoSettings(false);
+      }
+      else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
+      else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
+      else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
+      else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
+        handleSidebarAddressSubmitTitle(title);
+      } else if (title.startsWith(SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX)) {
+        handleSidebarAddressBookmarkToggleTitle(title);
+      } else if (title.startsWith(SIDEBAR_ADDRESS_IDENTITY_PREFIX)) {
+        handleSidebarAddressIdentityTitle(title);
+      } else if (title.startsWith(SIDEBAR_ADDRESS_COPY_PREFIX)) {
+        handleSidebarAddressCopyTitle(title);
+      } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
+      else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
+      else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+      else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
+      else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
+      else if (title.startsWith(SELECTED_TABS_PREFIX)) handleSelectedTabsTitle(title);
+      else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
+        handleSidebarContextMenuTitle(title);
+      } else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);
+      else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
+      else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
+      else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
+      else if (title.startsWith(GRAPH_COMMIT_PREFIX)) handleGraphCommitTitle(title);
+      else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
+    };
+
+    const titleHandlerByFrameId = new Map([
+      ['bento-shell-frame', handleShellFrameTitle],
+      ['bento-palette-frame', handlePaletteFrameTitle],
+      [
+        'bento-merge-palette-frame',
+        (title) => {
+          if (title.startsWith(MERGE_PALETTE_CLOSE_PREFIX)) hideMergePalette();
+        },
+      ],
+      [
+        'bento-workspace-palette-frame',
+        (title) => {
+          if (title.startsWith(WORKSPACE_PALETTE_CLOSE_PREFIX)) {
+            hideWorkspacePalette();
+          } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+            showConfirm();
           }
-          else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
-          else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
-          else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
-          else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
-            handleSidebarAddressSubmitTitle(title);
-          } else if (title.startsWith(SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX)) {
-            handleSidebarAddressBookmarkToggleTitle(title);
-          } else if (title.startsWith(SIDEBAR_ADDRESS_IDENTITY_PREFIX)) {
-            handleSidebarAddressIdentityTitle(title);
-          } else if (title.startsWith(SIDEBAR_ADDRESS_COPY_PREFIX)) {
-            handleSidebarAddressCopyTitle(title);
-          } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
-          else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
-          else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
-          else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
-          else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
-          else if (title.startsWith(SELECTED_TABS_PREFIX)) handleSelectedTabsTitle(title);
-          else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
-            handleSidebarContextMenuTitle(title);
-          } else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);
-          else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
-          else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
-          else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
-          else if (title.startsWith(GRAPH_COMMIT_PREFIX)) handleGraphCommitTitle(title);
-          else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
+        },
+      ],
+      [
+        'bento-addrbar-frame',
+        (title) => {
+          if (title.startsWith(ADDRBAR_CLOSE_PREFIX)) hideAddrbar();
+          else if (title.startsWith(ADDRBAR_READY_PREFIX)) handleAddrbarReadyTitle(title);
+          else if (title.startsWith(ADDRBAR_NAVIGATE_PREFIX)) handleAddrbarNavigateTitle(title);
+        },
+      ],
+      [
+        'bento-confirm-frame',
+        (title) => {
+          if (title.startsWith(CONFIRM_CLOSE_PREFIX)) hideConfirm();
+        },
+      ],
+      [
+        'bento-edit-workspace-frame',
+        (title) => {
+          if (title.startsWith(EDIT_WORKSPACE_CLOSE_PREFIX)) hideEditWorkspace();
+        },
+      ],
+      [
+        'bento-welcome-frame',
+        (title) => {
+          if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+          else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
+          else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
+            __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(title);
+            showEmbeddedBrowserImportFromWelcome();
+          }
+        },
+      ],
+      [
+        'bento-embedded-import-frame',
+        (title) => {
+          if (title.startsWith(EMBEDDED_IMPORT_CLOSE_PREFIX)) hideEmbeddedBrowserImport();
+          else if (title.startsWith(EMBEDDED_IMPORT_RESTART_PREFIX)) {
+            restartToBrowserImportFromWelcome(true);
+          }
+        },
+      ],
+      ['bento-menu-frame', handleMenuFrameTitle],
+      [
+        'bento-workspace-switcher-frame',
+        (title) => {
+          if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) {
+            hideWorkspaceSwitcher();
+          } else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
+            // "Edit <workspace>" menu item: the overlay set this title
+            // when forwarding to the edit-workspace modal. The payload
+            // already reached the edit overlay via BroadcastChannel;
+            // we just need to swap the visible host here.
+            hideWorkspaceSwitcher();
+            showEditWorkspace();
+          } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+            // "Delete <workspace>" menu item with tabs: forwards to the
+            // destructive-confirm modal. Same swap as edit above.
+            hideWorkspaceSwitcher();
+            showConfirm();
+          } else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) {
+            hideWorkspaceSwitcher();
+            showWorkspacePalette();
+          }
+        },
+      ],
+      [
+        'bento-panel-trailer-frame',
+        (title) => {
+          if (title.startsWith(PANEL_TRAILER_CONTEXT_MENU_PREFIX)) {
+            handlePanelTrailerContextMenuTitle(title);
+          } else if (title.startsWith(PANEL_TRAILER_ADD_BLANK_PREFIX)) {
+            addNewPanel();
+          }
+        },
+      ],
+    ]);
+    const lastSeenTitleByFrameId = new Map();
+
+    // A title is only a Bento message if the frame is showing the Bento page
+    // it hosts: a moz-extension:// document of the bento-shell add-on, or the
+    // chrome:// migration host for the non-remote embedded import frame.
+    // Every table frame only ever loads its own page, so this never drops a
+    // legitimate title. The add-on host is resolved once, on first success.
+    let bentoExtensionHost = null;
+    const warnedUnexpectedFrameIds = new Set();
+    const isExpectedBentoDocument = (frame) => {
+      const uri = frame.currentURI;
+      if (!uri) return false;
+      if (frame.id === 'bento-embedded-import-frame') {
+        return (
+          uri.spec === BENTO_EMBEDDED_IMPORT_URL ||
+          uri.spec.startsWith(BENTO_EMBEDDED_IMPORT_URL + '?')
+        );
+      }
+      if (!uri.schemeIs('moz-extension')) return false;
+      bentoExtensionHost ??= WebExtensionPolicy.getByID(ADDON_ID)?.mozExtensionHostname ?? null;
+      return bentoExtensionHost !== null && uri.host === bentoExtensionHost;
+    };
+
+    window.addEventListener(
+      'pagetitlechanged',
+      (event) => {
+        // Every tab and panel browser bubbles this event too; only the
+        // registered Bento frame ids are read.
+        const frame = event.target;
+        const handleTitle = titleHandlerByFrameId.get(frame.id);
+        if (!handleTitle) return;
+        if (!isExpectedBentoDocument(frame)) {
+          if (!warnedUnexpectedFrameIds.has(frame.id)) {
+            warnedUnexpectedFrameIds.add(frame.id);
+            console.warn(
+              '[bento-shell-mount] ignoring title from unexpected document in',
+              frame.id,
+              frame.currentURI?.spec,
+            );
+          }
+          return;
         }
-        window.requestAnimationFrame(pollShellFrame);
-      };
-      window.requestAnimationFrame(pollShellFrame);
-    }
+        const title = frame.contentTitle || '';
+        if (title === (lastSeenTitleByFrameId.get(frame.id) ?? '')) return;
+        lastSeenTitleByFrameId.set(frame.id, title);
+        handleTitle(title);
+      },
+      true,
+    );
   }
 
   // Chrome-side Esc handler — fires regardless of whether focus is in
@@ -19720,9 +19819,19 @@
 
     try {
       const PlacesUtils = getPlacesUtils();
-      PlacesUtils.observers.addListener(
-        ['bookmark-added', 'bookmark-removed', 'bookmark-moved', 'bookmark-url-changed'],
-        scheduleSidebarAddressSnapshot,
+      const bookmarkEvents = [
+        'bookmark-added',
+        'bookmark-removed',
+        'bookmark-moved',
+        'bookmark-url-changed',
+      ];
+      PlacesUtils.observers.addListener(bookmarkEvents, scheduleSidebarAddressSnapshot);
+      // PlacesObservers holds strong process-wide references to JS listeners;
+      // remove ours on unload so a closed window is not kept alive until quit.
+      window.addEventListener(
+        'unload',
+        () => PlacesUtils.observers.removeListener(bookmarkEvents, scheduleSidebarAddressSnapshot),
+        { once: true },
       );
     } catch (err) {
       console.warn('[bento-shell-mount] sidebar address Places listener failed:', err);
@@ -19895,11 +20004,17 @@
     const { AddonManager } = ChromeUtils.importESModule(
       'resource://gre/modules/AddonManager.sys.mjs',
     );
-    AddonManager.addAddonListener({
+    const addonListener = {
       onEnabled(addon) {
         if (addon.id !== ADDON_ID) return;
         reloadFrames();
       },
+    };
+    AddonManager.addAddonListener(addonListener);
+    // AddonManager holds listeners in a process-wide Set, so without this a
+    // closed window (captured by reloadFrames) stays alive until quit.
+    window.addEventListener('unload', () => AddonManager.removeAddonListener(addonListener), {
+      once: true,
     });
 
     function reloadFrames() {

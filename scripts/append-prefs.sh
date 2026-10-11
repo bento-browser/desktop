@@ -47,9 +47,15 @@ append_to() {
     echo "$MARKER ==="
     cat "$PREFS_SRC"
   } >> "$tmp"
-  cp "$tmp" "$dest"
+  # Leave identical output alone so its mtime stays stable and mach does not
+  # reconfigure for an unchanged pref file.
+  if cmp -s "$tmp" "$dest"; then
+    echo "append-prefs: $dest already current"
+  else
+    cp "$tmp" "$dest"
+    echo "append-prefs: refreshed $PREFS_SRC -> $dest"
+  fi
   rm -f "$tmp"
-  echo "append-prefs: refreshed $PREFS_SRC -> $dest"
 }
 
 # Two targets, both deployed as defaults/preferences/*.js. Firefox loads

@@ -1,6 +1,6 @@
 ! Title: uBlock filters – Unbreak
 ! Expires: 5 days
-! Last modified: Tue, 07 Jul 2026 12:24:59 +0000
+! Last modified: Tue, 15 Sep 2026 10:19:46 +0000
 ! Diff-Path: %diffpath%#ublock-unbreak
 ! Diff-Expires: 317 minutes
 ! License: https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE
@@ -181,6 +181,8 @@ kotaku.com#@##dfp-ad-2
 kotaku.com#@##dfp-ad-1
 ||x.kinja-static.com/assets/packaged-js/OnionAM.$script,domain=avclub.com|clickhole.com|deadspin.com|earther.com|gizmodo.com|jalopnik.com|jezebel.com|kotaku.com|lifehacker.com|splinternews.com|theinventory.com|theonion.com|theroot.com|thetakeout.com
 @@||d1xrtnyoeeet33.cloudfront.net/assets/js/lib/*$script,domain=calgaryherald.com|calgarysun.com|canoe.com|edmontonsun.com|financialpost.com|leaderpost.com|lfpress.com|montrealgazette.com|nationalpost.com|ottawacitizen.com|ottawasun.com|theprovince.com|thestarphoenix.com|torontosun.com|vancouversun.com|windsorstar.com|winnipegsun.com
+calgaryherald.com,calgarysun.com,canada.com,canoe.com,driving.ca,edmontonjournal.com,edmontonsun.com,financialpost.com,leaderpost.com,lfpress.com,montrealgazette.com,nationalpost.com,ontariofarmer.com,ottawacitizen.com,ottawasun.com,thegrowthop.com,theprovince.com,thestarphoenix.com,tj.news,torontosun.com,vancouversun.com,windsorstar.com,winnipegsun.com##+js(set, Object.prototype.adService.initialize, noopFunc)
+@@||cdn.q0losid.com/prod/pni/loader.min.js$domain=calgaryherald.com|calgarysun.com|canada.com|canoe.com|driving.ca|edmontonjournal.com|edmontonsun.com|financialpost.com|intelligencer.ca|leaderpost.com|lfpress.com|montrealgazette.com|nationalpost.com|ontariofarmer.com|ottawacitizen.com|ottawasun.com|standard-freeholder.com|thegrowthop.com|theprovince.com|thestarphoenix.com|tj.news|torontosun.com|vancouversun.com|windsorstar.com|winnipegsun.com
 @@||cbsistatic.com/*/comscore.streaming.$script,domain=cbsnews.com
 !#if !ext_ubol
 ||imasdk.googleapis.com/js/sdkloader/ima3_debug.js$domain=cbsnews.com,redirect=google-ima.js,important
@@ -584,7 +586,7 @@ as.com,caracol.com.co,los40.com##+js(set, DTM.trackAsyncPV, noopFunc)
 @@||analytics.global.sky.com/sky-tags/*/sky-tags-without-adobe.min.js$script,1p
 @@||sourcepoint.vice.com^$script,xhr,domain=video.vice.com
 @@||metacritic.com/js/omniture/uuid.js$script,1p
-metacritic.com##+js(rpnt, script, appName:"metacritic", appName:"etacritic")
+metacritic.com##+js(rpnt, script, adsEnabled:true, adsEnabled:false)
 @@||pinpng.com^$css,1p
 @@||pngfind.com^$css,1p
 @@||automate-prod.s3.amazonaws.com/minified_logic.js$xhr,domain=kotaku.com.au
@@ -1813,7 +1815,7 @@ riteaid.com##^html > body:not(.catalogsearch-result-index):upward(1) > head > sc
 @@||js.monitor.azure.com/scripts/$script,domain=efilecabinet.net
 ! unbreak sign up on NSFW sites
 @@/signup.php?mode=async&action=show_security_code$image,1p
-@@/akam/13/*$script,xhr,1p,domain=easyjet.com|ing.nl
+@@/akam/13/*$script,xhr,1p,domain=aw-lab.com|easyjet.com|ing.nl
 @@/init.js|$script,xhr,1p,domain=crunchbase.com
 @@||collector-*.px-cloud.net/b/$xhr,domain=crunchbase.com
 @@||googletagmanager.com/gtm.js$script,domain=radiox.co.uk
@@ -1881,12 +1883,16 @@ app.kultivi.com,hollywoodreporter.com,huffpost.com,kultivi.com,sacbee.com,sport-
 @@||vid.connatix.com^$3p,media,xhr
 @@||cds.connatix.com/p/*/elements.ui.$3p,script
 @@||cds.connatix.com/*/hls$script,3p
-@@||cds.connatix.com/p/*/cSyncRemoteEntry.js^$3p,script
+@@||assets.connatix.com/Elements/*-player-$script
+! @@||cds.connatix.com/p/*/cSyncRemoteEntry.js^$3p,script
 #@#.wps-player-wrap
 bellinghamherald.com,bnd.com,bradenton.com,centredaily.com,charlotteobserver.com,flkeysnews.com,fresnobee.com,heraldonline.com,heraldsun.com,idahostatesman.com,islandpacket.com,kansas.com,kansascity.com,kentucky.com,ledger-enquirer.com,macon.com,mahoningmatters.com,mcclatchydc.com,mercedsunstar.com,miamiherald.com,modbee.com,myrtlebeachonline.com,newsobserver.com,sacbee.com,sanluisobispo.com,star-telegram.com,sunherald.com##^html:not(:has(video)) > head > script:has-text(connatix.com)
 loot.tv##^html:not(:has(#connatixPlayerID)) > head > script[src*="connatix"]
 thestate.com##^html > head > script:has-text(connatix.id):upward(1) > script:has-text(window.cnx)
 variety.com##^html > head > link[rel="canonical"]:not([href*="/video/"]):upward(1) > script[src*="connatix"]
+@@||connatix.com/player.js$3p,script,domain=decider.com|nypost.com|pagesix.com
+@@||connatix.com/*connatix.player.$3p,script,domain=decider.com|nypost.com|pagesix.com
+decider.com,nypost.com,pagesix.com#@#.cnx-player-wrapper
 ! connatix.com recommended articles/videos
 @@||cd.connatix.com/connatix.playspace.js^$script,3p,domain=adweek.com
 @@||cds.connatix.com/p/*/connatix.playspace.dc.js^$script,3p,domain=adweek.com
@@ -2311,6 +2317,7 @@ socket.pearsoned.com##+js(set, initializeNewRelic, noopFunc)
 @@||jssdkcdns.mparticle.com/js/*/mparticle.js$script,domain=cwtv.com
 @@||googleadservices.com/pagead/conversion_async.js^$script,domain=cwtv.com
 @@||googletagmanager.com/gtm.js^$script,domain=cwtv.com
+||imasdk.googleapis.com/js/sdkloader/ima3.js$redirect=google-ima.js,domain=cwtv.com
 ||imasdk.googleapis.com/js/sdkloader/ima3.js$script,redirect=google-ima.js,domain=memurlar.net
 tntdrama.com##+js(set, turnerAnalyticsObj, {})
 tntdrama.com##+js(set, turnerAnalyticsObj.setVideoObject4AnalyticsProperty, noopFunc)
@@ -2788,7 +2795,7 @@ personality-database.com##+js(set, freestar.newAdSlots, trueFunc)
 mdjonline.com###article-body > .subscriber-only:style(display: block !important;)
 @@||googletagmanager.com/gtm.js$script,redirect-rule,domain=oxylabs.io
 ||googletagmanager.com/gtm.js$script,domain=oxylabs.io,important
-daily.co.jp##+js(trusted-rpnt, script, /(window\.AdObserverManager\.register\('ds[ps][cp]-bottomRecommend'\);)/, (()=>{window.addEventListener("load"\,(()=>{const t=document.querySelector("#openwebSection")\,e=document.querySelector("div[data-spot-id]");if(!e||!t)return;const d=e.getAttribute("data-spot-id");if(!d)return;var o;((t\,e\,d)=>{const o=document.createElement("div");o.setAttribute("data-spotim-module"\,"conversation")\,o.setAttribute("data-spot-id"\,t)\,o.setAttribute("data-post-id"\,e)\,d.appendChild(o)})(d\,Math.abs((o=document.title\,[...o].reduce(((t\,e)=>Math.imul(31\,t)+e.charCodeAt(0)|0)\,0)))\,t);const a=document.createElement("script");a.setAttribute("src"\,`https://launcher.spot.im/spot/${d}`)\,a.setAttribute("async"\,"")\,document.head.appendChild(a)}));})();$1, sedCount, 1)
+daily.co.jp##+js(trusted-rpnt, script, /(window\.AdObserverManager\.register\('ds[ps][cp]-footer_?r?'\);)/, (()=>{window.addEventListener("load"\,(()=>{const t=document.querySelector("#openwebSection")\,e=document.querySelector("div[data-spot-id]");if(!e||!t)return;const d=e.getAttribute("data-spot-id");if(!d)return;var o;((t\,e\,d)=>{const o=document.createElement("div");o.setAttribute("data-spotim-module"\,"conversation")\,o.setAttribute("data-spot-id"\,t)\,o.dataset.postId=e\,d.appendChild(o)})(d\,Math.abs((o=document.title\,[...o].reduce(((t\,e)=>Math.imul(31\,t)+e.charCodeAt(0)|0)\,0)))\,t);const a=document.createElement("script");a.setAttribute("src"\,`https://launcher.spot.im/spot/${d}`)\,a.setAttribute("async"\,"")\,document.head.appendChild(a)}));})();$1, sedCount, 1)
 @@||trafico.prensaiberica.es/adm/min/pb_wrapper/pbwrapper.js$script,domain=elperiodicodearagon.com
 @@||mybbc-analytics.files.bbci.co.uk^$domain=bbc.com
 missav78.top##img[onerror="this.src='/sample/placeholder.jpg'"]:remove-attr(onerror)
@@ -2831,3 +2838,31 @@ account.bhvr.com##+js(set, Osano, {})
 account.bhvr.com##+js(set, Osano.cm, {})
 account.bhvr.com##+js(set, Osano.cm.addEventListener, noopFunc)
 account.bhvr.com##+js(set, Osano.cm.removeEventListener, noopFunc)
+progressionmbj.ca##.et-waypoint:not(.et_pb_counters):style(opacity: 1 !important;)
+!#if cap_html_filtering
+visualstudio.microsoft.com##^script:has-text(oneDS.ApplicationInsights)
+!#else
+@@||js.monitor.azure.com/scripts/c/ms.analytics-web-4.min.js$domain=visualstudio.microsoft.com
+!#endif
+hikvision.com##+js(set, pa, {})
+hikvision.com##+js(set, pa.getVisitorId, noopFunc)
+hikvision.com##+js(set, pa.sendEvent, noopFunc)
+trustnet.com##+js(set, googletag.setConfig, noopFunc)
+tmz.com##.ad-header-wrapper:remove()
+@@||pagead2.googlesyndication.com/pagead/js/adsbygoogle.js$script,redirect-rule,domain=calculla.com
+book.trivago.com##+js(set, RISKX, {})
+book.trivago.com##+js(set, RISKX.go, noopFunc)
+book.trivago.com##+js(set, RISKX.setSid, noopFunc)
+||imasdk.googleapis.com/js/sdkloader/ima3.js$redirect=noopjs,domain=minishort.com
+@@||googletagmanager.com/gtm.js$script,redirect-rule,domain=lyssna.com
+ds.163.com##+js(set, Sentry, {})
+ds.163.com##+js(set, Sentry.init, noopFunc)
+ds.163.com##+js(set, Sentry.configureScope, noopFunc)
+@@||imasdk.googleapis.com/js/sdkloader/ima3_dai.js$script,domain=airtelxstream.in
+@@||googletagmanager.com/gtag/js$script,redirect-rule,domain=alltron.ch
+||cdn.shopify.com/extensions/*/ba_tracking.js$domain=ridge.com,important
+ridge.com##+js(set, baMet.register, noopFunc)
+hktvmall.com##+js(set, Object.prototype.componentInScreen, noopFunc)
+@@||mapper.nekostream.site/api/mal/*/*/$xhr,strict3p
+||fvrd.ca/*/AppMeasurement.js$redirect=noopjs
+@@||pagead2.googlesyndication.com/tag/js/gpt.js$script,redirect-rule,domain=kick.com

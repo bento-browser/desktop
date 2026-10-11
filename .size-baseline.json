@@ -1,21 +1,21 @@
 {
   "build": "BENTO_RELEASE=1 pnpm run ext:build",
   "gzipBytes": {
-    "extensions/bento-shell/dist/assets/shell.js": 364161,
-    "extensions/bento-shell/dist/assets/palette.js": 314724,
-    "extensions/bento-shell/dist/assets/address-bar.js": 335266,
-    "extensions/bento-shell/dist/assets/confirm.js": 309393,
-    "extensions/bento-shell/dist/assets/edit-workspace.js": 343175,
-    "extensions/bento-shell/dist/assets/welcome.js": 342242,
-    "extensions/bento-shell/dist/assets/menu.js": 317602,
-    "extensions/bento-shell/dist/assets/workspace-palette.js": 345097,
-    "extensions/bento-shell/dist/assets/merge-palette.js": 317366,
-    "extensions/bento-shell/dist/assets/workspace-switcher.js": 333955,
-    "extensions/bento-shell/dist/assets/panel-trailer.js": 325498,
-    "extensions/bento-shell/dist/assets/panel-navigator-tooltip.js": 306711,
-    "extensions/bento-shell/dist/assets/panel-newtab.js": 488,
-    "extensions/bento-shell/dist/assets/style.css": 107374,
+    "extensions/bento-shell/dist/assets/shell.js": 362372,
+    "extensions/bento-shell/dist/assets/palette.js": 187343,
+    "extensions/bento-shell/dist/assets/address-bar.js": 282145,
+    "extensions/bento-shell/dist/assets/confirm.js": 182025,
+    "extensions/bento-shell/dist/assets/edit-workspace.js": 341387,
+    "extensions/bento-shell/dist/assets/welcome.js": 315130,
+    "extensions/bento-shell/dist/assets/menu.js": 260137,
+    "extensions/bento-shell/dist/assets/workspace-palette.js": 343311,
+    "extensions/bento-shell/dist/assets/merge-palette.js": 195582,
+    "extensions/bento-shell/dist/assets/workspace-switcher.js": 280826,
+    "extensions/bento-shell/dist/assets/panel-trailer.js": 294307,
+    "extensions/bento-shell/dist/assets/panel-navigator-tooltip.js": 183457,
+    "extensions/bento-shell/dist/assets/style.css": 103128,
+    "extensions/bento-shell/dist/assets/panel-newtab.css": 17920,
     "extensions/bento-shell/dist/assets/background.js": 1556,
-    "extensions/bento-tools/dist/background.js": 50716
+    "extensions/bento-tools/dist/background.js": 53069
   }
 }

@@ -128,8 +128,8 @@ copy_content_actor() {
   fi
 
   for target_root in "$BIN_ACTORS_ROOT" "$APP_ACTORS_ROOT"; do
-    local target="$REPO_ROOT/$target_root/$filename"
-    if [ ! -d "$REPO_ROOT/$target_root" ]; then
+    local target="$target_root/$filename"
+    if [ ! -d "$target_root" ]; then
       continue
     fi
     rm -f "$target" || {
@@ -150,11 +150,15 @@ copy_content_actor() {
   return 0
 }
 
-found_obj_dir=0
-for OBJ_DIR in engine/obj-*; do
-  [ -d "$OBJ_DIR" ] || continue
-  found_obj_dir=1
+# The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
+# another name). Before it exists, a single old engine/obj-* build is synced and the
+# driver says so; several old ones is an error. With no object directory yet there
+# is nothing to sync.
+OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-legacy --allow-missing)"
 
+if [ -z "$OBJ_DIR" ]; then
+  echo "sync-symlinks: no engine object directory found — nothing to do (run a full build first)"
+else
   APP_DIST_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/builtin-addons"
   if [ ! -d "$APP_DIST_ROOT" ]; then
     echo "sync-symlinks: $APP_DIST_ROOT missing — skipping add-ons"
@@ -176,10 +180,6 @@ for OBJ_DIR in engine/obj-*; do
   BIN_ACTORS_ROOT="$OBJ_DIR/dist/bin/browser/actors"
   copy_content_actor BentoKeyChild.sys.mjs
   copy_content_actor BentoKeyParent.sys.mjs
-done
-
-if [ "$found_obj_dir" -eq 0 ]; then
-  echo "sync-symlinks: no engine/obj-* directories found — nothing to do (run a full build first)"
 fi
 
 echo "sync-symlinks: finished"

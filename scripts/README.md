@@ -11,6 +11,16 @@ Build, packaging, and release helper scripts.
   `verify`, and `record` commands. `bento.json` is the canonical configuration;
   source archives are cached under `.bento/cache/source/`, with source state in
   `.bento/source-state.json` and overlay state in `.bento/import-manifest.json`.
+- `bento-build.mjs objdir` — prints the one Firefox object directory mach builds
+  into: the `MOZ_OBJDIR` in `engine/mozconfig`, `engine/obj-bento` unless
+  `BENTO_OBJDIR=obj-<name>` chose another name at generation. It fails when that
+  directory does not exist (`--allow-missing` prints nothing instead).
+  `--allow-legacy` also accepts a single old `engine/obj-*` build, announced on
+  stderr, and errors on several. `dev-launch.sh`, `sync-shell.sh` and
+  `sync-builtin-addon-symlinks.sh` pass `--allow-legacy`; `build-release.sh`,
+  `package` and `updates-browser` do not.
+- `write-if-changed.mjs` — helpers the build driver and the add-on and branding
+  installers use to leave unchanged files, and their mtimes, alone.
 - `validate-bento-artifacts.mjs` — verifies the packaged application, MAR
   contents, MAR digest and size, browser update XML, and artifact metadata.
   Run it with `pnpm run artifacts:check`; release builds run it before
@@ -20,7 +30,11 @@ Build, packaging, and release helper scripts.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit
   stack:
   - `pnpm run firefox:patches:check` validates `patches/series.json` and
-    sequential `git apply` replay;
+    replays the series in a scratch Git index (`git read-tree` plus
+    `git apply --cached`, no worktree, whitespace and line-ending settings pinned
+    with `git -c`), skipping the replay while `patches/**`, the base commit and
+    those settings match the last pass recorded in `.bento/patch-check.json`;
+    `--force` replays anyway;
   - `pnpm run firefox:patches:apply` applies the manifest to the live engine in
     its declared order without committing;
   - `pnpm run firefox:patches:materialize` recreates `bento/patch-stack` from
