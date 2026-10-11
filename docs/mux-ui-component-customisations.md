@@ -120,6 +120,10 @@ favicon images, skeletons, and native `SelectNative` options remain ordinary
 HTML. ESLint enforces public imports in all shell source, Ladle, and rollback
 UI. It does not claim to ban every intrinsic JSX element.
 
+Tab and folder labels use the row's center alignment with single-line leading.
+Keep them free of relative vertical offsets: the former `top: 2px` adjustment
+put Mux text below the centered favicon and folder count.
+
 Rollback Backup import uses public `FileTrigger` around its Mux button. Mux
 owns the hidden input and resets selection before reopening the picker; Bento
 retains the 10 MB limit, JSON parsing, preview, and dispatch behavior. Shortcuts

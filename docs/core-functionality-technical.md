@@ -1001,6 +1001,9 @@ The foreground override for active-row text and icons must stay unlayered
 because Mux UI text, button, and icon utility styles are also unlayered; keeping
 the override only inside `@layer bento.components` lets neutral utility colors
 win.
+Tab and folder label line boxes are centered by their row layout. The old
+`top: 2px` text offset shifted Mux labels below the favicon center; keep that
+offset removed and verify alignment in the isolated TabList Ladle story.
 Sidebar audio controls are driven by `TabSnapshot.audible` and
 `TabSnapshot.muted` from `extensions/bento-tools/src/tabs/TabRegistry.ts`.
 `TabRow` renders the speaker button when either flag is true and dispatches

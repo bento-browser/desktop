@@ -96,8 +96,6 @@
     font-size: var(--bento-tab-row-font-size);
     line-height: 1;
     margin: 0;
-    position: relative;
-    top: 2px;
   }
 
   .bento-folder-row__count {
