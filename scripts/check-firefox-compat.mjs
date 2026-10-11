@@ -2,16 +2,18 @@
 /* global process */
 
 // Checks Bento's firefox-compat registry: the list of upstream-private and
-// upstream-internal Firefox members Bento depends on. The registry lives in a
-// delimited section of src/browser/base/content/bento-shell-mount.js, where
-// the mount script also probes it at runtime (see the section header there).
+// upstream-internal Firefox members Bento depends on. The registry lives in
+// scripts/firefox-compat-registry.mjs and is never shipped. The mount script
+// carries only a compact probe list of the runtime-probable members (see the
+// @bento-firefox-compat section in src/browser/base/content/bento-shell-mount.js).
 //
 //   node scripts/check-firefox-compat.mjs                  registry self-check
 //   node scripts/check-firefox-compat.mjs --engine engine  also grep a Firefox tree
 //   node scripts/check-firefox-compat.mjs --write-docs     regenerate the docs table
 //
 // The self-check validates entries, confirms every call site still exists in
-// the repo, requires an entry for each underscore or on_* member the mount
+// the repo, requires the mount probe list to equal the registry's R and R-lazy
+// entries, requires an entry for each underscore or on_* member the mount
 // script reaches on a known Firefox global, and requires the table in
 // docs/firefox-core-touchpoints.md to match the registry. --engine verifies
 // every entry's `at` pattern in the given source tree (run it on the imported
@@ -22,6 +24,8 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
+import { registry as bundledRegistry } from './firefox-compat-registry.mjs';
+
 const SCRIPT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const MOUNT_PATH = 'src/browser/base/content/bento-shell-mount.js';
 export const DOCS_PATH = 'docs/firefox-core-touchpoints.md';
@@ -31,6 +35,7 @@ const DOCS_BEGIN = '<!-- firefox-compat:begin -->';
 const DOCS_END = '<!-- firefox-compat:end -->';
 
 const KINDS = new Set(['method', 'member', 'element', 'module', 'source']);
+const PROBES = new Set(['R', 'R-lazy', 'E']);
 const HOWS = new Set([
   'wraps',
   'overrides',
@@ -76,25 +81,22 @@ export function extractSection(source) {
 }
 
 /**
- * Evaluates the registry section. The section may only use its own constants
- * at definition time; `globals` supplies what its probe functions need when a
- * test runs them (console, Services, ChromeUtils, Cu).
+ * Evaluates only the compact probe section of the mount script. `globals`
+ * supplies what its probes need when a test runs them (console, Services,
+ * ChromeUtils, Cu). `entries` is the flat probe list the runner iterates.
  */
-export function evaluateSection(section, globals = {}) {
+export function evaluateProbeSection(section, globals = {}) {
   const context = vm.createContext({ ...globals });
   const wrapped = `(() => {\n${section}\nreturn {
-    baseline: BENTO_COMPAT_BASELINE,
-    members: BENTO_FIREFOX_COMPAT,
+    entries: bentoCompatEntries(),
     run: runBentoFirefoxCompat,
-    probe: probeBentoCompatEntry,
+    probe: bentoCompatProbe,
   };\n})()`;
   return vm.runInContext(wrapped, context, { filename: `${MOUNT_PATH}#firefox-compat` });
 }
 
-export function loadRegistry(repoRoot = SCRIPT_ROOT, globals = {}) {
-  const source = fs.readFileSync(path.join(repoRoot, MOUNT_PATH), 'utf8');
-  const registry = evaluateSection(extractSection(source), globals);
-  return { ...registry, source };
+export function readMount(repoRoot = SCRIPT_ROOT) {
+  return fs.readFileSync(path.join(repoRoot, MOUNT_PATH), 'utf8');
 }
 
 function splitSite(site) {
@@ -122,7 +124,7 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
     if (!fileCache.has(file)) {
       const absolute = path.join(repoRoot, file);
       let text = fs.existsSync(absolute) ? fs.readFileSync(absolute, 'utf8') : null;
-      // The registry names its own call sites; they must exist outside it.
+      // The probe list names members, not call sites; tokens must exist outside it.
       if (text !== null && file === MOUNT_PATH) text = text.replace(extractSection(text), '');
       fileCache.set(file, text);
     }
@@ -130,10 +132,10 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
   };
 
   if (typeof registry.baseline !== 'string' || !/^\d+\.\d+/.test(registry.baseline)) {
-    errors.push('BENTO_COMPAT_BASELINE must be a Firefox version string such as "154.0"');
+    errors.push('BASELINE must be a Firefox version string such as "154.0"');
   }
   if (!Array.isArray(registry.members) || registry.members.length === 0) {
-    errors.push('BENTO_FIREFOX_COMPAT must be a non-empty array');
+    errors.push('MEMBERS must be a non-empty array');
     return errors;
   }
 
@@ -153,9 +155,10 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
     if (entry.kind === 'module' && !(Array.isArray(entry.exports) && entry.exports.length > 0)) {
       fail('module entries need a non-empty exports array');
     }
-    if (entry.probe !== undefined && typeof entry.probe !== 'function')
-      fail('probe must be a function');
-    if (entry.lazy !== undefined && typeof entry.lazy !== 'boolean') fail('lazy must be a boolean');
+    if (!PROBES.has(entry.probe)) fail(`probe must be one of ${[...PROBES].join(', ')}`);
+    else if ((entry.probe === 'E') !== (entry.kind === 'source')) {
+      fail('probe E and kind source go together: source entries are engine-only');
+    }
 
     const at = entry.at;
     if (
@@ -194,6 +197,58 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
       const text = readRepoFile(file);
       if (text === null) fail(`site file not found: ${file}`);
       else if (!text.includes(token)) fail(`site token "${token}" not found in ${file}`);
+    }
+  }
+  return errors;
+}
+
+/**
+ * Requires the mount script's probe list to equal the registry's runtime
+ * entries (probe R or R-lazy): same ids, kinds, lazy flags, and module exports.
+ */
+export function validateProbeList(mountSource, registry) {
+  let mounted;
+  try {
+    mounted = evaluateProbeSection(extractSection(mountSource)).entries;
+  } catch (err) {
+    return [`cannot read the probe list in ${MOUNT_PATH}: ${err.message}`];
+  }
+
+  const errors = [];
+  const byId = new Map();
+  for (const entry of mounted) {
+    if (byId.has(entry.id))
+      errors.push(`${entry.id}: listed twice in the ${MOUNT_PATH} probe list`);
+    byId.set(entry.id, entry);
+  }
+  const expected = registry.members.filter((entry) => entry.probe !== 'E');
+  const expectedIds = new Set(expected.map((entry) => entry.id));
+
+  for (const entry of expected) {
+    const probe = byId.get(entry.id);
+    if (!probe) {
+      errors.push(`${entry.id}: registry probe ${entry.probe} but ${MOUNT_PATH} does not probe it`);
+      continue;
+    }
+    // 'custom' probes check more than presence; the registry files them as members.
+    const kindOk =
+      probe.kind === 'custom'
+        ? entry.kind === 'member' || entry.kind === 'method'
+        : probe.kind === entry.kind;
+    if (!kindOk)
+      errors.push(`${entry.id}: probed as ${probe.kind} but registry kind is ${entry.kind}`);
+    if (probe.lazy !== (entry.probe === 'R-lazy')) {
+      errors.push(
+        `${entry.id}: lazy is ${probe.lazy} in ${MOUNT_PATH} but registry probe is ${entry.probe}`,
+      );
+    }
+    if (entry.kind === 'module' && !(entry.exports ?? []).includes(probe.exported)) {
+      errors.push(`${entry.id}: probed export ${probe.exported} is not in the registry exports`);
+    }
+  }
+  for (const id of byId.keys()) {
+    if (!expectedIds.has(id)) {
+      errors.push(`${id}: probed in ${MOUNT_PATH} but the registry has no R or R-lazy entry`);
     }
   }
   return errors;
@@ -240,7 +295,7 @@ export function renderDocsTable(registry) {
     const [file, , line] = entry.at;
     const sites = entry.sites.map((site) => `\`${escapeCell(site)}\``).join(', ');
     const probe =
-      entry.kind === 'source' ? 'engine only' : entry.lazy ? 'runtime, lazy' : 'runtime';
+      entry.probe === 'E' ? 'engine only' : entry.probe === 'R-lazy' ? 'runtime, lazy' : 'runtime';
     lines.push(
       `| \`${escapeCell(entry.id)}\` | ${entry.kind} (${probe}) | ${escapeCell(entry.use)} | ${sites} | \`${escapeCell(file)}:${line}\` |`,
     );
@@ -336,7 +391,8 @@ function parseArgs(argv) {
   return options;
 }
 
-export function main(argv, out = console) {
+/** `registry` is injectable so tests can drive the CLI with a small fixture. */
+export function main(argv, out = console, registry = bundledRegistry) {
   let options;
   try {
     options = parseArgs(argv);
@@ -348,11 +404,11 @@ export function main(argv, out = console) {
     return 2;
   }
 
-  let registry;
+  let mountSource;
   try {
-    registry = loadRegistry(options.repo);
+    mountSource = readMount(options.repo);
   } catch (err) {
-    out.error(`check-firefox-compat: cannot load the registry: ${err.message}`);
+    out.error(`check-firefox-compat: cannot read ${MOUNT_PATH}: ${err.message}`);
     return 1;
   }
   if (options.writeDocs) {
@@ -365,7 +421,8 @@ export function main(argv, out = console) {
 
   const problems = [
     ...validateRegistry(registry, options.repo),
-    ...findUndeclaredPrivateMembers(registry.source, registry),
+    ...validateProbeList(mountSource, registry),
+    ...findUndeclaredPrivateMembers(mountSource, registry),
     ...checkDocs(registry, options.repo),
   ];
   for (const problem of problems) out.error(`registry: ${problem}`);

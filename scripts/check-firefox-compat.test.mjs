@@ -11,13 +11,15 @@ import {
   MOUNT_PATH,
   checkDocs,
   checkEngine,
-  evaluateSection,
+  evaluateProbeSection,
   extractSection,
   findUndeclaredPrivateMembers,
-  loadRegistry,
   main,
+  readMount,
+  validateProbeList,
   validateRegistry,
 } from './check-firefox-compat.mjs';
+import { registry } from './firefox-compat-registry.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./check-firefox-compat.mjs', import.meta.url));
 
@@ -42,9 +44,9 @@ function capture() {
   };
 }
 
-// A window where every property exists, and one where nothing does.
+// A window where every property exists.
 function universal() {
-  const proxy = new Proxy(function () {}, {
+  return new Proxy(function () {}, {
     // linkedPanel is the one member the probe requires to be a string.
     get: (_target, key) => {
       if (typeof key === 'symbol') return undefined;
@@ -59,7 +61,6 @@ function universal() {
       configurable: true,
     }),
   });
-  return proxy;
 }
 
 function runtimeGlobals(logs, { modulesLoaded }) {
@@ -79,21 +80,82 @@ function runtimeGlobals(logs, { modulesLoaded }) {
   };
 }
 
-test('the real registry, its call sites, and the docs table agree', () => {
-  const registry = loadRegistry();
+function loadProbes(globals) {
+  return evaluateProbeSection(extractSection(readMount()), globals);
+}
+
+const runtimeEntries = registry.members.filter((entry) => entry.probe !== 'E');
+
+test('the real registry, its call sites, the probe list, and the docs table agree', () => {
   assert.ok(registry.members.length > 100, 'registry should list the audited members');
   assert.deepEqual(validateRegistry(registry), []);
-  assert.deepEqual(findUndeclaredPrivateMembers(registry.source, registry), []);
+  assert.deepEqual(validateProbeList(readMount(), registry), []);
+  assert.deepEqual(findUndeclaredPrivateMembers(readMount(), registry), []);
   assert.deepEqual(checkDocs(registry), []);
+});
+
+test('the mount probe ids equal the registry entries marked R or R-lazy', () => {
+  // The section runs in another realm; copy its entries before comparing.
+  const mounted = Array.from(loadProbes().entries);
+  const ids = (entries) => entries.map((entry) => entry.id).sort();
+  assert.deepEqual(ids(mounted), ids(runtimeEntries));
+  assert.deepEqual(
+    ids(mounted.filter((entry) => entry.lazy)),
+    ids(registry.members.filter((entry) => entry.probe === 'R-lazy')),
+  );
+});
+
+test('the shipped probe section stays compact', () => {
+  assert.ok(extractSection(readMount()).length < 9000, 'keep use and locator text in the registry');
+});
+
+test('probe list drift against the registry is reported', () => {
+  const source = readMount();
+  const first = registry.members.find((entry) => entry.id === 'gBrowser._beginRemoveTab');
+  const mutate = (members) => ({ ...registry, members });
+  const others = registry.members.filter((entry) => entry !== first);
+
+  assert.match(
+    validateProbeList(
+      source,
+      mutate([...registry.members, { ...first, id: 'gBrowser._newHook' }]),
+    )[0],
+    /gBrowser\._newHook: registry probe R but .* does not probe it/,
+  );
+  assert.match(
+    validateProbeList(source, mutate([...others, { ...first, probe: 'E', kind: 'source' }]))[0],
+    new RegExp(`${first.id.replaceAll('.', '\\.')}: probed in .* no R or R-lazy entry`),
+  );
+  assert.match(
+    validateProbeList(source, mutate([...others, { ...first, probe: 'R-lazy' }]))[0],
+    /lazy is false .* registry probe is R-lazy/,
+  );
+  assert.match(
+    validateProbeList(source, mutate([...others, { ...first, kind: 'element' }]))[0],
+    /probed as (method|member) but registry kind is element/,
+  );
+  const module = runtimeEntries.find((entry) => entry.kind === 'module');
+  assert.match(
+    validateProbeList(
+      source,
+      mutate(
+        registry.members.map((entry) =>
+          entry === module ? { ...module, exports: ['Other'] } : entry,
+        ),
+      ),
+    )[0],
+    /probed export .* is not in the registry exports/,
+  );
+  assert.match(validateProbeList('no markers', registry)[0], /cannot read the probe list/);
 });
 
 test('the runtime probe stays quiet on a window that has every member', () => {
   const logs = { error: [], info: [] };
-  const registry = loadRegistry(undefined, runtimeGlobals(logs, { modulesLoaded: true }));
-  const result = registry.run(universal());
+  const result = loadProbes(runtimeGlobals(logs, { modulesLoaded: true })).run(universal());
   // Arrays from the evaluated section belong to another realm; copy to compare.
   assert.deepEqual([...result.missing], []);
   assert.deepEqual([...result.deferred], []);
+  assert.equal(result.probed, runtimeEntries.length);
   assert.deepEqual(logs.error, []);
   assert.match(
     logs.info[0],
@@ -101,40 +163,36 @@ test('the runtime probe stays quiet on a window that has every member', () => {
   );
 });
 
-test('the runtime probe logs one error per missing member and defers lazy ones', () => {
+test('the runtime probe logs one id per missing member and defers lazy ones', () => {
   const logs = { error: [], info: [] };
-  const registry = loadRegistry(undefined, runtimeGlobals(logs, { modulesLoaded: false }));
-  const emptyWindow = { document: { getElementById: () => null } };
-  const result = registry.run(emptyWindow);
+  const probes = loadProbes(runtimeGlobals(logs, { modulesLoaded: false }));
+  const result = probes.run({ document: { getElementById: () => null } });
 
-  const members = [...registry.members];
-  const lazyIds = members.filter((entry) => entry.lazy).map((entry) => entry.id);
-  const probed = members.filter((entry) => entry.kind !== 'source' && !entry.lazy);
-  assert.deepEqual(new Set(result.deferred), new Set(lazyIds));
-  assert.deepEqual(
-    [...result.missing],
-    probed.map((entry) => entry.id),
-  );
-  assert.equal(logs.error.length, probed.length);
-  assert.match(
-    logs.error.find((line) => line.includes('gBrowser._beginRemoveTab')),
-    /^\[bento-compat\] missing gBrowser\._beginRemoveTab: .+ \(expected near browser\/components\/tabbrowser\/content\/tabbrowser\.js:\d+ in Firefox 154\.0\)$/,
-  );
+  const ids = (probe) =>
+    runtimeEntries
+      .filter((entry) => entry.probe === probe)
+      .map((entry) => entry.id)
+      .sort();
+  assert.deepEqual([...result.deferred].sort(), ids('R-lazy'));
+  assert.deepEqual([...result.missing].sort(), ids('R'));
+  assert.deepEqual(logs.error.length, ids('R').length);
+  assert.ok(logs.error.includes('[bento-compat] missing gBrowser._beginRemoveTab'));
 });
 
 test('probes resolve roots, never run getters, and leave lazy globals unloaded', () => {
   const logs = { error: [], info: [] };
-  const registry = loadRegistry(undefined, runtimeGlobals(logs, { modulesLoaded: true }));
+  const probes = loadProbes(runtimeGlobals(logs, { modulesLoaded: true }));
   const probe = (win, id) =>
-    registry.probe(
+    probes.probe(
       win,
-      [...registry.members].find((entry) => entry.id === id),
+      probes.entries.find((entry) => entry.id === id),
     );
   const never = () => {
     throw new Error('a probe invoked a getter');
   };
 
   const win = {
+    OpenBrowserWindow() {},
     gBrowser: {
       _beginRemoveTab() {},
       tabpanels: {
@@ -151,6 +209,7 @@ test('probes resolve roots, never run getters, and leave lazy globals unloaded',
       },
       selectedBrowser: { mIconURL: null },
     },
+    gURLBar: { view: { close() {} } },
     customElements: { get: () => ({ prototype: { removeProgressListener() {} } }) },
     document: { getElementById: (id) => (id === 'nav-bar' ? {} : null) },
   };
@@ -160,6 +219,7 @@ test('probes resolve roots, never run getters, and leave lazy globals unloaded',
   assert.equal(probe(win, 'gBrowser._findTabToBlurTo'), 'missing');
   assert.equal(probe(win, 'gBrowser.tabpanels.removeTabsFromSplitview'), 'ok');
   assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'ok');
+  assert.equal(probe(win, 'gURLBar.view.close'), 'ok');
   assert.equal(probe(win, 'MozTabbrowserTab.isEmpty'), 'ok');
   assert.equal(probe(win, 'MozTabbrowserTab.linkedPanel'), 'ok');
   assert.equal(probe(win, 'MozBrowser.prototype.removeProgressListener'), 'ok');
@@ -168,7 +228,8 @@ test('probes resolve roots, never run getters, and leave lazy globals unloaded',
   assert.equal(probe(win, 'nav-bar'), 'ok');
   assert.equal(probe(win, 'urlbar'), 'missing');
   assert.equal(probe(win, 'DownloadsPanel.initialize'), 'deferred');
-  assert.equal(probe(win, 'pagetitlechanged'), 'source');
+  assert.equal(probe(win, 'OpenBrowserWindow'), 'ok');
+  assert.equal(probe({}, 'OpenBrowserWindow'), 'missing');
 
   Object.defineProperty(win, 'DownloadsPanel', { value: { initialize() {} }, configurable: true });
   assert.equal(probe(win, 'DownloadsPanel.initialize'), 'ok');
@@ -176,7 +237,6 @@ test('probes resolve roots, never run getters, and leave lazy globals unloaded',
 
 test('a probe that throws counts as missing instead of breaking the run', () => {
   const logs = { error: [], info: [] };
-  const registry = loadRegistry(undefined, runtimeGlobals(logs, { modulesLoaded: true }));
   const hostile = new Proxy(
     {},
     {
@@ -185,14 +245,13 @@ test('a probe that throws counts as missing instead of breaking the run', () => 
       },
     },
   );
-  const result = registry.run(hostile);
+  const result = loadProbes(runtimeGlobals(logs, { modulesLoaded: true })).run(hostile);
   assert.ok(result.missing.length > 0);
   assert.equal(logs.error.length, result.missing.length);
 });
 
 test('an underscore or on_ member reached on a Firefox global needs an entry', () => {
-  const registry = loadRegistry();
-  const source = `${registry.source}
+  const source = `${readMount()}
 window.gBrowser._newHook();
 PanelUI.on_newEvent;
 // gBrowser._mentionedInAComment
@@ -216,44 +275,67 @@ test('the marker comments must delimit exactly one section', () => {
   assert.throws(() => extractSection(`${begin}\n${end}\n${begin}\n${end}`), /more than one/);
 });
 
-// A small repo and engine to drive the CLI end to end.
-const FIXTURE_MOUNT = `(function () {
-  function useTheHook() {
-    return gBrowser._hook();
-  }
-  // @bento-firefox-compat:begin
-  const BENTO_COMPAT_BASELINE = '154.0';
-  const BENTO_FIREFOX_COMPAT = [
+// A small registry, repo and engine to drive the CLI end to end. The fixture
+// mount reuses the real probe runner with a two-member probe list.
+const FIXTURE_REGISTRY = {
+  baseline: '154.0',
+  members: [
     {
       id: 'gBrowser._hook',
       kind: 'method',
       how: 'wraps',
+      probe: 'R',
       sites: ['useTheHook'],
       use: 'Wraps the hook.',
-      at: ['browser/hook.js', '^\\\\s+_hook\\\\(', 3],
+      at: ['browser/hook.js', '^\\s+_hook\\(', 3],
     },
     {
       id: 'resource:///modules/Thing.sys.mjs',
       kind: 'module',
       how: 'imports',
+      probe: 'R',
       sites: ['useTheHook'],
       use: 'Imports the module.',
       exports: ['Thing'],
       at: ['browser/Thing.sys.mjs', '^export const Thing', 1],
-      reg: ['browser/moz.build', '"Thing\\\\.sys\\\\.mjs"'],
+      reg: ['browser/moz.build', '"Thing\\.sys\\.mjs"'],
     },
-  ];
-  function probeBentoCompatEntry() { return 'source'; }
-  function runBentoFirefoxCompat() { return {}; }
-  // @bento-firefox-compat:end
+  ],
+};
+
+const FIXTURE_PROBES = {
+  members: { gBrowser: ['_hook()'] },
+  elements: [],
+  modules: { 'resource:///modules/Thing.sys.mjs': 'Thing' },
+  custom: {},
+  lazy: [],
+};
+
+function fixtureMount(probes = FIXTURE_PROBES) {
+  const literal = /const BENTO_COMPAT_PROBES = \{[\s\S]*?\n {2}\};\n/;
+  const section = extractSection(readMount());
+  assert.match(section, literal);
+  return `(function () {
+  function useTheHook() {
+    return gBrowser._hook();
+  }
+  // @bento-firefox-compat:begin${section.replace(literal, `const BENTO_COMPAT_PROBES = ${JSON.stringify(probes)};\n`)}// @bento-firefox-compat:end
 })();
 `;
+}
 
 const FIXTURE_DOCS = `# Touchpoints
 
 <!-- firefox-compat:begin -->
 <!-- firefox-compat:end -->
 `;
+
+function fixtureRepo(t) {
+  const repo = tempDir(t);
+  write(repo, MOUNT_PATH, fixtureMount());
+  write(repo, DOCS_PATH, FIXTURE_DOCS);
+  return repo;
+}
 
 function fixtureEngine(root, { hook = true, registered = true } = {}) {
   write(root, 'browser/hook.js', hook ? 'class A {\n\n  _hook() {}\n}\n' : 'class A {}\n');
@@ -262,33 +344,35 @@ function fixtureEngine(root, { hook = true, registered = true } = {}) {
 }
 
 test('--engine lists missing members and exits non-zero', (t) => {
-  const repo = tempDir(t);
+  const repo = fixtureRepo(t);
   const engine = tempDir(t);
-  write(repo, MOUNT_PATH, FIXTURE_MOUNT);
-  write(repo, DOCS_PATH, FIXTURE_DOCS);
+  const run = (...args) => {
+    const out = capture();
+    return { code: main(['--repo', repo, ...args], out, FIXTURE_REGISTRY), out: out.lines };
+  };
 
-  const written = capture();
-  assert.equal(main(['--repo', repo, '--write-docs'], written), 0, written.lines.error.join('\n'));
+  const written = run('--write-docs');
+  assert.equal(written.code, 0, written.out.error.join('\n'));
   assert.match(fs.readFileSync(path.join(repo, DOCS_PATH), 'utf8'), /`gBrowser\._hook`/);
 
   fixtureEngine(engine);
-  const ok = capture();
-  assert.equal(main(['--repo', repo, '--engine', engine], ok), 0, ok.lines.error.join('\n'));
-  assert.match(ok.lines.log.join('\n'), /2 of 2 members found/);
+  const ok = run('--engine', engine);
+  assert.equal(ok.code, 0, ok.out.error.join('\n'));
+  assert.match(ok.out.log.join('\n'), /2 of 2 members found/);
 
   fixtureEngine(engine, { hook: false });
-  const missingHook = capture();
-  assert.equal(main(['--repo', repo, '--engine', engine], missingHook), 1);
+  const missingHook = run('--engine', engine);
+  assert.equal(missingHook.code, 1);
   assert.match(
-    missingHook.lines.error.join('\n'),
+    missingHook.out.error.join('\n'),
     /MISSING gBrowser\._hook\n.*not found in browser\/hook\.js/,
   );
 
   fixtureEngine(engine, { registered: false });
-  const unregistered = capture();
-  assert.equal(main(['--repo', repo, '--engine', engine], unregistered), 1);
+  const unregistered = run('--engine', engine);
+  assert.equal(unregistered.code, 1);
   assert.match(
-    unregistered.lines.error.join('\n'),
+    unregistered.out.error.join('\n'),
     /MISSING resource:\/\/\/modules\/Thing\.sys\.mjs\n.*no longer registered/,
   );
 });
@@ -296,33 +380,45 @@ test('--engine lists missing members and exits non-zero', (t) => {
 test('checkEngine reports the line where a moved member now lives', (t) => {
   const engine = tempDir(t);
   fixtureEngine(engine);
-  const registry = evaluateSection(extractSection(FIXTURE_MOUNT));
-  const [hook] = checkEngine(registry, engine);
+  const [hook] = checkEngine(FIXTURE_REGISTRY, engine);
   assert.deepEqual(hook, { id: 'gBrowser._hook', status: 'ok', line: 3, expected: 3 });
 
   write(engine, 'browser/hook.js', '\n\n\n\nclass A {\n  _hook() {}\n}\n');
-  assert.equal(checkEngine(registry, engine)[0].line, 6);
+  assert.equal(checkEngine(FIXTURE_REGISTRY, engine)[0].line, 6);
 });
 
-test('a stale docs table, a removed call site, and a bad entry are all reported', (t) => {
-  const repo = tempDir(t);
-  write(repo, MOUNT_PATH, FIXTURE_MOUNT);
-  write(repo, DOCS_PATH, FIXTURE_DOCS);
+test('a stale docs table, a removed call site, a bad entry, and probe drift are reported', (t) => {
+  const repo = fixtureRepo(t);
+  const run = (members = FIXTURE_REGISTRY.members) => {
+    const out = capture();
+    const code = main(['--repo', repo], out, { ...FIXTURE_REGISTRY, members });
+    return { code, errors: out.lines.error.join('\n') };
+  };
 
-  const stale = capture();
-  assert.equal(main(['--repo', repo], stale), 1);
-  assert.match(stale.lines.error.join('\n'), /table is stale/);
+  const stale = run();
+  assert.equal(stale.code, 1);
+  assert.match(stale.errors, /table is stale/);
 
-  main(['--repo', repo, '--write-docs'], capture());
-  write(repo, MOUNT_PATH, FIXTURE_MOUNT.replace('function useTheHook', 'function renamedHook'));
-  const renamed = capture();
-  assert.equal(main(['--repo', repo], renamed), 1);
-  assert.match(renamed.lines.error.join('\n'), /site token "useTheHook" not found/);
+  main(['--repo', repo, '--write-docs'], capture(), FIXTURE_REGISTRY);
+  assert.equal(run().code, 0);
 
-  write(repo, MOUNT_PATH, FIXTURE_MOUNT.replace("kind: 'method'", "kind: 'nonsense'"));
-  const bad = capture();
-  assert.equal(main(['--repo', repo], bad), 1);
-  assert.match(bad.lines.error.join('\n'), /gBrowser\._hook: kind must be one of/);
+  const [hook, thing] = FIXTURE_REGISTRY.members;
+  const bad = run([{ ...hook, kind: 'nonsense' }, thing]);
+  assert.equal(bad.code, 1);
+  assert.match(bad.errors, /gBrowser\._hook: kind must be one of/);
+
+  const engineOnlyMismatch = run([{ ...hook, probe: 'E' }, thing]);
+  assert.equal(engineOnlyMismatch.code, 1);
+  assert.match(engineOnlyMismatch.errors, /probe E and kind source go together/);
+
+  const drifted = run([...FIXTURE_REGISTRY.members, { ...hook, id: 'gBrowser._other' }]);
+  assert.equal(drifted.code, 1);
+  assert.match(drifted.errors, /gBrowser\._other: registry probe R but .* does not probe it/);
+
+  write(repo, MOUNT_PATH, fixtureMount().replace('function useTheHook', 'function renamedHook'));
+  const renamed = run();
+  assert.equal(renamed.code, 1);
+  assert.match(renamed.errors, /site token "useTheHook" not found/);
 });
 
 test('the CLI exits 2 on bad usage and when --engine is not a Firefox tree', (t) => {

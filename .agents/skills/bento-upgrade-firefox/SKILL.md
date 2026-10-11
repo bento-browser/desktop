@@ -192,9 +192,8 @@ pnpm run firefox:compat:engine
 ```
 
 It greps the target source for every upstream-private or internal Firefox
-member Bento depends on (the registry in the `@bento-firefox-compat` section of
-`src/browser/base/content/bento-shell-mount.js`, tabulated in
-`docs/firefox-core-touchpoints.md`) and lists each one that is gone, including
+member Bento depends on (the registry in `scripts/firefox-compat-registry.mjs`,
+tabulated in `docs/firefox-core-touchpoints.md`) and lists each one that is gone, including
 modules that are no longer registered. Each missing member is a hook that would
 otherwise stop working silently: fix or remove the hook, then update the
 registry entry. A pass proves the definition still exists, not that the hook
@@ -334,8 +333,8 @@ disabled; `CLAUDE.md` "Versioning policy" owns release rules. Run
 `pnpm run release:security-check` for preview artifacts; the public gate remains
 blocked until the required signing identities are provisioned.
 
-After the upgrade, set `BENTO_COMPAT_BASELINE` and the `at` lines of the
-registry to the new version (`node scripts/check-firefox-compat.mjs --engine
+After the upgrade, set `BASELINE` and the `at` lines of
+`scripts/firefox-compat-registry.mjs` to the new version (`node scripts/check-firefox-compat.mjs --engine
 engine --verbose` prints each member's current line), then regenerate the table
 with `node scripts/check-firefox-compat.mjs --write-docs`.
 

@@ -6,7 +6,7 @@ New files in the Firefox tree go here; changes to existing Firefox files are
 patches under `patches/`.
 
 - `browser/base/content/`: the chrome mount script `bento-shell-mount.js` (which
-  also holds the firefox-compat registry), its stylesheets, and the embedded
+  also carries the compact firefox-compat probe list), its stylesheets, and the embedded
   import host.
 - `browser/actors/`: the `BentoKey` JSWindowActor pair.
 

@@ -24,9 +24,11 @@ Bento's core browsing model is split across three layers:
   overlays. It is one of the supported chrome surfaces named in `CLAUDE.md`
   (with the other `src/browser/` overlays, the key actors, the experiments, and
   the patch stack). Every upstream-private or internal Firefox member it relies
-  on is listed in its firefox-compat registry, which the mount probes once per
-  window and `scripts/check-firefox-compat.mjs` checks against a Firefox source
-  tree; the table is in `docs/firefox-core-touchpoints.md`.
+  on is listed in the repo-only firefox-compat registry
+  (`scripts/firefox-compat-registry.mjs`), which
+  `scripts/check-firefox-compat.mjs` checks against a Firefox source tree; the
+  table is in `docs/firefox-core-touchpoints.md`. The mount ships only a compact
+  probe list of the runtime-probable members, which each window probes once.
 
 The state contract is declared in `extensions/_shared/protocol.ts`. UI code
 dispatches `Action` messages through `extensions/bento-shell/src/bridge/useToolsPort.ts`.
@@ -2636,8 +2638,9 @@ Every private Firefox member these shims touch (`on_visibilitychange`,
 `_beginRemoveTab`, `_findTabToBlurTo`, `_insertBrowser`, the `isEmpty` and
 `splitview` tab getters, `activeSplitView`, the `TabSplitView*` handlers,
 `splitViewPanels`, `removeTabsFromSplitview`, `PopupNotifications._isActiveBrowser`,
-and the rest) is an entry in the firefox-compat registry. A new shim that
-reaches a private member adds its entry in the same change.
+and the rest) is an entry in the firefox-compat registry
+(`scripts/firefox-compat-registry.mjs`). A new shim that reaches a private member
+adds its entry, and its id in the mount probe list, in the same change.
 
 ### Chrome rendering pitfalls
 
@@ -2645,8 +2648,9 @@ reaches a private member adds its entry in the same change.
   rename silently disables them (ghost panels, wrong tab focus after a close).
   After a Firefox update, run `pnpm run firefox:compat:engine` before anything
   else and check the Browser Console of a built app for
-  `[bento-compat] missing <id>` lines. The runtime probe runs after delayed
-  startup, never throws, and changes no behavior; lazy objects such as the
+  `[bento-compat] missing <id>` lines (the table in
+  `docs/firefox-core-touchpoints.md` explains each id). The runtime probe runs
+  after delayed startup, never throws, and changes no behavior; lazy objects such as the
   downloads panel are probed only once loaded, so
   `window.BentoFirefoxCompat.check()` in the Browser Toolbox re-runs it after
   opening them.

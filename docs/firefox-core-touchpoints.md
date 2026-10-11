@@ -881,34 +881,42 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 The firefox-compat registry lists every Firefox member Bento depends on that is
 private or internal upstream: underscore and `on_*` methods, private-field
 accessors, prototype patches, lazy chrome globals, module URLs, chrome DOM ids,
-and event or markup contracts. It lives in the delimited `@bento-firefox-compat`
-section of `src/browser/base/content/bento-shell-mount.js`, next to the code
-that probes it. Each entry records the member, what Bento does with it, where
-Bento uses it, how it is detected, and where vanilla Firefox defines it (the
-version is `BENTO_COMPAT_BASELINE`, shown in the table header). The table below
-is generated; edit the registry, then run
+and event or markup contracts. It lives in `scripts/firefox-compat-registry.mjs`,
+a repo-only module that is never shipped, so no browser window parses it. Each
+entry records the member, what Bento does with it, where Bento uses it, how it
+is detected (probe `R`, `R-lazy`, or engine-only `E`), and where vanilla Firefox
+defines it (the version is `BASELINE`, shown in the table header). The table
+below is generated; edit the registry, then run
 `node scripts/check-firefox-compat.mjs --write-docs`.
 
-- Runtime. After Firefox's delayed startup, each window probes the entries once
-  and logs one `console.error('[bento-compat] missing <id> ...')` per absent
-  member plus one `[bento-compat] probed N members` line. It never throws and
-  changes no behavior; the guarded hooks keep skipping silently. Entries marked
-  lazy are probed only after their object has loaded, so the check never forces
-  a lazy script or module to load. `window.BentoFirefoxCompat.check()` re-runs
-  it from the Browser Toolbox. Entries marked engine only have no runtime probe
-  (events, markup, fields assigned late, members of other documents).
+- Runtime. The `@bento-firefox-compat` section of
+  `src/browser/base/content/bento-shell-mount.js` carries only a compact list
+  (ids, a presence check, a lazy flag) of the entries marked runtime, plus the
+  probe runner, about 7 KB with no call-site, use, or locator text. After
+  Firefox's delayed startup, each window probes the list once and logs one
+  `console.error('[bento-compat] missing <id>')` per absent member plus one
+  `[bento-compat] probed N members` line. It never throws and changes no
+  behavior; the guarded hooks keep skipping silently. Entries marked lazy are
+  probed only after their object has loaded, so the check never forces a lazy
+  script or module to load. `window.BentoFirefoxCompat.check()` re-runs it from
+  the Browser Toolbox. Entries marked engine only have no runtime probe (events,
+  markup, fields assigned late, members of other documents). Look up a logged
+  id in the table below for what Bento does with it.
 - Upgrade validation. `pnpm run firefox:compat:engine` greps the `engine/` tree
   for each entry's definition and exits non-zero listing the members that are
   gone, plus modules that are no longer registered. Run it against the target
   source before rebasing patches and again after `pnpm run import`. Add
   `--verbose` for the line each member now has. After an upgrade, update the
-  `at` lines and `BENTO_COMPAT_BASELINE`, then regenerate this table.
+  `at` lines and `BASELINE` in the registry module, then regenerate this table.
 - Consistency. `pnpm run firefox:compat:check` (also run by
   `scripts/check-firefox-compat.test.mjs` in CI) fails when an entry is
-  malformed, a call site named by an entry no longer exists, the mount script
-  reaches an underscore or `on_*` member of a known Firefox global that has no
-  entry, or this table is stale.
-- Adding a hook. Add its entry in the same change and regenerate this table.
+  malformed, a call site named by an entry no longer exists, the mount probe
+  list differs from the registry's `R` and `R-lazy` entries (ids, kinds, lazy
+  flags, module exports), the mount script reaches an underscore or `on_*`
+  member of a known Firefox global that has no entry, or this table is stale.
+- Adding a hook. Add its entry to `scripts/firefox-compat-registry.mjs` in the
+  same change, add its id to the mount probe list when its probe is `R` or
+  `R-lazy`, and regenerate this table.
 - Not listed. Stable platform APIs (`Services.*`, `PlacesUtils`, `SessionStore`
   calls, `<browser>` navigation such as `loadURI`, the WebExtension API), prefs
   read by name, and the CSS selectors in `injectChromeStyles`. Patches are
