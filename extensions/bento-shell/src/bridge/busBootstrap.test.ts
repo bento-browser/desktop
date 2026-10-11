@@ -197,6 +197,8 @@ describe('shell bus bootstrap', () => {
     bus.reset();
     tools = createFakeTools();
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+    // The extension build defines this flag; here the dev build's value.
+    vi.stubGlobal('__BENTO_DEV_RELOAD__', true);
     vi.stubGlobal('browser', {
       runtime: { connect: () => tools.port },
       commands: { onCommand: { addListener: () => {} } },

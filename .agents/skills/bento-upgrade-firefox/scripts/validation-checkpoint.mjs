@@ -10,7 +10,6 @@ const relevantPaths = [
   'bento.json',
   'package.json',
   'pnpm-lock.yaml',
-  'pnpm-lock.release.yaml',
   'config',
   'configs',
   'patches',
@@ -23,6 +22,7 @@ const relevantPaths = [
   '.nvmrc',
   '.github/workflows/ci.yml',
   '.github/workflows/release.yml',
+  '.github/actions',
 ];
 
 function fail(message) {

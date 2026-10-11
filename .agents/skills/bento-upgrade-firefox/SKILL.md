@@ -271,8 +271,8 @@ node .agents/skills/bento-upgrade-firefox/scripts/validation-checkpoint.mjs stat
 node .agents/skills/bento-upgrade-firefox/scripts/validation-checkpoint.mjs has . <target> build package release-build headless-smoke
 ```
 
-The checkpoint schema is fail-closed. It fingerprints `bento.json`, package
-and both lock files, `config/`, `configs/`, patches, overlays, branding,
+The checkpoint schema is fail-closed. It fingerprints `bento.json`,
+`package.json`, `pnpm-lock.yaml`, `config/`, `configs/`, patches, overlays, branding,
 extensions, preferences, build scripts, `rust-toolchain.toml`, `.nvmrc`, and
 the native CI and release workflow inputs. It excludes `plans/` and unrelated
 documentation. A source change invalidates every recorded gate.

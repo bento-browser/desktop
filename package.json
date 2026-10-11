@@ -45,6 +45,7 @@
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
     "security:check": "node scripts/check-security-invariants.mjs",
     "release:security-check": "node scripts/check-release-security.mjs --channel=preview",
+    "release:security-check:shell": "node scripts/check-release-security.mjs --built-shell",
     "release:security-check:public": "node scripts/check-release-security.mjs --channel=public",
     "release:sbom": "node scripts/generate-release-sbom.mjs",
     "release:metadata": "node scripts/generate-release-metadata.mjs",

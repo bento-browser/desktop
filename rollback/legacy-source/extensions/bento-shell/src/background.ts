@@ -74,10 +74,15 @@ function connectTools(): void {
 
 connectTools();
 
-// Dev reload: Alt+Shift+R rebuilds extension state from disk.
-browser.commands.onCommand.addListener((command) => {
-  if (command === 'dev-reload') browser.runtime.reload();
-});
+// Dev reload: Alt+Shift+R rebuilds extension state from disk. Release builds
+// define the flag as false so this handler is compiled out, and the installer
+// drops the manifest command (scripts/dev-reload.mjs).
+declare const __BENTO_DEV_RELOAD__: boolean;
+if (__BENTO_DEV_RELOAD__) {
+  browser.commands.onCommand.addListener((command) => {
+    if (command === 'dev-reload') browser.runtime.reload();
+  });
+}
 
 // Document → background → tools (Actions) and document hello-replay.
 channel.addEventListener('message', (msg) => {
