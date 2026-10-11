@@ -2168,6 +2168,11 @@ browser.runtime.onConnectExternal.addListener((port) => {
   // empty panel filter — symptom: sidebar shows the unfiltered tab
   // list for ~hundreds of ms before the post-restore panels/sync
   // arrives and the filter kicks in.
+  //
+  // Shell documents that are listening during this sequence request no
+  // snapshots of their own (see useToolsPort.ts, "Shell bus bootstrap" in
+  // docs/core-functionality-technical.md). Keep the six snapshots below and
+  // the per-workspace panels/sync complete, or those documents stay empty.
   void bootReady.then(() => {
     send({ type: 'tools/booted', version: '0.0.0' });
     send({ type: 'tabs/snapshot', tabs: tabs.snapshot() });

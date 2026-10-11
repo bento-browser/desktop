@@ -82,6 +82,9 @@ interface BusState {
    * In both cases bento-tools falls back to legacy global behaviour
    * (single-window semantics). */
   windowId: number | null;
+  /** Identifies this document's `hello`. The background tags its bootstrap
+   * replay with it so only the joining document applies the replay. */
+  helloId: string;
 }
 
 function readWindowIdFromHash(): number | null {
@@ -106,6 +109,7 @@ const state: BusState = {
   ready: false,
   sidePanelTitleBridge: false,
   windowId: readWindowIdFromHash(),
+  helloId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
 };
 const subscribers = new Set<() => void>();
 
@@ -137,18 +141,25 @@ function ensureConnection(): void {
   channel.addEventListener('message', (msg) => {
     const { data } = msg;
     if (!data || data.kind !== 'event') return;
+    // The background replays cached state per `hello`. Documents that did
+    // not say hello already hold it, so only the joiner applies the replay.
+    const isReplay = typeof data.replayFor === 'string';
+    if (isReplay && data.replayFor !== state.helloId) return;
     const event = data.event as Event;
     switch (event.type) {
-      case 'tools/booted':
+      case 'tools/booted': {
+        const wasReady = state.ready;
         state.ready = true;
         // The sidebar has bento.boot from main.tsx; secondary entries also
         // connect to this bus, but do not own that startup mark.
         markToolsReady();
         notify();
-        // The cached snapshot relayed by bento-shell background may be from
-        // a moment when tools' TabRegistry hadn't yet captured all startup
-        // tabs. Ask for a fresh one — applySnapshot replaces, not merges,
-        // so this can only fix things, never lose tabs.
+        // Only a replayed boot means this document may have missed the
+        // snapshots tools sends right after a live `tools/booted`, so only
+        // that case asks for them. A document that already saw the live boot
+        // is complete, and requests would make tools broadcast every
+        // snapshot to every document again.
+        if (!isReplay || wasReady) return;
         dispatch({ type: 'tabs/requestSnapshot' });
         dispatch({ type: 'workspaces/requestSnapshot' });
         dispatch({ type: 'settings/requestSnapshot' });
@@ -156,6 +167,7 @@ function ensureConnection(): void {
         dispatch({ type: 'tabFolders/requestSnapshot' });
         dispatch({ type: 'savedPanels/requestSnapshot' });
         return;
+      }
       case 'tabs/snapshot':
         useTabsStore.getState().applySnapshot(event.tabs);
         return;
@@ -423,8 +435,9 @@ function ensureConnection(): void {
     }
   });
 
-  // Tell the background we're alive so it replays last booted + snapshot.
-  channel.postMessage({ kind: 'hello' });
+  // Tell the background we're alive so it replays last booted + panels/sync
+  // to this document only (tagged with helloId).
+  channel.postMessage({ kind: 'hello', helloId: state.helloId });
 
   // windowId was already captured synchronously from `?bentoWindowId=` at
   // module load. Send shell/hello so bento-tools logs the windowId for
