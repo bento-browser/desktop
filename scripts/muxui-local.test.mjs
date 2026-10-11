@@ -64,6 +64,29 @@ test('MUXUI_LOCAL throws in release mode before touching the path', () => {
   assert.ok(resolveMuxLocal({ MUXUI_LOCAL: root, BENTO_RELEASE: '0', BENTO_BUILD_MODE: 'dev' }));
 });
 
+test('MUXUI_LOCAL throws when only bento.json says release, and dev stays allowed', () => {
+  const mux = muxFixture();
+  const repoRoot = (mode) => {
+    const dir = tempDir();
+    fs.writeFileSync(path.join(dir, 'bento.json'), JSON.stringify({ build: { mode } }));
+    return dir;
+  };
+  const release = repoRoot('release');
+  const dev = repoRoot('dev');
+  // No release variable set: bento.json alone makes it a release build, as for the build driver.
+  assert.throws(() => resolveMuxLocal({ MUXUI_LOCAL: mux }, release), /release build.*bento\.json/);
+  assert.throws(() => resolveMuxLocal({ MUXUI_LOCAL: '/does/not/exist' }, release), /release build/);
+  assert.ok(resolveMuxLocal({ MUXUI_LOCAL: mux }, dev));
+  // BENTO_BUILD_MODE outranks bento.json for the driver, so it does here.
+  assert.ok(resolveMuxLocal({ MUXUI_LOCAL: mux, BENTO_BUILD_MODE: 'dev' }, release));
+  assert.throws(
+    () => resolveMuxLocal({ MUXUI_LOCAL: mux, BENTO_RELEASE: '1', BENTO_BUILD_MODE: 'dev' }, release),
+    /release build/,
+  );
+  // Without MUXUI_LOCAL there is nothing to refuse and bento.json is not read.
+  assert.equal(resolveMuxLocal({}, path.join(release, 'missing')), undefined);
+});
+
 test('MUXUI_LOCAL must be an absolute path to generated @muxui/react', () => {
   assert.throws(() => resolveMuxLocal({ MUXUI_LOCAL: 'packages/react' }), /absolute path/);
   assert.throws(

@@ -305,9 +305,13 @@ How the checkout is used:
 
 Guards keep local Mux out of releases:
 
-- The Vite configs, `muxui-dev.mjs`, and `scripts/build-rollback-variant.mjs`
-  throw when `MUXUI_LOCAL` is set during `BENTO_RELEASE=1` or
-  `BENTO_BUILD_MODE=release` (the rollback script refuses it in every action);
+- The Vite configs and `muxui-dev.mjs` (through `muxui-local.mjs`) throw when
+  `MUXUI_LOCAL` is set during a release build: `BENTO_RELEASE=1`,
+  `BENTO_BUILD_MODE=release`, or `build.mode: "release"` in `bento.json`, resolved by
+  `scripts/build-mode.mjs` like the build driver does (see
+  [Dev-only reload command](#dev-only-reload-command)). `shell:*:mux` still work
+  while the mode is `dev`. `scripts/build-rollback-variant.mjs` refuses
+  `MUXUI_LOCAL` in every action;
   `scripts/build-release.sh` and `scripts/build-bento.sh` exit if it is set.
 - The shell build writes `dist/muxui-source.json`: `{"source":"npm","version":...}`
   or `{"source":"local"}`. Packaging (`bento-build.mjs package`, which backs

@@ -9,13 +9,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { isReleaseBuild } from '../../scripts/build-mode.mjs';
 
 export const MUX_PACKAGE = '@muxui/react';
 export const MUX_SOURCE_STAMP = 'muxui-source.json';
 
-export function isReleaseBuild(env = process.env) {
-  return env.BENTO_RELEASE === '1' || env.BENTO_BUILD_MODE === 'release';
-}
+// The repository whose bento.json decides the build mode. fileURLToPath rather than
+// import.meta.dirname: Vite bundles its config and rewrites import.meta.url per module.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -23,14 +26,17 @@ function escapeRegExp(text) {
 
 /**
  * Validates MUXUI_LOCAL without requiring generated output, so a dev loop can run
- * Mux generate first. Returns the package root, or undefined when unset.
+ * Mux generate first. Returns the package root, or undefined when unset. Throws in a
+ * release build as scripts/build-mode.mjs defines it, including `build.mode:
+ * "release"` in the repository's bento.json.
  */
-export function muxLocalRoot(env = process.env) {
+export function muxLocalRoot(env = process.env, repoRoot = REPO_ROOT) {
   const root = env.MUXUI_LOCAL;
   if (!root) return undefined;
-  if (isReleaseBuild(env)) {
+  if (isReleaseBuild(repoRoot, env)) {
     throw new Error(
-      'MUXUI_LOCAL is set during a release build (BENTO_RELEASE=1 or BENTO_BUILD_MODE=release). ' +
+      'MUXUI_LOCAL is set during a release build (BENTO_RELEASE=1, BENTO_BUILD_MODE=release, ' +
+        'or build.mode "release" in bento.json). ' +
         'Releases use only the published npm @muxui/react; unset MUXUI_LOCAL.',
     );
   }
@@ -58,8 +64,8 @@ export function muxLocalRoot(env = process.env) {
  * `package.json` exports map; a prefix alias would rewrite subpaths such as
  * `@muxui/react/themes` into `<entry>/themes`.
  */
-export function resolveMuxLocal(env = process.env) {
-  const root = muxLocalRoot(env);
+export function resolveMuxLocal(env = process.env, repoRoot = REPO_ROOT) {
+  const root = muxLocalRoot(env, repoRoot);
   if (root === undefined) return undefined;
   if (!fs.existsSync(path.join(root, 'generated', 'index.mjs'))) {
     throw new Error(
