@@ -23,7 +23,7 @@ pure javascript-based instance will be created.
 The script for either instance are dynamically loaded and only when needed,
 such that no resources are wasted by keeping in memory code which won't be
 used.
-
+ 
 ### `lz4-block-codec-wasm.js`
 
 This contains the code to instantiate WebAssembly-based LZ4 block codec. Note
