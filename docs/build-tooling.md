@@ -743,6 +743,17 @@ generated theme files, so none of them needs a separate step.
   `patches/chrome-layout/01-bento-shell-mount.patch`.
   [`scripts/theme-sheets.test.mjs`](../scripts/theme-sheets.test.mjs) covers the
   generator and runs in CI.
+- **Mux CSS shape.** Both generators read Mux's `styles.css`, `themes.css` and
+  `@muxui/react/themes` through one module,
+  [`scripts/mux-css.mjs`](../scripts/mux-css.mjs) (tests in
+  [`scripts/mux-css.test.mjs`](../scripts/mux-css.test.mjs)). It matches each
+  public block by its whole top-level selector list, derives the theme list from the
+  package instead of a fixed count, and stops the build with a message that names
+  the file and block when Mux changes the shape: a missing, repeated or non-flat
+  block, a missing required token, a `themes.css` rule it cannot assign to one
+  theme, or a theme without both a light and a dark rule. A Mux upgrade that adds
+  themes needs no generator change; one that reshapes the CSS needs a change in that
+  module only.
 - **Fonts.** [`extensions/bento-shell/woff2-fonts.ts`](../extensions/bento-shell/woff2-fonts.ts)
   rewrites the TrueType fonts the package stylesheet references to WOFF2 at the
   end of the shell build, with no extra dependency: it Brotli-compresses the

@@ -81,7 +81,7 @@ On 2026-10-12 the shell CSS and fonts were split and pruned. Themes became
 per-theme sheets (the shared `style.css` carries Default only), the Mux CSS for
 components Bento never renders was pruned, and the six fonts became WOFF2.
 `style.css` fell from 103.13 KB to 63.01 KB gzipped (1.08 MB to 0.60 MB raw), the
-15 theme sheets are 28 kB each (3 kB gzipped; a document loads one, or all 16
+theme sheets are 28 kB each (3 kB gzipped; a document loads one, or all of them
 where it previews them), the fonts fell from 2.74 MB to 1.22 MB, and the generated
 chrome token sheet from 664 kB to 284 kB (60 kB to 33 kB gzipped). The 40 KB
 ceiling for `style.css` is still exceeded.
@@ -175,8 +175,9 @@ The preset palettes (`@muxui/react/themes.css`) are not part of that import. Eac
 document loads only the themes it shows, from per-theme sheets:
 
 - `scripts/sync-theme-presets.mjs` splits the public `themes.css` into
-  `extensions/bento-shell/public/themes/<id>.css` (15 canonical sheets, each
-  `@layer muxui { ... }`, standard contrast only) plus one sheet per repo-local
+  `extensions/bento-shell/public/themes/<id>.css` (one canonical sheet per theme
+  that `@muxui/react/themes` exports, each `@layer muxui { ... }`, standard
+  contrast only) plus one sheet per repo-local
   custom theme. `theme/presets/index.css` keeps the Default theme, which every
   document needs for its first paint and as the unknown-id fallback. The sheets
   are tracked generated files; `pnpm run theme:sync` rewrites them and drops sheets

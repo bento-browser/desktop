@@ -158,7 +158,7 @@ const shellConfig = defineConfig(({ mode }) => ({
   },
 
   // Contrast is fixed to 'standard', so drop the unreachable contrast='more'
-  // rules (Mux base blocks and its 15 theme presets) from the shipped sheet.
+  // rules (Mux base blocks and its theme presets) from the shipped sheet.
   css: { postcss: { plugins: [stripContrastMore] } },
 
   define: {
