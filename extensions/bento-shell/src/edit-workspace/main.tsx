@@ -37,6 +37,7 @@ import {
   type EditWorkspacePayload,
 } from '../bridge/useEditWorkspace';
 import { DEFAULT_THEME_ID } from '../theme/presets';
+import { ALL_THEME_IDS, useThemeSheets } from '../theme/themeSheets';
 import { WorkspaceIconField } from '../components/WorkspaceIconPicker/WorkspaceIconPicker';
 import { WorkspaceThemePicker } from '../components/WorkspaceThemePicker/WorkspaceThemePicker';
 import './edit-workspace.css';
@@ -51,6 +52,8 @@ function workspaceInitial(name: string): string {
 function EditWorkspaceApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
+  // The theme picker previews every theme.
+  useThemeSheets(ALL_THEME_IDS);
   const [payload, setPayload] = useState<EditWorkspacePayload | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftThemeId, setDraftThemeId] = useState<string>(DEFAULT_THEME_ID);

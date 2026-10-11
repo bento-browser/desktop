@@ -115,6 +115,32 @@ sync_chrome_file() {
   return 0
 }
 
+# A chrome directory registered in jar.mn by wildcard (bento-chrome-themes/): the build
+# lists its files once, so themes added between full builds only appear if the whole
+# directory is linked, like the add-on dist/ directories above.
+sync_chrome_dir() {
+  local name="$1"
+  local source="$REPO_ROOT/$SRC_CHROME_ROOT/$name"
+  local target="$APP_CHROME_ROOT/$name"
+
+  if [ ! -d "$source" ]; then
+    echo "sync-symlinks: chrome source dir $source missing — skipping $name/"
+    return 0
+  fi
+  if [ ! -d "$APP_CHROME_ROOT" ]; then
+    echo "sync-symlinks: $APP_CHROME_ROOT missing — skipping chrome files"
+    return 0
+  fi
+  if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then
+    echo "sync-symlinks: chrome/$name/ already linked"
+    return 0
+  fi
+  rm -rf "$target"
+  ln -s "$source" "$target"
+  echo "sync-symlinks: chrome/$name/ linked -> $source"
+  return 0
+}
+
 SRC_ACTORS_ROOT="src/browser/actors"
 
 copy_content_actor() {
@@ -170,6 +196,7 @@ else
   APP_CHROME_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/content/browser"
   sync_chrome_file bento-chrome-tokens.css
   sync_chrome_file bento-chrome-theme.css
+  sync_chrome_dir bento-chrome-themes
   sync_chrome_file bento-migration-host.css
   sync_chrome_file bento-migration-host.html
   sync_chrome_file bento-migration-host.js

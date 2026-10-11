@@ -10,10 +10,17 @@
  * projects the public Mux base stylesheet for default/custom compatibility,
  * and emits the legacy token bridge consumed by existing Bento CSS. Do not
  * import Mux's private token compiler or schema here.
+ *
+ * Output is split so a document loads only the theme it shows:
+ *   - presets/index.css: the Default theme and the shared token bridge, imported
+ *     by every entry.
+ *   - public/themes/<id>.css: one sheet per other theme, loaded on demand by
+ *     src/theme/themeSheets.ts. Canonical sheets carry that theme's rules from
+ *     the public @muxui/react/themes.css export inside the `muxui` layer.
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -21,6 +28,8 @@ import { fileURLToPath } from 'node:url';
 
 import prettier from 'prettier';
 
+import { dropContrastMoreSelectors } from '../extensions/bento-shell/contrast-more.mjs';
+import { splitTopLevelBlocks, themeIdsInSelector } from '../extensions/bento-shell/css-blocks.mjs';
 import { rewriteThemeSelectors } from './theme-selector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +38,9 @@ const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
 const PRESETS_DIR = resolve(SHELL_DIR, 'src/theme/presets');
 const INDEX_CSS_PATH = resolve(PRESETS_DIR, 'index.css');
 const INDEX_TS_PATH = resolve(PRESETS_DIR, 'index.ts');
+// Vite copies public/ into dist/, so the sheets keep stable URLs (./themes/<id>.css)
+// in every build, including the archived rollback configs.
+const SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 
 const DEFAULT_THEME_ID = 'default';
 // Contrast is fixed to 'standard', so the public contrast='more' block is not
@@ -444,8 +456,8 @@ function buildMuxCompatibilityCss(stylesCss, localThemes, defaultBrandValues) {
   }
 
   const referenceOverrides = buildReferenceOverrides(rootBody);
-  return localThemes
-    .map((theme) => {
+  return new Map(
+    localThemes.map((theme) => {
       const id = theme.id;
       const scope = `[data-muxui-theme='${id}']`;
       const scopedBlocks = blocks.map(({ selector, body }) => {
@@ -477,9 +489,35 @@ function buildMuxCompatibilityCss(stylesCss, localThemes, defaultBrandValues) {
         return `${scopedSelector} {\n${body}\n${additions}\n}`;
       });
       scopedBlocks.push(`${scope} {\n${closureBody}\n}`);
-      return scopedBlocks.join('\n\n');
-    })
-    .join('\n\n');
+      return [id, scopedBlocks.join('\n\n')];
+    }),
+  );
+}
+
+/**
+ * Group the public themes.css rules by theme id, dropping contrast='more' rules (see
+ * extensions/bento-shell/contrast-more.mjs). Fails on any rule shape this generator
+ * does not understand, so a Mux change cannot silently leak rules into the wrong sheet.
+ */
+function splitCanonicalThemeRules(themesCss, themeIds) {
+  const rulesById = new Map(themeIds.map((id) => [id, []]));
+  for (const { prelude, body } of splitTopLevelBlocks(themesCss)) {
+    if (prelude.startsWith('@')) {
+      usageError(`@muxui/react/themes.css has an unexpected at-rule: ${prelude}`);
+    }
+    const selector = dropContrastMoreSelectors(prelude);
+    if (!selector) continue;
+    const ids = new Set(themeIdsInSelector(selector));
+    const [id] = ids;
+    if (ids.size !== 1 || !rulesById.has(id)) {
+      usageError(`@muxui/react/themes.css has a rule outside the canonical themes: ${prelude}`);
+    }
+    rulesById.get(id).push(`${selector} {${body}}`);
+  }
+  for (const [id, rules] of rulesById) {
+    if (rules.length === 0) usageError(`@muxui/react/themes.css has no rules for theme ${id}`);
+  }
+  return rulesById;
 }
 
 const requireFromShell = createRequire(resolve(SHELL_DIR, 'package.json'));
@@ -609,7 +647,19 @@ const canonicalThemes = muxThemes.map((theme) => ({
 const standardThemes = canonicalThemes.filter((theme) => theme.collection === 'standard');
 const monochromeThemes = canonicalThemes.filter((theme) => theme.collection === 'monochrome');
 const themes = [...localThemes, ...canonicalThemes];
-const muxCompatibilityCss = buildMuxCompatibilityCss(muxStylesCss, localThemes, defaultBrandValues);
+const muxCompatibilityBlocks = buildMuxCompatibilityCss(
+  muxStylesCss,
+  localThemes,
+  defaultBrandValues,
+);
+const canonicalThemeRules = splitCanonicalThemeRules(
+  muxThemesCss,
+  canonicalThemes.map((theme) => theme.id),
+);
+// Default stays in the shared stylesheet: it is the document's first-paint theme and the
+// fallback for unknown ids. Every other theme is its own sheet.
+const defaultTheme = localThemes.find((theme) => theme.id === DEFAULT_THEME_ID);
+const sheetLocalThemes = localThemes.filter((theme) => theme.id !== DEFAULT_THEME_ID);
 const legacyAliasCss = formatLegacyBridgeCss(
   extractPublicBlock(muxStylesCss, ':root'),
   extractPublicBlock(muxStylesCss, PUBLIC_CLOSURE_SELECTOR),
@@ -621,22 +671,57 @@ const indexCssSource = `/*
  * Canonical metadata comes from @muxui/react/themes. Repo-local sibling CSS
  * files supply Bento-specific themes. Selectors are adapted to
  * data-bento-theme, and the public Mux base blocks are scoped to
- * data-muxui-theme for default/custom compatibility. Do not edit by hand.
+ * data-muxui-theme for default/custom compatibility. This file carries the
+ * Default theme only; every other theme is a sheet in public/themes/ that
+ * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
  *
  * @muxui/react/styles.css sha256:${muxStylesDigest}
  * @muxui/react/themes.css sha256:${muxThemesDigest}
  */
 
-${localThemes
-  .map((theme) => `/* ─── Bento theme: ${theme.id} ───────────────────────────── */\n${theme.css}`)
-  .join('\n\n')}
+/* ─── Bento theme: ${defaultTheme.id} ───────────────────────────── */
+${defaultTheme.css}
 
 /* ─── Bento legacy token bridge from public Mux aliases ────────────── */
 ${legacyAliasCss}
 
-/* ─── Mux public base projection for Bento default/custom themes ───── */
-${muxCompatibilityCss}
+/* ─── Mux public base projection for the Default theme ─────────────── */
+${muxCompatibilityBlocks.get(DEFAULT_THEME_ID)}
 `;
+
+/** Per-theme sheets: file name (without .css) -> unformatted CSS source. */
+function themeSheetSources() {
+  const header = (id, source) => `/*
+ * AUTO-GENERATED by scripts/sync-theme-presets.mjs. Do not edit by hand.
+ *
+ * Theme sheet for '${id}'. Source: ${source}.
+ * The shared stylesheet carries the Default theme; src/theme/themeSheets.ts
+ * attaches this file only in documents that show the theme.
+ */
+`;
+  const sheets = new Map();
+  for (const [id, rules] of canonicalThemeRules) {
+    sheets.set(
+      id,
+      `${header(id, 'public @muxui/react/themes.css, contrast standard')}
+@layer muxui {
+${rules.join('\n\n')}
+}
+`,
+    );
+  }
+  for (const theme of sheetLocalThemes) {
+    sheets.set(
+      theme.id,
+      `${header(theme.id, 'repo-local Bento theme')}
+${theme.css}
+
+${muxCompatibilityBlocks.get(theme.id)}
+`,
+    );
+  }
+  return sheets;
+}
 
 const legacyAliases = Object.fromEntries(
   monochromeThemes.map((theme) => [theme.presetId, theme.id]),
@@ -715,11 +800,27 @@ const indexTs = await prettier.format(indexTsSource, {
   filepath: INDEX_TS_PATH,
 });
 
-const cssChanged = writeIfChanged(INDEX_CSS_PATH, indexCss);
-const tsChanged = writeIfChanged(INDEX_TS_PATH, indexTs);
+let changed = writeIfChanged(INDEX_CSS_PATH, indexCss);
+changed = writeIfChanged(INDEX_TS_PATH, indexTs) || changed;
+
+mkdirSync(SHEETS_DIR, { recursive: true });
+const sheets = themeSheetSources();
+for (const [id, source] of sheets) {
+  const sheetPath = resolve(SHEETS_DIR, `${id}.css`);
+  const formatted = await prettier.format(source, { ...prettierOptions, filepath: sheetPath });
+  changed = writeIfChanged(sheetPath, formatted) || changed;
+}
+// A removed theme must not leave its sheet behind in dist.
+for (const entry of readdirSync(SHEETS_DIR)) {
+  if (entry.endsWith('.css') && !sheets.has(entry.slice(0, -'.css'.length))) {
+    rmSync(resolve(SHEETS_DIR, entry));
+    changed = true;
+  }
+}
 
 console.log(
-  `sync-theme-presets: ${cssChanged || tsChanged ? 'wrote' : 'unchanged'} ` +
+  `sync-theme-presets: ${changed ? 'wrote' : 'unchanged'} ` +
     `${themes.length} themes (${localThemes.length} Bento, ` +
-    `${standardThemes.length} standard, ${monochromeThemes.length} monochrome)`,
+    `${standardThemes.length} standard, ${monochromeThemes.length} monochrome; ` +
+    `${sheets.size} theme sheets)`,
 );

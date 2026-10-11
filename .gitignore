@@ -60,6 +60,7 @@ plans/
 # TS-compiled outputs of shared sources (we only want sources tracked)
 extensions/_shared/*.js
 
-# Auto-generated chrome design-token stylesheet — regenerated from public Mux CSS
-# source on every `pnpm run import`. See docs/chrome-tokens.md.
+# Auto-generated chrome design-token stylesheet and per-theme sheets — regenerated
+# from public Mux CSS source on every `pnpm run import`. See docs/chrome-tokens.md.
 src/browser/base/content/bento-chrome-tokens.css
+src/browser/base/content/bento-chrome-themes/
