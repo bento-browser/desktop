@@ -1945,9 +1945,13 @@ the embedding `<browser>` element. `attachPaletteCloseListener()` in
 `bento-shell-mount.js` installs one capture-phase `window` listener that looks
 up `event.target.id` in a frame-id to handler table (shell, palette, merge
 palette, workspace palette, address bar, confirm, edit-workspace, welcome,
-embedded import, menu, workspace switcher, and panel trailer frames), reads
-`frame.contentTitle || ''`, drops a title equal to that frame's last seen title,
-and calls the same `BENTO_*` prefix handler the old interval and
+embedded import, menu, workspace switcher, and panel trailer frames), checks
+that the frame is showing its expected Bento document (a `moz-extension://` URL
+whose host is the bento-shell add-on's `mozExtensionHostname`, or the
+`chrome://browser/content/bento-migration-host.html` URL for the non-remote
+embedded import frame; otherwise the title is ignored and logged once per
+frame), reads `frame.contentTitle || ''`, drops a title equal to that frame's
+last seen title, and calls the same `BENTO_*` prefix handler the old interval and
 `requestAnimationFrame` pollers called. The shell frame, which carries
 `BENTO_PANELS`, is one more table entry, so there is no per-frame timer and no
 idle wakeup.
@@ -2244,6 +2248,13 @@ Load-bearing pitfalls:
   not background-throttled). Add a new title-IPC frame by registering its id and
   handler in the table inside `attachPaletteCloseListener()`, not by adding a
   timer or a per-element listener.
+- Title handlers only run for a frame whose `currentURI` is its own Bento page,
+  so a frame that navigates somewhere else cannot drive chrome by setting
+  `document.title`. Each frame in the table must keep loading only Bento pages
+  (`moz()` URLs, or the migration host for the embedded import frame); if a
+  frame legitimately needs another origin, change the check rather than
+  removing it. A rejected title logs `ignoring title from unexpected document`
+  once per frame in the Browser Console.
 - Handlers run synchronously inside Firefox's IPC handler for the title update.
   Keep them non-blocking: no nested event loops such as modal prompts and no
   synchronous waits. Reloading the frame that just wrote the title from inside

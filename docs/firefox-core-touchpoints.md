@@ -178,8 +178,9 @@ Use this shape for new or changed touchpoints:
   Places observer events, `gURLBar.view.close()`, frame focus, title/actor messaging paths,
   the chrome-only, bubbling `pagetitlechanged` event that
   `WindowGlobalParent::RecvUpdateDocumentTitle` (`dom/ipc/WindowGlobalParent.cpp`)
-  dispatches on a top-level document's embedding `<browser>` and the
-  `<browser>.contentTitle` getter (`toolkit/content/widgets/browser-custom-element.mjs`),
+  dispatches on a top-level document's embedding `<browser>`, and the
+  `<browser>.contentTitle` and `<browser>.currentURI` getters
+  (`toolkit/content/widgets/browser-custom-element.mjs`),
   which the mount script's one delegated `window` listener uses to receive every
   `BENTO_*` title-IPC sentinel from the shell and overlay frames (the same event
   and getter `tabbrowser.js` uses for tab labels),
@@ -211,7 +212,9 @@ Use this shape for new or changed touchpoints:
   title-IPC delivery (if `pagetitlechanged` is renamed, stops firing for
   extension-process or in-process `<browser>` elements, stops being dispatched
   synchronously with an updated `contentTitle`, or stops bubbling to the chrome
-  window, every shell and overlay message is lost because nothing polls),
+  window, every shell and overlay message is lost because nothing polls; if
+  `currentURI` lags the first title event of a new document or stops matching
+  the extension host, the document check ignores legitimate titles),
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, panel focus detection on
   privileged `about:*` pages, sidebar address scoping,
@@ -398,8 +401,10 @@ Use this shape for new or changed touchpoints:
   delivery after any Firefox update that touches `WindowGlobalParent.cpp`,
   `browser-custom-element.mjs`, or `tabbrowser.js` title handling: confirm
   `RecvUpdateDocumentTitle` still dispatches `pagetitlechanged` with
-  `CanBubble::eYes` and `ChromeOnlyDispatch::eYes` on the embedder element, then
-  in a built app open the command palette, address bar, a sidebar context menu,
+  `CanBubble::eYes` and `ChromeOnlyDispatch::eYes` on the embedder element and
+  that `currentURI` already reflects the new document when its title event
+  arrives (the Browser Console must not show `ignoring title from unexpected
+  document`), then in a built app open the command palette, address bar, a sidebar context menu,
   the workspace switcher, a confirm dialog, and the welcome flow and confirm each
   opens and closes (those paths cross the shell, overlay, menu, and panel-trailer
   frames), and confirm a `BENTO_PANELS` change such as toggling Auto/Light/Dark

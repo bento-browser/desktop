@@ -19019,6 +19019,27 @@
     ]);
     const lastSeenTitleByFrameId = new Map();
 
+    // A title is only a Bento message if the frame is showing the Bento page
+    // it hosts: a moz-extension:// document of the bento-shell add-on, or the
+    // chrome:// migration host for the non-remote embedded import frame.
+    // Every table frame only ever loads its own page, so this never drops a
+    // legitimate title. The add-on host is resolved once, on first success.
+    let bentoExtensionHost = null;
+    const warnedUnexpectedFrameIds = new Set();
+    const isExpectedBentoDocument = (frame) => {
+      const uri = frame.currentURI;
+      if (!uri) return false;
+      if (frame.id === 'bento-embedded-import-frame') {
+        return (
+          uri.spec === BENTO_EMBEDDED_IMPORT_URL ||
+          uri.spec.startsWith(BENTO_EMBEDDED_IMPORT_URL + '?')
+        );
+      }
+      if (!uri.schemeIs('moz-extension')) return false;
+      bentoExtensionHost ??= WebExtensionPolicy.getByID(ADDON_ID)?.mozExtensionHostname ?? null;
+      return bentoExtensionHost !== null && uri.host === bentoExtensionHost;
+    };
+
     window.addEventListener(
       'pagetitlechanged',
       (event) => {
@@ -19027,6 +19048,17 @@
         const frame = event.target;
         const handleTitle = titleHandlerByFrameId.get(frame.id);
         if (!handleTitle) return;
+        if (!isExpectedBentoDocument(frame)) {
+          if (!warnedUnexpectedFrameIds.has(frame.id)) {
+            warnedUnexpectedFrameIds.add(frame.id);
+            console.warn(
+              '[bento-shell-mount] ignoring title from unexpected document in',
+              frame.id,
+              frame.currentURI?.spec,
+            );
+          }
+          return;
+        }
         const title = frame.contentTitle || '';
         if (title === (lastSeenTitleByFrameId.get(frame.id) ?? '')) return;
         lastSeenTitleByFrameId.set(frame.id, title);
