@@ -439,7 +439,7 @@ test('the updater state of a mozconfig is its last updater flag, and Firefox bui
   for (const [text, expected] of cases) assert.equal(mozconfigUpdaterState(text), expected, JSON.stringify(text));
 });
 
-test('a mozconfig fragment that sets the updater is rejected, in any spelling', async () => {
+test('a mozconfig fragment that sets the updater or unverified updates is rejected, in any spelling', async () => {
   const root = await fixture();
   try {
     await withObjdirEnv(undefined, async () => {
@@ -452,7 +452,7 @@ test('a mozconfig fragment that sets the updater is rejected, in any spelling', 
           if (error.code !== 'ENOENT') throw error;
         }
         fs.mkdirSync(path.dirname(fragment), { recursive: true });
-        fs.appendFileSync(fragment, '\n# --enable-updater in a comment is fine\n');
+        fs.appendFileSync(fragment, '\n# --enable-updater and --enable-unverified-updates in a comment are fine\n');
         writeMozconfig(root, 'dev');
         for (const line of [
           'ac_add_options --enable-updater',
@@ -461,9 +461,14 @@ test('a mozconfig fragment that sets the updater is rejected, in any spelling', 
           'ac_add_options --without-updater',
           'ac_add_options "--enable-updater"',
           'export MOZ_UPDATER=1',
+          'ac_add_options --enable-unverified-updates',
+          'ac_add_options --disable-unverified-updates',
+          'ac_add_options --with-unverified-updates',
+          'ac_add_options --without-unverified-updates',
+          'export MOZ_VERIFY_MAR_SIGNATURE=',
         ]) {
           fs.writeFileSync(fragment, `${original ?? ''}\n${line}\n`);
-          assert.throws(() => writeMozconfig(root, 'dev'), /sets the updater; bento\.json updates\.enabled is the only switch/, `${path.relative(root, fragment)}: ${line}`);
+          assert.throws(() => writeMozconfig(root, 'dev'), /sets the updater or MAR signature verification; bento\.json updates\.enabled is the only switch/, `${path.relative(root, fragment)}: ${line}`);
         }
         if (original === undefined) fs.rmSync(fragment);
         else fs.writeFileSync(fragment, original);

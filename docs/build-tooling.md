@@ -195,10 +195,13 @@ release tooling treats a build as unable to update:
   fails if a MAR or update metadata exists in `dist/` or the manifest.
 - `configs/common/mozconfig`, the platform fragment and the root `mozconfig`
   are appended to `engine/mozconfig` after Bento's options, so they may not set
-  the updater: any active line that mentions it (`--enable-updater`,
-  `--disable-updater`, `--with-updater`, `--without-updater`, a `MOZ_UPDATER`
-  export) makes the mozconfig writer fail, the same way a `MOZ_OBJDIR` line does.
-  `updates.enabled` is the only switch.
+  the updater or MAR signature verification: any active line that mentions
+  either (`--enable-updater`, `--disable-updater`, `--with-updater`,
+  `--without-updater`, the same four spellings of `unverified-updates`, a
+  `MOZ_UPDATER` or `MOZ_VERIFY_MAR_SIGNATURE` export) makes the mozconfig writer
+  fail, the same way a `MOZ_OBJDIR` line does. `updates.enabled` is the only
+  switch, and unverified updates would bypass MAR signature checks if the
+  updater were re-enabled.
 - `scripts/build-release.sh` collects no MAR or update XML and fails if
   `release-out/` or `dist/` holds one; the release workflow checks the same
   before uploading.

@@ -70,12 +70,14 @@ export function activeMozconfigLines(text) {
 }
 
 /**
- * Whether an active mozconfig line touches the updater in any spelling
- * (--enable-updater, --without-updater, an export of MOZ_UPDATER). bento.json
- * `updates.enabled` is the only switch, so Bento's fragments may not carry one.
+ * Whether an active mozconfig line touches the updater or turns off MAR signature
+ * verification, in any spelling (--enable-updater, --without-updater,
+ * --enable-unverified-updates, an export of MOZ_UPDATER or MOZ_VERIFY_MAR_SIGNATURE).
+ * bento.json `updates.enabled` is the only switch, and unverified updates would
+ * bypass signature checks if the updater came back, so Bento's fragments may carry none.
  */
 export function overridesUpdater(line) {
-  return /updater/i.test(line);
+  return /updater|unverified[-_]updates|verify_mar_signature/i.test(line);
 }
 
 // configure keys its arguments by option name, so the last updater flag wins;

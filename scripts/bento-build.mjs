@@ -656,7 +656,8 @@ function mozconfigObjDirName(ctx) {
  * The fragments Bento appends to engine/mozconfig. They land after the options Bento
  * writes, and configure takes the last occurrence, so a fragment must not set what
  * Bento owns: a MOZ_OBJDIR would send mach somewhere resolveObjDir does not look, and
- * an updater flag would undo bento.json `updates.enabled` after its readiness checks.
+ * an updater flag would undo bento.json `updates.enabled` after its readiness checks (and
+ * unverified updates would drop MAR signature checks if the updater came back).
  */
 function assertFragmentsDoNotOverrideBento(ctx) {
   const fragments = [
@@ -672,7 +673,7 @@ function assertFragmentsDoNotOverrideBento(ctx) {
       fail(`${name} sets MOZ_OBJDIR; Bento chooses the object directory (set BENTO_OBJDIR to use another obj-* name)`);
     }
     if (lines.some(overridesUpdater)) {
-      fail(`${name} sets the updater; bento.json updates.enabled is the only switch (docs/build-tooling.md, Updater)`);
+      fail(`${name} sets the updater or MAR signature verification; bento.json updates.enabled is the only switch (docs/build-tooling.md, Updater)`);
     }
   }
 }
