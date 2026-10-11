@@ -203,9 +203,14 @@ if (process.argv.includes('--write-baseline')) {
     if (!args[index + 1]) throw new Error('--accept-growth needs an entry path');
     return [args[index + 1]];
   });
-  const previous = existsSync(BASELINE_PATH)
-    ? parseBaseline(readFileSync(BASELINE_PATH, 'utf8'))
-    : {};
+  // Read directly and treat a missing file as an empty baseline, so there is no
+  // check-then-read window between existsSync and readFileSync.
+  let previous = {};
+  try {
+    previous = parseBaseline(readFileSync(BASELINE_PATH, 'utf8'));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
   const measured = Object.fromEntries(measurements.map(({ key, size }) => [key, size]));
   const { next, added, lowered, raised, refused, removed } = refreshBaseline({
     previous,
@@ -234,10 +239,16 @@ if (process.argv.includes('--write-baseline')) {
   }
   if (refused.length > 0) process.exitCode = 1;
 } else {
-  if (!existsSync(BASELINE_PATH)) {
-    throw new Error(`Missing ${BASELINE_PATH}; run pnpm run size:baseline`);
+  let baselineText;
+  try {
+    baselineText = readFileSync(BASELINE_PATH, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error(`Missing ${BASELINE_PATH}; run pnpm run size:baseline`);
+    }
+    throw error;
   }
-  const baselines = parseBaseline(readFileSync(BASELINE_PATH, 'utf8'));
+  const baselines = parseBaseline(baselineText);
 
   const results = measurements.map((measurement) => reportBudget(measurement, baselines));
   const measuredKeys = new Set(measurements.map(({ key }) => key));
