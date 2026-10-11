@@ -287,7 +287,9 @@ over the page without pushing content; pressing the shortcut again restores the
 expanded sidebar.
 
 In new-tab mode, if the clipboard contains a web URL, the first result offers to
-open that URL from the clipboard. Saved panels also appear by default and open
+open that URL from the clipboard. This follows Firefox's "Clipboard" address bar
+suggestion setting (`browser.urlbar.suggest.clipboard`): when that setting is
+off, Bento does not read the clipboard when the address entry opens. Saved panels also appear by default and open
 as side panels. Typing hides these default clipboard and saved-panel rows. After
 the user types, results include capped matches for open normal tabs and panels
 from the active workspace by title or URL, plus history, bookmarks, and a final

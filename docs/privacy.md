@@ -56,7 +56,9 @@ The shared preset model lives in `extensions/_shared/privacy-levels.ts`.
 The low-level privileged privacy API is `browser.bentoPrivacy`, registered from
 `extensions/bento-tools/experiments/bento-privacy/`. It exposes allowlisted pref
 reads/writes/clears and default search engine operations. It rejects prefs
-outside the static allowlist.
+outside the static allowlist. It also hosts `consumeAddPanelGrant`, the
+one-time check behind the Add panel button, which does not read or write
+privacy state.
 
 Native Settings uses the separate tools-owned
 `browser.bentoNativePreferences` bridge. The parent adapter authenticates the

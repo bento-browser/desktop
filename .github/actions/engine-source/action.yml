@@ -1,0 +1,65 @@
+name: Firefox source
+description: >-
+  Restore the pristine Firefox source for the version and digest pinned in
+  bento.json, download it on a miss, and save the miss for later runs.
+
+# The cache holds the source exactly as `pnpm run download` leaves it, before
+# any Bento import. `import` resets the patched files and re-copies every
+# overlay, so UI, patch, and script edits never invalidate it. It is keyed only
+# by the Firefox version and source digest. Native objects have their own cache.
+
+outputs:
+  cache-hit:
+    description: "'true' when the pristine source came from the cache."
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-key:
+    description: Cache key that was looked up (and saved on a miss).
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read pinned Firefox source identity
+      id: identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(node -p "require('./bento.json').firefox.version")"
+        sha256="$(node -p "require('./bento.json').firefox.source.sha256")"
+        [[ "$version" =~ ^[0-9][0-9A-Za-z.-]*$ ]] || { echo "bento.json firefox.version is malformed: $version" >&2; exit 1; }
+        [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || { echo "bento.json firefox.source.sha256 is not a SHA-256 digest" >&2; exit 1; }
+        {
+          echo "version=$version"
+          echo "sha256=$sha256"
+          # Shared by the restore and save steps: GitHub derives the cache
+          # version from these exact strings.
+          echo "path<<BENTO_PATH_EOF"
+          echo 'engine/*'
+          echo 'engine/.[!.]*'
+          echo '!engine/obj-*'
+          echo '.bento/source-state.json'
+          echo "BENTO_PATH_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Restore Firefox source (engine/)
+      id: restore
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ steps.identity.outputs.path }}
+        key: bento-engine-source-v2-${{ runner.os }}-${{ steps.identity.outputs.version }}-${{ steps.identity.outputs.sha256 }}
+
+    # A restored tree is verified against bento.json and reused; otherwise this
+    # downloads and verifies the archive and creates the protected checkout.
+    - name: Bento download (Firefox source)
+      shell: bash
+      run: pnpm run download
+
+    # Tag runs only read the cache: a cache written under a tag ref is invisible
+    # to every later tag and would only evict useful branch caches.
+    - name: Save Firefox source (engine/)
+      if: steps.restore.outputs.cache-hit != 'true' && github.ref_type != 'tag'
+      continue-on-error: true
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ steps.identity.outputs.path }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}

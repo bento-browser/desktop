@@ -329,11 +329,48 @@ async function getEngineIconUrl(engine, extensionBaseURI) {
   return getBundledEngineIconUrl(engine, extensionBaseURI);
 }
 
+// Add-panel grants are issued by bento-shell-mount.js as
+// `nativeTab.bentoAddPanelGrant = { token, windowId, source, expiresAt,
+// acknowledge }` on the XUL tab element, which web content cannot reach.
+// Consuming checks (tabId, token), deletes the grant before any other check
+// so it is single-use, then returns the recorded metadata. Anything that does
+// not match a live grant returns null; the URL alone is never authority.
+// The whole function is synchronous, so check-and-delete is atomic.
+function consumeAddPanelGrant(extension, tabId, token) {
+  let tab = null;
+  try {
+    tab = extension.tabManager.get(tabId, null);
+  } catch {
+    return null;
+  }
+  const nativeTab = tab?.nativeTab;
+  const grant = nativeTab?.bentoAddPanelGrant;
+  if (!grant || typeof token !== 'string' || grant.token !== token) return null;
+  delete nativeTab.bentoAddPanelGrant;
+  try {
+    grant.acknowledge?.();
+  } catch {
+    // The acknowledgement only lets chrome navigate away sooner.
+  }
+  if (!(Date.now() <= grant.expiresAt)) return null;
+  const windowId = tab.windowId;
+  if (!Number.isInteger(windowId) || windowId < 0) return null;
+  if (grant.windowId !== null && grant.windowId !== windowId) return null;
+  const source = grant.source;
+  const validSource =
+    source === 'main' || source === 'end' || (Number.isInteger(source) && source >= 0);
+  return validSource ? { windowId, source } : null;
+}
+
 this.bentoPrivacy = class extends ExtensionAPI {
-  getAPI() {
+  getAPI(context) {
     const extensionBaseURI = this.extension?.baseURI;
     return {
       bentoPrivacy: {
+        async consumeAddPanelGrant(tabId, token) {
+          return consumeAddPanelGrant(context.extension, tabId, token);
+        },
+
         async getPrefs(names) {
           const result = {};
           for (const name of names) {

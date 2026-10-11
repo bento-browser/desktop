@@ -201,7 +201,23 @@ let lastBooted: Event | null = null;
 // Per-workspace — panels are workspace-scoped, so a single "latest" cache
 // would lose workspaces beyond whichever fired most recently. Hello-replay
 // walks every entry so a freshly-mounted document gets the full picture.
+// Entries are dropped when their workspace is removed (see
+// pruneRemovedWorkspaces) so replays never resurrect deleted workspaces.
 const lastPanelsSyncByWorkspace = new Map<string, Event>();
+
+function pruneRemovedWorkspaces(event: Event): void {
+  if (event.type === 'workspaces/changed') {
+    for (const delta of event.deltas) {
+      if (delta.kind === 'removed') lastPanelsSyncByWorkspace.delete(delta.id);
+    }
+  } else if (event.type === 'workspaces/snapshot') {
+    // Authoritative list: also heals a panels/sync that raced a removal.
+    const live = new Set(event.workspaces.map((workspace) => workspace.id));
+    for (const workspaceId of lastPanelsSyncByWorkspace.keys()) {
+      if (!live.has(workspaceId)) lastPanelsSyncByWorkspace.delete(workspaceId);
+    }
+  }
+}
 
 function scheduleReconnect(): void {
   if (reconnectTimer) return;
@@ -250,6 +266,7 @@ function connectTools(): void {
     if (event.type === 'panels/sync') {
       lastPanelsSyncByWorkspace.set(event.workspaceId, event);
     }
+    pruneRemovedWorkspaces(event);
     channel.postMessage({ kind: 'event', event });
   });
 
@@ -267,10 +284,15 @@ function connectTools(): void {
 
 connectTools();
 
-// Dev reload: Alt+Shift+R rebuilds extension state from disk.
-browser.commands.onCommand.addListener((command) => {
-  if (command === 'dev-reload') browser.runtime.reload();
-});
+// Dev reload: Alt+Shift+R rebuilds extension state from disk. Release builds
+// define the flag as false so this handler is compiled out, and the installer
+// drops the manifest command (scripts/dev-reload.mjs).
+declare const __BENTO_DEV_RELOAD__: boolean;
+if (__BENTO_DEV_RELOAD__) {
+  browser.commands.onCommand.addListener((command) => {
+    if (command === 'dev-reload') browser.runtime.reload();
+  });
+}
 
 // Document → background → tools (Actions) and document hello-replay.
 channel.addEventListener('message', (msg) => {
@@ -318,8 +340,8 @@ channel.addEventListener('message', (msg) => {
     // out of the sidebar for a few frames.
     //
     // The joiner re-fetches tabs/workspaces/settings via its own
-    // useToolsPort handler on receipt of tools/booted (it dispatches
-    // tabs/requestSnapshot etc.); tools answers with a fresh
+    // useToolsPort handler on receipt of the replayed tools/booted (it
+    // dispatches tabs/requestSnapshot etc.); tools answers with a fresh
     // snapshot that's broadcast to the whole channel, idempotent
     // for existing docs whose state already matches.
     //
@@ -327,9 +349,15 @@ channel.addEventListener('message', (msg) => {
     // with tools: every panel mutation triggers an emit, the bg
     // captures each emit per workspace, so the cached value reflects
     // current state. No staleness window.
-    if (lastBooted) channel.postMessage({ kind: 'event', event: lastBooted });
+    //
+    // Replays are tagged `replayFor: helloId`. BroadcastChannel still
+    // delivers them to every document, but each document drops replays
+    // tagged for someone else, so a join costs the other N-1 documents
+    // no store updates, snapshot requests, or BENTO_PANELS title writes.
+    const replayFor = typeof data.helloId === 'string' ? data.helloId : undefined;
+    if (lastBooted) channel.postMessage({ kind: 'event', event: lastBooted, replayFor });
     for (const event of lastPanelsSyncByWorkspace.values()) {
-      channel.postMessage({ kind: 'event', event });
+      channel.postMessage({ kind: 'event', event, replayFor });
     }
     return;
   }

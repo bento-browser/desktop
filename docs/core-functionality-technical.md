@@ -28,6 +28,46 @@ dispatches `Action` messages through `extensions/bento-shell/src/bridge/useTools
 `bento-tools` mutates stores and broadcasts `Event` payloads back. Shell Zustand
 stores are mirrors only.
 
+Port validation: `bento-tools` never trusts the `Action` type on the shell port.
+After `isAuthorizedShellPort` and the targeted `shell-client/*` handshake, every
+message goes through `createShellActionIntake`
+(`extensions/bento-tools/src/messaging/shell-action-intake.ts`) and
+`parseWireAction` (`extensions/_shared/wire-action.ts`):
+
+- `ACTION_FIELDS` has one entry per `Action` type and one guard per field, typed
+  so a new action type or field fails to compile until it has a validator. Keys
+  are exact (plus the `__windowId` routing envelope); ids are safe integers
+  (non-negative, except the negative placeholder ids of `pinnedPanel/*` and
+  `pinnedPanels/reorder`); strings, arrays, and numeric ranges are bounded;
+  URL-bearing actions accept only `http`, `https`, `file`, `ftp`, `about`,
+  `view-source`, and `moz-extension` (favicons also `data`, `chrome`, and a few
+  icon schemes), and never `javascript:`, `data:`, or `blob:` page URLs.
+  `settings/update` reuses `isValidBentoSettingsPatch`; `backup/import` keeps
+  `validateExportSchema` for the payload so the user still gets an import error.
+- A message that claims a source window (`__windowId`, or the payload window of
+  `shell/hello`) is dropped unless `browser.windows.get` confirms the window.
+  Confirmed windows are cached until `windows.onRemoved`, and a removed id is
+  remembered so a lookup still pending at removal cannot mark the closed window
+  live again (a queued `shell/hello` would reassign workspace ownership to it).
+  Messages queue behind a pending check so arrival order is kept.
+- Invalid messages are logged by type only (never payloads) and dropped; the
+  listener cannot throw. Mount-script dispatches (`dispatchShellAction`) and React
+  dispatches (`useToolsPort.ts`) must send exactly the declared fields. Manual
+  check: after any change to an action shape, exercise that UI path and watch the
+  tools console for `dropped invalid shell message`.
+- Page-controlled strings must fit the caps before they are dispatched, because
+  one over-cap field drops the whole action. Save panel
+  (`boundSavedPanelMetadata` in `bento-shell-mount.js`) cuts the page title to
+  the title cap, drops a favicon over its cap, and skips a URL over the URL cap
+  (a truncated URL would be a different address). The URL cap is
+  `MAX_URL_LENGTH` in `extensions/_shared/export-schema.ts`, shared by the port
+  validator and backup import; it mirrors Firefox's
+  `network.standard-url.max-length` (1,048,576), so recheck it on Firefox
+  updates. Pitfall: forwarding `contentTitle` untouched made Save panel fail
+  silently on a page with a title over 4,096 characters. Keep the mount
+  constants equal to the validator caps; `scripts/bento-privacy-security.test.mjs`
+  compares them.
+
 ## Native Tabs And Titlebar Controls
 
 Bento hides Firefox's native horizontal tab strip through Firefox's own
@@ -675,7 +715,11 @@ privileged surface that normal WebExtension APIs cannot provide:
 
 - allowlisted pref reads/writes/clears;
 - visible Firefox search engine discovery;
-- default search engine reads/writes through Firefox `SearchService`.
+- default search engine reads/writes through Firefox `SearchService`;
+- `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
+  handshake (see "Add-panel grant" below). It is not a privacy operation; it
+  lives here because this experiment is present in every shipped tools manifest,
+  including the rollback variants.
 
 The experiment rejects prefs outside its static allowlist. Search writes use
 `SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
@@ -2164,6 +2208,99 @@ start still loads every frame, and gives up after about 30 s
 frame, leaving that frame unloaded instead of polling forever. The two budgets
 are separate: waiting for the policy does not consume window id retries.
 
+### Shell bus bootstrap
+
+All shell documents in all windows (the 11 entries that call `initToolsPort()`:
+sidebar, address bar, panel trailer, workspace switcher, edit workspace,
+confirm, welcome, menu, workspace palette, merge palette, palette) share one
+`BroadcastChannel('bento-shell-bus')`. `bento-shell/src/background.ts` owns the
+only port to `bento-tools` and relays events and actions both ways.
+
+- Live boot: when the port connects, `bento-tools` sends `tools/booted`, then
+  the six snapshots (tabs, workspaces, settings, pinnedPanels, tabFolders,
+  savedPanels), then one `panels/sync` per workspace. Every document that is
+  already listening receives them and sends no snapshot requests.
+- Late join: a document posts `{ kind: 'hello', helloId }`. The background
+  replays the cached `tools/booted` and the last `panels/sync` per workspace,
+  tagged `replayFor: helloId`. `BroadcastChannel` still delivers the replay to
+  every document, but each one drops replays tagged for another id, so a join
+  costs the other documents no store update, snapshot request, or
+  `BENTO_PANELS` title write. The joiner requests the six snapshots once, on
+  the replayed boot, and only if it had not already seen a live boot. Tools
+  answers each request with a snapshot broadcast to every document.
+- Chrome forwarding is order independent: the sidebar writes `BENTO_PANELS`
+  only for its window's active workspace, which it learns from the workspace
+  snapshot, and the payload embeds the settings snapshot (every settings field
+  `handlePanelsTitle` in `bento-shell-mount.js` reads: `uiColorMode`,
+  `sidebarCollapsed`, `sidebarHidden`, `sidebarShortcutBehavior`,
+  `defaultPanelWidthPx`, `customPanelSizes`, `panelCycleWraparound`,
+  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`) and the
+  workspace theme. A replayed `panels/sync` can arrive before any of them, so
+  the sidebar keeps the latest incomplete sync per workspace
+  (`pendingPanelsSync` in `bridge/useToolsPort.ts`): held while the active
+  workspace is unknown, or kept after a forward that went out before settings
+  had hydrated. `workspaces/snapshot`, `workspaces/changed`, and
+  `settings/snapshot` or `settings/changed` re-forward the pending sync for the
+  active workspace, so the last write always carries the full payload. A
+  forward with every input present clears the entry, so live boot and later
+  settings changes (which tools answers with its own `panels/sync`) write
+  nothing extra. Pending syncs for other workspaces are discarded.
+- Cache pruning: the background drops a workspace's cached `panels/sync` on a
+  `workspaces/changed` removal delta and on any `workspaces/snapshot` that
+  lacks it, so replays never resurrect deleted workspaces.
+- `emitPanelsSync` in `bento-tools/src/background.ts` is coalesced per
+  workspace and target window within one task
+  (`panels/PanelsSyncScheduler.ts`); the one-shot scroll target survives the
+  merge. Boot and restore paths that must not continue before the broadcast has
+  gone out call `emitPanelsSyncNow` directly.
+
+Message counts for one window with N documents joining one at a time after
+tools booted (`bridge/busBootstrap.test.ts`, N = 11): 66 snapshot requests and
+396 snapshot deliveries. Before the guard it was 396 requests and 3036
+deliveries, because every replayed `tools/booted` made every document request
+all six snapshots again. With all 11 documents listening when tools boots: 0
+requests (previously 66).
+
+Manual verification: in the bento-shell background console (about:debugging,
+Inspect), attach a `BroadcastChannel('bento-shell-bus')` listener that counts
+messages with `kind === 'action'` and an `action.type` ending in
+`/requestSnapshot`, and messages with `kind === 'event'` and an `event.type`
+ending in `/snapshot`, then open a window. A document that joined after tools
+booted adds 6 requests; documents that were listening at boot add none.
+
+Bus bootstrap pitfalls:
+
+- Do not replay the background's cached tabs, workspaces, or settings
+  snapshots on `hello`. The cache lags live state (deltas do not update it), and
+  every document would `applySnapshot` the stale value, dropping recently
+  created tabs from the sidebar for a few frames.
+- Do not make documents request snapshots on every `tools/booted`, or accept a
+  replay that is not tagged for them. Each replay would fan out six full
+  snapshot requests per document, and each reply is broadcast to all documents:
+  requests grow with the square and snapshot deliveries with the cube of the
+  document count, and both multiply across windows.
+- Do not gate the joiner's `panels/sync` replay on the live-boot check. The
+  joiner is already ready when the replayed `panels/sync` messages arrive, and
+  they are its only source of panel state for non-active workspaces.
+- Do not drop a `panels/sync` because the sidebar's active workspace is still
+  null, and do not forward it once and forget it. Hello replays are targeted,
+  so no later overlay's `hello` re-broadcasts panels, and chrome would keep
+  showing main only until the next panel change or workspace switch. The
+  forwarded `BENTO_PANELS` payload must be re-sent when any of its inputs
+  hydrate (active workspace, settings, workspace theme): a forward that beat
+  the settings snapshot left `sidebarHidden`, custom size presets, and panel
+  cycle wraparound at chrome defaults, because settings hydration sent no
+  replacement. Covered for all six arrival orders by
+  `bridge/busBootstrap.test.ts`, "sidebar forwarding of panels to chrome".
+- Do not put a timer in front of `emitPanelsSync`. Callers time follow-up work
+  against the emit (the 80 ms delay before closing the old main tab after a
+  panel promotion), and chrome reconciles against stale panel payloads if the
+  close beats the sync.
+- Snapshot replies are not targeted at the requester. Tools' `ctx.send`
+  broadcasts, requests carry no correlation id, and `savedPanels/snapshot` is
+  also emitted unsolicited, so matching replies to requesters by order would
+  mis-tag broadcasts. Targeting needs a request id in `Action` and `Event`.
+
 ## Command Palette
 
 `extensions/bento-shell/src/components/CommandPalette/CommandPalette.tsx` builds
@@ -2250,7 +2387,18 @@ content actor so the current-tab address dialog opens while web content owns
 focus. Empty new-tab opens read `text/plain` from the global clipboard in
 chrome, sanitize it with Firefox URL bar paste handling when available, resolve
 it through `Services.uriFixup`, reject keyword-search results, and forward only
-`http`/`https` specs as `clipboardUrl`.
+`http`/`https` specs as `clipboardUrl`. `resolveClipboardUrlSuggestion` first
+reads `browser.urlbar.suggest.clipboard` at call time and returns without
+touching the clipboard unless the pref is enabled. It checks
+`Services.prefs.getPrefType` first: a boolean pref uses its value, a missing
+pref takes Firefox's own default (true), and any other type (or a failed read)
+disables the read. Do not call `getBoolPref(name, true)` for this gate, because
+Firefox returns the supplied default for a wrong-typed pref. Do not gate on
+`browser.urlbar.clipboard.featureGate`: that pref controls Firefox's own
+clipboard provider rollout, while this suggestion is an intentional Bento
+feature. Manual check: with the pref false, `Cmd/Ctrl+T` shows no clipboard row
+for a copied URL and the pasteboard is not read; with the pref true, the row
+appears.
 
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
 actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the
@@ -2680,6 +2828,53 @@ Add-panel trailer visibility:
   actions create new panel nodes.
 - Manual verification surface: checklist item 4, create root panels.
 
+Add-panel grant:
+
+- Source of truth: chrome. `addNewPanel` in `bento-shell-mount.js` generates a
+  `crypto.randomUUID()` token, creates the tab at
+  `about:blank?bento_add_as_panel=<token>` (the URL carries only the token), and
+  sets `newTab.bentoAddPanelGrant = { token, windowId, source, expiresAt,
+acknowledge }` on the native XUL tab element in the same synchronous turn as
+  `gBrowser.addTab`. `source` is `'main'` (insert before the main slot), a
+  non-negative integer tab id (insert after that panel), or `'end'`; the
+  trailer click passes its click Event, which maps to `'end'`. `expiresAt` is
+  two seconds out.
+- Consumer: `bento-tools` `maybeHandleAddPanelMarker` ->
+  `createAddPanelMarkerHandler` in `src/panels/AddPanelGrant.ts`. Only a URL
+  matching `^about:blank\?bento_add_as_panel=<lowercase uuid>$` triggers a
+  check, once per tab (`onCreated` and `onUpdated` share it). The check is
+  `browser.bentoPrivacy.consumeAddPanelGrant(tabId, token)`, which resolves the
+  native tab with `extension.tabManager.get(tabId, null)`, compares the token,
+  deletes the property before any further check (single use; a mismatch leaves
+  the live grant alone), calls `acknowledge()`, then rejects expired grants,
+  a recorded window id that differs from the tab's current window, and
+  malformed sources. It returns `{ windowId, source }` or `null`, and tools
+  validates that shape again before inserting the panel into
+  `workspaces.getActiveId(windowId)`. The tab can close while the result is in
+  flight, so `tabs.onRemoved` (`forget`) cancels the pending attempt and
+  tools applies the grant only if `browser.tabs.get` still places the tab in
+  the grant's window; otherwise a closed tab would be inserted into panel state.
+- Redirect timing: chrome navigates the tab to the panel new-tab page after at
+  least 250 ms and after the grant is acknowledged (or after the two second
+  expiry, so a stalled tools background cannot leave the sentinel URL up).
+- Pitfalls: never accept the URL alone as authority (the old
+  `bento_add_as_panel=1` substring check let any page, including
+  `location.hash`, turn its tab into a panel and persist that layout). Do not
+  move the grant into the URL, a title, or SessionStore data that content or
+  other extensions can influence. Do not move the grant off the native tab
+  element without another chrome-only, tab-bound store. The experiment reads an
+  expando across system-principal compartments, so an Xray wrapper or a rename
+  of the native tab's window accessor would make every lookup return `null` and
+  silently disable the button; the manual checks below catch that. A profile
+  that already ran an older tools build can serve a stale cached experiment
+  schema without `consumeAddPanelGrant`; verify in a fresh profile.
+- Manual verification surface: click Add panel, press Enter on the focused
+  trailer, and use "Insert panel here"; each adds one panel in the right slot
+  and the tab ends on the panel new-tab page. In a content tab, set
+  `location.hash = 'bento_add_as_panel=1'`, and navigate to
+  `about:blank?bento_add_as_panel=3f1c2a4e-9b7d-4c1a-8e5f-0a1b2c3d4e5f`; neither
+  becomes a panel and the second logs `add-as-panel: no matching grant`.
+
 Subdivision splitter resizing:
 
 - Source of truth: group ratios live in the `PanelLayout` tree and are persisted
@@ -3031,8 +3226,8 @@ The outer Add-panel trailer `keydown` handler is only for cycle-Enter or
 cycle-Space while the outer XUL host itself is focused. When focus has moved
 inside the trailer iframe, the iframe buttons own Enter/Space. Do not let saved
 panel button keyboard activation bubble back to the outer host, or a saved-panel
-Enter press will create a blank `about:blank?bento_add_as_panel=1...` marker
-panel instead of opening the saved URL.
+Enter press will create a blank add-as-panel marker panel (see "Add-panel
+grant") instead of opening the saved URL.
 
 The chrome `Cmd/Ctrl+W` intercept closes the focused side panel before falling
 back to main-slot close. Resolve the panel first from `document.activeElement`,

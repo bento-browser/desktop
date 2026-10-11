@@ -18,28 +18,33 @@ const MAX_PINNED_PANELS_PER_WORKSPACE = 512;
 const MAX_SAVED_PANELS = 10_000;
 const MAX_LAYOUT_ROOTS = 512;
 const MAX_CUSTOM_PANEL_SIZES = 64;
-const MAX_ID_LENGTH = 256;
-const MAX_NAME_LENGTH = 1_024;
-const MAX_TITLE_LENGTH = 4_096;
-const MAX_URL_LENGTH = 8_192;
+export const MAX_ID_LENGTH = 256;
+export const MAX_NAME_LENGTH = 1_024;
+export const MAX_TITLE_LENGTH = 4_096;
+// Mirrors Firefox's network.standard-url.max-length (1 MiB), the longest standard URL it loads.
+export const MAX_URL_LENGTH = 1_048_576;
 const MAX_VERSION_LENGTH = 128;
-const ALLOWED_URL_SCHEMES = new Set(['http:', 'https:', 'file:', 'ftp:', 'about:']);
+export const ALLOWED_URL_SCHEMES = new Set(['http:', 'https:', 'file:', 'ftp:', 'about:']);
 
 type UnknownRecord = Record<string, unknown>;
 
-function isRecord(value: unknown): value is UnknownRecord {
+export function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isBoundedString(value: unknown, maxLength: number, allowEmpty = true): value is string {
+export function isBoundedString(
+  value: unknown,
+  maxLength: number,
+  allowEmpty = true,
+): value is string {
   return typeof value === 'string' && value.length <= maxLength && (allowEmpty || value.length > 0);
 }
 
-function isFiniteNumber(value: unknown, min: number, max: number): value is number {
+export function isFiniteNumber(value: unknown, min: number, max: number): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 }
 
-function isInteger(value: unknown, min: number, max: number): value is number {
+export function isInteger(value: unknown, min: number, max: number): value is number {
   return Number.isInteger(value) && isFiniteNumber(value, min, max);
 }
 
