@@ -1,7 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # Action pins live in the workflows and in the local composite actions.
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: monthly
     open-pull-requests-limit: 2

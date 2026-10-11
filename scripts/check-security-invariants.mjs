@@ -16,6 +16,11 @@ function forbidText(file, pattern, description) {
   if (pattern.test(content)) throw new Error(`${file}: contains ${description}`);
 }
 
+// Body of a top-level workflow job (two-space indent under `jobs:`), or ''.
+function workflowJob(workflow, id) {
+  return workflow.match(new RegExp(`^ {2}${id}:\\n((?: {4}.*\\n|\\n)*)`, 'm'))?.[1] ?? '';
+}
+
 const mount = 'src/browser/base/content/bento-shell-mount.js';
 requireText(mount, /LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL/, 'non-inheriting navigation load flag');
 requireText(mount, /isDisallowedAddress(?:URI|Spec)/, 'unsafe address scheme rejection');
@@ -105,6 +110,9 @@ requireText(
   'release checksums and manifest generation',
 );
 requireText('.github/workflows/release.yml', /actions\/attest@/, 'artifact provenance attestation');
+if (!/^ {4}needs:.*\bsecurity-gate\b/m.test(workflowJob(releaseWorkflow, 'build'))) {
+  throw new Error('Release workflow: native builds must wait for the security gate');
+}
 const releaseSecurity = JSON.parse(read('config/release-security.json'));
 if (!releaseSecurity.publicReleaseReady && !/prerelease:\s*true/.test(releaseWorkflow)) {
   throw new Error('Unapproved public release configuration must remain a prerelease.');
@@ -119,8 +127,11 @@ for (const platform of ['linux-x64', 'macos-arm64', 'windows-x64', 'all']) {
     throw new Error(`CI workflow: missing platform option ${platform}`);
   }
 }
-if (!/matrix:\s*\$\{\{\s*fromJSON\(needs\.prepare-build\.outputs\.matrix\)\s*\}\}/.test(ciWorkflow)) {
-  throw new Error('CI workflow: build matrix is not selected by the allowlisted preparation job');
+if (!/matrix:\s*\$\{\{\s*fromJSON\(needs\.security-gate\.outputs\.matrix\)\s*\}\}/.test(ciWorkflow)) {
+  throw new Error('CI workflow: build matrix is not selected by the allowlisted security gate job');
+}
+if (!/^ {4}needs:.*\bsecurity-gate\b/m.test(workflowJob(ciWorkflow, 'build'))) {
+  throw new Error('CI workflow: build must wait for the security gate');
 }
 if (!/timeout-minutes:\s*\$\{\{[^\n]*&& 360 \|\| 20/.test(ciWorkflow)) {
   throw new Error('CI workflow: native and source-import timeout bounds are missing');
