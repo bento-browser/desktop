@@ -161,7 +161,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -211,6 +211,12 @@ jobs:
 
       - name: Lint (tools)
         run: pnpm --filter @bento/tools lint
+
+      - name: Legacy token alias cap
+        # Fails when a shell stylesheet, or the total, uses more legacy aliases
+        # (--neutral-*, --color-*, --space-*, --radius-*, --shadow-*) than
+        # .legacy-alias-cap.json allows. The cap only goes down.
+        run: pnpm run lint:aliases
 
       - name: Test (shell)
         run: pnpm --filter @bento/shell test

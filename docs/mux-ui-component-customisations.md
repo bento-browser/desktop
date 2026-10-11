@@ -81,7 +81,7 @@ On 2026-10-12 the shell CSS and fonts were split and pruned. Themes became
 per-theme sheets (the shared `style.css` carries Default only), the Mux CSS for
 components Bento never renders was pruned, and the six fonts became WOFF2.
 `style.css` fell from 103.13 KB to 63.01 KB gzipped (1.08 MB to 0.60 MB raw), the
-15 theme sheets are 28 kB each (3 kB gzipped; a document loads one, or all 16
+theme sheets are 28 kB each (3 kB gzipped; a document loads one, or all of them
 where it previews them), the fonts fell from 2.74 MB to 1.22 MB, and the generated
 chrome token sheet from 664 kB to 284 kB (60 kB to 33 kB gzipped). The 40 KB
 ceiling for `style.css` is still exceeded.
@@ -175,8 +175,9 @@ The preset palettes (`@muxui/react/themes.css`) are not part of that import. Eac
 document loads only the themes it shows, from per-theme sheets:
 
 - `scripts/sync-theme-presets.mjs` splits the public `themes.css` into
-  `extensions/bento-shell/public/themes/<id>.css` (15 canonical sheets, each
-  `@layer muxui { ... }`, standard contrast only) plus one sheet per repo-local
+  `extensions/bento-shell/public/themes/<id>.css` (one canonical sheet per theme
+  that `@muxui/react/themes` exports, each `@layer muxui { ... }`, standard
+  contrast only) plus one sheet per repo-local
   custom theme. `theme/presets/index.css` keeps the Default theme, which every
   document needs for its first paint and as the unknown-id fallback. The sheets
   are tracked generated files; `pnpm run theme:sync` rewrites them and drops sheets
@@ -277,6 +278,48 @@ compatibility transition.
   }
 }
 ```
+
+### Legacy alias cap
+
+`pnpm run lint:aliases` (CI, extensions job) counts the legacy alias uses in the
+shell's hand-written CSS (`var(--neutral-*)`, `--color-*`, `--space-*`,
+`--radius-*`, `--shadow-*` in `extensions/bento-shell/src/**/*.css`; the generated
+`theme/presets/` define the aliases and are skipped) and fails when a file, or the
+total, is above the committed `.legacy-alias-cap.json`. On 2026-10-12 that was 408
+uses of 94 aliases in 20 files. The cap is a ratchet like `.size-baseline.json`:
+`node scripts/check-legacy-aliases.mjs --write-cap` lowers it to the current counts
+and refuses to raise any file unless the change names it with
+`--accept-growth <file>`, so intended growth shows in the committed diff. A new file
+with alias uses is growth. Write new CSS with public Mux semantic tokens or
+`--bento-*` tokens; remove cap entries as files migrate.
+
+Whether an alias can be swapped for a public token without changing any pixel
+depends on the generated CSS, not on the alias name. The alias is a pass-through
+(`--radius-s: var(--muxui-reference-dimension-radius-s)`) only when every
+declaration of it in the shell CSS and theme sheets is that one `var()` and the
+target token is declared only in rules the alias bridge also covers (`:root` and the
+`:is([data-muxui-theme], [data-muxui-color-scheme], ...)` block), so both resolve on
+the same element in every theme and color scheme. Checked on 2026-10-12:
+
+- Exact: the 5 `--radius-*` aliases (31 uses), `--color-60-fg` (7 uses, the only
+  one whose target is a semantic-tier token), and 27 `--neutral-cool-*` names used
+  only inside `bento-tokens.css`.
+- Exact unless an element sets `data-muxui-responsive`, which Bento never does:
+  the 8 `--space-*` aliases (166 uses), because Mux's `[data-muxui-responsive]`
+  block also declares the space tokens. Their targets are reference-tier tokens.
+- Not exact: `--neutral-N` (15 aliases, 97 uses) and `--color-N` other than
+  `--color-60-fg` (7 aliases, 44 uses). The shell bridge points them at
+  `--muxui-semantic-color-*`, but `bento-tokens.css` also re-links them to Bento's
+  raw ladders (`--neutral-default-N`, `--brand-N`) on `[data-bento-theme]`
+  elements. The unlayered bridge wins where an element has a `data-muxui-*`
+  attribute, which the shell's theme scope always sets, but a stylesheet cannot
+  prove that for every element. The raw `--neutral-default-N` ladders themselves
+  (27 names, 30 uses) are Bento values with three declarations each, not
+  pass-throughs.
+- Not declared anywhere: `--neutral-0`, `--neutral-6`, `--neutral-8`
+  (`welcome.css`) and `--radius-2xs` (`PanelTrailer.css`). Those declarations
+  resolve to nothing, so the properties that use them are invalid at computed-value
+  time.
 
 Add a missing reusable value to `bento-tokens.css` before using it. Avoid raw
 colors, durations, easings, or unexplained dimensions. Pair a tinted surface

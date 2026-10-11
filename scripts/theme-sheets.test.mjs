@@ -35,6 +35,18 @@ test('splitTopLevelBlocks returns preludes without comments and skips block-less
   );
 });
 
+test('top-level scanning skips braces in comments between blocks', () => {
+  const css = `/* license { text */ .a { --x: 1; } /* } */ @layer m { .b { --y: 2; } }`;
+  assert.deepEqual(
+    splitTopLevelBlocks(css).map(({ prelude }) => prelude),
+    ['.a', '@layer m'],
+  );
+  assert.equal(
+    unwrapTopLevelLayers(css).replace(/\s+/g, ' ').trim(),
+    '/* license { text */ .a { --x: 1; } .b { --y: 2; }',
+  );
+});
+
 test('unwrapTopLevelLayers removes layer wrappers and keeps other blocks', () => {
   const squash = (css) => css.replace(/\s+/g, ' ').trim();
   assert.equal(

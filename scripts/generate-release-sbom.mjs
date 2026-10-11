@@ -25,8 +25,8 @@ const muxuiTarball = `https://registry.npmjs.org/@muxui/react/-/react-${muxuiVer
 
 const APPROVED_SHELL_RUNTIME_DEPENDENCIES = Object.freeze({
   '@muxui/react': muxuiVersion,
-  react: '^19.0.0',
-  'react-dom': '^19.0.0',
+  react: '^19.2.0',
+  'react-dom': '^19.2.0',
   zustand: '^5.0.0',
   '@tanstack/react-virtual': '^3.10.0',
   'lucide-react': '^0.460.0',
