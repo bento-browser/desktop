@@ -6,13 +6,11 @@
 # locally (sanity-check before tagging) and by the release and PR workflows.
 #
 # What's different from `npm run build`:
-#   1. Installs from pnpm-lock.release.yaml with --frozen-lockfile. Release
-#      artifacts consume the same pinned npm Mux release as developer builds and
-#      cannot drift during CI or a later rebuild.
+#   1. Installs from pnpm-lock.yaml with --frozen-lockfile (the one lock, shared
+#      with developer builds, so the pinned npm Mux release cannot drift during
+#      CI or a later rebuild). It is a no-op when node_modules is current.
 #   2. Runs Bento's package step to produce platform artifacts, MAR, locales,
 #      and update metadata, not just the app bundle.
-#   3. Restores the original lockfile + node_modules at the end so a dev
-#      machine isn't left in release-mode after running this.
 #
 # Locally: run from the repo root. Requires the Firefox download +
 # bootstrap to have been done at least once before (the same prerequisite
@@ -23,7 +21,7 @@
 # parallelism on memory-constrained builders.
 #
 # Set BENTO_RELEASE_PREPARED=1 when the caller already ran
-# `bash scripts/install-release-deps.sh`, `pnpm run ext:build`, and
+# `pnpm install --frozen-lockfile`, `pnpm run ext:build`, and
 # `pnpm run import` with BENTO_RELEASE=1 in this checkout (the CI workflow does,
 # to verify the import before the long build). Steps 1 and 2 are then skipped.
 
@@ -67,23 +65,11 @@ fi
 OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
 
-# Restore dev state on exit so an interrupted release build doesn't
-# leave the workspace in release-mode. trap fires on success and failure.
-restore_dev_state() {
-  step "Restoring dev state"
-  # Re-install against the developer lock. Skip in CI — the runner is
-  # ephemeral and re-installing is wasted time there.
-  if [ -z "${CI:-}" ]; then
-    pnpm install --force >/dev/null 2>&1 || true
-  fi
-}
-trap restore_dev_state EXIT
-
 if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
   step "1/4 Skipping install, extension build, and import (BENTO_RELEASE_PREPARED is set)"
 else
-  step "1/4 Installing dependencies in release mode (BENTO_RELEASE=1)"
-  bash scripts/install-release-deps.sh
+  step "1/4 Installing dependencies (frozen lockfile)"
+  pnpm install --frozen-lockfile
 
   step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build

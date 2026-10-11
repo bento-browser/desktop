@@ -3,3 +3,5 @@ extensions/_shared/generated/native-preferences-protocol.ts
 extensions/_shared/generated/native-preferences-protocol-fixtures.json
 extensions/bento-tools/experiments/bento-native-preferences/generated-protocol.js
 extensions/bento-tools/experiments/bento-native-preferences/loader-contract-constants.js
+# pnpm owns the lockfile format; reformatting it makes every later update a whole-file diff.
+pnpm-lock.yaml
