@@ -30,6 +30,35 @@ interface PendingPersistedEntry {
   widthPx?: number;
 }
 
+const METADATA_FIELDS = ['url', 'title', 'favIconUrl'] as const;
+type MetadataField = (typeof METADATA_FIELDS)[number];
+type PinMetadata = Partial<Record<MetadataField, string>>;
+
+/** The freshest known value of each metadata field of a pin, with the persist
+ * generation that saw it. */
+type ObservedMetadata = Partial<Record<MetadataField, { value: string; generation: number }>>;
+
+/** Metadata a mutation just wrote to the entry of one pin ("wsId\\0tabId"). */
+type MetadataEdit = [key: string, metadata: PinMetadata];
+
+/** What a `tabs.get` result says about a pin. A tab whose URL could not be stored
+ * (`about:blank` before SessionStore sets the address, a DevTools toolbox) is not
+ * the pinned page, so it says nothing, title and favicon included. Otherwise
+ * Firefox's tab converter copies a title or favIconUrl only when it is truthy, so
+ * on a completed tab a missing one means the page has none: it reads as an empty
+ * value, which clears. A loading tab (or one of unknown status) may only lack it
+ * for now, so a missing field says nothing and keeps the last value. */
+function readTab({
+  url,
+  title,
+  favIconUrl,
+  status,
+}: PinMetadata & { status?: string }): PinMetadata {
+  if (!isPersistablePinnedPanelUrl(url)) return {};
+  const missing = status === 'complete' ? '' : undefined;
+  return { url, title: title ?? missing, favIconUrl: favIconUrl ?? missing };
+}
+
 interface PinnedPanelsStoreOptions {
   getPanelKey?: (workspaceId: string, tabId: number) => string | undefined;
 }
@@ -52,6 +81,26 @@ export class PinnedPanelsStore {
   /** Pinned tabs seen in a private window. Their metadata never reaches storage,
    * including the in-memory fallback used after the tab closes. */
   #privateTabIds = new Set<number>();
+  /** Sequence of persist calls. Each call takes the next number before its
+   * async tab lookups; only the call holding the highest number writes. */
+  #persistGeneration = 0;
+  /** Settles once every tab lookup started so far has finished. A write waits
+   * for it, so what an older (superseded) call read is in `#observed` before the
+   * newest call merges. It must settle to nothing: each call chains onto the
+   * previous barrier, and a value would retain every earlier call's. */
+  #lookupsSettled: Promise<void> = Promise.resolve();
+  /** Freshest URL, title and favicon per pin ("wsId\\0tabId"), kept after the tab
+   * closes and across superseded calls. Fed by tab reads and by mutations that set
+   * metadata; per field, the higher persist generation wins, so neither a stale
+   * read nor an old store value can replace a newer one. A field holds an empty
+   * value after a tab read that cleared it. Membership and order always come from
+   * the newest snapshot; this only supplies URL, title and favicon, with the
+   * snapshot entry as the fallback for a field never observed. */
+  #observed = new Map<string, ObservedMetadata>();
+  /** Awaited persists (`persistCurrentState`), by generation, still waiting for a
+   * write of their state or a newer one. While any exist, writes are flushed
+   * instead of debounced. */
+  #awaiting = new Map<number, () => void>();
   #getPanelKey: ((workspaceId: string, tabId: number) => string | undefined) | undefined;
 
   constructor(options: PinnedPanelsStoreOptions = {}) {
@@ -160,7 +209,7 @@ export class PinnedPanelsStore {
     };
     this.#byKey.set(key, entry);
     this.#enqueue({ kind: 'added', entry });
-    this.#schedulePersist();
+    this.#schedulePersist([[key, metadata]]);
     return true;
   }
 
@@ -217,22 +266,33 @@ export class PinnedPanelsStore {
     this.#byKey.set(newKey, next);
     this.#enqueue({ kind: 'removed', workspaceId, tabId: oldTabId });
     this.#enqueue({ kind: 'added', entry: next });
-    this.#schedulePersist();
+    this.#schedulePersist([[newKey, metadata]]);
     return true;
   }
 
+  /** Apply the title and favicon a tab event reports. Empty values are not
+   * supplied (events report them while a page loads); only a tab read can clear a
+   * field. Every supplied field is stamped fresh, even when it equals the entry's
+   * value, because the value that would be stored may be an older tab read.
+   * Returns true when a pin received them. */
   updateMetadataForTab(
     tabId: number,
     metadata: Pick<PinnedPanelEntry, 'title' | 'favIconUrl'>,
   ): boolean {
-    let changed = false;
+    const supplied: PinMetadata = {
+      title: metadata.title || undefined,
+      favIconUrl: metadata.favIconUrl || undefined,
+    };
+    if (!supplied.title && !supplied.favIconUrl) return false;
+    const edits: MetadataEdit[] = [];
     for (const [key, entry] of Array.from(this.#byKey.entries())) {
       if (entry.tabId !== tabId) continue;
-      const next: PinnedPanelEntry = { ...entry };
-      if (metadata.title && metadata.title !== entry.title) next.title = metadata.title;
-      if (metadata.favIconUrl && metadata.favIconUrl !== entry.favIconUrl) {
-        next.favIconUrl = metadata.favIconUrl;
-      }
+      edits.push([key, supplied]);
+      const next: PinnedPanelEntry = {
+        ...entry,
+        title: supplied.title ?? entry.title,
+        favIconUrl: supplied.favIconUrl ?? entry.favIconUrl,
+      };
       if (next.title === entry.title && next.favIconUrl === entry.favIconUrl) continue;
       this.#byKey.set(key, next);
       this.#enqueue({
@@ -244,10 +304,9 @@ export class PinnedPanelsStore {
           favIconUrl: next.favIconUrl,
         },
       });
-      changed = true;
     }
-    if (changed) this.#schedulePersist();
-    return changed;
+    if (edits.length > 0) this.#schedulePersist(edits);
+    return edits.length > 0;
   }
 
   updateWidthForTab(tabId: number, widthPx: number): boolean {
@@ -405,21 +464,77 @@ export class PinnedPanelsStore {
     }
   }
 
-  #schedulePersist(): void {
+  /** `edits` are the metadata values the calling mutation just wrote to entries. */
+  #schedulePersist(edits: MetadataEdit[] = []): void {
     // Persistence needs URLs, but we hold tabIds. The flush runs in the
     // debounce callback's async chain — resolve URLs there via browser.tabs.get
     // (same pattern as PanelStore's Persistence). Snapshot the entries
     // synchronously so the resolver sees state-at-schedule-time.
     const snapshot = Array.from(this.#byKey.values());
-    void this.#resolveAndPersist(snapshot);
+    void this.#resolveAndPersist(snapshot, false, edits);
   }
 
   persistCurrentState(): Promise<void> {
     return this.#resolveAndPersist(Array.from(this.#byKey.values()), true);
   }
 
-  async #resolveAndPersist(snapshot: PinnedPanelEntry[], immediate = false): Promise<void> {
-    const resolved: PersistedPinnedEntry[] = [];
+  /** Persist a snapshot. Every mutation, including removals, starts a call that
+   * reads each pin's tab right away (change time) and writes only if no newer
+   * call has started by the time it may write, so an older pin list, or a pin
+   * removed in the meantime, never reaches storage. Superseded calls still leave
+   * what they read in `#observed`, and a write waits for all earlier lookups, so a
+   * tab that closed before the newest call looked still contributes the URL, title
+   * and favicon read from it earlier (and a pin found private is dropped). The
+   * `edits` of a mutation and this call's own lookups share its generation, the
+   * lookups taking precedence as they are read after the edit.
+   *
+   * With `awaited`, the returned promise settles only once a write of this state
+   * or a newer one has landed, however many calls supersede it. */
+  #resolveAndPersist(
+    snapshot: PinnedPanelEntry[],
+    awaited = false,
+    edits: MetadataEdit[] = [],
+  ): Promise<void> {
+    const generation = ++this.#persistGeneration;
+    for (const [key, metadata] of edits) this.#observe(key, metadata, generation);
+    const durable = awaited
+      ? new Promise<void>((resolve) => this.#awaiting.set(generation, resolve))
+      : Promise.resolve();
+    const settled = Promise.all([
+      this.#lookupsSettled,
+      this.#captureTabs(generation, snapshot),
+    ]).then(() => undefined);
+    this.#lookupsSettled = settled;
+    void settled
+      .then(() => this.#write(generation, snapshot))
+      .catch((err) => {
+        console.error('[bento-tools] pinnedPanels: persist failed', err);
+        this.#settleAwaiting(generation);
+      });
+    return durable;
+  }
+
+  async #write(generation: number, snapshot: PinnedPanelEntry[]): Promise<void> {
+    if (generation !== this.#persistGeneration) return;
+    const state = { entries: this.#mergeObserved(snapshot) };
+    if (this.#awaiting.size === 0) {
+      this.#persistence.schedule(state);
+      return;
+    }
+    await this.#persistence.flushNow(state);
+    this.#settleAwaiting(generation);
+  }
+
+  /** Resolve awaited persists whose state is covered by a landed write of `generation`. */
+  #settleAwaiting(generation: number): void {
+    for (const [awaitedGeneration, resolve] of this.#awaiting) {
+      if (awaitedGeneration > generation) continue;
+      this.#awaiting.delete(awaitedGeneration);
+      resolve();
+    }
+  }
+
+  async #captureTabs(generation: number, snapshot: PinnedPanelEntry[]): Promise<void> {
     for (const entry of snapshot) {
       if (this.#privateTabIds.has(entry.tabId)) continue;
       try {
@@ -428,31 +543,62 @@ export class PinnedPanelsStore {
           this.#privateTabIds.add(entry.tabId);
           continue;
         }
-        const url = tab.url || entry.url;
-        if (!isPersistablePinnedPanelUrl(url)) continue;
-        resolved.push({
-          workspaceId: entry.workspaceId,
-          panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),
-          url,
-          order: entry.order,
-          title: tab.title || entry.title,
-          favIconUrl: tab.favIconUrl || entry.favIconUrl,
-          widthPx: entry.widthPx,
-        });
+        this.#observe(this.#key(entry.workspaceId, entry.tabId), readTab(tab), generation);
       } catch {
-        if (!isPersistablePinnedPanelUrl(entry.url)) continue;
-        resolved.push({
-          workspaceId: entry.workspaceId,
-          panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),
-          url: entry.url,
-          order: entry.order,
-          title: entry.title,
-          favIconUrl: entry.favIconUrl,
-          widthPx: entry.widthPx,
-        });
+        // Tab gone: `#mergeObserved` falls back to what was seen before, then the entry.
       }
     }
-    if (immediate) await this.#persistence.flushNow({ entries: resolved });
-    else this.#persistence.schedule({ entries: resolved });
+  }
+
+  /** Record metadata seen at `generation`. Lookups finish out of order, so a value
+   * never replaces one from a newer generation. An undefined field says nothing.
+   * An empty title or favicon is a real observation (the tab has none): it clears
+   * the value like any other (`readTab` turns a completed tab's missing field into
+   * one). A URL is observed only if it could be stored, so a blank tab (a pinned
+   * tab before session restore sets its address) never replaces the usable URL. */
+  #observe(key: string, metadata: PinMetadata, generation: number): void {
+    const observed = this.#observed.get(key) ?? {};
+    for (const field of METADATA_FIELDS) {
+      const value = metadata[field];
+      if (value === undefined) continue;
+      if (field === 'url' && !isPersistablePinnedPanelUrl(value)) continue;
+      if ((observed[field]?.generation ?? 0) > generation) continue;
+      observed[field] = { value, generation };
+    }
+    this.#observed.set(key, observed);
+  }
+
+  /** Stored form of the newest snapshot: each pin merged with the freshest
+   * metadata seen for it. Also forgets pins that left the membership. */
+  #mergeObserved(snapshot: PinnedPanelEntry[]): PersistedPinnedEntry[] {
+    const members = new Set<string>();
+    const merged: PersistedPinnedEntry[] = [];
+    for (const entry of snapshot) {
+      const key = this.#key(entry.workspaceId, entry.tabId);
+      members.add(key);
+      if (this.#privateTabIds.has(entry.tabId)) continue;
+      const observed = this.#observed.get(key);
+      // A field that was observed wins, even as an empty clear; the entry only
+      // fills in for one that never was.
+      const latest = (field: MetadataField) => {
+        const seen = observed?.[field];
+        return seen ? seen.value : entry[field];
+      };
+      const url = latest('url');
+      if (!isPersistablePinnedPanelUrl(url)) continue;
+      merged.push({
+        workspaceId: entry.workspaceId,
+        panelKey: this.#getPanelKey?.(entry.workspaceId, entry.tabId),
+        url,
+        order: entry.order,
+        title: latest('title') || undefined,
+        favIconUrl: latest('favIconUrl') || undefined,
+        widthPx: entry.widthPx,
+      });
+    }
+    for (const key of this.#observed.keys()) {
+      if (!members.has(key)) this.#observed.delete(key);
+    }
+    return merged;
   }
 }
