@@ -47,6 +47,48 @@ export function parseBaseline(text) {
   return sizes;
 }
 
+/**
+ * Compute a refreshed baseline from fresh measurements. A refresh may lower entries and add
+ * new ones, but never raises an existing entry unless its key is in `acceptGrowth`; refused
+ * growth keeps the previous value so a refresh cannot silently legalize it. Entries that are
+ * no longer measured are dropped.
+ *
+ * @param {{ previous: Record<string, number>; measured: Record<string, number>; acceptGrowth?: string[] }} input
+ */
+export function refreshBaseline({ previous, measured, acceptGrowth = [] }) {
+  const unknown = acceptGrowth.filter((key) => !(key in measured));
+  if (unknown.length > 0) {
+    throw new Error(`--accept-growth names unmeasured entries: ${unknown.join(', ')}`);
+  }
+
+  const accepted = new Set(acceptGrowth);
+  const next = {};
+  const added = [];
+  const lowered = [];
+  const raised = [];
+  const refused = [];
+
+  for (const [key, size] of Object.entries(measured)) {
+    const old = previous[key];
+    if (old === undefined) {
+      next[key] = size;
+      added.push(key);
+    } else if (size < old) {
+      next[key] = size;
+      lowered.push(key);
+    } else if (size > old && accepted.has(key)) {
+      next[key] = size;
+      raised.push(key);
+    } else {
+      next[key] = old;
+      if (size > old) refused.push(key);
+    }
+  }
+
+  const removed = Object.keys(previous).filter((key) => !(key in measured));
+  return { next, added, lowered, raised, refused, removed };
+}
+
 /** Serialize measured sizes in the committed baseline format. */
 export function formatBaseline(gzipBytes) {
   return `${JSON.stringify({ build: BASELINE_BUILD, gzipBytes }, null, 2)}\n`;

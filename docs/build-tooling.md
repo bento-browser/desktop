@@ -91,8 +91,11 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   `.size-baseline.json` by more than max(1%, 1 KB); missing or malformed
   built assets also fail the check.
 - `pnpm run size:baseline`: rebuild the extensions with `BENTO_RELEASE=1` (the
-  mode CI builds) and rewrite `.size-baseline.json`. Commit the result when a
-  change grows an entry on purpose or shrinks one.
+  mode CI builds) and refresh `.size-baseline.json`. It lowers entries that
+  shrank and adds new ones, but refuses to raise an existing entry, prints
+  what it refused, and exits 1. Accept intended growth by naming the entry:
+  `pnpm run size:baseline -- --accept-growth <entry path>` (repeatable). Commit
+  the refreshed file.
 
 Hosted release cache keys include `bento.json`, `config/**`, the patch and
 overlay inputs, relevant Bento build scripts, `configs/**`, and

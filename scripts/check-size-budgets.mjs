@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { evaluateEntry, formatBaseline, parseBaseline } from './size-ratchet.mjs';
+import { evaluateEntry, formatBaseline, parseBaseline, refreshBaseline } from './size-ratchet.mjs';
 
 // Size ratchet. The ceilings below are targets and are always reported, but the
 // check fails only when an entry grows past its committed baseline (see
@@ -11,7 +11,9 @@ import { evaluateEntry, formatBaseline, parseBaseline } from './size-ratchet.mjs
 // or malformed built assets also fail.
 //
 //   node scripts/check-size-budgets.mjs                    check against the baseline
-//   node scripts/check-size-budgets.mjs --write-baseline   rewrite the baseline from this build
+//   node scripts/check-size-budgets.mjs --write-baseline   refresh the baseline from this build:
+//       lowers shrunk entries, adds new ones, and refuses to raise an existing entry unless it
+//       is named with --accept-growth <entry path> (repeatable).
 const KB = 1000;
 const BASELINE_PATH = '.size-baseline.json';
 
@@ -195,9 +197,42 @@ function reportBudget({ key, name, size, limit }, baselines) {
 const measurements = measureBudgets();
 
 if (process.argv.includes('--write-baseline')) {
-  const gzipBytes = Object.fromEntries(measurements.map(({ key, size }) => [key, size]));
-  writeFileSync(BASELINE_PATH, formatBaseline(gzipBytes));
-  console.log(`Wrote ${measurements.length} entries to ${BASELINE_PATH}`);
+  const args = process.argv.slice(2);
+  const acceptGrowth = args.flatMap((arg, index) => {
+    if (arg !== '--accept-growth') return [];
+    if (!args[index + 1]) throw new Error('--accept-growth needs an entry path');
+    return [args[index + 1]];
+  });
+  const previous = existsSync(BASELINE_PATH)
+    ? parseBaseline(readFileSync(BASELINE_PATH, 'utf8'))
+    : {};
+  const measured = Object.fromEntries(measurements.map(({ key, size }) => [key, size]));
+  const { next, added, lowered, raised, refused, removed } = refreshBaseline({
+    previous,
+    measured,
+    acceptGrowth,
+  });
+
+  writeFileSync(BASELINE_PATH, formatBaseline(next));
+  console.log(
+    `Wrote ${BASELINE_PATH}: ${added.length} added, ${lowered.length} lowered, ` +
+      `${raised.length} raised, ${removed.length} removed, ${refused.length} refused`,
+  );
+  for (const key of added) console.log(`  added ${key}: ${formatSize(measured[key])}`);
+  for (const key of lowered) {
+    console.log(`  lowered ${key}: ${formatSize(previous[key])} -> ${formatSize(measured[key])}`);
+  }
+  for (const key of raised) {
+    console.log(`  raised ${key}: ${formatSize(previous[key])} -> ${formatSize(measured[key])}`);
+  }
+  for (const key of removed) console.log(`  removed ${key}`);
+  for (const key of refused) {
+    console.log(
+      `  REFUSED ${key}: grew ${formatSize(previous[key])} -> ${formatSize(measured[key])}; ` +
+        `baseline kept. To accept: pnpm run size:baseline -- --accept-growth ${key}`,
+    );
+  }
+  if (refused.length > 0) process.exitCode = 1;
 } else {
   if (!existsSync(BASELINE_PATH)) {
     throw new Error(`Missing ${BASELINE_PATH}; run pnpm run size:baseline`);
