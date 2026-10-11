@@ -99,28 +99,83 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   `pnpm run size:baseline -- --accept-growth <entry path>` (repeatable). Commit
   the refreshed file.
 
-Hosted cache keys (`ci.yml`, `release.yml`) are exact-match hashes. The source
-key covers `bento.json`, `config/**`, `patches/**`, `src/**`,
-`branding/bento/**`, `extensions/**`, `prefs/**`, and the build, import and patch-stack
-scripts. The object key covers `bento.json`, `config/**`, `patches/**`,
-`package.json`, `configs/**`, `rust-toolchain.toml`, `pnpm-lock.release.yaml`,
-`scripts/bento-build.mjs`, and `scripts/mach-raw.sh`; it does not include
-`src/**`, `extensions/**`, `prefs/**`, or `branding/**`. A change to the source
-tooling, mozconfig generation, LTO policy, or Rust compiler therefore cannot
-reuse an object cache produced under a different native build configuration.
+## CI jobs and caches
+
+Routine pushes and pull requests run on the free `ubuntu-24.04` runner only.
+macOS and Windows builds run through `workflow_dispatch` and `release.yml`.
+
+`ci.yml` jobs and what they wait for:
+
+| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                        |
+| -------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`; selects the build platforms. Installs no dependencies.       |
+| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions, the competitor-reference boundary, the build driver config check, and `pnpm run lc`.   |
+| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, Vitest, extension build, `pnpm run size:check`.                                                                                            |
+| `build` (Source import or Build, per platform)                 | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`. Manual runs go on to bootstrap, build, and package. |
+
+The checks run in parallel and the build starts only after all of them pass,
+so a failing tree never starts a native build. `release.yml` runs its own
+`security-gate` (security invariants, release gate, the release security test,
+and `pnpm audit`) before the three native builds; the `release` job repeats the
+two release checks next to the artifacts it publishes.
+
+Each job installs its own dependencies, because each job is a separate machine.
+A manual build calls `scripts/build-release.sh` with `BENTO_RELEASE_PREPARED=1`:
+the workflow already installed, built the extensions, and imported them with
+`BENTO_RELEASE=1`, so the script skips those steps (the variable is documented
+in the script header; local runs leave it unset).
+
+Hosted caches use three keys. Their definitions live in
+`.github/actions/engine-source` and `.github/actions/native-cache-keys`, so
+`ci.yml` and `release.yml` cannot drift:
+
+| Cache              | Key                                                                                                          | Restore keys                                                                           | Saved                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Firefox source     | `bento-engine-source-v2-<OS>-<firefox.version>-<firefox.source.sha256>`                                      | none                                                                                   | Right after `pnpm run download` on a miss; never overwritten                    |
+| Mozilla toolchains | `bento-mozbuild-v1-<OS>-<arch>-<firefox.version>`                                                            | none                                                                                   | Right after a successful `bootstrap` on a miss                                  |
+| Native objects     | `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of configs/** and rust-toolchain.toml>-<run id>-<attempt>` | The same prefix without the run id, then `bento-obj-v1-<OS>-<arch>-<firefox.version>-` | After every manual or release native build, including a failed or timed-out one |
+
+- **Source.** The cache holds `engine/` (without `obj-*`) and
+  `.bento/source-state.json` exactly as `pnpm run download` leaves them, before
+  any import. `import` resets the patched files and copies every overlay, so
+  edits to the UI, patches, scripts, prefs, or branding never invalidate it. A
+  Firefox bump or a new source digest does. Imported state (`import-manifest.json`,
+  `engine-state.json`) is not cached.
+- **Toolchains.** `~/.mozbuild` is cached without `srcdirs`, whose mach virtual
+  environments hold absolute paths and are rebuilt in seconds. There is no
+  restore key: a version bump bootstraps from scratch.
+- **Native objects.** Every run saves a new `engine/obj-bento` entry (the key
+  holds the run id), and restore takes the newest entry that matches the prefix
+  with the same mozconfig inputs, otherwise the newest for the same Firefox
+  version. mach rebuilds only what changed. Objects never cross Firefox
+  versions, so the first build after a bump is the cold build that proves the
+  tree compiles from scratch. The object tree is saved even when the build
+  fails. The build step stops at 320 minutes, inside the 360-minute job bound,
+  so the save still runs and the next run resumes from the partial tree.
+- **Scope.** GitHub lets a run read caches from its own ref and the default
+  branch. Pushes to `main` seed the source cache for every pull request. A
+  manual run on `main` seeds the toolchain and object caches for every branch
+  and for release tags. Tag runs restore but never save, because a cache written
+  under a tag ref is invisible to the next tag and would only evict useful
+  entries. Run CI manually on `main` after a Firefox bump, before tagging.
+- **Size.** Linux entries are about 2 GB (source) and a few GB (objects, which
+  superseded runs leave behind until GitHub evicts the least recently used
+  entry at the 10 GB repository cap). Building all three platforms in one
+  run exceeds the cap, so expect macOS and Windows caches to be evicted between
+  runs. The job summary of every build lists which caches hit.
+- **Forcing a cold build.** Delete the `bento-obj-*` entries with
+  `gh cache delete`, or change the `v1` prefix in
+  `.github/actions/native-cache-keys` to discard every object and toolchain
+  entry at once.
 
 Manual CI application builds use four workers on the public
 `ubuntu-24.04` runner (4 CPUs / 16 GiB), two workers on the public
 `windows-2025` runner (4 CPUs / 16 GiB), and one worker on the standard
 `macos-26` Apple Silicon runner (3 M1 CPUs / 7 GiB). Each manual native job
-has a 360-minute bound for a cold Firefox build. The source cache excludes
-`engine/obj-*` and caches the paired Bento state files
-`.bento/source-state.json`, `.bento/import-manifest.json`, and
-`.bento/engine-state.json` with the engine checkout. Native objects
-use a separate release-mode configuration key so source restores do not
-duplicate the large object archive. Staging directories, backups, source
-archives, and patch-stack worktrees are not cached. On Windows, CI verifies the
-bootstrapped MSVC ATL/MFC headers and libraries, then prepends that compiler
+has a 360-minute bound for a cold Firefox build. Staging directories, backups,
+source archives, and patch-stack worktrees are not cached. On Windows, CI
+verifies the bootstrapped MSVC ATL/MFC headers and libraries
+(`.github/actions/select-windows-toolchain`), then prepends that compiler
 directory with `GITHUB_PATH` before configure runs. Release jobs use the same
 worker, cache, and toolchain selection policy, with their existing six-hour
 cold-build bound.
