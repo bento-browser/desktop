@@ -9,12 +9,17 @@ import path from 'node:path';
  * generated inputs on every import costs a reconfigure and recompiles.
  */
 
+// Reads through one descriptor so the type check, size and bytes describe the same file.
 function sameBytes(file, data) {
+  let fd;
   try {
-    const stat = fs.statSync(file);
-    return stat.isFile() && stat.size === data.length && fs.readFileSync(file).equals(data);
+    fd = fs.openSync(file, 'r');
+    const stat = fs.fstatSync(fd);
+    return stat.isFile() && stat.size === data.length && fs.readFileSync(fd).equals(data);
   } catch {
     return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
   }
 }
 
@@ -29,8 +34,16 @@ export function writeFileIfChanged(file, content) {
 
 /** Copies `source` over `destination` (bytes and permission bits) only when they differ. */
 export function copyFileIfChanged(source, destination) {
-  const mode = fs.statSync(source).mode & 0o7777;
-  const changed = writeFileIfChanged(destination, fs.readFileSync(source));
+  const fd = fs.openSync(source, 'r');
+  let mode;
+  let bytes;
+  try {
+    mode = fs.fstatSync(fd).mode & 0o7777;
+    bytes = fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const changed = writeFileIfChanged(destination, bytes);
   if ((fs.statSync(destination).mode & 0o7777) !== mode) fs.chmodSync(destination, mode);
   return changed;
 }

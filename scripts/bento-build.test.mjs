@@ -376,7 +376,12 @@ test('a mozconfig fragment or MOZCONFIG that would redirect mach is rejected', a
   try {
     await withObjdirEnv(undefined, async () => {
       for (const fragment of [path.join(root, 'mozconfig'), path.join(root, 'configs', platformName, 'mozconfig'), path.join(root, 'configs', 'common', 'mozconfig')]) {
-        const original = fs.existsSync(fragment) ? fs.readFileSync(fragment) : undefined;
+        let original;
+        try {
+          original = fs.readFileSync(fragment);
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
         fs.mkdirSync(path.dirname(fragment), { recursive: true });
         fs.appendFileSync(fragment, '\n# MOZ_OBJDIR in a comment is fine\n');
         writeMozconfig(root, 'dev');

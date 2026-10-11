@@ -698,8 +698,7 @@ function sameKnownFinalNewline(actual, expected) {
   return normalize(actual) === normalize(expected);
 }
 
-function isGeneratedMozconfig(ctx, config, target) {
-  const actual = fs.readFileSync(target, 'utf8');
+function isGeneratedMozconfig(ctx, config, actual) {
   const normalizedLegacy = actual.replace(/^# Internal [A-Za-z]+ config$/m, '# Internal build config');
   const withoutLegacyTrailingSpaces = normalizedLegacy.endsWith('\n  ')
     ? normalizedLegacy.slice(0, -2)
@@ -860,7 +859,7 @@ export function verifyManagedEngine(ctx, files) {
         return fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8') === config.brands.bento.release.displayVersion;
       }
       if (relative === 'mozconfig') {
-        return isGeneratedMozconfig(ctx, config, path.join(ctx.engineDir, relative));
+        return isGeneratedMozconfig(ctx, config, fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8'));
       }
       if (relative === '.gitignore') {
         return isGeneratedGitignore(ctx, config, path.join(ctx.engineDir, relative));
@@ -939,9 +938,7 @@ function managedEnginePaths(ctx) {
     addWhen(relative, (target) => fs.readFileSync(target, 'utf8') === config.brands[config.brand].release.displayVersion);
   }
   addWhen('browser/extensions/moz.build', (target) => fs.readFileSync(target, 'utf8').includes('# BEGIN BENTO BUILTIN ADDONS'));
-  addWhen('mozconfig', (target) => {
-    return isGeneratedMozconfig(ctx, config, target);
-  });
+  addWhen('mozconfig', (target) => isGeneratedMozconfig(ctx, config, fs.readFileSync(target, 'utf8')));
   return paths;
 }
 
@@ -974,12 +971,32 @@ export function recordEngineState(repoRoot = DEFAULT_ROOT) {
   return entries.length;
 }
 
+/**
+ * Reads a regular file without following symlinks, from one descriptor so the type
+ * check and the content describe the same file. Returns undefined for a symlink or
+ * any other non-regular file; a missing file still throws ENOENT.
+ */
+function readRegularFileNoFollow(target) {
+  let fd;
+  try {
+    fd = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  } catch (error) {
+    if (error.code === 'ELOOP') return undefined;
+    throw error;
+  }
+  try {
+    return fs.fstatSync(fd).isFile() ? fs.readFileSync(fd, 'utf8') : undefined;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function isRegeneratedEngineFile(ctx, config, relative) {
-  const target = path.join(ctx.engineDir, relative);
-  if (!fs.lstatSync(target).isFile()) return false;
+  const content = readRegularFileNoFollow(path.join(ctx.engineDir, relative));
+  if (content === undefined) return false;
   return relative === 'mozconfig'
-    ? isGeneratedMozconfig(ctx, config, target)
-    : fs.readFileSync(target, 'utf8') === config.brands[config.brand]?.release?.displayVersion;
+    ? isGeneratedMozconfig(ctx, config, content)
+    : content === config.brands[config.brand]?.release?.displayVersion;
 }
 
 export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {

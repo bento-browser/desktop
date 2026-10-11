@@ -27,5 +27,5 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-cp -r "$SRC/" "$DEST/dist/"
+cp -R "$SRC/." "$DEST/dist/"
 echo "synced: extensions/bento-shell/dist → builtin-addons/bento-shell/dist"

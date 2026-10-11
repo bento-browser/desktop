@@ -8,6 +8,16 @@ import test from 'node:test';
 import { installBranding } from './install-branding.mjs';
 import { FORBIDDEN_IDENTITIES, scanProductIdentity } from './check-product-identity.mjs';
 
+// Reads the mtime through a descriptor, so it does not pair a path stat with a later read.
+function mtimeOf(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    return fs.fstatSync(fd).mtimeMs;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-branding-test-'));
   fs.writeFileSync(
@@ -139,7 +149,7 @@ test('reinstalling keeps unchanged branding, including the appended prefs block'
 
     installBranding({ repoRoot: root });
     assert.equal(fs.readFileSync(prefs, 'utf8'), appended);
-    assert.equal(fs.statSync(prefs).mtimeMs, past.getTime());
+    assert.equal(mtimeOf(prefs), past.getTime());
 
     fs.writeFileSync(path.join(root, 'branding', 'bento', 'pref', 'firefox-branding.js'), '// Changed\n');
     installBranding({ repoRoot: root });
@@ -174,12 +184,12 @@ test('append-prefs rewrites a pref file only when its content changes', () => {
     const unchanged = run();
     assert.equal(unchanged.status, 0, unchanged.stderr);
     assert.match(unchanged.stdout, /already current/);
-    assert.equal(fs.statSync(firefox).mtimeMs, past.getTime());
-    assert.equal(fs.statSync(branding).mtimeMs, past.getTime());
+    assert.equal(mtimeOf(firefox), past.getTime());
+    assert.equal(mtimeOf(branding), past.getTime());
 
     fs.writeFileSync(path.join(root, 'prefs', 'bento.js'), 'pref("a", 2);\n');
     assert.equal(run().status, 0);
-    assert.notEqual(fs.statSync(firefox).mtimeMs, past.getTime());
+    assert.notEqual(mtimeOf(firefox), past.getTime());
     assert.match(fs.readFileSync(firefox, 'utf8'), /pref\("a", 2\);/);
     assert.equal(fs.readFileSync(firefox, 'utf8').match(/Bento defaults/g).length, 1);
   } finally {
