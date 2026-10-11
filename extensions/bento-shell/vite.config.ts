@@ -6,12 +6,17 @@
 //
 // The pinned npm @muxui/react release is consumed from its public
 // output. The aliases below keep every entrypoint on Bento's pinned React Aria
-// substrate so providers and consumers share one module identity.
+// substrate so providers and consumers share one module identity. With
+// MUXUI_LOCAL set (local Mux development only), muxui-local.mjs swaps the npm
+// package for a local Mux checkout and the build stamps dist/muxui-source.json.
 
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, mergeConfig, searchForWorkspaceRoot, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
+import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
+
+const muxLocal = resolveMuxLocal();
 
 // Strip `crossorigin` from emitted <script> and <link> tags. moz-extension://
 // resources don't reliably handle CORS preflight, so the attribute makes
@@ -45,17 +50,22 @@ function copyChromeBridgeExperiment(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [react({ jsxRuntime: 'automatic' }), stripCrossOrigin(), copyChromeBridgeExperiment()],
+const shellConfig = defineConfig(({ mode }) => ({
+  plugins: [
+    react({ jsxRuntime: 'automatic' }),
+    stripCrossOrigin(),
+    copyChromeBridgeExperiment(),
+    muxSourcePlugin(muxLocal, resolve(__dirname, '../../node_modules/@muxui/react/package.json')),
+  ],
 
   ...(process.env.BENTO_RELEASE === '1'
     ? { esbuild: { drop: ['console', 'debugger'] as const } }
     : {}),
 
   resolve: {
-    alias: {
-      '@shared': resolve(__dirname, '../_shared'),
-      '@bento': resolve(__dirname, 'src'),
+    alias: [
+      { find: '@shared', replacement: resolve(__dirname, '../_shared') },
+      { find: '@bento', replacement: resolve(__dirname, 'src') },
       // Force `react-aria-components` (and the helper umbrellas) to
       // resolve from bento-browser's node_modules, never a package's nested
       // dependency paths. If one entrypoint bundled a second copy of
@@ -72,11 +82,20 @@ export default defineConfig(({ mode }) => ({
       // — those carry their own state contexts too) and
       // `@react-types/shared` (shared TypeScript symbol slots that
       // can also produce identity drift across duplicate copies).
-      'react-aria-components': resolve(__dirname, '../../node_modules/react-aria-components'),
-      'react-aria': resolve(__dirname, '../../node_modules/react-aria'),
-      'react-stately': resolve(__dirname, '../../node_modules/react-stately'),
-      '@react-types/shared': resolve(__dirname, '../../node_modules/@react-types/shared'),
-    },
+      {
+        find: 'react-aria-components',
+        replacement: resolve(__dirname, '../../node_modules/react-aria-components'),
+      },
+      { find: 'react-aria', replacement: resolve(__dirname, '../../node_modules/react-aria') },
+      {
+        find: 'react-stately',
+        replacement: resolve(__dirname, '../../node_modules/react-stately'),
+      },
+      {
+        find: '@react-types/shared',
+        replacement: resolve(__dirname, '../../node_modules/@react-types/shared'),
+      },
+    ],
   },
 
   // Relative-path emission (./) so the bundle works when index.html is loaded
@@ -162,3 +181,9 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
   },
 }));
+
+// Local Mux mode adds its aliases, React dedupe, and fs.allow on top of the
+// base config; with MUXUI_LOCAL unset the fragment is empty.
+export default defineConfig((env) =>
+  mergeConfig(shellConfig(env), muxLocalViteConfig(muxLocal, searchForWorkspaceRoot(__dirname))),
+);

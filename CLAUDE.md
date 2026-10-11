@@ -200,6 +200,11 @@ public `styles.css`, `themes.css`, and documented component exports. Pin the
 exact package version; do not use dist-tags, local archives, or working-tree
 links in manifests or locks.
 
+Local Mux development never reaches a release. `MUXUI_LOCAL` (set only by the
+`shell:*:mux` scripts) swaps in a local Mux checkout for dev loops; release builds
+throw on it, and packaging rejects a packaged shell whose `muxui-source.json` stamp
+is not `npm`. See [docs/build-tooling.md](docs/build-tooling.md#local-mux-ui).
+
 **Default install (dev loop)** — `pnpm install`:
 
 - `pnpm-lock.yaml` records the exact npm version and registry integrity.
@@ -257,6 +262,8 @@ pnpm --filter @bento/shell ladle:serve   # http://localhost:5180
 
 Stories live next to components: `src/components/<Name>/<Name>.stories.tsx`. Edit → instant HMR. Use `src/state/__fixtures__/tabs.ts` (or write a similar fixture file) to seed Zustand with fake data — no real `browser.*` API.
 
+To iterate on the local Mux checkout (`~/Projects/muxui/packages/react`) instead of the npm package, run `pnpm run shell:ladle:mux`: it regenerates Mux, serves Ladle, and re-runs generate when Mux inputs change.
+
 ### B. Standalone shell preview (full React app, no Firefox)
 
 ```sh
@@ -264,6 +271,8 @@ pnpm --filter @bento/shell dev   # http://localhost:5179
 ```
 
 The `bridge/` layer should mock `browser.*` here (M1+ work — not built yet). Until then, this only renders the empty/connecting state.
+
+`pnpm run shell:dev:mux` runs the same server against the local Mux checkout with the same regenerate-on-change watch.
 
 ### C. Real Bento iteration (when chrome integration / `browser.tabs.*` / messaging matters)
 
@@ -280,6 +289,7 @@ Then iterate by what you changed:
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | `extensions/bento-shell/src/**/*` (React UI, CSS)           | `pnpm --filter @bento/shell build && pnpm run import`                                            | Press **Alt+Shift+R** in Bento (triggers `browser.runtime.reload()` via the dev-reload command) |
 | `extensions/bento-shell/src/background.ts`                  | same                                                                                             | Quit + relaunch (background scripts evaluate once)                                              |
+| Local Mux (`~/Projects/muxui`) and the shell UI against it  | `pnpm run shell:import:mux` (Mux generate, type check, shell build, import)                      | Press **Alt+Shift+R** in Bento                                                                  |
 | `extensions/bento-tools/src/**/*`                           | `pnpm --filter @bento/tools build && pnpm run import`                                            | Quit + relaunch                                                                                 |
 | `patches/`, `src/browser/`, `prefs/bento.js`, `bento.json`  | `pnpm run build` (~15 s — mach build is mostly cached)                                           | Quit + relaunch                                                                                 |
 | Firefox source/build tooling                                | Follow the update and validation procedure in `docs/build-tooling.md`                            | Quit + relaunch                                                                                 |

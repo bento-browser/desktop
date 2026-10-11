@@ -24,6 +24,12 @@
 
 set -euo pipefail
 
+# Local Mux development (MUXUI_LOCAL) never reaches a release.
+if [ -n "${MUXUI_LOCAL:-}" ]; then
+  echo "build-release: MUXUI_LOCAL is set; releases use only the published npm @muxui/react. Unset it and retry." >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 

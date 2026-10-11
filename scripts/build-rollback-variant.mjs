@@ -17,14 +17,24 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { MUX_SOURCE_STAMP, rollbackMuxStamp } from '../extensions/bento-shell/muxui-local.mjs';
+import { ROLLBACK_VARIANTS } from './rollback-variants.mjs';
+
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const archive = path.join(repo, 'rollback/legacy-source');
 const [variant, action = 'build'] = process.argv.slice(2);
-if (!['rollback-transition-r1', 'rollback-final-r2'].includes(variant)) {
-  throw new Error('variant must be rollback-transition-r1 or rollback-final-r2');
+if (!ROLLBACK_VARIANTS.includes(variant)) {
+  throw new Error(`variant must be ${ROLLBACK_VARIANTS.join(' or ')}`);
 }
 if (!['build', 'package', 'release', 'updates', 'check'].includes(action)) {
   throw new Error('action must be build, package, release, updates, or check');
+}
+// The archived shell Vite config replaces the live one during these builds and
+// has no local Mux support, so MUXUI_LOCAL would be silently ignored.
+if (process.env.MUXUI_LOCAL) {
+  throw new Error(
+    'rollback variants build against the published npm @muxui/react; unset MUXUI_LOCAL',
+  );
 }
 const transition = variant === 'rollback-transition-r1';
 const temporary = await mkdtemp(path.join(tmpdir(), 'bento-rollback-'));
@@ -139,6 +149,12 @@ async function stageLegacyShellAt({ shellRoot, copyFile, writeJsonFileAt, curren
     if (relative === 'manifest.json') continue;
     await copyFile(path.join(shellRoot, relative), source);
   }
+  // The archived Vite config cannot stamp its own build; Vite copies public/
+  // into dist/, and packaging accepts only this variant's stamp.
+  await writeJsonFileAt(
+    path.join(shellRoot, 'public', MUX_SOURCE_STAMP),
+    rollbackMuxStamp(variant),
+  );
   const manifest = JSON.parse(await readFile(path.join(archiveShell, 'manifest.json'), 'utf8'));
   manifest.version = transition ? '0.0.4' : '0.0.5';
   if (transition) {

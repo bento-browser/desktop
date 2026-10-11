@@ -145,6 +145,118 @@ bash scripts/update-release-lock.sh
 bash scripts/install-release-deps.sh
 ```
 
+## Local Mux UI
+
+To develop Mux and Bento together, point Bento at a local Mux checkout instead
+of the pinned npm `@muxui/react`. Each loop is one command; the default checkout
+is `~/Projects/muxui/packages/react`, overridable with an absolute `MUXUI_LOCAL`. The scripts run [`scripts/muxui-dev.mjs`](../scripts/muxui-dev.mjs)
+and set `MUXUI_LOCAL` only for the processes they start.
+
+| Script                      | Loop                                                                                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm run shell:ladle:mux`  | Mux generate, then Ladle. Re-runs generate when a Mux input changes.                                                                                 |
+| `pnpm run shell:dev:mux`    | The same with the shell Vite dev server.                                                                                                             |
+| `pnpm run shell:import:mux` | One shot for real Bento: Mux generate, type check against local Mux, shell and background build, `pnpm run import`. Then press Alt+Shift+R in Bento. |
+
+Mux generate here is `packages/schema/src/generate.mjs` followed by
+`packages/react/src/generate.mjs` (react generate imports the schema package's
+generated contract). Mux's own `generate` script also writes an advisory status
+file that Bento does not read, so it is skipped. Mux's react generate rewrites
+the tracked `packages/react/README.md` whenever Mux sources change; that is Mux's
+own behavior, expected, and belongs in the Mux commit. The watch covers
+`packages/react/{src,package.json}`, `packages/{tokens,schema}/src`,
+`packages/schema/schemas`, `strategy/platform-safety-contract.json`, the
+repository-policy files schema generate reads, and the catalog files react
+generate reads (`catalog/tokens`, `catalog/react-r1-*`, each component's
+`artifact.json`), never `generated/`. Runs are debounced and serialized: a change
+during a run queues exactly one rerun.
+
+How the checkout is used:
+
+- [`extensions/bento-shell/muxui-local.mjs`](../extensions/bento-shell/muxui-local.mjs)
+  serves both Vite configs. It validates `MUXUI_LOCAL` (absolute path, package
+  name `@muxui/react`, `generated/index.mjs` present) and aliases every public
+  export by exact match, derived from the local `package.json` exports map. A
+  prefix alias would break subpaths and the `@import`s in `src/theme/muxui.css`.
+- React and React DOM resolve from Bento (`resolve.dedupe`), and the existing
+  React Aria aliases stay, so Mux and Bento share one React and one React Aria.
+  Mux's own `lucide-react`, `motion`, Tiptap, and `shiki` resolve from the Mux
+  checkout; they are intentionally not aliased (Mux uses a newer lucide than the
+  shell).
+- `server.fs.allow` lists the workspace root and the local package root, since
+  Mux's CSS loads fonts from its `assets/`.
+- `shell:import:mux` writes the gitignored
+  `extensions/bento-shell/tsconfig.muxui-local.json`, which maps the public
+  declarations to the local `generated/*.d.ts`. The default `tsc -b` and the
+  shell `build` script keep using the npm declarations.
+- Theme preset sync and chrome token generation stay on the npm package, so
+  changes to Mux tokens or themes reach Bento's presets and chrome tokens only
+  after Mux is published and pinned.
+
+Guards keep local Mux out of releases:
+
+- The Vite configs, `muxui-dev.mjs`, and `scripts/build-rollback-variant.mjs`
+  throw when `MUXUI_LOCAL` is set during `BENTO_RELEASE=1` or
+  `BENTO_BUILD_MODE=release` (the rollback script refuses it in every action);
+  `scripts/build-release.sh` and `scripts/build-bento.sh` exit if it is set.
+- The shell build writes `dist/muxui-source.json`: `{"source":"npm","version":...}`
+  or `{"source":"local"}`. Packaging (`bento-build.mjs package`, which backs
+  `pnpm run package`, `build:full`, `build:release`, CI, and release builds) reads
+  that stamp where Firefox ships it, not from the imported
+  `engine/browser/extensions/bento-shell/dist`: `mach build` copies the shell into
+  the objdir (symlinks in dev builds, real copies elsewhere), so rebuilding and
+  re-importing the shell does not refresh native resources that were already
+  built. It checks two places, both at
+  `chrome/browser/builtin-addons/bento-shell/dist/muxui-source.json`:
+  1. the packager's input, `engine/obj-*/dist/bin/browser/`, before `mach package`,
+     only to fail fast on the common mistake instead of after the long package step;
+  2. the staged application after `mach package` and `package-multi-locale`,
+     before the distributables are collected or the MAR is made. This is the
+     authoritative check: it reads inside `omni.ja`
+     (`engine/obj-*/dist/bento/Bento.app/Contents/Resources/browser/omni.ja` on
+     macOS, `engine/obj-*/dist/bento/browser/omni.ja` elsewhere), or the loose `chrome/` tree when
+     there is no `omni.ja`.
+
+  A missing or `local` stamp is rejected, so a local build packaged after
+  unsetting the variable fails until `pnpm run build` (extension build, import,
+  and native build) has refreshed the objdir. An objdir built before this check
+  has no stamp and needs `pnpm run build` once. `pnpm run build` never packages and
+  is unaffected.
+
+- Rollback variants replace the shell `vite.config.ts` with the archived one in
+  `rollback/legacy-source`, which has no local Mux support and cannot stamp its
+  own build. `scripts/build-rollback-variant.mjs` stages
+  `{"source":"rollback","variant":"<name>"}` into the shell's `public/`, which Vite
+  copies into `dist/`. When `BENTO_RELEASE_VARIANT` is set, packaging accepts only
+  the stamp of that exact variant, and the name must be one of `ROLLBACK_VARIANTS`
+  in `scripts/rollback-variants.mjs`; when it is unset, only `npm`. The
+  `rollback:package-*` actions import the archived shell without a native build, so
+  they package only if the objdir already carries that variant's stamp (a symlinked
+  dev objdir follows the import; otherwise run the variant's `build` action).
+
+### Publishing a new Mux release
+
+1. In the Mux repository, run `pnpm release:prepare` with
+   `MUXUI_RELEASE_CANDIDATE_VERSION` set to the candidate version, then publish
+   through the npm-publish workflow (registry preflight, dry run, publish).
+2. Baseline, before changing anything: `pnpm install --frozen-lockfile`,
+   `bash scripts/install-release-deps.sh`, and `pnpm run release:security-check`
+   against the current pin and locks must pass.
+3. Update the inputs the new graph is checked against: the exact pin in
+   `extensions/bento-shell/package.json`; the root `pnpm.overrides` (React Aria,
+   Tiptap) if Mux's dependencies changed; and the expected release metadata, the
+   version and registry integrity in `scripts/generate-release-sbom.mjs`
+   (`muxuiVersion`, `muxuiIntegrity`) and `scripts/release-security.test.mjs`.
+4. Regenerate both locks: `pnpm install`, `bash scripts/update-release-lock.sh`,
+   `bash scripts/install-release-deps.sh`. (Frozen installs fail between steps 3
+   and 4 by design.)
+5. Verify the new graphs: `pnpm install --frozen-lockfile`,
+   `bash scripts/install-release-deps.sh`, `node --test scripts/release-security.test.mjs`,
+   and `pnpm run release:security-check`.
+6. Update the version mentions in `CLAUDE.md`, `README.md`, and the docs
+   (`docs/build-tooling.md`, `docs/mux-ui-component-customisations.md`,
+   `docs/core-functionality-technical.md`).
+
 ## Release security and provenance
 
 Repository release builds keep Firefox's release add-on signature enforcement

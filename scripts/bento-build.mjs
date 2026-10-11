@@ -14,6 +14,8 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
 const SOURCE_STATE = 'source-state.json';
@@ -1403,8 +1405,18 @@ async function commandPackage(ctx) {
   const objects = objDirs(ctx);
   if (objects.length === 0) fail('package: no engine object directory found; run pnpm run build first');
   const objDist = path.join(objects[objects.length - 1], 'dist');
+  // Releases ship only the published npm Mux, or a rollback variant's own shell
+  // (docs/build-tooling.md, "Local Mux UI"). Packaging copies the shell from the
+  // objdir, not from the imported source, so the stamp is read there. The
+  // packager's input (dist/bin) is checked first only to fail before the long
+  // mach package; the staged application below is the authoritative check.
+  const variant = process.env.BENTO_RELEASE_VARIANT || undefined;
+  assertShellMuxSource(path.join(objDist, 'bin', 'browser'), variant);
   await run('bash', ['scripts/mach-raw.sh', 'package'], { cwd: ctx.root });
   await run('bash', ['scripts/mach-raw.sh', 'package-multi-locale', '--locales', ...readLocales(ctx, config)], { cwd: ctx.root });
+  const application = packagedApplication(objDist, config);
+  if (!application) fail(`package: packaged ${config.binaryName} application is missing under ${objDist}`);
+  assertShellMuxSource(stagedBrowserDir(application), variant);
   copyDirectoryFiles(ctx, objDist);
   const mar = await createMar(ctx, config, objDist);
   const build = applicationIni(mar.application);
