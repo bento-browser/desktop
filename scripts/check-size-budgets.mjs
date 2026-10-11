@@ -1,12 +1,19 @@
 /* global console, process */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { evaluateEntry, formatBaseline, parseBaseline } from './size-ratchet.mjs';
 
-// These ceilings are reported for visibility during the migration. Missing or
-// malformed inputs still throw above, but an overage does not block the build.
+// Size ratchet. The ceilings below are targets and are always reported, but the
+// check fails only when an entry grows past its committed baseline (see
+// size-ratchet.mjs). Existing overages therefore pass; growth does not. Missing
+// or malformed built assets also fail.
+//
+//   node scripts/check-size-budgets.mjs                    check against the baseline
+//   node scripts/check-size-budgets.mjs --write-baseline   rewrite the baseline from this build
 const KB = 1000;
+const BASELINE_PATH = '.size-baseline.json';
 
 const jsEntryBudgets = [
   {
@@ -23,12 +30,6 @@ const jsEntryBudgets = [
     name: 'bento-shell · address-bar cold-start JS (gz)',
     entry: 'extensions/bento-shell/dist/assets/address-bar.js',
     limit: '200 KB',
-  },
-  {
-    name: 'bento-shell · settings cold-start JS (gz)',
-    entry: 'extensions/bento-shell/dist/assets/settings.js',
-    document: 'extensions/bento-shell/settings.html',
-    limit: '205 KB',
   },
   {
     name: 'bento-shell · confirm cold-start JS (gz)',
@@ -137,32 +138,89 @@ function formatSize(bytes) {
   return `${(bytes / KB).toFixed(2)} KB`;
 }
 
-function checkBudget({ name, size, limit }) {
-  const limitBytes = bytesForLimit(limit);
-  const passed = size <= limitBytes;
-  const marker = passed ? 'OK' : 'WARN';
+function measureBudgets() {
+  const measurements = [];
+
+  for (const budget of jsEntryBudgets) {
+    const files = collectEntryGraph(budget.entry);
+    measurements.push({
+      key: budget.entry,
+      name: budget.name,
+      limit: budget.limit,
+      size: files.reduce((sum, filePath) => sum + gzipSize(filePath), 0),
+    });
+  }
+
+  for (const budget of readDirectFileBudgets()) {
+    const filePath = path.resolve(budget.path);
+    if (!existsSync(filePath)) {
+      throw new Error(`Missing built asset: ${budget.path}`);
+    }
+    measurements.push({
+      key: budget.path,
+      name: budget.name,
+      limit: budget.limit,
+      size: gzipSize(filePath),
+    });
+  }
+
+  return measurements;
+}
+
+function reportBudget({ key, name, size, limit }, baselines) {
+  const ceiling = bytesForLimit(limit);
+  const result = evaluateEntry({ size, baseline: baselines[key], ceiling });
+  const marker = result.failed ? 'FAIL' : result.overCeiling ? 'WARN' : 'OK';
   console.log(`${marker} ${name}: ${formatSize(size)} / ${limit}`);
-  if (!passed) {
-    console.log(`  exceeded by ${formatSize(size - limitBytes)}`);
+
+  if (result.overCeiling) {
+    console.log(`  over ceiling by ${formatSize(size - ceiling)}`);
   }
+  if (result.verdict === 'missing') {
+    console.log(`  no baseline entry for ${key}; run pnpm run size:baseline`);
+  } else if (result.verdict === 'grew') {
+    console.log(
+      `  grew ${formatSize(result.delta)} past baseline ${formatSize(baselines[key])} ` +
+        `(allowed ${formatSize(Math.round(result.tolerance))})`,
+    );
+  } else if (result.verdict === 'shrank') {
+    console.log(
+      `  note: ${formatSize(-result.delta)} below baseline ${formatSize(baselines[key])}; ` +
+        'run pnpm run size:baseline to lock in the gain',
+    );
+  }
+  return result;
 }
 
-for (const budget of jsEntryBudgets) {
-  // Standalone Settings is emitted only by the supported rollback variants.
-  if (budget.document && !existsSync(budget.document)) continue;
-  const files = collectEntryGraph(budget.entry);
-  const size = files.reduce((sum, filePath) => sum + gzipSize(filePath), 0);
-  checkBudget({ name: budget.name, size, limit: budget.limit });
-}
+const measurements = measureBudgets();
 
-for (const budget of readDirectFileBudgets()) {
-  const filePath = path.resolve(budget.path);
-  if (!existsSync(filePath)) {
-    throw new Error(`Missing built asset: ${budget.path}`);
+if (process.argv.includes('--write-baseline')) {
+  const gzipBytes = Object.fromEntries(measurements.map(({ key, size }) => [key, size]));
+  writeFileSync(BASELINE_PATH, formatBaseline(gzipBytes));
+  console.log(`Wrote ${measurements.length} entries to ${BASELINE_PATH}`);
+} else {
+  if (!existsSync(BASELINE_PATH)) {
+    throw new Error(`Missing ${BASELINE_PATH}; run pnpm run size:baseline`);
   }
-  checkBudget({
-    name: budget.name,
-    size: gzipSize(filePath),
-    limit: budget.limit,
-  });
+  const baselines = parseBaseline(readFileSync(BASELINE_PATH, 'utf8'));
+
+  const results = measurements.map((measurement) => reportBudget(measurement, baselines));
+  const measuredKeys = new Set(measurements.map(({ key }) => key));
+  for (const key of Object.keys(baselines)) {
+    if (!measuredKeys.has(key)) {
+      console.log(`note: baseline entry ${key} is no longer measured; run pnpm run size:baseline`);
+    }
+  }
+
+  const overCeiling = results.filter(({ overCeiling }) => overCeiling).length;
+  const failed = results.filter(({ failed }) => failed).length;
+  console.log(`\n${overCeiling} entries over their ceilings (targets, not failures)`);
+  if (failed > 0) {
+    console.log(
+      `Size ratchet failed on ${failed} of ${results.length} entries (grew past baseline or no ` +
+        `baseline). If the growth is intended, run pnpm run size:baseline and commit ` +
+        `${BASELINE_PATH}.`,
+    );
+    process.exitCode = 1;
+  }
 }
