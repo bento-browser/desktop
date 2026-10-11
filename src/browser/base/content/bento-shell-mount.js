@@ -4046,7 +4046,34 @@
     return raw.replace(/[\r\n]/g, '').trim();
   }
 
+  // Firefox's own clipboard-suggestion setting also governs this Bento
+  // suggestion. Read at call time so a pref change applies to the next open,
+  // and skip the clipboard read entirely when the setting is off. Only a
+  // boolean pref is trusted: getBoolPref(name, default) would return the
+  // default for a wrong-typed pref, so check the type first. A missing pref
+  // takes Firefox's own default (true, browser/app/profile/firefox.js); any
+  // other type, or a failed read, disables the read. Do not gate on
+  // browser.urlbar.clipboard.featureGate: that controls Firefox's own
+  // provider rollout, not this intentional Bento feature.
+  const CLIPBOARD_SUGGEST_PREF = 'browser.urlbar.suggest.clipboard';
+
+  function isClipboardUrlSuggestionEnabled() {
+    try {
+      switch (Services.prefs.getPrefType(CLIPBOARD_SUGGEST_PREF)) {
+        case Services.prefs.PREF_BOOL:
+          return Services.prefs.getBoolPref(CLIPBOARD_SUGGEST_PREF);
+        case Services.prefs.PREF_INVALID:
+          return true;
+        default:
+          return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
   function resolveClipboardUrlSuggestion() {
+    if (!isClipboardUrlSuggestionEnabled()) return '';
     const value = sanitizeClipboardUrlText(readGlobalClipboardText());
     if (!value || value.length > 2048 || /\s/.test(value)) return '';
     try {
@@ -7923,12 +7950,9 @@
               } catch {
                 favIconUrl = '';
               }
-              dispatchShellAction({
-                type: 'savedPanels/save',
-                url: uri.spec,
-                title,
-                favIconUrl,
-              });
+              const metadata = boundSavedPanelMetadata(uri.spec, title, favIconUrl);
+              if (!metadata) return;
+              dispatchShellAction({ type: 'savedPanels/save', ...metadata });
               return;
             }
             if (itemId.startsWith('size:')) {
@@ -11032,6 +11056,32 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC);
 
+  // bento-tools rejects a whole action when any field exceeds its cap in
+  // extensions/_shared/wire-action.ts (the validator stays strict), and a page
+  // controls its title, URL, and favicon. Keep these in step with those caps.
+  // The URL cap mirrors Firefox's network.standard-url.max-length.
+  const SAVED_PANEL_MAX_TITLE_LENGTH = 4096;
+  const SAVED_PANEL_MAX_URL_LENGTH = 1048576;
+  const SAVED_PANEL_MAX_FAVICON_URL_LENGTH = 262144;
+
+  // Bounds the savedPanels/save fields to those caps. A long title is cut (as
+  // Firefox does for bookmark titles) without splitting a surrogate pair, an
+  // oversized favicon is dropped because it is optional, and a URL that is too
+  // long returns null because a truncated URL would save a different address.
+  function boundSavedPanelMetadata(url, title, favIconUrl) {
+    if (url.length > SAVED_PANEL_MAX_URL_LENGTH) return null;
+    let boundedTitle = title;
+    if (boundedTitle.length > SAVED_PANEL_MAX_TITLE_LENGTH) {
+      boundedTitle = boundedTitle.slice(0, SAVED_PANEL_MAX_TITLE_LENGTH);
+      if (/[\uD800-\uDBFF]$/.test(boundedTitle)) boundedTitle = boundedTitle.slice(0, -1);
+    }
+    return {
+      url,
+      title: boundedTitle,
+      favIconUrl: favIconUrl.length > SAVED_PANEL_MAX_FAVICON_URL_LENGTH ? '' : favIconUrl,
+    };
+  }
+
   function dispatchShellAction(action) {
     const shellFrame = document.getElementById('bento-shell-frame');
     if (!shellFrame) return false;
@@ -13739,42 +13789,63 @@
   }
 
   // The "Add panel" trailer at the end of the strip. Click creates a new
-  // tab via gBrowser.addTab and stamps SessionStore extData
-  // "bentoAddAsPanel=1" on it. bento-tools' tabs.onCreated handler reads
-  // that marker (via browser.sessions.getTabValue) and adds the tab to
-  // the active workspace's panels list, then emits panels/sync — which
-  // round-trips back to chrome and the next reconcilePanels pass renders
+  // tab at a sentinel URL and attaches a one-time grant to the native tab.
+  // bento-tools' tabs.onCreated handler sees the sentinel, consumes the
+  // grant through bentoPrivacy.consumeAddPanelGrant, adds the tab to the
+  // window's active workspace panel list and emits panels/sync, which
+  // round-trips back to chrome so the next reconcilePanels pass renders
   // the new panel.
+  //
+  // Grant IPC: chrome creates the tab at about:blank?bento_add_as_panel=<token>
+  // and stores { token, windowId, source, expiresAt, acknowledge } on the
+  // XUL tab element (newTab.bentoAddPanelGrant). Web content cannot reach
+  // that element, so the URL alone is never authority: a page that navigates
+  // to a marker-shaped URL has no grant, and bento-tools ignores it. The
+  // tools side resolves the native tab through the extension tabManager and
+  // atomically checks (tabId, token), deletes the grant and reads
+  // windowId/source from it (consumeAddPanelGrant in
+  // extensions/bento-tools/experiments/bento-privacy/api.js), so a replayed
+  // URL or another tab's token is rejected. We tried SessionStore.setTabValue
+  // first but the SessionStore module's exported shape is not stable across
+  // Firefox versions in chrome scripts loaded via jar.mn from inc.xhtml.
+  const ADD_AS_PANEL_MARKER_PREFIX = 'about:blank?bento_add_as_panel=';
+  // Minimum time on the sentinel URL before navigating to the new-tab page;
+  // keeps the pre-grant timing (bento-tools normally consumes the grant
+  // within a few milliseconds of onCreated).
+  const ADD_AS_PANEL_REDIRECT_MIN_DELAY_MS = 250;
+  // A grant not consumed within this window is discarded and the tab is
+  // redirected anyway, so a stalled bento-tools cannot leave the sentinel up.
+  const ADD_AS_PANEL_GRANT_TTL_MS = 2000;
 
-  // URL-marker IPC: chrome creates the tab at a sentinel URL; bento-tools'
-  // tabs.onCreated handler reads tab.url, redirects to the real new-tab
-  // page, and adds the tab to the active workspace's panels. We tried
-  // SessionStore.setTabValue first but the SessionStore module's exported
-  // shape is not stable across Firefox versions in chrome scripts loaded
-  // via jar.mn from inc.xhtml — `mod.SessionStore.setTabValue` is
-  // sometimes undefined even after a successful import. URL markers go
-  // through the WebExtension API and are visible to bento-tools without
-  // any chrome-side privilege juggling.
-  const ADD_AS_PANEL_MARKER = 'bento_add_as_panel=1';
+  // 'main' inserts before the main slot, a tab id inserts after that panel,
+  // and 'end' appends. The "+" click handler passes the click Event here, so
+  // anything that is not null or a tab id means 'end'.
+  function resolveAddPanelSource(sourceTabId) {
+    if (sourceTabId === null) return 'main';
+    if (Number.isInteger(sourceTabId) && sourceTabId >= 0) return sourceTabId;
+    return 'end';
+  }
 
   function addNewPanel(sourceTabId) {
     if (!window.gBrowser || typeof window.gBrowser.addTab !== 'function') {
       console.warn('[bento-shell-mount] addNewPanel: gBrowser unavailable');
       return;
     }
-    // about:blank with the marker query string. bento-tools sees the URL,
-    // adds the tab to the active workspace's panel list. Adding a
-    // timestamp to the URL keeps consecutive Add-panel clicks distinct
-    // (otherwise tabs.onUpdated may collapse them as the same URL).
-    let markerUrl = 'about:blank?' + ADD_AS_PANEL_MARKER + '&ts=' + Date.now();
-    if (sourceTabId === null) {
-      markerUrl += '&bento_source_tab_id=main';
-    } else if (Number.isFinite(sourceTabId)) {
-      markerUrl += '&bento_source_tab_id=' + encodeURIComponent(String(sourceTabId));
-    }
     let newTab;
+    let grant;
+    let consumed;
     try {
-      newTab = window.gBrowser.addTab(markerUrl, {
+      grant = {
+        token: crypto.randomUUID(),
+        windowId: getChromeWindowId(),
+        source: resolveAddPanelSource(sourceTabId),
+        expiresAt: Date.now() + ADD_AS_PANEL_GRANT_TTL_MS,
+        acknowledge: null,
+      };
+      consumed = new Promise((resolve) => {
+        grant.acknowledge = resolve;
+      });
+      newTab = window.gBrowser.addTab(ADD_AS_PANEL_MARKER_PREFIX + grant.token, {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
         skipAnimation: true,
         inBackground: true,
@@ -13784,21 +13855,28 @@
       return;
     }
     if (!newTab) return;
-    // The newly-created tab needs to navigate away from the marker
-    // URL so the tab title and main URL bar (when this tab becomes
-    // active) show a clean state. Chrome's loadURI bypasses any
-    // WebExtension API restrictions on privileged/new-tab navigation. The
-    // 250ms delay gives bento-tools' tabs.onCreated listener time to
-    // fire with the marker URL and add the tab to the panel list
-    // before we navigate away.
-    setTimeout(() => {
+    // Set in the same synchronous turn as addTab: bento-tools only sees the
+    // tab through an asynchronous extension event, after this assignment.
+    newTab.bentoAddPanelGrant = grant;
+    // The newly-created tab needs to navigate away from the marker URL so
+    // the tab title and main URL bar (when this tab becomes active) show a
+    // clean state. Chrome's loadURI bypasses any WebExtension API
+    // restrictions on privileged/new-tab navigation. Navigate once the
+    // minimum delay has passed AND bento-tools has consumed the grant (or
+    // the grant expired), so the panel is added before the URL changes.
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    Promise.all([
+      wait(ADD_AS_PANEL_REDIRECT_MIN_DELAY_MS),
+      Promise.race([consumed, wait(ADD_AS_PANEL_GRANT_TTL_MS)]),
+    ]).then(() => {
+      if (newTab.bentoAddPanelGrant === grant) delete newTab.bentoAddPanelGrant;
       try {
         const browserEl = newTab.linkedBrowser;
         loadDefaultNewTabInBrowser(browserEl);
       } catch (err) {
         console.warn('[bento-shell-mount] addNewPanel: post-create navigate failed:', err);
       }
-    }, 250);
+    });
   }
 
   // Add-panel trailer at the end of the strip. Idempotent — created on
