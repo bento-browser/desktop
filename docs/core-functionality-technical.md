@@ -1211,6 +1211,42 @@ Current persistence is version 5. It stores URL-backed `panelKey` entries plus
 the layout tree. Panel keys are derived from visible layout order when writing
 so URLs can be restored to fresh tab ids on next launch.
 
+Panel persistence write path:
+
+- Source of truth: `PanelStore` in-memory maps (layouts, widths, header-hidden,
+  main widths, strip scroll, parked `persistedWorkspaces`). The durable copy is
+  `bento.panels` plus `bento.panelStripScroll` in `browser.storage.local`; the
+  shell never writes either.
+- Every write is a whole-graph read-modify-write: `Persistence.#flush` reads each
+  live panel's URL with `browser.tabs.get` and then writes the payload. Writes
+  never overlap. `Persistence` keeps one write in flight and one queued snapshot;
+  a newer request replaces the queued one, so a burst behind a slow write costs
+  at most two writes. `flushNow` resolves once a write at least as new as its
+  snapshot has landed (a superseded caller resolves after the superseding write),
+  which `ImportExecutor` relies on when it awaits `persistCurrentState`. A flush
+  that throws is logged and does not block later ones.
+- Triggers: layout and size mutations that must stick (move, subdivide, split,
+  chooser fill, group ratio, width, header hidden, main width, window-close
+  parking) call `flushNow`. Panel add and remove, strip scroll, and panel URL
+  changes in `background.ts` (`tabs.onUpdated`, through
+  `PanelStore.schedulePersistCurrentState`) use the trailing timer
+  (`DEBOUNCE_MS`). The first request arms the timer and it fires after the delay
+  with the latest snapshot, so continuous URL churn writes at most once per
+  interval. An immediate flush cancels a pending timer and supersedes it. There is
+  no `runtime.onSuspend` or unload hook. The prompt paths are the immediate
+  mutations, `persistCurrentState` (awaited by `ImportExecutor`), and window-close
+  parking: `parkWorkspaceWithResolvedUrls` stores URLs taken from the
+  `TabRegistry` closing-window snapshot and flushes at once, which also covers a
+  URL change still inside the trailing interval at quit.
+- `persistableUrl` in `Persistence.ts` is the single place a live tab becomes a
+  stored URL. Any rule about which tabs may reach `bento.panels` (for example
+  excluding private-window panels) belongs there, plus the closing-window
+  `urlByTabId` map in `parkTabsForClosingWindow` for the parked path.
+- Manual verification: open a panel, navigate it rapidly (a page that updates
+  `location` continuously), and confirm in the Browser Toolbox that
+  `browser.storage.local.get('bento.panels')` changes at most about twice per
+  second; quit and relaunch to confirm the last URL restores.
+
 First-run browser-data import is handled from Bento's onboarding experience. The
 welcome overlay is a multi-step Bento-motif setup flow, and browser-data import
 is one step inside that flow. The intro step writes
@@ -1813,6 +1849,18 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   and later sync payloads carry `headerHidden` back.
 - Do not use tab ids as durable storage identifiers. Persist URLs plus
   `panelKey`; tab ids are runtime-only.
+- Do not start a second `Persistence.#flush` while one is running. Each flush
+  awaits a `browser.tabs.get` per panel before its `storage.local.set`, so two
+  overlapping flushes can finish out of order and an older snapshot (and its
+  strip-scroll record) overwrites the newer state. The fix is the single-flight
+  queue in `Persistence`: one write in flight, newest queued snapshot wins. Route
+  new triggers through `flushNow` or `schedule`; never call `#flush` directly or
+  add a second writer of `bento.panels`.
+- Do not call `persistCurrentState` from a high-frequency listener. Panel URL
+  changes used to flush the whole graph on every event (one `tabs.get` per panel
+  plus two or three storage calls each); they now use
+  `schedulePersistCurrentState`. Keep `persistCurrentState` for discrete
+  mutations and callers that must await durability.
 - Keep panel markers synced after add, remove, reorder, and restore. Closed-tab
   restore depends on marker root indexes and containing root ids.
 - Do not clear a panel's `bento.isPanel` marker in the `tab/close` path. Firefox

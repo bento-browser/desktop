@@ -172,6 +172,15 @@ export class PanelStore {
     return this.#flushPersist();
   }
 
+  /**
+   * Trailing-coalesced persist for high-frequency triggers such as panel URL
+   * changes. Discrete mutations and callers that await durability use
+   * `persistCurrentState`.
+   */
+  schedulePersistCurrentState(): void {
+    this.#schedulePersist();
+  }
+
   getPanelLayout(workspaceId: string | null): WorkspacePanelLayout {
     if (!workspaceId) return emptyLayout();
     return cloneLayout(this.#layoutByWorkspace.get(workspaceId));

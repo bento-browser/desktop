@@ -1778,7 +1778,7 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       changeInfo.url !== 'about:blank' &&
       panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0
     ) {
-      panels.persistCurrentState();
+      panels.schedulePersistCurrentState();
     }
   }
 });
