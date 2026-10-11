@@ -37,6 +37,7 @@
     "lint:repo": "eslint scripts src/browser .agents",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
+    "test:size-ratchet": "node --test scripts/size-ratchet.test.mjs",
     "test:agent-skills": "node --test .agents/skills/bento-upgrade-firefox/scripts/*.test.mjs",
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
     "security:check": "node scripts/check-security-invariants.mjs",
@@ -62,8 +63,9 @@
     "shell:import:mux": "node scripts/muxui-dev.mjs import",
     "tools:build": "pnpm --filter @bento/tools build",
     "ext:build": "pnpm run theme:sync && pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
-    "size": "pnpm run ext:build && pnpm run size:check",
+    "size": "BENTO_RELEASE=1 pnpm run ext:build && pnpm run size:check",
     "size:check": "node scripts/check-size-budgets.mjs",
+    "size:baseline": "BENTO_RELEASE=1 pnpm run ext:build && node scripts/check-size-budgets.mjs --write-baseline",
     "theme:import": "node scripts/import-theme.mjs && node scripts/sync-theme-presets.mjs",
     "theme:sync": "node scripts/sync-theme-presets.mjs"
   },
