@@ -12,6 +12,9 @@
 //      tabs in its workspace (so a workspace stays warm even if every tab
 //      passed the timeout)
 //   5. tab is not already discarded
+//   6. tab is not audible and not sharing the camera, microphone or screen
+//      (read live from Firefox right before discarding, so a call or media
+//      that started after the last registry update still keeps the tab alive)
 //
 // Sweep runs every SWEEP_INTERVAL_MS and discards eligible tabs. This is
 // the entire policy — wake is automatic when the user focuses a discarded
@@ -78,13 +81,24 @@ export class SleepPolicy {
     if (candidates.length === 0) return;
     for (const id of candidates) {
       try {
+        if (await this.#isInUse(id)) continue;
         await browser.tabs.discard(id);
       } catch (err) {
         // Firefox rejects discard for tabs in unsupported states (e.g. a
-        // tab currently loading). Log and move on.
+        // tab currently loading) and tabs.get rejects for a tab that just
+        // closed. Log and move on.
         console.warn('[bento-tools] SleepPolicy: discard failed for tab', id, err);
       }
     }
+  }
+
+  /** Playing audio or sharing camera, microphone or screen (a call or
+   * meeting). Discarding such a tab would cut the media or call off. */
+  async #isInUse(id: number): Promise<boolean> {
+    const { audible, sharingState } = await browser.tabs.get(id);
+    return Boolean(
+      audible || sharingState?.camera || sharingState?.microphone || sharingState?.screen,
+    );
   }
 
   #eligibleForSleep(now: number, sleepAfterMs: number, keepAlivePerWorkspace: number): number[] {

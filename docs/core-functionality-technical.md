@@ -2630,6 +2630,18 @@ Top-row splits and 2x2 groups:
   rendered in a visible workspace and trigger an immediate wake/reload loop.
   Inactive-workspace panels can still be discarded and later wake through
   Firefox's normal tab restore path.
+  `SleepPolicy.sweep` also re-reads each candidate with `browser.tabs.get`
+  immediately before `browser.tabs.discard` and skips it when `audible` is true
+  or `sharingState` reports `camera`, `microphone`, or `screen`. Firefox's own
+  discard path does not check media or capture, so this check is the only guard.
+  The read is live rather than from the `TabRegistry` mirror so a call that
+  started after the last registry delta is still protected; a tab that has
+  already closed makes `tabs.get` reject, which is logged and skipped like any
+  failed discard. Exempt tabs are not marked active, so they keep their
+  place in the keep-alive ranking and follow the normal idle rules once quiet; a
+  tab idle longer than the sleep timeout can be discarded on the first sweep
+  after it stops (Firefox keeps `audible` set for a couple of seconds after
+  sound stops, and there is no further grace period).
 - Panel navigator structural changes must keep each button at a stable layout
   size. Split, subdivide, promote-survivor, and remove operations can convert a
   single-panel icon to a grouped icon or back while the panel strip is also

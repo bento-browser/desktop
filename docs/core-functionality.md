@@ -185,6 +185,9 @@ When a side panel is playing audio, its panel header shows the same mute control
 after the refresh button and before the address field.
 Audible side panels also emit small music-note particles from their panel
 navigator favicon buttons; multiple panel buttons can show this at once.
+Idle-tab sleep never unloads a tab that is playing audio or sharing the camera,
+microphone, or screen, so background music and calls keep running. Once it goes
+quiet, the normal idle rules apply to it again.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the New menu and regular tabs with a divider instead of a text
 subheading.
