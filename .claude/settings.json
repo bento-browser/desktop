@@ -2,9 +2,7 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:docs.gluon.dev)",
       "WebFetch(domain:api.github.com)",
-      "WebFetch(domain:gluon.org)",
       "Bash(jq *)"
     ]
   }
