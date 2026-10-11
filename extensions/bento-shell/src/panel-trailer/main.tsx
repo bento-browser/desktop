@@ -32,6 +32,7 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch } from '../bridge/useToolsPort';
 import { useSavedPanelsStore } from '../state/savedPanels';
 import { PanelTrailer } from '../components/PanelTrailer/PanelTrailer';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -39,7 +40,7 @@ function onAddBlank() {
   // Append a blank panel via chrome's addNewPanel marker path. This keeps
   // the native tab and its notificationbox in the same chrome window as
   // the visible panel strip.
-  document.title = `BENTO_PANEL_TRAILER_ADD_BLANK:${Date.now()}`;
+  sendChromeTitle(`BENTO_PANEL_TRAILER_ADD_BLANK:${Date.now()}`);
 }
 
 function onOpenSaved(url: string) {
@@ -53,9 +54,11 @@ function encodePanelTrailerMenuPayload(payload: object): string {
 function openPanelTrailerContextMenu(event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
-  document.title = `BENTO_PANEL_TRAILER_CONTEXT_MENU:${Date.now()}:${encodePanelTrailerMenuPayload({
-    anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
-  })}`;
+  sendChromeTitle(
+    `BENTO_PANEL_TRAILER_CONTEXT_MENU:${Date.now()}:${encodePanelTrailerMenuPayload({
+      anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
+    })}`,
+  );
 }
 
 function PanelTrailerApp() {

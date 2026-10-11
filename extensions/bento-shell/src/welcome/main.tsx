@@ -63,6 +63,7 @@ import { Column } from '../components/primitives/BentoColumn';
 import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
 import './welcome.css';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -312,12 +313,12 @@ function close() {
   // welcomeSeen=true immediately.
   void clearStoredStep();
   dispatch({ type: 'settings/update', changes: { welcomeSeen: true } });
-  document.title = `${WELCOME_CLOSE_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${WELCOME_CLOSE_PREFIX}_${Date.now()}`);
 }
 
 async function importBrowserData(nextStep: StepIndex): Promise<void> {
   await storeStep(nextStep);
-  document.title = `${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${nextStep}_${Date.now()}`;
+  sendChromeTitle(`${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${nextStep}_${Date.now()}`);
 }
 
 function BentoTray({
