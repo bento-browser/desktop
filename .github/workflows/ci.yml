@@ -299,7 +299,7 @@ jobs:
             .bento/source-state.json
             .bento/import-manifest.json
             .bento/engine-state.json
-          key: ${{ runner.os }}-bento-engine-source-v1-${{ github.event_name == 'workflow_dispatch' && 'release' || 'source' }}-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/dev-reload.mjs', 'scripts/firefox-patch-stack.mjs') }}
+          key: ${{ runner.os }}-bento-engine-source-v1-${{ github.event_name == 'workflow_dispatch' && 'release' || 'source' }}-${{ hashFiles('bento.json', 'config/**', 'patches/**', 'src/**', 'branding/bento/**', 'extensions/**', 'prefs/**', 'scripts/bento-build.mjs', 'scripts/import-sources.mjs', 'scripts/import.sh', 'scripts/install-branding.mjs', 'scripts/install-builtin-addons.mjs', 'scripts/build-mode.mjs', 'scripts/dev-reload.mjs', 'scripts/firefox-patch-stack.mjs') }}
 
       - name: Bento download (Firefox source)
         run: pnpm run download

@@ -98,8 +98,16 @@ change as the current files):
   builds define the flag `false` and the installer drops the command from the
   archived manifest, so rollback releases do not ship Alt+Shift+R. `check` builds
   in release mode and fails if the archived bundle still has the handler. The
-  `build` and `package` actions run in dev mode unless `BENTO_RELEASE=1` is set;
-  `release` always goes through `build-release.sh`.
+  `build` and `package` actions run in dev mode unless the build is a release
+  build (`BENTO_RELEASE=1`, `BENTO_BUILD_MODE=release`, or `build.mode: "release"`
+  in `bento.json`); `release` always goes through `build-release.sh`. `package`
+  imports fresh extensions without rebuilding native output, so an object
+  directory from an earlier dev build can still hold the command. Both `package`
+  and `release` end in the driver's `package` command, which in a release build
+  scans the object directory's shell add-on (following symlinks) and refuses to
+  package it while `dev-reload` is there; rebuild natively (`pnpm run build`)
+  to clear it. See
+  [docs/build-tooling.md](build-tooling.md#dev-only-reload-command).
 
 Not applied (the archived tools background still lacks it):
 

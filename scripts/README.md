@@ -21,9 +21,14 @@ Build, packaging, and release helper scripts.
   `package` and `updates-browser` do not.
 - `write-if-changed.mjs` — helpers the build driver and the add-on and branding
   installers use to leave unchanged files, and their mtimes, alone.
+- `build-mode.mjs` — decides whether a build is a release build the way the build
+  driver picks its mode (`BENTO_BUILD_MODE`, else `bento.json` `build.mode`, plus
+  `BENTO_RELEASE=1`). The shell background build, the add-on installer, and the
+  package guard share it.
 - `dev-reload.mjs` — strips and detects the shell's dev-only `dev-reload`
-  command (Alt+Shift+R). The add-on installer drops it from release manifests and
-  `pnpm run release:security-check:shell` fails if a release shell still has it;
+  command (Alt+Shift+R). The add-on installer drops it from release manifests,
+  `pnpm run release:security-check:shell` fails if a release shell still has it,
+  and a release `package` refuses an object directory whose shell add-on has it;
   see `docs/build-tooling.md`.
 - `validate-bento-artifacts.mjs` — verifies the packaged application, MAR
   contents, MAR digest and size, browser update XML, and artifact metadata.

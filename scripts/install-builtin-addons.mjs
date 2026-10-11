@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { isReleaseBuild } from '../extensions/bento-shell/muxui-local.mjs';
+import { isReleaseBuild } from './build-mode.mjs';
 import { releaseManifest } from './dev-reload.mjs';
 import { copyFileIfChanged, pruneTree, writeFileIfChanged } from './write-if-changed.mjs';
 
@@ -142,10 +142,10 @@ function replaceMarkerBlock(file, names) {
 }
 
 export function installBuiltinAddons(options = {}) {
-  const release = options.release ?? isReleaseBuild();
   const repoRoot = path.resolve(
     options.repoRoot || process.env.BENTO_REPO_ROOT || DEFAULT_REPO_ROOT,
   );
+  const release = options.release ?? isReleaseBuild(repoRoot);
   const extensionsRoot = path.join(repoRoot, 'extensions');
   const engineExtensionsRoot = path.join(repoRoot, 'engine', 'browser', 'extensions');
   const engineMozBuild = path.join(engineExtensionsRoot, 'moz.build');

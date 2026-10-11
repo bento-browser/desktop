@@ -431,6 +431,74 @@ test('package and updates-browser use only the directory mach builds into', asyn
   }
 });
 
+/** Runs `fn` with the given environment variables set (undefined unsets), then restores them. */
+async function withEnv(vars, fn) {
+  const previous = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+  const apply = (values) => {
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+  apply(vars);
+  try {
+    return await fn();
+  } finally {
+    apply(previous);
+  }
+}
+
+test('a release package is refused while the object directory still holds the dev-only reload command', async () => {
+  const root = await fixture();
+  const shellAddon = ['chrome', 'browser', 'builtin-addons', 'bento-shell'];
+  const objDist = engineFile(root, 'obj-bento', 'dist');
+  const write = (file, text) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  const setBuildMode = (mode) => {
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
+    config.build.mode = mode;
+    fs.writeFileSync(path.join(root, 'bento.json'), JSON.stringify(config));
+  };
+  const clean = { BENTO_OBJDIR: undefined, BENTO_RELEASE: undefined, BENTO_BUILD_MODE: undefined, BENTO_RELEASE_VARIANT: undefined, MOZCONFIG: undefined };
+  try {
+    fs.writeFileSync(engineFile(root, 'mach'), '');
+    // What an earlier dev build leaves: a current stamp in the loose tree the Mux check reads,
+    // and a stale dev manifest and handler in the app bundle that gets packaged.
+    const stamp = '{"source":"npm","version":"0.1.0-rc.1"}';
+    write(path.join(objDist, 'bin', 'browser', ...shellAddon, 'dist', 'muxui-source.json'), stamp);
+    const bundle = path.join(objDist, 'Bento.app', 'Contents', 'Resources', 'browser', ...shellAddon);
+    write(path.join(bundle, 'manifest.json'), '{"commands":{"dev-reload":{"description":"Dev reload"}}}');
+    write(path.join(bundle, 'dist', 'assets', 'background.js'), 'c==="dev-reload"&&browser.runtime.reload()');
+
+    // The fixture has no scripts/mach-raw.sh, so a package that passes the guard fails there.
+    const reachesMach = /scripts\/mach-raw\.sh package failed/;
+    const refused = /Release package would ship the dev-only reload command: .*Contents\/Resources\/browser\/chrome\/browser\/builtin-addons\/bento-shell\/(manifest\.json|dist\/assets\/background\.js)/;
+
+    await withEnv(clean, async () => {
+      writeMozconfig(root, 'dev');
+      await assert.rejects(() => main(['package'], root), reachesMach, 'a dev build may package it');
+      await withEnv({ BENTO_BUILD_MODE: 'debug' }, () => assert.rejects(() => main(['package'], root), reachesMach));
+
+      // Release however it was asked for: the variable alone, the mode variable, or bento.json alone.
+      await withEnv({ BENTO_RELEASE: '1' }, () => assert.rejects(() => main(['package'], root), refused));
+      await withEnv({ BENTO_BUILD_MODE: 'release' }, () => assert.rejects(() => main(['package'], root), refused));
+      setBuildMode('release');
+      await assert.rejects(() => main(['package'], root), refused);
+      // ...unless the driver itself is told to build something else.
+      await withEnv({ BENTO_BUILD_MODE: 'dev' }, () => assert.rejects(() => main(['package'], root), reachesMach));
+
+      // Once the stale files are gone the release package goes ahead.
+      fs.rmSync(path.join(bundle, 'dist'), { recursive: true });
+      write(path.join(bundle, 'manifest.json'), '{}');
+      await assert.rejects(() => main(['package'], root), reachesMach);
+    });
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 /** Runs `bento-build objdir` and returns what it wrote to stdout and stderr. */
 async function objdirCommand(root, ...args) {
   const outWrite = process.stdout.write;

@@ -826,6 +826,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - `scripts/install-builtin-addons.test.mjs`
   - `scripts/dev-reload.mjs`
   - `scripts/dev-reload.test.mjs`
+  - `scripts/build-mode.mjs`
   - `package.json`
   - `pnpm-lock.yaml`
   - `scripts/import.sh`
@@ -863,7 +864,11 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   shows Bento Tools, Bento Shell, and uBlock Origin. Run
   `BENTO_RELEASE=1 pnpm run ext:build && BENTO_RELEASE=1 pnpm run import` and
   confirm `pnpm run release:security-check:shell` passes (no `dev-reload` in the
-  imported shell manifest or bundle). Running only the source
+  imported shell manifest or bundle). A release `pnpm run package` also scans the
+  shell add-on in the object directory (`dist/bin/browser` and, on macOS, the app
+  bundle, following symlinks); after a Firefox update that changes where `mach
+  build` installs built-in add-ons, confirm that scan still finds the add-on
+  (it fails when it finds none). Running only the source
   overlay helper does not prove this surface is valid because it bypasses
   Bento's branding, built-in add-on installer, patch, and symlink steps.
 - Rollback or migration notes: if uBlock Origin is removed, remove

@@ -121,6 +121,8 @@ case "$PLATFORM" in
       -delete 2>/dev/null || true
     ;;
 esac
+# The driver's package command refuses to package an object directory whose shell
+# add-on still has the dev-only reload command (docs/build-tooling.md).
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh package
 
 step "4/4 Collecting artifacts into $OUT_DIR"

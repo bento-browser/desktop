@@ -11,8 +11,9 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function fixture() {
+function fixture(buildMode = 'dev') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-addons-test-'));
+  writeJson(path.join(root, 'bento.json'), { build: { mode: buildMode } });
   fs.mkdirSync(path.join(root, 'extensions'), { recursive: true });
   fs.mkdirSync(path.join(root, 'engine', 'browser', 'extensions'), { recursive: true });
   fs.writeFileSync(
@@ -262,5 +263,52 @@ test('a manifest without the reload command is copied byte for byte in release m
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('bento.json build.mode release drops the reload command without any environment variable', () => {
+  const previous = { release: process.env.BENTO_RELEASE, mode: process.env.BENTO_BUILD_MODE };
+  delete process.env.BENTO_RELEASE;
+  delete process.env.BENTO_BUILD_MODE;
+  const releaseRoot = fixture('release');
+  const devRoot = fixture('dev');
+  try {
+    const manifest = {
+      applications: { gecko: { id: 'bento-shell@test' } },
+      commands: { 'dev-reload': { description: 'Dev reload' } },
+    };
+    const installed = (root) => {
+      const extension = addExtension(root, 'bento-shell', manifest);
+      const [addon] = installBuiltinAddons({ repoRoot: root });
+      return {
+        source: fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8'),
+        installed: fs.readFileSync(path.join(addon.destination, 'manifest.json'), 'utf8'),
+      };
+    };
+
+    const release = installed(releaseRoot);
+    assert.doesNotMatch(release.installed, /dev-reload/);
+    assert.match(release.source, /dev-reload/, 'the source manifest is untouched');
+
+    const dev = installed(devRoot);
+    assert.equal(dev.installed, dev.source);
+
+    // BENTO_BUILD_MODE outranks bento.json, as it does for the build driver.
+    process.env.BENTO_BUILD_MODE = 'dev';
+    const [overridden] = installBuiltinAddons({ repoRoot: releaseRoot });
+    assert.match(
+      fs.readFileSync(path.join(overridden.destination, 'manifest.json'), 'utf8'),
+      /dev-reload/,
+    );
+  } finally {
+    for (const [key, value] of [
+      ['BENTO_RELEASE', previous.release],
+      ['BENTO_BUILD_MODE', previous.mode],
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(releaseRoot, { recursive: true, force: true });
+    fs.rmSync(devRoot, { recursive: true, force: true });
   }
 });
