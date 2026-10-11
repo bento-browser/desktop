@@ -75,6 +75,9 @@ else
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
 fi
+# Fail before the native build if the shell still carries the dev-only reload
+# command. Runs whether or not the caller prepared the build itself.
+pnpm run release:security-check:shell
 if [ -n "${BENTO_BUILD_JOBS:-}" ]; then
   if ! [[ "$BENTO_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
     echo "build-release: BENTO_BUILD_JOBS must be a positive integer" >&2
@@ -114,6 +117,8 @@ case "$PLATFORM" in
       -delete 2>/dev/null || true
     ;;
 esac
+# The driver's package command refuses to package an object directory whose shell
+# add-on still has the dev-only reload command (docs/build-tooling.md).
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh package
 
 step "4/4 Collecting artifacts into $OUT_DIR"
