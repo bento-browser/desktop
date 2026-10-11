@@ -12,3 +12,40 @@ updates:
       github-actions:
         patterns:
           - '*'
+
+  - package-ecosystem: npm
+    # One pnpm workspace. The root manifest and extensions/bento-shell and
+    # extensions/bento-tools share the one pnpm-lock.yaml, so a single root
+    # entry covers all three; listing the extensions separately would open
+    # duplicate PRs for the same lock.
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    # Edit the lock only. A manifest bump would change specifiers that the SBOM
+    # generator and release security tests pin, and would fail those gates.
+    # Exact pins (vite, @ladle/react, emojibase-data) are updated by hand.
+    versioning-strategy: lockfile-only
+    groups:
+      npm-production:
+        dependency-type: production
+        update-types: [minor, patch]
+        patterns: ['*']
+      npm-development:
+        dependency-type: development
+        update-types: [minor, patch]
+        patterns: ['*']
+    ignore:
+      # Majors are manual upgrades.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+      # Pinned in step with the root pnpm.overrides, the SBOM generator, and
+      # scripts/release-security.test.mjs. They move only through "Publishing a
+      # new Mux release" in docs/build-tooling.md.
+      - dependency-name: '@muxui/react'
+      - dependency-name: 'react-aria*'
+      - dependency-name: 'react-stately*'
+      - dependency-name: '@react-aria/*'
+      - dependency-name: '@react-stately/*'
+      - dependency-name: '@react-types/*'
+      - dependency-name: '@tiptap/*'

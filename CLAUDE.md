@@ -218,24 +218,25 @@ Local Mux development never reaches a release. `MUXUI_LOCAL` (set only by the
 throw on it, and packaging rejects a packaged shell whose `muxui-source.json` stamp
 is not `npm`. See [docs/build-tooling.md](docs/build-tooling.md#local-mux-ui).
 
-**Default install (dev loop)** — `pnpm install`:
+**Install** — `pnpm install` for the dev loop; `pnpm install --frozen-lockfile`
+for CI and release builds (`.github/actions/setup`, `scripts/build-release.sh`):
 
-- `pnpm-lock.yaml` records the exact npm version and registry integrity.
-
-**Release install** — `bash scripts/install-release-deps.sh` (used by
-`scripts/build-release.sh` and GitHub Actions):
-
-- The helper temporarily installs against `pnpm-lock.release.yaml` with
-  `--frozen-lockfile`, then restores the developer lock while leaving the
-  release graph installed in `node_modules`. Resolution cannot drift across
-  CI runs or later rebuilds.
+- `pnpm-lock.yaml` is the only lockfile. It records the exact npm version and
+  registry integrity of `@muxui/react`, and a frozen install fails on any drift
+  from the manifests. Release builds install the same full graph (the build needs
+  the dev tooling), and the SBOM and release security checks read the same file.
+  pnpm owns the lockfile format; do not run Prettier on it.
+- Dependabot (`.github/dependabot.yml`) opens weekly lockfile-only npm PRs. It
+  ignores major versions, `@muxui/react`, and the React Aria and Tiptap families,
+  whose pins and overrides change only through the Mux release procedure in
+  [docs/build-tooling.md](docs/build-tooling.md).
 
 **When changing UI dependencies**: keep the exact package pin, the approved
 shell runtime dependency set in the SBOM generator, required substrate/security
-overrides, and both frozen locks aligned. Run frozen installs and
-release-security checks before regenerating either lock, then repeat them
-against the new graph. The SBOM verifies the approved npm version and registry
-integrity offline and records the lock's integrity digest.
+overrides, and the lock aligned. Run a frozen install and the release-security
+checks before regenerating the lock, then repeat them against the new graph. The
+SBOM verifies the approved npm version and registry integrity offline and
+records the lock's integrity digest.
 
 Bento pins React Aria to one compatible graph and aliases it in Vite so menu
 providers and consumers share module identity. Tiptap overrides match the
