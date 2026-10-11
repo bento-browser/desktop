@@ -36,6 +36,7 @@ const DOCS_END = '<!-- firefox-compat:end -->';
 
 const KINDS = new Set(['method', 'member', 'element', 'module', 'source']);
 const PROBES = new Set(['R', 'R-lazy', 'E']);
+const NATIVES = new Set(['note', 'proto']);
 const HOWS = new Set([
   'wraps',
   'overrides',
@@ -89,6 +90,8 @@ export function evaluateProbeSection(section, globals = {}) {
   const context = vm.createContext({ ...globals });
   const wrapped = `(() => {\n${section}\nreturn {
     entries: bentoCompatEntries(),
+    probes: BENTO_COMPAT_PROBES,
+    note: bentoCompatNoteNative,
     run: runBentoFirefoxCompat,
     probe: bentoCompatProbe,
   };\n})()`;
@@ -159,6 +162,17 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
     else if ((entry.probe === 'E') !== (entry.kind === 'source')) {
       fail('probe E and kind source go together: source entries are engine-only');
     }
+    if (entry.native !== undefined && !NATIVES.has(entry.native)) {
+      fail(`native must be one of ${[...NATIVES].join(', ')}`);
+    } else if (entry.probe === 'E' && entry.native !== undefined) {
+      fail('native applies to runtime-probed entries only');
+    } else if (
+      entry.probe !== 'E' &&
+      (entry.how === 'wraps' || entry.how === 'overrides') &&
+      entry.native === undefined
+    ) {
+      fail('a runtime-probed wrap or override needs native: note or proto');
+    }
 
     const at = entry.at;
     if (
@@ -208,8 +222,9 @@ export function validateRegistry(registry, repoRoot = SCRIPT_ROOT) {
  */
 export function validateProbeList(mountSource, registry) {
   let mounted;
+  let probes;
   try {
-    mounted = evaluateProbeSection(extractSection(mountSource)).entries;
+    ({ entries: mounted, probes } = evaluateProbeSection(extractSection(mountSource)));
   } catch (err) {
     return [`cannot read the probe list in ${MOUNT_PATH}: ${err.message}`];
   }
@@ -251,6 +266,28 @@ export function validateProbeList(mountSource, registry) {
       errors.push(`${id}: probed in ${MOUNT_PATH} but the registry has no R or R-lazy entry`);
     }
   }
+
+  // Members Bento replaces must not satisfy their own probe: 'proto' ids are
+  // looked up on the prototype, 'note' ids are recorded before the patch site
+  // replaces them.
+  const withNative = (native) =>
+    new Set(expected.filter((entry) => entry.native === native).map((entry) => entry.id));
+  const sameSet = (actual, wanted, describe) => {
+    for (const id of wanted) if (!actual.has(id)) errors.push(`${id}: ${describe.missing}`);
+    for (const id of actual) if (!wanted.has(id)) errors.push(`${id}: ${describe.extra}`);
+  };
+  sameSet(new Set(probes.proto), withNative('proto'), {
+    missing: `registry says native: proto but the ${MOUNT_PATH} proto list lacks it`,
+    extra: `in the ${MOUNT_PATH} proto list but the registry does not say native: proto`,
+  });
+  const code = mountSource.replace(extractSection(mountSource), '');
+  const noted = new Set(
+    [...code.matchAll(/bentoCompatNoteNative\(\s*'([^']+)'/g)].map((m) => m[1]),
+  );
+  sameSet(noted, withNative('note'), {
+    missing: `registry says native: note but ${MOUNT_PATH} never calls bentoCompatNoteNative for it`,
+    extra: `${MOUNT_PATH} calls bentoCompatNoteNative for it but the registry does not say native: note`,
+  });
   return errors;
 }
 

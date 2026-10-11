@@ -2654,6 +2654,15 @@ adds its entry, and its id in the mount probe list, in the same change.
   downloads panel are probed only once loaded, so
   `window.BentoFirefoxCompat.check()` in the Browser Toolbox re-runs it after
   opening them.
+- A compat probe must not be satisfied by Bento's own code. Wrapping a Firefox
+  member and then checking `typeof gBrowser.x === 'function'` finds the wrapper;
+  patch sites call `bentoCompatNoteNative(id, original)` first and the probe
+  judges that, and members Bento assigns on an instance (`splitViewPanels`, the
+  per-tab `splitview` getter) are probed on the prototype. Elements inside a
+  `<html:template>` (`identity-popup` until `gIdentityHandler._initializePopup()`
+  runs) and lazy globals that Firefox has not materialised must not be probed as
+  if present: the former are engine-only, and a lazy global that is absent is
+  `missing` while one still behind its getter is `deferred`.
 - Do not call `gBrowser.hideTab(tab)` for active panel tabs. Smoke testing showed
   hidden tabs render as black or blank split-view slots.
 - Do not move or swap a tab's `linkedBrowser`. Extension content scripts depend

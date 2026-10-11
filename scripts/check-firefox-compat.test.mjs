@@ -54,6 +54,7 @@ function universal() {
     },
     apply: () => universal(),
     has: () => true,
+    getPrototypeOf: () => universal(),
     getOwnPropertyDescriptor: () => ({
       value: universal(),
       writable: true,
@@ -106,7 +107,10 @@ test('the mount probe ids equal the registry entries marked R or R-lazy', () => 
 });
 
 test('the shipped probe section stays compact', () => {
-  assert.ok(extractSection(readMount()).length < 9000, 'keep use and locator text in the registry');
+  assert.ok(
+    extractSection(readMount()).length < 10000,
+    'keep use and locator text in the registry',
+  );
 });
 
 test('probe list drift against the registry is reported', () => {
@@ -147,6 +151,24 @@ test('probe list drift against the registry is reported', () => {
     /probed export .* is not in the registry exports/,
   );
   assert.match(validateProbeList('no markers', registry)[0], /cannot read the probe list/);
+
+  // A patch site that stops recording the native member, a stray recording,
+  // and a proto list that no longer matches are all drift.
+  const call = "bentoCompatNoteNative('PopupNotifications._isActiveBrowser'";
+  assert.ok(source.includes(call));
+  assert.match(
+    validateProbeList(
+      source.replace(call, "bentoCompatNoteNative('PopupNotifications.other'"),
+      registry,
+    ).join('\n'),
+    /PopupNotifications\._isActiveBrowser: registry says native: note but .* never calls[\s\S]*PopupNotifications\.other: .* does not say native: note/,
+  );
+  const proto = "proto: ['MozTabbrowserTab.splitview', 'gBrowser.tabpanels.splitViewPanels']";
+  assert.ok(source.includes(proto));
+  assert.match(
+    validateProbeList(source.replace(proto, "proto: ['MozTabbrowserTab.splitview']"), registry)[0],
+    /gBrowser\.tabpanels\.splitViewPanels: registry says native: proto but .* proto list lacks it/,
+  );
 });
 
 test('the runtime probe stays quiet on a window that has every member', () => {
@@ -163,20 +185,24 @@ test('the runtime probe stays quiet on a window that has every member', () => {
   );
 });
 
-test('the runtime probe logs one id per missing member and defers lazy ones', () => {
+test('the runtime probe logs one id per missing member and defers unloaded lazy modules', () => {
   const logs = { error: [], info: [] };
   const probes = loadProbes(runtimeGlobals(logs, { modulesLoaded: false }));
   const result = probes.run({ document: { getElementById: () => null } });
 
-  const ids = (probe) =>
-    runtimeEntries
-      .filter((entry) => entry.probe === probe)
-      .map((entry) => entry.id)
-      .sort();
-  assert.deepEqual([...result.deferred].sort(), ids('R-lazy'));
-  assert.deepEqual([...result.missing].sort(), ids('R'));
-  assert.deepEqual(logs.error.length, ids('R').length);
+  const lazyModules = runtimeEntries
+    .filter((entry) => entry.probe === 'R-lazy' && entry.kind === 'module')
+    .map((entry) => entry.id);
+  const absent = runtimeEntries
+    .map((entry) => entry.id)
+    .filter((id) => !lazyModules.includes(id))
+    .sort();
+  assert.deepEqual([...result.deferred].sort(), lazyModules.sort());
+  // A window with no DownloadsPanel at all is missing it, not waiting for it.
+  assert.deepEqual([...result.missing].sort(), absent);
+  assert.equal(logs.error.length, absent.length);
   assert.ok(logs.error.includes('[bento-compat] missing gBrowser._beginRemoveTab'));
+  assert.ok(logs.error.includes('[bento-compat] missing DownloadsPanel.initialize'));
 });
 
 test('probes resolve roots, never run getters, and leave lazy globals unloaded', () => {
@@ -195,24 +221,26 @@ test('probes resolve roots, never run getters, and leave lazy globals unloaded',
     OpenBrowserWindow() {},
     gBrowser: {
       _beginRemoveTab() {},
-      tabpanels: {
-        removeTabsFromSplitview() {},
-        get splitViewPanels() {
-          return never();
-        },
-      },
-      selectedTab: {
+      tabpanels: Object.create({
+        splitViewPanels: [],
+      }),
+      selectedTab: Object.create({
         linkedPanel: 'panel-1',
         get isEmpty() {
           return never();
         },
-      },
+      }),
       selectedBrowser: { mIconURL: null },
     },
     gURLBar: { view: { close() {} } },
     customElements: { get: () => ({ prototype: { removeProgressListener() {} } }) },
     document: { getElementById: (id) => (id === 'nav-bar' ? {} : null) },
   };
+  Object.defineProperty(win.gBrowser.tabpanels, 'removeTabsFromSplitview', {
+    value() {},
+  });
+  Object.defineProperty(win.gBrowser.tabpanels, 'handleEvent', { value() {} });
+  Object.defineProperty(win.gBrowser.selectedTab, 'linkedPanel', { value: 'panel-1' });
   Object.defineProperty(win, 'DownloadsPanel', { get: never, configurable: true });
 
   assert.equal(probe(win, 'gBrowser._beginRemoveTab'), 'ok');
@@ -233,6 +261,120 @@ test('probes resolve roots, never run getters, and leave lazy globals unloaded',
 
   Object.defineProperty(win, 'DownloadsPanel', { value: { initialize() {} }, configurable: true });
   assert.equal(probe(win, 'DownloadsPanel.initialize'), 'ok');
+});
+
+test('a lazy global is missing when absent, deferred behind its getter, and probed once loaded', () => {
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
+  const probe = (win, id) =>
+    probes.probe(
+      win,
+      probes.entries.find((entry) => entry.id === id),
+    );
+  const never = () => {
+    throw new Error('a probe invoked a getter');
+  };
+  const lazyGlobal = (win, name) =>
+    Object.defineProperty(win, name, { get: never, set() {}, configurable: true });
+
+  // No property at all: a deleted DownloadsPanel must not wait forever.
+  assert.equal(probe({}, 'DownloadsPanel.initialize'), 'missing');
+  assert.equal(probe({}, 'DownloadsButton.getAnchor'), 'missing');
+  assert.equal(probe({}, 'PlacesUIUtils.lastContextMenuTriggerNode'), 'missing');
+
+  const win = {};
+  lazyGlobal(win, 'DownloadsPanel');
+  lazyGlobal(win, 'DownloadsButton');
+  lazyGlobal(win, 'PlacesUIUtils');
+  assert.equal(probe(win, 'DownloadsPanel.initialize'), 'deferred');
+  assert.equal(probe(win, 'DownloadsButton.getAnchor'), 'deferred');
+  assert.equal(probe(win, 'PlacesUIUtils.lastContextMenuTriggerNode'), 'deferred');
+  // PrivateDownloadsSubview is a plain var in the downloads script, so it
+  // waits on DownloadsPanel's getter instead of counting as absent.
+  assert.equal(probe(win, 'PrivateDownloadsSubview.openWhenReady'), 'deferred');
+
+  Object.defineProperty(win, 'DownloadsPanel', { value: { initialize() {} }, configurable: true });
+  assert.equal(probe(win, 'DownloadsPanel.initialize'), 'ok');
+  assert.equal(probe(win, 'PrivateDownloadsSubview.openWhenReady'), 'missing');
+  win.PrivateDownloadsSubview = { openWhenReady() {} };
+  assert.equal(probe(win, 'PrivateDownloadsSubview.openWhenReady'), 'ok');
+  Object.defineProperty(win, 'PlacesUIUtils', { value: {}, configurable: true });
+  assert.equal(probe(win, 'PlacesUIUtils.lastContextMenuTriggerNode'), 'missing');
+});
+
+test('elements that live inside a template until their owner expands them are not probed', () => {
+  const identity = registry.members.find((entry) => entry.id === 'identity-popup');
+  assert.equal(identity.probe, 'E');
+  assert.match(identity.use, /template-identity-popup/);
+  assert.ok(!Array.from(loadProbes().entries).some((entry) => entry.id === 'identity-popup'));
+
+  // A fresh window keeps the panel in <html:template id="template-identity-popup">.
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
+  const { missing } = probes.run({
+    document: { getElementById: (id) => (id === 'identity-popup' ? null : {}) },
+  });
+  assert.ok(!missing.includes('identity-popup'));
+  assert.ok(!missing.includes('nav-bar'));
+});
+
+const nativeNotes = runtimeEntries.filter((entry) => entry.native === 'note');
+
+test('a wrapped member is judged by the original Firefox recorded before Bento replaced it', () => {
+  assert.deepEqual(nativeNotes.map((entry) => entry.id).sort(), [
+    'DownloadsButton.getAnchor',
+    'DownloadsButton.releaseAnchor',
+    'MozBrowser.prototype.removeProgressListener',
+    'MozTabbrowserTab.isEmpty',
+    'PopupNotifications._isActiveBrowser',
+    'gBrowser._beginRemoveTab',
+    'gBrowser._findTabToBlurTo',
+    'gBrowser.on_visibilitychange',
+  ]);
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
+  const probe = (win, id) =>
+    probes.probe(
+      win,
+      probes.entries.find((entry) => entry.id === id),
+    );
+  for (const { id } of nativeNotes) {
+    // Bento's wrapper is in place (the universal window has every member), but
+    // Firefox's original was missing when the patch site ran.
+    probes.note(id, undefined);
+    assert.equal(probe(universal(), id), 'missing', `${id} with no native original`);
+    // Firefox's original existed (the window itself has nothing).
+    probes.note(id, function original() {});
+    assert.equal(probe({}, id), 'ok', `${id} with a native original`);
+  }
+});
+
+test('Bento writes to a member never satisfy a probe on that member', () => {
+  const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
+  const probe = (win, id) =>
+    probes.probe(
+      win,
+      probes.entries.find((entry) => entry.id === id),
+    );
+  assert.deepEqual(
+    runtimeEntries
+      .filter((entry) => entry.native === 'proto')
+      .map((entry) => entry.id)
+      .sort(),
+    ['MozTabbrowserTab.splitview', 'gBrowser.tabpanels.splitViewPanels'],
+  );
+
+  // Bento assigned splitViewPanels and shadowed splitview on the instances;
+  // Firefox's prototypes no longer define either.
+  const tabpanels = Object.create({});
+  tabpanels.splitViewPanels = [];
+  const selectedTab = Object.create({});
+  Object.defineProperty(selectedTab, 'splitview', { value: {}, configurable: true });
+  const win = { gBrowser: { tabpanels, selectedTab } };
+  assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'missing');
+  assert.equal(probe(win, 'MozTabbrowserTab.splitview'), 'missing');
+
+  win.gBrowser.tabpanels = Object.create({ splitViewPanels: [] });
+  win.gBrowser.selectedTab = Object.create({ splitview: null });
+  assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'ok');
+  assert.equal(probe(win, 'MozTabbrowserTab.splitview'), 'ok');
 });
 
 test('a probe that throws counts as missing instead of breaking the run', () => {
@@ -283,7 +425,7 @@ const FIXTURE_REGISTRY = {
     {
       id: 'gBrowser._hook',
       kind: 'method',
-      how: 'wraps',
+      how: 'calls',
       probe: 'R',
       sites: ['useTheHook'],
       use: 'Wraps the hook.',
@@ -305,10 +447,12 @@ const FIXTURE_REGISTRY = {
 
 const FIXTURE_PROBES = {
   members: { gBrowser: ['_hook()'] },
+  proto: [],
   elements: [],
   modules: { 'resource:///modules/Thing.sys.mjs': 'Thing' },
   custom: {},
   lazy: [],
+  gate: {},
 };
 
 function fixtureMount(probes = FIXTURE_PROBES) {
@@ -386,6 +530,94 @@ test('checkEngine reports the line where a moved member now lives', (t) => {
   write(engine, 'browser/hook.js', '\n\n\n\nclass A {\n  _hook() {}\n}\n');
   assert.equal(checkEngine(FIXTURE_REGISTRY, engine)[0].line, 6);
 });
+
+// Vanilla Firefox 154 text for entries added after the first audit pass, and
+// the rename that must make the engine check fail.
+const RENAMES = [
+  [
+    'FirefoxProfileMigrator._getFileObject',
+    '  _getFileObject(dir, fileName) {\n  }\n',
+    '_getFileObject',
+    '_getFile',
+  ],
+  [
+    'AsyncSetting.emitChange',
+    '  emitChange = () => {\n    this.emit("change");\n  };\n',
+    'emitChange',
+    'notifyChange',
+  ],
+  [
+    'TabSelect',
+    '        let event = new CustomEvent("TabSelect", {\n',
+    '"TabSelect"',
+    '"TabSelected"',
+  ],
+  ['TabOpen', '      let evt = new CustomEvent("TabOpen", {\n', '"TabOpen"', '"TabOpened"'],
+  [
+    'TabAttrModified',
+    '      let event = new CustomEvent("TabAttrModified", {\n',
+    '"TabAttrModified"',
+    '"TabAttrChanged"',
+  ],
+  [
+    'SSTabRestored',
+    '    event.initCustomEvent("SSTabRestored", true, false, {\n',
+    '"SSTabRestored"',
+    '"SSTabReady"',
+  ],
+  ['gBrowser._endRemoveTab', '    _endRemoveTab(aTab) {\n', '_endRemoveTab', '_finishRemoveTab'],
+  [
+    'tab._endRemoveArgs',
+    '      aTab._endRemoveArgs = [closeWindow, newTab];\n',
+    '_endRemoveArgs',
+    '_removeArgs',
+  ],
+  [
+    'MigrationWizard:Close',
+    '        new CustomEvent("MigrationWizard:Close", { bubbles: true })\n',
+    '"MigrationWizard:Close"',
+    '"MigrationWizard:Done"',
+  ],
+  [
+    'about:devtools-toolbox id parameter',
+    '  const id = params.get("id");\n',
+    'get("id")',
+    'get("targetId")',
+  ],
+  [
+    'about:devtools-toolbox type parameter',
+    '  const type = params.get("type");\n',
+    'get("type")',
+    'get("kind")',
+  ],
+  [
+    'about:devtools-toolbox type=tab branch',
+    '  if (type === "tab") {\n    commands = await CommandsFactory.forRemoteTab(id, { client });\n  }\n',
+    'forRemoteTab(id',
+    'forTab(id',
+  ],
+  [
+    'identity-popup',
+    '<html:template id="template-identity-popup">\n<panel id="identity-popup"\n',
+    'id="identity-popup"',
+    'id="identity-panel"',
+  ],
+];
+
+for (const [id, vanilla, from, to] of RENAMES) {
+  test(`the engine check fails when Firefox renames ${id}`, (t) => {
+    const entry = registry.members.find((member) => member.id === id);
+    assert.ok(entry, `${id} must be in the registry`);
+    assert.ok(vanilla.includes(from));
+    const engine = tempDir(t);
+    const check = () => checkEngine({ ...registry, members: [entry] }, engine)[0];
+
+    write(engine, entry.at[0], vanilla);
+    assert.equal(check().status, 'ok');
+    write(engine, entry.at[0], vanilla.replace(from, to));
+    assert.equal(check().status, 'missing');
+  });
+}
 
 test('a stale docs table, a removed call site, a bad entry, and probe drift are reported', (t) => {
   const repo = fixtureRepo(t);
