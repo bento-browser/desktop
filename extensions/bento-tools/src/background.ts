@@ -11,6 +11,7 @@ import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
+import { parkableWorkspaceTabs, type ParkedWorkspaceTab } from './panels/ParkedWorkspace';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
@@ -216,14 +217,6 @@ const PARKED_WORKSPACE_TABS_STORAGE_KEY = 'bento.parkedWorkspaceTabs';
 const IMPORT_PINNED_PANEL_SESSION_KEY = 'bento.importPinnedPanel';
 const SESSION_READ_RETRY_DELAY_MS = 50;
 
-interface ParkedWorkspaceTab {
-  url: string;
-  title: string;
-  customTitle?: string;
-  pinned: boolean;
-  index: number;
-}
-
 let parkedWorkspaceTabs = new Map<string, ParkedWorkspaceTab[]>();
 
 async function readTabSessionValueWithRetries(
@@ -307,25 +300,15 @@ function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTa
   }
 
   for (const [workspaceId, workspaceTabs] of byWorkspace) {
-    const urlByTabId = new Map<number, string>();
-    for (const tab of workspaceTabs) {
-      if (tab.url) urlByTabId.set(tab.id, tab.url);
-    }
-
+    // Private tabs are never parked; panel slots without a URL are omitted
+    // from the persisted layout.
     const panelTabIds = new Set(panels.getPanels(workspaceId));
+    const { urlByTabId, sidebarTabs } = parkableWorkspaceTabs(workspaceTabs, panelTabIds, (id) =>
+      tabs.isPrivate(id),
+    );
     const parkedPanels = panels.parkWorkspaceWithResolvedUrls(workspaceId, (tabId) =>
       urlByTabId.get(tabId),
     );
-    const sidebarTabs = workspaceTabs
-      .filter((tab) => !panelTabIds.has(tab.id) && tab.url && tab.url !== 'about:blank')
-      .sort((a, b) => a.index - b.index)
-      .map((tab) => ({
-        url: tab.url!,
-        title: tab.title,
-        customTitle: tab.customTitle,
-        pinned: tab.pinned,
-        index: tab.index,
-      }));
 
     const hadParkedSidebarTabs = parkedWorkspaceTabs.has(workspaceId);
     if (sidebarTabs.length > 0) {

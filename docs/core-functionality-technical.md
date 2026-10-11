@@ -1238,10 +1238,19 @@ Panel persistence write path:
   parking: `parkWorkspaceWithResolvedUrls` stores URLs taken from the
   `TabRegistry` closing-window snapshot and flushes at once, which also covers a
   URL change still inside the trailing interval at quit.
-- `persistableUrl` in `Persistence.ts` is the single place a live tab becomes a
-  stored URL. Any rule about which tabs may reach `bento.panels` (for example
-  excluding private-window panels) belongs there, plus the closing-window
-  `urlByTabId` map in `parkTabsForClosingWindow` for the parked path.
+- Private-window tabs are never persisted. `persistableUrl` in `Persistence.ts`
+  is the single place a live tab becomes a stored URL and returns null for
+  `tab.incognito` tabs, so `#flush` drops the panel from `entries` and from the
+  persisted layout (`toPersistenceLayout` only emits nodes whose panel key was
+  kept). A workspace whose panels are all private is omitted from `byWorkspace`.
+  A vertical or horizontal group needs both children, so a group containing a
+  private panel is omitted whole, exactly like a panel without a stored URL;
+  surviving siblings keep their entries and restore as ordinary tabs. The parked
+  path uses `parkableWorkspaceTabs` (`panels/ParkedWorkspace.ts`), which
+  `parkTabsForClosingWindow` calls with `TabRegistry.isPrivate`: private tabs
+  contribute no panel URL and no `parkedWorkspaceTabs` sidebar entry (URL, title,
+  custom title). `TabRegistry` still holds the private tab ids while the
+  closing-window listeners run, so the check is valid at that point.
 - Manual verification: open a panel, navigate it rapidly (a page that updates
   `location` continuously), and confirm in the Browser Toolbox that
   `browser.storage.local.get('bento.panels')` changes at most about twice per
@@ -1856,6 +1865,14 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   queue in `Persistence`: one write in flight, newest queued snapshot wins. Route
   new triggers through `flushNow` or `schedule`; never call `#flush` directly or
   add a second writer of `bento.panels`.
+- Do not persist private-window state. Panel entries and layout slots
+  (`bento.panels`), parked panel URLs, and parked sidebar tabs
+  (`bento.parkedWorkspaceTabs`, including titles) all skip tabs where
+  `tab.incognito` is true or `TabRegistry.isPrivate` is true. A new storage path
+  that records tab URLs, titles, or favicons must apply the same check at the
+  point it resolves a live tab or a closing-window snapshot. Pinned panels
+  (`PinnedPanelsStore.#resolveAndPersist`) have their own tab read and need their
+  own check.
 - Do not call `persistCurrentState` from a high-frequency listener. Panel URL
   changes used to flush the whole graph on every event (one `tabs.get` per panel
   plus two or three storage calls each); they now use

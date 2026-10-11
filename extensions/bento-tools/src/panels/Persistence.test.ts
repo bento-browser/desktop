@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addPanel, emptyLayout, type WorkspacePanelLayout } from './PanelLayout';
+import {
+  addPanel,
+  emptyLayout,
+  fillChooser,
+  subdividePanel,
+  type WorkspacePanelLayout,
+} from './PanelLayout';
 import { load, Persistence } from './Persistence';
 import type { PersistedWorkspacePanels } from './PanelStore';
 
@@ -255,5 +261,91 @@ describe('panel Persistence write ordering', () => {
 
     expect(setMock).toHaveBeenCalledTimes(1);
     expect(await storedUrl()).toBe(urlFor(103));
+  });
+});
+
+describe('panel Persistence private tabs', () => {
+  let storage: Record<string, unknown>;
+  const privateTabIds = new Set<number>();
+
+  const flush = (layout: WorkspacePanelLayout) =>
+    new Persistence().flushNow(
+      new Map([['ws', layout]]),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+    );
+
+  beforeEach(() => {
+    storage = {};
+    privateTabIds.clear();
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async (keys: string[]) =>
+            Object.fromEntries(keys.map((key) => [key, storage[key]])),
+          ),
+          set: vi.fn(async (payload: Record<string, unknown>) => {
+            Object.assign(storage, payload);
+          }),
+          remove: vi.fn(async (keys: string | string[]) => {
+            for (const key of Array.isArray(keys) ? keys : [keys]) delete storage[key];
+          }),
+        },
+      },
+      tabs: {
+        get: vi.fn(async (tabId: number) => ({
+          id: tabId,
+          url: privateTabIds.has(tabId)
+            ? `https://private-${tabId}.example.test/secret`
+            : `https://${tabId}.example.test/`,
+          incognito: privateTabIds.has(tabId),
+        })),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('omits a private panel from entries and layout while keeping regular ones', async () => {
+    privateTabIds.add(201);
+    const layout = emptyLayout();
+    addPanel(layout, 201);
+    addPanel(layout, 202);
+
+    await flush(layout);
+
+    expect(JSON.stringify(storage)).not.toContain('private-201');
+    const loaded = (await load())?.byWorkspace.get('ws');
+    expect(loaded?.entries).toEqual([{ panelKey: 'panel-1', url: 'https://202.example.test/' }]);
+    expect(loaded?.layout.root).toEqual([{ kind: 'panel', panelKey: 'panel-1' }]);
+  });
+
+  it('stores nothing for a workspace whose panels are all private', async () => {
+    privateTabIds.add(201);
+    const layout = emptyLayout();
+    addPanel(layout, 201);
+
+    await flush(layout);
+
+    expect(JSON.stringify(storage)).not.toContain('private-201');
+    expect((await load())?.byWorkspace.has('ws')).toBe(false);
+  });
+
+  it('omits a whole group that contains a private panel', async () => {
+    privateTabIds.add(2);
+    const layout = emptyLayout();
+    addPanel(layout, 1);
+    subdividePanel(layout, 1, { groupId: 'group-1', chooserId: 'chooser-1' });
+    fillChooser(layout, 'chooser-1', 'single', [2], {});
+
+    await flush(layout);
+
+    expect(JSON.stringify(storage)).not.toContain('private-2');
+    expect((await load())?.byWorkspace.get('ws')?.layout.root ?? []).toEqual([]);
   });
 });

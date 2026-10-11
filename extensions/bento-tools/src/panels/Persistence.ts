@@ -191,10 +191,11 @@ type Snapshot = [
 
 /**
  * The single place a live tab becomes a storable URL. Return null to keep a tab
- * out of `bento.panels`. Excluding private-window panels belongs here: return
- * null when `tab.incognito` is true.
+ * out of `bento.panels`. Private-window tabs are never stored; the caller drops
+ * the panel slot from the entries and the persisted layout.
  */
 function persistableUrl(tab: browser.tabs.Tab): string | null {
+  if (tab.incognito === true) return null;
   const pendingUrl = (tab as { pendingUrl?: unknown }).pendingUrl;
   const url =
     tab.url && tab.url !== 'about:blank'
