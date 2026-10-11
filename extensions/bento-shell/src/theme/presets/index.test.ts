@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
+import { MUXUI_THEME_PRESETS } from '@muxui/react/themes';
 
 import { BENTO_THEMES, DEFAULT_THEME_ID, getThemeMeta, resolveThemeId } from './index';
 import { getThemeScopeAttributes } from '../themeScope';
@@ -7,9 +8,22 @@ import { getThemeScopeAttributes } from '../themeScope';
 const generatedThemeCss = readFileSync(new URL('./index.css', import.meta.url), 'utf8');
 
 describe('workspace theme presets', () => {
-  it('includes the complete canonical Mux standard and monochromatic collections', () => {
-    expect(BENTO_THEMES.filter((theme) => theme.collection === 'standard')).toHaveLength(8);
-    expect(BENTO_THEMES.filter((theme) => theme.collection === 'monochrome')).toHaveLength(7);
+  // The registry is generated from the pinned package, so the expected list is the package's.
+  it('includes every canonical Mux theme, grouped by collection, plus Bento Default', () => {
+    expect(MUXUI_THEME_PRESETS.length).toBeGreaterThan(0);
+    for (const collection of ['standard', 'monochrome'] as const) {
+      expect(
+        BENTO_THEMES.filter((theme) => theme.collection === collection).map((theme) => theme.id),
+      ).toEqual(
+        MUXUI_THEME_PRESETS.filter((theme) => theme.collection === collection).map(
+          (theme) => theme.id,
+        ),
+      );
+    }
+    expect(
+      BENTO_THEMES.filter((theme) => theme.collection === 'bento').map((theme) => theme.id),
+    ).toEqual([DEFAULT_THEME_ID]);
+    expect(BENTO_THEMES).toHaveLength(MUXUI_THEME_PRESETS.length + 1);
   });
 
   it('keeps standard and monochromatic Terracotta distinct', () => {
