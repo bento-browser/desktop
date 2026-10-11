@@ -3302,6 +3302,8 @@
       clearTimeout(__startupVeilHideTimer);
       __startupVeilHideTimer = null;
     }
+    // The first real content is up: start warming the overlays (first call only).
+    overlays.onVeilLifted();
     const veil = document.getElementById('bento-startup-veil');
     if (!veil || veil.hasAttribute('hidden')) return;
     window.setTimeout(() => {
@@ -3331,6 +3333,388 @@
     ensureStartupVeil();
     armStartupVeilFallback();
   }
+
+  // @bento-overlays:begin
+  //
+  // Lazy overlay documents. Every overlay <browser> except the sidebar shell and
+  // the panel trailer is created (or navigated) on first use, or at idle after the
+  // launch veil lifts, instead of at window startup. This manager owns the state
+  // and the rules; the table that wires it to the frames in this file follows it.
+  // It touches nothing of Firefox's, so scripts/overlay-manager.test.mjs evaluates
+  // exactly this section.
+  //
+  // States: absent (no document requested), loading (navigation started, waiting
+  // for the document to announce BENTO_OVERLAY_READY), ready.
+  //   open(id, reason, run)         ensure the document, then run `run` once ready
+  //   whenReady(id, key, fn)        queue a chrome-to-overlay send behind the same wait
+  //   cancel(id)                    drop queued work; every hide path calls it
+  // Queued work is keyed, so a repeated open (the welcome requests repeat) replaces
+  // the queued one instead of stacking. A document that never announces counts as
+  // ready after OVERLAY_READY_FALLBACK_MS: a missing signal then delays the first
+  // open instead of blocking it. Code that only hides, resizes or messages an
+  // overlay must look the frame up with document.getElementById and treat null
+  // (not created yet) as "nothing to do"; only open paths call ensure/open.
+  const OVERLAY_READY_FALLBACK_MS = 5000;
+  const OVERLAY_PREWARM_IDLE_TIMEOUT_MS = 1500;
+  const OVERLAY_PREWARM_READY_WAIT_MS = 2500;
+
+  function createOverlayManager({ entries, now, requestIdle, setTimer, clearTimer, warn }) {
+    const records = new Map();
+    for (const entry of entries) {
+      records.set(entry.id, {
+        entry,
+        state: 'absent',
+        reason: null,
+        createdAt: null,
+        readyAt: null,
+        readyBy: null,
+        waiters: new Map(),
+        fallbackTimer: null,
+        opens: 0,
+        firstOpenWaitMs: null,
+        maxOpenWaitMs: 0,
+      });
+    }
+    const createdOrder = [];
+    let veilLiftedAt = null;
+    let prewarmQueue = [];
+    let prewarmIdle = false;
+    let prewarmWaitId = null;
+    let prewarmWaitTimer = null;
+    let disposed = false;
+
+    function guarded(id, fn) {
+      try {
+        fn();
+      } catch (err) {
+        warn('[bento-shell-mount] overlay ' + id + ' callback threw:', err);
+      }
+    }
+
+    function markReady(id, by) {
+      const rec = records.get(id);
+      if (!rec || disposed) return;
+      if (rec.fallbackTimer !== null) {
+        clearTimer(rec.fallbackTimer);
+        rec.fallbackTimer = null;
+      }
+      if (rec.state !== 'ready') {
+        rec.state = 'ready';
+        rec.readyAt = now();
+        rec.readyBy = by;
+      }
+      const queued = [...rec.waiters.values()];
+      rec.waiters.clear();
+      for (const fn of queued) guarded(id, fn);
+      if (by === 'signal' && rec.entry.onReady) guarded(id, rec.entry.onReady);
+      if (prewarmWaitId === id) continuePrewarm();
+    }
+
+    function armFallback(id, rec) {
+      if (rec.fallbackTimer !== null) return;
+      rec.fallbackTimer = setTimer(() => {
+        rec.fallbackTimer = null;
+        if (rec.state !== 'loading' || rec.waiters.size === 0) return;
+        warn(
+          '[bento-shell-mount] overlay ' +
+            id +
+            ' did not announce readiness within ' +
+            OVERLAY_READY_FALLBACK_MS +
+            ' ms; continuing',
+        );
+        markReady(id, 'timeout');
+      }, OVERLAY_READY_FALLBACK_MS);
+    }
+
+    // Creates the overlay's <browser> if needed and starts its navigation once.
+    // Returns the frame, or null when its host is missing or the navigation
+    // failed (the overlay stays absent and a later call retries).
+    function ensure(id, reason) {
+      const rec = records.get(id);
+      if (!rec || disposed) return null;
+      const { entry } = rec;
+      let frame = entry.frame();
+      if (!frame && entry.create) frame = entry.create();
+      if (!frame) return null;
+      if (rec.state !== 'absent') return frame;
+      rec.state = 'loading';
+      rec.reason = reason;
+      rec.createdAt = now();
+      try {
+        entry.navigate();
+      } catch (err) {
+        warn('[bento-shell-mount] overlay ' + id + ' navigation failed:', err);
+        rec.state = 'absent';
+        return null;
+      }
+      createdOrder.push(id);
+      if (entry.handshake === false) markReady(id, 'no-handshake');
+      return frame;
+    }
+
+    // Runs `fn` now if the overlay is ready, else when it becomes ready. The
+    // overlay is loading here (ensure succeeded).
+    function queue(id, rec, key, fn) {
+      if (rec.state === 'ready') {
+        fn();
+        return;
+      }
+      rec.waiters.set(key, fn);
+      armFallback(id, rec);
+    }
+
+    // A send to the overlay's document. If the document cannot be created the
+    // send runs at once, as it did before documents were lazy.
+    function whenReady(id, key, fn, reason = 'send') {
+      const rec = records.get(id);
+      if (!rec || !ensure(id, reason)) {
+        fn();
+        return;
+      }
+      queue(id, rec, key, fn);
+    }
+
+    // Returns false when the overlay's frame cannot be created.
+    function open(id, reason, run) {
+      const rec = records.get(id);
+      if (!rec) {
+        run();
+        return true;
+      }
+      if (!ensure(id, reason)) return false;
+      const requestedAt = now();
+      queue(id, rec, 'show', () => {
+        const waited = now() - requestedAt;
+        rec.opens += 1;
+        if (rec.firstOpenWaitMs === null) rec.firstOpenWaitMs = waited;
+        rec.maxOpenWaitMs = Math.max(rec.maxOpenWaitMs, waited);
+        run();
+      });
+      return true;
+    }
+
+    function cancel(id) {
+      records.get(id)?.waiters.clear();
+    }
+
+    // A reloaded document announces itself again; hold sends until it does.
+    function reset(id) {
+      const rec = records.get(id);
+      if (!rec || rec.state !== 'ready') return;
+      rec.state = 'loading';
+      rec.readyAt = null;
+      rec.readyBy = null;
+    }
+
+    function idForFrame(frameId) {
+      for (const [id, rec] of records) {
+        if (rec.entry.frameId === frameId) return id;
+      }
+      return null;
+    }
+
+    function markFrameReady(frameId) {
+      const id = idForFrame(frameId);
+      if (id !== null) markReady(id, 'signal');
+    }
+
+    // Prewarm: one document per idle period, the next only after the previous
+    // announced (or a timeout), so the shared extension process never loads
+    // several React documents at once.
+    function scheduleNextPrewarm() {
+      if (disposed || prewarmIdle || prewarmQueue.length === 0) return;
+      prewarmIdle = true;
+      requestIdle(
+        () => {
+          prewarmIdle = false;
+          runPrewarmStep();
+        },
+        { timeout: OVERLAY_PREWARM_IDLE_TIMEOUT_MS },
+      );
+    }
+
+    function continuePrewarm() {
+      if (prewarmWaitTimer !== null) {
+        clearTimer(prewarmWaitTimer);
+        prewarmWaitTimer = null;
+      }
+      prewarmWaitId = null;
+      scheduleNextPrewarm();
+    }
+
+    function runPrewarmStep() {
+      if (disposed) return;
+      const id = prewarmQueue.shift();
+      if (id === undefined) return;
+      const rec = records.get(id);
+      // Already opened on demand, or its host is missing: go to the next one.
+      if (rec.state !== 'absent' || !ensure(id, 'idle')) {
+        scheduleNextPrewarm();
+        return;
+      }
+      if (rec.state === 'ready' || prewarmQueue.length === 0) {
+        scheduleNextPrewarm();
+        return;
+      }
+      prewarmWaitId = id;
+      prewarmWaitTimer = setTimer(continuePrewarm, OVERLAY_PREWARM_READY_WAIT_MS);
+    }
+
+    // The window shows its first real content; start warming the overlays that
+    // must open without a visible load. Runs once.
+    function onVeilLifted() {
+      if (veilLiftedAt !== null || disposed) return;
+      veilLiftedAt = now();
+      prewarmQueue = entries.filter((entry) => entry.prewarm).map((entry) => entry.id);
+      scheduleNextPrewarm();
+    }
+
+    function stats() {
+      const round = (value) => (value === null ? null : Math.round(value * 10) / 10);
+      const sinceVeil = (value) =>
+        value === null || veilLiftedAt === null ? null : round(value - veilLiftedAt);
+      const result = {};
+      for (const [id, rec] of records) {
+        result[id] = {
+          strategy: rec.entry.prewarm ? 'idle' : 'demand',
+          state: rec.state,
+          reason: rec.reason,
+          createdMs: round(rec.createdAt),
+          createdSinceVeilMs: sinceVeil(rec.createdAt),
+          readyMs: round(rec.readyAt),
+          readySinceVeilMs: sinceVeil(rec.readyAt),
+          loadMs: rec.createdAt === null || rec.readyAt === null ? null : round(rec.readyAt - rec.createdAt),
+          readyBy: rec.readyBy,
+          opens: rec.opens,
+          firstOpenWaitMs: round(rec.firstOpenWaitMs),
+          maxOpenWaitMs: round(rec.maxOpenWaitMs),
+        };
+      }
+      return {
+        nowMs: round(now()),
+        veilLiftedMs: round(veilLiftedAt),
+        created: [...createdOrder],
+        overlays: result,
+      };
+    }
+
+    function dispose() {
+      disposed = true;
+      for (const rec of records.values()) rec.waiters.clear();
+    }
+
+    return {
+      ensure,
+      open,
+      whenReady,
+      cancel,
+      reset,
+      idForFrame,
+      markFrameReady,
+      onVeilLifted,
+      stats,
+      dispose,
+      isReady: (id) => records.get(id)?.state === 'ready',
+      hasStarted: (id) => (records.get(id)?.state ?? 'absent') !== 'absent',
+    };
+  }
+  // @bento-overlays:end
+
+  // Title an overlay document writes once it can receive an open (the shell side
+  // is bridge/overlayReady.ts). Handled for every overlay frame before its own
+  // title handler.
+  const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
+
+  // One row per lazily created overlay, in prewarm order. `prewarm` rows are
+  // created at idle after the veil lifts (their first open must not show a
+  // load); the rest on first use. `created` rows have a host from
+  // ensureOverlayHost and get their <browser> from createOverlayFrame; the rest
+  // are the <browser> elements the browser-box patch declares, navigated later.
+  function overlayEntry({
+    id,
+    navigate,
+    prewarm = false,
+    created = false,
+    remote = true,
+    handshake,
+    onReady,
+  }) {
+    const frameId = 'bento-' + id + '-frame';
+    return {
+      id,
+      frameId,
+      prewarm,
+      navigate,
+      handshake,
+      onReady,
+      frame: () => document.getElementById(frameId),
+      create: created
+        ? () => createOverlayFrame('bento-' + id + '-host', frameId, remote)
+        : undefined,
+    };
+  }
+
+  const overlays = createOverlayManager({
+    entries: [
+      overlayEntry({ id: 'addrbar', prewarm: true, created: true, navigate: setBentoAddrbarSrc }),
+      overlayEntry({ id: 'palette', prewarm: true, navigate: setBentoPaletteSrc }),
+      overlayEntry({
+        id: 'workspace-switcher',
+        prewarm: true,
+        created: true,
+        navigate: setBentoWorkspaceSwitcherSrc,
+      }),
+      overlayEntry({ id: 'menu', prewarm: true, navigate: setBentoMenuSrc }),
+      overlayEntry({
+        id: 'workspace-palette',
+        created: true,
+        navigate: setBentoWorkspacePaletteSrc,
+      }),
+      overlayEntry({ id: 'merge-palette', navigate: setBentoMergePaletteSrc }),
+      overlayEntry({ id: 'confirm', navigate: setBentoConfirmSrc }),
+      overlayEntry({
+        id: 'edit-workspace',
+        created: true,
+        navigate: setBentoEditWorkspaceSrc,
+      }),
+      overlayEntry({ id: 'welcome', created: true, navigate: setBentoWelcomeSrc }),
+      // Chrome-hosted page with no handshake; showEmbeddedBrowserImportFromWelcome
+      // sets its src each time it opens.
+      overlayEntry({
+        id: 'embedded-import',
+        created: true,
+        remote: false,
+        handshake: false,
+        navigate: () => {},
+      }),
+      overlayEntry({
+        id: 'panel-navigator-tooltip',
+        created: true,
+        navigate: setBentoPanelNavigatorTooltipSrc,
+        onReady: () =>
+          replayPanelNavigatorTooltipPayload(
+            document.getElementById('bento-panel-navigator-tooltip-frame'),
+          ),
+      }),
+    ],
+    now: () => window.performance.now(),
+    requestIdle: (callback, options) =>
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(callback, options)
+        : window.setTimeout(callback, 0),
+    setTimer: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimer: (handle) => window.clearTimeout(handle),
+    warn: (...args) => console.warn(...args),
+  });
+
+  // Dev-visible measurement for the runtime pass: which overlays exist, why and
+  // when each was created relative to the veil lift, how long each took to
+  // announce, and how long opens waited. A snapshot per read; no timers.
+  Object.defineProperty(window, 'BentoOverlayStats', {
+    configurable: true,
+    get: () => overlays.stats(),
+  });
+  window.addEventListener('unload', () => overlays.dispose(), { once: true });
 
   function moz(path) {
     const policy = WebExtensionPolicy.getByID(ADDON_ID);
@@ -3739,7 +4123,7 @@
   // a rebuild anyway. New overlays added in dev should go through this
   // factory.
   function ensureOverlayHost(opts) {
-    const { hostId, frameId, zIndex, remote = true, parentId = 'browser' } = opts;
+    const { hostId, zIndex, parentId = 'browser' } = opts;
     if (document.getElementById(hostId)) return;
     const parent = parentId ? document.getElementById(parentId) : document.documentElement;
     if (!parent) {
@@ -3754,6 +4138,21 @@
       ` z-index: ${zIndex}; background-color: transparent; pointer-events: auto;` +
       ' display: none; opacity: 0;' +
       ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+    parent.appendChild(host);
+  }
+
+  // The overlay's <browser>, created on its first open or at idle (see
+  // createOverlayManager). The host from ensureOverlayHost stays from window
+  // startup; only the heavy part is deferred. Returns null while the host is
+  // missing.
+  function createOverlayFrame(hostId, frameId, remote = true) {
+    const existing = document.getElementById(frameId);
+    if (existing) return existing;
+    const host = document.getElementById(hostId);
+    if (!host) {
+      console.warn('[bento-shell-mount] createOverlayFrame:', hostId, '— host missing');
+      return null;
+    }
     const frame = document.createXULElement('browser');
     frame.id = frameId;
     frame.setAttribute('type', 'content');
@@ -3768,7 +4167,7 @@
       'background-color: transparent; -moz-appearance: none;' +
       ' border: 0; margin: 0; padding: 0;';
     host.appendChild(frame);
-    parent.appendChild(host);
+    return frame;
   }
 
   const activeToolbarScrimOwners = new Set();
@@ -3818,19 +4217,16 @@
   // deployed browser.xhtml.
   ensureOverlayHost({
     hostId: 'bento-merge-palette-host',
-    frameId: 'bento-merge-palette-frame',
     zIndex: 99997,
   });
 
   ensureOverlayHost({
     hostId: 'bento-workspace-palette-host',
-    frameId: 'bento-workspace-palette-frame',
     zIndex: 99997,
   });
 
   ensureOverlayHost({
     hostId: 'bento-edit-workspace-host',
-    frameId: 'bento-edit-workspace-frame',
     zIndex: 99997,
   });
 
@@ -3840,7 +4236,6 @@
   // very first overlay a user sees and there's nothing to stack against.
   ensureOverlayHost({
     hostId: 'bento-welcome-host',
-    frameId: 'bento-welcome-frame',
     zIndex: 99996,
   });
   ensureOverlayToolbarScrim();
@@ -3851,9 +4246,7 @@
   // built-in chrome document instead of a moz-extension content process.
   ensureOverlayHost({
     hostId: 'bento-embedded-import-host',
-    frameId: 'bento-embedded-import-frame',
     zIndex: 99998,
-    remote: false,
   });
 
   // Workspace-switcher overlay. The Mux Menu popover would otherwise
@@ -3867,13 +4260,11 @@
   // be the user's natural next action).
   ensureOverlayHost({
     hostId: 'bento-workspace-switcher-host',
-    frameId: 'bento-workspace-switcher-frame',
     zIndex: 99995,
   });
 
   ensureOverlayHost({
     hostId: 'bento-panel-navigator-tooltip-host',
-    frameId: 'bento-panel-navigator-tooltip-frame',
     zIndex: 99999,
     // Panel navigator buttons are in #nav-bar, above #browser. Mounting
     // below #browser clips an anchored popup before it reaches the toolbar.
@@ -3887,7 +4278,6 @@
   // the workspace palette is still the user's active context.
   ensureOverlayHost({
     hostId: 'bento-addrbar-host',
-    frameId: 'bento-addrbar-frame',
     zIndex: 99994,
   });
 
@@ -3947,27 +4337,41 @@
 
   const PALETTE_TRANSITION_MS = 180; // matches inline transition duration
 
+  // Every show* function reveals its host through this. The first open of an
+  // overlay whose document does not exist yet (or has not announced readiness)
+  // waits for it, so the dim, the host fade and the focus all land together;
+  // `reveal` runs at once for a ready overlay. The matching hide* function calls
+  // overlays.cancel(id), so a hide that arrives first wins.
+  function openOverlay(id, reveal) {
+    if (!overlays.open(id, 'show', reveal)) {
+      console.warn('[bento-shell-mount] overlay frame unavailable:', id);
+    }
+  }
+
   function showPalette() {
-    const mergeHost = document.getElementById('bento-merge-palette-host');
-    if (mergeHost && isMergePaletteVisible(mergeHost)) hideMergePalette();
     const host = document.getElementById('bento-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showPalette: bento-palette-host missing');
       return;
     }
-    showOverlayToolbarScrim('palette');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    // Force a layout pass so the browser registers display:flex BEFORE we
-    // set opacity. Without this the opacity change wouldn't transition
-    // (CSS doesn't transition from display:none to display:flex).
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-palette-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('palette', () => {
+      const mergeHost = document.getElementById('bento-merge-palette-host');
+      if (mergeHost && isMergePaletteVisible(mergeHost)) hideMergePalette();
+      showOverlayToolbarScrim('palette');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      // Force a layout pass so the browser registers display:flex BEFORE we
+      // set opacity. Without this the opacity change wouldn't transition
+      // (CSS doesn't transition from display:none to display:flex).
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-palette-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hidePalette() {
+    overlays.cancel('palette');
     const host = document.getElementById('bento-palette-host');
     if (!host) {
       hideOverlayToolbarScrim('palette');
@@ -4005,23 +4409,26 @@
   }
 
   function showWorkspacePalette() {
-    const paletteHost = document.getElementById('bento-palette-host');
-    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
     const host = document.getElementById('bento-workspace-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showWorkspacePalette: host missing');
       return;
     }
-    showOverlayToolbarScrim('workspace-palette');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-workspace-palette-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('workspace-palette', () => {
+      const paletteHost = document.getElementById('bento-palette-host');
+      if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+      showOverlayToolbarScrim('workspace-palette');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-workspace-palette-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideWorkspacePalette() {
+    overlays.cancel('workspace-palette');
     const host = document.getElementById('bento-workspace-palette-host');
     if (!host) {
       hideOverlayToolbarScrim('workspace-palette');
@@ -4050,25 +4457,28 @@
   }
 
   function showMergePalette() {
-    const paletteHost = document.getElementById('bento-palette-host');
-    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
     const host = document.getElementById('bento-merge-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showMergePalette: bento-merge-palette-host missing');
       return;
     }
-    showOverlayToolbarScrim('merge-palette');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-merge-palette-frame');
-    const nonce = nextMergePaletteNonce('open');
-    dispatchMergePaletteLifecycle('open', nonce);
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('merge-palette', () => {
+      const paletteHost = document.getElementById('bento-palette-host');
+      if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+      showOverlayToolbarScrim('merge-palette');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-merge-palette-frame');
+      const nonce = nextMergePaletteNonce('open');
+      dispatchMergePaletteLifecycle('open', nonce);
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideMergePalette() {
+    overlays.cancel('merge-palette');
     const host = document.getElementById('bento-merge-palette-host');
     const nonce = nextMergePaletteNonce('close');
     dispatchMergePaletteLifecycle('close', nonce);
@@ -4385,22 +4795,34 @@
       focusPreservingFrameId: focusPreservingFrame?.id || '',
       retryCount: 0,
       retryTimer: null,
-      fallbackTimer: setTimeout(
-        () => revealPendingAddrbar(openId),
-        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
-      ),
+      fallbackTimer: null,
     };
 
-    dispatchAddrbarOpen(currentAddrbarMode, initialQuery, {
-      openId,
-      suppressFocus: !!focusPreservingFrame,
-      clipboardUrl,
-      placement,
-    });
-    pendingAddrbarReveal.retryTimer = setTimeout(
-      () => retryPendingAddrbarOpen(openId),
-      ADDRBAR_OPEN_RETRY_MS,
-    );
+    // The host is prepared (laid out, invisible, not interactive) at once; the
+    // open message and the reveal timers start when the address bar document is
+    // ready. A prewarmed document is ready, so this runs synchronously; a first
+    // open before the prewarm finished waits for the load instead of burning
+    // the retry budget.
+    const sendOpen = () => {
+      const pending = pendingAddrbarReveal;
+      if (!pending || pending.openId !== openId) return;
+      pending.fallbackTimer = setTimeout(
+        () => revealPendingAddrbar(openId),
+        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
+      );
+      dispatchAddrbarOpen(pending.mode, pending.initialQuery, {
+        openId,
+        suppressFocus: pending.suppressFocus,
+        clipboardUrl: pending.clipboardUrl,
+        placement: pending.placement,
+      });
+      pending.retryTimer = setTimeout(
+        () => retryPendingAddrbarOpen(openId),
+        ADDRBAR_OPEN_RETRY_MS,
+      );
+    };
+    // No frame (its host is gone): send anyway, which fails the way it always did.
+    if (!overlays.open('addrbar', 'show', sendOpen)) sendOpen();
   }
 
   function openAddressEntry(mode, initialQuery = '') {
@@ -4409,6 +4831,7 @@
   }
 
   function hideAddrbar() {
+    overlays.cancel('addrbar');
     clearPendingAddrbarReveal();
     const host = document.getElementById('bento-addrbar-host');
     if (!host) return;
@@ -4441,16 +4864,19 @@
       console.warn('[bento-shell-mount] showConfirm: bento-confirm-host missing');
       return;
     }
-    showOverlayToolbarScrim('confirm');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-confirm-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('confirm', () => {
+      showOverlayToolbarScrim('confirm');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-confirm-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideConfirm() {
+    overlays.cancel('confirm');
     const host = document.getElementById('bento-confirm-host');
     if (!host) {
       hideOverlayToolbarScrim('confirm');
@@ -4482,16 +4908,19 @@
       console.warn('[bento-shell-mount] showEditWorkspace: host missing');
       return;
     }
-    showOverlayToolbarScrim('edit-workspace');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-edit-workspace-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('edit-workspace', () => {
+      showOverlayToolbarScrim('edit-workspace');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-edit-workspace-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideEditWorkspace() {
+    overlays.cancel('edit-workspace');
     const host = document.getElementById('bento-edit-workspace-host');
     if (!host) {
       hideOverlayToolbarScrim('edit-workspace');
@@ -4533,19 +4962,22 @@
       console.warn('[bento-shell-mount] showWorkspaceSwitcher: host missing');
       return;
     }
-    // Display stays 'flex' from the init prewarm — only opacity +
-    // pointer-events toggle here. Restoring display:flex would defeat
-    // the prewarm's purpose (the frame has to stay laid out so its
-    // window.screenLeft is accurate when the React app re-renders).
-    host.style.pointerEvents = 'auto';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-workspace-switcher-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('workspace-switcher', () => {
+      // Display stays 'flex' from the init prewarm — only opacity +
+      // pointer-events toggle here. Restoring display:flex would defeat
+      // the prewarm's purpose (the frame has to stay laid out so its
+      // window.screenLeft is accurate when the React app re-renders).
+      host.style.pointerEvents = 'auto';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-workspace-switcher-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideWorkspaceSwitcher() {
+    overlays.cancel('workspace-switcher');
     const host = document.getElementById('bento-workspace-switcher-host');
     if (!host) return;
     host.style.opacity = '0';
@@ -4696,16 +5128,19 @@
       console.warn('[bento-shell-mount] showWelcome: host missing');
       return;
     }
-    showOverlayToolbarScrim('welcome');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-welcome-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('welcome', () => {
+      showOverlayToolbarScrim('welcome');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-welcome-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideWelcome() {
+    overlays.cancel('welcome');
     const host = document.getElementById('bento-welcome-host');
     if (!host) return;
     hideOverlayToolbarScrim('welcome');
@@ -4724,7 +5159,9 @@
 
   function showEmbeddedBrowserImportFromWelcome() {
     const host = document.getElementById('bento-embedded-import-host');
-    const frame = document.getElementById('bento-embedded-import-frame');
+    // First use creates the chrome-hosted <browser>; it has no readiness
+    // handshake, so it is ready as soon as it exists.
+    const frame = host ? overlays.ensure('embedded-import', 'show') : null;
     if (!host || !frame) {
       console.warn('[bento-shell-mount] embedded import host missing; falling back to restart');
       restartToBrowserImportFromWelcome();
@@ -4824,35 +5261,40 @@
     }
     const contextId = 'm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     if (typeof onSelect === 'function') menuOnSelectByContext.set(contextId, onSelect);
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    // Translate the trigger's chrome-document coords into menu-overlay
-    // coords. The overlay frame fills #bento-menu-host (which lives
-    // inside <hbox id="browser">, BELOW the chrome toolbar/tabstrip);
-    // position:fixed inside the overlay is relative to the overlay's
-    // own viewport, NOT the chrome document. Without this translation
-    // the menu floats roughly one toolbar-height below the trigger.
-    const hostRect = host.getBoundingClientRect();
-    const adjustedAnchor = {
-      left: anchor.left - hostRect.left,
-      top: anchor.top - hostRect.top,
-      width: anchor.width,
-      height: anchor.height,
-    };
-    // Send the open payload over the shell bus. The menu page's React
-    // listens for kind:'action' messages with action.type==='menu/open'.
-    dispatchShellAction({
-      type: 'menu/open',
-      contextId,
-      items,
-      anchor: adjustedAnchor,
-      placement,
+    // The payload goes to the menu document over the bus, which does not queue,
+    // so the first open waits for the document (openOverlay).
+    openOverlay('menu', () => {
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      // Translate the trigger's chrome-document coords into menu-overlay
+      // coords. The overlay frame fills #bento-menu-host (which lives
+      // inside <hbox id="browser">, BELOW the chrome toolbar/tabstrip);
+      // position:fixed inside the overlay is relative to the overlay's
+      // own viewport, NOT the chrome document. Without this translation
+      // the menu floats roughly one toolbar-height below the trigger.
+      const hostRect = host.getBoundingClientRect();
+      const adjustedAnchor = {
+        left: anchor.left - hostRect.left,
+        top: anchor.top - hostRect.top,
+        width: anchor.width,
+        height: anchor.height,
+      };
+      // Send the open payload over the shell bus. The menu page's React
+      // listens for kind:'action' messages with action.type==='menu/open'.
+      dispatchShellAction({
+        type: 'menu/open',
+        contextId,
+        items,
+        anchor: adjustedAnchor,
+        placement,
+      });
+      const frame = document.getElementById('bento-menu-frame');
+      setTimeout(() => frame?.focus(), 0);
     });
-    const frame = document.getElementById('bento-menu-frame');
-    setTimeout(() => frame?.focus(), 0);
   }
 
   function hideChromeMenu() {
+    overlays.cancel('menu');
     const host = document.getElementById('bento-menu-host');
     if (!host) return;
     host.style.display = 'none';
@@ -10984,8 +11426,14 @@
       panelNavigatorTooltipTimer = null;
     }
     panelNavigatorTooltipPayload = null;
+    // The frame does not exist until the first hover, and a document that is
+    // still loading may not take a message yet.
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
-    frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', null);
+    try {
+      frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', null);
+    } catch {
+      // Nothing to hide in a document that has not loaded.
+    }
   }
 
   function showPanelNavigatorTooltip(btn) {
@@ -11002,14 +11450,20 @@
       width: rect.width,
       height: rect.height,
     };
+    // First use creates the tooltip document. Until it announces readiness the
+    // payload above waits in panelNavigatorTooltipPayload; the manager's
+    // onReady (and the STATE_STOP listener) send it.
+    const frame = overlays.ensure('panel-navigator-tooltip', 'hover');
+    if (!frame) return;
     ensurePanelNavigatorTooltipFrameScript();
-    const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
     replayPanelNavigatorTooltipPayload(frame);
   }
 
   function attachPanelNavigatorTooltip(btn) {
     btn.addEventListener('mouseenter', () => {
       hidePanelNavigatorTooltip();
+      // Start loading the document now so it overlaps the hover delay.
+      overlays.ensure('panel-navigator-tooltip', 'hover');
       panelNavigatorTooltipTimer = setTimeout(() => showPanelNavigatorTooltip(btn), 400);
     });
     btn.addEventListener('mouseleave', hidePanelNavigatorTooltip);
@@ -14231,7 +14685,7 @@
         }
       });
       // Inner moz-extension iframe — same attribute set as
-      // ensureOverlayHost frames. Renders /dist/panel-trailer.html
+      // createOverlayFrame frames. Renders /dist/panel-trailer.html
       // which mounts the React PanelTrailer app. Saved favicon buttons
       // dispatch panel/openAt with position 'end'; the blank "+" button
       // signals chrome to call addNewPanel directly.
@@ -19393,6 +19847,8 @@
           }
         },
       ],
+      // The tooltip document only announces readiness (handled below).
+      ['bento-panel-navigator-tooltip-frame', () => {}],
     ]);
     const lastSeenTitleByFrameId = new Map();
 
@@ -19439,6 +19895,10 @@
         const title = frame.contentTitle || '';
         if (title === (lastSeenTitleByFrameId.get(frame.id) ?? '')) return;
         lastSeenTitleByFrameId.set(frame.id, title);
+        if (title.startsWith(OVERLAY_READY_PREFIX)) {
+          overlays.markFrameReady(frame.id);
+          return;
+        }
         handleTitle(title);
       },
       true,
@@ -20305,6 +20765,13 @@
         for (const id of ids) {
           const frame = document.getElementById(id);
           if (!frame) continue;
+          // An overlay that was never opened has no document to reload; it
+          // loads the new add-on when it is first opened.
+          const overlayId = overlays.idForFrame(id);
+          if (overlayId !== null) {
+            if (!overlays.hasStarted(overlayId)) continue;
+            overlays.reset(overlayId);
+          }
           try {
             frame.reloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
           } catch (e) {
@@ -20335,17 +20802,13 @@
   // navigate that panel. The chrome's main URL bar always reflects the
   // active main tab as Firefox normally would.
 
+  // Only the sidebar shell loads at startup. The overlay documents are created
+  // on first use or at idle once the launch veil lifts (createOverlayManager).
   setBentoShellSrc();
-  setBentoPaletteSrc();
-  setBentoWorkspacePaletteSrc();
-  setBentoMergePaletteSrc();
-  setBentoAddrbarSrc();
-  setBentoConfirmSrc();
-  setBentoEditWorkspaceSrc();
-  setBentoWelcomeSrc();
-  setBentoWorkspaceSwitcherSrc();
-  setBentoMenuSrc();
-  setBentoPanelNavigatorTooltipSrc();
+  // The welcome resume step comes from the environment of the process that
+  // restarted for the browser-data import. Read (and clear) it now, as before,
+  // not when the welcome overlay is first created.
+  takeBentoWelcomeResumeStep();
   // unifyMainWithStrip() and setupPanelNavigator() re-parent
   // #tabbrowser-tabbox after Tabbrowser.init() created the first tab, using
   // moveBefore so the tab <browser> keeps its frameloader. If they fall back to
