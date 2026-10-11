@@ -121,7 +121,7 @@ macOS and Windows builds run through `workflow_dispatch` and `release.yml`.
 | -------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`; selects the build platforms. Installs no dependencies.       |
 | `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions, the competitor-reference boundary, the build driver config check, and `pnpm run lc`.   |
-| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`.                       |
+| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run rollback:check`. |
 | `build` (Source import or Build, per platform)                 | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Manual runs go on to bootstrap, build, and package. |
 
 The checks run in parallel and the build starts only after all of them pass,
@@ -881,7 +881,7 @@ patches must remain byte-identical when the native patch is updated.
 
 ## Settings rollback variants
 
-The consolidated Settings rollback is built from the committed source snapshot in `rollback/legacy-source`; see [settings-consolidation-rollback.md](settings-consolidation-rollback.md). Transition r1 has build/update/release commands, while final r2 has build/package/release commands and deliberately has no automatic-update command.
+The consolidated Settings rollback is built from the committed source snapshot in `rollback/legacy-source`; see [settings-consolidation-rollback.md](settings-consolidation-rollback.md). Transition r1 has build/update/release commands, while final r2 has build/package/release commands and deliberately has no automatic-update command. CI runs `pnpm run rollback:check` (ESLint over the archived extension sources plus the read-only `check` action for both variants), so the archive cannot silently stop building against the current dependency graph.
 
 `pnpm dev` launches Bento without opening Browser Toolbox. Set
 `BENTO_JSDEBUGGER=1` when the launch should also start Browser Toolbox; Firefox

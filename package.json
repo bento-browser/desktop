@@ -56,6 +56,7 @@
     "rollback:build-final": "node scripts/build-rollback-variant.mjs rollback-final-r2 build",
     "rollback:package-final": "node scripts/build-rollback-variant.mjs rollback-final-r2 package",
     "rollback:release-final": "node scripts/build-rollback-variant.mjs rollback-final-r2 release",
+    "rollback:check": "eslint rollback/legacy-source/extensions && node scripts/build-rollback-variant.mjs rollback-transition-r1 check && node scripts/build-rollback-variant.mjs rollback-final-r2 check",
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
     "dev:fresh": "pnpm run ext:build && pnpm run import && bash scripts/dev-launch.sh $(mktemp -d)",

@@ -240,6 +240,11 @@ jobs:
         # Missing or malformed built assets still fail.
         run: pnpm run size:check
 
+      - name: Rollback variants still lint, typecheck, and build
+        # Read-only isolated checks of rollback/legacy-source against the
+        # current dependency graph (docs/settings-consolidation-rollback.md).
+        run: pnpm run rollback:check
+
   build:
     name: ${{ github.event_name == 'workflow_dispatch' && 'Build' || 'Source import' }} (${{ matrix.platform }})
     # The checks above run in parallel and all pass before any build starts, so
