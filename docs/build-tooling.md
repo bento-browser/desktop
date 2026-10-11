@@ -315,6 +315,20 @@ pnpm install
 pnpm install --frozen-lockfile
 ```
 
+### Dependabot
+
+`.github/dependabot.yml` has one `npm` entry for the repository root, which
+Dependabot reads as the whole pnpm workspace (the root manifest and both
+extensions) and updates in the one lock. Updates are weekly, capped at two open
+PRs, and grouped into one minor-and-patch PR for production dependencies and one
+for development dependencies. Major versions are ignored. The strategy is
+`lockfile-only`, so a PR never edits a manifest specifier: the approved shell
+runtime dependency set that the SBOM generator pins stays intact, and exact pins
+(for example `vite`, `@ladle/react`, `emojibase-data`) are left for manual
+updates. `@muxui/react`, the React Aria family, and the Tiptap family are
+ignored, because their pins and overrides move together through the Mux release
+procedure below.
+
 ## Local Mux UI
 
 To develop Mux and Bento together, point Bento at a local Mux checkout instead

@@ -226,6 +226,10 @@ for CI and release builds (`.github/actions/setup`, `scripts/build-release.sh`):
   from the manifests. Release builds install the same full graph (the build needs
   the dev tooling), and the SBOM and release security checks read the same file.
   pnpm owns the lockfile format; do not run Prettier on it.
+- Dependabot (`.github/dependabot.yml`) opens weekly lockfile-only npm PRs. It
+  ignores major versions, `@muxui/react`, and the React Aria and Tiptap families,
+  whose pins and overrides change only through the Mux release procedure in
+  [docs/build-tooling.md](docs/build-tooling.md).
 
 **When changing UI dependencies**: keep the exact package pin, the approved
 shell runtime dependency set in the SBOM generator, required substrate/security
