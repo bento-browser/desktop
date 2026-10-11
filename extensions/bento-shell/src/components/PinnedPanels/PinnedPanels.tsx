@@ -10,6 +10,7 @@ import { dispatch } from '../../bridge/useToolsPort';
 import type { PinnedPanelEntry } from '@shared/protocol';
 import { DEFAULT_THEME_ID } from '../../theme/presets';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
+import { useThemeSheet } from '../../theme/themeSheets';
 import './PinnedPanels.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 
@@ -46,6 +47,8 @@ function PinnedPanelRowImpl({
   const workspace = useWorkspace(entry.workspaceId);
   const focusedTabId = usePanelFocusStore((s) => s.focusedTabId);
   const colorScheme = useResolvedColorScheme();
+  // The pin renders its own workspace's theme, which may not be the active workspace's.
+  useThemeSheet(workspace?.themeId);
   const title = tab?.customTitle || tab?.title || entry.title || entry.url || 'Pinned panel';
   const favIconUrl = tab?.favIconUrl || entry.favIconUrl;
   const isFocused = focusedTabId === entry.tabId;

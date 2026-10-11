@@ -15,6 +15,7 @@ import { copyFile, mkdir } from 'node:fs/promises';
 // Live file in the staged shell root: rollback staging overlays this archive onto
 // the live extension, which keeps panel-newtab as a plain public/ page.
 import { panelNewtabCss } from './panel-newtab-css';
+import { woff2Fonts } from './woff2-fonts';
 
 // Strip `crossorigin` from emitted <script> and <link> tags. moz-extension://
 // resources don't reliably handle CORS preflight, so the attribute makes
@@ -57,6 +58,7 @@ export default defineConfig(({ mode }) => ({
     react({ jsxRuntime: 'automatic' }),
     stripCrossOrigin(),
     copyChromeBridgeExperiment(),
+    woff2Fonts(),
     panelNewtabCss('firefox128'),
   ],
 

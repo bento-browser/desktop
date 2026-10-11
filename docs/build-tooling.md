@@ -720,6 +720,43 @@ reaches the final Rust/Firefox link and package steps without linker-memory or
 toolchain-version failures. Keep macOS on its existing default LTO path unless
 its own build evidence requires a separate change.
 
+## Shell stylesheets, themes and fonts
+
+`pnpm run ext:build`, `pnpm run import` and `pnpm run lc` all start from the
+generated theme files, so none of them needs a separate step.
+
+- **Theme sheets.** `pnpm run theme:sync` ([`scripts/sync-theme-presets.mjs`](../scripts/sync-theme-presets.mjs))
+  writes `extensions/bento-shell/src/theme/presets/index.{css,ts}` (Default, the
+  legacy token bridge, and the registry) and one tracked sheet per other theme in
+  `extensions/bento-shell/public/themes/<id>.css`. Vite copies `public/` into
+  `dist/`, so every shell page can link `./themes/<id>.css` and the archived
+  rollback build resolves the same files. `theme:sync` removes sheets for themes that no longer
+  exist; commit the result. [`scripts/generate-chrome-tokens.mjs`](../scripts/generate-chrome-tokens.mjs)
+  reads the same sheets and writes `bento-chrome-tokens.css` (shared tokens and
+  Default) plus `bento-chrome-themes/<id>.css` beside it. Both outputs are
+  gitignored. `--monolithic`, or `BENTO_RELEASE_VARIANT=rollback-final-r2`, folds
+  every theme into the base file because the archived mount script links only that
+  file. [`scripts/sync-builtin-addon-symlinks.sh`](../scripts/sync-builtin-addon-symlinks.sh)
+  links the `bento-chrome-themes/` directory into the app bundle so a dev build
+  sees regenerated sheets without a native rebuild; a new theme file in a packaged
+  or CI build comes from the `jar.mn` wildcard in
+  `patches/chrome-layout/01-bento-shell-mount.patch`.
+  [`scripts/theme-sheets.test.mjs`](../scripts/theme-sheets.test.mjs) covers the
+  generator and runs in CI.
+- **Fonts.** [`extensions/bento-shell/woff2-fonts.ts`](../extensions/bento-shell/woff2-fonts.ts)
+  rewrites the TrueType fonts the package stylesheet references to WOFF2 at the
+  end of the shell build, with no extra dependency: it Brotli-compresses the
+  font tables with Node's `zlib`. Output is cached in
+  `extensions/bento-shell/node_modules/.cache/bento-woff2/`. The build fails if a
+  `.ttf` reference remains. `panel-newtab-css.ts` marks the panel's Inter file
+  external and requires the emitted `assets/<file>` to exist.
+- **Mux CSS prune.** [`extensions/bento-shell/mux-css-prune.ts`](../extensions/bento-shell/mux-css-prune.ts)
+  drops rules for the component families listed in `MUX_UNUSED_COMPONENT_CLASSES`
+  when the finished bundle never names the family, and fails the build if a
+  `muxui-*` class a script names lost every rule. It reads the public
+  `styles.css` only. The archived rollback config registers the WOFF2 plugin and
+  not the prune.
+
 ## Built-in add-ons
 
 [scripts/install-builtin-addons.mjs](../scripts/install-builtin-addons.mjs)

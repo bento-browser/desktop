@@ -3575,16 +3575,81 @@ Workspace theme metadata is stored as `Workspace.themeId`.
 Shell theme flow:
 
 - `scripts/sync-theme-presets.mjs` reads public `@muxui/react/themes`
-  metadata and its `styles.css` projection, rewrites standard/monochromatic
-  selectors to canonical `data-bento-theme` ids, adds legacy monochromatic
-  aliases, and emits the shared `theme/presets/index.ts` and `index.css`
-  artifacts.
-- `extensions/bento-shell/src/theme/useWorkspaceTheme.ts` mirrors the active
-  workspace theme to `<html data-bento-theme="...">`.
+  metadata, its `themes.css` rules, and its `styles.css` projection. It emits
+  the shared `theme/presets/index.ts` registry (canonical ids, legacy
+  monochromatic aliases), `theme/presets/index.css` (the Default theme and the
+  legacy token bridge, imported by every entry), and one sheet per other theme,
+  `extensions/bento-shell/public/themes/<id>.css`. Canonical sheets hold that
+  theme's `data-muxui-theme` rules inside `@layer muxui`; repo-local custom
+  themes are unlayered. All of these are tracked generated files.
+- `extensions/bento-shell/src/theme/themeSheets.ts` attaches a theme's sheet as
+  a `<link>` (`./themes/<id>.css`) only in documents that show the theme.
+  `useWorkspaceTheme.ts` calls `applyRootTheme.ts`, which asks for the active
+  workspace theme's sheet and writes `<html data-bento-theme>` (and the other
+  scope attributes) once it has loaded,
+  so the previous theme stays on screen until the new one can paint and a sheet
+  that fails to load falls back to Default. Only an owner's latest request applies:
+  a request a newer one replaced resolves `'superseded'` and neither sets
+  attributes nor lets the displayed sheet be pruned (A, B, C with B loading first
+  keeps A until C applies or fails). Default is inline, so the boot.js attributes
+  paint it on the first frame exactly as before. Every component that renders a
+  theme scope other than the document's own registers that theme for as long as it
+  renders it (`useThemeSheet` / `useThemeSheets`): `PinnedPanels` (each pin uses its
+  own workspace's theme), `WorkspaceSwitcher` (the avatar), `WorkspaceThemePicker`
+  (the trigger and all 16 swatches) and the `workspace-switcher` overlay (one avatar
+  per workspace). `themeScopeSheets.test.ts` fails when a file calls
+  `getThemeScopeAttributes` without registering.
+- Early sheet request (new windows). The workspace snapshot reaches a new
+  window after its theme sheet could already have loaded, so the request starts
+  before React mounts:
+  - Source: `bento-tools` still owns `Workspace.themeId`. `applyRootTheme.ts`
+    mirrors the theme it applied to localStorage `workspace-theme`, beside
+    `color-mode` and `resolved-color-mode` (`writeThemeHint` in `themeSheets.ts`).
+    It stores the resolved id (an alias or unknown id never reaches it; Default
+    is stored as `default`) and writes only once the active workspace has
+    reached the document and its sheet has loaded or failed (a failure stores
+    `default`). The key is shared by every window of the profile, so the last
+    writer wins.
+  - Request: `public/boot.js` reads the hint and, for a value that matches
+    `^[a-z0-9]+(-[a-z0-9]+)*$` (at most 64 characters, not `default`), inserts
+    `<link rel="stylesheet" href="./themes/<id>.css">` into `<head>`, marked
+    `data-bento-theme-sheet=<id>` and `data-bento-boot-sheet=loading`. Its own
+    `load` and `error` listeners flip the marker to `loaded` or `failed`. The
+    root theme attributes stay Default: the sheet may not have loaded by first
+    paint. Membership in the theme list is not checked there (boot.js cannot
+    import it); a well-formed id with no sheet costs one failed request.
+    `public/panel-newtab.html` loads boot.js with `data-bento-no-theme-sheet`
+    because it always shows Default and loads no shared stylesheet. Every other
+    shell entry HTML loads `boot.js` and calls `useWorkspaceTheme`.
+  - Adoption: the first `setThemeSheets` call in a document looks for that link
+    and joins it to the normal bookkeeping (one link per theme, owner refcounts).
+    A marker of `loaded`, or a sheet whose `cssRules` can be read, counts as
+    loaded without waiting for an event that may already have fired. A link still
+    loading is awaited through the same `load`/`error` listeners as any other.
+    A `failed` link, an id that is not a registered sheet, and `default` are
+    removed; the next request for that theme creates a fresh link (the retry).
+  - Hold: a synthetic `boot` owner (`BOOT_THEME_OWNER`) keeps the adopted
+    sheet, so the empty requests other owners make while the snapshot is still
+    pending cannot prune it. `applyRootTheme` releases it as soon as the
+    workspace is known: the root request has by then adopted the sheet when the
+    theme matches, and a sheet for any other theme is pruned like any
+    unreferenced sheet.
+  - Cascade: the boot link precedes the shared stylesheet in document order
+    (adopted sheets are never moved, because moving a link reloads it). Rule
+    precedence does not depend on that: the `muxui` layer is first in either
+    order (`theme/muxui.css` and each sheet only append to it, the shared sheet
+    still declares `@layer muxui, bento;`), and every theme rule matches with
+    three attribute selectors, above the `:root` and `[data-muxui-color-scheme]`
+    rules in the shared sheet that set the same custom properties.
+    Re-check this when a theme rule gets lower specificity (for example
+    `:where()`) or the shared sheet gains a rule of equal specificity for a
+    theme property.
 - `useToolsPort.ts` includes the active workspace theme id in the active
   `BENTO_PANELS` payload.
 - `bento-shell-mount.js` mirrors that payload's theme id to the chrome window
-  root.
+  root through `applyChromeThemeToDocument`, which attaches
+  `chrome://browser/content/bento-chrome-themes/<id>.css` and sets
+  `data-bento-theme` once it has loaded (see [chrome-tokens.md](chrome-tokens.md)).
 
 UI color mode flow:
 
@@ -3596,7 +3661,8 @@ UI color mode flow:
   localStorage for pre-React boot.
 - `public/boot.js` reads that localStorage value before CSS loads. Explicit
   `light`/`dark` values paint directly; `system` paints from the current OS
-  preference; missing values paint the fresh-profile Light default.
+  preference; missing values paint the fresh-profile Light default. It reads
+  `workspace-theme` the same way (see the early sheet request above).
 - Chrome receives `uiColorMode` through `BENTO_PANELS`, resolves `system`
   against the same media query, and applies explicit `data-color-mode` to the
   chrome root. If the settings mirror has not hydrated when the first targeted
@@ -3626,12 +3692,27 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 ### Shell bundle and stylesheet
 
 - Source of truth: `extensions/bento-shell/vite.config.ts`. All React entries
-  share one `style.css` (`cssCodeSplit: false`) and chunk by Rollup's default
+  share one `style.css` (`cssCodeSplit: false`, Default theme only; the other
+  15 themes are `dist/themes/<id>.css`) and chunk by Rollup's default
   rules. There is no `manualChunks`; `module-identity-guard.ts` fails the build
   when React, React Aria, or `@internationalized` would be bundled from two
   install paths (the cause of the `SubmenuTriggerContext` "is null" defect).
   Keep the `resolve.alias` entries and run the menu/submenu check below after
   any change to chunking or to the Mux, React Aria, or React versions.
+- Fonts ship as WOFF2. `woff2-fonts.ts` converts the six TrueType files the Mux
+  stylesheet makes Vite emit (2.74 MB) into WOFF2 (1.22 MB) and rewrites the
+  `@font-face` sources; `@font-face` stays a local file under `assets/`. It runs
+  before `panelNewtabCss`, whose Inter reference is `./Inter_opsz_wght_.woff2`.
+  The archived rollback config lists the same plugin order. Brotli at maximum
+  quality takes about 5 s for all six fonts, so results are cached under
+  `extensions/bento-shell/node_modules/.cache/bento-woff2`. Do not point
+  `@font-face` at a remote font.
+- `mux-css-prune.ts` removes Mux component rules for families the finished bundle
+  never names (`MUX_UNUSED_COMPONENT_CLASSES`: calendar, date pickers, radio,
+  switch, slider, toast, tree, multi-select, and similar). See
+  [mux-ui-component-customisations.md](mux-ui-component-customisations.md#pruning-mux-component-css)
+  before adding a family. A used family is never pruned, so adding a component to
+  Bento needs no change.
 - The build targets `firefox150` (`gecko.strict_min_version`) and disables the
   modulepreload polyfill. Sourcemaps stay `mode !== 'production'`; the package
   scripts always build in production mode, so none are emitted.
@@ -3668,10 +3749,57 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 - Keep Auto mode resolved to explicit `light`/`dark` on DOM roots. Mux UI's
   runtime styling expects `data-color-mode` to carry the rendered mode; the
   stored user preference is mirrored separately as `data-bento-color-mode-pref`.
-- Workspace themes are static scoped CSS. Do not generate runtime style elements
-  for theme switching.
-- Chrome token updates require regenerating/importing the chrome stylesheet; the
-  shell CSS bundle alone is not enough.
+- Workspace themes are static scoped CSS in per-theme sheets. Do not generate
+  runtime style elements for theme switching; attach or swap the sheet.
+- Never set a non-Default `data-bento-theme` / `data-muxui-theme` on a root before
+  that theme's sheet has loaded: the scope would match no theme rules and paint
+  the unscoped Mux palette for a frame. `useWorkspaceTheme` and
+  `applyChromeThemeToDocument` set the attribute from the sheet's `load` event.
+  A nested scope (avatar, pin, picker swatch) cannot wait, so the component that
+  renders it registers its theme (`useThemeSheet`); a new component that renders
+  another workspace's theme needs the same, in the component and not only in the
+  document entry. Registering only the active workspace's theme leaves a pin from
+  another workspace unthemed and lets a workspace switch prune its sheet.
+- Waiting for the theme sheet without requesting it early delays the first
+  themed paint in new windows. Measured at cold start with a persisted
+  non-Default theme, requesting the sheet only after the workspace snapshot
+  arrived left the sidebar on Default for 9 to 107 ms after chrome lifted its
+  launch veil in 4 of 8 new windows (sheet load 11 to 159 ms). The single
+  stylesheet it replaced themed the sidebar 40 to 99 ms before the lift in all 10
+  windows measured. Keep the `boot.js` request and the adoption in
+  `themeSheets.ts`; do not move the request back behind `useWorkspaceTheme`.
+- `boot.js` must not apply the hinted theme's attributes. Only the sheet request
+  starts early; the attributes still wait for the sheet through `applyRootTheme`.
+  The hint can be stale (another window wrote it last, the theme was removed, the
+  workspace theme changed offline), so it must never decide the presentation.
+- Do not write the hint or release the `boot` owner before the active workspace
+  has reached the document. `useWorkspaceTheme` first runs with a placeholder
+  Default; writing `default` then erases the hint for the next document, and
+  releasing then lets that placeholder request prune the sheet still loading.
+  `useThemeSheet(s)` callers with an empty list prune the same way, which is why
+  the hold is an owner and not a flag on the root request.
+- Do not wait for the boot link's `load` event alone. It can fire before React
+  adopts the link; boot.js's `data-bento-boot-sheet` marker and a readable
+  `cssRules` record that. Firefox may expose `link.sheet` while the sheet is still
+  loading, so a non-null `sheet` is not proof of a finished load.
+- Do not unload a theme sheet before its replacement has loaded, and do not
+  remove one an owner still needs. `themeSheets.ts` keeps one link per theme
+  while any owner (`root`, or a `useThemeSheet(s)` caller) names it, and keeps an
+  owner's displayed sheet until that owner's latest request has loaded. Never
+  prune in response to a superseded request finishing: with A shown, B and C
+  requested, B finishing first would otherwise drop A while C still loads.
+- Canonical sheets keep their rules in `@layer muxui`, after the layer order
+  declared in `theme/muxui.css`. An unlayered theme rule would beat Bento's
+  component layers. `scripts/sync-theme-presets.mjs` fails on any `themes.css`
+  rule it cannot assign to one canonical theme.
+- Chrome token updates require regenerating/importing the chrome stylesheets
+  (`bento-chrome-tokens.css` and `bento-chrome-themes/`); the shell CSS bundle
+  alone is not enough. A new Bento theme needs `pnpm run theme:sync` (shell
+  sheet) and `pnpm run import` (chrome sheet).
+- The archived rollback-final-r2 mount script links only `bento-chrome-tokens.css`.
+  The generator folds every theme into that sheet when
+  `BENTO_RELEASE_VARIANT=rollback-final-r2` (or `--monolithic`); keep that branch
+  while the archive exists.
 - Firefox notification bars (`notification-message`, including the popup-blocked
   banner) are `moz-message-bar`/infobar custom elements with shadow-root CSS.
   `bento-chrome-theme.css` can theme their host and inherited custom properties,
@@ -3711,6 +3839,10 @@ When changing core functionality, manually verify at least the affected subset:
   panels are present, with the side-panel video visible and no Bento loading
   overlay, spinner, or neutral chrome background replacing it;
 - theme switch and sidebar footer UI light/dark/Auto switch;
+- new windows with a persisted non-Default workspace theme: the sidebar shows
+  that theme no later than the frame in which chrome lifts its launch veil
+  (compare the `data-bento-theme` change with the veil lift over several windows;
+  the first window of a launch waits for `bento-tools` and is slower);
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored.
 

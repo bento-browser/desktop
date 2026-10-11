@@ -77,6 +77,15 @@ blocks. `panel-newtab` now loads a 17.92 KB gzipped sheet instead of the shared
 sheet (its heading still loads the Inter file). The generated chrome token sheet
 fell from 1,045 kB to 664 kB.
 
+On 2026-10-12 the shell CSS and fonts were split and pruned. Themes became
+per-theme sheets (the shared `style.css` carries Default only), the Mux CSS for
+components Bento never renders was pruned, and the six fonts became WOFF2.
+`style.css` fell from 103.13 KB to 63.01 KB gzipped (1.08 MB to 0.60 MB raw), the
+15 theme sheets are 28 kB each (3 kB gzipped; a document loads one, or all 16
+where it previews them), the fonts fell from 2.74 MB to 1.22 MB, and the generated
+chrome token sheet from 664 kB to 284 kB (60 kB to 33 kB gzipped). The 40 KB
+ceiling for `style.css` is still exceeded.
+
 Firefox validation uses a disposable app/profile and legitimate protocol fixtures
 to activate the normal entries and both rollback Settings variants. Entry coverage
 through those fixture/bridge-contract scenarios is separate from representative
@@ -155,12 +164,44 @@ consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
-places public Mux styles and themes in the low-precedence `muxui` layer, then
+places the public Mux component styles in the low-precedence `muxui` layer, then
 the entry point loads Bento tokens, generated preset layers, and
 `theme/document-base.css`, the shared `html`/`body` defaults. Theme and mode
 attributes belong on the same scope element. `themeScope.ts` resolves aliases
 and unknown ids for presentation while `bento-tools` keeps persisted ids
 unchanged.
+
+The preset palettes (`@muxui/react/themes.css`) are not part of that import. Each
+document loads only the themes it shows, from per-theme sheets:
+
+- `scripts/sync-theme-presets.mjs` splits the public `themes.css` into
+  `extensions/bento-shell/public/themes/<id>.css` (15 canonical sheets, each
+  `@layer muxui { ... }`, standard contrast only) plus one sheet per repo-local
+  custom theme. `theme/presets/index.css` keeps the Default theme, which every
+  document needs for its first paint and as the unknown-id fallback. The sheets
+  are tracked generated files; `pnpm run theme:sync` rewrites them and drops sheets
+  of removed themes.
+- `theme/themeSheets.ts` attaches a sheet as a `<link href="./themes/<id>.css">`
+  (no inline style or script, so the extension CSP is unchanged). `useWorkspaceTheme`
+  requests the active workspace theme and writes the scope attributes after the
+  sheet has loaded, and only for its latest request (a superseded one changes
+  nothing). So that a new window does not wait for the workspace snapshot before
+  starting that request, `public/boot.js` inserts the sheet of the last applied
+  theme (localStorage `workspace-theme`) before any CSS loads, and `themeSheets.ts`
+  adopts that link instead of creating a second one. `useThemeSheet(id)` and `useThemeSheets(ids)` keep sheets for nested
+  scopes, called by the component that renders the scope: `PinnedPanels` (a pin
+  uses its own workspace's theme), `WorkspaceSwitcher`, `WorkspaceThemePicker` (all
+  16), the `workspace-switcher` overlay, and the Ladle provider. A new component
+  that renders another workspace's theme must call one of them, or its nested
+  scope paints the unscoped Mux palette; `themeScopeSheets.test.ts` enforces it.
+- Layer order is unaffected: `theme/muxui.css` still declares
+  `@layer muxui, bento;` first, and a sheet's `muxui` rules append to that layer
+  after the package styles, as `themes.css` did when it was imported. A sheet
+  that boot.js inserted sits before the shared stylesheet in document order, which
+  changes nothing: `muxui` is the first layer either way, and a theme rule
+  (three attribute selectors) outranks the `:root` and `[data-muxui-color-scheme]`
+  rules of the shared sheet that set the same properties, so source order never
+  decides between them.
 
 The shell build keeps `cssCodeSplit: false`, so every entry shares one
 `style.css`. `public/panel-newtab.html` is the exception: a plain page with no
@@ -173,9 +214,48 @@ It uses `--bento-panel-newtab-*` and `--bento-font-system` tokens. Because Mux
 is absent, the page restates the Mux foundation defaults it relied on (body
 line height, heading color). Its heading keeps Inter through a page-local
 `@font-face`, limited to weight 650, that points by relative URL at the Inter
-file the shell build already emits into `assets/` from the Mux font-face. The
-Vite plugin fails the build if that file name stops existing, since it derives
-from the Mux package path.
+file the shell build already emits into `assets/` from the Mux font-face
+(`Inter_opsz_wght_.woff2`, after `woff2-fonts.ts` converts it). The Vite plugin
+fails the build if that file name stops existing, since it derives from the Mux
+package path.
+
+Fonts are served as WOFF2. The Mux package ships TrueType only, so
+`extensions/bento-shell/woff2-fonts.ts` converts each emitted `.ttf` at build
+time (a Brotli container that keeps every table byte for byte), renames the
+asset, and rewrites the `@font-face` source in the stylesheet; it fails the
+build if a `.ttf` reference survives. The six files go from 2.74 MB to 1.22 MB and
+stay local files in `assets/`. Fonts were checked by decoding each file with
+fontTools and Google's reference decoder, and by rendering in Firefox.
+
+### Pruning Mux component CSS
+
+The package has one stylesheet for all components. `mux-css-prune.ts` removes the
+rules that need a class from a component family the finished bundle does not
+name, using only the public `styles.css` and the built chunks and pages:
+
+- A family in `MUX_UNUSED_COMPONENT_CLASSES` is pruned only when no JavaScript
+  chunk or HTML page contains its class prefix. Mux writes a component's class
+  names as literals in the component's own code, and Rollup keeps that code only
+  when Bento can reach the component, so a literal in the bundle keeps the family.
+  Bento's own hard-coded `muxui-*` classes count too. Adding a component to
+  Bento therefore needs no change here.
+- Selector lists are narrowed to the alternatives that do not need a pruned class.
+  A class inside `:not()`, `:is()`, `:where()`, `:has()` or an attribute test, a
+  rule with nested rules, and every other at-rule stay.
+- After pruning, every `muxui-*` class (or built-name prefix such as
+  `muxui-tree-`) that the scripts name must still have a rule, or the build fails
+  and names the family to remove.
+
+Do not list a family whose classes Mux composes only at runtime (`muxui-${name}`
+and `muxui-text--${variant}-${size}`: grid-list, listbox, menu, text), or one whose
+literal lives only in shared code: the literal check cannot see those. The
+Calendar base class is built that way, but its parts (`muxui-calendar-grid`,
+`-cell`, `-header`) are literal in the same code, which the prefix check sees.
+Check an entry against the Mux source (`grep -n "muxui-<family>"
+node_modules/@muxui/react/generated/*.mjs`) and keep it only if the component
+writes its class names literally. The 28 families listed cut the shipped
+`style.css` by 118 kB raw and 12.6 kB gzipped. Unit tests check that every entry
+matches the public stylesheet, so a Mux rename shows up as a failure.
 
 ## CSS and tokens
 
@@ -221,7 +301,8 @@ Bento CSS while the plugin is active; it would be stripped.
 Firefox-owned chrome cannot import React components. Map native variables in
 `bento-chrome-theme.css` to the generated aliases from
 `bento-chrome-tokens.css`; keep the existing `data-bento-theme` and
-`data-color-mode` hook boundary.
+`data-color-mode` hook boundary. Chrome loads one theme sheet per document from
+`bento-chrome-themes/` (see [chrome-tokens.md](chrome-tokens.md)).
 
 The prior design-system customization notes were folded into this guide during
 the Mux migration. New code follows the public Mux API and the Bento-owned

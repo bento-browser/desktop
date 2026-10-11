@@ -10,6 +10,7 @@ import '../src/theme/muxui.css';
 import '../src/theme/bento-tokens.css';
 import '../src/theme/presets/index.css';
 import '../src/theme/bento-fonts.css';
+import { ALL_THEME_IDS, useThemeSheets } from '../src/theme/themeSheets';
 // Intentionally not importing src/app.css — its html/body/#root rules
 // override Ladle's layout. Stories use their own frame to constrain.
 
@@ -23,6 +24,8 @@ function resolveMode(theme: ThemeState): 'light' | 'dark' {
 export const Provider: GlobalProvider = ({ children }) => {
   const { globalState } = useLadleContext();
   const theme = globalState.theme;
+  // Stories preview themes (picker, workspace avatars), so load every theme sheet.
+  useThemeSheets(ALL_THEME_IDS);
 
   useEffect(() => {
     const html = document.documentElement;

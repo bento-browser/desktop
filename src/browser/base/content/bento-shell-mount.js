@@ -193,6 +193,15 @@
     'chrome://browser/content/bento-chrome-tokens.css',
     'chrome://browser/content/bento-chrome-theme.css',
   ];
+  // bento-chrome-tokens.css carries the shared tokens and the Default theme. Every other
+  // workspace theme is its own sheet, generated beside it by
+  // scripts/generate-chrome-tokens.mjs and registered in jar.mn by wildcard. A document
+  // keeps one theme sheet attached: the one for the theme it shows.
+  const BENTO_CHROME_THEME_SHEET_BASE = 'chrome://browser/content/bento-chrome-themes/';
+  const BENTO_DEFAULT_THEME_ID = 'default';
+  const BENTO_THEME_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+  // document -> { requested: theme id last asked for, link: the attached theme sheet }
+  const bentoChromeThemeState = new WeakMap();
   const BENTO_CHROME_SHADOW_THEME_HOST_SELECTOR = [
     'sidebar-main',
     'sidebar-history',
@@ -266,12 +275,68 @@
     doc.defaultView?.setTimeout(() => syncBentoChromeThemeShadowRoots(doc, attempt + 1), 50);
   }
 
+  // Show `themeId` in `doc`: attach its sheet, then set data-bento-theme once the sheet has
+  // loaded, so the previous theme stays up until the new one can paint. Default needs no
+  // sheet, and a sheet that cannot load falls back to Default. A null `themeId` clears the
+  // attribute. The sheet itself loads from the shared sheet cache across windows.
+  function applyChromeThemeToDocument(doc, themeId) {
+    const root = doc?.documentElement;
+    if (!root) return;
+    let state = bentoChromeThemeState.get(doc);
+    if (!state) {
+      state = { requested: undefined, link: null };
+      bentoChromeThemeState.set(doc, state);
+    }
+    if (state.requested === themeId) return;
+    state.requested = themeId;
+
+    const show = (link, shownThemeId) => {
+      if (state.requested !== themeId) {
+        // A newer theme was requested while this sheet loaded.
+        link?.remove();
+        return;
+      }
+      if (shownThemeId === null) root.removeAttribute('data-bento-theme');
+      else root.setAttribute('data-bento-theme', shownThemeId);
+      if (state.link && state.link !== link) state.link.remove();
+      state.link = link;
+    };
+
+    if (themeId === null || themeId === undefined) {
+      show(null, null);
+      return;
+    }
+    if (themeId === BENTO_DEFAULT_THEME_ID || !BENTO_THEME_ID_PATTERN.test(themeId)) {
+      show(null, BENTO_DEFAULT_THEME_ID);
+      return;
+    }
+    const link = doc.createElementNS('http://www.w3.org/1999/xhtml', 'link');
+    link.setAttribute('rel', 'stylesheet');
+    link.setAttribute('href', `${BENTO_CHROME_THEME_SHEET_BASE}${themeId}.css`);
+    link.setAttribute('data-bento-chrome-theme-sheet', themeId);
+    link.addEventListener('load', () => show(link, themeId), { once: true });
+    link.addEventListener(
+      'error',
+      () => {
+        link.remove();
+        show(null, BENTO_DEFAULT_THEME_ID);
+      },
+      { once: true },
+    );
+    root.appendChild(link);
+  }
+
   function syncChromeThemeAttributes(targetRoot) {
     const sourceRoot = document.documentElement;
     for (const attr of BENTO_CHROME_THEME_ATTRS) {
       const value = sourceRoot.getAttribute(attr);
-      if (value === null) targetRoot.removeAttribute(attr);
-      else targetRoot.setAttribute(attr, value);
+      if (attr === 'data-bento-theme') {
+        applyChromeThemeToDocument(targetRoot.ownerDocument, value);
+      } else if (value === null) {
+        targetRoot.removeAttribute(attr);
+      } else {
+        targetRoot.setAttribute(attr, value);
+      }
     }
   }
 
@@ -4824,12 +4889,11 @@
     if (colonAfterTs < 0) return;
     const themeId = tail.slice(colonAfterTs + 1).trim();
     // Defensive: ignore empty / whitespace-only payloads. Anything else
-    // is mirrored verbatim — the chrome stylesheet either has scoped
-    // rules for that id (which apply) or doesn't (chrome stays on
-    // defaults). Lenient by design so a typo'd new theme in the
-    // registry doesn't break chrome.
+    // is requested as-is — chrome either has a theme sheet for that id
+    // (which applies) or doesn't (chrome falls back to Default). Lenient
+    // by design so a typo'd new theme in the registry doesn't break chrome.
     if (themeId.length === 0) return;
-    document.documentElement.setAttribute('data-bento-theme', themeId);
+    applyChromeThemeToDocument(document, themeId);
   }
   function handleColorModeTitle(rawTitle) {
     const tail = rawTitle.slice(COLOR_MODE_PREFIX.length);
@@ -18355,8 +18419,7 @@
         applyChromeColorMode(decoded.uiColorMode.trim());
       }
       if (typeof decoded.themeId === 'string' && decoded.themeId.trim().length > 0) {
-        const themeId = decoded.themeId.trim();
-        document.documentElement.setAttribute('data-bento-theme', themeId);
+        applyChromeThemeToDocument(document, decoded.themeId.trim());
       }
       // Sidebar collapsed state — toggle a class on the chrome host so
       // CSS narrows the sidebar to a rail showing only favicons and the

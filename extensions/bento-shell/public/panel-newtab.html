@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>New Panel</title>
     <!-- Plain page: copied as-is from public/, no script bundle and no shared Mux stylesheet.
-         The vite config bundles src/panel-newtab/panel-newtab.css into assets/panel-newtab.css. -->
-    <script src="./boot.js"></script>
+         The vite config bundles src/panel-newtab/panel-newtab.css into assets/panel-newtab.css.
+         It always shows Default, so boot.js is told not to request a workspace theme sheet. -->
+    <script src="./boot.js" data-bento-no-theme-sheet></script>
     <link rel="stylesheet" href="./assets/panel-newtab.css" />
   </head>
   <body>
