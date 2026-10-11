@@ -152,6 +152,25 @@ profile-import, icon-fetching, bundled-add-on, signing, and release invariants.
 CI also audits the full dependency graph and runs CodeQL over Bento JavaScript
 and TypeScript.
 
+The CI `pnpm audit --audit-level high` step reads the developer lock, because
+`scripts/install-release-deps.sh` restores it after installing. Keep the release
+lock at the same bar by swapping it in with `BENTO_RELEASE=1` and auditing it
+the same way. Fix vulnerable transitive packages with `pnpm.overrides` in
+`package.json`, then refresh both locks.
+
+Audit exceptions live in `pnpm.auditConfig.ignoreGhsas` in `package.json`. Each
+entry needs a reason here and must be removed once a patched release is
+reachable:
+
+- `GHSA-vfj7-8cjw-p6xm` (`braces` <= 3.0.3, stack exhaustion on deeply nested
+  brace patterns; no patched `braces` release exists). Dev-only: it is reached
+  through `lint-staged` and `@ladle/react` (via `globby` and `fast-glob`),
+  both devDependencies, and does not appear in the built extension bundles.
+  The only patterns it expands come from repository-owned config
+  (`.lintstagedrc.json` and the Ladle `stories` glob), never from untrusted
+  input. Upgrading `lint-staged` would not remove the path, because the latest
+  `@ladle/react` still depends on `globby` and `fast-glob`.
+
 ## Pull request test builds
 
 Automatic `pull_request` and `push` CI runs perform static checks and one Linux
