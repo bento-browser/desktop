@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 // against the real overlay manager and its real overlay table. The mount is one
 // 20,000-line script that needs Firefox to run, so this extracts the functions
 // by name from its source and evaluates them in a context with a fake DOM, fake
-// timers, and recording stubs for what leaves the overlay surfaces (toolbar
-// scrim, frame-script relays). A function that is renamed or removed fails
-// extraction instead of silently leaving the test behind.
+// timers, and fake frames whose message managers record what chrome sends an
+// overlay (the toolbar scrim is a recording stub). A function that is renamed or
+// removed fails extraction instead of silently leaving the test behind.
 
 // Values built inside the vm context come from another realm.
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -130,8 +130,11 @@ const FUNCTIONS = [
   'isEmbeddedImportVisible',
   'showChromeMenu',
   'hideChromeMenu',
+  'dispatchShellAction',
+  'dispatchAddrbarOpen',
+  'dispatchMergePaletteLifecycle',
   'attachPaletteEscListener',
-  'attachAddrbarOutsideDismissListener',
+  'attachOutsideClickDismissListener',
 ];
 
 const CONSTANTS = [
@@ -150,10 +153,12 @@ const CONSTANTS = [
   'ADDRBAR_OPEN_RETRY_LIMIT',
   'ADDRBAR_OPEN_FALLBACK_REVEAL_MS',
   'ADDRBAR_HOST_TRANSITION',
+  'menuOnSelectByContext',
 ];
 
 const EXPORTED = [
   'overlays',
+  'menuOnSelectByContext',
   'showPalette',
   'hidePalette',
   'togglePalette',
@@ -163,6 +168,7 @@ const EXPORTED = [
   'toggleMergePalette',
   'showAddrbar',
   'hideAddrbar',
+  'revealPendingAddrbar',
   'showConfirm',
   'hideConfirm',
   'showEditWorkspace',
@@ -171,20 +177,26 @@ const EXPORTED = [
   'showChromeMenu',
   'hideChromeMenu',
   'attachPaletteEscListener',
-  'attachAddrbarOutsideDismissListener',
-  'getPendingAddrbarReveal',
+  'attachOutsideClickDismissListener',
 ];
 
 // ─── World ───────────────────────────────────────────────────────────────────
 
+/** A <browser> whose message manager records what chrome sends and which frame scripts it loads. */
 class FakeElement {
-  constructor(registry, tag) {
+  constructor(registry, tag, sent) {
     this.registry = registry;
     this.tag = tag;
     this.id = '';
     this.style = {};
     this.attrs = new Map();
     this.focusCount = 0;
+    if (tag === 'browser') {
+      this.messageManager = {
+        loadFrameScript: () => {},
+        sendAsyncMessage: (name, data) => sent.push({ name, data: plain(data), frame: this.id }),
+      };
+    }
   }
 
   setAttribute(name, value) {
@@ -227,26 +239,24 @@ const HOSTS = {
   'panel-navigator-tooltip': {},
 };
 
-function makeWorld() {
+/** `windowId` is what chrome's window tracker answers: a number, or null when the lookup fails. */
+function makeWorld({ windowId = 7 } = {}) {
   let clock = 1000;
   let nextTimer = 1;
   const timers = new Map();
   const idle = [];
   const registry = new Map();
+  const sent = [];
   const events = {
     navigations: [],
     scrim: new Set(),
     scrimShown: [],
-    mergeLifecycle: [],
-    shellActions: [],
-    addrbarOpens: [],
-    cancelRelays: [],
-    warnings: [],
+    errors: [],
   };
   const listeners = [];
 
   function host(id, props) {
-    const el = new FakeElement(registry, 'vbox');
+    const el = new FakeElement(registry, 'vbox', sent);
     el.id = `bento-${id}-host`;
     el.setAttribute('hidden', 'true');
     // The hosts start as ensureOverlayHost and the init pre-warm leave them.
@@ -260,16 +270,19 @@ function makeWorld() {
     registry.set(el.id, el);
     if (props.static) {
       // The browser-box patch declares these frames inside their hosts.
-      const frame = new FakeElement(registry, 'browser');
+      const frame = new FakeElement(registry, 'browser', sent);
       frame.id = `bento-${id}-frame`;
       el.appendChild(frame);
     }
   }
   for (const [id, props] of Object.entries(HOSTS)) host(id, props);
+  const shellFrame = new FakeElement(registry, 'browser', sent);
+  shellFrame.id = 'bento-shell-frame';
+  registry.set(shellFrame.id, shellFrame);
 
   const document = {
     getElementById: (id) => registry.get(id) ?? null,
-    createXULElement: (tag) => new FakeElement(registry, tag),
+    createXULElement: (tag) => new FakeElement(registry, tag, sent),
   };
 
   function setTimeout(callback, ms = 0) {
@@ -293,9 +306,15 @@ function makeWorld() {
     window,
     setTimeout,
     clearTimeout,
-    console: { warn: (...args) => events.warnings.push(args.map(String).join(' ')) },
+    console: {
+      warn: () => {},
+      error: (...args) => events.errors.push(args.map(String).join(' ')),
+    },
     Date,
     Math,
+    Map,
+    Set,
+    Object,
     // What the overlay surfaces call that is not under test here.
     setBentoPaletteSrc: navigate('palette'),
     setBentoWorkspacePaletteSrc: navigate('workspace-palette'),
@@ -308,24 +327,18 @@ function makeWorld() {
     setBentoMenuSrc: navigate('menu'),
     setBentoPanelNavigatorTooltipSrc: navigate('panel-navigator-tooltip'),
     replayPanelNavigatorTooltipPayload: () => {},
-    broadcastOverlayCancel: (id) => events.cancelRelays.push(id),
     showOverlayToolbarScrim: (owner) => {
       events.scrim.add(owner);
       events.scrimShown.push(owner);
     },
     hideOverlayToolbarScrim: (owner) => events.scrim.delete(owner),
-    dispatchMergePaletteLifecycle: (type, nonce) => events.mergeLifecycle.push({ type, nonce }),
-    dispatchShellAction: (action) => {
-      events.shellActions.push(action);
-      return true;
-    },
-    dispatchAddrbarOpen: (mode, initialQuery, options) => {
-      events.addrbarOpens.push({ mode, initialQuery, ...options });
-      return true;
-    },
+    getChromeWindowId: () => windowId,
     computeAddrbarAnchoredPlacement: () => null,
     resolveClipboardUrlSuggestion: () => '',
-    menuOnSelectByContext: new Map(),
+    // The frame scripts' URLs only name what loadFrameScript loads.
+    SHELL_ACTION_FRAME_SCRIPT_URL: 'shell-action',
+    ADDRBAR_OPEN_FRAME_SCRIPT_URL: 'addrbar-open',
+    MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL: 'merge-lifecycle',
   };
 
   const script = `"use strict";
@@ -333,19 +346,20 @@ function makeWorld() {
     let mergePaletteOpenSeq = 0;
     let addrbarOpenSeq = 0;
     let pendingAddrbarReveal = null;
+    let pendingMenuContextId = null;
     let currentAddrbarMode = 'current';
     ${extractOverlaysSection()}
     ${FUNCTIONS.map(extractFunction).join('\n')}
     ${extractOverlaysTable()}
-    ({ ${EXPORTED.filter((name) => name !== 'getPendingAddrbarReveal').join(', ')},
-       getPendingAddrbarReveal: () => pendingAddrbarReveal });`;
+    ({ ${EXPORTED.join(', ')}, getPendingAddrbarReveal: () => pendingAddrbarReveal });`;
   const api = vm.runInNewContext(script, sandbox, { filename: 'bento-shell-mount.js#surfaces' });
 
+  const messages = (name) => sent.filter((message) => message.name === name);
   const world = {
     ...api,
     events,
+    sent,
     registry,
-    document,
     /** The overlay's document announces it (the BENTO_OVERLAY_READY title). */
     ready: (id) => api.overlays.markFrameReady(`bento-${id}-frame`),
     host: (id) => registry.get(`bento-${id}-host`),
@@ -384,38 +398,66 @@ function makeWorld() {
       return event.consumed;
     },
     pointerDownOutside() {
-      api.attachAddrbarOutsideDismissListener();
+      api.attachOutsideClickDismissListener();
       const { handler } = listeners.findLast((entry) => entry.type === 'pointerdown');
       handler({ composedPath: () => [] });
     },
-    mergeOpenNonces: () => events.mergeLifecycle.filter((entry) => entry.type === 'open'),
-    menuOpens: () => events.shellActions.filter((action) => action.type === 'menu/open'),
+    /** The messages chrome sent, as the frame scripts receive them. */
+    addrbarOpens: () => messages('BentoAddrbarOpen').map((message) => message.data),
+    mergeLifecycle: () => messages('BentoMergePaletteLifecycle').map((message) => message.data),
+    mergeOpenNonces: () =>
+      messages('BentoMergePaletteLifecycle')
+        .map((message) => message.data)
+        .filter((data) => data.type === 'open'),
+    shellActions: () => messages('BentoShellAction').map((message) => message.data),
+    menuOpens: () =>
+      messages('BentoShellAction')
+        .map((message) => message.data)
+        .filter((data) => data.type === 'menu/open'),
   };
   return world;
 }
 
-// A window with every prewarmed overlay already announced, like one that has
-// been running for a few seconds.
-function warmWorld() {
-  const world = makeWorld();
-  for (const id of ['palette', 'menu', 'addrbar', 'workspace-switcher']) {
-    world.overlays.ensure(id, 'idle');
+// A window that has been running for a few seconds: the eager overlays and the
+// idle-prewarmed ones are created and have announced themselves.
+function warmWorld(options) {
+  const world = makeWorld(options);
+  world.overlays.startEager();
+  for (const id of ['addrbar', 'palette', 'menu']) world.overlays.ensure(id, 'idle');
+  for (const id of [
+    'confirm',
+    'edit-workspace',
+    'workspace-switcher',
+    'addrbar',
+    'palette',
+    'menu',
+  ]) {
     world.ready(id);
   }
   return world;
 }
 
 const MENU = { anchor: { left: 5, top: 6, width: 7, height: 8 }, items: [{ id: 'a' }] };
+const STALL_MS = 5000;
 
-// ─── Esc, toggle, and the other dismissal paths cancel a cold open ──────────
+// ─── Startup ─────────────────────────────────────────────────────────────────
 
-test('the extracted surfaces evaluate and the table has every overlay', () => {
+test('nothing is created until startup, and startup creates only the eager overlays', () => {
   const world = makeWorld();
   for (const id of Object.keys(HOSTS)) {
-    assert.equal(world.overlays.hasStarted(id), false, `${id} must not start at window startup`);
+    assert.equal(world.overlays.hasStarted(id), false, `${id} must not exist before startup`);
   }
   assert.deepEqual(world.events.navigations, []);
+
+  world.overlays.startEager();
+
+  assert.deepEqual(world.events.navigations, ['confirm', 'edit-workspace', 'workspace-switcher']);
+  assert.ok(world.frame('edit-workspace'), 'the JS-created eager frames exist');
+  assert.ok(world.frame('workspace-switcher'));
+  assert.equal(world.frame('addrbar'), null, 'idle and on-demand frames do not exist yet');
 });
+
+// ─── Esc, toggle, and the other dismissal paths cancel a cold open ──────────
 
 test('a cold palette open followed by Esc never appears', () => {
   const world = makeWorld();
@@ -430,7 +472,6 @@ test('a cold palette open followed by Esc never appears', () => {
   world.advance(10_000);
   assert.equal(world.isShown('palette'), false);
   assert.deepEqual(world.events.scrimShown, []);
-  assert.deepEqual(world.events.cancelRelays, ['palette']);
 });
 
 test('a cold palette open followed by the toggle cancels it instead of queueing another', () => {
@@ -463,7 +504,7 @@ test('a cold merge palette open followed by the toggle or Esc never appears', ()
     world.ready('merge-palette');
     world.advance(10_000);
     assert.equal(world.isShown('merge-palette'), false);
-    assert.deepEqual(world.mergeOpenNonces(), [], 'the open nonce is never delivered');
+    assert.deepEqual(world.mergeOpenNonces(), [], 'the open nonce is never sent');
   }
 });
 
@@ -501,32 +542,161 @@ test('Esc is consumed but does not cancel the mandatory welcome overlay', () => 
   assert.equal(world.isShown('welcome'), true);
 });
 
-test('every hide function cancels a cold open, and tells the payload senders', () => {
+test('every hide function cancels a cold open', () => {
   const world = makeWorld();
   world.showConfirm();
-  world.showEditWorkspace();
-  world.showWorkspacePalette();
-  world.showWorkspaceSwitcher();
-  world.showWelcome();
   world.showMergePalette();
   world.showChromeMenu({ ...MENU });
-  // hide* is what the CLOSE titles and the Esc handler call.
-  const { hideConfirm } = world;
-  hideConfirm();
-  assert.equal(world.overlays.hasPendingOpen('confirm'), false);
-  assert.ok(world.events.cancelRelays.includes('confirm'));
 
+  world.hideConfirm();
   world.hideMergePalette();
   world.hideChromeMenu();
-  assert.equal(world.overlays.hasPendingOpen('merge-palette'), false);
-  assert.equal(world.overlays.hasPendingOpen('menu'), false);
+  for (const id of ['confirm', 'merge-palette', 'menu']) {
+    assert.equal(world.overlays.hasPendingOpen(id), false, id);
+  }
 
   for (const id of ['confirm', 'merge-palette', 'menu']) world.ready(id);
   assert.equal(world.isShown('confirm'), false);
   assert.equal(world.isShown('merge-palette'), false);
   assert.equal(world.isShown('menu'), false);
   assert.deepEqual(world.menuOpens(), []);
+  assert.deepEqual(world.mergeOpenNonces(), []);
 });
+
+// ─── Nothing is revealed or sent without the real announcement ──────────────
+
+test('no overlay is revealed before its document announces, however long that takes', () => {
+  const opens = {
+    palette: (world) => world.showPalette(),
+    'workspace-palette': (world) => world.showWorkspacePalette(),
+    'merge-palette': (world) => world.showMergePalette(),
+    confirm: (world) => world.showConfirm(),
+    'edit-workspace': (world) => world.showEditWorkspace(),
+    'workspace-switcher': (world) => world.showWorkspaceSwitcher(),
+    welcome: (world) => world.showWelcome(),
+    menu: (world) => world.showChromeMenu({ ...MENU }),
+  };
+  for (const [id, open] of Object.entries(opens)) {
+    const world = makeWorld();
+    open(world);
+    world.advance(10 * 60_000);
+    assert.equal(world.isShown(id), false, id);
+    assert.equal(world.overlays.hasPendingOpen(id), true, `${id} stays pending`);
+    assert.deepEqual(world.events.scrimShown, [], id);
+
+    world.ready(id);
+    assert.equal(world.isShown(id), true, `${id} opens on its announcement`);
+    assert.equal(world.overlays.hasPendingOpen(id), false, id);
+  }
+});
+
+test('a document that does not announce is reported once and its open stays cancellable', () => {
+  const world = makeWorld();
+  world.showPalette();
+
+  world.advance(STALL_MS - 1);
+  assert.deepEqual(world.events.errors, []);
+  world.advance(1);
+  assert.equal(world.events.errors.length, 1);
+  assert.match(world.events.errors[0], /palette did not announce readiness/);
+
+  assert.equal(world.isShown('palette'), false, 'it is not revealed');
+  assert.equal(world.overlays.hasPendingOpen('palette'), true, 'the open is still pending');
+  world.advance(60_000);
+  assert.equal(world.events.errors.length, 1);
+
+  // The user can still cancel it, and a late announcement then shows nothing.
+  assert.equal(world.pressEscape(), true);
+  world.ready('palette');
+  assert.equal(world.isShown('palette'), false);
+});
+
+test('a late announcement shows the stalled open once, with its message', () => {
+  const world = makeWorld();
+  world.showMergePalette();
+  world.advance(STALL_MS + 2000);
+  assert.equal(world.isShown('merge-palette'), false);
+  assert.deepEqual(world.mergeOpenNonces(), []);
+
+  world.ready('merge-palette');
+  assert.equal(world.isShown('merge-palette'), true);
+  assert.equal(world.mergeOpenNonces().length, 1);
+  world.ready('merge-palette');
+  assert.equal(world.mergeOpenNonces().length, 1, 'a second announcement sends nothing again');
+});
+
+// ─── Menu ───────────────────────────────────────────────────────────────────
+
+test('a menu opened before its document is ready is shown and sent once, on the announcement', () => {
+  const world = makeWorld();
+  world.showChromeMenu({ ...MENU });
+  assert.deepEqual(world.menuOpens(), []);
+  assert.equal(world.isShown('menu'), false);
+
+  // No reveal at 5 s: the message has nowhere to go yet.
+  world.advance(STALL_MS);
+  assert.equal(world.isShown('menu'), false);
+  assert.deepEqual(world.menuOpens(), []);
+
+  // The listener mounts at 7 s.
+  world.advance(2000);
+  world.ready('menu');
+  assert.equal(world.isShown('menu'), true);
+  assert.equal(world.menuOpens().length, 1);
+  assert.deepEqual(world.menuOpens()[0].anchor, { left: 5, top: 6, width: 7, height: 8 });
+
+  world.ready('menu');
+  assert.equal(world.menuOpens().length, 1, 'a second announcement does not send it again');
+});
+
+test('Esc and an outside click cancel a menu open that still waits for its document', () => {
+  for (const dismiss of [(world) => world.pressEscape(), (world) => world.pointerDownOutside()]) {
+    const world = makeWorld();
+    world.showChromeMenu({ ...MENU });
+    assert.equal(world.overlays.hasPendingOpen('menu'), true);
+
+    dismiss(world);
+    assert.equal(world.overlays.hasPendingOpen('menu'), false);
+    world.advance(10_000);
+    world.ready('menu');
+    assert.deepEqual(world.menuOpens(), []);
+    assert.equal(world.isShown('menu'), false);
+  }
+});
+
+test('Esc is not consumed for a menu that was delivered: the menu page handles its own', () => {
+  const world = warmWorld();
+  world.showChromeMenu({ ...MENU });
+  assert.equal(world.isShown('menu'), true);
+  assert.equal(world.overlays.hasPendingOpen('menu'), false);
+  assert.equal(world.pressEscape(), false);
+  assert.equal(world.isShown('menu'), true);
+});
+
+test('the newest menu request is the one delivered, and a dropped request leaves no handler', () => {
+  const world = makeWorld();
+  world.showChromeMenu({ ...MENU, items: [{ id: 'first' }], onSelect: () => {} });
+  world.showChromeMenu({ ...MENU, items: [{ id: 'second' }], onSelect: () => {} });
+  assert.equal(world.menuOnSelectByContext.size, 1, 'the older handler can never be called');
+  world.ready('menu');
+  assert.equal(world.menuOpens().length, 1);
+  assert.deepEqual(plain(world.menuOpens()[0].items), [{ id: 'second' }]);
+  assert.equal(world.menuOnSelectByContext.size, 1, 'a delivered menu keeps its handler');
+
+  const other = makeWorld();
+  other.showChromeMenu({ ...MENU, onSelect: () => {} });
+  other.pressEscape();
+  assert.equal(other.menuOnSelectByContext.size, 0, 'a cancelled open drops its handler');
+});
+
+test('a ready menu opens synchronously, as before', () => {
+  const world = warmWorld();
+  world.showChromeMenu({ ...MENU });
+  assert.equal(world.isShown('menu'), true);
+  assert.equal(world.menuOpens().length, 1);
+});
+
+// ─── Address bar ────────────────────────────────────────────────────────────
 
 test('a cold address bar open followed by Esc or an outside click sends nothing', () => {
   for (const dismiss of [(world) => world.pressEscape(), (world) => world.pointerDownOutside()]) {
@@ -541,21 +711,58 @@ test('a cold address bar open followed by Esc or an outside click sends nothing'
 
     world.ready('addrbar');
     world.advance(10_000);
-    assert.deepEqual(world.events.addrbarOpens, []);
+    assert.deepEqual(world.addrbarOpens(), []);
     assert.equal(world.host('addrbar').style.opacity, '0');
   }
 });
 
-test('a cold address bar open sends its message once, after the announcement', () => {
+test('a cold address bar open is sent once the document announces, and not before', () => {
   const world = makeWorld();
   world.showAddrbar('newTab', 'query');
   world.advance(3000);
-  assert.deepEqual(world.events.addrbarOpens, [], 'nothing listens before the announcement');
+  assert.deepEqual(world.addrbarOpens(), [], 'nothing listens before the announcement');
 
   world.ready('addrbar');
-  assert.equal(world.events.addrbarOpens.length, 1);
-  assert.equal(world.events.addrbarOpens[0].mode, 'newTab');
-  assert.equal(world.events.addrbarOpens[0].initialQuery, 'query');
+  const [first] = world.addrbarOpens();
+  assert.equal(first.mode, 'newTab');
+  assert.equal(first.initialQuery, 'query');
+});
+
+test('readiness at 7 s still gives a filled address bar: the reveal timer starts at delivery', () => {
+  const world = makeWorld();
+  world.showAddrbar('current', 'typed');
+
+  // 5 s stall report, then more than the 1.4 s reveal fallback: nothing may have
+  // been revealed, and the open must still be waiting to be sent.
+  world.advance(STALL_MS + 2000);
+  assert.deepEqual(world.addrbarOpens(), []);
+  assert.notEqual(world.getPendingAddrbarReveal(), null, 'the pending open is not dropped');
+  assert.equal(world.host('addrbar').style.opacity, '0', 'the empty address bar is not revealed');
+  assert.equal(world.host('addrbar').style.pointerEvents, 'none');
+
+  world.ready('addrbar');
+  const sentAt7s = world.addrbarOpens();
+  assert.equal(sentAt7s.length, 1);
+  assert.equal(sentAt7s[0].initialQuery, 'typed');
+  assert.equal(world.host('addrbar').style.opacity, '0', 'it is not revealed by the delivery');
+
+  // The reveal fallback counts from the delivery.
+  world.advance(1399);
+  assert.equal(world.host('addrbar').style.opacity, '0');
+  world.advance(1);
+  assert.equal(world.host('addrbar').style.opacity, '1');
+  assert.equal(world.getPendingAddrbarReveal(), null);
+});
+
+test('the address bar document revealing itself ends the open, as it always did', () => {
+  const world = warmWorld();
+  world.showAddrbar('current');
+  const [{ openId }] = world.addrbarOpens();
+  world.revealPendingAddrbar(openId);
+  assert.equal(world.host('addrbar').style.opacity, '1');
+  world.advance(10_000);
+  assert.equal(world.addrbarOpens().length >= 1, true);
+  assert.equal(world.getPendingAddrbarReveal(), null);
 });
 
 test('the address bar does not take the focus from an overlay still waiting to open', () => {
@@ -563,8 +770,8 @@ test('the address bar does not take the focus from an overlay still waiting to o
   world.showWorkspacePalette();
   world.showAddrbar('current');
 
-  assert.equal(world.events.addrbarOpens.length, 1);
-  assert.equal(world.events.addrbarOpens[0].suppressFocus, true);
+  assert.equal(world.addrbarOpens().length, 1);
+  assert.equal(world.addrbarOpens()[0].suppressFocus, true);
 });
 
 // ─── The newest open wins, whichever document loads first ───────────────────
@@ -605,7 +812,7 @@ test('merge palette then palette: the palette wins in both readiness orders', ()
     assert.equal(world.isShown('palette'), true);
     assert.equal(world.isShown('merge-palette'), false);
     assert.deepEqual([...world.events.scrim], ['palette']);
-    assert.deepEqual(world.mergeOpenNonces(), [], 'the superseded nonce is never delivered');
+    assert.deepEqual(world.mergeOpenNonces(), [], 'the superseded nonce is never sent');
   }
 });
 
@@ -639,58 +846,45 @@ test('a shown palette closes when a cold merge palette is requested, not when it
   assert.equal(world.isShown('merge-palette'), true);
 });
 
-// ─── A queued message survives the readiness fallback ───────────────────────
-
-test('a menu opened before its document is ready is delivered once, after the announcement', () => {
-  const world = makeWorld();
-  world.showChromeMenu({ ...MENU });
-  assert.deepEqual(world.menuOpens(), []);
-  assert.equal(world.isShown('menu'), false);
-
-  // The 5 s fallback reveals the host, but the message has nowhere to go yet.
-  world.advance(5000);
-  assert.equal(world.isShown('menu'), true);
-  assert.deepEqual(world.menuOpens(), []);
-
-  // The listener mounts at 7 s.
-  world.advance(2000);
-  world.ready('menu');
-  assert.equal(world.menuOpens().length, 1);
-  assert.deepEqual(plain(world.menuOpens()[0].anchor), { left: 5, top: 6, width: 7, height: 8 });
-
-  world.ready('menu');
-  assert.equal(world.menuOpens().length, 1, 'a second announcement does not send it again');
-});
-
-test('a menu opened and dismissed before its document is ready is never sent', () => {
-  const world = makeWorld();
-  world.showChromeMenu({ ...MENU });
-  assert.equal(world.pressEscape(), true);
-  world.advance(10_000);
-  world.ready('menu');
-  assert.deepEqual(world.menuOpens(), []);
-  assert.equal(world.isShown('menu'), false);
-});
-
-test('the newest menu request is the one delivered', () => {
-  const world = makeWorld();
-  world.showChromeMenu({ ...MENU, items: [{ id: 'first' }] });
-  world.showChromeMenu({ ...MENU, items: [{ id: 'second' }] });
-  world.ready('menu');
-  assert.equal(world.menuOpens().length, 1);
-  assert.deepEqual(plain(world.menuOpens()[0].items), [{ id: 'second' }]);
-});
-
-test('a ready menu opens synchronously, as before', () => {
-  const world = warmWorld();
-  world.showChromeMenu({ ...MENU });
-  assert.equal(world.isShown('menu'), true);
-  assert.equal(world.menuOpens().length, 1);
-});
-
-test('a ready palette opens synchronously and a second request does not wait', () => {
+test('a ready palette opens synchronously', () => {
   const world = warmWorld();
   world.showPalette();
   assert.equal(world.isShown('palette'), true);
   assert.deepEqual([...world.events.scrim], ['palette']);
+});
+
+// ─── Chrome stamps the window on what it sends ──────────────────────────────
+
+test('the address bar open names the window it is for', () => {
+  const world = warmWorld({ windowId: 7 });
+  world.showAddrbar('current');
+  assert.equal(world.addrbarOpens()[0].windowId, 7);
+});
+
+test('the merge palette open and close name the window they are for', () => {
+  const world = warmWorld({ windowId: 7 });
+  world.showMergePalette();
+  world.ready('merge-palette');
+  world.hideMergePalette();
+  assert.deepEqual(
+    world.mergeLifecycle().map((message) => [message.type, message.windowId]),
+    [
+      ['open', 7],
+      ['close', 7],
+    ],
+  );
+});
+
+test('menu/open names the window it is for, in the envelope bento-tools routes by', () => {
+  const world = warmWorld({ windowId: 7 });
+  world.showChromeMenu({ ...MENU });
+  assert.equal(world.menuOpens()[0].__windowId, 7);
+});
+
+test('a failed window lookup leaves the id out, so receivers accept the message', () => {
+  const world = warmWorld({ windowId: null });
+  world.showAddrbar('current');
+  world.showChromeMenu({ ...MENU });
+  assert.equal(world.addrbarOpens()[0].windowId, null);
+  assert.equal('__windowId' in world.menuOpens()[0], false);
 });

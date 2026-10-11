@@ -3336,32 +3336,41 @@
 
   // @bento-overlays:begin
   //
-  // Lazy overlay documents. Every overlay <browser> except the sidebar shell and
-  // the panel trailer is created (or navigated) on first use, or at idle after the
-  // launch veil lifts, instead of at window startup. This manager owns the state
-  // and the rules; the table that wires it to the frames in this file follows it.
-  // It touches nothing of Firefox's, so scripts/overlay-manager.test.mjs evaluates
-  // exactly this section.
+  // Overlay documents. Every overlay <browser> except the sidebar shell and the
+  // panel trailer is an extension document, and this manager decides when each
+  // is created and when an open may reveal it. It owns the state and the rules;
+  // the table that wires it to the frames in this file follows it. It touches
+  // nothing of Firefox's, so scripts/overlay-manager.test.mjs evaluates exactly
+  // this section.
+  //
+  // Strategies (entry.eager / entry.prewarm in the table):
+  //   eager   created by startEager() at window startup, as before documents were
+  //           lazy: the overlays a user action can request at once (confirm,
+  //           edit workspace, workspace switcher), whose payloads travel
+  //           between documents that cannot wait.
+  //   idle    created one at a time at idle after the launch veil lifts, so the
+  //           first open does not show a load (address bar, palette, menu).
+  //   demand  created by the first open (everything else).
   //
   // States: absent (no document requested), loading (navigation started, waiting
-  // for the document to announce BENTO_OVERLAY_READY), ready. Two kinds of queued
-  // work wait on a loading overlay, and they have different deadlines:
-  //   open(id, reason, run)      reveals the host. Runs on the document's real
-  //                              announcement, or on OVERLAY_READY_FALLBACK_MS after
-  //                              it if none came, so a missing signal delays the
-  //                              first open instead of blocking it.
-  //   deliver(id, key, fn)       a chrome-to-overlay message (menu payload, address
-  //                              bar open, merge-palette nonce). Runs only on the
-  //                              real announcement: before it nothing listens, and
-  //                              a message sent at the fallback would be lost. It
-  //                              stays queued until then, cancel(id), or teardown.
-  // Both are keyed, so a repeated open replaces the queued one (the welcome
-  // requests repeat). hasPendingOpen(id) is true while an open waits: dismissal
-  // and toggle paths must treat that as open, and cancel(id) is what a hide calls.
-  // Code that only hides, resizes or messages an overlay must look the frame up
-  // with document.getElementById and treat null (not created yet) as "nothing to
-  // do"; only open paths call ensure/open/deliver.
-  const OVERLAY_READY_FALLBACK_MS = 5000;
+  // for the document to announce BENTO_OVERLAY_READY), ready. Nothing a document
+  // has not announced for is revealed or sent to it: chrome-to-overlay messages
+  // (frame-script relays onto a BroadcastChannel) do not queue, so one sent
+  // before the document subscribed is lost. open(id, reason, run) therefore queues
+  // `run` until the announcement, and `run` does both the reveal and the sends
+  // that belong to the open. The queue is kept until the announcement, cancel(id),
+  // or teardown, and a late announcement runs it once. If no announcement comes
+  // within OVERLAY_READY_STALL_MS the manager logs one error and keeps waiting;
+  // it does not reveal.
+  //
+  // Keyed: a repeated open replaces the queued one (the welcome requests repeat),
+  // and an open that replaces another is the newest request. hasPendingOpen(id)
+  // is true while an open waits: dismissal and toggle paths must treat that as
+  // open, and cancel(id) is what a hide calls. Code that only hides, resizes or
+  // messages an overlay must look the frame up with document.getElementById and
+  // treat null (not created yet) as "nothing to do"; only open paths call
+  // ensure/open.
+  const OVERLAY_READY_STALL_MS = 5000;
   const OVERLAY_PREWARM_IDLE_TIMEOUT_MS = 1500;
   const OVERLAY_PREWARM_READY_WAIT_MS = 2500;
 
@@ -3372,22 +3381,20 @@
     setTimer,
     clearTimer,
     warn,
-    onCancelPending,
+    error,
   }) {
     const records = new Map();
     for (const entry of entries) {
       records.set(entry.id, {
         entry,
         state: 'absent',
-        signalled: false,
         reason: null,
         createdAt: null,
         readyAt: null,
         readyBy: null,
-        signalledAt: null,
         reveals: new Map(),
-        deliveries: new Map(),
-        fallbackTimer: null,
+        stallTimer: null,
+        stalled: false,
         opens: 0,
         firstOpenWaitMs: null,
         maxOpenWaitMs: 0,
@@ -3409,52 +3416,47 @@
       }
     }
 
-    function drain(id, queue) {
-      const queued = [...queue.values()];
-      queue.clear();
-      for (const fn of queued) guarded(id, fn);
+    function clearStallTimer(rec) {
+      if (rec.stallTimer === null) return;
+      clearTimer(rec.stallTimer);
+      rec.stallTimer = null;
     }
 
-    // by: 'signal' (the document announced), 'timeout' (the fallback elapsed) or
-    // 'no-handshake' (a page that never announces).
+    // by: 'signal' (the document announced) or 'no-handshake' (a page that never
+    // announces).
     function markReady(id, by) {
       const rec = records.get(id);
       if (!rec || disposed) return;
-      if (rec.fallbackTimer !== null) {
-        clearTimer(rec.fallbackTimer);
-        rec.fallbackTimer = null;
-      }
+      clearStallTimer(rec);
       if (rec.state !== 'ready') {
         rec.state = 'ready';
         rec.readyAt = now();
         rec.readyBy = by;
       }
-      drain(id, rec.reveals);
-      if (by === 'timeout') return;
-      if (!rec.signalled) {
-        rec.signalled = true;
-        rec.signalledAt = now();
-        rec.readyBy = by;
-      }
-      drain(id, rec.deliveries);
+      const queued = [...rec.reveals.values()];
+      rec.reveals.clear();
+      for (const fn of queued) guarded(id, fn);
       if (by === 'signal' && rec.entry.onReady) guarded(id, rec.entry.onReady);
       if (prewarmWaitId === id) continuePrewarm();
     }
 
-    function armFallback(id, rec) {
-      if (rec.fallbackTimer !== null) return;
-      rec.fallbackTimer = setTimer(() => {
-        rec.fallbackTimer = null;
-        if (rec.state !== 'loading' || rec.reveals.size === 0) return;
-        warn(
+    // Reports a document that does not announce while an open waits for it. The
+    // open stays pending: revealing an overlay that cannot receive its message
+    // shows an empty one.
+    function armStallReport(id, rec) {
+      if (rec.stallTimer !== null) return;
+      rec.stallTimer = setTimer(() => {
+        rec.stallTimer = null;
+        if (rec.state === 'ready' || !rec.reveals.has('show')) return;
+        rec.stalled = true;
+        error(
           '[bento-shell-mount] overlay ' +
             id +
             ' did not announce readiness within ' +
-            OVERLAY_READY_FALLBACK_MS +
-            ' ms; revealing it. Queued messages wait for the announcement.',
+            OVERLAY_READY_STALL_MS +
+            ' ms; its open stays pending until it does or is cancelled.',
         );
-        markReady(id, 'timeout');
-      }, OVERLAY_READY_FALLBACK_MS);
+      }, OVERLAY_READY_STALL_MS);
     }
 
     // Creates the overlay's <browser> if needed and starts its navigation once.
@@ -3483,7 +3485,9 @@
       return frame;
     }
 
-    // Returns false when the overlay's frame cannot be created.
+    // Runs `run` once the overlay's document has announced itself: at once for a
+    // ready one, else on the announcement. Returns false when the overlay's
+    // frame cannot be created.
     function open(id, reason, run) {
       const rec = records.get(id);
       if (!rec) {
@@ -3504,52 +3508,30 @@
         return true;
       }
       rec.reveals.set('show', reveal);
-      armFallback(id, rec);
+      armStallReport(id, rec);
       return true;
-    }
-
-    // A message to the overlay's document. If the document cannot be created the
-    // message goes out at once, as it did before documents were lazy.
-    function deliver(id, key, fn, reason = 'send') {
-      const rec = records.get(id);
-      if (!rec || !ensure(id, reason)) {
-        fn();
-        return;
-      }
-      if (rec.signalled) {
-        fn();
-        return;
-      }
-      rec.deliveries.set(key, fn);
     }
 
     function hasPendingOpen(id) {
       return records.get(id)?.reveals.has('show') === true;
     }
 
-    // Drops everything queued for the overlay. While the document has not
-    // announced itself, a document that sent it a payload (confirm, edit
-    // workspace, workspace switcher) is still waiting to post it again;
-    // onCancelPending tells those senders (the mount relays it onto the bus) so
-    // they stop.
+    // Drops the queued open. A hide calls this first, so a hide that arrives while
+    // an open waits wins and a late announcement reveals and sends nothing.
     function cancel(id) {
       const rec = records.get(id);
       if (!rec) return;
-      const undelivered = rec.state !== 'absent' && !rec.signalled;
       rec.reveals.clear();
-      rec.deliveries.clear();
-      if (undelivered && onCancelPending) guarded(id, () => onCancelPending(id));
+      clearStallTimer(rec);
     }
 
-    // A reloaded document announces itself again; hold messages until it does.
+    // A reloaded document announces itself again; hold opens until it does.
     function reset(id) {
       const rec = records.get(id);
       if (!rec || rec.state !== 'ready') return;
       rec.state = 'loading';
-      rec.signalled = false;
       rec.readyAt = null;
       rec.readyBy = null;
-      rec.signalledAt = null;
     }
 
     function idForFrame(frameId) {
@@ -3562,6 +3544,13 @@
     function markFrameReady(frameId) {
       const id = idForFrame(frameId);
       if (id !== null) markReady(id, 'signal');
+    }
+
+    // Window startup: create the eager overlays.
+    function startEager() {
+      for (const entry of entries) {
+        if (entry.eager) ensure(entry.id, 'startup');
+      }
     }
 
     // Prewarm: one document per idle period, the next only after the previous
@@ -3598,7 +3587,7 @@
         scheduleNextPrewarm();
         return;
       }
-      if (rec.signalled || prewarmQueue.length === 0) {
+      if (rec.state === 'ready' || prewarmQueue.length === 0) {
         scheduleNextPrewarm();
         return;
       }
@@ -3622,22 +3611,20 @@
       const result = {};
       for (const [id, rec] of records) {
         result[id] = {
-          strategy: rec.entry.prewarm ? 'idle' : 'demand',
+          strategy: rec.entry.eager ? 'eager' : rec.entry.prewarm ? 'idle' : 'demand',
           state: rec.state,
-          signalled: rec.signalled,
           reason: rec.reason,
           createdMs: round(rec.createdAt),
           createdSinceVeilMs: sinceVeil(rec.createdAt),
           readyMs: round(rec.readyAt),
           readySinceVeilMs: sinceVeil(rec.readyAt),
-          signalledMs: round(rec.signalledAt),
           loadMs:
-            rec.createdAt === null || rec.signalledAt === null
+            rec.createdAt === null || rec.readyAt === null
               ? null
-              : round(rec.signalledAt - rec.createdAt),
+              : round(rec.readyAt - rec.createdAt),
           readyBy: rec.readyBy,
           pendingOpen: rec.reveals.has('show'),
-          pendingDeliveries: rec.deliveries.size,
+          stalled: rec.stalled,
           opens: rec.opens,
           firstOpenWaitMs: round(rec.firstOpenWaitMs),
           maxOpenWaitMs: round(rec.maxOpenWaitMs),
@@ -3655,19 +3642,21 @@
       disposed = true;
       for (const rec of records.values()) {
         rec.reveals.clear();
-        rec.deliveries.clear();
+        clearStallTimer(rec);
       }
+      if (prewarmWaitTimer !== null) clearTimer(prewarmWaitTimer);
+      prewarmWaitTimer = null;
     }
 
     return {
       ensure,
       open,
-      deliver,
       hasPendingOpen,
       cancel,
       reset,
       idForFrame,
       markFrameReady,
+      startEager,
       onVeilLifted,
       stats,
       dispose,
@@ -3682,14 +3671,15 @@
   // title handler.
   const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
 
-  // One row per lazily created overlay, in prewarm order. `prewarm` rows are
-  // created at idle after the veil lifts (their first open must not show a
-  // load); the rest on first use. `created` rows have a host from
-  // ensureOverlayHost and get their <browser> from createOverlayFrame; the rest
-  // are the <browser> elements the browser-box patch declares, navigated later.
+  // One row per overlay, in prewarm order. `eager` rows start at window startup
+  // (overlays.startEager()), `prewarm` rows at idle after the veil lifts, the rest
+  // on first use. `created` rows have a host from ensureOverlayHost and get their
+  // <browser> from createOverlayFrame; the rest are the <browser> elements the
+  // browser-box patch declares, navigated later.
   function overlayEntry({
     id,
     navigate,
+    eager = false,
     prewarm = false,
     created = false,
     remote = true,
@@ -3700,6 +3690,7 @@
     return {
       id,
       frameId,
+      eager,
       prewarm,
       navigate,
       handshake,
@@ -3715,25 +3706,26 @@
     entries: [
       overlayEntry({ id: 'addrbar', prewarm: true, created: true, navigate: setBentoAddrbarSrc }),
       overlayEntry({ id: 'palette', prewarm: true, navigate: setBentoPaletteSrc }),
+      overlayEntry({ id: 'menu', prewarm: true, navigate: setBentoMenuSrc }),
+      overlayEntry({ id: 'confirm', eager: true, navigate: setBentoConfirmSrc }),
+      overlayEntry({
+        id: 'edit-workspace',
+        eager: true,
+        created: true,
+        navigate: setBentoEditWorkspaceSrc,
+      }),
       overlayEntry({
         id: 'workspace-switcher',
-        prewarm: true,
+        eager: true,
         created: true,
         navigate: setBentoWorkspaceSwitcherSrc,
       }),
-      overlayEntry({ id: 'menu', prewarm: true, navigate: setBentoMenuSrc }),
       overlayEntry({
         id: 'workspace-palette',
         created: true,
         navigate: setBentoWorkspacePaletteSrc,
       }),
       overlayEntry({ id: 'merge-palette', navigate: setBentoMergePaletteSrc }),
-      overlayEntry({ id: 'confirm', navigate: setBentoConfirmSrc }),
-      overlayEntry({
-        id: 'edit-workspace',
-        created: true,
-        navigate: setBentoEditWorkspaceSrc,
-      }),
       overlayEntry({ id: 'welcome', created: true, navigate: setBentoWelcomeSrc }),
       // Chrome-hosted page with no handshake; showEmbeddedBrowserImportFromWelcome
       // sets its src each time it opens.
@@ -3762,7 +3754,7 @@
     setTimer: (callback, ms) => window.setTimeout(callback, ms),
     clearTimer: (handle) => window.clearTimeout(handle),
     warn: (...args) => console.warn(...args),
-    onCancelPending: (id) => broadcastOverlayCancel(id),
+    error: (...args) => console.error(...args),
   });
 
   // Dev-visible measurement for the runtime pass: which overlays exist, why and
@@ -4395,11 +4387,13 @@
 
   const PALETTE_TRANSITION_MS = 180; // matches inline transition duration
 
-  // Every show* function reveals its host through this. The first open of an
-  // overlay whose document does not exist yet (or has not announced readiness)
-  // waits for it, so the dim, the host fade and the focus all land together;
-  // `reveal` runs at once for a ready overlay. The matching hide* function calls
-  // overlays.cancel(id), so a hide that arrives first wins.
+  // Every show* function reveals its host through this, and sends the messages
+  // that belong to the open from inside `reveal`. An overlay whose document does
+  // not exist yet or has not announced readiness is not revealed and gets no
+  // message: `reveal` waits for the announcement, so the dim, the host fade, the
+  // focus and the messages all land on a document that can render and receive
+  // them, and it runs at once for a ready overlay. The matching hide* function
+  // calls overlays.cancel(id), so a hide that arrives first wins.
   function openOverlay(id, reveal) {
     if (!overlays.open(id, 'show', reveal)) {
       console.warn('[bento-shell-mount] overlay frame unavailable:', id);
@@ -4550,11 +4544,10 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-merge-palette-frame');
+      // The nonce goes out with the reveal, to a document that is listening.
+      dispatchMergePaletteLifecycle('open', nonce);
       setTimeout(() => frame?.focus(), 0);
     });
-    // The nonce reaches a document that is listening: after its announcement,
-    // not at the reveal fallback.
-    overlays.deliver('merge-palette', 'open', () => dispatchMergePaletteLifecycle('open', nonce));
   }
 
   function hideMergePalette() {
@@ -4884,20 +4877,12 @@
       fallbackTimer: null,
     };
 
-    // The host is prepared (laid out, invisible, not interactive) at once. The
-    // reveal fallback timer starts when the address bar document is ready (or the
-    // readiness fallback elapsed), and the open message goes out only on its real
-    // announcement, since nothing listens before it. A prewarmed document is
-    // ready, so both run synchronously; a first open before the prewarm finished
-    // waits for the load instead of burning the retry budget.
-    const armReveal = () => {
-      const pending = pendingAddrbarReveal;
-      if (!pending || pending.openId !== openId) return;
-      pending.fallbackTimer = setTimeout(
-        () => revealPendingAddrbar(openId),
-        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
-      );
-    };
+    // The host is prepared (laid out, invisible, not interactive) at once. The open
+    // message goes out on the document's real announcement, since nothing listens
+    // before it, and the safety reveal and the resend budget start when it goes
+    // out: a timer that started at the request could reveal, and drop, an open
+    // whose message was never sent. A prewarmed document is ready, so this runs
+    // synchronously; a first open before the prewarm finished waits for the load.
     const sendOpen = () => {
       const pending = pendingAddrbarReveal;
       if (!pending || pending.openId !== openId) return;
@@ -4907,14 +4892,17 @@
         clipboardUrl: pending.clipboardUrl,
         placement: pending.placement,
       });
+      pending.fallbackTimer = setTimeout(
+        () => revealPendingAddrbar(openId),
+        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
+      );
       pending.retryTimer = setTimeout(
         () => retryPendingAddrbarOpen(openId),
         ADDRBAR_OPEN_RETRY_MS,
       );
     };
-    // No frame (its host is gone): arm the timer anyway, as it always did.
-    if (!overlays.open('addrbar', 'show', armReveal)) armReveal();
-    overlays.deliver('addrbar', 'open', sendOpen);
+    // No frame (its host is gone): send anyway, as it always did.
+    if (!overlays.open('addrbar', 'show', sendOpen)) sendOpen();
   }
 
   function openAddressEntry(mode, initialQuery = '') {
@@ -5340,6 +5328,8 @@
   // BroadcastChannel 'menu/open' actions; chrome just toggles host
   // display.
   const menuOnSelectByContext = new Map();
+  // The contextId of the open that waits for the menu document, if any.
+  let pendingMenuContextId = null;
 
   function showChromeMenu({ anchor, items, onSelect, placement }) {
     const host = document.getElementById('bento-menu-host');
@@ -5353,16 +5343,17 @@
     }
     const contextId = 'm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     if (typeof onSelect === 'function') menuOnSelectByContext.set(contextId, onSelect);
-    // The payload goes to the menu document over the bus, which does not queue:
-    // the host is revealed once the document is ready (openOverlay), and the
-    // payload goes out on the document's real announcement and not before.
+    // A newer request replaces an older one that is still waiting for the
+    // document, so the older handler can never be called.
+    if (pendingMenuContextId !== null) menuOnSelectByContext.delete(pendingMenuContextId);
+    pendingMenuContextId = contextId;
+    // The menu document hears the payload over the bus, which does not queue, so
+    // the host is revealed and the payload sent together, on the document's real
+    // announcement and not before (openOverlay).
     openOverlay('menu', () => {
+      pendingMenuContextId = null;
       host.style.display = 'flex';
       host.removeAttribute('hidden');
-      const frame = document.getElementById('bento-menu-frame');
-      setTimeout(() => frame?.focus(), 0);
-    });
-    overlays.deliver('menu', 'open', () => {
       // Translate the trigger's chrome-document coords into menu-overlay
       // coords. The overlay frame fills #bento-menu-host (which lives
       // inside <hbox id="browser">, BELOW the chrome toolbar/tabstrip);
@@ -5385,11 +5376,18 @@
         anchor: adjustedAnchor,
         placement,
       });
+      const frame = document.getElementById('bento-menu-frame');
+      setTimeout(() => frame?.focus(), 0);
     });
   }
 
   function hideChromeMenu() {
     overlays.cancel('menu');
+    // An open that never reached the document has no SELECT or CLOSE to come.
+    if (pendingMenuContextId !== null) {
+      menuOnSelectByContext.delete(pendingMenuContextId);
+      pendingMenuContextId = null;
+    }
     const host = document.getElementById('bento-menu-host');
     if (!host) return;
     host.style.display = 'none';
@@ -11834,8 +11832,9 @@
     '    var suppressFocus = !!(msg.data && msg.data.suppressFocus);' +
     '    var clipboardUrl = msg.data && typeof msg.data.clipboardUrl === "string" ? msg.data.clipboardUrl : "";' +
     '    var placement = msg.data && msg.data.placement && typeof msg.data.placement === "object" ? msg.data.placement : null;' +
+    '    var windowId = msg.data && typeof msg.data.windowId === "number" ? msg.data.windowId : null;' +
     '    var channel = new content.BroadcastChannel("bento-addrbar-bus");' +
-    '    channel.postMessage({ kind: "open", openId: openId, mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus, clipboardUrl: clipboardUrl, placement: placement });' +
+    '    channel.postMessage({ kind: "open", windowId: windowId, openId: openId, mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus, clipboardUrl: clipboardUrl, placement: placement });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
@@ -11856,31 +11855,15 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(SIDEBAR_ADDRESS_FRAME_SCRIPT_SRC);
 
-  // Relays a queued open that chrome dropped (Esc, toggle, a newer open) onto the
-  // overlay lifecycle bus, so the documents that sent a payload for it stop
-  // posting it again (bridge/overlayReady.ts). Loaded into the sidebar shell
-  // frame, which is always present, and run in its process.
-  const OVERLAY_CANCEL_FRAME_SCRIPT_SRC =
-    '"use strict";' +
-    'addMessageListener("BentoOverlayCancel", function(msg) {' +
-    '  try {' +
-    '    var channel = new content.BroadcastChannel("bento-overlay-lifecycle");' +
-    '    channel.postMessage({ kind: "cancel", overlay: msg.data.overlay, windowId: msg.data.windowId });' +
-    '    channel.close();' +
-    '  } catch (e) {}' +
-    '});';
-  const OVERLAY_CANCEL_FRAME_SCRIPT_URL =
-    'data:application/javascript;charset=utf-8,' +
-    encodeURIComponent(OVERLAY_CANCEL_FRAME_SCRIPT_SRC);
-
   const MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoMergePaletteLifecycle", function(msg) {' +
     '  try {' +
     '    var type = msg.data && msg.data.type === "close" ? "close" : "open";' +
     '    var nonce = msg.data && typeof msg.data.nonce === "string" ? msg.data.nonce : String(Date.now());' +
+    '    var windowId = msg.data && typeof msg.data.windowId === "number" ? msg.data.windowId : null;' +
     '    var channel = new content.BroadcastChannel("bento-merge-palette");' +
-    '    channel.postMessage({ type: type, nonce: nonce });' +
+    '    channel.postMessage({ type: type, nonce: nonce, windowId: windowId });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
@@ -11969,25 +11952,6 @@
     }
   }
 
-  function broadcastOverlayCancel(overlayId) {
-    const frame = document.getElementById('bento-shell-frame');
-    if (!frame) return;
-    try {
-      const mm = frame.messageManager;
-      if (!mm || typeof mm.sendAsyncMessage !== 'function') return;
-      if (!frame._bentoOverlayCancelScriptLoaded && typeof mm.loadFrameScript === 'function') {
-        mm.loadFrameScript(OVERLAY_CANCEL_FRAME_SCRIPT_URL, true);
-        frame._bentoOverlayCancelScriptLoaded = true;
-      }
-      mm.sendAsyncMessage('BentoOverlayCancel', {
-        overlay: overlayId,
-        windowId: getChromeWindowId(),
-      });
-    } catch (err) {
-      console.warn('[bento-shell-mount] overlay cancel relay failed:', err);
-    }
-  }
-
   function dispatchAddrbarOpen(mode, initialQuery = '', options = {}) {
     const frame = document.getElementById('bento-addrbar-frame');
     if (!frame) return false;
@@ -12005,6 +11969,8 @@
         suppressFocus: options.suppressFocus === true,
         clipboardUrl: typeof options.clipboardUrl === 'string' ? options.clipboardUrl : '',
         placement: options.placement || null,
+        // The bus reaches every window's address bar document; this names ours.
+        windowId: getChromeWindowId(),
       });
       return true;
     } catch (err) {
@@ -12051,7 +12017,12 @@
         mm.loadFrameScript(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL, true);
         frame._bentoMergePaletteLifecycleScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoMergePaletteLifecycle', { type, nonce });
+      // The bus reaches every window's merge palette document; this names ours.
+      mm.sendAsyncMessage('BentoMergePaletteLifecycle', {
+        type,
+        nonce,
+        windowId: getChromeWindowId(),
+      });
       return true;
     } catch (err) {
       if (attempt < 10) {
@@ -20146,10 +20117,13 @@
     );
   }
 
-  function attachAddrbarOutsideDismissListener() {
+  function attachOutsideClickDismissListener() {
     window.addEventListener(
       'pointerdown',
       (e) => {
+        // A menu still waiting for its document has no host to catch the click: the
+        // click is outside it, so it cancels the open. A shown menu closes itself.
+        if (overlays.hasPendingOpen('menu')) hideChromeMenu();
         const host = document.getElementById('bento-addrbar-host');
         if (!host || !isOverlayOpen('bento-addrbar-host', isAddrbarVisible, 'addrbar')) return;
         const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
@@ -20926,9 +20900,11 @@
   // navigate that panel. The chrome's main URL bar always reflects the
   // active main tab as Firefox normally would.
 
-  // Only the sidebar shell loads at startup. The overlay documents are created
-  // on first use or at idle once the launch veil lifts (createOverlayManager).
+  // The sidebar shell and the eager overlays (confirm, edit workspace, workspace
+  // switcher) load at startup. The other overlay documents are created at idle
+  // once the launch veil lifts or on first use (createOverlayManager).
   setBentoShellSrc();
+  overlays.startEager();
   // The welcome resume step comes from the environment of the process that
   // restarted for the browser-data import. Read (and clear) it now, as before,
   // not when the welcome overlay is first created.
@@ -21246,7 +21222,7 @@
   configureSidePanelOnce();
   attachReloadListener();
   attachAddrbarKeybinding();
-  attachAddrbarOutsideDismissListener();
+  attachOutsideClickDismissListener();
   attachTopUrlbarModalListener();
   attachSidebarAddressSnapshotListeners();
   attachPaletteKeybinding();
