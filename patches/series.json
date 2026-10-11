@@ -93,6 +93,11 @@
       "subject": "Add native Bento preferences"
     },
     {
+      "path": "patches/core-ui/16-hide-updates-group-without-updater.patch",
+      "id": "hide-updates-group-without-updater",
+      "subject": "Hide the About updates group when the updater is not built in"
+    },
+    {
       "path": "patches/experiments/01-mach-build-hang-guards.patch",
       "id": "mach-build-hang-guards",
       "subject": "Add mach build hang guards"

@@ -598,6 +598,9 @@ Native Settings content holds its current viewport during a live resize and
 performs one final layout when the gesture settles, including when the Settings
 tab is in the background. There is no separate extension-hosted Settings page.
 
+Bento has no automatic updater yet, so the About page shows no Updates section
+(no heading, description, or status message); it keeps the support links.
+
 ## Design principles
 
 ### Workspace state is first-class

@@ -1,0 +1,53 @@
+From 161dd735f306b993471fe67c25861d0e459b2fed Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Mon, 12 Oct 2026 06:51:54 +1100
+Subject: [PATCH] Hide the About updates group when the updater is not built in
+
+---
+ .../components/preferences/config/about-firefox.mjs  |  3 +++
+ .../tests/browser_updates_managed_by_os.js           | 12 ++++++++++--
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/browser/components/preferences/config/about-firefox.mjs b/browser/components/preferences/config/about-firefox.mjs
+index e90e8ec677401519da456e91d10e15a1974e1b2a..8409f4c7212147a090467c3fe7fbb7574fcb21b2 100644
+--- a/browser/components/preferences/config/about-firefox.mjs
++++ b/browser/components/preferences/config/about-firefox.mjs
+@@ -477,6 +477,9 @@ SettingGroupManager.registerGroups({
+     iconSrc: "chrome://browser/skin/update-badge.svg",
+     subcategory: "update-state",
+     headingLevel: 2,
++    // Bento builds without the updater: no heading, description or "managed
++    // by your operating system" message, which would be false for Bento.
++    hidden: !AppConstants.MOZ_UPDATER,
+     items: [
+       {
+         id: "updatesManagedByOS",
+diff --git a/browser/components/preferences/tests/browser_updates_managed_by_os.js b/browser/components/preferences/tests/browser_updates_managed_by_os.js
+index b7d63d18df2f143f71241fdb31fe9cc84b0d7a3c..831b6956306777df3a8948041f0f0922770991e6 100644
+--- a/browser/components/preferences/tests/browser_updates_managed_by_os.js
++++ b/browser/components/preferences/tests/browser_updates_managed_by_os.js
+@@ -18,11 +18,19 @@ add_task(async function test_updates_managed_by_os_message_bar() {
+   await settingControl.updateComplete;
+ 
+   let isPackagedApp = Services.sysinfo.getProperty("isPackagedApp");
++  // Bento hides the whole updates group when the updater is not built in, so
++  // the message bar shows only for a packaged app that has an updater.
+   is(
+     BrowserTestUtils.isHidden(settingControl),
+-    win.AppConstants.MOZ_UPDATER && !isPackagedApp,
+-    "updatesManagedByOS message bar is shown only when running as a packaged app"
++    !(win.AppConstants.MOZ_UPDATER && isPackagedApp),
++    "updatesManagedByOS message bar is shown only when running as a packaged app with the updater built in"
+   );
++  if (!win.AppConstants.MOZ_UPDATER) {
++    ok(
++      BrowserTestUtils.isHidden(settingControl.closest("setting-group")),
++      "The updates group is hidden when the updater is not built in"
++    );
++  }
+ 
+   gBrowser.removeCurrentTab();
+ });
+-- 
+2.54.0 (Apple Git-157)
+

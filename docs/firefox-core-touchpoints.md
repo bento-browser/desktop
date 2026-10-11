@@ -937,6 +937,55 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   [build-tooling.md](build-tooling.md) and add the new surfaces (certificate
   patch, update-host wiring, MAR signing) to this entry.
 
+### About Pane Updates Group
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `patches/core-ui/16-hide-updates-group-without-updater.patch`
+    (`browser/components/preferences/config/about-firefox.mjs`, and the
+    upstream test `browser/components/preferences/tests/browser_updates_managed_by_os.js`)
+- Bento functionality: builds without the updater (`--disable-updater` while
+  `bento.json` `updates.enabled` is `false`) show no Updates group in the About
+  pane: no heading, description, or "Updates are managed by your operating
+  system" message bar. That message is false for Bento. With the updater built in,
+  the group behaves as upstream, including the packaged-app message.
+- Vanilla Firefox surface touched or depended on: `about-firefox.mjs` registers
+  the `updates` setting group with `SettingGroupManager`; the patch adds
+  `hidden: !AppConstants.MOZ_UPDATER` to that config, the group-level idiom other
+  config files use (`account-sync.mjs`, `tabs-browsing.mjs`). It depends on
+  `widgets/setting-group/setting-group.mjs` applying `config.hidden` as
+  `data-hidden-by-setting-group` (`display: none !important` in
+  `setting-group.css`, which `findInPage.js` also excludes from Settings search)
+  and skipping `handleVisibilityChange` for a hidden group, and on
+  `AppConstants.MOZ_UPDATER` mirroring the configure option. Upstream shows
+  `updatesManagedByOS` whenever `!UpdatesHelpers.showUpdatesSettings`, which
+  includes every build without an updater. The patch also changes the upstream
+  test `browser_updates_managed_by_os.js` to expect the group hidden in that case.
+- Why this cannot stay extension-only: the group is registered and rendered by
+  Firefox's own Settings module, and Bento's `bento.mjs` is not loaded for the
+  About pane, so reaching into another module's registered config would depend on
+  load order.
+- Firefox update risk: a renamed or reshaped `updates` group, a changed meaning of
+  `hidden` in `SettingGroup`, or a moved `updatesManagedByOS` setting makes the
+  patch fail to apply or silently bring back the false message. The version line
+  (`updateAppInfo`) lives inside the group's `updateApp` box, which upstream already
+  hides without an updater, so the About pane shows no version in these builds.
+- Regression checks for future updates:
+  1. `pnpm run firefox:patches:check` replays the patch on the new base.
+  2. In a dev build, open `about:preferences#about` and confirm the page shows
+     only the support group: no "Updates" heading, description, or message bar. Search
+     Settings for "update" and confirm no Updates result.
+  3. Re-read `setting-group.mjs` (`willUpdate`, `handleVisibilityChange`) and
+     `about-firefox.mjs` (`updatesManagedByOS`, `updateApp`, the `updates` group) for
+     changes to `hidden` handling or to which settings the group renders.
+  4. Mochitests are not built (`--disable-tests`). In a test-enabled build, run
+     `browser_updates_managed_by_os.js` (listed in `browser-srd.toml`) with the
+     updater off and on.
+- Rollback or migration notes: drop the patch and its `series.json` entry to
+  restore upstream behavior. Enabling the updater needs no change here: the
+  condition follows `AppConstants.MOZ_UPDATER`.
+
 ### Built-In Extension Copy Surface
 
 - Status: Active

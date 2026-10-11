@@ -787,6 +787,22 @@ show large blank regions while scrolling before the skipped cards are painted.
 Do not restore that containment optimization; scrolling must preserve section
 visibility even if all native groups participate in layout and paint.
 
+The About pane's `updates` setting group is hidden whenever
+`AppConstants.MOZ_UPDATER` is false, which is every Bento build while
+`bento.json` `updates.enabled` is `false` (`--disable-updater`). The source of
+truth is the configure option; `patches/core-ui/16-hide-updates-group-without-updater.patch`
+sets `hidden: !AppConstants.MOZ_UPDATER` on the group's config in
+`about-firefox.mjs`, and `setting-group` applies it as
+`data-hidden-by-setting-group`, which also removes the group from Settings search.
+Upstream otherwise shows the group's "Updates are managed by your operating
+system" message bar for every build without an updater, which is false for Bento.
+The group-level flag is used instead of per-control `visible` callbacks so the
+result does not depend on the order of the controls' `visibility-change` events.
+The version line lives in the group's `updateApp` box and is hidden without an
+updater, as upstream. Manual check: open `about:preferences#about` in a dev build
+and confirm only the support group renders; see the "About Pane Updates Group"
+entry in `docs/firefox-core-touchpoints.md`.
+
 The native Keyboard shortcuts control is a read-only searchable catalogue. The
 Keyboard shortcuts group also writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
