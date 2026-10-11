@@ -87,7 +87,12 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run brand:regen`: reinstall canonical tracked branding through the
   normal import pipeline.
 - `pnpm run size:check`: report graph-aware JavaScript and direct-file size
-  ceilings; missing or malformed built assets still fail the check.
+  ceilings and fail when an entry grows past its baseline in
+  `.size-baseline.json` by more than max(1%, 1 KB); missing or malformed
+  built assets also fail the check.
+- `pnpm run size:baseline`: rebuild the extensions with `BENTO_RELEASE=1` (the
+  mode CI builds) and rewrite `.size-baseline.json`. Commit the result when a
+  change grows an entry on purpose or shrinks one.
 
 Hosted release cache keys include `bento.json`, `config/**`, the patch and
 overlay inputs, relevant Bento build scripts, `configs/**`, and
