@@ -2136,9 +2136,12 @@ focus. Empty new-tab opens read `text/plain` from the global clipboard in
 chrome, sanitize it with Firefox URL bar paste handling when available, resolve
 it through `Services.uriFixup`, reject keyword-search results, and forward only
 `http`/`https` specs as `clipboardUrl`. `resolveClipboardUrlSuggestion` first
-reads `browser.urlbar.suggest.clipboard` with `Services.prefs.getBoolPref(name,
-true)` at call time and returns without touching the clipboard when it is
-false (a wrong-typed pref also disables the read). Do not gate on
+reads `browser.urlbar.suggest.clipboard` at call time and returns without
+touching the clipboard unless the pref is enabled. It checks
+`Services.prefs.getPrefType` first: a boolean pref uses its value, a missing
+pref takes Firefox's own default (true), and any other type (or a failed read)
+disables the read. Do not call `getBoolPref(name, true)` for this gate, because
+Firefox returns the supplied default for a wrong-typed pref. Do not gate on
 `browser.urlbar.clipboard.featureGate`: that pref controls Firefox's own
 clipboard provider rollout, while this suggestion is an intentional Bento
 feature. Manual check: with the pref false, `Cmd/Ctrl+T` shows no clipboard row

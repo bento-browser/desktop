@@ -356,7 +356,8 @@ Use this shape for new or changed touchpoints:
   `Cmd/Ctrl+T` shows the clipboard URL as the first new-tab address result and
   that setting `browser.urlbar.suggest.clipboard` to false removes the row
   without reading the clipboard (the pref must still exist and keep its
-  boolean type in `browser/app/profile/firefox.js`),
+  boolean type in `browser/app/profile/firefox.js`; Bento reads a missing pref
+  as true and a non-boolean pref as off),
   verify creating a workspace from the workspace manager
   keeps that manager above and focused if the address palette opens underneath,
   verify sidebar tab and folder

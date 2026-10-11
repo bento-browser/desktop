@@ -262,6 +262,26 @@ function fakePrefs(type, value) {
   };
 }
 
+for (const [label, relativePath] of Object.entries(MOUNT_SOURCES)) {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, relativePath), 'utf8');
+
+  test(`clipboard suggestion trusts only a boolean pref (${label} mount)`, () => {
+    const code = `${mountConstant(source, 'CLIPBOARD_SUGGEST_PREF')}
+${mountFunction(source, 'isClipboardUrlSuggestionEnabled')}
+isClipboardUrlSuggestionEnabled;`;
+    const enabled = (type, value) =>
+      vm.runInNewContext(code, { Services: { prefs: fakePrefs(type, value) } })();
+    assert.equal(enabled('bool', true), true);
+    assert.equal(enabled('bool', false), false);
+    // A missing pref takes Firefox's own default (true).
+    assert.equal(enabled('missing'), true);
+    // Wrong-typed prefs and failed reads must not allow the clipboard read.
+    assert.equal(enabled('int', 1), false);
+    assert.equal(enabled('string', 'true'), false);
+    assert.equal(enabled('throws'), false);
+  });
+}
+
 test('Save panel bounds its metadata to the validator caps', () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, MOUNT_SOURCES.current), 'utf8');
   const code = `${[

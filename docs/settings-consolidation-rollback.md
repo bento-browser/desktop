@@ -82,7 +82,8 @@ Applied to both variants (the archived mount and tools background carry the same
 change as the current files):
 
 - Clipboard suggestion gate: the empty new-tab address open reads the clipboard
-  only while `browser.urlbar.suggest.clipboard` is true.
+  only while `browser.urlbar.suggest.clipboard` is true (a missing pref takes
+  Firefox's default, true; a wrong-typed pref disables the read).
 - Add-panel grant: the Add panel button creates
   `about:blank?bento_add_as_panel=<token>` and a one-time grant on the native tab;
   the archived tools background consumes it through
