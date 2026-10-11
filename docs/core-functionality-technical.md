@@ -21,7 +21,12 @@ Bento's core browsing model is split across three layers:
 - `bento-shell-mount.js` is the chrome process reconciler. It receives
   title-IPC sentinels from the shell and mutates Firefox chrome UI, including
   `gBrowser`, `tabpanels.splitViewPanels`, panel headers, splitters, and chrome
-  overlays.
+  overlays. It is one of the supported chrome surfaces named in `CLAUDE.md`
+  (with the other `src/browser/` overlays, the key actors, the experiments, and
+  the patch stack). Every upstream-private or internal Firefox member it relies
+  on is listed in its firefox-compat registry, which the mount probes once per
+  window and `scripts/check-firefox-compat.mjs` checks against a Firefox source
+  tree; the table is in `docs/firefox-core-touchpoints.md`.
 
 The state contract is declared in `extensions/_shared/protocol.ts`. UI code
 dispatches `Action` messages through `extensions/bento-shell/src/bridge/useToolsPort.ts`.
@@ -2627,8 +2632,24 @@ The following mechanisms are load-bearing:
   Otherwise clicking a side panel sets it as `gBrowser.selectedTab`, which
   promotes the side panel into the main slot and reorders the strip.
 
+Every private Firefox member these shims touch (`on_visibilitychange`,
+`_beginRemoveTab`, `_findTabToBlurTo`, `_insertBrowser`, the `isEmpty` and
+`splitview` tab getters, `activeSplitView`, the `TabSplitView*` handlers,
+`splitViewPanels`, `removeTabsFromSplitview`, `PopupNotifications._isActiveBrowser`,
+and the rest) is an entry in the firefox-compat registry. A new shim that
+reaches a private member adds its entry in the same change.
+
 ### Chrome rendering pitfalls
 
+- The gBrowser hooks are guarded by `typeof` and a `__bento*` flag, so a Firefox
+  rename silently disables them (ghost panels, wrong tab focus after a close).
+  After a Firefox update, run `pnpm run firefox:compat:engine` before anything
+  else and check the Browser Console of a built app for
+  `[bento-compat] missing <id>` lines. The runtime probe runs after delayed
+  startup, never throws, and changes no behavior; lazy objects such as the
+  downloads panel are probed only once loaded, so
+  `window.BentoFirefoxCompat.check()` in the Browser Toolbox re-runs it after
+  opening them.
 - Do not call `gBrowser.hideTab(tab)` for active panel tabs. Smoke testing showed
   hidden tabs render as black or blank split-view slots.
 - Do not move or swap a tab's `linkedBrowser`. Extension content scripts depend
@@ -3559,7 +3580,9 @@ When changing core functionality, manually verify at least the affected subset:
   overlay, spinner, or neutral chrome background replacing it;
 - theme switch and sidebar footer UI light/dark/Auto switch;
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
-  positions restored.
+  positions restored;
+- after any Firefox update, the Browser Console shows
+  `[bento-compat] probed N members` and no `[bento-compat] missing` lines.
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.

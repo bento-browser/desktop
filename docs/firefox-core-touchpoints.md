@@ -15,6 +15,13 @@ feature updates can review the affected upstream surfaces deliberately.
 - During a Firefox version update, review every active touchpoint below against
   upstream changes. Call out and fix regressions before treating the update as
   complete.
+- Every upstream-private or upstream-internal Firefox member a touchpoint
+  relies on (underscore and `on_*` methods, prototype patches, lazy chrome
+  globals, module URLs, chrome DOM ids, event and markup contracts) has an
+  entry in the firefox-compat registry. The table under
+  [Private And Internal Firefox Members](#private-and-internal-firefox-members)
+  is generated from it and is the source of truth for those members; the
+  touchpoint entries below describe behavior and regression checks.
 
 ## What Counts As Firefox Core
 
@@ -236,8 +243,14 @@ Use this shape for new or changed touchpoints:
   names, native navigation-button alignment, or visibility. A rename or
   semantic change to AddonManager listener removal, `PlacesObservers.removeListener`,
   or the chrome window `unload` event silently brings back per-window leaks:
-  closed Bento windows stay alive until quit.
-- Regression checks for future updates: run the flat panels manual checklist in
+  closed Bento windows stay alive until quit. Hooks guarded by `typeof` skip
+  silently when a private member is renamed; the firefox-compat registry lists
+  those members and reports the missing ones (below).
+- Regression checks for future updates: run `pnpm run firefox:compat:engine`
+  against the target source before anything else and fix or remove every hook it
+  reports missing, confirm the Browser Console shows
+  `[bento-compat] probed N members` with no `[bento-compat] missing` errors in a
+  built app, run the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
   corners during normal browsing without a square tabbox/tabpanels backing
@@ -426,7 +439,7 @@ Use this shape for new or changed touchpoints:
   `CanBubble::eYes` and `ChromeOnlyDispatch::eYes` on the embedder element and
   that `currentURI` already reflects the new document when its title event
   arrives (the Browser Console must not show `ignoring title from unexpected
-  document`), then in a built app open the command palette, address bar, a sidebar context menu,
+document`), then in a built app open the command palette, address bar, a sidebar context menu,
   the workspace switcher, a confirm dialog, and the welcome flow and confirm each
   opens and closes (those paths cross the shell, overlay, menu, and panel-trailer
   frames), and confirm a `BENTO_PANELS` change such as toggling Auto/Light/Dark
@@ -862,3 +875,208 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Rollback or migration notes: if uBlock Origin is removed, remove
   `extensions/ublock-origin/` and its runtime-entry file. Keep the installer in
   Bento while Bento bundles privileged built-in extensions.
+
+## Private And Internal Firefox Members
+
+The firefox-compat registry lists every Firefox member Bento depends on that is
+private or internal upstream: underscore and `on_*` methods, private-field
+accessors, prototype patches, lazy chrome globals, module URLs, chrome DOM ids,
+and event or markup contracts. It lives in the delimited `@bento-firefox-compat`
+section of `src/browser/base/content/bento-shell-mount.js`, next to the code
+that probes it. Each entry records the member, what Bento does with it, where
+Bento uses it, how it is detected, and where vanilla Firefox defines it (the
+version is `BENTO_COMPAT_BASELINE`, shown in the table header). The table below
+is generated; edit the registry, then run
+`node scripts/check-firefox-compat.mjs --write-docs`.
+
+- Runtime. After Firefox's delayed startup, each window probes the entries once
+  and logs one `console.error('[bento-compat] missing <id> ...')` per absent
+  member plus one `[bento-compat] probed N members` line. It never throws and
+  changes no behavior; the guarded hooks keep skipping silently. Entries marked
+  lazy are probed only after their object has loaded, so the check never forces
+  a lazy script or module to load. `window.BentoFirefoxCompat.check()` re-runs
+  it from the Browser Toolbox. Entries marked engine only have no runtime probe
+  (events, markup, fields assigned late, members of other documents).
+- Upgrade validation. `pnpm run firefox:compat:engine` greps the `engine/` tree
+  for each entry's definition and exits non-zero listing the members that are
+  gone, plus modules that are no longer registered. Run it against the target
+  source before rebasing patches and again after `pnpm run import`. Add
+  `--verbose` for the line each member now has. After an upgrade, update the
+  `at` lines and `BENTO_COMPAT_BASELINE`, then regenerate this table.
+- Consistency. `pnpm run firefox:compat:check` (also run by
+  `scripts/check-firefox-compat.test.mjs` in CI) fails when an entry is
+  malformed, a call site named by an entry no longer exists, the mount script
+  reaches an underscore or `on_*` member of a known Firefox global that has no
+  entry, or this table is stale.
+- Adding a hook. Add its entry in the same change and regenerate this table.
+- Not listed. Stable platform APIs (`Services.*`, `PlacesUtils`, `SessionStore`
+  calls, `<browser>` navigation such as `loadURI`, the WebExtension API), prefs
+  read by name, and the CSS selectors in `injectChromeStyles`. Patches are
+  covered by `pnpm run firefox:patches:check`; members that code added by a
+  patch calls elsewhere in Firefox are listed here.
+
+<!-- prettier-ignore-start -->
+<!-- firefox-compat:begin -->
+
+| Member | Kind | Bento use | Used in | Firefox 154.0 source |
+| --- | --- | --- | --- | --- |
+| `delayedStartupPromise` | member (runtime) | Schedules the compat probes after Firefox finishes delayed startup. | `scheduleBentoFirefoxCompatChecks` | `browser/base/content/browser-init.js:44` |
+| `gBrowser.on_visibilitychange` | method (runtime) | No-ops while split view is active so Firefox does not deactivate panel docShells. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tabbrowser.js:8456` |
+| `gBrowser._beginRemoveTab` | method (runtime) | Flags the closing tab (bentoClosing) before Firefox selects its successor. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tabbrowser.js:5845` |
+| `gBrowser._findTabToBlurTo` | method (runtime) | Excludes panel and other-workspace tabs when Firefox picks the next selected tab. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tabbrowser.js:6352` |
+| `gBrowser._insertBrowser` | method (runtime) | Materializes restored pending panel tabs without selecting them. | `materializePanelTab` | `browser/components/tabbrowser/content/tabbrowser.js:3002` |
+| `MozTabbrowserTab.isEmpty` | member (runtime) | Prototype getter wrapped so a panel browser with no browsingContext reads as not empty. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tab.js:278` |
+| `MozTabbrowserTab.splitview` | member (runtime) | Prototype getter shadowed per tab with Object.defineProperty to carry the Bento split marker. | `reconcilePanelsSplitView`, `makeSplitViewMarker` | `browser/components/tabbrowser/content/tab.js:390` |
+| `MozBrowser.prototype.removeProgressListener` | method (runtime) | Swallows NS_ERROR_FAILURE from removing a listener on a browser that is being torn down. | `attachTabSelectListener`, `isStaleWebProgressRemoveError` | `toolkit/content/widgets/browser-custom-element.mjs:971` |
+| `gBrowser.showSplitViewPanels` | method (runtime) | Lays the main tab and panel tabs into tabpanels as split-view panels. | `reconcilePanelsSplitView` | `browser/components/tabbrowser/content/tabbrowser.js:3741` |
+| `gBrowser.activeSplitView` | member (runtime) | Getter over the private #activeSplitView field; lists browsers that count as visible. | `patchPopupNotificationsForSplitView` | `browser/components/tabbrowser/content/tabbrowser.js:506` |
+| `gBrowser.on_TabSplitViewActivate` | method (runtime) | Bento dispatches TabSplitViewActivate so Firefox stores its marker in #activeSplitView. | `reconcilePanelsSplitView` | `browser/components/tabbrowser/content/tabbrowser.js:8519` |
+| `gBrowser.on_TabSplitViewDeactivate` | method (runtime) | Bento dispatches TabSplitViewDeactivate with the same marker object (identity check) to clear it. | `reconcilePanelsSplitView`, `forceMainOnlyChromeState` | `browser/components/tabbrowser/content/tabbrowser.js:8524` |
+| `gBrowser.warmupTab` | method (runtime) | Recreates the AsyncTabSwitcher that destroys itself after each tab switch. | `reconcilePanelsSplitView` | `browser/components/tabbrowser/content/tabbrowser.js:8207` |
+| `gBrowser.tabpanels.splitViewPanels` | member (runtime) | Setter marks panel ids as split-view panels (class, column attribute, [splitview], listeners). | `reconcilePanelsSplitView`, `forceMainOnlyChromeState` | `toolkit/content/widgets/tabbox.js:503` |
+| `gBrowser.tabpanels.removeTabsFromSplitview` | method (runtime) | Removes departing tabs from the split view and strips their split-view panel classes. | `reconcilePanelsSplitView`, `forceMainOnlyChromeState` | `toolkit/content/widgets/tabbox.js:528` |
+| `gBrowser.tabpanels.handleEvent` | method (runtime) | Bento removes tabpanels itself as the click/focus listener Firefox registers on each panel's browser container. | `reconcilePanelsSplitView` | `toolkit/content/widgets/tabbox.js:511` |
+| `tabpanels split-view-panel classes` | source (engine only) | Bento styles and cleans .split-view-panel, .split-view-panel-active and the column attribute. | `reconcilePanelsSplitView`, `forceMainOnlyChromeState` | `toolkit/content/widgets/tabbox.js:506` |
+| `tabpanels [splitview] attribute` | source (engine only) | setSplitViewActive toggles [splitview]; Bento CSS and on_visibilitychange read it. | `forceMainOnlyChromeState`, `attachTabSelectListener` | `toolkit/content/widgets/tabbox.js:576` |
+| `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento removes it. | `applySubdivisions` | `browser/components/tabbrowser/content/tabbrowser.js:3767` |
+| `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/content/tabbrowser.js:2884` |
+| `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/content/tabbrowser.js:193` |
+| `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tabbrowser.js:189` |
+| `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel; Bento resolves it with getElementById to reach the panel DOM. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/content/tabbrowser.js:3026` |
+| `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects. | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor` | `browser/components/tabbrowser/content/tabbrowser.js:3313` |
+| `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/content/tabbrowser.js:3337` |
+| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser` | `browser/components/tabbrowser/content/tabbrowser.js:1254` |
+| `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/content/tabbrowser.js:656` |
+| `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/content/tabbrowser.js:7226` |
+| `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/content/tabbrowser.js:7248` |
+| `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:507` |
+| `MozBrowser.prototype.renderLayers` | member (runtime) | Bento re-enables layer rendering for panel browsers after a failed split-view layout. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:524` |
+| `MozBrowser.prototype.preserveLayers` | method (runtime) | Called before deactivating a panel docShell so it repaints without a blank frame. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:935` |
+| `MozBrowser.prototype.messageManager` | member (runtime) | Loads Bento frame scripts into extension and panel browsers. | `installPanelNavigatorTooltipFrameScript`, `ensurePanelScrollFrameScript` | `toolkit/content/widgets/browser-custom-element.mjs:565` |
+| `MozBrowser.prototype.contentTitle` | member (runtime) | The title-IPC handler reads frame.contentTitle after pagetitlechanged. | `attachPaletteCloseListener` | `toolkit/content/widgets/browser-custom-element.mjs:658` |
+| `MozBrowser.mIconURL` | member (runtime) | Panel header favicon fallback reads the browser mIconURL field. | `createPanelHeader` | `toolkit/content/widgets/browser-custom-element.mjs:124` |
+| `MessageManager.loadFrameScript` | source (engine only) | Bento injects data: URL frame scripts into its own extension frames and panel browsers. | `ensurePanelScrollFrameScript`, `installPanelNavigatorTooltipFrameScript`, `SHELL_ACTION_FRAME_SCRIPT_URL` | `dom/chrome-webidl/MessageManager.webidl:367` |
+| `pagetitlechanged` | source (engine only) | Chrome-only bubbling event on the embedding <browser>; the title-IPC control plane. | `attachPaletteCloseListener` | `dom/ipc/WindowGlobalParent.cpp:555` |
+| `PopupNotifications._isActiveBrowser` | method (runtime) | Also accepts browsers of split-view panel tabs so panel-originated popups show. | `patchPopupNotificationsForSplitView` | `toolkit/modules/PopupNotifications.sys.mjs:1636` |
+| `PanelUI.ensureReady` | method (runtime) | Builds the app menu before Bento anchors it to a sidebar footer button. | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:491` |
+| `PanelUI.panel` | member (runtime) | The app menu popup element, created from kElements during PanelUI.init. | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:43` |
+| `PanelUI.show` | method (runtime) | Fallback that opens the app menu when no sidebar anchor can be built. | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:282` |
+| `PanelUI.hide` | method (runtime) | Toggles the app menu closed when its sidebar button is clicked again. | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:317` |
+| `PanelUI._ensureShortcutsShown` | method (runtime) | Refreshes keyboard-shortcut labels before the app menu opens (optional call). | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:1335` |
+| `PanelMultiView.openPopup` | method (runtime) | Opens native panels (app menu, downloads, identity) at a sidebar anchor. | `openNativeAppMenuFromSidebar`, `openNativeDownloadsPanelFromSidebar`, `openNativeIdentityPopupForSidebar` | `browser/components/customizableui/PanelMultiView.sys.mjs:393` |
+| `PanelMultiView.hidePopup` | method (runtime) | Closes other open panels before the identity popup opens. | `openNativeIdentityPopupForSidebar` | `browser/components/customizableui/PanelMultiView.sys.mjs:417` |
+| `DownloadsButton.getAnchor` | method (runtime) | Automatic downloads panel opens anchor to a sidebar fallback element. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:100` |
+| `DownloadsButton.releaseAnchor` | method (runtime) | Removes the sidebar fallback anchor when Firefox releases the downloads anchor. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:113` |
+| `DownloadsPanel.initialize` | method (runtime, lazy) | Initializes the downloads panel before Bento opens it from the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:79` |
+| `DownloadsPanel.panel` | member (runtime, lazy) | The downloads popup element Bento anchors to the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:174` |
+| `DownloadsPanel.isPanelShowing` | member (runtime, lazy) | Detects an already open downloads panel to focus it instead of reopening. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:234` |
+| `DownloadsPanel.showPanel` | method (runtime, lazy) | Fallback that opens the downloads panel natively when no sidebar anchor exists. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:185` |
+| `DownloadsPanel._focusPanel` | method (runtime, lazy) | Focuses the downloads panel after it opens (optional call). | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:569` |
+| `DownloadsPanel._openedManually` | source (engine only) | Field set before initialize() to mimic a manual open; showPanel assigns it, so no runtime probe. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:190` |
+| `DownloadsPanel._preventFocusRing` | source (engine only) | Field set before initialize() to suppress the focus ring; showPanel assigns it, so no runtime probe. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:191` |
+| `DownloadsView.loading` | member (runtime, lazy) | Bento waits for the downloads view to finish loading before opening the panel. | `waitForDownloadsViewReady` | `browser/components/downloads/content/downloads.js:756` |
+| `DownloadsView._visibleViewItems` | member (runtime, lazy) | Map of visible download items; Bento refreshes each before showing the panel. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:771` |
+| `PrivateDownloadsSubview.openWhenReady` | method (runtime, lazy) | Shows the private-downloads choice subview when the sidebar opens the panel. | `openPrivateDownloadsChoiceIfNeeded` | `browser/components/downloads/content/downloads.js:1839` |
+| `gIdentityHandler._initializePopup` | method (runtime) | Builds the identity popup before Bento anchors it to the sidebar (optional call). | `openNativeIdentityPopupForSidebar` | `browser/base/content/browser-siteIdentity.js:206` |
+| `gIdentityHandler._identityPopup` | member (runtime) | The identity popup element (falls back to getElementById when absent). | `openNativeIdentityPopupForSidebar` | `browser/base/content/browser-siteIdentity.js:254` |
+| `gIdentityHandler.refreshIdentityPopup` | method (runtime) | Refreshes the identity popup contents for the selected tab (optional call). | `openNativeIdentityPopupForSidebar` | `browser/base/content/browser-siteIdentity.js:1037` |
+| `gURLBar.view` | member (runtime) | Bento closes the native urlbar results view when its own address bar opens. | `closeNativeUrlbarPopup` | `browser/components/urlbar/content/UrlbarInput.mjs:370` |
+| `gURLBar.view.close` | method (runtime) | Closes the native urlbar results view (optional call). | `closeNativeUrlbarPopup` | `browser/components/urlbar/content/UrlbarView.mjs:650` |
+| `gURLBar.untrimmedValue` | member (runtime) | Sidebar address row shows the urlbar display value for the selected tab. | `readSidebarAddressDisplayUrl` | `browser/components/urlbar/content/UrlbarInput.mjs:2915` |
+| `gURLBar.value` | member (runtime) | Fallback display value for the sidebar address row. | `readSidebarAddressDisplayUrl` | `browser/components/urlbar/content/UrlbarInput.mjs:2907` |
+| `OpenBrowserWindow` | method (runtime) | Opens an unsynced window; the options bag reaches BrowserWindowTracker.openWindow (patch window-sync/01). | `bentoSyncedWindow` | `browser/base/content/browser.js:1798` |
+| `gContextMenu.linkURL` | source (engine only) | Open in New Panel reads the right-clicked link from the global context menu object. | `installOpenInNewPanelMenuItem` | `browser/base/content/nsContextMenu.sys.mjs:233` |
+| `gContextMenu.onLink` | source (engine only) | Open in New Panel shows only for link targets. | `installOpenInNewPanelMenuItem` | `browser/base/content/nsContextMenu.sys.mjs:244` |
+| `gContextMenu.browser` | source (engine only) | Resolves the panel container the context menu opened in; patch 04 resolves its tab. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/nsContextMenu.sys.mjs:283` |
+| `gContextMenu.targetIdentifier` | source (engine only) | Content DOM reference passed to the devtools inspector for Inspect in Panel. | `installInspectInPanelMenuItems` | `browser/base/content/nsContextMenu.sys.mjs:258` |
+| `PlacesUIUtils.lastContextMenuTriggerNode` | member (runtime, lazy) | Trigger node of the Places context menu, used to read managed-bookmark URLs. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/PlacesUIUtils.sys.mjs:357` |
+| `placesContext._view` | source (engine only) | placesContextShowing stashes the resolved view on the menupopup; Bento reads its selectedNode. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/PlacesUIUtils.sys.mjs:1452` |
+| `searchBookmarks` | source (engine only) | Bento injects a search box into the native bookmarks sidebar and calls its filter function. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.js:144` |
+| `bookmarks-view` | source (engine only) | Tree of the native bookmarks sidebar document that Bento re-queries. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:67` |
+| `sidebar-search-container` | source (engine only) | Container in the bookmarks sidebar document that receives Bento’s search box. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:60` |
+| `search-box` | source (engine only) | Native bookmarks sidebar search input that Bento replaces. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:61` |
+| `browser` | element (runtime) | Root hbox that holds the Bento host elements added by patch chrome-layout/01. | `attachSidebarChromeDivider`, `attachHiddenSidebarHoverZone` | `browser/base/content/browser-box.inc.xhtml:5` |
+| `tabbrowser-tabbox` | element (runtime) | Tabbox that holds tabpanels; Bento tags it as the main panel when no side panels exist. | `unifyMainWithStrip`, `configureSidePanelOnce` | `browser/base/content/browser-box.inc.xhtml:28` |
+| `sidebar` | element (runtime) | Native sidebar <browser>; Bento themes the documents loaded in it. | `syncNativeSidebarChromeTheme`, `attachNativeSidebarChromeThemeSync` | `browser/base/content/browser-box.inc.xhtml:24` |
+| `sidebar-box` | element (runtime) | Native Bookmarks/History sidebar container; Bento drives its width, persistence and splitter feedback. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:12` |
+| `sidebar-splitter` | element (runtime) | Native sidebar splitter whose resize behavior Bento replaces. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:27` |
+| `navigator-toolbox` | element (runtime) | Native toolbox whose separators and offsets Bento adjusts. | `attachSidebarChromeDivider` | `browser/base/content/navigator-toolbox.inc.xhtml:5` |
+| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:106` |
+| `nav-bar-customization-target` | element (runtime) | Toolbar item container observed for placement changes. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:124` |
+| `urlbar` | element (runtime) | Native urlbar; Bento intercepts pointer and focus events on it and opens its own address overlay. | `attachTopUrlbarModalListener` | `browser/base/content/navigator-toolbox.inc.xhtml:178` |
+| `urlbar-input` | source (engine only) | Native urlbar text input; Bento blurs it and opens its own address overlay instead. | `attachTopUrlbarModalListener` | `browser/components/urlbar/content/UrlbarInput.mjs:357` |
+| `stop-reload-button` | source (engine only) | Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:139` |
+| `back-button` | source (engine only) | Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:125` |
+| `forward-button` | source (engine only) | Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:132` |
+| `identity-box` | element (runtime) | Native identity box that Bento reads for security state. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:211` |
+| `identity-icon` | element (runtime) | Native identity icon read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:220` |
+| `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:221` |
+| `identity-popup` | element (runtime) | Native identity panel that Bento opens at a sidebar anchor. | `openNativeIdentityPopupForSidebar` | `browser/components/controlcenter/content/identityPanel.inc.xhtml:6` |
+| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. | `attachBookmarksToolbarAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:538` |
+| `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
+| `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:617` |
+| `placesContext` | element (runtime) | Places context menu that receives Open in New Panel. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:5` |
+| `context-openlink` | source (engine only) | Anchor item after which Open in New Panel is inserted. | `installOpenInNewPanelMenuItem` | `browser/base/content/browser-context.inc.xhtml:99` |
+| `context-openlinkincurrent` | source (engine only) | Fallback anchor item for Open in New Panel. | `installOpenInNewPanelMenuItem` | `browser/base/content/browser-context.inc.xhtml:70` |
+| `context-inspect` | source (engine only) | Native Inspect item that Bento clones as Inspect in Panel. | `installInspectInPanelMenuItems` | `browser/base/content/browser-context.inc.xhtml:450` |
+| `context-inspect-a11y` | source (engine only) | Native accessibility Inspect item that Bento clones as Inspect in Panel. | `installInspectInPanelMenuItems` | `browser/base/content/browser-context.inc.xhtml:446` |
+| `placesContext_open:newcontainertab` | source (engine only) | Preferred anchor for the Places Open in New Panel item. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:28` |
+| `placesContext_openContainer:tabs` | source (engine only) | Fallback anchor for the Places Open in New Panel item. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:36` |
+| `placesContext_openLinks:tabs` | source (engine only) | Fallback anchor for the Places Open in New Panel item. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:41` |
+| `placesContext_open:newwindow` | source (engine only) | Fallback anchor for the Places Open in New Panel item. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:46` |
+| `placesContext_openSeparator` | source (engine only) | Last-resort anchor for the Places Open in New Panel item. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:72` |
+| `moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs` | module (runtime) | Sanitizes clipboard text for the new-tab address suggestion. | `getAddrbarUrlbarUtils` | `browser/components/urlbar/UrlbarUtils.sys.mjs:95` |
+| `UrlbarUtils.sanitizeTextFromClipboard` | source (engine only) | Clipboard sanitizer; Bento falls back to stripping line breaks when it is absent. | `sanitizeClipboardUrlText` | `browser/components/urlbar/UrlbarUtils.sys.mjs:956` |
+| `moz-src:///toolkit/components/search/SearchService.sys.mjs` | module (runtime) | Search engine lookup for one-shot address-bar searches and the search settings API. | `getAddrbarSearchService`, `extensions/bento-tools/experiments/bento-privacy/api.js#SearchService` | `toolkit/components/search/SearchService.sys.mjs:95` |
+| `SearchService.promiseInitialized` | source (engine only) | Awaited before any engine lookup. | `getAddrbarSearchService`, `extensions/bento-tools/experiments/bento-privacy/api.js#ensureSearchReady` | `toolkit/components/search/SearchService.sys.mjs:292` |
+| `SearchService.getEngineById` | source (engine only) | Resolves a search engine by id. | `getAddrbarSearchService`, `extensions/bento-tools/experiments/bento-privacy/api.js#getEngine` | `toolkit/components/search/SearchService.sys.mjs:398` |
+| `SearchService.getDefault` | source (engine only) | Reads the default engine for the search settings. | `extensions/bento-tools/experiments/bento-privacy/api.js#getDefaultSearchEngine` | `toolkit/components/search/SearchService.sys.mjs:179` |
+| `SearchService.getVisibleEngines` | source (engine only) | Lists engines for the search settings. | `extensions/bento-tools/experiments/bento-privacy/api.js#getSearchEngines` | `toolkit/components/search/SearchService.sys.mjs:445` |
+| `SearchService.setDefault` | source (engine only) | Changes the default engine from the search settings. | `extensions/bento-tools/experiments/bento-privacy/api.js#setDefaultSearchEngine` | `toolkit/components/search/SearchService.sys.mjs:193` |
+| `SearchService.setDefaultPrivate` | source (engine only) | Mirrors the default engine into private windows when they share one. | `extensions/bento-tools/experiments/bento-privacy/api.js#setDefaultSearchEngine` | `toolkit/components/search/SearchService.sys.mjs:217` |
+| `SearchService.CHANGE_REASON` | source (engine only) | Reason constant passed to setDefault and setDefaultPrivate. | `extensions/bento-tools/experiments/bento-privacy/api.js#setDefaultSearchEngine` | `toolkit/components/search/SearchService.sys.mjs:104` |
+| `moz-src:///toolkit/components/search/SearchUtils.sys.mjs` | module (runtime) | Fetches engine icons for the search settings. | `extensions/bento-tools/experiments/bento-privacy/api.js#SearchUtils` | `toolkit/components/search/SearchUtils.sys.mjs:150` |
+| `SearchUtils.fetchIcon` | source (engine only) | Fetches an engine icon over a privileged channel. | `extensions/bento-tools/experiments/bento-privacy/api.js#iconUrlToDataUrl` | `toolkit/components/search/SearchUtils.sys.mjs:578` |
+| `SearchEngine.getIconURL` | source (engine only) | Reads an engine icon URL (optional call). | `extensions/bento-tools/experiments/bento-privacy/api.js#getEngineIconUrl` | `toolkit/components/search/SearchEngine.sys.mjs:1576` |
+| `resource:///modules/MigrationUtils.sys.mjs` | module (runtime, lazy) | Opens the migration wizard from the welcome flow. | `showEmbeddedBrowserImportFromWelcome`, `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:1206` |
+| `MigrationUtils.showMigrationWizard` | source (engine only) | Shows the migration wizard with the NEWTAB entrypoint. | `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:593` |
+| `resource:///modules/ExtensionsUI.sys.mjs` | module (runtime) | Bento re-subscribes ExtensionsUI to the permission-prompt topics when startup missed them. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:65` |
+| `ExtensionsUI observer topics` | source (engine only) | The four webextension-*-prompt topics ExtensionsUI observes; Bento adds the observer for each if missing. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:73` |
+| `resource:///modules/sessionstore/SessionStore.sys.mjs` | module (runtime) | Workspace assignment is stored as a custom tab value. | `getSessionStore` | `browser/components/sessionstore/SessionStore.sys.mjs:225` |
+| `resource://gre/modules/Extension.sys.mjs` | module (runtime) | Management.global.windowTracker resolves the WebExtension window id of a chrome window. | `getChromeWindowId` | `toolkit/components/extensions/Extension.sys.mjs:171` |
+| `resource://gre/modules/ExtensionParent.sys.mjs` | module (runtime) | ExtensionParent.apiManager.global.tabTracker maps WebExtension tab ids to tab elements. | `getTabTracker`, `getBentoTabTracker` | `toolkit/components/extensions/ExtensionParent.sys.mjs:2562` |
+| `apiManager.global.{tabTracker,windowTracker}` | source (engine only) | ext-browser.js publishes the trackers on the extension API global; Bento reads them from there. | `getTabTracker`, `getBentoTabTracker`, `getChromeWindowId` | `browser/components/extensions/parent/ext-browser.js:787` |
+| `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
+| `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
+| `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId` | `toolkit/components/extensions/parent/ext-tabs-base.js:1820` |
+| `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime, lazy) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
+| `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
+| `DevToolsShim.on` | source (engine only) | Waits for the toolbox-ready event of the toolbox opened in a panel. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:135` |
+| `DevToolsShim.off` | source (engine only) | Removes the toolbox-ready listener. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:150` |
+| `about:devtools-toolbox?type=tab&id=&tool=` | source (engine only) | Bento opens the toolbox for a browser id in a panel tab through this URL. | `openDevtoolsPanelFor` | `devtools/client/framework/commands-from-url.js:61` |
+| `about:devtools-toolbox tool parameter` | source (engine only) | The tool query parameter selects the initial devtools tool. | `openDevtoolsPanelFor` | `devtools/client/framework/toolbox-init.js:95` |
+| `Toolbox.hostType` | source (engine only) | Identifies the page-hosted toolbox. | `matchingLivePageToolbox`, `openDevtoolsPanelFor` | `devtools/client/framework/toolbox.js:602` |
+| `Toolbox.isDestroying` | source (engine only) | Skips half-destroyed toolboxes. | `matchingLivePageToolbox` | `devtools/client/framework/toolbox.js:4398` |
+| `Toolbox.commands` | source (engine only) | Reaches descriptorFront.browserId, the root client and the target front. | `matchingLivePageToolbox`, `selectNodeInToolbox` | `devtools/client/framework/toolbox.js:342` |
+| `Toolbox.selectTool` | source (engine only) | Switches the toolbox to the inspector or accessibility tool. | `selectNodeInToolbox` | `devtools/client/framework/toolbox.js:3128` |
+| `Toolbox.getCurrentPanel` | source (engine only) | Reads the accessibility panel to select the inspected node. | `selectNodeInToolbox` | `devtools/client/framework/toolbox.js:580` |
+| `inspectorFront.getNodeActorFromContentDomReference` | source (engine only) | Turns the context-menu DOM reference into a node front (same call Firefox makes). | `selectNodeInToolbox` | `devtools/client/framework/devtools.js:892` |
+| `Selection.setNodeFront` | source (engine only) | Selects the inspected node in the inspector. | `selectNodeInToolbox` | `devtools/client/framework/selection.js:190` |
+| `AccessibilityPanel.selectAccessibleForNode` | source (engine only) | Selects the inspected node in the accessibility panel. | `selectNodeInToolbox` | `devtools/client/accessibility/panel.js:255` |
+| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. | `registerContentKeyActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild` | `browser/actors/moz.build:95` |
+| `chrome://global/content/preferences/Preferences.mjs` | source (engine only) | Bento settings are Preferences settings; registered in toolkit/content/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#Preferences.mjs` | `toolkit/content/jar.mn:66` |
+| `Preferences.addSetting` | source (engine only) | Registers each Bento setting with the Preferences framework. | `patches/core-ui/15-bento-native-preferences.patch#addSetting` | `toolkit/content/preferences/Preferences.mjs:98` |
+| `Preferences.AsyncSetting` | source (engine only) | Base class of Bento settings that read and write through the extension bridge. | `patches/core-ui/15-bento-native-preferences.patch#AsyncSetting` | `toolkit/content/preferences/Preferences.mjs:426` |
+| `chrome://browser/content/preferences/config/SettingGroupManager.mjs` | source (engine only) | Bento setting groups register here; registered in browser/components/preferences/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager` | `browser/components/preferences/jar.mn:51` |
+| `SettingGroupManager.registerGroups` | source (engine only) | Adds the Bento setting groups to the Settings page. | `patches/core-ui/15-bento-native-preferences.patch#registerGroups` | `browser/components/preferences/config/SettingGroupManager.mjs:64` |
+| `CONFIG_PANES` | source (engine only) | Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object. | `patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES` | `browser/components/preferences/preferences.js:243` |
+| `gotoPref` | source (engine only) | Navigates between the Bento settings subpanes. | `patches/core-ui/15-bento-native-preferences.patch#gotoPref` | `browser/components/preferences/preferences.js:717` |
+| `chrome://global/content/elements/moz-box-group.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-group` | `toolkit/content/jar.mn:112` |
+| `chrome://global/content/elements/moz-box-item.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-item` | `toolkit/content/jar.mn:118` |
+| `chrome://global/content/elements/moz-button.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-button` | `toolkit/content/jar.mn:122` |
+| `chrome://global/content/elements/moz-input-number.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-input-number` | `toolkit/content/jar.mn:138` |
+| `chrome://global/content/elements/moz-input-search.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-input-search` | `toolkit/content/jar.mn:140` |
+| `chrome://global/content/reader/moz-slider.mjs` | source (engine only) | Slider element module imported by the Bento settings config; registered in the reader jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#moz-slider` | `toolkit/components/reader/jar.mn:8` |
+
+<!-- firefox-compat:end -->
+<!-- prettier-ignore-end -->
