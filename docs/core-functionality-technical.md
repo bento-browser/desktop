@@ -2124,11 +2124,21 @@ only port to `bento-tools` and relays events and actions both ways.
   answers each request with a snapshot broadcast to every document.
 - Chrome forwarding is order independent: the sidebar writes `BENTO_PANELS`
   only for its window's active workspace, which it learns from the workspace
-  snapshot. A replayed `panels/sync` can arrive first, while that workspace is
-  still unknown, so the sidebar holds the latest one per workspace
-  (`heldPanelsSync` in `bridge/useToolsPort.ts`) and forwards the matching one
-  when `workspaces/snapshot` or `workspaces/changed` makes the workspace
-  known. Held syncs for other workspaces are discarded.
+  snapshot, and the payload embeds the settings snapshot (every settings field
+  `handlePanelsTitle` in `bento-shell-mount.js` reads: `uiColorMode`,
+  `sidebarCollapsed`, `sidebarHidden`, `sidebarShortcutBehavior`,
+  `defaultPanelWidthPx`, `customPanelSizes`, `panelCycleWraparound`,
+  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`) and the
+  workspace theme. A replayed `panels/sync` can arrive before any of them, so
+  the sidebar keeps the latest incomplete sync per workspace
+  (`pendingPanelsSync` in `bridge/useToolsPort.ts`): held while the active
+  workspace is unknown, or kept after a forward that went out before settings
+  had hydrated. `workspaces/snapshot`, `workspaces/changed`, and
+  `settings/snapshot` or `settings/changed` re-forward the pending sync for the
+  active workspace, so the last write always carries the full payload. A
+  forward with every input present clears the entry, so live boot and later
+  settings changes (which tools answers with its own `panels/sync`) write
+  nothing extra. Pending syncs for other workspaces are discarded.
 - Cache pruning: the background drops a workspace's cached `panels/sync` on a
   `workspaces/changed` removal delta and on any `workspaces/snapshot` that
   lacks it, so replays never resurrect deleted workspaces.
@@ -2167,11 +2177,15 @@ Bus bootstrap pitfalls:
   joiner is already ready when the replayed `panels/sync` messages arrive, and
   they are its only source of panel state for non-active workspaces.
 - Do not drop a `panels/sync` because the sidebar's active workspace is still
-  null. Hello replays are targeted, so no later overlay's `hello` re-broadcasts
-  panels, and chrome would keep showing main only until the next panel change
-  or workspace switch. Hold the sync and forward it when the workspace becomes
-  known (covered by `bridge/busBootstrap.test.ts`, "sidebar forwarding of
-  panels to chrome").
+  null, and do not forward it once and forget it. Hello replays are targeted,
+  so no later overlay's `hello` re-broadcasts panels, and chrome would keep
+  showing main only until the next panel change or workspace switch. The
+  forwarded `BENTO_PANELS` payload must be re-sent when any of its inputs
+  hydrate (active workspace, settings, workspace theme): a forward that beat
+  the settings snapshot left `sidebarHidden`, custom size presets, and panel
+  cycle wraparound at chrome defaults, because settings hydration sent no
+  replacement. Covered for all six arrival orders by
+  `bridge/busBootstrap.test.ts`, "sidebar forwarding of panels to chrome".
 - Do not put a timer in front of `emitPanelsSync`. Callers time follow-up work
   against the emit (the 80 ms delay before closing the old main tab after a
   panel promotion), and chrome reconciles against stale panel payloads if the

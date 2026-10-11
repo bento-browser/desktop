@@ -73,11 +73,11 @@ class FakeBroadcastChannel {
 
 const WORKSPACE_IDS = ['ws-1', 'ws-2'];
 
-function panelsSync(workspaceId: string): Event {
+function panelsSync(workspaceId: string, tabId = 1): Event {
   return {
     type: 'panels/sync',
     workspaceId,
-    panels: [{ tabId: 1, url: 'https://example.com' }],
+    panels: [{ tabId, url: 'https://example.com' }],
     layout: { root: [] },
     panelStatusByTabId: {},
   };
@@ -89,6 +89,7 @@ function createFakeTools() {
   const requests: string[] = [];
   let workspaceIds = [...WORKSPACE_IDS];
   let activeId: string | null | undefined;
+  let settings = {} as BentoSettings;
   const activeIdByWindow: Record<number, string> = {};
 
   const emit = (event: Event) => {
@@ -120,7 +121,7 @@ function createFakeTools() {
     }),
     'settings/requestSnapshot': (): Event => ({
       type: 'settings/snapshot',
-      settings: {} as BentoSettings,
+      settings,
     }),
     'pinnedPanels/requestSnapshot': (): Event => ({ type: 'pinnedPanels/snapshot', entries: [] }),
     'tabFolders/requestSnapshot': (): Event => ({ type: 'tabFolders/snapshot', folders: [] }),
@@ -153,6 +154,10 @@ function createFakeTools() {
     /** Gives a window its own active workspace in every later snapshot. */
     assignWindow(windowId: number, workspaceId: string): void {
       activeIdByWindow[windowId] = workspaceId;
+    },
+    /** Replaces the settings every later snapshot carries. */
+    setSettings(next: BentoSettings): void {
+      settings = next;
     },
     /** Overrides the global fallback workspace (default: the first one). */
     setGlobalActive(workspaceId: string | null): void {
@@ -283,8 +288,28 @@ describe('shell bus bootstrap', () => {
 
   describe('sidebar forwarding of panels to chrome', () => {
     const WINDOW_ID = 7;
+    /** Every settings field the chrome BENTO_PANELS consumer reads
+     * (handlePanelsTitle in bento-shell-mount.js), with non-default values. */
+    const CHROME_SETTINGS = {
+      uiColorMode: 'dark',
+      sidebarCollapsed: true,
+      sidebarHidden: true,
+      sidebarShortcutBehavior: 'hide',
+      defaultPanelWidthPx: 555,
+      customPanelSizes: [333, 444],
+      panelCycleWraparound: true,
+      panelShadowsEnabled: false,
+      panelCornerRadiusPx: 9,
+      panelSplitterSizePx: 5,
+    } satisfies Partial<BentoSettings>;
+    const persistedSettings = CHROME_SETTINGS as BentoSettings;
+    type ChromePanels = {
+      workspaceId: string;
+      windowId?: number;
+      panels: unknown[];
+    } & Partial<typeof CHROME_SETTINGS>;
     /** Every BENTO_PANELS title the sidebar wrote, decoded. */
-    let chromePanels: Array<{ workspaceId: string; windowId?: number; panels: unknown[] }>;
+    let chromePanels: ChromePanels[];
 
     beforeEach(() => {
       chromePanels = [];
@@ -297,14 +322,21 @@ describe('shell bus bootstrap', () => {
       });
     });
 
-    it('forwards once for a late sidebar whose cached panels arrive before its workspace', async () => {
+    it('forwards the active workspace with settings to a late sidebar whose cached panels arrive first', async () => {
       tools.assignWindow(WINDOW_ID, 'ws-2');
+      tools.setSettings(persistedSettings);
       tools.boot();
 
       await joinDocument({ sidebarWindowId: WINDOW_ID });
 
-      expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
-      expect(chromePanels[0]).toMatchObject({ windowId: WINDOW_ID, panels: [{ tabId: 1 }] });
+      expect(new Set(chromePanels.map(({ workspaceId }) => workspaceId))).toEqual(
+        new Set(['ws-2']),
+      );
+      expect(chromePanels.at(-1)).toMatchObject({
+        windowId: WINDOW_ID,
+        panels: [{ tabId: 1 }],
+        ...CHROME_SETTINGS,
+      });
     });
 
     it('forwards a held replay when the window is assigned a workspace afterwards', async () => {
@@ -329,6 +361,47 @@ describe('shell bus bootstrap', () => {
       tools.boot();
 
       expect(chromePanels.map(({ workspaceId }) => workspaceId)).toEqual(['ws-2']);
+    });
+
+    // A late sidebar in an assigned window can see these three arrive in any
+    // order: bento-tools sends them as separate events and the replayed
+    // panels race the snapshots.
+    it.each([
+      ['panels', 'workspace', 'settings'],
+      ['panels', 'settings', 'workspace'],
+      ['workspace', 'panels', 'settings'],
+      ['workspace', 'settings', 'panels'],
+      ['settings', 'panels', 'workspace'],
+      ['settings', 'workspace', 'panels'],
+    ] as const)('converges on the active workspace and settings: %s, %s, %s', async (...order) => {
+      const arrivals: Record<(typeof order)[number], Event[]> = {
+        panels: [panelsSync('ws-1', 1), panelsSync('ws-2', 2)],
+        workspace: [
+          {
+            type: 'workspaces/snapshot',
+            workspaces: WORKSPACE_IDS.map((id, index) => ({ id, name: id, createdAt: index })),
+            activeId: 'ws-1',
+            activeIdByWindow: { [WINDOW_ID]: 'ws-2' },
+          },
+        ],
+        settings: [{ type: 'settings/snapshot', settings: persistedSettings }],
+      };
+      await joinDocument({ sidebarWindowId: WINDOW_ID });
+      const sidebar = bus.channels.at(-1);
+      if (!sidebar) throw new Error('sidebar did not connect');
+
+      for (const step of order) {
+        for (const event of arrivals[step]) {
+          bus.queue.push({ to: sidebar, data: { kind: 'event', event } });
+          bus.drain();
+        }
+      }
+
+      expect(chromePanels.length).toBeGreaterThan(0);
+      expect(chromePanels.every(({ workspaceId }) => workspaceId === 'ws-2')).toBe(true);
+      expect(chromePanels.at(-1)).toMatchObject({ panels: [{ tabId: 2 }], ...CHROME_SETTINGS });
+      // A re-forward must carry something new, never repeat the last write.
+      chromePanels.slice(1).forEach((write, i) => expect(write).not.toEqual(chromePanels[i]));
     });
   });
 });

@@ -87,10 +87,12 @@ interface BusState {
   /** Identifies this document's `hello`. The background tags its bootstrap
    * replay with it so only the joining document applies the replay. */
   helloId: string;
-  /** Sidebar only: latest panels/sync per workspace that arrived while this
-   * window's active workspace was still unknown (see the panels/sync case).
-   * Drained by forwardHeldPanelsToChrome once workspaces hydrate. */
-  heldPanelsSync: Map<string, PanelsSyncEvent>;
+  /** Sidebar only: latest panels/sync per workspace that chrome has not
+   * received in full yet: held while this window's active workspace is
+   * unknown, or forwarded before the settings (or workspace theme) it embeds
+   * had hydrated. Re-forwarded by forwardPendingPanelsToChrome once the
+   * missing input arrives, whichever order the events come in. */
+  pendingPanelsSync: Map<string, PanelsSyncEvent>;
 }
 
 function readWindowIdFromHash(): number | null {
@@ -116,7 +118,7 @@ const state: BusState = {
   sidePanelTitleBridge: false,
   windowId: readWindowIdFromHash(),
   helloId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-  heldPanelsSync: new Map(),
+  pendingPanelsSync: new Map(),
 };
 const subscribers = new Set<() => void>();
 
@@ -137,7 +139,8 @@ function markToolsReady() {
 
 /** Writes one workspace's panels/sync to chrome as a BENTO_PANELS title.
  * Callers have already decided the event belongs to this window's active
- * workspace. */
+ * workspace. The payload embeds settings and the workspace theme, so an event
+ * written before they hydrated stays pending for one re-forward. */
 function forwardPanelsToChrome(event: PanelsSyncEvent): void {
   const wsState = useWorkspacesStore.getState();
   const payload: {
@@ -200,6 +203,11 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
   // writes (the COLOR_MODE channel was dropped earlier for
   // this reason).
   const cur = useSettingsStore.getState().current;
+  if (cur !== null && (event.themeId !== undefined || activeWorkspace !== undefined)) {
+    state.pendingPanelsSync.delete(event.workspaceId);
+  } else {
+    state.pendingPanelsSync.set(event.workspaceId, event);
+  }
   const bootUiColorMode =
     document.documentElement.getAttribute('data-bento-color-mode-pref') ??
     document.documentElement.getAttribute('data-color-mode');
@@ -265,16 +273,17 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
   document.title = `BENTO_PANELS:${Date.now()}:${b64}`;
 }
 
-/** Forwards the held panels/sync for this window's workspace once workspace
- * hydration has made it known, and drops the rest (other workspaces never
- * reach chrome). Safe to call after any workspaces update. */
-function forwardHeldPanelsToChrome(): void {
-  if (state.heldPanelsSync.size === 0) return;
+/** Forwards the pending panels/sync for this window's workspace once the
+ * workspace is known, and drops the rest (other workspaces never reach
+ * chrome). forwardPanelsToChrome keeps the event pending while an input is
+ * still missing, so call this after every workspaces and settings update. */
+function forwardPendingPanelsToChrome(): void {
+  if (state.pendingPanelsSync.size === 0) return;
   const activeId = selectActiveIdForWindow(useWorkspacesStore.getState(), state.windowId);
   if (activeId === null) return;
-  const held = state.heldPanelsSync.get(activeId);
-  state.heldPanelsSync.clear();
-  if (held) forwardPanelsToChrome(held);
+  const pending = state.pendingPanelsSync.get(activeId);
+  state.pendingPanelsSync.clear();
+  if (pending) forwardPanelsToChrome(pending);
 }
 
 function ensureConnection(): void {
@@ -327,11 +336,11 @@ function ensureConnection(): void {
         useWorkspacesStore
           .getState()
           .applySnapshot(event.workspaces, event.activeId, event.activeIdByWindow);
-        forwardHeldPanelsToChrome();
+        forwardPendingPanelsToChrome();
         return;
       case 'workspaces/changed':
         useWorkspacesStore.getState().applyDeltas(event.deltas);
-        forwardHeldPanelsToChrome();
+        forwardPendingPanelsToChrome();
         return;
       case 'settings/snapshot':
       case 'settings/changed':
@@ -346,7 +355,11 @@ function ensureConnection(): void {
         // user manually triggers a fresh panels/sync (workspace switch).
         // Instead bento-tools' settings.onChange fires emitPanelsSync,
         // which produces a fresh BENTO_PANELS title carrying the new
-        // uiColorMode — single channel, no race.
+        // uiColorMode — single channel, no race. The one case tools'
+        // emit cannot cover is a late sidebar whose panels were forwarded
+        // before its first settings snapshot; that payload is pending and
+        // goes out again now.
+        forwardPendingPanelsToChrome();
         return;
       case 'panels/sync': {
         usePanelsStore.getState().apply(
@@ -384,14 +397,13 @@ function ensureConnection(): void {
             state.windowId !== null &&
             event.windowId === state.windowId;
           if (event.workspaceId === activeId || (isTargetedAtThisWindow && activeId === null)) {
-            state.heldPanelsSync.delete(event.workspaceId);
             forwardPanelsToChrome(event);
           } else if (activeId === null) {
             // This window's workspace isn't known yet (late bootstrap: the
             // cached replay beats the workspace snapshot). Hold the latest
             // sync per workspace; workspace hydration forwards the one that
             // matches. Without this the replay is dropped for good.
-            state.heldPanelsSync.set(event.workspaceId, event);
+            state.pendingPanelsSync.set(event.workspaceId, event);
           }
         }
         return;
