@@ -2171,8 +2171,9 @@ suffix. The chrome receive path and the
 `eslint.config.mjs`) rejects `document.title =` anywhere under
 `extensions/bento-shell/src` except the writer.
 
-The ordering rests on Firefox 154 engine behavior (also listed in
-`docs/firefox-core-touchpoints.md`): `Document::NotifyPossibleTitleChange`
+The ordering rests on Firefox engine behavior (also listed in
+`docs/firefox-core-touchpoints.md`; the functions named here are byte-identical in the
+154.0 and 157.0.1 sources): `Document::NotifyPossibleTitleChange`
 (`dom/base/Document.cpp`) dispatches the report runnable synchronously from the
 title write, and `DoNotifyPossibleTitleChange` reads the title when it runs;
 `MessagePort::Dispatch` (`dom/messagechannel/MessagePort.cpp`) dispatches the
@@ -2689,7 +2690,7 @@ identity. The current renderer drives Firefox's native split-view machinery:
 
 1. Resolve `panels/sync` tab ids to real `gBrowser` tab elements with
    `ExtensionParent`'s tab tracker.
-2. Materialize pending/lazy restored tabs with `gBrowser._insertBrowser(tab)`
+2. Materialize pending/lazy restored tabs with `gBrowser.insertBrowser(tab)`
    when needed.
 3. Build the render list as `[gBrowser.selectedTab, ...workspacePanelTabs]`.
 4. Assign a Bento `tab.splitview` marker to every tab that must stay active.
@@ -2720,7 +2721,7 @@ The following mechanisms are load-bearing:
 - `preserveLayers(true)` must happen before deactivating departing panel
   browsers, or returning panels can paint blank for a frame.
 - `.split-view-panel-active` must be removed from departing panels, or a stale
-  class produces ghost overlays. Firefox 154's `removeTabsFromSplitview` removes
+  class produces ghost overlays. Firefox's `removeTabsFromSplitview` removes
   both `.split-view-panel` and `.split-view-panel-active`, so the reconciler only
   calls it. The old `MozTabpanels.setSplitViewPanelActive` helper no longer
   exists; do not call it.
@@ -2735,7 +2736,7 @@ The following mechanisms are load-bearing:
   promotes the side panel into the main slot and reorders the strip.
 
 Every private Firefox member these shims touch (`on_visibilitychange`,
-`_beginRemoveTab`, `_findTabToBlurTo`, `_insertBrowser`, the `isEmpty` and
+`_findTabToBlurTo`, `insertBrowser`, the `isEmpty` and
 `splitview` tab getters, `activeSplitView`, the `TabSplitView*` handlers,
 `splitViewPanels`, `removeTabsFromSplitview`, `PopupNotifications._isActiveBrowser`,
 and the rest) is an entry in the firefox-compat registry
@@ -2776,11 +2777,11 @@ adds its entry, and its id in the mount probe list, in the same change.
   property must be a function, and one found as an accessor counts as present
   because checking it would mean calling the getter. The same run printed
   `Firefox 0.0.1`: the summary line uses `Services.appinfo.platformVersion`
-  (`154.0`), not Bento's app version. The tests build fixtures whose members are
+  (`157.0.1`), not Bento's app version. The tests build fixtures whose members are
   prototype accessors that throw if invoked; keep new fixtures in that shape,
   because a data-property fixture hides this bug.
 - The private-member scan follows local aliases such as
-  `const gb = window.gBrowser;` (`reattachTabProgressFilters` reaches
+  `const gb = window.gBrowser;` (the former `reattachTabProgressFilters` reached
   `_getTabProgressFilter` only through `gb`, which the direct-access scan
   missed). It does not follow destructuring, parameters, bracket access, or
   helper return values; register those members by hand.
@@ -2806,8 +2807,11 @@ adds its entry, and its id in the mount probe list, in the same change.
   browser status filter on remoteness change, so the filter stays on the
   discarded BrowsingContext. Source of truth: Tabbrowser's private
   `#tabFilters` / `#tabListeners` maps (the filter keeps its
-  `TabProgressListener`; only the filter-to-webProgress link is lost), read
-  through `gBrowser._getTabProgressFilter(tab)`. Symptoms in every window:
+  `TabProgressListener`; only the filter-to-webProgress link is lost). Firefox
+  154 exposed the filter through `gBrowser._getTabProgressFilter(tab)`, which
+  let Bento re-add it; Firefox 157 (module `Tabbrowser.sys.mjs`) removed the
+  accessor, so no re-attach is possible and the `moveBefore` move is the only
+  protection. Symptoms in every window:
   the first tab gets no `onLocationChange` / `onStateChange`, the
   `WillChangeBrowserRemoteness` handler throws, and `Tabbrowser.destroy()` on
   window close throws `NS_ERROR_FAILURE [nsIWebProgress.removeProgressListener]`
@@ -2820,18 +2824,16 @@ adds its entry, and its id in the mount probe list, in the same change.
   `NotFoundError`), falling back to `insertBefore` if `moveBefore` is missing or
   throws. `XULFrameElement` and `MozBrowser.connectedMoveCallback` skip
   frameloader teardown on a move, so the first tab keeps its BrowsingContext and
-  filter. `configureSidePanelOnce()` still calls `reattachTabProgressFilters()`
-  right after the moves as a safety net for the `insertBefore` fallback: it
-  re-adds each tab's filter to `tab.linkedBrowser.webProgress` with
-  `NOTIFY_ALL`, and is a no-op (`NS_ERROR_FAILURE`, already attached) when the
-  filter survived. Any other move of a tab panel or `<browser>` must use
-  `moveBefore` and re-attach after a fallback. The legacy subdivision and
-  promotion paths still use `insertBefore` / `appendChild` on tab panels
-  (`applySubdivisions` parent and bottom containers, `detachSubPanelsBeforeParentRemoval`,
-  and the nested-panel promotion in `reconcilePanelsSplitView`). They are
-  inactive in the flat renderer (`currentSubdivisions` is only ever assigned an
-  empty `Map`), but if reactivated they would strand filters and must move to
-  `moveNodeBefore()` plus a re-attach. Manual check: open several windows and
+  filter. The `insertBefore` fallback in `moveNodeBefore()` would strand the filter
+  for good on 157 (the former `reattachTabProgressFilters()` safety net is
+  gone), so any other move of a tab panel or `<browser>` must use `moveBefore`.
+  The legacy subdivision and promotion paths still use `insertBefore` /
+  `appendChild` on tab panels (`applySubdivisions` parent and bottom containers,
+  `detachSubPanelsBeforeParentRemoval`, and the nested-panel promotion in
+  `reconcilePanelsSplitView`). They are inactive in the flat renderer
+  (`currentSubdivisions` is only ever assigned an empty `Map`), but if
+  reactivated they would strand filters and must move to `moveNodeBefore()`.
+  Manual check: open several windows and
   confirm, with a `browsing-context-attached` / `browsing-context-discarded`
   observer registered in the Browser Toolbox Console before opening a window,
   that the new window's first tab logs one attach, no discard, and the same
@@ -2841,13 +2843,61 @@ adds its entry, and its id in the mount probe list, in the same change.
   update; then close each window and confirm no `Tabbrowser.destroy` or
   `removeProgressListener` error.
 - The `removeProgressListener` suppressors (the capture-phase window `error`
-  filter, the `<browser>` prototype `removeProgressListener` guard, and the
-  `_beginRemoveTab` wrapper in `bento-shell-mount.js`) predate the progress
+  filter and the `<browser>` prototype `removeProgressListener` guard in
+  `bento-shell-mount.js`; the `_beginRemoveTab` wrapper that used to be a third
+  went away with the Firefox 157 tab-closing change below) predate the progress
   filter fix. They may be removable once the `moveBefore` relocation and
   re-attach are verified across window close, tab close, and split-view panel
   moves. Follow-up, not part of
   the re-attach change; remove them one at a time and watch the console for the
   errors above.
+- Closing the selected tab (Firefox 157). Firefox's `#beginRemoveTab` is now a
+  true-private method of the `Tabbrowser.sys.mjs` module class, so Bento cannot
+  wrap it. It runs `#blurTab`, which selects the successor and fires `TabSelect`
+  (and the tabpanels `select` event), and only afterwards, in the same
+  synchronous run, sets `tab.closing = true`. A reconcile run inside those events
+  still sees the closing tab and renders it as a ghost strip panel. The
+  reconcile in `bento-shell-mount.js` therefore queues one microtask per
+  selection signal (`reconcile` sets a flag, `runReconcile` runs after
+  `#beginRemoveTab` returns and reads the final `selectedTab`); signals for one
+  change coalesce. The workspace's last-tab policy is unchanged: it lives in
+  `bento-tools` (`tabs.onRemoved`), and patch `window-sync/03` keeps Firefox's
+  `closeWindowWithLastTab` false. Manual check: close the selected sidebar tab,
+  a multi-selection, and the last tab of a workspace; the render list passed to
+  `showSplitViewPanels` after `TabClose` must not contain the closing tab and no
+  ghost strip panel may appear. If a future Firefox awaits between `#blurTab`
+  and `closing = true`, switch to waiting for `TabClose`; a Firefox patch is the
+  last resort.
+- Firefox 157 moved `tabbrowser.js` into the module `Tabbrowser.sys.mjs`: the
+  window is `this.documentGlobal`, members are module-private (`#tabFilters`,
+  `#beginRemoveTab`), and `insertBrowser` is public (was `_insertBrowser`).
+  Patch hunks that target tabbrowser code belong in the module file
+  (`window-sync/02`, `window-sync/03`, `core-ui/06`); `TabBarVisibility` lives in
+  `tab-bar-visibility.js` (`core-ui/02`). `UrlbarUtils.sanitizeTextFromClipboard`
+  moved to `UrlbarShared` (`chrome://browser/content/urlbar/UrlbarShared.mjs`),
+  and SessionStore is imported from
+  `moz-src:///browser/components/sessionstore/SessionStore.sys.mjs`.
+- `Services.scriptloader.loadSubScript` rejects `moz-extension:`, `file:` and
+  `jar:` URLs in Firefox 157 unless the caller passes `allowUnsafeURL: true`.
+  The `bento-native-preferences` experiment loads two extension scripts, so it
+  uses `loadSubScriptWithOptions(url, { target, allowUnsafeURL: true })`; without
+  it `bento-tools` fails to start ("Trying to load untrusted URI").
+- Firefox 157 delivers `resize` events from in-process `about:` pages (Settings)
+  to the chrome window's bubbling `resize` listener. `attachWindowResizePerfMode`
+  ignores events whose `target` is not the window. Without that guard, freezing a
+  Settings browser at its rounded geometry resized the page, the page fired
+  `resize`, and the freeze and thaw cycle re-ran every 300 ms; `moz-select`'s
+  `panel-list` hides itself on any `resize`, so Settings dropdowns closed as soon
+  as they opened. Manual check: open `about:preferences#bento`, confirm the
+  browser element has no `bento-settings-about-live-resize-frozen` mutations
+  while idle, click a `moz-select` (it must stay open; Escape closes it), and
+  resize the window (the attribute must appear and clear once).
+- `prefs/bento.js` sets `browser.nova.enabled` and `sidebar.revamp` to false.
+  Firefox 157 defaults both to true; Bento keeps the 154 chrome because its shell
+  owns the sidebar and tab strip. No upgrade migration
+  writes a user value for either pref, so plain defaults hold; use `lockPref`
+  only if a future migration does. `browser.search.separatePrivateDefault` is
+  now `browser.search.separatePrivateDefault.enabled`.
 - Do not register nested sub-panels directly in `splitViewPanels`. Firefox
   assumes split-view panels are direct children of `tabpanels`.
 - Do not put inter-panel splitter elements directly in `tabpanels`. XUL deck
@@ -3912,7 +3962,7 @@ When changing core functionality, manually verify at least the affected subset:
   positions restored;
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
-  version, for example `154.0`) and no `[bento-compat] missing` lines.
+  version, for example `157.0.1`) and no `[bento-compat] missing` lines.
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.

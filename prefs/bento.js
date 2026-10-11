@@ -147,7 +147,7 @@ pref("browser.gesture.swipe.right", "");
 // Native split-view UI is hidden via patches/window-sync/04-splitview-
 // disable.patch — each of Firefox's three `browser.tabs.splitView.enabled`
 // read sites is hardcoded to false:
-//   - tabbrowser.js: tab context menu's "Move Tab to Split View",
+//   - tab-context-menu.js: tab context menu's "Move Tab to Split View",
 //     "Separate Tabs", "Reverse Tab Order" entries
 //   - nsContextMenu.sys.mjs: link context menu's "Open in Split View"
 //   - tab.js: alt-click-to-split on tab elements
@@ -166,7 +166,7 @@ pref("browser.gesture.swipe.right", "");
 // by default; Cmd+Shift+Alt+N and tab tear-out always produce
 // unsynced windows with the opener's container inherited.
 
-// Last-tab close behaviour is patched directly into tabbrowser.js (see
+// Last-tab close behaviour is patched directly into Tabbrowser.sys.mjs (see
 // patches/window-sync/03-tabbrowser-close-last-tab.patch) instead of going
 // through browser.tabs.closeWindowWithLastTab. bento-tools' tabs.onRemoved
 // handler is the sole authority on what happens when the last tab in a

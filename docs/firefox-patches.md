@@ -125,7 +125,7 @@ pnpm run firefox:sync
 
 When the target is newer than the version in `bento.json`, obtain its trusted
 SHA-256 from Mozilla's per-release
-[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/157.0.1/SHA256SUMS)
 file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`.
 Use the row for
 `source/firefox-<target-version>.source.tar.xz` and pass the 64-character digest

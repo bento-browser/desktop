@@ -84,7 +84,7 @@ update with patch-stack validation, import, and a build. A newer version needs a
 trusted Mozilla source digest first. Mozilla publishes the target version in
 [`firefox_versions.json`](https://product-details.mozilla.org/1.0/firefox_versions.json)
 and the archive digest in the per-release
-[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/157.0.1/SHA256SUMS)
 file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`;
 copy the 64-character value from the line for
 `source/firefox-<target-version>.source.tar.xz`, then run:
