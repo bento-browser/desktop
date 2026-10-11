@@ -1,4 +1,4 @@
-From cce21f1337acfb957c9d7c08c526644b72c8429c Mon Sep 17 00:00:00 2001
+From bb3a31a345565338af8dd9bda08c2b32025b5156 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:42 +1000
 Subject: [PATCH] Add mach build hang guards
@@ -12,10 +12,10 @@ Subject: [PATCH] Add mach build hang guards
  5 files changed, 20 insertions(+), 9 deletions(-)
 
 diff --git a/build/mach_initialize.py b/build/mach_initialize.py
-index a968553ab29808aed7d4264be9612b6c64a9e986..419499bf4d1383bc3115a47487540430df869f9f 100644
+index fb0170ba89e4994ec41e35eeed9b01da0caf09a8..cbc4322f993d9028ddc38055dc14c32bfd31f795 100644
 --- a/build/mach_initialize.py
 +++ b/build/mach_initialize.py
-@@ -290,7 +290,7 @@ def initialize(topsrcdir, args=()):
+@@ -298,7 +298,7 @@ def initialize(topsrcdir, args=()):
  
          # Wait for the background telemetry initialization to complete
          if context._telemetry_init_done is not None:
@@ -25,10 +25,10 @@ index a968553ab29808aed7d4264be9612b6c64a9e986..419499bf4d1383bc3115a47487540430
          _finalize_telemetry_glean(
              context.telemetry,
 diff --git a/python/mach/mach/main.py b/python/mach/mach/main.py
-index 42ce4dc08cdd4f9271a3b6bc3b67357434378c89..aa476dcc24bca309ce2c1743d080b2b1c742fc62 100644
+index c1abf1ad7455d6df0dd62f76f617bb4570e5cdcf..c36bec8df4326636612111eae0d05f8d2c875b0b 100644
 --- a/python/mach/mach/main.py
 +++ b/python/mach/mach/main.py
-@@ -374,9 +374,13 @@ To see more help for a specific command, run:
+@@ -388,9 +388,13 @@ To see more help for a specific command, run:
              def _finish_telemetry_init(future):
                  from .telemetry import report_invocation_metrics
  
@@ -45,7 +45,7 @@ index 42ce4dc08cdd4f9271a3b6bc3b67357434378c89..aa476dcc24bca309ce2c1743d080b2b1
  
              self._telemetry_future.add_done_callback(_finish_telemetry_init)
  
-@@ -490,7 +494,7 @@ To see more help for a specific command, run:
+@@ -504,7 +508,7 @@ To see more help for a specific command, run:
              return 1
          finally:
              if context._telemetry_init_done is not None:
@@ -68,10 +68,10 @@ index 1105b25c04e5db54519323208b7f3230be0ef8b6..2206c6227bc9f93ccab09a8a90c501ae
              # Leave it to the subprocess to handle Ctrl+C. If it terminates as
              # a result of Ctrl+C, proc.wait() will return a status code, and,
 diff --git a/python/mozbuild/mozbuild/base.py b/python/mozbuild/mozbuild/base.py
-index 08f41d502c10a053662a0d97b333081091a6fe49..442f5f91559d92f28b5f8685bffb12639b797ba1 100644
+index 7325c8b4b8474571e616c21347163a6d41a367c8..5fb33cc49463763d477acac4a13c97085e579a2e 100644
 --- a/python/mozbuild/mozbuild/base.py
 +++ b/python/mozbuild/mozbuild/base.py
-@@ -1049,7 +1049,7 @@ class MachCommandBase(MozbuildObject):
+@@ -1096,7 +1096,7 @@ class MachCommandBase(MozbuildObject):
      def metrics(self):
          if self._metrics is None and self._metrics_path:
              if self._mach_context._telemetry_init_done is not None:
@@ -117,5 +117,5 @@ index fc68d4e6694d7e755c58b30c8b4c096ce9c41498..55af6afb80e5d59fabd8e1911930dbfd
  
      @property
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

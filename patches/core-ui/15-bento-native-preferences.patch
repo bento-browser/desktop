@@ -1,4 +1,4 @@
-From a5a85f021e0d3b8288dc5d387e6cac2abdef53c3 Mon Sep 17 00:00:00 2001
+From cc14bca73a0825d581435d2deba5b6fe54aff455 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 18 Jul 2026 18:43:30 +1000
 Subject: [PATCH] Add native Bento preferences
@@ -274,10 +274,10 @@ index 0000000000000000000000000000000000000000..d8ee763720e990ec0a001338ef2e7e20
 +
 +export const BentoShellDocumentRegistry = new Registry();
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
-index 028421f9773113cb0aef8f6336d1a49454a2359f..7201c78ef1b4901f009072814fa4132247ea6116 100644
+index fad1ccc533856c073987645292edce655742bf19..c8c1d65210eaa03f1173c375080f4ec085872408 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
-@@ -105,6 +105,7 @@ FINAL_TARGET_FILES.actors += [
+@@ -102,6 +102,7 @@ FINAL_TARGET_FILES.actors += [
      "AboutTabCrashedParent.sys.mjs",
      "BentoKeyChild.sys.mjs",
      "BentoKeyParent.sys.mjs",
@@ -2150,7 +2150,7 @@ index a84468121d7efd38d7a877c81f08eeb2157e91bd..37b37ac162f370284138d3479676124e
     content/browser/preferences/config/aiFeatures.mjs                    (config/aiFeatures.mjs)
     content/browser/preferences/config/firefoxLabs.mjs                   (config/firefoxLabs.mjs)
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index a76699af75252bec31e17b562463c37236cbbfe5..4c1b76ead1177e22d21b80c69543ef9dd05cf7ef 100644
+index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..5017dacfa27283b558326adf650996f8dddbee29 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
 @@ -241,6 +241,34 @@ var gCurrentHistoryEntryId = null;
@@ -2189,7 +2189,7 @@ index a76699af75252bec31e17b562463c37236cbbfe5..4c1b76ead1177e22d21b80c69543ef9d
      l10nId: "about-firefox-header",
      iconSrc: "chrome://browser/skin/sidebar/firefox.svg",
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index 9e0585f95a46c72f0617c1f86e96d62546c5f33a..c4b1a30d76dd333b967a805ee6b7abee588fb6c9 100644
+index bc76fb039dedcf158a20fda57c355f9a95c5cf79..7db215e522b8e613ca4c87bdc89372f3fc458b26 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
 @@ -39,6 +39,7 @@
@@ -2208,7 +2208,7 @@ index 9e0585f95a46c72f0617c1f86e96d62546c5f33a..c4b1a30d76dd333b967a805ee6b7abee
    <link rel="localization" href="toolkit/branding/brandings.ftl"/>
    <link rel="localization" href="toolkit/firefoxlabs/features.ftl"/>
    <link rel="localization" href="toolkit/global/mozPageHeader.ftl"/>
-@@ -162,6 +164,11 @@
+@@ -163,6 +165,11 @@
          iconsrc="chrome://global/skin/icons/cursor-arrow.svg"
          data-l10n-id="pane-tabs-browsing-title2">
        </html:moz-page-nav-button>
@@ -2220,7 +2220,7 @@ index 9e0585f95a46c72f0617c1f86e96d62546c5f33a..c4b1a30d76dd333b967a805ee6b7abee
        <html:hr class="nav-separator" id="nav-separator" role="presentation" />
        <html:moz-page-nav-button id="category-accessibility"
          view="paneAccessibility"
-@@ -206,6 +213,8 @@
+@@ -207,6 +214,8 @@
             navigated to from within other panes. -->
        <html:moz-page-nav-button class="hidden-category" view="paneProfiles"/>
        <html:moz-page-nav-button class="hidden-category" view="paneTranslations"/>
@@ -2230,7 +2230,7 @@ index 9e0585f95a46c72f0617c1f86e96d62546c5f33a..c4b1a30d76dd333b967a805ee6b7abee
        <!-- Footer links -->
        <html:moz-page-nav-button id="addonsButton"
 diff --git a/browser/components/preferences/tests/browser.toml b/browser/components/preferences/tests/browser.toml
-index d9ea1e343d5da47cfa65b18a87f5c014cdfb5f6c..c9203ac30caa38110729cf3d78b244e91eb33f73 100644
+index 1056ad80558f2dbc7b359c276542d7ef0e4371a7..314b958ba4b8a40fc20d6013b010ee0722ed8d3c 100644
 --- a/browser/components/preferences/tests/browser.toml
 +++ b/browser/components/preferences/tests/browser.toml
 @@ -29,6 +29,14 @@ run-if = ["updater"]
@@ -2761,11 +2761,11 @@ index 0000000000000000000000000000000000000000..889f95f9fd7421573c4e95606b8b6c72
 +bento-error-target-window-unavailable = The originating Bento window is no longer available.
 +bento-error-internal = Bento could not complete this operation.
 diff --git a/toolkit/content/tests/widgets/test_moz_select_panel.html b/toolkit/content/tests/widgets/test_moz_select_panel.html
-index 5b520e23b9a934f3eb5afe110a584f7b205310bf..23a1875def32ed866e9f22c16d7b122f6e04159d 100644
+index c5256a58c134ac2e95608536bbd86496738b2516..25849c2759bc5b1d3142a6617e5862e67b549db2 100644
 --- a/toolkit/content/tests/widgets/test_moz_select_panel.html
 +++ b/toolkit/content/tests/widgets/test_moz_select_panel.html
-@@ -58,6 +58,37 @@
-         await hidden;
+@@ -99,6 +99,37 @@
+         );
        });
  
 +      add_task(async function testForcedPanelListWithoutIcons() {
@@ -2803,10 +2803,10 @@ index 5b520e23b9a934f3eb5afe110a584f7b205310bf..23a1875def32ed866e9f22c16d7b122f
          let target = await testHelpers.renderTemplate();
          let select = target.querySelector("moz-select");
 diff --git a/toolkit/content/widgets/moz-select/moz-select.mjs b/toolkit/content/widgets/moz-select/moz-select.mjs
-index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c26c640a9d 100644
+index a2d0e6d2bbacbf47c7bc76441ac85708696d1422..ea2e08352c2f146b3a96e2190db46abf2f220601 100644
 --- a/toolkit/content/widgets/moz-select/moz-select.mjs
 +++ b/toolkit/content/widgets/moz-select/moz-select.mjs
-@@ -41,6 +41,8 @@ import { MozBaseInputElement, MozLitElement } from "../lit-utils.mjs";
+@@ -43,6 +43,8 @@ import { MozBaseInputElement, MozLitElement } from "../lit-utils.mjs";
   *     default slot. Do not set directly, these will be overridden by <moz-option> children.
   * @property {SelectOption} selectedOption - The currently selected option object.
   * @property {number} selectedIndex - The index of the currently selected option.
@@ -2815,7 +2815,7 @@ index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c2
   * @property {boolean} usePanelList - Whether or not to render a panel. Depends on options using icons.
   */
  export default class MozSelect extends MozBaseInputElement {
-@@ -49,6 +51,7 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -51,6 +53,7 @@ export default class MozSelect extends MozBaseInputElement {
      options: { type: Array, state: true },
      selectedOption: { type: Object, state: true },
      selectedIndex: { type: Number, state: true },
@@ -2823,7 +2823,7 @@ index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c2
      usePanelList: { type: Boolean, state: true },
    };
    static inputLayout = "block";
-@@ -63,6 +66,7 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -65,6 +68,7 @@ export default class MozSelect extends MozBaseInputElement {
      this.size = "default";
      this.value = "";
      this.options = [];
@@ -2831,7 +2831,7 @@ index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c2
      this.usePanelList = false;
      this.selectedOption = null;
      this.selectedIndex = 0;
-@@ -91,6 +95,10 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -93,6 +97,10 @@ export default class MozSelect extends MozBaseInputElement {
  
    willUpdate(changedProperties) {
      super.willUpdate(changedProperties);
@@ -2842,7 +2842,7 @@ index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c2
      if (changedProperties.has("value") || changedProperties.has("options")) {
        this.selectedIndex = this.options.findIndex(
          opt => opt.value === this.value
-@@ -147,7 +155,7 @@ export default class MozSelect extends MozBaseInputElement {
+@@ -149,7 +157,7 @@ export default class MozSelect extends MozBaseInputElement {
      }
  
      this.options = options;
@@ -2852,5 +2852,5 @@ index ab2b4158fe659712b609602d463fdbb9121c8933..b16c1ee3e75595bb91454b90d33c92c2
      // Default to first option if no value set to match native select behavior.
      if (this.usePanelList && !this.value && this.options.length) {
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

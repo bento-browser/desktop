@@ -1,19 +1,19 @@
-From e9a7478197857448d426c7ec1fce8e7b5e842e20 Mon Sep 17 00:00:00 2001
+From f20883619b72c7b15b793994dd80589ed6a9890d Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:39 +1000
 Subject: [PATCH] Import Firefox profile data on first Bento run
 
 ---
- .../migration/FirefoxProfileMigrator.sys.mjs  | 503 +++++++++++++++++-
+ .../migration/FirefoxProfileMigrator.sys.mjs  | 504 +++++++++++++++++-
  .../migration/MigrationUtils.sys.mjs          |   8 +
  .../migration/MigrationWizardParent.sys.mjs   |  11 +
  .../migration/content/migration-wizard.mjs    |  11 +-
  .../locales/en-US/browser/migrationWizard.ftl |   2 +
  toolkit/xre/nsAppRunner.cpp                   |   8 +
- 6 files changed, 538 insertions(+), 5 deletions(-)
+ 6 files changed, 539 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
-index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20009fca39 100644
+index f932e4a0118eed11b521e5bcea874abfdc887812..4a1b976c72fae5bd19be6f53ab3591638354ac2d 100644
 --- a/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 +++ b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 @@ -10,6 +10,7 @@
@@ -24,11 +24,12 @@ index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20
  
  import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
  
-@@ -20,8 +21,43 @@ ChromeUtils.defineESModuleGetters(lazy, {
-   PlacesBackups: "resource://gre/modules/PlacesBackups.sys.mjs",
+@@ -21,8 +22,44 @@ ChromeUtils.defineESModuleGetters(lazy, {
    ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
-   SessionMigration: "resource:///modules/sessionstore/SessionMigration.sys.mjs",
-+  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+   SessionMigration:
+     "moz-src:///browser/components/sessionstore/SessionMigration.sys.mjs",
++  SessionStore:
++    "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
  });
  
 +function getInstalledMacAppIconURL(bundleNames) {
@@ -68,7 +69,7 @@ index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20
  /**
   * Firefox profile migrator. Currently, this class only does "pave over"
   * migrations, where various parts of an old profile overwrite a new
-@@ -40,6 +76,15 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -41,6 +78,15 @@ export class FirefoxProfileMigrator extends MigratorBase {
    }
  
    static get brandImage() {
@@ -84,7 +85,7 @@ index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20
      return "chrome://branding/content/icon128.png";
    }
  
-@@ -56,6 +101,10 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -57,6 +103,10 @@ export class FirefoxProfileMigrator extends MigratorBase {
     *   - {nsIFile} rootDir - The root directory of the profile.
     */
    async getAllProfiles() {
@@ -95,7 +96,7 @@ index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20
      let allProfiles = new Map();
      let profileService = Cc[
        "@mozilla.org/toolkit/profile-service;1"
-@@ -79,6 +128,130 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -80,6 +130,130 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return allProfiles;
    }
  
@@ -226,7 +227,7 @@ index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20
    async getSourceProfiles() {
      let sorter = (a, b) => {
        return a.name
-@@ -87,13 +260,19 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -88,13 +262,19 @@ export class FirefoxProfileMigrator extends MigratorBase {
      };
  
      let profiles = await this.getAllProfiles();
@@ -248,7 +249,7 @@ index 52216399a1bc000249d11c3fe0178a1561e0619a..e9458698ef97d2b726c5622342143f20
    }
  
    _getFileObject(dir, fileName) {
-@@ -496,3 +675,323 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -497,3 +677,323 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return true;
    }
  }
@@ -628,7 +629,7 @@ index 0a4b1a0191f3cfaec41f6597fa9be4d576145739..8892a17f4c79fa09452a4706344ec264
        if (!(await migrator.hasPermissions())) {
          // If we're unable to get permissions for this migrator, then we
 diff --git a/browser/components/migration/content/migration-wizard.mjs b/browser/components/migration/content/migration-wizard.mjs
-index 8064d7f214d1dcf2a61e60de0d1b0b11ce8ab7a2..240d14c9cb1e2bf1a9752f3fec970b085e7da38e 100644
+index f6ada525e6f4fdb0a5ab311d0d47f8bb87d00ccc..1fff8d113073b60dac28a58bc7ce9cfdd8ad271b 100644
 --- a/browser/components/migration/content/migration-wizard.mjs
 +++ b/browser/components/migration/content/migration-wizard.mjs
 @@ -108,6 +108,9 @@ export class MigrationWizard extends HTMLElement {
@@ -687,10 +688,10 @@ index 8341f95a6fe46c0fb743fc5b6d7f944aebedc25b..81f74577fd5758fa71a67fd6319fec9f
  migration-wizard-migrator-display-name-file-bookmarks = Bookmarks from HTML file
  migration-wizard-migrator-display-name-ie = Microsoft Internet Explorer
 diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
-index 4df0d95e57b00d15369c707f960510ce3e91e68f..058e94dcf44dee10a71989fe5dd7b90b0c75308a 100644
+index 2512c029ec8a21e6a5c58b86efa079619e157b6d..65f8aee7093ca5bc2090ea13d76e82a582ebd25b 100644
 --- a/toolkit/xre/nsAppRunner.cpp
 +++ b/toolkit/xre/nsAppRunner.cpp
-@@ -3246,6 +3246,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
+@@ -3255,6 +3255,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
      gDoMigration = true;
    }
  
@@ -706,5 +707,5 @@ index 4df0d95e57b00d15369c707f960510ce3e91e68f..058e94dcf44dee10a71989fe5dd7b90b
    // This arg is only used to indicate to telemetry that a profile refresh
    // (reset+migration) was requested from the uninstaller, pass this along
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

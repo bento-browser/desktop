@@ -1,4 +1,4 @@
-From c2e3bf5b6f9cfc63c3f2ea1d97db474cb2e22d7f Mon Sep 17 00:00:00 2001
+From 8594c298233535c22a36ce331e5d33beedf1ada5 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:38 +1000
 Subject: [PATCH] Use transparent scrollbar tracks on macOS
@@ -23,5 +23,5 @@ index f0dff9276f9880034c800413c4afc2400136b35a..0d7d54bb0a7fe2a4857d7e7a1b548679
    const auto color = ComputeScrollbarTrackColor(aFrame, aStyle, aColors);
    ThemeDrawing::FillRect(aPaintData, aRect, color);
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

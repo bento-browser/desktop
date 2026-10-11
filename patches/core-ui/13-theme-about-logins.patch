@@ -1,4 +1,4 @@
-From 1e8f98478306875c00e63d69c6d125d350346490 Mon Sep 17 00:00:00 2001
+From 5e5b394fd6cb029563d08f78be496a9849b74f17 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Tue, 7 Jul 2026 16:00:00 +1000
 Subject: [PATCH] Theme about logins with Bento tokens
@@ -142,7 +142,7 @@ index b85504de524a8e2b17565acaa15249805f3c66b0..469342e94783cbfd594b9fa2b1b9eee4
 +  fill: var(--warning-60);
  }
 diff --git a/browser/components/aboutlogins/content/components/login-item.css b/browser/components/aboutlogins/content/components/login-item.css
-index 195e0f5a5de2f61c4e427512cc163895818cd758..e51832f72b894c17de6887b4a2f7227373974be8 100644
+index 501dfc6d536ae062a45347a6b358bfbfa3f014b3..6969b6aa0250f56d15762ce615f7268439204727 100644
 --- a/browser/components/aboutlogins/content/components/login-item.css
 +++ b/browser/components/aboutlogins/content/components/login-item.css
 @@ -13,7 +13,7 @@
@@ -168,5 +168,5 @@ index c443a1e3acdec651882bac0a6297bfe74893837a..4e62961d0626bd92a6edd5d3493c23e7
  }
  
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

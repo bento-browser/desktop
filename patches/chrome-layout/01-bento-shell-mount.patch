@@ -1,4 +1,4 @@
-From 0301400fee4dae1e3c12c197e1d5ec820cd1aafd Mon Sep 17 00:00:00 2001
+From 3f045b1e2332945b8138e2fbbe4460c30f003a97 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome
@@ -9,7 +9,7 @@ Subject: [PATCH] Add Bento shell mount to browser chrome
  2 files changed, 61 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index cf35762fdcc4716932c7af7cf4af4b2f72aea038..6edf2c3837e24f2fd872058333e1970c8f5a1b09 100644
+index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb45cb5540a 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -2,7 +2,59 @@
@@ -70,14 +70,14 @@ index cf35762fdcc4716932c7af7cf4af4b2f72aea038..6edf2c3837e24f2fd872058333e1970c
 +             style="background-color: transparent; -moz-appearance: none;"/>
 +  </vbox>
 +  <script src="chrome://browser/content/bento-shell-mount.js"></script>
-   <box context="sidebar-context-menu" id="sidebar-container" class="chrome-block" hidden="true">
+   <box context="sidebar-context-menu" id="sidebar-container" hidden="true">
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
 diff --git a/browser/base/jar.mn b/browser/base/jar.mn
-index 0212828fbe89b90a935e8771cf7da844f7ed1a5e..9482b8b735800cb2e4667eadc3469bca598d40bb 100644
+index 783c67d397a541a0e78374dc93c930fbd8d2e7e7..f50f3cfd530fbfc54de30fe1737eecff993a1a6f 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
-@@ -46,6 +46,14 @@ browser.jar:
+@@ -47,6 +47,14 @@ browser.jar:
          content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
          content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
          content/browser/browser-init.js                     (content/browser-init.js)
@@ -93,5 +93,5 @@ index 0212828fbe89b90a935e8771cf7da844f7ed1a5e..9482b8b735800cb2e4667eadc3469bca
          content/browser/browser-menubar.js                  (content/browser-menubar.js)
          content/browser/browser-pageActions.js              (content/browser-pageActions.js)
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 
