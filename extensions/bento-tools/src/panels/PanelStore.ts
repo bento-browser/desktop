@@ -172,6 +172,15 @@ export class PanelStore {
     return this.#flushPersist();
   }
 
+  /**
+   * Trailing-coalesced persist for high-frequency triggers such as panel URL
+   * changes. Discrete mutations and callers that await durability use
+   * `persistCurrentState`.
+   */
+  schedulePersistCurrentState(): void {
+    this.#schedulePersist();
+  }
+
   getPanelLayout(workspaceId: string | null): WorkspacePanelLayout {
     if (!workspaceId) return emptyLayout();
     return cloneLayout(this.#layoutByWorkspace.get(workspaceId));
@@ -461,9 +470,9 @@ export class PanelStore {
     const layout = this.#layoutByWorkspace.get(workspaceId);
     const hadPersisted = this.#persistedWorkspaces.delete(workspaceId);
     const hadMainWidth = this.#mainWidthByWorkspace.delete(workspaceId);
-    this.#stripScrollByWorkspace.delete(workspaceId);
+    const hadStripScroll = this.#stripScrollByWorkspace.delete(workspaceId);
     if (!layout && !hadPersisted) {
-      if (hadMainWidth) this.#schedulePersist();
+      if (hadMainWidth || hadStripScroll) this.#schedulePersist();
       return [];
     }
     const victims = layout ? removeWorkspace(layout) : [];

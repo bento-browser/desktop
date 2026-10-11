@@ -183,3 +183,64 @@ describe('PanelStore devtools panels', () => {
     expect(store.findDevtoolsLink('ws', null, 11)).toBeUndefined();
   });
 });
+
+describe('PanelStore persistence triggers', () => {
+  const set = vi.fn<(payload: Record<string, unknown>) => Promise<void>>(async () => undefined);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    set.mockClear();
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({})),
+          set,
+          remove: vi.fn(async () => undefined),
+        },
+      },
+      tabs: {
+        get: vi.fn(async (tabId: number) => ({
+          id: tabId,
+          url: `https://${tabId}.example.test/`,
+        })),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('coalesces a burst of URL-change persists into one trailing write', async () => {
+    const store = new PanelStore();
+    store.add('ws', 1);
+    await store.persistCurrentState();
+    set.mockClear();
+
+    for (let i = 0; i < 20; i++) {
+      store.schedulePersistCurrentState();
+      await vi.advanceTimersByTimeAsync(20);
+    }
+    expect(set).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(set).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a removed workspace strip scroll from storage', async () => {
+    const store = new PanelStore();
+    store.setStripScroll('ws', 120);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(set).toHaveBeenLastCalledWith(
+      expect.objectContaining({ 'bento.panelStripScroll': { ws: 120 } }),
+    );
+
+    store.removeWorkspace('ws');
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(set).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ 'bento.panelStripScroll': expect.anything() }),
+    );
+  });
+});
