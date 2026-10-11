@@ -35,6 +35,7 @@
     "import:branding": "node scripts/install-branding.mjs",
     "import:addons": "node scripts/install-builtin-addons.mjs",
     "lint:repo": "eslint scripts src/browser .agents",
+    "lint:aliases": "node scripts/check-legacy-aliases.mjs",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
     "test:size-ratchet": "node --test scripts/size-ratchet.test.mjs",
