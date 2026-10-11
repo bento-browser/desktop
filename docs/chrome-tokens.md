@@ -32,7 +32,7 @@ Contrast is fixed to `standard` and nothing sets `data-bento-contrast`, so the
 generator omits every rule that requires `contrast='more'`: the public base
 block, the 30 `themes.css` theme blocks, and the Bento preset projection. The
 `:not([data-bento-contrast='more'])` theme selectors remain and always match.
-This cut the sheet from 1,045 kB to 663 kB (64.2 kB to 59.9 kB gzipped). Mux
+This cut the sheet from 1,045 kB to 664 kB (64.2 kB to 60.2 kB gzipped). Mux
 keeps the rules upstream, so they return by restoring `contrast='more'` to the
 generator's mode selectors and removing the themes.css filter if a contrast
 setting is ever added. The shell build applies the same decision to its

@@ -13,6 +13,7 @@
 
 import { defineConfig, mergeConfig, searchForWorkspaceRoot, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { build as esbuild } from 'esbuild';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { stripContrastMore } from './contrast-more.mjs';
@@ -37,6 +38,42 @@ function stripCrossOrigin(): Plugin {
   };
 }
 
+// public/panel-newtab.html is a plain page that must not link the shared Mux
+// stylesheet. `cssCodeSplit: false` folds every Vite-processed stylesheet into
+// that one sheet, so this page's CSS is bundled on its own and emitted beside
+// the page. The build target is shared with the rest of the shell.
+//
+// Font files are left as relative URLs: the page reuses the Inter file the Mux
+// stylesheet already makes the build emit into assets/. Because that name is
+// derived from the Mux package path, fail the build if it ever stops existing.
+function panelNewtabCss(target: string): Plugin {
+  return {
+    name: 'bento-panel-newtab-css',
+    apply: 'build',
+    async generateBundle(_options, bundle) {
+      const { outputFiles } = await esbuild({
+        entryPoints: [resolve(__dirname, 'src/panel-newtab/panel-newtab.css')],
+        outfile: 'panel-newtab.css',
+        bundle: true,
+        minify: true,
+        target,
+        write: false,
+        external: ['*.ttf'],
+      });
+      const source = outputFiles[0]!.text;
+      for (const [, file] of source.matchAll(/url\(\s*["']?\.\/([^"')\s]+)["']?\s*\)/g)) {
+        if (!(`assets/${file}` in bundle)) {
+          this.error(
+            `panel-newtab.css references ./${file}, but the build emitted no assets/${file}. ` +
+              'Update the @font-face in src/panel-newtab/panel-newtab.css to the current file name.',
+          );
+        }
+      }
+      this.emitFile({ type: 'asset', fileName: 'assets/panel-newtab.css', source });
+    },
+  };
+}
+
 function copyChromeBridgeExperiment(): Plugin {
   return {
     name: 'bento-copy-chrome-bridge-experiment',
@@ -53,11 +90,15 @@ function copyChromeBridgeExperiment(): Plugin {
   };
 }
 
+// Matches gecko.strict_min_version in manifest.json.
+const BUILD_TARGET = 'firefox150';
+
 const shellConfig = defineConfig(({ mode }) => ({
   plugins: [
     react({ jsxRuntime: 'automatic' }),
     stripCrossOrigin(),
     copyChromeBridgeExperiment(),
+    panelNewtabCss(BUILD_TARGET),
     moduleIdentityGuard(),
     muxSourcePlugin(muxLocal, resolve(__dirname, '../../node_modules/@muxui/react/package.json')),
   ],
@@ -112,8 +153,7 @@ const shellConfig = defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    // Matches gecko.strict_min_version in manifest.json.
-    target: 'firefox150',
+    target: BUILD_TARGET,
     // Firefox loads modulepreload natively, so skip Vite's polyfill chunk.
     modulePreload: { polyfill: false },
     cssCodeSplit: false,
@@ -139,7 +179,6 @@ const shellConfig = defineConfig(({ mode }) => ({
         menu: resolve(__dirname, 'menu.html'),
         'panel-trailer': resolve(__dirname, 'panel-trailer.html'),
         'panel-navigator-tooltip': resolve(__dirname, 'panel-navigator-tooltip.html'),
-        'panel-newtab': resolve(__dirname, 'panel-newtab.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

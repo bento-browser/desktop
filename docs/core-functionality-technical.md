@@ -2230,9 +2230,10 @@ Load-bearing details:
   `confirm.html`, `welcome.html`, and `panel-trailer.html`, must force `html`,
   `body`, and `#root` to
   `background: transparent !important`. The shell build uses
-  `cssCodeSplit: false`, so unrelated entry CSS such as `panel-newtab.css` can
-  arrive later in the shared `style.css` bundle and otherwise override plain
-  transparent background declarations.
+  `cssCodeSplit: false`, so unrelated entry CSS such as
+  `theme/document-base.css` (the shared `html`/`body` background, color, font,
+  and min-height) can arrive later in the shared `style.css` bundle and
+  otherwise override plain transparent background declarations.
 - Sidebar-owned menus that need to overhang the collapsed rail must route
   through the chrome-mounted menu overlay, not an iframe-local `Menu.Popover`.
   The sidebar New menu uses `BENTO_SIDEBAR_CONTEXT_MENU` with
@@ -3109,6 +3110,21 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
   requires `data-muxui-contrast='more'` (`contrast-more.mjs`, a PostCSS plugin),
   and the theme sync and chrome token generators do not emit them. Do not add
   `contrast='more'` CSS to Bento files while that is true.
+- `public/panel-newtab.html` is a plain page: no script, no Mux stylesheet. The
+  Vite config bundles `src/panel-newtab/panel-newtab.css` into
+  `assets/panel-newtab.css` with esbuild. Its heading keeps Inter through a
+  page-local `@font-face` (weight 650) that points at the Inter file the Mux
+  stylesheet makes the build emit into `assets/`; the Vite plugin fails the
+  build if that file name stops existing. A hashed or renamed Inter file would
+  otherwise silently fall back to the system font.
+- `theme/document-base.css` holds the `html`/`body` defaults every entry
+  inherits. They used to sit in `panel-newtab.css`, which the shared sheet
+  carried into every document, so removing that file's global rules changed the
+  sidebar background, the tooltip font, and the root color. When moving or
+  deleting CSS that reaches the shared sheet, diff `html` and `body` computed
+  styles for every entry in light and dark before accepting the change.
+- Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
+  serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
 
 ### Theme pitfalls
 
