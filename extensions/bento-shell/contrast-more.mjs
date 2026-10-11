@@ -78,10 +78,15 @@ export function dropContrastMoreSelectors(selectorList) {
   return kept.length === selectors.length ? selectorList : kept.join(',').trim();
 }
 
-/** PostCSS plugin form, passed to Vite as `css.postcss.plugins`. */
+/**
+ * PostCSS plugin form, passed to Vite as `css.postcss.plugins`.
+ *
+ * A '@layer name { ... }' block this pass empties becomes '@layer name;', so the
+ * layer keeps its place in the layer order.
+ */
 export const stripContrastMore = {
   postcssPlugin: 'bento-strip-contrast-more',
-  Once(root) {
+  Once(root, { AtRule }) {
     root.walkRules((rule) => {
       const kept = dropContrastMoreSelectors(rule.selector);
       if (kept === rule.selector) return;
@@ -89,10 +94,14 @@ export const stripContrastMore = {
         rule.selector = kept;
         return;
       }
-      // Also drop any at-rule (@layer, @media, @scope) this removal leaves empty.
+      // Also drop any at-rule (@media, @scope) this removal leaves empty.
       let parent = rule.parent;
       rule.remove();
       while (parent && parent.type === 'atrule' && parent.nodes?.length === 0) {
+        if (parent.name === 'layer' && parent.params) {
+          parent.replaceWith(new AtRule({ name: 'layer', params: parent.params }));
+          break;
+        }
         const next = parent.parent;
         parent.remove();
         parent = next;

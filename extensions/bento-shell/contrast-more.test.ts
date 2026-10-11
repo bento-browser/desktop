@@ -38,7 +38,26 @@ describe('dropContrastMoreSelectors', () => {
   });
 });
 
+const strip = async (css: string) =>
+  (await postcss([stripContrastMore]).process(css, { from: undefined })).css;
+
+/** Layer names in first-appearance order, which is the cascade order between layers. */
+const layerOrder = (css: string) => [
+  ...new Set([...css.matchAll(/@layer\s+([\w.-]+)/g)].map((match) => match[1])),
+];
+
 describe('stripContrastMore plugin', () => {
+  it('keeps layer registration when a layer block empties', async () => {
+    // Without the first @layer block, 'second' registers first and '.x' turns blue.
+    const input = `@layer first { [data-muxui-contrast='more'] { color: red; } }
+      @layer second { .x { color: red; } }
+      @layer first { .x { color: blue; } }`;
+    const css = await strip(input);
+    expect(layerOrder(css)).toEqual(['first', 'second']);
+    expect(css).toMatch(/@layer first;\s*@layer second \{/);
+    expect(css).not.toContain('contrast');
+  });
+
   it('removes unreachable rules and the at-rules they leave empty', async () => {
     const input = `
       @layer muxui {

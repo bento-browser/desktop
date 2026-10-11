@@ -209,7 +209,8 @@ Contrast is fixed to `standard` (`themeScope.ts`, `useFirefoxTheme.ts`,
 removes them with the `stripContrastMore` PostCSS plugin
 (`extensions/bento-shell/contrast-more.mjs`), which only removes a selector that
 tests the attribute at its top level; `:not(...)` forms and standard-contrast
-rules stay. `scripts/sync-theme-presets.mjs` and
+rules stay. A `@layer name { }` block the plugin empties becomes
+`@layer name;` so the layer keeps its place in the layer order. `scripts/sync-theme-presets.mjs` and
 `scripts/generate-chrome-tokens.mjs` no longer emit those blocks. Mux keeps them
 upstream, so adding a contrast setting later means removing the plugin and
 restoring the generator selectors. Do not add `contrast='more'` styling in
