@@ -20,6 +20,7 @@ import CommandPalette from '../components/CommandPalette/CommandPalette';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -41,7 +42,7 @@ function PaletteApp() {
   useWorkspaceTheme();
   const handleClose = () => {
     const newTitle = `${CLOSE_TITLE_PREFIX}_${Date.now()}`;
-    document.title = newTitle;
+    sendChromeTitle(newTitle);
   };
   return <CommandPalette onClose={handleClose} />;
 }

@@ -11,6 +11,7 @@ import type { PinnedPanelEntry } from '@shared/protocol';
 import { DEFAULT_THEME_ID } from '../../theme/presets';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
 import './PinnedPanels.css';
+import { sendChromeTitle } from '../../bridge/chromeTitle';
 
 interface PinnedPanelRowProps {
   entry: PinnedPanelEntry;
@@ -65,7 +66,7 @@ function PinnedPanelRowImpl({
       ],
     };
     const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-    document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encoded}`;
+    sendChromeTitle(`BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encoded}`);
   };
 
   const button = (

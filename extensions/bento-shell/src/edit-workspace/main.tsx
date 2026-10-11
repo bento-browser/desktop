@@ -40,6 +40,7 @@ import { DEFAULT_THEME_ID } from '../theme/presets';
 import { WorkspaceIconField } from '../components/WorkspaceIconPicker/WorkspaceIconPicker';
 import { WorkspaceThemePicker } from '../components/WorkspaceThemePicker/WorkspaceThemePicker';
 import './edit-workspace.css';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -69,7 +70,7 @@ function EditWorkspaceApp() {
   }, []);
 
   function close() {
-    document.title = `${EDIT_WORKSPACE_CLOSE_PREFIX}_${Date.now()}`;
+    sendChromeTitle(`${EDIT_WORKSPACE_CLOSE_PREFIX}_${Date.now()}`);
   }
 
   function onSave() {

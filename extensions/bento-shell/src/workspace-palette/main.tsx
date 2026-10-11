@@ -17,6 +17,7 @@ import { WORKSPACE_PALETTE_CLOSE_PREFIX } from '../bridge/useWorkspacePalette';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -24,7 +25,7 @@ function WorkspacePaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const handleClose = () => {
-    document.title = `${WORKSPACE_PALETTE_CLOSE_PREFIX}_${Date.now()}`;
+    sendChromeTitle(`${WORKSPACE_PALETTE_CLOSE_PREFIX}_${Date.now()}`);
   };
   return <WorkspacePalette onClose={handleClose} />;
 }

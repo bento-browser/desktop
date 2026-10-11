@@ -16,6 +16,7 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { dispatch, initToolsPort } from '../bridge/useToolsPort';
 import { MergePalette } from '../components/MergePalette/MergePalette';
 import { useExternalMergeStore } from '../state/externalMerge';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -23,7 +24,7 @@ const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
 const BUS_NAME = 'bento-merge-palette';
 
 function close() {
-  document.title = `${CLOSE_TITLE_PREFIX}_${Date.now()}`;
+  sendChromeTitle(`${CLOSE_TITLE_PREFIX}_${Date.now()}`);
 }
 
 function MergePaletteApp() {

@@ -15,7 +15,7 @@ import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitc
 import { SidebarAddressBar } from './components/SidebarAddressBar/SidebarAddressBar';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
-import { requestWelcome } from './bridge/useWelcome';
+import { startWelcomeRequests } from './bridge/useWelcome';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
@@ -29,6 +29,7 @@ import type { ToolsToShellTargeted } from '@shared/shell-client-protocol';
 import { applyGraphProjection } from './state/graph';
 import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
+import { sendChromeTitle } from './bridge/chromeTitle';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -51,11 +52,11 @@ function FooterTooltip({
 }
 
 function openSettings() {
-  document.title = `BENTO_OPEN_SETTINGS_${Date.now()}`;
+  sendChromeTitle(`BENTO_OPEN_SETTINGS_${Date.now()}`);
 }
 
 function signalScrollToMain() {
-  document.title = `BENTO_SCROLL_TO_MAIN_${Date.now()}`;
+  sendChromeTitle(`BENTO_SCROLL_TO_MAIN_${Date.now()}`);
 }
 
 function openCommandPalette() {
@@ -66,12 +67,12 @@ function openCommandPalette() {
   // Timestamp suffix ensures successive presses always fire the event
   // (no change = no event).
   const newTitle = `BENTO_OPEN_PALETTE_${Date.now()}`;
-  document.title = newTitle;
+  sendChromeTitle(newTitle);
 }
 
 function openMergePalette() {
   const newTitle = `BENTO_OPEN_MERGE_PALETTE_${Date.now()}`;
-  document.title = newTitle;
+  sendChromeTitle(newTitle);
 }
 
 function sidebarAnchorPayload(anchorRect: DOMRect | null) {
@@ -88,15 +89,15 @@ function sidebarAnchorPayload(anchorRect: DOMRect | null) {
 }
 
 function openFirefoxAppMenu(anchorRect: DOMRect | null) {
-  document.title = `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeSidebarMenuPayload(
-    sidebarAnchorPayload(anchorRect),
-  )}`;
+  sendChromeTitle(
+    `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeSidebarMenuPayload(sidebarAnchorPayload(anchorRect))}`,
+  );
 }
 
 function openFirefoxDownloads(anchorRect: DOMRect | null) {
-  document.title = `BENTO_OPEN_DOWNLOADS:${Date.now()}:${encodeSidebarMenuPayload(
-    sidebarAnchorPayload(anchorRect),
-  )}`;
+  sendChromeTitle(
+    `BENTO_OPEN_DOWNLOADS:${Date.now()}:${encodeSidebarMenuPayload(sidebarAnchorPayload(anchorRect))}`,
+  );
 }
 
 interface SidebarMenuItem {
@@ -109,6 +110,10 @@ interface SidebarMenuItem {
 
 function encodeSidebarMenuPayload(payload: object): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
+function openSidebarContextMenuInChrome(payload: object) {
+  sendChromeTitle(`BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload(payload)}`);
 }
 
 export function App() {
@@ -154,7 +159,9 @@ export function App() {
       const disposition = applyGraphProjection(envelope.event, windowId);
       if (disposition === 'resync-required') return;
       const event = envelope.event;
-      document.title = `BENTO_GRAPH_COMMIT:${event.backendInstanceId}:${event.publicationId}:${event.graphRevision}`;
+      sendChromeTitle(
+        `BENTO_GRAPH_COMMIT:${event.backendInstanceId}:${event.publicationId}:${event.graphRevision}`,
+      );
       let attempts = 0;
       const acknowledge = () => {
         documentChannel.postMessage({
@@ -178,28 +185,14 @@ export function App() {
   // title races do not make first-run onboarding depend only on the
   // sidebar frame.
   //
-  // Why the retry loop: requestWelcome() sets document.title =
-  // BENTO_OPEN_WELCOME_<ts>, which the chrome poll picks up. But the
-  // `panels/sync` event handler in useToolsPort ALSO writes document.title
-  // (BENTO_PANELS:...) and lands moments later on cold boot — stomping
-  // the welcome title before the 200ms chrome poll can see it. On
-  // Alt+Shift+R there's no fresh panels broadcast so welcome wins on
-  // first try. Five attempts × 200ms = 1s window covers the cold-boot
-  // race; chrome's showWelcome() is idempotent so re-firing is a no-op
-  // once it's visible. Loop stops automatically when welcomeSeen flips
-  // true (effect cleanup) — no risk of looping forever.
+  // startWelcomeRequests repeats the request for about a second. The repeats
+  // predate the shared title writer, when a BENTO_PANELS write could displace
+  // the first request; they are now only a safeguard, harmless because chrome's
+  // showWelcome() is idempotent, and stop when welcomeSeen flips true.
   const welcomeShouldShow = useSettingsStore((s) => s.current !== null && !s.current.welcomeSeen);
   useEffect(() => {
     if (!welcomeShouldShow) return;
-    let attempts = 0;
-    const fire = () => {
-      requestWelcome();
-      attempts += 1;
-      if (attempts >= 5) clearInterval(handle);
-    };
-    fire();
-    const handle = setInterval(fire, 200);
-    return () => clearInterval(handle);
+    return startWelcomeRequests();
   }, [welcomeShouldShow]);
 
   useEffect(() => {
@@ -232,7 +225,7 @@ export function App() {
   const onClose = (id: number) => dispatch({ type: 'tab/close', id });
   const onCloseSelected = (ids: number[]) => dispatch({ type: 'tabs/close', ids });
   const onOpenNewMenu = (anchorRect: DOMRect) => {
-    document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+    openSidebarContextMenuInChrome({
       anchor: {
         left: anchorRect.left,
         top: anchorRect.top,
@@ -245,7 +238,7 @@ export function App() {
         { id: 'new-tab', label: 'New tab' },
         { id: 'new-panel', label: 'New panel' },
       ] satisfies SidebarMenuItem[],
-    })}`;
+    });
   };
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
   const onOpenSettings = () => {
@@ -292,12 +285,12 @@ export function App() {
         },
         { id: 'delete-folder', label: 'Delete folder' },
       );
-      document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+      openSidebarContextMenuInChrome({
         anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
         tabId: null,
         folderId,
         items,
-      })}`;
+      });
       return;
     }
     const tab = tabId !== null ? tabsById[tabId] : null;
@@ -418,7 +411,7 @@ export function App() {
         );
       }
     }
-    document.title = `BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload({
+    openSidebarContextMenuInChrome({
       anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
       tabId,
       tabIndex: tab?.index,
@@ -433,7 +426,7 @@ export function App() {
           : undefined,
       newFolderId: crypto.randomUUID(),
       items,
-    })}`;
+    });
   };
   const onRootContextMenu = (event: React.MouseEvent) => {
     openSidebarContextMenu(event, null);
@@ -460,7 +453,9 @@ export function App() {
     // moveTabAfter (called from chrome via this title-IPC) operate on
     // the original element reference and skip the transformation, so
     // dragging works for active/main-panel tabs too.
-    document.title = `BENTO_TAB_MOVE:${Date.now()}:${id}:${anchorId}:${before ? 'before' : 'after'}`;
+    sendChromeTitle(
+      `BENTO_TAB_MOVE:${Date.now()}:${id}:${anchorId}:${before ? 'before' : 'after'}`,
+    );
   };
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const sidebarCollapsedSetting = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
