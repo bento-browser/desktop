@@ -1211,6 +1211,51 @@ Current persistence is version 5. It stores URL-backed `panelKey` entries plus
 the layout tree. Panel keys are derived from visible layout order when writing
 so URLs can be restored to fresh tab ids on next launch.
 
+Panel persistence write path:
+
+- Source of truth: `PanelStore` in-memory maps (layouts, widths, header-hidden,
+  main widths, strip scroll, parked `persistedWorkspaces`). The durable copy is
+  `bento.panels` plus `bento.panelStripScroll` in `browser.storage.local`; the
+  shell never writes either.
+- Every write is a whole-graph read-modify-write: `Persistence.#flush` reads each
+  live panel's URL with `browser.tabs.get` and then writes the payload. Writes
+  never overlap. `Persistence` keeps one write in flight and one queued snapshot;
+  a newer request replaces the queued one, so a burst behind a slow write costs
+  at most two writes. `flushNow` resolves once a write at least as new as its
+  snapshot has landed (a superseded caller resolves after the superseding write),
+  which `ImportExecutor` relies on when it awaits `persistCurrentState`. A flush
+  that throws is logged and does not block later ones.
+- Triggers: layout and size mutations that must stick (move, subdivide, split,
+  chooser fill, group ratio, width, header hidden, main width, window-close
+  parking) call `flushNow`. Panel add and remove, strip scroll, and panel URL
+  changes in `background.ts` (`tabs.onUpdated`, through
+  `PanelStore.schedulePersistCurrentState`) use the trailing timer
+  (`DEBOUNCE_MS`). The first request arms the timer and it fires after the delay
+  with the latest snapshot, so continuous URL churn writes at most once per
+  interval. An immediate flush cancels a pending timer and supersedes it. There is
+  no `runtime.onSuspend` or unload hook. The prompt paths are the immediate
+  mutations, `persistCurrentState` (awaited by `ImportExecutor`), and window-close
+  parking: `parkWorkspaceWithResolvedUrls` stores URLs taken from the
+  `TabRegistry` closing-window snapshot and flushes at once, which also covers a
+  URL change still inside the trailing interval at quit.
+- Private-window tabs are never persisted. `persistableUrl` in `Persistence.ts`
+  is the single place a live tab becomes a stored URL and returns null for
+  `tab.incognito` tabs, so `#flush` drops the panel from `entries` and from the
+  persisted layout (`toPersistenceLayout` only emits nodes whose panel key was
+  kept). A workspace whose panels are all private is omitted from `byWorkspace`.
+  A vertical or horizontal group needs both children, so a group containing a
+  private panel is omitted whole, exactly like a panel without a stored URL;
+  surviving siblings keep their entries and restore as ordinary tabs. The parked
+  path uses `parkableWorkspaceTabs` (`panels/ParkedWorkspace.ts`), which
+  `parkTabsForClosingWindow` calls with `TabRegistry.isPrivate`: private tabs
+  contribute no panel URL and no `parkedWorkspaceTabs` sidebar entry (URL, title,
+  custom title). `TabRegistry` still holds the private tab ids while the
+  closing-window listeners run, so the check is valid at that point.
+- Manual verification: open a panel, navigate it rapidly (a page that updates
+  `location` continuously), and confirm in the Browser Toolbox that
+  `browser.storage.local.get('bento.panels')` changes at most about twice per
+  second; quit and relaunch to confirm the last URL restores.
+
 First-run browser-data import is handled from Bento's onboarding experience. The
 welcome overlay is a multi-step Bento-motif setup flow, and browser-data import
 is one step inside that flow. The intro step writes
@@ -1300,7 +1345,17 @@ intermittently choppy. A stale, unopened `.parentlock` from an already-exited
 instance remains cleanable. Because the cleaner recursively removes every
 non-allowlisted entry, it also resolves the configured profile path and refuses
 to clean the repository root, a symlink target outside the checkout, or any
-other path outside the Bento repository.
+other path outside the Bento repository. Inside the checkout it refuses a path
+that contains git-tracked files (`git ls-files`), whose first component below
+the root is a tracked top-level entry, `.git`, `engine`, `node_modules`, or
+`.bento` (compared case-insensitively), or that cannot be checked because git
+fails. It cleans an existing directory only if that directory is empty, holds
+the `.bento-dev-profile-marker` file the script writes on first use, or already
+has `times.json` or `prefs.js` (profiles from before the marker). A missing
+directory is created and marked. The marker is in the `KEEP` allowlist. Session
+recovery files (`recovery.jsonlz4`, `recovery.baklz4`) are still deleted on
+purpose. `scripts/dev-profile-clean.test.mjs` exercises these rules against
+temporary git repositories.
 The welcome overlay browser stays mounted under `#browser` so its title-IPC
 open/close signals stay reliable. Bento modal overlays also share a separate
 `bento-overlay-toolbar-scrim` for the native toolbar/urlbar strip, which
@@ -1813,6 +1868,49 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   and later sync payloads carry `headerHidden` back.
 - Do not use tab ids as durable storage identifiers. Persist URLs plus
   `panelKey`; tab ids are runtime-only.
+- Do not start a second `Persistence.#flush` while one is running. Each flush
+  awaits a `browser.tabs.get` per panel before its `storage.local.set`, so two
+  overlapping flushes can finish out of order and an older snapshot (and its
+  strip-scroll record) overwrites the newer state. The fix is the single-flight
+  queue in `Persistence`: one write in flight, newest queued snapshot wins. Route
+  new triggers through `flushNow` or `schedule`; never call `#flush` directly or
+  add a second writer of `bento.panels`. This covers panels only. The same race
+  is still open for pinned panels and is tracked as a follow-up:
+  `PinnedPanelsStore.#resolveAndPersist` awaits a `tabs.get` per pin and then
+  hands the result to `pinnedPanels/Persistence`, whose writes are not
+  serialized, so two persists can resolve out of order or interleave their
+  backup and primary writes and an older pin list can overwrite a newer one. The
+  panel queue does not help there. A fix has to serialize resolution as well as
+  the write, and must keep reading each pin's tab at change time: deferring the
+  reads to the debounce timer drops pins added without metadata and loses
+  privacy and fallback metadata when the tab closes first.
+- Do not persist private-window state. Panel entries and layout slots
+  (`bento.panels`), parked panel URLs, parked sidebar tabs
+  (`bento.parkedWorkspaceTabs`, including titles), and pinned panels
+  (`bento.pinnedPanels`: URL, title, favicon) all skip private tabs.
+  `PinnedPanelsStore.#resolveAndPersist` reads each pin's tab when a change is
+  made and skips `tab.incognito` tabs, remembering their ids, because its
+  closed-tab fallback would otherwise write the in-memory URL, title, and
+  favicon after the tab is gone. A pin whose tab is already gone on its very
+  first read still falls back to the metadata its caller passed to `add`. A new storage path
+  that records tab URLs, titles, or favicons must apply the same check where it
+  resolves a live tab (`tab.incognito`) or a closing-window snapshot
+  (`TabRegistry.isPrivate`, valid only while the closing listeners run). The
+  other `storage.local` writers in `bento-tools` were audited and hold no tab
+  data: workspaces, tab folders (user-chosen names), settings, native-operation
+  and session records, graph journal and rollback state (ids and hashes plus the
+  backup JSON being restored), and the graph publication (already filtered by
+  `tab.incognito`). `BackupStore` builds each snapshot from live state, skips
+  incognito tabs when it resolves URLs, and omits private panels, pins, and
+  layout slots; it does not copy stored state. Data written by earlier builds is
+  not scrubbed. The `shell/hello` handler has no private check, so a private
+  window whose shell sends it claims an unclaimed workspace or creates a
+  default-named one in `bento.workspaces` (a name, not browsing data).
+- Do not call `persistCurrentState` from a high-frequency listener. Panel URL
+  changes used to flush the whole graph on every event (one `tabs.get` per panel
+  plus two or three storage calls each); they now use
+  `schedulePersistCurrentState`. Keep `persistCurrentState` for discrete
+  mutations and callers that must await durability.
 - Keep panel markers synced after add, remove, reorder, and restore. Closed-tab
   restore depends on marker root indexes and containing root ids.
 - Do not clear a panel's `bento.isPanel` marker in the `tab/close` path. Firefox
@@ -1931,6 +2029,9 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   tabs, otherwise every dev/browser relaunch can duplicate the parked tabs. Do
   not let removed-tab deltas or `emitPanelsSync` prune closing-window panel ids
   before this parking step runs.
+  Deleting a workspace removes its parked sidebar tabs, panel entries, strip
+  scroll, and queued activation preferences; closing a window drops that window's
+  queued activation preferences.
 
 ## Shell to chrome bridge
 
@@ -2654,6 +2755,18 @@ Top-row splits and 2x2 groups:
   rendered in a visible workspace and trigger an immediate wake/reload loop.
   Inactive-workspace panels can still be discarded and later wake through
   Firefox's normal tab restore path.
+  `SleepPolicy.sweep` also re-reads each candidate with `browser.tabs.get`
+  immediately before `browser.tabs.discard` and skips it when `audible` is true
+  or `sharingState` reports `camera`, `microphone`, or `screen`. Firefox's own
+  discard path does not check media or capture, so this check is the only guard.
+  The read is live rather than from the `TabRegistry` mirror so a call that
+  started after the last registry delta is still protected; a tab that has
+  already closed makes `tabs.get` reject, which is logged and skipped like any
+  failed discard. Exempt tabs are not marked active, so they keep their
+  place in the keep-alive ranking and follow the normal idle rules once quiet; a
+  tab idle longer than the sleep timeout can be discarded on the first sweep
+  after it stops (Firefox keeps `audible` set for a couple of seconds after
+  sound stops, and there is no further grace period).
 - Panel navigator structural changes must keep each button at a stable layout
   size. Split, subdivide, promote-survivor, and remove operations can convert a
   single-panel icon to a grouped icon or back while the panel strip is also

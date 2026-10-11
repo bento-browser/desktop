@@ -89,6 +89,28 @@ jobs:
         # errors before they become runtime failures inside the browser.
         run: node --check prefs/bento.js
 
+      - name: Verify Firefox-side JavaScript parses
+        # The chrome mount script, migration host, and JSWindowActors load
+        # inside Firefox, where a syntax error disables the whole shell. The
+        # find guard fails the step if the directory ever moves.
+        run: |
+          set -e
+          files=$(find src/browser \( -name '*.js' -o -name '*.mjs' \) | sort)
+          test -n "$files"
+          for f in $files; do
+            echo "node --check $f"
+            node --check "$f"
+          done
+
+      - name: Lint scripts, Firefox-side sources, and agent skills
+        # The extension packages lint themselves in the extensions job; this
+        # covers the code outside them with the root ESLint config.
+        run: pnpm run lint:repo
+
+      - name: Native preferences protocol drift
+        # Fails when the generated protocol copies no longer match their source.
+        run: pnpm run native-protocol:check
+
       - name: Firefox patch stack tests
         run: pnpm run firefox:patches:test
 
@@ -96,7 +118,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -145,17 +167,21 @@ jobs:
       - name: Lint (tools)
         run: pnpm --filter @bento/tools lint
 
+      - name: Test (shell)
+        run: pnpm --filter @bento/shell test
+
+      - name: Test (tools)
+        run: pnpm --filter @bento/tools test
+
       - name: Build extensions
         env:
           BENTO_RELEASE: '1'
         run: pnpm run ext:build
 
-      - name: Report size budgets
-        # Reports graph-aware JS and direct-file size ceilings without making
-        # an overage a gate. Missing or malformed built assets still fail.
-        # JS entry budgets live in
-        # scripts/check-size-budgets.mjs; CSS/background budgets live in
-        # .size-limit.json.
+      - name: Check size budgets
+        # Fails when an entry grows past .size-baseline.json by more than
+        # max(1%, 1 KB). Ceilings over the target are reported, not gated.
+        # Missing or malformed built assets still fail.
         run: pnpm run size:check
 
   bento-smoke:
@@ -177,7 +203,21 @@ jobs:
         # See `extensions` job above for the separate frozen release lock.
         run: bash scripts/install-release-deps.sh
       - name: Bento build driver reads our config
-        run: node -e "import('./scripts/bento-build.mjs').then(({loadConfig}) => { const c = loadConfig(); if (c.firefox.version !== '154.0') throw new Error('unexpected Firefox version'); console.log('bento.json loaded for Firefox ' + c.firefox.version); })"
+        # Proves bento.json loads, the Firefox version is well formed, and the
+        # release channel in config/firefox-versions.json agrees with it. No
+        # version literal, so Firefox upgrades do not need to edit this step.
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { loadConfig } from './scripts/bento-build.mjs';
+            const c = loadConfig();
+            const version = c.firefox.version;
+            if (!/^[0-9]+(\.[0-9]+)+([A-Za-z][0-9A-Za-z.-]*|-[0-9A-Za-z.-]+)?\$/.test(version)) throw new Error('malformed Firefox version: ' + version);
+            const versions = JSON.parse(fs.readFileSync('config/firefox-versions.json', 'utf8'));
+            const release = versions.channels?.find((entry) => entry.channel === 'release');
+            if (release?.version !== version) throw new Error('config/firefox-versions.json release version ' + release?.version + ' does not match bento.json ' + version);
+            console.log('bento.json loaded for Firefox ' + version);
+          "
       - name: Bento source license check
         run: pnpm run lc
 

@@ -12277,22 +12277,6 @@
       const rect = main?.getBoundingClientRect?.();
       return rect ? { rect } : null;
     }
-    function viewportRectForLocalLayoutRect(rect) {
-      if (!rect) return null;
-      const host = getStripContainer();
-      const tabpanels = window.gBrowser?.tabpanels;
-      const hostLocal = viewportRectForLayoutRect(tabpanels, rect);
-      if (!host || !hostLocal) return null;
-      const hostRect = host.getBoundingClientRect();
-      return {
-        left: hostRect.left + hostLocal.left,
-        top: hostRect.top + hostLocal.top,
-        right: hostRect.left + hostLocal.left + hostLocal.width,
-        bottom: hostRect.top + hostLocal.top + hostLocal.height,
-        width: hostLocal.width,
-        height: hostLocal.height,
-      };
-    }
     function cloneLayoutNode(node) {
       if (!node) return null;
       if (node.kind === 'panel') return { kind: 'panel', tabId: Number(node.tabId) };
@@ -14637,6 +14621,25 @@
       const status = statusByTabId?.get?.(tabId) || 'unknown';
       panelEl.dataset.bentoPanelLayoutStatus = status;
     }
+  }
+
+  // Maps a rect in panel-layout coordinates to viewport coordinates inside the
+  // side-panel host. Top-level so the DevTools connector fallback in
+  // getViewportPanelRectForTabId and the header-drag drop targets share it.
+  function viewportRectForLocalLayoutRect(rect) {
+    if (!rect) return null;
+    const host = document.getElementById('bento-side-panel-host');
+    const hostLocal = viewportRectForLayoutRect(window.gBrowser?.tabpanels, rect);
+    if (!host || !hostLocal) return null;
+    const hostRect = host.getBoundingClientRect();
+    return {
+      left: hostRect.left + hostLocal.left,
+      top: hostRect.top + hostLocal.top,
+      right: hostRect.left + hostLocal.left + hostLocal.width,
+      bottom: hostRect.top + hostLocal.top + hostLocal.height,
+      width: hostLocal.width,
+      height: hostLocal.height,
+    };
   }
 
   function viewportRectForLayoutRect(tabpanels, rect) {

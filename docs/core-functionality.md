@@ -108,6 +108,10 @@ Closing a window that is showing a workspace should release that workspace for
 another window without clearing its tabs, panels, or panel layout.
 In a single-window session, relaunch should reopen on the workspace that was
 visible when Bento was quit.
+Panels, pinned panels, and tabs from private windows are never written to the
+saved panel layout, the pinned panel rail, or the tabs kept when a window closes.
+Their URLs, titles, favicons, and panel slots do not come back after relaunch,
+matching Firefox private-browsing behavior.
 
 Workspace export/import and automatic backups should preserve the same browsing
 layout state as restart persistence: tabs, panels, panel order, panel widths,
@@ -185,6 +189,9 @@ When a side panel is playing audio, its panel header shows the same mute control
 after the refresh button and before the address field.
 Audible side panels also emit small music-note particles from their panel
 navigator favicon buttons; multiple panel buttons can show this at once.
+Idle-tab sleep never unloads a tab that is playing audio or sharing the camera,
+microphone, or screen, so background music and calls keep running. Once it goes
+quiet, the normal idle rules apply to it again.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the New menu and regular tabs with a divider instead of a text
 subheading.
