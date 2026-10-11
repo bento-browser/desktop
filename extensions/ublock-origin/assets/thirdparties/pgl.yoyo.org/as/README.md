@@ -1,11 +1,12 @@
 <https://pgl.yoyo.org/as/index.php>:
 
-Site does encourage use of the list for noncommercial uses only, as per
-https://pgl.yoyo.org/ ("everything licensed under the McRae General Public
+Site does encourage use of the list for noncommercial uses only, as per 
+https://pgl.yoyo.org/ ("everything licensed under the McRae General Public 
 License (version 4.r53) ")
 
-Licence can be found at https://pgl.yoyo.org/license/, and is copied below
+Licence can be found at https://pgl.yoyo.org/license/, and is copied below 
 for brevity:
+
 
     Preamble
     --------

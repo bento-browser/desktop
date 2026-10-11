@@ -1,23 +1,30 @@
-:root {
-  color-scheme: light dark;
+/*
+ * Standalone styles for the plain new-panel page (public/panel-newtab.html).
+ * The page loads no Mux stylesheet, so it takes the token layer, the generated
+ * preset bridge, and the shared document defaults directly, and restates the
+ * Mux foundation defaults (body line height, heading color) it relied on.
+ */
+@import '../theme/bento-tokens.css';
+@import '../theme/presets/index.css';
+@import '../theme/document-base.css';
+
+/*
+ * The heading keeps Mux's Inter. The shell build already emits this file next
+ * to the sheet (from the Mux font-face), so the page reuses it by relative URL
+ * instead of redeclaring the whole family. Descriptors cannot read custom
+ * properties: the weight mirrors --bento-panel-newtab-title-font-weight. The
+ * Vite config fails the build if the file name stops existing.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 650;
+  font-display: swap;
+  src: url('./Inter_opsz_wght_.ttf') format('truetype');
 }
 
-html,
 body {
-  margin: 0;
-  min-height: 100%;
-  background: var(--bento-brand-bg, var(--neutral-5));
-  color: var(--neutral-90);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-}
-
-body {
-  min-height: 100vh;
+  line-height: var(--bento-panel-newtab-line-height);
 }
 
 .panel-newtab {
@@ -25,31 +32,33 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 1.25rem;
+  padding: var(--bento-panel-newtab-padding);
 }
 
 .panel-newtab__surface {
   display: grid;
   justify-items: center;
-  gap: 0.625rem;
-  color: var(--neutral-80);
+  gap: var(--bento-panel-newtab-gap);
+  color: var(--bento-panel-newtab-surface-color);
 }
 
 .panel-newtab__mark {
-  width: 2.1875rem;
-  height: 2.1875rem;
+  width: var(--bento-panel-newtab-mark-size);
+  height: var(--bento-panel-newtab-mark-size);
   display: grid;
   place-items: center;
-  border-radius: var(--radius-m, 0.3125rem);
-  background: var(--bento-workspace-accent, var(--color-60));
-  color: var(--bento-workspace-accent-fg, var(--color-5));
-  font-size: 1.09375rem;
-  font-weight: 700;
+  border-radius: var(--bento-panel-newtab-mark-radius);
+  background: var(--bento-workspace-accent);
+  color: var(--bento-workspace-accent-fg);
+  font-size: var(--bento-panel-newtab-mark-font-size);
+  font-weight: var(--bento-panel-newtab-mark-font-weight);
 }
 
 .panel-newtab h1 {
   margin: 0;
-  font-size: 0.78125rem;
-  font-weight: 650;
+  color: var(--bento-panel-newtab-title-color);
+  font-family: var(--bento-panel-newtab-title-font-family);
+  font-size: var(--bento-panel-newtab-title-font-size);
+  font-weight: var(--bento-panel-newtab-title-font-weight);
   letter-spacing: 0;
 }

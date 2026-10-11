@@ -4,8 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>New Panel</title>
+    <!-- Plain page: copied as-is from public/, no script bundle and no shared Mux stylesheet.
+         The vite config bundles src/panel-newtab/panel-newtab.css into assets/panel-newtab.css. -->
     <script src="./boot.js"></script>
-    <script type="module" src="/src/panel-newtab/main.ts"></script>
+    <link rel="stylesheet" href="./assets/panel-newtab.css" />
   </head>
   <body>
     <main class="panel-newtab" aria-label="New panel">

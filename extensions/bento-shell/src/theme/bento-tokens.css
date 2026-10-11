@@ -128,6 +128,24 @@
     --bento-settings-header-max-width: 45rem;
     --bento-settings-number-field-max-width: 8.75rem;
 
+    /* System UI font stack for plain pages that load no Mux fonts. */
+    --bento-font-system: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+    /* Plain new-panel page (src/panel-newtab). It loads no Mux stylesheet and
+       resolves these roles through the generated preset bridge. */
+    --bento-panel-newtab-padding: 1.25rem;
+    --bento-panel-newtab-gap: 0.625rem;
+    --bento-panel-newtab-title-color: var(--neutral-90);
+    --bento-panel-newtab-surface-color: var(--neutral-80);
+    --bento-panel-newtab-line-height: var(--body-line-height);
+    --bento-panel-newtab-mark-size: 2.1875rem;
+    --bento-panel-newtab-mark-radius: var(--radius-m);
+    --bento-panel-newtab-mark-font-size: 1.09375rem;
+    --bento-panel-newtab-mark-font-weight: var(--heading-weight);
+    --bento-panel-newtab-title-font-family: 'Inter', sans-serif;
+    --bento-panel-newtab-title-font-size: 0.78125rem;
+    --bento-panel-newtab-title-font-weight: 650;
+
     /* Surfaces — translucent overlays used for hover/active states on top
        of the brand background. Tinting --neutral-90 keeps the overlay
        neutral-tone-aware when the public Mux palette flips. */

@@ -5,9 +5,13 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scanProductIdentity } from './check-product-identity.mjs';
+import { copyFileIfChanged, pruneTree } from './write-if-changed.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
+// append-prefs.sh adds this managed block to the installed branding prefs after
+// the copy, so a destination holding source plus the block is already current.
+const PREFS_MARKER = '// === Bento defaults (appended from prefs/bento.js)';
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -30,6 +34,18 @@ function collectSourceFiles(root, current = root) {
       if (stat.isFile()) return [relative];
       throw new Error(`install-branding: unsupported filesystem entry: ${relative}`);
     });
+}
+
+function isCurrentBrandingFile(source, destination) {
+  if (!destination.endsWith(`pref${path.sep}firefox-branding.js`) || !fs.existsSync(destination)) {
+    return false;
+  }
+  const installed = fs.readFileSync(destination, 'utf8');
+  const markerIndex = installed.indexOf(PREFS_MARKER);
+  return (
+    markerIndex >= 0 &&
+    installed.slice(0, markerIndex).trimEnd() === fs.readFileSync(source, 'utf8').trimEnd()
+  );
 }
 
 function assertImportDidNotGenerateProductBranding(repoRoot) {
@@ -100,9 +116,19 @@ export function installBranding(options = {}) {
 
   const files = collectSourceFiles(source);
   assertImportDidNotGenerateProductBranding(repoRoot);
-  fs.rmSync(destination, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.cpSync(source, destination, { recursive: true, force: true, dereference: false });
+  // Sync in place so unchanged files keep their mtimes and mach does not
+  // reconfigure or rebuild unchanged branding.
+  if (!fs.lstatSync(destination, { throwIfNoEntry: false })?.isDirectory()) {
+    fs.rmSync(destination, { recursive: true, force: true });
+    fs.mkdirSync(destination, { recursive: true });
+  }
+  pruneTree(destination, new Set(files.map((file) => file.split(path.sep).join('/'))));
+  for (const file of files) {
+    const installed = path.join(destination, file);
+    if (!isCurrentBrandingFile(path.join(source, file), installed)) {
+      copyFileIfChanged(path.join(source, file), installed);
+    }
+  }
 
   const failures = scanProductIdentity([destination], { cwd: repoRoot });
   if (failures.length > 0) {

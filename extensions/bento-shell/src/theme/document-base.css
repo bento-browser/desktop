@@ -1,0 +1,23 @@
+/*
+ * Document defaults shared by every Bento page. They used to live in
+ * panel-newtab.css, which `cssCodeSplit: false` folded into the one shared
+ * stylesheet, so every entry came to depend on them (sidebar background,
+ * tooltip font, root color, min-height). Keep them here, imported by each
+ * entry after the token layers; the plain new-panel page imports the same file.
+ */
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bento-brand-bg);
+  color: var(--neutral-90);
+  font-family: var(--bento-font-system);
+}
+
+body {
+  min-height: 100vh;
+}

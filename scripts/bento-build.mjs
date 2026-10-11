@@ -15,6 +15,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
+import { writeFileIfChanged } from './write-if-changed.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -32,6 +33,16 @@ const PLATFORM_TARGETS = {
   win32: ['WINNT_x86_64-msvc', 'WINNT_x86_64-msvc-x64'],
 };
 const compareNames = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+// Fixed object directory under engine/. Firefox's default name embeds the host OS
+// version, so an OS update would silently start a cold build in a new directory.
+export const FIXED_OBJDIR = 'obj-bento';
+// Rewritten from repository config on every build (writeMozconfig). The recorded
+// engine state checks them against fresh output instead of the hash taken at import.
+const REGENERABLE_ENGINE_FILES = new Set([
+  'mozconfig',
+  'browser/config/version.txt',
+  'browser/config/version_display.txt',
+]);
 
 function fail(message) {
   const error = new Error(message);
@@ -110,15 +121,19 @@ function sourceUrl(config, version) {
   return `${base}/${version}/source/firefox-${version}.source.tar.xz`;
 }
 
+const HASH_CHUNK = Buffer.allocUnsafe(256 * 1024);
+
 function sha256File(file) {
-  for (const command of process.platform === 'win32' ? ['sha256sum', 'certutil'] : ['shasum', 'sha256sum']) {
-    const args = command === 'shasum' ? ['-a', '256', file] : command === 'sha256sum' ? [file] : ['-hashfile', file, 'SHA256'];
-    const result = spawnSync(command, args, { encoding: 'utf8', stdio: 'pipe' });
-    if (result.status !== 0) continue;
-    const digest = result.stdout.match(/\b[a-f0-9]{64}\b/i)?.[0];
-    if (digest) return digest.toLowerCase();
+  const hash = crypto.createHash('sha256');
+  const descriptor = fs.openSync(file, 'r');
+  try {
+    for (let read = fs.readSync(descriptor, HASH_CHUNK); read > 0; read = fs.readSync(descriptor, HASH_CHUNK)) {
+      hash.update(HASH_CHUNK.subarray(0, read));
+    }
+  } finally {
+    fs.closeSync(descriptor);
   }
-  fail('no SHA-256 utility is available to verify Firefox source');
+  return hash.digest('hex');
 }
 
 export function verifySourceArchive(file, expected) {
@@ -284,6 +299,15 @@ function ensureNoLinkedEngineWorktrees(ctx, operation) {
   ].join('\n'));
 }
 
+/** Path -> SHA-256 of the regular files in .bento/engine-state.json. */
+function recordedFileHashes(ctx) {
+  const statePath = path.join(ctx.stateDir, 'engine-state.json');
+  if (!fs.existsSync(statePath)) return new Map();
+  return new Map((readJson(statePath).entries || [])
+    .filter((entry) => entry.type === 'file' && entry.sha256)
+    .map((entry) => [entry.path, entry.sha256]));
+}
+
 export function engineStatus(repoRoot = DEFAULT_ROOT) {
   const ctx = createContext(repoRoot);
   if (!engineIsGit(ctx)) return { exists: fs.existsSync(ctx.engineDir), git: false, dirty: false, files: [] };
@@ -315,9 +339,14 @@ export function engineStatus(repoRoot = DEFAULT_ROOT) {
   const displayVersion = fs.existsSync(configPath)
     ? readJson(configPath).brands?.bento?.release?.displayVersion
     : undefined;
+  // A build writes the display version into these, so after a version bump the files
+  // still hold the previous value (as recorded at import) until the next build.
+  const recordedVersionFiles = recordedFileHashes(ctx);
   for (const file of ['browser/config/version.txt', 'browser/config/version_display.txt']) {
     const target = path.join(ctx.engineDir, file);
-    if (displayVersion && fs.existsSync(target) && fs.readFileSync(target, 'utf8').trim() === displayVersion) owned.add(file);
+    if (!fs.existsSync(target)) continue;
+    if ((displayVersion && fs.readFileSync(target, 'utf8').trim() === displayVersion)
+      || recordedVersionFiles.get(file) === sha256File(target)) owned.add(file);
   }
   if (isExactReadmeOverlay(ctx, path.join(ctx.engineDir, 'README.md'))) owned.add('README.md');
   if (fs.existsSync(path.join(ctx.root, 'patches'))) {
@@ -534,7 +563,56 @@ function isExactReadmeOverlay(ctx, target) {
     : stat.isFile() && sha256File(target) === sha256File(source);
 }
 
-function generatedMozconfigText(ctx, config, mode) {
+// mach reads this line from engine/mozconfig to choose the object directory.
+const MOZ_OBJDIR_LINE = /^mk_add_options MOZ_OBJDIR=@TOPSRCDIR@\/(obj-[A-Za-z0-9._-]+)$/m;
+
+/**
+ * The object directory name written into the generated mozconfig: BENTO_OBJDIR
+ * when set, else the fixed default. Generation and resolveObjDir both start here,
+ * so mach and every tool that reads its output agree.
+ */
+function requestedObjDirName(ctx) {
+  const value = process.env.BENTO_OBJDIR;
+  if (!value) return undefined;
+  const resolved = path.resolve(ctx.engineDir, value);
+  const name = path.basename(resolved);
+  if (path.dirname(resolved) !== path.resolve(ctx.engineDir) || !/^obj-[A-Za-z0-9._-]+$/.test(name)) {
+    fail(`BENTO_OBJDIR=${value} must name a directory directly under engine/ that starts with obj- (for example obj-bento)`);
+  }
+  return name;
+}
+
+/** The object directory name engine/mozconfig currently sends mach to, if it has one. */
+function mozconfigObjDirName(ctx) {
+  const file = path.join(ctx.engineDir, 'mozconfig');
+  if (!fs.existsSync(file)) return undefined;
+  return MOZ_OBJDIR_LINE.exec(fs.readFileSync(file, 'utf8'))?.[1];
+}
+
+/** A fragment that sets MOZ_OBJDIR would send mach somewhere resolveObjDir does not look. */
+function assertObjDirNotOverridden(ctx) {
+  const fragments = [
+    path.join(ctx.root, 'configs', 'common', 'mozconfig'),
+    path.join(ctx.root, 'configs', platformConfigName(), 'mozconfig'),
+    path.join(ctx.root, 'mozconfig'),
+  ];
+  for (const fragment of fragments) {
+    if (!fs.existsSync(fragment)) continue;
+    const sets = fs.readFileSync(fragment, 'utf8').split(/\r?\n/).some((line) => !line.trimStart().startsWith('#') && /\bMOZ_OBJDIR\b/.test(line));
+    if (sets) fail(`${path.relative(ctx.root, fragment)} sets MOZ_OBJDIR; Bento chooses the object directory (set BENTO_OBJDIR to use another obj-* name)`);
+  }
+}
+
+/** mach ignores engine/mozconfig, and so the directory Bento resolves, when MOZCONFIG names another file. */
+function assertGeneratedMozconfigInUse(ctx) {
+  const chosen = process.env.MOZCONFIG;
+  if (chosen && canonicalPath(path.resolve(ctx.engineDir, chosen)) !== canonicalPath(path.join(ctx.engineDir, 'mozconfig'))) {
+    fail(`MOZCONFIG=${chosen} would make mach ignore the generated engine/mozconfig; unset it and put local settings in the repository's root mozconfig`);
+  }
+}
+
+/** `objdir` is a directory name, or undefined for the output of drivers that predate the fixed directory. */
+function generatedMozconfigText(ctx, config, mode, objdir) {
   const platformName = platformConfigName();
   const platformPath = path.join(ctx.root, 'configs', platformName, 'mozconfig');
   if (!fs.existsSync(platformPath)) fail(`missing ${path.relative(ctx.root, platformPath)}`);
@@ -549,6 +627,9 @@ function generatedMozconfigText(ctx, config, mode) {
   if (selectedMode === 'dev') lines.push('ac_add_options --disable-debug');
   if (selectedMode === 'debug') lines.push('ac_add_options --enable-debug', 'ac_add_options --disable-optimize');
   if (selectedMode === 'release') lines.push('ac_add_options --disable-debug', 'ac_add_options --enable-optimize', 'ac_add_options --enable-rust-simd');
+  // Every mode builds into one directory. An undefined name reproduces the output
+  // of drivers that predate it, which verification still has to accept.
+  if (objdir) lines.push('', `mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${objdir}`);
   lines.push(
     '',
     `ac_add_options --with-branding=browser/branding/${config.brand}`,
@@ -617,13 +698,17 @@ function sameKnownFinalNewline(actual, expected) {
   return normalize(actual) === normalize(expected);
 }
 
-function isGeneratedMozconfig(ctx, config, target) {
-  const actual = fs.readFileSync(target, 'utf8');
+function isGeneratedMozconfig(ctx, config, actual) {
   const normalizedLegacy = actual.replace(/^# Internal [A-Za-z]+ config$/m, '# Internal build config');
   const withoutLegacyTrailingSpaces = normalizedLegacy.endsWith('\n  ')
     ? normalizedLegacy.slice(0, -2)
     : normalizedLegacy;
-  return ['dev', 'debug', 'release'].some((mode) => actual === generatedMozconfigText(ctx, config, mode))
+  // Which obj-* name a build used (BENTO_OBJDIR) does not make the file hand-edited.
+  const anyObjDir = actual.replace(MOZ_OBJDIR_LINE, `mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${FIXED_OBJDIR}`);
+  return ['dev', 'debug', 'release'].some((mode) => (
+    anyObjDir === generatedMozconfigText(ctx, config, mode, FIXED_OBJDIR)
+    || actual === generatedMozconfigText(ctx, config, mode, undefined)
+  ))
     || sameKnownFinalNewline(withoutLegacyTrailingSpaces, legacyMozconfigText(ctx, config) || '');
 }
 
@@ -774,7 +859,7 @@ export function verifyManagedEngine(ctx, files) {
         return fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8') === config.brands.bento.release.displayVersion;
       }
       if (relative === 'mozconfig') {
-        return isGeneratedMozconfig(ctx, config, path.join(ctx.engineDir, relative));
+        return isGeneratedMozconfig(ctx, config, fs.readFileSync(path.join(ctx.engineDir, relative), 'utf8'));
       }
       if (relative === '.gitignore') {
         return isGeneratedGitignore(ctx, config, path.join(ctx.engineDir, relative));
@@ -853,9 +938,7 @@ function managedEnginePaths(ctx) {
     addWhen(relative, (target) => fs.readFileSync(target, 'utf8') === config.brands[config.brand].release.displayVersion);
   }
   addWhen('browser/extensions/moz.build', (target) => fs.readFileSync(target, 'utf8').includes('# BEGIN BENTO BUILTIN ADDONS'));
-  addWhen('mozconfig', (target) => {
-    return isGeneratedMozconfig(ctx, config, target);
-  });
+  addWhen('mozconfig', (target) => isGeneratedMozconfig(ctx, config, fs.readFileSync(target, 'utf8')));
   return paths;
 }
 
@@ -888,6 +971,34 @@ export function recordEngineState(repoRoot = DEFAULT_ROOT) {
   return entries.length;
 }
 
+/**
+ * Reads a regular file without following symlinks, from one descriptor so the type
+ * check and the content describe the same file. Returns undefined for a symlink or
+ * any other non-regular file; a missing file still throws ENOENT.
+ */
+function readRegularFileNoFollow(target) {
+  let fd;
+  try {
+    fd = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  } catch (error) {
+    if (error.code === 'ELOOP') return undefined;
+    throw error;
+  }
+  try {
+    return fs.fstatSync(fd).isFile() ? fs.readFileSync(fd, 'utf8') : undefined;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function isRegeneratedEngineFile(ctx, config, relative) {
+  const content = readRegularFileNoFollow(path.join(ctx.engineDir, relative));
+  if (content === undefined) return false;
+  return relative === 'mozconfig'
+    ? isGeneratedMozconfig(ctx, config, content)
+    : content === config.brands[config.brand]?.release?.displayVersion;
+}
+
 export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
   const ctx = createContext(repoRoot);
   const status = engineStatus(repoRoot);
@@ -895,6 +1006,7 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
   const statePath = path.join(ctx.stateDir, 'engine-state.json');
   if (!fs.existsSync(statePath)) return verifyManagedEngine(ctx, status.files);
   const state = readJson(statePath);
+  const config = loadConfig(ctx.root);
   const snapshot = new Map((state.entries || []).map((entry) => [entry.path, entry]));
   const currentManaged = new Set([
     ...sourceOverlayPaths(ctx),
@@ -902,9 +1014,31 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
     ...managedPatchPaths(ctx),
   ]);
   const paths = new Set([...status.files, ...snapshot.keys()]);
+  // Validate the regenerable files whenever they exist, not only when Git or the
+  // snapshot mention them: Firefox ignores mozconfig, and an import before the first
+  // build records nothing for it. A tracked version file is pristine until it shows
+  // up in the Git status.
+  for (const relative of REGENERABLE_ENGINE_FILES) {
+    if (targetExistsSync(path.join(ctx.engineDir, relative)) && (relative === 'mozconfig' || status.files.includes(relative))) {
+      paths.add(relative);
+    }
+  }
   for (const relative of paths) {
     const expected = snapshot.get(relative);
     const target = path.join(ctx.engineDir, relative);
+    if (REGENERABLE_ENGINE_FILES.has(relative) && targetExistsSync(target)) {
+      // Builds rewrite these from repository config, so the hash recorded at the
+      // last import goes stale after a mode switch or the first build. Accept
+      // freshly generated output, or the exact bytes recorded at import (the file a
+      // repository config change has not been rebuilt into yet). Anything else is
+      // a hand edit.
+      if (isRegeneratedEngineFile(ctx, config, relative)) continue;
+      const stat = fs.lstatSync(target);
+      const unchanged = expected && !expected.missing && expected.type !== 'symlink'
+        && stat.isFile() && sha256File(target) === expected.sha256;
+      if (!unchanged) return false;
+      continue;
+    }
     if (!expected) {
       // A newly introduced source file is safe only when its current generated
       // output already matches the source. Any other new dirty path is a user
@@ -1197,12 +1331,14 @@ export function writeMozconfig(repoRoot = DEFAULT_ROOT, mode = undefined) {
   const config = loadConfig(repoRoot);
   const platformName = platformConfigName();
   const selectedMode = mode || process.env.BENTO_BUILD_MODE || config.build.mode;
-  const content = generatedMozconfigText(ctx, config, selectedMode);
+  assertObjDirNotOverridden(ctx);
+  const content = generatedMozconfigText(ctx, config, selectedMode, requestedObjDirName(ctx) || FIXED_OBJDIR);
   const destination = path.join(ctx.engineDir, 'mozconfig');
-  fs.writeFileSync(destination, content);
+  // Unchanged files keep their mtime: configure depends on version.txt by mtime.
+  writeFileIfChanged(destination, content);
   for (const file of ['browser/config/version.txt', 'browser/config/version_display.txt']) {
     const target = path.join(ctx.engineDir, file);
-    if (fs.existsSync(target)) fs.writeFileSync(target, config.brands[config.brand].release.displayVersion);
+    if (fs.existsSync(target)) writeFileIfChanged(target, config.brands[config.brand].release.displayVersion);
   }
   return { destination, mode: selectedMode, platform: platformName };
 }
@@ -1218,6 +1354,7 @@ async function commandBootstrap(ctx) {
 
 async function commandBuild(ctx, ui, jobs) {
   requireEngine(ctx);
+  assertGeneratedMozconfigInUse(ctx);
   const generated = writeMozconfig(ctx.root);
   const args = ['build'];
   if (ui) args.push('faster');
@@ -1247,13 +1384,51 @@ function readLocales(ctx, config) {
   return fs.readFileSync(source, 'utf8').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((locale) => mappings.get(locale) || locale);
 }
 
-function objDirs(ctx) {
-  if (!fs.existsSync(ctx.engineDir)) return [];
-  const candidates = fs.readdirSync(ctx.engineDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && entry.name.startsWith('obj-')).map((entry) => path.join(ctx.engineDir, entry.name));
-  if (candidates.length <= 1) return candidates;
-  const requested = process.env.BENTO_OBJDIR && path.resolve(ctx.engineDir, process.env.BENTO_OBJDIR);
-  if (requested && candidates.includes(requested)) return [requested];
-  fail(`multiple Firefox object directories found; set BENTO_OBJDIR to one of ${candidates.map((candidate) => path.basename(candidate)).join(', ')}`);
+/**
+ * The one Firefox object directory every tool must use: the directory engine/mozconfig
+ * sends mach to (engine/obj-bento unless BENTO_OBJDIR chose another name when it was
+ * generated). Returns `{ dir, configured, note }`:
+ * - `dir` is that directory when it exists, else undefined;
+ * - `configured` is its path either way, for error messages;
+ * - `note` is set when `dir` is not the configured directory.
+ * `package` and `updates-browser` need the directory mach builds into, so they use the
+ * default. `allowLegacy` is for launching or syncing an existing old build before the
+ * configured directory exists: it falls back to the single legacy engine/obj-* directory
+ * (or an existing BENTO_OBJDIR) with a note, and throws when the choice is ambiguous.
+ */
+export function resolveObjDir(ctx, { allowLegacy = false } = {}) {
+  const requested = requestedObjDirName(ctx);
+  const configuredName = mozconfigObjDirName(ctx) ?? requested ?? FIXED_OBJDIR;
+  const configured = path.join(ctx.engineDir, configuredName);
+  const result = (dir, note) => ({ dir, configured, note });
+
+  if (requested && requested !== configuredName) {
+    const mismatch = `BENTO_OBJDIR=${requested} differs from engine/${configuredName}, the directory engine/mozconfig builds into`;
+    if (!allowLegacy) fail(`${mismatch}; run pnpm run build with the same BENTO_OBJDIR, or unset it`);
+    const dir = path.join(ctx.engineDir, requested);
+    if (!fs.existsSync(dir)) fail(`${mismatch}, and engine/${requested} does not exist`);
+    return result(dir, `${mismatch}; using engine/${requested} as BENTO_OBJDIR asks`);
+  }
+  if (fs.existsSync(configured)) return result(configured);
+  if (!allowLegacy || requested || !fs.existsSync(ctx.engineDir)) return result(undefined);
+
+  const legacy = fs.readdirSync(ctx.engineDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('obj-'))
+    .map((entry) => entry.name)
+    .sort(compareNames);
+  if (legacy.length > 1) {
+    fail(`engine/${configuredName} does not exist and several legacy Firefox object directories were found (${legacy.join(', ')}); run pnpm run build to create engine/${configuredName}, or set BENTO_OBJDIR to one of them`);
+  }
+  return legacy.length
+    ? result(path.join(ctx.engineDir, legacy[0]), `engine/${configuredName} does not exist; using the legacy object directory engine/${legacy[0]}. Run pnpm run build to create engine/${configuredName}.`)
+    : result(undefined);
+}
+
+/** The directory mach builds into, or a clear failure for commands that must not guess. */
+function requireConfiguredObjDir(ctx, command) {
+  const { dir, configured } = resolveObjDir(ctx);
+  if (!dir) fail(`${command}: ${path.relative(ctx.root, configured)} does not exist; run pnpm run build first (it is the directory mach builds into)`);
+  return dir;
 }
 
 function copyDirectoryFiles(ctx, objDist) {
@@ -1269,8 +1444,11 @@ function xmlEscape(value) {
 }
 
 function targetArchitecture(objDist) {
-  const name = path.basename(path.dirname(objDist)).toLowerCase();
-  return /aarch64|arm64/.test(name) ? 'arm64' : 'x64';
+  // obj-bento has no target triple in its name; configure records the processor.
+  const objDir = path.dirname(objDist);
+  const mozinfo = path.join(objDir, 'mozinfo.json');
+  const target = fs.existsSync(mozinfo) ? readJson(mozinfo).processor : undefined;
+  return /aarch64|arm64/.test(String(target || path.basename(objDir)).toLowerCase()) ? 'arm64' : 'x64';
 }
 
 function platformLabel(objDist) {
@@ -1402,9 +1580,8 @@ export async function writeAddonUpdateFiles(ctx, config) {
 async function commandPackage(ctx) {
   requireEngine(ctx);
   const config = loadConfig(ctx.root);
-  const objects = objDirs(ctx);
-  if (objects.length === 0) fail('package: no engine object directory found; run pnpm run build first');
-  const objDist = path.join(objects[objects.length - 1], 'dist');
+  assertGeneratedMozconfigInUse(ctx);
+  const objDist = path.join(requireConfiguredObjDir(ctx, 'package'), 'dist');
   // Releases ship only the published npm Mux, or a rollback variant's own shell
   // (docs/build-tooling.md, "Local Mux UI"). Packaging copies the shell from the
   // objdir, not from the imported source, so the stamp is read there. The
@@ -1442,13 +1619,24 @@ async function commandBrowserUpdates(ctx) {
   const config = loadConfig(ctx.root);
   const marPath = path.join(ctx.distDir, 'output.mar');
   if (!fs.existsSync(marPath)) fail('updates-browser: dist/output.mar is missing; run package first');
-  const objects = objDirs(ctx);
-  if (objects.length !== 1) fail('updates-browser: set BENTO_OBJDIR when more than one object directory exists');
-  const objDist = path.join(objects[0], 'dist');
+  const objDist = path.join(requireConfiguredObjDir(ctx, 'updates-browser'), 'dist');
   const application = packagedApplication(objDist, config);
   const build = applicationIni(application);
   const result = await writeBrowserUpdateFiles(ctx, config, marPath, build.buildId, objDist);
   process.stdout.write(`bento: wrote browser updates (${result.targets.length} targets)\n`);
+}
+
+/**
+ * Prints the selected object directory for the shell scripts, which must not pick one
+ * themselves. `--allow-legacy` lets launch and sync scripts use an old build when the
+ * configured directory does not exist yet (the fallback is announced on stderr);
+ * `--allow-missing` prints nothing instead of failing when there is no directory.
+ */
+function commandObjDir(ctx, { allowLegacy, allowMissing }) {
+  const { dir, configured, note } = resolveObjDir(ctx, { allowLegacy });
+  if (note) process.stderr.write(`bento: ${note}\n`);
+  if (dir) process.stdout.write(`${dir}\n`);
+  else if (!allowMissing) fail(`no Firefox object directory: ${path.relative(ctx.root, configured)} does not exist; run pnpm run build first`);
 }
 
 async function commandAddonUpdates(ctx) {
@@ -1476,11 +1664,13 @@ async function commandLicenseCheck(ctx) {
 
 function parseArgs(argv) {
   const command = argv[0] || 'help';
-  const options = { ui: false, force: false };
+  const options = { ui: false, force: false, allowMissing: false, allowLegacy: false };
   for (let index = 1; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--ui') options.ui = true;
     else if (argument === '--force') options.force = true;
+    else if (argument === '--allow-missing') options.allowMissing = true;
+    else if (argument === '--allow-legacy') options.allowLegacy = true;
     else if (argument === '--jobs' || argument === '-j') options.jobs = Number(argv[++index]);
     else if (argument.startsWith('--jobs=')) options.jobs = Number(argument.slice('--jobs='.length));
     else if (argument === '--version') options.version = argv[++index];
@@ -1501,6 +1691,7 @@ export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT
     case 'build': return commandBuild(ctx, options.ui, options.jobs);
     case 'package': return commandPackage(ctx);
     case 'updates-browser': return commandBrowserUpdates(ctx);
+    case 'objdir': return commandObjDir(ctx, options);
     case 'updates-addons': return commandAddonUpdates(ctx);
     case 'license-check': return commandLicenseCheck(ctx);
     case 'verify':
@@ -1516,13 +1707,15 @@ export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT
       process.stdout.write(`bento: recorded ${recordEngineState(repoRoot)} managed engine paths\n`);
       return undefined;
     case 'help':
-      process.stdout.write('Usage: bento-build <download|update|bootstrap|build|package|license-check>\n');
+      process.stdout.write('Usage: bento-build <download|update|bootstrap|build|package|objdir|license-check>\n');
       return undefined;
     default: fail(`unknown Bento build command: ${command}`);
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+// Compare real paths: Node resolves the module URL, so a checkout reached through a
+// symlink would otherwise run nothing and exit 0.
+if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(path.resolve(process.argv[1]))).href) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

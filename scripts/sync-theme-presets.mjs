@@ -31,11 +31,12 @@ const INDEX_CSS_PATH = resolve(PRESETS_DIR, 'index.css');
 const INDEX_TS_PATH = resolve(PRESETS_DIR, 'index.ts');
 
 const DEFAULT_THEME_ID = 'default';
+// Contrast is fixed to 'standard', so the public contrast='more' block is not
+// projected (see extensions/bento-shell/contrast-more.mjs).
 const PUBLIC_MODE_SELECTORS = [
   "[data-muxui-color-scheme='light']",
   "[data-muxui-color-scheme='dark']",
   "[data-muxui-contrast='standard']",
-  "[data-muxui-contrast='more']",
 ];
 const PUBLIC_CLOSURE_SELECTOR = `:root,
 [data-muxui-color-scheme],
