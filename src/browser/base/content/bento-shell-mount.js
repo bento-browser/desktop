@@ -4348,6 +4348,21 @@
     }
   }
 
+  // Stack rules close the palette or the merge palette when another overlay
+  // opens. That overlay may still be waiting for its document, so these also
+  // drop its queued open (hidePalette and hideMergePalette cancel it too).
+  function dismissPalette() {
+    overlays.cancel('palette');
+    const host = document.getElementById('bento-palette-host');
+    if (host && isPaletteVisible(host)) hidePalette();
+  }
+
+  function dismissMergePalette() {
+    overlays.cancel('merge-palette');
+    const host = document.getElementById('bento-merge-palette-host');
+    if (host && isMergePaletteVisible(host)) hideMergePalette();
+  }
+
   function showPalette() {
     const host = document.getElementById('bento-palette-host');
     if (!host) {
@@ -4355,8 +4370,7 @@
       return;
     }
     openOverlay('palette', () => {
-      const mergeHost = document.getElementById('bento-merge-palette-host');
-      if (mergeHost && isMergePaletteVisible(mergeHost)) hideMergePalette();
+      dismissMergePalette();
       showOverlayToolbarScrim('palette');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
@@ -4415,8 +4429,7 @@
       return;
     }
     openOverlay('workspace-palette', () => {
-      const paletteHost = document.getElementById('bento-palette-host');
-      if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+      dismissPalette();
       showOverlayToolbarScrim('workspace-palette');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
@@ -4463,8 +4476,7 @@
       return;
     }
     openOverlay('merge-palette', () => {
-      const paletteHost = document.getElementById('bento-palette-host');
-      if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+      dismissPalette();
       showOverlayToolbarScrim('merge-palette');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
@@ -4774,8 +4786,7 @@
     } else if (currentAddrbarMode === 'newTab' && !String(initialQuery || '').trim()) {
       clipboardUrl = resolveClipboardUrlSuggestion();
     }
-    const paletteHost = document.getElementById('bento-palette-host');
-    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+    dismissPalette();
     const host = document.getElementById('bento-addrbar-host');
     if (!host) {
       console.warn('[bento-shell-mount] showAddrbar: bento-addrbar-host missing');

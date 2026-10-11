@@ -2436,8 +2436,10 @@ evaluated by `scripts/overlay-manager.test.mjs`) owns one record per overlay:
   `openOverlay(id, reveal)`, so the dim, the host fade, and the focus land after
   the document can render instead of before it. The matching `hide*` function
   calls `overlays.cancel(id)` first, so a hide that arrives while an open waits
-  wins. Queued work is keyed: the welcome requests repeat for a second, and the
-  repeats replace the queued open.
+  wins, and the stack rules that close the palette or merge palette when another
+  overlay opens (`dismissPalette`, `dismissMergePalette`) cancel a queued open
+  of those too. Queued work is keyed: the welcome requests repeat for a second,
+  and the repeats replace the queued open.
 - `overlays.whenReady(id, key, fn)` holds a chrome-to-overlay send (address bar
   open nonce, merge-palette lifecycle) behind the same wait.
 - An overlay document announces itself once its subscriptions exist
