@@ -1,7 +1,15 @@
 # src/
 
-Source overlays — Bento Browser code that lives in the repo and is copied into
-the Firefox tree at build time rather than applied as a patch.
+Source overlays: Bento code that lives in the repo and is copied into the
+Firefox tree at build time (`pnpm run import`) rather than applied as a patch.
+New files in the Firefox tree go here; changes to existing Firefox files are
+patches under `patches/`.
 
-Empty for now. Populated as Phase 3+ features land that need new files in the
-Firefox source tree (as opposed to patches against existing files).
+- `browser/base/content/`: the chrome mount script `bento-shell-mount.js` (which
+  also holds the firefox-compat registry), its stylesheets, and the embedded
+  import host.
+- `browser/actors/`: the `BentoKey` JSWindowActor pair.
+
+The supported chrome surfaces are listed in [CLAUDE.md](../CLAUDE.md), and each
+Firefox core touchpoint is logged in
+[docs/firefox-core-touchpoints.md](../docs/firefox-core-touchpoints.md).
