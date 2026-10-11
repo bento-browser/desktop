@@ -202,8 +202,12 @@ directory can be deleted by hand.
   without the object directory line, or the legacy format) or the exact bytes
   recorded at the last import, which is what the file still holds when
   `configs/` or `bento.json` changed and the build has not regenerated it yet.
-  Any other content, such as a hand edit, still fails. Every other recorded file
-  keeps the hash comparison.
+  Any other content, such as a hand edit, still fails. `engine/mozconfig` is
+  validated whenever it exists, even though Firefox ignores it in Git and an
+  import before the first build records nothing for it; a version file is
+  validated once it differs from Git. The bytes recorded at import also count as
+  owned, so a `displayVersion` bump does not fail the next import before the
+  build rewrites the files. Every other recorded file keeps the hash comparison.
 
 ## Reproducible release dependencies
 
