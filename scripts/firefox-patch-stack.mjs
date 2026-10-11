@@ -15,6 +15,24 @@ export const FIREFOX_PATCH_APPLY_ARGS = [
   '--verbose',
 ];
 
+// Git settings that change whether a patch applies (whitespace policy, line-ending
+// conversion). They are pinned with `git -c` for the replay and for the live
+// apply, so user, system or repository configuration cannot make one succeed
+// where the other fails, and they are part of the recorded check hash.
+export const FIREFOX_PATCH_GIT_CONFIG = [
+  'apply.whitespace=warn',
+  'core.autocrlf=false',
+  'core.safecrlf=false',
+];
+
+// The scratch replay must write only to its own index and object directory. A
+// split index would put sharedindex.* files in the engine's real git directory.
+const SCRATCH_GIT_CONFIG = ['core.splitIndex=false'];
+
+function pinnedConfig(settings) {
+  return settings.flatMap((setting) => ['-c', setting]);
+}
+
 const SCRIPT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_REPO_ROOT = process.env.BENTO_PATCH_STACK_REPO_ROOT || SCRIPT_ROOT;
 const STACK_BRANCH = 'bento/patch-stack';
@@ -558,7 +576,7 @@ function assertNoActiveStackWorktree(ctx) {
 }
 
 function applyPatchToWorktree(ctx, worktreeDir, patchPath, { index = false } = {}) {
-  const args = ['apply', ...FIREFOX_PATCH_APPLY_ARGS];
+  const args = [...pinnedConfig(FIREFOX_PATCH_GIT_CONFIG), 'apply', ...FIREFOX_PATCH_APPLY_ARGS];
   if (index) {
     args.push('--index');
   }
@@ -587,11 +605,13 @@ export async function replaySeries(ctx, manifest, ref) {
     ),
   };
   try {
-    git(['read-tree', ref], { cwd: ctx.engineDir, env });
+    const config = pinnedConfig([...FIREFOX_PATCH_GIT_CONFIG, ...SCRATCH_GIT_CONFIG]);
+    git([...config, 'read-tree', ref], { cwd: ctx.engineDir, env });
     for (const entry of manifest.series) {
       try {
         git(
           [
+            ...config,
             'apply',
             '--cached',
             ...FIREFOX_PATCH_APPLY_ARGS,
@@ -612,12 +632,62 @@ export async function replaySeries(ctx, manifest, ref) {
 }
 
 /**
+ * A checkout without symlink support (core.symlinks=false) materializes tracked
+ * symlinks as plain files, so `apply` fails on a patch that changes one with
+ * "wrong type" while the index-only replay passes. Fail up front, before any
+ * mutation, when the series touches a symlink on such a checkout.
+ */
+function assertSymlinkPatchesSupported(ctx, manifest, ref) {
+  const setting = gitMaybe(['config', '--type=bool', '--get', 'core.symlinks'], ctx.engineDir);
+  if (!setting.ok || setting.stdout !== 'false') return;
+
+  const pathsByPatch = new Map();
+  const symlinkPatches = new Set();
+  for (const entry of manifest.series) {
+    const text = fs.readFileSync(path.join(ctx.repoRoot, entry.path), 'utf8');
+    pathsByPatch.set(
+      entry.path,
+      [...text.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)].flatMap((match) => [match[1], match[2]]),
+    );
+    // Mode lines and "index <old>..<new> 120000" name the symlink file mode.
+    if (/^(?:(?:old|new|deleted file|new file) mode |index [0-9a-f]+\.\.[0-9a-f]+ )120000\s*$/m.test(text)) {
+      symlinkPatches.add(entry.path);
+    }
+  }
+  const patched = [...new Set([...pathsByPatch.values()].flat())];
+  if (patched.length) {
+    const listing = git(['ls-tree', '-z', ref, '--', ...patched], { cwd: ctx.engineDir });
+    const baseSymlinks = new Set(
+      listing
+        .split('\0')
+        .filter((record) => record.startsWith('120000 '))
+        .map((record) => record.slice(record.indexOf('\t') + 1)),
+    );
+    for (const [patchPath, paths] of pathsByPatch) {
+      if (paths.some((file) => baseSymlinks.has(file))) symlinkPatches.add(patchPath);
+    }
+  }
+  if (symlinkPatches.size) {
+    throw new UserError(
+      [
+        'core.symlinks=false in the engine repository, so tracked symlinks are checked out as',
+        'plain files and applying a patch that changes one fails with "wrong type".',
+        `Patches that touch symlinks: ${[...symlinkPatches].join(', ')}`,
+        'Enable symlink support for the engine checkout (core.symlinks=true) and retry.',
+      ].join('\n'),
+    );
+  }
+}
+
+/**
  * Hash of everything the replay result depends on: the resolved base commit,
- * the apply arguments, and every file under patches/ (series.json included).
+ * the apply arguments, the pinned git settings, and every file under patches/
+ * (series.json included).
  */
 async function seriesInputsHash(ctx, base) {
   const hash = crypto.createHash('sha256');
   hash.update(`${base.commit}\0${FIREFOX_PATCH_APPLY_ARGS.join(' ')}\0`);
+  hash.update(`${[...FIREFOX_PATCH_GIT_CONFIG, ...SCRATCH_GIT_CONFIG].join(' ')}\0`);
   const files = await tinyGlob('**/*', { cwd: ctx.patchesDir, filesOnly: true });
   for (const file of files.map((name) => name.split(path.sep).join('/')).sort()) {
     hash.update(`${file}\0`);
@@ -640,6 +710,8 @@ function recordedSeriesHash(ctx) {
  * exact base. The pass is recorded under .bento/ so unchanged imports skip it.
  */
 async function checkSeries(ctx, manifest, base, { force = false } = {}) {
+  // Not part of the recorded hash because it depends on local git configuration.
+  assertSymlinkPatchesSupported(ctx, manifest, base.ref);
   const hash = await seriesInputsHash(ctx, base);
   if (!force && recordedSeriesHash(ctx) === hash) return { skipped: true };
   await replaySeries(ctx, manifest, base.ref);
@@ -866,7 +938,13 @@ async function commandApply(ctx) {
     throw new UserError(errors.join('\n'));
   }
   ensureEngineGit(ctx);
-  await ensureBaseRef(ctx, manifest.base.version, manifest.base.tree, manifest.base.contentTree);
+  const base = await ensureBaseRef(
+    ctx,
+    manifest.base.version,
+    manifest.base.tree,
+    manifest.base.contentTree,
+  );
+  assertSymlinkPatchesSupported(ctx, manifest, base.ref);
   for (const entry of manifest.series) {
     try {
       applyPatchToWorktree(ctx, ctx.engineDir, entry.path);

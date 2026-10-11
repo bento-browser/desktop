@@ -559,3 +559,88 @@ test('check handles added, binary and deleted files in the scratch index', async
 
   assert.equal(result.status, 0, result.stderr);
 });
+
+/** Recursive listing of everything inside a directory, for "gains no files" assertions. */
+function listFiles(root, current = root) {
+  return fs.readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(current, entry.name);
+    return entry.isDirectory() ? listFiles(root, absolute) : [path.relative(root, absolute)];
+  });
+}
+
+test('git configuration cannot change the outcome of check or apply', async () => {
+  const { root, engine, tree } = await fixture();
+  // A patch that adds a line with trailing whitespace.
+  fs.writeFileSync(path.join(engine, 'file.txt'), 'alpha\nbeta   \n');
+  fs.writeFileSync(path.join(root, 'patches/area/01.patch'), gitRaw(engine, ['diff', '--full-index']));
+  git(engine, ['checkout', '--', 'file.txt']);
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/01.patch', id: 'whitespace', subject: 'Whitespace' }],
+  });
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+
+  git(engine, ['config', 'apply.whitespace', 'error']);
+
+  // The recorded pass must not hide a different outcome, and neither path may differ.
+  const skipped = runFixture(root, ['check', '--for-import']);
+  assert.equal(skipped.status, 0, skipped.stderr);
+  const forced = runFixture(root, ['check', '--for-import', '--force']);
+  assert.equal(forced.status, 0, forced.stderr);
+  const applied = runFixture(root, ['apply']);
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.equal(fs.readFileSync(path.join(engine, 'file.txt'), 'utf8'), 'alpha\nbeta   \n');
+});
+
+test('the scratch replay writes nothing into the engine git directory', async () => {
+  const { root, engine } = await twoDependentPatches();
+  // A split index writes sharedindex.* files into the git directory.
+  git(engine, ['config', 'core.splitIndex', 'true']);
+  const gitDir = path.join(engine, '.git');
+  const before = listFiles(gitDir).sort();
+
+  const result = runFixture(root, ['check', '--for-import', '--force']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(listFiles(gitDir).sort(), before);
+});
+
+test('check refuses patches that touch symlinks when the engine cannot check them out', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('symlink creation requires elevated Windows privileges');
+    return;
+  }
+  const { root, engine } = await fixture();
+  fs.symlinkSync('file.txt', path.join(engine, 'link'));
+  git(engine, ['add', 'link']);
+  git(engine, ['commit', '-m', 'Add a tracked symlink']);
+  git(engine, ['update-ref', 'refs/bento/firefox-base/1.0', 'HEAD']);
+  const tree = git(engine, ['rev-parse', 'HEAD^{tree}']);
+  fs.rmSync(path.join(engine, 'link'));
+  fs.symlinkSync('elsewhere', path.join(engine, 'link'));
+  fs.writeFileSync(path.join(root, 'patches/area/01.patch'), gitRaw(engine, ['diff', '--full-index', '--', 'link']));
+  git(engine, ['checkout', '--', 'link']);
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/01.patch', id: 'retarget', subject: 'Retarget the link' }],
+  });
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+
+  // The live apply would fail with "wrong type" on a checkout without symlinks, so
+  // preflight must fail too, including when the recorded pass would skip the replay.
+  git(engine, ['config', 'core.symlinks', 'false']);
+  for (const args of [['check', '--for-import'], ['check', '--for-import', '--force'], ['apply']]) {
+    const result = runFixture(root, args);
+    assert.notEqual(result.status, 0, args.join(' '));
+    assert.match(result.stderr, /core\.symlinks=false.*patches\/area\/01\.patch|patches\/area\/01\.patch.*core\.symlinks=false/s, args.join(' '));
+  }
+
+  // A series that never touches a symlink is unaffected.
+  fs.rmSync(path.join(root, 'patches/area/01.patch'));
+  writeLegacyPatch(root, engine, 'patches/area/02.patch', 'beta\n');
+  writeManifest(root, {
+    tree,
+    entries: [{ path: 'patches/area/02.patch', id: 'plain', subject: 'Plain file' }],
+  });
+  assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+});
