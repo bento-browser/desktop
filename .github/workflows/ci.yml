@@ -4,7 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    # Drafts already run this workflow in full, so a ready_for_review
+    # trigger would only repeat the run on the same commit.
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       platform:
