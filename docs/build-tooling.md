@@ -85,7 +85,9 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run build:ui`: write the mozconfig and run `mach build faster`, the
   incremental Firefox UI build. It does not run `pnpm run import`.
 - `pnpm run package`: produce platform packages and locales, plus the MAR and
-  update XML when the updater is enabled (see [Updater](#updater)).
+  update XML when the updater is enabled (see [Updater](#updater)). A release
+  build first refuses an object directory whose shell still has the dev-only
+  reload command (see [Dev-only reload command](#dev-only-reload-command)).
 - `pnpm run artifacts:check`: verify the packaged application against
   `dist/bento-artifacts.json`, and the MAR contents and update XML when the
   updater is enabled. With the updater disabled it fails if a MAR or update
@@ -93,6 +95,8 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run build:full`: download, bootstrap, build, and package.
 - `pnpm run build:release`: create a host-platform release-mode package.
 - `pnpm run lc`: run Bento's source-overlay license check.
+- `pnpm run release:security-check:shell`: fail when a release shell still has the
+  dev-only reload command (see [Dev-only reload command](#dev-only-reload-command)).
 - `pnpm run brand:regen`: reinstall canonical tracked branding through the
   normal import pipeline.
 - `pnpm run size:check`: report graph-aware JavaScript and direct-file size
@@ -106,36 +110,102 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   `pnpm run size:baseline -- --accept-growth <entry path>` (repeatable). Commit
   the refreshed file.
 
-Hosted cache keys (`ci.yml`, `release.yml`) are exact-match hashes. The source
-key covers `bento.json`, `config/**`, `patches/**`, `src/**`,
-`branding/bento/**`, `extensions/**`, `prefs/**`, and the build, import and patch-stack
-scripts. The object key covers `bento.json`, `config/**`, `patches/**`,
-`package.json`, `configs/**`, `rust-toolchain.toml`, `pnpm-lock.release.yaml`,
-`scripts/bento-build.mjs`, and `scripts/mach-raw.sh`; it does not include
-`src/**`, `extensions/**`, `prefs/**`, or `branding/**`. A change to the source
-tooling, mozconfig generation, LTO policy, or Rust compiler therefore cannot
-reuse an object cache produced under a different native build configuration.
+## CI jobs and caches
+
+Routine pushes and pull requests run on the free `ubuntu-24.04` runner only.
+macOS and Windows builds run through `workflow_dispatch` and `release.yml`.
+
+`ci.yml` jobs and what they wait for:
+
+| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                        |
+| -------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`; selects the build platforms. Installs no dependencies.       |
+| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions, the competitor-reference boundary, the build driver config check, and `pnpm run lc`.   |
+| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`.                                                |
+| `build` (Source import or Build, per platform)                 | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Manual runs go on to bootstrap, build, and package. |
+
+The checks run in parallel and the build starts only after all of them pass,
+so a failing tree never starts a native build. `release.yml` runs its own
+`security-gate` (security invariants, release gate, the release security test,
+and `pnpm audit`) before the three native builds; the `release` job repeats the
+two release checks next to the artifacts it publishes.
+
+Each job installs its own dependencies, because each job is a separate machine.
+A manual build calls `scripts/build-release.sh` with `BENTO_RELEASE_PREPARED=1`:
+the workflow already installed, built the extensions, and imported them with
+`BENTO_RELEASE=1`, so the script skips those steps (the variable is documented
+in the script header; local runs leave it unset). The script still runs
+`pnpm run release:security-check:shell` before the native build on both paths.
+
+Hosted caches use three keys. Their definitions live in
+`.github/actions/engine-source` and `.github/actions/native-cache-keys`, so
+`ci.yml` and `release.yml` cannot drift:
+
+| Cache              | Key                                                                                                                               | Restore keys                                                                                                | Saved                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Firefox source     | `bento-engine-source-v2-<OS>-<firefox.version>-<firefox.source.sha256>`                                                           | none                                                                                                        | Right after `pnpm run download` on a miss; never overwritten                    |
+| Mozilla toolchains | `bento-mozbuild-v1-<OS>-<arch>-<firefox.version>`                                                                                 | none                                                                                                        | Right after a successful `bootstrap` on a miss                                  |
+| Native objects     | `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-<hash of configs/** and rust-toolchain.toml>-<run id>-<attempt>` | The same prefix without the run id, then `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-` | After every manual or release native build, including a failed or timed-out one |
+
+- **Source.** The cache holds `engine/` (without `obj-*`) and
+  `.bento/source-state.json` exactly as `pnpm run download` leaves them, before
+  any import. `import` resets the patched files and copies every overlay, so
+  edits to the UI, patches, scripts, prefs, or branding never invalidate it. A
+  Firefox bump or a new source digest does. Imported state (`import-manifest.json`,
+  `engine-state.json`) is not cached.
+- **Toolchains.** `~/.mozbuild` is cached without `srcdirs`, whose mach virtual
+  environments hold absolute paths and are rebuilt in seconds. There is no
+  restore key: a version bump bootstraps from scratch.
+- **Native objects.** Every run saves a new `engine/obj-bento` entry (the key
+  holds the run id), and restore takes the newest entry that matches the prefix
+  with the same mozconfig inputs, otherwise the newest for the same Firefox
+  version and patch stack. mach rebuilds only what changed. Objects never cross
+  Firefox versions, so the first build after a bump is the cold build that
+  proves the tree compiles from scratch. The hash of `patches/**` (every file
+  there except Markdown, so `series.json` counts) is part of every restore
+  prefix, so objects also never cross patch stacks. Without it, removing a patch
+  restores the pristine source file with an older mtime than the object
+  compiled from the patched file; `import` does not refresh that timestamp and
+  mach keeps unchanged build-file timestamps, so the stale object would be
+  reused and the binary would keep the removed patch's behaviour. A patch
+  change is therefore a cold native build; patches change rarely. The object
+  tree is saved even when the build fails. The build step stops at 320 minutes,
+  inside the 360-minute job bound, so the save still runs and the next run
+  resumes from the partial tree.
+- **Scope.** GitHub lets a run read caches from its own ref and the default
+  branch. Pushes to `main` seed the source cache for every pull request. A
+  manual run on `main` seeds the toolchain and object caches for every branch
+  and for release tags. Tag runs restore but never save, because a cache written
+  under a tag ref is invisible to the next tag and would only evict useful
+  entries. Run CI manually on `main` after a Firefox bump, before tagging.
+- **Size.** Linux entries are about 2 GB (source) and a few GB (objects, which
+  superseded runs leave behind until GitHub evicts the least recently used
+  entry at the 10 GB repository cap). Building all three platforms in one
+  run exceeds the cap, so expect macOS and Windows caches to be evicted between
+  runs. The job summary of every build lists which caches hit.
+- **Forcing a cold build.** Delete the `bento-obj-*` entries with
+  `gh cache delete`, or change the `v1` prefix in
+  `.github/actions/native-cache-keys` to discard every object and toolchain
+  entry at once.
 
 Manual CI application builds use four workers on the public
 `ubuntu-24.04` runner (4 CPUs / 16 GiB), two workers on the public
 `windows-2025` runner (4 CPUs / 16 GiB), and one worker on the standard
 `macos-26` Apple Silicon runner (3 M1 CPUs / 7 GiB). Each manual native job
-has a 360-minute bound for a cold Firefox build. The source cache excludes
-`engine/obj-*` and caches the paired Bento state files
-`.bento/source-state.json`, `.bento/import-manifest.json`, and
-`.bento/engine-state.json` with the engine checkout. Native objects
-use a separate release-mode configuration key so source restores do not
-duplicate the large object archive. Staging directories, backups, source
-archives, and patch-stack worktrees are not cached. On Windows, CI verifies the
-bootstrapped MSVC ATL/MFC headers and libraries, then prepends that compiler
+has a 360-minute bound for a cold Firefox build. Staging directories, backups,
+source archives, and patch-stack worktrees are not cached. On Windows, CI
+verifies the bootstrapped MSVC ATL/MFC headers and libraries
+(`.github/actions/select-windows-toolchain`), then prepends that compiler
 directory with `GITHUB_PATH` before configure runs. Release jobs use the same
 worker, cache, and toolchain selection policy, with their existing six-hour
 cold-build bound.
 
 ## Build modes and configure flags
 
-`build.mode` in `bento.json` (override with `BENTO_BUILD_MODE`) selects the
-compiler policy. `configs/common/mozconfig` and the platform fragments hold only
+`build.mode` in `bento.json` selects the compiler policy, and `BENTO_BUILD_MODE`
+or `BENTO_RELEASE=1` override it; `scripts/build-mode.mjs` is the one resolver (see
+[Dev-only reload command](#dev-only-reload-command) for the precedence).
+`configs/common/mozconfig` and the platform fragments hold only
 options that do not depend on the mode; `bento-build.mjs` appends the mode's
 options when it writes `engine/mozconfig`:
 
@@ -354,19 +424,23 @@ directory can be deleted by hand.
 
 ## Reproducible release dependencies
 
-Developer installs use `pnpm-lock.yaml`. Release and CI installs use the
-separate committed `pnpm-lock.release.yaml`; both graphs consume the exact
-published npm package `@muxui/react@0.1.0-rc.1` and record its registry integrity.
-The package exposes public `./themes` and `./themes.css` entries alongside the
-root React renderer; consumers use those exports rather than generated-file
-paths. Bento has no committed Mux tarball or local provenance sidecar.
+`pnpm-lock.yaml` is the only lockfile, for developer, CI, and release installs.
+It consumes the exact published npm package `@muxui/react@0.1.0-rc.1` and records
+its registry integrity. The package exposes public `./themes` and `./themes.css`
+entries alongside the root React renderer; consumers use those exports rather
+than generated-file paths. Bento has no committed Mux tarball or local
+provenance sidecar.
 
-`scripts/install-release-deps.sh` temporarily swaps in the root-format release
-lock, force-relinks with `--frozen-lockfile`, and restores the developer lock.
-Manifest or transitive-resolution drift fails the install. The release SBOM
-requires the approved shell runtime dependency set, exact published Mux version,
-and verified npm integrity; it rejects a substituted tarball or digest. Mux is
-reported like other npm components with its registry SHA-512 integrity digest.
+CI and release builds run `pnpm install --frozen-lockfile` (the
+`.github/actions/setup` composite action, and `scripts/build-release.sh`, where
+it does nothing when `node_modules` is current). Manifest or transitive-resolution
+drift fails the install. The install is the full graph, dev tooling included,
+because the extension build needs it. pnpm owns the lockfile's format, so it is
+excluded from Prettier (`.prettierignore`, `.lintstagedrc.json`). The release
+SBOM reads the same file and requires the approved shell runtime dependency set,
+exact published Mux version, and verified npm integrity; it rejects a substituted
+tarball or digest. Mux is reported like other npm components with its registry
+SHA-512 integrity digest.
 
 Bento keeps one React Aria substrate graph for menu context identity and pins
 Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
@@ -375,16 +449,27 @@ This is later than the patch for
 React Aria remains an internal Mux dependency; Bento composites use the public
 Mux API, with shared Bento primitives for layout and icons.
 
-Run frozen developer/release installs and release-security checks before
-regenerating locks, then verify the updated graphs. In an isolated source copy:
-
-After the baseline checks, update both graphs:
+To change the graph, pass a frozen install and the release-security checks
+first, then regenerate the lock and verify it again:
 
 ```sh
 pnpm install
-bash scripts/update-release-lock.sh
-bash scripts/install-release-deps.sh
+pnpm install --frozen-lockfile
 ```
+
+### Dependabot
+
+`.github/dependabot.yml` has one `npm` entry for the repository root, which
+Dependabot reads as the whole pnpm workspace (the root manifest and both
+extensions) and updates in the one lock. Updates are weekly, capped at two open
+PRs, and grouped into one minor-and-patch PR for production dependencies and one
+for development dependencies. Major versions are ignored. The strategy is
+`lockfile-only`, so a PR never edits a manifest specifier: the approved shell
+runtime dependency set that the SBOM generator pins stays intact, and exact pins
+(for example `vite`, `@ladle/react`, `emojibase-data`) are left for manual
+updates. `@muxui/react`, the React Aria family, and the Tiptap family are
+ignored, because their pins and overrides move together through the Mux release
+procedure below.
 
 ## Local Mux UI
 
@@ -436,9 +521,13 @@ How the checkout is used:
 
 Guards keep local Mux out of releases:
 
-- The Vite configs, `muxui-dev.mjs`, and `scripts/build-rollback-variant.mjs`
-  throw when `MUXUI_LOCAL` is set during `BENTO_RELEASE=1` or
-  `BENTO_BUILD_MODE=release` (the rollback script refuses it in every action);
+- The Vite configs and `muxui-dev.mjs` (through `muxui-local.mjs`) throw when
+  `MUXUI_LOCAL` is set during a release build: `BENTO_RELEASE=1`,
+  `BENTO_BUILD_MODE=release`, or `build.mode: "release"` in `bento.json`, resolved by
+  `scripts/build-mode.mjs` like the build driver does (see
+  [Dev-only reload command](#dev-only-reload-command)). `shell:*:mux` still work
+  while the mode is `dev`. `scripts/build-rollback-variant.mjs` refuses
+  `MUXUI_LOCAL` in every action;
   `scripts/build-release.sh` and `scripts/build-bento.sh` exit if it is set.
 - The shell build writes `dist/muxui-source.json`: `{"source":"npm","version":...}`
   or `{"source":"local"}`. Packaging (`bento-build.mjs package`, which backs
@@ -480,20 +569,18 @@ Guards keep local Mux out of releases:
 1. In the Mux repository, run `pnpm release:prepare` with
    `MUXUI_RELEASE_CANDIDATE_VERSION` set to the candidate version, then publish
    through the npm-publish workflow (registry preflight, dry run, publish).
-2. Baseline, before changing anything: `pnpm install --frozen-lockfile`,
-   `bash scripts/install-release-deps.sh`, and `pnpm run release:security-check`
-   against the current pin and locks must pass.
+2. Baseline, before changing anything: `pnpm install --frozen-lockfile` and
+   `pnpm run release:security-check` against the current pin and lock must pass.
 3. Update the inputs the new graph is checked against: the exact pin in
    `extensions/bento-shell/package.json`; the root `pnpm.overrides` (React Aria,
    Tiptap) if Mux's dependencies changed; and the expected release metadata, the
    version and registry integrity in `scripts/generate-release-sbom.mjs`
    (`muxuiVersion`, `muxuiIntegrity`) and `scripts/release-security.test.mjs`.
-4. Regenerate both locks: `pnpm install`, `bash scripts/update-release-lock.sh`,
-   `bash scripts/install-release-deps.sh`. (Frozen installs fail between steps 3
+4. Regenerate the lock: `pnpm install`. (Frozen installs fail between steps 3
    and 4 by design.)
-5. Verify the new graphs: `pnpm install --frozen-lockfile`,
-   `bash scripts/install-release-deps.sh`, `node --test scripts/release-security.test.mjs`,
-   and `pnpm run release:security-check`.
+5. Verify the new graph: `pnpm install --frozen-lockfile`,
+   `node --test scripts/release-security.test.mjs`, and
+   `pnpm run release:security-check`.
 6. Update the version mentions in `CLAUDE.md`, `README.md`, and the docs
    (`docs/build-tooling.md`, `docs/mux-ui-component-customisations.md`,
    `docs/core-functionality-technical.md`).
@@ -522,11 +609,9 @@ profile-import, icon-fetching, bundled-add-on, signing, and release invariants.
 CI also audits the full dependency graph and runs CodeQL over Bento JavaScript
 and TypeScript.
 
-The CI `pnpm audit --audit-level high` step reads the developer lock, because
-`scripts/install-release-deps.sh` restores it after installing. Keep the release
-lock at the same bar by swapping it in with `BENTO_RELEASE=1` and auditing it
-the same way. Fix vulnerable transitive packages with `pnpm.overrides` in
-`package.json`, then refresh both locks.
+The CI `pnpm audit --audit-level high` step audits `pnpm-lock.yaml`, the same
+lock that release builds install. Fix vulnerable transitive packages with
+`pnpm.overrides` in `package.json`, then refresh the lock.
 
 Audit exceptions live in `pnpm.auditConfig.ignoreGhsas` in `package.json`. Each
 entry needs a reason here and must be removed once a patched release is
@@ -633,7 +718,81 @@ files are copied, stale files removed), generates deterministic `jar.mn` and
 `moz.build` files, and registers one marker block in Firefox's
 `browser/extensions/moz.build`. Files whose content is unchanged are not touched.
 An extension may replace the default runtime list with a safe top-level string
-array in `.bento-runtime-entries.json`; `manifest.json` is always included.
+array in `.bento-runtime-entries.json`; `manifest.json` is always included. In a
+release build (see [Dev-only reload command](#dev-only-reload-command)) the installer
+drops the `dev-reload` command from the manifest it copies, so an imported release
+manifest differs from its source.
+
+### Dev-only reload command
+
+`extensions/bento-shell/manifest.json` declares `dev-reload` (Alt+Shift+R), and
+`src/background.ts` answers it with `browser.runtime.reload()`. That is the
+dev-loop reload in `CLAUDE.md`; it must not ship.
+
+**What counts as a release build.** `scripts/build-mode.mjs` is the one resolver:
+the build driver uses it for the mode in `engine/mozconfig`, and the shell
+background build, the installer, the package guard, and the `MUXUI_LOCAL` guard use
+it to ask whether the build is a release. Precedence: an explicit mode argument
+(internal callers), then `BENTO_RELEASE=1` (release), then `BENTO_BUILD_MODE`, then
+`build.mode` in `bento.json`. So `build.mode: "release"` in `bento.json` alone makes
+a release build everywhere, native build included, and `BENTO_BUILD_MODE=dev` turns
+a release config back into a dev build everywhere. `BENTO_RELEASE=1` also selects
+release everywhere, so `BENTO_RELEASE=1 pnpm run build` builds a release native
+build; it does not build the dev mode that earlier drivers did. `BENTO_RELEASE=1`
+with `BENTO_BUILD_MODE=dev` (or `debug`) is contradictory and resolves to release,
+the mode that ships fewer dev-only affordances; an unknown `BENTO_BUILD_MODE` still
+fails. `BENTO_RELEASE=1 pnpm run ext:build`, which `size` and CI use, builds only
+the extensions and is unaffected. `scripts/bento-build.test.mjs` checks that the
+native build, the background bundle, and `isReleaseBuild` agree for every
+combination.
+`scripts/build-release.sh` sets both variables.
+
+Dev builds keep both halves of the feature; release builds remove each one at the
+step that produces it:
+
+- Bundle: `scripts/build-extension-background.mjs` defines `__BENTO_DEV_RELOAD__`,
+  and `background.ts` registers the handler only `if (__BENTO_DEV_RELOAD__)`.
+  Release bundles define it `false`, so esbuild drops the handler and the
+  `dev-reload` string. The script reads `bento.json` from the repository that holds
+  it (`BENTO_REPO_ROOT` overrides, as for the installer).
+- Manifest: `scripts/install-builtin-addons.mjs` writes the manifest into
+  `engine/browser/extensions/<name>/` without the command (and without an empty
+  `commands` block). The source manifest is never modified.
+- Staged guard: `pnpm run release:security-check:shell` scans
+  `extensions/bento-shell/dist` and, when present,
+  `engine/browser/extensions/bento-shell` for the string and fails if it finds
+  one. CI runs it after the release extension build and after the release import,
+  and `build-release.sh` runs it right after its import. It checks the staged
+  inputs only, whatever the mode, so it cannot see what an earlier build left in
+  the object directory.
+- Packaging guard: in a release build, `bento-build.mjs package` scans the shell
+  built-in add-on that `mach package` will ship from the object directory
+  (`engine/obj-bento/dist/bin/browser/chrome/browser/builtin-addons/bento-shell`
+  and, from the app bundle, `engine/obj-bento/dist/<App>.app/Contents/Resources/browser/chrome/browser/builtin-addons/bento-shell`
+  on macOS; the object directory comes from the same resolver as the rest of the
+  driver, so `BENTO_OBJDIR` is honored). It follows symlinks and reads the real
+  files, because a dev build links the add-on's `dist/` to the imported engine copy
+  while other builds (and Mozilla's copy fallback in `mozpack/files.py`) leave real
+  copies that rebuilding and re-importing the shell does not refresh. It runs
+  right after the Mux stamp check and before `mach package`, and fails the
+  package if `dev-reload` appears in a file or if no shell add-on is found to
+  check. Dev packages are not checked. Every release packaging path goes through
+  it: `pnpm run package`, `build-release.sh` (its `bento-env.sh package` step),
+  and the rollback `package` and `release` actions (see below).
+
+The transform and scans live in `scripts/dev-reload.mjs` and the mode in
+`scripts/build-mode.mjs`; `scripts/dev-reload.test.mjs` (mode, background bundle,
+object-directory scan), `scripts/install-builtin-addons.test.mjs` (installer), and
+`scripts/bento-build.test.mjs` (package refusal over a stale object directory) cover
+them. The rollback variants use the same build script, installer, and package
+command, and their archived `background.ts` carries the same guard;
+`node scripts/build-rollback-variant.mjs <variant> check` builds in release mode
+and fails if the archived bundle still has the handler.
+
+Firefox caches built-in add-on metadata, including commands, by manifest
+`version`. After a local release import, run `pnpm run import` again for the dev
+loop; if Alt+Shift+R is still missing in a reused profile, start with a fresh one
+(`pnpm run dev:fresh`).
 
 ## Branding and patches
 

@@ -9,6 +9,5 @@
   ],
   ".lintstagedrc.json": ["prettier --write"],
   "package.json": ["prettier --write"],
-  "pnpm-lock.yaml": ["prettier --write"],
   "pnpm-workspace.yaml": ["prettier --write"]
 }

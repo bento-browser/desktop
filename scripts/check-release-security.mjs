@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
+import { findDevReload } from './dev-reload.mjs';
 import { updaterReadinessProblems } from './update-readiness.mjs';
 
 // --root points the gate at another checkout layout; the tests use it.
@@ -11,6 +12,28 @@ const rootArg = process.argv.find((arg) => arg.startsWith('--root='));
 const root = path.resolve(
   rootArg ? rootArg.slice('--root='.length) : path.join(import.meta.dirname, '..'),
 );
+
+// `--built-shell` is a standalone check of build output (the channel and tag
+// gates below do not apply): a release shell must not carry the dev-only reload
+// command. It scans the built bundle and, once imported, the manifest and bundle
+// copied into the engine.
+if (process.argv.includes('--built-shell')) {
+  const buildRoot = path.resolve(process.env.BENTO_REPO_ROOT || root);
+  const dist = path.join(buildRoot, 'extensions/bento-shell/dist');
+  const imported = path.join(buildRoot, 'engine/browser/extensions/bento-shell');
+  if (!fs.existsSync(dist)) {
+    throw new Error(`--built-shell needs a built shell: ${dist} is missing.`);
+  }
+  const hits = findDevReload([dist, ...(fs.existsSync(imported) ? [imported] : [])]);
+  if (hits.length > 0) {
+    throw new Error(
+      `Release shell still contains the dev-only reload command: ${hits.map((file) => path.relative(buildRoot, file)).join(', ')}`,
+    );
+  }
+  console.log('Release shell has no dev-only reload command.');
+  process.exit(0);
+}
+
 const channelArg = process.argv.find((arg) => arg.startsWith('--channel='));
 const channel = channelArg?.split('=', 2)[1] || 'preview';
 

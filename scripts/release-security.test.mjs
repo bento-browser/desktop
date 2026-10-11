@@ -12,6 +12,7 @@ import { parse, stringify } from 'yaml';
 const root = path.resolve(import.meta.dirname, '..');
 const releaseGate = path.join(root, 'scripts/check-release-security.mjs');
 const sbomGenerator = path.join(root, 'scripts/generate-release-sbom.mjs');
+const lockfile = 'pnpm-lock.yaml';
 const muxuiVersion = '0.1.0-rc.1';
 const muxuiIntegrity =
   'sha512-J7MB0roUffNcwygIxEO1KmTR0vW5Eh5IY1naCOahJjDsYMlR/OIp1QGzHs2zWCP/DQo4dDUnTHVZwzoCYgefJQ==';
@@ -27,7 +28,7 @@ const approvedShellRuntimeDependencies = {
 
 test('release SBOM rejects a different Mux UI source or integrity', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-release-sbom-source-'));
-  const lockPath = path.join(tempDir, 'pnpm-lock.release.yaml');
+  const lockPath = path.join(tempDir, lockfile);
   const outputDir = path.join(tempDir, 'output');
   try {
     for (const [field, value, message] of [
@@ -47,12 +48,12 @@ test('release SBOM rejects a different Mux UI source or integrity', () => {
         /integrity does not match the published npm package/,
       ],
     ]) {
-      const lock = parse(fs.readFileSync(path.join(root, 'pnpm-lock.release.yaml'), 'utf8'));
+      const lock = parse(fs.readFileSync(path.join(root, lockfile), 'utf8'));
       lock.packages[`@muxui/react@${muxuiVersion}`].resolution[field] = value;
       fs.writeFileSync(lockPath, stringify(lock));
       const result = spawnSync(process.execPath, [sbomGenerator, outputDir], {
         cwd: root,
-        env: { ...process.env, BENTO_RELEASE_LOCK_PATH: lockPath },
+        env: { ...process.env, BENTO_LOCK_PATH: lockPath },
         encoding: 'utf8',
       });
       assert.notEqual(result.status, 0, result.stdout);
@@ -65,10 +66,10 @@ test('release SBOM rejects a different Mux UI source or integrity', () => {
 
 test('release SBOM rejects an unapproved shell runtime dependency', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-release-sbom-dependency-'));
-  const lockPath = path.join(tempDir, 'pnpm-lock.release.yaml');
+  const lockPath = path.join(tempDir, lockfile);
   const outputDir = path.join(tempDir, 'output');
   try {
-    const lock = parse(fs.readFileSync(path.join(root, 'pnpm-lock.release.yaml'), 'utf8'));
+    const lock = parse(fs.readFileSync(path.join(root, lockfile), 'utf8'));
     lock.importers['extensions/bento-shell'].dependencies['neutral-runtime-sample'] = {
       specifier: '1.0.0',
       version: '1.0.0',
@@ -77,7 +78,7 @@ test('release SBOM rejects an unapproved shell runtime dependency', () => {
 
     const result = spawnSync(process.execPath, [sbomGenerator, outputDir], {
       cwd: root,
-      env: { ...process.env, BENTO_RELEASE_LOCK_PATH: lockPath },
+      env: { ...process.env, BENTO_LOCK_PATH: lockPath },
       encoding: 'utf8',
     });
     assert.notEqual(result.status, 0, result.stdout);
@@ -87,7 +88,7 @@ test('release SBOM rejects an unapproved shell runtime dependency', () => {
   }
 });
 
-test('developer and release locks pin one React Aria substrate graph', () => {
+test('the lockfile pins one React Aria substrate graph', () => {
   const expected = {
     '@react-types/shared': '3.36.1',
     'react-aria': '3.51.0',
@@ -95,35 +96,32 @@ test('developer and release locks pin one React Aria substrate graph', () => {
     'react-stately': '3.49.0',
   };
 
-  for (const lockfile of ['pnpm-lock.yaml', 'pnpm-lock.release.yaml']) {
-    const lock = parse(fs.readFileSync(path.join(root, lockfile), 'utf8'));
-    assert.deepEqual(
-      Object.fromEntries(Object.keys(expected).map((name) => [name, lock.overrides[name]])),
-      expected,
-      lockfile,
-    );
-    const shell = lock.importers['extensions/bento-shell'];
-    assert.equal(shell.dependencies['@muxui/react'].specifier, muxuiVersion, lockfile);
-    assert.equal(
-      lock.packages[`@muxui/react@${muxuiVersion}`]?.resolution?.integrity,
-      muxuiIntegrity,
-    );
-    assert.equal(
-      Object.keys(lock.packages).filter((key) => key.startsWith('@muxui/react@')).length,
-      1,
-    );
-    assert.equal('react-aria-components' in shell.dependencies, false);
-    for (const [name, version] of Object.entries(expected)) {
-      assert.ok(lock.packages[`${name}@${version}`], `${lockfile}: missing ${name}@${version}`);
-    }
-    assert.doesNotMatch(JSON.stringify(lock), /react-aria-components@1\.19\.0/);
-    assert.doesNotMatch(JSON.stringify(lock), /react-aria@3\.50\.0/);
-    assert.doesNotMatch(JSON.stringify(lock), /react-stately@3\.48\.0/);
-    assert.doesNotMatch(JSON.stringify(lock), /@react-types\/shared@3\.36\.0/);
+  const lock = parse(fs.readFileSync(path.join(root, lockfile), 'utf8'));
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(expected).map((name) => [name, lock.overrides[name]])),
+    expected,
+  );
+  const shell = lock.importers['extensions/bento-shell'];
+  assert.equal(shell.dependencies['@muxui/react'].specifier, muxuiVersion);
+  assert.equal(
+    lock.packages[`@muxui/react@${muxuiVersion}`]?.resolution?.integrity,
+    muxuiIntegrity,
+  );
+  assert.equal(
+    Object.keys(lock.packages).filter((key) => key.startsWith('@muxui/react@')).length,
+    1,
+  );
+  assert.equal('react-aria-components' in shell.dependencies, false);
+  for (const [name, version] of Object.entries(expected)) {
+    assert.ok(lock.packages[`${name}@${version}`], `missing ${name}@${version}`);
   }
+  assert.doesNotMatch(JSON.stringify(lock), /react-aria-components@1\.19\.0/);
+  assert.doesNotMatch(JSON.stringify(lock), /react-aria@3\.50\.0/);
+  assert.doesNotMatch(JSON.stringify(lock), /react-stately@3\.48\.0/);
+  assert.doesNotMatch(JSON.stringify(lock), /@react-types\/shared@3\.36\.0/);
 });
 
-test('developer and release locks pin the shipped Tiptap family past GHSA-j95f-988m-3j2f', () => {
+test('the lockfile pins the shipped Tiptap family past GHSA-j95f-988m-3j2f', () => {
   const expected = {
     '@tiptap/core': '3.31.4',
     '@tiptap/extension-image': '3.31.4',
@@ -136,21 +134,18 @@ test('developer and release locks pin the shipped Tiptap family past GHSA-j95f-9
     '@tiptap/starter-kit': '3.31.4',
   };
 
-  for (const lockfile of ['pnpm-lock.yaml', 'pnpm-lock.release.yaml']) {
-    const lock = parse(fs.readFileSync(path.join(root, lockfile), 'utf8'));
-    assert.deepEqual(
-      Object.fromEntries(Object.keys(expected).map((name) => [name, lock.overrides[name]])),
-      expected,
-      lockfile,
+  const lock = parse(fs.readFileSync(path.join(root, lockfile), 'utf8'));
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(expected).map((name) => [name, lock.overrides[name]])),
+    expected,
+  );
+  for (const [name, version] of Object.entries(expected)) {
+    assert.ok(lock.packages[`${name}@${version}`], `missing ${name}@${version}`);
+    assert.equal(
+      Object.keys(lock.packages).some((key) => key.startsWith(`${name}@3.22.3`)),
+      false,
+      `stale ${name}@3.22.3 remains`,
     );
-    for (const [name, version] of Object.entries(expected)) {
-      assert.ok(lock.packages[`${name}@${version}`], `${lockfile}: missing ${name}@${version}`);
-      assert.equal(
-        Object.keys(lock.packages).some((key) => key.startsWith(`${name}@3.22.3`)),
-        false,
-        `${lockfile}: stale ${name}@3.22.3 remains`,
-      );
-    }
   }
 });
 
@@ -308,7 +303,7 @@ test('a public release also needs the updater enabled, not only the signing iden
   assert.match(updaterOn.stdout, /Public release security gate passed/);
 });
 
-test('release metadata covers the release-lock SBOM with valid checksums', () => {
+test('release metadata covers the lockfile SBOM with valid checksums', () => {
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-release-security-'));
   try {
     execFileSync(
@@ -365,5 +360,41 @@ test('release metadata covers the release-lock SBOM with valid checksums', () =>
     }
   } finally {
     fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test('--built-shell fails while a built shell or imported manifest still has the reload command', () => {
+  const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-built-shell-'));
+  const check = () =>
+    spawnSync(process.execPath, [releaseGate, '--built-shell'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, BENTO_REPO_ROOT: buildRoot },
+    });
+  const write = (relative, text) => {
+    const file = path.join(buildRoot, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  try {
+    assert.match(check().stderr, /needs a built shell/);
+
+    write('extensions/bento-shell/dist/assets/background.js', '(()=>{})()');
+    const clean = check();
+    assert.equal(clean.status, 0, clean.stderr);
+    assert.match(clean.stdout, /no dev-only reload command/);
+
+    write('engine/browser/extensions/bento-shell/manifest.json', '{"commands":{"dev-reload":{}}}');
+    const imported = check();
+    assert.notEqual(imported.status, 0);
+    assert.match(imported.stderr, /engine\/browser\/extensions\/bento-shell\/manifest\.json/);
+
+    write('engine/browser/extensions/bento-shell/manifest.json', '{}');
+    write('extensions/bento-shell/dist/assets/background.js', 'c==="dev-reload"');
+    const bundle = check();
+    assert.notEqual(bundle.status, 0);
+    assert.match(bundle.stderr, /extensions\/bento-shell\/dist\/assets\/background\.js/);
+  } finally {
+    fs.rmSync(buildRoot, { recursive: true, force: true });
   }
 });

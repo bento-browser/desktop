@@ -760,7 +760,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-08-24
+- Last updated: 2026-10-12
 - Files or patches:
   - `prefs/bento.js`
   - `engine/services/settings/dumps/main/search-config-v2.json`
@@ -770,6 +770,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - `configs/**`
   - `rust-toolchain.toml`
   - `.github/workflows/release.yml`
+  - `.github/actions/**`
   - `scripts/check-rust-toolchain.mjs`
   - `scripts/install-branding.mjs`
   - `scripts/firefox-patch-stack.mjs`
@@ -811,11 +812,17 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `node scripts/check-rust-toolchain.mjs`; inspect Linux and Windows release
   logs for configure exporting `BENTO_RUST_LTO=thin`, generated make flags
   containing `-Clto=thin`, successful final linking, and artifact upload.
-  Confirm macOS still uses the upstream default LTO path.
+  Confirm macOS still uses the upstream default LTO path. Native object caches
+  never cross Firefox versions (`.github/actions/native-cache-keys`), so the
+  first manual CI build after a version bump runs cold: run it on `main`, check
+  the cache summary reports a cold build, and confirm the next run restores a
+  near-miss tree.
 - Rollback or migration notes: remove the ThinLTO export from the Linux and
   Windows mozconfigs and the associated experiment patch together, then export,
-  check, import, and invalidate the native object cache. Keep the Rust pin and
-  release verification aligned with the Firefox release's official toolchain.
+  check, import, and invalidate the native object cache (delete the
+  `bento-obj-*` entries or change the `v1` key prefix in
+  `.github/actions/native-cache-keys`). Keep the Rust pin and release
+  verification aligned with the Firefox release's official toolchain.
 
 ### Build Configure Flags And Updater
 
@@ -921,10 +928,13 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Built-In Extension Copy Surface
 
 - Status: Active
-- Last updated: 2026-07-17
+- Last updated: 2026-10-12
 - Files or patches:
   - `scripts/install-builtin-addons.mjs`
   - `scripts/install-builtin-addons.test.mjs`
+  - `scripts/dev-reload.mjs`
+  - `scripts/dev-reload.test.mjs`
+  - `scripts/build-mode.mjs`
   - `package.json`
   - `pnpm-lock.yaml`
   - `scripts/import.sh`
@@ -941,7 +951,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `css/`, `lib/`, `assets/`, locale, and HTML entry files without broadening the
   copy surface of Bento's own source-based extensions. Release builds keep
   `MOZ_REQUIRE_SIGNING=1`; Bento-owned privileged add-ons use Firefox's built-in
-  location rather than weakening ordinary XPI signature enforcement.
+  location rather than weakening ordinary XPI signature enforcement. Release
+  imports copy manifests without the shell's dev-only `dev-reload` command, so
+  an imported release manifest differs from its source.
 - Vanilla Firefox surface touched or depended on: Firefox built-in add-on
   loading from `browser/extensions`, generated `jar.mn`, generated per-extension
   `moz.build`, and `browser/extensions/moz.build` registration.
@@ -957,7 +969,14 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   includes both tools experiments and the shell jar includes the chrome bridge, confirm
   `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
   `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
-  shows Bento Tools, Bento Shell, and uBlock Origin. Running only the source
+  shows Bento Tools, Bento Shell, and uBlock Origin. Run
+  `BENTO_RELEASE=1 pnpm run ext:build && BENTO_RELEASE=1 pnpm run import` and
+  confirm `pnpm run release:security-check:shell` passes (no `dev-reload` in the
+  imported shell manifest or bundle). A release `pnpm run package` also scans the
+  shell add-on in the object directory (`dist/bin/browser` and, on macOS, the app
+  bundle, following symlinks); after a Firefox update that changes where `mach
+  build` installs built-in add-ons, confirm that scan still finds the add-on
+  (it fails when it finds none). Running only the source
   overlay helper does not prove this surface is valid because it bypasses
   Bento's branding, built-in add-on installer, patch, and symlink steps.
 - Rollback or migration notes: if uBlock Origin is removed, remove
