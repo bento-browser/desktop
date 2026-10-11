@@ -3109,9 +3109,9 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 - Contrast is fixed to `standard`. The shell build strips every rule that
   requires `data-muxui-contrast='more'` (`contrast-more.mjs`, a PostCSS plugin),
   and the theme sync and chrome token generators do not emit them. Do not add
-  `contrast='more'` CSS to Bento files while that is true. The plugin turns an
-  emptied `@layer name { }` block into `@layer name;`; deleting it would change
-  the cascade for `standard`.
+  `contrast='more'` CSS to Bento files while that is true. The plugin leaves
+  rules with nested rules alone and turns an emptied `@layer name { }` block into
+  `@layer name;`; deleting either would change the cascade for `standard`.
 - `public/panel-newtab.html` is a plain page: no script, no Mux stylesheet. The
   `panelNewtabCss` plugin (`panel-newtab-css.ts`, shared with the archived
   rollback Vite config, which has no `panel-newtab` entry) bundles

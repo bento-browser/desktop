@@ -58,6 +58,15 @@ describe('stripContrastMore plugin', () => {
     expect(css).not.toContain('contrast');
   });
 
+  it('leaves rules that contain nested rules untouched', async () => {
+    // ':not(&)' matches every element that is not contrast='more', and '&' takes its
+    // specificity from the whole parent selector list.
+    const negated = `[data-muxui-contrast='more'] { :not(&) { color: red; } }`;
+    expect(await strip(negated)).toBe(negated);
+    const mixed = `.a, [data-muxui-contrast='more'] .b { & .c { color: blue; } }`;
+    expect(await strip(mixed)).toBe(mixed);
+  });
+
   it('removes unreachable rules and the at-rules they leave empty', async () => {
     const input = `
       @layer muxui {

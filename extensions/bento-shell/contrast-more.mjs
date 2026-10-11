@@ -78,16 +78,26 @@ export function dropContrastMoreSelectors(selectorList) {
   return kept.length === selectors.length ? selectorList : kept.join(',').trim();
 }
 
+/** True when any rule is nested somewhere inside `node`. */
+function containsRule(node) {
+  return node.nodes?.some((child) => child.type === 'rule' || containsRule(child)) ?? false;
+}
+
 /**
  * PostCSS plugin form, passed to Vite as `css.postcss.plugins`.
  *
- * A '@layer name { ... }' block this pass empties becomes '@layer name;', so the
- * layer keeps its place in the layer order.
+ * It stays conservative in two cases that change the cascade for 'standard':
+ * - A rule with nested rules is never removed or rewritten. A nested ':not(&)'
+ *   still matches elements that are not contrast='more', and '&' takes its
+ *   specificity from the whole parent selector list.
+ * - A '@layer name { ... }' block this pass empties becomes '@layer name;', so
+ *   the layer keeps its place in the layer order.
  */
 export const stripContrastMore = {
   postcssPlugin: 'bento-strip-contrast-more',
   Once(root, { AtRule }) {
     root.walkRules((rule) => {
+      if (containsRule(rule)) return;
       const kept = dropContrastMoreSelectors(rule.selector);
       if (kept === rule.selector) return;
       if (kept) {

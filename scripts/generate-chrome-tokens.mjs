@@ -129,6 +129,8 @@ function extractFlatBlock(css, selector) {
 }
 
 // Remove rules that only match contrast='more', recursing into at-rule blocks.
+// Like the shell PostCSS step, a rule with nested blocks is left alone: a nested
+// ':not(&)' stays reachable and '&' takes its specificity from the parent list.
 function stripContrastMoreRules(css) {
   let output = '';
   let cursor = 0;
@@ -146,7 +148,7 @@ function stripContrastMoreRules(css) {
       output += `${prelude}{${stripContrastMoreRules(body)}}`;
       continue;
     }
-    const kept = dropContrastMoreSelectors(selector);
+    const kept = body.includes('{') ? selector : dropContrastMoreSelectors(selector);
     if (kept === selector) output += `${prelude}{${body}}`;
     else if (kept) output += `${kept}{${body}}`;
   }
