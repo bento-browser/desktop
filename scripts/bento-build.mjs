@@ -299,6 +299,15 @@ function ensureNoLinkedEngineWorktrees(ctx, operation) {
   ].join('\n'));
 }
 
+/** Path -> SHA-256 of the regular files in .bento/engine-state.json. */
+function recordedFileHashes(ctx) {
+  const statePath = path.join(ctx.stateDir, 'engine-state.json');
+  if (!fs.existsSync(statePath)) return new Map();
+  return new Map((readJson(statePath).entries || [])
+    .filter((entry) => entry.type === 'file' && entry.sha256)
+    .map((entry) => [entry.path, entry.sha256]));
+}
+
 export function engineStatus(repoRoot = DEFAULT_ROOT) {
   const ctx = createContext(repoRoot);
   if (!engineIsGit(ctx)) return { exists: fs.existsSync(ctx.engineDir), git: false, dirty: false, files: [] };
@@ -330,9 +339,14 @@ export function engineStatus(repoRoot = DEFAULT_ROOT) {
   const displayVersion = fs.existsSync(configPath)
     ? readJson(configPath).brands?.bento?.release?.displayVersion
     : undefined;
+  // A build writes the display version into these, so after a version bump the files
+  // still hold the previous value (as recorded at import) until the next build.
+  const recordedVersionFiles = recordedFileHashes(ctx);
   for (const file of ['browser/config/version.txt', 'browser/config/version_display.txt']) {
     const target = path.join(ctx.engineDir, file);
-    if (displayVersion && fs.existsSync(target) && fs.readFileSync(target, 'utf8').trim() === displayVersion) owned.add(file);
+    if (!fs.existsSync(target)) continue;
+    if ((displayVersion && fs.readFileSync(target, 'utf8').trim() === displayVersion)
+      || recordedVersionFiles.get(file) === sha256File(target)) owned.add(file);
   }
   if (isExactReadmeOverlay(ctx, path.join(ctx.engineDir, 'README.md'))) owned.add('README.md');
   if (fs.existsSync(path.join(ctx.root, 'patches'))) {

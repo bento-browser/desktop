@@ -218,6 +218,40 @@ test('recorded state accepts the recorded mozconfig after repository config chan
   }
 });
 
+function setDisplayVersion(root, displayVersion) {
+  const file = path.join(root, 'bento.json');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  config.brands.bento.release.displayVersion = displayVersion;
+  fs.writeFileSync(file, JSON.stringify(config));
+}
+
+test('a displayVersion bump between a recorded build and the next import does not block it', async () => {
+  const root = await fixture();
+  try {
+    const version = engineFile(root, 'browser', 'config', 'version.txt');
+    writeMozconfig(root, 'dev');
+    await main(['verify'], root);
+    assert.equal(fs.readFileSync(version, 'utf8'), '0.0.7');
+
+    // Verify and the record step that ends an import both run before the build
+    // can write the new version, so the recorded bytes must count as owned.
+    setDisplayVersion(root, '0.0.8');
+    await main(['verify'], root);
+    await main(['record'], root);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    writeMozconfig(root, 'dev');
+    assert.equal(fs.readFileSync(version, 'utf8'), '0.0.8');
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // Content that is neither recorded nor generated is still a hand edit.
+    fs.writeFileSync(version, 'hand edited');
+    assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 /** Runs fn with BENTO_OBJDIR cleared (or set) and restores it afterwards. */
 async function withObjdirEnv(value, fn) {
   const previous = process.env.BENTO_OBJDIR;
