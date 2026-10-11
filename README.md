@@ -144,6 +144,12 @@ To keep separate development profiles inside the checkout, set
 BENTO_DEV_PROFILE=.bento-dev-profile-alt pnpm run dev
 ```
 
+`pnpm run dev` deletes most of the profile directory's contents on each launch,
+so it only accepts a directory that does not exist yet, is empty, or is already
+a dev profile (it holds `.bento-dev-profile-marker`, `times.json`, or
+`prefs.js`). It refuses any directory with git-tracked files, such as `src` or
+`extensions`.
+
 To open Browser Toolbox while launching either workflow, set
 `BENTO_JSDEBUGGER=1`:
 

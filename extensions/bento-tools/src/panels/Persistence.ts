@@ -179,90 +179,98 @@ export async function load(): Promise<PersistedPanels | null> {
   }
 }
 
+/** Positional state a write needs; the maps are copies taken when the write was requested. */
+type Snapshot = [
+  layouts: Map<string, WorkspacePanelLayout>,
+  persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
+  widths: Map<number, number>,
+  headerHiddenByTabId: Map<number, true>,
+  mainWidthByWorkspace: Map<string, number>,
+  stripScrollByWorkspace: Map<string, number>,
+];
+
+/**
+ * The single place a live tab becomes a storable URL. Return null to keep a tab
+ * out of `bento.panels`. Private-window tabs are never stored; the caller drops
+ * the panel slot from the entries and the persisted layout.
+ */
+function persistableUrl(tab: browser.tabs.Tab): string | null {
+  if (tab.incognito === true) return null;
+  const pendingUrl = (tab as { pendingUrl?: unknown }).pendingUrl;
+  const url =
+    tab.url && tab.url !== 'about:blank'
+      ? tab.url
+      : typeof pendingUrl === 'string'
+        ? pendingUrl
+        : '';
+  return url && url !== 'about:blank' ? url : null;
+}
+
+/**
+ * Writes the whole panel graph to `bento.panels`. Each write is a read-modify-write
+ * of every panel's live URL, so writes must never overlap: only one is in flight,
+ * and a newer request replaces any request still queued behind it. Writes therefore
+ * land in request order and an older snapshot cannot overwrite a newer one.
+ *
+ * `schedule` is the throttled path for high-frequency triggers (URL changes, strip
+ * scroll); `flushNow` is for discrete mutations and callers that await durability.
+ */
 export class Persistence {
   #timer: ReturnType<typeof setTimeout> | null = null;
-  #pendingLayouts: Map<string, WorkspacePanelLayout> | null = null;
-  #pendingPersistedWorkspaces: Map<string, PersistedWorkspacePanels> | null = null;
-  #pendingWidths: Map<number, number> | null = null;
-  #pendingHeaderHidden: Map<number, true> | null = null;
-  #pendingMainWidths: Map<string, number> | null = null;
-  #pendingStripScroll: Map<string, number> | null = null;
+  /** Latest snapshot waiting on the trailing timer. */
+  #scheduled: Snapshot | null = null;
+  /** Newest snapshot waiting for the in-flight write to finish. */
+  #queued: Snapshot | null = null;
+  /** Callers of `flushNow` covered by `#queued`; resolved once it is written. */
+  #waiters: Array<() => void> = [];
+  #draining = false;
 
-  schedule(
-    layouts: Map<string, WorkspacePanelLayout>,
-    persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
-    widths: Map<number, number>,
-    headerHiddenByTabId: Map<number, true>,
-    mainWidthByWorkspace: Map<string, number>,
-    stripScrollByWorkspace: Map<string, number>,
-  ): void {
-    this.#pendingLayouts = layouts;
-    this.#pendingPersistedWorkspaces = persistedWorkspaces;
-    this.#pendingWidths = widths;
-    this.#pendingHeaderHidden = headerHiddenByTabId;
-    this.#pendingMainWidths = mainWidthByWorkspace;
-    this.#pendingStripScroll = stripScrollByWorkspace;
+  schedule(...snapshot: Snapshot): void {
+    this.#scheduled = snapshot;
     if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
-      const nextLayouts = this.#pendingLayouts;
-      const nextPersistedWorkspaces = this.#pendingPersistedWorkspaces;
-      const nextWidths = this.#pendingWidths;
-      const nextHeaderHidden = this.#pendingHeaderHidden;
-      const nextMainWidths = this.#pendingMainWidths;
-      const nextStripScroll = this.#pendingStripScroll;
-      this.#pendingLayouts = null;
-      this.#pendingPersistedWorkspaces = null;
-      this.#pendingWidths = null;
-      this.#pendingHeaderHidden = null;
-      this.#pendingMainWidths = null;
-      this.#pendingStripScroll = null;
-      if (
-        nextLayouts &&
-        nextPersistedWorkspaces &&
-        nextWidths &&
-        nextHeaderHidden &&
-        nextMainWidths &&
-        nextStripScroll
-      ) {
-        void this.#flush(
-          nextLayouts,
-          nextPersistedWorkspaces,
-          nextWidths,
-          nextHeaderHidden,
-          nextMainWidths,
-          nextStripScroll,
-        );
-      }
+      const next = this.#scheduled;
+      this.#scheduled = null;
+      if (next) void this.#enqueue(next);
     }, DEBOUNCE_MS);
   }
 
-  flushNow(
-    layouts: Map<string, WorkspacePanelLayout>,
-    persistedWorkspaces: Map<string, PersistedWorkspacePanels>,
-    widths: Map<number, number>,
-    headerHiddenByTabId: Map<number, true>,
-    mainWidthByWorkspace: Map<string, number>,
-    stripScrollByWorkspace: Map<string, number>,
-  ): Promise<void> {
+  /** Resolves once a write at least as new as this snapshot has landed. */
+  flushNow(...snapshot: Snapshot): Promise<void> {
     if (this.#timer) {
       clearTimeout(this.#timer);
       this.#timer = null;
     }
-    this.#pendingLayouts = null;
-    this.#pendingPersistedWorkspaces = null;
-    this.#pendingWidths = null;
-    this.#pendingHeaderHidden = null;
-    this.#pendingMainWidths = null;
-    this.#pendingStripScroll = null;
-    return this.#flush(
-      layouts,
-      persistedWorkspaces,
-      widths,
-      headerHiddenByTabId,
-      mainWidthByWorkspace,
-      stripScrollByWorkspace,
-    );
+    this.#scheduled = null;
+    return this.#enqueue(snapshot);
+  }
+
+  #enqueue(snapshot: Snapshot): Promise<void> {
+    this.#queued = snapshot;
+    const written = new Promise<void>((resolve) => this.#waiters.push(resolve));
+    if (!this.#draining) void this.#drain();
+    return written;
+  }
+
+  async #drain(): Promise<void> {
+    this.#draining = true;
+    try {
+      while (this.#queued) {
+        const snapshot = this.#queued;
+        const waiters = this.#waiters;
+        this.#queued = null;
+        this.#waiters = [];
+        try {
+          await this.#flush(...snapshot);
+        } catch (err) {
+          console.error('[bento-tools] panels: flush failed', err);
+        }
+        for (const resolve of waiters) resolve();
+      }
+    } finally {
+      this.#draining = false;
+    }
   }
 
   async #flush(
@@ -287,13 +295,8 @@ export class Persistence {
       const keptKeysByTabId = new Map<number, string>();
       for (const [tabId, panelKey] of panelKeys) {
         try {
-          const tab = await browser.tabs.get(tabId);
-          const pendingUrl =
-            typeof (tab as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
-              ? ((tab as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? '')
-              : '';
-          const url = tab.url && tab.url !== 'about:blank' ? tab.url : pendingUrl;
-          if (!url || url === 'about:blank') continue;
+          const url = persistableUrl(await browser.tabs.get(tabId));
+          if (!url) continue;
           const entry: StoredEntryV5 = { panelKey, url };
           const widthPx = widths.get(tabId);
           if (typeof widthPx === 'number' && widthPx > 0) entry.widthPx = widthPx;
