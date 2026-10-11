@@ -31,7 +31,7 @@ Bento's core browsing model is split across three layers:
   probe list of the runtime-probable members, which each window probes once.
 - `bento-shell-mount.css` holds the chrome layout rules (panel strip, splitters,
   navigator, overlays, startup veil, fullscreen overrides). `injectChromeStyles()`
-  in the mount script links it to the window root; `jar.mn` (patch
+  in the mount script loads it synchronously as an author sheet; `jar.mn` (patch
   `chrome-layout/01-bento-shell-mount.patch`) ships it as
   `chrome://browser/content/bento-shell-mount.css`. See "Chrome layout
   stylesheet" under Chrome rendering pitfalls.
@@ -2752,34 +2752,55 @@ adds its entry, and its id in the mount probe list, in the same change.
 
 - Chrome layout stylesheet. Source of truth: `src/browser/base/content/bento-shell-mount.css`,
   a static file, not a template literal in the mount script. Chrome bridge:
-  `injectChromeStyles()` appends one `<link rel="stylesheet" href="chrome://browser/content/bento-shell-mount.css">`
-  to the window root. Persistence: none. Manual verification: in the Browser
-  Toolbox Console run `[...document.styleSheets].map((s) => s.href)` and check
-  `bento-chrome-tokens.css`, `bento-chrome-theme.css`, `bento-shell-mount.css`
-  appear in that order, ahead of any `bento-chrome-themes/` sheet, then cold-start
-  the first window and open a second one and look for an unstyled frame. Pitfalls:
+  `injectChromeStyles()` calls `window.windowUtils.loadSheetUsingURIString` with
+  `chrome://browser/content/bento-shell-mount.css` and `AUTHOR_SHEET`. Persistence: none.
+  Manual verification: in the Browser Toolbox Console, `document.styleSheets` does
+  not list it (additional sheets are not document sheets); run
+  `InspectorUtils.getAllStyleSheets(document, true).map((s) => s.href)` and look for
+  `bento-shell-mount.css`, and
+  `getComputedStyle(document.documentElement).getPropertyValue('--bento-splitter-hit-size')`
+  must be `14px`. Then cold-start the first window and open a second one and look
+  for an unstyled frame; on Windows also cold-start with a persisted window size,
+  where Firefox shows an early blank window. Pitfalls:
   - The file ships only through the `browser/base/jar.mn` line in
     `patches/chrome-layout/01-bento-shell-mount.patch`. Without the line the
     import succeeds and the app loads with no layout CSS.
     `scripts/check-import-output.mjs` fails on any `src/browser/base/content`
     file the engine `jar.mn` does not register.
-  - Keep the link where the former inline `<style>` was appended (after the
-    tokens and theme links, before any theme sheet). Stylesheets order by owner
-    node position, and the file's `@layer bento.chrome-theme` blocks must follow
-    the ones in `bento-chrome-theme.css`. A parser-created link in
-    `browser-box.inc.xhtml` would sort the file before the tokens and theme
-    links, and an `<?xml-stylesheet?>` instruction before every other sheet, which
-    changes which rule wins on equal specificity.
+  - What holds back first paint depends on the startup path.
+    - Normal first window: the chrome window stays hidden until `browser.xhtml`
+      finishes loading, and the tokens and theme links (inserted by script) block
+      that load, so no unstyled frame is shown. The mount sheet is already applied
+      by then because the load is synchronous.
+    - Early blank window (`browser.startup.blankWindow`: on by default on Windows,
+      on Linux only in Nightly builds or when turned on; it needs a persisted
+      window size and the default theme): the window is already visible when
+      Firefox navigates it to `browser.xhtml`. Script-inserted links do not
+      count toward the prototype sink's pending-sheet counter, so initial layout
+      can start with them pending and paint suppression ends after 5 ms
+      (`nglayout.initialpaint.delay`). The mount sheet is unaffected because it
+      is loaded synchronously. The tokens and theme links are exposed, as they
+      were before the sheet moved out of the script (the old inline style also
+      resolved `var()` tokens only once the tokens sheet arrived). Parser-created
+      links in `browser.xhtml` would close that gap and are not done.
+    - Later windows: tokens and theme come from the shared sheet cache and are
+      inserted synchronously. The mount sheet is parsed again per window,
+      because `loadSheetUsingURIString` uses a loader without a document and that
+      loader has no shared sheet cache.
+  - Do not replace the call with a `<link>`. A script-inserted link is exposed on
+    the blank-window path above, and a link in a different place changes the
+    cascade. Additional author sheets sort after every document sheet, so this
+    sheet follows the per-theme `bento-chrome-themes/<id>.css` link, which used to
+    follow it. That is safe only while the two share no property (theme sheets set
+    only `--muxui-*` custom properties) and the layer order is unchanged
+    (`bento.tokens`, then `bento.chrome-theme`, which `bento-chrome-theme.css`
+    declares before this file does). `scripts/mount-sheet-order.test.mjs` checks
+    both against freshly generated sheets and runs in CI; a failure means
+    reconsider the load method rather than edit the test.
   - Do not move the rules back into a JS template literal or an inline
-    `<style>`: one stray backtick or dollar-brace breaks the whole mount script,
-    and each window then copies and hashes the 100 kB string for Gecko's
-    inline-sheet cache.
-  - The first window is not shown until the link has loaded (`AppWindow` shows
-    a chrome window after its document finishes loading, and the link is part
-    of that load), so there is no unstyled first frame; later windows take the
-    parsed sheet from the shared sheet cache. A stylesheet that fails to load
-    (missing jar.mn line, bad URL) shows up as an unstyled but visible window and
-    a Browser Console load error.
+    `<style>`: one stray backtick or dollar-brace breaks the whole mount script.
+  - `loadSheetUsingURIString` throws `NS_ERROR_INVALID_ARG` for a sheet the window
+    already has, so `injectChromeStyles()` loads once and logs any other failure.
   - `scripts/check-chrome-resize-guard.mjs` matches the shadow-token rules in
     this file, not in the mount script.
 - The gBrowser hooks are guarded by `typeof` and a `__bento*` flag, so a Firefox

@@ -708,19 +708,40 @@
 
   // Layout-shape CSS that depends on the tokens above lives in
   // bento-shell-mount.css, a static chrome stylesheet registered in jar.mn.
-  // Rules cover per-tab elements such as .browserContainer that tabbrowser
-  // creates later, so there is no need to hook tab creation. The link is
-  // appended to the root at this point in the script, the position the former
-  // inline <style> held, so it stays after the tokens and theme links above
-  // and before any bento-chrome-themes/<id>.css link added later. A chrome
-  // link delays the window's load event and AppWindow shows the window only
-  // after it, so the first window is not shown unstyled; later windows reuse
-  // the parsed sheet from Gecko's shared sheet cache.
+  // Its rules cover per-tab elements such as .browserContainer that tabbrowser
+  // creates later, so there is no need to hook tab creation.
+  //
+  // The sheet is loaded with windowUtils.loadSheetUsingURIString as an author
+  // sheet. That call is synchronous, so the rules exist before this script
+  // returns, as the former inline <style> did. A <link> is not enough: the
+  // tokens and theme links above are inserted by script, so they hold back
+  // only the document's load event, not the initial layout of a window that is
+  // already visible. That is the Windows early blank window
+  // (browser.startup.blankWindow): its paint suppression can expire before a
+  // cold link completes. A normal first window stays hidden until its load
+  // event, and later windows take the tokens and theme sheets from the shared
+  // sheet cache. The tokens and theme links keep their blank-window exposure,
+  // as they had before this sheet moved out of the script.
+  //
+  // Cascade: additional author sheets sort after every document sheet, so this
+  // one now follows the per-theme sheets that applyChromeThemeToDocument
+  // appends later. None of their properties overlap this sheet's, and the only
+  // layer it names is already declared by bento-chrome-theme.css; the order
+  // test scripts/mount-sheet-order.test.mjs keeps both true. A loader without a
+  // document has no shared sheet cache, so each window parses the sheet itself.
+  let bentoMountSheetLoaded = false;
   function injectChromeStyles() {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'chrome://browser/content/bento-shell-mount.css';
-    document.documentElement.appendChild(link);
+    // loadSheet throws NS_ERROR_INVALID_ARG for a sheet the window already has.
+    if (bentoMountSheetLoaded) return;
+    try {
+      window.windowUtils.loadSheetUsingURIString(
+        'chrome://browser/content/bento-shell-mount.css',
+        window.windowUtils.AUTHOR_SHEET,
+      );
+      bentoMountSheetLoaded = true;
+    } catch (err) {
+      console.error('[bento-shell-mount] could not load bento-shell-mount.css:', err);
+    }
   }
   injectChromeStyles();
 
