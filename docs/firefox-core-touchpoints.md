@@ -225,7 +225,12 @@ Use this shape for new or changed touchpoints:
   synchronously with an updated `contentTitle`, or stops bubbling to the chrome
   window, every shell and overlay message is lost because nothing polls; if
   `currentURI` lags the first title event of a new document or stops matching
-  the extension host, the document check ignores legitimate titles),
+  the extension host, the document check ignores legitimate titles; the shell's
+  `sendChromeTitle` writer also assumes the content process reports a title from
+  a runnable queued by the first write, so a `setTimeout(0)` task runs after the
+  report and every sent title reaches chrome. Rerun the sidebar-reload check in
+  `docs/core-functionality-technical.md` ("Shell to chrome bridge") on a profile
+  with `welcomeSeen` false after any change to document title reporting),
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, panel focus detection on
   privileged `about:*` pages, sidebar address scoping,

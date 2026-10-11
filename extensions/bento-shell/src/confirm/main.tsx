@@ -33,6 +33,7 @@ import {
   subscribeToConfirmRequests,
   type ConfirmPayload,
 } from '../bridge/useConfirm';
+import { sendChromeTitle } from '../bridge/chromeTitle';
 
 initToolsPort();
 
@@ -51,7 +52,7 @@ function ConfirmApp() {
   function close() {
     // Sentinel title format mirrors the palette's. The chrome script polls
     // this frame's contentTitle and hides the overlay on this prefix.
-    document.title = `${CONFIRM_CLOSE_PREFIX}_${Date.now()}`;
+    sendChromeTitle(`${CONFIRM_CLOSE_PREFIX}_${Date.now()}`);
   }
 
   function onConfirm() {

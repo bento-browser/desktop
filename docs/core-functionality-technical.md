@@ -2116,9 +2116,39 @@ event that resets the per-frame dedupe. `DOMTitleChanged`, which earlier code
 tried and found unreliable, is dispatched inside the content process and does
 not reach chrome for remote frames; do not confuse the two.
 
-The channel is still a single title slot per document: it remains
-last-write-wins, and the content process coalesces title writes made in the same
-task. The event removes the polling window, not that loss.
+The channel is a single title slot per document, and the content process
+reports it to the parent from a runnable queued by the first write, reading the
+title when that runnable runs. A write made before then replaces the pending
+title, so chrome never gets a `pagetitlechanged` for the replaced value. That
+covers two writes in one synchronous block and also a write in an earlier task
+followed by another task that was already queued (the next bus message, a React
+effect flushed in a microtask). The event removes the polling window, not that
+loss.
+
+Every producer in a shell document therefore sends titles through
+`sendChromeTitle` (`bridge/chromeTitle.ts`) instead of assigning
+`document.title`. The writer sets the first title immediately and holds any
+title sent before the next `setTimeout(0)` task. That timer is queued after the
+report runnable, so each title is reported before the next one is written.
+Titles reach chrome in send order with no drops and no polling; the per-frame
+dedupe in chrome still drops a title identical to the previous one, which is why
+sentinels keep their timestamp suffix. The chrome receive path and the
+`BENTO_*` wire format are unchanged. ESLint (`no-restricted-syntax` in
+`eslint.config.mjs`) rejects `document.title =` anywhere under
+`extensions/bento-shell/src` except the writer.
+
+The writer holds only an in-document queue and persists nothing; `bento-tools`
+stays the source of truth and each `BENTO_PANELS` forward is rebuilt from the
+shell mirrors.
+
+Manual verification: with a profile whose welcome flow is hidden but not
+completed (`welcomeSeen` false), open the Browser Toolbox Console and paste a
+capture-phase `pagetitlechanged` listener on `window` that logs
+`event.target.id` and `event.target.contentTitle` for `bento-shell-frame`, then
+reload only the sidebar frame. The log must contain at least one
+`BENTO_PANELS:` title whose decoded payload carries the settings fields
+(`uiColorMode`, `sidebarCollapsed`, ...) as well as the `BENTO_OPEN_WELCOME_`
+titles, and the panel strip must show the saved panels.
 
 The main channel is `BENTO_PANELS:<ts>:<base64-json>`, written by
 `useToolsPort.ts` when a `panels/sync` event matches the shell document's active
@@ -2445,9 +2475,9 @@ submitted while viewing side panels.
 
 Load-bearing pitfalls:
 
-- Submit writes exactly one navigate sentinel. Do not also write
-  `BENTO_CLOSE_ADDRBAR_*` in the same tick; `document.title` is last-write-wins
-  and chrome may only see the close sentinel.
+- Submit sends exactly one navigate sentinel. Do not also send
+  `BENTO_CLOSE_ADDRBAR_*`; chrome's navigate handler already hides the overlay,
+  and the extra title is one more handler run.
 - Do not remove the explicit main-slot reveal after submit. Current-tab address
   loads do not necessarily change `gBrowser.selectedTab`, so the reconcile-time
   selected-tab auto-scroll path may not run.
@@ -2486,17 +2516,31 @@ Load-bearing pitfalls:
 
 ### Title IPC pitfalls
 
-- `document.title` is last-write-wins. Do not reintroduce separate title writes
-  for chrome-bound settings that can ride inside `BENTO_PANELS`.
+- Title writes coalesce: a title replaced before the content process reports it
+  never produces a `pagetitlechanged` in chrome. This is not limited to one
+  synchronous block. Reload of a profile with `welcomeSeen` false lost
+  `BENTO_PANELS` because the settings snapshot handler forwarded the full
+  `BENTO_PANELS` payload and, in the same task, the React welcome effect (flushed
+  in a microtask) assigned `BENTO_OPEN_WELCOME_<ts>` over it, so chrome never
+  saw the settings or panel state. Always send titles with `sendChromeTitle`
+  (`bridge/chromeTitle.ts`), never `document.title =`; the writer is covered by
+  `bridge/chromeTitle.test.ts` and the welcome case by `bridge/busBootstrap.test.ts`
+  ("first-run welcome request follows in the same task"). A new producer in any
+  shell document (overlay frames included) needs no workaround for ordering
+  against other titles.
+- Do not reintroduce separate title writes
+  for chrome-bound settings that can ride inside `BENTO_PANELS`; one payload is
+  still cheaper for chrome than several reconciles.
 - `BENTO_PANELS` is the canonical chrome state payload for panel visibility,
   layout, theme, color mode, sidebar collapsed/hidden state, sidebar shortcut
   behavior, and related active workspace chrome state. Any extra sidebar title
   channel must be sparse: emit
   only for a real event/state transition, never on ordinary renders, snapshots,
-  or empty steady state. A harmless-looking repeated sentinel such as an empty
-  selection payload can overwrite `BENTO_PANELS` before chrome's
-  `pagetitlechanged` handler reads it, leaving the main content visible but
-  hiding all side panels.
+  or empty steady state. Before `sendChromeTitle`, a harmless-looking repeated
+  sentinel such as an empty selection payload could overwrite `BENTO_PANELS`
+  before chrome's `pagetitlechanged` handler read it, leaving the main content
+  visible but hiding all side panels. The writer now delivers both, but every
+  extra title still costs a chrome handler run and a queued task.
 - If a title channel needs a clear/reset signal, send that reset only after the
   channel previously sent a non-empty/non-default value. Do not continuously
   announce "nothing selected", "closed", "default", or similar no-op state.

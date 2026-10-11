@@ -3,6 +3,7 @@ import type { AddrbarMode } from './useAddrbar';
 import { encodeTitlePayload } from './useAddrbar';
 import { useCurrentWindowId } from './useToolsPort';
 import { useSidebarAddressStore, type SidebarAddressSnapshot } from '../state/sidebarAddress';
+import { sendChromeTitle } from './chromeTitle';
 
 export const SIDEBAR_ADDRESS_BUS_NAME = 'bento-sidebar-address-bus';
 export const SIDEBAR_ADDRESS_SUBMIT_PREFIX = 'BENTO_SIDEBAR_ADDRESS_SUBMIT:';
@@ -100,7 +101,7 @@ export function shouldAcceptSidebarAddressMessage(
 }
 
 function signalScopedSidebarAddressCommand(prefix: string, payload: object): void {
-  document.title = `${prefix}${Date.now()}:${encodeTitlePayload(JSON.stringify(payload))}`;
+  sendChromeTitle(`${prefix}${Date.now()}:${encodeTitlePayload(JSON.stringify(payload))}`);
 }
 
 export function signalSidebarAddressSubmit(payload: SidebarAddressSubmitPayload): void {

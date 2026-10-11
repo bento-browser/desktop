@@ -176,4 +176,22 @@ export default tseslint.config(
       ],
     },
   },
+
+  // Title IPC: shell documents send chrome-bound titles through
+  // sendChromeTitle, which keeps back-to-back writes from replacing each other
+  // before chrome observes them. Direct assignment is only allowed in the writer.
+  {
+    files: ['extensions/bento-shell/src/**/*.{ts,tsx}'],
+    ignores: ['extensions/bento-shell/src/bridge/chromeTitle.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "AssignmentExpression[left.type='MemberExpression'][left.object.name='document'][left.property.name='title']",
+          message: 'Send chrome-bound titles with sendChromeTitle (bridge/chromeTitle.ts).',
+        },
+      ],
+    },
+  },
 );
