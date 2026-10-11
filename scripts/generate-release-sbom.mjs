@@ -8,10 +8,8 @@ import { parse } from 'yaml';
 
 const root = path.resolve(import.meta.dirname, '..');
 const outputDir = path.resolve(root, process.argv[2] || 'release-out');
-const releaseLockPath = path.resolve(
-  root,
-  process.env.BENTO_RELEASE_LOCK_PATH || 'pnpm-lock.release.yaml',
-);
+// The SBOM reads the one committed lock; the env override exists for tests.
+const lockPath = path.resolve(root, process.env.BENTO_LOCK_PATH || 'pnpm-lock.yaml');
 const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
 const ublock = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/ublock-origin/manifest.json'), 'utf8'),
@@ -67,7 +65,7 @@ function packageIdentity(key, metadata) {
     return { name: key.slice(0, sourceSeparator), version: String(metadata.version) };
   }
   const versionSeparator = key.lastIndexOf('@');
-  if (versionSeparator <= 0) throw new Error(`Unsupported release lock package key: ${key}`);
+  if (versionSeparator <= 0) throw new Error(`Unsupported lock package key: ${key}`);
   return { name: key.slice(0, versionSeparator), version: key.slice(versionSeparator + 1) };
 }
 
@@ -87,15 +85,15 @@ function integrityHashes(integrity) {
   ];
 }
 
-const releaseLock = parse(fs.readFileSync(releaseLockPath, 'utf8'));
-if (!releaseLock?.packages || typeof releaseLock.packages !== 'object') {
-  throw new Error(`${path.basename(releaseLockPath)} does not contain a packages map.`);
+const lock = parse(fs.readFileSync(lockPath, 'utf8'));
+if (!lock?.packages || typeof lock.packages !== 'object') {
+  throw new Error(`${path.basename(lockPath)} does not contain a packages map.`);
 }
 
-const muxuiImporter = releaseLock.importers?.['extensions/bento-shell'];
+const muxuiImporter = lock.importers?.['extensions/bento-shell'];
 validateShellRuntimeDependencies(
   muxuiImporter?.dependencies,
-  `${path.basename(releaseLockPath)} extensions/bento-shell importer`,
+  `${path.basename(lockPath)} extensions/bento-shell importer`,
 );
 const muxuiDependency = muxuiImporter?.dependencies?.['@muxui/react'];
 const importerVersion = String(muxuiDependency?.version || '').split('(', 1)[0];
@@ -104,27 +102,25 @@ if (importerVersion !== muxuiVersion) {
 }
 
 const muxuiLockKey = `@muxui/react@${muxuiVersion}`;
-const muxuiLockEntries = Object.entries(releaseLock.packages).filter(([key]) =>
+const muxuiLockEntries = Object.entries(lock.packages).filter(([key]) =>
   key.startsWith('@muxui/react@'),
 );
 if (muxuiLockEntries.length !== 1 || muxuiLockEntries[0][0] !== muxuiLockKey) {
-  throw new Error(
-    'pnpm-lock.release.yaml must contain exactly one published @muxui/react package entry.',
-  );
+  throw new Error('pnpm-lock.yaml must contain exactly one published @muxui/react package entry.');
 }
 const muxuiResolution = muxuiLockEntries[0][1]?.resolution;
 // pnpm omits the tarball for the default npm registry; an explicit source must agree.
 if (muxuiResolution?.tarball && muxuiResolution.tarball !== muxuiTarball) {
   throw new Error(
-    'pnpm-lock.release.yaml @muxui/react resolution does not point to the published npm package.',
+    'pnpm-lock.yaml @muxui/react resolution does not point to the published npm package.',
   );
 }
 if (muxuiResolution?.integrity !== muxuiIntegrity) {
   throw new Error(
-    'pnpm-lock.release.yaml @muxui/react integrity does not match the published npm package.',
+    'pnpm-lock.yaml @muxui/react integrity does not match the published npm package.',
   );
 }
-const packages = Object.entries(releaseLock.packages).map(([key, metadata]) => {
+const packages = Object.entries(lock.packages).map(([key, metadata]) => {
   const { name, version } = packageIdentity(key, metadata);
   const hashes = integrityHashes(metadata?.resolution?.integrity);
   return {

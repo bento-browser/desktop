@@ -83,9 +83,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Installs the frozen release graph up front. build-release.sh repeats
-      # the install (a few seconds with a warm store) because it also serves
-      # local release builds.
+      # Installs the frozen graph up front. build-release.sh runs the same
+      # frozen install again (it also serves local release builds), which does
+      # nothing when node_modules is already current.
       - uses: ./.github/actions/setup
 
       - name: Resolve pinned Rust toolchain
