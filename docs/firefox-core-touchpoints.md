@@ -866,6 +866,185 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `.github/actions/native-cache-keys`). Keep the Rust pin and release
   verification aligned with the Firefox release's official toolchain.
 
+### Build Configure Flags And Updater
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `configs/common/mozconfig` and `configs/{linux,macos,windows}/mozconfig`
+  - `scripts/bento-build.mjs` (the options appended to the generated
+    `engine/mozconfig` per build mode, and the updater switch)
+  - `bento.json` (`updates.enabled`, `updates.channel`, `updates.hostname`)
+  - `config/release-security.json` (`updateService` readiness inputs)
+  - `scripts/update-readiness.mjs`, `scripts/check-release-security.mjs`
+  - `scripts/validate-bento-artifacts.mjs`, `scripts/build-release.sh`,
+    `.github/workflows/release.yml`
+- Bento functionality: `dev` and `debug` builds compile with
+  `--disable-release` (plus `--enable-macos-target=11.0` on macOS) so they skip
+  the final-crate Rust LTO link and can build Rust incrementally; `release`
+  builds keep `--enable-release`, `--enable-optimize`, and `--enable-rust-simd`.
+  Every mode compiles with `--disable-updater` while `bento.json`
+  `updates.enabled` is `false`, because Bento does not yet have a signed update
+  path. The `bento` channel (`--enable-update-channel=bento`), the MAR channel
+  exports, and `MOZ_APPUPDATE_HOST` are still written so enabling the updater
+  later needs no other configure change.
+- Vanilla Firefox surface touched or depended on (paths recorded from the
+  2026-10-12 audit; re-verify them in the target tree):
+  - `--enable-release` / `--disable-release`: `moz.configure` (`developer_options`
+    follows it), whose default is on for a release-milestone source tarball, which
+    is why dev builds need the explicit `--disable-release`.
+  - What developer options change: `config/makefiles/rust.mk` (final-crate LTO and
+    `-C codegen-units=1` only when `DEVELOPER_OPTIONS` is unset),
+    `build/moz.configure/rust.configure` (cargo incremental only with developer
+    options), `build/moz.configure/flags.configure` (function sections and
+    identical-code folding only for release), and `build/moz.configure/toolchain.configure`
+    (the `--enable-macos-target` default is 11.0 normally and 10.15 under developer
+    options).
+  - `--disable-updater` and `MOZ_UPDATER` (`build/moz.configure/update-programs.configure`)
+    and what the packager derives from it (the updater binary). The option is
+    `--enable-updater` with `--with`, `--disable` and `--without` spellings
+    (`python/mozbuild/mozbuild/configure/options.py`); configure keys arguments by
+    name, so the last occurrence in `engine/mozconfig` wins. `MOZ_UPDATE_CHANNEL`
+    is lowercased in `build/moz.configure/init.configure` before
+    `toolkit/mozapps/update/updater/moz.build` compares it. Configure records the
+    result as `MOZ_UPDATER` in the object directory's `config.status.json`
+    (`configure.py`) beside `MOZ_UPDATE_CHANNEL`; `package` and `artifacts:check`
+    read both and require the channel to be `bento.json` `updates.channel`. The
+    same file defines `--enable-unverified-updates`, which sets
+    `MOZ_VERIFY_MAR_SIGNATURE` off. Bento's mozconfig fragments are rejected if
+    they mention the updater, unverified updates, `update-channel`,
+    `MAR_CHANNEL_ID` or `ACCEPTED_MAR_CHANNEL_IDS`, so a rename of any of these
+    needs `overridesUpdateSettings` in `scripts/update-readiness.mjs` updated.
+  - `precomplete` is not tied to the updater: `toolkit/mozapps/installer/packager.py`
+    calls `generate_precomplete` unconditionally after copying the package,
+    `python/mozbuild/mozpack/packager/l10n.py` regenerates it for repacked locales,
+    and `config/createprecomplete.py` writes `precomplete` (or
+    `Contents/Resources/precomplete` inside a macOS bundle). The Windows installer
+    and uninstaller read it (`RemovePrecompleteEntries` in
+    `toolkit/mozapps/installer/windows/nsis/common.nsh`, called from
+    `browser/installer/windows/nsis/installer.nsi`, `uninstaller.nsi` and
+    `stub.nsh`). `artifacts:check` requires it with the updater on or off.
+  - Update trust: `toolkit/mozapps/update/updater/moz.build` selects compiled-in
+    certificates by `MOZ_UPDATE_CHANNEL` (Mozilla's release certificate for
+    release, beta, and esr, its nightly certificates for nightly and aurora names,
+    and `dep1.der` and `dep2.der` for any other channel, including `bento`), and
+    `build/moz.build` plus `build/application.ini.in` default the update URL to
+    `aus5.mozilla.org` because no stock configure code consumes
+    `MOZ_APPUPDATE_HOST`.
+- Why this cannot stay extension-only: these are compile-time configure options
+  that decide what Firefox builds and whether it contains an updater.
+- Firefox update risk: a renamed or removed configure option fails configure for
+  every mode; a changed developer-options default silently changes dev codegen or
+  the macOS deployment target; a new minimum macOS target above 11.0 breaks dev
+  and debug configure until `MACOS_DEPLOYMENT_TARGET` in `scripts/bento-build.mjs`
+  is raised; a changed packaging rule for `precomplete` or the updater breaks
+  `package` and `artifacts:check`; a moved or renamed `MOZ_UPDATER` key in
+  `config.status.json`, or a changed rule for lowercasing the update channel,
+  breaks the updater-state and channel checks in `scripts/update-readiness.mjs`.
+- Regression checks for future updates:
+  1. Run `node --test scripts/bento-build.test.mjs scripts/release-security.test.mjs scripts/validate-bento-artifacts.test.mjs`.
+  2. Run `pnpm run build` in `dev` mode, then confirm `engine/mozconfig` holds
+     `ac_add_options --disable-release`, `--disable-updater`, and on macOS
+     `--enable-macos-target=11.0`, and that configure printed no unknown-option or
+     conflicting-option error.
+  3. In the object directory's `config.status.json`, confirm the updater is off
+     (`MOZ_UPDATER` is absent; `package` and `artifacts:check` fail otherwise) and
+     developer options are on (`DEVELOPER_OPTIONS` set) for `dev` and `debug` and
+     unset for `release`. On macOS confirm the 11.0 target in every mode:
+     `-mmacosx-version-min=11.0` is in the compiler flags (`substs` `CC`, `CXX`,
+     `CC_BASE_FLAGS`), and the `bento` and `XUL` binaries under
+     `engine/obj-bento/dist/Bento.app/Contents/MacOS/` report `minos 11.0`
+     (`otool -l <binary> | grep -A4 LC_BUILD_VERSION`, or `vtool -show-build <binary>`).
+     `MACOSX_DEPLOYMENT_TARGET` is not a `config.status.json` key. If a name
+     moved, find its new home in the new tree.
+  4. Compare `toolchain.configure` `--enable-macos-target`: its default and minimum
+     must still allow 11.0.
+  5. Run `BENTO_BUILD_MODE=release pnpm run build` (or a manual CI build) and
+     `pnpm run package`; confirm the package has no updater, that `precomplete` is
+     still present in the application (root, or `Contents/Resources` on macOS), and
+     that `pnpm run artifacts:check` passes with no MAR or update XML.
+     Re-confirm that `packager.py` still generates `precomplete` unconditionally.
+  6. Re-read the update-trust paths above. If the updater is enabled in the target
+     state, re-check cert selection and the update URL before trusting it.
+- Reused object directories: reconfiguring an `obj-bento` that was built with the
+  updater keeps updater leftovers. The dev tree's `chrome.manifest` keeps a
+  `nsUpdateService.manifest` line (an info-level "Could not read chrome manifest"
+  console message) and `dist/Bento.app/Contents/MacOS/updater.app` stays. The
+  packaged app has neither, so judge the updater's absence from the packaged app or
+  a fresh `BENTO_OBJDIR`, not from a reused dev tree.
+- Rollback or migration notes: to restore release policy in dev builds, move
+  `--enable-release` back into `configs/common/mozconfig` and drop the
+  `--disable-release` branch in `modeOptions`; invalidate the native object cache.
+  To ship the updater, follow "Re-enabling the updater" in
+  [build-tooling.md](build-tooling.md) and add the new surfaces (certificate
+  patch, update-host wiring, MAR signing) to this entry.
+
+### About Pane Updates Group
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `patches/core-ui/16-hide-updates-group-without-updater.patch`
+    (`browser/components/preferences/config/about-firefox.mjs`, and the
+    upstream test `browser/components/preferences/tests/browser_updates_managed_by_os.js`)
+- Bento functionality: builds without the updater (`--disable-updater` while
+  `bento.json` `updates.enabled` is `false`) show no Updates group in the About
+  pane: no heading, description, or "Updates are managed by your operating
+  system" message bar, and Settings search finds nothing in it. That message is
+  false for Bento. With the updater built in, the group behaves as upstream,
+  including the packaged-app message.
+- Vanilla Firefox surface touched or depended on: `about-firefox.mjs` registers
+  the `updates` setting group with `SettingGroupManager`; the patch adds
+  `hidden: !AppConstants.MOZ_UPDATER` and `hiddenFromSearch: !AppConstants.MOZ_UPDATER`
+  to that config, the group-level idiom other config files use (`tabs-browsing.mjs`
+  sets both on `browserLayout`). It depends on
+  `widgets/setting-group/setting-group.mjs` applying `config.hidden` as
+  `data-hidden-by-setting-group` (`display: none !important` in
+  `setting-group.css`) and `config.hiddenFromSearch` as `data-hidden-from-search`,
+  and skipping `handleVisibilityChange` for a hidden group. `hidden` alone does not
+  stop Settings search: `findInPage.js` skips such a group in its per-group pass
+  (`BASE_SELECTOR`), but its whole-pane fallback (`searchWithinNode` on the
+  setting-pane, via `searchChildNodeIfVisible`) only checks `.hidden` and the
+  parent's `data-hidden-from-search`, so only `data-hidden-from-search` keeps the
+  group's text out of that fallback. The top-level `paneGeneral` copy in
+  `main.inc.xhtml` is excluded from search by the same attribute (the
+  `#mainPrefPane > *:not([data-hidden-from-search] ...)` query). The patch also
+  depends on `AppConstants.MOZ_UPDATER` mirroring the configure option. Upstream
+  shows `updatesManagedByOS` whenever `!UpdatesHelpers.showUpdatesSettings`, which
+  includes every build without an updater. The patch also changes the upstream
+  test `browser_updates_managed_by_os.js` to expect the group hidden and carrying
+  `data-hidden-from-search="true"` in that case.
+- Why this cannot stay extension-only: the group is registered and rendered by
+  Firefox's own Settings module, and Bento's `bento.mjs` is not loaded for the
+  About pane, so reaching into another module's registered config would depend on
+  load order.
+- Firefox update risk: a renamed or reshaped `updates` group, a changed meaning of
+  `hidden` or `hiddenFromSearch` in `SettingGroup` or in `findInPage.js`, or a
+  moved `updatesManagedByOS` setting makes the patch fail to apply or silently
+  bring back the false message or the search result. The version line
+  (`updateAppInfo`) lives inside the group's `updateApp` box, which upstream already
+  hides without an updater, so the About pane shows no version in these builds.
+- Regression checks for future updates:
+  1. `pnpm run firefox:patches:check` replays the patch on the new base.
+  2. In a dev build, open `about:preferences#about` and confirm the page shows
+     only the support group: no "Updates" heading, description, or message bar. Search
+     Settings for "update" and for "managed by your operating system" and confirm
+     neither surfaces Updates text. In the regular DevTools console of that page
+     (Cmd+Opt+I), confirm
+     `document.querySelector('setting-group[groupid="updates"]').getAttribute("data-hidden-from-search")`
+     returns `"true"`.
+  3. Re-read `setting-group.mjs` (`willUpdate`, `handleVisibilityChange`),
+     `findInPage.js` (the per-group `BASE_SELECTOR` pass, the whole-pane fallback,
+     `searchChildNodeIfVisible`) and `about-firefox.mjs` (`updatesManagedByOS`,
+     `updateApp`, the `updates` group) for changes to `hidden` or
+     `hiddenFromSearch` handling or to which settings the group renders.
+  4. Mochitests are not built (`--disable-tests`). In a test-enabled build, run
+     `browser_updates_managed_by_os.js` (listed in `browser-srd.toml`) with the
+     updater off and on.
+- Rollback or migration notes: drop the patch and its `series.json` entry to
+  restore upstream behavior. Enabling the updater needs no change here: the
+  condition follows `AppConstants.MOZ_UPDATER`.
+
 ### Built-In Extension Copy Surface
 
 - Status: Active
