@@ -73,3 +73,37 @@ paths without importing into the developer engine:
 node scripts/build-rollback-variant.mjs rollback-transition-r1 check
 node scripts/build-rollback-variant.mjs rollback-final-r2 check
 ```
+
+## Security parity
+
+The rollback variants overlay archived sources on the current tree, so they
+share the current experiments and `_shared` code but carry their own mount
+script and tools background. Security fixes to those two files must be applied
+to the archive too, then both `check` actions above rerun.
+
+Applied to both variants (the archived mount and tools background carry the same
+change as the current files):
+
+- Clipboard suggestion gate: the empty new-tab address open reads the clipboard
+  only while `browser.urlbar.suggest.clipboard` is true (a missing pref takes
+  Firefox's default, true; a wrong-typed pref disables the read).
+- Add-panel grant: the Add panel button creates
+  `about:blank?bento_add_as_panel=<token>` and a one-time grant on the native tab;
+  the archived tools background consumes it through
+  `bentoPrivacy.consumeAddPanelGrant` (current experiment, present in both
+  tools manifests) via `src/panels/AddPanelGrant.ts` from the current tree. A
+  page-supplied `bento_add_as_panel=1` URL no longer makes a panel.
+
+Not applied (the archived tools background still lacks it):
+
+- Shell port validation (`parseWireAction` and the window-existence check in
+  `createShellActionIntake`). The archived `port.onMessage` handler still casts
+  each message to `WireAction` and trusts `__windowId`. Porting is a listener
+  swap, but the archived mount and shell dispatch sites need a runtime pass
+  against `ACTION_FIELDS` first, so it was left out of the clipboard and
+  add-panel parity change. Until then, a rollback build is only as hardened as
+  the extension-origin boundary described in the audit (S-07).
+
+When a security fix lands in `bento-shell-mount.js` or `bento-tools/src/background.ts`,
+check whether the same code exists under `rollback/legacy-source/` before
+releasing a rollback build.

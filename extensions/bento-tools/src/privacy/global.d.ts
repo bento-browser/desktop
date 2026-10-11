@@ -11,6 +11,12 @@ declare global {
       >;
       getDefaultSearchEngine(): Promise<SearchEngineId>;
       setDefaultSearchEngine(id: SearchEngineId): Promise<void>;
+      /**
+       * Atomically checks the chrome-issued add-panel grant on the native tab
+       * (tabId, token), deletes it, and returns its metadata; null when there
+       * is no live matching grant. Validate the result with readAddPanelGrant.
+       */
+      consumeAddPanelGrant(tabId: number, token: string): Promise<unknown>;
     };
   }
 }
