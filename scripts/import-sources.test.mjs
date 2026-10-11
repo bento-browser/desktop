@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
-import { acquireSourceArchive, adoptExistingSource, createContext, engineStatus, findDirectory, main, sourceArchivePath, tarArchivePaths, verifyManagedEngine, verifyRecordedEngineState } from './bento-build.mjs';
+import { acquireSourceArchive, adoptExistingSource, createContext, engineStatus, findDirectory, legacyMozconfigText, loadConfig, main, sourceArchivePath, tarArchivePaths, verifyManagedEngine, verifyRecordedEngineState } from './bento-build.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -355,11 +355,7 @@ test('verify adopts an existing engine before recording an import without source
   }
 });
 
-test('adoption accepts the legacy generated mozconfig and gitignore formatting', async (t) => {
-  if (process.platform !== 'darwin') {
-    t.skip('legacy fixture is copied from the macOS daily-driver generator');
-    return;
-  }
+test('adoption accepts the legacy generated mozconfig and gitignore formatting', async () => {
   const root = await lifecycleFixture();
   const ctx = createContext(root);
   try {
@@ -379,10 +375,12 @@ test('adoption accepts the legacy generated mozconfig and gitignore formatting',
     git(['commit', '-m', 'Firefox 154.0']);
     git(['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
     await fsp.writeFile(path.join(root, 'engine', '.gitignore'), 'base-ignore\nbrowser/base/one.js');
-    await fsp.copyFile(path.join('/Users/admin/Projects/bento-browser', 'engine', 'mozconfig'), path.join(root, 'engine', 'mozconfig'));
-    const config = JSON.parse(await fsp.readFile(ctx.configPath, 'utf8'));
-    config.updates.hostname = 'updates.bentobrowser.app';
-    await fsp.writeFile(ctx.configPath, JSON.stringify(config));
+    // The previous generator named its tool in the header and ended the file with two spaces.
+    const config = loadConfig(root);
+    const legacyMozconfig = legacyMozconfigText(ctx, config)
+      .replace('# Internal build config', '# Internal surfer config')
+      .concat('  ');
+    await fsp.writeFile(path.join(root, 'engine', 'mozconfig'), legacyMozconfig);
     assert.equal(adoptExistingSource(ctx, config, '154.0'), true);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });

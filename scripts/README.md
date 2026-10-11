@@ -65,4 +65,25 @@ Build, packaging, and release helper scripts.
   the patch stack base is current, imports Bento patches, and runs a build.
   Equivalent to `pnpm run firefox:sync`.
 
-Future additions: release-channel scripts, version bump helpers, signing/notarization wrappers.
+## Other scripts, by purpose
+
+- Import pipeline (run by `pnpm run import`): `import.sh`, `import-sources.mjs`,
+  `install-branding.mjs`, `install-builtin-addons.mjs`, `append-prefs.sh`,
+  `reset-engine-patches.sh`, `snapshot-import-output.mjs`, `regen-branding.sh`.
+- Local dev loop: `dev-launch.sh`, `dev-profile-clean.sh`, `sync-shell.sh`,
+  `sync-builtin-addon-symlinks.sh`; `mach-env.sh` and `mach-raw.sh` run `mach`
+  with the Python chosen by `BENTO_MACH_PYTHON` (see `docs/build-tooling.md`).
+- Extension and theme builds: `build-extension-background.mjs`,
+  `sync-theme-presets.mjs`, `import-theme.mjs`, `generate-chrome-tokens.mjs`,
+  `mux-css.mjs`, `theme-selector.mjs`, `generate-native-preferences-protocol.mjs`;
+  `muxui-source.mjs` and `muxui-regenerator.mjs` support `muxui-dev.mjs`.
+- Checks (CLAUDE.md lists which ones CI runs): `check-security-invariants.mjs`, `check-release-security.mjs`,
+  `check-import-output.mjs`, `check-size-budgets.mjs` with `size-ratchet.mjs`,
+  the competitor-reference boundary check, `check-firefox-compat.mjs` with
+  `firefox-compat-registry.mjs`, `check-chrome-resize-guard.mjs`,
+  `check-legacy-aliases.mjs` with `legacy-aliases.mjs`,
+  `check-product-identity.mjs`, `check-rust-toolchain.mjs`.
+- Release and rollback: `build-release.sh`, `generate-release-sbom.mjs`,
+  `generate-release-metadata.mjs`, `pr-build-comment.mjs`,
+  `build-rollback-variant.mjs` with `rollback-variants.mjs`
+  (`pnpm run rollback:check` runs its read-only checks).

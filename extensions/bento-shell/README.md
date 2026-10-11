@@ -1,14 +1,17 @@
 # bento-shell
 
-Privileged extension implementing Bento Browser's UI shell — the "bento"
-layout, vertical tabs, workspace switching, panel arrangement, command palette.
+Privileged built-in extension that renders Bento Browser's UI: vertical tabs,
+workspaces, panel layouts, the command palette, and the other shell surfaces.
+React and Mux UI front end under `src/`, built with Vite (`pnpm --filter
+@bento/shell build`).
 
-Implemented in **Phase 3** of the project plan. Will use
-`browser.experiments.*` and other privileged APIs where standard WebExtension
-APIs are insufficient.
+- `src/` holds the React UI, Zustand mirrors of the state owned by `bento-tools`,
+  and the background script.
+- `experiments/chrome-bridge/api.js` is the only file that reaches into Firefox
+  chrome XHTML (`bentoChrome.*`).
+- `*.html` at this level are the Vite entry points; `public/` holds the external
+  `boot.js` bootstrap and the generated theme sheets.
+- `pnpm --filter @bento/shell ladle:serve` runs component stories.
 
-Skeleton (to be added):
-- `manifest.json`
-- `background.js`
-- `ui/` (HTML/CSS/JS for sidebar, command palette, etc.)
-- `experiments/` (privileged API definitions)
+See [docs/build-tooling.md](../../docs/build-tooling.md) for build and import,
+and [CLAUDE.md](../../CLAUDE.md) for the UI and state rules.
