@@ -28,6 +28,32 @@ dispatches `Action` messages through `extensions/bento-shell/src/bridge/useTools
 `bento-tools` mutates stores and broadcasts `Event` payloads back. Shell Zustand
 stores are mirrors only.
 
+Port validation: `bento-tools` never trusts the `Action` type on the shell port.
+After `isAuthorizedShellPort` and the targeted `shell-client/*` handshake, every
+message goes through `createShellActionIntake`
+(`extensions/bento-tools/src/messaging/shell-action-intake.ts`) and
+`parseWireAction` (`extensions/_shared/wire-action.ts`):
+
+- `ACTION_FIELDS` has one entry per `Action` type and one guard per field, typed
+  so a new action type or field fails to compile until it has a validator. Keys
+  are exact (plus the `__windowId` routing envelope); ids are safe integers
+  (non-negative, except the negative placeholder ids of `pinnedPanel/*` and
+  `pinnedPanels/reorder`); strings, arrays, and numeric ranges are bounded;
+  URL-bearing actions accept only `http`, `https`, `file`, `ftp`, `about`,
+  `view-source`, and `moz-extension` (favicons also `data`, `chrome`, and a few
+  icon schemes), and never `javascript:`, `data:`, or `blob:` page URLs.
+  `settings/update` reuses `isValidBentoSettingsPatch`; `backup/import` keeps
+  `validateExportSchema` for the payload so the user still gets an import error.
+- A message that claims a source window (`__windowId`, or the payload window of
+  `shell/hello`) is dropped unless `browser.windows.get` confirms the window.
+  Confirmed windows are cached until `windows.onRemoved`. Messages queue behind a
+  pending check so arrival order is kept.
+- Invalid messages are logged by type only (never payloads) and dropped; the
+  listener cannot throw. Mount-script dispatches (`dispatchShellAction`) and React
+  dispatches (`useToolsPort.ts`) must send exactly the declared fields. Manual
+  check: after any change to an action shape, exercise that UI path and watch the
+  tools console for `dropped invalid shell message`.
+
 ## Native Tabs And Titlebar Controls
 
 Bento hides Firefox's native horizontal tab strip through Firefox's own

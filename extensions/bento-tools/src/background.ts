@@ -5,6 +5,7 @@
 // initial snapshot + tools/booted Event, then streams batched deltas.
 
 import { handle } from './messaging/protocol-handler';
+import { createShellActionIntake, createWindowRegistry } from './messaging/shell-action-intake';
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
 import { SleepPolicy } from './tabs/SleepPolicy';
@@ -28,7 +29,7 @@ import {
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
-import type { BentoSettings, Event, PinnedPanelDelta, WireAction } from '@shared/protocol';
+import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
 import { NativePreferencesService } from './native-preferences/NativePreferencesService';
 import { BentoMutationCoordinator } from './mutations/BentoMutationCoordinator';
@@ -2067,6 +2068,8 @@ workspaces.onDeltas((deltas) => {
   }
 });
 
+const shellWindows = createWindowRegistry(browser.windows);
+
 browser.runtime.onConnectExternal.addListener((port) => {
   if (!isAuthorizedShellPort(port)) {
     console.warn('[bento-tools] rejecting unauthorized external port:', {
@@ -2112,34 +2115,39 @@ browser.runtime.onConnectExternal.addListener((port) => {
     send({ type: 'tabFolders/changed', deltas });
   });
 
-  port.onMessage.addListener((message: object) => {
+  // Every other message is a shell Action. shellActionIntake validates it
+  // (exact keys, bounded fields, allowed URL schemes), drops claims of a source
+  // window that no longer exists, and never throws. The shell document stamps
+  // each dispatch with the WebExtension windowId of its chrome window; tools
+  // uses it to scope per-window state (active workspace, panels/sync
+  // emission). It is null on older shell builds, on actions that fired before
+  // the document resolved its windowId, or in dev-loop scenarios where the bus
+  // is mocked. Handlers that need it fall back to legacy global semantics when
+  // null (no breaking change for single-window use).
+  const shellActionIntake = createShellActionIntake({
+    windows: shellWindows,
+    run: (action, sourceWindowId) =>
+      handle(action, {
+        tabs,
+        workspaces,
+        settings,
+        panels,
+        pinnedPanels,
+        tabFolders,
+        savedPanels,
+        backup,
+        send,
+        broadcast: broadcastEvent,
+        emitPanelsSync,
+        syncPanelMarkers: syncPanelMarkersForWorkspace,
+        preferWorkspaceActivationTab,
+        sourceWindowId,
+      }),
+  });
+
+  port.onMessage.addListener((message: unknown) => {
     if (isShellClientMessage(message) && graphPublications.handle(port, message)) return;
-    const wireAction = message as WireAction;
-    // Extract the routing envelope's __windowId once and expose it on the
-    // handler context. The shell document stamps every dispatch with the
-    // WebExtension windowId of its chrome window; tools uses this to scope
-    // per-window state (active workspace, panels/sync emission). Null on
-    // older shell builds, on actions that fired before the document
-    // resolved its windowId, or in dev-loop scenarios where the bus is
-    // mocked. Handlers that need it should fall back to legacy global
-    // semantics when null (no breaking change for single-window use).
-    const sourceWindowId = typeof wireAction.__windowId === 'number' ? wireAction.__windowId : null;
-    handle(wireAction, {
-      tabs,
-      workspaces,
-      settings,
-      panels,
-      pinnedPanels,
-      tabFolders,
-      savedPanels,
-      backup,
-      send,
-      broadcast: broadcastEvent,
-      emitPanelsSync,
-      syncPanelMarkers: syncPanelMarkersForWorkspace,
-      preferWorkspaceActivationTab,
-      sourceWindowId,
-    });
+    shellActionIntake(message);
   });
 
   port.onDisconnect.addListener(() => {
