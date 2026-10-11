@@ -236,8 +236,19 @@ configure and recompile whatever the changed options affect; expect a rebuild
 close to a full one, and `BENTO_OBJDIR=obj-<name>` to keep a second tree if you
 alternate. The first build after pulling this split also reconfigures, because
 the generated mozconfig changed (`--disable-release`, `--disable-updater`).
-Hosted CI object caches key on `configs/**`, `bento.json` and
-`scripts/bento-build.mjs`, so the first run after the change starts cold.
+Hosted CI object caches (`.github/actions/native-cache-keys`) key on the
+platform, `bento.json` `firefox.version`, the non-Markdown blobs under
+`patches/`, and the git tree of `configs/` plus the blob of `rust-toolchain.toml`
+(the "mozconfig inputs"). A change under `configs/` or to `rust-toolchain.toml`
+misses the first restore prefix and falls back to the second: the newest entry
+for the same platform, version and patch stack, so mach reconfigures and
+recompiles what the changed options affect. A patch change or a Firefox bump
+misses both restore prefixes and starts cold. `scripts/bento-build.mjs` and the rest
+of `bento.json` (including `updates.enabled`) are not key inputs: a change to the
+generator alone, such as the mode options it appends, leaves every key unchanged,
+restores the cached tree as is, and relies on mach detecting the changed
+`engine/mozconfig`, the same as a local mode switch. This split changes both
+`configs/` and the patch stack, so its first run starts cold.
 
 ## Updater
 
