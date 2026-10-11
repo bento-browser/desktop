@@ -21,6 +21,10 @@ Build, packaging, and release helper scripts.
   `package` and `updates-browser` do not.
 - `write-if-changed.mjs` — helpers the build driver and the add-on and branding
   installers use to leave unchanged files, and their mtimes, alone.
+- `dev-reload.mjs` — strips and detects the shell's dev-only `dev-reload`
+  command (Alt+Shift+R). The add-on installer drops it from release manifests and
+  `pnpm run release:security-check:shell` fails if a release shell still has it;
+  see `docs/build-tooling.md`.
 - `validate-bento-artifacts.mjs` — verifies the packaged application, MAR
   contents, MAR digest and size, browser update XML, and artifact metadata.
   Run it with `pnpm run artifacts:check`; release builds run it before

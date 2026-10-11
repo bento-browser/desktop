@@ -820,10 +820,12 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Built-In Extension Copy Surface
 
 - Status: Active
-- Last updated: 2026-07-17
+- Last updated: 2026-10-12
 - Files or patches:
   - `scripts/install-builtin-addons.mjs`
   - `scripts/install-builtin-addons.test.mjs`
+  - `scripts/dev-reload.mjs`
+  - `scripts/dev-reload.test.mjs`
   - `package.json`
   - `pnpm-lock.yaml`
   - `scripts/import.sh`
@@ -840,7 +842,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `css/`, `lib/`, `assets/`, locale, and HTML entry files without broadening the
   copy surface of Bento's own source-based extensions. Release builds keep
   `MOZ_REQUIRE_SIGNING=1`; Bento-owned privileged add-ons use Firefox's built-in
-  location rather than weakening ordinary XPI signature enforcement.
+  location rather than weakening ordinary XPI signature enforcement. Release
+  imports copy manifests without the shell's dev-only `dev-reload` command, so
+  an imported release manifest differs from its source.
 - Vanilla Firefox surface touched or depended on: Firefox built-in add-on
   loading from `browser/extensions`, generated `jar.mn`, generated per-extension
   `moz.build`, and `browser/extensions/moz.build` registration.
@@ -856,7 +860,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   includes both tools experiments and the shell jar includes the chrome bridge, confirm
   `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
   `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
-  shows Bento Tools, Bento Shell, and uBlock Origin. Running only the source
+  shows Bento Tools, Bento Shell, and uBlock Origin. Run
+  `BENTO_RELEASE=1 pnpm run ext:build && BENTO_RELEASE=1 pnpm run import` and
+  confirm `pnpm run release:security-check:shell` passes (no `dev-reload` in the
+  imported shell manifest or bundle). Running only the source
   overlay helper does not prove this surface is valid because it bypasses
   Bento's branding, built-in add-on installer, patch, and symlink steps.
 - Rollback or migration notes: if uBlock Origin is removed, remove

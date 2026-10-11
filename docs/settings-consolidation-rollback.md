@@ -93,6 +93,13 @@ change as the current files):
   `bentoPrivacy.consumeAddPanelGrant` (current experiment, present in both
   tools manifests) via `src/panels/AddPanelGrant.ts` from the current tree. A
   page-supplied `bento_add_as_panel=1` URL no longer makes a panel.
+- Dev-only reload: the archived shell `background.ts` registers the `dev-reload`
+  command handler only `if (__BENTO_DEV_RELOAD__)`, like the current one. Release
+  builds define the flag `false` and the installer drops the command from the
+  archived manifest, so rollback releases do not ship Alt+Shift+R. `check` builds
+  in release mode and fails if the archived bundle still has the handler. The
+  `build` and `package` actions run in dev mode unless `BENTO_RELEASE=1` is set;
+  `release` always goes through `build-release.sh`.
 
 Not applied (the archived tools background still lacks it):
 

@@ -86,6 +86,8 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run build:full`: download, bootstrap, build, and package.
 - `pnpm run build:release`: create a host-platform release-mode package.
 - `pnpm run lc`: run Bento's source-overlay license check.
+- `pnpm run release:security-check:shell`: fail when a release shell still has the
+  dev-only reload command (see [Dev-only reload command](#dev-only-reload-command)).
 - `pnpm run brand:regen`: reinstall canonical tracked branding through the
   normal import pipeline.
 - `pnpm run size:check`: report graph-aware JavaScript and direct-file size
@@ -495,7 +497,42 @@ files are copied, stale files removed), generates deterministic `jar.mn` and
 `moz.build` files, and registers one marker block in Firefox's
 `browser/extensions/moz.build`. Files whose content is unchanged are not touched.
 An extension may replace the default runtime list with a safe top-level string
-array in `.bento-runtime-entries.json`; `manifest.json` is always included.
+array in `.bento-runtime-entries.json`; `manifest.json` is always included. In a
+release build the installer drops the `dev-reload` command from the manifest it
+copies (see below), so an imported release manifest differs from its source.
+
+### Dev-only reload command
+
+`extensions/bento-shell/manifest.json` declares `dev-reload` (Alt+Shift+R), and
+`src/background.ts` answers it with `browser.runtime.reload()`. That is the
+dev-loop reload in `CLAUDE.md`; it must not ship. A release build is
+`BENTO_RELEASE=1` or `BENTO_BUILD_MODE=release` (`scripts/build-release.sh` sets
+both). Dev builds keep both halves; release builds remove each one at the step
+that produces it:
+
+- Bundle: `scripts/build-extension-background.mjs` defines `__BENTO_DEV_RELOAD__`,
+  and `background.ts` registers the handler only `if (__BENTO_DEV_RELOAD__)`.
+  Release bundles define it `false`, so esbuild drops the handler and the
+  `dev-reload` string.
+- Manifest: `scripts/install-builtin-addons.mjs` writes the manifest into
+  `engine/browser/extensions/<name>/` without the command (and without an empty
+  `commands` block). The source manifest is never modified.
+- Guard: `pnpm run release:security-check:shell` scans `extensions/bento-shell/dist`
+  and, when present, `engine/browser/extensions/bento-shell` for the string and
+  fails if it finds one. CI runs it after the release extension build and after
+  the release import, and `build-release.sh` runs it right after its import.
+  It checks the staged inputs, not the packaged `omni.ja`.
+
+The transform and scan live in `scripts/dev-reload.mjs`
+(`scripts/dev-reload.test.mjs` covers them). The rollback variants use the same
+build script and installer, and their archived `background.ts` carries the same
+guard; `node scripts/build-rollback-variant.mjs <variant> check` builds in release
+mode and fails if the archived bundle still has the handler.
+
+Firefox caches built-in add-on metadata, including commands, by manifest
+`version`. After a local release import, run `pnpm run import` again for the dev
+loop; if Alt+Shift+R is still missing in a reused profile, start with a fresh one
+(`pnpm run dev:fresh`).
 
 ## Branding and patches
 

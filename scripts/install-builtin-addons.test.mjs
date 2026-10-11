@@ -220,3 +220,47 @@ test('reinstalling rewrites only what changed and keeps other mtimes', (t) => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('release installs drop the dev-only reload command; dev installs copy the manifest as is', () => {
+  const root = fixture();
+  try {
+    const command = { suggested_key: { default: 'Alt+Shift+R' }, description: 'Dev reload' };
+    const extension = addExtension(root, 'bento-shell', {
+      applications: { gecko: { id: 'bento-shell@test' } },
+      commands: { 'dev-reload': command },
+    });
+    const source = fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8');
+    const installed = (release) => {
+      const [addon] = installBuiltinAddons({ repoRoot: root, release });
+      return fs.readFileSync(path.join(addon.destination, 'manifest.json'), 'utf8');
+    };
+
+    assert.equal(installed(false), source);
+    const release = JSON.parse(installed(true));
+    assert.equal('commands' in release, false);
+    assert.equal(release.applications.gecko.id, 'bento-shell@test');
+    assert.equal(installed(false), source, 'switching back to dev restores the command');
+
+    writeJson(path.join(extension, 'manifest.json'), {
+      applications: { gecko: { id: 'bento-shell@test' } },
+      commands: { 'dev-reload': command, other: { description: 'Other' } },
+    });
+    assert.deepEqual(JSON.parse(installed(true)).commands, { other: { description: 'Other' } });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a manifest without the reload command is copied byte for byte in release mode', () => {
+  const root = fixture();
+  try {
+    const extension = addExtension(root, 'bento-tools');
+    const [addon] = installBuiltinAddons({ repoRoot: root, release: true });
+    assert.equal(
+      fs.readFileSync(path.join(addon.destination, 'manifest.json'), 'utf8'),
+      fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8'),
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

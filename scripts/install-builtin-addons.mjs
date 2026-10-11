@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { isReleaseBuild } from '../extensions/bento-shell/muxui-local.mjs';
+import { releaseManifest } from './dev-reload.mjs';
 import { copyFileIfChanged, pruneTree, writeFileIfChanged } from './write-if-changed.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -75,6 +77,22 @@ function collectEntry(source, relative, files) {
   throw new Error(`install-builtin-addons: unsupported runtime entry: ${source}`);
 }
 
+/**
+ * Installs one runtime file. Release builds copy manifests without the dev-only
+ * reload command, so the shipped manifest differs from the source one.
+ */
+function installRuntimeFile(source, target, relative, release) {
+  if (release && relative === 'manifest.json') {
+    const manifest = readJson(source);
+    const stripped = releaseManifest(manifest);
+    if (stripped !== manifest) {
+      writeFileIfChanged(target, `${JSON.stringify(stripped, null, 2)}\n`);
+      return;
+    }
+  }
+  copyFileIfChanged(source, target);
+}
+
 function manifestId(manifest) {
   return manifest?.applications?.gecko?.id ?? manifest?.browser_specific_settings?.gecko?.id;
 }
@@ -124,6 +142,7 @@ function replaceMarkerBlock(file, names) {
 }
 
 export function installBuiltinAddons(options = {}) {
+  const release = options.release ?? isReleaseBuild();
   const repoRoot = path.resolve(
     options.repoRoot || process.env.BENTO_REPO_ROOT || DEFAULT_REPO_ROOT,
   );
@@ -168,7 +187,7 @@ export function installBuiltinAddons(options = {}) {
     }
     pruneTree(destination, new Set([...files, 'jar.mn', 'moz.build']));
     for (const [relative, runtimeSource] of sources) {
-      copyFileIfChanged(runtimeSource, path.join(destination, relative));
+      installRuntimeFile(runtimeSource, path.join(destination, relative), relative, release);
     }
     writeFileIfChanged(path.join(destination, 'jar.mn'), generated.jar);
     writeFileIfChanged(path.join(destination, 'moz.build'), generated.mozBuild);

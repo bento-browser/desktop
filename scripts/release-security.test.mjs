@@ -236,3 +236,39 @@ test('release metadata covers the release-lock SBOM with valid checksums', () =>
     fs.rmSync(outputDir, { recursive: true, force: true });
   }
 });
+
+test('--built-shell fails while a built shell or imported manifest still has the reload command', () => {
+  const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-built-shell-'));
+  const check = () =>
+    spawnSync(process.execPath, [releaseGate, '--built-shell'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, BENTO_REPO_ROOT: buildRoot },
+    });
+  const write = (relative, text) => {
+    const file = path.join(buildRoot, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  try {
+    assert.match(check().stderr, /needs a built shell/);
+
+    write('extensions/bento-shell/dist/assets/background.js', '(()=>{})()');
+    const clean = check();
+    assert.equal(clean.status, 0, clean.stderr);
+    assert.match(clean.stdout, /no dev-only reload command/);
+
+    write('engine/browser/extensions/bento-shell/manifest.json', '{"commands":{"dev-reload":{}}}');
+    const imported = check();
+    assert.notEqual(imported.status, 0);
+    assert.match(imported.stderr, /engine\/browser\/extensions\/bento-shell\/manifest\.json/);
+
+    write('engine/browser/extensions/bento-shell/manifest.json', '{}');
+    write('extensions/bento-shell/dist/assets/background.js', 'c==="dev-reload"');
+    const bundle = check();
+    assert.notEqual(bundle.status, 0);
+    assert.match(bundle.stderr, /extensions\/bento-shell\/dist\/assets\/background\.js/);
+  } finally {
+    fs.rmSync(buildRoot, { recursive: true, force: true });
+  }
+});

@@ -80,6 +80,8 @@ bash scripts/install-release-deps.sh
 step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
+# Fail before the native build if the shell still carries the dev-only reload command.
+pnpm run release:security-check:shell
 if [ -n "${BENTO_BUILD_JOBS:-}" ]; then
   if ! [[ "$BENTO_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
     echo "build-release: BENTO_BUILD_JOBS must be a positive integer" >&2
