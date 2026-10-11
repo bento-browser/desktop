@@ -997,6 +997,15 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
     ...managedPatchPaths(ctx),
   ]);
   const paths = new Set([...status.files, ...snapshot.keys()]);
+  // Validate the regenerable files whenever they exist, not only when Git or the
+  // snapshot mention them: Firefox ignores mozconfig, and an import before the first
+  // build records nothing for it. A tracked version file is pristine until it shows
+  // up in the Git status.
+  for (const relative of REGENERABLE_ENGINE_FILES) {
+    if (targetExistsSync(path.join(ctx.engineDir, relative)) && (relative === 'mozconfig' || status.files.includes(relative))) {
+      paths.add(relative);
+    }
+  }
   for (const relative of paths) {
     const expected = snapshot.get(relative);
     const target = path.join(ctx.engineDir, relative);

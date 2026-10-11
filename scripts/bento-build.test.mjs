@@ -252,6 +252,33 @@ test('a displayVersion bump between a recorded build and the next import does no
   }
 });
 
+test('hand edits to the git-ignored mozconfig are caught when the import preceded the first build', async () => {
+  const root = await fixture();
+  try {
+    await main(['verify'], root);
+    const recorded = JSON.parse(fs.readFileSync(path.join(root, '.bento', 'engine-state.json'), 'utf8'));
+    assert.equal(recorded.entries.some((entry) => entry.path === 'mozconfig'), false);
+
+    // A pristine checkout with no mozconfig, and then the first build's output, pass.
+    assert.equal(verifyRecordedEngineState(root), true);
+    writeMozconfig(root, 'dev');
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    const mozconfig = engineFile(root, 'mozconfig');
+    const generated = fs.readFileSync(mozconfig, 'utf8');
+    fs.appendFileSync(mozconfig, 'ac_add_options --enable-injected\n');
+    assert.equal(verifyRecordedEngineState(root), false);
+    fs.writeFileSync(mozconfig, generated);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // A mozconfig written by hand before any build is not Bento's either.
+    fs.writeFileSync(mozconfig, 'ac_add_options --enable-something\n');
+    assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 /** Runs fn with BENTO_OBJDIR cleared (or set) and restores it afterwards. */
 async function withObjdirEnv(value, fn) {
   const previous = process.env.BENTO_OBJDIR;
