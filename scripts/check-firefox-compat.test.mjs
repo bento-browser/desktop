@@ -86,7 +86,7 @@ function runtimeGlobals(
       info: (message) => logs.info.push(String(message)),
     },
     // The app version differs from the platform version on purpose.
-    Services: { appinfo: { version: '0.0.1', platformVersion: '154.0' } },
+    Services: { appinfo: { version: '0.0.1', platformVersion: '157.0.1' } },
     ChromeUtils: {
       importESModule: (url) => {
         imports.push({ url, loaded: isLoaded(url) });
@@ -129,7 +129,7 @@ test('the shipped probe section stays compact', () => {
 
 test('probe list drift against the registry is reported', () => {
   const source = readMount();
-  const first = registry.members.find((entry) => entry.id === 'gBrowser._beginRemoveTab');
+  const first = registry.members.find((entry) => entry.id === 'gBrowser._endRemoveTab');
   const mutate = (members) => ({ ...registry, members });
   const others = registry.members.filter((entry) => entry !== first);
 
@@ -193,7 +193,7 @@ test('the runtime probe stays quiet on a window that has every member', () => {
   // Bento's own app version (0.0.1 here) is not the Firefox version.
   assert.match(
     logs.info[0],
-    /^\[bento-compat\] probed \d+ members on Firefox 154\.0: 0 missing, 0 deferred$/,
+    /^\[bento-compat\] probed \d+ members on Firefox 157\.0\.1: 0 missing, 0 deferred$/,
   );
 });
 
@@ -225,7 +225,7 @@ test('the runtime probe logs one id per missing member and defers modules that a
   // A window with no DownloadsPanel at all is missing it, not waiting for it.
   assert.deepEqual([...result.missing].sort(), absent);
   assert.equal(logs.error.length, absent.length);
-  assert.ok(logs.error.includes('[bento-compat] missing gBrowser._beginRemoveTab'));
+  assert.ok(logs.error.includes('[bento-compat] missing gBrowser._endRemoveTab'));
   assert.ok(logs.error.includes('[bento-compat] missing DownloadsPanel.initialize'));
   assert.match(logs.info[0], new RegExp(`: ${absent.length} missing, ${modules.length} deferred$`));
 });
@@ -262,7 +262,7 @@ test('probes resolve roots without gBrowser getters and never call an accessor',
   const win = {
     OpenBrowserWindow() {},
     gBrowser: {
-      _beginRemoveTab() {},
+      _endRemoveTab() {},
       tabpanels,
       get selectedTab() {
         return never();
@@ -279,7 +279,7 @@ test('probes resolve roots without gBrowser getters and never call an accessor',
     },
   };
 
-  assert.equal(probe(win, 'gBrowser._beginRemoveTab'), 'ok');
+  assert.equal(probe(win, 'gBrowser._endRemoveTab'), 'ok');
   assert.equal(probe(win, 'gBrowser._findTabToBlurTo'), 'missing');
   assert.equal(probe(win, 'gBrowser.tabpanels.removeTabsFromSplitview'), 'ok');
   assert.equal(probe(win, 'gBrowser.tabpanels.splitViewPanels'), 'ok');
@@ -313,7 +313,7 @@ test('a member that is an accessor on its owner is present and the accessor neve
     calls += 1;
     return 'value';
   };
-  // Firefox 154 shapes: MozTab's get/set linkedPanel (tabbox.js), Tabbrowser's
+  // Firefox 157 shapes: MozTab's get/set linkedPanel (tabbox.js), Tabbrowser's
   // getter members, a <browser> field behind a getter, and a method that sits
   // behind an accessor.
   const tab = Object.create({
@@ -329,7 +329,7 @@ test('a member that is an accessor on its owner is present and the accessor neve
       get selectedBrowsers() {
         return run();
       },
-      get _getTabProgressFilter() {
+      get _endRemoveTab() {
         return run;
       },
     }),
@@ -348,7 +348,7 @@ test('a member that is an accessor on its owner is present and the accessor neve
 
   assert.equal(probe(win, 'MozTabbrowserTab.linkedPanel'), 'ok');
   assert.equal(probe(win, 'gBrowser.selectedBrowsers'), 'ok');
-  assert.equal(probe(win, 'gBrowser._getTabProgressFilter'), 'ok');
+  assert.equal(probe(win, 'gBrowser._endRemoveTab'), 'ok');
   assert.equal(probe(win, 'MozBrowser.mIconURL'), 'ok');
   assert.equal(probe(win, 'delayedStartupPromise'), 'ok');
   assert.equal(calls, 0);
@@ -363,19 +363,17 @@ test('a member that is an accessor on its owner is present and the accessor neve
   assert.equal(probe({ delayedStartupPromise: Promise.resolve() }, 'delayedStartupPromise'), 'ok');
 });
 
-test('the DOM and tab-progress members the startup re-parenting depends on are probed', () => {
+test('the DOM member the startup re-parenting depends on is probed', () => {
   const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
   const probe = (win, id) =>
     probes.probe(
       win,
       probes.entries.find((entry) => entry.id === id),
     );
-  for (const id of ['Element.prototype.moveBefore', 'gBrowser._getTabProgressFilter']) {
-    const entry = registry.members.find((member) => member.id === id);
-    assert.ok(entry, `${id} is in the registry`);
-    assert.equal(entry.kind, 'method');
-    assert.equal(entry.probe, 'R');
-  }
+  const entry = registry.members.find((member) => member.id === 'Element.prototype.moveBefore');
+  assert.ok(entry, 'Element.prototype.moveBefore is in the registry');
+  assert.equal(entry.kind, 'method');
+  assert.equal(entry.probe, 'R');
 
   assert.equal(
     probe({ Element: { prototype: { moveBefore() {} } } }, 'Element.prototype.moveBefore'),
@@ -387,11 +385,6 @@ test('the DOM and tab-progress members the startup re-parenting depends on are p
     'missing',
   );
   assert.equal(probe({}, 'Element.prototype.moveBefore'), 'missing');
-  assert.equal(
-    probe({ gBrowser: { _getTabProgressFilter() {} } }, 'gBrowser._getTabProgressFilter'),
-    'ok',
-  );
-  assert.equal(probe({ gBrowser: {} }, 'gBrowser._getTabProgressFilter'), 'missing');
 });
 
 test('a lazy global is missing when absent, deferred behind its getter, and probed once loaded', () => {
@@ -537,7 +530,7 @@ test('a probe pass imports no unloaded module and calls no accessor', () => {
   assert.match(
     logs.info[0],
     new RegExp(
-      `probed ${result.probed} members on Firefox 154\\.0: 0 missing, ${result.deferred.length} deferred$`,
+      `probed ${result.probed} members on Firefox 157\\.0\\.1: 0 missing, ${result.deferred.length} deferred$`,
     ),
   );
 
@@ -606,7 +599,6 @@ test('a wrapped member is judged by the original Firefox recorded before Bento r
     'MozBrowser.prototype.removeProgressListener',
     'MozTabbrowserTab.isEmpty',
     'PopupNotifications._isActiveBrowser',
-    'gBrowser._beginRemoveTab',
     'gBrowser._findTabToBlurTo',
     'gBrowser.on_visibilitychange',
   ]);
@@ -716,16 +708,6 @@ function afterTheBlock() {
       `${MOUNT_PATH}:N reaches gIdentityHandler._aliasedPopup but the registry has no entry`,
     ],
   );
-
-  // The mount reaches _getTabProgressFilter only through `const gb = window.gBrowser`.
-  const withoutEntry = {
-    ...registry,
-    members: registry.members.filter((entry) => entry.id !== 'gBrowser._getTabProgressFilter'),
-  };
-  assert.match(
-    findUndeclaredPrivateMembers(readMount(), withoutEntry).join('\n'),
-    /reaches gBrowser\._getTabProgressFilter but the registry has no entry/,
-  );
 });
 
 test('the marker comments must delimit exactly one section', () => {
@@ -738,7 +720,7 @@ test('the marker comments must delimit exactly one section', () => {
 // A small registry, repo and engine to drive the CLI end to end. The fixture
 // mount reuses the real probe runner with a two-member probe list.
 const FIXTURE_REGISTRY = {
-  baseline: '154.0',
+  baseline: '157.0.1',
   members: [
     {
       id: 'gBrowser._hook',
@@ -849,7 +831,7 @@ test('checkEngine reports the line where a moved member now lives', (t) => {
   assert.equal(checkEngine(FIXTURE_REGISTRY, engine)[0].line, 6);
 });
 
-// Vanilla Firefox 154 text for entries added after the first audit pass, and
+// Vanilla Firefox 157 text for entries added after the first audit pass, and
 // the rename that must make the engine check fail.
 const RENAMES = [
   [
@@ -866,14 +848,19 @@ const RENAMES = [
   ],
   [
     'TabSelect',
-    '        let event = new CustomEvent("TabSelect", {\n',
+    '    let event = new this.documentGlobal.CustomEvent("TabSelect", {\n',
     '"TabSelect"',
     '"TabSelected"',
   ],
-  ['TabOpen', '      let evt = new CustomEvent("TabOpen", {\n', '"TabOpen"', '"TabOpened"'],
+  [
+    'TabOpen',
+    '    let evt = new this.documentGlobal.CustomEvent("TabOpen", {\n',
+    '"TabOpen"',
+    '"TabOpened"',
+  ],
   [
     'TabAttrModified',
-    '      let event = new CustomEvent("TabAttrModified", {\n',
+    '    let event = new this.documentGlobal.CustomEvent("TabAttrModified", {\n',
     '"TabAttrModified"',
     '"TabAttrChanged"',
   ],

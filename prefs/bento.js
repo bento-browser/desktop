@@ -17,7 +17,6 @@ pref("browser.contentblocking.report.vpn.enabled", false);
 pref("browser.contentblocking.report.proxy.enabled", false);
 pref("browser.contentblocking.report.show_mobile_app", false);
 pref("browser.vpn_promo.enabled", false);
-pref("browser.promo.focus.enabled", false);
 
 // --- Sponsored / ads in chrome -------------------------------------------
 pref("browser.newtabpage.activity-stream.showSponsored", false);
@@ -57,7 +56,6 @@ pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
 pref("app.shield.optoutstudies.enabled", false);
 pref("app.normandy.enabled", false);
 pref("app.normandy.api_url", "");
-pref("messaging-system.rsexperimentloader.enabled", false);
 pref("network.allow-experiments", false);
 
 // --- Tracking protection -------------------------------------------------
@@ -121,6 +119,15 @@ pref("browser.startup.page", 3);
 // Bento's shell uses its own vertical/navigation surfaces, so keep the native
 // bookmarks toolbar hidden unless users explicitly turn it back on.
 pref("browser.toolbars.bookmarks.visibility", "never");
+
+// Firefox 157 turns the Nova redesign and the revamped sidebar on for everyone
+// (browser/app/profile/firefox.js); Firefox 154 release shipped both off. Bento
+// keeps the 154 chrome because its shell owns the sidebar and tab strip.
+// ProfileDataUpgrader (migrations 178-183) never writes a user value for either
+// pref (migration 183 only clears sidebar.revamp), so plain defaults are enough
+// and users can still flip them in about:config.
+pref("browser.nova.enabled", false);
+pref("sidebar.revamp", false);
 
 // Hide Firefox's native horizontal tab strip through Firefox's
 // TabBarVisibility hidden-tabs titlebar state. Bento's visible tabs remain

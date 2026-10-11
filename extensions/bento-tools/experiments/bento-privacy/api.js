@@ -427,7 +427,7 @@ this.bentoPrivacy = class extends ExtensionAPI {
           await ensureSearchReady();
           const engine = getEngine(id);
           await SearchService.setDefault(engine, SearchService.CHANGE_REASON.USER);
-          if (!Services.prefs.getBoolPref('browser.search.separatePrivateDefault', false)) {
+          if (!Services.prefs.getBoolPref('browser.search.separatePrivateDefault.enabled', false)) {
             await SearchService.setDefaultPrivate(engine, SearchService.CHANGE_REASON.USER);
           }
         },
