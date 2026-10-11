@@ -23,10 +23,20 @@ public Mux token surface and Bento's compatibility aliases.
 
 ## Generated content
 
-The output includes the public Mux root, light and dark mode, contrast, and
-attribute-closure blocks. Mux theme selectors are adapted from
+The output includes the public Mux root, light and dark mode, standard
+contrast, and attribute-closure blocks. Mux theme selectors are adapted from
 `data-muxui-*` to the native `data-bento-theme`, `data-color-mode`, and
 optional `data-bento-contrast` attributes.
+
+Contrast is fixed to `standard` and nothing sets `data-bento-contrast`, so the
+generator omits every rule that requires `contrast='more'`: the public base
+block, the 30 `themes.css` theme blocks, and the Bento preset projection. The
+`:not([data-bento-contrast='more'])` theme selectors remain and always match.
+This cut the sheet from 1,045 kB to 663 kB (64.2 kB to 59.9 kB gzipped). Mux
+keeps the rules upstream, so they return by restoring `contrast='more'` to the
+generator's mode selectors and removing the themes.css filter if a contrast
+setting is ever added. The shell build applies the same decision to its
+stylesheet with a PostCSS step (`extensions/bento-shell/contrast-more.mjs`).
 
 The Bento token layer supplies product-specific dimensions and surfaces. The
 generated preset index supplies the old short aliases used by existing Bento
@@ -68,4 +78,5 @@ tmp_dir="$(mktemp -d)"
 
 The generated file should contain `--shadow-l`, `--font-size-root`, and
 `[data-bento-theme='standard-harbour']`, while containing no `@import`, remote
-font URL, or `data-muxui-*` selector.
+font URL, or `data-muxui-*` selector, and no selector that requires
+`[data-bento-contrast='more']` (only `:not(...)` negations).

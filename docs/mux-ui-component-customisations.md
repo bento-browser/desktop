@@ -175,6 +175,18 @@ colors, durations, easings, or unexplained dimensions. Pair a tinted surface
 with its foreground role. Keep the browser-standard root contract of
 `1rem = 16px`.
 
+Contrast is fixed to `standard` (`themeScope.ts`, `useFirefoxTheme.ts`,
+`public/boot.js`), so Bento drops every rule that requires
+`data-muxui-contrast='more'` instead of shipping unreachable CSS. The shell build
+removes them with the `stripContrastMore` PostCSS plugin
+(`extensions/bento-shell/contrast-more.mjs`), which only removes a selector that
+tests the attribute at its top level; `:not(...)` forms and standard-contrast
+rules stay. `scripts/sync-theme-presets.mjs` and
+`scripts/generate-chrome-tokens.mjs` no longer emit those blocks. Mux keeps them
+upstream, so adding a contrast setting later means removing the plugin and
+restoring the generator selectors. Do not add `contrast='more'` styling in
+Bento CSS while the plugin is active; it would be stripped.
+
 Firefox-owned chrome cannot import React components. Map native variables in
 `bento-chrome-theme.css` to the generated aliases from
 `bento-chrome-tokens.css`; keep the existing `data-bento-theme` and

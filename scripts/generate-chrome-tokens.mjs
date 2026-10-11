@@ -16,6 +16,8 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { dropContrastMoreSelectors } from '../extensions/bento-shell/contrast-more.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
@@ -25,11 +27,13 @@ const DEFAULT_OUT_PATH = resolve(
 );
 const MUX_REQUIRE = createRequire(resolve(SHELL_DIR, 'package.json'));
 
+// Contrast is fixed to 'standard', so the public contrast='more' block is not
+// projected (see extensions/bento-shell/contrast-more.mjs). The themes.css rules
+// for 'more' are filtered out by stripContrastMoreRules below.
 const PUBLIC_MODE_SELECTORS = [
   "[data-muxui-color-scheme='light']",
   "[data-muxui-color-scheme='dark']",
   "[data-muxui-contrast='standard']",
-  "[data-muxui-contrast='more']",
 ];
 const PUBLIC_CLOSURE_SELECTOR = `:root,
 [data-muxui-color-scheme],
@@ -122,6 +126,31 @@ function extractFlatBlock(css, selector) {
     usageError(`@muxui/react/styles.css changed the flat declaration shape for ${selector}`);
   }
   return body;
+}
+
+// Remove rules that only match contrast='more', recursing into at-rule blocks.
+function stripContrastMoreRules(css) {
+  let output = '';
+  let cursor = 0;
+  while (cursor < css.length) {
+    const openIndex = css.indexOf('{', cursor);
+    if (openIndex < 0) return output + css.slice(cursor);
+    const closeIndex = findClosingBrace(css, openIndex);
+    if (closeIndex < 0) usageError('CSS has an unterminated block');
+    const prelude = css.slice(cursor, openIndex);
+    const body = css.slice(openIndex + 1, closeIndex);
+    cursor = closeIndex + 1;
+
+    const selector = prelude.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (selector.trim().startsWith('@')) {
+      output += `${prelude}{${stripContrastMoreRules(body)}}`;
+      continue;
+    }
+    const kept = dropContrastMoreSelectors(selector);
+    if (kept === selector) output += `${prelude}{${body}}`;
+    else if (kept) output += `${kept}{${body}}`;
+  }
+  return output;
 }
 
 function stripFontFaces(css) {
@@ -228,7 +257,7 @@ ${normalizeNativeCss(renderPublicMuxCss(muxStylesCss))}
 `;
 
 const muxThemesSection = `/* ─── public @muxui/react/themes.css presets ─────────────────────── */
-${normalizeNativeCss(muxThemesCss)}
+${normalizeNativeCss(stripContrastMoreRules(muxThemesCss))}
 `;
 
 const bentoSection = bentoTokensCss

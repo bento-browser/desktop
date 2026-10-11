@@ -15,6 +15,7 @@ import { defineConfig, mergeConfig, searchForWorkspaceRoot, type Plugin } from '
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { copyFile, mkdir } from 'node:fs/promises';
+import { stripContrastMore } from './contrast-more.mjs';
 import { moduleIdentityGuard } from './module-identity-guard';
 import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
 
@@ -148,6 +149,10 @@ const shellConfig = defineConfig(({ mode }) => ({
       },
     },
   },
+
+  // Contrast is fixed to 'standard', so drop the unreachable contrast='more'
+  // rules (Mux base blocks and its 15 theme presets) from the shipped sheet.
+  css: { postcss: { plugins: [stripContrastMore] } },
 
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),

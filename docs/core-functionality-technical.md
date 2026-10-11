@@ -3105,6 +3105,10 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 - The build targets `firefox150` (`gecko.strict_min_version`) and disables the
   modulepreload polyfill. Sourcemaps stay `mode !== 'production'`; the package
   scripts always build in production mode, so none are emitted.
+- Contrast is fixed to `standard`. The shell build strips every rule that
+  requires `data-muxui-contrast='more'` (`contrast-more.mjs`, a PostCSS plugin),
+  and the theme sync and chrome token generators do not emit them. Do not add
+  `contrast='more'` CSS to Bento files while that is true.
 
 ### Theme pitfalls
 
