@@ -20403,7 +20403,12 @@
   function attachWindowResizePerfMode() {
     const root = document.documentElement;
     let timer = null;
-    window.addEventListener('resize', () => {
+    window.addEventListener('resize', (event) => {
+      // Firefox 157 delivers resize events from in-process about: pages (Settings)
+      // to this listener. Freezing such a page resizes it, which fires another
+      // resize and keeps the freeze/thaw cycle running. Only the chrome window's
+      // own resizes start the live-resize mode.
+      if (event.target !== window) return;
       if (root.getAttribute('bento-window-resizing') !== 'true') {
         beginBentoSettingsAboutLiveResize();
         root.setAttribute('bento-window-resizing', 'true');
