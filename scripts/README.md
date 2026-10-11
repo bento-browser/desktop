@@ -11,6 +11,14 @@ Build, packaging, and release helper scripts.
   `verify`, and `record` commands. `bento.json` is the canonical configuration;
   source archives are cached under `.bento/cache/source/`, with source state in
   `.bento/source-state.json` and overlay state in `.bento/import-manifest.json`.
+- `bento-build.mjs objdir` — prints the one Firefox object directory every tool
+  must use: `BENTO_OBJDIR`, else `engine/obj-bento`, else a single legacy
+  `engine/obj-*` directory. It errors when the choice is ambiguous (several
+  legacy directories and no `obj-bento`) and, unless `--allow-missing` is given,
+  when there is none. `dev-launch.sh`, `sync-shell.sh`, `build-release.sh` and
+  `sync-builtin-addon-symlinks.sh` call it instead of globbing `engine/obj-*`.
+- `write-if-changed.mjs` — helpers the build driver and the add-on and branding
+  installers use to leave unchanged files, and their mtimes, alone.
 - `validate-bento-artifacts.mjs` — verifies the packaged application, MAR
   contents, MAR digest and size, browser update XML, and artifact metadata.
   Run it with `pnpm run artifacts:check`; release builds run it before
@@ -20,7 +28,10 @@ Build, packaging, and release helper scripts.
 - `firefox-patch-stack.mjs` — manages the repo-owned Firefox patch commit
   stack:
   - `pnpm run firefox:patches:check` validates `patches/series.json` and
-    sequential `git apply` replay;
+    replays the series in a scratch Git index (`git read-tree` plus
+    `git apply --cached`, no worktree), skipping the replay while `patches/**`
+    and the base commit match the last pass recorded in
+    `.bento/patch-check.json`; `--force` replays anyway;
   - `pnpm run firefox:patches:apply` applies the manifest to the live engine in
     its declared order without committing;
   - `pnpm run firefox:patches:materialize` recreates `bento/patch-stack` from
