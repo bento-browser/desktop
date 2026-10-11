@@ -962,37 +962,54 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Bento functionality: builds without the updater (`--disable-updater` while
   `bento.json` `updates.enabled` is `false`) show no Updates group in the About
   pane: no heading, description, or "Updates are managed by your operating
-  system" message bar. That message is false for Bento. With the updater built in,
-  the group behaves as upstream, including the packaged-app message.
+  system" message bar, and Settings search finds nothing in it. That message is
+  false for Bento. With the updater built in, the group behaves as upstream,
+  including the packaged-app message.
 - Vanilla Firefox surface touched or depended on: `about-firefox.mjs` registers
   the `updates` setting group with `SettingGroupManager`; the patch adds
-  `hidden: !AppConstants.MOZ_UPDATER` to that config, the group-level idiom other
-  config files use (`account-sync.mjs`, `tabs-browsing.mjs`). It depends on
+  `hidden: !AppConstants.MOZ_UPDATER` and `hiddenFromSearch: !AppConstants.MOZ_UPDATER`
+  to that config, the group-level idiom other config files use (`tabs-browsing.mjs`
+  sets both on `browserLayout`). It depends on
   `widgets/setting-group/setting-group.mjs` applying `config.hidden` as
   `data-hidden-by-setting-group` (`display: none !important` in
-  `setting-group.css`, which `findInPage.js` also excludes from Settings search)
-  and skipping `handleVisibilityChange` for a hidden group, and on
-  `AppConstants.MOZ_UPDATER` mirroring the configure option. Upstream shows
-  `updatesManagedByOS` whenever `!UpdatesHelpers.showUpdatesSettings`, which
+  `setting-group.css`) and `config.hiddenFromSearch` as `data-hidden-from-search`,
+  and skipping `handleVisibilityChange` for a hidden group. `hidden` alone does not
+  stop Settings search: `findInPage.js` skips such a group in its per-group pass
+  (`BASE_SELECTOR`), but its whole-pane fallback (`searchWithinNode` on the
+  setting-pane, via `searchChildNodeIfVisible`) only checks `.hidden` and the
+  parent's `data-hidden-from-search`, so only `data-hidden-from-search` keeps the
+  group's text out of that fallback. The top-level `paneGeneral` copy in
+  `main.inc.xhtml` is excluded from search by the same attribute (the
+  `#mainPrefPane > *:not([data-hidden-from-search] ...)` query). The patch also
+  depends on `AppConstants.MOZ_UPDATER` mirroring the configure option. Upstream
+  shows `updatesManagedByOS` whenever `!UpdatesHelpers.showUpdatesSettings`, which
   includes every build without an updater. The patch also changes the upstream
-  test `browser_updates_managed_by_os.js` to expect the group hidden in that case.
+  test `browser_updates_managed_by_os.js` to expect the group hidden and carrying
+  `data-hidden-from-search="true"` in that case.
 - Why this cannot stay extension-only: the group is registered and rendered by
   Firefox's own Settings module, and Bento's `bento.mjs` is not loaded for the
   About pane, so reaching into another module's registered config would depend on
   load order.
 - Firefox update risk: a renamed or reshaped `updates` group, a changed meaning of
-  `hidden` in `SettingGroup`, or a moved `updatesManagedByOS` setting makes the
-  patch fail to apply or silently bring back the false message. The version line
+  `hidden` or `hiddenFromSearch` in `SettingGroup` or in `findInPage.js`, or a
+  moved `updatesManagedByOS` setting makes the patch fail to apply or silently
+  bring back the false message or the search result. The version line
   (`updateAppInfo`) lives inside the group's `updateApp` box, which upstream already
   hides without an updater, so the About pane shows no version in these builds.
 - Regression checks for future updates:
   1. `pnpm run firefox:patches:check` replays the patch on the new base.
   2. In a dev build, open `about:preferences#about` and confirm the page shows
      only the support group: no "Updates" heading, description, or message bar. Search
-     Settings for "update" and confirm no Updates result.
-  3. Re-read `setting-group.mjs` (`willUpdate`, `handleVisibilityChange`) and
-     `about-firefox.mjs` (`updatesManagedByOS`, `updateApp`, the `updates` group) for
-     changes to `hidden` handling or to which settings the group renders.
+     Settings for "update" and for "managed by your operating system" and confirm
+     neither surfaces Updates text. In the regular DevTools console of that page
+     (Cmd+Opt+I), confirm
+     `document.querySelector('setting-group[groupid="updates"]').getAttribute("data-hidden-from-search")`
+     returns `"true"`.
+  3. Re-read `setting-group.mjs` (`willUpdate`, `handleVisibilityChange`),
+     `findInPage.js` (the per-group `BASE_SELECTOR` pass, the whole-pane fallback,
+     `searchChildNodeIfVisible`) and `about-firefox.mjs` (`updatesManagedByOS`,
+     `updateApp`, the `updates` group) for changes to `hidden` or
+     `hiddenFromSearch` handling or to which settings the group renders.
   4. Mochitests are not built (`--disable-tests`). In a test-enabled build, run
      `browser_updates_managed_by_os.js` (listed in `browser-srd.toml`) with the
      updater off and on.
