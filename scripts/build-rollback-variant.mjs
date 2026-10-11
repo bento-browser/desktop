@@ -289,6 +289,13 @@ async function runIsolatedCheck() {
     [viteBin, 'build', '--config', 'vite.config.ts', '--mode', 'production'],
     env,
   );
+  // panel-newtab is a plain public/ page plus a separately emitted stylesheet,
+  // not a Vite entry, so the entry list alone does not prove either exists.
+  for (const file of ['panel-newtab.html', 'assets/panel-newtab.css']) {
+    if (!(await exists(path.join(shellRoot, 'dist', file)))) {
+      throw new Error(`${variant} shell build is missing dist/${file}`);
+    }
+  }
   await mkdir(path.join(shellRoot, 'dist/assets'), { recursive: true });
   await runAt(
     shellRoot,

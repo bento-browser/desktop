@@ -2321,9 +2321,10 @@ Load-bearing details:
   `confirm.html`, `welcome.html`, and `panel-trailer.html`, must force `html`,
   `body`, and `#root` to
   `background: transparent !important`. The shell build uses
-  `cssCodeSplit: false`, so unrelated entry CSS such as `panel-newtab.css` can
-  arrive later in the shared `style.css` bundle and otherwise override plain
-  transparent background declarations.
+  `cssCodeSplit: false`, so unrelated entry CSS such as
+  `theme/document-base.css` (the shared `html`/`body` background, color, font,
+  and min-height) can arrive later in the shared `style.css` bundle and
+  otherwise override plain transparent background declarations.
 - Sidebar-owned menus that need to overhang the collapsed rail must route
   through the chrome-mounted menu overlay, not an iframe-local `Menu.Popover`.
   The sidebar New menu uses `BENTO_SIDEBAR_CONTEXT_MENU` with
@@ -3184,6 +3185,43 @@ Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 
 Theme authoring and import workflow is documented in [themes.md](themes.md).
 
+### Shell bundle and stylesheet
+
+- Source of truth: `extensions/bento-shell/vite.config.ts`. All React entries
+  share one `style.css` (`cssCodeSplit: false`) and chunk by Rollup's default
+  rules. There is no `manualChunks`; `module-identity-guard.ts` fails the build
+  when React, React Aria, or `@internationalized` would be bundled from two
+  install paths (the cause of the `SubmenuTriggerContext` "is null" defect).
+  Keep the `resolve.alias` entries and run the menu/submenu check below after
+  any change to chunking or to the Mux, React Aria, or React versions.
+- The build targets `firefox150` (`gecko.strict_min_version`) and disables the
+  modulepreload polyfill. Sourcemaps stay `mode !== 'production'`; the package
+  scripts always build in production mode, so none are emitted.
+- Contrast is fixed to `standard`. The shell build strips every rule that
+  requires `data-muxui-contrast='more'` (`contrast-more.mjs`, a PostCSS plugin),
+  and the theme sync and chrome token generators do not emit them. Do not add
+  `contrast='more'` CSS to Bento files while that is true. The plugin leaves
+  rules with nested rules alone and turns an emptied `@layer name { }` block into
+  `@layer name;`; deleting either would change the cascade for `standard`.
+- `public/panel-newtab.html` is a plain page: no script, no Mux stylesheet. The
+  `panelNewtabCss` plugin (`panel-newtab-css.ts`, shared with the archived
+  rollback Vite config, which has no `panel-newtab` entry) bundles
+  `src/panel-newtab/panel-newtab.css` into `assets/panel-newtab.css` with
+  esbuild. Run both `build-rollback-variant.mjs <variant> check` actions after
+  changing shell entries, because the archived config lists its own entries. Its heading keeps Inter through a
+  page-local `@font-face` (weight 650) that points at the Inter file the Mux
+  stylesheet makes the build emit into `assets/`; the Vite plugin fails the
+  build if that file name stops existing. A hashed or renamed Inter file would
+  otherwise silently fall back to the system font.
+- `theme/document-base.css` holds the `html`/`body` defaults every entry
+  inherits. They used to sit in `panel-newtab.css`, which the shared sheet
+  carried into every document, so removing that file's global rules changed the
+  sidebar background, the tooltip font, and the root color. When moving or
+  deleting CSS that reaches the shared sheet, diff `html` and `body` computed
+  styles for every entry in light and dark before accepting the change.
+- Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
+  serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
+
 ### Theme pitfalls
 
 - Do not add standalone theme title writes on shell mount. Theme and
@@ -3210,6 +3248,8 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
 
 When changing core functionality, manually verify at least the affected subset:
 
+- shell menus and submenus (kebab, context, New menu with nested items) in a
+  running browser after any Vite chunking or Mux/React Aria change;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;

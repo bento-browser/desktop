@@ -11,6 +11,7 @@ import '../theme/muxui.css';
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
+import '../theme/document-base.css';
 import { Settings } from '../features/Settings/Settings';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
