@@ -118,7 +118,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/bento-build.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -178,12 +178,10 @@ jobs:
           BENTO_RELEASE: '1'
         run: pnpm run ext:build
 
-      - name: Report size budgets
-        # Reports graph-aware JS and direct-file size ceilings without making
-        # an overage a gate. Missing or malformed built assets still fail.
-        # JS entry budgets live in
-        # scripts/check-size-budgets.mjs; CSS/background budgets live in
-        # .size-limit.json.
+      - name: Check size budgets
+        # Fails when an entry grows past .size-baseline.json by more than
+        # max(1%, 1 KB). Ceilings over the target are reported, not gated.
+        # Missing or malformed built assets still fail.
         run: pnpm run size:check
 
   bento-smoke:
