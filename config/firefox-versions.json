@@ -2,7 +2,7 @@
   "channels": [
     {
       "channel": "release",
-      "version": "154.0",
+      "version": "157.0.1",
       "bentoConfig": "bento.json"
     }
   ]
