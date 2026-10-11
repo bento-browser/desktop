@@ -125,17 +125,26 @@ every build mode. Firefox's default name embeds the host OS version
 directory and left two behind. `obj-bento` still matches the `engine/obj-*`
 cache paths in CI.
 
-Every tool uses the one directory that `bento-build.mjs` selects (`resolveObjDir`):
-`BENTO_OBJDIR` when set (absolute, or relative to `engine/`), else
-`engine/obj-bento`, else the single legacy platform-named `engine/obj-*`
-directory of an older checkout. It fails when there are several legacy
-directories and no `obj-bento`, naming them and the two ways out: run
-`pnpm run build`, or set `BENTO_OBJDIR`. `package` and `updates-browser` call it
-directly. The shell scripts (`dev-launch.sh`, `sync-shell.sh`, `build-release.sh`,
-`sync-builtin-addon-symlinks.sh`) run `node scripts/bento-build.mjs objdir`
-instead of globbing `engine/obj-*`; the subcommand prints the path and exits
-non-zero when there is none, or with `--allow-missing` prints nothing, which
-`sync-builtin-addon-symlinks.sh` uses so a pre-build import still passes.
+Generation and resolution come from one place in `bento-build.mjs`. The mozconfig
+names `obj-bento`, or `BENTO_OBJDIR=obj-<name>` when that is set during the build
+(it must be an `obj-*` directory directly under `engine/`). `resolveObjDir` reads
+the `MOZ_OBJDIR` back out of `engine/mozconfig`, so every tool uses the directory
+mach builds into even if `BENTO_OBJDIR` is unset or changed later. A `BENTO_OBJDIR`
+that disagrees with the mozconfig fails `package` and `updates-browser`
+(rebuild with the same value or unset it). Three things would send mach somewhere
+else, so they are rejected up front: a `MOZ_OBJDIR` line in `configs/common/mozconfig`,
+the platform mozconfig or the root `mozconfig` (when the mozconfig is written), and a
+`MOZCONFIG` environment variable naming a file other than `engine/mozconfig` (before
+`build` or `package` run mach).
+
+`package`, `updates-browser` and `build-release.sh` use only that directory and fail
+if it does not exist. The launch and sync scripts (`dev-launch.sh`, `sync-shell.sh`,
+`sync-builtin-addon-symlinks.sh`) call `node scripts/bento-build.mjs objdir
+--allow-legacy`: while the configured directory does not exist they accept a single
+legacy platform-named `engine/obj-*` build from an older checkout (or an existing
+directory named by `BENTO_OBJDIR`), print which one on stderr, and fail when several
+legacy directories exist. `sync-builtin-addon-symlinks.sh` also passes
+`--allow-missing`, so an import before any build still succeeds.
 `package` and `updates-browser` read the target architecture from the object
 directory's `mozinfo.json` (`processor`), because `obj-bento` carries no target
 triple in its name. A checkout built before this change keeps its old directory
@@ -149,19 +158,26 @@ directory can be deleted by hand.
 - **Patch check.** `firefox-patch-stack.mjs check` (with or without
   `--for-import`) reads the base commit into a temporary Git index
   (`GIT_INDEX_FILE` and `git read-tree`) and runs `git apply --cached` for each
-  patch in manifest order, with the same whitespace arguments as `apply`. No
+  patch in manifest order, with the same whitespace arguments as `apply`. The
+  settings that can change an outcome (`apply.whitespace=warn`,
+  `core.autocrlf=false`, `core.safecrlf=false`) are pinned with `git -c` for the
+  replay and the live `apply`, so user or system git configuration cannot make
+  one pass and the other fail, and the replay also pins `core.splitIndex=false`
+  so nothing is written into the engine's git directory. No
   worktree is checked out, and the engine's index, working tree and object
   store are untouched: blobs the patches create are written to a scratch object
   directory that reads the engine's objects as an alternate. A failure names
   the manifest entry (`failed to apply patches/<area>/<name>.patch (<id>)`) and
   includes Git's output. After a pass, the SHA-256 of every file under
   `patches/` (including `series.json`), the resolved base commit, and the apply
-  arguments is stored in `.bento/patch-check.json`; while it still matches, the
-  replay is skipped. `check --force` ignores the record, and `export` always
-  replays. Measured on the Firefox 154.0 tree (471,508 files): 5.0 to 7.3 s over six runs for a
-  replay and 0.5 to 0.65 s when skipped. The replay reads blobs as stored in Git, so it
-  does not exercise working-tree filters such as `core.autocrlf`; `apply` still
-  runs against the live worktree and reports the failing entry.
+  arguments and the pinned git settings is stored in `.bento/patch-check.json`; while
+  it still matches, the replay is skipped. `check --force` ignores the record, and `export` always
+  replays. Measured on the Firefox 154.0 tree (471,508 files): 5.0 to 7.3 s over nine runs for a
+  replay and 0.5 to 0.65 s when skipped. Because the replay never
+  checks anything out, `check` and `apply` refuse to run when the engine repository
+  has `core.symlinks=false` and a patch changes a tracked symlink (the checkout
+  holds a plain file, so `apply` would fail with "wrong type" after the import has
+  already started); series that touch no symlink are unaffected.
 - **Materialized trees are unchanged.** `materialize` and `rebase` still create
   a real checkout in `.bento/patch-stack-worktree`, and
   `pnpm native-protocol:check:all` still reads it. The old replay used its own
@@ -182,10 +198,12 @@ directory can be deleted by hand.
 - **Regenerated files in verification.** `engine/mozconfig` and the two version
   files are rewritten from `bento.json` and `configs/` by every build, in
   whichever mode that build uses. Recorded-state verification therefore
-  compares them with freshly generated content (any build mode, with or without
-  the fixed object directory line, or the legacy format) instead of the hash
-  taken at the last import. Any other content, such as a hand edit, still
-  fails. Every other recorded file keeps the hash comparison.
+  accepts freshly generated content (any build mode, any `obj-*` name, with or
+  without the object directory line, or the legacy format) or the exact bytes
+  recorded at the last import, which is what the file still holds when
+  `configs/` or `bento.json` changed and the build has not regenerated it yet.
+  Any other content, such as a hand edit, still fails. Every other recorded file
+  keeps the hash comparison.
 
 ## Reproducible release dependencies
 
