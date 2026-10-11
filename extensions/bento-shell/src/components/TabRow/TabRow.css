@@ -200,8 +200,6 @@
     line-height: 1;
     margin: 0;
     align-self: center;
-    position: relative;
-    top: 2px;
     transition:
       color var(--bento-duration-fast) var(--bento-easing-standard),
       opacity var(--bento-duration-base) var(--bento-easing-standard);
