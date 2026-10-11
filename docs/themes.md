@@ -36,7 +36,9 @@ troubleshoot.
   theme it shows. `pnpm run theme:sync` writes `theme/presets/index.css` (Default
   and the shared token bridge, imported by every entry) and
   `extensions/bento-shell/public/themes/<id>.css` (one sheet per other theme,
-  tracked). `theme/themeSheets.ts` attaches the sheet as a `<link>`.
+  tracked). `theme/themeSheets.ts` attaches the sheet as a `<link>`; for a new
+  window, `public/boot.js` requests the last applied theme's sheet before React
+  mounts (localStorage `workspace-theme`) and `themeSheets.ts` adopts that link.
   `pnpm run import` writes the chrome equivalents: `bento-chrome-tokens.css`
   (shared tokens and Default) and `bento-chrome-themes/<id>.css`.
 

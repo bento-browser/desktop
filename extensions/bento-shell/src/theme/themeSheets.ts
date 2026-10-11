@@ -4,16 +4,34 @@
 // extension CSP contract: no inline style or script.
 //
 // Owners name the themes they need. 'root' is the document's own <html> scope
-// (useWorkspaceTheme). Every component that renders another theme scope (pinned panels,
+// (applyRootTheme). Every component that renders another theme scope (pinned panels,
 // avatars, the theme picker) registers its theme with useThemeSheet(s) for as long as it
 // renders it. A sheet stays attached while any owner needs it. An owner's displayed sheets
 // are kept until its latest request has loaded, so a switch never shows an unthemed frame,
 // and a request that a newer one replaced neither applies nor prunes anything.
+//
+// Early request: the workspace snapshot reaches a new window tens of milliseconds after
+// the sheet could have loaded, so waiting for the sheet only once the snapshot arrives
+// delays the first themed paint. useWorkspaceTheme therefore mirrors the theme it applied
+// to localStorage (THEME_HINT_KEY), and public/boot.js inserts that theme's <link> before
+// React mounts. The first setThemeSheets call adopts that link: it joins the same
+// bookkeeping as a link created here, and a synthetic 'boot' owner keeps it until the
+// document knows its workspace (BOOT_THEME_OWNER is then released), so a snapshot that
+// names another theme prunes it like any other unreferenced sheet.
 
 import { useEffect, useId } from 'react';
 import { BENTO_THEMES, DEFAULT_THEME_ID, resolveThemeId } from './presets';
 
 export const ROOT_THEME_OWNER = 'root';
+
+/** Holds the sheet public/boot.js requested early until the workspace's own theme is known. */
+export const BOOT_THEME_OWNER = 'boot';
+
+/**
+ * localStorage key mirroring the resolved theme id the shell last applied. Presentation
+ * hint only (bento-tools owns the workspace theme); public/boot.js reads the same key.
+ */
+export const THEME_HINT_KEY = 'workspace-theme';
 
 /** Every registered theme, for documents that preview them all (the theme picker). */
 export const ALL_THEME_IDS: readonly string[] = BENTO_THEMES.map((theme) => theme.id);
@@ -41,11 +59,29 @@ export type ThemeSheetResult = 'loaded' | 'failed' | 'superseded';
 
 const owners = new Map<string, OwnerSheets>();
 const attached = new Map<string, AttachedSheet>();
+let bootSheetChecked = false;
 
 function detach(themeId: string, sheet: AttachedSheet): void {
   sheet.link.remove();
   sheet.abandon();
   if (attached.get(themeId) === sheet) attached.delete(themeId);
+}
+
+/** Watch `link` for `themeId` and register it. `loaded` skips the wait for a finished sheet. */
+function track(themeId: string, link: HTMLLinkElement, loaded: boolean): AttachedSheet {
+  let abandon = () => {};
+  const result = new Promise<boolean>((resolve) => {
+    abandon = () => resolve(false);
+    if (loaded) {
+      resolve(true);
+      return;
+    }
+    link.addEventListener('load', () => resolve(true), { once: true });
+    link.addEventListener('error', () => detach(themeId, sheet), { once: true });
+  });
+  const sheet: AttachedSheet = { link, loaded: result, abandon };
+  attached.set(themeId, sheet);
+  return sheet;
 }
 
 function attach(themeId: string): Promise<boolean> {
@@ -55,17 +91,57 @@ function attach(themeId: string): Promise<boolean> {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.dataset.bentoThemeSheet = themeId;
-  let abandon = () => {};
-  const loaded = new Promise<boolean>((resolve) => {
-    abandon = () => resolve(false);
-    link.addEventListener('load', () => resolve(true), { once: true });
-    link.addEventListener('error', () => detach(themeId, sheet), { once: true });
-  });
-  const sheet: AttachedSheet = { link, loaded, abandon };
+  const sheet = track(themeId, link, false);
   link.href = `./themes/${themeId}.css`;
   document.head.append(link);
-  attached.set(themeId, sheet);
-  return loaded;
+  return sheet.loaded;
+}
+
+/**
+ * Whether the element's sheet has finished loading. Firefox can expose `sheet` while the
+ * load is still running and throws on `cssRules` until it completes; a null sheet is not
+ * loaded either.
+ */
+function hasLoadedSheet(link: HTMLLinkElement): boolean {
+  try {
+    return Boolean(link.sheet?.cssRules);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Take over the <link> public/boot.js inserted for the hinted theme, once per document.
+ * boot.js marks it 'loading' and flips the marker to 'loaded' or 'failed' from its own
+ * listeners, so a load or error that fired before adoption is still known. A loaded sheet
+ * on the element counts too, in case its event has not been delivered yet. A failed,
+ * unregistered, or duplicate link is removed; the next request for that theme creates a
+ * fresh link, which is the retry.
+ */
+function adoptBootSheet(): void {
+  if (bootSheetChecked) return;
+  bootSheetChecked = true;
+
+  const link = document.head.querySelector<HTMLLinkElement>('link[data-bento-boot-sheet]');
+  if (!link) return;
+  const themeId = link.dataset.bentoThemeSheet;
+  const marker = link.dataset.bentoBootSheet;
+  const usable =
+    themeId !== undefined &&
+    themeId !== DEFAULT_THEME_ID &&
+    ALL_THEME_IDS.includes(themeId) &&
+    !attached.has(themeId) &&
+    marker !== 'failed';
+  if (!usable) {
+    link.remove();
+    return;
+  }
+  track(themeId, link, marker === 'loaded' || hasLoadedSheet(link));
+  owners.set(BOOT_THEME_OWNER, {
+    request: {},
+    shown: new Set(),
+    pending: new Set([themeId]),
+  });
 }
 
 function prune(): void {
@@ -98,6 +174,7 @@ export async function setThemeSheets(
   owner: string,
   themeIds: Iterable<string | null | undefined>,
 ): Promise<ThemeSheetResult> {
+  adoptBootSheet();
   const ids = sheetIds(themeIds);
   const request = {};
   owners.set(owner, {
@@ -120,6 +197,15 @@ export async function setThemeSheets(
 export function releaseThemeSheets(owner: string): void {
   owners.delete(owner);
   prune();
+}
+
+/**
+ * Mirror the theme the shell applied to localStorage for public/boot.js. Stores the resolved
+ * id, so an alias, unknown, or deleted id never reaches the hint (Default is written as
+ * 'default', which boot.js ignores).
+ */
+export function writeThemeHint(themeId: string | null | undefined): void {
+  localStorage.setItem(THEME_HINT_KEY, resolveThemeId(themeId));
 }
 
 /**

@@ -1,52 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type Listener = () => void;
-
-class FakeLink {
-  rel = '';
-  href = '';
-  dataset: Record<string, string> = {};
-  removed = false;
-  private listeners = new Map<string, Listener>();
-
-  constructor(private head: FakeHead) {}
-
-  addEventListener(type: string, listener: Listener) {
-    this.listeners.set(type, listener);
-  }
-
-  remove() {
-    this.removed = true;
-    this.head.links.delete(this);
-  }
-
-  fire(type: 'load' | 'error') {
-    this.listeners.get(type)?.();
-  }
-}
-
-class FakeHead {
-  links = new Set<FakeLink>();
-
-  append(link: FakeLink) {
-    this.links.add(link);
-  }
-
-  get hrefs() {
-    return [...this.links].map((link) => link.href);
-  }
-}
+import {
+  createFakeDocument,
+  createFakeStorage,
+  insertBootLink,
+  type FakeHead,
+  type FakeLink,
+} from './fakeThemeDom';
 
 describe('theme sheets', () => {
   let head: FakeHead;
   let sheets: typeof import('./themeSheets');
 
-  const linkFor = (themeId: string) =>
+  const linkFor = (themeId: string): FakeLink =>
     [...head.links].find((link) => link.dataset.bentoThemeSheet === themeId)!;
 
   beforeEach(async () => {
-    head = new FakeHead();
-    vi.stubGlobal('document', { head, createElement: () => new FakeLink(head) });
+    const fake = createFakeDocument();
+    head = fake.head;
+    vi.stubGlobal('document', fake.document);
     vi.resetModules();
     sheets = await import('./themeSheets');
   });
@@ -194,6 +166,138 @@ describe('theme sheets', () => {
       // Only unmounting the pin lets Lagoon go.
       sheets.releaseThemeSheets('pin');
       expect(head.hrefs).toEqual(['./themes/standard-harbour.css']);
+    });
+  });
+
+  describe('the sheet public/boot.js requested early', () => {
+    it('adopts a link that already loaded, without a second request', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loaded');
+      await expect(sheets.setThemeSheets('root', ['standard-harbour'])).resolves.toBe('loaded');
+      expect([...head.links]).toEqual([boot]);
+      expect(boot.removed).toBe(false);
+    });
+
+    it('treats a sheet already on the element as loaded when the marker has not caught up', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loading');
+      boot.sheet = { cssRules: [] };
+      await expect(sheets.setThemeSheets('root', ['standard-harbour'])).resolves.toBe('loaded');
+      expect(head.links.size).toBe(1);
+    });
+
+    it('waits for a link that is still loading, even if the engine already exposes its sheet', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loading');
+      Object.defineProperty(boot, 'sheet', {
+        get: () => ({
+          get cssRules(): unknown[] {
+            throw new Error('InvalidAccessError');
+          },
+        }),
+      });
+      let settled = false;
+      const result = sheets.setThemeSheets('root', ['standard-harbour']).then((value) => {
+        settled = true;
+        return value;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      expect(head.links.size).toBe(1);
+
+      boot.fire('load');
+      await expect(result).resolves.toBe('loaded');
+      expect([...head.links]).toEqual([boot]);
+    });
+
+    it('reports a failure when a link that was loading errors after adoption', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loading');
+      const result = sheets.setThemeSheets('root', ['standard-harbour']);
+      boot.fire('error');
+      await expect(result).resolves.toBe('failed');
+      expect(head.links.size).toBe(0);
+
+      // The next request retries with a fresh link.
+      void sheets.setThemeSheets('root', ['standard-harbour']);
+      expect(head.hrefs).toEqual(['./themes/standard-harbour.css']);
+      expect(boot.removed).toBe(true);
+    });
+
+    it('drops a link that failed before adoption and requests the sheet again', async () => {
+      const failed = insertBootLink(head, 'standard-harbour', 'failed');
+      const result = sheets.setThemeSheets('root', ['standard-harbour']);
+      expect(failed.removed).toBe(true);
+      expect(head.links.size).toBe(1);
+
+      linkFor('standard-harbour').fire('load');
+      await expect(result).resolves.toBe('loaded');
+    });
+
+    it('keeps the link while other owners come and go, until the workspace theme is known', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loaded');
+      await sheets.setThemeSheets('avatar', []);
+      await sheets.setThemeSheets('root', []);
+      expect(boot.removed).toBe(false);
+    });
+
+    it('keeps the link when the root request names the same theme', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loaded');
+      const result = sheets.setThemeSheets('root', ['standard-harbour']);
+      sheets.releaseThemeSheets(sheets.BOOT_THEME_OWNER);
+      await expect(result).resolves.toBe('loaded');
+      expect([...head.links]).toEqual([boot]);
+    });
+
+    it('prunes the link once the workspace names a different theme', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loaded');
+      const result = sheets.setThemeSheets('root', ['standard-lagoon']);
+      expect(head.hrefs).toEqual(['./themes/standard-harbour.css', './themes/standard-lagoon.css']);
+
+      sheets.releaseThemeSheets(sheets.BOOT_THEME_OWNER);
+      expect(boot.removed).toBe(true);
+      linkFor('standard-lagoon').fire('load');
+      await expect(result).resolves.toBe('loaded');
+      expect(head.hrefs).toEqual(['./themes/standard-lagoon.css']);
+    });
+
+    it('prunes the link when the workspace uses Default', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loaded');
+      await sheets.setThemeSheets('root', ['default']);
+      sheets.releaseThemeSheets(sheets.BOOT_THEME_OWNER);
+      expect(boot.removed).toBe(true);
+      expect(head.links.size).toBe(0);
+    });
+
+    it('keeps a sheet another owner needs when the boot hold is released', async () => {
+      const boot = insertBootLink(head, 'standard-harbour', 'loaded');
+      await sheets.setThemeSheets('avatar', ['standard-harbour']);
+      await sheets.setThemeSheets('root', []);
+      sheets.releaseThemeSheets(sheets.BOOT_THEME_OWNER);
+      expect(boot.removed).toBe(false);
+    });
+
+    it.each(['removed-theme', 'default'])(
+      'removes a link for %s, which has no sheet',
+      async (id) => {
+        const stale = insertBootLink(head, id, 'loading');
+        await sheets.setThemeSheets('root', []);
+        expect(stale.removed).toBe(true);
+      },
+    );
+  });
+
+  describe('theme hint', () => {
+    it('stores the resolved id, never an alias, unknown, or missing id', () => {
+      const storage = createFakeStorage();
+      vi.stubGlobal('localStorage', storage);
+      const write = (themeId: string | null | undefined) => {
+        sheets.writeThemeHint(themeId);
+        return storage.values.get(sheets.THEME_HINT_KEY);
+      };
+
+      expect(write('standard-harbour')).toBe('standard-harbour');
+      expect(write('teal')).toBe('monochrome-teal');
+      expect(write('deleted-theme')).toBe('default');
+      expect(write('../etc')).toBe('default');
+      expect(write(undefined)).toBe('default');
+      expect(write(null)).toBe('default');
     });
   });
 

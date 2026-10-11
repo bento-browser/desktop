@@ -6,7 +6,9 @@
 //
 // Default's rules ship in the shared stylesheet; any other theme is applied once its sheet
 // (themeSheets.ts) has loaded, so the previous theme stays on screen until the new one can
-// paint and a sheet that fails to load falls back to Default.
+// paint and a sheet that fails to load falls back to Default. The applied theme is mirrored
+// to localStorage so the next document's boot.js can request its sheet before React mounts
+// (applyRootTheme.ts).
 //
 // Chrome receives the active workspace theme through the BENTO_PANELS
 // payload. Do not write a separate BENTO_THEME title sentinel here: title
@@ -17,9 +19,9 @@
 import { useEffect } from 'react';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import { useCurrentWindowId } from '../bridge/useToolsPort';
-import { DEFAULT_THEME_ID, resolveThemeId } from './presets';
-import { getThemeScopeAttributes, useResolvedColorScheme } from './themeScope';
-import { releaseThemeSheets, ROOT_THEME_OWNER, setThemeSheets } from './themeSheets';
+import { applyRootTheme } from './applyRootTheme';
+import { useResolvedColorScheme } from './themeScope';
+import { releaseThemeSheets, ROOT_THEME_OWNER } from './themeSheets';
 
 export function useWorkspaceTheme(): void {
   const windowId = useCurrentWindowId();
@@ -27,23 +29,15 @@ export function useWorkspaceTheme(): void {
   const themeId = useWorkspacesStore((s) =>
     activeWorkspaceId ? s.byId[activeWorkspaceId]?.themeId : undefined,
   );
+  // False until the workspace snapshot reaches this document: `themeId` is then a placeholder.
+  const workspaceKnown = useWorkspacesStore(
+    (s) => activeWorkspaceId !== null && activeWorkspaceId in s.byId,
+  );
   const colorScheme = useResolvedColorScheme();
 
   useEffect(() => {
-    const resolvedThemeId = resolveThemeId(themeId);
-    void setThemeSheets(ROOT_THEME_OWNER, [resolvedThemeId]).then((result) => {
-      // A newer request (or the unmount) replaced this one: leave the scope as it is.
-      if (result === 'superseded') return;
-      const html = document.documentElement;
-      const attributes = getThemeScopeAttributes(
-        result === 'loaded' ? resolvedThemeId : DEFAULT_THEME_ID,
-        colorScheme,
-      );
-      for (const [name, value] of Object.entries(attributes)) {
-        html.setAttribute(name, value);
-      }
-    });
-  }, [colorScheme, themeId]);
+    void applyRootTheme(themeId, colorScheme, workspaceKnown);
+  }, [colorScheme, themeId, workspaceKnown]);
 
   useEffect(() => () => releaseThemeSheets(ROOT_THEME_OWNER), []);
 }

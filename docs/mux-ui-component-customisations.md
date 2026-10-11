@@ -185,7 +185,10 @@ document loads only the themes it shows, from per-theme sheets:
   (no inline style or script, so the extension CSP is unchanged). `useWorkspaceTheme`
   requests the active workspace theme and writes the scope attributes after the
   sheet has loaded, and only for its latest request (a superseded one changes
-  nothing). `useThemeSheet(id)` and `useThemeSheets(ids)` keep sheets for nested
+  nothing). So that a new window does not wait for the workspace snapshot before
+  starting that request, `public/boot.js` inserts the sheet of the last applied
+  theme (localStorage `workspace-theme`) before any CSS loads, and `themeSheets.ts`
+  adopts that link instead of creating a second one. `useThemeSheet(id)` and `useThemeSheets(ids)` keep sheets for nested
   scopes, called by the component that renders the scope: `PinnedPanels` (a pin
   uses its own workspace's theme), `WorkspaceSwitcher`, `WorkspaceThemePicker` (all
   16), the `workspace-switcher` overlay, and the Ladle provider. A new component
@@ -193,7 +196,12 @@ document loads only the themes it shows, from per-theme sheets:
   scope paints the unscoped Mux palette; `themeScopeSheets.test.ts` enforces it.
 - Layer order is unaffected: `theme/muxui.css` still declares
   `@layer muxui, bento;` first, and a sheet's `muxui` rules append to that layer
-  after the package styles, as `themes.css` did when it was imported.
+  after the package styles, as `themes.css` did when it was imported. A sheet
+  that boot.js inserted sits before the shared stylesheet in document order, which
+  changes nothing: `muxui` is the first layer either way, and a theme rule
+  (three attribute selectors) outranks the `:root` and `[data-muxui-color-scheme]`
+  rules of the shared sheet that set the same properties, so source order never
+  decides between them.
 
 The shell build keeps `cssCodeSplit: false`, so every entry shares one
 `style.css`. `public/panel-newtab.html` is the exception: a plain page with no
