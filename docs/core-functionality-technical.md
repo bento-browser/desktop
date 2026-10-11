@@ -46,8 +46,10 @@ message goes through `createShellActionIntake`
   `validateExportSchema` for the payload so the user still gets an import error.
 - A message that claims a source window (`__windowId`, or the payload window of
   `shell/hello`) is dropped unless `browser.windows.get` confirms the window.
-  Confirmed windows are cached until `windows.onRemoved`. Messages queue behind a
-  pending check so arrival order is kept.
+  Confirmed windows are cached until `windows.onRemoved`, and a removed id is
+  remembered so a lookup still pending at removal cannot mark the closed window
+  live again (a queued `shell/hello` would reassign workspace ownership to it).
+  Messages queue behind a pending check so arrival order is kept.
 - Invalid messages are logged by type only (never payloads) and dropped; the
   listener cannot throw. Mount-script dispatches (`dispatchShellAction`) and React
   dispatches (`useToolsPort.ts`) must send exactly the declared fields. Manual
@@ -2569,7 +2571,10 @@ acknowledge }` on the native XUL tab element in the same synchronous turn as
   a recorded window id that differs from the tab's current window, and
   malformed sources. It returns `{ windowId, source }` or `null`, and tools
   validates that shape again before inserting the panel into
-  `workspaces.getActiveId(windowId)`.
+  `workspaces.getActiveId(windowId)`. The tab can close while the result is in
+  flight, so `tabs.onRemoved` (`forget`) cancels the pending attempt and
+  tools applies the grant only if `browser.tabs.get` still places the tab in
+  the grant's window; otherwise a closed tab would be inserted into panel state.
 - Redirect timing: chrome navigates the tab to the panel new-tab page after at
   least 250 ms and after the grant is acknowledged (or after the two second
   expiry, so a stalled tools background cannot leave the sentinel URL up).
