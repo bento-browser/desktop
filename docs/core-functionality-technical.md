@@ -2128,18 +2128,44 @@ loss.
 Every producer in a shell document therefore sends titles through
 `sendChromeTitle` (`bridge/chromeTitle.ts`) instead of assigning
 `document.title`. The writer sets the first title immediately and holds any
-title sent before the next `setTimeout(0)` task. That timer is queued after the
-report runnable, so each title is reported before the next one is written.
-Titles reach chrome in send order with no drops and no polling; the per-frame
-dedupe in chrome still drops a title identical to the previous one, which is why
-sentinels keep their timestamp suffix. The chrome receive path and the
+title sent before the report has run. It releases the next title from a private
+`MessageChannel` (one per document, created on first use and reused): each write
+is followed by `port1.postMessage(null)`, and the `port2` message handler writes
+the next held title. The write dispatches the report runnable and the
+postMessage dispatches the delivery runnable afterwards. Both are
+Normal-priority main-thread dispatches that run in dispatch order, so each title
+is reported before the next one is written. Titles reach chrome in send order
+with no drops and no polling; the per-frame dedupe in chrome still drops a title
+identical to the previous one, which is why sentinels keep their timestamp
+suffix. The chrome receive path and the
 `BENTO_*` wire format are unchanged. ESLint (`no-restricted-syntax` in
 `eslint.config.mjs`) rejects `document.title =` anywhere under
 `extensions/bento-shell/src` except the writer.
 
+The ordering rests on Firefox 154 engine behavior (also listed in
+`docs/firefox-core-touchpoints.md`): `Document::NotifyPossibleTitleChange`
+(`dom/base/Document.cpp`) dispatches the report runnable synchronously from the
+title write, and `DoNotifyPossibleTitleChange` reads the title when it runs;
+`MessagePort::Dispatch` (`dom/messagechannel/MessagePort.cpp`) dispatches the
+delivery runnable at `postMessage` time on an unshipped entangled port with
+`NS_DispatchToCurrentThread`. Neither runnable sets a priority
+(`ThreadEventTarget::Dispatch` puts both in the Normal queue) and equal-priority
+main-thread tasks run in creation order (`Task::PriorityCompare` in
+`xpcom/threads/TaskController.h`). A timer cannot give this guarantee:
+`TimeoutManager::RunTimeout` (`dom/base/TimeoutManager.cpp`) selects every
+expired timeout before running any callback and runs them in one executor task,
+so a `setTimeout(0)` created after an earlier zero-delay callback joins that
+batch and can write the next title before the report runs. The port's handler
+must be assigned with `onmessage` (which starts the port); an
+`addEventListener('message')` listener would not receive messages until
+`start()`.
+
 The writer holds only an in-document queue and persists nothing; `bento-tools`
 stays the source of truth and each `BENTO_PANELS` forward is rebuilt from the
-shell mirrors.
+shell mirrors. `bridge/fakeChromeTitle.ts` models the same engine rules (one
+FIFO task queue carrying the report, MessagePort deliveries and the timer
+executor, and a timer executor that fires all expired timeouts in one task), so
+`bridge/chromeTitle.test.ts` fails a timer-based writer.
 
 Manual verification: with a profile whose welcome flow is hidden but not
 completed (`welcomeSeen` false), open the Browser Toolbox Console and paste a
@@ -2528,6 +2554,12 @@ Load-bearing pitfalls:
   ("first-run welcome request follows in the same task"). A new producer in any
   shell document (overlay frames included) needs no workaround for ordering
   against other titles.
+- Do not release held titles from `setTimeout(0)`, `setInterval`, or a promise.
+  A zero-delay timeout created after an earlier one joins that timeout's
+  executor batch, which can run the next write before the report runnable (a
+  timer-based writer loses `BENTO_PANELS` to a zero-delay welcome callback this
+  way). The `MessageChannel` release is dispatched after the report. A microtask
+  runs before the report, so it is worse.
 - Do not reintroduce separate title writes
   for chrome-bound settings that can ride inside `BENTO_PANELS`; one payload is
   still cheaper for chrome than several reconciles.

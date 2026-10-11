@@ -325,10 +325,6 @@ describe('shell bus bootstrap', () => {
       chromeTitle = installFakeChromeTitle({ documentElement: { getAttribute: () => null } });
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
     it('forwards the active workspace with settings to a late sidebar whose cached panels arrive first', async () => {
       tools.assignWindow(WINDOW_ID, 'ws-2');
       tools.setSettings(persistedSettings);

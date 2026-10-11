@@ -12,7 +12,6 @@ describe('sendChromeTitle', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -40,14 +39,38 @@ describe('sendChromeTitle', () => {
     ]);
   });
 
-  it('reports a title when another task is already queued ahead of the first report', () => {
+  it('reports a title when a plain task is already queued ahead of the first report', () => {
     // A bus message handler writes BENTO_PANELS while the next task (a React
     // effect, the next bus message) is already waiting in the queue.
+    chrome.queueTask(() => sendChromeTitle('BENTO_OPEN_WELCOME_1'));
+    sendChromeTitle('BENTO_PANELS:1');
+    chrome.settle();
+
+    expect(chrome.observed).toEqual(['BENTO_PANELS:1', 'BENTO_OPEN_WELCOME_1']);
+  });
+
+  it('reports a title when a zero-delay timeout is already queued ahead of the first report', () => {
+    // The welcome timeout is queued before BENTO_PANELS is sent, so its executor
+    // task runs ahead of the panels report. A setTimeout(0) release would join
+    // that executor's batch and write the welcome title before the report ran,
+    // leaving chrome with only the welcome title.
     setTimeout(() => sendChromeTitle('BENTO_OPEN_WELCOME_1'), 0);
     sendChromeTitle('BENTO_PANELS:1');
     chrome.settle();
 
     expect(chrome.observed).toEqual(['BENTO_PANELS:1', 'BENTO_OPEN_WELCOME_1']);
+  });
+
+  it('creates one channel on first use and reuses it for the life of the document', () => {
+    expect(chrome.channelsCreated()).toBe(0);
+
+    sendChromeTitle('BENTO_PANELS:1');
+    sendChromeTitle('BENTO_OPEN_WELCOME_1');
+    chrome.settle();
+    sendChromeTitle('BENTO_PANELS:2');
+    chrome.settle();
+
+    expect(chrome.channelsCreated()).toBe(1);
   });
 
   it('writes straight away when nothing is pending', () => {

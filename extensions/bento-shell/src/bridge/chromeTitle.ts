@@ -9,13 +9,40 @@
 // bus message) that writes another sentinel both land before the report.
 //
 // sendChromeTitle writes the first title straight away and holds any title sent
-// before the next task. The release timer is queued after the report runnable,
-// so every title is observable by chrome, in send order, with no polling.
-// Do not assign document.title anywhere else in a shell document (ESLint
-// enforces this).
+// before the report has run. The next held title is released by a message on a
+// private MessageChannel: each write is followed by a postMessage to itself,
+// and the message handler writes the next title.
+//
+// Why a MessagePort and not setTimeout(0), with Firefox 154 sources:
+// - The title write dispatches the report runnable synchronously
+//   (Document.cpp:10131-10153 NotifyPossibleTitleChange) and the following
+//   postMessage dispatches the delivery runnable (MessagePort.cpp:343-344,
+//   :449). Both are Normal-priority main-thread dispatches (no
+//   nsIRunnablePriority; ThreadEventTarget.cpp:90) and equal-priority tasks run
+//   in dispatch order (TaskController.h:172-178), so the report runs first.
+// - A zero-delay timeout has no such order: TimeoutManager::RunTimeout marks
+//   every expired timeout up front and runs them in one task
+//   (TimeoutManager.cpp:742-765), so a timeout created after an earlier
+//   zero-delay one joins its batch and can write the next title before the
+//   report runs.
+//
+// The channel is created on first use and reused for the document's lifetime;
+// the browser tears the ports down with the window. Do not assign
+// document.title anywhere else in a shell document (ESLint enforces this).
 
 const queue: string[] = [];
 let writing = false;
+let channel: MessageChannel | undefined;
+
+/** The port that posts to the release handler. */
+function releasePort(): MessagePort {
+  if (channel === undefined) {
+    channel = new MessageChannel();
+    // Assigning onmessage starts the port; addEventListener would need start().
+    channel.port2.onmessage = writeNext;
+  }
+  return channel.port1;
+}
 
 function writeNext(): void {
   const title = queue.shift();
@@ -24,7 +51,7 @@ function writeNext(): void {
     return;
   }
   document.title = title;
-  setTimeout(writeNext, 0);
+  releasePort().postMessage(null);
 }
 
 export function sendChromeTitle(title: string): void {
