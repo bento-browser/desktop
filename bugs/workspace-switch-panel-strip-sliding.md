@@ -229,7 +229,7 @@ Add a new section under "Attempts & results":
 ## Repro recipe
 
 1. Build: `npm run build`
-2. Launch a fresh profile: `engine/obj-aarch64-apple-darwin25.4.0/dist/Bento.app/Contents/MacOS/bento --new-instance --jsdebugger --profile $(mktemp -d)`
+2. Launch a fresh profile: `engine/obj-bento/dist/Bento.app/Contents/MacOS/bento --new-instance --jsdebugger --profile $(mktemp -d)`
 3. Create two workspaces, each with 2–4 side panels of different widths (right-click links → Open in New Panel).
 4. Switch between workspaces via the sidebar workspace switcher or Cmd+Alt+1 / Cmd+Alt+2.
 5. Observe the panel strip during the transition.

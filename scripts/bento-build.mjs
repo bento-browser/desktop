@@ -761,7 +761,8 @@ function generatedMozconfigText(ctx, config, mode, objdir, previous = false) {
   return `${lines.join('\n')}\n`;
 }
 
-function legacyMozconfigText(ctx, config) {
+// Exported so tests can write the legacy format without reading another checkout.
+export function legacyMozconfigText(ctx, config) {
   const platformPath = path.join(ctx.root, 'configs', platformConfigName(), 'mozconfig');
   if (!fs.existsSync(platformPath)) return undefined;
   const platform = fs.readFileSync(platformPath, 'utf8').trim();

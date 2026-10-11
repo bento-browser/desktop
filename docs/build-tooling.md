@@ -43,6 +43,10 @@ the update command with patch-stack validation, extension build, Bento import,
 and a native build. `pnpm run build:full` runs the complete download,
 bootstrap, extension build, import, build, and package sequence.
 
+`scripts/mach-env.sh` chooses the Python that mach runs under: the binary (or
+directory) in `BENTO_MACH_PYTHON` if set, else `python3.12` from `PATH` if
+present, else the `python3` that `PATH` resolves (mach needs Python 3.9 or newer).
+
 Firefox's Rust toolchain is pinned in the repository root by
 [`rust-toolchain.toml`](../rust-toolchain.toml). Release CI resolves and verifies
 that pin before Bento bootstrap or the native build. Linux and Windows release
