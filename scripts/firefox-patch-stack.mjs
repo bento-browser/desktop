@@ -40,6 +40,7 @@ function git(args, options = {}) {
   const cwd = options.cwd || process.cwd();
   const result = spawnSync('git', args, {
     cwd,
+    env: options.env ? { ...process.env, ...options.env } : undefined,
     encoding: 'utf8',
     stdio: options.stdio || 'pipe',
   });
@@ -154,6 +155,7 @@ export function createContext(repoRoot = DEFAULT_REPO_ROOT) {
     manifestPath: path.join(root, 'patches', 'series.json'),
     bentoPath: path.join(root, 'bento.json'),
     stackWorktreeDir: path.join(root, '.bento', 'patch-stack-worktree'),
+    checkRecordPath: path.join(root, '.bento', 'patch-check.json'),
   };
 }
 
@@ -490,7 +492,7 @@ export function canonicalPath(target) {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-function removeWorktree(ctx, worktreeDir, options = {}) {
+function removeWorktree(ctx, worktreeDir) {
   const requested = canonicalPath(worktreeDir);
   const registered = registeredWorktrees(ctx).includes(requested);
   if (!fs.existsSync(worktreeDir)) {
@@ -518,32 +520,6 @@ function removeWorktree(ctx, worktreeDir, options = {}) {
     );
   }
   if (status.stdout.trim()) {
-    const dirtyPaths = status.stdout
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => line.slice(3).trim());
-    const expectedDirtyPaths = options.expectedDirtyPaths;
-    if (options.allowDirty && expectedDirtyPaths && dirtyPaths.every((relative) => expectedDirtyPaths.has(relative))) {
-      const removed = gitMaybe(['worktree', 'remove', '--force', worktreeDir], ctx.engineDir);
-      if (!removed.ok) {
-        throw new UserError(
-          `failed to deregister owned temporary patch worktree ${worktreeDir}; it was preserved.\n${removed.stderr || removed.stdout}`,
-        );
-      }
-      if (registeredWorktrees(ctx).includes(requested)) {
-        throw new UserError(`Git still registers patch worktree ${worktreeDir}; it was preserved.`);
-      }
-      if (fs.existsSync(worktreeDir)) {
-        const entries = fs.readdirSync(worktreeDir);
-        if (entries.length > 0) {
-          throw new UserError(
-            `owned temporary patch worktree still contains files: ${worktreeDir}. Preserve them before retrying.`,
-          );
-        }
-        fs.rmdirSync(worktreeDir);
-      }
-      return;
-    }
     throw new UserError(
       `refusing to delete dirty patch worktree: ${worktreeDir}\nPreserve or resolve it first.\n${status.stdout}`,
     );
@@ -581,17 +557,6 @@ function assertNoActiveStackWorktree(ctx) {
   );
 }
 
-function addDetachedWorktree(ctx, ref, prefix = 'bento-patch-replay-') {
-  const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  try {
-    git(['worktree', 'add', '--detach', worktreeDir, ref], { cwd: ctx.engineDir });
-    return worktreeDir;
-  } catch (error) {
-    fs.rmSync(worktreeDir, { recursive: true, force: true });
-    throw error;
-  }
-}
-
 function applyPatchToWorktree(ctx, worktreeDir, patchPath, { index = false } = {}) {
   const args = ['apply', ...FIREFOX_PATCH_APPLY_ARGS];
   if (index) {
@@ -601,20 +566,86 @@ function applyPatchToWorktree(ctx, worktreeDir, patchPath, { index = false } = {
   git(args, { cwd: worktreeDir });
 }
 
+/**
+ * Validates that the series applies in manifest order without checking out a
+ * worktree (Firefox has ~470k files). The base tree is read into a temporary
+ * index and each patch is applied to it with `git apply --cached`, using the
+ * same whitespace arguments as `apply`. The engine's index, working tree and
+ * object store are not touched: blobs the patches create go to a scratch
+ * object directory that reads the engine's objects through an alternate.
+ */
 export async function replaySeries(ctx, manifest, ref) {
-  const worktreeDir = addDetachedWorktree(ctx, ref);
-  const expectedDirtyPaths = new Set();
-  for (const entry of manifest.series) {
-    const patch = fs.readFileSync(path.join(ctx.repoRoot, entry.path), 'utf8');
-    for (const match of patch.matchAll(/^diff --git a\/(\S+) b\/\S+$/gm)) expectedDirtyPaths.add(match[1]);
-  }
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-patch-replay-'));
+  const objects = path.join(scratch, 'objects');
+  fs.mkdirSync(objects);
+  const env = {
+    GIT_INDEX_FILE: path.join(scratch, 'index'),
+    GIT_OBJECT_DIRECTORY: objects,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: path.resolve(
+      ctx.engineDir,
+      git(['rev-parse', '--git-path', 'objects'], { cwd: ctx.engineDir }),
+    ),
+  };
   try {
+    git(['read-tree', ref], { cwd: ctx.engineDir, env });
     for (const entry of manifest.series) {
-      applyPatchToWorktree(ctx, worktreeDir, entry.path);
+      try {
+        git(
+          [
+            'apply',
+            '--cached',
+            ...FIREFOX_PATCH_APPLY_ARGS,
+            path.join(ctx.repoRoot, entry.path),
+          ],
+          { cwd: ctx.engineDir, env },
+        );
+      } catch (error) {
+        throw new UserError(
+          `failed to apply ${entry.path} (${entry.id}) onto ${ref}\n${error.message}`,
+          error.exitCode,
+        );
+      }
     }
   } finally {
-    removeWorktree(ctx, worktreeDir, { allowDirty: true, expectedDirtyPaths });
+    fs.rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * Hash of everything the replay result depends on: the resolved base commit,
+ * the apply arguments, and every file under patches/ (series.json included).
+ */
+async function seriesInputsHash(ctx, base) {
+  const hash = crypto.createHash('sha256');
+  hash.update(`${base.commit}\0${FIREFOX_PATCH_APPLY_ARGS.join(' ')}\0`);
+  const files = await tinyGlob('**/*', { cwd: ctx.patchesDir, filesOnly: true });
+  for (const file of files.map((name) => name.split(path.sep).join('/')).sort()) {
+    hash.update(`${file}\0`);
+    hash.update(fs.readFileSync(path.join(ctx.patchesDir, file)));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
+function recordedSeriesHash(ctx) {
+  try {
+    return jsonRead(ctx.checkRecordPath).hash;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Replays the series unless these exact patches already passed against this
+ * exact base. The pass is recorded under .bento/ so unchanged imports skip it.
+ */
+async function checkSeries(ctx, manifest, base, { force = false } = {}) {
+  const hash = await seriesInputsHash(ctx, base);
+  if (!force && recordedSeriesHash(ctx) === hash) return { skipped: true };
+  await replaySeries(ctx, manifest, base.ref);
+  fs.mkdirSync(ctx.bentoDir, { recursive: true });
+  jsonWrite(ctx.checkRecordPath, { schemaVersion: 1, hash });
+  return { skipped: false };
 }
 
 function patchIsMailStyle(ctx, patchPath) {
@@ -733,7 +764,7 @@ async function exportStack(ctx, manifest, options = {}) {
     },
   };
   jsonWrite(ctx.manifestPath, updated);
-  await replaySeries(ctx, updated, targetBase.ref);
+  await checkSeries(ctx, updated, targetBase, { force: true });
   if (!options.quiet) {
     process.stdout.write(`exported ${commits.length} Firefox patch commits for ${targetVersion}\n`);
   }
@@ -752,8 +783,12 @@ async function commandCheck(ctx, flags) {
     manifest.base.tree,
     manifest.base.contentTree,
   );
-  await replaySeries(ctx, manifest, base.ref);
-  process.stdout.write('firefox-patch-stack: check passed\n');
+  const { skipped } = await checkSeries(ctx, manifest, base, { force: flags.has('--force') });
+  process.stdout.write(
+    skipped
+      ? 'firefox-patch-stack: check passed (patches and base unchanged since the last successful check; use --force to replay)\n'
+      : 'firefox-patch-stack: check passed\n',
+  );
 }
 
 async function commandMaterialize(ctx) {
