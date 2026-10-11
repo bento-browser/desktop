@@ -282,19 +282,23 @@ directory can be deleted by hand.
 
 ## Reproducible release dependencies
 
-Developer installs use `pnpm-lock.yaml`. Release and CI installs use the
-separate committed `pnpm-lock.release.yaml`; both graphs consume the exact
-published npm package `@muxui/react@0.1.0-rc.1` and record its registry integrity.
-The package exposes public `./themes` and `./themes.css` entries alongside the
-root React renderer; consumers use those exports rather than generated-file
-paths. Bento has no committed Mux tarball or local provenance sidecar.
+`pnpm-lock.yaml` is the only lockfile, for developer, CI, and release installs.
+It consumes the exact published npm package `@muxui/react@0.1.0-rc.1` and records
+its registry integrity. The package exposes public `./themes` and `./themes.css`
+entries alongside the root React renderer; consumers use those exports rather
+than generated-file paths. Bento has no committed Mux tarball or local
+provenance sidecar.
 
-`scripts/install-release-deps.sh` temporarily swaps in the root-format release
-lock, force-relinks with `--frozen-lockfile`, and restores the developer lock.
-Manifest or transitive-resolution drift fails the install. The release SBOM
-requires the approved shell runtime dependency set, exact published Mux version,
-and verified npm integrity; it rejects a substituted tarball or digest. Mux is
-reported like other npm components with its registry SHA-512 integrity digest.
+CI and release builds run `pnpm install --frozen-lockfile` (the
+`.github/actions/setup` composite action, and `scripts/build-release.sh`, where
+it does nothing when `node_modules` is current). Manifest or transitive-resolution
+drift fails the install. The install is the full graph, dev tooling included,
+because the extension build needs it. pnpm owns the lockfile's format, so it is
+excluded from Prettier (`.prettierignore`, `.lintstagedrc.json`). The release
+SBOM reads the same file and requires the approved shell runtime dependency set,
+exact published Mux version, and verified npm integrity; it rejects a substituted
+tarball or digest. Mux is reported like other npm components with its registry
+SHA-512 integrity digest.
 
 Bento keeps one React Aria substrate graph for menu context identity and pins
 Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
@@ -303,15 +307,12 @@ This is later than the patch for
 React Aria remains an internal Mux dependency; Bento composites use the public
 Mux API, with shared Bento primitives for layout and icons.
 
-Run frozen developer/release installs and release-security checks before
-regenerating locks, then verify the updated graphs. In an isolated source copy:
-
-After the baseline checks, update both graphs:
+To change the graph, pass a frozen install and the release-security checks
+first, then regenerate the lock and verify it again:
 
 ```sh
 pnpm install
-bash scripts/update-release-lock.sh
-bash scripts/install-release-deps.sh
+pnpm install --frozen-lockfile
 ```
 
 ## Local Mux UI
@@ -408,20 +409,18 @@ Guards keep local Mux out of releases:
 1. In the Mux repository, run `pnpm release:prepare` with
    `MUXUI_RELEASE_CANDIDATE_VERSION` set to the candidate version, then publish
    through the npm-publish workflow (registry preflight, dry run, publish).
-2. Baseline, before changing anything: `pnpm install --frozen-lockfile`,
-   `bash scripts/install-release-deps.sh`, and `pnpm run release:security-check`
-   against the current pin and locks must pass.
+2. Baseline, before changing anything: `pnpm install --frozen-lockfile` and
+   `pnpm run release:security-check` against the current pin and lock must pass.
 3. Update the inputs the new graph is checked against: the exact pin in
    `extensions/bento-shell/package.json`; the root `pnpm.overrides` (React Aria,
    Tiptap) if Mux's dependencies changed; and the expected release metadata, the
    version and registry integrity in `scripts/generate-release-sbom.mjs`
    (`muxuiVersion`, `muxuiIntegrity`) and `scripts/release-security.test.mjs`.
-4. Regenerate both locks: `pnpm install`, `bash scripts/update-release-lock.sh`,
-   `bash scripts/install-release-deps.sh`. (Frozen installs fail between steps 3
+4. Regenerate the lock: `pnpm install`. (Frozen installs fail between steps 3
    and 4 by design.)
-5. Verify the new graphs: `pnpm install --frozen-lockfile`,
-   `bash scripts/install-release-deps.sh`, `node --test scripts/release-security.test.mjs`,
-   and `pnpm run release:security-check`.
+5. Verify the new graph: `pnpm install --frozen-lockfile`,
+   `node --test scripts/release-security.test.mjs`, and
+   `pnpm run release:security-check`.
 6. Update the version mentions in `CLAUDE.md`, `README.md`, and the docs
    (`docs/build-tooling.md`, `docs/mux-ui-component-customisations.md`,
    `docs/core-functionality-technical.md`).
@@ -449,11 +448,9 @@ profile-import, icon-fetching, bundled-add-on, signing, and release invariants.
 CI also audits the full dependency graph and runs CodeQL over Bento JavaScript
 and TypeScript.
 
-The CI `pnpm audit --audit-level high` step reads the developer lock, because
-`scripts/install-release-deps.sh` restores it after installing. Keep the release
-lock at the same bar by swapping it in with `BENTO_RELEASE=1` and auditing it
-the same way. Fix vulnerable transitive packages with `pnpm.overrides` in
-`package.json`, then refresh both locks.
+The CI `pnpm audit --audit-level high` step audits `pnpm-lock.yaml`, the same
+lock that release builds install. Fix vulnerable transitive packages with
+`pnpm.overrides` in `package.json`, then refresh the lock.
 
 Audit exceptions live in `pnpm.auditConfig.ignoreGhsas` in `package.json`. Each
 entry needs a reason here and must be removed once a patched release is
