@@ -12,10 +12,13 @@ description: >-
 #   version, so there is no restore key; a version bump bootstraps from scratch
 #   and saves a fresh entry.
 # object-key: unique per run attempt, so every run saves a new entry. Restore
-#   tries the same version and mozconfig inputs first, then any entry for the
-#   same version, and takes the newest match. mach rebuilds only what changed.
-#   Objects from another Firefox version are never restored: a version bump is
-#   the cold build that proves the tree builds from scratch.
+#   tries the same mozconfig inputs first, then any entry for the same version
+#   and patch stack, and takes the newest match. mach rebuilds only what
+#   changed. Objects from another Firefox version are never restored: a version
+#   bump is the cold build that proves the tree builds from scratch. Objects
+#   from another patch stack are never restored either: removing a patch
+#   restores a pristine source file with an older mtime than the object
+#   compiled from the patched one, and mach would keep that stale object.
 
 outputs:
   mozbuild-path:
@@ -49,11 +52,16 @@ runs:
         [[ "$version" =~ ^[0-9][0-9A-Za-z.-]*$ ]] || { echo "bento.json firefox.version is malformed: $version" >&2; exit 1; }
         # Anything that changes how the native tree is configured or compiled:
         # the git tree of configs/ and the blob of rust-toolchain.toml, so line
-        # endings on the runner cannot change it. Other inputs (patches,
-        # sources) are handled by mach's own rebuild.
+        # endings on the runner cannot change it. Other inputs are handled by
+        # mach's own rebuild.
         config_hash="$(printf '%s\n%s\n' "$(git rev-parse HEAD:configs)" "$(git rev-parse HEAD:rust-toolchain.toml)" | git hash-object --stdin)"
         config_hash="${config_hash:0:16}"
-        object_prefix="bento-obj-v1-$PLATFORM-$version-"
+        # The patch stack (every patches/ blob except documentation, so series.json
+        # and each .patch count). Part of every prefix: a changed patch set is a
+        # cold native build, never a restore of objects compiled from other patches.
+        patches_hash="$(git ls-tree -r HEAD -- patches | awk -F'\t' '$2 !~ /\.md$/' | git hash-object --stdin)"
+        patches_hash="${patches_hash:0:16}"
+        object_prefix="bento-obj-v1-$PLATFORM-$version-$patches_hash-"
         {
           # Children are listed one by one so srcdirs (mach virtual
           # environments with absolute paths, rebuilt in seconds) is left out.

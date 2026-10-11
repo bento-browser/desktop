@@ -129,11 +129,11 @@ Hosted caches use three keys. Their definitions live in
 `.github/actions/engine-source` and `.github/actions/native-cache-keys`, so
 `ci.yml` and `release.yml` cannot drift:
 
-| Cache              | Key                                                                                                          | Restore keys                                                                           | Saved                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Firefox source     | `bento-engine-source-v2-<OS>-<firefox.version>-<firefox.source.sha256>`                                      | none                                                                                   | Right after `pnpm run download` on a miss; never overwritten                    |
-| Mozilla toolchains | `bento-mozbuild-v1-<OS>-<arch>-<firefox.version>`                                                            | none                                                                                   | Right after a successful `bootstrap` on a miss                                  |
-| Native objects     | `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of configs/** and rust-toolchain.toml>-<run id>-<attempt>` | The same prefix without the run id, then `bento-obj-v1-<OS>-<arch>-<firefox.version>-` | After every manual or release native build, including a failed or timed-out one |
+| Cache              | Key                                                                                                                               | Restore keys                                                                                                | Saved                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Firefox source     | `bento-engine-source-v2-<OS>-<firefox.version>-<firefox.source.sha256>`                                                           | none                                                                                                        | Right after `pnpm run download` on a miss; never overwritten                    |
+| Mozilla toolchains | `bento-mozbuild-v1-<OS>-<arch>-<firefox.version>`                                                                                 | none                                                                                                        | Right after a successful `bootstrap` on a miss                                  |
+| Native objects     | `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-<hash of configs/** and rust-toolchain.toml>-<run id>-<attempt>` | The same prefix without the run id, then `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-` | After every manual or release native build, including a failed or timed-out one |
 
 - **Source.** The cache holds `engine/` (without `obj-*`) and
   `.bento/source-state.json` exactly as `pnpm run download` leaves them, before
@@ -147,11 +147,19 @@ Hosted caches use three keys. Their definitions live in
 - **Native objects.** Every run saves a new `engine/obj-bento` entry (the key
   holds the run id), and restore takes the newest entry that matches the prefix
   with the same mozconfig inputs, otherwise the newest for the same Firefox
-  version. mach rebuilds only what changed. Objects never cross Firefox
-  versions, so the first build after a bump is the cold build that proves the
-  tree compiles from scratch. The object tree is saved even when the build
-  fails. The build step stops at 320 minutes, inside the 360-minute job bound,
-  so the save still runs and the next run resumes from the partial tree.
+  version and patch stack. mach rebuilds only what changed. Objects never cross
+  Firefox versions, so the first build after a bump is the cold build that
+  proves the tree compiles from scratch. The hash of `patches/**` (every file
+  there except Markdown, so `series.json` counts) is part of every restore
+  prefix, so objects also never cross patch stacks. Without it, removing a patch
+  restores the pristine source file with an older mtime than the object
+  compiled from the patched file; `import` does not refresh that timestamp and
+  mach keeps unchanged build-file timestamps, so the stale object would be
+  reused and the binary would keep the removed patch's behaviour. A patch
+  change is therefore a cold native build; patches change rarely. The object
+  tree is saved even when the build fails. The build step stops at 320 minutes,
+  inside the 360-minute job bound, so the save still runs and the next run
+  resumes from the partial tree.
 - **Scope.** GitHub lets a run read caches from its own ref and the default
   branch. Pushes to `main` seed the source cache for every pull request. A
   manual run on `main` seeds the toolchain and object caches for every branch
