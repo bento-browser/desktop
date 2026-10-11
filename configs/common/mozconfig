@@ -1,5 +1,8 @@
 # Bento Browser — shared mozconfig fragment.
 # Sourced by every per-platform mozconfig under configs/{linux,macos,windows}/.
+# Mode-specific compiler policy (debug, optimize, release) is not set here: the
+# build driver (scripts/bento-build.mjs) writes it after this file, so a dev
+# build is never forced into release codegen. See docs/build-tooling.md.
 
 ac_add_options --enable-application=browser
 ac_add_options --with-app-name=bento
@@ -8,8 +11,6 @@ ac_add_options --with-branding=browser/branding/bento
 
 ac_add_options --disable-crashreporter
 ac_add_options --disable-tests
-ac_add_options --disable-debug
-ac_add_options --enable-release
 
 # Disable Mozilla telemetry reporting for the fork build. Keep release add-on
 # signature enforcement compiled in; Bento's own extensions are registered in

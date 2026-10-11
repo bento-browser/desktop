@@ -167,18 +167,26 @@ jobs:
         # syntax fine.
         run: bash scripts/build-release.sh
 
-      - name: Validate Bento package, MAR, and update XML outputs
+      # The updater is compiled out until bento.json updates.enabled is true, so
+      # the build neither produces nor may publish a MAR or update XML.
+      - name: Validate Bento package outputs (and MAR and update XML when the updater is enabled)
         run: pnpm run artifacts:check
 
       - name: Validate release-out collection
         shell: bash
         run: |
           set -euo pipefail
+          updates_enabled="$(node -p "require('./bento.json').updates?.enabled === true")"
           mar_count="$(find release-out -maxdepth 1 -type f -name '*.mar' | wc -l | tr -d ' ')"
           xml_count="$(find release-out -maxdepth 1 -type f -name '*-update.xml' | wc -l | tr -d ' ')"
-          [ "$mar_count" -eq 1 ] || { echo "expected one release-out MAR, found $mar_count" >&2; exit 1; }
-          [ "$xml_count" -gt 0 ] || { echo 'release-out is missing update XML' >&2; exit 1; }
-          echo "release-out contains one MAR and $xml_count update XML file(s)"
+          if [ "$updates_enabled" = "true" ]; then
+            [ "$mar_count" -eq 1 ] || { echo "expected one release-out MAR, found $mar_count" >&2; exit 1; }
+            [ "$xml_count" -gt 0 ] || { echo 'release-out is missing update XML' >&2; exit 1; }
+            echo "release-out contains one MAR and $xml_count update XML file(s)"
+          else
+            [ "$mar_count" -eq 0 ] && [ "$xml_count" -eq 0 ] || { echo "release-out holds $mar_count MAR and $xml_count update XML file(s), but the updater is disabled" >&2; exit 1; }
+            echo 'release-out holds no MAR or update XML (updater disabled)'
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

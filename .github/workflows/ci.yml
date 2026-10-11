@@ -110,6 +110,7 @@ jobs:
             if (!['dev','debug','release'].includes(c.build.mode)) throw new Error('bento.json build.mode is invalid');
             if (!c.brands.bento.release?.displayVersion) throw new Error('bento.json release.displayVersion is missing');
             if (!c.updates.hostname || !c.updates.channel) throw new Error('bento.json update configuration is incomplete');
+            if (typeof c.updates.enabled !== 'boolean') throw new Error('bento.json updates.enabled must be true or false');
             console.log('bento.json schema OK');
           "
 

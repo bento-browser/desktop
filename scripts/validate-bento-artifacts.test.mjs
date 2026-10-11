@@ -8,7 +8,8 @@ import test from 'node:test';
 import { readApplicationBuildId } from './bento-build.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
-async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precomplete' } = {}) {
+/** `updates` is bento.json updates.enabled; a build with the updater compiled out has no MAR. */
+async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precomplete', updates = true } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-artifact-test-'));
   const objDist = path.join(root, 'engine', 'obj-test', 'dist');
   const applicationName = appBundle ? 'Bento.app' : 'bento';
@@ -17,43 +18,50 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
   const marTool = path.join(objDist, 'host', 'bin', 'mar');
   await fsp.mkdir(app, { recursive: true });
   await fsp.mkdir(path.dirname(marTool), { recursive: true });
+  // Firefox's packager writes precomplete whether or not the updater is built.
   await fsp.writeFile(path.join(app, 'precomplete'), '');
   await fsp.writeFile(path.join(app, 'platform.ini'), '[Build]\nMilestone=154.0\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(app, 'application.ini'), '[App]\nBuildID=20260912000000\n[Build]\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), 'application');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'), 'application archive');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.win64.xpt_artifacts.zip'), 'test artifacts');
-  await fsp.writeFile(marTool, `#!/bin/sh\nprintf "SIZE\\tMODE\\tNAME\\n0\\t0644\\t${marEntry}\\n"\n`);
-  await fsp.chmod(marTool, 0o755);
   const mar = path.join(root, 'dist', 'output.mar');
   await fsp.mkdir(path.dirname(mar), { recursive: true });
-  await fsp.writeFile(mar, 'update');
-  const hash = crypto.createHash('sha512').update('update').digest('hex');
   await fsp.writeFile(path.join(root, 'bento.json'), JSON.stringify({
     schemaVersion: 1,
     brand: 'bento',
     build: { mode: 'release' },
     firefox: { product: 'firefox', version: '154.0' },
     brands: { bento: { release: { displayVersion: '0.0.1' } } },
-    updates: { hostname: 'updates.example.invalid', channel: 'bento' },
+    updates: { enabled: updates, hostname: 'updates.example.invalid', channel: 'bento' },
   }));
-  const update = `<?xml version="1.0"?>\n<updates><update displayVersion="0.0.1" appVersion="0.0.1" platformVersion="154.0" buildID="20260912000000"><patch URL="https://updates.example.invalid/Bento-0.0.1-macos.mar" hashFunction="sha512" hashValue="${hash}" size="6" /></update></updates>\n`;
-  await fsp.mkdir(path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento'), { recursive: true });
-  await fsp.writeFile(path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento', 'update.xml'), update);
-  await fsp.writeFile(path.join(root, 'dist', 'bento-artifacts.json'), JSON.stringify({
+  const manifest = {
     schemaVersion: 1,
     displayVersion: '0.0.1',
     firefoxVersion: '154.0',
-    mar: { path: 'dist/output.mar', name: 'Bento-0.0.1-macos.mar', url: 'https://updates.example.invalid/Bento-0.0.1-macos.mar' },
-    marTool: 'engine/obj-test/dist/host/bin/mar',
+    updates: { enabled: updates },
     application: `engine/obj-test/dist/${applicationName}`,
     applicationIni: appBundle
       ? 'engine/obj-test/dist/Bento.app/Contents/Resources/application.ini'
       : 'engine/obj-test/dist/bento/application.ini',
     buildId: '20260912000000',
     objDist: 'engine/obj-test/dist',
-    updateTargets: ['Darwin_x86_64-gcc3'],
-  }));
+  };
+  if (updates) {
+    await fsp.writeFile(marTool, `#!/bin/sh\nprintf "SIZE\\tMODE\\tNAME\\n0\\t0644\\t${marEntry}\\n"\n`);
+    await fsp.chmod(marTool, 0o755);
+    await fsp.writeFile(mar, 'update');
+    const hash = crypto.createHash('sha512').update('update').digest('hex');
+    const update = `<?xml version="1.0"?>\n<updates><update displayVersion="0.0.1" appVersion="0.0.1" platformVersion="154.0" buildID="20260912000000"><patch URL="https://updates.example.invalid/Bento-0.0.1-macos.mar" hashFunction="sha512" hashValue="${hash}" size="6" /></update></updates>\n`;
+    await fsp.mkdir(path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento'), { recursive: true });
+    await fsp.writeFile(path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento', 'update.xml'), update);
+    Object.assign(manifest, {
+      mar: { path: 'dist/output.mar', name: 'Bento-0.0.1-macos.mar', url: 'https://updates.example.invalid/Bento-0.0.1-macos.mar' },
+      marTool: 'engine/obj-test/dist/host/bin/mar',
+      updateTargets: ['Darwin_x86_64-gcc3'],
+    });
+  }
+  await fsp.writeFile(path.join(root, 'dist', 'bento-artifacts.json'), JSON.stringify(manifest));
   return {
     root,
     objDist,
@@ -127,6 +135,101 @@ test('artifact validation rejects a non-bundle application.ini outside the appli
     assert.throws(() => validateArtifacts(root), /application.ini is not the one inside the application/);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('with the updater disabled, artifact validation expects the packages and no MAR or update metadata', async () => {
+  const { root, manifest } = await fixture({ updates: false });
+  try {
+    const result = validateArtifacts(root);
+    assert.equal(result.updates, false);
+    assert.equal(result.packages.length, 2);
+    assert.equal('mar' in result, false);
+
+    // Neither a stale MAR nor stale update XML may sit beside a build that cannot update.
+    await fsp.writeFile(path.join(root, 'dist', 'output.mar'), 'stale');
+    assert.throws(() => validateArtifacts(root), /holds a MAR or update metadata, but the updater is disabled/);
+    await fsp.rm(path.join(root, 'dist', 'output.mar'));
+    await fsp.mkdir(path.join(root, 'dist', 'update', 'browser'), { recursive: true });
+    assert.throws(() => validateArtifacts(root), /holds a MAR or update metadata, but the updater is disabled/);
+    await fsp.rm(path.join(root, 'dist', 'update'), { recursive: true });
+    validateArtifacts(root);
+
+    const metadata = JSON.parse(await fsp.readFile(manifest, 'utf8'));
+    await fsp.writeFile(manifest, JSON.stringify({ ...metadata, updateTargets: ['Darwin_x86_64-gcc3'] }));
+    assert.throws(() => validateArtifacts(root), /lists update outputs, but the updater is disabled/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation rejects metadata whose updater state differs from bento.json', async () => {
+  const disabled = await fixture({ updates: false });
+  const enabled = await fixture();
+  try {
+    // Artifacts packaged with the updater on, validated against a config that turned it off.
+    const config = JSON.parse(await fsp.readFile(path.join(enabled.root, 'bento.json'), 'utf8'));
+    config.updates.enabled = false;
+    await fsp.writeFile(path.join(enabled.root, 'bento.json'), JSON.stringify(config));
+    assert.throws(() => validateArtifacts(enabled.root), /produced with the updater enabled, but bento.json updates.enabled is false/);
+
+    config.updates.enabled = true;
+    await fsp.writeFile(path.join(disabled.root, 'bento.json'), JSON.stringify(config));
+    assert.throws(() => validateArtifacts(disabled.root), /produced with the updater disabled, but bento.json updates.enabled is true/);
+
+    // Metadata from before the switch existed does not say, so it is regenerated.
+    const metadata = JSON.parse(await fsp.readFile(enabled.manifest, 'utf8'));
+    delete metadata.updates;
+    await fsp.writeFile(enabled.manifest, JSON.stringify(metadata));
+    assert.throws(() => validateArtifacts(enabled.root), /does not record the updater state/);
+  } finally {
+    await fsp.rm(disabled.root, { recursive: true, force: true });
+    await fsp.rm(enabled.root, { recursive: true, force: true });
+  }
+});
+
+test('the bundle needs precomplete whether or not the updater is enabled', async () => {
+  const off = await fixture({ updates: false });
+  const on = await fixture();
+  try {
+    for (const { root, objDist } of [off, on]) {
+      validateArtifacts(root);
+      await fsp.rm(path.join(objDist, 'Bento.app', 'Contents', 'Resources', 'precomplete'));
+      assert.throws(() => validateArtifacts(root), /application bundle is missing precomplete/);
+    }
+  } finally {
+    await fsp.rm(off.root, { recursive: true, force: true });
+    await fsp.rm(on.root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation checks the updater state and channel configure recorded in the object directory', async () => {
+  const disabled = await fixture({ updates: false });
+  const enabled = await fixture();
+  const configureRecorded = (root, substs) => fsp.writeFile(path.join(root, 'engine', 'obj-test', 'config.status.json'), JSON.stringify({ substs }));
+  try {
+    // Agreeing with bento.json, or no configure output yet, passes.
+    await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
+    validateArtifacts(disabled.root);
+    await configureRecorded(enabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento' });
+    validateArtifacts(enabled.root);
+
+    // Metadata and bento.json both say off, but configure built the updater in.
+    await configureRecorded(disabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento' });
+    assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the updater in, but bento\.json updates\.enabled is false/);
+    await configureRecorded(enabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
+    assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the updater out, but bento\.json updates\.enabled is true/);
+
+    // The updater state agrees, but configure used another channel (Mozilla's names select Mozilla's certificates).
+    for (const channel of ['release', undefined]) {
+      await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: channel });
+      assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the update channel .*, but bento\.json updates\.channel is "bento"/);
+      await configureRecorded(enabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: channel });
+      assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the update channel .*, but bento\.json updates\.channel is "bento"/);
+    }
+  } finally {
+    await fsp.rm(disabled.root, { recursive: true, force: true });
+    await fsp.rm(enabled.root, { recursive: true, force: true });
   }
 });
 
