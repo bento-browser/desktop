@@ -14,6 +14,7 @@ import {
   MAX_ID_LENGTH,
   MAX_NAME_LENGTH,
   MAX_TITLE_LENGTH,
+  MAX_URL_LENGTH,
   isBoundedString,
   isFiniteNumber,
   isInteger,
@@ -38,7 +39,6 @@ type Guards<T> = { [K in keyof T]-?: Guard<T[K]> };
 const MAX_TAB_IDS = 20_000;
 const MAX_ID_LIST = 5_000;
 const MAX_QUERY_LENGTH = MAX_TITLE_LENGTH;
-const MAX_ACTION_URL_LENGTH = 32_768;
 const MAX_FAVICON_URL_LENGTH = 262_144;
 const MAX_PIXELS = 100_000;
 const MAX_SCROLL_PIXELS = 10_000_000;
@@ -91,7 +91,7 @@ function shape<T>(fields: Guards<T>): Guard<T> {
 }
 
 function hasNavigationScheme(value: string): boolean {
-  if (value.length > MAX_ACTION_URL_LENGTH) return false;
+  if (value.length > MAX_URL_LENGTH) return false;
   try {
     return NAVIGATION_SCHEMES.has(new URL(value).protocol);
   } catch {

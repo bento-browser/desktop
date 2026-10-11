@@ -59,10 +59,14 @@ message goes through `createShellActionIntake`
   one over-cap field drops the whole action. Save panel
   (`boundSavedPanelMetadata` in `bento-shell-mount.js`) cuts the page title to
   the title cap, drops a favicon over its cap, and skips a URL over the URL cap
-  (a truncated URL would be a different address). Pitfall: forwarding
-  `contentTitle` untouched made Save panel fail silently on a page with a title
-  over 4,096 characters. Keep the mount constants equal to the validator caps;
-  `scripts/bento-privacy-security.test.mjs` compares them.
+  (a truncated URL would be a different address). The URL cap is
+  `MAX_URL_LENGTH` in `extensions/_shared/export-schema.ts`, shared by the port
+  validator and backup import; it mirrors Firefox's
+  `network.standard-url.max-length` (1,048,576), so recheck it on Firefox
+  updates. Pitfall: forwarding `contentTitle` untouched made Save panel fail
+  silently on a page with a title over 4,096 characters. Keep the mount
+  constants equal to the validator caps; `scripts/bento-privacy-security.test.mjs`
+  compares them.
 
 ## Native Tabs And Titlebar Controls
 

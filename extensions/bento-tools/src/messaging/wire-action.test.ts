@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Action } from '@shared/protocol';
+import { MAX_URL_LENGTH } from '@shared/export-schema';
 import { parseWireAction } from '@shared/wire-action';
 
 type ActionType = Action['type'];
 type ActionOf<T extends ActionType> = Extract<Action, { type: T }>;
+
+/** A valid https URL of exactly `length` characters. */
+const urlOfLength = (length: number) => 'https://example.com/'.padEnd(length, 'a');
 
 /** One valid message per Action type; the mapped type fails to compile if a type is missing. */
 const VALID: { [T in ActionType]: ActionOf<T> } = {
@@ -334,7 +338,7 @@ describe('parseWireAction: malformed messages', () => {
       'ws://example.com/',
       'not a url',
       '//example.com/path',
-      'https://example.com/' + 'a'.repeat(32_768),
+      urlOfLength(MAX_URL_LENGTH + 1),
     ]) {
       for (const make of urlActions) expect(parse(make(url))).toBeNull();
     }
@@ -346,8 +350,13 @@ describe('parseWireAction: malformed messages', () => {
       'about:newtab',
       'view-source:https://example.com/',
       'moz-extension://abc/dist/settings.html',
+      urlOfLength(40_000),
     ]) {
       for (const make of urlActions) expect(parse(make(url))).not.toBeNull();
+    }
+    // The cap is Firefox's standard-URL limit: exactly at it passes.
+    for (const make of urlActions.slice(0, 2)) {
+      expect(parse(make(urlOfLength(MAX_URL_LENGTH)))).not.toBeNull();
     }
     expect(parse(withFields('tab/openUrl', { url: '' }))).toBeNull();
     expect(parse(withFields('panel/openAt', { url: '' }))).toBeNull();

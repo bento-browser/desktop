@@ -21,7 +21,8 @@ const MAX_CUSTOM_PANEL_SIZES = 64;
 export const MAX_ID_LENGTH = 256;
 export const MAX_NAME_LENGTH = 1_024;
 export const MAX_TITLE_LENGTH = 4_096;
-const MAX_URL_LENGTH = 8_192;
+// Mirrors Firefox's network.standard-url.max-length (1 MiB), the longest standard URL it loads.
+export const MAX_URL_LENGTH = 1_048_576;
 const MAX_VERSION_LENGTH = 128;
 export const ALLOWED_URL_SCHEMES = new Set(['http:', 'https:', 'file:', 'ftp:', 'about:']);
 

@@ -11027,8 +11027,9 @@
   // bento-tools rejects a whole action when any field exceeds its cap in
   // extensions/_shared/wire-action.ts (the validator stays strict), and a page
   // controls its title, URL, and favicon. Keep these in step with those caps.
+  // The URL cap mirrors Firefox's network.standard-url.max-length.
   const SAVED_PANEL_MAX_TITLE_LENGTH = 4096;
-  const SAVED_PANEL_MAX_URL_LENGTH = 32768;
+  const SAVED_PANEL_MAX_URL_LENGTH = 1048576;
   const SAVED_PANEL_MAX_FAVICON_URL_LENGTH = 262144;
 
   // Bounds the savedPanels/save fields to those caps. A long title is cut (as

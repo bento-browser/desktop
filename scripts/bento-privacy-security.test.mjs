@@ -306,7 +306,7 @@ ${mountFunction(source, 'boundSavedPanelMetadata')}
     return Number(match[1].replaceAll('_', ''));
   };
   assert.equal(titleMax, cap('export-schema.ts', 'MAX_TITLE_LENGTH'));
-  assert.equal(urlMax, cap('wire-action.ts', 'MAX_ACTION_URL_LENGTH'));
+  assert.equal(urlMax, cap('export-schema.ts', 'MAX_URL_LENGTH'));
   assert.equal(faviconMax, cap('wire-action.ts', 'MAX_FAVICON_URL_LENGTH'));
 
   const url = 'https://example.com/';
@@ -325,6 +325,9 @@ ${mountFunction(source, 'boundSavedPanelMetadata')}
   assert.equal(split, 'a'.repeat(titleMax - 1));
   assert.equal(bound(url, 't', 'd'.repeat(faviconMax)).favIconUrl.length, faviconMax);
   assert.equal(bound(url, 't', 'd'.repeat(faviconMax + 1)).favIconUrl, '');
-  // A URL is never truncated into a different address.
-  assert.equal(bound(`https://example.com/${'a'.repeat(urlMax)}`, 't', ''), null);
+  // A URL at the cap is kept whole; one over it is skipped, never truncated
+  // into a different address.
+  const atCap = url.padEnd(urlMax, 'a');
+  assert.equal(bound(atCap, 't', '').url, atCap);
+  assert.equal(bound(`${atCap}a`, 't', ''), null);
 });
