@@ -16,7 +16,6 @@ import { WorkspacePalette } from '../components/WorkspacePalette/WorkspacePalett
 import { WORKSPACE_PALETTE_CLOSE_PREFIX } from '../bridge/useWorkspacePalette';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
-import { ALL_THEME_IDS, useThemeSheets } from '../theme/themeSheets';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 
 initToolsPort();
@@ -24,8 +23,6 @@ initToolsPort();
 function WorkspacePaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
-  // Each workspace row has a theme picker that previews every theme.
-  useThemeSheets(ALL_THEME_IDS);
   const handleClose = () => {
     document.title = `${WORKSPACE_PALETTE_CLOSE_PREFIX}_${Date.now()}`;
   };

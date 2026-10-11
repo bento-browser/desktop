@@ -30,22 +30,19 @@ export function useWorkspaceTheme(): void {
   const colorScheme = useResolvedColorScheme();
 
   useEffect(() => {
-    let current = true;
     const resolvedThemeId = resolveThemeId(themeId);
-    void setThemeSheets(ROOT_THEME_OWNER, [resolvedThemeId]).then((loaded) => {
-      if (!current) return;
+    void setThemeSheets(ROOT_THEME_OWNER, [resolvedThemeId]).then((result) => {
+      // A newer request (or the unmount) replaced this one: leave the scope as it is.
+      if (result === 'superseded') return;
       const html = document.documentElement;
       const attributes = getThemeScopeAttributes(
-        loaded ? resolvedThemeId : DEFAULT_THEME_ID,
+        result === 'loaded' ? resolvedThemeId : DEFAULT_THEME_ID,
         colorScheme,
       );
       for (const [name, value] of Object.entries(attributes)) {
         html.setAttribute(name, value);
       }
     });
-    return () => {
-      current = false;
-    };
   }, [colorScheme, themeId]);
 
   useEffect(() => () => releaseThemeSheets(ROOT_THEME_OWNER), []);

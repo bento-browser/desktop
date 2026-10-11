@@ -3434,11 +3434,17 @@ Shell theme flow:
   `useWorkspaceTheme.ts` asks for the active workspace theme's sheet and writes
   `<html data-bento-theme>` (and the other scope attributes) once it has loaded,
   so the previous theme stays on screen until the new one can paint and a sheet
-  that fails to load falls back to Default. Default is inline, so the boot.js
-  attributes paint it on the first frame exactly as before. Documents that render
-  other themes in nested scopes keep those sheets too (`useThemeSheets`):
-  `workspace-switcher` (one avatar per workspace theme), `edit-workspace` and
-  `workspace-palette` (the theme picker previews all 16).
+  that fails to load falls back to Default. Only an owner's latest request applies:
+  a request a newer one replaced resolves `'superseded'` and neither sets
+  attributes nor lets the displayed sheet be pruned (A, B, C with B loading first
+  keeps A until C applies or fails). Default is inline, so the boot.js attributes
+  paint it on the first frame exactly as before. Every component that renders a
+  theme scope other than the document's own registers that theme for as long as it
+  renders it (`useThemeSheet` / `useThemeSheets`): `PinnedPanels` (each pin uses its
+  own workspace's theme), `WorkspaceSwitcher` (the avatar), `WorkspaceThemePicker`
+  (the trigger and all 16 swatches) and the `workspace-switcher` overlay (one avatar
+  per workspace). `themeScopeSheets.test.ts` fails when a file calls
+  `getThemeScopeAttributes` without registering.
 - `useToolsPort.ts` includes the active workspace theme id in the active
   `BENTO_PANELS` payload.
 - `bento-shell-mount.js` mirrors that payload's theme id to the chrome window
@@ -3549,12 +3555,17 @@ Theme authoring and import workflow is documented in [themes.md](themes.md).
   that theme's sheet has loaded: the scope would match no theme rules and paint
   the unscoped Mux palette for a frame. `useWorkspaceTheme` and
   `applyChromeThemeToDocument` set the attribute from the sheet's `load` event.
-  A nested scope (avatar, picker swatch) cannot wait, so its document must hold
-  the sheet before the scope can render (`useThemeSheets`); a new component that
-  renders another workspace's theme needs the same in its entry.
+  A nested scope (avatar, pin, picker swatch) cannot wait, so the component that
+  renders it registers its theme (`useThemeSheet`); a new component that renders
+  another workspace's theme needs the same, in the component and not only in the
+  document entry. Registering only the active workspace's theme leaves a pin from
+  another workspace unthemed and lets a workspace switch prune its sheet.
 - Do not unload a theme sheet before its replacement has loaded, and do not
   remove one an owner still needs. `themeSheets.ts` keeps one link per theme
-  while any owner (`root`, or a `useThemeSheets` caller) names it.
+  while any owner (`root`, or a `useThemeSheet(s)` caller) names it, and keeps an
+  owner's displayed sheet until that owner's latest request has loaded. Never
+  prune in response to a superseded request finishing: with A shown, B and C
+  requested, B finishing first would otherwise drop A while C still loads.
 - Canonical sheets keep their rules in `@layer muxui`, after the layer order
   declared in `theme/muxui.css`. An unlayered theme rule would beat Bento's
   component layers. `scripts/sync-theme-presets.mjs` fails on any `themes.css`

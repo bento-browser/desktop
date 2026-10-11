@@ -22,6 +22,7 @@ import {
 import { useCurrentWindowId } from '../../bridge/useToolsPort';
 import { DEFAULT_THEME_ID } from '../../theme/presets';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../../theme/themeScope';
+import { useThemeSheet } from '../../theme/themeSheets';
 import { BentoIcon } from '../primitives';
 import { WorkspaceAudioParticles } from './WorkspaceAudioParticles';
 import './WorkspaceSwitcher.css';
@@ -54,6 +55,7 @@ export function WorkspaceSwitcher() {
   // click-outside / item action) to flip back to false.
   const [isOpen, setIsOpen] = useState(false);
   const colorScheme = useResolvedColorScheme();
+  useThemeSheet(active?.themeId);
   useEffect(() => {
     return subscribeToWorkspaceSwitcherClose(() => setIsOpen(false));
   }, []);

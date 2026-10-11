@@ -184,11 +184,13 @@ document loads only the themes it shows, from per-theme sheets:
 - `theme/themeSheets.ts` attaches a sheet as a `<link href="./themes/<id>.css">`
   (no inline style or script, so the extension CSP is unchanged). `useWorkspaceTheme`
   requests the active workspace theme and writes the scope attributes after the
-  sheet has loaded. `useThemeSheets(ids)` keeps sheets for nested scopes: the
-  `workspace-switcher` overlay for its per-workspace avatars, `edit-workspace`
-  and `workspace-palette` for the theme picker (all 16), and the Ladle provider.
-  A new component that renders another workspace's theme must have its entry
-  call `useThemeSheets`, or its nested scope paints the unscoped Mux palette.
+  sheet has loaded, and only for its latest request (a superseded one changes
+  nothing). `useThemeSheet(id)` and `useThemeSheets(ids)` keep sheets for nested
+  scopes, called by the component that renders the scope: `PinnedPanels` (a pin
+  uses its own workspace's theme), `WorkspaceSwitcher`, `WorkspaceThemePicker` (all
+  16), the `workspace-switcher` overlay, and the Ladle provider. A new component
+  that renders another workspace's theme must call one of them, or its nested
+  scope paints the unscoped Mux palette; `themeScopeSheets.test.ts` enforces it.
 - Layer order is unaffected: `theme/muxui.css` still declares
   `@layer muxui, bento;` first, and a sheet's `muxui` rules append to that layer
   after the package styles, as `themes.css` did when it was imported.
