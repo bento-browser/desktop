@@ -15,20 +15,28 @@ interface WindowsApi {
 /**
  * Remembers windows confirmed to exist so only the first message per window
  * pays for browser.windows.get. Window ids are not reused within a session, so
- * onRemoved is the only invalidation needed.
+ * a removed id is remembered for good: a lookup that was already pending when
+ * the window closed must not resolve into "live" again, or a queued
+ * shell/hello could reassign workspace ownership to the closed window.
  */
 export function createWindowRegistry(api: WindowsApi) {
   const live = new Set<number>();
-  api.onRemoved.addListener((windowId) => live.delete(windowId));
+  const removed = new Set<number>();
+  api.onRemoved.addListener((windowId) => {
+    live.delete(windowId);
+    removed.add(windowId);
+  });
   return {
     isLive: (windowId: number) => live.has(windowId),
     async confirm(windowId: number): Promise<boolean> {
       if (live.has(windowId)) return true;
+      if (removed.has(windowId)) return false;
       try {
         await api.get(windowId);
       } catch {
         return false;
       }
+      if (removed.has(windowId)) return false;
       live.add(windowId);
       return true;
     },

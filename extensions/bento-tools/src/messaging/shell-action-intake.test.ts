@@ -107,6 +107,30 @@ describe('shell action intake', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it('does not revive a window that closed while its lookup was pending', async () => {
+    const { intake, delivered, get, removeWindow } = setup([7]);
+    let finishLookup: () => void = () => undefined;
+    get.mockImplementationOnce(
+      (windowId: number) =>
+        new Promise((resolve) => {
+          finishLookup = () => resolve({ id: windowId });
+        }),
+    );
+    intake({ type: 'shell/hello', windowId: 7, __windowId: 7 });
+    intake({ type: 'tab/close', id: 3, __windowId: 7 });
+    await settle();
+    expect(get).toHaveBeenCalledTimes(1);
+    removeWindow(7);
+    finishLookup();
+    await settle();
+    expect(delivered).toEqual([]);
+    // The queued follow-up and any later message are dropped without a second lookup.
+    intake({ type: 'tab/close', id: 4, __windowId: 7 });
+    await settle();
+    expect(delivered).toEqual([]);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps arrival order while a window check is pending', async () => {
     const { intake, delivered } = setup([7]);
     intake({ type: 'shell/hello', windowId: 7, __windowId: 7 });
