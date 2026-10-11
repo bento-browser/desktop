@@ -14,6 +14,7 @@ import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
+import { parkableWorkspaceTabs, type ParkedWorkspaceTab } from './panels/ParkedWorkspace';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
@@ -128,6 +129,20 @@ function takePreferredWorkspaceActivationTab(
   return tabId;
 }
 
+// Entries are keyed "<windowId|global>:<workspaceId>" (the window part never
+// contains a colon). Drop the ones a removed workspace or closed window can no
+// longer consume.
+function prunePreferredActivationTabs(
+  shouldDrop: (windowKey: string, workspaceId: string) => boolean,
+): void {
+  for (const key of preferredActivationTabByWorkspace.keys()) {
+    const split = key.indexOf(':');
+    if (shouldDrop(key.slice(0, split), key.slice(split + 1))) {
+      preferredActivationTabByWorkspace.delete(key);
+    }
+  }
+}
+
 async function sweepStaleFolderIds(): Promise<void> {
   const snapshot = tabs.snapshot();
   for (const tab of snapshot) {
@@ -204,14 +219,6 @@ function broadcastEvent(event: Event): void {
 const PARKED_WORKSPACE_TABS_STORAGE_KEY = 'bento.parkedWorkspaceTabs';
 const IMPORT_PINNED_PANEL_SESSION_KEY = 'bento.importPinnedPanel';
 const SESSION_READ_RETRY_DELAY_MS = 50;
-
-interface ParkedWorkspaceTab {
-  url: string;
-  title: string;
-  customTitle?: string;
-  pinned: boolean;
-  index: number;
-}
 
 let parkedWorkspaceTabs = new Map<string, ParkedWorkspaceTab[]>();
 
@@ -296,25 +303,15 @@ function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTa
   }
 
   for (const [workspaceId, workspaceTabs] of byWorkspace) {
-    const urlByTabId = new Map<number, string>();
-    for (const tab of workspaceTabs) {
-      if (tab.url) urlByTabId.set(tab.id, tab.url);
-    }
-
+    // Private tabs are never parked; panel slots without a URL are omitted
+    // from the persisted layout.
     const panelTabIds = new Set(panels.getPanels(workspaceId));
+    const { urlByTabId, sidebarTabs } = parkableWorkspaceTabs(workspaceTabs, panelTabIds, (id) =>
+      tabs.isPrivate(id),
+    );
     const parkedPanels = panels.parkWorkspaceWithResolvedUrls(workspaceId, (tabId) =>
       urlByTabId.get(tabId),
     );
-    const sidebarTabs = workspaceTabs
-      .filter((tab) => !panelTabIds.has(tab.id) && tab.url && tab.url !== 'about:blank')
-      .sort((a, b) => a.index - b.index)
-      .map((tab) => ({
-        url: tab.url!,
-        title: tab.title,
-        customTitle: tab.customTitle,
-        pinned: tab.pinned,
-        index: tab.index,
-      }));
 
     const hadParkedSidebarTabs = parkedWorkspaceTabs.has(workspaceId);
     if (sidebarTabs.length > 0) {
@@ -1790,7 +1787,7 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       changeInfo.url !== 'about:blank' &&
       panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0
     ) {
-      panels.persistCurrentState();
+      panels.schedulePersistCurrentState();
     }
   }
 });
@@ -1809,6 +1806,7 @@ tabs.onWindowClosing(({ windowId, tabs: closingTabs }) => {
 // would throw, but the activation would have been refused anyway).
 browser.windows.onRemoved.addListener((windowId) => {
   workspaces.forgetWindow(windowId);
+  prunePreferredActivationTabs((windowKey) => windowKey === String(windowId));
 });
 
 async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Promise<void> {
@@ -2067,6 +2065,10 @@ workspaces.onDeltas((deltas) => {
     if (d.kind === 'removed') {
       panels.removeWorkspace(d.id);
       lastActiveTabByWorkspace.delete(d.id);
+      prunePreferredActivationTabs((_windowKey, workspaceId) => workspaceId === d.id);
+      // A deleted workspace never activates again, so its parked sidebar tabs
+      // would otherwise stay in storage forever.
+      if (parkedWorkspaceTabs.delete(d.id)) persistParkedWorkspaceTabs();
       continue;
     }
     if (d.kind !== 'activated') continue;
