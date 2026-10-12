@@ -64,6 +64,14 @@ unlayered). Base plus all theme sheets contains exactly the rules the single
 sheet used to. Documents that link `bento-chrome-tokens.css` statically
 (preferences, about:logins, megalist, the migration host) never carry a
 non-Default `data-bento-theme`, so they need only the base sheet.
+Every such document must put `data-bento-theme` and `data-color-mode` on its
+root: the legacy alias bridge (`--neutral-*`, `--radius-*`, `--space-2xs`, ...) and
+the mode blocks apply only to elements that carry Bento attributes, and without
+them each alias computes to nothing. about:logins and megalist set both statically
+(light), the migration host sets them from its query, and about:preferences sets
+`data-bento-theme` statically and copies its host window's `data-color-mode` in
+`preferences.js` (on the mount script's `bento-ui-color-mode` notification, and when the
+page becomes visible or focused).
 
 `--monolithic`, also selected by `BENTO_RELEASE_VARIANT=rollback-final-r2`, folds
 every theme back into the base sheet. The archived rollback mount script links

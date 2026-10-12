@@ -1,18 +1,81 @@
-From cca928f75adc8583603ad59bc41bf892ac379fc8 Mon Sep 17 00:00:00 2001
+From fc19152f6c110212b1b3751550f934fec34aabd1 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- .../components/preferences/preferences.xhtml  |   5 +-
- .../themes/shared/preferences/preferences.css | 218 +++++++++++++++++-
- 2 files changed, 213 insertions(+), 10 deletions(-)
+ browser/components/preferences/preferences.js |  40 +++
+ .../components/preferences/preferences.xhtml  |   9 +-
+ .../themes/shared/preferences/preferences.css | 229 +++++++++++++++++-
+ 3 files changed, 267 insertions(+), 11 deletions(-)
 
+diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
+index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..a2e977363c4061d00f7cd65d3c6bb40aa26d487f 100644
+--- a/browser/components/preferences/preferences.js
++++ b/browser/components/preferences/preferences.js
+@@ -66,6 +66,46 @@ var fxAccounts = getFxAccountsSingleton();
+ 
+ var TAB_SESSION_ID = crypto.randomUUID();
+ 
++// Bento: bento-chrome-tokens.css selects its light or dark values from
++// data-color-mode on the root, and only a browser window root carries the
++// resolved Bento UI color mode. Copy it from the window hosting this page: now,
++// whenever a window announces a change, and when the page is shown or focused.
++// A tab moved into a window whose mode already differs announces nothing, so
++// the last two cover it. The host is looked up each time because a moved tab
++// keeps this document.
++{
++  let root = document.documentElement;
++  let syncColorMode = () => {
++    let windowRoot =
++      window.browsingContext.topChromeWindow?.document.documentElement;
++    if (windowRoot) {
++      root.setAttribute(
++        "data-color-mode",
++        windowRoot.getAttribute("data-color-mode") == "dark" ? "dark" : "light"
++      );
++    }
++  };
++  let syncWhenVisible = () => {
++    if (!document.hidden) {
++      syncColorMode();
++    }
++  };
++  syncColorMode();
++  let observer = { observe: syncColorMode };
++  Services.obs.addObserver(observer, "bento-ui-color-mode");
++  document.addEventListener("visibilitychange", syncWhenVisible);
++  window.addEventListener("focus", syncColorMode);
++  window.addEventListener(
++    "unload",
++    () => {
++      Services.obs.removeObserver(observer, "bento-ui-color-mode");
++      document.removeEventListener("visibilitychange", syncWhenVisible);
++      window.removeEventListener("focus", syncColorMode);
++    },
++    { once: true }
++  );
++}
++
+ XPCOMUtils.defineLazyServiceGetters(this, {
+   gApplicationUpdateService: [
+     "@mozilla.org/updates/update-service;1",
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index bb84d15bec4008ae48324a950a4d5ba7bec1d010..bc76fb039dedcf158a20fda57c355f9a95c5cf79 100644
+index bb84d15bec4008ae48324a950a4d5ba7bec1d010..727678b71713f0deb726bd9a12803787b8b656ea 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -20,6 +20,7 @@
+@@ -8,7 +8,9 @@
+ <html xmlns="http://www.w3.org/1999/xhtml"
+         xmlns:html="http://www.w3.org/1999/xhtml"
+         role="document"
+-        id="preferences-root">
++        id="preferences-root"
++        data-bento-theme="default"
++        data-color-mode="light">
+ 
+ <head>
+   <!-- @CSP: We should remove 'unsafe-inline' from style-src, see Bug 1579160 -->
+@@ -20,6 +22,7 @@
    <link rel="stylesheet" href="chrome://global/skin/global.css" />
  
    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
@@ -20,7 +83,7 @@ index bb84d15bec4008ae48324a950a4d5ba7bec1d010..bc76fb039dedcf158a20fda57c355f9a
    <link
      rel="stylesheet"
      href="chrome://browser/skin/preferences/preferences.css"
-@@ -112,7 +113,7 @@
+@@ -112,7 +115,7 @@
                  src="chrome://browser/locale/browser.properties"/>
  
    <stack id="preferences-stack" flex="1">
@@ -29,7 +92,7 @@ index bb84d15bec4008ae48324a950a4d5ba7bec1d010..bc76fb039dedcf158a20fda57c355f9a
  
      <html:moz-page-nav id="categories" data-l10n-id="category-nav-heading" allownoselection="true">
        <html:moz-page-nav-button id="category-general"
-@@ -227,7 +228,7 @@
+@@ -227,7 +230,7 @@
        <key data-l10n-id="focus-search" key="" modifiers="accel" id="focusSearch1"/>
      </keyset>
  
@@ -39,7 +102,7 @@ index bb84d15bec4008ae48324a950a4d5ba7bec1d010..bc76fb039dedcf158a20fda57c355f9a
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fbe32d34eb 100644
+index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..db7c0d43d727f49b47c48c4a038fdfb9c32462e8 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
 @@ -22,7 +22,160 @@
@@ -217,7 +280,7 @@ index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fb
      padding-inline: var(--space-medium);
    }
  }
-@@ -125,6 +283,50 @@
+@@ -125,6 +283,61 @@
    width: 100%;
  }
  
@@ -226,6 +289,17 @@ index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fb
 +  #preferences-body {
 +    background-color: var(--background-color-canvas);
 +    color: var(--text-color);
++  }
++
++  /* Keep Firefox's light-dark() tokens on the same scheme as Bento's token
++     sheet, which follows data-color-mode (mirrored from the window root by
++     preferences.js). */
++  #preferences-root[data-color-mode="light"] {
++    color-scheme: light;
++  }
++
++  #preferences-root[data-color-mode="dark"] {
++    color-scheme: dark;
 +  }
 +
 +  #categories {
@@ -268,7 +342,7 @@ index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fb
  html|div[data-category],
  groupbox[data-category],
  setting-group[data-category] {
-@@ -645,7 +847,7 @@ html|dialog,
+@@ -645,7 +858,7 @@ html|dialog,
    @media not (forced-colors) {
      html|dialog,
      .dialogBox {
@@ -277,7 +351,7 @@ index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fb
      }
    }
  }
-@@ -723,11 +925,11 @@ html|dialog,
+@@ -723,11 +936,11 @@ html|dialog,
  }
  
  .fxaProfileImage.actionable:hover {
@@ -291,7 +365,7 @@ index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fb
  }
  
  #useFirefoxSync {
-@@ -1338,12 +1540,12 @@ richlistitem .text-link:hover {
+@@ -1338,12 +1551,12 @@ richlistitem .text-link:hover {
  }
  
  @media (prefers-color-scheme: dark) {
@@ -307,7 +381,7 @@ index 536e357a9d9918ce0cc4bc95bd1ec68743e34344..52c9d4c689409ece536a7c489a6c32fb
    }
  }
  
-@@ -1472,7 +1674,7 @@ setting-group[groupid="aiFeatures"] {
+@@ -1472,7 +1685,7 @@ setting-group[groupid="aiFeatures"] {
  
  .ai-controls-description {
    --ai-controls-description-image-margin: calc(64px + var(--space-large));

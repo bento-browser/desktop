@@ -285,8 +285,8 @@ compatibility transition.
 shell's hand-written CSS (`var(--neutral-*)`, `--color-*`, `--space-*`,
 `--radius-*`, `--shadow-*` in `extensions/bento-shell/src/**/*.css`; the generated
 `theme/presets/` define the aliases and are skipped) and fails when a file, or the
-total, is above the committed `.legacy-alias-cap.json`. On 2026-10-12 that was 408
-uses of 94 aliases in 20 files. The cap is a ratchet like `.size-baseline.json`:
+total, is above the committed `.legacy-alias-cap.json`. On 2026-10-12 that was 402
+uses of 90 aliases in 20 files. The cap is a ratchet like `.size-baseline.json`:
 `node scripts/check-legacy-aliases.mjs --write-cap` lowers it to the current counts
 and refuses to raise any file unless the change names it with
 `--accept-growth <file>`, so intended growth shows in the committed diff. A new file
@@ -316,10 +316,28 @@ the same element in every theme and color scheme. Checked on 2026-10-12:
   prove that for every element. The raw `--neutral-default-N` ladders themselves
   (27 names, 30 uses) are Bento values with three declarations each, not
   pass-throughs.
-- Not declared anywhere: `--neutral-0`, `--neutral-6`, `--neutral-8`
-  (`welcome.css`) and `--radius-2xs` (`PanelTrailer.css`). Those declarations
-  resolve to nothing, so the properties that use them are invalid at computed-value
-  time.
+- Every alias the shell CSS reads is declared (see "Undefined token reads" below).
+
+### Undefined token reads
+
+`var(--x)` with no fallback is invalid at computed-value time when nothing declares
+`--x`, so the property silently falls back to its initial value (a transparent
+background, a square corner). `pnpm run lint:tokens` (CI, extensions job) fails when
+shell CSS reads such a name. Declared means any `--x:` in the shell CSS (generated
+presets and `bento-tokens.css` included) or in the public `@muxui/react`
+`styles.css` and `themes.css`; a `var(--x, fallback)` read is allowed, which covers
+properties components set from JS. Native chrome CSS under `src/browser` is not
+scanned.
+
+When a read names a step that does not exist (the neutral ladder is 5, 10, 12, ...,
+100; the radius ladder is none, xs, s, m, l, xl, 2xl, full), take the nearest real
+step and prefer its public semantic role over the legacy alias. The welcome tray
+and privacy summary used `--neutral-0`, `--neutral-6` and `--neutral-8`; they now
+use `--muxui-semantic-surface-background` (neutral-5) and
+`--muxui-semantic-surface-raised` (neutral-10), the same surfaces the Mux dialog
+and its page use. PanelTrailer favicons used `--radius-2xs`; they now use
+`--muxui-semantic-shape-radius-xs`, the smallest radius, as an earlier fix of the
+same typo did (`ee95ebe5`).
 
 Add a missing reusable value to `bento-tokens.css` before using it. Avoid raw
 colors, durations, easings, or unexplained dimensions. Pair a tinted surface

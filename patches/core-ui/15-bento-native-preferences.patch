@@ -2150,10 +2150,10 @@ index a84468121d7efd38d7a877c81f08eeb2157e91bd..37b37ac162f370284138d3479676124e
     content/browser/preferences/config/aiFeatures.mjs                    (config/aiFeatures.mjs)
     content/browser/preferences/config/firefoxLabs.mjs                   (config/firefoxLabs.mjs)
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..5017dacfa27283b558326adf650996f8dddbee29 100644
+index a2e977363c4061d00f7cd65d3c6bb40aa26d487f..0fee7042f626e66d8a27885cd03ee69eff2d8a00 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -241,6 +241,34 @@ var gCurrentHistoryEntryId = null;
+@@ -281,6 +281,34 @@ var gCurrentHistoryEntryId = null;
   * @type {Record<string, SettingPaneConfig>}
   */
  const CONFIG_PANES = Object.freeze({
@@ -2189,10 +2189,10 @@ index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..5017dacfa27283b558326adf650996f8
      l10nId: "about-firefox-header",
      iconSrc: "chrome://browser/skin/sidebar/firefox.svg",
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index bc76fb039dedcf158a20fda57c355f9a95c5cf79..7db215e522b8e613ca4c87bdc89372f3fc458b26 100644
+index 727678b71713f0deb726bd9a12803787b8b656ea..5cf1b2266d0174d685e0e204810c102d0c17ec6c 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -39,6 +39,7 @@
+@@ -41,6 +41,7 @@
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-group.css" />
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-pane.css" />
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-control.css" />
@@ -2200,7 +2200,7 @@ index bc76fb039dedcf158a20fda57c355f9a95c5cf79..7db215e522b8e613ca4c87bdc89372f3
  
    <link rel="localization" href="branding/brand.ftl"/>
    <link rel="localization" href="browser/browser.ftl"/>
-@@ -46,6 +47,7 @@
+@@ -48,6 +49,7 @@
    <link rel="localization" href="browser/preferences/fonts.ftl"/>
    <link rel="localization" href="browser/preferences/moreFromMozilla.ftl"/>
    <link rel="localization" href="browser/preferences/preferences.ftl"/>
@@ -2208,7 +2208,7 @@ index bc76fb039dedcf158a20fda57c355f9a95c5cf79..7db215e522b8e613ca4c87bdc89372f3
    <link rel="localization" href="toolkit/branding/brandings.ftl"/>
    <link rel="localization" href="toolkit/firefoxlabs/features.ftl"/>
    <link rel="localization" href="toolkit/global/mozPageHeader.ftl"/>
-@@ -163,6 +165,11 @@
+@@ -165,6 +167,11 @@
          iconsrc="chrome://global/skin/icons/cursor-arrow.svg"
          data-l10n-id="pane-tabs-browsing-title2">
        </html:moz-page-nav-button>
@@ -2220,7 +2220,7 @@ index bc76fb039dedcf158a20fda57c355f9a95c5cf79..7db215e522b8e613ca4c87bdc89372f3
        <html:hr class="nav-separator" id="nav-separator" role="presentation" />
        <html:moz-page-nav-button id="category-accessibility"
          view="paneAccessibility"
-@@ -207,6 +214,8 @@
+@@ -209,6 +216,8 @@
             navigated to from within other panes. -->
        <html:moz-page-nav-button class="hidden-category" view="paneProfiles"/>
        <html:moz-page-nav-button class="hidden-category" view="paneTranslations"/>

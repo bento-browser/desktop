@@ -94,8 +94,12 @@
     border: 1px solid var(--neutral-24);
     border-radius: var(--radius-s);
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--neutral-0) 92%, transparent), transparent),
-      var(--neutral-8);
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--muxui-semantic-surface-background) 92%, transparent),
+        transparent
+      ),
+      var(--muxui-semantic-surface-raised);
     overflow-wrap: anywhere;
   }
 
@@ -106,8 +110,12 @@
     border-color: color-mix(in srgb, var(--bento-workspace-accent) 42%, var(--neutral-24));
     background: linear-gradient(
       135deg,
-      color-mix(in srgb, var(--bento-workspace-accent) 16%, var(--neutral-0)),
-      var(--neutral-8)
+      color-mix(
+        in srgb,
+        var(--bento-workspace-accent) 16%,
+        var(--muxui-semantic-surface-background)
+      ),
+      var(--muxui-semantic-surface-raised)
     );
   }
 
@@ -151,7 +159,7 @@
     padding: var(--space-s);
     border: 1px solid var(--neutral-24);
     border-radius: var(--radius-s);
-    background-color: var(--neutral-6);
+    background-color: var(--muxui-semantic-surface-background);
   }
 
   .bento-welcome__theme-options {

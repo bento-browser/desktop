@@ -1,11 +1,11 @@
 {
-  "total": 408,
+  "total": 402,
   "files": {
     "extensions/bento-shell/src/app.css": 14,
     "extensions/bento-shell/src/components/AddressBar/AddressBar.css": 8,
     "extensions/bento-shell/src/components/FolderRow/FolderRow.css": 12,
     "extensions/bento-shell/src/components/MergePalette/MergePalette.css": 27,
-    "extensions/bento-shell/src/components/PanelTrailer/PanelTrailer.css": 18,
+    "extensions/bento-shell/src/components/PanelTrailer/PanelTrailer.css": 17,
     "extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.css": 19,
     "extensions/bento-shell/src/components/primitives/BentoStack.css": 7,
     "extensions/bento-shell/src/components/SidebarAddressBar/SidebarAddressBar.css": 16,
@@ -20,6 +20,6 @@
     "extensions/bento-shell/src/menu/menu.css": 5,
     "extensions/bento-shell/src/theme/bento-tokens.css": 82,
     "extensions/bento-shell/src/theme/document-base.css": 1,
-    "extensions/bento-shell/src/welcome/welcome.css": 28
+    "extensions/bento-shell/src/welcome/welcome.css": 23
   }
 }

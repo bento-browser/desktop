@@ -3183,6 +3183,7 @@
   // tokens flips chrome tokens. 'system' is stored as Auto but resolved here
   // to light/dark because native chrome renders an explicit mode.
   let chromeColorModePref = null;
+  const BENTO_UI_COLOR_MODE_TOPIC = 'bento-ui-color-mode';
   function resolveChromeColorMode(mode) {
     if (mode === 'system') {
       if (typeof window.matchMedia !== 'function') return 'dark';
@@ -3199,6 +3200,10 @@
     chromeColorModePref = mode;
     if (root.getAttribute('data-color-mode') !== resolved) {
       root.setAttribute('data-color-mode', resolved);
+      // about:preferences follows this mode too (preferences.js, patch 12). On this topic it
+      // re-reads the window that hosts it, so a Settings tab moved to another window keeps
+      // following without holding on to the window it first loaded in.
+      Services.obs.notifyObservers(window, BENTO_UI_COLOR_MODE_TOPIC, resolved);
     }
     root.setAttribute('data-bento-color-mode-pref', mode);
   }
@@ -3530,71 +3535,119 @@
   const HTML_NS = 'http://www.w3.org/1999/xhtml';
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
-  // Lucide icon paths — hand-copied from lucide-react (pinned in
-  // extensions/bento-shell/package.json, currently ^0.460.0). This
-  // file runs in Firefox's chrome JS context (browser.xhtml, parent
-  // process) which has no npm module graph, so we can't import from
-  // lucide-react directly the way the React-side extension code does.
+  // Lucide icons, copied verbatim from lucide-react 1.37.0: the version
+  // @muxui/react depends on and extensions/bento-shell/package.json pins.
+  // This file runs in Firefox's chrome JS context (browser.xhtml, parent
+  // process), which has no npm module graph, so it cannot import
+  // lucide-react the way the React-side extension code does.
   //
-  // To verify or re-sync a path: open node_modules/lucide-react/dist/
-  // esm/icons/<kebab-name>.js — each Lucide icon ships its path data
-  // as static array exports. Key names below are camelCased versions
-  // of the upstream kebab names (chevron-left → chevronLeft, etc.),
-  // so the mapping is mechanical.
-  //
-  // Multi-segment icons concatenate sub-paths with 'M' moves so each
-  // entry stays a single d-string (one <path> per icon — keeps
-  // makeIcon trivial). gripVertical and moreVertical use Lucide's
-  // degenerate-arc trick: zero-length segments rendered as filled
-  // circles via stroke-linecap='round', dot diameter == stroke-width.
+  // Each entry is the icon's own node list, [tag, attributes] per shape
+  // without React keys, taken from __iconNode in node_modules/lucide-react/
+  // dist/esm/icons/<kebab-name>.mjs. Key names are the camelCased upstream
+  // names (chevron-left becomes chevronLeft, volume-2 becomes volume2).
+  // scripts/mount-icons.test.mjs fails when an entry drifts from the
+  // installed package, so re-sync the entries whenever lucide-react changes.
   const ICONS = {
-    chevronLeft: 'm15 18-6-6 6-6',
-    chevronRight: 'm9 18 6-6-6-6',
-    rotate: 'M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.74 2.74L3 8 M3 3v5h5',
-    bookmark: 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z',
-    volume2:
-      'M11 5 6 9H2v6h4l5 4V5z M15.54 8.46a5 5 0 0 1 0 7.07 M19.07 4.93a10 10 0 0 1 0 14.14',
-    volumeX: 'M11 5 6 9H2v6h4l5 4V5z M22 9l-6 6 M16 9l6 6',
-    pin: 'M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 2-2V4H6v1a2 2 0 0 0 2 2h1z',
-    plus: 'M12 5v14 M5 12h14',
-    x: 'M18 6 6 18 M6 6l12 12',
-    // grip-vertical: 2×3 dot grid — drag-to-reorder affordance.
-    gripVertical:
-      'M9 5a1 1 0 1 0 0 0 M9 12a1 1 0 1 0 0 0 M9 19a1 1 0 1 0 0 0 M15 5a1 1 0 1 0 0 0 M15 12a1 1 0 1 0 0 0 M15 19a1 1 0 1 0 0 0',
-    // more-vertical: 1×3 dot column — canonical kebab "more" trigger.
-    moreVertical: 'M12 5a1 1 0 1 0 0 0 M12 12a1 1 0 1 0 0 0 M12 19a1 1 0 1 0 0 0',
+    chevronLeft: [['path', { d: 'm15 18-6-6 6-6' }]],
+    chevronRight: [['path', { d: 'm9 18 6-6-6-6' }]],
+    rotateCcw: [
+      ['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+      ['path', { d: 'M3 3v5h5' }],
+    ],
+    bookmark: [
+      [
+        'path',
+        {
+          d: 'M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z',
+        },
+      ],
+    ],
+    volume2: [
+      [
+        'path',
+        {
+          d: 'M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z',
+        },
+      ],
+      ['path', { d: 'M16 9a5 5 0 0 1 0 6' }],
+      ['path', { d: 'M19.364 18.364a9 9 0 0 0 0-12.728' }],
+    ],
+    volumeX: [
+      [
+        'path',
+        {
+          d: 'M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z',
+        },
+      ],
+      ['path', { d: 'm16.5 14.5 5-5' }],
+      ['path', { d: 'm16.5 9.5 5 5' }],
+    ],
+    pin: [
+      ['path', { d: 'M12 17v5' }],
+      [
+        'path',
+        {
+          d: 'M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z',
+        },
+      ],
+    ],
+    plus: [
+      ['path', { d: 'M5 12h14' }],
+      ['path', { d: 'M12 5v14' }],
+    ],
+    x: [
+      ['path', { d: 'M18 6 6 18' }],
+      ['path', { d: 'm6 6 12 12' }],
+    ],
+    gripVertical: [
+      ['circle', { cx: '9', cy: '12', r: '1' }],
+      ['circle', { cx: '9', cy: '5', r: '1' }],
+      ['circle', { cx: '9', cy: '19', r: '1' }],
+      ['circle', { cx: '15', cy: '12', r: '1' }],
+      ['circle', { cx: '15', cy: '5', r: '1' }],
+      ['circle', { cx: '15', cy: '19', r: '1' }],
+    ],
+    ellipsisVertical: [
+      ['circle', { cx: '12', cy: '12', r: '1' }],
+      ['circle', { cx: '12', cy: '5', r: '1' }],
+      ['circle', { cx: '12', cy: '19', r: '1' }],
+    ],
+    music2: [
+      ['circle', { cx: '8', cy: '18', r: '4' }],
+      ['path', { d: 'M12 18V2l7 4' }],
+    ],
+    music3: [
+      ['circle', { cx: '12', cy: '18', r: '4' }],
+      ['path', { d: 'M16 18V2' }],
+    ],
+    music4: [
+      ['path', { d: 'M9 18V5l12-2v13' }],
+      ['path', { d: 'm9 9 12-2' }],
+      ['circle', { cx: '6', cy: '18', r: '3' }],
+      ['circle', { cx: '18', cy: '16', r: '3' }],
+    ],
   };
 
   const MUSIC_PARTICLE_ICONS = [
-    {
-      className: 'bento-panel-nav__audio-particle--1',
-      shapes: [
-        ['circle', { cx: '8', cy: '18', r: '4' }],
-        ['path', { d: 'M12 18V2l7 4' }],
-      ],
-    },
-    {
-      className: 'bento-panel-nav__audio-particle--2',
-      shapes: [
-        ['circle', { cx: '12', cy: '18', r: '4' }],
-        ['path', { d: 'M16 18V2' }],
-      ],
-    },
-    {
-      className: 'bento-panel-nav__audio-particle--3',
-      shapes: [
-        ['path', { d: 'M9 18V5l12-2v13' }],
-        ['path', { d: 'm9 9 12-2' }],
-        ['circle', { cx: '6', cy: '18', r: '3' }],
-        ['circle', { cx: '18', cy: '16', r: '3' }],
-      ],
-    },
+    { className: 'bento-panel-nav__audio-particle--1', shapes: ICONS.music2 },
+    { className: 'bento-panel-nav__audio-particle--2', shapes: ICONS.music3 },
+    { className: 'bento-panel-nav__audio-particle--3', shapes: ICONS.music4 },
   ];
   const PANEL_NAV_AUDIO_EMIT_INTERVAL_MS = 540;
   const PANEL_NAV_AUDIO_PARTICLE_TTL_MS = 1800;
   let nextPanelNavAudioOwnerId = 1;
 
-  function makeIcon(d, size) {
+  function appendIconShapes(svg, shapes) {
+    for (const [tag, attrs] of shapes) {
+      const shape = document.createElementNS(SVG_NS, tag);
+      for (const [name, value] of Object.entries(attrs)) {
+        shape.setAttribute(name, value);
+      }
+      svg.appendChild(shape);
+    }
+  }
+
+  function makeIcon(shapes, size) {
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('fill', 'none');
@@ -3606,9 +3659,7 @@
       svg.setAttribute('width', String(size));
       svg.setAttribute('height', String(size));
     }
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', d);
-    svg.appendChild(path);
+    appendIconShapes(svg, shapes);
     return svg;
   }
 
@@ -3622,13 +3673,7 @@
     svg.setAttribute('stroke-linejoin', 'round');
     svg.setAttribute('aria-hidden', 'true');
     svg.classList.add('bento-panel-nav__audio-particle', iconDef.className);
-    for (const [tag, attrs] of iconDef.shapes) {
-      const shape = document.createElementNS(SVG_NS, tag);
-      for (const [name, value] of Object.entries(attrs)) {
-        shape.setAttribute(name, value);
-      }
-      svg.appendChild(shape);
-    }
+    appendIconShapes(svg, iconDef.shapes);
     return svg;
   }
 
@@ -3753,14 +3798,14 @@
     }
   }
 
-  function makeHeaderButton(title, iconD, onClick) {
+  function makeHeaderButton(title, iconShapes, onClick) {
     const btn = document.createElementNS(HTML_NS, 'button');
     btn.type = 'button';
     btn.className =
       'bento-button bento-button--ghost bento-icon-button bento-icon-button--sm bento-panel-header-button';
     btn.title = title;
     btn.setAttribute('aria-label', title);
-    btn.appendChild(makeIcon(iconD));
+    btn.appendChild(makeIcon(iconShapes));
     btn.addEventListener('click', onClick);
     return btn;
   }
@@ -5992,7 +6037,7 @@
     });
     attachPanelHistoryContextMenu(backBtn, getActionBrowser);
     attachPanelHistoryContextMenu(forwardBtn, getActionBrowser);
-    const reloadBtn = makeHeaderButton('Reload', ICONS.rotate, () => {
+    const reloadBtn = makeHeaderButton('Reload', ICONS.rotateCcw, () => {
       const panelEl = header.closest?.('[data-bento-main-panel], [data-bento-panel-tab-id]');
       reloadPanelBrowser(getActionBrowser(), panelEl, initialUrl);
     });
@@ -6116,7 +6161,7 @@
     // panel/setMainWidth and gets resized via the splitter).
     let moreBtn = null;
     if (Number.isFinite(tabId)) {
-      moreBtn = makeHeaderButton('Panel options', ICONS.moreVertical, () => {
+      moreBtn = makeHeaderButton('Panel options', ICONS.ellipsisVertical, () => {
         const panelEl = moreBtn.closest('[data-bento-panel-tab-id]');
         if (!panelEl) return;
         const sizeItems =

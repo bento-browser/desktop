@@ -62,6 +62,7 @@ import { usePrivacyStore } from '../state/privacy';
 import { Column } from '../components/primitives/BentoColumn';
 import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
+import { BentoTray, PrivacySummary } from './WelcomeSurfaces';
 import './welcome.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
@@ -322,40 +323,6 @@ async function importBrowserData(nextStep: StepIndex): Promise<void> {
   sendChromeTitle(`${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${nextStep}_${Date.now()}`);
 }
 
-function BentoTray({
-  activeStep,
-  boxes,
-}: {
-  activeStep: OnboardingStep;
-  boxes: readonly (readonly [string, string])[];
-}) {
-  return (
-    <div className="bento-welcome__tray" aria-hidden="true">
-      <div className="bento-welcome__tray-cell bento-welcome__tray-cell--hero">
-        <span className="bento-welcome__tray-icon">
-          <BentoIcon icon={activeStep.icon} size="lg" />
-        </span>
-        <Text variant="label" size="md">
-          {activeStep.eyebrow}
-        </Text>
-        <Text variant="body" size="sm" color="muted">
-          Bento keeps the browser surface divided into useful, durable compartments.
-        </Text>
-      </div>
-      {boxes.map(([label, detail]) => (
-        <div className="bento-welcome__tray-cell" key={`${label}-${detail}`}>
-          <Text variant="label" size="sm">
-            {label}
-          </Text>
-          <Text variant="body" size="xs" color="muted">
-            {detail}
-          </Text>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function StepRail({ current }: { current: StepIndex }) {
   return (
     <Row gap="xs" align="center" className="bento-welcome__rail" aria-hidden="true">
@@ -435,20 +402,7 @@ function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel
           </ToggleButton>
         ))}
       </ToggleButtonGroup>
-      <Column gap="2xs" className="bento-welcome__privacy-summary">
-        <Text variant="label" size="sm">
-          {detail.label}
-        </Text>
-        <Text variant="body" size="sm" color="muted">
-          {detail.bestFor}
-        </Text>
-        <Text variant="body" size="sm" color="muted">
-          Benefit: {detail.benefits[0]}
-        </Text>
-        <Text variant="body" size="sm" color="muted">
-          Caveat: {detail.caveats[0]}
-        </Text>
-      </Column>
+      <PrivacySummary detail={detail} />
     </Column>
   );
 }
@@ -666,7 +620,7 @@ function WelcomeApp() {
         </Row>
 
         <div className="bento-welcome__layout">
-          <BentoTray activeStep={activeStep} boxes={activeStep.boxes} />
+          <BentoTray icon={activeStep.icon} eyebrow={activeStep.eyebrow} boxes={activeStep.boxes} />
 
           <Column gap="m" className="bento-welcome__copy">
             <Text variant="label" size="sm" className="bento-welcome__eyebrow">

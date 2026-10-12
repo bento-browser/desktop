@@ -29,6 +29,36 @@ export const MANY_SAVED_PANELS: SavedPanelEntry[] = [
   { id: 'fixture-12', title: 'Bento Settings', url: 'https://bento-browser.com/settings' },
 ];
 
+// Square-cornered SVG favicons: the trailer's favicon radius is the only thing
+// that rounds them, so a missing radius shows as sharp corners.
+function squareFavicon(fill: string, letter: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="${fill}"/>` +
+    `<text x="12" y="17" font-size="14" font-family="sans-serif" text-anchor="middle" fill="#fff">${letter}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+export const FAVICON_SAVED_PANELS: SavedPanelEntry[] = [
+  {
+    id: 'fixture-icon-1',
+    title: 'ChatGPT',
+    url: 'https://chat.openai.com/',
+    favIconUrl: squareFavicon('#10a37f', 'C'),
+  },
+  {
+    id: 'fixture-icon-2',
+    title: 'Linear · Inbox',
+    url: 'https://linear.app/inbox',
+    favIconUrl: squareFavicon('#5e6ad2', 'L'),
+  },
+  {
+    id: 'fixture-icon-3',
+    title: 'Hacker News',
+    url: 'https://news.ycombinator.com/',
+    favIconUrl: squareFavicon('#ff6600', 'H'),
+  },
+];
+
 export function seedSavedPanels(items: SavedPanelEntry[]): void {
   useSavedPanelsStore.getState().apply(items);
 }
