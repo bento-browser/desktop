@@ -10,31 +10,41 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // welcome cells and square favicon corners this check was added after). A `var(--x, fallback)`
 // read is allowed, which also covers properties that components set from JS.
 //
-// Declared means any `--name:` or `@property --name` in the shell's own CSS (which includes the
-// generated presets and bento-tokens.css) or in the public @muxui/react styles.css/themes.css.
+// Declared means a `--name:` declaration or an `@property --name` rule with an `initial-value`
+// in the shell's own CSS (which includes the generated presets and bento-tokens.css) or in the
+// public @muxui/react styles.css/themes.css. Comments, strings and url() payloads are ignored.
 // Native chrome CSS under src/browser is not scanned: it reads Firefox's own tokens too.
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
 const MUX_SHEETS = ['@muxui/react/styles.css', '@muxui/react/themes.css'];
 
-const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+// Comments, quoted strings and url() payloads hold text, not declarations or reads. The
+// earliest alternative at each position wins, so a ")" or a comment marker inside a string
+// or a quoted url() cannot end or start the wrong match.
+const TEXT_ONLY =
+  /\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|url\(\s*(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^)]*)\s*\)/gi;
+const maskText = (css) => css.replace(TEXT_ONLY, ' ');
 
-/** Custom property names declared in `css` (`--x: value` and `@property --x`). */
+/**
+ * Custom property names `css` defines: a real `--x: value` declaration (it starts a block or
+ * follows `;` or `}`), or an `@property --x` rule with an `initial-value`. Without one the
+ * registration gives a read nothing to resolve to.
+ */
 export function declaredProperties(css) {
-  const source = stripComments(css);
-  return new Set(
-    [...source.matchAll(/(--[\w-]+)\s*:|@property\s+(--[\w-]+)/g)].map(
-      (match) => match[1] ?? match[2],
-    ),
+  const source = maskText(css);
+  const declared = new Set(
+    [...source.matchAll(/(?:^|[{};])\s*(--[\w-]+)\s*:/g)].map((match) => match[1]),
   );
+  for (const match of source.matchAll(/@property\s+(--[\w-]+)\s*\{([^}]*)\}/g)) {
+    if (/(?:^|[{;\s])initial-value\s*:/.test(match[2])) declared.add(match[1]);
+  }
+  return declared;
 }
 
 /** Custom property names `css` reads with `var(--x)` and no fallback, once each. */
 export function unguardedReads(css) {
   return [
-    ...new Set(
-      [...stripComments(css).matchAll(/var\(\s*(--[\w-]+)\s*\)/g)].map((match) => match[1]),
-    ),
+    ...new Set([...maskText(css).matchAll(/var\(\s*(--[\w-]+)\s*\)/g)].map((match) => match[1])),
   ];
 }
 

@@ -7,22 +7,38 @@ import {
   unguardedReads,
 } from './check-undefined-tokens.mjs';
 
-test('declaredProperties finds declarations and @property, not reads or comments', () => {
+test('declaredProperties finds declarations, not reads, text or comments', () => {
   const css = `
-    :root { --a: 1px; --b-c : red }
-    @property --registered { syntax: '<length>'; inherits: true; initial-value: 0px; }
-    .x { color: var(--read); } /* --commented: 1 */
+    :root { --a: 1px; --b-c : red; }
+    .x { color: var(--read); content: "--text: x"; background: url("a;--url: 1.png"); }
+    .y { .z { --nested: 1 } --after-nested: 2 }
+    /* --commented: 1 */
   `;
-  assert.deepEqual([...declaredProperties(css)].sort(), ['--a', '--b-c', '--registered']);
+  assert.deepEqual([...declaredProperties(css)].sort(), [
+    '--a',
+    '--after-nested',
+    '--b-c',
+    '--nested',
+  ]);
 });
 
-test('unguardedReads skips fallbacks and comments and lists each name once', () => {
+test('declaredProperties counts @property only with an initial-value', () => {
+  const css = `
+    @property --typed { syntax: '<length>'; inherits: true; initial-value: 0px; }
+    @property --bare { syntax: '<length>'; inherits: true; }
+    @property --any { syntax: '*'; inherits: false; }
+  `;
+  assert.deepEqual([...declaredProperties(css)], ['--typed']);
+});
+
+test('unguardedReads skips fallbacks, comments, strings and url()', () => {
   const css = `
     .a { color: var(--x); background: var( --x ) var(--y, red); }
-    .b { gap: calc(var(--z) + var(--w, 1px)); }
+    .b { gap: calc(var(--z) + var(--w, 1px)); content: "var(--quoted)"; }
+    .c { background: url("a)b.png") var(--after-url); }
     /* var(--commented) */
   `;
-  assert.deepEqual(unguardedReads(css), ['--x', '--z']);
+  assert.deepEqual(unguardedReads(css), ['--x', '--z', '--after-url']);
 });
 
 test('findUndefinedReads reports only reads that no stylesheet declares', () => {
@@ -34,4 +50,13 @@ test('findUndefinedReads reports only reads that no stylesheet declares', () => 
     declaredIn: [':root { --known: red; }', '.c { --other: 1; }'],
   });
   assert.deepEqual(missing, { 'a.css': ['--radius-2xs'] });
+
+  // Text that looks like a declaration does not declare, and text that looks like a read is not one.
+  assert.deepEqual(
+    findUndefinedReads({
+      scanned: { 'a.css': '.a { color: var(--missing); content: "var(--quoted)"; }' },
+      declaredIn: ['.b { content: "--missing: example"; }'],
+    }),
+    { 'a.css': ['--missing'] },
+  );
 });
