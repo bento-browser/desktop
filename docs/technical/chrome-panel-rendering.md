@@ -132,6 +132,24 @@ adds its entry, and its id in the mount probe list, in the same change.
     `<style>`: one stray backtick or dollar-brace breaks the whole mount script.
   - `scripts/check-chrome-resize-guard.mjs` matches the shadow-token rules in
     this file, not in the mount script.
+- Chrome icons. Source of truth: the `ICONS` table in
+  `src/browser/base/content/bento-shell-mount.js`, verbatim copies of the
+  `lucide-react` icon nodes (the version `@muxui/react` depends on, pinned in
+  `extensions/bento-shell/package.json`), because chrome JS cannot import npm
+  packages. Chrome bridge: `makeIcon` draws an entry as an inline `<svg>` with
+  `stroke="currentColor"`, `stroke-width="2"`, and round caps and joins; panel
+  header buttons, the panel navigator, and the music-note particles all use it.
+  Persistence: none. Manual verification: open a side panel and compare its
+  header icons (Back, Forward, Reload, audio, Bookmark, Pin, Close, drag handle,
+  options) with the same icons in a shell menu. Pitfalls:
+  - Copy the whole icon node, not a path. Dot icons (`gripVertical`,
+    `ellipsisVertical`) are lucide `<circle r="1">` shapes. An earlier copy drew
+    each dot as a zero-length stroke and raised `stroke-width` to 3.5 in CSS to
+    compensate; with the real circles that override would draw oversized dots,
+    so do not reintroduce it.
+  - `scripts/mount-icons.test.mjs` fails when an entry differs from the installed
+    package. After a `lucide-react` bump, re-sync the entries from each icon's
+    `__iconNode` instead of editing path data by hand.
 - The gBrowser hooks are guarded by `typeof` and a `__bento*` flag, so a Firefox
   rename silently disables them (ghost panels, wrong tab focus after a close).
   After a Firefox update, run `pnpm run firefox:compat:engine` before anything

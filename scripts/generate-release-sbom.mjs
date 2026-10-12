@@ -29,7 +29,7 @@ const APPROVED_SHELL_RUNTIME_DEPENDENCIES = Object.freeze({
   'react-dom': '^19.2.0',
   zustand: '^5.0.0',
   '@tanstack/react-virtual': '^3.10.0',
-  'lucide-react': '^0.460.0',
+  'lucide-react': '1.37.0',
   'emojibase-data': '17.0.0',
 });
 
