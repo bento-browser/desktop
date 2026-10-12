@@ -13,6 +13,8 @@ export interface AdoptedTabDeps {
     clearWorkspace(id: number): Promise<void>;
     assignWorkspaceEagerly(id: number, workspaceId: string): Promise<boolean>;
   };
+  /** Tabs Bento itself moved between windows; see `createProgrammaticMoves`. */
+  moves: Pick<ProgrammaticMoves, 'take'>;
   workspaces: {
     findOwningWindow(workspaceId: string): number | null;
     getActiveId(windowId: number): string | null;
@@ -28,8 +30,8 @@ export interface AdoptedTabDeps {
 
 /**
  * Detach a tab that arrived in `newWindowId` from the workspace it carried.
- * A tab whose workspace the destination window shows keeps it (Bento's own
- * cross-window move on workspace activation). Otherwise the tab leaves its
+ * A tab Bento moved itself keeps its workspace, and so does one whose workspace
+ * the destination window shows. Otherwise the tab leaves its
  * panel layouts, loses the stale workspace, and joins the destination's
  * workspace now when it has one; a window that has not claimed a workspace yet
  * assigns it on its first activation (`adoptableTabs`).
@@ -39,6 +41,9 @@ export async function releaseAdoptedTab(
   tabId: number,
   newWindowId: number,
 ): Promise<void> {
+  // Checked first: the window that asked for the move may show another workspace by
+  // the time the tab arrives, which would make the move look like a user drag.
+  if (deps.moves.take(tabId) !== undefined) return;
   const tab = deps.tabs.snapshot().find((candidate) => candidate.id === tabId);
   if (!tab?.workspaceId) return;
   if (deps.workspaces.findOwningWindow(tab.workspaceId) === newWindowId) return;
@@ -71,6 +76,56 @@ export function adoptableTabs(
 ): TabSnapshot[] {
   if (windowTabs.some((tab) => tab.workspaceId)) return [];
   return windowTabs.filter((tab) => !isClosing(tab.id) && !isPrivate(tab.id));
+}
+
+/**
+ * Moves Bento starts itself (a window claiming its workspace's tabs, an import
+ * relocating tabs): tab id to the workspace the tab belongs to. `onAttached`
+ * cannot tell these from a user drag by looking at ownership, because the window
+ * can switch workspace before the attach event arrives. An entry is taken when
+ * the tab attaches and expires if it never does.
+ */
+export interface ProgrammaticMoves {
+  expect(tabIds: readonly number[], workspaceId: string): void;
+  forget(tabIds: readonly number[]): void;
+  /** The workspace the move was made for, once; undefined for any other attach. */
+  take(tabId: number): string | undefined;
+}
+
+export function createProgrammaticMoves(ttlMs = 10_000): ProgrammaticMoves {
+  const expected = new Map<number, { workspaceId: string; until: number }>();
+  return {
+    expect(tabIds, workspaceId) {
+      const now = Date.now();
+      for (const [tabId, entry] of expected) if (entry.until <= now) expected.delete(tabId);
+      for (const tabId of tabIds) expected.set(tabId, { workspaceId, until: now + ttlMs });
+    },
+    forget(tabIds) {
+      for (const tabId of tabIds) expected.delete(tabId);
+    },
+    take(tabId) {
+      const entry = expected.get(tabId);
+      expected.delete(tabId);
+      return entry && entry.until > Date.now() ? entry.workspaceId : undefined;
+    },
+  };
+}
+
+export const bentoTabMoves = createProgrammaticMoves();
+
+/** `tabs.move` into `windowId` for tabs that belong to `workspaceId`, recorded as Bento's own. */
+export async function moveTabsToWindow(
+  tabIds: number[],
+  windowId: number,
+  workspaceId: string,
+): Promise<void> {
+  bentoTabMoves.expect(tabIds, workspaceId);
+  try {
+    await browser.tabs.move(tabIds, { windowId, index: -1 });
+  } catch (err) {
+    bentoTabMoves.forget(tabIds);
+    throw err;
+  }
 }
 
 /**

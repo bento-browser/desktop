@@ -1,8 +1,9 @@
 import type { TabSnapshot } from '@shared/protocol';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   adoptableTabs,
   createAdoptionGate,
+  createProgrammaticMoves,
   releaseAdoptedTab,
   tabsToAdopt,
   type AdoptedTabDeps,
@@ -27,8 +28,10 @@ function makeDeps(options: {
   owner?: number | null;
   destinationWorkspaceId?: string | null;
   panelWorkspaceIds?: string[];
+  movedFor?: string;
 }): AdoptedTabDeps {
   return {
+    moves: { take: vi.fn().mockReturnValue(options.movedFor) },
     tabs: {
       snapshot: vi.fn().mockReturnValue(options.tabs),
       clearWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -105,6 +108,25 @@ describe('releaseAdoptedTab', () => {
     expect(deps.panels.remove).not.toHaveBeenCalled();
   });
 
+  it('keeps the workspace of a tab Bento moved even if the window switched workspace meanwhile', async () => {
+    // Window 2 activated ws-a (starting the move), then switched to ws-c before the attach.
+    const deps = makeDeps({
+      tabs: [tab({ id: 7, windowId: 2, workspaceId: 'ws-a' })],
+      owner: null,
+      destinationWorkspaceId: 'ws-c',
+      panelWorkspaceIds: ['ws-a'],
+      movedFor: 'ws-a',
+    });
+
+    await releaseAdoptedTab(deps, 7, 2);
+
+    expect(deps.moves.take).toHaveBeenCalledWith(7);
+    expect(deps.tabs.clearWorkspace).not.toHaveBeenCalled();
+    expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
+    expect(deps.panels.remove).not.toHaveBeenCalled();
+    expect(deps.clearPanelMarker).not.toHaveBeenCalled();
+  });
+
   it('ignores a tab that has no workspace', async () => {
     const deps = makeDeps({ tabs: [tab({ id: 7, windowId: 2 })], destinationWorkspaceId: 'ws-b' });
 
@@ -136,6 +158,40 @@ describe('adoptableTabs', () => {
       (id) => id === 2,
     );
     expect(picked.map((t) => t.id)).toEqual([3]);
+  });
+});
+
+describe('createProgrammaticMoves', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('hands back the workspace once, then treats the next attach as a user move', () => {
+    const moves = createProgrammaticMoves();
+    moves.expect([7, 8], 'ws-a');
+
+    expect(moves.take(7)).toBe('ws-a');
+    expect(moves.take(7)).toBeUndefined();
+    expect(moves.take(9)).toBeUndefined();
+    expect(moves.take(8)).toBe('ws-a');
+  });
+
+  it('drops a move that never attached', () => {
+    const moves = createProgrammaticMoves(1000);
+    moves.expect([7], 'ws-a');
+
+    vi.advanceTimersByTime(1001);
+
+    expect(moves.take(7)).toBeUndefined();
+  });
+
+  it('forgets the tabs of a move that failed', () => {
+    const moves = createProgrammaticMoves();
+    moves.expect([7, 8], 'ws-a');
+
+    moves.forget([7]);
+
+    expect(moves.take(7)).toBeUndefined();
+    expect(moves.take(8)).toBe('ws-a');
   });
 });
 

@@ -8,7 +8,13 @@ import { handle } from './messaging/protocol-handler';
 import { createShellActionIntake, createWindowRegistry } from './messaging/shell-action-intake';
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
-import { createAdoptionGate, releaseAdoptedTab, tabsToAdopt } from './tabs/AdoptedTab';
+import {
+  bentoTabMoves,
+  createAdoptionGate,
+  moveTabsToWindow,
+  releaseAdoptedTab,
+  tabsToAdopt,
+} from './tabs/AdoptedTab';
 import { livePanelIds, panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
@@ -1861,6 +1867,7 @@ browser.tabs.onAttached.addListener((tabId, { newWindowId }) => {
       tabs,
       workspaces,
       panels,
+      moves: bentoTabMoves,
       clearPanelMarker,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
       emitPanelsSync: (workspaceId) => void emitPanelsSync(workspaceId),
@@ -2061,7 +2068,7 @@ async function handleWorkspaceActivation(
       .map((t) => t.id);
     if (stray.length > 0) {
       try {
-        await browser.tabs.move(stray, { windowId: targetWindowId, index: -1 });
+        await moveTabsToWindow(stray, targetWindowId, wsId);
       } catch (err) {
         console.warn('[bento-tools] cross-window tab move failed:', err);
       }
