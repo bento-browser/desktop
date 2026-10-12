@@ -463,7 +463,11 @@ resolves a single copy and Mux controls and Bento icons draw the same glyphs; th
 release bundle contains one `createLucideIcon` factory. Bento's `react` and
 `react-dom` ranges (`^19.2.0`) sit inside Mux's peer range (`>=19.2.0 <20`).
 Bento still imports icons per file (`lucide-react/dist/esm/icons/<name>`), never
-the barrel.
+the barrel. The chrome mount script cannot import npm packages, so it keeps
+verbatim copies of the icon nodes it draws (the `ICONS` table in
+`src/browser/base/content/bento-shell-mount.js`);
+`scripts/mount-icons.test.mjs` fails when a copy differs from the installed
+`lucide-react`.
 
 Bento keeps one React Aria substrate graph for menu context identity and pins
 Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
@@ -607,8 +611,9 @@ Guards keep local Mux out of releases:
 4. Regenerate the lock: `pnpm install`. (Frozen installs fail between steps 3
    and 4 by design.)
 5. Verify the new graph: `pnpm install --frozen-lockfile`,
-   `node --test scripts/release-security.test.mjs`, and
-   `pnpm run release:security-check`.
+   `node --test scripts/release-security.test.mjs scripts/mount-icons.test.mjs`
+   (re-sync any `ICONS` entry in the mount script that the second suite reports,
+   from the icon's `__iconNode`), and `pnpm run release:security-check`.
 6. Update the version mentions in `CLAUDE.md`, `README.md`, and the docs
    (`docs/build-tooling.md`, `docs/mux-ui-component-customisations.md`,
    `docs/technical/manual-regression-areas.md`).
