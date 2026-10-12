@@ -41,6 +41,28 @@ test('unguardedReads skips fallbacks, comments, strings and url()', () => {
   assert.deepEqual(unguardedReads(css), ['--x', '--z', '--after-url']);
 });
 
+test('unguardedReads consumes escapes inside an unquoted url()', () => {
+  // The escaped ")" and quote belong to the URL. Stopping at the escaped ")" would start a
+  // string at the escaped quote and swallow the read below it.
+  const css = String.raw`.a { background: url(foo\)\"bar.svg); } .b { color: var(--after-escape); content: "x"; }`;
+  assert.deepEqual(unguardedReads(css), ['--after-escape']);
+});
+
+test('unguardedReads masks url() only as a whole function name', () => {
+  const css = `
+    .a { width: my-url(var(--hyphenated)); }
+    .b { width: myurl(var(--joined)); }
+    .c { background: URL(a.png) var(--after-upper); }
+    .d { background: url( a.png ) var(--after-spaced); }
+  `;
+  assert.deepEqual(unguardedReads(css), [
+    '--hyphenated',
+    '--joined',
+    '--after-upper',
+    '--after-spaced',
+  ]);
+});
+
 test('findUndefinedReads reports only reads that no stylesheet declares', () => {
   const missing = findUndefinedReads({
     scanned: {

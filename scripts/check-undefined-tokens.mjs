@@ -20,9 +20,16 @@ const MUX_SHEETS = ['@muxui/react/styles.css', '@muxui/react/themes.css'];
 
 // Comments, quoted strings and url() payloads hold text, not declarations or reads. The
 // earliest alternative at each position wins, so a ")" or a comment marker inside a string
-// or a quoted url() cannot end or start the wrong match.
-const TEXT_ONLY =
-  /\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|url\(\s*(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^)]*)\s*\)/gi;
+// or a quoted url() cannot end or start the wrong match. An unquoted url() consumes backslash
+// escapes, so an escaped ")" or quote stays inside it. The lookbehind makes "url(" match only
+// as a whole function name, not the tail of "my-url(" or "myurl(".
+const DOUBLE_QUOTED = String.raw`"(?:\\[\s\S]|[^"\\])*"`;
+const SINGLE_QUOTED = String.raw`'(?:\\[\s\S]|[^'\\])*'`;
+const URL_CALL = String.raw`(?<![\w\u0080-\uffff-])url\(\s*(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|(?:\\[\s\S]|[^)\\])*)\s*\)`;
+const TEXT_ONLY = new RegExp(
+  String.raw`\/\*[\s\S]*?\*\/|${DOUBLE_QUOTED}|${SINGLE_QUOTED}|${URL_CALL}`,
+  'gi',
+);
 const maskText = (css) => css.replace(TEXT_ONLY, ' ');
 
 /**
