@@ -21,6 +21,7 @@ import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -40,6 +41,7 @@ function PaletteApp() {
   // through BENTO_PANELS; overlays must not write theme title sentinels
   // because they share document.title with their own close signals.
   useWorkspaceTheme();
+  useOverlayReadySignal('palette');
   const handleClose = () => {
     const newTitle = `${CLOSE_TITLE_PREFIX}_${Date.now()}`;
     sendChromeTitle(newTitle);

@@ -12,9 +12,12 @@
 // and signals chrome to hide on dismiss.
 //
 // Separate channel name from useConfirm's bus so payloads don't collide;
-// each overlay subscribes only to its own bus.
+// each overlay subscribes only to its own bus. Every payload also names its
+// window (windowId.ts) and a receiver ignores other windows': the channel
+// reaches the edit-workspace document of every Bento window.
 
 import { sendChromeTitle } from './chromeTitle';
+import { isForThisWindow, thisWindowId } from './windowId';
 
 export const EDIT_WORKSPACE_BUS_NAME = 'bento-edit-workspace-bus';
 export const EDIT_WORKSPACE_OPEN_PREFIX = 'BENTO_OPEN_EDIT_WORKSPACE';
@@ -35,6 +38,7 @@ export interface EditWorkspacePayload {
 
 interface ShowMessage {
   kind: 'show';
+  windowId: number | null;
   payload: EditWorkspacePayload;
 }
 
@@ -56,7 +60,7 @@ export function requestEditWorkspace(payload: EditWorkspacePayload): void {
     console.warn('[bento-shell] requestEditWorkspace: no BroadcastChannel — cannot open');
     return;
   }
-  ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
+  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
   sendChromeTitle(`${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
 }
 
@@ -69,7 +73,7 @@ export function subscribeToEditWorkspaceRequests(
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as ShowMessage | undefined;
-    if (data?.kind === 'show') handler(data.payload);
+    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

@@ -41,6 +41,7 @@ import { WorkspaceIconField } from '../components/WorkspaceIconPicker/WorkspaceI
 import { WorkspaceThemePicker } from '../components/WorkspaceThemePicker/WorkspaceThemePicker';
 import './edit-workspace.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -68,6 +69,8 @@ function EditWorkspaceApp() {
       setDraftIcon(next.icon ?? '');
     });
   }, []);
+  // After the subscription: senders post the payload again once this is announced.
+  useOverlayReadySignal('edit-workspace');
 
   function close() {
     sendChromeTitle(`${EDIT_WORKSPACE_CLOSE_PREFIX}_${Date.now()}`);
