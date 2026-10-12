@@ -19,6 +19,10 @@ When changing core functionality, manually verify at least the affected subset:
 - closing a sidebar multi-selection with Cmd/Ctrl+W and with the multi-select
   context-menu item;
 - closing side panels with descendant sub-panels;
+- closing a sidebar tab, a panel, and a pinned panel whose page has a
+  `beforeunload` handler: "Stay" keeps the tab in its workspace and folder (a panel
+  returns visible at its slot, width and header state) with no leftover closing
+  marker; "Leave" closes it with normal succession;
 - Cmd+Shift+T restore of a closed panel;
 - Cmd/Ctrl+Shift+arrow panel traversal while content has focus, and plain
   Left/Right arrow behavior inside page content;

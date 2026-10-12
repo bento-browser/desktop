@@ -285,13 +285,31 @@ adds its entry, and its id in the mount probe list, in the same change.
   not a tab-modal dialog, so Marionette's alert commands do not see it and
   `execute_script` calls can appear to hang until it is answered. Answer it with
   `box.getContentDialogManager()._dialogs[0]._frame.contentDocument.getElementById('commonDialog')`
-  and `cancelDialog()` or `acceptDialog()`. Bento's `closeTabFromSidebar` removes
-  the panel binding and marks the tab closing before it calls `tabs.remove`, so
-  cancelling the prompt on a panel tab keeps the tab but not the panel (the panel
-  strip is already emptied of it); cancelling on a selected or background tab keeps
-  both. A background tab is selected while its prompt is pending. Accepting
+  and `cancelDialog()` or `acceptDialog()` (wait for `_buttons` to exist first).
+  A background tab is selected while its prompt is pending, and a selected tab's
+  prompt blocks every later Marionette command, so the dialog has to be answered
+  from a timer armed inside the browser before the close is triggered. Accepting
   removes the tab with normal succession and no ghost panel. Behavior is
   identical on 154.0, so it is a tools-side policy, not a Firefox 157 change.
+  `browser.tabs.remove` resolves whether or not the user stays, but a committed
+  close has already fired `TabClose`, which drops the extension tab id, so a
+  `tabs.get` that still succeeds after `remove` resolves means the tab was kept.
+  Bento therefore closes transactionally in `protocol-handler.ts`: the close
+  paths (`tab/close`, `tabs/close`, `tab/closeMain`, `pinnedPanel/close`, and
+  sub-panel closes) capture a `CloseUndo` (workspace, folder, each panel restore
+  location, width, header-hidden) before `markClosing` and the panel removal
+  strip those bindings, and `removeMarkedTab` reports `kept` when the tab
+  survives. `restoreKeptTab` then clears the closing marker, reassigns the
+  workspace and folder, re-inserts the tab at its panel restore location,
+  restores width and header state, and re-syncs markers and `panels/sync`. The
+  restored panel is rendered again from the same element, so
+  `resetPanelInlineLayoutState` must drop the `bento-panel--removing` fade class;
+  without that the panel returns at opacity 0 and ignores pointer events. Before
+  this, cancelling the prompt left every kept tab, panel or not, with no
+  workspace and `bento.closingTab=1`: it vanished from the sidebar and
+  `closeMarkedTabs` removed it at the next launch. DevTools closes never roll
+  back, and a sub-panel closed along with its parent only gets its workspace back
+  (it returns as a sidebar tab, not a panel).
 - Tear-out with panels present. `replaceTabWithWindow` passes `aTab.splitview ??
   aTab` to the new window, and while a workspace has panels Bento gives the
   rendered tabs a `tab.splitview` marker (see "Required split-view compatibility

@@ -375,6 +375,12 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not render the same workspace in two windows unless the panel architecture
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.
+- Do not leave a tab without its workspace when its close is cancelled.
+  `markClosing` deletes `bento.workspaceId` and `bento.folderId` up front, so the
+  close paths capture the binding first and give it back if the tab survives (a
+  beforeunload "Stay"); see "Closing a tab that has a beforeunload prompt" in
+  [chrome-panel-rendering.md](chrome-panel-rendering.md). A tab left with the
+  closing marker disappears from the sidebar and is closed at the next launch.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

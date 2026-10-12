@@ -6845,7 +6845,10 @@
   // from an earlier reconcile, so each pass starts from the stylesheet. The
   // flat layout re-applies its own rects afterwards.
   function resetPanelInlineLayoutState(panelEl) {
+    // A close the user cancelled (beforeunload "Stay") re-renders the same
+    // element, so the close fade must not outlive the close.
     delete panelEl._bentoPanelRemoving;
+    panelEl.classList.remove('bento-panel--removing');
     panelEl.style.removeProperty('display');
     panelEl.style.removeProperty('flex-direction');
     panelEl.style.removeProperty('overflow');

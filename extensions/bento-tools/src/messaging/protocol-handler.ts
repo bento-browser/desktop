@@ -18,6 +18,7 @@ import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
+import type { PanelRestoreLocation } from '../panels/PanelLayout';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BackupStore } from '../backup/BackupStore';
@@ -219,6 +220,7 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
     tab?.workspaceId ??
     (typeof sourceWindowId === 'number' ? ctx.workspaces.getActiveId(sourceWindowId) : null);
 
+  const undo = captureCloseUndo(ctx, tabId);
   await ctx.tabs.markClosing(tabId);
 
   if (workspaceId) {
@@ -236,12 +238,13 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
       await closeTabAsRemoved(ctx, tabId, {
         delayMs: promoted ? 80 : 0,
         label: 'tab/closeMain',
+        undo,
       });
       return;
     }
   }
 
-  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain' });
+  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain', undo });
 }
 
 function shouldCloseTabThroughMainPromotion(ctx: HandlerContext, tabId: number): boolean {
@@ -392,34 +395,127 @@ async function tabStillExists(tabId: number): Promise<boolean> {
   }
 }
 
-function removeMarkedTabWithRetries(tabId: number, label: string, attempt = 0): void {
-  void browser.tabs.remove(tabId).catch(async (err) => {
-    await sleepMs(80);
-    if (!(await tabStillExists(tabId))) return;
-    if (attempt < TAB_REMOVE_RETRY_DELAYS_MS.length) {
-      setTimeout(
-        () => removeMarkedTabWithRetries(tabId, label, attempt + 1),
-        TAB_REMOVE_RETRY_DELAYS_MS[attempt],
-      );
-      return;
+/**
+ * What a close must put back if Firefox keeps the tab. `markClosing` and the
+ * panel removal drop these bindings before Firefox commits the close, so they
+ * are captured first.
+ */
+interface CloseUndo {
+  workspaceId?: string;
+  folderId?: string;
+  widthPx?: number;
+  headerHidden: boolean;
+  panels: Array<{ workspaceId: string; location: PanelRestoreLocation }>;
+}
+
+function captureCloseUndo(ctx: HandlerContext, tabId: number): CloseUndo {
+  const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
+  return {
+    workspaceId: tab?.workspaceId,
+    folderId: tab?.folderId,
+    widthPx: ctx.panels.getWidth(tabId),
+    headerHidden: ctx.panels.getHeaderHidden(tabId),
+    panels: ctx.panels.findWorkspacesContainingTab(tabId).map((workspaceId) => ({
+      workspaceId,
+      location: ctx.panels.getPanelRestoreLocation(workspaceId, tabId),
+    })),
+  };
+}
+
+/**
+ * Undo a close that Firefox did not carry out (the user chose "Stay" on a
+ * beforeunload prompt): clear the closing marker, give the tab its workspace
+ * and folder back, and re-insert it where it was in each panel layout.
+ */
+async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUndo): Promise<void> {
+  await ctx.tabs.unmarkClosing(tabId);
+  const workspaceId =
+    undo.workspaceId && ctx.workspaces.has(undo.workspaceId)
+      ? undo.workspaceId
+      : ctx.workspaces.getActiveId(ctx.sourceWindowId);
+  if (workspaceId) {
+    await ctx.tabs.assignWorkspace(
+      tabId,
+      workspaceId,
+      workspaceId === undo.workspaceId && undo.folderId ? { preserveFolderId: undo.folderId } : {},
+    );
+  }
+  const restoredIn = undo.panels.filter(
+    ({ workspaceId: panelWorkspaceId, location }) =>
+      ctx.workspaces.has(panelWorkspaceId) &&
+      ctx.panels.insertAtRestoreLocation(panelWorkspaceId, tabId, location),
+  );
+  if (restoredIn.length === 0) return;
+  // PanelStore.remove dropped these once the tab left its last layout.
+  if (undo.widthPx !== undefined) ctx.panels.setWidth(tabId, undo.widthPx);
+  if (undo.headerHidden) ctx.panels.setHeaderHidden(tabId, true);
+  for (const { workspaceId: panelWorkspaceId } of restoredIn) {
+    ctx.syncPanelMarkers(panelWorkspaceId);
+    ctx.emitPanelsSync(panelWorkspaceId);
+  }
+}
+
+/**
+ * Remove a tab Bento already marked closing, retrying transient failures.
+ * Resolves 'kept' when the tab is still alive afterwards: `tabs.remove`
+ * resolves even when the user cancels a beforeunload prompt, and a committed
+ * close has already dropped the tab id (TabClose) when it does.
+ */
+async function removeMarkedTab(tabId: number, label: string): Promise<'removed' | 'kept'> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await browser.tabs.remove(tabId);
+      return (await tabStillExists(tabId)) ? 'kept' : 'removed';
+    } catch (err) {
+      await sleepMs(80);
+      if (!(await tabStillExists(tabId))) return 'removed';
+      const retryDelayMs = TAB_REMOVE_RETRY_DELAYS_MS[attempt];
+      if (retryDelayMs === undefined) {
+        if (!String(err).includes('Invalid tab ID')) {
+          console.warn(`[bento-tools] ${label}: tabs.remove failed after retries:`, tabId, err);
+        }
+        return 'kept';
+      }
+      await sleepMs(retryDelayMs);
     }
-    if (!String(err).includes('Invalid tab ID')) {
-      console.warn(`[bento-tools] ${label}: tabs.remove failed after retries:`, tabId, err);
-    }
-  });
+  }
+}
+
+function removeMarkedTabAndRestoreIfKept(
+  ctx: HandlerContext,
+  tabId: number,
+  label: string,
+  undo: CloseUndo | null,
+): void {
+  void removeMarkedTab(tabId, label)
+    .then((outcome) => (outcome === 'kept' && undo ? restoreKeptTab(ctx, tabId, undo) : undefined))
+    .catch((err) =>
+      console.warn(`[bento-tools] ${label}: restoring a kept tab failed:`, tabId, err),
+    );
 }
 
 async function closeTabAsRemoved(
   ctx: HandlerContext,
   tabId: number,
-  options: { delayMs?: number; label?: string; clearPanelMarker?: boolean } = {},
+  options: {
+    delayMs?: number;
+    label?: string;
+    clearPanelMarker?: boolean;
+    /** Captured by callers that already stripped the tab's bindings. */
+    undo?: CloseUndo;
+    /** False for ephemeral tabs (DevTools) that should not outlive a failed close. */
+    restoreIfKept?: boolean;
+  } = {},
 ): Promise<void> {
+  const undo =
+    options.restoreIfKept === false ? null : (options.undo ?? captureCloseUndo(ctx, tabId));
   await ctx.tabs.markClosing(tabId);
   if (options.clearPanelMarker) {
     void clearPanelMarker(tabId);
     void clearDevtoolsPanelMarker(tabId);
   }
-  const start = () => removeMarkedTabWithRetries(tabId, options.label ?? 'tab/close');
+  const start = () =>
+    removeMarkedTabAndRestoreIfKept(ctx, tabId, options.label ?? 'tab/close', undo);
   if (typeof options.delayMs === 'number' && options.delayMs > 0) {
     setTimeout(start, options.delayMs);
   } else {
@@ -433,6 +529,7 @@ function closeDevtoolsTabs(ctx: HandlerContext, tabIds: Set<number>, label: stri
     void closeTabAsRemoved(ctx, tabId, {
       label,
       clearPanelMarker: true,
+      restoreIfKept: false,
     });
   }
 }
@@ -442,6 +539,7 @@ async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<
     await closeMainTabWithPanelPromotion(ctx, tabId);
     return;
   }
+  const undo = captureCloseUndo(ctx, tabId);
   await ctx.tabs.markClosing(tabId);
   const affected = ctx.panels.findWorkspacesContainingTab(tabId);
   let delayActualTabRemove = false;
@@ -464,7 +562,7 @@ async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<
     // to restore the tab back as a panel instead of reopening it as a normal tab.
   }
   const delayMs = delayActualTabRemove ? 500 : 0;
-  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close' });
+  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close', undo });
 }
 
 async function activateNonPanelTab(
@@ -1217,6 +1315,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           void closeTabAsRemoved(ctx, action.id, {
             label: 'panel/remove devtools',
             clearPanelMarker: true,
+            restoreIfKept: false,
           });
           ctx.syncPanelMarkers(wsId);
           ctx.emitPanelsSync(wsId);
@@ -1540,8 +1639,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         return;
       }
       void (async () => {
+        const isDevtools = ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId);
+        const undo = isDevtools ? null : captureCloseUndo(ctx, action.tabId);
         await ctx.tabs.markClosing(action.tabId);
-        if (ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId)) {
+        if (isDevtools) {
           ctx.pinnedPanels.removeForTab(action.tabId);
         }
         const subVictims = ctx.panels.removeWithSubPanels(action.workspaceId, action.tabId);
@@ -1550,7 +1651,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         }
         ctx.syncPanelMarkers(action.workspaceId);
         ctx.emitPanelsSync(action.workspaceId);
-        removeMarkedTabWithRetries(action.tabId, 'pinnedPanel/close');
+        removeMarkedTabAndRestoreIfKept(ctx, action.tabId, 'pinnedPanel/close', undo);
       })();
       return;
     }
