@@ -16,24 +16,121 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const ROOT_FILES = ['CLAUDE.md', 'README.md'];
 const DOCS_DIR = 'docs';
 
-/** Markdown with fenced code blocks and inline code spans blanked out, line count preserved. */
-function stripCode(text) {
-  let fence = null;
-  return text
-    .split('\n')
-    .map((line) => {
-      const marker = line.match(/^\s*(`{3,}|~{3,})/);
-      if (fence) {
-        if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length) fence = null;
-        return '';
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const HEADING = /^ {0,3}#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const LIST_ITEM = /^( *)([-*+]|\d{1,9}[.)])( *)(\S?)/;
+
+/** Strips up to `max` leading blockquote markers; reports how many were found. */
+function stripQuote(line, max = Infinity) {
+  let depth = 0;
+  let rest = line;
+  while (depth < max) {
+    const match = rest.match(/^ {0,3}> ?/);
+    if (!match) break;
+    depth += 1;
+    rest = rest.slice(match[0].length);
+  }
+  return { depth, rest };
+}
+
+/** Leading tabs become spaces (tab stops of 4) so indentation can be measured in columns. */
+function expandLeadingTabs(line) {
+  let column = 0;
+  let index = 0;
+  for (; index < line.length; index += 1) {
+    if (line[index] === ' ') column += 1;
+    else if (line[index] === '\t') column += 4 - (column % 4);
+    else break;
+  }
+  return ' '.repeat(column) + line.slice(index);
+}
+
+/**
+ * Classifies every line of a Markdown file with a small CommonMark block scanner.
+ * Returns [{ code, text, heading }] per line: `code` is true for fenced and indented
+ * code (and fence lines), `text` is the line without blockquote markers (empty for
+ * code), and `heading` is the raw text of an ATX heading. Covered rules: fences are
+ * indented 0 to 3 columns (also inside blockquotes and list items), a closing fence
+ * repeats the opening character at least as many times, a backtick fence info string
+ * has no backticks, an unclosed fence ends with its blockquote or list item, and a line indented 4
+ * or more columns past its list item content is indented code unless it continues a
+ * paragraph. Setext headings and HTML blocks are not recognized.
+ */
+export function scanBlocks(text) {
+  const result = [];
+  const lists = []; // content columns of the open list items, outermost first
+  let fence = null; // { char, length, depth, base }
+  let previous = 'blank'; // blank | paragraph | other | code
+  for (const raw of text.split('\n')) {
+    if (fence) {
+      const quote = stripQuote(raw, fence.depth);
+      const inner = expandLeadingTabs(quote.rest);
+      const blank = inner.trim() === '';
+      // A line indented less than the list item that holds the fence ends the fence.
+      if (quote.depth === fence.depth && (blank || inner.length - inner.trimStart().length >= fence.base)) {
+        const closing = inner.slice(fence.base).match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+        if (closing && closing[1][0] === fence.char && closing[1].length >= fence.length) {
+          fence = null;
+          previous = 'other';
+        }
+        result.push({ code: true, text: '' });
+        continue;
       }
-      if (marker) {
-        fence = marker[1];
-        return '';
+      fence = null;
+    }
+
+    const { depth, rest } = stripQuote(raw);
+    const line = expandLeadingTabs(rest);
+    if (line.trim() === '') {
+      result.push({ code: false, text: '' });
+      previous = 'blank';
+      continue;
+    }
+    const indent = line.length - line.trimStart().length;
+    if (previous === 'blank') while (lists.length > 0 && indent < lists[lists.length - 1]) lists.pop();
+    const base = lists.length > 0 ? lists[lists.length - 1] : 0;
+
+    if (previous !== 'paragraph' && indent >= base + 4) {
+      result.push({ code: true, text: '' });
+      previous = 'code';
+      continue;
+    }
+
+    const relative = indent >= base ? line.slice(base) : line;
+    const open = relative.match(FENCE_OPEN);
+    if (open && !(open[1][0] === '`' && open[2].includes('`'))) {
+      fence = { char: open[1][0], length: open[1].length, depth, base };
+      result.push({ code: true, text: '' });
+      previous = 'code';
+      continue;
+    }
+
+    const entry = { code: false, text: rest };
+    const heading = relative.match(HEADING);
+    if (heading) {
+      if (heading[1] !== undefined) entry.heading = heading[1];
+      previous = 'other';
+    } else if (THEMATIC_BREAK.test(relative)) {
+      previous = 'other';
+    } else {
+      const item = indent < base + 4 ? line.match(LIST_ITEM) : null;
+      if (item && (item[3].length > 0 || item[4] === '')) {
+        while (lists.length > 0 && lists[lists.length - 1] > indent) lists.pop();
+        const markerEnd = item[1].length + item[2].length;
+        const spaces = item[4] === '' || item[3].length > 4 ? 1 : item[3].length;
+        lists.push(markerEnd + spaces);
       }
-      return line.replace(/(`+)(?:(?!\1).)+?\1/g, (span) => ' '.repeat(span.length));
-    })
-    .join('\n');
+      previous = 'paragraph';
+    }
+    result.push(entry);
+  }
+  return result;
+}
+
+/** A line with its inline code spans blanked, so their contents are never read as links or ids. */
+function blankInlineCode(line) {
+  return line.replace(/(`+)(?:(?!\1).)+?\1/g, (span) => ' '.repeat(span.length));
 }
 
 /** GitHub-style heading slug: inline Markdown reduced to its text, then lowercased and hyphenated. */
@@ -48,20 +145,27 @@ export function slugify(heading) {
     .replace(/\s/g, '-');
 }
 
-/** Anchors a Markdown file defines through its ATX headings (and explicit id attributes). */
+/**
+ * Anchors a Markdown file defines through its ATX headings (and explicit id attributes).
+ * Repeated slugs get -1, -2, ... like GitHub's slugger: every slug handed out is
+ * reserved, so a later heading cannot reuse a suffixed slug an earlier one produced.
+ */
 export function headingAnchors(text) {
-  const seen = new Map();
+  const occurrences = new Map();
   const anchors = new Set();
-  const stripped = stripCode(text);
-  for (const line of stripped.split('\n')) {
-    const heading = line.match(/^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/);
-    if (heading) {
-      const base = slugify(heading[1]);
-      const count = seen.get(base) ?? 0;
-      seen.set(base, count + 1);
-      anchors.add(count === 0 ? base : `${base}-${count}`);
+  for (const { code, text: line, heading } of scanBlocks(text)) {
+    if (code) continue;
+    if (heading !== undefined) {
+      const original = slugify(heading);
+      let slug = original;
+      while (occurrences.has(slug)) {
+        occurrences.set(original, occurrences.get(original) + 1);
+        slug = `${original}-${occurrences.get(original)}`;
+      }
+      occurrences.set(slug, 0);
+      anchors.add(slug);
     }
-    for (const id of line.matchAll(/\bid="([^"]+)"/g)) anchors.add(id[1]);
+    for (const id of blankInlineCode(line).matchAll(/\bid="([^"]+)"/g)) anchors.add(id[1]);
   }
   return anchors;
 }
@@ -69,8 +173,9 @@ export function headingAnchors(text) {
 /** [{ target, line }] for inline links, images, and reference definitions outside code. */
 export function extractLinks(text) {
   const links = [];
-  const lines = stripCode(text).split('\n');
-  lines.forEach((line, index) => {
+  scanBlocks(text).forEach(({ code, text: raw }, index) => {
+    if (code) return;
+    const line = blankInlineCode(raw);
     for (const match of line.matchAll(/!?\[(?:[^\]\\]|\\.)*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
       links.push({ target: match[1], line: index + 1 });
     }
