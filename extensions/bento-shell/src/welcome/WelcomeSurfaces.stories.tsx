@@ -53,7 +53,7 @@ export const TrayNarrow = () => (
         ['Bookmarks', 'Saved places'],
         ['History', 'Recent trails'],
         ['Passwords', 'Logins'],
-        ['Profiles', 'Firefox and Zen'],
+        ['Profiles', 'Other browsers'],
       ]}
     />
   </DialogFrame>
