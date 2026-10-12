@@ -123,6 +123,11 @@ security updates:
 pnpm run firefox:sync
 ```
 
+If `bento.json` already names the latest release but the local `engine/` is
+older (a checkout from before a version bump), the same command replaces the
+engine through the protected path; see
+[A stale engine](build-tooling.md#a-stale-engine).
+
 When the target is newer than the version in `bento.json`, obtain its trusted
 SHA-256 from Mozilla's per-release
 [`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/)

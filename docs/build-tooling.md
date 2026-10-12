@@ -80,7 +80,10 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 ## Supported commands
 
 - `pnpm run download`: fetch and verify the Firefox source archive configured in
-  `bento.json`.
+  `bento.json`. It never replaces an existing engine; `--replace-stale` (used by
+  `pnpm run firefox:sync`) replaces one recorded at an older version than
+  `bento.json` through the protected path (see
+  [A stale engine](#a-stale-engine)).
 - `bash scripts/bento-env.sh update`: update the protected source checkout and
   version metadata.
 - `pnpm run bootstrap`: install Mozilla build dependencies through `mach`.
@@ -709,12 +712,92 @@ and then retry the update. For a patch rebase, finish the rebase and run
 `pnpm run firefox:patches:export` before removing its worktree.
 
 The command asks Mozilla for the latest release for the configured product,
-uses `bento-build.mjs update` to download and verify it, updates `bento.json`
+uses `bento-build.mjs update` to download and verify it (or, when `bento.json`
+already names that release, `download --replace-stale`), updates `bento.json`
 and `config/firefox-versions.json`, checks the patch-stack base, builds
 extensions, imports Bento, and builds Firefox. If the patch stack is stale,
 rebase it with `pnpm run firefox:patches:rebase`, export it, then rerun import
 and build. Review every active entry in
 [firefox-core-touchpoints.md](firefox-core-touchpoints.md) during the update.
+
+### A stale engine
+
+A checkout can hold an `engine/` older than `bento.json`: for example, one that
+predates the merge that moved `bento.json` from 154.0 to 157.0.1 still has the
+154.0 engine and its import recorded in `.bento/`. `pnpm run firefox:sync`
+brings it up to date when `bento.json` names the latest release, and `update`
+does when a newer release exists. Both replace the engine only through the
+protected path:
+
+- `.bento/source-state.json` must record a version strictly older than the
+  target, compared as full Firefox versions: the dotted release number, then the
+  beta number, with a final release newer than its betas (`158.0b5` < `158.0b6`
+  < `158.0` < `158.0.1`). A newer engine is never replaced. ESR against a
+  non-ESR version, an engine installed for another product, and any version the
+  comparison does not recognize cannot be ordered, so they are refused with a
+  message instead of replaced. The engine HEAD must be the pristine base for the
+  recorded version, and linked engine worktrees are refused;
+- every changed path must match the recorded import state
+  (`.bento/engine-state.json`) or the current generated output. A file the
+  previous import changed that the current patch series no longer touches
+  (such as a 154.0-only patch target) passes only while its bytes still match
+  the record. A recorded file must still exist: a retired patch target deleted
+  by hand is refused, and absence passes only where the record itself notes the
+  deletion. Any other edit stops the replacement, and the error lists those
+  files;
+- the archive digest comes from `bento.json` (or `BENTO_SOURCE_SHA256` for a
+  newer release) and is verified before extraction;
+- the previous engine moves to `.bento/backups/firefox-<old-version>-<time>/`
+  with its build directory, and its `refs/bento/` and `bento/patch-stack` refs
+  carry into the new checkout.
+
+`update` also compares the recorded engine with the target before it replaces
+anything. It refuses a target older than the engine (the engine may be ahead of
+`bento.json` after checking out an older revision). It keeps an installed engine
+only when its recorded version string is exactly the target and its recorded
+archive digest equals the verified one; then only `bento.json` and
+`config/firefox-versions.json` advance. Every other case takes the protected
+replacement above, including a digest that differs or is missing (an engine
+adopted against an older config records none) and a spelling that only orders
+equal (`158.0.0` for `158.0`), because `update` never patches
+`source-state.json` or base refs in place and the next `verify` needs them to
+match `bento.json`.
+
+`pnpm run download` and `pnpm run build` never replace an engine, so a build
+cannot discard a compiled object directory by accident. `pnpm run import`
+and `verify` on a stale engine stop with a message that names `pnpm run
+firefox:sync`.
+
+Pitfalls recorded from this failure:
+
+- `engineStatus` decides ownership from the current patch series, overlays and
+  add-ons, so it reports files a previous import changed as unrecognized.
+  `verifyRecordedEngineState` therefore ignores unrecognized files that are
+  in the recorded snapshot, because it has already compared every snapshot
+  path with its recorded state. Keep that comparison complete, including
+  absence: a recorded-present path that is missing fails, so snapshot
+  membership never hides a hand deletion. Do not return to a bare
+  `unrecognizedFiles.length === 0`: it rejects every engine that predates a
+  patch-target change.
+- Version order is not a numeric prefix or a string comparison. A prefix
+  compare treats `158.0b5`, `158.0b6` and `158.0` as equal, so a beta engine or
+  the final release would qualify for replacement by an older beta.
+  `compareFirefoxVersions` orders the full number and the beta number, and
+  returns undefined for what it cannot order.
+- Check an engine against its own recorded version, never against
+  `bento.json`: the configured base ref does not exist in a stale engine.
+- The refusal message lists the files that failed verification, not the first
+  eight dirty files, which on an imported engine are hundreds of owned paths.
+- `reset-engine-patches.sh` reverts the paths of the current series and also
+  every path the recorded state lists as patched (`kind: "patch"`): edited
+  files, patch-created files and symlinks (including dangling ones), retargeted
+  symlinks, and tracked files a patch deleted, which it restores. Without
+  that, a patch target dropped from the series would survive an import and
+  fail the final record step, now that verification accepts it.
+- Known limit: an engine with no `.bento/source-state.json` and no base ref for
+  the configured version cannot be classified, and is not replaced
+  automatically; preserve any changes, then replace it with
+  `download --force`.
 
 The update is acceptable only after branding, built-in add-ons, patch
 application, packaging, locales, installers, and (while the updater is enabled)

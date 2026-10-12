@@ -63,7 +63,8 @@ Build, packaging, and release helper scripts.
 - `sync-firefox-upstream.sh` — updates the Firefox engine to Mozilla's latest
   release, syncs `bento.json` and `config/firefox-versions.json`, checks that
   the patch stack base is current, imports Bento patches, and runs a build.
-  Equivalent to `pnpm run firefox:sync`.
+  Replaces a local engine that is older than `bento.json` through the protected
+  path. Equivalent to `pnpm run firefox:sync`.
 
 ## Other scripts, by purpose
 

@@ -605,3 +605,418 @@ test('adoption accepts exact generated prefs but preserves arbitrary edits', asy
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
+
+/** A one-file Firefox source archive for `version`: its bytes and SHA-256. */
+async function packSourceArchive(version) {
+  const work = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-source-archive-'));
+  try {
+    await fsp.mkdir(path.join(work, `firefox-${version}`, 'toolkit'), { recursive: true });
+    await fsp.writeFile(path.join(work, `firefox-${version}`, 'toolkit', 'moz.build'), `# Firefox ${version}\n`);
+    const archive = path.join(work, `firefox-${version}.source.tar.xz`);
+    const packed = spawnSync('tar', ['-cJf', archive, '-C', work, `firefox-${version}`]);
+    assert.equal(packed.status, 0, packed.stderr?.toString());
+    const bytes = await fsp.readFile(archive);
+    return { bytes, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+  } finally {
+    await fsp.rm(work, { recursive: true, force: true });
+  }
+}
+
+/** Runs `fn` with fetch failing, so a test that must stay offline cannot download. */
+async function withoutNetwork(fn) {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    throw new Error(`unexpected network access: ${url}`);
+  };
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+}
+
+/**
+ * A checkout that predates a version bump. bento.json configures 157.0.1 and its
+ * verified archive is cached, but the engine is a 154.0 import recorded in .bento.
+ * That import patched old.js and deleted gone.js; the current patch series only
+ * touches new.js.
+ */
+async function staleEngineFixture() {
+  const root = await lifecycleFixture();
+  const ctx = createContext(root);
+  const engine = path.join(root, 'engine');
+  const git = (args) => {
+    const result = spawnSync('git', args, { cwd: engine, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  await fsp.writeFile(path.join(engine, 'old.js'), 'original\n');
+  await fsp.writeFile(path.join(engine, 'gone.js'), 'original\n');
+  git(['init']);
+  git(['config', 'user.name', 'Test']);
+  git(['config', 'user.email', 'test@example.invalid']);
+  git(['add', '-A']);
+  git(['commit', '-m', 'Firefox 154.0']);
+  git(['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
+  git(['branch', 'bento/patch-stack']);
+
+  // The 154.0 import: a patch series applied to the engine, then recorded.
+  await fsp.writeFile(path.join(engine, 'old.js'), 'patched by the 154.0 series\n');
+  await fsp.rm(path.join(engine, 'gone.js'));
+  await fsp.mkdir(path.join(root, 'patches'), { recursive: true });
+  await fsp.writeFile(path.join(root, 'patches', 'old.patch'), git(['diff']) + '\n');
+  await fsp.writeFile(path.join(root, 'patches', 'series.json'), JSON.stringify({ series: [{ path: 'patches/old.patch' }] }));
+  await fsp.mkdir(path.join(root, '.bento'), { recursive: true });
+  await fsp.writeFile(ctx.sourceStatePath, JSON.stringify({
+    schemaVersion: 1,
+    product: 'firefox',
+    version: '154.0',
+    baselineCommit: git(['rev-parse', 'HEAD']),
+    archiveSha256: loadConfig(root).firefox.source.sha256,
+    adopted: true,
+  }));
+  await main(['record'], root);
+  const recorded = JSON.parse(await fsp.readFile(path.join(root, '.bento', 'engine-state.json'), 'utf8'));
+  assert.deepEqual(
+    recorded.entries.map(({ path: entry, kind, missing }) => [entry, kind, missing]),
+    [['gone.js', 'patch', true], ['old.js', 'patch', undefined]],
+  );
+
+  // The version bump: a new archive and a series that no longer names old.js.
+  const archive = await packSourceArchive('157.0.1');
+  const config = JSON.parse(await fsp.readFile(ctx.configPath, 'utf8'));
+  config.firefox.version = '157.0.1';
+  config.firefox.candidate = '157.0.1';
+  config.firefox.source.sha256 = archive.sha256;
+  await fsp.writeFile(ctx.configPath, JSON.stringify(config));
+  await fsp.rm(path.join(root, 'patches', 'old.patch'));
+  await fsp.writeFile(path.join(root, 'patches', 'new.patch'), 'diff --git a/new.js b/new.js\n--- a/new.js\n+++ b/new.js\n');
+  await fsp.writeFile(path.join(root, 'patches', 'series.json'), JSON.stringify({ series: [{ path: 'patches/new.patch' }] }));
+  const cached = sourceArchivePath(root, '157.0.1');
+  await fsp.mkdir(path.dirname(cached), { recursive: true });
+  await fsp.writeFile(cached, archive.bytes);
+  return { root, ctx, engine, git, archive };
+}
+
+const backupsOf = (root) => {
+  const dir = path.join(root, '.bento', 'backups');
+  return fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+};
+
+test('recorded state accepts a recorded file the current patch series no longer touches, and rejects any change to it', async () => {
+  const { root, engine } = await staleEngineFixture();
+  try {
+    const old = path.join(engine, 'old.js');
+    // engineStatus owns files by the current series, so it cannot place old.js.
+    assert.deepEqual(engineStatus(root).unrecognizedFiles, ['gone.js', 'old.js']);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    await fsp.appendFile(old, 'x');
+    assert.equal(verifyRecordedEngineState(root), false);
+    await fsp.writeFile(old, 'patched by the 154.0 series\n');
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    await fsp.writeFile(path.join(engine, 'stray.js'), 'not recorded\n');
+    assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('recorded state refuses a retired patch target that was deleted by hand', async () => {
+  const { root, engine } = await staleEngineFixture();
+  try {
+    // gone.js was deleted by the recorded import itself, so its absence is recorded.
+    assert.equal(fs.existsSync(path.join(engine, 'gone.js')), false);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // old.js was recorded as present, so a deletion of it is an unrecorded change.
+    await fsp.rm(path.join(engine, 'old.js'));
+    assert.equal(verifyRecordedEngineState(root), false);
+    await withoutNetwork(async () => {
+      await assert.rejects(() => main(['download', '--replace-stale'], root), /unrecognized user changes \(old\.js\)/);
+    });
+    assert.deepEqual(backupsOf(root), []);
+
+    // Restoring a path whose deletion was recorded is a change too.
+    await fsp.writeFile(path.join(engine, 'old.js'), 'patched by the 154.0 series\n');
+    await fsp.writeFile(path.join(engine, 'gone.js'), 'original\n');
+    assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('the replace refusal names the unrecognized files, not every dirty one', async () => {
+  const { root, engine } = await staleEngineFixture();
+  try {
+    await fsp.writeFile(path.join(engine, 'stray.js'), 'not recorded\n');
+    await withoutNetwork(async () => {
+      await assert.rejects(
+        () => main(['download', '--force'], root),
+        (error) => /unrecognized user changes \(stray\.js\)/.test(error.message) && !error.message.includes('old.js'),
+      );
+    });
+    assert.deepEqual(backupsOf(root), []);
+
+    await fsp.rm(path.join(engine, 'stray.js'));
+    await fsp.appendFile(path.join(engine, 'old.js'), 'x');
+    await withoutNetwork(async () => {
+      await assert.rejects(() => main(['download', '--force'], root), /unrecognized user changes \(old\.js\)/);
+    });
+    assert.deepEqual(backupsOf(root), []);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('download --replace-stale replaces an engine older than bento.json through the protected path', async () => {
+  const { root, engine, git, archive } = await staleEngineFixture();
+  try {
+    const oldBase = git(['rev-parse', 'refs/bento/firefox-base/154.0']);
+    const configBefore = await fsp.readFile(path.join(root, 'bento.json'), 'utf8');
+
+    // Without the flag nothing changes, so `pnpm run build` never replaces the engine.
+    await withoutNetwork(async () => {
+      await assert.rejects(() => main(['download'], root), /engine already exists/);
+      await assert.rejects(() => main(['verify'], root), /Firefox 154\.0 but bento\.json configures 157\.0\.1.*firefox:sync/);
+    });
+    assert.deepEqual(backupsOf(root), []);
+    assert.equal(await fsp.readFile(path.join(engine, 'old.js'), 'utf8'), 'patched by the 154.0 series\n');
+
+    await withoutNetwork(() => main(['download', '--replace-stale'], root));
+
+    const state = JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8'));
+    assert.equal(state.version, '157.0.1');
+    assert.equal(state.archiveSha256, archive.sha256);
+    assert.equal(await fsp.readFile(path.join(engine, 'toolkit', 'moz.build'), 'utf8'), '# Firefox 157.0.1\n');
+    assert.equal(fs.existsSync(path.join(engine, 'old.js')), false);
+    assert.equal(fs.existsSync(path.join(root, '.bento', 'engine-state.json')), false);
+    assert.equal(await fsp.readFile(path.join(root, 'bento.json'), 'utf8'), configBefore);
+
+    // The previous engine, including its edit, is recoverable from the backup.
+    const [backup] = backupsOf(root);
+    assert.match(backup, /^firefox-154\.0-\d+$/);
+    assert.equal(await fsp.readFile(path.join(root, '.bento', 'backups', backup, 'old.js'), 'utf8'), 'patched by the 154.0 series\n');
+
+    // Bento refs of the old engine survive, next to the new base.
+    assert.equal(git(['rev-parse', 'refs/bento/firefox-base/154.0']), oldBase);
+    assert.equal(git(['rev-parse', 'refs/heads/bento/patch-stack']), oldBase);
+    assert.equal(git(['rev-parse', 'refs/bento/firefox-base/157.0.1']), state.baselineCommit);
+
+    // A second run finds the engine current and replaces nothing.
+    await withoutNetwork(() => main(['download', '--replace-stale'], root));
+    assert.equal(backupsOf(root).length, 1);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('download --replace-stale refuses a stale engine with unrecorded changes and keeps it', async () => {
+  const { root, engine } = await staleEngineFixture();
+  try {
+    await fsp.appendFile(path.join(engine, 'old.js'), 'user edit\n');
+    await withoutNetwork(async () => {
+      await assert.rejects(() => main(['download', '--replace-stale'], root), /unrecognized user changes \(old\.js\)/);
+    });
+    assert.deepEqual(backupsOf(root), []);
+    assert.equal(JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8')).version, '154.0');
+    assert.match(await fsp.readFile(path.join(engine, 'old.js'), 'utf8'), /user edit/);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('download --replace-stale reuses an engine that is already at the configured version', async () => {
+  const { root, engine, git, archive } = await staleEngineFixture();
+  try {
+    const statePath = path.join(root, '.bento', 'source-state.json');
+    const state = JSON.parse(await fsp.readFile(statePath, 'utf8'));
+    await fsp.writeFile(path.join(engine, 'marker'), 'kept\n');
+    git(['update-ref', 'refs/bento/firefox-base/157.0.1', 'HEAD']);
+    await fsp.writeFile(statePath, JSON.stringify({ ...state, version: '157.0.1', archiveSha256: archive.sha256 }));
+    await withoutNetwork(() => main(['download', '--replace-stale'], root));
+    assert.deepEqual(backupsOf(root), []);
+    assert.equal(await fsp.readFile(path.join(engine, 'marker'), 'utf8'), 'kept\n');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('download --replace-stale replaces only a strictly older engine of the same product and channel', async () => {
+  const { root, engine } = await staleEngineFixture();
+  try {
+    const statePath = path.join(root, '.bento', 'source-state.json');
+    const state = JSON.parse(await fsp.readFile(statePath, 'utf8'));
+    const configPath = path.join(root, 'bento.json');
+    const config = JSON.parse(await fsp.readFile(configPath, 'utf8'));
+    const refuses = async (recorded, configured, message, product = 'firefox') => {
+      await fsp.writeFile(statePath, JSON.stringify({ ...state, version: recorded, product }));
+      await fsp.writeFile(configPath, JSON.stringify({ ...config, firefox: { ...config.firefox, version: configured } }));
+      await withoutNetwork(async () => {
+        await assert.rejects(() => main(['download', '--replace-stale'], root), message, `${recorded} against ${configured}`);
+      });
+    };
+    const newer = /newer than the .* bento\.json configures/;
+    const unordered = /cannot be ordered/;
+
+    await refuses('158.0b6', '158.0b5', newer);
+    await refuses('158.0', '158.0b5', newer);
+    await refuses('157.0.1', '157.0', newer);
+    await refuses('1000.0', '157.0.1', newer);
+    await refuses('140.2.0esr', '157.0.1', unordered);
+    await refuses('157.0.1', '140.2.0esr', unordered);
+    await refuses('154.0', '157.0.1', unordered, 'firefox-esr');
+    // Numerically equal spellings are the same release, not a stale one.
+    await refuses('157.0', '157.0.0', /engine already exists/);
+
+    assert.deepEqual(backupsOf(root), []);
+    assert.equal(await fsp.readFile(path.join(engine, 'old.js'), 'utf8'), 'patched by the 154.0 series\n');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+const next158 = await packSourceArchive('158.0');
+
+/** Runs `update` with Mozilla reporting `latest`, whose archive is `archive`. */
+async function updateTo(root, latest, archive) {
+  const previousDigest = process.env.BENTO_SOURCE_SHA256;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.BENTO_SOURCE_SHA256 = archive.sha256;
+    globalThis.fetch = async (url) => String(url).includes('firefox_versions.json')
+      ? new Response(JSON.stringify({ LATEST_FIREFOX_VERSION: latest }), { status: 200 })
+      : new Response(archive.bytes, { status: 200 });
+    return await main(['update'], root);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousDigest === undefined) delete process.env.BENTO_SOURCE_SHA256;
+    else process.env.BENTO_SOURCE_SHA256 = previousDigest;
+  }
+}
+
+/** Records the stale fixture's engine as Firefox `version` of `product`. */
+async function recordEngineAs(fixtureState, version, extra = {}) {
+  const { root, git } = fixtureState;
+  git(['update-ref', `refs/bento/firefox-base/${version}`, 'HEAD']);
+  const statePath = path.join(root, '.bento', 'source-state.json');
+  const state = JSON.parse(await fsp.readFile(statePath, 'utf8'));
+  await fsp.writeFile(statePath, JSON.stringify({ ...state, version, ...extra }));
+}
+
+test('update from a stale engine checks the engine against its own recorded version', async () => {
+  const { root, engine, git } = await staleEngineFixture();
+  try {
+    const oldBase = git(['rev-parse', 'refs/bento/firefox-base/154.0']);
+    await updateTo(root, '158.0', next158);
+    assert.equal(JSON.parse(await fsp.readFile(path.join(root, 'bento.json'), 'utf8')).firefox.version, '158.0');
+    assert.equal(JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8')).version, '158.0');
+    assert.equal(git(['rev-parse', 'refs/bento/firefox-base/154.0']), oldBase);
+    assert.equal(backupsOf(root).length, 1);
+    assert.equal(fs.existsSync(path.join(engine, 'old.js')), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('update refuses to replace a newer engine with an older target', async () => {
+  const stale = await staleEngineFixture();
+  const { root, engine } = stale;
+  try {
+    // Configured 157.0.1, engine 159.0, Mozilla's latest 158.0.
+    await recordEngineAs(stale, '159.0');
+    const configBefore = await fsp.readFile(path.join(root, 'bento.json'), 'utf8');
+    await assert.rejects(() => updateTo(root, '158.0', next158), /refusing to downgrade/);
+    assert.deepEqual(backupsOf(root), []);
+    assert.equal(await fsp.readFile(path.join(root, 'bento.json'), 'utf8'), configBefore);
+    assert.equal(await fsp.readFile(path.join(engine, 'old.js'), 'utf8'), 'patched by the 154.0 series\n');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('update keeps an engine that already has the target and only advances bento.json', async () => {
+  const stale = await staleEngineFixture();
+  const { root, engine } = stale;
+  try {
+    await recordEngineAs(stale, '158.0', { archiveSha256: next158.sha256 });
+    await updateTo(root, '158.0', next158);
+    const config = JSON.parse(await fsp.readFile(path.join(root, 'bento.json'), 'utf8'));
+    assert.equal(config.firefox.version, '158.0');
+    assert.equal(config.firefox.source.sha256, next158.sha256);
+    assert.deepEqual(backupsOf(root), []);
+    assert.equal(await fsp.readFile(path.join(engine, 'old.js'), 'utf8'), 'patched by the 154.0 series\n');
+    assert.equal(JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8')).version, '158.0');
+    await main(['verify'], root);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Asserts that `update` replaced the engine through the protected path rather than
+ * keeping it: a backup, the new source recorded with the verified digest and base
+ * ref, and a state the next verify accepts.
+ */
+async function assertReplacedByUpdate(stale, version) {
+  const { root, engine, git } = stale;
+  const state = JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8'));
+  assert.equal(JSON.parse(await fsp.readFile(path.join(root, 'bento.json'), 'utf8')).firefox.version, version);
+  assert.equal(state.version, version);
+  assert.equal(state.archiveSha256, next158.sha256);
+  assert.equal(git(['rev-parse', `refs/bento/firefox-base/${version}`]), state.baselineCommit);
+  assert.equal(backupsOf(root).length, 1);
+  assert.equal(fs.existsSync(path.join(engine, 'old.js')), false);
+  await main(['verify'], root);
+}
+
+test('update replaces, not keeps, an engine whose recorded digest differs from the verified archive', async () => {
+  const stale = await staleEngineFixture();
+  try {
+    await recordEngineAs(stale, '158.0', { archiveSha256: 'f'.repeat(64) });
+    await updateTo(stale.root, '158.0', next158);
+    await assertReplacedByUpdate(stale, '158.0');
+  } finally {
+    await fsp.rm(stale.root, { recursive: true, force: true });
+  }
+});
+
+test('update replaces, not keeps, an engine with no recorded digest', async () => {
+  const stale = await staleEngineFixture();
+  try {
+    // An engine adopted against an older config records no digest; keeping it would
+    // write the digest into bento.json only, and the next verify would fail.
+    await recordEngineAs(stale, '158.0', { archiveSha256: undefined });
+    assert.equal(JSON.parse(await fsp.readFile(path.join(stale.root, '.bento', 'source-state.json'), 'utf8')).archiveSha256, undefined);
+    await updateTo(stale.root, '158.0', next158);
+    await assertReplacedByUpdate(stale, '158.0');
+  } finally {
+    await fsp.rm(stale.root, { recursive: true, force: true });
+  }
+});
+
+test('update replaces, not keeps, an engine whose version only equals the target numerically', async () => {
+  const stale = await staleEngineFixture();
+  try {
+    // 158.0.0 orders equal to 158.0, but its base ref is refs/bento/firefox-base/158.0.0.
+    await recordEngineAs(stale, '158.0.0', { archiveSha256: next158.sha256 });
+    await updateTo(stale.root, '158.0', next158);
+    await assertReplacedByUpdate(stale, '158.0');
+    assert.equal(stale.git(['rev-parse', 'refs/bento/firefox-base/158.0.0']).length, 40);
+  } finally {
+    await fsp.rm(stale.root, { recursive: true, force: true });
+  }
+});
+
+test('update does not order an engine of another channel against the target', async () => {
+  const stale = await staleEngineFixture();
+  const { root } = stale;
+  try {
+    await recordEngineAs(stale, '140.2.0esr');
+    await assert.rejects(() => updateTo(root, '158.0', next158), /cannot be ordered/);
+    assert.deepEqual(backupsOf(root), []);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
