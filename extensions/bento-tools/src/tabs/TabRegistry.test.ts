@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TabDelta } from '@shared/protocol';
 import { TabRegistry } from './TabRegistry';
 
 interface TabListeners {
@@ -164,6 +165,90 @@ describe('TabRegistry closing markers', () => {
     await tabs.hydrateWorkspaceIds({ attempts: 3, delayMs: 0 });
 
     expect(tabs.snapshot()[0]?.workspaceId).toBe('ws-imported');
+  });
+});
+
+describe('TabRegistry clearWorkspace', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('forgets a live tab workspace and folder without marking the tab closing', async () => {
+    stubTabsBrowser([makeTab({ id: 9 })]);
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(async (_id, key) =>
+      key === 'bento.workspaceId' ? 'ws-a' : key === 'bento.folderId' ? 'folder-1' : undefined,
+    );
+    const tabs = new TabRegistry();
+    const deltas: TabDelta[] = [];
+    tabs.onDeltas((batch) => deltas.push(...batch));
+    await tabs.init();
+    expect(tabs.snapshot()[0]).toMatchObject({ workspaceId: 'ws-a', folderId: 'folder-1' });
+
+    await tabs.clearWorkspace(9);
+
+    expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+    expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+    expect(tabs.isClosing(9)).toBe(false);
+    expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(9, 'bento.workspaceId');
+    expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(9, 'bento.folderId');
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+    expect(deltas).toContainEqual({
+      kind: 'updated',
+      id: 9,
+      changes: { workspaceId: undefined, folderId: undefined },
+    });
+  });
+});
+
+describe('TabRegistry confirmUnassigned', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function registryWith(values: Record<string, string>) {
+    stubTabsBrowser([makeTab({ id: 1 }), makeTab({ id: 2 })]);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    // Values appear after init, like session values SessionStore attaches late.
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(
+      async (id, key) => values[`${id}:${key}`],
+    );
+    return tabs;
+  }
+
+  it('confirms only tabs whose session metadata is empty', async () => {
+    const tabs = await registryWith({ '2:bento.workspaceId': 'ws-a' });
+
+    await expect(tabs.confirmUnassigned([1, 2])).resolves.toEqual([1]);
+  });
+
+  it('applies the value it found to the registry instead of writing anything', async () => {
+    const tabs = await registryWith({ '2:bento.folderId': 'folder-1' });
+
+    await tabs.confirmUnassigned([2]);
+
+    await vi.waitFor(() =>
+      expect(tabs.snapshot().find((t) => t.id === 2)?.folderId).toBe('folder-1'),
+    );
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+
+  it('does not confirm a tab whose metadata cannot be read', async () => {
+    const tabs = await registryWith({});
+    vi.mocked(browser.sessions.getTabValue).mockRejectedValue(new Error('no session'));
+
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([]);
+  });
+
+  it('trusts a detached tab over the stale value SessionStore copies back onto it', async () => {
+    const tabs = await registryWith({ '1:bento.workspaceId': 'ws-old' });
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([]);
+
+    await tabs.clearWorkspace(1);
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([1]);
+
+    await tabs.assignWorkspaceEagerly(1, 'ws-new');
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([]);
   });
 });
 

@@ -146,6 +146,10 @@ export class TabRegistry {
   #pendingWorkspaceAssignments = new Map<number, string>();
   #pendingFolderAssignments = new Map<number, string>();
   #privateTabIds = new Set<number>();
+  // Tabs `clearWorkspace` detached on purpose. SessionStore can copy the old
+  // window's workspace value back onto them afterwards, so that value is stale,
+  // not a restored assignment.
+  #releasedTabIds = new Set<number>();
 
   async init(): Promise<void> {
     // Register listeners FIRST so we don't miss tabs created during the
@@ -264,6 +268,7 @@ export class TabRegistry {
     const tab = this.#tabs.get(id);
     if (!tab) return;
     if (tab.workspaceId === workspaceId && tab.folderId === options.preserveFolderId) return;
+    this.#releasedTabIds.delete(id);
     try {
       await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
       if (options.preserveFolderId) {
@@ -290,6 +295,61 @@ export class TabRegistry {
       changes.folderId = undefined;
     }
     this.#enqueue({ kind: 'updated', id, changes });
+  }
+
+  /** Forget a live tab's workspace and folder, in memory and in SessionStore.
+   * For a tab that arrived from another window and still names that window's
+   * workspace. Unlike `markClosing` it leaves the tab open and unmarked. */
+  async clearWorkspace(id: number): Promise<void> {
+    this.#releasedTabIds.add(id);
+    this.#pendingWorkspaceAssignments.delete(id);
+    this.#pendingFolderAssignments.delete(id);
+    const tab = this.#tabs.get(id);
+    if (tab && (tab.workspaceId !== undefined || tab.folderId !== undefined)) {
+      delete tab.workspaceId;
+      delete tab.folderId;
+      this.#enqueue({
+        kind: 'updated',
+        id,
+        changes: { workspaceId: undefined, folderId: undefined },
+      });
+    }
+    await Promise.all(
+      [WORKSPACE_SESSION_KEY, FOLDER_SESSION_KEY].map((key) =>
+        browser.sessions.removeTabValue(id, key).catch(() => {
+          // A missing value is already the desired state.
+        }),
+      ),
+    );
+  }
+
+  /** The tabs among `ids` whose session metadata was read just now and holds no
+   * workspace, folder, or closing mark. Those are safe to give a workspace: a
+   * tab with a value is a restored assignment the registry has not hydrated yet
+   * (it is applied in memory here), and a tab whose read fails is unknown.
+   * A tab `clearWorkspace` detached counts as unassigned without a read. */
+  async confirmUnassigned(ids: readonly number[]): Promise<number[]> {
+    const confirmed = new Set<number>();
+    await Promise.all(
+      ids.map(async (id) => {
+        if (this.#releasedTabIds.has(id)) {
+          confirmed.add(id);
+          return;
+        }
+        try {
+          const values = await Promise.all(
+            [WORKSPACE_SESSION_KEY, FOLDER_SESSION_KEY, CLOSING_TAB_SESSION_KEY].map((key) =>
+              browser.sessions.getTabValue(id, key),
+            ),
+          );
+          if (values.every((value) => value === undefined)) confirmed.add(id);
+          else void this.#hydrateOne(id);
+        } catch {
+          // Unreadable metadata is not evidence that the tab is unassigned.
+        }
+      }),
+    );
+    return ids.filter((id) => confirmed.has(id));
   }
 
   async setFolder(id: number, folderId: string | null): Promise<void> {
@@ -399,6 +459,7 @@ export class TabRegistry {
    * what tab-creation handlers actually need. */
   async assignWorkspaceEagerly(id: number, workspaceId: string): Promise<boolean> {
     if (this.#closingTabIds.has(id)) return false;
+    this.#releasedTabIds.delete(id);
     const tab = this.#tabs.get(id);
     if (tab) {
       if (tab.workspaceId !== workspaceId) {
@@ -681,6 +742,7 @@ export class TabRegistry {
     this.#unmarkedClosingTabIds.delete(id);
     this.#urlByTabId.delete(id);
     this.#privateTabIds.delete(id);
+    this.#releasedTabIds.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };

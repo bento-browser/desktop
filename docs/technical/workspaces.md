@@ -375,6 +375,74 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not render the same workspace in two windows unless the panel architecture
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.
+- Do not leave a tab without its workspace when its close is cancelled.
+  `markClosing` deletes `bento.workspaceId` and `bento.folderId` up front, so the
+  close paths capture the binding first and give it back if the tab survives (a
+  beforeunload "Stay"); see "Closing a tab that has a beforeunload prompt" in
+  [chrome-panel-rendering.md](chrome-panel-rendering.md). A tab left with the
+  closing marker disappears from the sidebar and is closed at the next launch.
+  The rollback only restores workspace, folder and panel slot when the tab's
+  window still shows the workspace it was closed from; otherwise the tab joins
+  the workspace its window shows, as a normal tab. A workspace delete has no
+  rollback (its tabs keep the marker if a prompt keeps them), and sub-panels and
+  subdivisions come back as root panels.
+- A tab can arrive in a window with another window's workspace (tear-out, drag
+  between windows). Do not trust its `workspaceId` until `releaseAdoptedTab` has
+  compared it with the workspace the destination window shows, and do not open a
+  blank tab for a new window's empty workspace while the window holds unassigned
+  tabs (`adoptableTabs`). See "Tear-out with panels present" in
+  [chrome-panel-rendering.md](chrome-panel-rendering.md).
+- `WorkspaceStore.delete` moves a window that showed the deleted workspace to
+  the first workspace no window shows, and leaves the window without one when
+  there is none. The old fallback was the first workspace in the map, whichever
+  window showed it, so deleting a window's workspace could put two windows on
+  the same workspace; workspace activation then moved the other window's tabs
+  into the first window and both windows closed. The `workspace/delete` handler
+  marks the doomed tabs closing before deleting, closes a stranded window (with
+  `closeTabs`) or gives it a fresh workspace (nothing to close), and never relies
+  on the first-in-map fallback.
+- A workspace delete hands the window its replacement synchronously, but the
+  replacement's tab and panels come from `handleWorkspaceActivation`, which the
+  store's batched `activated` event runs later. Removing the doomed tabs in
+  between made the last-tab handler see an empty replacement and delete it or close
+  the window. `deleteWorkspace` therefore calls `WorkspaceStore.flush()` after the
+  delete, which delivers the pending events now and resolves when the activation
+  listener's runs have finished (the listener returns them), before it removes
+  anything. That does not prove the replacement has a tab: the activation's own
+  tab creation swallows its failure. `ensureReplacementTab` therefore checks for a
+  live tab in the window and opens one itself, with its error propagated. If that
+  fails too, the old tabs of the window are not removed; they leave the closing
+  state and become normal tabs of the replacement (a panel of the deleted
+  workspace loses its marker), so the window keeps working, and the failure is
+  logged. The window stays marked in `WindowHandoffGuard` until the removals have
+  settled (cleared in `finally`); the decision itself is `afterTabRemoved` in
+  `workspaces/EmptiedWorkspace.ts`, which returns no action for a window that is
+  handing off.
+- Exactly one activation may run for a workspace a delete hands to a window.
+  `WorkspaceStore.delete` also announces its global fallback workspace (no window),
+  and when that is the window's replacement (the first workspace in creation order
+  usually is) both events activate it; each run sees an empty workspace and creates
+  a tab, so it ended up with two. Callers that activate the replacement themselves
+  (`deleteWorkspace`, the last-tab handler, `cleanupWorkspaceAfterTabMove`) pass
+  `{ announceFallback: false }`. Do not "fix" this by deduplicating activations by
+  workspace id: a window-specific activation of the same workspace is then dropped
+  when the global one came first, and the tabs of the new owner are never brought
+  to it.
+- A tab Bento moves between windows itself must go through `moveTabsToWindow`.
+  Only the move's own record distinguishes it from a drag when the window
+  switched workspace before the attach event (`releaseAdoptedTab`). The record
+  (tab id to workspace and destination window) is made before `tabs.move` because
+  the attach events can arrive before its promise resolves, then trimmed to the
+  tabs the move reports: `tabs.move` skips some (a pinned tab moved to the end),
+  and a user dragging one of those out later must not read as Bento's move. An
+  attach to another window than the recorded one discards the record, and it
+  expires after 10 s if the tab never attaches.
+- Do not adopt or assign unassigned tabs while startup is unsettled. A restored
+  tab looks unassigned until `hydrateWorkspaceIds` has read its session value, and
+  a persistent write before that replaces the real workspace. The boot backfill is
+  in-memory only for the same reason; adoption additionally requires a window
+  created after the settle, a fresh session read, and no stored value on any tab
+  of the window (`tabsToAdopt`).
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

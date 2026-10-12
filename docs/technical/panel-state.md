@@ -168,6 +168,16 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `Cmd+Shift+T` can route the restored tab through
   `maybeRestorePanelFromMarker`. Clear the marker only when the tab stays open
   as a normal tab, such as `panel/remove` or explicit panel promotion.
+- A close that Firefox does not commit (beforeunload "Stay") must put the tab
+  back. The close paths capture a `CloseUndo` before `markClosing` and
+  `PanelStore.remove` drop the workspace, folder, panel layout slot, width and
+  header-hidden state, and `restoreKeptTab` replays it through
+  `TabRegistry.unmarkClosing`, `assignWorkspace` (with `preserveFolderId`),
+  `PanelStore.insertAtRestoreLocation`, `setWidth` and `setHeaderHidden`, then
+  `syncPanelMarkers` and `emitPanelsSync`. Keep capturing before the first
+  mutation: after `remove` the restore location and width are gone. A subdivision
+  child restores next to its former group when that group still exists and at
+  its former root index otherwise.
 - A user-restored tab can carry Bento's `bento.closingTab` marker from the
   original close path because Firefox preserves WebExtension session values
   through closed-tab restore. Clear that closing marker before assignment or
@@ -267,6 +277,18 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   main tab with the delayed close path. Do not rely on
   `TabRegistry.snapshot()` during this transition; native `tabs.onRemoved` and
   registry removal deltas can be ordered differently.
+- Promotion only considers panels that are still open and not closing
+  (`livePanelIds`). A panel closed in the same tick as the last sidebar tab is
+  marked closing but stays in `PanelStore` until its own close handler gets
+  there, so the leftmost "panel" can already be dead. `closeMainTabWithPanelPromotion`
+  then removed it, failed to activate it, and re-inserted it as a ghost; the
+  `tabs.onRemoved` last-tab handler later tried to promote the same dead tab
+  (`promote-panel activate failed: Invalid tab ID`) and returned without
+  switching, which left tools on that workspace while Firefox had selected a tab
+  of another one. With no live panel, the handler falls through to the
+  delete-and-switch branch (or window close) like any other empty workspace. The
+  same filter applies to `cleanupWorkspaceAfterTabMove` and to the `tabs.onDetached`
+  promotion that covers tear-out.
 - Window-close teardown (`Cmd+Shift+W`) is not the same as deleting workspace
   contents. `TabRegistry` keeps a private URL cache and emits one
   `onWindowClosing` snapshot before it drops the closing window's tab ids.

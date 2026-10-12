@@ -8,6 +8,16 @@ import { handle } from './messaging/protocol-handler';
 import { createShellActionIntake, createWindowRegistry } from './messaging/shell-action-intake';
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
+import {
+  bentoTabMoves,
+  createAdoptionGate,
+  moveTabsToWindow,
+  releaseAdoptedTab,
+  settleWorkspaceTabs,
+  tabsToAdopt,
+} from './tabs/AdoptedTab';
+import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
+import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
@@ -43,6 +53,13 @@ import { isShellClientMessage } from '@shared/shell-client-protocol';
 
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
+// Windows that exist before startup has settled never adopt unassigned tabs: those may be
+// restored tabs whose session values are not read yet (see tabs/AdoptedTab.ts).
+const adoptionGate = createAdoptionGate();
+browser.windows.onCreated.addListener((win) => {
+  if (typeof win.id === 'number') adoptionGate.noteWindow(win.id);
+});
+const windowHandoff = createWindowHandoffGuard();
 const settings = new SettingsStore();
 const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore({
@@ -956,6 +973,7 @@ const bootReady = storesReady.then(async () => {
     const allWindows = await browser.windows.getAll();
     for (const win of allWindows) {
       if (typeof win.id !== 'number') continue;
+      adoptionGate.noteWindow(win.id);
       await workspaces.restoreFromSession(win.id);
     }
   } catch (err) {
@@ -1012,6 +1030,7 @@ const bootReady = storesReady.then(async () => {
   // a Workspace 2 boot, etc).
   await tabs.hydrateWorkspaceIds();
   await tabs.closeMarkedTabs();
+  adoptionGate.settle();
 
   // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
   // matches a panel in bento.panels storage. The panel storage is a
@@ -1822,6 +1841,45 @@ browser.windows.onRemoved.addListener((windowId) => {
   prunePreferredActivationTabs((windowKey) => windowKey === String(windowId));
 });
 
+// A tab that leaves a window without closing (tear-out, drag to another window) never
+// fires tabs.onRemoved, so the last-tab handler below does not see the workspace lose its
+// last sidebar tab. Promote a panel here, as that handler would, instead of leaving a
+// panel selected as the main tab of a workspace with an empty sidebar.
+browser.tabs.onDetached.addListener((tabId, { oldWindowId }) => {
+  const tab = tabs.snapshot().find((candidate) => candidate.id === tabId);
+  if (!tab?.workspaceId || workspaces.getActiveId(oldWindowId) !== tab.workspaceId) return;
+  const panelId = panelToPromoteAfterDetach({
+    workspaceId: tab.workspaceId,
+    leavingTabId: tabId,
+    windowId: oldWindowId,
+    tabs: tabs.snapshot(),
+    panelTabIds: panels.getPanels(tab.workspaceId),
+    isClosing: (id) => tabs.isClosing(id),
+  });
+  if (panelId !== null) void promoteLeftmostPanelToTab(tab.workspaceId, panelId);
+});
+
+// A tab torn out of, dragged into, or adopted by another window arrives with the
+// workspace (and panel slot) of the window it left. Release that so the tab joins
+// the destination window's workspace; see tabs/AdoptedTab.ts.
+browser.tabs.onAttached.addListener((tabId, { newWindowId }) => {
+  // Nothing is written to a tab before startup has hydrated the registry.
+  if (!adoptionGate.isSettled()) return;
+  void releaseAdoptedTab(
+    {
+      tabs,
+      workspaces,
+      panels,
+      moves: bentoTabMoves,
+      clearPanelMarker,
+      syncPanelMarkers: syncPanelMarkersForWorkspace,
+      emitPanelsSync: (workspaceId) => void emitPanelsSync(workspaceId),
+    },
+    tabId,
+    newWindowId,
+  ).catch((err) => console.warn('[bento-tools] adopted tab release failed:', tabId, err));
+});
+
 async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Promise<void> {
   const originalPosition = panels.getPanels(workspaceId).indexOf(tabId);
   if (!panels.remove(workspaceId, tabId)) return;
@@ -1856,115 +1914,61 @@ async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Pr
   );
 }
 
-// When the last tab in a window's ACTIVE workspace is closed, close the
-// whole window — match the user's "Cmd+W until done" intent rather than
-// letting Firefox's default tab-close logic auto-select an orphan tab
-// from a workspace this window previously owned. Without this:
-//   1. If the window has orphan tabs from a prior workspace (left
-//      behind when the user switched workspace earlier), Firefox makes
-//      one of them active — the user is suddenly viewing a tab whose
-//      workspace isn't in the sidebar.
-//   2. If gBrowser is truly empty (no orphans), Firefox closes the
-//      window naturally and focus jumps to the next window — continued
-//      Cmd+W eats the next window's tabs, which the user reads as
-//      "Cmd+W is closing tabs in other workspaces".
-// Closing the window explicitly resolves both: window goes away, focus
-// jumps next time the user clicks (or via Cmd+`), and the next Cmd+W
-// closes a tab in whichever window is now focused — predictable.
-// An earlier iteration auto-spawned a fresh tab here; that produced an
-// infinite Cmd+W spin (spawn → close → spawn) and was reverted.
-//
-// Use Cmd+Shift+W if you want to close the window with tabs still in
-// the workspace; that path doesn't touch this handler.
+// When the last tab in a window's ACTIVE workspace is closed, close the whole window
+// (or move it on to a free workspace) instead of letting Firefox select an orphan tab of
+// a workspace the window left earlier: that tab belongs to no sidebar the user sees, and
+// a window that Firefox empties itself hands focus to the next window, so the next Cmd+W
+// closes tabs there. An earlier iteration spawned a fresh tab here, which made Cmd+W spin
+// (spawn, close, spawn). Cmd+Shift+W closes a window with tabs left and skips this.
+// The decision lives in workspaces/EmptiedWorkspace.ts.
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
-  // Firefox is already tearing the window down (last-tab close or
-  // window-close API) — don't double-close.
-  if (removeInfo.isWindowClosing) {
-    return;
-  }
+  // Firefox is already tearing the window down — don't double-close.
+  if (removeInfo.isWindowClosing) return;
   const windowId =
     typeof removeInfo.windowId === 'number' && removeInfo.windowId >= 0
       ? removeInfo.windowId
       : null;
-  if (windowId === null) {
-    return;
-  }
-  const activeWsId = workspaces.getActiveId(windowId);
-  if (!activeWsId) {
-    return;
-  }
-  // Filter the just-removed tab out explicitly because the
-  // browser.tabs.onRemoved → TabRegistry-onRemoved propagation isn't
-  // guaranteed to run before this handler.
-  const panelTabIds = panels.getPanels(activeWsId);
-  const panelTabIdsSet = new Set(panelTabIds);
-  const remaining = tabs
-    .snapshot()
-    .filter(
-      (t) =>
-        t.id !== tabId &&
-        t.windowId === windowId &&
-        t.workspaceId === activeWsId &&
-        !panelTabIdsSet.has(t.id),
-    );
-  if (remaining.length > 0) return;
-  if (recentlyRemovedPanelTabIds.delete(tabId) && panelTabIds.length > 0) {
-    return;
-  }
-
-  // No sidebar (non-panel) tabs left. If the workspace still has panels,
-  // PROMOTE the leftmost panel into the main content slot rather than
-  // closing the workspace. The promotion is a panel-store / panels/sync
-  // mutation — the underlying Firefox tab keeps its docShell, so the
-  // chrome reconciler relocates the existing <browser> from the
-  // split-view slot to the main tabpanel without reloading the page
-  // (DOM move, not a navigate). Repeated Cmd+W then chews through one
-  // panel per press until the workspace is truly empty.
-  if (panelTabIds.length > 0) {
-    void promoteLeftmostPanelToTab(activeWsId, panelTabIds[0]!);
-    return;
-  }
-
-  // Sidebar + panels both empty: delete the workspace and switch this
-  // window to the next available one. "Available" = exists AND not
-  // owned by another window AND not the one we're about to delete.
-  // Compute the candidate FIRST so we can fall back gracefully when
-  // there's nothing to switch to (no other workspace exists, or all
-  // others are taken by other windows): keep the empty workspace
-  // around and just close the window — a future window opening can
-  // pick it up via assignAvailable and the orchestrator will spawn a
-  // fresh tab on activation.
-  const wsList = workspaces.snapshot().workspaces;
-  const ownedByOthers = new Set(
-    Object.entries(workspaces.getActiveIdByWindow())
-      .filter(([k]) => Number(k) !== windowId)
-      .map(([, v]) => v),
+  if (windowId === null) return;
+  const action = afterTabRemoved(
+    {
+      tabs,
+      panels,
+      workspaces,
+      handoff: windowHandoff,
+      takeRecentlyRemovedPanel: (id) => recentlyRemovedPanelTabIds.delete(id),
+    },
+    tabId,
+    windowId,
   );
-  const candidate = wsList.find((w) => w.id !== activeWsId && !ownedByOthers.has(w.id));
-
-  if (candidate) {
-    // Release ownership BEFORE delete so the delete()'s own
-    // "reassign every window that had this workspace" path is a no-op
-    // for us. We're handling our own reassignment via the activate()
-    // below to control which workspace we switch to (delete()'s
-    // fallback picks first-in-insertion-order, which can collide with
-    // another window's ownership).
-    workspaces.forgetWindow(windowId);
-    workspaces.delete(activeWsId);
-    const result = workspaces.activate(candidate.id, windowId);
-    if (result !== 'activated') {
-      console.warn(
-        '[bento-tools] post-delete activate returned',
-        result,
-        '— window may be left with no active workspace',
-      );
+  switch (action.kind) {
+    case 'none':
+      return;
+    case 'promote-panel':
+      // The panel's tab keeps its docShell; chrome moves its <browser> to the main slot
+      // without a reload, so repeated Cmd+W chews through one panel per press.
+      void promoteLeftmostPanelToTab(action.workspaceId, action.panelTabId);
+      return;
+    case 'switch-window': {
+      // Release ownership BEFORE delete so delete()'s own reassignment is a no-op for
+      // this window; the activate() below picks the workspace instead.
+      workspaces.forgetWindow(windowId);
+      workspaces.delete(action.deleteWorkspaceId, { announceFallback: false });
+      const result = workspaces.activate(action.candidateId, windowId);
+      if (result !== 'activated') {
+        console.warn(
+          '[bento-tools] post-delete activate returned',
+          result,
+          '— window may be left with no active workspace',
+        );
+      }
+      return;
     }
-    return;
+    case 'close-window':
+      browser.windows
+        .remove(windowId)
+        .catch((err) => console.warn('[bento-tools] close-window-on-empty-workspace failed:', err));
+      return;
   }
-
-  browser.windows
-    .remove(windowId)
-    .catch((err) => console.warn('[bento-tools] close-window-on-empty-workspace failed:', err));
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
@@ -2006,7 +2010,7 @@ async function handleWorkspaceActivation(
       .map((t) => t.id);
     if (stray.length > 0) {
       try {
-        await browser.tabs.move(stray, { windowId: targetWindowId, index: -1 });
+        await moveTabsToWindow(stray, targetWindowId, wsId);
       } catch (err) {
         console.warn('[bento-tools] cross-window tab move failed:', err);
       }
@@ -2028,12 +2032,55 @@ async function handleWorkspaceActivation(
   // restrict to the target window — combined with the move step above,
   // every wsId tab now lives in targetWindowId, so this filter just
   // doubles as a safety check.
-  const panelTabIds = new Set(panels.getPanels(wsId));
-  const allWsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
-  const wsTabs =
-    targetWindowId !== null ? allWsTabs.filter((t) => t.windowId === targetWindowId) : allWsTabs;
   const preferred = takePreferredWorkspaceActivationTab(wsId, targetWindowId);
-  if (wsTabs.length === 0 && !restoredParkedTabs) {
+  // A window that opened with tabs of its own (its initial tab, or tabs torn out of
+  // another window) has no workspace tab yet only because they are not assigned.
+  const {
+    tabs: wsTabs,
+    adopt: adoptable,
+    create,
+  } = await settleWorkspaceTabs({
+    readTabs: () => {
+      const panelTabIds = new Set(panels.getPanels(wsId));
+      const inWorkspace = tabs
+        .snapshot()
+        .filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
+      return targetWindowId !== null
+        ? inWorkspace.filter((t) => t.windowId === targetWindowId)
+        : inWorkspace;
+    },
+    parkedTabsRestored: Boolean(restoredParkedTabs),
+    adoptable: async () =>
+      targetWindowId === null
+        ? []
+        : tabsToAdopt({
+            gate: adoptionGate,
+            windowId: targetWindowId,
+            snapshot: () => tabs.snapshot(),
+            isClosing: (tabId) => tabs.isClosing(tabId),
+            isPrivate: (tabId) => tabs.isPrivate(tabId),
+            confirmUnassigned: (ids) => tabs.confirmUnassigned(ids),
+          }),
+  });
+  if (adoptable.length > 0) {
+    for (const adopted of adoptable) {
+      tabs.assignWorkspaceEagerly(adopted.id, wsId);
+      // A torn-out tab's SessionStore values are copied onto the new window's tab after
+      // Bento's attach handler ran, so a panel marker can come back on a tab that is no
+      // longer a panel (onActivated would treat it as a restored panel).
+      if (!isPanelOrSubPanelTabId(adopted.id)) {
+        void clearPanelMarker(adopted.id);
+        void clearDevtoolsPanelMarker(adopted.id);
+      }
+    }
+    if (!adoptable.some((adopted) => adopted.active)) {
+      void activateNonPanelTab(
+        adoptable[0]!.id,
+        'activate adopted tab',
+        targetWindowId ?? undefined,
+      );
+    }
+  } else if (create) {
     try {
       const created = await browser.tabs.create({
         active: true,
@@ -2074,6 +2121,8 @@ async function handleWorkspaceActivation(
 }
 
 workspaces.onDeltas((deltas) => {
+  // Returned so a caller that flushes the store (a workspace delete) can wait for them.
+  const activations: Promise<void>[] = [];
   for (const d of deltas) {
     if (d.kind === 'removed') {
       panels.removeWorkspace(d.id);
@@ -2086,8 +2135,9 @@ workspaces.onDeltas((deltas) => {
     }
     if (d.kind !== 'activated') continue;
     const targetWindowId = typeof d.windowId === 'number' ? d.windowId : null;
-    void handleWorkspaceActivation(d.id, targetWindowId);
+    activations.push(handleWorkspaceActivation(d.id, targetWindowId));
   }
+  return Promise.all(activations).then(() => undefined);
 });
 
 const shellWindows = createWindowRegistry(browser.windows);
@@ -2162,6 +2212,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
         broadcast: broadcastEvent,
         emitPanelsSync,
         syncPanelMarkers: syncPanelMarkersForWorkspace,
+        handoff: windowHandoff,
         preferWorkspaceActivationTab,
         sourceWindowId,
       }),

@@ -7,6 +7,7 @@ import type { SettingsStore } from '../settings/SettingsStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import { migrateLegacyEntriesToPersistence } from '../panels/PanelStore';
 import { PrivacyMutationService } from '../privacy/PrivacyMutationService';
+import { moveTabsToWindow } from '../tabs/AdoptedTab';
 
 export interface ImportContext {
   workspaces: WorkspaceStore;
@@ -288,7 +289,7 @@ export async function executeImport(
     await requireRegularTargetWindow(windowId);
     const createdForWorkspace = createdTabIdsByWorkspace.get(workspaceId) ?? [];
     if (createdForWorkspace.length > 0 && windowId !== ctx.targetWindowId) {
-      await browser.tabs.move(createdForWorkspace, { windowId, index: -1 });
+      await moveTabsToWindow(createdForWorkspace, windowId, workspaceId);
     }
     let ordinary = ordinaryTabIdsByWorkspace.get(workspaceId) ?? [];
     if (ordinary.length === 0) {

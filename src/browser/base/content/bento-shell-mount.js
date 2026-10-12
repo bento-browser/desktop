@@ -113,6 +113,7 @@
         'insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
         'on_TabSplitViewDeactivate()', 'warmupTab()', 'tabpanels', 'tabContainer', 'addTrustedTab()',
         'addTab()', 'getTabForBrowser()', 'selectedBrowsers', 'moveTabBefore()', 'moveTabAfter()',
+        'replaceTabWithWindow()', 'replaceTabsWithWindow()',
       ],
       MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
@@ -6890,7 +6891,10 @@
   // from an earlier reconcile, so each pass starts from the stylesheet. The
   // flat layout re-applies its own rects afterwards.
   function resetPanelInlineLayoutState(panelEl) {
+    // A close the user cancelled (beforeunload "Stay") re-renders the same
+    // element, so the close fade must not outlive the close.
     delete panelEl._bentoPanelRemoving;
+    panelEl.classList.remove('bento-panel--removing');
     panelEl.style.removeProperty('display');
     panelEl.style.removeProperty('flex-direction');
     panelEl.style.removeProperty('overflow');
@@ -12587,12 +12591,20 @@
     // that's both selected and a panel doesn't appear twice.
     const topLevelPanelIds = new Set(resolved.map(({ tab }) => tab.linkedPanel));
     let mainTab = gBrowser.selectedTab;
+    // A replacement main tab must belong to the workspace being rendered. Picking the
+    // first non-panel tab in the window can select a tab of another workspace, which
+    // tools never follows: the sidebar keeps showing this workspace over a foreign page.
+    const isInRenderedWorkspace = (tab) =>
+      !currentWorkspaceId || selectedTabWorkspaceId(tab) === currentWorkspaceId;
     if (mainTab && !materializePanelTab(mainTab, '', 'main')) {
-      const replacementMain = Array.from(gBrowser.tabs).find((tab) => {
+      const canBeReplacement = (tab) => {
         if (!tab || tab.closing) return false;
         if (topLevelPanelIds.has(tab.linkedPanel)) return false;
         return materializePanelTab(tab, '', 'main replacement');
-      });
+      };
+      const replacementMain =
+        Array.from(gBrowser.tabs).find((tab) => isInRenderedWorkspace(tab) && canBeReplacement(tab)) ||
+        Array.from(gBrowser.tabs).find(canBeReplacement);
       if (replacementMain) {
         mainTab = replacementMain;
         try {
@@ -12619,6 +12631,11 @@
       const replacement = Array.from(gBrowser.tabs).find((tab) => {
         if (!tab?.linkedPanel || tab.closing) return false;
         if (topLevelPanelIds.has(tab.linkedPanel)) return false;
+        // The selected tab is a panel still listed in a stale payload (a promoted panel
+        // is activated before its panels/sync arrives). With no sidebar tab of this
+        // workspace to fall back to, keep it selected rather than jumping to another
+        // workspace's tab; the dedupe below renders it as the main slot.
+        if (!isInRenderedWorkspace(tab)) return false;
         const panelEl = document.getElementById(tab.linkedPanel);
         return (
           !panelEl?.hasAttribute('data-bento-panel') &&
@@ -14630,6 +14647,54 @@
       window.gBrowser.__bentoFindTabOverride = true;
     }
 
+    // Tear-out hands the new window `aTab.splitview ?? aTab`, and the new
+    // window adopts the tab only when that argument is a XUL element
+    // (getTabToAdopt in browser-init.js). While the reconciler has a tab marked,
+    // `splitview` is Bento's plain-object marker, so the new window silently
+    // adopts nothing: the source tab stays put and the new window opens with
+    // blank tabs of its own. Firefox reads the element synchronously while it
+    // builds the window arguments, so the markers are hidden for that call only
+    // and put back right after.
+    const hideBentoSplitViewMarkers = (gBrowser) => {
+      const hidden = [];
+      for (const tab of gBrowser.tabs) {
+        const descriptor = Object.getOwnPropertyDescriptor(tab, 'splitview');
+        if (descriptor?.value?.kind !== BENTO_SPLIT_KIND) continue;
+        hidden.push([tab, descriptor]);
+        delete tab.splitview;
+      }
+      return () => {
+        for (const [tab, descriptor] of hidden) {
+          if (tab.isConnected && !Object.getOwnPropertyDescriptor(tab, 'splitview')) {
+            Object.defineProperty(tab, 'splitview', descriptor);
+          }
+        }
+      };
+    };
+    const wrapTearOut = (gBrowser, method) => {
+      const original = gBrowser[method];
+      gBrowser[method] = function (...args) {
+        const restoreMarkers = hideBentoSplitViewMarkers(this);
+        try {
+          return original.apply(this, args);
+        } finally {
+          restoreMarkers();
+        }
+      };
+    };
+    if (
+      window.gBrowser &&
+      typeof window.gBrowser.replaceTabWithWindow === 'function' &&
+      typeof window.gBrowser.replaceTabsWithWindow === 'function' &&
+      !window.gBrowser.__bentoTearOutOverride
+    ) {
+      bentoCompatNoteNative('gBrowser.replaceTabWithWindow', window.gBrowser.replaceTabWithWindow);
+      bentoCompatNoteNative('gBrowser.replaceTabsWithWindow', window.gBrowser.replaceTabsWithWindow);
+      wrapTearOut(window.gBrowser, 'replaceTabWithWindow');
+      wrapTearOut(window.gBrowser, 'replaceTabsWithWindow');
+      window.gBrowser.__bentoTearOutOverride = true;
+    }
+
     // Closing the selected tab: Firefox's #beginRemoveTab runs #blurTab,
     // which selects the successor and fires TabSelect (and the tabpanels
     // 'select' event), and only afterwards, in the same synchronous run,
@@ -14648,6 +14713,7 @@
       lastReconciledFor = sel;
       if (shouldDeferReconcileForWorkspaceSwitch(sel)) {
         armWorkspaceSwitchFade();
+        armDeferredWorkspaceSwitchWatchdog(sel);
         return;
       }
       reconcilePanelsSplitView(__lastPanelsPayload);
@@ -15188,6 +15254,30 @@
   function armWorkspaceSwitchFade() {
     cancelStripScrollMotion();
     setWorkspaceFadeClasses(true);
+  }
+  // The curtain armed for a selection in another workspace lifts when tools answers with a
+  // workspace switch (performWorkspaceSwitchFade replaces this timer). If tools never
+  // follows, which happens when the selection was not the user's workspace switch, or when
+  // a slow switch has not delivered its panels yet, lift it and render the selected tab
+  // alone instead of leaving the page hidden. The panel payload held here belongs to the
+  // workspace being left, so it must not be drawn around a tab of the workspace being
+  // entered; the real payload reconciles as usual when it arrives.
+  function armDeferredWorkspaceSwitchWatchdog(deferredTab) {
+    if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
+    __workspaceFadeWatchdog = setTimeout(() => {
+      __workspaceFadeWatchdog = null;
+      console.warn(
+        '[bento-shell-mount] workspace-switch watchdog fired — no workspace switch followed the selection, lifting the curtain',
+      );
+      clearWorkspaceFadeClasses();
+      try {
+        if (window.gBrowser?.selectedTab === deferredTab) {
+          reconcilePanelsSplitView([]);
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] deferred workspace-switch reconcile threw:', err);
+      }
+    }, WORKSPACE_FADE_WATCHDOG_MS);
   }
   function selectedTabWorkspaceId(tab) {
     if (!tab) return null;

@@ -62,7 +62,26 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-10-12
+- Last updated: 2026-10-13
+- Tear-out (2026-10-13): `gBrowser.replaceTabWithWindow` and
+  `replaceTabsWithWindow` (drag a tab out, "Move to New Window", multi-select
+  tear-out) build the new window's arguments from `aTab.splitview ?? aTab`, and
+  the new window adopts its first tab only when `getTabToAdopt()` receives a XUL
+  element. While the reconciler has tabs marked, `tab.splitview` is Bento's
+  plain-object marker, so the adoption silently failed: the source tab stayed
+  and the new window opened with blank tabs. The mount wraps both methods
+  (`bentoCompatNoteNative`, registry entries `gBrowser.replaceTabWithWindow`,
+  `gBrowser.replaceTabsWithWindow`, `getTabToAdopt XULElement`) to hide its own
+  `splitview` markers for the synchronous call and restore them right after. The
+  extension-API paths `windows.create({ tabId })` and `tabs.move` read
+  `tab.splitview` inside Firefox and are not covered; Bento uses neither on a
+  marked tab (workspace activation moves unmarked stray tabs). If a future
+  Firefox reads the element after an await, or another caller starts passing
+  marked tabs, the fallback is a `window-sync/02` guard on `isSplitViewWrapper`.
+  Regression check: tear out the selected tab and a panel tab from a workspace
+  with panels, and a background tab; each moves into a new window (same
+  BrowsingContext), the source window drops it, and the new window has exactly
+  one tab.
 - Firefox 157.0.1 review (2026-10-12): `tabbrowser.js` is now the ES module
   `Tabbrowser.sys.mjs` and its tab-closing method is the private
   `#beginRemoveTab`, so Bento no longer wraps it. Closing the selected tab runs
@@ -1597,6 +1616,9 @@ below is generated; edit the registry, then run
 | `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:638` |
 | `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7965` |
 | `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7987` |
+| `gBrowser.replaceTabWithWindow` | method (runtime) | Hides Bento's split-view markers while Firefox picks the element it hands a torn-out window (aTab.splitview ?? aTab). | `hideBentoSplitViewMarkers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7657` |
+| `gBrowser.replaceTabsWithWindow` | method (runtime) | Same as replaceTabWithWindow for the context-menu and multi-select tear-out (contextTab.splitview ?? contextTab). | `hideBentoSplitViewMarkers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7694` |
+| `getTabToAdopt XULElement` | source (engine only) | The new window adopts its first tab only when the window argument is a XUL element, so a Bento marker object makes the adoption silently fail. | `hideBentoSplitViewMarkers` | `browser/base/content/browser-init.js:126` |
 | `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:523` |
 | `MozBrowser.prototype.renderLayers` | member (runtime) | Bento re-enables layer rendering for panel browsers after a failed split-view layout. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:540` |
 | `MozBrowser.prototype.preserveLayers` | method (runtime) | Called before deactivating a panel docShell so it repaints without a blank frame. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:951` |

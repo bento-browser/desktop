@@ -303,22 +303,126 @@ adds its entry, and its id in the mount probe list, in the same change.
   not a tab-modal dialog, so Marionette's alert commands do not see it and
   `execute_script` calls can appear to hang until it is answered. Answer it with
   `box.getContentDialogManager()._dialogs[0]._frame.contentDocument.getElementById('commonDialog')`
-  and `cancelDialog()` or `acceptDialog()`. Bento's `closeTabFromSidebar` removes
-  the panel binding and marks the tab closing before it calls `tabs.remove`, so
-  cancelling the prompt on a panel tab keeps the tab but not the panel (the panel
-  strip is already emptied of it); cancelling on a selected or background tab keeps
-  both. A background tab is selected while its prompt is pending. Accepting
+  and `cancelDialog()` or `acceptDialog()` (wait for `_buttons` to exist first).
+  A background tab is selected while its prompt is pending, and a selected tab's
+  prompt blocks every later Marionette command, so the dialog has to be answered
+  from a timer armed inside the browser before the close is triggered. Accepting
   removes the tab with normal succession and no ghost panel. Behavior is
   identical on 154.0, so it is a tools-side policy, not a Firefox 157 change.
-- Tear-out with panels present. `replaceTabWithWindow` passes `aTab.splitview ??
-  aTab` to the new window, and while a workspace has panels Bento gives the
-  rendered tabs a `tab.splitview` marker (see "Required split-view compatibility
-  shims"); that is the likely cause (inferred, not traced) of this: tearing out the
-  selected tab or a panel tab opens an unsynced window with two new tabs and leaves
-  the source tab in place. Tearing out a background tab, or any tab while the workspace has no panels,
-  moves the tab (same BrowsingContext, content, and container) into an unsynced
-  window that also carries one extra new tab; a window's only tab is not torn out
-  (`replaceTabWithWindow` returns null). Identical on 154.0.
+  `browser.tabs.remove` resolves whether or not the user stays, but a committed
+  close has already fired `TabClose`, which drops the extension tab id, so a
+  `tabs.get` that still succeeds after `remove` resolves means the tab was kept.
+  Bento therefore closes transactionally in `protocol-handler.ts`: the close
+  paths (`tab/close`, `tabs/close`, `tab/closeMain`, `pinnedPanel/close`, and
+  sub-panel closes) capture a `CloseUndo` (workspace, folder, each panel restore
+  location, width, header-hidden) before `markClosing` and the panel removal
+  strip those bindings, and `removeMarkedTab` reports `kept` when the tab
+  survives. `restoreKeptTab` then clears the closing marker, reassigns the
+  workspace and folder, re-inserts the tab at its panel restore location,
+  restores width and header state, and re-syncs markers and `panels/sync`. The
+  rollback only restores into the workspace the tab's own window still shows
+  (`tabs.get(tabId).windowId` against `getActiveId`): the prompt can stay open
+  while that window switches away and another window takes the workspace, and
+  re-inserting the panel slot then would put it in a layout the tab's window does
+  not render. In that case the tab becomes a normal tab of the workspace its
+  window shows and its panel marker is cleared. The restored panel is rendered
+  again from the same element, so
+  `resetPanelInlineLayoutState` must drop the `bento-panel--removing` fade class;
+  without that the panel returns at opacity 0 and ignores pointer events. Before
+  this, cancelling the prompt left every kept tab, panel or not, with no
+  workspace and `bento.closingTab=1`: it vanished from the sidebar and
+  `closeMarkedTabs` removed it at the next launch. DevTools closes never roll
+  back, and a sub-panel closed along with its parent only gets its workspace back
+  (it returns as a sidebar tab, not a panel). Restore locations are root-level, so
+  a sub-panel or subdivision that does come back is a root panel at its group's
+  position, not inside the group. `workspace/delete` does not use this path: its
+  tabs are removed directly after their workspace is gone, so a tab kept by a
+  prompt there has no workspace to return to and stays marked closing until the
+  next launch.
+- The reconciler must not pick a main tab from another workspace. When the
+  selected tab is a panel that is still in a stale payload (a promoted panel is
+  activated before its `panels/sync` arrives), `reconcilePanelsSplitView` looks for
+  a replacement main tab; taking the first non-panel tab in the window selected a
+  tab of another workspace that tools never follows, so the sidebar kept showing
+  the old workspace over a foreign page. Replacements now come from the rendered
+  workspace (`isInRenderedWorkspace`, read from the SessionStore workspace value);
+  with none, the promoted panel stays selected and the dedupe renders it as the
+  main slot. The path for a selected tab that cannot be materialized prefers the
+  rendered workspace and falls back to any tab.
+- A selection in another workspace arms the workspace-switch curtain
+  (`bento-workspace-switching`, opacity 0 on the strip, nav and tabpanels) and defers
+  the reconcile until tools answers with a workspace switch. If tools never
+  follows (a tab selected by Firefox or an extension, or a tools failure) the
+  curtain used to stay up with no watchdog, hiding the page for good.
+  `armDeferredWorkspaceSwitchWatchdog` lifts it after `WORKSPACE_FADE_WATCHDOG_MS`
+  and reconciles the selected tab alone (`reconcilePanelsSplitView([])`);
+  `performWorkspaceSwitchFade` replaces the timer when the switch does arrive. The
+  held payload must not be passed: a slow legitimate switch (parked-tab restore
+  selects the destination's first tab before tools finishes) outlasts the timer,
+  and the held payload is the previous workspace's, so it would draw old panels
+  around a new workspace's tab. The real `panels/sync` reconciles normally when it
+  lands (`scripts/mount-workspace-watchdog.test.mjs`). Do not "fix" this by activating the
+  selected tab's workspace from the selection signal: selection fires for
+  transient states (closing, adoption) and would fight tools.
+- Tear-out with panels present. `replaceTabWithWindow` hands the new window
+  `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
+  contextTab` (or the multi-selection), and the new window adopts its first tab
+  only when `getTabToAdopt()` receives a XUL element. While the reconciler has
+  tabs marked, `tab.splitview` is Bento's own-property marker (a plain object),
+  so tearing out the selected tab or a panel tab failed silently: the source
+  tab stayed, and the new window opened with blank tabs of its own. Confirmed
+  by deleting the own property first, after which the tab moves. The mount now
+  wraps both methods on the `gBrowser` instance (`hideBentoSplitViewMarkers`):
+  it hides every own `splitview` marker whose `kind` is `bento-split` for the
+  synchronous call, in which Firefox reads the element, and puts the markers
+  back in `finally`. The adoption itself runs later on the tab elements.
+  Identical on 154.0. Four tools-side effects follow a successful tear-out and
+  are handled in `bento-tools`:
+  - The tab keeps its tab id and, through `SessionStore`, the old
+    `bento.workspaceId`, folder, and panel marker, so it was hidden in the new
+    window's sidebar and the window opened an extra blank tab for its own empty
+    workspace. `tabs.onAttached` runs `releaseAdoptedTab` (`tabs/AdoptedTab.ts`):
+    a tab that arrives in a window which does not show its workspace leaves its
+    panel layouts, loses the stale workspace and folder, and joins the
+    destination's workspace (or waits for it). Bento's own cross-window moves
+    (a window claiming its workspace's tabs, an import relocating tabs) go through
+    `moveTabsToWindow`, which records tab id to workspace and destination window
+    (`bentoTabMoves`) before the move and keeps only the tabs it reports as moved;
+    `onAttached` takes the record for the window the tab arrived in first and leaves
+    the tab alone. Judging
+    by ownership alone misread such a move as a user drag whenever the window
+    switched workspace before the attach event arrived. Dragging a tab into an
+    existing window takes the user path.
+  - The new window opens with the adopted tabs unassigned, so
+    `handleWorkspaceActivation` assigns every unassigned tab of a window where no
+    tab has a workspace (`adoptableTabs`) instead of creating a blank tab. A plain
+    `OpenBrowserWindow()` had the same race and opened two tabs (its initial tab
+    had no workspace yet when the first activation ran). This only runs for a
+    window created after startup has settled and hydrated (`createAdoptionGate`),
+    and only for tabs whose session metadata is read at that moment and found empty
+    (`TabRegistry.confirmUnassigned`; a tab that `clearWorkspace` detached counts
+    without a read, because SessionStore copies the old value back onto it). At
+    boot `restoreFromSession` activates workspaces before SessionStore has
+    restored the tabs and before `hydrateWorkspaceIds` ran, so every restored tab
+    still looks unassigned; assigning the window's workspace to it there persisted
+    over the real assignment. Windows that exist before the gate settles, and any
+    window with one tab that has a stored value (an undone window close), adopt
+    nothing and fall back to a new tab as before. The workspace's own tabs are read
+    again after the session values (`settleWorkspaceTabs`) before a tab is
+    created: another handler can assign the window's initial tab during that read,
+    and creating from the earlier read left an extra blank tab beside it.
+  - SessionStore copies the source tab's custom values onto the new tab after the
+    attach event, so a panel marker can reappear on a tab that is no longer a
+    panel; the activation path clears it again (`onActivated` would otherwise
+    treat the tab as a restored panel).
+  - Removing the last sidebar tab of a workspace by tearing it out fires no
+    `tabs.onRemoved`, so `tabs.onDetached` promotes the leftmost live panel
+    (`panelToPromoteAfterDetach`) the way the last-tab handler does. Without it
+    the panel ended up selected as the main tab of a workspace with an empty
+    sidebar.
+  The extension-API entry points `windows.create({ tabId })` and cross-window
+  `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
+  wrapper; Bento calls neither on a marked tab.
 - `prefs/bento.js` sets `browser.nova.enabled` and `sidebar.revamp` to false.
   Firefox 157 defaults both to true; Bento keeps the 154 chrome because its shell
   owns the sidebar and tab strip. No upgrade migration

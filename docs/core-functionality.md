@@ -106,6 +106,22 @@ the user's active contexts without forcing them to rebuild their browser
 arrangement from memory.
 Closing a window that is showing a workspace should release that workspace for
 another window without clearing its tabs, panels, or panel layout.
+Deleting the workspace a window is showing moves that window to a workspace no
+other window is showing, so one window never takes over another window's
+workspace or its tabs. When every other workspace is open in another window, the
+window closes with the deleted workspace's tabs.
+A tab moved to another window, by dragging it out or choosing Move to New Window,
+takes its page with it and joins the workspace shown in the destination window; a
+panel moved that way becomes a regular tab there, and a new window opens with only
+the moved tab or tabs, not an extra blank tab.
+Closing a tab or panel whose page asks to stay (a leave-page prompt) and choosing
+to stay keeps it in its workspace, folder, and panel slot. A sub-panel or
+subdivision comes back as a regular panel at the top level of the layout. If the
+window holding the tab switched to another workspace while the prompt was open,
+the tab joins the workspace that window shows, as a regular tab even if it was a
+panel. When the prompt blocks closing the tabs of a workspace that is being
+deleted, the tab stays open without a workspace and is closed at the next launch;
+deleting a workspace has nothing to roll back to.
 In a single-window session, relaunch should reopen on the workspace that was
 visible when Bento was quit.
 Panels, pinned panels, and tabs from private windows are never written to the

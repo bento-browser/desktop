@@ -601,6 +601,8 @@ test('a wrapped member is judged by the original Firefox recorded before Bento r
     'PopupNotifications._isActiveBrowser',
     'gBrowser._findTabToBlurTo',
     'gBrowser.on_visibilitychange',
+    'gBrowser.replaceTabWithWindow',
+    'gBrowser.replaceTabsWithWindow',
   ]);
   const probes = loadProbes(runtimeGlobals({ error: [], info: [] }, { modulesLoaded: true }));
   const probe = (win, id) =>

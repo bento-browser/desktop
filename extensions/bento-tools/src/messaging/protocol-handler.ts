@@ -15,9 +15,12 @@ import type {
 } from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
+import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
+import type { PanelRestoreLocation } from '../panels/PanelLayout';
+import { livePanelIds } from '../panels/PanelPromotion';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BackupStore } from '../backup/BackupStore';
@@ -219,6 +222,7 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
     tab?.workspaceId ??
     (typeof sourceWindowId === 'number' ? ctx.workspaces.getActiveId(sourceWindowId) : null);
 
+  const undo = captureCloseUndo(ctx, tabId);
   await ctx.tabs.markClosing(tabId);
 
   if (workspaceId) {
@@ -230,18 +234,27 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
       if (typeof sourceWindowId === 'number' && candidate.windowId !== sourceWindowId) return false;
       return !panelTabIdSet.has(candidate.id);
     });
+    // A panel whose own close is in flight cannot become the main tab.
+    const promotablePanelIds = livePanelIds(panelTabIds, ctx.tabs.snapshot(), (id) =>
+      ctx.tabs.isClosing(id),
+    );
 
-    if (remainingNormalTabs.length === 0 && panelTabIds.length > 0) {
-      const promoted = await promoteLeftmostPanelBeforeMainClose(ctx, workspaceId, panelTabIds[0]!);
+    if (remainingNormalTabs.length === 0 && promotablePanelIds.length > 0) {
+      const promoted = await promoteLeftmostPanelBeforeMainClose(
+        ctx,
+        workspaceId,
+        promotablePanelIds[0]!,
+      );
       await closeTabAsRemoved(ctx, tabId, {
         delayMs: promoted ? 80 : 0,
         label: 'tab/closeMain',
+        undo,
       });
       return;
     }
   }
 
-  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain' });
+  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain', undo });
 }
 
 function shouldCloseTabThroughMainPromotion(ctx: HandlerContext, tabId: number): boolean {
@@ -342,8 +355,11 @@ async function cleanupWorkspaceAfterTabMove(
     );
   if (remainingNormalTabs.length > 0) return;
 
-  if (panelTabIds.length > 0) {
-    await promoteLeftmostPanelToTabAfterMove(ctx, fromWorkspaceId, panelTabIds[0]!);
+  const promotablePanelIds = livePanelIds(panelTabIds, ctx.tabs.snapshot(), (id) =>
+    ctx.tabs.isClosing(id),
+  );
+  if (promotablePanelIds.length > 0) {
+    await promoteLeftmostPanelToTabAfterMove(ctx, fromWorkspaceId, promotablePanelIds[0]!);
     return;
   }
 
@@ -361,7 +377,7 @@ async function cleanupWorkspaceAfterTabMove(
     );
     if (candidate) {
       ctx.workspaces.forgetWindow(sourceWindowId);
-      ctx.workspaces.delete(fromWorkspaceId);
+      ctx.workspaces.delete(fromWorkspaceId, { announceFallback: false });
       const result = ctx.workspaces.activate(candidate, sourceWindowId);
       if (result !== 'activated' && result !== 'noop') {
         console.warn(
@@ -383,6 +399,15 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function tabWindowId(tabId: number): Promise<number | null> {
+  try {
+    const { windowId } = await browser.tabs.get(tabId);
+    return typeof windowId === 'number' && windowId >= 0 ? windowId : null;
+  } catch {
+    return null;
+  }
+}
+
 async function tabStillExists(tabId: number): Promise<boolean> {
   try {
     await browser.tabs.get(tabId);
@@ -392,34 +417,144 @@ async function tabStillExists(tabId: number): Promise<boolean> {
   }
 }
 
-function removeMarkedTabWithRetries(tabId: number, label: string, attempt = 0): void {
-  void browser.tabs.remove(tabId).catch(async (err) => {
-    await sleepMs(80);
-    if (!(await tabStillExists(tabId))) return;
-    if (attempt < TAB_REMOVE_RETRY_DELAYS_MS.length) {
-      setTimeout(
-        () => removeMarkedTabWithRetries(tabId, label, attempt + 1),
-        TAB_REMOVE_RETRY_DELAYS_MS[attempt],
-      );
-      return;
+/**
+ * What a close must put back if Firefox keeps the tab. `markClosing` and the
+ * panel removal drop these bindings before Firefox commits the close, so they
+ * are captured first.
+ */
+interface CloseUndo {
+  workspaceId?: string;
+  folderId?: string;
+  widthPx?: number;
+  headerHidden: boolean;
+  panels: Array<{ workspaceId: string; location: PanelRestoreLocation }>;
+}
+
+function captureCloseUndo(ctx: HandlerContext, tabId: number): CloseUndo {
+  const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
+  return {
+    workspaceId: tab?.workspaceId,
+    folderId: tab?.folderId,
+    widthPx: ctx.panels.getWidth(tabId),
+    headerHidden: ctx.panels.getHeaderHidden(tabId),
+    panels: ctx.panels.findWorkspacesContainingTab(tabId).map((workspaceId) => ({
+      workspaceId,
+      location: ctx.panels.getPanelRestoreLocation(workspaceId, tabId),
+    })),
+  };
+}
+
+/**
+ * Undo a close that Firefox did not carry out (the user chose "Stay" on a
+ * beforeunload prompt): clear the closing marker, give the tab its workspace
+ * and folder back, and re-insert it where it was in each panel layout.
+ *
+ * The prompt can stay open while windows switch workspace. If the window that
+ * holds the tab no longer shows the workspace the tab was closed from, putting
+ * it back there would leave the tab (or its panel slot) in a workspace the tab's
+ * window is not rendering. The tab then joins the workspace its window shows, as
+ * a normal tab.
+ */
+async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUndo): Promise<void> {
+  await ctx.tabs.unmarkClosing(tabId);
+  const windowId = await tabWindowId(tabId);
+  const shownWorkspaceId = ctx.workspaces.getActiveId(windowId ?? ctx.sourceWindowId);
+  const originalId = undo.workspaceId;
+  if (
+    originalId === undefined ||
+    !ctx.workspaces.has(originalId) ||
+    shownWorkspaceId !== originalId
+  ) {
+    if (shownWorkspaceId) await ctx.tabs.assignWorkspace(tabId, shownWorkspaceId);
+    if (undo.panels.length > 0) {
+      // The panel marker stays on a closing tab; a marked tab that is no longer a panel
+      // would be treated as a restored panel when it activates.
+      void clearPanelMarker(tabId);
+      void clearDevtoolsPanelMarker(tabId);
     }
-    if (!String(err).includes('Invalid tab ID')) {
-      console.warn(`[bento-tools] ${label}: tabs.remove failed after retries:`, tabId, err);
+    return;
+  }
+  await ctx.tabs.assignWorkspace(
+    tabId,
+    originalId,
+    undo.folderId ? { preserveFolderId: undo.folderId } : {},
+  );
+  const restoredIn = undo.panels.filter(
+    ({ workspaceId: panelWorkspaceId, location }) =>
+      ctx.workspaces.has(panelWorkspaceId) &&
+      ctx.panels.insertAtRestoreLocation(panelWorkspaceId, tabId, location),
+  );
+  if (restoredIn.length === 0) return;
+  // PanelStore.remove dropped these once the tab left its last layout.
+  if (undo.widthPx !== undefined) ctx.panels.setWidth(tabId, undo.widthPx);
+  if (undo.headerHidden) ctx.panels.setHeaderHidden(tabId, true);
+  for (const { workspaceId: panelWorkspaceId } of restoredIn) {
+    ctx.syncPanelMarkers(panelWorkspaceId);
+    ctx.emitPanelsSync(panelWorkspaceId);
+  }
+}
+
+/**
+ * Remove a tab Bento already marked closing, retrying transient failures.
+ * Resolves 'kept' when the tab is still alive afterwards: `tabs.remove`
+ * resolves even when the user cancels a beforeunload prompt, and a committed
+ * close has already dropped the tab id (TabClose) when it does.
+ */
+async function removeMarkedTab(tabId: number, label: string): Promise<'removed' | 'kept'> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await browser.tabs.remove(tabId);
+      return (await tabStillExists(tabId)) ? 'kept' : 'removed';
+    } catch (err) {
+      await sleepMs(80);
+      if (!(await tabStillExists(tabId))) return 'removed';
+      const retryDelayMs = TAB_REMOVE_RETRY_DELAYS_MS[attempt];
+      if (retryDelayMs === undefined) {
+        if (!String(err).includes('Invalid tab ID')) {
+          console.warn(`[bento-tools] ${label}: tabs.remove failed after retries:`, tabId, err);
+        }
+        return 'kept';
+      }
+      await sleepMs(retryDelayMs);
     }
-  });
+  }
+}
+
+function removeMarkedTabAndRestoreIfKept(
+  ctx: HandlerContext,
+  tabId: number,
+  label: string,
+  undo: CloseUndo | null,
+): void {
+  void removeMarkedTab(tabId, label)
+    .then((outcome) => (outcome === 'kept' && undo ? restoreKeptTab(ctx, tabId, undo) : undefined))
+    .catch((err) =>
+      console.warn(`[bento-tools] ${label}: restoring a kept tab failed:`, tabId, err),
+    );
 }
 
 async function closeTabAsRemoved(
   ctx: HandlerContext,
   tabId: number,
-  options: { delayMs?: number; label?: string; clearPanelMarker?: boolean } = {},
+  options: {
+    delayMs?: number;
+    label?: string;
+    clearPanelMarker?: boolean;
+    /** Captured by callers that already stripped the tab's bindings. */
+    undo?: CloseUndo;
+    /** False for ephemeral tabs (DevTools) that should not outlive a failed close. */
+    restoreIfKept?: boolean;
+  } = {},
 ): Promise<void> {
+  const undo =
+    options.restoreIfKept === false ? null : (options.undo ?? captureCloseUndo(ctx, tabId));
   await ctx.tabs.markClosing(tabId);
   if (options.clearPanelMarker) {
     void clearPanelMarker(tabId);
     void clearDevtoolsPanelMarker(tabId);
   }
-  const start = () => removeMarkedTabWithRetries(tabId, options.label ?? 'tab/close');
+  const start = () =>
+    removeMarkedTabAndRestoreIfKept(ctx, tabId, options.label ?? 'tab/close', undo);
   if (typeof options.delayMs === 'number' && options.delayMs > 0) {
     setTimeout(start, options.delayMs);
   } else {
@@ -433,6 +568,7 @@ function closeDevtoolsTabs(ctx: HandlerContext, tabIds: Set<number>, label: stri
     void closeTabAsRemoved(ctx, tabId, {
       label,
       clearPanelMarker: true,
+      restoreIfKept: false,
     });
   }
 }
@@ -442,6 +578,7 @@ async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<
     await closeMainTabWithPanelPromotion(ctx, tabId);
     return;
   }
+  const undo = captureCloseUndo(ctx, tabId);
   await ctx.tabs.markClosing(tabId);
   const affected = ctx.panels.findWorkspacesContainingTab(tabId);
   let delayActualTabRemove = false;
@@ -464,7 +601,7 @@ async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<
     // to restore the tab back as a panel instead of reopening it as a normal tab.
   }
   const delayMs = delayActualTabRemove ? 500 : 0;
-  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close' });
+  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close', undo });
 }
 
 async function activateNonPanelTab(
@@ -549,6 +686,116 @@ async function splitPanel(
   }
 }
 
+/**
+ * The replacement workspace has a tab to show in the window. Its activation opens one when
+ * the workspace is empty, but that step swallows its own failure, so awaiting the activation
+ * does not prove it. Opens one here if it is missing, and resolves false if that fails too.
+ */
+async function ensureReplacementTab(
+  ctx: HandlerContext,
+  workspaceId: string,
+  windowId: number,
+): Promise<boolean> {
+  const panelTabIds = new Set(ctx.panels.getPanels(workspaceId));
+  const hasTab = () =>
+    ctx.tabs
+      .snapshot()
+      .some(
+        (tab) =>
+          tab.windowId === windowId &&
+          tab.workspaceId === workspaceId &&
+          !panelTabIds.has(tab.id) &&
+          !ctx.tabs.isClosing(tab.id),
+      );
+  if (hasTab()) return true;
+  try {
+    const created = await browser.tabs.create({ windowId, active: true });
+    if (typeof created.id !== 'number') return false;
+    await ctx.tabs.assignWorkspaceEagerly(created.id, workspaceId);
+    return true;
+  } catch (err) {
+    console.warn('[bento-tools] workspace/delete: opening a tab for the replacement failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete a workspace, closing its tabs when asked. The tabs are marked closing
+ * first so their removal events do not count them as members of the workspace
+ * the window moves to. WorkspaceStore moves the window that showed the workspace
+ * to one no other window shows. When every other workspace is taken it has
+ * nowhere to go: it closes with its tabs (like closing its last tab), or, with no
+ * tabs to close, gets a fresh workspace the way a new window does.
+ *
+ * The window owns its replacement as soon as the store moves it, but the
+ * replacement's activation (a tab to show, panels) runs later. The doomed tabs
+ * are only removed once it has finished and the replacement is confirmed to have a
+ * tab in the window; if one cannot be had, the window's old tabs stay and join the
+ * replacement, so the window keeps working. The window is marked as handing off
+ * until the removals have settled, so the last-tab handler never sees an empty
+ * replacement and deletes it or closes the window.
+ */
+async function deleteWorkspace(
+  ctx: HandlerContext,
+  workspaceId: string,
+  closeTabs: boolean,
+): Promise<void> {
+  if (!ctx.workspaces.has(workspaceId)) return;
+  const doomed = closeTabs
+    ? ctx.tabs.snapshot().filter((tab) => tab.workspaceId === workspaceId)
+    : [];
+  await Promise.all(doomed.map((tab) => ctx.tabs.markClosing(tab.id)));
+
+  const ownerWindowId = ctx.workspaces.findOwningWindow(workspaceId);
+  const endHandoff = ownerWindowId === null ? null : ctx.handoff.begin(ownerWindowId);
+  try {
+    // The store announces the window's replacement itself; the global fallback would
+    // activate the same workspace a second time.
+    ctx.workspaces.delete(workspaceId, { announceFallback: false });
+    const replacementId =
+      ownerWindowId === null ? undefined : ctx.workspaces.getActiveIdByWindow()[ownerWindowId];
+    const stranded = ownerWindowId !== null && replacementId === undefined;
+    let toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
+    if (ownerWindowId !== null && replacementId !== undefined) {
+      // Deliver the replacement's activation now and wait for it.
+      await ctx.workspaces.flush();
+      if (!(await ensureReplacementTab(ctx, replacementId, ownerWindowId))) {
+        const kept = toRemove.filter((tab) => tab.windowId === ownerWindowId);
+        console.warn(
+          '[bento-tools] workspace/delete: keeping the tabs of the deleted workspace in window',
+          ownerWindowId,
+          kept.map((tab) => tab.id),
+        );
+        toRemove = toRemove.filter((tab) => tab.windowId !== ownerWindowId);
+        for (const tab of kept) {
+          await ctx.tabs.unmarkClosing(tab.id);
+          await ctx.tabs.assignWorkspace(tab.id, replacementId);
+          // A panel of the deleted workspace is a normal tab now.
+          void clearPanelMarker(tab.id);
+        }
+      }
+    }
+
+    if (toRemove.length > 0) {
+      await browser.tabs
+        .remove(toRemove.map((tab) => tab.id))
+        .catch((err) => console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err));
+    }
+    if (!stranded) return;
+    if (closeTabs) {
+      await browser.windows
+        .remove(ownerWindowId)
+        .catch((err) =>
+          console.warn('[bento-tools] workspace/delete: windows.remove failed:', err),
+        );
+    } else {
+      ctx.workspaces.create({ name: nextDefaultWorkspaceName(ctx) }, ownerWindowId);
+    }
+  } finally {
+    endHandoff?.();
+  }
+}
+
 export interface HandlerContext {
   tabs: TabRegistry;
   workspaces: WorkspaceStore;
@@ -578,6 +825,8 @@ export interface HandlerContext {
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
   syncPanelMarkers: (workspaceId: string) => void;
+  /** Windows whose workspace is being replaced; see `deleteWorkspace`. */
+  handoff: WindowHandoffGuard;
   /** Prefer this tab when the workspace activation side effect chooses
    * the main-slot tab for a just-activated workspace. Used by cross-
    * workspace tab activation so the activation fallback does not restore
@@ -1026,29 +1275,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         ctx.emitPanelsSync(action.id);
       }
       return;
-    case 'workspace/delete': {
-      // Close the workspace's tabs FIRST (browser.tabs.remove is async but
-      // fire-and-forget here; the actual removals will trigger onRemoved
-      // and the shell will see the deltas in the same rAF batch as the
-      // workspace removal). Then delete the workspace metadata so the
-      // panel store cleanup + active-workspace fallback in WorkspaceStore
-      // run in their normal order.
-      if (action.closeTabs) {
-        const tabIds = ctx.tabs
-          .snapshot()
-          .filter((t) => t.workspaceId === action.id)
-          .map((t) => t.id);
-        if (tabIds.length > 0) {
-          browser.tabs
-            .remove(tabIds)
-            .catch((err) =>
-              console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err),
-            );
-        }
-      }
-      ctx.workspaces.delete(action.id);
+    case 'workspace/delete':
+      void deleteWorkspace(ctx, action.id, action.closeTabs === true);
       return;
-    }
     case 'workspace/activate': {
       // Scope the activation to the requesting window when available.
       // sourceWindowId null falls back to legacy global activation so
@@ -1217,6 +1446,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           void closeTabAsRemoved(ctx, action.id, {
             label: 'panel/remove devtools',
             clearPanelMarker: true,
+            restoreIfKept: false,
           });
           ctx.syncPanelMarkers(wsId);
           ctx.emitPanelsSync(wsId);
@@ -1540,8 +1770,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         return;
       }
       void (async () => {
+        const isDevtools = ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId);
+        const undo = isDevtools ? null : captureCloseUndo(ctx, action.tabId);
         await ctx.tabs.markClosing(action.tabId);
-        if (ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId)) {
+        if (isDevtools) {
           ctx.pinnedPanels.removeForTab(action.tabId);
         }
         const subVictims = ctx.panels.removeWithSubPanels(action.workspaceId, action.tabId);
@@ -1550,7 +1782,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         }
         ctx.syncPanelMarkers(action.workspaceId);
         ctx.emitPanelsSync(action.workspaceId);
-        removeMarkedTabWithRetries(action.tabId, 'pinnedPanel/close');
+        removeMarkedTabAndRestoreIfKept(ctx, action.tabId, 'pinnedPanel/close', undo);
       })();
       return;
     }

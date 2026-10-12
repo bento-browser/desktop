@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkspaceDelta } from '@shared/protocol';
 import { WorkspaceStore } from './WorkspaceStore';
 
 describe('WorkspaceStore active workspace persistence', () => {
@@ -55,6 +56,95 @@ describe('WorkspaceStore active workspace persistence', () => {
       1: workspace2.id,
       2: workspace3.id,
     });
+  });
+
+  it('moves the window of a deleted workspace to one no other window shows', async () => {
+    const store = new WorkspaceStore();
+    await store.init();
+    const [initial] = store.snapshot().workspaces;
+    store.activate(initial!.id, 2);
+    const doomed = store.create({ name: 'Doomed' }, 1);
+    const free = store.create({ name: 'Free' }, null, { activate: false });
+
+    store.delete(doomed.id);
+
+    // The initial workspace comes first in creation order but window 2 shows it.
+    expect(store.snapshot().activeIdByWindow).toEqual({ 1: free.id, 2: initial!.id });
+  });
+
+  describe('delete announcements', () => {
+    async function twoWindows() {
+      const store = new WorkspaceStore();
+      await store.init();
+      const [initial] = store.snapshot().workspaces;
+      // The second workspace is both the window's replacement and the global fallback.
+      const fallback = store.create({ name: 'Fallback' }, null, { activate: false });
+      store.activate(initial!.id, 1);
+      await store.flush();
+      const events: WorkspaceDelta[] = [];
+      store.onDeltas((batch) => void events.push(...batch));
+      return { store, initial: initial!.id, fallback: fallback.id, events };
+    }
+
+    it('announces the global fallback and the window replacement by default', async () => {
+      const { store, initial, fallback, events } = await twoWindows();
+
+      store.delete(initial);
+      await store.flush();
+
+      expect(events).toEqual([
+        { kind: 'removed', id: initial },
+        { kind: 'activated', id: fallback },
+        { kind: 'activated', id: fallback, windowId: 1 },
+      ]);
+    });
+
+    it('leaves the global fallback out when the caller activates the replacement itself', async () => {
+      const { store, initial, fallback, events } = await twoWindows();
+
+      store.delete(initial, { announceFallback: false });
+      await store.flush();
+
+      expect(events).toEqual([
+        { kind: 'removed', id: initial },
+        { kind: 'activated', id: fallback, windowId: 1 },
+      ]);
+      // The fallback itself still moves, so a restart or a new window uses it.
+      expect(store.getActiveId(null)).toBe(fallback);
+    });
+
+    it('flush delivers pending deltas now and waits for the work listeners return', async () => {
+      const store = new WorkspaceStore();
+      await store.init();
+      await store.flush();
+      let finished = false;
+      store.onDeltas(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        finished = true;
+      });
+
+      store.create({ name: 'Another' }, null, { activate: false });
+      const flushed = store.flush();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(finished).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+      await flushed;
+
+      expect(finished).toBe(true);
+    });
+  });
+
+  it('leaves the window without a workspace when every other one is shown elsewhere', async () => {
+    const store = new WorkspaceStore();
+    await store.init();
+    const [initial] = store.snapshot().workspaces;
+    store.activate(initial!.id, 2);
+    const doomed = store.create({ name: 'Doomed' }, 1);
+
+    store.delete(doomed.id);
+
+    expect(store.snapshot().activeIdByWindow).toEqual({ 2: initial!.id });
+    expect(browser.sessions.removeWindowValue).toHaveBeenCalledWith(1, 'bento.activeWorkspaceId');
   });
 
   it('bootstraps imported Zen workspaces from window session data on first run', async () => {
