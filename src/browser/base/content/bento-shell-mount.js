@@ -3182,6 +3182,7 @@
   // tokens flips chrome tokens. 'system' is stored as Auto but resolved here
   // to light/dark because native chrome renders an explicit mode.
   let chromeColorModePref = null;
+  const BENTO_UI_COLOR_MODE_TOPIC = 'bento-ui-color-mode';
   function resolveChromeColorMode(mode) {
     if (mode === 'system') {
       if (typeof window.matchMedia !== 'function') return 'dark';
@@ -3198,6 +3199,10 @@
     chromeColorModePref = mode;
     if (root.getAttribute('data-color-mode') !== resolved) {
       root.setAttribute('data-color-mode', resolved);
+      // about:preferences follows this mode too (preferences.js, patch 12). On this topic it
+      // re-reads the window that hosts it, so a Settings tab moved to another window keeps
+      // following without holding on to the window it first loaded in.
+      Services.obs.notifyObservers(window, BENTO_UI_COLOR_MODE_TOPIC, resolved);
     }
     root.setAttribute('data-bento-color-mode-pref', mode);
   }

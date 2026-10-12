@@ -85,6 +85,7 @@ const FF = {
   parentNodeWebidl: 'dom/webidl/ParentNode.webidl',
   xulFrameElement: 'dom/xul/XULFrameElement.cpp',
   messageManagerIdl: 'dom/chrome-webidl/MessageManager.webidl',
+  browsingContextIdl: 'dom/chrome-webidl/BrowsingContext.webidl',
   searchService: 'toolkit/components/search/SearchService.sys.mjs',
   searchUtils: 'toolkit/components/search/SearchUtils.sys.mjs',
   searchEngine: 'toolkit/components/search/SearchEngine.sys.mjs',
@@ -1909,6 +1910,15 @@ export const MEMBERS = [
     sites: ['patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES'],
     use: 'Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object.',
     at: [FF.prefsJs, '^const CONFIG_PANES = Object\\.freeze', 243],
+  },
+  {
+    id: 'CanonicalBrowsingContext.topChromeWindow',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['patches/core-ui/12-center-native-preferences.patch#topChromeWindow'],
+    use: "preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document.",
+    at: [FF.browsingContextIdl, '^\\s+readonly attribute WindowProxy\\? topChromeWindow;', 341],
   },
   {
     id: 'gotoPref',

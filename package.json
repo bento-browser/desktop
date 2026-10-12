@@ -39,6 +39,7 @@
     "import:addons": "node scripts/install-builtin-addons.mjs",
     "lint:repo": "eslint scripts src/browser .agents",
     "lint:aliases": "node scripts/check-legacy-aliases.mjs",
+    "lint:tokens": "node scripts/check-undefined-tokens.mjs",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
     "check:doc-links": "node scripts/check-doc-links.mjs",
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",

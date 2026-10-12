@@ -864,29 +864,45 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Status: Active
 - Last updated: 2026-10-12
 - Firefox 157.0.1 review (2026-10-12): patch applies with offsets only. Settings
-  layout is centered as on 154. Known and identical on 154: on `about:preferences`
-  the Firefox design tokens `--background-color-box`, `--border-radius-circle`
-  and `--space-large` compute empty and cards render flat. `--space-large` is
-  emptied by the unscoped `:root { --space-large: var(--space-2xs) }` in
-  `bento-chrome-tokens.css`, which references a token defined only under
-  `[data-bento-theme]`; the other two stay empty even with that sheet disabled
-  (cause not identified). Not a 157 regression and not addressed by the
-  upgrade.
+  layout is centered as on 154. Known on 154 and 157: on `about:preferences` the
+  Firefox design tokens `--background-color-box`, `--border-radius-circle` and
+  `--space-large` computed empty and cards rendered flat. Cause: the page links
+  `bento-chrome-tokens.css`, which declares the legacy aliases (`--neutral-*`,
+  `--radius-*`, `--space-2xs`) only for elements with `data-bento-theme` or
+  `data-color-mode`, and the preferences root carried neither, so every token
+  this patch maps onto an alias, and the sheet's own `:root` `--space-large`
+  family, was invalid. Fixed in this patch: the root has
+  `data-bento-theme="default"`, `preferences.js` copies the hosting window's
+  `data-color-mode`, and `preferences.css` sets `color-scheme` from it.
 - Files or patches:
   - `engine/browser/components/preferences/preferences.xhtml`
+  - `engine/browser/components/preferences/preferences.js`
   - `engine/browser/themes/shared/preferences/preferences.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
+  - `src/browser/base/content/bento-shell-mount.js` (`applyChromeColorMode`)
 - Bento functionality: centers Firefox's native `about:preferences` content pane
   and category navigation as one unit in the available browser content area, so
   the settings controls do not sit flush against the side nav on wide windows.
   The native preferences page also loads Bento's generated Mux UI token sheet
   and maps Firefox in-content semantic variables for surfaces, text, borders,
   buttons, fields, panels, and focus rings onto Mux UI/Bento tokens while
-  rendering preferences cards and box groups as borderless neutral-5 tiles.
+  rendering preferences cards and box groups as borderless neutral-5 tiles. The
+  document root carries `data-bento-theme="default"` and a `data-color-mode`
+  that `preferences.js` copies from the root of the window hosting the page,
+  because the token sheet's aliases and mode blocks apply only to elements with
+  those attributes; `color-scheme` follows the same attribute so Firefox's
+  `light-dark()` tokens agree. The mount script's `applyChromeColorMode`
+  announces each change on the `bento-ui-color-mode` observer topic, and the
+  page looks its host window up again each time (`topChromeWindow`), because a
+  Settings tab moved to another window keeps its document. A move into a window
+  whose mode already differs announces nothing, so the page also re-reads on
+  `visibilitychange` (when visible) and window `focus`.
 - Vanilla Firefox surface touched or depended on: the native preferences XHTML
   layout and in-content theme cascade, including `#categories`,
   `.main-content`, `.pane-container`, `chrome://global/skin/in-content/common.css`,
-  and the generated `chrome://browser/content/bento-chrome-tokens.css`.
+  the generated `chrome://browser/content/bento-chrome-tokens.css`, and
+  `window.browsingContext.topChromeWindow` (read by `preferences.js` to mirror the
+  window's color mode, as `main.js` and `sync.js` already do).
 - Why this cannot stay extension-only: `about:preferences` is a privileged
   built-in Firefox page; extension CSS cannot reliably restyle its chrome-loaded
   layout or define its in-content semantic theme variables.
@@ -894,7 +910,15 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   settings redesign layout changes, in-content variable names, or preferences
   widget token dependencies can reintroduce left alignment, alter the content
   pane width, or disconnect preferences controls from Bento's Mux UI palette.
-- Regression checks for future updates: open `about:preferences` in a wide
+- Regression checks for future updates: on `about:preferences` read the computed
+  `--background-color-box`, `--border-radius-circle`, `--space-large` and
+  `--neutral-5` on the root (all must be non-empty), confirm
+  `data-color-mode` follows the sidebar color mode control in both directions
+  (the page's own `prefers-color-scheme` does not), also after moving the
+  Settings tab to a new window (`gBrowser.replaceTabWithWindow`) and closing the
+  first one, after moving it into a window whose mode differs from the one it
+  left (with no toggle afterwards it must adopt the destination's mode), and that
+  a card has a fill and a radius. Open `about:preferences` in a wide
   Bento window and confirm the search field and settings pane are centered in
   the area beside the category nav; narrow the window and confirm the pane still
   fits without horizontal clipping, category navigation works, and the main
@@ -1730,6 +1754,7 @@ below is generated; edit the registry, then run
 | `chrome://browser/content/preferences/config/SettingGroupManager.mjs` | source (engine only) | Bento setting groups register here; registered in browser/components/preferences/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager` | `browser/components/preferences/jar.mn:51` |
 | `SettingGroupManager.registerGroups` | source (engine only) | Adds the Bento setting groups to the Settings page. | `patches/core-ui/15-bento-native-preferences.patch#registerGroups` | `browser/components/preferences/config/SettingGroupManager.mjs:64` |
 | `CONFIG_PANES` | source (engine only) | Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object. | `patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES` | `browser/components/preferences/preferences.js:243` |
+| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
 | `gotoPref` | source (engine only) | Navigates between the Bento settings subpanes. | `patches/core-ui/15-bento-native-preferences.patch#gotoPref` | `browser/components/preferences/preferences.js:733` |
 | `chrome://global/content/elements/moz-box-group.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-group` | `toolkit/content/jar.mn:115` |
 | `chrome://global/content/elements/moz-box-item.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-item` | `toolkit/content/jar.mn:121` |
