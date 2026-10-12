@@ -8,7 +8,8 @@ contributor-facing guides.
 - [Core functionality](core-functionality.md) — workspace, panel, widget,
   layout, traversal, and theming model.
 - [Core functionality technical notes](core-functionality-technical.md) —
-  implementation map and regression pitfalls for the working core behavior.
+  index of the topic files in [technical/](technical/): implementation map and
+  regression pitfalls for the working core behavior.
 
 ## Contributor docs
 

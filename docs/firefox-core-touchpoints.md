@@ -278,7 +278,7 @@ Use this shape for new or changed touchpoints:
   title is lost again. Timers cannot replace the port because
   `TimeoutManager::RunTimeout` (`dom/base/TimeoutManager.cpp`) batches every
   expired timeout into one task. Rerun the sidebar-reload check in
-  `docs/core-functionality-technical.md` ("Shell to chrome bridge") on a profile
+  `docs/technical/shell-chrome-bridge.md` ("Title IPC pitfalls") on a profile
   with `welcomeSeen` false after any change to document title reporting),
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, panel focus detection on
@@ -1558,7 +1558,7 @@ below is generated; edit the registry, then run
 | `gBrowser.tabpanels.handleEvent` | method (runtime) | Bento removes tabpanels itself as the click/focus listener Firefox registers on each panel's browser container (removeEventListener with the tabpanels object, which dispatches to handleEvent). | `reconcilePanelsSplitView` | `toolkit/content/widgets/tabbox.js:540` |
 | `tabpanels split-view-panel classes` | source (engine only) | Bento styles and cleans .split-view-panel, .split-view-panel-active and the column attribute. | `reconcilePanelsSplitView`, `forceMainOnlyChromeState` | `toolkit/content/widgets/tabbox.js:533` |
 | `tabpanels [splitview] attribute` | source (engine only) | setSplitViewActive toggles [splitview]; Bento CSS and on_visibilitychange read it. | `forceMainOnlyChromeState`, `attachTabSelectListener` | `toolkit/content/widgets/tabbox.js:607` |
-| `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento removes it. | `applySubdivisions` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4116` |
+| `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule. | `src/browser/base/content/bento-shell-mount.css#split-view-footer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4116` |
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3120` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:238` |
 | `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:234` |

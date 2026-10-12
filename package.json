@@ -40,6 +40,7 @@
     "lint:repo": "eslint scripts src/browser .agents",
     "lint:aliases": "node scripts/check-legacy-aliases.mjs",
     "check:zen-boundary": "node scripts/check-zen-boundary.mjs",
+    "check:doc-links": "node scripts/check-doc-links.mjs",
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
     "test:size-ratchet": "node --test scripts/size-ratchet.test.mjs",
     "test:agent-skills": "node --test .agents/skills/bento-upgrade-firefox/scripts/*.test.mjs",

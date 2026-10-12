@@ -26,7 +26,7 @@
       "reason": "Documents the explicit Zen Browser import feature."
     },
     {
-      "path": "docs/core-functionality-technical.md",
+      "path": "docs/technical/*.md",
       "pattern": "(?=.*(?:import|migrat|profile|session|space|tab|folder|workspace|pinned|essential|restore|Firefox|wizard|merge|brandImage|jsonlz4|scope|source|welcome|successful)).*(?:\\bzen\\b|zen-browser|zen_)",
       "category": "import-compatibility",
       "reason": "Documents Zen import formats, conversion, and migration behavior."

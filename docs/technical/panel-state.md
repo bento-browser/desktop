@@ -1,0 +1,284 @@
+# Panel state and layout model
+
+Part of the [technical notes index](../core-functionality-technical.md).
+
+Panel state lives in `extensions/bento-tools/src/panels/PanelStore.ts`.
+The data model is a workspace-scoped layout tree implemented in
+`extensions/bento-tools/src/panels/PanelLayout.ts`.
+
+The runtime layout supports:
+
+- root panels: `{ kind: 'panel', tabId }`;
+- vertical groups: top panel plus bottom node;
+- horizontal groups inside the bottom slot;
+- chooser nodes used while a subdivision is waiting for content;
+- group ratios clamped to `0.2..0.8`.
+
+Top-level panel order is the `layout.root` order. Reorder operations use stable
+root node ids:
+
+- plain panel roots use `panel:<tabId>`;
+- grouped roots use the group id.
+
+Panel persistence is versioned in `extensions/bento-tools/src/panels/Persistence.ts`.
+Current persistence is version 5. It stores URL-backed `panelKey` entries plus
+the layout tree. Panel keys are derived from visible layout order when writing
+so URLs can be restored to fresh tab ids on next launch.
+
+Panel persistence write path:
+
+- Source of truth: `PanelStore` in-memory maps (layouts, widths, header-hidden,
+  main widths, strip scroll, parked `persistedWorkspaces`). The durable copy is
+  `bento.panels` plus `bento.panelStripScroll` in `browser.storage.local`; the
+  shell never writes either.
+- Every write is a whole-graph read-modify-write: `Persistence.#flush` reads each
+  live panel's URL with `browser.tabs.get` and then writes the payload. Writes
+  never overlap. `Persistence` keeps one write in flight and one queued snapshot;
+  a newer request replaces the queued one, so a burst behind a slow write costs
+  at most two writes. `flushNow` resolves once a write at least as new as its
+  snapshot has landed (a superseded caller resolves after the superseding write),
+  which `ImportExecutor` relies on when it awaits `persistCurrentState`. A flush
+  that throws is logged and does not block later ones.
+- Triggers: layout and size mutations that must stick (move, subdivide, split,
+  chooser fill, group ratio, width, header hidden, main width, window-close
+  parking) call `flushNow`. Panel add and remove, strip scroll, and panel URL
+  changes in `background.ts` (`tabs.onUpdated`, through
+  `PanelStore.schedulePersistCurrentState`) use the trailing timer
+  (`DEBOUNCE_MS`). The first request arms the timer and it fires after the delay
+  with the latest snapshot, so continuous URL churn writes at most once per
+  interval. An immediate flush cancels a pending timer and supersedes it. There is
+  no `runtime.onSuspend` or unload hook. The prompt paths are the immediate
+  mutations, `persistCurrentState` (awaited by `ImportExecutor`), and window-close
+  parking: `parkWorkspaceWithResolvedUrls` stores URLs taken from the
+  `TabRegistry` closing-window snapshot and flushes at once, which also covers a
+  URL change still inside the trailing interval at quit.
+- Private-window tabs are never persisted. `persistableUrl` in `Persistence.ts`
+  is the single place a live tab becomes a stored URL and returns null for
+  `tab.incognito` tabs, so `#flush` drops the panel from `entries` and from the
+  persisted layout (`toPersistenceLayout` only emits nodes whose panel key was
+  kept). A workspace whose panels are all private is omitted from `byWorkspace`.
+  A vertical or horizontal group needs both children, so a group containing a
+  private panel is omitted whole, exactly like a panel without a stored URL;
+  surviving siblings keep their entries and restore as ordinary tabs. The parked
+  path uses `parkableWorkspaceTabs` (`panels/ParkedWorkspace.ts`), which
+  `parkTabsForClosingWindow` calls with `TabRegistry.isPrivate`: private tabs
+  contribute no panel URL and no `parkedWorkspaceTabs` sidebar entry (URL, title,
+  custom title). `TabRegistry` still holds the private tab ids while the
+  closing-window listeners run, so the check is valid at that point.
+- Manual verification: open a panel, navigate it rapidly (a page that updates
+  `location` continuously), and confirm in the Browser Toolbox that
+  `browser.storage.local.get('bento.panels')` changes at most about twice per
+  second; quit and relaunch to confirm the last URL restores.
+
+Panel session markers live in `extensions/bento-tools/src/panels/SessionMarker.ts`.
+They use `browser.sessions.setTabValue` with workspace id and restore location
+so a closed panel can be restored by Firefox's closed-tab flow and then
+reinserted into Bento's layout.
+
+## Panel actions
+
+Core panel actions are handled in
+`extensions/bento-tools/src/messaging/protocol-handler.ts`:
+
+- `panel/add`: promotes an existing tab into the active workspace's panel
+  layout, applies default panel width, syncs markers, and emits `panels/sync`.
+- `panel/openAt`: creates a background tab and inserts it as a panel. With
+  `position` set to `'end'`, it appends from the panel trailer; default or
+  `'after'` inserts relative to a source panel or the main slot.
+- `panel/remove`: removes the panel binding and closes descendant sub-panels
+  when needed.
+- `panels/clear`: removes all panels in the active workspace.
+- `panelLayout/reorderRoot`: reorders top-level root nodes.
+- `panelLayout/movePanel`: moves one visible panel leaf to a root slot, an
+  eligible one-panel subdivision row, or an unconfigured subdivision chooser.
+- `panelLayout/subdivide`, `fillChooser`, `breakOut`, `removeVerticalGroup`,
+  and `setGroupRatio`: mutate the layout tree.
+- `panel/setWidth`, `panel/setMainWidth`, and `panel/setStripScroll`: persist
+  chrome-measured layout state without broadcasting an immediate
+  `panels/sync`.
+- `panel/setHeaderHidden`: persists a per-tabId side-panel or sub-panel header
+  hidden flag without broadcasting an immediate `panels/sync`; chrome already
+  toggled the live `data-bento-header-hidden` attribute.
+
+`emitPanelsSync` in `extensions/bento-tools/src/background.ts` resolves live tab
+ids to `{ tabId, url, favIconUrl, widthPx, headerHidden }`, includes `layout`,
+`panelStatusByTabId`, workspace-scoped main width, strip scroll, pinned tab
+ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
+`panels/sync`.
+
+## Panel state pitfalls
+
+- Do not write shell stores as the source of truth. `PanelStore` owns layout and
+  persistence.
+- Do not emit `panels/sync` after every width write. Chrome already applied the
+  live width inline; a sync round-trip can clobber an in-flight drag with stale
+  persisted values.
+- Do not emit `panels/sync` after every header-hidden write. Chrome already
+  applied the live `data-bento-header-hidden` attribute; tools only persists,
+  and later sync payloads carry `headerHidden` back.
+- Do not use tab ids as durable storage identifiers. Persist URLs plus
+  `panelKey`; tab ids are runtime-only.
+- Do not start a second `Persistence.#flush` while one is running. Each flush
+  awaits a `browser.tabs.get` per panel before its `storage.local.set`, so two
+  overlapping flushes can finish out of order and an older snapshot (and its
+  strip-scroll record) overwrites the newer state. The fix is the single-flight
+  queue in `Persistence`: one write in flight, newest queued snapshot wins. Route
+  new triggers through `flushNow` or `schedule`; never call `#flush` directly or
+  add a second writer of `bento.panels`. This covers panels only. The same race
+  is still open for pinned panels and is tracked as a follow-up:
+  `PinnedPanelsStore.#resolveAndPersist` awaits a `tabs.get` per pin and then
+  hands the result to `pinnedPanels/Persistence`, whose writes are not
+  serialized, so two persists can resolve out of order or interleave their
+  backup and primary writes and an older pin list can overwrite a newer one. The
+  panel queue does not help there. A fix has to serialize resolution as well as
+  the write, and must keep reading each pin's tab at change time: deferring the
+  reads to the debounce timer drops pins added without metadata and loses
+  privacy and fallback metadata when the tab closes first.
+- Do not persist private-window state. Panel entries and layout slots
+  (`bento.panels`), parked panel URLs, parked sidebar tabs
+  (`bento.parkedWorkspaceTabs`, including titles), and pinned panels
+  (`bento.pinnedPanels`: URL, title, favicon) all skip private tabs.
+  `PinnedPanelsStore.#resolveAndPersist` reads each pin's tab when a change is
+  made and skips `tab.incognito` tabs, remembering their ids, because its
+  closed-tab fallback would otherwise write the in-memory URL, title, and
+  favicon after the tab is gone. A pin whose tab is already gone on its very
+  first read still falls back to the metadata its caller passed to `add`. A new storage path
+  that records tab URLs, titles, or favicons must apply the same check where it
+  resolves a live tab (`tab.incognito`) or a closing-window snapshot
+  (`TabRegistry.isPrivate`, valid only while the closing listeners run). The
+  other `storage.local` writers in `bento-tools` were audited and hold no tab
+  data: workspaces, tab folders (user-chosen names), settings, native-operation
+  and session records, graph journal and rollback state (ids and hashes plus the
+  backup JSON being restored), and the graph publication (already filtered by
+  `tab.incognito`). `BackupStore` builds each snapshot from live state, skips
+  incognito tabs when it resolves URLs, and omits private panels, pins, and
+  layout slots; it does not copy stored state. Data written by earlier builds is
+  not scrubbed. The `shell/hello` handler has no private check, so a private
+  window whose shell sends it claims an unclaimed workspace or creates a
+  default-named one in `bento.workspaces` (a name, not browsing data).
+- Do not call `persistCurrentState` from a high-frequency listener. Panel URL
+  changes used to flush the whole graph on every event (one `tabs.get` per panel
+  plus two or three storage calls each); they now use
+  `schedulePersistCurrentState`. Keep `persistCurrentState` for discrete
+  mutations and callers that must await durability.
+- Keep panel markers synced after add, remove, reorder, and restore. Closed-tab
+  restore depends on marker root indexes and containing root ids.
+- Do not clear a panel's `bento.isPanel` marker in the `tab/close` path. Firefox
+  needs that tab session value to survive into the closed-tab entry so
+  `Cmd+Shift+T` can route the restored tab through
+  `maybeRestorePanelFromMarker`. Clear the marker only when the tab stays open
+  as a normal tab, such as `panel/remove` or explicit panel promotion.
+- A user-restored tab can carry Bento's `bento.closingTab` marker from the
+  original close path because Firefox preserves WebExtension session values
+  through closed-tab restore. Clear that closing marker before assignment or
+  panel insertion. Otherwise the created-tab workspace backfill guard treats the
+  restored tab as still closing and removes it again. This applies to normal
+  tabs as well as panels. `TabRegistry.unmarkClosing` must also suppress stale
+  async hydration reads that may have observed the old marker before it was
+  removed.
+- Firefox activates the restored tab during `Cmd+Shift+T`. After restoring a
+  marked panel, switch selection back to the captured prior non-panel tab, or to
+  another non-panel tab in the same workspace/window if the captured value is
+  missing. Chrome reconciliation must also reject any selected tab that is
+  present in the Bento panel payload as the main slot. Otherwise the restored
+  panel can be painted as both selected content and side-panel content, causing
+  overlap behind adjacent panels.
+- Restored panels often have no `widthPx` because `PanelStore.remove` drops
+  width state when the tab leaves all panel layouts. When
+  `maybeRestorePanelFromMarker` reinserts the tab, stamp
+  `settings.snapshot().defaultPanelWidthPx` through `PanelStore.setWidth` before
+  emitting `panels/sync`; `Cmd+Shift+T` restore should use the configured
+  default new-panel width, not a stale browser/container width. In flat layout,
+  do not clear inline width after the panel-enter animation. Absolute rects
+  depend on inline `width`, `min-width`, and `flex`; clearing width lets the
+  restored panel auto-size and overlap adjacent panels until a splitter drag
+  rewrites sizing.
+- Root-panel enter animation must start after chrome computes flat-layout
+  geometry and calls `applyPanelLayoutRects`. Starting the animation while the
+  restored panel still has Firefox's stale split-view dimensions lets
+  `animatePanelEnter` measure the wrong final width and write that stale width
+  back on the next animation frame, making the restored panel overlap until a
+  splitter drag refreshes layout.
+- Chrome's layout sanitizer must treat the `panels` payload as the authoritative
+  visible panel set. If a `panels/sync` payload includes a tab id that is absent
+  from the decoded layout tree, append it as a root before computing flat-layout
+  geometry. Otherwise the panel is resolved and rendered, but receives no
+  `panelRects` entry and overlaps until the next live layout refresh.
+- In `bento-no-side-panels` mode, do not create the main-content gutter with
+  padding on `#bento-side-panel-host` or with host pseudo-elements. macOS live
+  window resize became choppy when no-panel host padding, rounded child
+  clipping, or frame shadow were each tested in isolation. The working shape
+  uses Firefox's native structure: keep
+  `#bento-side-panel-host` unpadded and `overflow: visible`, create the real
+  gutter with margins on the direct `[data-bento-main-panel]`, and put the
+  rounded clip plus frame paint on the native
+  `#tabbrowser-tabpanels > .browserSidebarContainer`. The current no-panel
+  frame uses `border-radius: var(--radius-xl)`,
+  `box-shadow: var(--bento-panel-frame-shadow)`, and `overflow: clip` on that
+  native container. The moved `#tabbrowser-tabbox` and its child
+  `#tabbrowser-tabpanels` must paint `--bento-panel-strip-bg` in the
+  `bento.chrome-theme` layer in no-panel mode; that token deliberately resolves
+  to neutral-5 only while `bento-no-side-panels='true'`. Otherwise Firefox's
+  static tabbox/tabpanels backing can show as a sharp square corner behind the
+  rounded main-content clip. Because `browserSidebarContainer` owns the
+  clip, neutralize the direct child `.browserContainer` radius/overflow in
+  no-panel mode; otherwise the main page has two rounded clipping layers during
+  window/sidebar resize, which reintroduces choppy live resizing. Exception:
+  when Firefox sets
+  `:root[inDOMFullscreen]`, the
+  fullscreen override must clear the strip host and browser-wrapper radii so
+  video fullscreen is not clipped by the normal main-content or panel frame.
+  This CSS structure is necessary but not sufficient: live window/sidebar/panel resize
+  must also keep chrome measurement observers and expensive frame paints out of
+  the hot path. While `:root[bento-window-resizing='true']` or
+  `:root[bento-sidebar-resizing='true']` or
+  `:root[bento-panel-resizing='true']`, splitter-affordance, sidebar-divider,
+  toolbar-navigation, and strip-scrollbar observers defer geometry reads until
+  the `bento-resize-settled` event. Do not globally override
+  `--bento-panel-frame-shadow` during live resize; panel-view frames should keep
+  their normal elevation so panel-view window/sidebar resize can be evaluated
+  independently from the no-panel performance path. In no-side-panels mode, the
+  native `#tabbrowser-tabpanels > .browserSidebarContainer` frame keeps
+  `box-shadow: var(--bento-panel-frame-shadow)` throughout live window/sidebar
+  resize. Privileged native about pages such as
+  `about:preferences` and `about:settings` make this regression visible first;
+  every settings browser has its embedded viewport geometry fixed, is
+  layer-preserved, and is docshell-paused during live window, sidebar, and panel
+  resize, including when it belongs to a background tab. Release the fixed
+  geometry before restoring the prior render-layer and docshell-active state so
+  the page performs one final layout at the settled size.
+  `pnpm run chrome:resize-check` enforces this guard after chrome token
+  generation.
+- When removing a parent panel with descendants, close or remove descendant
+  sub-panel tabs intentionally. Do not leave orphaned tabs in the panel layout.
+- `panelLayout/breakOut` promotes an existing child into the root layout and
+  must not emit `scrollToPanelTabId`. Break-out is a layout normalization action,
+  not a new-panel reveal; emitting an explicit scroll target left-aligns the
+  promoted panel and loses the user's current strip context.
+- Closing the active final regular tab while panels remain must route through
+  `closeMainTabWithPanelPromotion`, even when the initiating action is the
+  generic sidebar/command-palette `tab/close`. Promoting only from
+  `browser.tabs.onRemoved` is too late: Firefox can briefly select a still-panel
+  tab as the fallback, chrome reconciles against stale panel payload, and the
+  workspace can stay blank until a workspace switch forces a fresh render.
+  Promote the leftmost panel out of `PanelStore`, clear its panel marker,
+  eagerly assign it to the workspace as a normal tab, activate it directly with
+  `browser.tabs.update`, emit a window-scoped `panels/sync`, then remove the old
+  main tab with the delayed close path. Do not rely on
+  `TabRegistry.snapshot()` during this transition; native `tabs.onRemoved` and
+  registry removal deltas can be ordered differently.
+- Window-close teardown (`Cmd+Shift+W`) is not the same as deleting workspace
+  contents. `TabRegistry` keeps a private URL cache and emits one
+  `onWindowClosing` snapshot before it drops the closing window's tab ids.
+  `background.ts` parks sidebar tabs in `bento.parkedWorkspaceTabs` and asks
+  `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into
+  persisted URL/layout entries. Workspace activation restores parked sidebar tabs
+  before the empty-workspace newtab fallback and restores parked panels through
+  the normal `restorePanelsForWorkspace` path. Parked sidebar-tab restore must
+  first consume matching session-restored workspace tabs by URL before creating
+  tabs, otherwise every dev/browser relaunch can duplicate the parked tabs. Do
+  not let removed-tab deltas or `emitPanelsSync` prune closing-window panel ids
+  before this parking step runs.
+  Deleting a workspace removes its parked sidebar tabs, panel entries, strip
+  scroll, and queued activation preferences; closing a window drops that window's
+  queued activation preferences.

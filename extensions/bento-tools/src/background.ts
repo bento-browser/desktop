@@ -2192,7 +2192,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
   //
   // Shell documents that are listening during this sequence request no
   // snapshots of their own (see useToolsPort.ts, "Shell bus bootstrap" in
-  // docs/core-functionality-technical.md). Keep the six snapshots below and
+  // docs/technical/shell-chrome-bridge.md). Keep the six snapshots below and
   // the per-workspace panels/sync complete, or those documents stay empty.
   void bootReady.then(() => {
     send({ type: 'tools/booted', version: '0.0.0' });

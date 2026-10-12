@@ -193,7 +193,7 @@ pnpm run dev
 | Path                                                                             | Purpose                                                                       |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | [bento.json](bento.json)                                                         | Canonical Firefox, branding, build, locale, and update configuration          |
-| [Bento generated state](docs/build-tooling.md#generated-state-and-source-safety) | Local source cache, source state, import manifest, and generated engine state |
+| [Bento generated state](docs/build-tooling.md)                                   | Local source cache, source state, import manifest, and generated engine state |
 | [configs/](configs/)                                                             | Per-platform `mozconfig` fragments                                            |
 | [config/](config/)                                                               | Tracked upstream versions, release security inputs, reference allowlist       |
 | [branding/bento/](branding/bento/)                                               | Canonical Mozilla-derived Bento branding                                      |

@@ -603,7 +603,7 @@ Guards keep local Mux out of releases:
    `pnpm run release:security-check`.
 6. Update the version mentions in `CLAUDE.md`, `README.md`, and the docs
    (`docs/build-tooling.md`, `docs/mux-ui-component-customisations.md`,
-   `docs/core-functionality-technical.md`).
+   `docs/technical/manual-regression-areas.md`).
 
 ## Release security and provenance
 
