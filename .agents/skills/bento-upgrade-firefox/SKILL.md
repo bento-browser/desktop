@@ -182,9 +182,10 @@ of the same product and channel is replaced, with versions compared in full
 (release number, then beta number; a final release is newer than its betas). An
 engine newer than `bento.json`, an ESR or other-product engine, and one with no
 `.bento/source-state.json` version are refused or left alone, never replaced
-automatically. `update` likewise refuses a target older than the engine and keeps
-an engine that already has the target. Plain `pnpm run download` and
-`pnpm run build` never replace an engine.
+automatically. `update` likewise refuses a target older than the engine, and
+keeps an engine only when its recorded version is exactly the target with a
+recorded digest equal to the verified one; otherwise it replaces it. Plain
+`pnpm run download` and `pnpm run build` never replace an engine.
 
 The wrapper obtains the latest configured-product version, invokes Bento's
 protected update path, checks the patch stack, builds extensions, imports

@@ -753,10 +753,15 @@ protected path:
 
 `update` also compares the recorded engine with the target before it replaces
 anything. It refuses a target older than the engine (the engine may be ahead of
-`bento.json` after checking out an older revision). An engine that already has
-the target version is kept: only `bento.json` and
-`config/firefox-versions.json` advance, once the verified archive digest agrees
-with the one recorded for the installed source, when it has one.
+`bento.json` after checking out an older revision). It keeps an installed engine
+only when its recorded version string is exactly the target and its recorded
+archive digest equals the verified one; then only `bento.json` and
+`config/firefox-versions.json` advance. Every other case takes the protected
+replacement above, including a digest that differs or is missing (an engine
+adopted against an older config records none) and a spelling that only orders
+equal (`158.0.0` for `158.0`), because `update` never patches
+`source-state.json` or base refs in place and the next `verify` needs them to
+match `bento.json`.
 
 `pnpm run download` and `pnpm run build` never replace an engine, so a build
 cannot discard a compiled object directory by accident. `pnpm run import`

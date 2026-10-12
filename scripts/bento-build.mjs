@@ -1488,9 +1488,9 @@ async function commandUpdate(ctx) {
   const engineVersion = engineIsGit(ctx) ? sourceVersionFromState(ctx) : undefined;
   const previous = engineVersion || config.firefox.version;
   if (engineIsGit(ctx)) ensureSourceIdentity(ctx, config, previous, 'update Firefox source');
-  // Never replace an engine with an older target, and keep one that already has the
-  // target. An engine that cannot be ordered against the target (another product or
-  // channel) is replaced only when it is the one bento.json describes.
+  // Never replace an engine with an older target. An engine that cannot be ordered
+  // against the target (another product or channel) is replaced only when it is the
+  // one bento.json describes.
   const order = engineVersion ? compareEngineVersion(ctx, config, version) : undefined;
   if (order > 0) {
     fail(`cannot update Firefox source: the engine is Firefox ${engineVersion}, newer than the ${version} target; refusing to downgrade. Use the repository revision that matches the engine, or preserve any changes and replace it with \`download --force\``);
@@ -1498,15 +1498,20 @@ async function commandUpdate(ctx) {
   if (engineVersion && order === undefined && engineVersion !== config.firefox.version) {
     fail(`cannot update Firefox source: the engine is Firefox ${engineVersion} and the ${version} target cannot be ordered against it (a different product or channel); preserve any changes, then replace it with \`download --force\``);
   }
-  const reuse = order === 0;
-  if (!reuse) ensureCleanEngine(ctx, 'update Firefox source');
-  const archiveInfo = await acquireSourceArchive(ctx.root, version);
-  if (reuse) {
+  // Keep the installed source only when it is exactly the target: the same version
+  // string and a recorded archive digest equal to the verified one. Anything else,
+  // including a numerically equal spelling (158.0.0 for 158.0) or a missing digest,
+  // takes the protected replacement, so source-state.json and the base ref match
+  // bento.json afterwards. Metadata is never patched in place.
+  let archiveInfo;
+  let reuse = false;
+  if (engineVersion === version) {
+    archiveInfo = await acquireSourceArchive(ctx.root, version);
     const recordedDigest = readJson(ctx.sourceStatePath).archiveSha256;
-    if (recordedDigest && recordedDigest !== archiveInfo.sha256) {
-      fail(`cannot update Firefox source: the installed Firefox ${engineVersion} source was verified against a different archive digest than ${archiveInfo.sha256}`);
-    }
+    reuse = Boolean(recordedDigest) && recordedDigest === archiveInfo.sha256;
   }
+  if (!reuse) ensureCleanEngine(ctx, 'update Firefox source');
+  archiveInfo ??= await acquireSourceArchive(ctx.root, version);
   const previousConfig = fs.readFileSync(ctx.configPath, 'utf8');
   const previousSourceState = fs.existsSync(ctx.sourceStatePath) ? fs.readFileSync(ctx.sourceStatePath, 'utf8') : undefined;
   const engineStatePath = path.join(ctx.stateDir, 'engine-state.json');

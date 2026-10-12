@@ -948,22 +948,64 @@ test('update keeps an engine that already has the target and only advances bento
     assert.deepEqual(backupsOf(root), []);
     assert.equal(await fsp.readFile(path.join(engine, 'old.js'), 'utf8'), 'patched by the 154.0 series\n');
     assert.equal(JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8')).version, '158.0');
+    await main(['verify'], root);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
 
-test('update refuses to keep an engine whose recorded digest differs from the verified archive', async () => {
+/**
+ * Asserts that `update` replaced the engine through the protected path rather than
+ * keeping it: a backup, the new source recorded with the verified digest and base
+ * ref, and a state the next verify accepts.
+ */
+async function assertReplacedByUpdate(stale, version) {
+  const { root, engine, git } = stale;
+  const state = JSON.parse(await fsp.readFile(path.join(root, '.bento', 'source-state.json'), 'utf8'));
+  assert.equal(JSON.parse(await fsp.readFile(path.join(root, 'bento.json'), 'utf8')).firefox.version, version);
+  assert.equal(state.version, version);
+  assert.equal(state.archiveSha256, next158.sha256);
+  assert.equal(git(['rev-parse', `refs/bento/firefox-base/${version}`]), state.baselineCommit);
+  assert.equal(backupsOf(root).length, 1);
+  assert.equal(fs.existsSync(path.join(engine, 'old.js')), false);
+  await main(['verify'], root);
+}
+
+test('update replaces, not keeps, an engine whose recorded digest differs from the verified archive', async () => {
   const stale = await staleEngineFixture();
-  const { root } = stale;
   try {
     await recordEngineAs(stale, '158.0', { archiveSha256: 'f'.repeat(64) });
-    const configBefore = await fsp.readFile(path.join(root, 'bento.json'), 'utf8');
-    await assert.rejects(() => updateTo(root, '158.0', next158), /different archive digest/);
-    assert.equal(await fsp.readFile(path.join(root, 'bento.json'), 'utf8'), configBefore);
-    assert.deepEqual(backupsOf(root), []);
+    await updateTo(stale.root, '158.0', next158);
+    await assertReplacedByUpdate(stale, '158.0');
   } finally {
-    await fsp.rm(root, { recursive: true, force: true });
+    await fsp.rm(stale.root, { recursive: true, force: true });
+  }
+});
+
+test('update replaces, not keeps, an engine with no recorded digest', async () => {
+  const stale = await staleEngineFixture();
+  try {
+    // An engine adopted against an older config records no digest; keeping it would
+    // write the digest into bento.json only, and the next verify would fail.
+    await recordEngineAs(stale, '158.0', { archiveSha256: undefined });
+    assert.equal(JSON.parse(await fsp.readFile(path.join(stale.root, '.bento', 'source-state.json'), 'utf8')).archiveSha256, undefined);
+    await updateTo(stale.root, '158.0', next158);
+    await assertReplacedByUpdate(stale, '158.0');
+  } finally {
+    await fsp.rm(stale.root, { recursive: true, force: true });
+  }
+});
+
+test('update replaces, not keeps, an engine whose version only equals the target numerically', async () => {
+  const stale = await staleEngineFixture();
+  try {
+    // 158.0.0 orders equal to 158.0, but its base ref is refs/bento/firefox-base/158.0.0.
+    await recordEngineAs(stale, '158.0.0', { archiveSha256: next158.sha256 });
+    await updateTo(stale.root, '158.0', next158);
+    await assertReplacedByUpdate(stale, '158.0');
+    assert.equal(stale.git(['rev-parse', 'refs/bento/firefox-base/158.0.0']).length, 40);
+  } finally {
+    await fsp.rm(stale.root, { recursive: true, force: true });
   }
 });
 
