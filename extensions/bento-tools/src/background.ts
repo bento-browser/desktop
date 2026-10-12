@@ -15,7 +15,8 @@ import {
   releaseAdoptedTab,
   tabsToAdopt,
 } from './tabs/AdoptedTab';
-import { livePanelIds, panelToPromoteAfterDetach } from './panels/PanelPromotion';
+import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
+import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
@@ -57,6 +58,7 @@ const adoptionGate = createAdoptionGate();
 browser.windows.onCreated.addListener((win) => {
   if (typeof win.id === 'number') adoptionGate.noteWindow(win.id);
 });
+const windowHandoff = createWindowHandoffGuard();
 const settings = new SettingsStore();
 const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore({
@@ -1911,122 +1913,61 @@ async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Pr
   );
 }
 
-// When the last tab in a window's ACTIVE workspace is closed, close the
-// whole window — match the user's "Cmd+W until done" intent rather than
-// letting Firefox's default tab-close logic auto-select an orphan tab
-// from a workspace this window previously owned. Without this:
-//   1. If the window has orphan tabs from a prior workspace (left
-//      behind when the user switched workspace earlier), Firefox makes
-//      one of them active — the user is suddenly viewing a tab whose
-//      workspace isn't in the sidebar.
-//   2. If gBrowser is truly empty (no orphans), Firefox closes the
-//      window naturally and focus jumps to the next window — continued
-//      Cmd+W eats the next window's tabs, which the user reads as
-//      "Cmd+W is closing tabs in other workspaces".
-// Closing the window explicitly resolves both: window goes away, focus
-// jumps next time the user clicks (or via Cmd+`), and the next Cmd+W
-// closes a tab in whichever window is now focused — predictable.
-// An earlier iteration auto-spawned a fresh tab here; that produced an
-// infinite Cmd+W spin (spawn → close → spawn) and was reverted.
-//
-// Use Cmd+Shift+W if you want to close the window with tabs still in
-// the workspace; that path doesn't touch this handler.
+// When the last tab in a window's ACTIVE workspace is closed, close the whole window
+// (or move it on to a free workspace) instead of letting Firefox select an orphan tab of
+// a workspace the window left earlier: that tab belongs to no sidebar the user sees, and
+// a window that Firefox empties itself hands focus to the next window, so the next Cmd+W
+// closes tabs there. An earlier iteration spawned a fresh tab here, which made Cmd+W spin
+// (spawn, close, spawn). Cmd+Shift+W closes a window with tabs left and skips this.
+// The decision lives in workspaces/EmptiedWorkspace.ts.
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
-  // Firefox is already tearing the window down (last-tab close or
-  // window-close API) — don't double-close.
-  if (removeInfo.isWindowClosing) {
-    return;
-  }
+  // Firefox is already tearing the window down — don't double-close.
+  if (removeInfo.isWindowClosing) return;
   const windowId =
     typeof removeInfo.windowId === 'number' && removeInfo.windowId >= 0
       ? removeInfo.windowId
       : null;
-  if (windowId === null) {
-    return;
-  }
-  const activeWsId = workspaces.getActiveId(windowId);
-  if (!activeWsId) {
-    return;
-  }
-  // Filter the just-removed tab out explicitly because the
-  // browser.tabs.onRemoved → TabRegistry-onRemoved propagation isn't
-  // guaranteed to run before this handler.
-  const panelTabIds = panels.getPanels(activeWsId);
-  const panelTabIdsSet = new Set(panelTabIds);
-  const remaining = tabs
-    .snapshot()
-    .filter(
-      (t) =>
-        t.id !== tabId &&
-        t.windowId === windowId &&
-        t.workspaceId === activeWsId &&
-        !panelTabIdsSet.has(t.id),
-    );
-  if (remaining.length > 0) return;
-  // A panel that is itself closing (or already gone) cannot become the main tab; counting
-  // it would leave the window on a foreign tab with this workspace still active.
-  const promotablePanelIds = livePanelIds(
-    panelTabIds,
-    tabs.snapshot().filter((t) => t.id !== tabId),
-    (id) => tabs.isClosing(id),
+  if (windowId === null) return;
+  const action = afterTabRemoved(
+    {
+      tabs,
+      panels,
+      workspaces,
+      handoff: windowHandoff,
+      takeRecentlyRemovedPanel: (id) => recentlyRemovedPanelTabIds.delete(id),
+    },
+    tabId,
+    windowId,
   );
-  if (recentlyRemovedPanelTabIds.delete(tabId) && promotablePanelIds.length > 0) {
-    return;
-  }
-
-  // No sidebar (non-panel) tabs left. If the workspace still has panels,
-  // PROMOTE the leftmost panel into the main content slot rather than
-  // closing the workspace. The promotion is a panel-store / panels/sync
-  // mutation — the underlying Firefox tab keeps its docShell, so the
-  // chrome reconciler relocates the existing <browser> from the
-  // split-view slot to the main tabpanel without reloading the page
-  // (DOM move, not a navigate). Repeated Cmd+W then chews through one
-  // panel per press until the workspace is truly empty.
-  if (promotablePanelIds.length > 0) {
-    void promoteLeftmostPanelToTab(activeWsId, promotablePanelIds[0]!);
-    return;
-  }
-
-  // Sidebar + panels both empty: delete the workspace and switch this
-  // window to the next available one. "Available" = exists AND not
-  // owned by another window AND not the one we're about to delete.
-  // Compute the candidate FIRST so we can fall back gracefully when
-  // there's nothing to switch to (no other workspace exists, or all
-  // others are taken by other windows): keep the empty workspace
-  // around and just close the window — a future window opening can
-  // pick it up via assignAvailable and the orchestrator will spawn a
-  // fresh tab on activation.
-  const wsList = workspaces.snapshot().workspaces;
-  const ownedByOthers = new Set(
-    Object.entries(workspaces.getActiveIdByWindow())
-      .filter(([k]) => Number(k) !== windowId)
-      .map(([, v]) => v),
-  );
-  const candidate = wsList.find((w) => w.id !== activeWsId && !ownedByOthers.has(w.id));
-
-  if (candidate) {
-    // Release ownership BEFORE delete so the delete()'s own
-    // "reassign every window that had this workspace" path is a no-op
-    // for us. We're handling our own reassignment via the activate()
-    // below to control which workspace we switch to (delete()'s
-    // fallback picks first-in-insertion-order, which can collide with
-    // another window's ownership).
-    workspaces.forgetWindow(windowId);
-    workspaces.delete(activeWsId);
-    const result = workspaces.activate(candidate.id, windowId);
-    if (result !== 'activated') {
-      console.warn(
-        '[bento-tools] post-delete activate returned',
-        result,
-        '— window may be left with no active workspace',
-      );
+  switch (action.kind) {
+    case 'none':
+      return;
+    case 'promote-panel':
+      // The panel's tab keeps its docShell; chrome moves its <browser> to the main slot
+      // without a reload, so repeated Cmd+W chews through one panel per press.
+      void promoteLeftmostPanelToTab(action.workspaceId, action.panelTabId);
+      return;
+    case 'switch-window': {
+      // Release ownership BEFORE delete so delete()'s own reassignment is a no-op for
+      // this window; the activate() below picks the workspace instead.
+      workspaces.forgetWindow(windowId);
+      workspaces.delete(action.deleteWorkspaceId);
+      const result = workspaces.activate(action.candidateId, windowId);
+      if (result !== 'activated') {
+        console.warn(
+          '[bento-tools] post-delete activate returned',
+          result,
+          '— window may be left with no active workspace',
+        );
+      }
+      return;
     }
-    return;
+    case 'close-window':
+      browser.windows
+        .remove(windowId)
+        .catch((err) => console.warn('[bento-tools] close-window-on-empty-workspace failed:', err));
+      return;
   }
-
-  browser.windows
-    .remove(windowId)
-    .catch((err) => console.warn('[bento-tools] close-window-on-empty-workspace failed:', err));
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
@@ -2166,6 +2107,21 @@ async function handleWorkspaceActivation(
   }
 }
 
+// The store's activation events arrive in a batch, after a workspace delete has already
+// handed the window its replacement and awaited that activation itself, and a delete also
+// announces its fallback workspace without a window. Running these at once creates one tab
+// per run for an empty workspace, so activations of a workspace join the one in flight.
+const activationsInFlight = new Map<string, Promise<void>>();
+function activateWorkspaceOnce(wsId: string, targetWindowId: number | null): Promise<void> {
+  const running = activationsInFlight.get(wsId);
+  if (running) return running;
+  const run = handleWorkspaceActivation(wsId, targetWindowId).finally(() =>
+    activationsInFlight.delete(wsId),
+  );
+  activationsInFlight.set(wsId, run);
+  return run;
+}
+
 workspaces.onDeltas((deltas) => {
   for (const d of deltas) {
     if (d.kind === 'removed') {
@@ -2179,7 +2135,7 @@ workspaces.onDeltas((deltas) => {
     }
     if (d.kind !== 'activated') continue;
     const targetWindowId = typeof d.windowId === 'number' ? d.windowId : null;
-    void handleWorkspaceActivation(d.id, targetWindowId);
+    void activateWorkspaceOnce(d.id, targetWindowId);
   }
 });
 
@@ -2255,6 +2211,8 @@ browser.runtime.onConnectExternal.addListener((port) => {
         broadcast: broadcastEvent,
         emitPanelsSync,
         syncPanelMarkers: syncPanelMarkersForWorkspace,
+        handoff: windowHandoff,
+        activateWorkspace: (wsId, windowId) => activateWorkspaceOnce(wsId, windowId),
         preferWorkspaceActivationTab,
         sourceWindowId,
       }),

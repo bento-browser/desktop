@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handle, type HandlerContext } from './protocol-handler';
+import { createWindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 
 function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
@@ -37,6 +38,8 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
     send: vi.fn(),
     emitPanelsSync: vi.fn(),
     syncPanelMarkers: vi.fn(),
+    handoff: createWindowHandoffGuard(),
+    activateWorkspace: vi.fn().mockResolvedValue(undefined),
     preferWorkspaceActivationTab: vi.fn(),
     sourceWindowId: 1,
     ...overrides,
@@ -452,6 +455,9 @@ describe('protocol handler workspace delete', () => {
   function deleteContext(options: { owner: number | null; ownerAfter: number | null }) {
     const order: string[] = [];
     const ctx = createCloseContext({
+      activateWorkspace: vi.fn(async () => {
+        order.push('activate');
+      }),
       workspaces: {
         has: vi.fn().mockReturnValue(true),
         findOwningWindow: vi.fn().mockReturnValue(options.owner),
@@ -479,15 +485,21 @@ describe('protocol handler workspace delete', () => {
     return { ctx, order };
   }
 
-  it('marks the tabs closing before the workspace goes, then closes them', async () => {
+  it('marks the tabs closing before the workspace goes, finishes the replacement, then closes them', async () => {
     const { ctx, order } = deleteContext({ owner: 1, ownerAfter: 1 });
+    // Earlier tests can still have delayed single-tab removals in flight; only the batch counts.
+    vi.mocked(browser.tabs.remove).mockImplementation(async (ids) => {
+      if (Array.isArray(ids)) order.push('remove');
+    });
 
     handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
 
     await vi.waitFor(() => {
       expect(browser.tabs.remove).toHaveBeenCalledWith([5, 6]);
     });
-    expect(order).toEqual(['mark 5', 'mark 6', 'delete']);
+    expect(ctx.activateWorkspace).toHaveBeenCalledWith('ws-other', 1);
+    expect(order).toEqual(['mark 5', 'mark 6', 'delete', 'activate', 'remove']);
+    expect(ctx.handoff.isActive(1)).toBe(false);
     expect(browser.windows.remove).not.toHaveBeenCalled();
   });
 

@@ -15,6 +15,7 @@ import type {
 } from '@shared/protocol';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
+import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
@@ -666,6 +667,12 @@ async function splitPanel(
  * to one no other window shows. When every other workspace is taken it has
  * nowhere to go: it closes with its tabs (like closing its last tab), or, with no
  * tabs to close, gets a fresh workspace the way a new window does.
+ *
+ * The window owns its replacement as soon as the store moves it, but the
+ * replacement's activation (a tab to show, panels) runs later. The doomed tabs
+ * are only removed once it has finished, and the window is marked as handing
+ * off meanwhile, so the last-tab handler never sees an empty replacement and
+ * deletes it or closes the window.
  */
 async function deleteWorkspace(
   ctx: HandlerContext,
@@ -679,23 +686,36 @@ async function deleteWorkspace(
   await Promise.all(doomed.map((tab) => ctx.tabs.markClosing(tab.id)));
 
   const ownerWindowId = ctx.workspaces.findOwningWindow(workspaceId);
-  ctx.workspaces.delete(workspaceId);
-  const stranded =
-    ownerWindowId !== null && ctx.workspaces.getActiveIdByWindow()[ownerWindowId] === undefined;
+  const endHandoff = ownerWindowId === null ? null : ctx.handoff.begin(ownerWindowId);
+  try {
+    ctx.workspaces.delete(workspaceId);
+    const replacementId =
+      ownerWindowId === null ? undefined : ctx.workspaces.getActiveIdByWindow()[ownerWindowId];
+    const stranded = ownerWindowId !== null && replacementId === undefined;
+    if (ownerWindowId !== null && replacementId !== undefined) {
+      await ctx
+        .activateWorkspace(replacementId, ownerWindowId)
+        .catch((err) => console.warn('[bento-tools] workspace/delete: activation failed:', err));
+    }
 
-  const toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
-  if (toRemove.length > 0) {
-    browser.tabs
-      .remove(toRemove.map((tab) => tab.id))
-      .catch((err) => console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err));
-  }
-  if (!stranded) return;
-  if (closeTabs) {
-    browser.windows
-      .remove(ownerWindowId)
-      .catch((err) => console.warn('[bento-tools] workspace/delete: windows.remove failed:', err));
-  } else {
-    ctx.workspaces.create({ name: nextDefaultWorkspaceName(ctx) }, ownerWindowId);
+    const toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
+    if (toRemove.length > 0) {
+      browser.tabs
+        .remove(toRemove.map((tab) => tab.id))
+        .catch((err) => console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err));
+    }
+    if (!stranded) return;
+    if (closeTabs) {
+      browser.windows
+        .remove(ownerWindowId)
+        .catch((err) =>
+          console.warn('[bento-tools] workspace/delete: windows.remove failed:', err),
+        );
+    } else {
+      ctx.workspaces.create({ name: nextDefaultWorkspaceName(ctx) }, ownerWindowId);
+    }
+  } finally {
+    endHandoff?.();
   }
 }
 
@@ -728,6 +748,12 @@ export interface HandlerContext {
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
   syncPanelMarkers: (workspaceId: string) => void;
+  /** Windows whose workspace is being replaced; see `deleteWorkspace`. */
+  handoff: WindowHandoffGuard;
+  /** Run the activation side effects (a tab to show, panels) for a workspace a window
+   * now owns and resolve when they are done. The store's own activation event runs
+   * later in a batch; this joins that work instead of repeating it. */
+  activateWorkspace: (workspaceId: string, windowId: number) => Promise<void>;
   /** Prefer this tab when the workspace activation side effect chooses
    * the main-slot tab for a just-activated workspace. Used by cross-
    * workspace tab activation so the activation fallback does not restore
