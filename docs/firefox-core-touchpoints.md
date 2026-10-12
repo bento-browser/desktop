@@ -520,6 +520,23 @@ document`), then in a built app open the command palette, address bar, a sidebar
 
 - Status: Active
 - Last updated: 2026-10-12
+- Firefox 157.0.1 review (2026-10-12): nothing in this entry uses a private
+  Firefox member that moved, and the compat probe stays at 0 missing. Runtime on
+  157.0.1 with the merged tree: a first window lists `confirm`, `edit-workspace`,
+  `workspace-switcher` (eager, `startup`), then `addrbar`, `palette`, `menu`
+  (`idle`), each `readyBy: 'signal'`, none stalled; a window with the welcome
+  open also lists `welcome` (`show`). Dist documents per window: 7, or 8 while
+  the welcome is open. A cold palette
+  (`Cmd+Alt+P` in a new window, before its idle creation) goes `absent` to
+  `loading` with `pendingOpen: true` to `ready` by signal (first open wait 266
+  ms), and `Esc` before it is ready cancels the pending open without showing the
+  overlay. A cold address bar opens through `Cmd+L` (first open wait 157 ms) and
+  accepts typed text. A confirm opened for window A leaves window B's confirm
+  host hidden and its dialog without A's payload; cancelling in A deletes
+  nothing. The `loadURI failed ... this.webNavigation is undefined` warning,
+  recorded for the frames the mount navigates at startup, dropped from 11 to 4
+  per window (the eager frames) because the lazy overlays are not created until
+  needed; the warning itself is unchanged and also appears on 154.
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js` (`createOverlayManager`, the
     `overlays` table, `createOverlayFrame`, `openOverlay`, `isOverlayOpen`, the
@@ -738,6 +755,21 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 
 - Status: Active
 - Last updated: 2026-10-12
+- Firefox 157.0.1 review (2026-10-12): the `jar.mn` line is carried by the 157
+  rebase of `patches/chrome-layout/01-bento-shell-mount.patch` (it was added
+  through the patch stack worktree, not by editing patch text; the hunk moved by
+  one line). The branches the gate relies on are unchanged between 154.0 and
+  157.0.1: `Loader::LoadStyleLink` still inserts a sheet that is already complete
+  in the shared cache synchronously (only inline-sheet parsing changed), and
+  `LinkStyle::GetSheetForBindings` and `AppWindow::OnChromeLoaded` exist.
+  Runtime on 157.0.1: `document.styleSheets` ends with the tokens, theme, and
+  `bento-shell-mount.css` sheets in that order. The first window shows
+  `__bentoSheetGate = { pending: 3, releasedBy: 'load', heldMs: 192 }`. Windows
+  opened later show `undefined`, with one exception: the first extra window
+  opened right after a GC and cycle-collection pass (the `windows-cycle`
+  harness) was gated for 9 ms and released by `'load'`, which the technical
+  companion allows; treat `releasedBy: 'load'` in a second window as healthy
+  and `'timeout'` or `null` as the failures.
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.css`
   - `src/browser/base/content/bento-shell-mount.js` (`injectChromeStyles`,
@@ -1434,7 +1466,7 @@ below is generated; edit the registry, then run
   `console.error('[bento-compat] missing <id>')` per absent member plus one
   `[bento-compat] probed N members on Firefox <platform version>: M missing, D deferred`
   line, where the version is `Services.appinfo.platformVersion` (the Gecko
-  version such as `154.0`), not Bento's own app version. It never throws and
+  version such as `157.0.1`), not Bento's own app version. It never throws and
   changes no behavior; the guarded hooks keep skipping silently.
   The probe is passive. It reads every property through
   `Object.getOwnPropertyDescriptor` along the prototype chain and never calls

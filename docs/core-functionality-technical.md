@@ -3209,6 +3209,27 @@ adds its entry, and its id in the mount probe list, in the same change.
   browser element has no `bento-settings-about-live-resize-frozen` mutations
   while idle, click a `moz-select` (it must stay open; Escape closes it), and
   resize the window (the attribute must appear and clear once).
+- Closing a tab that has a beforeunload prompt. In Firefox 157 the prompt is a
+  content dialog in the tab's own `TabDialogBox` (`getContentDialogManager()`),
+  not a tab-modal dialog, so Marionette's alert commands do not see it and
+  `execute_script` calls can appear to hang until it is answered. Answer it with
+  `box.getContentDialogManager()._dialogs[0]._frame.contentDocument.getElementById('commonDialog')`
+  and `cancelDialog()` or `acceptDialog()`. Bento's `closeTabFromSidebar` removes
+  the panel binding and marks the tab closing before it calls `tabs.remove`, so
+  cancelling the prompt on a panel tab keeps the tab but not the panel (the panel
+  strip is already emptied of it); cancelling on a selected or background tab keeps
+  both. A background tab is selected while its prompt is pending. Accepting
+  removes the tab with normal succession and no ghost panel. Behavior is
+  identical on 154.0, so it is a tools-side policy, not a Firefox 157 change.
+- Tear-out with panels present. `replaceTabWithWindow` passes `aTab.splitview ??
+  aTab` to the new window, and while a workspace has panels Bento gives the
+  rendered tabs a `tab.splitview` marker (see "Required split-view compatibility
+  shims"); that is the likely cause (inferred, not traced) of this: tearing out the
+  selected tab or a panel tab opens an unsynced window with two new tabs and leaves
+  the source tab in place. Tearing out a background tab, or any tab while the workspace has no panels,
+  moves the tab (same BrowsingContext, content, and container) into an unsynced
+  window that also carries one extra new tab; a window's only tab is not torn out
+  (`replaceTabWithWindow` returns null). Identical on 154.0.
 - `prefs/bento.js` sets `browser.nova.enabled` and `sidebar.revamp` to false.
   Firefox 157 defaults both to true; Bento keeps the 154 chrome because its shell
   owns the sidebar and tab strip. No upgrade migration
