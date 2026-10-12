@@ -10,6 +10,14 @@ import '../theme/bento-fonts.css';
 import '../theme/document-base.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
+import { initToolsPort } from '../bridge/useToolsPort';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
+
+// Join the shell bus like every other shell document. The workspace and
+// settings mirrors it hydrates feed useWorkspaceTheme and useFirefoxTheme below,
+// so the tooltip follows the active theme and color mode instead of keeping the
+// Default theme and the mode from boot.
+initToolsPort();
 
 interface NavigatorTooltipPayload {
   label: string;
@@ -33,6 +41,8 @@ function PanelNavigatorTooltipApp() {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
+  // After the listener above: chrome sends the pending label once this is announced.
+  useOverlayReadySignal('panel-navigator-tooltip');
 
   if (!payload) return null;
 

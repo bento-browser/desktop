@@ -18,12 +18,14 @@ import { initToolsPort } from '../bridge/useToolsPort';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
 function WorkspacePaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
+  useOverlayReadySignal('workspace-palette');
   const handleClose = () => {
     sendChromeTitle(`${WORKSPACE_PALETTE_CLOSE_PREFIX}_${Date.now()}`);
   };

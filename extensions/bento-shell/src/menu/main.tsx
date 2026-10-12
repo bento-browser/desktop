@@ -37,6 +37,8 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
+import { subscribeToMenuOpen } from '../bridge/useMenuOpen';
 
 initToolsPort();
 
@@ -52,34 +54,19 @@ function MenuApp() {
   // next open allocates a new contextId.
   const justSelectedRef = useRef(false);
 
-  useEffect(() => {
-    // Listen on the existing bento-shell-bus. Chrome's dispatchShellAction
-    // posts onto this channel via SHELL_ACTION_FRAME_SCRIPT; any
-    // moz-extension page in the same origin (this one included) receives.
-    const channel = new BroadcastChannel('bento-shell-bus');
-    function onMessage(event: MessageEvent) {
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-      if (data.kind !== 'action') return;
-      const action = data.action;
-      if (!action || action.type !== 'menu/open') return;
-      // Validate enough of the payload to render. Bad payloads silently
-      // drop — we'd rather render nothing than crash the overlay frame.
-      if (!action.contextId || !action.anchor || !Array.isArray(action.items)) return;
-      justSelectedRef.current = false;
-      setPayload({
-        contextId: action.contextId,
-        anchor: action.anchor,
-        items: action.items,
-        placement: action.placement === 'bottom start' ? 'bottom-start' : 'bottom-end',
-      });
-    }
-    channel.addEventListener('message', onMessage);
-    return () => {
-      channel.removeEventListener('message', onMessage);
-      channel.close();
-    };
-  }, []);
+  useEffect(
+    () =>
+      // Chrome's dispatchShellAction posts 'menu/open' onto bento-shell-bus for this
+      // window only (bridge/useMenuOpen.ts).
+      subscribeToMenuOpen((next) => {
+        justSelectedRef.current = false;
+        setPayload(next);
+      }),
+    [],
+  );
+
+  // After the bus subscription above: chrome sends menu/open once this is announced.
+  useOverlayReadySignal('menu');
 
   useEffect(() => {
     const preventNativeContextMenu = (event: MouseEvent) => {

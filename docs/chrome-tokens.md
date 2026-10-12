@@ -112,14 +112,12 @@ Run the theme sync before generating an isolated chrome stylesheet.
 
 ## Focused verification
 
-Use the repository Node 24.19 runtime and an isolated output path:
+Use the repository Node 24.19 runtime (`.nvmrc`) and an isolated output path:
 
 ```sh
 tmp_dir="$(mktemp -d)"
-/Users/admin/.vite-plus/js_runtime/node/24.19.0/bin/node scripts/sync-theme-presets.mjs
-/Users/admin/.vite-plus/js_runtime/node/24.19.0/bin/node \
-  scripts/generate-chrome-tokens.mjs \
-  --output "$tmp_dir/bento-chrome-tokens.css"
+node scripts/sync-theme-presets.mjs
+node scripts/generate-chrome-tokens.mjs --output "$tmp_dir/bento-chrome-tokens.css"
 ```
 
 The base file should contain `--shadow-l`, `--font-size-root`, and

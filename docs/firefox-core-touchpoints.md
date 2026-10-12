@@ -499,6 +499,80 @@ document`), then in a built app open the command palette, address bar, a sidebar
   `requestAnimationFrame` loops reading `contentTitle` (see git history of
   `attachPaletteCloseListener`).
 
+### Lazy Overlay Documents
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (`createOverlayManager`, the
+    `overlays` table, `createOverlayFrame`, `openOverlay`, `isOverlayOpen`, the
+    `BentoAddrbarOpen` and `BentoMergePaletteLifecycle` frame scripts)
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (unchanged: the palette,
+    merge-palette, confirm, and menu `<browser>` elements it declares stay
+    in the window; palette, merge palette, and menu are navigated on first use or at
+    idle)
+  - `extensions/bento-shell/src/bridge/overlayReady.ts` (shell side of the
+    handshake) and `windowId.ts` (the window id every overlay bus is scoped by)
+  - No new Firefox patch.
+- Bento functionality: the sidebar shell, the panel trailer, and the confirm,
+  edit-workspace, and workspace-switcher overlays load at window startup, as before.
+  The address bar, command palette, and menu are created at idle after the launch
+  veil lifts. The workspace palette, merge palette, welcome, embedded import, and
+  panel navigator tooltip are created on first use. Chrome reveals an overlay, and
+  sends it anything, only after the document's `BENTO_OVERLAY_READY` title; a
+  document that does not announce within 5 s is logged once and its open stays
+  pending (no reveal). A pending open counts as open for Esc, the toggles, and
+  outside click. Every overlay bus message names the chrome window it is for.
+  `window.BentoOverlayStats` reports what exists and when.
+- Vanilla Firefox surface touched or depended on:
+  `document.createXULElement('browser')` creating a `type="content"`,
+  `remote="true"`, `remoteType="extension"` `<browser>` in an already loaded
+  `browser.xhtml` and appending it to a host that is `display: none` (the same
+  attributes and hosts as before, only later in the window's life);
+  `<browser>.loadURI()` with a system principal on such a new element (the
+  existing `navigateChromeFrame` path); `<browser>` elements declared without a
+  `src` staying inert until navigated; `window.requestIdleCallback`;
+  `<browser>.messageManager.sendAsyncMessage` and `loadFrameScript` reaching a
+  document that is still loading (they do not queue, which is why chrome waits for
+  the announcement before it sends); `windowTracker.getId(window)` from
+  `Extension.sys.mjs` for the window id stamped on the bus messages (already used
+  for the frame URL hash); the `pagetitlechanged` event for a frame created after
+  startup. No private member is used, so the firefox-compat registry has no new
+  entry.
+- Why this cannot stay extension-only: the overlay `<browser>` elements live in
+  the chrome document and only chrome can create them.
+- Firefox update risk: if a `<browser>` created after window load stops
+  inheriting the extension process, or `loadURI` with the system principal is
+  rejected for it, the first open of an idle or on-demand overlay stays pending
+  with no visible effect and the 5 s stall error fires
+  (`[bento-shell-mount] overlay <id> did not announce readiness`). If a remote
+  `<browser>` without a `src` starts costing a document or process, the patch-declared
+  frames cost memory at startup again; moving them out of the patch into
+  `createOverlayFrame` is the fix. If `requestIdleCallback` is removed from chrome
+  windows, the manager falls back to `setTimeout(0)`. If `windowTracker.getId`
+  stops resolving, window ids are null and receivers accept every message (the
+  old unscoped behavior), so cross-window isolation is lost until it is fixed.
+- Regression checks for future updates: run `pnpm run build`, launch with
+  `--jsdebugger`, and in the Browser Toolbox Console read
+  `window.BentoOverlayStats`: right after startup `created` lists `confirm`,
+  `edit-workspace`, `workspace-switcher`, and within a few seconds `addrbar`,
+  `palette`, `menu`. Open the workspace palette, merge palette, and a delete
+  confirmation once each and confirm every entry reports `readyBy: 'signal'` and
+  `stalled: false`. On a profile with `welcomeSeen` false confirm the welcome
+  overlay appears on first run. Hover a panel navigator button and confirm the
+  tooltip follows the workspace theme and color mode after changing both in
+  Settings. Then, in the Bento window: press the palette shortcut on a fresh
+  profile and Esc at once (nothing may appear later); press the palette shortcut
+  and the merge palette trigger back to back (only the merge palette may end up
+  open, whichever loads first); open menus, the address bar, the merge palette,
+  and a delete confirmation in two windows at the same time (each window keeps its
+  own, and confirming deletes only that window's workspace); and open a menu in
+  the first second of a new window (it appears once its document is up, with the
+  items of the last request).
+- Rollback or migration notes: restoring the previous behavior is calling every
+  `setBento*Src()` at startup again, as the end of `bento-shell-mount.js` did
+  before this change.
+
 ### Add-Panel Grant (Chrome Tab Record)
 
 - Status: Active

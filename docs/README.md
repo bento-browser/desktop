@@ -18,3 +18,5 @@ contributor-facing guides.
 - [Implementing Firefox patches](firefox-patches.md)
 - [Firefox core touchpoints](firefox-core-touchpoints.md)
 - [Firefox build tooling](build-tooling.md)
+- [Privacy defaults](privacy.md)
+- [Settings consolidation rollback](settings-consolidation-rollback.md)

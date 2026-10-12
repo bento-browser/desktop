@@ -64,6 +64,7 @@ import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
 import './welcome.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -599,6 +600,9 @@ function WelcomeApp() {
       isActive = false;
     };
   }, []);
+
+  // Chrome creates this document on the first-run open and reveals it on this signal.
+  useOverlayReadySignal('welcome');
 
   useEffect(() => {
     if (welcomeSeen !== false || hasRequestedOpenRef.current) return;

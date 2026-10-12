@@ -93,7 +93,7 @@ jobs:
       - name: Validate JSON syntax
         run: |
           set -e
-          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json tsconfig.json .size-limit.json; do
+          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json .size-limit.json; do
             echo "checking $f"
             node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
           done
@@ -161,7 +161,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs scripts/mount-sheet-gate.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs scripts/overlay-manager.test.mjs scripts/overlay-surfaces.test.mjs scripts/mount-sheet-gate.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -239,6 +239,11 @@ jobs:
         # max(1%, 1 KB). Ceilings over the target are reported, not gated.
         # Missing or malformed built assets still fail.
         run: pnpm run size:check
+
+      - name: Rollback variants still lint, typecheck, and build
+        # Read-only isolated checks of rollback/legacy-source against the
+        # current dependency graph (docs/settings-consolidation-rollback.md).
+        run: pnpm run rollback:check
 
   build:
     name: ${{ github.event_name == 'workflow_dispatch' && 'Build' || 'Source import' }} (${{ matrix.platform }})
@@ -353,7 +358,6 @@ jobs:
         timeout-minutes: 320
         env:
           BENTO_RELEASE: '1'
-          BENTO_PR_BUILD: '1'
           BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
           # Dependencies, extensions, and the import already ran above.
           BENTO_RELEASE_PREPARED: '1'
