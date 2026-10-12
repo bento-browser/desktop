@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { checkLinks, extractLinks, headingAnchors, slugify } from './check-doc-links.mjs';
+import { checkLinks, extractLinks, headingAnchors, repoFileSet, slugify } from './check-doc-links.mjs';
 
 test('slugify follows the GitHub heading rules', () => {
   assert.equal(slugify('Shell to chrome bridge'), 'shell-to-chrome-bridge');
@@ -116,4 +117,44 @@ test('code blocks follow the GFM rules: fences, blockquotes, indentation, lists'
 
   // A fence inside a blockquote ends when the quote does.
   assert.deepEqual(targets(['> ```', '> [x](a.md)', '', '[y](b.md)']), ['4:b.md']);
+});
+
+test('slugify strips tags until none are left, so removal cannot assemble a new tag', () => {
+  assert.equal(slugify('x <scr<b>ipt>alert</b> y'), 'x-alert-y');
+  assert.equal(slugify('<span>Tagged</span> heading'), 'tagged-heading');
+});
+
+test('in a git checkout, links to ignored files fail and tracked or untracked ones pass', () => {
+  const root = mkdtempSync(join(tmpdir(), 'doc-links-git-'));
+  try {
+    assert.equal(repoFileSet(root), null); // not a git checkout: the existence check applies
+    const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+    git('init', '-q');
+    mkdirSync(join(root, 'docs'));
+    mkdirSync(join(root, 'gen'));
+    writeFileSync(join(root, '.gitignore'), 'gen/out.css\n');
+    writeFileSync(join(root, 'gen', 'out.css'), 'generated');
+    writeFileSync(join(root, 'gen', 'kept.css'), 'untracked but not ignored');
+    writeFileSync(join(root, 'tracked.txt'), 'tracked');
+    const doc = join(root, 'docs', 'doc.md');
+    writeFileSync(
+      doc,
+      [
+        '[tracked](../tracked.txt) [dir](../gen/) [untracked](../gen/kept.css)',
+        '[ignored](../gen/out.css) [missing](../nope.css)',
+      ].join('\n'),
+    );
+    git('add', '.gitignore', 'tracked.txt', 'docs/doc.md');
+
+    const known = repoFileSet(root);
+    assert.ok(known.has('tracked.txt') && known.has('gen') && known.has('gen/kept.css'));
+    assert.ok(!known.has('gen/out.css'));
+
+    const errors = checkLinks([doc], root);
+    assert.equal(errors.length, 2);
+    assert.match(errors[0], /docs\/doc\.md:2: links to an ignored or generated file.*\.\.\/gen\/out\.css/);
+    assert.match(errors[1], /docs\/doc\.md:2: broken link, no such path: \.\.\/nope\.css/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

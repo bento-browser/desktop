@@ -13,7 +13,7 @@ public Mux token surface and Bento's compatibility aliases.
    `pnpm run theme:sync` from the public `themes.css`).
 2. [scripts/generate-chrome-tokens.mjs](../scripts/generate-chrome-tokens.mjs)
    writes two outputs next to each other:
-   - [bento-chrome-tokens.css](../src/browser/base/content/bento-chrome-tokens.css),
+   - `src/browser/base/content/bento-chrome-tokens.css`,
      the shared tokens plus the Default theme;
    - `src/browser/base/content/bento-chrome-themes/<id>.css`, one native sheet
      per other theme (15 today, each about 28 kB, 3 kB gzipped).

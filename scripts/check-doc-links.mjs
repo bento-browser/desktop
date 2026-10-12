@@ -5,9 +5,12 @@
 // not fetched. A link to a .md file must resolve to an existing file, and a
 // #fragment on it must match a heading slug in that file (GitHub's rules,
 // including the -1, -2 suffix for repeated headings). Links to other files
-// and directories only need to exist.
+// and directories only need to exist. In a git checkout a target must also be a
+// file a fresh checkout has (tracked, or untracked but not ignored), so a link to
+// a generated, gitignored file fails locally the way it fails in CI.
 //
 //   node scripts/check-doc-links.mjs
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -133,11 +136,19 @@ function blankInlineCode(line) {
   return line.replace(/(`+)(?:(?!\1).)+?\1/g, (span) => ' '.repeat(span.length));
 }
 
+/** Removes HTML tags, repeating until nothing changes so removal cannot assemble a new tag. */
+function stripTags(text) {
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^<>]*>/g, '');
+  } while (text !== previous);
+  return text;
+}
+
 /** GitHub-style heading slug: inline Markdown reduced to its text, then lowercased and hyphenated. */
 export function slugify(heading) {
-  return heading
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]+>/g, '')
+  return stripTags(heading.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1'))
     .replace(/[`*~]+/g, '')
     .trim()
     .toLowerCase()
@@ -194,9 +205,51 @@ function collectMarkdown(dir, out = []) {
   return out;
 }
 
+const toPosix = (relative) => relative.split(path.sep).join('/');
+
+/**
+ * Repo-relative POSIX paths a fresh checkout would contain: tracked files plus untracked
+ * files that are not ignored, and every parent directory of those. Null when `repoRoot`
+ * is not the root of a git checkout.
+ */
+export function repoFileSet(repoRoot = REPO_ROOT) {
+  const git = (...args) =>
+    execFileSync('git', args, { cwd: repoRoot, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 28 });
+  try {
+    const top = git('rev-parse', '--show-toplevel').toString().trim();
+    if (fs.realpathSync(top) !== fs.realpathSync(repoRoot)) return null;
+    const known = new Set();
+    for (const file of git('ls-files', '-z', '--cached', '--others', '--exclude-standard').toString().split('\0')) {
+      if (file === '') continue;
+      known.add(file);
+      for (let dir = path.posix.dirname(file); dir !== '.' && !known.has(dir); dir = path.posix.dirname(dir)) {
+        known.add(dir);
+      }
+    }
+    return known;
+  } catch {
+    return null;
+  }
+}
+
+/** True when `resolved` is in the checkout `known`; targets outside the repo are not judged. */
+function inCheckout(known, resolved, repoRoot) {
+  const relative = toPosix(path.relative(repoRoot, resolved));
+  if (relative === '' || relative === '..' || relative.startsWith('../')) return true;
+  if (known.has(relative)) return true;
+  // A path through a symlinked directory is listed by git under the link only.
+  try {
+    const real = toPosix(path.relative(fs.realpathSync(repoRoot), fs.realpathSync(resolved)));
+    return real === '' || real.startsWith('../') || known.has(real);
+  } catch {
+    return false;
+  }
+}
+
 /** Problems found in `files` (absolute paths) relative to `repoRoot`. */
 export function checkLinks(files, repoRoot = REPO_ROOT) {
   const errors = [];
+  const known = repoFileSet(repoRoot);
   const anchorCache = new Map();
   const anchorsOf = (file) => {
     if (!anchorCache.has(file)) anchorCache.set(file, headingAnchors(fs.readFileSync(file, 'utf8')));
@@ -214,6 +267,10 @@ export function checkLinks(files, repoRoot = REPO_ROOT) {
         errors.push(`${rel}:${line}: broken link, no such path: ${target}`);
         continue;
       }
+      if (known && !inCheckout(known, resolved, repoRoot)) {
+        errors.push(`${rel}:${line}: links to an ignored or generated file that a fresh checkout lacks: ${target}`);
+        continue;
+      }
       if (fragment === '' || !resolved.endsWith('.md') || !fs.statSync(resolved).isFile()) continue;
       if (!anchorsOf(resolved).has(fragment.toLowerCase())) {
         errors.push(`${rel}:${line}: broken anchor #${fragment} in ${path.relative(repoRoot, resolved)}`);
@@ -227,7 +284,8 @@ export function docFiles(repoRoot = REPO_ROOT) {
   const files = ROOT_FILES.map((name) => path.join(repoRoot, name)).filter((file) => fs.existsSync(file));
   const docs = path.join(repoRoot, DOCS_DIR);
   if (fs.existsSync(docs)) files.push(...collectMarkdown(docs).sort());
-  return files;
+  const known = repoFileSet(repoRoot);
+  return known ? files.filter((file) => known.has(toPosix(path.relative(repoRoot, file)))) : files;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
