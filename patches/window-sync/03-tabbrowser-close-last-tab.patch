@@ -1,48 +1,48 @@
-From c97f14da4f42784a7dd0bcecd0dac8da32d33d84 Mon Sep 17 00:00:00 2001
+From 2b246841279700e4f65e7e835f176e6a90a51329 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:46 +1000
 Subject: [PATCH] Preserve Bento behavior when closing the last tab
 
 ---
- .../components/tabbrowser/content/tabbrowser.js  | 16 +++++++++++-----
- 1 file changed, 11 insertions(+), 5 deletions(-)
+ browser/components/tabbrowser/Tabbrowser.sys.mjs | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
 
-diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 0461206d1cc91f57ea0c803ace4b62823996bc41..65c7582837461f71b8e43242b27fa2890a1cd59a 100644
---- a/browser/components/tabbrowser/content/tabbrowser.js
-+++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -5574,11 +5574,16 @@
-         metricsContext,
-       } = {}
+diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
+index 7e2a28ba2569fa55d98055db461c445852344338..c239b5c2e891b81842562a159e6ce44e8e18b888 100644
+--- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
++++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
+@@ -6106,11 +6106,16 @@ export class Tabbrowser {
+       metricsContext,
+     } = {}
+   ) {
+-    // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
+-    // can be considered equivalent to closing the window.
++    // Bento: hardcoded false — bento-tools' tabs.onRemoved handler is the
++    // sole authority on last-tab close behavior. When the last tab in a
++    // workspace is removed, the handler promotes a panel into the main
++    // slot, deletes the workspace and switches to the next, or closes
++    // the window. Letting Firefox short-circuit to closeWindow here
++    // pre-empts that decision. Replaces:
++    //   Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
+     if (
+       this.tabs.length == tabs.length &&
+-      Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
++      false
      ) {
--      // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
--      // can be considered equivalent to closing the window.
-+      // Bento: hardcoded false — bento-tools' tabs.onRemoved handler is the
-+      // sole authority on last-tab close behavior. When the last tab in a
-+      // workspace is removed, the handler promotes a panel into the main
-+      // slot, deletes the workspace and switches to the next, or closes
-+      // the window. Letting Firefox short-circuit to closeWindow here
-+      // pre-empts that decision. Replaces:
-+      //   Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
-       if (
-         this.tabs.length == tabs.length &&
--        Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
-+        false
-       ) {
-         window.closeWindow(
-           true,
-@@ -5922,8 +5927,9 @@
-         closeWindow =
-           closeWindowWithLastTab != null
-             ? closeWindowWithLastTab
--            : !window.toolbar.visible ||
--              Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab");
-+            // Bento: popup windows (no toolbar) still auto-close on last
-+            // tab; toolbar windows defer to bento-tools' handler.
-+            : !window.toolbar.visible;
+       this.documentGlobal.closeWindow(
+         true,
+@@ -6554,7 +6559,10 @@ export class Tabbrowser {
+     var newTab = false;
+     if (this.#isLastTabInWindow(aTab)) {
+       closeWindow =
+-        closeWindowWithLastTab ?? this.#shouldCloseWindowWithLastTab;
++        closeWindowWithLastTab ??
++        // Bento: popup windows (no toolbar) still auto-close on last
++        // tab; toolbar windows defer to bento-tools' handler.
++        !this.documentGlobal.toolbar.visible;
  
-         if (closeWindow) {
-           // We've already called beforeunload on all the relevant tabs if we get here,
+       if (closeWindow) {
+         // We've already called beforeunload on all the relevant tabs if we get here,
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

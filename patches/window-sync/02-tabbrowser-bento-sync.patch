@@ -1,108 +1,109 @@
-From 78219fa39be2da371dd33bf3d9238c35b62190c9 Mon Sep 17 00:00:00 2001
+From e6ec2b05eb06dde4eb27f8f2036e524d16fdabb0 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:45 +1000
 Subject: [PATCH] Synchronize tabbrowser state with Bento
 
 ---
- .../tabbrowser/content/tabbrowser.js          | 41 +++++++++++++++----
- 1 file changed, 34 insertions(+), 7 deletions(-)
+ .../components/tabbrowser/Tabbrowser.sys.mjs  | 40 +++++++++++++++----
+ 1 file changed, 33 insertions(+), 7 deletions(-)
 
-diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 3f7fee40640035e08cfe3261a40de1cbea64207a..0461206d1cc91f57ea0c803ace4b62823996bc41 100644
---- a/browser/components/tabbrowser/content/tabbrowser.js
-+++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -4194,6 +4194,12 @@
-       if (userContextId == null && openerTab) {
-         userContextId = openerTab.getAttribute("usercontextid") || 0;
-       }
-+      // Bento: an unsynced window opened from a synced one inherits the
-+      // opener workspace's container, so the new window's first tab opens
-+      // in the same usercontext as the source workspace.
-+      if (typeof window._bentoStartupUnsyncedUserContextId == "number") {
-+        userContextId = window._bentoStartupUnsyncedUserContextId;
-+      }
+diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
+index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c445852344338 100644
+--- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
++++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
+@@ -4547,6 +4547,14 @@ export class Tabbrowser {
+     if (userContextId == null && openerTab) {
+       userContextId = openerTab.userContextId;
+     }
++    // Bento: an unsynced window opened from a synced one inherits the
++    // opener workspace's container, so the new window's first tab opens
++    // in the same usercontext as the source workspace.
++    if (
++      typeof this.documentGlobal._bentoStartupUnsyncedUserContextId == "number"
++    ) {
++      userContextId = this.documentGlobal._bentoStartupUnsyncedUserContextId;
++    }
  
-       if (!noInitialLabel) {
-         if (isBlankPageURL(uriString)) {
-@@ -6436,8 +6442,17 @@
-     /**
-      * @returns {boolean}
-      *   False if swapping isn't permitted, true otherwise.
-+     *
-+     * @param {MozTabbrowserTab} aOurTab Destination tab in this window.
-+     * @param {MozTabbrowserTab} aOtherTab Source tab whose browser/docShell
-+     *   are moved into aOurTab.
-+     * @param {boolean} [bentoCloseOther=true] When true (default Firefox
-+     *   behavior) the source tab is removed and, if it was the last tab in
-+     *   its window, the source window is closed. When false (Bento's
-+     *   docShell hot-potato path), the source twin is left in place so the
-+     *   sync engine can keep it as a placeholder for a future swap back.
-      */
--    swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-+    swapBrowsersAndCloseOther(aOurTab, aOtherTab, bentoCloseOther = true) {
-       // Do not allow transfering a private tab to a non-private window
-       // and vice versa.
-       if (
-@@ -6490,7 +6505,10 @@
-       // First, start teardown of the other browser.  Make sure to not
-       // fire the beforeunload event in the process.  Close the other
-       // window if this was its last tab.
-+      // Bento: when bentoCloseOther is false, skip teardown — the source
-+      // twin survives so the sync engine can later swap the docShell back.
-       if (
-+        bentoCloseOther &&
-         !remoteBrowser._beginRemoveTab(aOtherTab, {
-           adoptedByTab: aOurTab,
-           closeWindowWithLastTab: true,
-@@ -6502,7 +6520,7 @@
-       // If this is the last tab of the window, hide the window
-       // immediately without animation before the docshell swap, to avoid
-       // about:blank being painted.
--      let [closeWindow] = aOtherTab._endRemoveArgs;
-+      let [closeWindow] = bentoCloseOther ? aOtherTab._endRemoveArgs : [false];
-       if (closeWindow) {
-         let win = aOtherTab.documentGlobal;
-         win.windowUtils.suppressAnimation(true);
-@@ -6635,11 +6653,14 @@
-         });
-       }
- 
--      // Finish tearing down the tab that's going away.
--      if (closeWindow) {
--        aOtherTab.documentGlobal.close();
--      } else {
--        remoteBrowser._endRemoveTab(aOtherTab);
-+      // Finish tearing down the tab that's going away. Bento: skip when
-+      // bentoCloseOther is false (the source twin survives the swap).
-+      if (bentoCloseOther) {
-+        if (closeWindow) {
-+          aOtherTab.documentGlobal.close();
-+        } else {
-+          remoteBrowser._endRemoveTab(aOtherTab);
-+        }
-       }
- 
-       this.setTabTitle(aOurTab);
-@@ -6940,6 +6961,11 @@
-       // tell a new window to take the "dropped" tab
-       let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
-       args.appendElement(aTab.splitview ?? aTab);
-+      // Bento: tear-out always opens an UNSYNCED window — the user's
-+      // gesture signals "I want this tab in its own context", and an
-+      // unsynced window inherits the source's container ID so the
-+      // new window stays in the same userContext (Facebook Container
-+      // etc.). Not pref-gated; this is foundational behaviour.
-       return BrowserWindowTracker.openWindow({
-         private: PrivateBrowsingUtils.isWindowPrivate(window),
-         features: Object.entries(aOptions)
-@@ -6947,6 +6973,7 @@
-           .join(","),
-         openerWindow: window,
-         args,
-+        bentoSyncedWindow: false,
+     if (!noInitialLabel) {
+       if (this.documentGlobal.isBlankPageURL(uriString)) {
+@@ -7100,10 +7108,16 @@ export class Tabbrowser {
+    *   The tab in this window, which takes over the other tab's browser.
+    * @param {MozTabbrowserTab} aOtherTab
+    *   The tab to take the browser from, which may be in another window.
++   * @param {boolean} [bentoCloseOther=true]
++   *   When true (default Firefox behavior) the source tab is removed and, if
++   *   it was the last tab in its window, the source window is closed. When
++   *   false (Bento's docShell hot-potato path), the source twin is left in
++   *   place so the sync engine can keep it as a placeholder for a future
++   *   swap back.
+    * @returns {boolean}
+    *   False if swapping isn't permitted, true otherwise.
+    */
+-  swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
++  swapBrowsersAndCloseOther(aOurTab, aOtherTab, bentoCloseOther = true) {
+     // Do not allow transfering a private tab to a non-private window
+     // and vice versa.
+     if (
+@@ -7161,7 +7175,10 @@ export class Tabbrowser {
+     // First, start teardown of the other browser.  Make sure to not
+     // fire the beforeunload event in the process.  Close the other
+     // window if this was its last tab.
++    // Bento: when bentoCloseOther is false, skip teardown — the source
++    // twin survives so the sync engine can later swap the docShell back.
+     if (
++      bentoCloseOther &&
+       !remoteBrowser.#beginRemoveTab(aOtherTab, {
+         adoptedByTab: aOurTab,
+         closeWindowWithLastTab: true,
+@@ -7173,7 +7190,7 @@ export class Tabbrowser {
+     // If this is the last tab of the window, hide the window
+     // immediately without animation before the docshell swap, to avoid
+     // about:blank being painted.
+-    let [closeWindow] = aOtherTab._endRemoveArgs;
++    let [closeWindow] = bentoCloseOther ? aOtherTab._endRemoveArgs : [false];
+     if (closeWindow) {
+       let win = aOtherTab.documentGlobal;
+       win.windowUtils.suppressAnimation(true);
+@@ -7308,11 +7325,14 @@ export class Tabbrowser {
        });
      }
  
+-    // Finish tearing down the tab that's going away.
+-    if (closeWindow) {
+-      aOtherTab.documentGlobal.close();
+-    } else {
+-      remoteBrowser._endRemoveTab(aOtherTab);
++    // Finish tearing down the tab that's going away. Bento: skip when
++    // bentoCloseOther is false (the source twin survives the swap).
++    if (bentoCloseOther) {
++      if (closeWindow) {
++        aOtherTab.documentGlobal.close();
++      } else {
++        remoteBrowser._endRemoveTab(aOtherTab);
++      }
+     }
+ 
+     this.setTabTitle(aOurTab);
+@@ -7671,6 +7691,11 @@ export class Tabbrowser {
+     // tell a new window to take the "dropped" tab
+     let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+     args.appendElement(/** @type {nsISupports} */ (aTab.splitview ?? aTab));
++    // Bento: tear-out always opens an UNSYNCED window — the user's
++    // gesture signals "I want this tab in its own context", and an
++    // unsynced window inherits the source's container ID so the
++    // new window stays in the same userContext (Facebook Container
++    // etc.). Not pref-gated; this is foundational behaviour.
+     return lazy.BrowserWindowTracker.openWindow({
+       private: lazy.PrivateBrowsingUtils.isWindowPrivate(this.documentGlobal),
+       features: Object.entries(options)
+@@ -7678,6 +7703,7 @@ export class Tabbrowser {
+         .join(","),
+       openerWindow: this.documentGlobal,
+       args,
++      bentoSyncedWindow: false,
+     });
+   }
+ 
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

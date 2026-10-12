@@ -1,4 +1,4 @@
-From 3dc536e22bff274072a5c279d9632236d17b0688 Mon Sep 17 00:00:00 2001
+From 56d71d9bfe6dfa4cc39bd5d24b5c6ae923d4b278 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 27 Jun 2026 16:35:00 +1000
 Subject: [PATCH] Allow DOM fullscreen from split view browsers
@@ -8,10 +8,10 @@ Subject: [PATCH] Allow DOM fullscreen from split view browsers
  1 file changed, 17 insertions(+), 5 deletions(-)
 
 diff --git a/browser/base/content/browser-fullScreenAndPointerLock.js b/browser/base/content/browser-fullScreenAndPointerLock.js
-index 991cbab1fca19bc20adabb73c146c26a57db68eb..14831f2f3de47c47d1a26f07089a1517d103ad91 100644
+index 57711112f21a5929904fce26e44a8a7a2c85ecf4..4e128f3963b3653d25b76c955e73664e86e9056d 100644
 --- a/browser/base/content/browser-fullScreenAndPointerLock.js
 +++ b/browser/base/content/browser-fullScreenAndPointerLock.js
-@@ -617,13 +617,13 @@ var FullScreen = {
+@@ -634,13 +634,13 @@ var FullScreen = {
        }
      }
  
@@ -30,7 +30,7 @@ index 991cbab1fca19bc20adabb73c146c26a57db68eb..14831f2f3de47c47d1a26f07089a1517
        // The top-level window has lost focus since the request to enter
        // full-screen was made. Cancel full-screen.
        Services.focus.activeWindow != window
-@@ -632,6 +632,12 @@ var FullScreen = {
+@@ -649,6 +649,12 @@ var FullScreen = {
        return;
      }
  
@@ -43,7 +43,7 @@ index 991cbab1fca19bc20adabb73c146c26a57db68eb..14831f2f3de47c47d1a26f07089a1517
      // Remove permission prompts when entering full-screen.
      if (!FullScreen.permissionsFullScreenAllowed) {
        let notifications = PopupNotifications.getNotification(
-@@ -758,6 +764,12 @@ var FullScreen = {
+@@ -778,6 +784,12 @@ var FullScreen = {
        this._isChromeCollapsed
      );
  
@@ -57,5 +57,5 @@ index 991cbab1fca19bc20adabb73c146c26a57db68eb..14831f2f3de47c47d1a26f07089a1517
    },
  
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

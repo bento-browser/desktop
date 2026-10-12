@@ -689,7 +689,7 @@ pnpm run firefox:sync
 For a newer target, first read the target from Mozilla's
 [`firefox_versions.json`](https://product-details.mozilla.org/1.0/firefox_versions.json)
 and copy its source archive digest from the matching per-release
-[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/154.0/SHA256SUMS)
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/)
 file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`.
 The entry is a 64-character hexadecimal SHA-256 followed by the relative
 archive path `source/firefox-<target-version>.source.tar.xz`. Pass that digest

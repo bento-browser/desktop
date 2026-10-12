@@ -1,4 +1,4 @@
-From 9320ba093b5fff51d06f5f77c7f82929961e5579 Mon Sep 17 00:00:00 2001
+From d66444483e1a482559a61a63cbe69fab88aa4e1c Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:34 +1000
 Subject: [PATCH] Skip Bento panel browsers in DevTools focusTab
@@ -8,10 +8,10 @@ Subject: [PATCH] Skip Bento panel browsers in DevTools focusTab
  1 file changed, 7 insertions(+)
 
 diff --git a/devtools/client/framework/toolbox-hosts.js b/devtools/client/framework/toolbox-hosts.js
-index 33dc75f655ec3638896775b4af0b7996a941fee8..741c28b0dbe381adb5f1ed680a1043cfb20b2ece 100644
+index c354983221440afa559fa35094b8b4f0e80f2367..b9479457184ce404761a8f25b41a985aaa4f45b4 100644
 --- a/devtools/client/framework/toolbox-hosts.js
 +++ b/devtools/client/framework/toolbox-hosts.js
-@@ -595,6 +595,13 @@ class PageHost {
+@@ -762,6 +762,13 @@ class PageHost {
  function focusTab(tab) {
    const browserWindow = tab.documentGlobal;
    browserWindow.focus();
@@ -26,5 +26,5 @@ index 33dc75f655ec3638896775b4af0b7996a941fee8..741c28b0dbe381adb5f1ed680a1043cf
  }
  
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

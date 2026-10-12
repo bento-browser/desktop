@@ -1,4 +1,4 @@
-From 8b6a708c712e49c84176feda892d9dda8c85579e Mon Sep 17 00:00:00 2001
+From 2545320995e80ebf4d1517a9c98e0d08c0f1c7c7 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
@@ -6,14 +6,14 @@ Subject: [PATCH] Hide native Firefox tabs
 ---
  browser/components/preferences/config/tabs-browsing.mjs    | 2 ++
  .../preferences/tests/browser_appearance_pane.js           | 6 +++++-
- browser/components/tabbrowser/content/tabbrowser.js        | 7 ++++++-
+ .../components/tabbrowser/content/tab-bar-visibility.js    | 7 ++++++-
  3 files changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
-index 25fd62a706e75c9ff9588d87e3384ddc45e9ca22..60f6906b56da658df668c5fda7a279a14fcf37ac 100644
+index 50ba8c2da36d16a1fb186441e4db0cdd68e1168a..bf0814cc2a9db57dc915853080b642a9224eddd2 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -577,6 +577,8 @@ SettingGroupManager.registerGroups({
+@@ -566,6 +566,8 @@ SettingGroupManager.registerGroups({
      l10nId: "browser-layout-header2",
      iconSrc: "chrome://browser/skin/sidebar-expanded.svg",
      headingLevel: 2,
@@ -23,10 +23,10 @@ index 25fd62a706e75c9ff9588d87e3384ddc45e9ca22..60f6906b56da658df668c5fda7a279a1
        {
          id: "browserLayoutRadioGroup",
 diff --git a/browser/components/preferences/tests/browser_appearance_pane.js b/browser/components/preferences/tests/browser_appearance_pane.js
-index b44ade63b7d916f11ffe5552f05277d81c4c624c..a519fe34ed3f713abe54a51e8e76e4481e46eac6 100644
+index e7659a039baf965f02db7462378b16d303ef057a..f51a5be443548a71be1d56cc4e178a5a6ec49711 100644
 --- a/browser/components/preferences/tests/browser_appearance_pane.js
 +++ b/browser/components/preferences/tests/browser_appearance_pane.js
-@@ -334,7 +334,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
+@@ -439,7 +439,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
  
    let group = doc.querySelector('setting-group[groupid="browserLayout"]');
    ok(group, "browserLayout setting-group exists in tabs-browsing pane");
@@ -39,11 +39,11 @@ index b44ade63b7d916f11ffe5552f05277d81c4c624c..a519fe34ed3f713abe54a51e8e76e448
  
    await BrowserTestUtils.removeTab(gBrowser.selectedTab);
  });
-diff --git a/browser/components/tabbrowser/content/tabbrowser.js b/browser/components/tabbrowser/content/tabbrowser.js
-index 39b5babee5942427a82a7a64ad69e1b16efebcc1..5f3da65b46a5a5ff5db18fddbfd73a631a2a1ecf 100644
---- a/browser/components/tabbrowser/content/tabbrowser.js
-+++ b/browser/components/tabbrowser/content/tabbrowser.js
-@@ -10301,6 +10301,9 @@ var TabBarVisibility = {
+diff --git a/browser/components/tabbrowser/content/tab-bar-visibility.js b/browser/components/tabbrowser/content/tab-bar-visibility.js
+index e21d3b673a593bfed6d8f83d4636e0467dfe63f4..3196a246d8a342c7a70923e3baf2c256ada88c1b 100644
+--- a/browser/components/tabbrowser/content/tab-bar-visibility.js
++++ b/browser/components/tabbrowser/content/tab-bar-visibility.js
+@@ -13,6 +13,9 @@ var TabBarVisibility = {
      let hasVerticalTabs =
        !isSingleTabWindow &&
        Services.prefs.getBoolPref("sidebar.verticalTabs", false);
@@ -53,7 +53,7 @@ index 39b5babee5942427a82a7a64ad69e1b16efebcc1..5f3da65b46a5a5ff5db18fddbfd73a63
  
      // When `gBrowser` has not been initialized, we're opening a new window and
      // assume only a single tab is loading.
-@@ -10309,7 +10312,9 @@ var TabBarVisibility = {
+@@ -21,7 +24,9 @@ var TabBarVisibility = {
      // To prevent tabs being lost, hiding the tabs toolbar should only work
      // when only a single tab is visible or tabs are displayed elsewhere.
      let hideTabsToolbar =
@@ -65,5 +65,5 @@ index 39b5babee5942427a82a7a64ad69e1b16efebcc1..5f3da65b46a5a5ff5db18fddbfd73a63
      // We only want a non-customized titlebar for popups. It should not be the
      // case, but if a popup window contains more than one tab we re-enable
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

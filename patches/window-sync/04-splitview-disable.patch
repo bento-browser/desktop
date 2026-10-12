@@ -1,4 +1,4 @@
-From 468acde6511066fc26ee5daf32266bddb898d2b2 Mon Sep 17 00:00:00 2001
+From c0bd576c926269f518a7632dd1bf1d3a5846680c Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:47 +1000
 Subject: [PATCH] Disable Firefox split view
@@ -10,10 +10,10 @@ Subject: [PATCH] Disable Firefox split view
  3 files changed, 14 insertions(+), 9 deletions(-)
 
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index 22eda54acd5b7b4d5622a5f37c941ce47f61fc95..71077e3ae6886245f3447680db955e8f106ebaf1 100644
+index 63685d440863e2a29850272b1c9903b4784a0651..a760b13bb1e5b5a31cf7d0447735e878ae8ca1a9 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -507,9 +507,11 @@ export class nsContextMenu {
+@@ -525,9 +525,11 @@ export class nsContextMenu {
      let showContainers =
        Services.prefs.getBoolPref("privacy.userContext.enabled") &&
        lazy.ContextualIdentityService.getPublicIdentities().length;
@@ -29,7 +29,7 @@ index 22eda54acd5b7b4d5622a5f37c941ce47f61fc95..71077e3ae6886245f3447680db955e8f
      let showSmartWindow = lazy.AIWindow.isAIWindowEnabled();
      this.showItem("context-openlink", shouldShow && !isWindowPrivate);
 diff --git a/browser/components/tabbrowser/content/tab-context-menu.js b/browser/components/tabbrowser/content/tab-context-menu.js
-index 4a7cb33a4d9067d469bbe09d4cd8844581642f7a..462fbea82665b2188db33afdd1d43fa2083f2d0e 100644
+index 694225ca0098b47ee223ea553e88f349b00abb98..e5de9760cca4424551cb633a7e3359af437c9bed 100644
 --- a/browser/components/tabbrowser/content/tab-context-menu.js
 +++ b/browser/components/tabbrowser/content/tab-context-menu.js
 @@ -752,11 +752,12 @@ var TabContextMenu = {
@@ -51,10 +51,10 @@ index 4a7cb33a4d9067d469bbe09d4cd8844581642f7a..462fbea82665b2188db33afdd1d43fa2
        "context_moveTabToSplitView"
      );
 diff --git a/browser/components/tabbrowser/content/tab.js b/browser/components/tabbrowser/content/tab.js
-index 6fcef5bf0f4ac8c58515afd127c7065f26251c7c..3cceabc1911bda75f7a5dc7b45eb412198faefe9 100644
+index f6caf4acf7a8a5b98b4675e2c76fa60f901a6231..ef63184f77af34478a1a2a211546aa48f43fb933 100644
 --- a/browser/components/tabbrowser/content/tab.js
 +++ b/browser/components/tabbrowser/content/tab.js
-@@ -612,7 +612,9 @@
+@@ -628,7 +628,9 @@
            !event.target.classList.contains("tab-audio-button") &&
            !this.selected &&
            !gBrowser.selectedTab.hidden &&
@@ -66,5 +66,5 @@ index 6fcef5bf0f4ac8c58515afd127c7065f26251c7c..3cceabc1911bda75f7a5dc7b45eb4121
            !gBrowser.selectedTab.splitview &&
            !this.pinned &&
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

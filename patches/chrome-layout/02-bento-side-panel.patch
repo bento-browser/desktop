@@ -1,4 +1,4 @@
-From 1ada31dd107f983b0a743296dbc8c76bcb68f9ef Mon Sep 17 00:00:00 2001
+From d2a662281513f833e8164156fe028e41fbdb413e Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:27 +1000
 Subject: [PATCH] Add Bento side panel host
@@ -8,7 +8,7 @@ Subject: [PATCH] Add Bento side panel host
  1 file changed, 1 insertion(+)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 6edf2c3837e24f2fd872058333e1970c8f5a1b09..b447577c939003a23454bd987ccb7d6a649afc35 100644
+index 840418d0e34171c2cf45f9dd18230bb45cb5540a..7b345356265fcf2c68c9864063dc52a215dc5efb 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -80,6 +80,7 @@
@@ -20,5 +20,5 @@ index 6edf2c3837e24f2fd872058333e1970c8f5a1b09..b447577c939003a23454bd987ccb7d6a
    <vbox id="ai-window-box" collapsed="true" class="chromeclass-extrachrome ai-window-right-sidebar">
      <stack class="ai-window-browser-stack" flex="1">
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 

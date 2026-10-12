@@ -110,11 +110,10 @@
     // the rest need only exist, accessors included. '' is the window.
     members: {
       gBrowser: [
-        'on_visibilitychange()', '_beginRemoveTab()', '_endRemoveTab()', '_findTabToBlurTo()',
-        '_insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
+        'on_visibilitychange()', '_endRemoveTab()', '_findTabToBlurTo()',
+        'insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
         'on_TabSplitViewDeactivate()', 'warmupTab()', 'tabpanels', 'tabContainer', 'addTrustedTab()',
         'addTab()', 'getTabForBrowser()', 'selectedBrowsers', 'moveTabBefore()', 'moveTabAfter()',
-        '_getTabProgressFilter()',
       ],
       MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
@@ -148,11 +147,12 @@
     // module URL: the export it must have
     modules: {
       'moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs': 'UrlbarUtils',
+      'chrome://browser/content/urlbar/UrlbarShared.mjs': 'UrlbarShared',
       'moz-src:///toolkit/components/search/SearchService.sys.mjs': 'SearchService',
       'moz-src:///toolkit/components/search/SearchUtils.sys.mjs': 'SearchUtils',
       'resource:///modules/MigrationUtils.sys.mjs': 'MigrationUtils',
       'resource:///modules/ExtensionsUI.sys.mjs': 'ExtensionsUI',
-      'resource:///modules/sessionstore/SessionStore.sys.mjs': 'SessionStore',
+      'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs': 'SessionStore',
       'resource://gre/modules/Extension.sys.mjs': 'Management',
       'resource://gre/modules/ExtensionParent.sys.mjs': 'ExtensionParent',
       'chrome://devtools-startup/content/DevToolsShim.sys.mjs': 'DevToolsShim',
@@ -2162,6 +2162,7 @@
 
   let currentAddrbarMode = 'current';
   let addrbarUrlbarUtils = null;
+  let addrbarUrlbarShared = null;
   const ADDRBAR_POPUP_WIDTH_PX = 640;
   const ADDRBAR_POPUP_HEIGHT_PX = 420;
   const ADDRBAR_ANCHORED_POPUP_WIDTH_PX = Math.round(ADDRBAR_POPUP_WIDTH_PX * 0.8);
@@ -2342,6 +2343,18 @@
     return addrbarUrlbarUtils;
   }
 
+  function getAddrbarUrlbarShared() {
+    if (addrbarUrlbarShared) return addrbarUrlbarShared;
+    try {
+      const mod = ChromeUtils.importESModule('chrome://browser/content/urlbar/UrlbarShared.mjs');
+      addrbarUrlbarShared = mod.UrlbarShared || null;
+    } catch (err) {
+      console.warn('[bento-shell-mount] UrlbarShared import failed:', err);
+      addrbarUrlbarShared = null;
+    }
+    return addrbarUrlbarShared;
+  }
+
   function readGlobalClipboardText() {
     try {
       const transferable = Cc['@mozilla.org/widget/transferable;1'].createInstance(
@@ -2363,10 +2376,14 @@
   function sanitizeClipboardUrlText(value) {
     const raw = String(value || '').trim();
     if (!raw || raw.length > 2048) return '';
+    // Firefox 157 moved the sanitizer to UrlbarShared; URI fixup is parent-only,
+    // so the caller supplies it from UrlbarUtils.
     const utils = getAddrbarUrlbarUtils();
-    if (utils && typeof utils.sanitizeTextFromClipboard === 'function') {
+    const shared = getAddrbarUrlbarShared();
+    if (utils && typeof shared?.sanitizeTextFromClipboard === 'function') {
       try {
-        return String(utils.sanitizeTextFromClipboard(raw) || '').trim();
+        const fixupInfo = utils.getFixupPrimitives(raw, BentoPrivateBrowsingUtils.isWindowPrivate(window));
+        return String(shared.sanitizeTextFromClipboard(raw, fixupInfo) || '').trim();
       } catch {
         /* fall through to basic line-break sanitizing */
       }
@@ -3989,8 +4006,9 @@
   }
 
   // Re-parent a node with Element.moveBefore so a tab <browser> inside it keeps
-  // its frameloader (insertBefore/appendChild unbind and recreate it; see
-  // reattachTabProgressFilters). moveBefore throws HierarchyRequestError or
+  // its frameloader (insertBefore/appendChild unbind and recreate it, which
+  // strands Tabbrowser's per-tab progress filter on the discarded
+  // BrowsingContext). moveBefore throws HierarchyRequestError or
   // NotFoundError when the node and parent are not connected under one root or
   // the reference child is wrong, and is missing on older engines, so fall back
   // to insertBefore. A null ref appends.
@@ -14091,20 +14109,13 @@
       for (const p of panels) {
         try {
           const t = tabTracker.getTab(p.tabId);
-          // Skip tabs that are being closed. Two flags are checked:
-          //   - tab.closing: Firefox's own flag, set in _beginRemoveTab
-          //     at line 5863 — but only AFTER _blurTab at line 5796 has
-          //     already fired TabSelect on the successor tab. So during
-          //     the FIRST reconcile triggered by _blurTab's TabSelect,
-          //     `tab.closing` is still false.
-          //   - tab.bentoClosing: our flag set in the _beginRemoveTab
-          //     wrapper above, BEFORE Firefox's own logic runs. This is
-          //     what catches the close-the-main-slot-panel case where
-          //     the closing tab would otherwise be re-rendered as a
-          //     strip panel for one frame (the "ghost panel" symptom).
-          // Both flags are checked because the wrapper might miss an
-          // edge-case path that bypasses _beginRemoveTab.
-          if (t && !t.closing && !t.bentoClosing) {
+          // Skip tabs that are being closed. Firefox sets tab.closing in
+          // #beginRemoveTab only AFTER #blurTab has fired TabSelect on the
+          // successor, so the TabSelect-triggered reconcile is deferred to a
+          // microtask (see `reconcile` in attachTabSelectListener); by then
+          // `closing` is set and the closing tab is not re-rendered as a
+          // strip panel for one frame (the "ghost panel" symptom).
+          if (t && !t.closing) {
             resolved.push({ tab: t, payload: p });
           } else if (!t) {
             scheduleMaterializeRetry();
@@ -14128,7 +14139,7 @@
         for (const sp of sub.subPanels) {
           try {
             const t = tabTracker.getTab(sp.tabId);
-            if (t && !t.closing && !t.bentoClosing) {
+            if (t && !t.closing) {
               resolvedSubPanels.push({ tab: t, payload: sp });
             } else if (!t) {
               scheduleMaterializeRetry();
@@ -14148,10 +14159,10 @@
     //   1. The reconciler below filters tabs without linkedPanel, so a
     //      pending tab is silently dropped — sessions reopen with panel
     //      favicons in the navigator but no panel strip.
-    //   2. Even after _insertBrowser materializes the docshell (which
+    //   2. Even after insertBrowser materializes the docshell (which
     //      sets linkedPanel), no content is loaded — the panel renders
     //      blank until clicked.
-    // Fix: _insertBrowser to materialize (same path gBrowser.selectTab
+    // Fix: insertBrowser to materialize (same path gBrowser.selectTab
     // uses for a lazy click, minus the selection change), then
     // linkedBrowser.reload() to actually fetch the URL.
     const materializePanelTab = (tab, payloadUrl, label) => {
@@ -14160,12 +14171,12 @@
       const tabId = getBentoTabId(tab);
       if (needsMaterialize) {
         try {
-          window.gBrowser._insertBrowser(tab);
+          window.gBrowser.insertBrowser(tab);
         } catch (err) {
           scheduleMaterializeRetry();
           if (materializeRetry >= 8) {
             console.warn(
-              '[bento-shell-mount] _insertBrowser failed for tabId',
+              '[bento-shell-mount] insertBrowser failed for tabId',
               tab.id || '?',
               label || 'panel',
               err,
@@ -14324,7 +14335,7 @@
     let mainTab = gBrowser.selectedTab;
     if (mainTab && !materializePanelTab(mainTab, '', 'main')) {
       const replacementMain = Array.from(gBrowser.tabs).find((tab) => {
-        if (!tab || tab.closing || tab.bentoClosing) return false;
+        if (!tab || tab.closing) return false;
         if (topLevelPanelIds.has(tab.linkedPanel)) return false;
         if (subPanelIds.has(tab.linkedPanel)) return false;
         return materializePanelTab(tab, '', 'main replacement');
@@ -14355,7 +14366,7 @@
       selectedIsBentoPanel
     ) {
       const replacement = Array.from(gBrowser.tabs).find((tab) => {
-        if (!tab?.linkedPanel || tab.closing || tab.bentoClosing) return false;
+        if (!tab?.linkedPanel || tab.closing) return false;
         if (topLevelPanelIds.has(tab.linkedPanel)) return false;
         if (subPanelIds.has(tab.linkedPanel)) return false;
         const panelEl = document.getElementById(tab.linkedPanel);
@@ -16347,53 +16358,8 @@
       // Best-effort compatibility guard for Firefox chrome internals.
     }
 
-    // Mark tabs as "bento-closing" at the START of _beginRemoveTab — before
-    // _blurTab fires TabSelect on a different tab. Firefox's _beginRemoveTab
-    // (tabbrowser.js:5730) sets aTab.closing=true at line 5863, but only
-    // AFTER it has already called _blurTab(aTab) at line 5796. _blurTab
-    // synchronously assigns selectedTab and dispatches TabSelect — which
-    // wakes the reconciler. So by the time the reconciler runs, the panels
-    // payload still contains the to-be-closed tab AND that tab's `.closing`
-    // is still false. The in-reconciler `!t.closing` filter is therefore
-    // a no-op for that specific reconcile.
-    //
-    // We can't safely reorder Firefox's own statements, but setting our
-    // own `t.bentoClosing` flag in a pre-call wrapper IS safe — the flag
-    // exists from the very first instruction of _beginRemoveTab and the
-    // reconciler checks it alongside `.closing`. Net effect: the closing
-    // tab is filtered out of `resolved` on the very first reconcile
-    // triggered by _blurTab, so no ghost strip-panel is rendered.
-    if (
-      window.gBrowser &&
-      typeof window.gBrowser._beginRemoveTab === 'function' &&
-      !window.gBrowser.__bentoBeginRemoveOverride
-    ) {
-      bentoCompatNoteNative('gBrowser._beginRemoveTab', window.gBrowser._beginRemoveTab);
-      const originalBeginRemove = window.gBrowser._beginRemoveTab.bind(window.gBrowser);
-      window.gBrowser._beginRemoveTab = function (aTab, ...args) {
-        if (aTab) aTab.bentoClosing = true;
-        let ok;
-        try {
-          ok = originalBeginRemove(aTab, ...args);
-        } catch (err) {
-          if (!isStaleWebProgressRemoveError(err)) {
-            throw err;
-          }
-          ok = true;
-        }
-        // _beginRemoveTab returns false when the close is rejected: tab
-        // already closing, window already closing, or beforeunload denied
-        // permitUnload. In the beforeunload-denied case the tab survives
-        // and must not stay filtered, otherwise it'd be excluded from
-        // every future reconcile.
-        if (!ok && aTab) aTab.bentoClosing = false;
-        return ok;
-      };
-      window.gBrowser.__bentoBeginRemoveOverride = true;
-    }
-
     // Scope tab-close succession to the current workspace's sidebar tabs.
-    // Firefox's _findTabToBlurTo (tabbrowser.js:6231) picks "the next
+    // Firefox's _findTabToBlurTo (Tabbrowser.sys.mjs) picks "the next
     // visible tab" when the selected tab is closed. In Bento, the global
     // tab list is shared across workspaces, so Firefox's default
     // succession can land on:
@@ -16412,10 +16378,10 @@
     // other tab is a panel or foreign), fall back to the unfiltered
     // original so we don't strand selectedTab at null.
     //
-    // The bentoClosing pre-mark above is the orthogonal half of this
-    // fix: it filters the closing tab itself out of the reconciler's
-    // `resolved` list so it isn't re-rendered as a strip panel for one
-    // frame during the _blurTab-triggered reconcile.
+    // The deferred TabSelect reconcile (see `reconcile` below) is the
+    // orthogonal half of this fix: by the time it runs Firefox has set
+    // tab.closing, so the reconciler's `resolved` list drops the closing tab
+    // instead of re-rendering it as a strip panel for one frame.
     if (
       window.gBrowser &&
       typeof window.gBrowser._findTabToBlurTo === 'function' &&
@@ -16481,16 +16447,32 @@
       window.gBrowser.__bentoFindTabOverride = true;
     }
 
+    // Closing the selected tab: Firefox's #beginRemoveTab runs #blurTab,
+    // which selects the successor and fires TabSelect (and the tabpanels
+    // 'select' event), and only afterwards, in the same synchronous run,
+    // sets closing = true on the outgoing tab. A reconcile that ran inside
+    // those events would still see the closing tab and render it as a ghost
+    // strip panel. Every selection signal therefore queues one microtask:
+    // it runs after #beginRemoveTab returns (event.detail.previousTab.closing
+    // is set by then) and still before the next paint or task, and it reads
+    // the final selectedTab, so several signals for one change coalesce.
     let lastReconciledFor = null;
-    const reconcile = (_source) => {
-      const sel = window.gBrowser.selectedTab;
-      if (sel === lastReconciledFor) return;
+    let reconcileQueued = false;
+    const runReconcile = () => {
+      reconcileQueued = false;
+      const sel = window.gBrowser?.selectedTab;
+      if (!sel || sel === lastReconciledFor) return;
       lastReconciledFor = sel;
       if (shouldDeferReconcileForWorkspaceSwitch(sel)) {
         armWorkspaceSwitchFade();
         return;
       }
       reconcilePanelsSplitView(__lastPanelsPayload);
+    };
+    const reconcile = (_source) => {
+      if (reconcileQueued) return;
+      reconcileQueued = true;
+      queueMicrotask(runReconcile);
     };
 
     // Signal 1: TabSelect on the tabContainer / gBrowser / window. This is
@@ -17795,7 +17777,7 @@
     if (__sessionStoreModule) return __sessionStoreModule;
     try {
       const mod = ChromeUtils.importESModule(
-        'resource:///modules/sessionstore/SessionStore.sys.mjs',
+        'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs',
       );
       __sessionStoreModule = mod.SessionStore;
     } catch (err) {
@@ -18484,35 +18466,16 @@
   // not when the welcome overlay is first created.
   takeBentoWelcomeResumeStep();
   // unifyMainWithStrip() and setupPanelNavigator() re-parent
-  // #tabbrowser-tabbox after Tabbrowser.init() created the first tab, using
-  // moveBefore so the tab <browser> keeps its frameloader. If they fall back to
-  // insertBefore/appendChild, the move recreates the frameloader (a new
-  // BrowsingContext with an empty nsIWebProgress) without the remoteness-change
-  // events Tabbrowser uses to move its per-tab progress filter, so the filter
-  // stays on the discarded BrowsingContext. The first tab then gets no progress
-  // events, and removeProgressListener throws NS_ERROR_FAILURE in the
-  // WillChangeBrowserRemoteness handler and in Tabbrowser.destroy() (which
-  // aborts before cleaning up later tabs). This safety net re-adds the filter in
-  // that case and is a no-op when the filter is still attached. The filter keeps
-  // its TabProgressListener, so only the filter needs re-adding, exactly as
-  // Tabbrowser does after a remoteness change.
-  function reattachTabProgressFilters() {
-    const gb = window.gBrowser;
-    if (!gb?._getTabProgressFilter) return;
-    for (const tab of gb.tabs) {
-      const filter = gb._getTabProgressFilter(tab);
-      const progress = tab.linkedBrowser?.webProgress;
-      if (!filter || !progress) continue;
-      try {
-        progress.addProgressListener(filter, Ci.nsIWebProgress.NOTIFY_ALL);
-      } catch (err) {
-        // NS_ERROR_FAILURE means the filter is already attached.
-        if (err?.result !== Cr.NS_ERROR_FAILURE) {
-          console.warn('[bento-shell-mount] tab progress filter re-attach failed:', err);
-        }
-      }
-    }
-  }
+  // #tabbrowser-tabbox after Tabbrowser.init() created the first tab, so they
+  // must use moveNodeBefore (Element.moveBefore) and keep the tab <browser>'s
+  // frameloader. A fallback insertBefore recreates the frameloader (a new
+  // BrowsingContext with an empty nsIWebProgress) while Tabbrowser's private
+  // per-tab progress filter stays on the discarded one: the first tab gets no
+  // progress events and removeProgressListener throws NS_ERROR_FAILURE.
+  // Firefox 154 exposed the filter through _getTabProgressFilter, which let
+  // Bento re-add it; 157 keeps it in a private field, so there is no
+  // re-attach safety net. See "Tab progress filters" in
+  // docs/core-functionality-technical.md.
 
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so
@@ -18534,7 +18497,6 @@
     normalizeInitialSidebarWidth();
     unifyMainWithStrip();
     setupPanelNavigator();
-    reattachTabProgressFilters();
     attachSidebarSplitterFeedback();
     attachHiddenSidebarHoverZone();
     attachNativeSidebarSplitterFeedback();
@@ -18578,7 +18540,12 @@
   function attachWindowResizePerfMode() {
     const root = document.documentElement;
     let timer = null;
-    window.addEventListener('resize', () => {
+    window.addEventListener('resize', (event) => {
+      // Firefox 157 delivers resize events from in-process about: pages (Settings)
+      // to this listener. Freezing such a page resizes it, which fires another
+      // resize and keeps the freeze/thaw cycle running. Only the chrome window's
+      // own resizes start the live-resize mode.
+      if (event.target !== window) return;
       if (root.getAttribute('bento-window-resizing') !== 'true') {
         beginBentoSettingsAboutLiveResize();
         root.setAttribute('bento-window-resizing', 'true');
