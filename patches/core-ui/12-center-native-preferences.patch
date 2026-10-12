@@ -1,45 +1,47 @@
-From 2906028497d720b474460080939c69d8ccce2676 Mon Sep 17 00:00:00 2001
+From 15cb807a05b8f5b7efc75bd1a807c6e20df63118 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.js |  25 ++
+ browser/components/preferences/preferences.js |  27 +++
  .../components/preferences/preferences.xhtml  |   9 +-
  .../themes/shared/preferences/preferences.css | 229 +++++++++++++++++-
- 3 files changed, 252 insertions(+), 11 deletions(-)
+ 3 files changed, 254 insertions(+), 11 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..a1eaf8b49c54968310fe98f30d8b86d74a16c995 100644
+index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..c035f995b0e6b71543abc6646cbc18bc021818d2 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -66,6 +66,31 @@ var fxAccounts = getFxAccountsSingleton();
+@@ -66,6 +66,33 @@ var fxAccounts = getFxAccountsSingleton();
  
  var TAB_SESSION_ID = crypto.randomUUID();
  
 +// Bento: bento-chrome-tokens.css selects its light or dark values from
-+// data-color-mode on the root, and only the browser window root carries the
-+// resolved Bento UI color mode. Mirror it so this page follows the window.
++// data-color-mode on the root, and only a browser window root carries the
++// resolved Bento UI color mode. Copy it from the window hosting this page, now
++// and whenever a window announces a change. The host is looked up each time
++// because a tab moved to another window keeps this document.
 +{
 +  let root = document.documentElement;
-+  let windowRoot =
-+    window.browsingContext.topChromeWindow?.document.documentElement;
-+  if (windowRoot) {
-+    let syncColorMode = () =>
++  let syncColorMode = () => {
++    let windowRoot =
++      window.browsingContext.topChromeWindow?.document.documentElement;
++    if (windowRoot) {
 +      root.setAttribute(
 +        "data-color-mode",
 +        windowRoot.getAttribute("data-color-mode") == "dark" ? "dark" : "light"
 +      );
-+    syncColorMode();
-+    let observer = new MutationObserver(syncColorMode);
-+    observer.observe(windowRoot, {
-+      attributes: true,
-+      attributeFilter: ["data-color-mode"],
-+    });
-+    window.addEventListener("unload", () => observer.disconnect(), {
-+      once: true,
-+    });
-+  }
++    }
++  };
++  syncColorMode();
++  let observer = { observe: syncColorMode };
++  Services.obs.addObserver(observer, "bento-ui-color-mode");
++  window.addEventListener(
++    "unload",
++    () => Services.obs.removeObserver(observer, "bento-ui-color-mode"),
++    { once: true }
++  );
 +}
 +
  XPCOMUtils.defineLazyServiceGetters(this, {

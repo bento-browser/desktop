@@ -106,9 +106,12 @@ UI color mode flow:
   `data-bento-color-mode-pref` / `data-color-mode`.
 - The native Settings page (`about:preferences`) is its own document and links
   `bento-chrome-tokens.css`. Its root carries `data-bento-theme="default"`
-  statically and `data-color-mode`, which `preferences.js` mirrors from the
-  browser window root and keeps current with a `MutationObserver`
-  (`patches/core-ui/12-center-native-preferences.patch`). `preferences.css` sets
+  statically and `data-color-mode`, which `preferences.js` copies from the root of
+  the window hosting the page (`patches/core-ui/12-center-native-preferences.patch`).
+  `applyChromeColorMode` announces every change on the `bento-ui-color-mode`
+  observer topic and the page re-reads its host window then, so a Settings tab
+  moved to another window (a docshell swap keeps the document) keeps following
+  instead of watching the window it first loaded in. `preferences.css` sets
   `color-scheme` from that attribute so Firefox's own `light-dark()` tokens agree.
   The page's `prefers-color-scheme` does not follow `uiColorMode` (measured: it
   stays light with UI mode dark); it follows the content color mode and the OS.
