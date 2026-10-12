@@ -399,6 +399,15 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function tabWindowId(tabId: number): Promise<number | null> {
+  try {
+    const { windowId } = await browser.tabs.get(tabId);
+    return typeof windowId === 'number' && windowId >= 0 ? windowId : null;
+  } catch {
+    return null;
+  }
+}
+
 async function tabStillExists(tabId: number): Promise<boolean> {
   try {
     await browser.tabs.get(tabId);
@@ -439,20 +448,37 @@ function captureCloseUndo(ctx: HandlerContext, tabId: number): CloseUndo {
  * Undo a close that Firefox did not carry out (the user chose "Stay" on a
  * beforeunload prompt): clear the closing marker, give the tab its workspace
  * and folder back, and re-insert it where it was in each panel layout.
+ *
+ * The prompt can stay open while windows switch workspace. If the window that
+ * holds the tab no longer shows the workspace the tab was closed from, putting
+ * it back there would leave the tab (or its panel slot) in a workspace the tab's
+ * window is not rendering. The tab then joins the workspace its window shows, as
+ * a normal tab.
  */
 async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUndo): Promise<void> {
   await ctx.tabs.unmarkClosing(tabId);
-  const workspaceId =
-    undo.workspaceId && ctx.workspaces.has(undo.workspaceId)
-      ? undo.workspaceId
-      : ctx.workspaces.getActiveId(ctx.sourceWindowId);
-  if (workspaceId) {
-    await ctx.tabs.assignWorkspace(
-      tabId,
-      workspaceId,
-      workspaceId === undo.workspaceId && undo.folderId ? { preserveFolderId: undo.folderId } : {},
-    );
+  const windowId = await tabWindowId(tabId);
+  const shownWorkspaceId = ctx.workspaces.getActiveId(windowId ?? ctx.sourceWindowId);
+  const originalId = undo.workspaceId;
+  if (
+    originalId === undefined ||
+    !ctx.workspaces.has(originalId) ||
+    shownWorkspaceId !== originalId
+  ) {
+    if (shownWorkspaceId) await ctx.tabs.assignWorkspace(tabId, shownWorkspaceId);
+    if (undo.panels.length > 0) {
+      // The panel marker stays on a closing tab; a marked tab that is no longer a panel
+      // would be treated as a restored panel when it activates.
+      void clearPanelMarker(tabId);
+      void clearDevtoolsPanelMarker(tabId);
+    }
+    return;
   }
+  await ctx.tabs.assignWorkspace(
+    tabId,
+    originalId,
+    undo.folderId ? { preserveFolderId: undo.folderId } : {},
+  );
   const restoredIn = undo.panels.filter(
     ({ workspaceId: panelWorkspaceId, location }) =>
       ctx.workspaces.has(panelWorkspaceId) &&

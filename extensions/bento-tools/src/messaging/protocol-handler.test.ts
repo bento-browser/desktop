@@ -228,6 +228,10 @@ describe('protocol handler close that Firefox does not commit', () => {
   it('gives a kept sidebar tab its workspace and folder back', async () => {
     stubClosingBrowser({ keep: new Set([10]) });
     const ctx = createCloseContext({
+      workspaces: {
+        getActiveId: vi.fn().mockReturnValue('ws-2'),
+        has: vi.fn().mockReturnValue(true),
+      } as unknown as HandlerContext['workspaces'],
       tabs: {
         markClosing: vi.fn().mockResolvedValue(undefined),
         unmarkClosing: vi.fn().mockResolvedValue(undefined),
@@ -260,6 +264,78 @@ describe('protocol handler close that Firefox does not commit', () => {
     expect(ctx.emitPanelsSync).not.toHaveBeenCalled();
   });
 
+  describe('when the window of the kept tab changed workspace during the prompt', () => {
+    // Window 1 held the panel's prompt, then switched to ws-2; window 2 now shows ws-1.
+    function switchedContext(panelTabIds: number[]) {
+      const shown: Record<number, string> = { 1: 'ws-2', 2: 'ws-1' };
+      return createCloseContext({
+        workspaces: {
+          getActiveId: vi.fn((windowId: number) => shown[windowId] ?? null),
+          has: vi.fn().mockReturnValue(true),
+        } as unknown as HandlerContext['workspaces'],
+        tabs: {
+          markClosing: vi.fn().mockResolvedValue(undefined),
+          unmarkClosing: vi.fn().mockResolvedValue(undefined),
+          assignWorkspace: vi.fn().mockResolvedValue(undefined),
+          snapshot: vi
+            .fn()
+            .mockReturnValue([
+              { id: 123, windowId: 1, workspaceId: 'ws-1', folderId: 'folder-1', active: false },
+            ]),
+          isClosing: vi.fn().mockReturnValue(false),
+        } as unknown as HandlerContext['tabs'],
+        panels: {
+          findWorkspacesContainingTab: vi.fn().mockReturnValue(panelTabIds.length ? ['ws-1'] : []),
+          findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+          getPanelLayoutStatus: vi.fn().mockReturnValue('root-panel'),
+          getPanelRestoreLocation: vi.fn().mockReturnValue({
+            workspaceId: 'ws-1',
+            rootIndex: 0,
+            containingRootNodeId: 'panel:123',
+          }),
+          getWidth: vi.fn().mockReturnValue(420),
+          getHeaderHidden: vi.fn().mockReturnValue(false),
+          remove: vi.fn().mockReturnValue(true),
+          insertAtRestoreLocation: vi.fn().mockReturnValue(true),
+          setWidth: vi.fn(),
+          setHeaderHidden: vi.fn(),
+        } as unknown as HandlerContext['panels'],
+      });
+    }
+
+    beforeEach(() => {
+      stubClosingBrowser({ keep: new Set([123]) });
+    });
+
+    it('joins the workspace its window shows as a normal tab, not as a panel of the old one', async () => {
+      const ctx = switchedContext([123]);
+
+      handle({ type: 'tab/close', id: 123 }, ctx);
+
+      await vi.waitFor(() => {
+        expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(123, 'ws-2');
+      });
+      // The panel slot in ws-1 would put the tab in a layout window 1 does not render.
+      expect(ctx.panels.insertAtRestoreLocation).not.toHaveBeenCalled();
+      expect(ctx.panels.setWidth).not.toHaveBeenCalled();
+      // The marker would make the next activation treat the tab as a restored panel.
+      expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(123, 'bento.isPanel');
+      expect(ctx.tabs.assignWorkspace).not.toHaveBeenCalledWith(123, 'ws-1', expect.anything());
+    });
+
+    it('also moves a kept sidebar tab to the workspace its window shows', async () => {
+      const ctx = switchedContext([]);
+
+      handle({ type: 'tab/close', id: 123 }, ctx);
+
+      await vi.waitFor(() => {
+        expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(123, 'ws-2');
+      });
+      expect(ctx.tabs.assignWorkspace).toHaveBeenCalledTimes(1);
+      expect(browser.sessions.removeTabValue).not.toHaveBeenCalledWith(123, 'bento.isPanel');
+    });
+  });
+
   it('falls back to the window workspace when the tab workspace was deleted meanwhile', async () => {
     stubClosingBrowser({ keep: new Set([10]) });
     const ctx = createCloseContext({
@@ -289,7 +365,7 @@ describe('protocol handler close that Firefox does not commit', () => {
     handle({ type: 'tab/close', id: 10 }, ctx);
 
     await vi.waitFor(() => {
-      expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(10, 'ws-1', {});
+      expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(10, 'ws-1');
     });
   });
 
