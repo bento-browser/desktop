@@ -408,8 +408,14 @@ opening an unwanted blank tab before the moved tabs arrive.
   the window. `deleteWorkspace` therefore calls `WorkspaceStore.flush()` after the
   delete, which delivers the pending events now and resolves when the activation
   listener's runs have finished (the listener returns them), before it removes
-  anything. The window is marked in `WindowHandoffGuard` for the duration (cleared
-  in `finally`); the decision itself is `afterTabRemoved` in
+  anything. That does not prove the replacement has a tab: the activation's own
+  tab creation swallows its failure. `ensureReplacementTab` therefore checks for a
+  live tab in the window and opens one itself, with its error propagated. If that
+  fails too, the old tabs of the window are not removed; they leave the closing
+  state and become normal tabs of the replacement (a panel of the deleted
+  workspace loses its marker), so the window keeps working, and the failure is
+  logged. The window stays marked in `WindowHandoffGuard` until the removals have
+  settled (cleared in `finally`); the decision itself is `afterTabRemoved` in
   `workspaces/EmptiedWorkspace.ts`, which returns no action for a window that is
   handing off.
 - Exactly one activation may run for a workspace a delete hands to a window.

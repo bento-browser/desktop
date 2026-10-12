@@ -114,6 +114,7 @@ describe('workspace delete against the tab-removal handler, with a real store', 
   let actions: EmptiedWorkspaceAction[];
   let windowsClosed: number[];
   let nextTabId: number;
+  let createFails: boolean;
 
   async function setup(options: { guard: boolean }) {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -125,6 +126,7 @@ describe('workspace delete against the tab-removal handler, with a real store', 
     actions = [];
     windowsClosed = [];
     nextTabId = 100;
+    createFails = false;
     handoff = createWindowHandoffGuard();
     vi.stubGlobal('browser', {
       storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) } },
@@ -140,6 +142,12 @@ describe('workspace delete against the tab-removal handler, with a real store', 
         }),
       },
       tabs: {
+        create: vi.fn(async (props: { windowId: number }) => {
+          if (createFails) throw new Error('no window');
+          const opened = tab(nextTabId++, { windowId: props.windowId });
+          tabs = [...tabs, opened];
+          return { id: opened.id };
+        }),
         // What Firefox does on close: the tab is gone, then tabs.onRemoved reaches Bento.
         remove: vi.fn(async (ids: number | number[]) => {
           for (const id of Array.isArray(ids) ? ids : [ids]) {
@@ -222,7 +230,18 @@ describe('workspace delete against the tab-removal handler, with a real store', 
           closing.add(id);
           tabs = tabs.map((t) => (t.id === id ? { ...t, workspaceId: undefined } : t));
         },
+        unmarkClosing: async (id: number) => {
+          closing.delete(id);
+        },
+        assignWorkspace: async (id: number, workspaceId: string) => {
+          tabs = tabs.map((t) => (t.id === id ? { ...t, workspaceId } : t));
+        },
+        assignWorkspaceEagerly: async (id: number, workspaceId: string) => {
+          tabs = tabs.map((t) => (t.id === id ? { ...t, workspaceId } : t));
+          return true;
+        },
       },
+      panels: { getPanels: () => [] },
       workspaces,
       handoff,
       sourceWindowId: 1,
@@ -254,6 +273,42 @@ describe('workspace delete against the tab-removal handler, with a real store', 
     expect(workspaces.getActiveId(1)).toBe(ids.c);
     expect(tabs.filter((t) => t.windowId === 1).map((t) => t.workspaceId)).toEqual([ids.c]);
     expect(actions.every((action) => action.kind === 'none')).toBe(true);
+  });
+
+  it('opens the replacement tab itself when the activation did not, so the window survives', async () => {
+    const ids = await setup({ guard: true });
+    // No activation listener: the activation produced no tab, as when its creation failed
+    // (that step only logs).
+
+    handle({ type: 'workspace/delete', id: ids.a, closeTabs: true }, context());
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalled();
+      expect(handoff.isActive(1)).toBe(false);
+    });
+    expect(browser.tabs.create).toHaveBeenCalledWith({ windowId: 1, active: true });
+    expect(windowsClosed).toEqual([]);
+    expect(tabs.filter((t) => t.windowId === 1).map((t) => t.workspaceId)).toEqual([ids.c]);
+    expect(actions.every((action) => action.kind === 'none')).toBe(true);
+  });
+
+  it('keeps the old tabs as tabs of the replacement when no tab can be opened for it', async () => {
+    const ids = await setup({ guard: true });
+    createFails = true;
+
+    handle({ type: 'workspace/delete', id: ids.a, closeTabs: true }, context());
+
+    await vi.waitFor(() => {
+      expect(handoff.isActive(1)).toBe(false);
+      expect(browser.tabs.create).toHaveBeenCalled();
+    });
+    // Closing them would have left the window without a tab; they live on in the replacement.
+    expect(windowsClosed).toEqual([]);
+    expect(tabs.filter((t) => t.windowId === 1).map((t) => [t.id, t.workspaceId])).toEqual([
+      [1, ids.c],
+      [2, ids.c],
+    ]);
+    expect(actions).toEqual([]);
   });
 
   it('ignores tabs that close while the replacement is still being set up', async () => {

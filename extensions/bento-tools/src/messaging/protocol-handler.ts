@@ -687,6 +687,39 @@ async function splitPanel(
 }
 
 /**
+ * The replacement workspace has a tab to show in the window. Its activation opens one when
+ * the workspace is empty, but that step swallows its own failure, so awaiting the activation
+ * does not prove it. Opens one here if it is missing, and resolves false if that fails too.
+ */
+async function ensureReplacementTab(
+  ctx: HandlerContext,
+  workspaceId: string,
+  windowId: number,
+): Promise<boolean> {
+  const panelTabIds = new Set(ctx.panels.getPanels(workspaceId));
+  const hasTab = () =>
+    ctx.tabs
+      .snapshot()
+      .some(
+        (tab) =>
+          tab.windowId === windowId &&
+          tab.workspaceId === workspaceId &&
+          !panelTabIds.has(tab.id) &&
+          !ctx.tabs.isClosing(tab.id),
+      );
+  if (hasTab()) return true;
+  try {
+    const created = await browser.tabs.create({ windowId, active: true });
+    if (typeof created.id !== 'number') return false;
+    await ctx.tabs.assignWorkspaceEagerly(created.id, workspaceId);
+    return true;
+  } catch (err) {
+    console.warn('[bento-tools] workspace/delete: opening a tab for the replacement failed:', err);
+    return false;
+  }
+}
+
+/**
  * Delete a workspace, closing its tabs when asked. The tabs are marked closing
  * first so their removal events do not count them as members of the workspace
  * the window moves to. WorkspaceStore moves the window that showed the workspace
@@ -696,9 +729,11 @@ async function splitPanel(
  *
  * The window owns its replacement as soon as the store moves it, but the
  * replacement's activation (a tab to show, panels) runs later. The doomed tabs
- * are only removed once it has finished, and the window is marked as handing
- * off meanwhile, so the last-tab handler never sees an empty replacement and
- * deletes it or closes the window.
+ * are only removed once it has finished and the replacement is confirmed to have a
+ * tab in the window; if one cannot be had, the window's old tabs stay and join the
+ * replacement, so the window keeps working. The window is marked as handing off
+ * until the removals have settled, so the last-tab handler never sees an empty
+ * replacement and deletes it or closes the window.
  */
 async function deleteWorkspace(
   ctx: HandlerContext,
@@ -720,19 +755,35 @@ async function deleteWorkspace(
     const replacementId =
       ownerWindowId === null ? undefined : ctx.workspaces.getActiveIdByWindow()[ownerWindowId];
     const stranded = ownerWindowId !== null && replacementId === undefined;
-    // Deliver the replacement's activation now and wait for it, so it has its tab before
-    // anything is removed.
-    if (replacementId !== undefined) await ctx.workspaces.flush();
+    let toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
+    if (ownerWindowId !== null && replacementId !== undefined) {
+      // Deliver the replacement's activation now and wait for it.
+      await ctx.workspaces.flush();
+      if (!(await ensureReplacementTab(ctx, replacementId, ownerWindowId))) {
+        const kept = toRemove.filter((tab) => tab.windowId === ownerWindowId);
+        console.warn(
+          '[bento-tools] workspace/delete: keeping the tabs of the deleted workspace in window',
+          ownerWindowId,
+          kept.map((tab) => tab.id),
+        );
+        toRemove = toRemove.filter((tab) => tab.windowId !== ownerWindowId);
+        for (const tab of kept) {
+          await ctx.tabs.unmarkClosing(tab.id);
+          await ctx.tabs.assignWorkspace(tab.id, replacementId);
+          // A panel of the deleted workspace is a normal tab now.
+          void clearPanelMarker(tab.id);
+        }
+      }
+    }
 
-    const toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
     if (toRemove.length > 0) {
-      browser.tabs
+      await browser.tabs
         .remove(toRemove.map((tab) => tab.id))
         .catch((err) => console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err));
     }
     if (!stranded) return;
     if (closeTabs) {
-      browser.windows
+      await browser.windows
         .remove(ownerWindowId)
         .catch((err) =>
           console.warn('[bento-tools] workspace/delete: windows.remove failed:', err),
