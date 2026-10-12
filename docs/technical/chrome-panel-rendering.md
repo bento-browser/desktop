@@ -405,7 +405,10 @@ adds its entry, and its id in the mount probe list, in the same change.
     still looks unassigned; assigning the window's workspace to it there persisted
     over the real assignment. Windows that exist before the gate settles, and any
     window with one tab that has a stored value (an undone window close), adopt
-    nothing and fall back to a new tab as before.
+    nothing and fall back to a new tab as before. The workspace's own tabs are read
+    again after the session values (`settleWorkspaceTabs`) before a tab is
+    created: another handler can assign the window's initial tab during that read,
+    and creating from the earlier read left an extra blank tab beside it.
   - SessionStore copies the source tab's custom values onto the new tab after the
     attach event, so a panel marker can reappear on a tab that is no longer a
     panel; the activation path clears it again (`onActivated` would otherwise

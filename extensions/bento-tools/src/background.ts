@@ -13,6 +13,7 @@ import {
   createAdoptionGate,
   moveTabsToWindow,
   releaseAdoptedTab,
+  settleWorkspaceTabs,
   tabsToAdopt,
 } from './tabs/AdoptedTab';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
@@ -2031,24 +2032,36 @@ async function handleWorkspaceActivation(
   // restrict to the target window — combined with the move step above,
   // every wsId tab now lives in targetWindowId, so this filter just
   // doubles as a safety check.
-  const panelTabIds = new Set(panels.getPanels(wsId));
-  const allWsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
-  const wsTabs =
-    targetWindowId !== null ? allWsTabs.filter((t) => t.windowId === targetWindowId) : allWsTabs;
   const preferred = takePreferredWorkspaceActivationTab(wsId, targetWindowId);
   // A window that opened with tabs of its own (its initial tab, or tabs torn out of
   // another window) has no workspace tab yet only because they are not assigned.
-  const adoptable =
-    wsTabs.length === 0 && !restoredParkedTabs && targetWindowId !== null
-      ? await tabsToAdopt({
-          gate: adoptionGate,
-          windowId: targetWindowId,
-          snapshot: () => tabs.snapshot(),
-          isClosing: (tabId) => tabs.isClosing(tabId),
-          isPrivate: (tabId) => tabs.isPrivate(tabId),
-          confirmUnassigned: (ids) => tabs.confirmUnassigned(ids),
-        })
-      : [];
+  const {
+    tabs: wsTabs,
+    adopt: adoptable,
+    create,
+  } = await settleWorkspaceTabs({
+    readTabs: () => {
+      const panelTabIds = new Set(panels.getPanels(wsId));
+      const inWorkspace = tabs
+        .snapshot()
+        .filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
+      return targetWindowId !== null
+        ? inWorkspace.filter((t) => t.windowId === targetWindowId)
+        : inWorkspace;
+    },
+    parkedTabsRestored: Boolean(restoredParkedTabs),
+    adoptable: async () =>
+      targetWindowId === null
+        ? []
+        : tabsToAdopt({
+            gate: adoptionGate,
+            windowId: targetWindowId,
+            snapshot: () => tabs.snapshot(),
+            isClosing: (tabId) => tabs.isClosing(tabId),
+            isPrivate: (tabId) => tabs.isPrivate(tabId),
+            confirmUnassigned: (ids) => tabs.confirmUnassigned(ids),
+          }),
+  });
   if (adoptable.length > 0) {
     for (const adopted of adoptable) {
       tabs.assignWorkspaceEagerly(adopted.id, wsId);
@@ -2067,7 +2080,7 @@ async function handleWorkspaceActivation(
         targetWindowId ?? undefined,
       );
     }
-  } else if (wsTabs.length === 0 && !restoredParkedTabs) {
+  } else if (create) {
     try {
       const created = await browser.tabs.create({
         active: true,

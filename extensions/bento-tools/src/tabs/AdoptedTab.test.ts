@@ -5,6 +5,7 @@ import {
   createAdoptionGate,
   createProgrammaticMoves,
   releaseAdoptedTab,
+  settleWorkspaceTabs,
   tabsToAdopt,
   type AdoptedTabDeps,
 } from './AdoptedTab';
@@ -383,5 +384,56 @@ describe('startup ordering against a real registry', () => {
     });
 
     expect(picked.map((t) => t.id)).toEqual([31]);
+  });
+});
+
+describe('settleWorkspaceTabs', () => {
+  const unassigned = tab({ id: 1, windowId: 2 });
+  const assigned = tab({ id: 1, windowId: 2, workspaceId: 'ws-a' });
+
+  it('reads the workspace again after the session values, so a tab assigned meanwhile is used', async () => {
+    // Another handler assigns the window's initial tab while its session values are read.
+    let reads = 0;
+    const result = await settleWorkspaceTabs({
+      readTabs: () => (++reads === 1 ? [] : [assigned]),
+      parkedTabsRestored: false,
+      adoptable: async () => [unassigned],
+    });
+
+    expect(result.tabs).toEqual([assigned]);
+    expect(result.adopt).toEqual([]);
+    expect(result.create).toBe(false);
+  });
+
+  it('adopts the window tabs when the workspace is still empty afterwards', async () => {
+    const result = await settleWorkspaceTabs({
+      readTabs: () => [],
+      parkedTabsRestored: false,
+      adoptable: async () => [unassigned],
+    });
+
+    expect(result).toEqual({ tabs: [], adopt: [unassigned], create: false });
+  });
+
+  it('creates a tab only when the workspace is empty and nothing can be adopted', async () => {
+    const result = await settleWorkspaceTabs({
+      readTabs: () => [],
+      parkedTabsRestored: false,
+      adoptable: async () => [],
+    });
+
+    expect(result).toEqual({ tabs: [], adopt: [], create: true });
+  });
+
+  it('leaves a workspace that has tabs, or just got its parked tabs back, alone', async () => {
+    const adoptable = vi.fn(async () => [unassigned]);
+
+    await expect(
+      settleWorkspaceTabs({ readTabs: () => [assigned], parkedTabsRestored: false, adoptable }),
+    ).resolves.toEqual({ tabs: [assigned], adopt: [], create: false });
+    await expect(
+      settleWorkspaceTabs({ readTabs: () => [], parkedTabsRestored: true, adoptable }),
+    ).resolves.toEqual({ tabs: [], adopt: [], create: false });
+    expect(adoptable).not.toHaveBeenCalled();
   });
 });

@@ -181,3 +181,29 @@ export async function tabsToAdopt(args: {
   const current = adoptableTabs(inWindow(), args.isClosing, args.isPrivate);
   return current.every((tab) => confirmed.has(tab.id)) ? current : [];
 }
+
+/**
+ * The tabs an activation works with for a workspace in a window: the workspace's own tabs, or for
+ * an empty one the window's tabs to adopt, or else a new tab to create. Reading the adopted tabs'
+ * session values takes a moment and other handlers keep assigning tabs meanwhile, so the
+ * workspace's tabs are read again afterwards; creating a tab from the earlier read opened an
+ * extra one next to a tab that had just been assigned.
+ */
+export async function settleWorkspaceTabs(args: {
+  readTabs: () => TabSnapshot[];
+  parkedTabsRestored: boolean;
+  adoptable: () => Promise<TabSnapshot[]>;
+}): Promise<{ tabs: TabSnapshot[]; adopt: TabSnapshot[]; create: boolean }> {
+  let tabs = args.readTabs();
+  let adopt: TabSnapshot[] = [];
+  if (tabs.length === 0 && !args.parkedTabsRestored) {
+    adopt = await args.adoptable();
+    tabs = args.readTabs();
+    if (tabs.length > 0) adopt = [];
+  }
+  return {
+    tabs,
+    adopt,
+    create: tabs.length === 0 && adopt.length === 0 && !args.parkedTabsRestored,
+  };
+}
