@@ -111,7 +111,9 @@ UI color mode flow:
   `applyChromeColorMode` announces every change on the `bento-ui-color-mode`
   observer topic and the page re-reads its host window then, so a Settings tab
   moved to another window (a docshell swap keeps the document) keeps following
-  instead of watching the window it first loaded in. `preferences.css` sets
+  instead of watching the window it first loaded in. A move into a window whose
+  mode already differs announces nothing, so the page also re-reads when it
+  becomes visible (`visibilitychange`) and on window `focus`. `preferences.css` sets
   `color-scheme` from that attribute so Firefox's own `light-dark()` tokens agree.
   The page's `prefers-color-scheme` does not follow `uiColorMode` (measured: it
   stays light with UI mode dark); it follows the content color mode and the OS.

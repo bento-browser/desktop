@@ -894,7 +894,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `light-dark()` tokens agree. The mount script's `applyChromeColorMode`
   announces each change on the `bento-ui-color-mode` observer topic, and the
   page looks its host window up again each time (`topChromeWindow`), because a
-  Settings tab moved to another window keeps its document.
+  Settings tab moved to another window keeps its document. A move into a window
+  whose mode already differs announces nothing, so the page also re-reads on
+  `visibilitychange` (when visible) and window `focus`.
 - Vanilla Firefox surface touched or depended on: the native preferences XHTML
   layout and in-content theme cascade, including `#categories`,
   `.main-content`, `.pane-container`, `chrome://global/skin/in-content/common.css`,
@@ -914,7 +916,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `data-color-mode` follows the sidebar color mode control in both directions
   (the page's own `prefers-color-scheme` does not), also after moving the
   Settings tab to a new window (`gBrowser.replaceTabWithWindow`) and closing the
-  first one, and that a card has a fill and a radius. Open `about:preferences` in a wide
+  first one, after moving it into a window whose mode differs from the one it
+  left (with no toggle afterwards it must adopt the destination's mode), and that
+  a card has a fill and a radius. Open `about:preferences` in a wide
   Bento window and confirm the search field and settings pane are centered in
   the area beside the category nav; narrow the window and confirm the pane still
   fits without horizontal clipping, category navigation works, and the main
@@ -1749,7 +1753,7 @@ below is generated; edit the registry, then run
 | `chrome://browser/content/preferences/config/SettingGroupManager.mjs` | source (engine only) | Bento setting groups register here; registered in browser/components/preferences/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager` | `browser/components/preferences/jar.mn:51` |
 | `SettingGroupManager.registerGroups` | source (engine only) | Adds the Bento setting groups to the Settings page. | `patches/core-ui/15-bento-native-preferences.patch#registerGroups` | `browser/components/preferences/config/SettingGroupManager.mjs:64` |
 | `CONFIG_PANES` | source (engine only) | Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object. | `patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES` | `browser/components/preferences/preferences.js:243` |
-| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
+| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
 | `gotoPref` | source (engine only) | Navigates between the Bento settings subpanes. | `patches/core-ui/15-bento-native-preferences.patch#gotoPref` | `browser/components/preferences/preferences.js:733` |
 | `chrome://global/content/elements/moz-box-group.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-group` | `toolkit/content/jar.mn:115` |
 | `chrome://global/content/elements/moz-box-item.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-item` | `toolkit/content/jar.mn:121` |

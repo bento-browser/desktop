@@ -1,27 +1,29 @@
-From 15cb807a05b8f5b7efc75bd1a807c6e20df63118 Mon Sep 17 00:00:00 2001
+From fc19152f6c110212b1b3751550f934fec34aabd1 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.js |  27 +++
+ browser/components/preferences/preferences.js |  40 +++
  .../components/preferences/preferences.xhtml  |   9 +-
  .../themes/shared/preferences/preferences.css | 229 +++++++++++++++++-
- 3 files changed, 254 insertions(+), 11 deletions(-)
+ 3 files changed, 267 insertions(+), 11 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..c035f995b0e6b71543abc6646cbc18bc021818d2 100644
+index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..a2e977363c4061d00f7cd65d3c6bb40aa26d487f 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -66,6 +66,33 @@ var fxAccounts = getFxAccountsSingleton();
+@@ -66,6 +66,46 @@ var fxAccounts = getFxAccountsSingleton();
  
  var TAB_SESSION_ID = crypto.randomUUID();
  
 +// Bento: bento-chrome-tokens.css selects its light or dark values from
 +// data-color-mode on the root, and only a browser window root carries the
-+// resolved Bento UI color mode. Copy it from the window hosting this page, now
-+// and whenever a window announces a change. The host is looked up each time
-+// because a tab moved to another window keeps this document.
++// resolved Bento UI color mode. Copy it from the window hosting this page: now,
++// whenever a window announces a change, and when the page is shown or focused.
++// A tab moved into a window whose mode already differs announces nothing, so
++// the last two cover it. The host is looked up each time because a moved tab
++// keeps this document.
 +{
 +  let root = document.documentElement;
 +  let syncColorMode = () => {
@@ -34,12 +36,23 @@ index 35e044bd84bb0d2c38cfdc54c7aadfb39f749d38..c035f995b0e6b71543abc6646cbc18bc
 +      );
 +    }
 +  };
++  let syncWhenVisible = () => {
++    if (!document.hidden) {
++      syncColorMode();
++    }
++  };
 +  syncColorMode();
 +  let observer = { observe: syncColorMode };
 +  Services.obs.addObserver(observer, "bento-ui-color-mode");
++  document.addEventListener("visibilitychange", syncWhenVisible);
++  window.addEventListener("focus", syncColorMode);
 +  window.addEventListener(
 +    "unload",
-+    () => Services.obs.removeObserver(observer, "bento-ui-color-mode"),
++    () => {
++      Services.obs.removeObserver(observer, "bento-ui-color-mode");
++      document.removeEventListener("visibilitychange", syncWhenVisible);
++      window.removeEventListener("focus", syncColorMode);
++    },
 +    { once: true }
 +  );
 +}

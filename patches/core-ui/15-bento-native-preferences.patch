@@ -2150,10 +2150,10 @@ index a84468121d7efd38d7a877c81f08eeb2157e91bd..37b37ac162f370284138d3479676124e
     content/browser/preferences/config/aiFeatures.mjs                    (config/aiFeatures.mjs)
     content/browser/preferences/config/firefoxLabs.mjs                   (config/firefoxLabs.mjs)
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index c035f995b0e6b71543abc6646cbc18bc021818d2..6adbcfe963a8e759f722cebe1c2c0a848c3fa0eb 100644
+index a2e977363c4061d00f7cd65d3c6bb40aa26d487f..0fee7042f626e66d8a27885cd03ee69eff2d8a00 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -268,6 +268,34 @@ var gCurrentHistoryEntryId = null;
+@@ -281,6 +281,34 @@ var gCurrentHistoryEntryId = null;
   * @type {Record<string, SettingPaneConfig>}
   */
  const CONFIG_PANES = Object.freeze({

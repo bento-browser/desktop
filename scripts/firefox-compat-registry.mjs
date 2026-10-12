@@ -1917,7 +1917,7 @@ export const MEMBERS = [
     how: 'reads',
     probe: 'E',
     sites: ['patches/core-ui/12-center-native-preferences.patch#topChromeWindow'],
-    use: "preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, because a tab moved to another window keeps the document.",
+    use: "preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document.",
     at: [FF.browsingContextIdl, '^\\s+readonly attribute WindowProxy\\? topChromeWindow;', 341],
   },
   {
