@@ -29,6 +29,12 @@ Bento's core browsing model is split across three layers:
   `scripts/check-firefox-compat.mjs` checks against a Firefox source tree; the
   table is in `docs/firefox-core-touchpoints.md`. The mount ships only a compact
   probe list of the runtime-probable members, which each window probes once.
+- `bento-shell-mount.css` holds the chrome layout rules (panel strip, splitters,
+  navigator, overlays, startup veil, fullscreen overrides). `injectChromeStyles()`
+  in the mount script links it to the window root behind a paint gate; `jar.mn` (patch
+  `chrome-layout/01-bento-shell-mount.patch`) ships it as
+  `chrome://browser/content/bento-shell-mount.css`. See "Chrome layout
+  stylesheet" under Chrome rendering pitfalls.
 
 The state contract is declared in `extensions/_shared/protocol.ts`. UI code
 dispatches `Action` messages through `extensions/bento-shell/src/bridge/useToolsPort.ts`.
@@ -2231,8 +2237,8 @@ The panel shadow setting toggles `bento-panel-shadows-disabled` on both
 `gBrowser.tabpanels` and `#bento-strip-container`. Split-view panels read the
 class from `tabpanels`; the no-side-panels, tabs-only main content slot reads it
 from the strip container because its shadow is applied outside `tabpanels`.
-The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.js`
-inside `injectChromeStyles()`. `:root` defines
+The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.css`.
+`:root` defines
 `--bento-panel-frame-outline-shadow` and `--bento-panel-frame-shadow`; the
 disabled class overrides `--bento-panel-frame-shadow` to the outline-only value.
 Do not use live resize root attributes (`bento-window-resizing`,
@@ -2989,6 +2995,72 @@ adds its entry, and its id in the mount probe list, in the same change.
 
 ### Chrome rendering pitfalls
 
+- Chrome layout stylesheet. Source of truth: `src/browser/base/content/bento-shell-mount.css`,
+  a static file, not a template literal in the mount script. Chrome bridge:
+  `injectChromeStyles()` appends `<link rel="stylesheet" href="chrome://browser/content/bento-shell-mount.css">`
+  to the window root after the tokens and theme links, then calls
+  `gateFirstPaintOnSheets` with those three links. Persistence: none. Manual
+  verification: in the Browser Toolbox Console,
+  `[...document.styleSheets].map((s) => s.href)` lists `bento-chrome-tokens.css`,
+  `bento-chrome-theme.css`, `bento-shell-mount.css` in that order, ahead of any
+  `bento-chrome-themes/` sheet; the Browser Toolbox Style Editor lists
+  `bento-shell-mount.css`; `window.__bentoSheetGate` is `undefined` (every sheet
+  was already cached) or `{ pending, releasedBy: 'load', heldMs }`, and
+  `document.documentElement.style.visibility` is empty. Then cold-start the
+  first window and open a second one and look for an unstyled frame; on Windows
+  also cold-start with a persisted window size and the default theme, where
+  Firefox shows an early blank window. Pitfalls:
+  - The file ships only through the `browser/base/jar.mn` line in
+    `patches/chrome-layout/01-bento-shell-mount.patch`. Without the line the
+    import succeeds and the app loads with no layout CSS.
+    `scripts/check-import-output.mjs` fails on any `src/browser/base/content`
+    file the engine `jar.mn` does not register.
+  - Keep the link where the former inline `<style>` was appended (after the
+    tokens and theme links, before any theme sheet). Stylesheets order by owner
+    node position, and the file's `@layer bento.chrome-theme` blocks must follow
+    the ones in `bento-chrome-theme.css`. A parser-created link in
+    `browser-box.inc.xhtml` would sort the file before the tokens and theme
+    links, and an `<?xml-stylesheet?>` instruction before every other sheet, which
+    changes which rule wins on equal specificity. `scripts/mount-sheet-gate.test.mjs`
+    checks the order of the three calls.
+  - Do not load it with `windowUtils.loadSheetUsingURIString`. That makes it an
+    additional author sheet: it is parsed again in every window (the loader has
+    no document, so no shared sheet cache), DevTools does not list it (the
+    Style Editor and `document.styleSheets` skip additional sheets, and
+    registering it later through a matched rule can fail on its missing
+    `associatedDocument`), and it sorts after the per-theme sheets.
+  - What holds back first paint depends on the startup path.
+    - Normal first window: the chrome window stays hidden until `browser.xhtml`
+      finishes loading. The three links block that load, and each link's own
+      load event also blocks it, so the gate is released before the window is
+      shown and adds no delay.
+    - Early blank window (`browser.startup.blankWindow`: on by default on Windows,
+      on Linux only in Nightly builds or when turned on; it needs a persisted
+      window size and the default theme): the window is already visible when
+      Firefox navigates it to `browser.xhtml`. Script-inserted links do not
+      count toward the prototype sink's pending-sheet counter, so initial layout
+      can start with them pending and paint suppression ends after 5 ms
+      (`nglayout.initialpaint.delay`). The gate hides the root until the pending
+      links have fired `load` or `error`, so tokens, theme, and layout rules are
+      all present when the chrome first paints.
+    - Later windows: the sheets come from the shared sheet cache, so each link
+      has a complete sheet when it is inserted (`link.sheet` is null until the
+      sheet is complete) and the gate never engages. The mount sheet is cloned
+      from the cache like the old inline style.
+  - The gate sets `visibility: hidden !important` on the root's inline style: no
+    stylesheet, no layout change. It puts back any inline `visibility` that was
+    there and releases on the last `load` or `error`, after 2 s with a console
+    warning, or on `unload`; a failure while arming it also releases. Nothing
+    else writes the root's inline `visibility` (Firefox chrome and the mount use
+    other root properties). Hidden elements cannot take focus, so do not hold
+    the gate past the document load event, which `gBrowserInit` follows with its
+    focus and delayed startup work.
+    `scripts/mount-sheet-gate.test.mjs` runs the real functions against a stub
+    DOM and covers cached, pending, error, timeout, unload, and arming failure.
+  - Do not move the rules back into a JS template literal or an inline
+    `<style>`: one stray backtick or dollar-brace breaks the whole mount script.
+  - `scripts/check-chrome-resize-guard.mjs` matches the shadow-token rules in
+    this file, not in the mount script.
 - The gBrowser hooks are guarded by `typeof` and a `__bento*` flag, so a Firefox
   rename silently disables them (ghost panels, wrong tab focus after a close).
   After a Firefox update, run `pnpm run firefox:compat:engine` before anything
@@ -3132,7 +3204,7 @@ adds its entry, and its id in the mount probe list, in the same change.
   `#bento-shell-splitter`, `#bento-panel-nav`, `#bento-strip-scrollbar`,
   chrome-injected panel headers/loading overlays, the add-panel trailer, or
   flat-layout overlay splitters. Keep the
-  `:root[inDOMFullscreen]` rules in `injectChromeStyles()` so the selected
+  `:root[inDOMFullscreen]` rules in `bento-shell-mount.css` so the selected
   deck panel overrides stale flat-layout inline rects, loses rounded corners and
   shadows, suppresses Bento focus-ring pseudo-elements and loading overlays,
   hides non-selected panel slots, removes strip padding, clears the outer strip

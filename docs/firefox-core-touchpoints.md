@@ -65,6 +65,7 @@ Use this shape for new or changed touchpoints:
 - Last updated: 2026-10-12
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js`
+  - `src/browser/base/content/bento-shell-mount.css` (see Chrome Layout Stylesheet)
   - `src/browser/base/content/bento-chrome-theme.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
   - `src/browser/base/content/bento-chrome-themes/*.css` (see Chrome Theme Sheets)
@@ -695,6 +696,99 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   function, and running `generate-chrome-tokens.mjs --monolithic` as the default,
   restores the single-sheet layout. The rollback-final-r2 variant already builds
   that layout, because its archived mount script loads only the base sheet.
+
+### Chrome Layout Stylesheet
+
+- Status: Active
+- Last updated: 2026-10-12
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.css`
+  - `src/browser/base/content/bento-shell-mount.js` (`injectChromeStyles`,
+    `gateFirstPaintOnSheets`)
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (one `browser/base/jar.mn`
+    line: `content/browser/bento-shell-mount.css (content/bento-shell-mount.css)`)
+  - `scripts/mount-sheet-gate.test.mjs`, `scripts/check-chrome-resize-guard.mjs`,
+    `scripts/check-import-output.mjs`, `scripts/sync-builtin-addon-symlinks.sh`
+- Bento functionality: the chrome layout rules (panel strip, splitters,
+  navigator, overlays, startup veil, fullscreen overrides; about 2,500 lines and
+  100 kB) are a static chrome stylesheet instead of a template literal in the
+  mount script. `injectChromeStyles()` appends one `<link rel="stylesheet">` to
+  the window root at the point where the former inline `<style>` was appended, so
+  the rules, their order, and their place in the cascade are unchanged. Because
+  Gecko does not hold initial layout for script-inserted links, a paint gate
+  keeps the chrome root invisible while the tokens, theme, or layout link has no
+  complete sheet yet (see below). The mount script lost 114 kB (866,038 to
+  751,825 bytes). The link is a document sheet, so the sheet is parsed once per
+  process and cloned from the shared sheet cache in later windows, as the inline
+  sheet was, and DevTools lists it.
+- Vanilla Firefox surface touched or depended on: `browser.jar` content
+  registration through `browser/base/jar.mn`; the `chrome://browser/content/`
+  package; the CSS loader's handling of a script-inserted stylesheet link in a
+  chrome document (`layout/style/Loader.cpp`: the sheet is inserted by document
+  order of its owner node, so a link keeps the place the `<style>` held; the
+  load joins the document load group and blocks the load event, and the link's
+  `load` or `error` event is itself load-blocking; a sheet already complete in
+  the shared sheet cache is inserted synchronously); `LinkStyle.sheet`, which
+  is null until the sheet is complete (`LinkStyle::GetSheetForBindings`); and the
+  startup behavior the gate compensates for: `PrototypeDocumentContentSink`
+  counts only parser-created links and `<?xml-stylesheet?>` instructions as
+  pending sheets before initial layout, `PresShell` paint suppression ends after
+  `nglayout.initialpaint.delay` (5 ms), and `AppWindow` shows a normal window only
+  after its document finishes loading (`xpfe/appshell/AppWindow.cpp`) while the
+  early blank window (`browser.startup.blankWindow`,
+  `BrowserGlue._earlyBlankFirstPaint`, `BrowserContentHandler.replaceStartupWindow`)
+  is visible before `browser.xhtml` loads. No private Firefox member is used, so
+  the firefox-compat registry has no entry for it.
+- What holds back first paint, by startup path:
+  - Normal first window: the window is hidden until the document load event; the
+    links and their load events block it, so the gate is released before the
+    window is shown and adds no delay.
+  - Early blank window (Windows by default; Linux in Nightly or with the pref
+    on; needs a persisted window size and the default theme): the window is
+    already visible, script-inserted links do not hold back initial layout, and
+    paint is unsuppressed after 5 ms. The gate hides the root until every
+    pending link has fired `load` or `error` (2 s timeout), so the tokens,
+    theme, and layout sheets are all present at first paint. This also covers
+    the tokens and theme links, which had the same exposure before.
+  - Later windows: all three sheets come from the shared cache and are complete
+    when inserted, so the gate does not engage.
+- Why this cannot stay extension-only: the rules style Firefox's own chrome
+  elements (`#browser`, `#tabbrowser-tabpanels`, `.browserContainer`,
+  `:root[inDOMFullscreen]`), and Bento has no extension-served stylesheet path
+  into the browser window. It follows the jar.mn route of `bento-chrome-theme.css`.
+- Firefox update risk: low. The jar.mn line sits in the hunk that already adds
+  the other Bento chrome files. Upstream would have to change how chrome
+  documents order, block on, or cache script-inserted stylesheet links to affect
+  it. The gate hides the root with an inline `visibility` declaration; Firefox
+  chrome and the mount write no other inline `visibility` on the root.
+- Regression checks for future updates: `pnpm run firefox:patches:check`;
+  `node --test scripts/mount-sheet-gate.test.mjs`; `pnpm run import` then
+  `node scripts/check-import-output.mjs` (fails when any
+  `src/browser/base/content` file is missing from the engine or from
+  `browser/base/jar.mn`); after a build,
+  `chrome/browser/content/browser/bento-shell-mount.css` exists in the app
+  resources. In a running build, in the Browser Toolbox Console,
+  `[...document.styleSheets].map((s) => s.href)` lists the tokens, theme, and
+  layout sheets in that order ahead of any `bento-chrome-themes/` sheet, the
+  Style Editor lists `bento-shell-mount.css`, and `window.__bentoSheetGate` is
+  `undefined` or has `releasedBy` set to `'load'` (never `'timeout'`, never
+  null after startup). Cold-start the first window and open a second one:
+  styled at first paint, and the second window's `__bentoSheetGate` is
+  `undefined` (never hidden). Blank-window cold start: on Windows with a
+  persisted window size and the default theme, and on Linux with
+  `browser.startup.blankWindow` set to true, record the launch and check the
+  first frames after the blank window navigates to the browser: no frame with
+  unstyled chrome or startup veil, and the root is shown again (`releasedBy`
+  `'load'`). After a Firefox bump also re-read `Loader::LoadStyleLink`,
+  `LinkStyle::GetSheetForBindings`, `PrototypeDocumentContentSink::CloseElement`,
+  and `AppWindow::OnChromeLoaded`, and run `git apply --check` on the jar.mn
+  hunk against the new `browser/base/jar.mn`.
+- Rollback or migration notes: restoring the sheet as a template literal inside
+  `injectChromeStyles()` and dropping the jar.mn line returns to the inline
+  `<style>`; the gate then has nothing to wait for on the layout link, and its
+  call can stay for the tokens and theme links. The rollback-final-r2 variant
+  keeps its archived mount script with its own inline template and ignores this
+  file, which stays in `jar.mn` harmlessly.
 
 ### Native Preferences Layout
 
@@ -1331,7 +1425,7 @@ below is generated; edit the registry, then run
 - Not listed. Stable platform APIs (`Services.*`, `PlacesUtils`, `SessionStore`
   calls, `<browser>` navigation such as `loadURI`, XPCOM interface constants
   such as `Ci.nsIWebProgress.NOTIFY_ALL`, the WebExtension API), prefs
-  read by name, and the CSS selectors in `injectChromeStyles`. Patches are
+  read by name, and the CSS selectors in `bento-shell-mount.css`. Patches are
   covered by `pnpm run firefox:patches:check`; members that code added by a
   patch calls elsewhere in Firefox are listed here.
 

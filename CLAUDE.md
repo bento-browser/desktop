@@ -45,23 +45,33 @@ it). Each `SKILL.md` owns its step-by-step procedure:
 
 ## Backticks inside JS template literals
 
-When writing CSS/HTML inside a JS template literal (a backtick string), **never use backticks in the embedded content** — they terminate the template literal early and produce confusing TS/JS syntax errors that are easy to misdiagnose. This has happened repeatedly in [src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js) where chrome CSS is injected via a `style.textContent = ...` template literal.
+Chrome layout CSS is not written in JS. It is the static sheet
+[src/browser/base/content/bento-shell-mount.css](src/browser/base/content/bento-shell-mount.css),
+linked by `injectChromeStyles()` in
+[src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js)
+and registered in `browser/base/jar.mn`. Add new chrome rules there, not in a template literal.
+
+The rule below still applies to any CSS/HTML you build in a JS template literal (a backtick string),
+such as the inline `style.cssText` strings that remain in the mount script. **Never use backticks in
+the embedded content**, because they terminate the template literal early and produce confusing TS/JS
+syntax errors that are easy to misdiagnose. This hazard is why the chrome stylesheet was moved out of the
+mount script, where it had repeatedly broken the whole script.
 
 Bad — backticks around the word `order` end the outer template literal:
 
 ```js
-style.textContent = `
+el.style.cssText = `
   /* Firefox's flex `order` property */
-  .foo { order: 0; }
+  order: 0;
 `;
 ```
 
 Good — use single quotes inside CSS comments:
 
 ```js
-style.textContent = `
+el.style.cssText = `
   /* Firefox's flex 'order' property */
-  .foo { order: 0; }
+  order: 0;
 `;
 ```
 
@@ -183,7 +193,7 @@ Before creating or modifying a component:
 - **Public imports only**: use the root `@muxui/react` export or a documented public subpath. Never import private generated files or a copied registry. `lucide-react` remains per-icon and documented.
 - **Mux customisation docs stay current**: any change that adds or changes Bento-specific Mux customisations, token usage patterns, CSS layer/override rules, or reusable component styling conventions must update [docs/mux-ui-component-customisations.md](docs/mux-ui-component-customisations.md) in the same change.
 - **Supported chrome surfaces**: Firefox chrome (browser XHTML, `gBrowser`, panels, actors, the Settings page) is reached only through the surfaces below, never from `bento-shell` or `bento-tools` page code. New chrome interactions go through one of them, prefer an existing `bentoChrome.*` method or experiment over a new overlay or patch, and are logged in [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md).
-  - **Mount script and overlays** (`src/browser/`, copied into the Firefox tree by `pnpm run import`): `src/browser/base/content/bento-shell-mount.js` is the chrome-process reconciler. It renders panels through Firefox's split-view machinery, anchors native popups, reads and writes chrome DOM, receives title-IPC from the shell, patches a few Firefox members, and carries the compact firefox-compat probe list. Its siblings are its stylesheets (`bento-chrome-theme.css` and the generated `bento-chrome-tokens.css`) and the embedded import host (`bento-migration-host.*`, `bento-migration-wizard-bridge.css`).
+  - **Mount script and overlays** (`src/browser/`, copied into the Firefox tree by `pnpm run import`): `src/browser/base/content/bento-shell-mount.js` is the chrome-process reconciler. It renders panels through Firefox's split-view machinery, anchors native popups, reads and writes chrome DOM, receives title-IPC from the shell, patches a few Firefox members, and carries the compact firefox-compat probe list. Its siblings are its stylesheets (`bento-shell-mount.css`, the chrome layout rules linked by `injectChromeStyles()`, which also holds the chrome invisible until the tokens, theme, and layout links have a complete sheet; `bento-chrome-theme.css`; and the generated `bento-chrome-tokens.css` and `bento-chrome-themes/`) and the embedded import host (`bento-migration-host.*`, `bento-migration-wizard-bridge.css`).
   - **Actors** (`src/browser/actors/`): `BentoKeyParent` and `BentoKeyChild`, the `BentoKey` JSWindowActor pair registered by the mount script that forwards panel and address shortcuts from web content to chrome.
   - **Experiments**: `extensions/bento-shell/experiments/chrome-bridge/api.js` (`bentoChrome.*`, the parent-process document registry the extensions bind to) and `extensions/bento-tools/experiments/` (`bento-privacy`, `bento-native-preferences`, `bento-external-sessions`) for Firefox services extension code cannot reach: preferences and search engines, the native Settings page bridge, and external session files.
   - **Patches** (`patches/`, ordered by `patches/series.json`): `chrome-layout` (host elements, `jar.mn` entries, actor registration), `core-ui` (native tabs and menus, DevTools and focus handling, fullscreen, the native Bento Settings page with its `BentoShellDocumentRegistry` actor module, first-run import, theming), `window-sync` (window tracker and tabbrowser hooks), and `experiments` (build). Keep them small; larger overlays make Firefox bumps harder.
