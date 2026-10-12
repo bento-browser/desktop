@@ -386,8 +386,10 @@ adds its entry, and its id in the mount probe list, in the same change.
     panel layouts, loses the stale workspace and folder, and joins the
     destination's workspace (or waits for it). Bento's own cross-window moves
     (a window claiming its workspace's tabs, an import relocating tabs) go through
-    `moveTabsToWindow`, which records tab id to workspace (`bentoTabMoves`) before
-    the move; `onAttached` takes that record first and leaves the tab alone. Judging
+    `moveTabsToWindow`, which records tab id to workspace and destination window
+    (`bentoTabMoves`) before the move and keeps only the tabs it reports as moved;
+    `onAttached` takes the record for the window the tab arrived in first and leaves
+    the tab alone. Judging
     by ownership alone misread such a move as a user drag whenever the window
     switched workspace before the attach event arrived. Dragging a tab into an
     existing window takes the user path.

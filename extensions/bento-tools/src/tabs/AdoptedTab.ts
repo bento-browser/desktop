@@ -43,7 +43,7 @@ export async function releaseAdoptedTab(
 ): Promise<void> {
   // Checked first: the window that asked for the move may show another workspace by
   // the time the tab arrives, which would make the move look like a user drag.
-  if (deps.moves.take(tabId) !== undefined) return;
+  if (deps.moves.take(tabId, newWindowId) !== undefined) return;
   const tab = deps.tabs.snapshot().find((candidate) => candidate.id === tabId);
   if (!tab?.workspaceId) return;
   if (deps.workspaces.findOwningWindow(tab.workspaceId) === newWindowId) return;
@@ -80,48 +80,62 @@ export function adoptableTabs(
 
 /**
  * Moves Bento starts itself (a window claiming its workspace's tabs, an import
- * relocating tabs): tab id to the workspace the tab belongs to. `onAttached`
- * cannot tell these from a user drag by looking at ownership, because the window
- * can switch workspace before the attach event arrives. An entry is taken when
- * the tab attaches and expires if it never does.
+ * relocating tabs): tab id to the workspace the tab belongs to and the window it
+ * moves to. `onAttached` cannot tell these from a user drag by looking at ownership,
+ * because the window can switch workspace before the attach event arrives. An entry
+ * is taken when the tab attaches and expires if it never does.
  */
 export interface ProgrammaticMoves {
-  expect(tabIds: readonly number[], workspaceId: string): void;
+  expect(tabIds: readonly number[], workspaceId: string, windowId: number): void;
   forget(tabIds: readonly number[]): void;
-  /** The workspace the move was made for, once; undefined for any other attach. */
-  take(tabId: number): string | undefined;
+  /**
+   * The workspace the move was made for, once. A tab that attaches to another window than
+   * the one the move targeted was moved by someone else: the record is discarded.
+   */
+  take(tabId: number, windowId: number): string | undefined;
 }
 
 export function createProgrammaticMoves(ttlMs = 10_000): ProgrammaticMoves {
-  const expected = new Map<number, { workspaceId: string; until: number }>();
+  const expected = new Map<number, { workspaceId: string; windowId: number; until: number }>();
   return {
-    expect(tabIds, workspaceId) {
+    expect(tabIds, workspaceId, windowId) {
       const now = Date.now();
       for (const [tabId, entry] of expected) if (entry.until <= now) expected.delete(tabId);
-      for (const tabId of tabIds) expected.set(tabId, { workspaceId, until: now + ttlMs });
+      for (const tabId of tabIds)
+        expected.set(tabId, { workspaceId, windowId, until: now + ttlMs });
     },
     forget(tabIds) {
       for (const tabId of tabIds) expected.delete(tabId);
     },
-    take(tabId) {
+    take(tabId, windowId) {
       const entry = expected.get(tabId);
       expected.delete(tabId);
-      return entry && entry.until > Date.now() ? entry.workspaceId : undefined;
+      return entry && entry.windowId === windowId && entry.until > Date.now()
+        ? entry.workspaceId
+        : undefined;
     },
   };
 }
 
 export const bentoTabMoves = createProgrammaticMoves();
 
-/** `tabs.move` into `windowId` for tabs that belong to `workspaceId`, recorded as Bento's own. */
+/**
+ * `tabs.move` into `windowId` for tabs that belong to `workspaceId`, recorded as Bento's own.
+ * The record is made before the move because the attach events can arrive before its promise
+ * resolves, and trimmed to the tabs that did move: `tabs.move` skips some (a pinned tab moved
+ * to the end), and a user dragging one of those out later must not read as Bento's move.
+ */
 export async function moveTabsToWindow(
   tabIds: number[],
   windowId: number,
   workspaceId: string,
 ): Promise<void> {
-  bentoTabMoves.expect(tabIds, workspaceId);
+  bentoTabMoves.expect(tabIds, workspaceId, windowId);
   try {
-    await browser.tabs.move(tabIds, { windowId, index: -1 });
+    const moved = new Set(
+      [await browser.tabs.move(tabIds, { windowId, index: -1 })].flat().map((t) => t.id),
+    );
+    bentoTabMoves.forget(tabIds.filter((tabId) => !moved.has(tabId)));
   } catch (err) {
     bentoTabMoves.forget(tabIds);
     throw err;

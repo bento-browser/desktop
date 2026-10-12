@@ -424,7 +424,12 @@ opening an unwanted blank tab before the moved tabs arrive.
   to it.
 - A tab Bento moves between windows itself must go through `moveTabsToWindow`.
   Only the move's own record distinguishes it from a drag when the window
-  switched workspace before the attach event (`releaseAdoptedTab`); the record
+  switched workspace before the attach event (`releaseAdoptedTab`). The record
+  (tab id to workspace and destination window) is made before `tabs.move` because
+  the attach events can arrive before its promise resolves, then trimmed to the
+  tabs the move reports: `tabs.move` skips some (a pinned tab moved to the end),
+  and a user dragging one of those out later must not read as Bento's move. An
+  attach to another window than the recorded one discards the record, and it
   expires after 10 s if the tab never attaches.
 - Do not adopt or assign unassigned tabs while startup is unsettled. A restored
   tab looks unassigned until `hydrateWorkspaceIds` has read its session value, and

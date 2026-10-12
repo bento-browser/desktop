@@ -2,8 +2,10 @@ import type { TabSnapshot } from '@shared/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   adoptableTabs,
+  bentoTabMoves,
   createAdoptionGate,
   createProgrammaticMoves,
+  moveTabsToWindow,
   releaseAdoptedTab,
   settleWorkspaceTabs,
   tabsToAdopt,
@@ -121,7 +123,7 @@ describe('releaseAdoptedTab', () => {
 
     await releaseAdoptedTab(deps, 7, 2);
 
-    expect(deps.moves.take).toHaveBeenCalledWith(7);
+    expect(deps.moves.take).toHaveBeenCalledWith(7, 2);
     expect(deps.tabs.clearWorkspace).not.toHaveBeenCalled();
     expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
     expect(deps.panels.remove).not.toHaveBeenCalled();
@@ -168,31 +170,83 @@ describe('createProgrammaticMoves', () => {
 
   it('hands back the workspace once, then treats the next attach as a user move', () => {
     const moves = createProgrammaticMoves();
-    moves.expect([7, 8], 'ws-a');
+    moves.expect([7, 8], 'ws-a', 2);
 
-    expect(moves.take(7)).toBe('ws-a');
-    expect(moves.take(7)).toBeUndefined();
-    expect(moves.take(9)).toBeUndefined();
-    expect(moves.take(8)).toBe('ws-a');
+    expect(moves.take(7, 2)).toBe('ws-a');
+    expect(moves.take(7, 2)).toBeUndefined();
+    expect(moves.take(9, 2)).toBeUndefined();
+    expect(moves.take(8, 2)).toBe('ws-a');
+  });
+
+  it('discards the record of a tab that attaches to another window than the move targeted', () => {
+    const moves = createProgrammaticMoves();
+    moves.expect([7], 'ws-a', 2);
+
+    expect(moves.take(7, 3)).toBeUndefined();
+    // The record is gone, so a later attach to the targeted window is not Bento's either.
+    expect(moves.take(7, 2)).toBeUndefined();
   });
 
   it('drops a move that never attached', () => {
     const moves = createProgrammaticMoves(1000);
-    moves.expect([7], 'ws-a');
+    moves.expect([7], 'ws-a', 2);
 
     vi.advanceTimersByTime(1001);
 
-    expect(moves.take(7)).toBeUndefined();
+    expect(moves.take(7, 2)).toBeUndefined();
   });
 
   it('forgets the tabs of a move that failed', () => {
     const moves = createProgrammaticMoves();
-    moves.expect([7, 8], 'ws-a');
+    moves.expect([7, 8], 'ws-a', 2);
 
     moves.forget([7]);
 
-    expect(moves.take(7)).toBeUndefined();
-    expect(moves.take(8)).toBe('ws-a');
+    expect(moves.take(7, 2)).toBeUndefined();
+    expect(moves.take(8, 2)).toBe('ws-a');
+  });
+});
+
+describe('moveTabsToWindow', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('records only the tabs the move reports, so a skipped tab dragged out later is a user move', async () => {
+    // tabs.move resolves with the tabs it moved; the pinned tab 8 was skipped.
+    vi.stubGlobal('browser', {
+      tabs: { move: vi.fn(async () => [{ id: 7 }]) },
+    });
+
+    await moveTabsToWindow([7, 8], 2, 'ws-a');
+
+    expect(browser.tabs.move).toHaveBeenCalledWith([7, 8], { windowId: 2, index: -1 });
+    expect(bentoTabMoves.take(8, 2)).toBeUndefined();
+    expect(bentoTabMoves.take(7, 2)).toBe('ws-a');
+  });
+
+  it('has the record in place before the move resolves', async () => {
+    // The attach event can arrive ahead of the promise.
+    let takenDuringMove: string | undefined;
+    vi.stubGlobal('browser', {
+      tabs: {
+        move: vi.fn(async () => {
+          takenDuringMove = bentoTabMoves.take(7, 2);
+          return [{ id: 7 }];
+        }),
+      },
+    });
+
+    await moveTabsToWindow([7], 2, 'ws-a');
+
+    expect(takenDuringMove).toBe('ws-a');
+  });
+
+  it('forgets every tab when the move fails', async () => {
+    vi.stubGlobal('browser', { tabs: { move: vi.fn().mockRejectedValue(new Error('no window')) } });
+
+    await expect(moveTabsToWindow([7, 8], 2, 'ws-a')).rejects.toThrow('no window');
+
+    expect(bentoTabMoves.take(7, 2)).toBeUndefined();
+    expect(bentoTabMoves.take(8, 2)).toBeUndefined();
   });
 });
 
