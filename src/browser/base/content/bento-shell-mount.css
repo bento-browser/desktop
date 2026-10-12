@@ -1342,20 +1342,6 @@
   height: var(--bento-icon-size-sm);
   pointer-events: none;
 }
-/* Dot-pattern icons (grip-vertical on the drag handle,
-   more-vertical on the kebab) render each dot as the round
-   cap of a zero-length stroke segment, so the dot diameter
-   equals stroke-width. At stroke-width 2 in a 24-unit
-   viewBox displayed at 14px, each dot is only ~1.17px —
-   a fraction of the ink the continuous-stroke icons put
-   on screen (chevrons, refresh, bookmark, pin, close), so the dot
-   icons read as "disabled" even at the same currentColor.
-   Bumping the stroke compensates so all header icons hit
-   the same optical weight. */
-.bento-panel-header-drag-handle > svg,
-.bento-panel-header-button--more > svg {
-  stroke-width: 3.5;
-}
 /* Drag handle: behaves as a button (role='button') but is
    operated by pointer drag, not click — override the default
    pointer cursor with grab / grabbing. */
