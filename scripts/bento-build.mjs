@@ -474,26 +474,55 @@ function sourceVersionFromState(ctx) {
   return readJson(ctx.sourceStatePath).version;
 }
 
-/** Compares the dotted numeric prefixes of two Firefox versions ("157.0.1" against "154.0"). */
-function compareVersionNumbers(left, right) {
-  const parts = (version) => (/^\d+(?:\.\d+)*/.exec(version)?.[0] ?? '').split('.').map(Number);
-  const [a, b] = [parts(left), parts(right)];
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-    if (difference) return difference;
-  }
-  return 0;
+/** Splits "157.0.1", "158.0b5" or "140.2.0esr"; undefined for any other shape. */
+function parseFirefoxVersion(version) {
+  const match = /^(\d+(?:\.\d+)+)(?:b(\d+)|(esr))?$/.exec(version);
+  if (!match) return undefined;
+  return {
+    numbers: match[1].split('.').map(Number),
+    esr: match[3] === 'esr',
+    // A final release is newer than every beta of the same number.
+    beta: match[2] === undefined ? Infinity : Number(match[2]),
+  };
 }
 
 /**
- * The Firefox version recorded for the engine when bento.json has moved past it, as on
- * a checkout that predates a version bump. Undefined when the engine is current, newer
- * than the configuration, or has no recorded version.
+ * Orders two Firefox versions: negative when `left` is older, 0 when equal, positive
+ * when newer. Compares the full dotted number, then the beta number (158.0b5 < 158.0b6
+ * < 158.0). Undefined when they cannot be ordered: ESR against a non-ESR version, or a
+ * version of an unrecognized shape.
+ */
+export function compareFirefoxVersions(left, right) {
+  const [a, b] = [parseFirefoxVersion(left), parseFirefoxVersion(right)];
+  if (!a || !b || a.esr !== b.esr) return undefined;
+  for (let index = 0; index < Math.max(a.numbers.length, b.numbers.length); index += 1) {
+    const difference = (a.numbers[index] ?? 0) - (b.numbers[index] ?? 0);
+    if (difference) return difference;
+  }
+  return a.beta === b.beta ? 0 : a.beta < b.beta ? -1 : 1;
+}
+
+/**
+ * How the engine's recorded Firefox version orders against `other` (see
+ * compareFirefoxVersions). Undefined when nothing is recorded, or when the engine was
+ * installed for another product than bento.json configures now.
+ */
+function compareEngineVersion(ctx, config, other) {
+  if (!fs.existsSync(ctx.sourceStatePath)) return undefined;
+  const state = readJson(ctx.sourceStatePath);
+  if (!state.version || (state.product ?? config.firefox.product) !== config.firefox.product) return undefined;
+  return compareFirefoxVersions(state.version, other);
+}
+
+/**
+ * The Firefox version recorded for the engine when it is strictly older than the one
+ * bento.json configures, as on a checkout that predates a version bump. Undefined when
+ * the engine is current, newer, of another product or channel, or has no recorded
+ * version, so none of those are replaced as "stale".
  */
 function staleEngineVersion(ctx, config) {
   const recorded = sourceVersionFromState(ctx);
-  const configured = config.firefox.version;
-  return recorded && recorded !== configured && compareVersionNumbers(recorded, configured) <= 0 ? recorded : undefined;
+  return recorded && compareEngineVersion(ctx, config, config.firefox.version) < 0 ? recorded : undefined;
 }
 
 function baseIdentity(ctx, ref) {
@@ -1218,9 +1247,10 @@ function engineStateViolations(repoRoot) {
     if (!targetExistsSync(target)) {
       // Removing an overlay from the repository is a supported input change;
       // the importer will remove its old generated output after preflight.
-      if (expected.kind === 'overlay' && !fs.existsSync(path.join(ctx.srcDir, relative))) return true;
-      if (expected.kind === 'patch' && !managedPatchPaths(ctx).has(relative)) return true;
-      return false;
+      // Any other recorded path must still exist: a hand-deleted file, including a
+      // retired patch target, is an unrecorded change. Absence is accepted only
+      // where the snapshot itself records the deletion (`missing`, above).
+      return expected.kind === 'overlay' && !fs.existsSync(path.join(ctx.srcDir, relative));
     }
     const stat = fs.lstatSync(target);
     if (expected.type === 'symlink') return stat.isSymbolicLink() && fs.readlinkSync(target) === expected.linkTarget;
@@ -1362,9 +1392,18 @@ async function commandDownload(ctx, version, { force = false, replaceStale = fal
       process.stdout.write(`bento: adopted existing Firefox ${requestedVersion} baseline\n`);
       return;
     }
-    const stale = replaceStale && existing.git && requestedVersion === config.firefox.version
-      ? staleEngineVersion(ctx, config)
-      : undefined;
+    const replacing = replaceStale && existing.git && requestedVersion === config.firefox.version;
+    const stale = replacing ? staleEngineVersion(ctx, config) : undefined;
+    const recorded = sourceVersionFromState(ctx);
+    if (replacing && recorded && !stale) {
+      // Only a strictly older engine of the same product and channel is "stale".
+      const order = compareEngineVersion(ctx, config, requestedVersion);
+      if (order !== 0) {
+        fail(order > 0
+          ? `cannot replace Firefox source: the engine is Firefox ${recorded}, newer than the ${requestedVersion} bento.json configures; use the repository revision that matches the engine, or preserve any changes and replace it with \`download --force\``
+          : `cannot replace Firefox source: the engine is Firefox ${recorded} and bento.json configures ${requestedVersion}, which cannot be ordered (a different product or channel); preserve any changes, then replace it with \`download --force\``);
+      }
+    }
     if (stale) {
       ensureSourceIdentity(ctx, config, stale, 'replace Firefox source');
       process.stdout.write(`bento: engine is Firefox ${stale} but bento.json configures ${requestedVersion}; replacing it\n`);
@@ -1446,10 +1485,28 @@ async function commandUpdate(ctx) {
   if (!sourceVersionFromState(ctx) && engineIsGit(ctx)) adoptExistingSource(ctx, config, config.firefox.version);
   // The engine may predate bento.json (a checkout from before a version bump), so
   // check it against its own recorded version, not the configured one.
-  const previous = (engineIsGit(ctx) && sourceVersionFromState(ctx)) || config.firefox.version;
+  const engineVersion = engineIsGit(ctx) ? sourceVersionFromState(ctx) : undefined;
+  const previous = engineVersion || config.firefox.version;
   if (engineIsGit(ctx)) ensureSourceIdentity(ctx, config, previous, 'update Firefox source');
-  ensureCleanEngine(ctx, 'update Firefox source');
+  // Never replace an engine with an older target, and keep one that already has the
+  // target. An engine that cannot be ordered against the target (another product or
+  // channel) is replaced only when it is the one bento.json describes.
+  const order = engineVersion ? compareEngineVersion(ctx, config, version) : undefined;
+  if (order > 0) {
+    fail(`cannot update Firefox source: the engine is Firefox ${engineVersion}, newer than the ${version} target; refusing to downgrade. Use the repository revision that matches the engine, or preserve any changes and replace it with \`download --force\``);
+  }
+  if (engineVersion && order === undefined && engineVersion !== config.firefox.version) {
+    fail(`cannot update Firefox source: the engine is Firefox ${engineVersion} and the ${version} target cannot be ordered against it (a different product or channel); preserve any changes, then replace it with \`download --force\``);
+  }
+  const reuse = order === 0;
+  if (!reuse) ensureCleanEngine(ctx, 'update Firefox source');
   const archiveInfo = await acquireSourceArchive(ctx.root, version);
+  if (reuse) {
+    const recordedDigest = readJson(ctx.sourceStatePath).archiveSha256;
+    if (recordedDigest && recordedDigest !== archiveInfo.sha256) {
+      fail(`cannot update Firefox source: the installed Firefox ${engineVersion} source was verified against a different archive digest than ${archiveInfo.sha256}`);
+    }
+  }
   const previousConfig = fs.readFileSync(ctx.configPath, 'utf8');
   const previousSourceState = fs.existsSync(ctx.sourceStatePath) ? fs.readFileSync(ctx.sourceStatePath, 'utf8') : undefined;
   const engineStatePath = path.join(ctx.stateDir, 'engine-state.json');
@@ -1457,7 +1514,7 @@ async function commandUpdate(ctx) {
   const previousOverlayManifest = fs.existsSync(ctx.overlayManifestPath) ? fs.readFileSync(ctx.overlayManifestPath, 'utf8') : undefined;
   const versionsPath = path.join(ctx.root, 'config', 'firefox-versions.json');
   const previousVersions = fs.existsSync(versionsPath) ? fs.readFileSync(versionsPath, 'utf8') : undefined;
-  const result = await installSource(ctx, archiveInfo, { replace: true });
+  const result = reuse ? {} : await installSource(ctx, archiveInfo, { replace: true });
   const updated = {
     ...config,
     firefox: {
@@ -1480,8 +1537,10 @@ async function commandUpdate(ctx) {
       }
     }
   } catch (error) {
-    await fsp.rm(ctx.engineDir, { recursive: true, force: true });
-    if (result.backup && fs.existsSync(result.backup)) await fsp.rename(result.backup, ctx.engineDir);
+    if (!reuse) {
+      await fsp.rm(ctx.engineDir, { recursive: true, force: true });
+      if (result.backup && fs.existsSync(result.backup)) await fsp.rename(result.backup, ctx.engineDir);
+    }
     fs.writeFileSync(ctx.configPath, previousConfig);
     if (previousVersions !== undefined) fs.writeFileSync(versionsPath, previousVersions);
     if (previousSourceState !== undefined) fs.writeFileSync(ctx.sourceStatePath, previousSourceState);
@@ -1492,7 +1551,9 @@ async function commandUpdate(ctx) {
     else await fsp.rm(ctx.overlayManifestPath, { force: true });
     throw error;
   }
-  process.stdout.write(`bento: updated Firefox ${previous} -> ${version}; previous source is recoverable at ${result.backup}\n`);
+  process.stdout.write(reuse
+    ? `bento: Firefox ${version} source is already installed; updated bento.json from ${config.firefox.version}\n`
+    : `bento: updated Firefox ${previous} -> ${version}; previous source is recoverable at ${result.backup}\n`);
 }
 
 function platformConfigName() {

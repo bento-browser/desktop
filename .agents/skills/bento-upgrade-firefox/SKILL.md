@@ -176,10 +176,15 @@ replaces it through the protected path (`bash scripts/bento-env.sh download
 is verified against `bento.json`, the previous engine moves to
 `.bento/backups/`, and its Bento refs carry over. Files that the previous
 import changed and the current patch series no longer touches pass when they
-match the recorded bytes; any other edit stops the replacement and is named in
-the error. An engine newer than `bento.json`, or one with no
-`.bento/source-state.json` version, is not replaced automatically. Plain
-`pnpm run download` and `pnpm run build` never replace an engine.
+match the recorded bytes, and a recorded file must still exist; any other edit
+stops the replacement and is named in the error. Only a strictly older engine
+of the same product and channel is replaced, with versions compared in full
+(release number, then beta number; a final release is newer than its betas). An
+engine newer than `bento.json`, an ESR or other-product engine, and one with no
+`.bento/source-state.json` version are refused or left alone, never replaced
+automatically. `update` likewise refuses a target older than the engine and keeps
+an engine that already has the target. Plain `pnpm run download` and
+`pnpm run build` never replace an engine.
 
 The wrapper obtains the latest configured-product version, invokes Bento's
 protected update path, checks the patch stack, builds extensions, imports

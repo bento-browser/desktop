@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import {
+  compareFirefoxVersions,
   createContext,
   loadConfig,
   main,
@@ -1153,31 +1154,80 @@ test('shell scripts act on the one selected object directory, never on every obj
   }
 });
 
-test('the patch reset also reverts files an earlier import patched that the series no longer names', async () => {
+test('Firefox versions order by release number, then beta number; ESR is not ordered against other channels', () => {
+  const order = (left, right) => Math.sign(compareFirefoxVersions(left, right));
+  // Full dotted numbers, not a prefix or a string.
+  assert.equal(order('157.0.1', '157.0'), 1);
+  assert.equal(order('157.0', '157.0.1'), -1);
+  assert.equal(order('99.0', '157.0.1'), -1);
+  assert.equal(order('1000.0', '157.0.1'), 1);
+  assert.equal(order('157.0', '157.0.0'), 0);
+  // Betas order by number, and a final release is newer than its betas.
+  assert.equal(order('158.0b5', '158.0b6'), -1);
+  assert.equal(order('158.0b6', '158.0b5'), 1);
+  assert.equal(order('158.0b6', '158.0b6'), 0);
+  assert.equal(order('158.0b5', '158.0'), -1);
+  assert.equal(order('158.0', '158.0b9'), 1);
+  assert.equal(order('158.0b1', '157.0.1'), 1);
+  assert.equal(order('158.0b9', '158.0.1'), -1);
+  // ESR only orders against ESR; unrecognized shapes order against nothing.
+  assert.equal(order('140.2.0esr', '140.3.0esr'), -1);
+  assert.equal(compareFirefoxVersions('140.2.0esr', '157.0.1'), undefined);
+  assert.equal(compareFirefoxVersions('157.0.1', '140.2.0esr'), undefined);
+  assert.equal(compareFirefoxVersions('158.0a1', '158.0'), undefined);
+  assert.equal(compareFirefoxVersions('158.0-rc1', '158.0'), undefined);
+});
+
+test('the patch reset reverts every path an earlier import patched, not only the current series', async (t) => {
   const root = await scriptFixture();
   try {
     const engine = path.join(root, 'engine');
-    fs.writeFileSync(path.join(engine, 'old.js'), 'original\n');
+    const at = (...segments) => path.join(engine, ...segments);
+    const symlinks = process.platform !== 'win32';
+    for (const file of ['old.js', 'gone.js', 'series-gone.js', 'target.txt', 'other.txt']) fs.writeFileSync(at(file), 'original\n');
+    if (symlinks) fs.symlinkSync('target.txt', at('link'));
     git(engine, ['add', '-A']);
     git(engine, ['commit', '--amend', '--no-edit']);
     git(engine, ['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
 
-    // The recorded import patched old.js; the current series only names new.js.
-    fs.writeFileSync(path.join(engine, 'old.js'), 'patched by an earlier series\n');
-    fs.writeFileSync(path.join(engine, 'toolkit', 'moz.build'), 'user edit\n');
+    // What the recorded import left behind: an edit, a deletion, a retargeted
+    // symlink and a created symlink (dangling), none named by the current series.
+    fs.writeFileSync(at('old.js'), 'patched by an earlier series\n');
+    fs.rmSync(at('gone.js'));
+    const entries = [
+      { path: 'old.js', kind: 'patch', type: 'file', sha256: '0'.repeat(64) },
+      { path: 'gone.js', kind: 'patch', missing: true },
+    ];
+    if (symlinks) {
+      fs.rmSync(at('link'));
+      fs.symlinkSync('other.txt', at('link'));
+      fs.symlinkSync('no-such-target', at('created-link'));
+      entries.push(
+        { path: 'link', kind: 'patch', type: 'symlink', linkTarget: 'other.txt' },
+        { path: 'created-link', kind: 'patch', type: 'symlink', linkTarget: 'no-such-target' },
+      );
+    }
+    // The current series deletes series-gone.js, which an earlier reset must restore.
+    fs.rmSync(at('series-gone.js'));
+    fs.writeFileSync(at('toolkit', 'moz.build'), 'user edit\n');
     fs.mkdirSync(path.join(root, 'patches'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'patches', 'new.patch'), 'diff --git a/new.js b/new.js\n');
+    fs.writeFileSync(path.join(root, 'patches', 'new.patch'), 'diff --git a/series-gone.js b/series-gone.js\n');
     fs.mkdirSync(path.join(root, '.bento'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.bento', 'engine-state.json'), JSON.stringify({
-      schemaVersion: 1,
-      entries: [{ path: 'old.js', kind: 'patch', type: 'file', sha256: '0'.repeat(64) }],
-    }));
+    fs.writeFileSync(path.join(root, '.bento', 'engine-state.json'), JSON.stringify({ schemaVersion: 1, entries }));
 
     const reset = runScript(root, 'reset-engine-patches.sh');
     assert.equal(reset.status, 0, reset.stderr);
-    assert.equal(fs.readFileSync(path.join(engine, 'old.js'), 'utf8'), 'original\n');
+    assert.equal(fs.readFileSync(at('old.js'), 'utf8'), 'original\n');
+    assert.equal(fs.readFileSync(at('gone.js'), 'utf8'), 'original\n');
+    assert.equal(fs.readFileSync(at('series-gone.js'), 'utf8'), 'original\n');
+    if (symlinks) {
+      assert.equal(fs.readlinkSync(at('link')), 'target.txt');
+      assert.equal(fs.lstatSync(at('created-link'), { throwIfNoEntry: false }), undefined);
+    } else {
+      t.diagnostic('symlink reset skipped on win32');
+    }
     // Only Bento's own output is reset; other edits stay for verify to catch.
-    assert.equal(fs.readFileSync(path.join(engine, 'toolkit', 'moz.build'), 'utf8'), 'user edit\n');
+    assert.equal(fs.readFileSync(at('toolkit', 'moz.build'), 'utf8'), 'user edit\n');
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

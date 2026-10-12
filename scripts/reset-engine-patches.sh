@@ -34,15 +34,16 @@ find "$REPO_ROOT/patches" -name '*.patch' -print0 \
   | sort -u \
   > "$patch_files_list"
 
-# Also reset files an earlier import patched that the current series no longer
-# names. The recorded state lists them, and verify has matched them to the record
-# by now, so resetting discards only Bento's own output.
+# Also reset paths an earlier import patched that the current series no longer
+# names. The recorded state lists them (edited files, symlinks, and deletions), and
+# verify has matched every one to the record by now, so resetting discards only
+# Bento's own output.
 recorded_state="$REPO_ROOT/.bento/engine-state.json"
 if [ -f "$recorded_state" ]; then
   node -e '
     const state = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
     for (const entry of state.entries || []) {
-      if (entry.kind === "patch" && entry.type === "file") console.log(entry.path);
+      if (entry.kind === "patch") console.log(entry.path);
     }
   ' "$recorded_state" >> "$patch_files_list"
   sort -u -o "$patch_files_list" "$patch_files_list"
@@ -55,9 +56,11 @@ fi
 
 cd "$ENGINE_DIR"
 
-# Tracked + modified → git checkout. Untracked (created by new-file patches)
-# → rm. Both classes block re-applying patches: modified content rejects
-# context, existing files reject "new file mode".
+# Tracked + changed (edited, retyped, a symlink retargeted, or deleted by a
+# patch) → git checkout. Untracked (created by new-file patches, including
+# symlinks, even dangling ones) → rm. Both classes block re-applying patches:
+# modified content rejects context, existing files reject "new file mode", and a
+# deleted file rejects a patch that edits it.
 revert_count=0
 remove_count=0
 to_revert_list="$(mktemp)"
@@ -66,13 +69,13 @@ trap 'rm -f "$patch_files_list" "$to_revert_list" "$to_remove_list"' EXIT
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
-  [ -e "$f" ] || continue
   if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+    # A tracked path that is gone also differs, so its deletion is restored here.
     if ! git diff --quiet -- "$f" 2>/dev/null; then
       echo "$f" >> "$to_revert_list"
       revert_count=$((revert_count + 1))
     fi
-  else
+  elif [ -e "$f" ] || [ -L "$f" ]; then
     echo "$f" >> "$to_remove_list"
     remove_count=$((remove_count + 1))
   fi
