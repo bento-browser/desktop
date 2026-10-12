@@ -79,7 +79,7 @@
   .bento-panel-trailer__favicon {
     width: var(--bento-control-size-sm);
     height: var(--bento-control-size-sm);
-    border-radius: var(--radius-2xs);
+    border-radius: var(--muxui-semantic-shape-radius-xs);
     object-fit: cover;
     /* Bookmarks for never-visited URLs render Firefox's default-favicon
      * which is a faded grey globe; keep a subtle background so it

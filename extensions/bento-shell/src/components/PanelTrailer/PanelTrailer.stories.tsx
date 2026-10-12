@@ -9,6 +9,7 @@ import '../../theme/muxui.css';
 
 import { PanelTrailer } from './PanelTrailer';
 import {
+  FAVICON_SAVED_PANELS,
   MANY_SAVED_PANELS,
   SAMPLE_SAVED_PANELS,
   seedEmptySavedPanels,
@@ -16,14 +17,22 @@ import {
 } from '../../state/__fixtures__/savedPanels';
 import { useSavedPanelsStore } from '../../state/savedPanels';
 
-function TrailerFrame({ children, width }: { children: React.ReactNode; width: number }) {
+function TrailerFrame({
+  children,
+  width,
+  height = 56,
+}: {
+  children: React.ReactNode;
+  width: number;
+  height?: number;
+}) {
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
         width,
-        height: 56,
+        height,
         background: 'var(--bento-brand-bg)',
         borderRadius: 'var(--radius-m)',
         border: '1px dashed var(--bento-border-color-subtle, var(--neutral-30))',
@@ -63,6 +72,20 @@ export const ThreeSaved = () => {
 };
 
 ThreeSaved.storyName = 'Three saved (typical use)';
+
+export const WithFavicons = () => {
+  useEffect(() => {
+    seedSavedPanels(FAVICON_SAVED_PANELS);
+  }, []);
+  const items = useSavedPanelsStore((s) => s.items);
+  return (
+    <TrailerFrame width={200} height={176}>
+      <PanelTrailer items={items} onAddBlank={NOOP} onOpenSaved={NOOP} />
+    </TrailerFrame>
+  );
+};
+
+WithFavicons.storyName = 'With favicons (rounded corners)';
 
 export const ManySaved = () => {
   useEffect(() => {
