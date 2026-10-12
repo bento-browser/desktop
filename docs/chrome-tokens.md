@@ -29,8 +29,14 @@ public Mux token surface and Bento's compatibility aliases.
    `scripts/sync-builtin-addon-symlinks.sh` links that directory into a dev app
    bundle, because the build lists wildcard files once.
 5. [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
-   loads the base sheet, keeps `data-color-mode` on the chrome root, and
-   attaches the active theme's sheet before setting `data-bento-theme`.
+   links the base sheet, `bento-chrome-theme.css`, and then the chrome layout
+   sheet [bento-shell-mount.css](../src/browser/base/content/bento-shell-mount.css)
+   (registered in `jar.mn` like the others), keeps the chrome root invisible
+   while any of those links has no complete sheet yet (a paint gate; see
+   `docs/core-functionality-technical.md`), keeps `data-color-mode` on the
+   chrome root, and attaches the active theme's sheet before setting
+   `data-bento-theme`. The layout sheet consumes these tokens; it is not
+   generated.
 
 ## Generated content
 
@@ -93,11 +99,11 @@ theme rules select the same canonical values as the extension. Bento's Default
 preset remains a scoped warm ladder with `--neutral-default-20: #e5e1dd`; the
 unscoped shell fallback can keep its cool neutral family.
 
-Theme sheets load after `bento-chrome-theme.css`, so a theme rule now follows
-rules it used to precede. That is safe because no property is set by a theme rule
-and by another rule of equal or higher specificity (theme selectors have
-specificity 0,3,0; the base blocks 0,1,0; `bento-chrome-theme.css` is layered).
-Recheck this if a theme or base selector gains specificity.
+Theme sheets load after `bento-chrome-theme.css` and `bento-shell-mount.css`, so a
+theme rule now follows rules it used to precede. That is safe because no property
+is set by a theme rule and by another rule of equal or higher specificity (theme
+selectors have specificity 0,3,0; the base blocks 0,1,0; `bento-chrome-theme.css`
+is layered). Recheck this if a theme or base selector gains specificity.
 
 Custom Scale imports remain supported by
 [scripts/import-theme.mjs](../scripts/import-theme.mjs). The importer preserves
@@ -106,14 +112,12 @@ Run the theme sync before generating an isolated chrome stylesheet.
 
 ## Focused verification
 
-Use the repository Node 24.19 runtime and an isolated output path:
+Use the repository Node 24.19 runtime (`.nvmrc`) and an isolated output path:
 
 ```sh
 tmp_dir="$(mktemp -d)"
-/Users/admin/.vite-plus/js_runtime/node/24.19.0/bin/node scripts/sync-theme-presets.mjs
-/Users/admin/.vite-plus/js_runtime/node/24.19.0/bin/node \
-  scripts/generate-chrome-tokens.mjs \
-  --output "$tmp_dir/bento-chrome-tokens.css"
+node scripts/sync-theme-presets.mjs
+node scripts/generate-chrome-tokens.mjs --output "$tmp_dir/bento-chrome-tokens.css"
 ```
 
 The base file should contain `--shadow-l`, `--font-size-root`, and

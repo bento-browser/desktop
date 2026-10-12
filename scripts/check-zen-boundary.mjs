@@ -10,6 +10,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const CONFIG_PATH = 'config/allowed-zen-references.json';
 const REFERENCE = /\bzen\b|zen-browser|\bzen_|github\.com\/zen-browser|zen-browser\.app/i;
 const ANCESTRY = /\b(?:built|based|derived|inspired)\s+(?:on|from|by)\s+zen\b|\bzen[- ]style\b/i;
+// Assembled so this file never contains the strings it forbids.
 const competitor = 'ze' + 'n';
 const ALWAYS_FORBIDDEN = new RegExp(
   `${competitor}-browser\\.app|github\\.com/${competitor}-browser/desktop|${competitor} Browser contributors`,

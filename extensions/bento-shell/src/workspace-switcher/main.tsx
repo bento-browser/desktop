@@ -58,6 +58,7 @@ import { BentoIcon } from '../components/primitives/BentoIcon';
 // all apply identically to this overlay's menu DOM.
 import '../components/WorkspaceSwitcher/WorkspaceSwitcher.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -133,6 +134,8 @@ function WorkspaceSwitcherOverlayApp() {
       setOpenPayload(payload);
     });
   }, []);
+  // After the subscription: the sidebar posts the payload again once this is announced.
+  useOverlayReadySignal('workspace-switcher');
 
   function close() {
     setOpenPayload(null);

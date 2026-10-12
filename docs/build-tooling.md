@@ -43,6 +43,10 @@ the update command with patch-stack validation, extension build, Bento import,
 and a native build. `pnpm run build:full` runs the complete download,
 bootstrap, extension build, import, build, and package sequence.
 
+`scripts/mach-env.sh` chooses the Python that mach runs under: the binary (or
+directory) in `BENTO_MACH_PYTHON` if set, else `python3.12` from `PATH` if
+present, else the `python3` that `PATH` resolves (mach needs Python 3.9 or newer).
+
 Firefox's Rust toolchain is pinned in the repository root by
 [`rust-toolchain.toml`](../rust-toolchain.toml). Release CI resolves and verifies
 that pin before Bento bootstrap or the native build. Linux and Windows release
@@ -121,7 +125,7 @@ macOS and Windows builds run through `workflow_dispatch` and `release.yml`.
 | -------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`; selects the build platforms. Installs no dependencies.       |
 | `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions, the competitor-reference boundary, the build driver config check, and `pnpm run lc`.   |
-| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`.                                                |
+| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run rollback:check`. |
 | `build` (Source import or Build, per platform)                 | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Manual runs go on to bootstrap, build, and package. |
 
 The checks run in parallel and the build starts only after all of them pass,
@@ -453,6 +457,9 @@ exact published Mux version, and verified npm integrity; it rejects a substitute
 tarball or digest. Mux is reported like other npm components with its registry
 SHA-512 integrity digest.
 
+Bento's `react` and `react-dom` ranges (`^19.2.0`) sit inside Mux's peer range
+(`>=19.2.0 <20`).
+
 Bento keeps one React Aria substrate graph for menu context identity and pins
 Tiptap's core and peer family to `3.31.4`, matching the published Mux manifest.
 This is later than the patch for
@@ -584,9 +591,11 @@ Guards keep local Mux out of releases:
    `pnpm run release:security-check` against the current pin and lock must pass.
 3. Update the inputs the new graph is checked against: the exact pin in
    `extensions/bento-shell/package.json`; the root `pnpm.overrides` (React Aria,
-   Tiptap) if Mux's dependencies changed; and the expected release metadata, the
-   version and registry integrity in `scripts/generate-release-sbom.mjs`
-   (`muxuiVersion`, `muxuiIntegrity`) and `scripts/release-security.test.mjs`.
+   Tiptap) if Mux's dependencies changed; the `react`/`react-dom` ranges (inside
+   Mux's `peerDependencies`) in `extensions/bento-shell/package.json`; and the
+   expected release metadata, the version and registry integrity in
+   `scripts/generate-release-sbom.mjs` (`muxuiVersion`, `muxuiIntegrity`, and the
+   approved runtime dependency specifiers) and `scripts/release-security.test.mjs`.
 4. Regenerate the lock: `pnpm install`. (Frozen installs fail between steps 3
    and 4 by design.)
 5. Verify the new graph: `pnpm install --frozen-lockfile`,
@@ -680,7 +689,7 @@ pnpm run firefox:sync
 For a newer target, first read the target from Mozilla's
 [`firefox_versions.json`](https://product-details.mozilla.org/1.0/firefox_versions.json)
 and copy its source archive digest from the matching per-release
-[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/157.0.1/SHA256SUMS)
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/)
 file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`.
 The entry is a 64-character hexadecimal SHA-256 followed by the relative
 archive path `source/firefox-<target-version>.source.tar.xz`. Pass that digest
@@ -743,6 +752,17 @@ generated theme files, so none of them needs a separate step.
   `patches/chrome-layout/01-bento-shell-mount.patch`.
   [`scripts/theme-sheets.test.mjs`](../scripts/theme-sheets.test.mjs) covers the
   generator and runs in CI.
+- **Mux CSS shape.** Both generators read Mux's `styles.css`, `themes.css` and
+  `@muxui/react/themes` through one module,
+  [`scripts/mux-css.mjs`](../scripts/mux-css.mjs) (tests in
+  [`scripts/mux-css.test.mjs`](../scripts/mux-css.test.mjs)). It matches each
+  public block by its whole top-level selector list, derives the theme list from the
+  package instead of a fixed count, and stops the build with a message that names
+  the file and block when Mux changes the shape: a missing, repeated or non-flat
+  block, a missing required token, a `themes.css` rule it cannot assign to one
+  theme, or a theme without both a light and a dark rule. A Mux upgrade that adds
+  themes needs no generator change; one that reshapes the CSS needs a change in that
+  module only.
 - **Fonts.** [`extensions/bento-shell/woff2-fonts.ts`](../extensions/bento-shell/woff2-fonts.ts)
   rewrites the TrueType fonts the package stylesheet references to WOFF2 at the
   end of the shell build, with no extra dependency: it Brotli-compresses the
@@ -865,7 +885,7 @@ patches must remain byte-identical when the native patch is updated.
 
 ## Settings rollback variants
 
-The consolidated Settings rollback is built from the committed source snapshot in `rollback/legacy-source`; see [settings-consolidation-rollback.md](settings-consolidation-rollback.md). Transition r1 has build/update/release commands, while final r2 has build/package/release commands and deliberately has no automatic-update command.
+The consolidated Settings rollback is built from the committed source snapshot in `rollback/legacy-source`; see [settings-consolidation-rollback.md](settings-consolidation-rollback.md). Transition r1 has build/update/release commands, while final r2 has build/package/release commands and deliberately has no automatic-update command. CI runs `pnpm run rollback:check` (ESLint over the archived extension sources plus the read-only `check` action for both variants), so the archive cannot silently stop building against the current dependency graph.
 
 `pnpm dev` launches Bento without opening Browser Toolbox. Set
 `BENTO_JSDEBUGGER=1` when the launch should also start Browser Toolbox; Firefox

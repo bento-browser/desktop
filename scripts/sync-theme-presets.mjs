@@ -19,17 +19,22 @@
  *     the public @muxui/react/themes.css export inside the `muxui` layer.
  */
 
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 
 import prettier from 'prettier';
 
-import { dropContrastMoreSelectors } from '../extensions/bento-shell/contrast-more.mjs';
-import { splitTopLevelBlocks, themeIdsInSelector } from '../extensions/bento-shell/css-blocks.mjs';
+import { findClosingBrace } from '../extensions/bento-shell/css-blocks.mjs';
+import {
+  exitOnMuxSourceError,
+  loadMuxPublicCss,
+  loadMuxThemePresets,
+  parseDeclarations,
+  readReferenceShades,
+  splitCanonicalThemeRules,
+} from './mux-css.mjs';
 import { rewriteThemeSelectors } from './theme-selector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,20 +48,6 @@ const INDEX_TS_PATH = resolve(PRESETS_DIR, 'index.ts');
 const SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 
 const DEFAULT_THEME_ID = 'default';
-// Contrast is fixed to 'standard', so the public contrast='more' block is not
-// projected (see extensions/bento-shell/contrast-more.mjs).
-const PUBLIC_MODE_SELECTORS = [
-  "[data-muxui-color-scheme='light']",
-  "[data-muxui-color-scheme='dark']",
-  "[data-muxui-contrast='standard']",
-];
-const PUBLIC_CLOSURE_SELECTOR = `:root,
-[data-muxui-color-scheme],
-[data-muxui-contrast],
-[data-muxui-motion],
-[data-muxui-density],
-[data-muxui-direction]`;
-
 function usageError(message) {
   console.error('sync-theme-presets: ' + message);
   process.exit(1);
@@ -87,83 +78,6 @@ function writeIfChanged(path, content) {
 
 function compilePresetCss(id, css) {
   return rewriteThemeSelectors(css, id, { attributeQuote: "'" }).trimEnd();
-}
-
-function extractPublicBlock(css, selector) {
-  const selectorIndex = css.indexOf(selector);
-  if (selectorIndex < 0) {
-    usageError(`@muxui/react/styles.css is missing the public block ${selector}`);
-  }
-  const openIndex = css.indexOf('{', selectorIndex + selector.length);
-  if (openIndex < 0) {
-    usageError(`@muxui/react/styles.css has no declaration body for ${selector}`);
-  }
-
-  let depth = 0;
-  let quote = null;
-  let escaped = false;
-  for (let index = openIndex; index < css.length; index += 1) {
-    const character = css[index];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (character === '\\') escaped = true;
-      else if (character === quote) quote = null;
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (character === '{') depth += 1;
-    if (character === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        const body = css.slice(openIndex + 1, index).trim();
-        if (!body || body.includes('{')) {
-          usageError(`@muxui/react/styles.css changed the flat declaration shape for ${selector}`);
-        }
-        return body;
-      }
-    }
-  }
-  usageError(`@muxui/react/styles.css has an unterminated public block ${selector}`);
-}
-
-function findClosingBrace(css, openIndex) {
-  let depth = 0;
-  let quote = null;
-  let comment = false;
-  for (let index = openIndex; index < css.length; index += 1) {
-    const character = css[index];
-    const nextCharacter = css[index + 1];
-    if (comment) {
-      if (character === '*' && nextCharacter === '/') {
-        comment = false;
-        index += 1;
-      }
-      continue;
-    }
-    if (quote) {
-      if (character === '\\') index += 1;
-      else if (character === quote) quote = null;
-      continue;
-    }
-    if (character === '/' && nextCharacter === '*') {
-      comment = true;
-      index += 1;
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (character === '{') depth += 1;
-    if (character === '}') {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
 }
 
 function scanCssRules(css, atRules = [], rules = []) {
@@ -245,23 +159,6 @@ function formatForegroundOverrides(overrides) {
   return [...overrides.entries()].map(([token, value]) => `  ${token}: ${value};`).join('\n');
 }
 
-function requirePublicToken(body, token, label) {
-  if (
-    !new RegExp(`(?:^|\\n)\\s*${token.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s*:`).test(body)
-  ) {
-    usageError(`@muxui/react/styles.css ${label} is missing ${token}`);
-  }
-}
-
-function extractDeclarations(body) {
-  return new Map(
-    [...body.matchAll(/^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/gim)].map((match) => [
-      match[1],
-      match[2].trim(),
-    ]),
-  );
-}
-
 function legacyAliasForMuxToken(token) {
   let match = token.match(/^--muxui-reference-color-(.+)-(\d+)$/);
   if (match) {
@@ -328,8 +225,8 @@ function addLegacyBridgeDeclaration(target, name, value) {
 }
 
 function buildLegacyAliasBridges(rootBody, closureBody) {
-  const rootDeclarations = extractDeclarations(rootBody);
-  const closureDeclarations = extractDeclarations(closureBody);
+  const rootDeclarations = parseDeclarations(rootBody);
+  const closureDeclarations = parseDeclarations(closureBody);
   const root = new Map();
   const scoped = new Map();
 
@@ -389,17 +286,8 @@ ${bridges.scoped}
 }`;
 }
 
-function buildReferenceOverrides(rootBody) {
-  const brandShades = [...rootBody.matchAll(/--muxui-reference-color-brand-(\d+)\s*:/g)]
-    .map((match) => Number(match[1]))
-    .sort((left, right) => left - right);
-  const neutralShades = [...rootBody.matchAll(/--muxui-reference-color-neutral-(\d+)\s*:/g)]
-    .map((match) => Number(match[1]))
-    .sort((left, right) => left - right);
-  if (brandShades.length === 0 || neutralShades.length === 0) {
-    usageError('public Mux reference brand/neutral ladders are empty');
-  }
-
+function buildReferenceOverrides(shades) {
+  const { brand: brandShades, neutral: neutralShades } = shades;
   return [
     '  /* Compatibility projection: preserve Bento ladders without rewriting Mux semantic mode aliases. */',
     ...brandShades.map(
@@ -434,28 +322,14 @@ function buildRawLadderOverrides({ id, css, brandShades, neutralShades, defaultB
   ].join('\n');
 }
 
-function buildMuxCompatibilityCss(stylesCss, localThemes, defaultBrandValues) {
-  const rootBody = extractPublicBlock(stylesCss, ':root');
-  const closureBody = extractPublicBlock(stylesCss, PUBLIC_CLOSURE_SELECTOR);
-  requirePublicToken(rootBody, '--muxui-reference-color-brand-60', 'root block');
-  requirePublicToken(rootBody, '--muxui-reference-color-neutral-20', 'root block');
-  requirePublicToken(rootBody, '--muxui-reference-color-neutral-cool-20', 'root block');
-  requirePublicToken(rootBody, '--muxui-reference-effect-shadow-s', 'root block');
-  requirePublicToken(rootBody, '--muxui-semantic-effect-scrim', 'root block');
-  requirePublicToken(closureBody, '--muxui-popup-bg', 'compatibility closure');
-
-  const blocks = [
-    { selector: ':root', body: rootBody },
-    ...PUBLIC_MODE_SELECTORS.map((selector) => ({
-      selector,
-      body: extractPublicBlock(stylesCss, selector),
-    })),
-  ];
-  for (const block of blocks.slice(1, 3)) {
-    requirePublicToken(block.body, '--muxui-semantic-color-neutral-5', block.selector);
-  }
-
-  const referenceOverrides = buildReferenceOverrides(rootBody);
+function buildMuxCompatibilityCss(
+  { root: rootBody, modes, closure: closureBody },
+  shades,
+  localThemes,
+  defaultBrandValues,
+) {
+  const blocks = [{ selector: ':root', body: rootBody }, ...modes];
+  const referenceOverrides = buildReferenceOverrides(shades);
   return new Map(
     localThemes.map((theme) => {
       const id = theme.id;
@@ -494,68 +368,21 @@ function buildMuxCompatibilityCss(stylesCss, localThemes, defaultBrandValues) {
   );
 }
 
-/**
- * Group the public themes.css rules by theme id, dropping contrast='more' rules (see
- * extensions/bento-shell/contrast-more.mjs). Fails on any rule shape this generator
- * does not understand, so a Mux change cannot silently leak rules into the wrong sheet.
- */
-function splitCanonicalThemeRules(themesCss, themeIds) {
-  const rulesById = new Map(themeIds.map((id) => [id, []]));
-  for (const { prelude, body } of splitTopLevelBlocks(themesCss)) {
-    if (prelude.startsWith('@')) {
-      usageError(`@muxui/react/themes.css has an unexpected at-rule: ${prelude}`);
-    }
-    const selector = dropContrastMoreSelectors(prelude);
-    if (!selector) continue;
-    const ids = new Set(themeIdsInSelector(selector));
-    const [id] = ids;
-    if (ids.size !== 1 || !rulesById.has(id)) {
-      usageError(`@muxui/react/themes.css has a rule outside the canonical themes: ${prelude}`);
-    }
-    rulesById.get(id).push(`${selector} {${body}}`);
-  }
-  for (const [id, rules] of rulesById) {
-    if (rules.length === 0) usageError(`@muxui/react/themes.css has no rules for theme ${id}`);
-  }
-  return rulesById;
-}
-
 const requireFromShell = createRequire(resolve(SHELL_DIR, 'package.json'));
-let muxThemesEntryPath;
-let muxStylesCssPath;
-let muxThemesCssPath;
-try {
-  muxThemesEntryPath = requireFromShell.resolve('@muxui/react/themes');
-  muxStylesCssPath = requireFromShell.resolve('@muxui/react/styles.css');
-  muxThemesCssPath = requireFromShell.resolve('@muxui/react/themes.css');
-} catch (error) {
-  usageError(`cannot resolve public theme sources from @bento/shell (${error.message})`);
-}
 
-const muxThemesPackage = await import(pathToFileURL(muxThemesEntryPath).href);
-const muxThemes = muxThemesPackage.MUXUI_THEME_PRESETS;
-if (!Array.isArray(muxThemes) || muxThemes.length !== 15) {
-  usageError('@muxui/react/themes must export the canonical 15-theme MUXUI_THEME_PRESETS array');
-}
-for (const theme of muxThemes) {
-  if (
-    !theme ||
-    typeof theme.id !== 'string' ||
-    typeof theme.presetId !== 'string' ||
-    (theme.collection !== 'standard' && theme.collection !== 'monochrome') ||
-    typeof theme.name !== 'string' ||
-    typeof theme.description !== 'string' ||
-    typeof theme.swatch?.primary !== 'string' ||
-    typeof theme.swatch?.secondary !== 'string'
-  ) {
-    usageError('@muxui/react/themes contains an invalid canonical preset record');
-  }
-}
-
-const muxStylesCss = readFileSync(muxStylesCssPath, 'utf-8');
-const muxThemesCss = readFileSync(muxThemesCssPath, 'utf-8');
-const muxStylesDigest = createHash('sha256').update(muxStylesCss).digest('hex');
-const muxThemesDigest = createHash('sha256').update(muxThemesCss).digest('hex');
+// The theme list is whatever the pinned Mux package ships; scripts/mux-css.mjs checks its shape.
+const muxThemes = await exitOnMuxSourceError('sync-theme-presets', () =>
+  loadMuxThemePresets(requireFromShell),
+);
+const {
+  themesCss: muxThemesCss,
+  stylesDigest: muxStylesDigest,
+  themesDigest: muxThemesDigest,
+  blocks: muxPublicBlocks,
+} = exitOnMuxSourceError('sync-theme-presets', () => loadMuxPublicCss(requireFromShell));
+const publicShades = exitOnMuxSourceError('sync-theme-presets', () =>
+  readReferenceShades(muxPublicBlocks.root),
+);
 
 const entries = readdirSync(PRESETS_DIR, { withFileTypes: true });
 const localIds = entries
@@ -571,6 +398,10 @@ const localIds = entries
 
 if (!localIds.includes(DEFAULT_THEME_ID)) {
   usageError('expected a default.css Bento preset');
+}
+
+if (muxThemes.some((theme) => theme.id === DEFAULT_THEME_ID)) {
+  usageError(`a canonical Mux theme uses the reserved Bento id ${DEFAULT_THEME_ID}`);
 }
 
 const reservedIds = new Set([
@@ -606,12 +437,8 @@ const localThemeSources = localIds.map((id) => {
     css: compilePresetCss(id, css),
   };
 });
-const publicBrandShades = [...muxStylesCss.matchAll(/--muxui-reference-color-brand-(\d+)\s*:/g)]
-  .map((match) => Number(match[1]))
-  .sort((left, right) => left - right);
-const publicNeutralShades = [...muxStylesCss.matchAll(/--muxui-reference-color-neutral-(\d+)\s*:/g)]
-  .map((match) => Number(match[1]))
-  .sort((left, right) => left - right);
+const publicBrandShades = publicShades.brand;
+const publicNeutralShades = publicShades.neutral;
 const defaultSource = localThemeSources.find((theme) => theme.id === DEFAULT_THEME_ID);
 if (!defaultSource) usageError('expected a default.css Bento preset');
 const defaultBrandValues = new Map(
@@ -648,22 +475,22 @@ const standardThemes = canonicalThemes.filter((theme) => theme.collection === 's
 const monochromeThemes = canonicalThemes.filter((theme) => theme.collection === 'monochrome');
 const themes = [...localThemes, ...canonicalThemes];
 const muxCompatibilityBlocks = buildMuxCompatibilityCss(
-  muxStylesCss,
+  muxPublicBlocks,
+  publicShades,
   localThemes,
   defaultBrandValues,
 );
-const canonicalThemeRules = splitCanonicalThemeRules(
-  muxThemesCss,
-  canonicalThemes.map((theme) => theme.id),
+const canonicalThemeRules = exitOnMuxSourceError('sync-theme-presets', () =>
+  splitCanonicalThemeRules(
+    muxThemesCss,
+    canonicalThemes.map((theme) => theme.id),
+  ),
 );
 // Default stays in the shared stylesheet: it is the document's first-paint theme and the
 // fallback for unknown ids. Every other theme is its own sheet.
 const defaultTheme = localThemes.find((theme) => theme.id === DEFAULT_THEME_ID);
 const sheetLocalThemes = localThemes.filter((theme) => theme.id !== DEFAULT_THEME_ID);
-const legacyAliasCss = formatLegacyBridgeCss(
-  extractPublicBlock(muxStylesCss, ':root'),
-  extractPublicBlock(muxStylesCss, PUBLIC_CLOSURE_SELECTOR),
-);
+const legacyAliasCss = formatLegacyBridgeCss(muxPublicBlocks.root, muxPublicBlocks.closure);
 
 const indexCssSource = `/*
  * AUTO-GENERATED by scripts/sync-theme-presets.mjs.

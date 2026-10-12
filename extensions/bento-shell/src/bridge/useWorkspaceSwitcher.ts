@@ -9,9 +9,11 @@
 //
 // Same shape as useConfirm / useEditWorkspace: BroadcastChannel for the
 // payload, document.title sentinel for the show/hide signal that chrome
-// reacts to.
+// reacts to. Every bus message names its window (windowId.ts) and a receiver
+// ignores other windows': the channel reaches every Bento window's documents.
 
 import { sendChromeTitle } from './chromeTitle';
+import { isForThisWindow, thisWindowId } from './windowId';
 
 export const WORKSPACE_SWITCHER_BUS_NAME = 'bento-workspace-switcher-bus';
 export const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
@@ -35,11 +37,13 @@ export interface WorkspaceSwitcherOpenPayload {
 
 interface ShowMessage {
   kind: 'show';
+  windowId: number | null;
   payload: WorkspaceSwitcherOpenPayload;
 }
 
 interface ClosedMessage {
   kind: 'closed';
+  windowId: number | null;
 }
 
 type BusMessage = ShowMessage | ClosedMessage;
@@ -62,7 +66,7 @@ export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload):
     console.warn('[bento-shell] requestWorkspaceSwitcher: no BroadcastChannel');
     return;
   }
-  ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
+  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
   sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
 }
 
@@ -75,7 +79,7 @@ export function subscribeToWorkspaceSwitcherRequests(
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'show') handler(data.payload);
+    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);
@@ -89,7 +93,7 @@ export function subscribeToWorkspaceSwitcherRequests(
 export function notifyWorkspaceSwitcherClosed(): void {
   const ch = bus();
   if (!ch) return;
-  ch.postMessage({ kind: 'closed' } satisfies ClosedMessage);
+  ch.postMessage({ kind: 'closed', windowId: thisWindowId } satisfies ClosedMessage);
 }
 
 /** Sidebar subscription for overlay close notifications. */
@@ -98,7 +102,7 @@ export function subscribeToWorkspaceSwitcherClose(handler: () => void): () => vo
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'closed') handler();
+    if (data?.kind === 'closed' && isForThisWindow(data.windowId)) handler();
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

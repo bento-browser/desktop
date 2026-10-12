@@ -4,7 +4,7 @@
 // ids, and event or markup contracts). Stable platform APIs (Services.*,
 // PlacesUtils, SessionStore calls, <browser> navigation such as loadURI, the
 // WebExtension API), prefs read by name, and the CSS selectors in
-// injectChromeStyles are not listed.
+// bento-shell-mount.css are not listed.
 //
 // This module is repo tooling and is never shipped. Three things read it:
 //   - scripts/check-firefox-compat.mjs greps a Firefox source tree for every

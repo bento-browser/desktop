@@ -115,8 +115,8 @@
 /* ─── Collapsed sidebar footer — narrow rail ───────────────────────
  * Triggered by useEffect in App.tsx when SettingsStore reports
  * sidebarCollapsed=true. Chrome shrinks #bento-shell-host to a thin
- * column via its own CSS (injectChromeStyles in bento-shell-mount.js);
- * here we re-stack the footer to fit.
+ * column via its own CSS (bento-shell-mount.css); here we re-stack the
+ * footer to fit.
  *
  * column-reverse so the FIRST DOM child (the collapse/expand toggle)
  * renders at the BOTTOM of the vertical stack — same on-screen

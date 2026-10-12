@@ -21,6 +21,7 @@ import {
   type AddrbarMode,
   type AddrbarPlacement,
 } from '../bridge/useAddrbar';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 document.documentElement.dataset.bentoAddressBar = 'true';
@@ -61,6 +62,9 @@ function AddressBarApp() {
   useLayoutEffect(() => {
     if (openState?.openId) signalAddrbarReady(openState.openId);
   }, [openState?.openId]);
+
+  // After the subscription effect above: chrome sends the first open once this is announced.
+  useOverlayReadySignal('addrbar');
 
   if (!openState) return null;
 

@@ -21,6 +21,9 @@ Transition browser/add-on updates are generated only with `pnpm rollback:updates
 
 ## Isolated Mux validation
 
+CI runs `pnpm run rollback:check` in the `extensions` job: ESLint over
+`rollback/legacy-source/extensions` followed by both `check` actions below.
+
 The variant builder has a read-only `check` action for validating rollback
 source against the current Mux dependency graph without changing the engine,
 canonical `dist/`, or the worktree's installed extensions. Use the project's

@@ -202,6 +202,7 @@ else
   sync_chrome_file bento-migration-host.js
   sync_chrome_file bento-migration-wizard-bridge.css
   sync_chrome_file bento-shell-mount.js
+  sync_chrome_file bento-shell-mount.css
 
   APP_ACTORS_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/actors"
   BIN_ACTORS_ROOT="$OBJ_DIR/dist/bin/browser/actors"

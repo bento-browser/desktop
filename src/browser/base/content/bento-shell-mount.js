@@ -363,8 +363,9 @@
     link.rel = 'stylesheet';
     link.href = 'chrome://browser/content/bento-chrome-tokens.css';
     document.documentElement.appendChild(link);
+    return link;
   }
-  injectChromeTokens();
+  const bentoTokensLink = injectChromeTokens();
 
   // Map Firefox's chrome color variables (--toolbar-bgcolor,
   // --toolbar-field-background-color, --toolbox-textcolor, etc.) to
@@ -379,8 +380,9 @@
     link.rel = 'stylesheet';
     link.href = 'chrome://browser/content/bento-chrome-theme.css';
     document.documentElement.appendChild(link);
+    return link;
   }
-  injectChromeTheme();
+  const bentoThemeLink = injectChromeTheme();
 
   const BENTO_CHROME_THEME_ATTRS = [
     'data-color-mode',
@@ -706,2523 +708,95 @@
   );
   requestAnimationFrame(syncArrowPanelsTheme);
 
-  // Inject layout-shape CSS that depends on the tokens above. Kept in
-  // a runtime-injected <style> rather than a static file because the
-  // .browserContainer class only exists on per-tab elements created
-  // dynamically by tabbrowser — a CSS rule applies forever, no need to
-  // hook tab creation.
-  function injectChromeStyles() {
-    const style = document.createElement('style');
-    style.textContent = `
-      /* Consistent chrome gaps and splitter slots. Panel boundaries all
-         reserve --bento-splitter-hit-size; the visible indicator is a
-         centered half-length capsule inside that hit target. */
-      :root {
-        --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-20);
-        --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
-        --bento-panel-corner-radius: var(--radius-m);
-        --bento-splitter-hit-size: 14px;
-        --bento-splitter-hit-half: calc(var(--bento-splitter-hit-size) / 2);
-        --bento-splitter-indicator-radius: 3px;
-        --bento-panel-gap: var(--bento-splitter-hit-size);
-        --bento-scrollbar-thickness: calc(
-          var(--bento-splitter-indicator-radius) + var(--bento-splitter-indicator-radius)
+  // The three Bento chrome sheets (tokens, theme, and the layout sheet below)
+  // are <link> elements inserted by this script. Gecko starts a window's
+  // initial layout without waiting for such links: only parser-created links
+  // count toward the prototype sink's pending sheets. A window that is already
+  // visible when browser.xhtml loads (the early blank window,
+  // browser.startup.blankWindow, on by default on Windows) can then paint for
+  // up to the 5 ms paint suppression delay before a cold sheet arrives, which
+  // shows unstyled chrome. A normal first window is hidden until the document
+  // load event and the links block that event, so it needs no help.
+  //
+  // This gate keeps the root invisible while any of the links still has no
+  // complete sheet. LinkStyle.sheet is null until the sheet is complete, and a
+  // sheet already in the shared sheet cache is complete as soon as its link is
+  // inserted, so later windows never hide. A pending link fires load or error
+  // before the document load event (the event dispatch itself blocks it), so
+  // on the normal path the gate is released before the window is shown and
+  // adds no delay. It can only fail to release if no event ever arrives; a
+  // timeout then shows the window anyway. visibility hides paint without
+  // changing layout and needs no stylesheet. window.__bentoSheetGate records
+  // the outcome for the runtime checks.
+  const BENTO_SHEET_GATE_TIMEOUT_MS = 2000;
+  function gateFirstPaintOnSheets(links) {
+    const pending = links.filter((link) => !link.sheet);
+    if (pending.length === 0) return;
+
+    const style = document.documentElement.style;
+    const previous = style.getPropertyValue('visibility');
+    const previousPriority = style.getPropertyPriority('visibility');
+    const startedAt = window.performance.now();
+    let remaining = pending.length;
+    let sawError = false;
+    let timer = 0;
+    let released = false;
+    window.__bentoSheetGate = { pending: pending.length, releasedBy: null, heldMs: null };
+
+    const release = (releasedBy) => {
+      if (released) return;
+      released = true;
+      window.clearTimeout(timer);
+      if (previous) style.setProperty('visibility', previous, previousPriority);
+      else style.removeProperty('visibility');
+      window.__bentoSheetGate.releasedBy = releasedBy;
+      window.__bentoSheetGate.heldMs = Math.round(window.performance.now() - startedAt);
+    };
+
+    try {
+      style.setProperty('visibility', 'hidden', 'important');
+      timer = window.setTimeout(() => {
+        console.warn(
+          `[bento-shell-mount] chrome stylesheets still loading after ${BENTO_SHEET_GATE_TIMEOUT_MS} ms; showing the window anyway`,
         );
-        --bento-scrollbar-radius: var(--bento-splitter-indicator-radius);
-        --bento-strip-scrollbar-gap: var(--space-2xs);
-        /* Match Firefox toolbar-button hit targets at every density and
-           narrow-window breakpoint. The navigator is plain HTML, so it does
-           not inherit the native toolbarbutton sizing rules automatically. */
-        --bento-panel-nav-button-size: calc(16px + (var(--toolbarbutton-padding-inner) * 2));
-        --bento-panel-nav-favicon-size: var(--bento-icon-size-sm);
-        --bento-panel-nav-height: calc(
-          var(--bento-panel-nav-button-size) + var(--space-xs)
-        );
-        /* The macOS titlebar controls are copied into #nav-bar while the
-           native tab strip is hidden. Keep that shared control row clear of
-           the window edge without introducing a second titlebar surface. */
-        --bento-toolbar-top-inset: 4px;
-        --bento-toolbar-sidebar-bg: var(--neutral-5);
-        --bento-toolbar-main-bg: var(--neutral-14);
-        --bento-toolbar-divider-x: 100vw;
-        --bento-panel-strip-bg: var(--bento-toolbar-main-bg);
-        --bento-strip-scrollbar-row-height: calc(
-          var(--bento-scrollbar-thickness) + var(--bento-strip-scrollbar-gap)
-        );
-        --bento-strip-controls-height: var(--bento-strip-scrollbar-row-height);
-      }
-      :root[bento-no-side-panels='true'] {
-        --bento-toolbar-main-bg: var(--neutral-5);
-      }
-      #tabbrowser-tabpanels.bento-panel-shadows-disabled,
-      #bento-strip-container.bento-panel-shadows-disabled {
-        --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
-      }
-
-      /* Inline sidebar: no padding around the frame, no rounded
-         corners on the frame. Edges flush with the window so the
-         sidebar reads as part of the chrome rather than a floating
-         card. Keep it in normal paint order so real panel content and
-         direct panel shadows clip together at the sidebar/strip
-         boundary. */
-      #bento-shell-host {
-        padding: 0;
-        position: relative;
-      }
-      #bento-shell-host > #bento-shell-frame {
-        border-radius: 0;
-      }
-      /* Sidebar splitter: the native XUL splitter owns persistence and
-         baseline layout, but its own painting stays invisible. The
-         visible hover/drag affordance is #bento-shell-splitter-
-         affordance, an HTML overlay positioned from actual sidebar and
-         content rects so it sits in the gap instead of on the sidebar
-         edge.
-         !important needed for width + min-width because XUL chrome
-         CSS sets defaults for <splitter> that win otherwise. */
-      /* Remove Firefox's top-toolbar/content separator so the toolbar
-         reads as one continuous surface with the sidebar. Firefox's
-         content-area.css applies a tiny border-bottom on
-         #navigator-toolbox, and upstream toolbar rules may paint on
-         #nav-bar, so this must be explicit. */
-      #navigator-toolbox,
-      #nav-bar {
-        border-bottom: 0 !important;
-        box-shadow: none !important;
-        outline: none !important;
-      }
-      #navigator-toolbox {
-        position: relative !important;
-      }
-      #toolbar-menubar,
-      #TabsToolbar,
-      #nav-bar,
-      #PersonalToolbar {
-        position: relative !important;
-        z-index: 1 !important;
-      }
-      @media (-moz-platform: macos) {
-        /* The titlebar controls, native navigation controls, and Bento's
-           panel navigator all live in this toolbar. Padding its top edge
-           moves the complete row together and preserves its toolbar layout. */
-        #nav-bar {
-          padding-block-start: var(--bento-toolbar-top-inset) !important;
-        }
-      }
-      #bento-toolbar-main-backdrop {
-        position: fixed;
-        top: 0;
-        left: var(--bento-toolbar-divider-x);
-        width: calc(100vw - var(--bento-toolbar-divider-x));
-        height: var(--bento-toolbar-backdrop-height, 0px);
-        background-color: var(--bento-toolbar-main-bg);
-        pointer-events: none;
-        z-index: 0;
-      }
-      #navigator-toolbox,
-      #TabsToolbar,
-      #nav-bar {
-        background-color: var(--bento-toolbar-main-bg) !important;
-        background-image: linear-gradient(
-          to right,
-          var(--bento-toolbar-sidebar-bg) 0,
-          var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
-          var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
-          var(--bento-toolbar-main-bg) 100%
-        ) !important;
-        background-repeat: no-repeat !important;
-      }
-      :root[bento-sidebar-addressbar='true'] body,
-      :root[bento-sidebar-addressbar='true'] body::after,
-      :root[bento-sidebar-addressbar='true'] #browser,
-      :root[bento-sidebar-addressbar='true'] #appcontent {
-        background-color: var(--bento-toolbar-main-bg) !important;
-        background-image: linear-gradient(
-          to right,
-          var(--bento-toolbar-sidebar-bg) 0,
-          var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
-          var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
-          var(--bento-toolbar-main-bg) 100%
-        ) !important;
-        background-repeat: no-repeat !important;
-        background-size: 100% 100% !important;
-      }
-      :root[bento-sidebar-addressbar='true'] body::after {
-        appearance: none !important;
-        -moz-default-appearance: none !important;
-      }
-      /* bento-chrome-theme.css paints core chrome containers neutral-5 with
-         layered !important rules. Keep these in the same layer so the panel
-         path cannot leak that sidebar colour behind the main-side strip. */
-      @layer bento.chrome-theme {
-        :root[bento-sidebar-addressbar='true'] body,
-        :root[bento-sidebar-addressbar='true'] body::after,
-        :root[bento-sidebar-addressbar='true'] #browser,
-        :root[bento-sidebar-addressbar='true'] #appcontent {
-          background-color: var(--bento-toolbar-main-bg) !important;
-          background-image: linear-gradient(
-            to right,
-            var(--bento-toolbar-sidebar-bg) 0,
-            var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
-            var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
-            var(--bento-toolbar-main-bg) 100%
-          ) !important;
-          background-repeat: no-repeat !important;
-          background-size: 100% 100% !important;
-        }
-        :root[bento-sidebar-addressbar='true'] body::after {
-          appearance: none !important;
-          -moz-default-appearance: none !important;
-        }
-        :root[bento-sidebar-addressbar='true'] #bento-strip-container,
-        :root[bento-sidebar-addressbar='true'] #bento-side-panel-host,
-        :root[bento-sidebar-addressbar='true'] #tabbrowser-tabpanels.bento-split-active,
-        :root[bento-sidebar-addressbar='true'] #tabbrowser-tabbox:has(> #tabbrowser-tabpanels.bento-split-active),
-        :root[bento-sidebar-addressbar='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel],
-        :root[bento-sidebar-addressbar='true'] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
-        :root[bento-sidebar-addressbar='true'] #bento-add-panel-trailer,
-        :root[bento-sidebar-addressbar='true'] #bento-flat-layout-extent {
-          background-color: var(--bento-panel-strip-bg) !important;
-          background-image: none !important;
-        }
-      }
-      :root {
-        --bento-toolbar-nav-offset: 0px;
-        --bento-bookmarks-toolbar-offset: 0px;
-        --bento-bookmarks-toolbar-height: 0px;
-        --bento-tab-strip-width-min-effective: var(--bento-tab-strip-width-min);
-      }
-      :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
-        margin-inline-start: var(--bento-toolbar-nav-offset, 0px) !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #bento-shell-host,
-      :root[bento-sidebar-addressbar='true'] #bento-shell-splitter,
-      :root[bento-sidebar-addressbar='true'] #bento-sidebar-hidden-hover-zone,
-      :root[bento-sidebar-addressbar='true'] #sidebar-container,
-      :root[bento-sidebar-addressbar='true'] #sidebar-launcher-splitter,
-      :root[bento-sidebar-addressbar='true'] #sidebar-box,
-      :root[bento-sidebar-addressbar='true'] #sidebar-splitter {
-        margin-block-start: calc(-1 * var(--bento-bookmarks-toolbar-height, 0px)) !important;
-        height: calc(100% + var(--bento-bookmarks-toolbar-height, 0px)) !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #bento-shell-splitter-affordance {
-        top: calc(-1 * var(--bento-bookmarks-toolbar-height, 0px)) !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #PersonalToolbar {
-        margin-inline-start: var(--bento-bookmarks-toolbar-offset, 0px) !important;
-        width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
-        max-width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
-        min-width: 0 !important;
-        box-sizing: border-box !important;
-        transition: none !important;
-        animation: none !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #PersonalToolbar[collapsed] {
-        visibility: collapse !important;
-        transition: none !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > toolbarspring {
-        display: none !important;
-        visibility: collapse !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > [data-bento-extension-toolbar-anchor='true'] {
-        margin-inline-start: auto !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #nav-bar > .titlebar-spacer[type='post-tabs'] {
-        display: none !important;
-        visibility: collapse !important;
-      }
-      :root[bento-sidebar-addressbar='true'] #fxa-toolbar-menu-button,
-      :root[bento-sidebar-addressbar='true'] #wrapper-fxa-toolbar-menu-button {
-        display: none !important;
-        visibility: collapse !important;
-      }
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button,
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #forward-button,
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #stop-reload-button,
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #bento-panel-nav {
-        transform: translateX(var(--bento-toolbar-nav-offset, 0px));
-        will-change: transform;
-      }
-      :root[bento-sidebar-resizing='true'][bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
-        margin-inline-start: 0 !important;
-      }
-      :root[bento-startup-loading='true'] #navigator-toolbox {
-        opacity: 0;
-        pointer-events: none;
-      }
-      #bento-startup-veil {
-        position: absolute;
-        inset: 0;
-        z-index: 2147483000;
-        display: grid;
-        grid-template-columns:
-          minmax(48px, var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min, 220px)))
-          1fr;
-        min-width: 0;
-        min-height: 0;
-        background-color: var(--neutral-5);
-        color: var(--neutral-90);
-        pointer-events: auto;
-        opacity: 1;
-        transition: opacity 140ms var(--bento-easing-standard, ease);
-      }
-      #bento-startup-veil[hidden],
-      :root:not([bento-startup-loading='true']) #bento-startup-veil {
-        opacity: 0;
-        pointer-events: none;
-      }
-      .bento-startup-veil__sidebar,
-      .bento-startup-veil__main {
-        box-sizing: border-box;
-        min-width: 0;
-        min-height: 0;
-        background-color: var(--neutral-5);
-      }
-      .bento-startup-veil__sidebar {
-        border-inline-end: 1px solid var(--bento-sidebar-divider-color);
-        padding: var(--space-xs);
-      }
-      .bento-startup-veil__main {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-l);
-        padding: var(--space-s);
-      }
-      .bento-startup-veil__toolbar {
-        height: 32px;
-        border-radius: var(--radius-s);
-        background-color: var(--neutral-12);
-      }
-      .bento-startup-veil__content {
-        flex: 1 1 auto;
-        min-height: 0;
-        border-radius: var(--radius-m);
-        background-color: var(--neutral-8);
-        overflow: hidden;
-        position: relative;
-      }
-      .bento-startup-veil__content::before {
-        content: '';
-        position: absolute;
-        left: 50%;
-        top: 42%;
-        width: min(21.25rem, 46%);
-        height: 2.5rem;
-        border-radius: var(--radius-s);
-        background-color: var(--neutral-14);
-        transform: translate(-50%, -50%);
-      }
-      .bento-startup-veil__content::after {
-        content: '';
-        position: absolute;
-        left: 50%;
-        top: calc(42% + 4.0625rem);
-        width: min(17.5rem, 38%);
-        height: 1.75rem;
-        border-radius: var(--radius-s);
-        background-color: var(--neutral-12);
-        transform: translateX(-50%);
-      }
-      .bento-startup-veil__workspace,
-      .bento-startup-veil__row {
-        display: flex;
-        align-items: center;
-        gap: var(--space-xs);
-      }
-      .bento-startup-veil__workspace {
-        height: 2.25rem;
-        margin-block-end: var(--space-s);
-      }
-      .bento-startup-veil__rows {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-xs);
-      }
-      .bento-startup-veil__dot {
-        width: 1rem;
-        height: 1rem;
-        border-radius: var(--radius-s);
-        background-color: var(--neutral-14);
-        flex: 0 0 auto;
-      }
-      .bento-startup-veil__row .bento-startup-veil__dot {
-        width: 0.625rem;
-        height: 0.625rem;
-      }
-      .bento-startup-veil__bar {
-        height: 0.625rem;
-        border-radius: var(--radius-xs);
-        background-color: var(--neutral-14);
-      }
-      .bento-startup-veil__workspace .bento-startup-veil__bar {
-        width: 4.375rem;
-      }
-      .bento-startup-veil__row .bento-startup-veil__bar {
-        width: min(7.5rem, 68%);
-      }
-      @media (prefers-reduced-motion: no-preference) {
-        .bento-startup-veil__bar,
-        .bento-startup-veil__dot,
-        .bento-startup-veil__toolbar,
-        .bento-startup-veil__content::before,
-        .bento-startup-veil__content::after {
-          animation: bento-startup-veil-pulse 1.2s var(--bento-easing-in-out, ease-in-out) infinite;
-        }
-      }
-      @keyframes bento-startup-veil-pulse {
-        0%, 100% { opacity: 0.58; }
-        50% { opacity: 1; }
-      }
-      #bento-shell-splitter {
-        width: var(--bento-splitter-hit-size) !important;
-        min-width: var(--bento-splitter-hit-size) !important;
-        max-width: var(--bento-splitter-hit-size) !important;
-        margin-inline: calc(-1 * var(--bento-splitter-hit-half));
-        cursor: col-resize;
-        border: 0 !important;
-        padding: 0 !important;
-        appearance: none;
-        background-color: transparent;
-        background-image: none;
-        position: relative;
-        z-index: 3;
-      }
-      #bento-shell-splitter-affordance {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: var(--bento-splitter-hit-size);
-        cursor: col-resize;
-        pointer-events: auto;
-        z-index: 4;
-        background-image:
-          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
-          linear-gradient(
-            to right,
-            transparent calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
-            transparent calc(50% + var(--bento-splitter-indicator-radius))
-          ),
-          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size:
-          100% 100%,
-          100% 50%,
-          100% 100%;
-        opacity: 0;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
-      }
-      #bento-shell-splitter-affordance:hover,
-      #bento-shell-splitter-affordance.bento-shell-splitter--dragging {
-        opacity: 1;
-      }
-      #bento-shell-splitter-affordance.bento-sidebar-collapsed {
-        display: none;
-      }
-      :root[bento-sidebar-addressbar='true'] #sidebar-splitter {
-        width: var(--bento-splitter-hit-size) !important;
-        min-width: var(--bento-splitter-hit-size) !important;
-        max-width: var(--bento-splitter-hit-size) !important;
-        margin-inline: calc(-1 * var(--bento-splitter-hit-half)) !important;
-        cursor: col-resize;
-        border: 0 !important;
-        padding: 0 !important;
-        appearance: none;
-        background-color: transparent !important;
-        background-image:
-          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
-          linear-gradient(
-            to right,
-            transparent calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
-            transparent calc(50% + var(--bento-splitter-indicator-radius))
-          ),
-          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size:
-          100% 100%,
-          100% 50%,
-          100% 100%;
-        opacity: 0;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
-        z-index: 4;
-      }
-      :root[bento-sidebar-addressbar='true'] #sidebar-splitter:hover,
-      :root[bento-sidebar-addressbar='true'] #sidebar-splitter:focus-visible,
-      :root[bento-sidebar-addressbar='true'] #sidebar-splitter.bento-native-sidebar-splitter--dragging {
-        opacity: 1;
-      }
-      #bento-sidebar-chrome-divider {
-        position: fixed;
-        top: 0;
-        bottom: 0;
-        width: 1px;
-        background-color: var(--bento-sidebar-divider-color);
-        pointer-events: none;
-        z-index: 3;
-      }
-      :root[bento-no-side-panels='true'] #bento-sidebar-chrome-divider {
-        display: none;
-      }
-
-      /* Sidebar dimensions. The chrome patch ships inline width/min/max
-         on #bento-shell-host (so the sidebar still renders sensibly if
-         our stylesheet hasn't loaded yet); we override the bounds via
-         !important here from --bento-tab-strip-width-min/-max so they
-         become tunable from bento-tokens.css without a patch rebuild.
-         Collapsed pins width/min/max to --bento-tab-strip-width-
-         collapsed, which already reserves the collapsed control plus
-         symmetric rail padding. Keep the chrome host on this single token
-         so live sidebar/window resize does not get an extra calc/max()
-         width path; the transition is disabled below while resizing. */
-      #bento-shell-host {
-        min-width: var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min)) !important;
-        max-width: var(--bento-tab-strip-width-max) !important;
-        transition:
-          width 200ms var(--bento-easing-standard, ease),
-          min-width 200ms var(--bento-easing-standard, ease),
-          max-width 200ms var(--bento-easing-standard, ease);
-      }
-      :root[bento-window-resizing='true'] #bento-shell-host,
-      :root[bento-sidebar-resizing='true'] #bento-shell-host,
-      #bento-shell-host.bento-shell-sidebar-resizing {
-        transition: none !important;
-      }
-      #bento-shell-host.bento-shell-sidebar-resizing > #bento-shell-frame {
-        pointer-events: none;
-      }
-      #bento-shell-host.bento-sidebar-collapsed {
-        min-width: var(--bento-tab-strip-width-collapsed) !important;
-        max-width: var(--bento-tab-strip-width-collapsed) !important;
-        width: var(--bento-tab-strip-width-collapsed) !important;
-      }
-      #bento-shell-host.bento-sidebar-hidden {
-        position: relative;
-        z-index: 5;
-        min-width: var(--bento-tab-strip-width-collapsed) !important;
-        max-width: var(--bento-tab-strip-width-collapsed) !important;
-        width: var(--bento-tab-strip-width-collapsed) !important;
-        margin-right: calc(-1 * var(--bento-tab-strip-width-collapsed)) !important;
-        overflow: hidden;
-        pointer-events: none;
-        transform: translateX(-100%);
-        transition: transform 160ms var(--bento-easing-standard, ease);
-      }
-      #bento-shell-host.bento-sidebar-hidden.bento-sidebar-hidden-revealed {
-        z-index: 7;
-        pointer-events: auto;
-        transform: translateX(0);
-      }
-      #bento-shell-splitter.bento-sidebar-collapsed {
-        /* visibility:hidden (NOT display:none) so the splitter still
-           occupies its --bento-splitter-hit-size slot — that's what creates
-           the visible gap between the sidebar and the main content
-           slot. Without the reserved width, the gap collapses to 0
-           and the rail looks pasted against the panel area. The
-           hidden splitter remains non-interactive (can't be dragged
-           — there's nothing to resize when the rail is at its
-           minimum) which is the same behaviour display:none gave us
-           on the interaction front. */
-        visibility: hidden;
-      }
-      #bento-shell-splitter.bento-sidebar-hidden {
-        display: none !important;
-        width: 0 !important;
-        min-width: 0 !important;
-        max-width: 0 !important;
-        margin-inline: 0 !important;
-      }
-      #bento-shell-splitter-affordance.bento-sidebar-hidden {
-        display: none;
-      }
-      #bento-sidebar-hidden-hover-zone {
-        display: none;
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 12px;
-        z-index: 6;
-        pointer-events: none;
-      }
-      :root[bento-sidebar-hidden='true'] #bento-sidebar-hidden-hover-zone {
-        display: block;
-        pointer-events: auto;
-      }
-
-      /* Bento panel rounded corners. The real panel frame owns outer
-         shadow/radius; clipping belongs to the inner browser surfaces
-         so direct box-shadows are not cut off by the panel itself.
-         - .browserContainer = the per-tab content area inside the main
-           tab panel (one per browser tab in tabbrowser-tabbox).
-         - [data-bento-panel-tab-id] = each side-panel vbox in the strip.
-         - [data-bento-main-panel] = #tabbrowser-tabbox after we move
-           it into the strip. */
-      .browserContainer {
-        border-radius: var(--bento-panel-corner-radius);
-        overflow: clip;
-      }
-
-      /* Strip layout. Once unifyMainWithStrip() has moved
-         #tabbrowser-tabbox in, the strip IS the entire content area
-         right of the sidebar — main panel + side panels + Add-panel
-         trailer in one horizontal scroll context. The container itself
-         carries the sidebar-to-main gap. In split-view mode the real
-         scrollport is #tabbrowser-tabpanels, which owns its own
-         internal padding so panel content and direct shadows clip
-         together at the scrollport edge. */
-      /* The strip is wrapped in a vbox container by setupPanelNavigator
-         so the custom bottom scrollbar can be overlaid in a stable
-         position. The favicon navigator itself is mounted in the top
-         toolbar after Reload, while browser extension buttons are pushed
-         to the far side of the same top bar. */
-      #bento-strip-container {
-        display: flex;
-        flex-direction: column;
-        flex: 1 1 0%;
-        min-width: 0;
-        position: relative;
-        z-index: 1;
-        overflow: visible;
-        background-color: var(--bento-panel-strip-bg) !important;
-        background-image: none !important;
-      }
-      /* Workspace-switch fade. Applied as a class toggle to BOTH the
-         split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
-         holds the main browser AND the side-panel browsers) AND the
-         strip container (favicon navigator + custom scrollbar). They
-         live in separate parts of the chrome tree so the only way to
-         crossfade everything visible in one motion is to drive both
-         with the same class. The visible transition is opacity-only;
-         layout transitions on strip descendants are suppressed during
-         the swap so reconcile writes land without visible motion.
-         performWorkspaceSwitchFade also sets a swapping flag that
-         suppresses in-reconcile animations (main-width transition,
-         scroll-to-main smooth scroll, favicon nav enter/leave width
-         transitions) so the user sees a STATIC fade — no panel
-         sliding into place during fade-in. */
-      #tabbrowser-tabpanels,
-      #bento-strip-container,
-      #bento-panel-nav {
-        transition: opacity var(--bento-duration-fast, 140ms)
-          var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1));
-      }
-      #tabbrowser-tabpanels.bento-workspace-switching,
-      #bento-strip-container.bento-workspace-switching,
-      #bento-panel-nav.bento-workspace-switching {
-        opacity: 0;
-      }
-      /* Suppress layout transitions while the workspace strip is being
-         swapped and while it fades back in. The opacity transition is
-         our only workspace-switch animation; width/flex/transform
-         transitions on panel containers or the favicon nav can restart
-         when the fade class is removed, which reads as panels sliding
-         behind the fade-in. Keep this scoped to Bento-owned strip
-         structure rather than all descendants: broad animation
-         suppression can break Firefox's internal browser painting. */
-      #tabbrowser-tabpanels.bento-workspace-stabilizing > .split-view-panel-active,
-      #tabbrowser-tabpanels.bento-workspace-stabilizing > [data-bento-main-panel],
-      #tabbrowser-tabpanels.bento-workspace-stabilizing > [data-bento-panel-tab-id],
-      #tabbrowser-tabpanels.bento-workspace-stabilizing > .split-view-splitter,
-      #tabbrowser-tabpanels.bento-workspace-switching > .split-view-panel-active,
-      #tabbrowser-tabpanels.bento-workspace-switching > [data-bento-main-panel],
-      #tabbrowser-tabpanels.bento-workspace-switching > [data-bento-panel-tab-id],
-      #tabbrowser-tabpanels.bento-workspace-switching > .split-view-splitter,
-      #bento-panel-nav.bento-workspace-stabilizing .bento-panel-nav__icon,
-      #bento-panel-nav.bento-workspace-stabilizing .bento-panel-nav__list,
-      #bento-panel-nav.bento-workspace-switching .bento-panel-nav__icon,
-      #bento-panel-nav.bento-workspace-switching .bento-panel-nav__list {
-        transition: none !important;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        #tabbrowser-tabpanels,
-        #bento-strip-container,
-        #bento-panel-nav {
-          transition: none;
-        }
-      }
-      #bento-side-panel-host {
-        display: flex;
-        flex-direction: row;
-        align-items: stretch;
-        overflow: visible;
-        border-radius: var(--bento-panel-corner-radius);
-        gap: 0;
-        flex: 1 1 auto;
-        min-height: 0;
-        /* position: relative so the absolute-positioned inter-panel
-           splitters (children of this host — see syncInterPanelSplitters)
-           anchor to the strip rather than scroll out of sync with some
-           non-static ancestor. */
-        position: relative;
-        /* Native scrollbar hidden — replaced by the custom always-on
-           scrollbar below. macOS auto-hides native scrollbars after a
-           moment regardless of CSS, which conflicts with the user's
-           "always visible" requirement. */
-        scrollbar-width: none;
-        background-color: var(--bento-panel-strip-bg) !important;
-        background-image: none !important;
-      }
-      #bento-side-panel-host::-webkit-scrollbar {
-        display: none;
-      }
-      #bento-strip-container.bento-no-side-panels > #bento-strip-scrollbar {
-        display: none !important;
-      }
-      #bento-panel-nav.bento-panel-nav--hidden {
-        display: none !important;
-        visibility: collapse !important;
-      }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
-        overflow: visible;
-        padding: 0;
-      }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
-        margin-block-start: var(--space-3xs);
-        margin-block-end: var(--space-2xs);
-        margin-inline-start: var(--space-2xs);
-        margin-inline-end: var(--space-2xs);
-        border-radius: 0;
-        background-color: var(--bento-panel-strip-bg) !important;
-        background-image: none !important;
-        box-shadow: none;
-        overflow: visible;
-        position: relative;
-        z-index: 1;
-      }
-      #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] {
-        box-shadow: none;
-      }
-      /* No-panel frame uses Firefox's native structure: the
-         tabbox wrapper creates the gutter, while browserSidebarContainer
-         owns the rounded clip and frame paint. This keeps macOS live
-         window resize smooth. */
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
-        border-radius: var(--radius-xl);
-        background-color: var(--neutral-5);
-        box-shadow: var(--bento-panel-frame-shadow);
-        overflow: clip;
-      }
-      #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer > .browserContainer {
-        border-radius: 0;
-        overflow: visible;
-      }
-      #bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
-        box-shadow: var(--bento-panel-frame-outline-shadow);
-      }
-
-      /* Custom always-visible horizontal scrollbar. Stays in the
-         bottom strip position while the favicon navigator lives in the
-         top toolbar. A divider-colored rail sits behind the thumb so it
-         lines up visually with the sidebar footer divider. */
-      #bento-strip-scrollbar {
-        position: absolute;
-        left: var(--space-2xs);
-        right: var(--space-2xs);
-        bottom: var(--bento-strip-scrollbar-gap);
-        z-index: 20;
-        height: var(--bento-scrollbar-thickness);
-        margin: 0;
-        border-radius: var(--bento-scrollbar-radius);
-        cursor: pointer;
-      }
-      #bento-strip-scrollbar::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: 50%;
-        height: 1px;
-        background-color: var(--bento-sidebar-divider-color);
-        transform: translateY(-50%);
-        pointer-events: none;
-      }
-      .bento-strip-scrollbar__thumb {
-        position: absolute;
-        top: 0;
-        left: 0;
-        z-index: 1;
-        height: 100%;
-        min-width: var(--bento-scrollbar-thumb-min-width);
-        background-color: var(--neutral-80);
-        border-radius: var(--bento-scrollbar-radius);
-        cursor: grab;
-        transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      .bento-strip-scrollbar__thumb:hover {
-        background-color: var(--neutral-80);
-      }
-      .bento-strip-scrollbar__thumb--dragging,
-      .bento-strip-scrollbar__thumb--dragging:hover {
-        background-color: var(--color-60);
-        cursor: grabbing;
-      }
-
-      /* Panel navigator bar. Mounted in the top toolbar after the
-         native Reload/Stop control.
-         [◀] [favicon] [favicon] [favicon] [▶]
-         Active item gets a subtle tinted background. */
-      #bento-panel-nav {
-        position: relative;
-        z-index: 20;
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: var(--space-2xs);
-        align-self: center;
-        flex: 0 1 auto;
-        min-width: 0;
-        max-width: 42vw;
-        margin-inline-start: var(--space-2xs);
-        margin-inline-end: 0;
-        padding-block: var(--space-4xs);
-        padding-inline: var(--space-2xs);
-        box-sizing: border-box;
-        min-height: var(--bento-panel-nav-height);
-      }
-      .bento-panel-nav__btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: var(--bento-panel-nav-button-size);
-        height: var(--bento-panel-nav-button-size);
-        padding: 0;
-        background: transparent;
-        border: none;
-        border-radius: var(--radius-s);
-        color: var(--neutral-70);
-        cursor: pointer;
-        flex: 0 0 auto;
-        transition:
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard);
-        /* The navigator sits in Firefox's titlebar-capable nav bar. These
-           controls must not participate in the native titlebar drag or
-           double-click-to-maximize region. */
-        -moz-window-dragging: no-drag;
-      }
-      .bento-panel-nav__btn:hover {
-        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
-        color: var(--neutral-90);
-      }
-      .bento-panel-nav__btn:active {
-        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
-      }
-      .bento-panel-nav__btn > svg {
-        width: var(--bento-icon-size-sm);
-        height: var(--bento-icon-size-sm);
-        pointer-events: none;
-      }
-      .bento-panel-nav__list {
-        /* flex: 0 1 auto — only take as much width as the favicons
-           need. The next button then sits immediately after the last
-           favicon instead of being pushed to the right edge of the
-           strip by a flex-grow on the list. With many panels the list
-           shrinks to fit (min-width: 0) and scrolls internally. */
-        flex: 0 1 auto;
-        min-width: 0;
-        display: flex;
-        align-items: center;
-        gap: var(--space-3xs);
-        overflow-x: auto;
-        padding-block-start: 0;
-        margin-block-start: 0;
-        scrollbar-width: none;
-      }
-      .bento-panel-nav__list::-webkit-scrollbar {
-        display: none;
-      }
-      .bento-panel-nav__icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: var(--bento-panel-nav-button-size);
-        height: var(--bento-panel-nav-button-size);
-        padding: var(--space-3xs);
-        box-sizing: border-box;
-        background: transparent;
-        border: var(--bento-border-hairline) solid transparent;
-        border-radius: var(--radius-s);
-        cursor: pointer;
-        flex: 0 0 auto;
-        position: relative;
-        overflow: hidden;
-        /* Active-marker and structural transitions use a fixed-size
-           button. Split/subdivide/remove operations can rebuild nav
-           icons, so enter/leave must fade only; animating width,
-           padding, or margin makes the navigator row jump while the
-           panel layout itself is changing. */
-        transition:
-          opacity var(--bento-duration-base) var(--bento-easing-standard),
-          background-color var(--bento-duration-base) var(--bento-easing-standard),
-          border-color var(--bento-duration-base) var(--bento-easing-standard);
-      }
-      .bento-panel-nav__icon:hover {
-        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
-        border-color: transparent;
-      }
-      .bento-panel-nav__icon--main {
-        overflow: visible;
-        margin-inline-end: var(--space-xs);
-        /* The list's flex gap follows this margin. Keep the divider
-           centered in their combined space so it has equal clearance from
-           the fixed main slot and the first draggable panel button. */
-        --bento-panel-nav-main-divider-gap: calc(var(--space-xs) + var(--space-3xs));
-      }
-      .bento-panel-nav__icon--main::after {
-        content: '';
-        position: absolute;
-        inset-block-start: 50%;
-        inset-inline-end: calc(
-          -1 *
-            (
-              ((var(--bento-panel-nav-main-divider-gap) - 1px) / 2) +
-                var(--bento-border-hairline)
-            )
-        );
-        width: 1px;
-        height: 16px;
-        border-radius: var(--radius-pill);
-        background-color: var(--neutral-30);
-        transform: translateY(-50%);
-        pointer-events: none;
-      }
-      .bento-panel-nav__icon--main:hover {
-        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
-      }
-      .bento-panel-nav__icon--active {
-        border-color: transparent;
-        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
-      }
-      .bento-panel-nav__icon--discarded {
-        opacity: 0.55;
-        filter: grayscale(0.55);
-      }
-      .bento-panel-nav__icon--discarded.bento-panel-nav__icon--active,
-      .bento-panel-nav__icon--discarded:hover {
-        opacity: 0.75;
-      }
-      .bento-panel-nav__icon--audible,
-      .bento-panel-nav__icon--has-audio-particles {
-        overflow: visible;
-      }
-      .bento-panel-nav__audio-particles {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        overflow: visible;
-        z-index: 30;
-      }
-      .bento-panel-nav__audio-particle {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 10px;
-        height: 10px;
-        color: var(--color-70);
-        opacity: 0;
-        pointer-events: none;
-        transform: translate(-50%, -50%) translate(0, 0) scale(0.54);
-        animation: bento-panel-nav-music-particle 1500ms linear forwards;
-        will-change: opacity, transform;
-      }
-      .bento-panel-nav__audio-particle--1 {
-        width: 9px;
-        height: 9px;
-        --bento-panel-nav-music-x: -6px;
-        --bento-panel-nav-music-y: -7px;
-        --bento-panel-nav-music-rotation: -12deg;
-      }
-      .bento-panel-nav__audio-particle--2 {
-        width: 8px;
-        height: 8px;
-        --bento-panel-nav-music-x: 5px;
-        --bento-panel-nav-music-y: -8px;
-        --bento-panel-nav-music-rotation: 10deg;
-      }
-      .bento-panel-nav__audio-particle--3 {
-        width: 10px;
-        height: 10px;
-        --bento-panel-nav-music-x: 8px;
-        --bento-panel-nav-music-y: -5px;
-        --bento-panel-nav-music-rotation: 16deg;
-      }
-      @keyframes bento-panel-nav-music-particle {
-        0% {
-          opacity: 0;
-          transform: translate(-50%, -50%) translate(0, 0) scale(0.54) rotate(0deg);
-        }
-        12% {
-          opacity: 0.9;
-        }
-        68% {
-          opacity: 0.55;
-        }
-        100% {
-          opacity: 0;
-          transform:
-            translate(-50%, -50%)
-            translate(var(--bento-panel-nav-music-x), var(--bento-panel-nav-music-y))
-            scale(1)
-            rotate(var(--bento-panel-nav-music-rotation));
-        }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .bento-panel-nav__audio-particle {
-          animation-duration: 1100ms;
-        }
-      }
-      .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
-        background-color: var(--neutral-30);
-      }
-      /* Enter / leave states are opacity-only so structural updates
-         never animate navigator button dimensions. */
-      .bento-panel-nav__icon--entering,
-      .bento-panel-nav__icon--leaving {
-        opacity: 0;
-      }
-      .bento-panel-nav__icon > img {
-        width: var(--bento-panel-nav-favicon-size);
-        height: var(--bento-panel-nav-favicon-size);
-        display: block;
-        /* Make the favicon image pointer-transparent so pointerdown is
-           always reported with the button as the target — keeps the
-           drag-handler's setPointerCapture(btn) coherent regardless of
-           whether the user pressed on the favicon or the button padding. */
-        pointer-events: none;
-      }
-      .bento-panel-nav__icon--placeholder::before {
-        content: '';
-        position: absolute;
-        inset-block-start: 50%;
-        inset-inline-start: 50%;
-        width: var(--bento-panel-nav-favicon-size);
-        height: var(--bento-panel-nav-favicon-size);
-        transform: translate(-50%, -50%);
-        border-radius: 50%;
-        background-color: var(--neutral-30);
-      }
-      /* Drag-to-reorder states. Side-panel buttons (those with a tabId)
-         show grab cursor on idle. While a drag is active the source
-         button dims + scales down, the body cursor switches to grabbing
-         (set on the list element so it covers the whole strip), and a
-         drop indicator marks the prospective insertion point. */
-      .bento-panel-nav__icon[data-bento-nav-draggable] {
-        cursor: grab;
-        /* The navigator now lives in Firefox's titlebar-capable nav bar.
-           Explicitly opt favicon controls out of that drag region so their
-           pointer sequence reaches setupNavDrag(); unoccupied toolbar space
-           remains available for native window dragging. */
-        -moz-window-dragging: no-drag;
-      }
-      .bento-panel-nav__list--dragging {
-        cursor: grabbing;
-      }
-      .bento-panel-nav__list--dragging .bento-panel-nav__icon[data-bento-nav-draggable] {
-        cursor: grabbing;
-      }
-      .bento-panel-nav__icon--dragging {
-        opacity: 0.45;
-        transform: scale(0.92);
-        transition:
-          opacity var(--bento-duration-fast) var(--bento-easing-standard),
-          transform var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      .bento-panel-nav__icon--dragging:hover {
-        background-color: transparent;
-        border-color: transparent;
-        transform: scale(0.92);
-      }
-      /* Insertion indicator. Absolutely positioned overlay over the list
-         (NOT a flex child) so painting it never reflows siblings — that
-         would shift their bounding rects, which would feed back into the
-         next pointermove's slot calculation and oscillate. Top/bottom
-         pinned to span the full nav row height; X is set imperatively
-         per pointermove. */
-      .bento-panel-nav__list {
-        position: relative;
-      }
-      .bento-panel-nav__drop-indicator {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: var(--bento-focus-ring-width);
-        background-color: var(--color-60);
-        border-radius: var(--bento-focus-ring-width);
-        pointer-events: none;
-        z-index: 1;
-        animation: bento-nav-drop-fade-in var(--bento-duration-fast)
-          var(--bento-easing-standard);
-      }
-      @keyframes bento-nav-drop-fade-in {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
-      .bento-panel-nav-menu {
-        position: fixed;
-        z-index: 100000;
-        min-width: max-content;
-        padding: var(--space-4xs);
-        background-color: var(--neutral-5);
-        border: var(--bento-border-hairline) solid var(--neutral-20);
-        border-radius: var(--radius-s);
-        box-shadow: var(--shadow-lg);
-      }
-      .bento-panel-nav-menu__item {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        min-height: var(--bento-control-size-sm);
-        padding: 0 var(--space-2xs);
-        background-color: var(--neutral-5);
-        border: none;
-        border-radius: var(--radius-s);
-        color: var(--neutral-90);
-        cursor: pointer;
-        font: inherit;
-        font-size: var(--font-s);
-        text-align: left;
-      }
-      .bento-panel-nav-menu__item:focus,
-      .bento-panel-nav-menu__item:focus-visible {
-        outline: none;
-      }
-      .bento-panel-nav-menu__item::-moz-focus-inner {
-        border: 0;
-      }
-      .bento-panel-nav-menu__item:hover {
-        background-color: var(--neutral-10);
-      }
-      /* Hide the kebab 'more' button on the main panel — the menu's
-         current contents (custom panel sizes) only apply to side
-         panels, which use panel/setWidth. The main slot has its own
-         per-workspace width (panel/setMainWidth) and gets resized via
-         the main splitter instead.
-
-         CRITICAL: scope via direct-child > to the panel header,
-         because BOTH #tabbrowser-tabbox (the deck, marked by
-         unifyMainWithStrip) AND the active-tab notificationbox carry
-         data-bento-main-panel. A bare descendant selector matches
-         the deck and hides the kebab on EVERY panel header,
-         including side panels. The header is a direct child of its
-         notificationbox; the deck has notificationboxes (not
-         headers) as direct children, so '> .bento-panel-header'
-         only matches when the marked element IS the main panel
-         notificationbox. */
-      [data-bento-main-panel] > .bento-panel-header .bento-panel-header-button--more {
-        display: none;
-      }
-
-      /* The main panel (moved tabbrowser-tabbox). flex-grow:1 so it
-         fills remaining space when no side panels exist; flex-basis:
-         0 + min-width keeps it from collapsing under the panels.
-         Inside, the existing tabbox renders the active tab's browser
-         as before — moving the host element doesn't change its
-         internal layout. */
-      #bento-side-panel-host > [data-bento-main-panel] {
-        display: flex;
-        flex-direction: column;
-        flex: 1 1 0%;
-        min-width: var(--bento-main-panel-min-width);
-      }
-
-      /* Each side panel: column-flex of [header, browser]. flex stays
-         at 0 0 auto so Firefox's native split-view splitter resize
-         updates take effect against the sibling width. */
-      #bento-side-panel-host > [data-bento-panel-tab-id] {
-        display: flex;
-        flex-direction: column;
-        flex: 0 0 auto;
-        min-width: var(--bento-panel-min-width);
-        background-color: var(--neutral-5);
-      }
-      .bento-panel--discarded {
-        opacity: 0.68;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
-      }
-      /* Close-panel animation. Fade only: keep the panel's current
-         layout size while it exits, then let the post-close reconcile
-         remove its slot. Do not animate width/flex/margins here; that
-         makes neighbouring panels resize during the fade. */
-      .bento-panel--removing {
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 120ms var(--bento-easing-standard);
-      }
-
-      /* Legacy host-owned panel containers are positioned for
-         drag/focus bookkeeping. Native split-view panels get their
-         direct frame/shadow rules under #tabbrowser-tabpanels below. */
-      #bento-side-panel-host > [data-bento-main-panel],
-      #bento-side-panel-host > [data-bento-panel-tab-id] {
-        position: relative;
-      }
-      /* Suppress Firefox's default :focus outline on the panel
-         containers. They have tabindex="-1" so they're focusable;
-         when the user clicks into content the chrome focus path
-         walks through the container and Firefox would otherwise
-         paint a persistent default focus outline (rgb(251,251,254)
-         3px, reads as a cool/cyan ring against dark backgrounds)
-         that we don't own. !important is required because
-         Firefox's chrome stylesheet sets the outline at high
-         specificity. The cycle ring (.bento-panel--cycle-focused
-         ::after below) is the only focus indicator we want. */
-      [data-bento-main-panel],
-      [data-bento-main-panel]:focus,
-      [data-bento-main-panel]:focus-within,
-      [data-bento-panel-tab-id],
-      [data-bento-panel-tab-id]:focus,
-      [data-bento-panel-tab-id]:focus-within,
-      [data-bento-subpanel],
-      [data-bento-subpanel]:focus,
-      [data-bento-subpanel]:focus-within,
-      .bento-subdivision-chooser,
-      .bento-subdivision-chooser:focus,
-      .bento-subdivision-chooser:focus-within {
-        outline: none !important;
-      }
-      /* Firefox's content-area.css paints "outline: var(--focus-outline)"
-         on the ".deck-selected > .browserContainer" of every split-view
-         panel — that's where the cyan focus ring around the active tab's
-         main slot was actually coming from (NOT the tabbrowser-tabbox
-         itself, which we already neutralised above). Suppress it across
-         all split-view panel browserContainers; the .bento-panel--cycle-
-         focused ::after ring is the only focus indicator we want. */
-      #tabbrowser-tabpanels[splitview] .browserContainer {
-        outline: none !important;
-      }
-      #bento-side-panel-host > [data-bento-main-panel]::after,
-      #bento-side-panel-host > [data-bento-panel-tab-id]::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--bento-panel-corner-radius);
-        pointer-events: none;
-        z-index: 10;
-        box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-      }
-      #bento-side-panel-host > .bento-panel--focused::after,
-      #bento-side-panel-host > .bento-panel--cycle-focused::after {
-        border-color: var(--color-60);
-      }
-      .bento-panel--focused > .bento-panel-header,
-      .bento-panel--cycle-focused > .bento-panel-header {
-        background-color: var(--neutral-5);
-        border-bottom-color: var(--neutral-5);
-      }
-      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button,
-      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button {
-        color: var(--neutral-80);
-      }
-      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
-        color: var(--neutral-90);
-      }
-      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--focused > .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel--cycle-focused > .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
-        color: var(--neutral-90);
-      }
-      #bento-side-panel-host > [data-bento-panel-tab-id] > browser {
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-
-      /* Per-panel header: compact urlbar (back/fwd/reload, URL input,
-         bookmark / pin). All sizing via Bento/Mux tokens — no raw values. */
-      .bento-panel-header {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: var(--space-3xs);
-        padding: var(--space-3xs) var(--space-2xs);
-        background-color: var(--neutral-5);
-        border-bottom: var(--bento-border-hairline) solid var(--neutral-5);
-        flex: 0 0 auto;
-        max-height: var(--bento-panel-header-height);
-        min-height: var(--bento-panel-header-height);
-        overflow: hidden;
-        box-sizing: border-box;
-        transition:
-          background-color var(--bento-duration-base) var(--bento-easing-standard),
-          max-height var(--bento-duration-base) var(--bento-easing-snappy),
-          min-height var(--bento-duration-base) var(--bento-easing-snappy),
-          padding var(--bento-duration-base) var(--bento-easing-snappy),
-          border-bottom-color var(--bento-duration-base) var(--bento-easing-standard),
-          border-bottom-width var(--bento-duration-base) var(--bento-easing-snappy);
-      }
-      /* Header hiding uses height collapse, not opacity/visibility:
-         forcePanelHeaderInteractiveState stamps inline-important values
-         for those properties. No !important here so subdivision top-
-         closed rules keep precedence when both states apply. */
-      [data-bento-header-hidden] > .bento-panel-header {
-        max-height: 0;
-        min-height: 0;
-        padding-block: 0;
-        border-bottom-width: 0;
-        overflow: hidden;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .bento-panel-header {
-          transition: none;
-        }
-      }
-      /* Bento-owned native icon-button styling uses Mux-derived ghost/small
-         tokens for controls that live in browser chrome. Native
-         pseudo-classes and React-Aria-compatible data-state selectors mirror
-         the interactive states without mounting a Mux runtime component. */
-      .bento-panel-header .bento-icon-button.bento-button {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-3xs);
-        width: var(--bento-control-size-sm);
-        height: var(--bento-control-size-sm);
-        min-width: var(--bento-control-size-sm);
-        min-height: var(--bento-control-size-sm);
-        box-sizing: border-box;
-        padding: 0;
-        margin: 0;
-        appearance: none;
-        background-color: transparent;
-        border: 1px solid transparent;
-        border-radius: var(--radius-s);
-        color: var(--neutral-80);
-        cursor: pointer;
-        flex: 0 0 auto;
-        line-height: 1;
-        outline: none;
-        user-select: none;
-        transition:
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          border-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard),
-          box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
-        color: var(--neutral-90);
-      }
-      .bento-panel-header .bento-icon-button.bento-button:active:not([disabled], [data-disabled], [data-pending]),
-      .bento-panel-header .bento-icon-button.bento-button[data-pressed]:not([disabled], [data-disabled], [data-pending]) {
-        background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
-      }
-      .bento-panel-header .bento-icon-button.bento-button:focus-visible,
-      .bento-panel-header .bento-icon-button.bento-button[data-focus-visible] {
-        box-shadow:
-          0 0 0 2px var(--neutral-100),
-          0 0 0 4px var(--focus-ring-color);
-      }
-      .bento-panel-header .bento-icon-button.bento-button[disabled],
-      .bento-panel-header .bento-icon-button.bento-button[data-disabled] {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-      .bento-panel-header .bento-icon-button.bento-button[data-pending] {
-        cursor: default;
-      }
-      .bento-panel-header .bento-icon-button > svg {
-        width: var(--bento-icon-size-sm);
-        height: var(--bento-icon-size-sm);
-        pointer-events: none;
-      }
-      /* Dot-pattern icons (grip-vertical on the drag handle,
-         more-vertical on the kebab) render each dot as the round
-         cap of a zero-length stroke segment, so the dot diameter
-         equals stroke-width. At stroke-width 2 in a 24-unit
-         viewBox displayed at 14px, each dot is only ~1.17px —
-         a fraction of the ink the continuous-stroke icons put
-         on screen (chevrons, refresh, bookmark, pin, close), so the dot
-         icons read as "disabled" even at the same currentColor.
-         Bumping the stroke compensates so all header icons hit
-         the same optical weight. */
-      .bento-panel-header-drag-handle > svg,
-      .bento-panel-header-button--more > svg {
-        stroke-width: 3.5;
-      }
-      /* Drag handle: behaves as a button (role='button') but is
-         operated by pointer drag, not click — override the default
-         pointer cursor with grab / grabbing. */
-      .bento-panel-header-drag-handle {
-        cursor: grab;
-        touch-action: none;
-      }
-      .bento-panel-header-drag-handle--dragging {
-        cursor: grabbing;
-        background-color: color-mix(in srgb, var(--neutral-100) 10%, transparent);
-        color: var(--color-60);
-      }
-      /* Bookmark and pin buttons: filled outline when active. Bookmark state
-         tracks whether the current URL is in
-         the bookmarks DB. Fill uses currentColor so the icon picks
-         up whatever default / hover colour the shared rule sets. */
-      .bento-panel-header-button--active > svg {
-        fill: currentColor;
-      }
-      /* Dragging state for the panel container — slight opacity
-         dip + subtle shadow so the floating panel reads as
-         'lifted off the strip'. */
-      .bento-panel--dragging {
-        opacity: 0.85;
-      }
-      .bento-panel-drop-indicator {
-        background-color: var(--color-60);
-        border-radius: 1.5px;
-        pointer-events: none;
-      }
-      .bento-panel-header-url {
-        flex: 1 1 auto;
-        min-width: 0;
-        height: var(--bento-control-size-sm);
-        padding: 0 var(--space-2xs);
-        background-color: var(--neutral-5);
-        border: var(--bento-border-hairline) solid transparent;
-        border-radius: var(--radius-s);
-        color: var(--neutral-90);
-        font-size: var(--font-s);
-        font-family: inherit;
-        outline: none;
-        box-sizing: border-box;
-      }
-      .bento-panel-header-url:focus {
-        background-color: var(--neutral-5);
-        border-color: var(--color-60);
-      }
-      .bento-panel-header-url::placeholder {
-        color: var(--neutral-50);
-      }
-      .bento-panel-loading-overlay {
-        position: absolute;
-        inset-block-start: var(--bento-panel-header-height);
-        inset-inline: 0;
-        inset-block-end: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: var(--neutral-5);
-        border-end-start-radius: var(--bento-panel-corner-radius);
-        border-end-end-radius: var(--bento-panel-corner-radius);
-        color: var(--color-60);
-        pointer-events: none;
-        z-index: 9;
-      }
-      .bento-panel-loading-overlay[hidden] {
-        display: none !important;
-      }
-      [data-bento-subpanel] > .bento-panel-loading-overlay {
-        inset-block-start: var(--bento-panel-header-height);
-      }
-      [data-bento-header-hidden] > .bento-panel-loading-overlay {
-        inset-block-start: 0;
-      }
-      .bento-panel-header-restore {
-        display: none;
-        position: absolute;
-        top: var(--space-3xs);
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 12;
-        width: 64px;
-        height: 16px;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        margin: 0;
-        appearance: none;
-        background: transparent;
-        border: 0;
-        cursor: pointer;
-      }
-      [data-bento-header-hidden] > .bento-panel-header-restore {
-        display: flex;
-      }
-      [data-bento-subdivision-top-closed] > .bento-panel-header-restore {
-        display: none !important;
-      }
-      .bento-panel-header-restore__pill {
-        display: block;
-        width: 44px;
-        height: 3px;
-        border-radius: 3px;
-        /* Fixed mid-dark grey is intentional: neutral tokens flip with
-           color mode, but this handle must stay legible on black and
-           white page content as well as light and dark chrome themes. */
-        background-color: rgba(92, 92, 98, 0.3);
-        box-shadow:
-          0 0 0 1px rgba(255, 255, 255, 0.28),
-          0 1px 4px rgba(0, 0, 0, 0.45);
-        transition:
-          width var(--bento-duration-fast) var(--bento-easing-standard),
-          height var(--bento-duration-fast) var(--bento-easing-standard),
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
-      }
-      .bento-panel-header-restore:hover > .bento-panel-header-restore__pill {
-        width: 56px;
-        height: 4px;
-        background-color: rgba(128, 128, 136, 1);
-      }
-      .bento-panel-header-restore:focus-visible {
-        outline: none;
-      }
-      .bento-panel-header-restore:focus-visible > .bento-panel-header-restore__pill {
-        box-shadow:
-          0 0 0 1px rgba(255, 255, 255, 0.28),
-          0 1px 4px rgba(0, 0, 0, 0.45),
-          0 0 0 3px var(--focus-ring-color);
-      }
-      .bento-panel-loading-overlay .bento-spinner {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        --_spinner-size: 2.25rem;
-      }
-      .bento-panel-loading-overlay .bento-spinner__svg {
-        width: var(--_spinner-size);
-        height: var(--_spinner-size);
-        animation: bento-spinner-rotate 1s linear infinite;
-      }
-      .bento-panel-loading-overlay .bento-spinner__track {
-        stroke: var(--neutral-20);
-      }
-      .bento-panel-loading-overlay .bento-spinner__arc {
-        stroke: var(--color-60);
-        stroke-dasharray: 44, 63;
-        animation: bento-spinner-dash 1.2s ease-in-out infinite;
-      }
-      @keyframes bento-spinner-rotate {
-        100% { transform: rotate(360deg); }
-      }
-      @keyframes bento-spinner-dash {
-        0% { stroke-dasharray: 1, 63; stroke-dashoffset: 0; }
-        50% { stroke-dasharray: 44, 63; stroke-dashoffset: -16; }
-        100% { stroke-dasharray: 44, 63; stroke-dashoffset: -62; }
-      }
-
-      /* ─── Native split-view panel layout ──────────────────────────────
-         Activated when reconcilePanelsSplitView adds .bento-split-active
-         to #tabbrowser-tabpanels and sets the [splitview] attribute via
-         the BENTO_SPLIT_SENTINEL → setSplitViewActive() chain.
-
-         Each active panel is a <hbox class="browserSidebarContainer
-         split-view-panel split-view-panel-active">. By default that
-         hbox lays out children horizontally — which makes our injected
-         per-panel header sit to the LEFT of the <browser>, splitting
-         the panel's width in half. Override flex-direction so children
-         stack vertically: header on top, browser fills the rest. */
-      /* When the combined min-width of all panels exceeds the viewport
-         width (typical at 4+ panels on a narrow window), the deck must
-         scroll horizontally instead of overflowing off-screen. flex-
-         shrink: 0 on each panel keeps them at their min-width — without
-         it, flex would shrink them past min-width and squash content
-         until the panels are unusable. */
-      #tabbrowser-tabpanels.bento-split-active {
-        /* The strip backdrop intentionally matches the main side of the
-           top toolbar while panel frames remain on the chrome card surface.
-           display:flex + gap:var(--bento-panel-gap) is the single source of
-           truth for inter-panel spacing — Firefox's content-area.css
-           sets margin-left: 5px on .split-view-panel-active children
-           with higher specificity than our previous margin attempt,
-           so flex gap (which the spec explicitly says doesn't
-           collide with margin) is the cleaner override.
-           Padding belongs to the real scrollport so panel content and
-           direct shadows clip together at the left/right edges. */
-        display: flex;
-        flex-direction: row;
-        align-items: stretch;
-        gap: var(--bento-panel-gap);
-        padding-block-start: var(--space-3xs);
-        padding-block-end: calc(
-          var(--bento-strip-controls-height) + var(--bento-strip-scrollbar-gap)
-        );
-        padding-inline-start: var(--space-3xs);
-        padding-inline-end: var(--space-2xs);
-        overflow-x: scroll;
-        overflow-y: hidden;
-        box-sizing: border-box;
-        background-color: var(--bento-panel-strip-bg) !important;
-        background-image: none !important;
-        /* Hide tabpanels' native horizontal scrollbar — the custom
-           always-visible #bento-strip-scrollbar in the sidebar drives
-           tabpanels.scrollLeft and is positioned next to the favicon
-           nav. macOS's overlay scrollbar floats over panel content and
-           auto-hides; the custom one stays put. */
-        scrollbar-width: none;
-      }
-      #tabbrowser-tabbox:has(> #tabbrowser-tabpanels.bento-split-active) {
-        background-color: var(--bento-panel-strip-bg) !important;
-        background-image: none !important;
-      }
-      #tabbrowser-tabpanels.bento-split-active.bento-flat-panel-layout {
-        display: block;
-        position: relative;
-        /* display:block ignores gap for layout, but the flat-layout
-           geometry code reads the computed gap as the authoritative
-           inter-panel spacing value. */
-        gap: var(--bento-panel-gap);
-      }
-      #tabbrowser-tabpanels.bento-split-active::-webkit-scrollbar {
-        display: none;
-      }
-      #tabbrowser-tabpanels.bento-split-active split-view-footer {
-        display: none !important;
-      }
-      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active {
-        flex-direction: column;
-        min-width: var(--bento-panel-min-width, 380px);
-        flex-shrink: 0;
-        /* Firefox's content-area.css applies margin: var(--space-xsmall)
-           to active split-view panels — pushes the first panel away
-           from the top URL bar and from the sidebar (and double-spaces
-           against the inter-panel gap). Bento controls all spacing via
-           tabpanels' gap + strip padding, so zero out the upstream
-           margin. !important required because the upstream rule wins
-           the specificity tie on source order otherwise. */
-        margin: 0 !important;
-      }
-      #tabbrowser-tabpanels.bento-split-active.bento-flat-panel-layout > .split-view-panel-active {
-        position: absolute !important;
-        flex: 0 0 auto !important;
-        min-width: 0 !important;
-        max-width: none !important;
-      }
-      #bento-flat-layout-extent {
-        position: absolute !important;
-        inset-block-start: 0;
-        inset-inline-start: 0;
-        block-size: 1px !important;
-        pointer-events: none;
-        opacity: 0;
-      }
-      /* The real split-view panels are the visual frames. Shadows live
-         on the same elements as content, so both clip together at the
-         horizontal scrollport edge. */
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
-        border-radius: var(--bento-panel-corner-radius);
-        background-color: var(--bento-panel-strip-bg) !important;
-        box-shadow: var(--bento-panel-frame-shadow);
-        box-sizing: border-box;
-        border: 0;
-        overflow: visible;
-        position: relative;
-      }
-      #tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-main-panel],
-      #tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-panel-tab-id] {
-        box-shadow: var(--bento-panel-frame-outline-shadow);
-      }
-      /* The browser fills whatever vertical space the header doesn't. */
-      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
-      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > .browserContainer,
-      #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > .browserStack {
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > browser,
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > .browserContainer,
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel] > .browserStack {
-        border-radius: var(--bento-panel-corner-radius);
-        overflow: clip;
-      }
-      /* Side-panel content sits directly under the injected panel header.
-         Keep the content's bottom corners rounded, but square off the
-         top corners so it joins flush to the header's square bottom
-         edge. The main content slot keeps all four rounded corners. */
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > browser,
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserContainer,
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] > .browserStack {
-        border-end-start-radius: var(--bento-panel-corner-radius);
-        border-end-end-radius: var(--bento-panel-corner-radius);
-        border-start-start-radius: 0 !important;
-        border-start-end-radius: 0 !important;
-        overflow: clip;
-      }
-      /* DOM fullscreen. Firefox's stock fullscreen stylesheet only
-         hides Firefox-owned chrome. Bento's sidebar, splitters, panel
-         navigator, scrollbar, and flat-layout geometry live outside
-         those selectors, so they must yield here or page fullscreen
-         stays trapped inside the main content slot. Side-panel fullscreen
-         is marked from Firefox's exact requesting browser so the actual
-         requesting slot, not necessarily the deck-selected main slot,
-         expands to the window. */
-      :root[inDOMFullscreen] #bento-shell-host,
-      :root[inDOMFullscreen] #bento-shell-splitter,
-      :root[inDOMFullscreen] #bento-shell-splitter-affordance,
-      :root[inDOMFullscreen] #bento-sidebar-chrome-divider,
-      :root[inDOMFullscreen] #bento-panel-nav,
-      :root[inDOMFullscreen] #bento-strip-scrollbar,
-      :root[inDOMFullscreen] #bento-add-panel-trailer,
-      :root[inDOMFullscreen] .bento-panel-header,
-      :root[inDOMFullscreen] .bento-panel-header-restore,
-      :root[inDOMFullscreen] .bento-panel-loading-overlay,
-      :root[inDOMFullscreen] .bento-subdivision-vsplitter,
-      :root[inDOMFullscreen] .bento-subdivision-hsplitter,
-      :root[inDOMFullscreen] .bento-subdivision-chooser,
-      :root[inDOMFullscreen] #bento-side-panel-host > .bento-panel-splitter,
-      :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-vsplitter,
-      :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-hsplitter,
-      :root[inDOMFullscreen] #bento-side-panel-host > .bento-layout-chooser {
-        display: none !important;
-        visibility: collapse !important;
-      }
-      :root[inDOMFullscreen] #bento-strip-container,
-      :root[inDOMFullscreen] #bento-side-panel-host {
-        border-radius: 0 !important;
-        min-width: 0 !important;
-        overflow: hidden !important;
-      }
-      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host {
-        padding: 0 !important;
-      }
-      :root[inDOMFullscreen] #bento-side-panel-host > [data-bento-main-panel]::after,
-      :root[inDOMFullscreen] #bento-side-panel-host > [data-bento-panel-tab-id]::after,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]::after,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id]::after,
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after,
-      :root[inDOMFullscreen] [data-bento-subpanel]::after,
-      :root[inDOMFullscreen] [data-bento-subdivided]::before,
-      :root[inDOMFullscreen] .bento-subdivision-chooser::after {
-        content: none !important;
-        display: none !important;
-        border: 0 !important;
-      }
-      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel],
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] {
-        left: 0 !important;
-        top: 0 !important;
-        width: 100% !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        height: 100% !important;
-        min-height: 0 !important;
-        max-height: none !important;
-        display: flex !important;
-        position: absolute !important;
-        flex: 1 1 auto !important;
-        margin: 0 !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        overflow: hidden !important;
-        -moz-subtree-hidden-only-visually: 0 !important;
-        visibility: inherit !important;
-        opacity: 1 !important;
-      }
-      :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active {
-        gap: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-        scrollbar-width: none !important;
-      }
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active:not(.deck-selected),
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active:not([data-bento-dom-fullscreen-requester]) {
-        display: none !important;
-      }
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserContainer,
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserContainer,
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > .browserStack,
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected .browserStack,
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected > browser,
-      :root[inDOMFullscreen]:not([bento-dom-fullscreen-panel]) #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active.deck-selected browser,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] > .browserContainer,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] .browserContainer,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] > .browserStack,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] .browserStack,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] > browser,
-      :root[inDOMFullscreen][bento-dom-fullscreen-panel] #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active[data-bento-dom-fullscreen-requester] browser,
-      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels,
-      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserContainer,
-      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] .browserStack,
-      :root[inDOMFullscreen] #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] browser {
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        overflow: hidden !important;
-        -moz-subtree-hidden-only-visually: 0 !important;
-        visibility: inherit !important;
-        opacity: 1 !important;
-      }
-      /* Injected per-panel header — sits above the browser, takes its
-         natural height, doesn't flex. */
-      .bento-panel-header[data-bento-injected="1"] {
-        flex: 0 0 auto;
-        border-radius: var(--bento-panel-corner-radius) var(--bento-panel-corner-radius) 0 0;
-        position: relative;
-        z-index: 5;
-      }
-
-      /* ─── Add-panel trailer ────────────────────────────────────────
-       * Slim flex item appended to the end of the split-view strip
-       * (last child of #tabbrowser-tabpanels.bento-split-active).
-       * The outer XUL host is only a layout/focus/cycle target; the
-       * actual interactive controls are the "+" and saved-panel buttons
-       * rendered inside the panel-trailer iframe. Inline order:999
-       * keeps it visually after every panel regardless of the per-panel
-       * order:N inline styles the reconciler stamps. */
-      /* Trailer is a flex sibling of the panels inside tabpanels (NOT
-         an absolute overlay) so it scrolls with the strip and the
-         last panel's splitter sits between the last panel and the
-         trailer naturally. Critical: needs .split-view-panel-active
-         class to opt into Firefox's split-view paint pipeline —
-         non-panel children of the deck render invisibly otherwise.
-         The ID rule overrides the .split-view-panel-active rule's
-         min-width (which would force 380px, way wider than we want
-         for a slim trailer slot).
-         Colours: --neutral-* tokens flip with the public Mux mode
-         cascade (data-color-mode on the chrome window), so the
-         trailer adapts to light + dark mode automatically. SVG
-         currentColor inherits from the trailer's color property so
-         the icon tracks the same token. */
-      /* Trailer width reserves a 3x3 button grid. If more than eight
-         saved panels exist, React adds a native select underneath the
-         grid and applyTrailerWidth() flips --bento-saved-panel-overflow
-         to 1 so the host widens just enough for the select. */
-      #bento-add-panel-trailer {
-        --bento-panel-trailer-button-size: max(
-          var(--space-l),
-          calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
-        );
-        --bento-panel-trailer-grid-width: calc(
-          (var(--bento-panel-trailer-button-size) * 3) + (var(--space-3xs) * 2)
-        );
-        --bento-panel-trailer-base-width: max(
-          16rem,
-          calc(var(--bento-panel-trailer-grid-width) + (var(--space-xs) * 2))
-        );
-        --bento-panel-trailer-wide-width: 16rem;
-        --bento-panel-trailer-width: max(
-          var(--bento-panel-trailer-base-width),
-          calc(
-            var(--bento-panel-trailer-grid-width) +
-              (var(--space-xs) * 2) +
-              (
-                var(--bento-saved-panel-overflow, 0) *
-                  (var(--bento-panel-trailer-wide-width) - var(--bento-panel-trailer-grid-width))
-              )
-          )
-        );
-        width: var(--bento-panel-trailer-width) !important;
-        flex: 0 0 var(--bento-panel-trailer-width) !important;
-        min-width: var(--bento-panel-trailer-base-width) !important;
-        align-self: stretch !important;
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: stretch !important;
-        justify-content: stretch !important;
-        order: 999 !important;
-        box-sizing: border-box;
-        position: relative;
-        margin-block: var(--space-2xs);
-        padding: 0;
-        background-color: transparent;
-        border: 0;
-        border-radius: var(--bento-panel-corner-radius);
-        color: var(--neutral-70);
-        transition:
-          flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard);
-      }
-      #bento-add-panel-trailer:focus,
-      #bento-add-panel-trailer:focus-within {
-        outline: none !important;
-      }
-      #bento-add-panel-trailer::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--bento-panel-corner-radius);
-        pointer-events: none;
-        z-index: 10;
-        box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-      }
-      #bento-add-panel-trailer.bento-panel--cycle-focused::after,
-      #bento-add-panel-trailer:focus::after,
-      #bento-add-panel-trailer:focus-within::after {
-        border-color: var(--color-60);
-      }
-      /* Inner moz-extension <browser> iframe — fills the trailer host
-         so the React PanelTrailer paints edge-to-edge. The iframe owns
-         hover/active/focus styling for the actual buttons. */
-      #bento-add-panel-trailer > #bento-panel-trailer-frame {
-        flex: 1 1 auto;
-        min-width: 0;
-        background-color: transparent;
-      }
-
-      /* ─── Multi-panel column ordering ────────────────────────────────
-         Firefox's split-view CSS only assigns explicit flex 'order' for
-         column="0" and column="1" (designed for the 2-panel UI). With
-         3+ panels, columns 2+ get default 'order: 0' and end up
-         interleaved with column 0; column 1's 'order: 2' still pushes
-         it after the splitter. Result with N panels: visual layout is
-         [col 0, col 2, col 3, ..., splitter, col 1] instead of
-         [col 0, col 1, col 2, ...]. The new mainTab (always col 0)
-         appears in a non-deterministic visual slot depending on DOM
-         insertion order, which the user perceives as "main slot
-         moves to the second position when I press Cmd+T".
-         The reconciler now sets inline style.order = 2*i on each
-         panel and inserts a Bento splitter at order = 2*i + 1
-         between adjacent pairs. The CSS rules below for column
-         attributes 0–9 are kept as fallback for the brief moment
-         before the reconciler stamps inline orders (they don't
-         alternate with splitters but at least keep the visual
-         ordering deterministic on first paint). Firefox's native
-         splitter (Firefox order: 1, only between col 0 / col 1)
-         is hidden — Bento's per-pair splitters take over. */
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="0"] { order: 0; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="1"] { order: 2; }
-      /* Firefox's content-area.css gives subsequent .split-view-
-         panel-active children a ~5px left margin and a separate
-         col-1 margin. Both are zeroed because tabpanels.bento-
-         split-active now uses flex gap (CSS spec: gap doesn't
-         collide with item margins, so leftover Firefox margins
-         would add to our flex gap producing double spacing). */
-      #tabbrowser-tabpanels[splitview] > .split-view-panel-active,
-      #tabbrowser-tabpanels[splitview] > .split-view-panel-active[column="1"] {
-        margin-left: 0;
-      }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="2"] { order: 4; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="3"] { order: 6; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="4"] { order: 8; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="5"] { order: 10; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="6"] { order: 12; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="7"] { order: 14; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="8"] { order: 16; }
-      #tabbrowser-tabpanels[splitview] > .split-view-panel[column="9"] { order: 18; }
-      #tabbrowser-tabpanels[splitview] > .split-view-splitter {
-        order: 99;
-        display: none;
-      }
-
-      /* Bento per-pair inter-panel splitter. Lives in
-         #bento-side-panel-host (NOT inside tabpanels — XUL deck
-         hit-testing blocks anything that isn't a selected panel,
-         regardless of element type or position). Positioned
-         absolutely at the right edge of each "left" panel via
-         syncInterPanelSplitters in JS.
-         Visual: a fixed-width, half-length accent line at the centre of
-         a consistent grab zone, drawn via background linear-gradient (XUL splitter
-         elements ignore ::before pseudo-elements, so element-side
-         CSS is the only path). Hover/drag changes opacity only; the
-         hit target and painted bar do not resize, so panel boundaries
-         do not visually jump under the cursor. */
-      #bento-side-panel-host > .bento-panel-splitter {
-        cursor: col-resize;
-        width: var(--bento-splitter-hit-size) !important;
-        min-width: var(--bento-splitter-hit-size) !important;
-        max-width: var(--bento-splitter-hit-size) !important;
-        box-sizing: border-box;
-        border: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        appearance: none;
-        /* Invisible at rest and visible on hover/drag. The splitter is
-           always the same hit target with the same fixed-width
-           painted bar; only opacity changes, so there is no apparent
-           growth/shrink animation under the cursor. */
-        background-image:
-          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
-          linear-gradient(
-            to right,
-            transparent calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
-            transparent calc(50% + var(--bento-splitter-indicator-radius))
-          ),
-          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size:
-          100% 100%,
-          100% 50%,
-          100% 100%;
-        opacity: 0;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
-      }
-      #bento-side-panel-host > .bento-panel-splitter:hover,
-      #bento-side-panel-host > .bento-panel-splitter--dragging {
-        opacity: 1;
-      }
-      #bento-side-panel-host > .bento-panel-splitter--devtools-link {
-        opacity: 1;
-        background-image:
-          radial-gradient(circle at 0 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
-          linear-gradient(
-            to bottom,
-            transparent calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
-            transparent calc(50% + var(--bento-splitter-indicator-radius))
-          ),
-          radial-gradient(circle at 100% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
-        background-position:
-          center var(--bento-devtools-link-top, center),
-          center var(--bento-devtools-link-top, center),
-          center var(--bento-devtools-link-top, center);
-        background-size:
-          100% var(--bento-devtools-link-height, 32px),
-          100% var(--bento-devtools-link-height, 32px),
-          100% var(--bento-devtools-link-height, 32px);
-      }
-      /* Hide every inter-panel splitter while a panel header is
-         being dragged. Splitters are absolute-positioned overlays
-         anchored to the layout positions of the panels they
-         separate; the dragged panel transforms via translate
-         (which doesn't fire the ResizeObserver, so syncInter-
-         PanelSplitters won't re-run), which would otherwise leave
-         splitters trailing the wrong panel boundaries. The drop
-         indicator above takes over as the visual cue during the
-         drag; splitters re-appear when endDrag re-syncs them
-         against the settled post-drop layout. */
-      #bento-side-panel-host.bento-side-panel-host--reordering > .bento-panel-splitter {
-        visibility: hidden;
-      }
-
-      /* Split-view panel containers are positioned for drag/focus
-         bookkeeping, but do not paint outline rings around the slots. */
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel],
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id] {
-        position: relative;
-      }
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]::after,
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id]::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--bento-panel-corner-radius);
-        pointer-events: none;
-        z-index: 10;
-        box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-      }
-      #tabbrowser-tabpanels.bento-split-active > .bento-panel--focused::after,
-      #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
-        border-color: var(--color-60);
-      }
-      [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed])::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--bento-panel-corner-radius);
-        pointer-events: none;
-        z-index: 10;
-        box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-      }
-      [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--focused::after,
-      [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--cycle-focused::after {
-        border-color: var(--color-60);
-      }
-
-      /* Arrow-panel theming. macOS popup.css sets --panel-background:
-         none on all panel elements so the native NSVisualEffectView
-         renders the backdrop. Arrow panels disable native rendering
-         (appearance: none) but still inherit --panel-background: none,
-         leaving ::part(content) transparent. Override both the variable
-         on the host element and the background on ::part(content)
-         directly — the variable chain through @layer bento.chrome-theme
-         does not reliably reach the XUL shadow part on macOS. */
-      *|panel[type="arrow"] {
-        --panel-background: var(--neutral-10) !important;
-        --panel-color: var(--neutral-90) !important;
-        --panel-border-color: var(--neutral-20) !important;
-        --panel-border-radius: var(--radius-l) !important;
-      }
-      *|panel[type="arrow"]::part(content) {
-        background: var(--neutral-10) !important;
-        background-color: var(--neutral-10) !important;
-        color: var(--neutral-90) !important;
-        border-color: var(--neutral-20) !important;
-      }
-
-      /* ─── Subdivision (in-place, CSS Grid) ──────────────────────── */
-      [data-bento-subdivided] > .browserContainer,
-      [data-bento-subdivided] > .browserStack,
-      [data-bento-subdivided] > browser {
-        overflow: clip !important;
-        min-height: 0 !important;
-        position: relative !important;
-        z-index: 2 !important;
-      }
-      [data-bento-subdivided] > [data-bento-subpanel] {
-        box-shadow: none !important;
-        margin: 0 !important;
-        border-radius: 0 !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        position: relative !important;
-        visibility: inherit !important;
-        z-index: 1 !important;
-      }
-      /* Disable the focus ring on the outer subdivided panel —
-         each sub-section should own its own indicator (future). */
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after {
-        display: none !important;
-      }
-      [data-bento-subdivided]::before {
-        content: '';
-        position: absolute;
-        inset-inline: 0;
-        top: 0;
-        height: var(--bento-subdivision-top-focus-height, 50%);
-        border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: var(--bento-panel-corner-radius);
-        pointer-events: none;
-        z-index: 12;
-        box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-      }
-      [data-bento-subdivided].bento-subdivision-top--focused::before {
-        border-color: var(--color-60);
-      }
-      [data-bento-subdivided][data-bento-subdivision-top-closed]::before {
-        content: none !important;
-        display: none !important;
-      }
-      /* Stacked favicon layout for subdivided nav icons */
-      .bento-panel-nav__icon--subdivided {
-        display: inline-flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 1px !important;
-        padding: 2px !important;
-      }
-      .bento-panel-nav__icon--subdivided > .bento-nav-subdiv-row {
-        display: flex;
-        gap: 1px;
-        align-items: center;
-        justify-content: center;
-      }
-      .bento-panel-nav__icon--subdivided img {
-        display: block;
-        pointer-events: none;
-      }
-      .bento-nav-subdiv-cell--discarded {
-        opacity: 0.55;
-        filter: grayscale(0.55);
-      }
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivided] {
-        background-color: transparent !important;
-        box-shadow: none !important;
-      }
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-top-closed] {
-        background-color: var(--bento-panel-strip-bg) !important;
-        box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--bento-panel-corner-radius) !important;
-      }
-      #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-survivor-subdivided] {
-        background-color: transparent !important;
-        box-shadow: none !important;
-        overflow: visible !important;
-      }
-      [data-bento-subdivision-survivor-subdivided] > [data-bento-subpanel][data-bento-subdivided] {
-        background-color: transparent !important;
-        box-shadow: none !important;
-        border-radius: 0 !important;
-        overflow: visible !important;
-      }
-      [data-bento-subdivided] > browser,
-      [data-bento-subdivided] > .browserContainer,
-      [data-bento-subdivided] > .browserStack,
-      [data-bento-subdivided] > [data-bento-subpanel]:not([data-bento-subdivided]),
-      .bento-subdivision-bottom > [data-bento-subpanel] {
-        background-color: var(--bento-panel-strip-bg) !important;
-        box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--bento-panel-corner-radius) !important;
-      }
-      .bento-subdivision-bottom > [data-bento-subpanel][data-bento-subdivided] {
-        background-color: transparent !important;
-        box-shadow: none !important;
-        border-radius: 0 !important;
-        overflow: visible !important;
-      }
-      [data-bento-subdivision-animating="1"] > browser,
-      [data-bento-subdivision-animating="1"] > .browserContainer,
-      [data-bento-subdivision-animating="1"] > .browserStack,
-      [data-bento-subdivision-animating="1"] > .bento-subdivision-chooser,
-      [data-bento-subdivision-animating="1"] > [data-bento-subpanel],
-      [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom,
-      [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > [data-bento-subpanel],
-      [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > .bento-subdivision-hsplitter {
-        transition:
-          flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard),
-          opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard) !important;
-      }
-      .bento-subdivision-vsplitter {
-        cursor: row-resize !important;
-        flex: 0 0 var(--bento-splitter-hit-size) !important;
-        min-height: var(--bento-splitter-hit-size) !important;
-        max-height: var(--bento-splitter-hit-size) !important;
-        appearance: none !important;
-        border: 0 !important;
-        background-color: transparent !important;
-        background-image:
-          radial-gradient(circle at 25% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
-          linear-gradient(
-            to bottom,
-            transparent calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
-            transparent calc(50% + var(--bento-splitter-indicator-radius))
-          ),
-          radial-gradient(circle at 75% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
-        background-position: center !important;
-        background-repeat: no-repeat !important;
-        background-size:
-          100% 100%,
-          50% 100%,
-          100% 100% !important;
-        opacity: 0 !important;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
-        position: relative !important;
-      }
-      .bento-subdivision-vsplitter::after {
-        content: none !important;
-      }
-      .bento-subdivision-vsplitter:hover,
-      .bento-subdivision-vsplitter--dragging {
-        opacity: 1 !important;
-      }
-      .bento-subdivision-bottom {
-        display: flex !important;
-        flex-direction: row !important;
-        flex: 1 1 auto !important;
-        min-height: 0 !important;
-        position: relative !important;
-        z-index: 1 !important;
-      }
-      .bento-subdivision-bottom > [data-bento-subpanel] {
-        overflow: hidden !important;
-        min-height: 0 !important;
-        width: auto !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        align-self: stretch !important;
-        display: flex !important;
-        flex-direction: column !important;
-        position: relative !important;
-        visibility: inherit !important;
-      }
-      [data-bento-subdivided] > [data-bento-subpanel] {
-        width: auto !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        align-self: stretch !important;
-      }
-      [data-bento-subdivided] > .bento-subdivision-vsplitter {
-        position: relative !important;
-        z-index: 3 !important;
-      }
-      [data-bento-subdivision-top-closed] {
-        overflow: hidden !important;
-      }
-      [data-bento-subdivision-top-closed] > .bento-panel-header,
-      [data-bento-subdivision-top-closed] > .browserContainer,
-      [data-bento-subdivision-top-closed] > .browserStack,
-      [data-bento-subdivision-top-closed] > browser,
-      [data-bento-subdivision-top-closed] > .bento-panel-loading-overlay,
-      [data-bento-subdivision-top-closed] > .bento-subdivision-vsplitter {
-        flex: 0 0 0 !important;
-        height: 0 !important;
-        min-height: 0 !important;
-        max-height: 0 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border-width: 0 !important;
-        opacity: 0 !important;
-        overflow: hidden !important;
-        pointer-events: none !important;
-        visibility: hidden !important;
-      }
-      [data-bento-subdivision-top-closed] > [data-bento-subpanel] {
-        flex: 1 1 100% !important;
-        height: 100% !important;
-        max-height: none !important;
-        align-self: stretch !important;
-        margin: 0 !important;
-        background-color: var(--bento-panel-strip-bg) !important;
-        box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--bento-panel-corner-radius) !important;
-      }
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .bento-panel-header {
-        position: relative !important;
-        z-index: 5 !important;
-        pointer-events: auto !important;
-        visibility: inherit !important;
-        opacity: 1 !important;
-      }
-      [data-bento-subpanel][data-bento-subdivision-top-closed] {
-        background-color: transparent !important;
-        box-shadow: none !important;
-        overflow: visible !important;
-      }
-      [data-bento-subpanel][data-bento-subdivision-top-closed] > [data-bento-subpanel]:not([data-bento-subdivided]) {
-        background-color: var(--bento-panel-strip-bg) !important;
-        box-shadow: var(--bento-panel-frame-shadow) !important;
-        border-radius: var(--bento-panel-corner-radius) !important;
-      }
-      [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] {
-        background-color: transparent !important;
-        box-shadow: none !important;
-        overflow: visible !important;
-      }
-      [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] > .browserContainer {
-        overflow: visible !important;
-      }
-      [data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] > .browserContainer > .browserStack {
-        border-radius: inherit !important;
-        overflow: clip !important;
-      }
-      [data-bento-subpanel]:not([data-bento-subdivided]) > browser,
-      [data-bento-subpanel]:not([data-bento-subdivided]) > .browserContainer,
-      [data-bento-subpanel]:not([data-bento-subdivided]) > .browserStack {
-        flex: 1 1 auto !important;
-        min-height: 0 !important;
-        overflow: clip !important;
-        position: relative !important;
-        z-index: 2 !important;
-        -moz-subtree-hidden-only-visually: 0 !important;
-        visibility: inherit !important;
-        opacity: 1 !important;
-      }
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > browser,
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer,
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserStack,
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack,
-      [data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack > browser {
-        border-end-start-radius: var(--bento-panel-corner-radius) !important;
-        border-end-end-radius: var(--bento-panel-corner-radius) !important;
-        border-start-start-radius: 0 !important;
-        border-start-end-radius: 0 !important;
-        overflow: clip !important;
-      }
-      [data-bento-subpanel] > .browserContainer > .browserStack,
-      [data-bento-subpanel] > .browserContainer > .browserStack > browser,
-      [data-bento-subpanel] browser {
-        -moz-subtree-hidden-only-visually: 0 !important;
-        visibility: inherit !important;
-        opacity: 1 !important;
-      }
-      [data-bento-subpanel] browser:is([blank], [pendingpaint]) {
-        opacity: 1 !important;
-      }
-      .bento-subdivision-hsplitter {
-        cursor: col-resize !important;
-        flex: 0 0 var(--bento-splitter-hit-size) !important;
-        min-width: var(--bento-splitter-hit-size) !important;
-        max-width: var(--bento-splitter-hit-size) !important;
-        box-sizing: border-box !important;
-        appearance: none !important;
-        border: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        background-color: transparent !important;
-        background-image:
-          radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
-          linear-gradient(
-            to right,
-            transparent calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-            var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
-            transparent calc(50% + var(--bento-splitter-indicator-radius))
-          ),
-          radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
-        background-position: center !important;
-        background-repeat: no-repeat !important;
-        background-size:
-          100% 100%,
-          100% 50%,
-          100% 100% !important;
-        opacity: 0 !important;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
-        position: relative !important;
-      }
-      .bento-subdivision-hsplitter::after {
-        content: none !important;
-      }
-      .bento-subdivision-hsplitter:hover,
-      .bento-subdivision-hsplitter--dragging {
-        opacity: 1 !important;
-      }
-      .bento-subdivision-chooser {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: var(--space-xs) !important;
-        flex: 1 1 auto !important;
-        min-height: 0 !important;
-        padding: var(--space-s) !important;
-        position: relative !important;
-        background: var(--neutral-12) !important;
-        border-radius: 0 0 var(--radius-m) var(--radius-m) !important;
-        z-index: 1 !important;
-      }
-      .bento-subdivision-chooser__close {
-        position: absolute !important;
-        top: var(--space-2xs) !important;
-        right: var(--space-2xs) !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        width: var(--bento-control-size-sm) !important;
-        height: var(--bento-control-size-sm) !important;
-        padding: 0 !important;
-        border: 0 !important;
-        border-radius: var(--radius-s) !important;
-        background: transparent !important;
-        color: var(--neutral-70) !important;
-        cursor: pointer !important;
-      }
-      .bento-subdivision-chooser__close:hover {
-        background: var(--neutral-16) !important;
-        color: var(--neutral-90) !important;
-      }
-      .bento-subdivision-chooser__primary {
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: var(--space-xs) !important;
-        flex-wrap: wrap !important;
-        max-width: 100% !important;
-      }
-      .bento-subdivision-chooser__btn {
-        padding: var(--space-xs) var(--space-m) !important;
-        border: 1px solid var(--neutral-20) !important;
-        border-radius: var(--radius-s) !important;
-        background: var(--neutral-5) !important;
-        color: var(--neutral-80) !important;
-        cursor: pointer !important;
-        font-size: var(--font-size-s) !important;
-        font-family: inherit !important;
-        line-height: 1.4 !important;
-      }
-      .bento-subdivision-chooser__btn:hover {
-        background: var(--neutral-16) !important;
-      }
-      .bento-subdivision-chooser__saved {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        gap: var(--space-2xs) !important;
-        max-width: min(100%, 21.25rem) !important;
-        max-height: 45% !important;
-        overflow: auto !important;
-      }
-      .bento-subdivision-chooser__saved-title {
-        color: var(--neutral-60) !important;
-        font-size: var(--font-size-xs) !important;
-        line-height: 1 !important;
-      }
-      .bento-subdivision-chooser__saved-grid {
-        display: grid !important;
-        grid-template-columns: repeat(auto-fit, minmax(5.625rem, 1fr)) !important;
-        gap: var(--space-2xs) !important;
-        width: 100% !important;
-      }
-      .bento-subdivision-chooser__saved-btn {
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: var(--space-2xs) !important;
-        min-width: 0 !important;
-        padding: var(--space-2xs) var(--space-xs) !important;
-        border: 1px solid var(--neutral-20) !important;
-        border-radius: var(--radius-s) !important;
-        background: var(--neutral-5) !important;
-        color: var(--neutral-80) !important;
-        cursor: pointer !important;
-        font-size: var(--font-size-xs) !important;
-        font-family: inherit !important;
-        line-height: 1.2 !important;
-      }
-      .bento-subdivision-chooser__saved-btn:hover {
-        background: var(--neutral-16) !important;
-      }
-      .bento-subdivision-chooser__saved-icon {
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        width: var(--bento-control-size-sm) !important;
-        height: var(--bento-control-size-sm) !important;
-        border-radius: var(--radius-xs) !important;
-        flex: 0 0 auto !important;
-        background: var(--neutral-18) !important;
-        object-fit: cover !important;
-        color: var(--neutral-70) !important;
-        font-size: var(--font-size-xs) !important;
-        font-weight: 600 !important;
-      }
-      .bento-subdivision-chooser__saved-label {
-        min-width: 0 !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-      }
-      #bento-side-panel-host > .bento-layout-vsplitter,
-      #bento-side-panel-host > .bento-layout-hsplitter {
-        position: absolute !important;
-        z-index: 7 !important;
-        pointer-events: auto !important;
-      }
-      #bento-side-panel-host > .bento-layout-vsplitter {
-        cursor: row-resize !important;
-        min-height: var(--bento-splitter-hit-size) !important;
-        max-height: var(--bento-splitter-hit-size) !important;
-      }
-      #bento-side-panel-host > .bento-layout-hsplitter {
-        cursor: col-resize !important;
-        min-width: var(--bento-splitter-hit-size) !important;
-        max-width: var(--bento-splitter-hit-size) !important;
-      }
-      #bento-side-panel-host > .bento-layout-chooser {
-        position: absolute !important;
-        z-index: 6 !important;
-        box-sizing: border-box;
-        border-radius: var(--bento-panel-corner-radius) !important;
-        box-shadow: var(--bento-panel-frame-shadow);
-      }
-      .bento-subdivision-chooser::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border: var(--bento-focus-ring-width) solid transparent;
-        border-radius: inherit;
-        pointer-events: none;
-        z-index: 10;
-        box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-      }
-      .bento-subdivision-chooser.bento-panel--focused::after,
-      .bento-subdivision-chooser.bento-panel--cycle-focused::after,
-      .bento-subdivision-chooser:focus-within::after {
-        border-color: var(--color-60);
-      }
-    `;
-    document.documentElement.appendChild(style);
+        release('timeout');
+      }, BENTO_SHEET_GATE_TIMEOUT_MS);
+      window.addEventListener('unload', () => release('unload'), { once: true });
+      for (const link of pending) {
+        let settled = false;
+        const settle = (event) => {
+          if (settled) return;
+          settled = true;
+          if (event.type === 'error') sawError = true;
+          remaining -= 1;
+          if (remaining === 0) release(sawError ? 'error' : 'load');
+        };
+        link.addEventListener('load', settle, { once: true });
+        link.addEventListener('error', settle, { once: true });
+      }
+    } catch (err) {
+      console.error('[bento-shell-mount] chrome sheet gate failed:', err);
+      release('exception');
+    }
   }
-  injectChromeStyles();
+
+  // Layout-shape CSS that depends on the tokens above lives in
+  // bento-shell-mount.css, a static chrome stylesheet registered in jar.mn.
+  // Its rules cover per-tab elements such as .browserContainer that tabbrowser
+  // creates later, so there is no need to hook tab creation. The link is
+  // appended to the root at this point in the script, the position the former
+  // inline <style> held, so it stays after the tokens and theme links above
+  // and before any bento-chrome-themes/<id>.css link added later. It is a
+  // document sheet, so it comes from the shared sheet cache in later windows
+  // and DevTools lists it.
+  function injectChromeStyles(earlierLinks) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'chrome://browser/content/bento-shell-mount.css';
+    document.documentElement.appendChild(link);
+    gateFirstPaintOnSheets([...earlierLinks, link]);
+  }
+  injectChromeStyles([bentoTokensLink, bentoThemeLink]);
 
 	  let __startupVeilHideTimer = null;
 	  function setStartupVeilClass(element, className) {
@@ -3302,6 +876,8 @@
       clearTimeout(__startupVeilHideTimer);
       __startupVeilHideTimer = null;
     }
+    // The first real content is up: start warming the overlays (first call only).
+    overlays.onVeilLifted();
     const veil = document.getElementById('bento-startup-veil');
     if (!veil || veil.hasAttribute('hidden')) return;
     window.setTimeout(() => {
@@ -3331,6 +907,438 @@
     ensureStartupVeil();
     armStartupVeilFallback();
   }
+
+  // @bento-overlays:begin
+  //
+  // Overlay documents. Every overlay <browser> except the sidebar shell and the
+  // panel trailer is an extension document, and this manager decides when each
+  // is created and when an open may reveal it. It owns the state and the rules;
+  // the table that wires it to the frames in this file follows it. It touches
+  // nothing of Firefox's, so scripts/overlay-manager.test.mjs evaluates exactly
+  // this section.
+  //
+  // Strategies (entry.eager / entry.prewarm in the table):
+  //   eager   created by startEager() at window startup, as before documents were
+  //           lazy: the overlays a user action can request at once (confirm,
+  //           edit workspace, workspace switcher), whose payloads travel
+  //           between documents that cannot wait.
+  //   idle    created one at a time at idle after the launch veil lifts, so the
+  //           first open does not show a load (address bar, palette, menu).
+  //   demand  created by the first open (everything else).
+  //
+  // States: absent (no document requested), loading (navigation started, waiting
+  // for the document to announce BENTO_OVERLAY_READY), ready. Nothing a document
+  // has not announced for is revealed or sent to it: chrome-to-overlay messages
+  // (frame-script relays onto a BroadcastChannel) do not queue, so one sent
+  // before the document subscribed is lost. open(id, reason, run) therefore queues
+  // `run` until the announcement, and `run` does both the reveal and the sends
+  // that belong to the open. The queue is kept until the announcement, cancel(id),
+  // or teardown, and a late announcement runs it once. If no announcement comes
+  // within OVERLAY_READY_STALL_MS the manager logs one error and keeps waiting;
+  // it does not reveal.
+  //
+  // Keyed: a repeated open replaces the queued one (the welcome requests repeat),
+  // and an open that replaces another is the newest request. hasPendingOpen(id)
+  // is true while an open waits: dismissal and toggle paths must treat that as
+  // open, and cancel(id) is what a hide calls. Code that only hides, resizes or
+  // messages an overlay must look the frame up with document.getElementById and
+  // treat null (not created yet) as "nothing to do"; only open paths call
+  // ensure/open.
+  const OVERLAY_READY_STALL_MS = 5000;
+  const OVERLAY_PREWARM_IDLE_TIMEOUT_MS = 1500;
+  const OVERLAY_PREWARM_READY_WAIT_MS = 2500;
+
+  function createOverlayManager({
+    entries,
+    now,
+    requestIdle,
+    setTimer,
+    clearTimer,
+    warn,
+    error,
+  }) {
+    const records = new Map();
+    for (const entry of entries) {
+      records.set(entry.id, {
+        entry,
+        state: 'absent',
+        reason: null,
+        createdAt: null,
+        readyAt: null,
+        readyBy: null,
+        reveals: new Map(),
+        stallTimer: null,
+        stalled: false,
+        opens: 0,
+        firstOpenWaitMs: null,
+        maxOpenWaitMs: 0,
+      });
+    }
+    const createdOrder = [];
+    let veilLiftedAt = null;
+    let prewarmQueue = [];
+    let prewarmIdle = false;
+    let prewarmWaitId = null;
+    let prewarmWaitTimer = null;
+    let disposed = false;
+
+    function guarded(id, fn) {
+      try {
+        fn();
+      } catch (err) {
+        warn('[bento-shell-mount] overlay ' + id + ' callback threw:', err);
+      }
+    }
+
+    function clearStallTimer(rec) {
+      if (rec.stallTimer === null) return;
+      clearTimer(rec.stallTimer);
+      rec.stallTimer = null;
+    }
+
+    // by: 'signal' (the document announced) or 'no-handshake' (a page that never
+    // announces).
+    function markReady(id, by) {
+      const rec = records.get(id);
+      if (!rec || disposed) return;
+      clearStallTimer(rec);
+      if (rec.state !== 'ready') {
+        rec.state = 'ready';
+        rec.readyAt = now();
+        rec.readyBy = by;
+      }
+      const queued = [...rec.reveals.values()];
+      rec.reveals.clear();
+      for (const fn of queued) guarded(id, fn);
+      if (by === 'signal' && rec.entry.onReady) guarded(id, rec.entry.onReady);
+      if (prewarmWaitId === id) continuePrewarm();
+    }
+
+    // Reports a document that does not announce while an open waits for it. The
+    // open stays pending: revealing an overlay that cannot receive its message
+    // shows an empty one.
+    function armStallReport(id, rec) {
+      if (rec.stallTimer !== null) return;
+      rec.stallTimer = setTimer(() => {
+        rec.stallTimer = null;
+        if (rec.state === 'ready' || !rec.reveals.has('show')) return;
+        rec.stalled = true;
+        error(
+          '[bento-shell-mount] overlay ' +
+            id +
+            ' did not announce readiness within ' +
+            OVERLAY_READY_STALL_MS +
+            ' ms; its open stays pending until it does or is cancelled.',
+        );
+      }, OVERLAY_READY_STALL_MS);
+    }
+
+    // Creates the overlay's <browser> if needed and starts its navigation once.
+    // Returns the frame, or null when its host is missing or the navigation
+    // failed (the overlay stays absent and a later call retries).
+    function ensure(id, reason) {
+      const rec = records.get(id);
+      if (!rec || disposed) return null;
+      const { entry } = rec;
+      let frame = entry.frame();
+      if (!frame && entry.create) frame = entry.create();
+      if (!frame) return null;
+      if (rec.state !== 'absent') return frame;
+      rec.state = 'loading';
+      rec.reason = reason;
+      rec.createdAt = now();
+      try {
+        entry.navigate();
+      } catch (err) {
+        warn('[bento-shell-mount] overlay ' + id + ' navigation failed:', err);
+        rec.state = 'absent';
+        return null;
+      }
+      createdOrder.push(id);
+      if (entry.handshake === false) markReady(id, 'no-handshake');
+      return frame;
+    }
+
+    // Runs `run` once the overlay's document has announced itself: at once for a
+    // ready one, else on the announcement. Returns false when the overlay's
+    // frame cannot be created.
+    function open(id, reason, run) {
+      const rec = records.get(id);
+      if (!rec) {
+        run();
+        return true;
+      }
+      if (!ensure(id, reason)) return false;
+      const requestedAt = now();
+      const reveal = () => {
+        const waited = now() - requestedAt;
+        rec.opens += 1;
+        if (rec.firstOpenWaitMs === null) rec.firstOpenWaitMs = waited;
+        rec.maxOpenWaitMs = Math.max(rec.maxOpenWaitMs, waited);
+        run();
+      };
+      if (rec.state === 'ready') {
+        reveal();
+        return true;
+      }
+      rec.reveals.set('show', reveal);
+      armStallReport(id, rec);
+      return true;
+    }
+
+    function hasPendingOpen(id) {
+      return records.get(id)?.reveals.has('show') === true;
+    }
+
+    // Drops the queued open. A hide calls this first, so a hide that arrives while
+    // an open waits wins and a late announcement reveals and sends nothing.
+    function cancel(id) {
+      const rec = records.get(id);
+      if (!rec) return;
+      rec.reveals.clear();
+      clearStallTimer(rec);
+    }
+
+    // A reloaded document announces itself again; hold opens until it does.
+    function reset(id) {
+      const rec = records.get(id);
+      if (!rec || rec.state !== 'ready') return;
+      rec.state = 'loading';
+      rec.readyAt = null;
+      rec.readyBy = null;
+    }
+
+    function idForFrame(frameId) {
+      for (const [id, rec] of records) {
+        if (rec.entry.frameId === frameId) return id;
+      }
+      return null;
+    }
+
+    function markFrameReady(frameId) {
+      const id = idForFrame(frameId);
+      if (id !== null) markReady(id, 'signal');
+    }
+
+    // Window startup: create the eager overlays.
+    function startEager() {
+      for (const entry of entries) {
+        if (entry.eager) ensure(entry.id, 'startup');
+      }
+    }
+
+    // Prewarm: one document per idle period, the next only after the previous
+    // announced (or a timeout), so the shared extension process never loads
+    // several React documents at once.
+    function scheduleNextPrewarm() {
+      if (disposed || prewarmIdle || prewarmQueue.length === 0) return;
+      prewarmIdle = true;
+      requestIdle(
+        () => {
+          prewarmIdle = false;
+          runPrewarmStep();
+        },
+        { timeout: OVERLAY_PREWARM_IDLE_TIMEOUT_MS },
+      );
+    }
+
+    function continuePrewarm() {
+      if (prewarmWaitTimer !== null) {
+        clearTimer(prewarmWaitTimer);
+        prewarmWaitTimer = null;
+      }
+      prewarmWaitId = null;
+      scheduleNextPrewarm();
+    }
+
+    function runPrewarmStep() {
+      if (disposed) return;
+      const id = prewarmQueue.shift();
+      if (id === undefined) return;
+      const rec = records.get(id);
+      // Already opened on demand, or its host is missing: go to the next one.
+      if (rec.state !== 'absent' || !ensure(id, 'idle')) {
+        scheduleNextPrewarm();
+        return;
+      }
+      if (rec.state === 'ready' || prewarmQueue.length === 0) {
+        scheduleNextPrewarm();
+        return;
+      }
+      prewarmWaitId = id;
+      prewarmWaitTimer = setTimer(continuePrewarm, OVERLAY_PREWARM_READY_WAIT_MS);
+    }
+
+    // The window shows its first real content; start warming the overlays that
+    // must open without a visible load. Runs once.
+    function onVeilLifted() {
+      if (veilLiftedAt !== null || disposed) return;
+      veilLiftedAt = now();
+      prewarmQueue = entries.filter((entry) => entry.prewarm).map((entry) => entry.id);
+      scheduleNextPrewarm();
+    }
+
+    function stats() {
+      const round = (value) => (value === null ? null : Math.round(value * 10) / 10);
+      const sinceVeil = (value) =>
+        value === null || veilLiftedAt === null ? null : round(value - veilLiftedAt);
+      const result = {};
+      for (const [id, rec] of records) {
+        result[id] = {
+          strategy: rec.entry.eager ? 'eager' : rec.entry.prewarm ? 'idle' : 'demand',
+          state: rec.state,
+          reason: rec.reason,
+          createdMs: round(rec.createdAt),
+          createdSinceVeilMs: sinceVeil(rec.createdAt),
+          readyMs: round(rec.readyAt),
+          readySinceVeilMs: sinceVeil(rec.readyAt),
+          loadMs:
+            rec.createdAt === null || rec.readyAt === null
+              ? null
+              : round(rec.readyAt - rec.createdAt),
+          readyBy: rec.readyBy,
+          pendingOpen: rec.reveals.has('show'),
+          stalled: rec.stalled,
+          opens: rec.opens,
+          firstOpenWaitMs: round(rec.firstOpenWaitMs),
+          maxOpenWaitMs: round(rec.maxOpenWaitMs),
+        };
+      }
+      return {
+        nowMs: round(now()),
+        veilLiftedMs: round(veilLiftedAt),
+        created: [...createdOrder],
+        overlays: result,
+      };
+    }
+
+    function dispose() {
+      disposed = true;
+      for (const rec of records.values()) {
+        rec.reveals.clear();
+        clearStallTimer(rec);
+      }
+      if (prewarmWaitTimer !== null) clearTimer(prewarmWaitTimer);
+      prewarmWaitTimer = null;
+    }
+
+    return {
+      ensure,
+      open,
+      hasPendingOpen,
+      cancel,
+      reset,
+      idForFrame,
+      markFrameReady,
+      startEager,
+      onVeilLifted,
+      stats,
+      dispose,
+      isReady: (id) => records.get(id)?.state === 'ready',
+      hasStarted: (id) => (records.get(id)?.state ?? 'absent') !== 'absent',
+    };
+  }
+  // @bento-overlays:end
+
+  // Title an overlay document writes once it can receive an open (the shell side
+  // is bridge/overlayReady.ts). Handled for every overlay frame before its own
+  // title handler.
+  const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
+
+  // One row per overlay, in prewarm order. `eager` rows start at window startup
+  // (overlays.startEager()), `prewarm` rows at idle after the veil lifts, the rest
+  // on first use. `created` rows have a host from ensureOverlayHost and get their
+  // <browser> from createOverlayFrame; the rest are the <browser> elements the
+  // browser-box patch declares, navigated later.
+  function overlayEntry({
+    id,
+    navigate,
+    eager = false,
+    prewarm = false,
+    created = false,
+    remote = true,
+    handshake,
+    onReady,
+  }) {
+    const frameId = 'bento-' + id + '-frame';
+    return {
+      id,
+      frameId,
+      eager,
+      prewarm,
+      navigate,
+      handshake,
+      onReady,
+      frame: () => document.getElementById(frameId),
+      create: created
+        ? () => createOverlayFrame('bento-' + id + '-host', frameId, remote)
+        : undefined,
+    };
+  }
+
+  const overlays = createOverlayManager({
+    entries: [
+      overlayEntry({ id: 'addrbar', prewarm: true, created: true, navigate: setBentoAddrbarSrc }),
+      overlayEntry({ id: 'palette', prewarm: true, navigate: setBentoPaletteSrc }),
+      overlayEntry({ id: 'menu', prewarm: true, navigate: setBentoMenuSrc }),
+      overlayEntry({ id: 'confirm', eager: true, navigate: setBentoConfirmSrc }),
+      overlayEntry({
+        id: 'edit-workspace',
+        eager: true,
+        created: true,
+        navigate: setBentoEditWorkspaceSrc,
+      }),
+      overlayEntry({
+        id: 'workspace-switcher',
+        eager: true,
+        created: true,
+        navigate: setBentoWorkspaceSwitcherSrc,
+      }),
+      overlayEntry({
+        id: 'workspace-palette',
+        created: true,
+        navigate: setBentoWorkspacePaletteSrc,
+      }),
+      overlayEntry({ id: 'merge-palette', navigate: setBentoMergePaletteSrc }),
+      overlayEntry({ id: 'welcome', created: true, navigate: setBentoWelcomeSrc }),
+      // Chrome-hosted page with no handshake; showEmbeddedBrowserImportFromWelcome
+      // sets its src each time it opens.
+      overlayEntry({
+        id: 'embedded-import',
+        created: true,
+        remote: false,
+        handshake: false,
+        navigate: () => {},
+      }),
+      overlayEntry({
+        id: 'panel-navigator-tooltip',
+        created: true,
+        navigate: setBentoPanelNavigatorTooltipSrc,
+        onReady: () =>
+          replayPanelNavigatorTooltipPayload(
+            document.getElementById('bento-panel-navigator-tooltip-frame'),
+          ),
+      }),
+    ],
+    now: () => window.performance.now(),
+    requestIdle: (callback, options) =>
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(callback, options)
+        : window.setTimeout(callback, 0),
+    setTimer: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimer: (handle) => window.clearTimeout(handle),
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  });
+
+  // Dev-visible measurement for the runtime pass: which overlays exist, why and
+  // when each was created relative to the veil lift, how long each took to
+  // announce, and how long opens waited. A snapshot per read; no timers.
+  Object.defineProperty(window, 'BentoOverlayStats', {
+    configurable: true,
+    get: () => overlays.stats(),
+  });
+  window.addEventListener('unload', () => overlays.dispose(), { once: true });
 
   function moz(path) {
     const policy = WebExtensionPolicy.getByID(ADDON_ID);
@@ -3739,7 +1747,7 @@
   // a rebuild anyway. New overlays added in dev should go through this
   // factory.
   function ensureOverlayHost(opts) {
-    const { hostId, frameId, zIndex, remote = true, parentId = 'browser' } = opts;
+    const { hostId, zIndex, parentId = 'browser' } = opts;
     if (document.getElementById(hostId)) return;
     const parent = parentId ? document.getElementById(parentId) : document.documentElement;
     if (!parent) {
@@ -3754,6 +1762,21 @@
       ` z-index: ${zIndex}; background-color: transparent; pointer-events: auto;` +
       ' display: none; opacity: 0;' +
       ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+    parent.appendChild(host);
+  }
+
+  // The overlay's <browser>, created on its first open or at idle (see
+  // createOverlayManager). The host from ensureOverlayHost stays from window
+  // startup; only the heavy part is deferred. Returns null while the host is
+  // missing.
+  function createOverlayFrame(hostId, frameId, remote = true) {
+    const existing = document.getElementById(frameId);
+    if (existing) return existing;
+    const host = document.getElementById(hostId);
+    if (!host) {
+      console.warn('[bento-shell-mount] createOverlayFrame:', hostId, '— host missing');
+      return null;
+    }
     const frame = document.createXULElement('browser');
     frame.id = frameId;
     frame.setAttribute('type', 'content');
@@ -3768,7 +1791,7 @@
       'background-color: transparent; -moz-appearance: none;' +
       ' border: 0; margin: 0; padding: 0;';
     host.appendChild(frame);
-    parent.appendChild(host);
+    return frame;
   }
 
   const activeToolbarScrimOwners = new Set();
@@ -3818,19 +1841,16 @@
   // deployed browser.xhtml.
   ensureOverlayHost({
     hostId: 'bento-merge-palette-host',
-    frameId: 'bento-merge-palette-frame',
     zIndex: 99997,
   });
 
   ensureOverlayHost({
     hostId: 'bento-workspace-palette-host',
-    frameId: 'bento-workspace-palette-frame',
     zIndex: 99997,
   });
 
   ensureOverlayHost({
     hostId: 'bento-edit-workspace-host',
-    frameId: 'bento-edit-workspace-frame',
     zIndex: 99997,
   });
 
@@ -3840,7 +1860,6 @@
   // very first overlay a user sees and there's nothing to stack against.
   ensureOverlayHost({
     hostId: 'bento-welcome-host',
-    frameId: 'bento-welcome-frame',
     zIndex: 99996,
   });
   ensureOverlayToolbarScrim();
@@ -3851,9 +1870,7 @@
   // built-in chrome document instead of a moz-extension content process.
   ensureOverlayHost({
     hostId: 'bento-embedded-import-host',
-    frameId: 'bento-embedded-import-frame',
     zIndex: 99998,
-    remote: false,
   });
 
   // Workspace-switcher overlay. The Mux Menu popover would otherwise
@@ -3867,13 +1884,11 @@
   // be the user's natural next action).
   ensureOverlayHost({
     hostId: 'bento-workspace-switcher-host',
-    frameId: 'bento-workspace-switcher-frame',
     zIndex: 99995,
   });
 
   ensureOverlayHost({
     hostId: 'bento-panel-navigator-tooltip-host',
-    frameId: 'bento-panel-navigator-tooltip-frame',
     zIndex: 99999,
     // Panel navigator buttons are in #nav-bar, above #browser. Mounting
     // below #browser clips an anchored popup before it reaches the toolbar.
@@ -3887,7 +1902,6 @@
   // the workspace palette is still the user's active context.
   ensureOverlayHost({
     hostId: 'bento-addrbar-host',
-    frameId: 'bento-addrbar-frame',
     zIndex: 99994,
   });
 
@@ -3947,27 +1961,65 @@
 
   const PALETTE_TRANSITION_MS = 180; // matches inline transition duration
 
+  // Every show* function reveals its host through this, and sends the messages
+  // that belong to the open from inside `reveal`. An overlay whose document does
+  // not exist yet or has not announced readiness is not revealed and gets no
+  // message: `reveal` waits for the announcement, so the dim, the host fade, the
+  // focus and the messages all land on a document that can render and receive
+  // them, and it runs at once for a ready overlay. The matching hide* function
+  // calls overlays.cancel(id), so a hide that arrives first wins.
+  function openOverlay(id, reveal) {
+    if (!overlays.open(id, 'show', reveal)) {
+      console.warn('[bento-shell-mount] overlay frame unavailable:', id);
+    }
+  }
+
+  // An overlay is open while its host is shown and also while its open waits for
+  // the document. Esc, toggle, outside click, and the stack rules below all go
+  // through this, so none of them can miss an open that has not appeared yet and
+  // then see it appear.
+  function isOverlayOpen(hostId, isVisible, overlayId) {
+    const host = document.getElementById(hostId);
+    return (!!host && isVisible(host)) || overlays.hasPendingOpen(overlayId);
+  }
+
+  // Stack rules close the palette or the merge palette when another overlay
+  // opens. They run when that open is requested, not when its document becomes
+  // ready, so the newest request wins whichever document loads first. The hide*
+  // functions cancel a queued open as well as hiding a shown host.
+  function dismissPalette() {
+    if (isOverlayOpen('bento-palette-host', isPaletteVisible, 'palette')) hidePalette();
+  }
+
+  function dismissMergePalette() {
+    if (isOverlayOpen('bento-merge-palette-host', isMergePaletteVisible, 'merge-palette')) {
+      hideMergePalette();
+    }
+  }
+
   function showPalette() {
-    const mergeHost = document.getElementById('bento-merge-palette-host');
-    if (mergeHost && isMergePaletteVisible(mergeHost)) hideMergePalette();
     const host = document.getElementById('bento-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showPalette: bento-palette-host missing');
       return;
     }
-    showOverlayToolbarScrim('palette');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    // Force a layout pass so the browser registers display:flex BEFORE we
-    // set opacity. Without this the opacity change wouldn't transition
-    // (CSS doesn't transition from display:none to display:flex).
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-palette-frame');
-    setTimeout(() => frame?.focus(), 0);
+    dismissMergePalette();
+    openOverlay('palette', () => {
+      showOverlayToolbarScrim('palette');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      // Force a layout pass so the browser registers display:flex BEFORE we
+      // set opacity. Without this the opacity change wouldn't transition
+      // (CSS doesn't transition from display:none to display:flex).
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-palette-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hidePalette() {
+    overlays.cancel('palette');
     const host = document.getElementById('bento-palette-host');
     if (!host) {
       hideOverlayToolbarScrim('palette');
@@ -3993,7 +2045,7 @@
       );
       return;
     }
-    if (isPaletteVisible(host)) hidePalette();
+    if (isOverlayOpen('bento-palette-host', isPaletteVisible, 'palette')) hidePalette();
     else showPalette();
   }
 
@@ -4005,23 +2057,25 @@
   }
 
   function showWorkspacePalette() {
-    const paletteHost = document.getElementById('bento-palette-host');
-    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
     const host = document.getElementById('bento-workspace-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showWorkspacePalette: host missing');
       return;
     }
-    showOverlayToolbarScrim('workspace-palette');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-workspace-palette-frame');
-    setTimeout(() => frame?.focus(), 0);
+    dismissPalette();
+    openOverlay('workspace-palette', () => {
+      showOverlayToolbarScrim('workspace-palette');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-workspace-palette-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideWorkspacePalette() {
+    overlays.cancel('workspace-palette');
     const host = document.getElementById('bento-workspace-palette-host');
     if (!host) {
       hideOverlayToolbarScrim('workspace-palette');
@@ -4050,25 +2104,28 @@
   }
 
   function showMergePalette() {
-    const paletteHost = document.getElementById('bento-palette-host');
-    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
     const host = document.getElementById('bento-merge-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showMergePalette: bento-merge-palette-host missing');
       return;
     }
-    showOverlayToolbarScrim('merge-palette');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-merge-palette-frame');
+    dismissPalette();
     const nonce = nextMergePaletteNonce('open');
-    dispatchMergePaletteLifecycle('open', nonce);
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('merge-palette', () => {
+      showOverlayToolbarScrim('merge-palette');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-merge-palette-frame');
+      // The nonce goes out with the reveal, to a document that is listening.
+      dispatchMergePaletteLifecycle('open', nonce);
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideMergePalette() {
+    overlays.cancel('merge-palette');
     const host = document.getElementById('bento-merge-palette-host');
     const nonce = nextMergePaletteNonce('close');
     dispatchMergePaletteLifecycle('close', nonce);
@@ -4094,8 +2151,11 @@
       );
       return;
     }
-    if (isMergePaletteVisible(host)) hideMergePalette();
-    else showMergePalette();
+    if (isOverlayOpen('bento-merge-palette-host', isMergePaletteVisible, 'merge-palette')) {
+      hideMergePalette();
+    } else {
+      showMergePalette();
+    }
   }
 
   // ─── Floating address/search bar overlay ──────────────────────────────
@@ -4259,8 +2319,12 @@
       ['bento-workspace-switcher-host', isWorkspaceSwitcherVisible, 'bento-workspace-switcher-frame'],
     ];
     for (const [hostId, isVisible, frameId] of candidates) {
-      const host = document.getElementById(hostId);
-      if (host && isVisible(host)) return document.getElementById(frameId);
+      // An overlay still waiting for its document counts: it will appear over the
+      // address bar, so the address bar must not take the focus either.
+      const overlayId = overlays.idForFrame(frameId);
+      if (overlayId !== null && isOverlayOpen(hostId, isVisible, overlayId)) {
+        return document.getElementById(frameId);
+      }
     }
     return null;
   }
@@ -4381,8 +2445,7 @@
     } else if (currentAddrbarMode === 'newTab' && !String(initialQuery || '').trim()) {
       clipboardUrl = resolveClipboardUrlSuggestion();
     }
-    const paletteHost = document.getElementById('bento-palette-host');
-    if (paletteHost && isPaletteVisible(paletteHost)) hidePalette();
+    dismissPalette();
     const host = document.getElementById('bento-addrbar-host');
     if (!host) {
       console.warn('[bento-shell-mount] showAddrbar: bento-addrbar-host missing');
@@ -4402,22 +2465,35 @@
       focusPreservingFrameId: focusPreservingFrame?.id || '',
       retryCount: 0,
       retryTimer: null,
-      fallbackTimer: setTimeout(
-        () => revealPendingAddrbar(openId),
-        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
-      ),
+      fallbackTimer: null,
     };
 
-    dispatchAddrbarOpen(currentAddrbarMode, initialQuery, {
-      openId,
-      suppressFocus: !!focusPreservingFrame,
-      clipboardUrl,
-      placement,
-    });
-    pendingAddrbarReveal.retryTimer = setTimeout(
-      () => retryPendingAddrbarOpen(openId),
-      ADDRBAR_OPEN_RETRY_MS,
-    );
+    // The host is prepared (laid out, invisible, not interactive) at once. The open
+    // message goes out on the document's real announcement, since nothing listens
+    // before it, and the safety reveal and the resend budget start when it goes
+    // out: a timer that started at the request could reveal, and drop, an open
+    // whose message was never sent. A prewarmed document is ready, so this runs
+    // synchronously; a first open before the prewarm finished waits for the load.
+    const sendOpen = () => {
+      const pending = pendingAddrbarReveal;
+      if (!pending || pending.openId !== openId) return;
+      dispatchAddrbarOpen(pending.mode, pending.initialQuery, {
+        openId,
+        suppressFocus: pending.suppressFocus,
+        clipboardUrl: pending.clipboardUrl,
+        placement: pending.placement,
+      });
+      pending.fallbackTimer = setTimeout(
+        () => revealPendingAddrbar(openId),
+        ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
+      );
+      pending.retryTimer = setTimeout(
+        () => retryPendingAddrbarOpen(openId),
+        ADDRBAR_OPEN_RETRY_MS,
+      );
+    };
+    // No frame (its host is gone): send anyway, as it always did.
+    if (!overlays.open('addrbar', 'show', sendOpen)) sendOpen();
   }
 
   function openAddressEntry(mode, initialQuery = '') {
@@ -4426,6 +2502,7 @@
   }
 
   function hideAddrbar() {
+    overlays.cancel('addrbar');
     clearPendingAddrbarReveal();
     const host = document.getElementById('bento-addrbar-host');
     if (!host) return;
@@ -4458,16 +2535,19 @@
       console.warn('[bento-shell-mount] showConfirm: bento-confirm-host missing');
       return;
     }
-    showOverlayToolbarScrim('confirm');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-confirm-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('confirm', () => {
+      showOverlayToolbarScrim('confirm');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-confirm-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideConfirm() {
+    overlays.cancel('confirm');
     const host = document.getElementById('bento-confirm-host');
     if (!host) {
       hideOverlayToolbarScrim('confirm');
@@ -4499,16 +2579,19 @@
       console.warn('[bento-shell-mount] showEditWorkspace: host missing');
       return;
     }
-    showOverlayToolbarScrim('edit-workspace');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-edit-workspace-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('edit-workspace', () => {
+      showOverlayToolbarScrim('edit-workspace');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-edit-workspace-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideEditWorkspace() {
+    overlays.cancel('edit-workspace');
     const host = document.getElementById('bento-edit-workspace-host');
     if (!host) {
       hideOverlayToolbarScrim('edit-workspace');
@@ -4550,19 +2633,22 @@
       console.warn('[bento-shell-mount] showWorkspaceSwitcher: host missing');
       return;
     }
-    // Display stays 'flex' from the init prewarm — only opacity +
-    // pointer-events toggle here. Restoring display:flex would defeat
-    // the prewarm's purpose (the frame has to stay laid out so its
-    // window.screenLeft is accurate when the React app re-renders).
-    host.style.pointerEvents = 'auto';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-workspace-switcher-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('workspace-switcher', () => {
+      // Display stays 'flex' from the init prewarm — only opacity +
+      // pointer-events toggle here. Restoring display:flex would defeat
+      // the prewarm's purpose (the frame has to stay laid out so its
+      // window.screenLeft is accurate when the React app re-renders).
+      host.style.pointerEvents = 'auto';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-workspace-switcher-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideWorkspaceSwitcher() {
+    overlays.cancel('workspace-switcher');
     const host = document.getElementById('bento-workspace-switcher-host');
     if (!host) return;
     host.style.opacity = '0';
@@ -4713,16 +2799,19 @@
       console.warn('[bento-shell-mount] showWelcome: host missing');
       return;
     }
-    showOverlayToolbarScrim('welcome');
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    void host.getBoundingClientRect();
-    host.style.opacity = '1';
-    const frame = document.getElementById('bento-welcome-frame');
-    setTimeout(() => frame?.focus(), 0);
+    openOverlay('welcome', () => {
+      showOverlayToolbarScrim('welcome');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      const frame = document.getElementById('bento-welcome-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
   }
 
   function hideWelcome() {
+    overlays.cancel('welcome');
     const host = document.getElementById('bento-welcome-host');
     if (!host) return;
     hideOverlayToolbarScrim('welcome');
@@ -4741,7 +2830,9 @@
 
   function showEmbeddedBrowserImportFromWelcome() {
     const host = document.getElementById('bento-embedded-import-host');
-    const frame = document.getElementById('bento-embedded-import-frame');
+    // First use creates the chrome-hosted <browser>; it has no readiness
+    // handshake, so it is ready as soon as it exists.
+    const frame = host ? overlays.ensure('embedded-import', 'show') : null;
     if (!host || !frame) {
       console.warn('[bento-shell-mount] embedded import host missing; falling back to restart');
       restartToBrowserImportFromWelcome();
@@ -4828,6 +2919,8 @@
   // BroadcastChannel 'menu/open' actions; chrome just toggles host
   // display.
   const menuOnSelectByContext = new Map();
+  // The contextId of the open that waits for the menu document, if any.
+  let pendingMenuContextId = null;
 
   function showChromeMenu({ anchor, items, onSelect, placement }) {
     const host = document.getElementById('bento-menu-host');
@@ -4841,35 +2934,51 @@
     }
     const contextId = 'm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     if (typeof onSelect === 'function') menuOnSelectByContext.set(contextId, onSelect);
-    host.style.display = 'flex';
-    host.removeAttribute('hidden');
-    // Translate the trigger's chrome-document coords into menu-overlay
-    // coords. The overlay frame fills #bento-menu-host (which lives
-    // inside <hbox id="browser">, BELOW the chrome toolbar/tabstrip);
-    // position:fixed inside the overlay is relative to the overlay's
-    // own viewport, NOT the chrome document. Without this translation
-    // the menu floats roughly one toolbar-height below the trigger.
-    const hostRect = host.getBoundingClientRect();
-    const adjustedAnchor = {
-      left: anchor.left - hostRect.left,
-      top: anchor.top - hostRect.top,
-      width: anchor.width,
-      height: anchor.height,
-    };
-    // Send the open payload over the shell bus. The menu page's React
-    // listens for kind:'action' messages with action.type==='menu/open'.
-    dispatchShellAction({
-      type: 'menu/open',
-      contextId,
-      items,
-      anchor: adjustedAnchor,
-      placement,
+    // A newer request replaces an older one that is still waiting for the
+    // document, so the older handler can never be called.
+    if (pendingMenuContextId !== null) menuOnSelectByContext.delete(pendingMenuContextId);
+    pendingMenuContextId = contextId;
+    // The menu document hears the payload over the bus, which does not queue, so
+    // the host is revealed and the payload sent together, on the document's real
+    // announcement and not before (openOverlay).
+    openOverlay('menu', () => {
+      pendingMenuContextId = null;
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      // Translate the trigger's chrome-document coords into menu-overlay
+      // coords. The overlay frame fills #bento-menu-host (which lives
+      // inside <hbox id="browser">, BELOW the chrome toolbar/tabstrip);
+      // position:fixed inside the overlay is relative to the overlay's
+      // own viewport, NOT the chrome document. Without this translation
+      // the menu floats roughly one toolbar-height below the trigger.
+      const hostRect = host.getBoundingClientRect();
+      const adjustedAnchor = {
+        left: anchor.left - hostRect.left,
+        top: anchor.top - hostRect.top,
+        width: anchor.width,
+        height: anchor.height,
+      };
+      // Send the open payload over the shell bus. The menu page's React
+      // listens for kind:'action' messages with action.type==='menu/open'.
+      dispatchShellAction({
+        type: 'menu/open',
+        contextId,
+        items,
+        anchor: adjustedAnchor,
+        placement,
+      });
+      const frame = document.getElementById('bento-menu-frame');
+      setTimeout(() => frame?.focus(), 0);
     });
-    const frame = document.getElementById('bento-menu-frame');
-    setTimeout(() => frame?.focus(), 0);
   }
 
   function hideChromeMenu() {
+    overlays.cancel('menu');
+    // An open that never reached the document has no SELECT or CLOSE to come.
+    if (pendingMenuContextId !== null) {
+      menuOnSelectByContext.delete(pendingMenuContextId);
+      pendingMenuContextId = null;
+    }
     const host = document.getElementById('bento-menu-host');
     if (!host) return;
     host.style.display = 'none';
@@ -8719,7 +6828,7 @@
   // squeezes sibling panels instead of pushing them along the
   // strip's horizontal scroll. None of that fits Bento's N-panel
   // strip model, so we hide Firefox's splitter (see
-  // injectChromeStyles) and inject our own at every adjacent panel
+  // bento-shell-mount.css) and inject our own at every adjacent panel
   // boundary.
   //
   // POINTER events with setPointerCapture survive the cursor
@@ -11002,8 +9111,14 @@
       panelNavigatorTooltipTimer = null;
     }
     panelNavigatorTooltipPayload = null;
+    // The frame does not exist until the first hover, and a document that is
+    // still loading may not take a message yet.
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
-    frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', null);
+    try {
+      frame?.messageManager?.sendAsyncMessage?.('BentoPanelNavigatorTooltip', null);
+    } catch {
+      // Nothing to hide in a document that has not loaded.
+    }
   }
 
   function showPanelNavigatorTooltip(btn) {
@@ -11020,14 +9135,20 @@
       width: rect.width,
       height: rect.height,
     };
+    // First use creates the tooltip document. Until it announces readiness the
+    // payload above waits in panelNavigatorTooltipPayload; the manager's
+    // onReady (and the STATE_STOP listener) send it.
+    const frame = overlays.ensure('panel-navigator-tooltip', 'hover');
+    if (!frame) return;
     ensurePanelNavigatorTooltipFrameScript();
-    const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
     replayPanelNavigatorTooltipPayload(frame);
   }
 
   function attachPanelNavigatorTooltip(btn) {
     btn.addEventListener('mouseenter', () => {
       hidePanelNavigatorTooltip();
+      // Start loading the document now so it overlaps the hover delay.
+      overlays.ensure('panel-navigator-tooltip', 'hover');
       panelNavigatorTooltipTimer = setTimeout(() => showPanelNavigatorTooltip(btn), 400);
     });
     btn.addEventListener('mouseleave', hidePanelNavigatorTooltip);
@@ -11303,8 +9424,9 @@
     '    var suppressFocus = !!(msg.data && msg.data.suppressFocus);' +
     '    var clipboardUrl = msg.data && typeof msg.data.clipboardUrl === "string" ? msg.data.clipboardUrl : "";' +
     '    var placement = msg.data && msg.data.placement && typeof msg.data.placement === "object" ? msg.data.placement : null;' +
+    '    var windowId = msg.data && typeof msg.data.windowId === "number" ? msg.data.windowId : null;' +
     '    var channel = new content.BroadcastChannel("bento-addrbar-bus");' +
-    '    channel.postMessage({ kind: "open", openId: openId, mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus, clipboardUrl: clipboardUrl, placement: placement });' +
+    '    channel.postMessage({ kind: "open", windowId: windowId, openId: openId, mode: mode, initialQuery: initialQuery, suppressFocus: suppressFocus, clipboardUrl: clipboardUrl, placement: placement });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
@@ -11331,8 +9453,9 @@
     '  try {' +
     '    var type = msg.data && msg.data.type === "close" ? "close" : "open";' +
     '    var nonce = msg.data && typeof msg.data.nonce === "string" ? msg.data.nonce : String(Date.now());' +
+    '    var windowId = msg.data && typeof msg.data.windowId === "number" ? msg.data.windowId : null;' +
     '    var channel = new content.BroadcastChannel("bento-merge-palette");' +
-    '    channel.postMessage({ type: type, nonce: nonce });' +
+    '    channel.postMessage({ type: type, nonce: nonce, windowId: windowId });' +
     '    channel.close();' +
     '  } catch (e) {}' +
     '});';
@@ -11438,6 +9561,8 @@
         suppressFocus: options.suppressFocus === true,
         clipboardUrl: typeof options.clipboardUrl === 'string' ? options.clipboardUrl : '',
         placement: options.placement || null,
+        // The bus reaches every window's address bar document; this names ours.
+        windowId: getChromeWindowId(),
       });
       return true;
     } catch (err) {
@@ -11484,7 +9609,12 @@
         mm.loadFrameScript(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL, true);
         frame._bentoMergePaletteLifecycleScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoMergePaletteLifecycle', { type, nonce });
+      // The bus reaches every window's merge palette document; this names ours.
+      mm.sendAsyncMessage('BentoMergePaletteLifecycle', {
+        type,
+        nonce,
+        windowId: getChromeWindowId(),
+      });
       return true;
     } catch (err) {
       if (attempt < 10) {
@@ -14249,7 +12379,7 @@
         }
       });
       // Inner moz-extension iframe — same attribute set as
-      // ensureOverlayHost frames. Renders /dist/panel-trailer.html
+      // createOverlayFrame frames. Renders /dist/panel-trailer.html
       // which mounts the React PanelTrailer app. Saved favicon buttons
       // dispatch panel/openAt with position 'end'; the blank "+" button
       // signals chrome to call addNewPanel directly.
@@ -16586,7 +14716,7 @@
 
     // Set inline `order` per panel so flex layout renders them in
     // splitViewPanels index order regardless of count. The static
-    // CSS rules in injectChromeStyles only enumerate columns 0..9
+    // CSS rules in bento-shell-mount.css only enumerate columns 0..9
     // (Firefox's split-view CSS only ships 0 and 1; we extended to
     // 9). Beyond column 9, columns get default `order: 0` and end
     // up in the same flex group as the main panel (also order: 0),
@@ -19375,6 +17505,8 @@
           }
         },
       ],
+      // The tooltip document only announces readiness (handled below).
+      ['bento-panel-navigator-tooltip-frame', () => {}],
     ]);
     const lastSeenTitleByFrameId = new Map();
 
@@ -19421,6 +17553,10 @@
         const title = frame.contentTitle || '';
         if (title === (lastSeenTitleByFrameId.get(frame.id) ?? '')) return;
         lastSeenTitleByFrameId.set(frame.id, title);
+        if (title.startsWith(OVERLAY_READY_PREFIX)) {
+          overlays.markFrameReady(frame.id);
+          return;
+        }
         handleTitle(title);
       },
       true,
@@ -19435,31 +17571,33 @@
       'keydown',
       (e) => {
         if (e.key !== 'Escape') return;
-        // Stack precedence (top = highest): confirm > edit-workspace >
-        // workspace palette > welcome > workspace-switcher > palette.
-        // Welcome is mandatory
-        // onboarding: consume Esc there without hiding it. Other overlays
-        // keep their normal Esc dismissal.
-        const confirmHost = document.getElementById('bento-confirm-host');
-        if (confirmHost && isConfirmVisible(confirmHost)) {
+        // Stack precedence (top = highest): menu > confirm > edit-workspace >
+        // workspace palette > welcome > workspace-switcher > address bar >
+        // merge palette > palette. An overlay whose open still waits for its
+        // document counts as open: Esc cancels that open instead of letting it
+        // appear afterwards. Welcome is mandatory onboarding: consume Esc there
+        // without hiding it. Other overlays keep their normal Esc dismissal.
+        const consume = (hide) => {
           e.preventDefault();
           e.stopPropagation();
-          hideConfirm();
-          return;
+          hide();
+        };
+        // The menu page handles its own Esc once shown; only a pending open needs this.
+        if (overlays.hasPendingOpen('menu')) return consume(hideChromeMenu);
+        if (isOverlayOpen('bento-confirm-host', isConfirmVisible, 'confirm')) {
+          return consume(hideConfirm);
         }
-        const editHost = document.getElementById('bento-edit-workspace-host');
-        if (editHost && isEditWorkspaceVisible(editHost)) {
-          e.preventDefault();
-          e.stopPropagation();
-          hideEditWorkspace();
-          return;
+        if (isOverlayOpen('bento-edit-workspace-host', isEditWorkspaceVisible, 'edit-workspace')) {
+          return consume(hideEditWorkspace);
         }
-        const workspacePaletteHost = document.getElementById('bento-workspace-palette-host');
-        if (workspacePaletteHost && isWorkspacePaletteVisible(workspacePaletteHost)) {
-          e.preventDefault();
-          e.stopPropagation();
-          hideWorkspacePalette();
-          return;
+        if (
+          isOverlayOpen(
+            'bento-workspace-palette-host',
+            isWorkspacePaletteVisible,
+            'workspace-palette',
+          )
+        ) {
+          return consume(hideWorkspacePalette);
         }
         const embeddedImportHost = document.getElementById('bento-embedded-import-host');
         if (embeddedImportHost && isEmbeddedImportVisible(embeddedImportHost)) {
@@ -19467,38 +17605,29 @@
           e.stopImmediatePropagation();
           return;
         }
-        const welcomeHost = document.getElementById('bento-welcome-host');
-        if (welcomeHost && isWelcomeVisible(welcomeHost)) {
+        if (isOverlayOpen('bento-welcome-host', isWelcomeVisible, 'welcome')) {
           e.preventDefault();
           e.stopImmediatePropagation();
           return;
         }
-        const wsSwitcherHost = document.getElementById('bento-workspace-switcher-host');
-        if (wsSwitcherHost && isWorkspaceSwitcherVisible(wsSwitcherHost)) {
-          e.preventDefault();
-          e.stopPropagation();
-          hideWorkspaceSwitcher();
-          return;
+        if (
+          isOverlayOpen(
+            'bento-workspace-switcher-host',
+            isWorkspaceSwitcherVisible,
+            'workspace-switcher',
+          )
+        ) {
+          return consume(hideWorkspaceSwitcher);
         }
-        const addrbarHost = document.getElementById('bento-addrbar-host');
-        if (addrbarHost && isAddrbarVisible(addrbarHost)) {
-          e.preventDefault();
-          e.stopPropagation();
-          hideAddrbar();
-          return;
+        if (isOverlayOpen('bento-addrbar-host', isAddrbarVisible, 'addrbar')) {
+          return consume(hideAddrbar);
         }
-        const mergeHost = document.getElementById('bento-merge-palette-host');
-        if (mergeHost && isMergePaletteVisible(mergeHost)) {
-          e.preventDefault();
-          e.stopPropagation();
-          hideMergePalette();
-          return;
+        if (isOverlayOpen('bento-merge-palette-host', isMergePaletteVisible, 'merge-palette')) {
+          return consume(hideMergePalette);
         }
-        const host = document.getElementById('bento-palette-host');
-        if (!host || !isPaletteVisible(host)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        hidePalette();
+        if (isOverlayOpen('bento-palette-host', isPaletteVisible, 'palette')) {
+          consume(hidePalette);
+        }
       },
       true,
     );
@@ -19544,12 +17673,15 @@
     );
   }
 
-  function attachAddrbarOutsideDismissListener() {
+  function attachOutsideClickDismissListener() {
     window.addEventListener(
       'pointerdown',
       (e) => {
+        // A menu still waiting for its document has no host to catch the click: the
+        // click is outside it, so it cancels the open. A shown menu closes itself.
+        if (overlays.hasPendingOpen('menu')) hideChromeMenu();
         const host = document.getElementById('bento-addrbar-host');
-        if (!host || !isAddrbarVisible(host)) return;
+        if (!host || !isOverlayOpen('bento-addrbar-host', isAddrbarVisible, 'addrbar')) return;
         const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
         if (path.includes(host)) return;
         hideAddrbar();
@@ -20287,6 +18419,13 @@
         for (const id of ids) {
           const frame = document.getElementById(id);
           if (!frame) continue;
+          // An overlay that was never opened has no document to reload; it
+          // loads the new add-on when it is first opened.
+          const overlayId = overlays.idForFrame(id);
+          if (overlayId !== null) {
+            if (!overlays.hasStarted(overlayId)) continue;
+            overlays.reset(overlayId);
+          }
           try {
             frame.reloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
           } catch (e) {
@@ -20317,17 +18456,15 @@
   // navigate that panel. The chrome's main URL bar always reflects the
   // active main tab as Firefox normally would.
 
+  // The sidebar shell and the eager overlays (confirm, edit workspace, workspace
+  // switcher) load at startup. The other overlay documents are created at idle
+  // once the launch veil lifts or on first use (createOverlayManager).
   setBentoShellSrc();
-  setBentoPaletteSrc();
-  setBentoWorkspacePaletteSrc();
-  setBentoMergePaletteSrc();
-  setBentoAddrbarSrc();
-  setBentoConfirmSrc();
-  setBentoEditWorkspaceSrc();
-  setBentoWelcomeSrc();
-  setBentoWorkspaceSwitcherSrc();
-  setBentoMenuSrc();
-  setBentoPanelNavigatorTooltipSrc();
+  overlays.startEager();
+  // The welcome resume step comes from the environment of the process that
+  // restarted for the browser-data import. Read (and clear) it now, as before,
+  // not when the welcome overlay is first created.
+  takeBentoWelcomeResumeStep();
   // unifyMainWithStrip() and setupPanelNavigator() re-parent
   // #tabbrowser-tabbox after Tabbrowser.init() created the first tab, so they
   // must use moveNodeBefore (Element.moveBefore) and keep the tab <browser>'s
@@ -20626,7 +18763,7 @@
   configureSidePanelOnce();
   attachReloadListener();
   attachAddrbarKeybinding();
-  attachAddrbarOutsideDismissListener();
+  attachOutsideClickDismissListener();
   attachTopUrlbarModalListener();
   attachSidebarAddressSnapshotListeners();
   attachPaletteKeybinding();

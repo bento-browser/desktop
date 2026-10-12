@@ -1,12 +1,12 @@
-From 3f045b1e2332945b8138e2fbbe4460c30f003a97 Mon Sep 17 00:00:00 2001
+From 54858ccd5efbbb95a80ff4fa905b93ef1da40611 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome
 
 ---
  browser/base/content/browser-box.inc.xhtml | 54 +++++++++++++++++++++-
- browser/base/jar.mn                        |  8 ++++
- 2 files changed, 61 insertions(+), 1 deletion(-)
+ browser/base/jar.mn                        |  9 ++++
+ 2 files changed, 62 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
 index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb45cb5540a 100644
@@ -74,14 +74,15 @@ index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb4
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
 diff --git a/browser/base/jar.mn b/browser/base/jar.mn
-index 783c67d397a541a0e78374dc93c930fbd8d2e7e7..f50f3cfd530fbfc54de30fe1737eecff993a1a6f 100644
+index 783c67d397a541a0e78374dc93c930fbd8d2e7e7..fadf322c56fafe9895323f4e1a2664b2c0bf1beb 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
-@@ -47,6 +47,14 @@ browser.jar:
+@@ -47,6 +47,15 @@ browser.jar:
          content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
          content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
          content/browser/browser-init.js                     (content/browser-init.js)
 +        content/browser/bento-shell-mount.js                (content/bento-shell-mount.js)
++        content/browser/bento-shell-mount.css               (content/bento-shell-mount.css)
 +        content/browser/bento-chrome-tokens.css             (content/bento-chrome-tokens.css)
 +        content/browser/bento-chrome-theme.css              (content/bento-chrome-theme.css)
 +        content/browser/bento-chrome-themes/                (content/bento-chrome-themes/*.css)

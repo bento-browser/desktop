@@ -34,6 +34,7 @@ import {
   type ConfirmPayload,
 } from '../bridge/useConfirm';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
@@ -48,6 +49,8 @@ function ConfirmApp() {
   useEffect(() => {
     return subscribeToConfirmRequests(setPayload);
   }, []);
+  // After the subscription: senders post the payload again once this is announced.
+  useOverlayReadySignal('confirm');
 
   function close() {
     // Sentinel title format mirrors the palette's. The chrome script polls

@@ -45,23 +45,33 @@ it). Each `SKILL.md` owns its step-by-step procedure:
 
 ## Backticks inside JS template literals
 
-When writing CSS/HTML inside a JS template literal (a backtick string), **never use backticks in the embedded content** — they terminate the template literal early and produce confusing TS/JS syntax errors that are easy to misdiagnose. This has happened repeatedly in [src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js) where chrome CSS is injected via a `style.textContent = ...` template literal.
+Chrome layout CSS is not written in JS. It is the static sheet
+[src/browser/base/content/bento-shell-mount.css](src/browser/base/content/bento-shell-mount.css),
+linked by `injectChromeStyles()` in
+[src/browser/base/content/bento-shell-mount.js](src/browser/base/content/bento-shell-mount.js)
+and registered in `browser/base/jar.mn`. Add new chrome rules there, not in a template literal.
+
+The rule below still applies to any CSS/HTML you build in a JS template literal (a backtick string),
+such as the inline `style.cssText` strings that remain in the mount script. **Never use backticks in
+the embedded content**, because they terminate the template literal early and produce confusing TS/JS
+syntax errors that are easy to misdiagnose. This hazard is why the chrome stylesheet was moved out of the
+mount script, where it had repeatedly broken the whole script.
 
 Bad — backticks around the word `order` end the outer template literal:
 
 ```js
-style.textContent = `
+el.style.cssText = `
   /* Firefox's flex `order` property */
-  .foo { order: 0; }
+  order: 0;
 `;
 ```
 
 Good — use single quotes inside CSS comments:
 
 ```js
-style.textContent = `
+el.style.cssText = `
   /* Firefox's flex 'order' property */
-  .foo { order: 0; }
+  order: 0;
 `;
 ```
 
@@ -183,7 +193,7 @@ Before creating or modifying a component:
 - **Public imports only**: use the root `@muxui/react` export or a documented public subpath. Never import private generated files or a copied registry. `lucide-react` remains per-icon and documented.
 - **Mux customisation docs stay current**: any change that adds or changes Bento-specific Mux customisations, token usage patterns, CSS layer/override rules, or reusable component styling conventions must update [docs/mux-ui-component-customisations.md](docs/mux-ui-component-customisations.md) in the same change.
 - **Supported chrome surfaces**: Firefox chrome (browser XHTML, `gBrowser`, panels, actors, the Settings page) is reached only through the surfaces below, never from `bento-shell` or `bento-tools` page code. New chrome interactions go through one of them, prefer an existing `bentoChrome.*` method or experiment over a new overlay or patch, and are logged in [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md).
-  - **Mount script and overlays** (`src/browser/`, copied into the Firefox tree by `pnpm run import`): `src/browser/base/content/bento-shell-mount.js` is the chrome-process reconciler. It renders panels through Firefox's split-view machinery, anchors native popups, reads and writes chrome DOM, receives title-IPC from the shell, patches a few Firefox members, and carries the compact firefox-compat probe list. Its siblings are its stylesheets (`bento-chrome-theme.css` and the generated `bento-chrome-tokens.css`) and the embedded import host (`bento-migration-host.*`, `bento-migration-wizard-bridge.css`).
+  - **Mount script and overlays** (`src/browser/`, copied into the Firefox tree by `pnpm run import`): `src/browser/base/content/bento-shell-mount.js` is the chrome-process reconciler. It renders panels through Firefox's split-view machinery, anchors native popups, reads and writes chrome DOM, receives title-IPC from the shell, patches a few Firefox members, and carries the compact firefox-compat probe list. Its siblings are its stylesheets (`bento-shell-mount.css`, the chrome layout rules linked by `injectChromeStyles()`, which also holds the chrome invisible until the tokens, theme, and layout links have a complete sheet; `bento-chrome-theme.css`; and the generated `bento-chrome-tokens.css` and `bento-chrome-themes/`) and the embedded import host (`bento-migration-host.*`, `bento-migration-wizard-bridge.css`).
   - **Actors** (`src/browser/actors/`): `BentoKeyParent` and `BentoKeyChild`, the `BentoKey` JSWindowActor pair registered by the mount script that forwards panel and address shortcuts from web content to chrome.
   - **Experiments**: `extensions/bento-shell/experiments/chrome-bridge/api.js` (`bentoChrome.*`, the parent-process document registry the extensions bind to) and `extensions/bento-tools/experiments/` (`bento-privacy`, `bento-native-preferences`, `bento-external-sessions`) for Firefox services extension code cannot reach: preferences and search engines, the native Settings page bridge, and external session files.
   - **Patches** (`patches/`, ordered by `patches/series.json`): `chrome-layout` (host elements, `jar.mn` entries, actor registration), `core-ui` (native tabs and menus, DevTools and focus handling, fullscreen, the native Bento Settings page with its `BentoShellDocumentRegistry` actor module, first-run import, theming), `window-sync` (window tracker and tabbrowser hooks), and `experiments` (build). Keep them small; larger overlays make Firefox bumps harder.
@@ -191,12 +201,12 @@ Before creating or modifying a component:
 - **Firefox core touchpoint log**: any feature work that changes or depends on Firefox core files, patches, prefs, or chrome internals must update [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) in the same change, including the regression checks future Firefox updates must run.
 - **Perf budgets** (a ratchet: CI runs `pnpm run size:check` via [scripts/check-size-budgets.mjs](scripts/check-size-budgets.mjs) and direct file limits in [.size-limit.json](.size-limit.json), and compares every measured gzip size with the committed [.size-baseline.json](.size-baseline.json), measured from a `BENTO_RELEASE=1` build): the check fails when an entry grows past its baseline by more than max(1%, 1 KB) or has no baseline entry, even if it is already over its ceiling; existing overages that do not grow pass, and a shrink prints a note to refresh the baseline. Missing or malformed built assets still fail. `pnpm run size:baseline` refreshes the baseline: it lowers entries that shrank and adds new ones, but refuses to raise an existing entry (exit 1, naming what it refused) unless the PR names it with `pnpm run size:baseline -- --accept-growth <entry path>`, so intended growth shows up explicitly in the committed baseline diff. The ceilings are targets and are still reported: shell cold-start JS < 400 KB gz; palette/address-bar/confirm/edit-workspace/welcome/menu/workspace-palette/merge-palette cold-start JS < 200 KB gz; shell CSS < 40 KB gz; bento-tools background < 55 KB gz; cold-start < 80 ms, tab-switch < 16 ms, sustained 60 fps on panel drag. Tab list virtualized from M1, not M3.
 - **State pattern**: `bento-tools` is the source of truth for persistent state. `bento-shell` Zustand stores are downstream mirrors. UI never mutates persistent state directly — dispatch a port message to `bento-tools` instead.
-- **No raw design values in component CSS**: components reference public Mux semantic tokens, generated legacy aliases (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, and similar), or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a reusable value is missing, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired foreground token for that role, not a raw neutral.
+- **No raw design values in component CSS**: components reference public Mux semantic tokens, generated legacy aliases (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, and similar), or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a reusable value is missing, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired foreground token for that role, not a raw neutral. Legacy alias uses in shell CSS are capped by `.legacy-alias-cap.json` (`pnpm run lint:aliases`), so new CSS uses public Mux semantic tokens or `--bento-*` tokens.
 - **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
 - **Checks CI runs** (`.github/workflows/ci.yml`; run the same commands locally before pushing):
   - `static-checks` job: JSON and `bento.json` validation; `bash -n` and ShellCheck on `scripts/*.sh`; `node --check` on `prefs/bento.js` and every `.js`/`.mjs` under `src/browser`; `pnpm run lint:repo` (root ESLint over `scripts/`, `src/browser`, and `.agents/` with Node, Firefox system-module, and Firefox chrome-window globals; add a real global to `eslint.config.mjs`, never disable `no-undef`); `pnpm run native-protocol:check` (generated native-preferences protocol copies match their source); the `node --test` suites under `scripts/` and `.agents/` (including `scripts/check-firefox-compat.test.mjs`, which fails when the firefox-compat registry, its call sites, the mount script's compact probe list, or its generated table in `docs/firefox-core-touchpoints.md` drift); the competitor-reference boundary check; then `bento.json` loads, its Firefox version is well formed and matches `config/firefox-versions.json` (no hard-coded version), and `pnpm run lc`.
   - `security-gate` job: `pnpm run security:check`, `pnpm run release:security-check`, and `pnpm audit --audit-level high`. It installs no dependencies and selects the build platforms. `release.yml` has its own gate (the same checks plus `node --test scripts/release-security.test.mjs`) before any native build.
-  - `extensions` job: typecheck, ESLint, and the Vitest suites (`pnpm --filter @bento/shell test`, `pnpm --filter @bento/tools test`) for both extensions, then the extension build, the release-shell check (`pnpm run release:security-check:shell`), and the size report.
+  - `extensions` job: typecheck, ESLint, the legacy alias cap (`pnpm run lint:aliases`), and the Vitest suites (`pnpm --filter @bento/shell test`, `pnpm --filter @bento/tools test`) for both extensions, then the extension build, the release-shell check (`pnpm run release:security-check:shell`), the size report, and the rollback variant checks (`pnpm run rollback:check`).
   - `build` job ("Source import" on pushes and pull requests): starts after `security-gate`, `static-checks`, and `extensions` pass. It restores or downloads the pristine Firefox source, runs `pnpm run ext:build` and `pnpm run import`, checks that a second import is idempotent, and runs `node scripts/check-import-output.mjs` and the release-shell check (`pnpm run release:security-check:shell`), which also covers the manifest the import copied into the engine. A manual `workflow_dispatch` run continues into the native build. Cache keys and behavior: [docs/build-tooling.md](docs/build-tooling.md#ci-jobs-and-caches).
   - In `bento-shell-mount.js`, `no-empty`, `no-redeclare`, `no-self-assign`, and the unused-variable and unused-expression rules are warnings tracked for the mount-script split; every other rule is an error.
 

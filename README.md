@@ -84,7 +84,7 @@ update with patch-stack validation, import, and a build. A newer version needs a
 trusted Mozilla source digest first. Mozilla publishes the target version in
 [`firefox_versions.json`](https://product-details.mozilla.org/1.0/firefox_versions.json)
 and the archive digest in the per-release
-[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/157.0.1/SHA256SUMS)
+[`SHA256SUMS`](https://archive.mozilla.org/pub/firefox/releases/)
 file at `https://archive.mozilla.org/pub/firefox/releases/<target-version>/SHA256SUMS`;
 copy the 64-character value from the line for
 `source/firefox-<target-version>.source.tar.xz`, then run:
@@ -115,7 +115,7 @@ pnpm run dev
 
 This rebuilds the extensions, imports Bento into the Firefox tree, clears
 runtime caches, and launches the newest native build with
-`engine/obj-*/dist/Bento.app` on macOS. It reuses `.bento-dev-profile` and preserves
+`engine/obj-bento/dist/Bento.app` on macOS. It reuses `.bento-dev-profile` and preserves
 browser data such as bookmarks, history, sessions, passwords, extension
 storage, and window layout. Quit Bento before launching it again so the profile
 lock is released.
@@ -124,7 +124,7 @@ The launcher currently auto-detects the macOS app bundle. On Linux or Windows,
 set `BENTO_BIN` to the built executable path:
 
 ```sh
-BENTO_BIN=/path/to/engine/obj-.../dist/bin/bento pnpm run dev
+BENTO_BIN=/path/to/engine/obj-bento/dist/bin/bento pnpm run dev
 ```
 
 Use a new temporary profile when testing first-run or clean-profile behavior:
@@ -195,12 +195,17 @@ pnpm run dev
 | [bento.json](bento.json)                                                         | Canonical Firefox, branding, build, locale, and update configuration          |
 | [Bento generated state](docs/build-tooling.md#generated-state-and-source-safety) | Local source cache, source state, import manifest, and generated engine state |
 | [configs/](configs/)                                                             | Per-platform `mozconfig` fragments                                            |
+| [config/](config/)                                                               | Tracked upstream versions, release security inputs, reference allowlist       |
 | [branding/bento/](branding/bento/)                                               | Canonical Mozilla-derived Bento branding                                      |
-| [extensions/](extensions/)                                                       | Bundled privileged extensions (Phase 3)                                       |
-| [patches/](patches/)                                                             | Surgical Firefox source patches (Phase 4)                                     |
+| [extensions/](extensions/)                                                       | Bundled privileged extensions (`bento-shell`, `bento-tools`, uBlock Origin)   |
+| [src/](src/)                                                                     | Source overlays copied into the Firefox tree at import                        |
+| [patches/](patches/)                                                             | Surgical Firefox source patches                                               |
 | [prefs/](prefs/)                                                                 | Default pref overrides                                                        |
-| [scripts/](scripts/)                                                             | Build / release scripts                                                       |
-| [config/firefox-versions.json](config/firefox-versions.json)                     | Tracked upstream versions                                                     |
+| [locales/](locales/)                                                             | Shipped locale list                                                           |
+| [scripts/](scripts/)                                                             | Build, import, check, and release scripts                                     |
+| [docs/](docs/)                                                                   | Product, technical, and contributor documentation                             |
+| [rollback/](rollback/)                                                           | Archived legacy source for the Settings rollback builds                       |
+| [bentobrowser-site/](bentobrowser-site/)                                         | Static landing page                                                           |
 | [.github/workflows/](.github/workflows/)                                         | CI                                                                            |
 
 ## License

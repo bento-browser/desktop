@@ -12,9 +12,14 @@
 // New BroadcastChannel name (separate from 'bento-shell-bus' which is the
 // tools port) so the confirm payload doesn't collide with action/event
 // traffic to bento-tools.
+//
+// The channel reaches the confirm document of every Bento window, so each
+// payload names the window it is for and a receiver ignores other windows'.
+// Without that, window B's request replaced the dialog window A was showing.
 
 import type { Action } from '@shared/protocol';
 import { sendChromeTitle } from './chromeTitle';
+import { isForThisWindow, thisWindowId } from './windowId';
 
 export const CONFIRM_BUS_NAME = 'bento-confirm-bus';
 export const CONFIRM_OPEN_PREFIX = 'BENTO_OPEN_CONFIRM';
@@ -36,6 +41,8 @@ export interface ConfirmPayload {
 
 interface ShowMessage {
   kind: 'show';
+  /** The chrome window the request is for (windowId.ts). */
+  windowId: number | null;
   payload: ConfirmPayload;
 }
 
@@ -57,7 +64,7 @@ export function requestConfirm(payload: ConfirmPayload): void {
     console.warn('[bento-shell] requestConfirm: no BroadcastChannel — cannot open');
     return;
   }
-  ch.postMessage({ kind: 'show', payload } satisfies ShowMessage);
+  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
   // Timestamp suffix so successive opens always change the title string
   // (and therefore are picked up by the chrome script's title poll).
   sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
@@ -70,7 +77,7 @@ export function subscribeToConfirmRequests(handler: (payload: ConfirmPayload) =>
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as ShowMessage | undefined;
-    if (data?.kind === 'show') handler(data.payload);
+    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

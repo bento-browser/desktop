@@ -19,6 +19,26 @@ function requireFile(relative) {
 
 requireFile('engine/browser/branding/bento/configure.sh');
 
+// Every chrome overlay under src/browser/base/content must reach the engine and be
+// registered in browser/base/jar.mn, by file name or as a directory line (the theme
+// sheets). An unregistered file imports cleanly but never ships, which leaves the
+// chrome unstyled or unscripted at runtime (bento-shell-mount.css is one such file).
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const browserJar = fs.readFileSync(requireFile('engine/browser/base/jar.mn'), 'utf8');
+for (const entry of fs.readdirSync(path.join(root, 'src/browser/base/content'), {
+  withFileTypes: true,
+})) {
+  if (entry.name.startsWith('.')) continue;
+  const name = escapeRegExp(entry.name);
+  const line = entry.isDirectory()
+    ? new RegExp(`^\\s*content/browser/${name}/\\s+\\(content/${name}/`, 'm')
+    : new RegExp(`^\\s*content/browser/${name}\\s+\\(content/${name}\\)`, 'm');
+  requireFile(`engine/browser/base/content/${entry.name}`);
+  if (!line.test(browserJar)) {
+    throw new Error(`engine/browser/base/jar.mn does not register ${entry.name}`);
+  }
+}
+
 const addonNames = ['bento-shell', 'bento-tools', 'ublock-origin'];
 for (const name of addonNames) {
   requireFile(`engine/browser/extensions/${name}/manifest.json`);
