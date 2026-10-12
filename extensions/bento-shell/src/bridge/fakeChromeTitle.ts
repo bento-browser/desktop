@@ -1,5 +1,5 @@
 // Test double for a shell document's main thread and title slot, as chrome can
-// observe them (docs/core-functionality-technical.md, "Shell to chrome bridge").
+// observe them (docs/technical/shell-chrome-bridge.md).
 //
 // It models the Gecko behavior the title writer depends on:
 // - One FIFO task queue. The title report, MessagePort deliveries, the timeout

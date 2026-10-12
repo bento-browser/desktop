@@ -1,7 +1,7 @@
 // Readiness announcement of an overlay document.
 //
 // Chrome creates most overlay documents on demand or at idle, not at window
-// startup (docs/core-functionality-technical.md, "Overlay documents"). What
+// startup (docs/technical/overlay-documents.md). What
 // chrome sends an overlay (a frame-script relay onto a BroadcastChannel) does
 // not queue: sent before the React tree subscribed, it is lost. So an overlay
 // announces once that its subscriptions exist, and chrome reveals an open, and

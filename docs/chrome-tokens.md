@@ -33,7 +33,7 @@ public Mux token surface and Bento's compatibility aliases.
    sheet [bento-shell-mount.css](../src/browser/base/content/bento-shell-mount.css)
    (registered in `jar.mn` like the others), keeps the chrome root invisible
    while any of those links has no complete sheet yet (a paint gate; see
-   `docs/core-functionality-technical.md`), keeps `data-color-mode` on the
+   `docs/technical/architecture.md`), keeps `data-color-mode` on the
    chrome root, and attaches the active theme's sheet before setting
    `data-bento-theme`. The layout sheet consumes these tokens; it is not
    generated.

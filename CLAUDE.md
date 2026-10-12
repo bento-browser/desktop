@@ -2,6 +2,7 @@
 
 Reference docs: see [docs/core-functionality.md](docs/core-functionality.md)
 for the product vision, [docs/core-functionality-technical.md](docs/core-functionality-technical.md)
+(an index of the topic files under [docs/technical/](docs/technical/))
 for the implementation model and regression pitfalls, and
 [docs/firefox-core-touchpoints.md](docs/firefox-core-touchpoints.md) for
 Firefox core surfaces Bento modifies or depends on.
@@ -116,8 +117,10 @@ Bento Browser's core functionality and UX, and may be used later for marketing
 material.
 
 [docs/core-functionality-technical.md](docs/core-functionality-technical.md) is the
-maintained technical companion for how the working core functionality is achieved
-and which pitfalls must be preserved against regressions.
+index of the maintained technical companion for how the working core functionality
+is achieved and which pitfalls must be preserved against regressions. The notes
+themselves live in topic files under [docs/technical/](docs/technical/); the index
+lists each one with its scope.
 
 When adding, removing, or changing user-visible functionality:
 
@@ -129,11 +132,34 @@ When adding, removing, or changing user-visible functionality:
 
 When adding, removing, or changing working core implementation behavior:
 
-1. Update `docs/core-functionality-technical.md` in the same change.
+1. Update the topic file under `docs/technical/` that covers the change, in the same change (see the table below). Add a new topic file, and its entry in `docs/core-functionality-technical.md`, only when no existing file fits.
 2. Document the source-of-truth store, chrome bridge, renderer path, persistence path, and manual verification surface affected by the change.
-3. Record newly discovered regressions and their fixes as pitfalls in that document.
+3. Record newly discovered regressions and their fixes as pitfalls in the pitfalls section of that topic file.
 4. For future regressions, consult the recorded solutions and pitfalls before implementing a new approach, and reuse the recorded solution unless it is demonstrably unrelated to the current failure.
 5. Remove obsolete pitfalls only when the underlying implementation no longer depends on them.
+6. Relative links and `#anchors` in `CLAUDE.md`, `README.md`, and `docs/**/*.md` are checked by `pnpm run check:doc-links`; run it after renaming a heading or moving a file.
+
+| Change touches | Topic file in `docs/technical/` |
+| --- | --- |
+| Shell/tools split, state ownership, stylesheet gate | `architecture.md` |
+| Hidden native tabs, titlebar and window controls | `native-tabs-titlebar.md` |
+| Inspect in Panel, DevTools panels | `devtools-in-panel.md` |
+| Address entry, navigation, autocomplete | `address-entry.md` |
+| Privacy levels, search engines | `privacy-search.md` |
+| Workspaces, tabs, folders, pinned tabs | `workspaces.md` |
+| `PanelStore`, layout tree, panel persistence and actions | `panel-state.md` |
+| Welcome flow, first-run and startup import, toolbar scrim | `first-run-import.md` |
+| Sidebar footer menu and download buttons | `sidebar-native-surfaces.md` |
+| Manual session merge, Settings backups | `session-merge-backups.md` |
+| Title IPC, shell bus, bridge bootstrap | `shell-chrome-bridge.md` |
+| Overlay documents, tooltip, measuring, overlay transparency | `overlay-documents.md` |
+| Command palette, sidebar search, floating address bar | `palettes-and-address-bar.md` |
+| `reconcilePanelsSplitView`, split-view shims, progress filters | `chrome-panel-rendering.md` |
+| Flat layout geometry, splitters, choosers, subdivisions | `flat-panel-layout.md` |
+| Panel cycling, BentoKey actor, favicon navigator, focus rings | `panel-traversal-focus.md` |
+| Pinned panels, saved panels, add-panel trailer | `panel-widgets.md` |
+| Color mode, themes, tokens, shell bundle | `theming.md` |
+| Manual regression checklist, submenu and palette search notes | `manual-regression-areas.md` |
 
 ## UI components (Mux UI + Bento primitives)
 
@@ -204,7 +230,7 @@ Before creating or modifying a component:
 - **No raw design values in component CSS**: components reference public Mux semantic tokens, generated legacy aliases (`--neutral-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--neutral-N-fg`, and similar), or Bento tokens (`--bento-*`). No hex/rgb/hsl colors, no raw durations/easings, no magic dimensions. If a reusable value is missing, **add it to [extensions/bento-shell/src/theme/bento-tokens.css](extensions/bento-shell/src/theme/bento-tokens.css) first**, then reference it. The only inline exceptions are CSS conventions (1px hairlines, `0`, `100%`) and explicitly-marked visual patches (e.g. `top: 2px` for optical centering). Active text on a tinted neutral surface uses the paired foreground token for that role, not a raw neutral. Legacy alias uses in shell CSS are capped by `.legacy-alias-cap.json` (`pnpm run lint:aliases`), so new CSS uses public Mux semantic tokens or `--bento-*` tokens.
 - **Every layer-2 component ships with a Ladle story file**: any new file under `extensions/bento-shell/src/components/<Name>/<Name>.tsx` must be accompanied by `<Name>.stories.tsx` covering the meaningful visual states (default, active/selected, edge cases like long text or empty state, narrow/wide containers where layout matters). Stories seed Zustand stores via fixtures in [extensions/bento-shell/src/state/**fixtures**/](extensions/bento-shell/src/state/__fixtures__/) — never import `bridge/useToolsPort` from a story. If a fixture doesn't exist for a store the component reads from, add one alongside the existing `tabs.ts` / `workspaces.ts`. Stories are how we iterate visually without rebuilding the whole browser; missing them slows the next person down.
 - **Checks CI runs** (`.github/workflows/ci.yml`; run the same commands locally before pushing):
-  - `static-checks` job: JSON and `bento.json` validation; `bash -n` and ShellCheck on `scripts/*.sh`; `node --check` on `prefs/bento.js` and every `.js`/`.mjs` under `src/browser`; `pnpm run lint:repo` (root ESLint over `scripts/`, `src/browser`, and `.agents/` with Node, Firefox system-module, and Firefox chrome-window globals; add a real global to `eslint.config.mjs`, never disable `no-undef`); `pnpm run native-protocol:check` (generated native-preferences protocol copies match their source); the `node --test` suites under `scripts/` and `.agents/` (including `scripts/check-firefox-compat.test.mjs`, which fails when the firefox-compat registry, its call sites, the mount script's compact probe list, or its generated table in `docs/firefox-core-touchpoints.md` drift); the competitor-reference boundary check; then `bento.json` loads, its Firefox version is well formed and matches `config/firefox-versions.json` (no hard-coded version), and `pnpm run lc`.
+  - `static-checks` job: JSON and `bento.json` validation; `bash -n` and ShellCheck on `scripts/*.sh`; `node --check` on `prefs/bento.js` and every `.js`/`.mjs` under `src/browser`; `pnpm run lint:repo` (root ESLint over `scripts/`, `src/browser`, and `.agents/` with Node, Firefox system-module, and Firefox chrome-window globals; add a real global to `eslint.config.mjs`, never disable `no-undef`); `pnpm run check:doc-links` (relative links and `#anchors` in `CLAUDE.md`, `README.md`, and `docs/**/*.md`); `pnpm run native-protocol:check` (generated native-preferences protocol copies match their source); the `node --test` suites under `scripts/` and `.agents/` (including `scripts/check-firefox-compat.test.mjs`, which fails when the firefox-compat registry, its call sites, the mount script's compact probe list, or its generated table in `docs/firefox-core-touchpoints.md` drift); the competitor-reference boundary check; then `bento.json` loads, its Firefox version is well formed and matches `config/firefox-versions.json` (no hard-coded version), and `pnpm run lc`.
   - `security-gate` job: `pnpm run security:check`, `pnpm run release:security-check`, and `pnpm audit --audit-level high`. It installs no dependencies and selects the build platforms. `release.yml` has its own gate (the same checks plus `node --test scripts/release-security.test.mjs`) before any native build.
   - `extensions` job: typecheck, ESLint, the legacy alias cap (`pnpm run lint:aliases`), and the Vitest suites (`pnpm --filter @bento/shell test`, `pnpm --filter @bento/tools test`) for both extensions, then the extension build, the release-shell check (`pnpm run release:security-check:shell`), the size report, and the rollback variant checks (`pnpm run rollback:check`).
   - `build` job ("Source import" on pushes and pull requests): starts after `security-gate`, `static-checks`, and `extensions` pass. It restores or downloads the pristine Firefox source, runs `pnpm run ext:build` and `pnpm run import`, checks that a second import is idempotent, and runs `node scripts/check-import-output.mjs` and the release-shell check (`pnpm run release:security-check:shell`), which also covers the manifest the import copied into the engine. A manual `workflow_dispatch` run continues into the native build. Cache keys and behavior: [docs/build-tooling.md](docs/build-tooling.md#ci-jobs-and-caches).

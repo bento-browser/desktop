@@ -16601,8 +16601,8 @@
   // progress events and removeProgressListener throws NS_ERROR_FAILURE.
   // Firefox 154 exposed the filter through _getTabProgressFilter, which let
   // Bento re-add it; 157 keeps it in a private field, so there is no
-  // re-attach safety net. See "Tab progress filters" in
-  // docs/core-functionality-technical.md.
+  // re-attach safety net. See "Chrome rendering pitfalls" in
+  // docs/technical/chrome-panel-rendering.md.
 
   // Strip the patch's pre-baked single panel browser and configure the
   // host as a horizontal flex strip. Done at script execution time so

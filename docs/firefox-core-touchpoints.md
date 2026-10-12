@@ -278,7 +278,7 @@ Use this shape for new or changed touchpoints:
   title is lost again. Timers cannot replace the port because
   `TimeoutManager::RunTimeout` (`dom/base/TimeoutManager.cpp`) batches every
   expired timeout into one task. Rerun the sidebar-reload check in
-  `docs/core-functionality-technical.md` ("Shell to chrome bridge") on a profile
+  `docs/technical/shell-chrome-bridge.md` ("Title IPC pitfalls") on a profile
   with `welcomeSeen` false after any change to document title reporting),
   overlay shortcuts, merge-palette lifecycle dispatch, address/search
   navigation, one-shot search-engine resolution, panel focus detection on
