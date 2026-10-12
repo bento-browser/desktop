@@ -15257,8 +15257,11 @@
   }
   // The curtain armed for a selection in another workspace lifts when tools answers with a
   // workspace switch (performWorkspaceSwitchFade replaces this timer). If tools never
-  // follows, which happens when the selection was not the user's workspace switch, lift
-  // it and render the selected tab as it is instead of leaving the page hidden.
+  // follows, which happens when the selection was not the user's workspace switch, or when
+  // a slow switch has not delivered its panels yet, lift it and render the selected tab
+  // alone instead of leaving the page hidden. The panel payload held here belongs to the
+  // workspace being left, so it must not be drawn around a tab of the workspace being
+  // entered; the real payload reconciles as usual when it arrives.
   function armDeferredWorkspaceSwitchWatchdog(deferredTab) {
     if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
     __workspaceFadeWatchdog = setTimeout(() => {
@@ -15269,7 +15272,7 @@
       clearWorkspaceFadeClasses();
       try {
         if (window.gBrowser?.selectedTab === deferredTab) {
-          reconcilePanelsSplitView(__lastPanelsPayload);
+          reconcilePanelsSplitView([]);
         }
       } catch (err) {
         console.warn('[bento-shell-mount] deferred workspace-switch reconcile threw:', err);
