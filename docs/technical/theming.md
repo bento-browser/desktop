@@ -195,10 +195,13 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   that left `--background-color-box`, `--border-radius-circle` and every other
   token patch 12 maps onto an alias empty, and the unscoped
   `:root { --space-large: var(--space-2xs) }` (also `--space-medium`, `-small`,
-  `-xsmall`, `-xxsmall`) emptied Firefox's own spacing tokens, so cards had no
-  fill, no radius and zero padding. It came in with the Tale to Mux migration,
-  which moved the aliases from `:root` to the attribute scope; found 2026-10-12.
-  Disabling the sheet does not show the cause: the aliases vanish with it.
+  `-xsmall`, `-xxsmall`) emptied those five Firefox spacing tokens, so cards had
+  no fill or radius and every rule that spaces with one of the five lost it.
+  `moz-card` padding comes from `--card-padding-*` (`--space-xlarge`), which the
+  bridge does not touch, so card padding was unaffected. It came in with the Tale
+  to Mux migration, which moved the aliases from `:root` to the attribute scope;
+  found 2026-10-12. Disabling the sheet does not show the cause: the aliases
+  vanish with it.
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome reads it.
