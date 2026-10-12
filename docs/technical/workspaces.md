@@ -381,6 +381,11 @@ opening an unwanted blank tab before the moved tabs arrive.
   beforeunload "Stay"); see "Closing a tab that has a beforeunload prompt" in
   [chrome-panel-rendering.md](chrome-panel-rendering.md). A tab left with the
   closing marker disappears from the sidebar and is closed at the next launch.
+  The rollback only restores workspace, folder and panel slot when the tab's
+  window still shows the workspace it was closed from; otherwise the tab joins
+  the workspace its window shows, as a normal tab. A workspace delete has no
+  rollback (its tabs keep the marker if a prompt keeps them), and sub-panels and
+  subdivisions come back as root panels.
 - A tab can arrive in a window with another window's workspace (tear-out, drag
   between windows). Do not trust its `workspaceId` until `releaseAdoptedTab` has
   compared it with the workspace the destination window shows, and do not open a
@@ -396,6 +401,29 @@ opening an unwanted blank tab before the moved tabs arrive.
   marks the doomed tabs closing before deleting, closes a stranded window (with
   `closeTabs`) or gives it a fresh workspace (nothing to close), and never relies
   on the first-in-map fallback.
+- A workspace delete hands the window its replacement synchronously, but the
+  replacement's tab and panels come from `handleWorkspaceActivation`, which the
+  store's batched `activated` event runs later. Removing the doomed tabs in
+  between made the last-tab handler see an empty replacement and delete it or close
+  the window. `deleteWorkspace` therefore awaits `ctx.activateWorkspace` before it
+  removes anything. That call and the store's batched `activated` events (one for
+  the window, and one without a window for the global fallback) all go through
+  `activateWorkspaceOnce`, which keys on the workspace id and joins the run in
+  flight; run separately they each saw the empty workspace and created a tab, so
+  it ended up with two. The window is marked in
+  `WindowHandoffGuard` for the duration (cleared in `finally`); the decision
+  itself is `afterTabRemoved` in `workspaces/EmptiedWorkspace.ts`, which returns
+  no action for a window that is handing off.
+- A tab Bento moves between windows itself must go through `moveTabsToWindow`.
+  Only the move's own record distinguishes it from a drag when the window
+  switched workspace before the attach event (`releaseAdoptedTab`); the record
+  expires after 10 s if the tab never attaches.
+- Do not adopt or assign unassigned tabs while startup is unsettled. A restored
+  tab looks unassigned until `hydrateWorkspaceIds` has read its session value, and
+  a persistent write before that replaces the real workspace. The boot backfill is
+  in-memory only for the same reason; adoption additionally requires a window
+  created after the settle, a fresh session read, and no stored value on any tab
+  of the window (`tabsToAdopt`).
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

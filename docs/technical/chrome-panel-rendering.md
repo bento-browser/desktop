@@ -320,14 +320,25 @@ adds its entry, and its id in the mount probe list, in the same change.
   survives. `restoreKeptTab` then clears the closing marker, reassigns the
   workspace and folder, re-inserts the tab at its panel restore location,
   restores width and header state, and re-syncs markers and `panels/sync`. The
-  restored panel is rendered again from the same element, so
+  rollback only restores into the workspace the tab's own window still shows
+  (`tabs.get(tabId).windowId` against `getActiveId`): the prompt can stay open
+  while that window switches away and another window takes the workspace, and
+  re-inserting the panel slot then would put it in a layout the tab's window does
+  not render. In that case the tab becomes a normal tab of the workspace its
+  window shows and its panel marker is cleared. The restored panel is rendered
+  again from the same element, so
   `resetPanelInlineLayoutState` must drop the `bento-panel--removing` fade class;
   without that the panel returns at opacity 0 and ignores pointer events. Before
   this, cancelling the prompt left every kept tab, panel or not, with no
   workspace and `bento.closingTab=1`: it vanished from the sidebar and
   `closeMarkedTabs` removed it at the next launch. DevTools closes never roll
   back, and a sub-panel closed along with its parent only gets its workspace back
-  (it returns as a sidebar tab, not a panel).
+  (it returns as a sidebar tab, not a panel). Restore locations are root-level, so
+  a sub-panel or subdivision that does come back is a root panel at its group's
+  position, not inside the group. `workspace/delete` does not use this path: its
+  tabs are removed directly after their workspace is gone, so a tab kept by a
+  prompt there has no workspace to return to and stays marked closing until the
+  next launch.
 - The reconciler must not pick a main tab from another workspace. When the
   selected tab is a panel that is still in a stale payload (a promoted panel is
   activated before its `panels/sync` arrives), `reconcilePanelsSplitView` looks for
@@ -344,8 +355,13 @@ adds its entry, and its id in the mount probe list, in the same change.
   follows (a tab selected by Firefox or an extension, or a tools failure) the
   curtain used to stay up with no watchdog, hiding the page for good.
   `armDeferredWorkspaceSwitchWatchdog` lifts it after `WORKSPACE_FADE_WATCHDOG_MS`
-  and reconciles the selected tab as it is; `performWorkspaceSwitchFade` replaces
-  the timer when the switch does arrive. Do not "fix" this by activating the
+  and reconciles the selected tab alone (`reconcilePanelsSplitView([])`);
+  `performWorkspaceSwitchFade` replaces the timer when the switch does arrive. The
+  held payload must not be passed: a slow legitimate switch (parked-tab restore
+  selects the destination's first tab before tools finishes) outlasts the timer,
+  and the held payload is the previous workspace's, so it would draw old panels
+  around a new workspace's tab. The real `panels/sync` reconciles normally when it
+  lands (`scripts/mount-workspace-watchdog.test.mjs`). Do not "fix" this by activating the
   selected tab's workspace from the selection signal: selection fires for
   transient states (closing, adoption) and would fight tools.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
@@ -368,14 +384,28 @@ adds its entry, and its id in the mount probe list, in the same change.
     workspace. `tabs.onAttached` runs `releaseAdoptedTab` (`tabs/AdoptedTab.ts`):
     a tab that arrives in a window which does not show its workspace leaves its
     panel layouts, loses the stale workspace and folder, and joins the
-    destination's workspace (or waits for it). Bento's own cross-window move on
-    workspace activation is not touched because the destination owns that
-    workspace. Dragging a tab into an existing window takes the same path.
+    destination's workspace (or waits for it). Bento's own cross-window moves
+    (a window claiming its workspace's tabs, an import relocating tabs) go through
+    `moveTabsToWindow`, which records tab id to workspace (`bentoTabMoves`) before
+    the move; `onAttached` takes that record first and leaves the tab alone. Judging
+    by ownership alone misread such a move as a user drag whenever the window
+    switched workspace before the attach event arrived. Dragging a tab into an
+    existing window takes the user path.
   - The new window opens with the adopted tabs unassigned, so
     `handleWorkspaceActivation` assigns every unassigned tab of a window where no
     tab has a workspace (`adoptableTabs`) instead of creating a blank tab. A plain
     `OpenBrowserWindow()` had the same race and opened two tabs (its initial tab
-    had no workspace yet when the first activation ran).
+    had no workspace yet when the first activation ran). This only runs for a
+    window created after startup has settled and hydrated (`createAdoptionGate`),
+    and only for tabs whose session metadata is read at that moment and found empty
+    (`TabRegistry.confirmUnassigned`; a tab that `clearWorkspace` detached counts
+    without a read, because SessionStore copies the old value back onto it). At
+    boot `restoreFromSession` activates workspaces before SessionStore has
+    restored the tabs and before `hydrateWorkspaceIds` ran, so every restored tab
+    still looks unassigned; assigning the window's workspace to it there persisted
+    over the real assignment. Windows that exist before the gate settles, and any
+    window with one tab that has a stored value (an undone window close), adopt
+    nothing and fall back to a new tab as before.
   - SessionStore copies the source tab's custom values onto the new tab after the
     attach event, so a panel marker can reappear on a tab that is no longer a
     panel; the activation path clears it again (`onActivated` would otherwise
