@@ -287,8 +287,8 @@ export const MEMBERS = [
     kind: 'source',
     how: 'queries',
     probe: 'E',
-    sites: ['applySubdivisions'],
-    use: 'showSplitViewPanels inserts a footer into each panel; Bento removes it.',
+    sites: ['src/browser/base/content/bento-shell-mount.css#split-view-footer'],
+    use: 'showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule.',
     at: [FF.tabbrowser, 'createXULElement\\("split-view-footer"\\)', 4116],
   },
   {

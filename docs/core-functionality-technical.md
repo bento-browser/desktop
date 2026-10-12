@@ -2269,11 +2269,11 @@ Chooser cycling fix: Cmd/Ctrl+Shift+arrow cycling, Shift-wheel cycling, and the
 content-key bridge all call `navigatePanels()`, which reads `getPanelCycleTargets()`. In
 flat layout, that target list must be built from `currentPanelLayout` via
 `getFlatLayoutPanelCycleTargets()` / `appendLayoutCycleTargets()` rather than
-from `data-bento-subdivided`. Flat layout intentionally clears nested
-subdivision DOM and renders choosers as absolute `.bento-layout-chooser`
-overlays, so DOM subdivision attributes are not a reliable source for chooser
-cycle targets. If this regresses, the visual focus ring may exist, but
-Cmd/Ctrl+Shift+Left/Right and Shift-wheel will skip the chooser entirely.
+from DOM attributes. Flat layout sets no subdivision DOM attributes and renders
+choosers as absolute `.bento-layout-chooser` overlays, so the DOM is not a
+source for chooser cycle targets. If this regresses, the visual focus ring may
+exist, but Cmd/Ctrl+Shift+Left/Right and Shift-wheel will skip the chooser
+entirely.
 
 Other title channels still exist for one-off chrome actions, such as opening
 overlays, focusing a pinned panel, moving tabs, and scrolling back to main.
@@ -3144,12 +3144,13 @@ adds its entry, and its id in the mount probe list, in the same change.
   filter. The `insertBefore` fallback in `moveNodeBefore()` would strand the filter
   for good on 157 (the former `reattachTabProgressFilters()` safety net is
   gone), so any other move of a tab panel or `<browser>` must use `moveBefore`.
-  The legacy subdivision and promotion paths still use `insertBefore` /
-  `appendChild` on tab panels (`applySubdivisions` parent and bottom containers,
-  `detachSubPanelsBeforeParentRemoval`, and the nested-panel promotion in
-  `reconcilePanelsSplitView`). They are inactive in the flat renderer
-  (`currentSubdivisions` is only ever assigned an empty `Map`), but if
-  reactivated they would strand filters and must move to `moveNodeBefore()`.
+  The legacy nested-DOM subdivision renderer (`applySubdivisions`, its
+  `insertBefore` / `appendChild` moves of tab panels into parent and bottom
+  containers, `detachSubPanelsBeforeParentRemoval`, and the nested-panel
+  promotion in `reconcilePanelsSplitView`) was inactive in the flat renderer
+  (`currentSubdivisions` was only ever assigned an empty `Map`) and has been
+  deleted. No code moves an individual tab panel or `<browser>` now; any new
+  code that does must use `moveNodeBefore()`, or it strands filters.
   Manual check: open several windows and
   confirm, with a `browsing-context-attached` / `browsing-context-discarded`
   observer registered in the Browser Toolbox Console before opening a window,
@@ -3318,6 +3319,25 @@ This avoids reparenting live browsers into nested subdivision containers. Nested
 browser moves can detach browsing contexts and break Firefox progress listener
 assumptions.
 
+The nested renderer that used to build those containers is gone: there is no
+`currentSubdivisions` mirror, no `data-bento-subdivided`, `data-bento-subpanel`
+or `data-bento-subdivision-*` attribute, and no `.bento-subdivision-bottom`
+container. Persisted subdivision-shaped data still loads through the tools-side
+migration in `Persistence.ts` and `PanelLayout.ts`. Names that survive and are
+live: `createSubdivisionChooser` and the `.bento-subdivision-chooser` classes
+(flat-layout choosers reuse them), and the `.bento-subdivision-vsplitter` and
+`.bento-subdivision-hsplitter` classes (flat-layout splitters carry them next to
+`.bento-layout-vsplitter` / `.bento-layout-hsplitter`).
+
+Pitfall from the removal: `clearSubdivisionFromPanel(panelEl, { force: true })`
+looked dead (it only matched nested DOM) but its forced path also stripped
+inline layout styles (display, flex, size, opacity, visibility, position, and
+similar) from every resolved panel and its header, browser container, browser
+stack, browser and loading overlay on each reconcile, and cleared
+`_bentoPanelRemoving`. That reset is live and was kept as
+`resetPanelInlineLayoutState`; check any other call to a function named for a
+removed feature for side effects before deleting it.
+
 Flat layout overlays include:
 
 - vertical and horizontal splitters for group ratios;
@@ -3403,15 +3423,14 @@ Panel header hiding:
   sync echo. `panels/sync.panels[]` carries `headerHidden` so chrome can restore
   the flag after restart or workspace switch.
 - Renderer path: the flat-layout reconciler's per-resolved-panel header
-  injection loop toggles `data-bento-header-hidden` from each payload. Do not
-  put this in legacy `applySubdivisions`; flat layout keeps subdivision leaves
-  as direct `tabpanels` children and resets `currentSubdivisions`.
+  injection loop toggles `data-bento-header-hidden` from each payload. Flat
+  layout keeps subdivision leaves as direct `tabpanels` children, so this loop
+  is the only place that stamps it.
 - Restore path: `restorePanelsForWorkspace` reapplies `headerHidden` after
   matching persisted entries to live tab ids, alongside persisted panel widths.
 - Header hide must use `max-height` collapse without `!important`.
   `forcePanelHeaderInteractiveState` stamps inline-important opacity and
-  visibility on injected headers, and top-closed subdivision CSS must keep
-  precedence when both states apply.
+  visibility on injected headers.
 - Departing-panel cleanup must remove `data-bento-header-hidden`; otherwise a
   recycled tab panel can leak a stale hidden-header state into another layout.
 
@@ -3584,11 +3603,10 @@ Top-row splits and 2x2 groups:
   creates a single 2x2 vertical group; checklist item 13, close one bottom
   split child and re-split the survivor.
 - Panel navigator grouped favicons must derive from `currentPanelLayout`, not
-  the legacy `currentSubdivisions` mirror. Flat layout keeps subdivision leaves
-  as direct `tabpanels` children and resets `currentSubdivisions`, so the
-  navigator must build each root icon from the active layout node: one row for a
-  panel child, two cells for a horizontal child, and a placeholder cell for a
-  chooser. Active marker mapping must also use root node ids; mapping cycle
+  any DOM mirror of subdivisions. Flat layout keeps subdivision leaves as
+  direct `tabpanels` children, so the navigator must build each root icon from
+  the active layout node: one row for a panel child, two cells for a horizontal
+  child, and a placeholder cell for a chooser. Active marker mapping must also use root node ids; mapping cycle
   targets by raw panel index points split-child focus at the wrong favicon when
   one root node contains multiple visible leaves.
 - Panel navigator favicons must update on panel tab metadata changes, not just
@@ -3738,8 +3756,9 @@ Top-row splits and 2x2 groups:
   add-panel trailer immediately before the delayed `tab/close` dispatch, and
   `runPendingTopLevelPanelCloseGapFlip` consumes that snapshot after the next
   reconcile. Keep this separate from the reorder FLIP and do not run it for
-  subdivision promotion paths; those use their own close/promotion animation
-  rules.
+  panels that are not plain root panels (subdivision tops and children);
+  `stageTopLevelPanelCloseGapFlip` returns early unless the status is
+  `root-panel`.
 
 ## Panel traversal and focus
 

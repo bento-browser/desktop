@@ -1184,9 +1184,6 @@
 [data-bento-panel-tab-id],
 [data-bento-panel-tab-id]:focus,
 [data-bento-panel-tab-id]:focus-within,
-[data-bento-subpanel],
-[data-bento-subpanel]:focus,
-[data-bento-subpanel]:focus-within,
 .bento-subdivision-chooser,
 .bento-subdivision-chooser:focus,
 .bento-subdivision-chooser:focus-within {
@@ -1271,8 +1268,7 @@
 }
 /* Header hiding uses height collapse, not opacity/visibility:
    forcePanelHeaderInteractiveState stamps inline-important values
-   for those properties. No !important here so subdivision top-
-   closed rules keep precedence when both states apply. */
+   for those properties. */
 [data-bento-header-hidden] > .bento-panel-header {
   max-height: 0;
   min-height: 0;
@@ -1429,9 +1425,6 @@
 .bento-panel-loading-overlay[hidden] {
   display: none !important;
 }
-[data-bento-subpanel] > .bento-panel-loading-overlay {
-  inset-block-start: var(--bento-panel-header-height);
-}
 [data-bento-header-hidden] > .bento-panel-loading-overlay {
   inset-block-start: 0;
 }
@@ -1455,9 +1448,6 @@
 }
 [data-bento-header-hidden] > .bento-panel-header-restore {
   display: flex;
-}
-[data-bento-subdivision-top-closed] > .bento-panel-header-restore {
-  display: none !important;
 }
 .bento-panel-header-restore__pill {
   display: block;
@@ -1698,9 +1688,6 @@
 :root[inDOMFullscreen] #bento-side-panel-host > [data-bento-panel-tab-id]::after,
 :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel]::after,
 :root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id]::after,
-:root[inDOMFullscreen] #tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after,
-:root[inDOMFullscreen] [data-bento-subpanel]::after,
-:root[inDOMFullscreen] [data-bento-subdivided]::before,
 :root[inDOMFullscreen] .bento-subdivision-chooser::after {
   content: none !important;
   display: none !important;
@@ -2020,21 +2007,6 @@
 #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
   border-color: var(--color-60);
 }
-[data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed])::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: var(--bento-focus-ring-width) solid transparent;
-  border-radius: var(--bento-panel-corner-radius);
-  pointer-events: none;
-  z-index: 10;
-  box-sizing: border-box;
-  transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-}
-[data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--focused::after,
-[data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--cycle-focused::after {
-  border-color: var(--color-60);
-}
 
 /* Arrow-panel theming. macOS popup.css sets --panel-background:
    none on all panel elements so the native NSVisualEffectView
@@ -2057,50 +2029,6 @@
   border-color: var(--neutral-20) !important;
 }
 
-/* ─── Subdivision (in-place, CSS Grid) ──────────────────────── */
-[data-bento-subdivided] > .browserContainer,
-[data-bento-subdivided] > .browserStack,
-[data-bento-subdivided] > browser {
-  overflow: clip !important;
-  min-height: 0 !important;
-  position: relative !important;
-  z-index: 2 !important;
-}
-[data-bento-subdivided] > [data-bento-subpanel] {
-  box-shadow: none !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-  position: relative !important;
-  visibility: inherit !important;
-  z-index: 1 !important;
-}
-/* Disable the focus ring on the outer subdivided panel —
-   each sub-section should own its own indicator (future). */
-#tabbrowser-tabpanels.bento-split-active > [data-bento-subdivided]::after {
-  display: none !important;
-}
-[data-bento-subdivided]::before {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  height: var(--bento-subdivision-top-focus-height, 50%);
-  border: var(--bento-focus-ring-width) solid transparent;
-  border-radius: var(--bento-panel-corner-radius);
-  pointer-events: none;
-  z-index: 12;
-  box-sizing: border-box;
-  transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
-}
-[data-bento-subdivided].bento-subdivision-top--focused::before {
-  border-color: var(--color-60);
-}
-[data-bento-subdivided][data-bento-subdivision-top-closed]::before {
-  content: none !important;
-  display: none !important;
-}
 /* Stacked favicon layout for subdivided nav icons */
 .bento-panel-nav__icon--subdivided {
   display: inline-flex !important;
@@ -2123,53 +2051,6 @@
 .bento-nav-subdiv-cell--discarded {
   opacity: 0.55;
   filter: grayscale(0.55);
-}
-#tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivided] {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
-#tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-top-closed] {
-  background-color: var(--bento-panel-strip-bg) !important;
-  box-shadow: var(--bento-panel-frame-shadow) !important;
-  border-radius: var(--bento-panel-corner-radius) !important;
-}
-#tabbrowser-tabpanels.bento-split-active > [data-bento-panel-tab-id][data-bento-subdivision-survivor-subdivided] {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-[data-bento-subdivision-survivor-subdivided] > [data-bento-subpanel][data-bento-subdivided] {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  overflow: visible !important;
-}
-[data-bento-subdivided] > browser,
-[data-bento-subdivided] > .browserContainer,
-[data-bento-subdivided] > .browserStack,
-[data-bento-subdivided] > [data-bento-subpanel]:not([data-bento-subdivided]),
-.bento-subdivision-bottom > [data-bento-subpanel] {
-  background-color: var(--bento-panel-strip-bg) !important;
-  box-shadow: var(--bento-panel-frame-shadow) !important;
-  border-radius: var(--bento-panel-corner-radius) !important;
-}
-.bento-subdivision-bottom > [data-bento-subpanel][data-bento-subdivided] {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  overflow: visible !important;
-}
-[data-bento-subdivision-animating="1"] > browser,
-[data-bento-subdivision-animating="1"] > .browserContainer,
-[data-bento-subdivision-animating="1"] > .browserStack,
-[data-bento-subdivision-animating="1"] > .bento-subdivision-chooser,
-[data-bento-subdivision-animating="1"] > [data-bento-subpanel],
-[data-bento-subdivision-animating="1"] > .bento-subdivision-bottom,
-[data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > [data-bento-subpanel],
-[data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > .bento-subdivision-hsplitter {
-  transition:
-    flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard),
-    opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard) !important;
 }
 .bento-subdivision-vsplitter {
   cursor: row-resize !important;
@@ -2204,129 +2085,6 @@
 }
 .bento-subdivision-vsplitter:hover,
 .bento-subdivision-vsplitter--dragging {
-  opacity: 1 !important;
-}
-.bento-subdivision-bottom {
-  display: flex !important;
-  flex-direction: row !important;
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  position: relative !important;
-  z-index: 1 !important;
-}
-.bento-subdivision-bottom > [data-bento-subpanel] {
-  overflow: hidden !important;
-  min-height: 0 !important;
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  align-self: stretch !important;
-  display: flex !important;
-  flex-direction: column !important;
-  position: relative !important;
-  visibility: inherit !important;
-}
-[data-bento-subdivided] > [data-bento-subpanel] {
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  align-self: stretch !important;
-}
-[data-bento-subdivided] > .bento-subdivision-vsplitter {
-  position: relative !important;
-  z-index: 3 !important;
-}
-[data-bento-subdivision-top-closed] {
-  overflow: hidden !important;
-}
-[data-bento-subdivision-top-closed] > .bento-panel-header,
-[data-bento-subdivision-top-closed] > .browserContainer,
-[data-bento-subdivision-top-closed] > .browserStack,
-[data-bento-subdivision-top-closed] > browser,
-[data-bento-subdivision-top-closed] > .bento-panel-loading-overlay,
-[data-bento-subdivision-top-closed] > .bento-subdivision-vsplitter {
-  flex: 0 0 0 !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  max-height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border-width: 0 !important;
-  opacity: 0 !important;
-  overflow: hidden !important;
-  pointer-events: none !important;
-  visibility: hidden !important;
-}
-[data-bento-subdivision-top-closed] > [data-bento-subpanel] {
-  flex: 1 1 100% !important;
-  height: 100% !important;
-  max-height: none !important;
-  align-self: stretch !important;
-  margin: 0 !important;
-  background-color: var(--bento-panel-strip-bg) !important;
-  box-shadow: var(--bento-panel-frame-shadow) !important;
-  border-radius: var(--bento-panel-corner-radius) !important;
-}
-[data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .bento-panel-header {
-  position: relative !important;
-  z-index: 5 !important;
-  pointer-events: auto !important;
-  visibility: inherit !important;
-  opacity: 1 !important;
-}
-[data-bento-subpanel][data-bento-subdivision-top-closed] {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-[data-bento-subpanel][data-bento-subdivision-top-closed] > [data-bento-subpanel]:not([data-bento-subdivided]) {
-  background-color: var(--bento-panel-strip-bg) !important;
-  box-shadow: var(--bento-panel-frame-shadow) !important;
-  border-radius: var(--bento-panel-corner-radius) !important;
-}
-[data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-[data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] > .browserContainer {
-  overflow: visible !important;
-}
-[data-bento-subdivision-top-closed] > [data-bento-subpanel][data-bento-subdivided] > .browserContainer > .browserStack {
-  border-radius: inherit !important;
-  overflow: clip !important;
-}
-[data-bento-subpanel]:not([data-bento-subdivided]) > browser,
-[data-bento-subpanel]:not([data-bento-subdivided]) > .browserContainer,
-[data-bento-subpanel]:not([data-bento-subdivided]) > .browserStack {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  overflow: clip !important;
-  position: relative !important;
-  z-index: 2 !important;
-  -moz-subtree-hidden-only-visually: 0 !important;
-  visibility: inherit !important;
-  opacity: 1 !important;
-}
-[data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > browser,
-[data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer,
-[data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserStack,
-[data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack,
-[data-bento-subpanel]:not([data-bento-subdivision-top-closed]) > .browserContainer > .browserStack > browser {
-  border-end-start-radius: var(--bento-panel-corner-radius) !important;
-  border-end-end-radius: var(--bento-panel-corner-radius) !important;
-  border-start-start-radius: 0 !important;
-  border-start-end-radius: 0 !important;
-  overflow: clip !important;
-}
-[data-bento-subpanel] > .browserContainer > .browserStack,
-[data-bento-subpanel] > .browserContainer > .browserStack > browser,
-[data-bento-subpanel] browser {
-  -moz-subtree-hidden-only-visually: 0 !important;
-  visibility: inherit !important;
-  opacity: 1 !important;
-}
-[data-bento-subpanel] browser:is([blank], [pendingpaint]) {
   opacity: 1 !important;
 }
 .bento-subdivision-hsplitter {
