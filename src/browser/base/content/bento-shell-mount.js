@@ -12546,12 +12546,20 @@
     // that's both selected and a panel doesn't appear twice.
     const topLevelPanelIds = new Set(resolved.map(({ tab }) => tab.linkedPanel));
     let mainTab = gBrowser.selectedTab;
+    // A replacement main tab must belong to the workspace being rendered. Picking the
+    // first non-panel tab in the window can select a tab of another workspace, which
+    // tools never follows: the sidebar keeps showing this workspace over a foreign page.
+    const isInRenderedWorkspace = (tab) =>
+      !currentWorkspaceId || selectedTabWorkspaceId(tab) === currentWorkspaceId;
     if (mainTab && !materializePanelTab(mainTab, '', 'main')) {
-      const replacementMain = Array.from(gBrowser.tabs).find((tab) => {
+      const canBeReplacement = (tab) => {
         if (!tab || tab.closing) return false;
         if (topLevelPanelIds.has(tab.linkedPanel)) return false;
         return materializePanelTab(tab, '', 'main replacement');
-      });
+      };
+      const replacementMain =
+        Array.from(gBrowser.tabs).find((tab) => isInRenderedWorkspace(tab) && canBeReplacement(tab)) ||
+        Array.from(gBrowser.tabs).find(canBeReplacement);
       if (replacementMain) {
         mainTab = replacementMain;
         try {
@@ -12578,6 +12586,11 @@
       const replacement = Array.from(gBrowser.tabs).find((tab) => {
         if (!tab?.linkedPanel || tab.closing) return false;
         if (topLevelPanelIds.has(tab.linkedPanel)) return false;
+        // The selected tab is a panel still listed in a stale payload (a promoted panel
+        // is activated before its panels/sync arrives). With no sidebar tab of this
+        // workspace to fall back to, keep it selected rather than jumping to another
+        // workspace's tab; the dedupe below renders it as the main slot.
+        if (!isInRenderedWorkspace(tab)) return false;
         const panelEl = document.getElementById(tab.linkedPanel);
         return (
           !panelEl?.hasAttribute('data-bento-panel') &&
@@ -14655,6 +14668,7 @@
       lastReconciledFor = sel;
       if (shouldDeferReconcileForWorkspaceSwitch(sel)) {
         armWorkspaceSwitchFade();
+        armDeferredWorkspaceSwitchWatchdog(sel);
         return;
       }
       reconcilePanelsSplitView(__lastPanelsPayload);
@@ -15195,6 +15209,27 @@
   function armWorkspaceSwitchFade() {
     cancelStripScrollMotion();
     setWorkspaceFadeClasses(true);
+  }
+  // The curtain armed for a selection in another workspace lifts when tools answers with a
+  // workspace switch (performWorkspaceSwitchFade replaces this timer). If tools never
+  // follows, which happens when the selection was not the user's workspace switch, lift
+  // it and render the selected tab as it is instead of leaving the page hidden.
+  function armDeferredWorkspaceSwitchWatchdog(deferredTab) {
+    if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
+    __workspaceFadeWatchdog = setTimeout(() => {
+      __workspaceFadeWatchdog = null;
+      console.warn(
+        '[bento-shell-mount] workspace-switch watchdog fired — no workspace switch followed the selection, lifting the curtain',
+      );
+      clearWorkspaceFadeClasses();
+      try {
+        if (window.gBrowser?.selectedTab === deferredTab) {
+          reconcilePanelsSplitView(__lastPanelsPayload);
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] deferred workspace-switch reconcile threw:', err);
+      }
+    }, WORKSPACE_FADE_WATCHDOG_MS);
   }
   function selectedTabWorkspaceId(tab) {
     if (!tab) return null;

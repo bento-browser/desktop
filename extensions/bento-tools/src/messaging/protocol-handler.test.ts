@@ -381,6 +381,154 @@ describe('protocol handler close that Firefox does not commit', () => {
   });
 });
 
+describe('protocol handler main-tab close with panels in flight', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    stubClosingBrowser();
+  });
+
+  function mainCloseContext(options: { panelTabIds: number[]; closing: Set<number> }) {
+    const tabs = [
+      { id: 10, windowId: 1, workspaceId: 'ws-1', active: true },
+      ...options.panelTabIds.map((id) => ({ id, windowId: 1, workspaceId: 'ws-1', active: false })),
+    ];
+    return createCloseContext({
+      tabs: {
+        markClosing: vi.fn().mockResolvedValue(undefined),
+        unmarkClosing: vi.fn().mockResolvedValue(undefined),
+        assignWorkspace: vi.fn().mockResolvedValue(undefined),
+        snapshot: vi.fn().mockReturnValue(tabs),
+        isClosing: vi.fn((id: number) => options.closing.has(id)),
+        assignWorkspaceEagerly: vi.fn(),
+      } as unknown as HandlerContext['tabs'],
+      panels: {
+        findWorkspacesContainingTab: vi.fn((id: number) =>
+          options.panelTabIds.includes(id) ? ['ws-1'] : [],
+        ),
+        findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+        getPanels: vi.fn().mockReturnValue(options.panelTabIds),
+        getWidth: vi.fn(),
+        getHeaderHidden: vi.fn().mockReturnValue(false),
+        remove: vi.fn().mockReturnValue(true),
+        insertAt: vi.fn(),
+      } as unknown as HandlerContext['panels'],
+    });
+  }
+
+  it('does not promote a panel whose own close is in flight', async () => {
+    const ctx = mainCloseContext({ panelTabIds: [20], closing: new Set([20]) });
+
+    handle({ type: 'tab/closeMain', id: 10 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith(10);
+    });
+    // Promoting it fails to activate, and re-inserting it left a ghost panel in the layout.
+    expect(ctx.panels.remove).not.toHaveBeenCalled();
+    expect(ctx.panels.insertAt).not.toHaveBeenCalled();
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+  });
+
+  it('promotes the first panel that is still open when the leftmost one is closing', async () => {
+    const ctx = mainCloseContext({ panelTabIds: [20, 21], closing: new Set([20]) });
+
+    handle({ type: 'tab/closeMain', id: 10 }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(21, { active: true });
+    });
+    expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 21);
+    expect(ctx.panels.remove).not.toHaveBeenCalledWith('ws-1', 20);
+  });
+});
+
+describe('protocol handler workspace delete', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    stubClosingBrowser();
+    vi.mocked(browser).windows = { remove: vi.fn().mockResolvedValue(undefined) } as never;
+  });
+
+  function deleteContext(options: { owner: number | null; ownerAfter: number | null }) {
+    const order: string[] = [];
+    const ctx = createCloseContext({
+      workspaces: {
+        has: vi.fn().mockReturnValue(true),
+        findOwningWindow: vi.fn().mockReturnValue(options.owner),
+        delete: vi.fn(() => order.push('delete')),
+        getActiveIdByWindow: vi
+          .fn()
+          .mockReturnValue(options.ownerAfter === null ? {} : { 1: 'ws-other' }),
+        snapshot: vi
+          .fn()
+          .mockReturnValue({ workspaces: [{ id: 'ws-other', name: 'Workspace 1' }] }),
+        create: vi.fn(),
+      } as unknown as HandlerContext['workspaces'],
+      tabs: {
+        markClosing: vi.fn(async (id: number) => {
+          order.push(`mark ${id}`);
+        }),
+        snapshot: vi.fn().mockReturnValue([
+          { id: 5, windowId: 1, workspaceId: 'ws-gone' },
+          { id: 6, windowId: 2, workspaceId: 'ws-gone' },
+          { id: 7, windowId: 1, workspaceId: 'ws-other' },
+        ]),
+        isClosing: vi.fn().mockReturnValue(false),
+      } as unknown as HandlerContext['tabs'],
+    });
+    return { ctx, order };
+  }
+
+  it('marks the tabs closing before the workspace goes, then closes them', async () => {
+    const { ctx, order } = deleteContext({ owner: 1, ownerAfter: 1 });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([5, 6]);
+    });
+    expect(order).toEqual(['mark 5', 'mark 6', 'delete']);
+    expect(browser.windows.remove).not.toHaveBeenCalled();
+  });
+
+  it('closes the owning window when every other workspace is shown elsewhere', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: null });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.windows.remove).toHaveBeenCalledWith(1);
+    });
+    // The window takes its own tabs with it; only the other window's tab is closed directly.
+    expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    expect(ctx.workspaces.create).not.toHaveBeenCalled();
+  });
+
+  it('gives a stranded window with no tabs to close a fresh workspace', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: null });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: false }, ctx);
+
+    await vi.waitFor(() => {
+      expect(ctx.workspaces.create).toHaveBeenCalledWith({ name: 'Workspace 2' }, 1);
+    });
+    expect(browser.windows.remove).not.toHaveBeenCalled();
+    expect(browser.tabs.remove).not.toHaveBeenCalled();
+  });
+
+  it('only deletes a workspace no window shows', async () => {
+    const { ctx } = deleteContext({ owner: null, ownerAfter: null });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([5, 6]);
+    });
+    expect(browser.windows.remove).not.toHaveBeenCalled();
+    expect(ctx.workspaces.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('protocol handler tab reload controls', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

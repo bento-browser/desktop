@@ -19,6 +19,15 @@ When changing core functionality, manually verify at least the affected subset:
 - closing a sidebar multi-selection with Cmd/Ctrl+W and with the multi-select
   context-menu item;
 - closing side panels with descendant sub-panels;
+- closing a workspace's last sidebar tab and a panel in the same action (close the
+  panel then immediately the tab, and the reverse; a multi-tab close): the window
+  ends on a tab of the workspace tools reports, or on the next free workspace when
+  nothing is left, never on another workspace's tab with the sidebar unchanged;
+- deleting the workspace a window shows while a second window shows another
+  workspace: the second window keeps its tabs, and the first window moves to a
+  free workspace or closes when none is free;
+- a selection that lands on another workspace's tab without a workspace switch
+  (select it from the Browser Console): the curtain lifts within about 1.5 s;
 - tearing out the selected tab, a panel tab, a background tab, and a
   multi-selection from a workspace with panels (drag out, tab context menu "Move
   to New Window"): each moves into a new window with the same page, the new

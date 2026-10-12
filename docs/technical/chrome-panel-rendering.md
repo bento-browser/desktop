@@ -310,6 +310,26 @@ adds its entry, and its id in the mount probe list, in the same change.
   `closeMarkedTabs` removed it at the next launch. DevTools closes never roll
   back, and a sub-panel closed along with its parent only gets its workspace back
   (it returns as a sidebar tab, not a panel).
+- The reconciler must not pick a main tab from another workspace. When the
+  selected tab is a panel that is still in a stale payload (a promoted panel is
+  activated before its `panels/sync` arrives), `reconcilePanelsSplitView` looks for
+  a replacement main tab; taking the first non-panel tab in the window selected a
+  tab of another workspace that tools never follows, so the sidebar kept showing
+  the old workspace over a foreign page. Replacements now come from the rendered
+  workspace (`isInRenderedWorkspace`, read from the SessionStore workspace value);
+  with none, the promoted panel stays selected and the dedupe renders it as the
+  main slot. The path for a selected tab that cannot be materialized prefers the
+  rendered workspace and falls back to any tab.
+- A selection in another workspace arms the workspace-switch curtain
+  (`bento-workspace-switching`, opacity 0 on the strip, nav and tabpanels) and defers
+  the reconcile until tools answers with a workspace switch. If tools never
+  follows (a tab selected by Firefox or an extension, or a tools failure) the
+  curtain used to stay up with no watchdog, hiding the page for good.
+  `armDeferredWorkspaceSwitchWatchdog` lifts it after `WORKSPACE_FADE_WATCHDOG_MS`
+  and reconciles the selected tab as it is; `performWorkspaceSwitchFade` replaces
+  the timer when the switch does arrive. Do not "fix" this by activating the
+  selected tab's workspace from the selection signal: selection fires for
+  transient states (closing, adoption) and would fight tools.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
   `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
   contextTab` (or the multi-selection), and the new window adopts its first tab

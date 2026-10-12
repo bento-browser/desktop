@@ -387,6 +387,15 @@ opening an unwanted blank tab before the moved tabs arrive.
   blank tab for a new window's empty workspace while the window holds unassigned
   tabs (`adoptableTabs`). See "Tear-out with panels present" in
   [chrome-panel-rendering.md](chrome-panel-rendering.md).
+- `WorkspaceStore.delete` moves a window that showed the deleted workspace to
+  the first workspace no window shows, and leaves the window without one when
+  there is none. The old fallback was the first workspace in the map, whichever
+  window showed it, so deleting a window's workspace could put two windows on
+  the same workspace; workspace activation then moved the other window's tabs
+  into the first window and both windows closed. The `workspace/delete` handler
+  marks the doomed tabs closing before deleting, closes a stranded window (with
+  `closeTabs`) or gives it a fresh workspace (nothing to close), and never relies
+  on the first-in-map fallback.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

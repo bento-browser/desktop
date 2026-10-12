@@ -19,6 +19,7 @@ import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { PanelRestoreLocation } from '../panels/PanelLayout';
+import { livePanelIds } from '../panels/PanelPromotion';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BackupStore } from '../backup/BackupStore';
@@ -232,9 +233,17 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
       if (typeof sourceWindowId === 'number' && candidate.windowId !== sourceWindowId) return false;
       return !panelTabIdSet.has(candidate.id);
     });
+    // A panel whose own close is in flight cannot become the main tab.
+    const promotablePanelIds = livePanelIds(panelTabIds, ctx.tabs.snapshot(), (id) =>
+      ctx.tabs.isClosing(id),
+    );
 
-    if (remainingNormalTabs.length === 0 && panelTabIds.length > 0) {
-      const promoted = await promoteLeftmostPanelBeforeMainClose(ctx, workspaceId, panelTabIds[0]!);
+    if (remainingNormalTabs.length === 0 && promotablePanelIds.length > 0) {
+      const promoted = await promoteLeftmostPanelBeforeMainClose(
+        ctx,
+        workspaceId,
+        promotablePanelIds[0]!,
+      );
       await closeTabAsRemoved(ctx, tabId, {
         delayMs: promoted ? 80 : 0,
         label: 'tab/closeMain',
@@ -345,8 +354,11 @@ async function cleanupWorkspaceAfterTabMove(
     );
   if (remainingNormalTabs.length > 0) return;
 
-  if (panelTabIds.length > 0) {
-    await promoteLeftmostPanelToTabAfterMove(ctx, fromWorkspaceId, panelTabIds[0]!);
+  const promotablePanelIds = livePanelIds(panelTabIds, ctx.tabs.snapshot(), (id) =>
+    ctx.tabs.isClosing(id),
+  );
+  if (promotablePanelIds.length > 0) {
+    await promoteLeftmostPanelToTabAfterMove(ctx, fromWorkspaceId, promotablePanelIds[0]!);
     return;
   }
 
@@ -644,6 +656,46 @@ async function splitPanel(
     }
   } catch (err) {
     console.warn(`[bento-tools] panelLayout/${operation} failed:`, err);
+  }
+}
+
+/**
+ * Delete a workspace, closing its tabs when asked. The tabs are marked closing
+ * first so their removal events do not count them as members of the workspace
+ * the window moves to. WorkspaceStore moves the window that showed the workspace
+ * to one no other window shows. When every other workspace is taken it has
+ * nowhere to go: it closes with its tabs (like closing its last tab), or, with no
+ * tabs to close, gets a fresh workspace the way a new window does.
+ */
+async function deleteWorkspace(
+  ctx: HandlerContext,
+  workspaceId: string,
+  closeTabs: boolean,
+): Promise<void> {
+  if (!ctx.workspaces.has(workspaceId)) return;
+  const doomed = closeTabs
+    ? ctx.tabs.snapshot().filter((tab) => tab.workspaceId === workspaceId)
+    : [];
+  await Promise.all(doomed.map((tab) => ctx.tabs.markClosing(tab.id)));
+
+  const ownerWindowId = ctx.workspaces.findOwningWindow(workspaceId);
+  ctx.workspaces.delete(workspaceId);
+  const stranded =
+    ownerWindowId !== null && ctx.workspaces.getActiveIdByWindow()[ownerWindowId] === undefined;
+
+  const toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
+  if (toRemove.length > 0) {
+    browser.tabs
+      .remove(toRemove.map((tab) => tab.id))
+      .catch((err) => console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err));
+  }
+  if (!stranded) return;
+  if (closeTabs) {
+    browser.windows
+      .remove(ownerWindowId)
+      .catch((err) => console.warn('[bento-tools] workspace/delete: windows.remove failed:', err));
+  } else {
+    ctx.workspaces.create({ name: nextDefaultWorkspaceName(ctx) }, ownerWindowId);
   }
 }
 
@@ -1124,29 +1176,9 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         ctx.emitPanelsSync(action.id);
       }
       return;
-    case 'workspace/delete': {
-      // Close the workspace's tabs FIRST (browser.tabs.remove is async but
-      // fire-and-forget here; the actual removals will trigger onRemoved
-      // and the shell will see the deltas in the same rAF batch as the
-      // workspace removal). Then delete the workspace metadata so the
-      // panel store cleanup + active-workspace fallback in WorkspaceStore
-      // run in their normal order.
-      if (action.closeTabs) {
-        const tabIds = ctx.tabs
-          .snapshot()
-          .filter((t) => t.workspaceId === action.id)
-          .map((t) => t.id);
-        if (tabIds.length > 0) {
-          browser.tabs
-            .remove(tabIds)
-            .catch((err) =>
-              console.warn('[bento-tools] workspace/delete: tabs.remove failed:', err),
-            );
-        }
-      }
-      ctx.workspaces.delete(action.id);
+    case 'workspace/delete':
+      void deleteWorkspace(ctx, action.id, action.closeTabs === true);
       return;
-    }
     case 'workspace/activate': {
       // Scope the activation to the requesting window when available.
       // sourceWindowId null falls back to legacy global activation so

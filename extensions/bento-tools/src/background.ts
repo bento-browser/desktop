@@ -9,7 +9,7 @@ import { createShellActionIntake, createWindowRegistry } from './messaging/shell
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
 import { adoptableTabs, releaseAdoptedTab } from './tabs/AdoptedTab';
-import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
+import { livePanelIds, panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
@@ -1946,7 +1946,14 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
         !panelTabIdsSet.has(t.id),
     );
   if (remaining.length > 0) return;
-  if (recentlyRemovedPanelTabIds.delete(tabId) && panelTabIds.length > 0) {
+  // A panel that is itself closing (or already gone) cannot become the main tab; counting
+  // it would leave the window on a foreign tab with this workspace still active.
+  const promotablePanelIds = livePanelIds(
+    panelTabIds,
+    tabs.snapshot().filter((t) => t.id !== tabId),
+    (id) => tabs.isClosing(id),
+  );
+  if (recentlyRemovedPanelTabIds.delete(tabId) && promotablePanelIds.length > 0) {
     return;
   }
 
@@ -1958,8 +1965,8 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   // split-view slot to the main tabpanel without reloading the page
   // (DOM move, not a navigate). Repeated Cmd+W then chews through one
   // panel per press until the workspace is truly empty.
-  if (panelTabIds.length > 0) {
-    void promoteLeftmostPanelToTab(activeWsId, panelTabIds[0]!);
+  if (promotablePanelIds.length > 0) {
+    void promoteLeftmostPanelToTab(activeWsId, promotablePanelIds[0]!);
     return;
   }
 

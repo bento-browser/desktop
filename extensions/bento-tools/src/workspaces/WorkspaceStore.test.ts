@@ -57,6 +57,33 @@ describe('WorkspaceStore active workspace persistence', () => {
     });
   });
 
+  it('moves the window of a deleted workspace to one no other window shows', async () => {
+    const store = new WorkspaceStore();
+    await store.init();
+    const [initial] = store.snapshot().workspaces;
+    store.activate(initial!.id, 2);
+    const doomed = store.create({ name: 'Doomed' }, 1);
+    const free = store.create({ name: 'Free' }, null, { activate: false });
+
+    store.delete(doomed.id);
+
+    // The initial workspace comes first in creation order but window 2 shows it.
+    expect(store.snapshot().activeIdByWindow).toEqual({ 1: free.id, 2: initial!.id });
+  });
+
+  it('leaves the window without a workspace when every other one is shown elsewhere', async () => {
+    const store = new WorkspaceStore();
+    await store.init();
+    const [initial] = store.snapshot().workspaces;
+    store.activate(initial!.id, 2);
+    const doomed = store.create({ name: 'Doomed' }, 1);
+
+    store.delete(doomed.id);
+
+    expect(store.snapshot().activeIdByWindow).toEqual({ 2: initial!.id });
+    expect(browser.sessions.removeWindowValue).toHaveBeenCalledWith(1, 'bento.activeWorkspaceId');
+  });
+
   it('bootstraps imported Zen workspaces from window session data on first run', async () => {
     vi.mocked(browser.windows.getAll).mockResolvedValue([{ id: 7 } as browser.windows.Window]);
     vi.mocked(browser.sessions.getWindowValue).mockResolvedValue([

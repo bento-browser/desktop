@@ -334,12 +334,18 @@ export class WorkspaceStore {
       this.#lastGlobalActiveId = fallbackId;
       if (fallbackId) this.#enqueue({ kind: 'activated', id: fallbackId });
     }
+    // A window's replacement must be a workspace no window shows (one
+    // workspace per window). When there is none the window is left without
+    // an active workspace; the caller decides what that window does next.
+    const shown = new Set(this.#activeIdByWindow.values());
     for (const [winId, wsId] of Array.from(this.#activeIdByWindow.entries())) {
       if (wsId !== id) continue;
-      if (fallbackId) {
-        this.#activeIdByWindow.set(winId, fallbackId);
-        this.#persistActiveForWindow(winId, fallbackId);
-        this.#enqueue({ kind: 'activated', id: fallbackId, windowId: winId });
+      const replacement = Array.from(this.#workspaces.values()).find((w) => !shown.has(w.id));
+      if (replacement) {
+        shown.add(replacement.id);
+        this.#activeIdByWindow.set(winId, replacement.id);
+        this.#persistActiveForWindow(winId, replacement.id);
+        this.#enqueue({ kind: 'activated', id: replacement.id, windowId: winId });
       } else {
         this.#activeIdByWindow.delete(winId);
         this.#persistActiveForWindow(winId, null);
