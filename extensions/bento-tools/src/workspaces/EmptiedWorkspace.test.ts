@@ -166,8 +166,9 @@ describe('workspace delete against the tab-removal handler, with a real store', 
     workspaces = new WorkspaceStore();
     await workspaces.init();
     const [a] = workspaces.snapshot().workspaces;
-    const b = workspaces.create({ name: 'B' }, null, { activate: false });
+    // C comes first in creation order, so once A is gone it is also the global fallback.
     const c = workspaces.create({ name: 'C' }, null, { activate: false });
+    const b = workspaces.create({ name: 'B' }, null, { activate: false });
     workspaces.activate(a!.id, 1);
     workspaces.activate(b.id, 2);
     tabs = [
@@ -175,20 +176,44 @@ describe('workspace delete against the tab-removal handler, with a real store', 
       tab(2, { windowId: 1, workspaceId: a!.id }),
       tab(3, { windowId: 2, workspaceId: b.id }),
     ];
+    // Setup's own events are not part of what the tests observe.
+    await workspaces.flush();
     return { a: a!.id, b: b.id, c: c.id };
   }
 
-  /** The tools orchestrator on activation: an empty workspace gets a tab, after some async work. */
-  function activation(delayMs = 30): HandlerContext['activateWorkspace'] {
-    return vi.fn(async (workspaceId: string, windowId: number) => {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      if (!tabs.some((t) => t.windowId === windowId && t.workspaceId === workspaceId)) {
-        tabs = [...tabs, tab(nextTabId++, { windowId, workspaceId })];
-      }
-    });
+  /**
+   * The tools orchestrator: every activation event starts a run that, after some async work,
+   * gives an empty workspace a tab. The run is returned to the store like the real listener's.
+   */
+  function orchestrate(delayMs = 30): Array<[string, number | null]> {
+    const runs: Array<[string, number | null]> = [];
+    workspaces.onDeltas((deltas) =>
+      Promise.all(
+        deltas.flatMap((delta) => {
+          if (delta.kind !== 'activated') return [];
+          const windowId = delta.windowId ?? null;
+          runs.push([delta.id, windowId]);
+          return [
+            (async () => {
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+              const present = tabs.some(
+                (t) => t.workspaceId === delta.id && (windowId === null || t.windowId === windowId),
+              );
+              if (!present) {
+                tabs = [
+                  ...tabs,
+                  tab(nextTabId++, { windowId: windowId ?? 1, workspaceId: delta.id }),
+                ];
+              }
+            })(),
+          ];
+        }),
+      ),
+    );
+    return runs;
   }
 
-  function context(activateWorkspace: HandlerContext['activateWorkspace']): HandlerContext {
+  function context(): HandlerContext {
     return {
       tabs: {
         snapshot: () => tabs,
@@ -200,7 +225,6 @@ describe('workspace delete against the tab-removal handler, with a real store', 
       },
       workspaces,
       handoff,
-      activateWorkspace,
       sourceWindowId: 1,
     } as unknown as HandlerContext;
   }
@@ -214,15 +238,17 @@ describe('workspace delete against the tab-removal handler, with a real store', 
 
   it('finishes the replacement before the old tabs go, so the window survives', async () => {
     const ids = await setup({ guard: true });
-    const activateWorkspace = activation();
+    const runs = orchestrate();
 
-    handle({ type: 'workspace/delete', id: ids.a, closeTabs: true }, context(activateWorkspace));
+    handle({ type: 'workspace/delete', id: ids.a, closeTabs: true }, context());
 
     await vi.waitFor(() => {
       expect(browser.tabs.remove).toHaveBeenCalled();
       expect(handoff.isActive(1)).toBe(false);
     });
-    expect(activateWorkspace).toHaveBeenCalledWith(ids.c, 1);
+    // C is also the global fallback. Its window-specific activation is the one that runs,
+    // and it runs once: a second run on the still empty workspace creates a second tab.
+    expect(runs).toEqual([[ids.c, 1]]);
     expect(windowsClosed).toEqual([]);
     expect(workspaces.has(ids.c)).toBe(true);
     expect(workspaces.getActiveId(1)).toBe(ids.c);
@@ -233,9 +259,9 @@ describe('workspace delete against the tab-removal handler, with a real store', 
   it('ignores tabs that close while the replacement is still being set up', async () => {
     const ids = await setup({ guard: true });
     tabs = [...tabs, tab(9, { windowId: 1, workspaceId: ids.a })];
-    const activateWorkspace = activation(300);
+    orchestrate(300);
 
-    handle({ type: 'workspace/delete', id: ids.a, closeTabs: false }, context(activateWorkspace));
+    handle({ type: 'workspace/delete', id: ids.a, closeTabs: false }, context());
     await vi.waitFor(() => expect(handoff.isActive(1)).toBe(true));
     // The user closes a tab of the old workspace just as the handoff runs.
     await browser.tabs.remove(9);

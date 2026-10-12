@@ -1951,7 +1951,7 @@ browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
       // Release ownership BEFORE delete so delete()'s own reassignment is a no-op for
       // this window; the activate() below picks the workspace instead.
       workspaces.forgetWindow(windowId);
-      workspaces.delete(action.deleteWorkspaceId);
+      workspaces.delete(action.deleteWorkspaceId, { announceFallback: false });
       const result = workspaces.activate(action.candidateId, windowId);
       if (result !== 'activated') {
         console.warn(
@@ -2107,22 +2107,9 @@ async function handleWorkspaceActivation(
   }
 }
 
-// The store's activation events arrive in a batch, after a workspace delete has already
-// handed the window its replacement and awaited that activation itself, and a delete also
-// announces its fallback workspace without a window. Running these at once creates one tab
-// per run for an empty workspace, so activations of a workspace join the one in flight.
-const activationsInFlight = new Map<string, Promise<void>>();
-function activateWorkspaceOnce(wsId: string, targetWindowId: number | null): Promise<void> {
-  const running = activationsInFlight.get(wsId);
-  if (running) return running;
-  const run = handleWorkspaceActivation(wsId, targetWindowId).finally(() =>
-    activationsInFlight.delete(wsId),
-  );
-  activationsInFlight.set(wsId, run);
-  return run;
-}
-
 workspaces.onDeltas((deltas) => {
+  // Returned so a caller that flushes the store (a workspace delete) can wait for them.
+  const activations: Promise<void>[] = [];
   for (const d of deltas) {
     if (d.kind === 'removed') {
       panels.removeWorkspace(d.id);
@@ -2135,8 +2122,9 @@ workspaces.onDeltas((deltas) => {
     }
     if (d.kind !== 'activated') continue;
     const targetWindowId = typeof d.windowId === 'number' ? d.windowId : null;
-    void activateWorkspaceOnce(d.id, targetWindowId);
+    activations.push(handleWorkspaceActivation(d.id, targetWindowId));
   }
+  return Promise.all(activations).then(() => undefined);
 });
 
 const shellWindows = createWindowRegistry(browser.windows);
@@ -2212,7 +2200,6 @@ browser.runtime.onConnectExternal.addListener((port) => {
         emitPanelsSync,
         syncPanelMarkers: syncPanelMarkersForWorkspace,
         handoff: windowHandoff,
-        activateWorkspace: (wsId, windowId) => activateWorkspaceOnce(wsId, windowId),
         preferWorkspaceActivationTab,
         sourceWindowId,
       }),

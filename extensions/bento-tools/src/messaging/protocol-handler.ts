@@ -377,7 +377,7 @@ async function cleanupWorkspaceAfterTabMove(
     );
     if (candidate) {
       ctx.workspaces.forgetWindow(sourceWindowId);
-      ctx.workspaces.delete(fromWorkspaceId);
+      ctx.workspaces.delete(fromWorkspaceId, { announceFallback: false });
       const result = ctx.workspaces.activate(candidate, sourceWindowId);
       if (result !== 'activated' && result !== 'noop') {
         console.warn(
@@ -714,15 +714,15 @@ async function deleteWorkspace(
   const ownerWindowId = ctx.workspaces.findOwningWindow(workspaceId);
   const endHandoff = ownerWindowId === null ? null : ctx.handoff.begin(ownerWindowId);
   try {
-    ctx.workspaces.delete(workspaceId);
+    // The store announces the window's replacement itself; the global fallback would
+    // activate the same workspace a second time.
+    ctx.workspaces.delete(workspaceId, { announceFallback: false });
     const replacementId =
       ownerWindowId === null ? undefined : ctx.workspaces.getActiveIdByWindow()[ownerWindowId];
     const stranded = ownerWindowId !== null && replacementId === undefined;
-    if (ownerWindowId !== null && replacementId !== undefined) {
-      await ctx
-        .activateWorkspace(replacementId, ownerWindowId)
-        .catch((err) => console.warn('[bento-tools] workspace/delete: activation failed:', err));
-    }
+    // Deliver the replacement's activation now and wait for it, so it has its tab before
+    // anything is removed.
+    if (replacementId !== undefined) await ctx.workspaces.flush();
 
     const toRemove = doomed.filter((tab) => !(stranded && tab.windowId === ownerWindowId));
     if (toRemove.length > 0) {
@@ -776,10 +776,6 @@ export interface HandlerContext {
   syncPanelMarkers: (workspaceId: string) => void;
   /** Windows whose workspace is being replaced; see `deleteWorkspace`. */
   handoff: WindowHandoffGuard;
-  /** Run the activation side effects (a tab to show, panels) for a workspace a window
-   * now owns and resolve when they are done. The store's own activation event runs
-   * later in a batch; this joins that work instead of repeating it. */
-  activateWorkspace: (workspaceId: string, windowId: number) => Promise<void>;
   /** Prefer this tab when the workspace activation side effect chooses
    * the main-slot tab for a just-activated workspace. Used by cross-
    * workspace tab activation so the activation fallback does not restore

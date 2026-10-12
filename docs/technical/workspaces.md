@@ -405,15 +405,23 @@ opening an unwanted blank tab before the moved tabs arrive.
   replacement's tab and panels come from `handleWorkspaceActivation`, which the
   store's batched `activated` event runs later. Removing the doomed tabs in
   between made the last-tab handler see an empty replacement and delete it or close
-  the window. `deleteWorkspace` therefore awaits `ctx.activateWorkspace` before it
-  removes anything. That call and the store's batched `activated` events (one for
-  the window, and one without a window for the global fallback) all go through
-  `activateWorkspaceOnce`, which keys on the workspace id and joins the run in
-  flight; run separately they each saw the empty workspace and created a tab, so
-  it ended up with two. The window is marked in
-  `WindowHandoffGuard` for the duration (cleared in `finally`); the decision
-  itself is `afterTabRemoved` in `workspaces/EmptiedWorkspace.ts`, which returns
-  no action for a window that is handing off.
+  the window. `deleteWorkspace` therefore calls `WorkspaceStore.flush()` after the
+  delete, which delivers the pending events now and resolves when the activation
+  listener's runs have finished (the listener returns them), before it removes
+  anything. The window is marked in `WindowHandoffGuard` for the duration (cleared
+  in `finally`); the decision itself is `afterTabRemoved` in
+  `workspaces/EmptiedWorkspace.ts`, which returns no action for a window that is
+  handing off.
+- Exactly one activation may run for a workspace a delete hands to a window.
+  `WorkspaceStore.delete` also announces its global fallback workspace (no window),
+  and when that is the window's replacement (the first workspace in creation order
+  usually is) both events activate it; each run sees an empty workspace and creates
+  a tab, so it ended up with two. Callers that activate the replacement themselves
+  (`deleteWorkspace`, the last-tab handler, `cleanupWorkspaceAfterTabMove`) pass
+  `{ announceFallback: false }`. Do not "fix" this by deduplicating activations by
+  workspace id: a window-specific activation of the same workspace is then dropped
+  when the global one came first, and the tabs of the new owner are never brought
+  to it.
 - A tab Bento moves between windows itself must go through `moveTabsToWindow`.
   Only the move's own record distinguishes it from a drag when the window
   switched workspace before the attach event (`releaseAdoptedTab`); the record

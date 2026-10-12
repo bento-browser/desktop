@@ -39,7 +39,6 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
     emitPanelsSync: vi.fn(),
     syncPanelMarkers: vi.fn(),
     handoff: createWindowHandoffGuard(),
-    activateWorkspace: vi.fn().mockResolvedValue(undefined),
     preferWorkspaceActivationTab: vi.fn(),
     sourceWindowId: 1,
     ...overrides,
@@ -531,13 +530,13 @@ describe('protocol handler workspace delete', () => {
   function deleteContext(options: { owner: number | null; ownerAfter: number | null }) {
     const order: string[] = [];
     const ctx = createCloseContext({
-      activateWorkspace: vi.fn(async () => {
-        order.push('activate');
-      }),
       workspaces: {
         has: vi.fn().mockReturnValue(true),
         findOwningWindow: vi.fn().mockReturnValue(options.owner),
         delete: vi.fn(() => order.push('delete')),
+        flush: vi.fn(async () => {
+          order.push('activate');
+        }),
         getActiveIdByWindow: vi
           .fn()
           .mockReturnValue(options.ownerAfter === null ? {} : { 1: 'ws-other' }),
@@ -573,7 +572,8 @@ describe('protocol handler workspace delete', () => {
     await vi.waitFor(() => {
       expect(browser.tabs.remove).toHaveBeenCalledWith([5, 6]);
     });
-    expect(ctx.activateWorkspace).toHaveBeenCalledWith('ws-other', 1);
+    // The store's own replacement activation is the only one: no global fallback event.
+    expect(ctx.workspaces.delete).toHaveBeenCalledWith('ws-gone', { announceFallback: false });
     expect(order).toEqual(['mark 5', 'mark 6', 'delete', 'activate', 'remove']);
     expect(ctx.handoff.isActive(1)).toBe(false);
     expect(browser.windows.remove).not.toHaveBeenCalled();
@@ -972,6 +972,57 @@ describe('protocol handler batch tab workspace moves', () => {
     expect(assignWorkspace).toHaveBeenNthCalledWith(2, 2, 'ws-new');
     expect(ctx.pinnedPanels.removeForTab).not.toHaveBeenCalled();
     expect(ctx.workspaces.delete).toHaveBeenCalledWith('ws-old');
+  });
+
+  it('moves the window on itself when its workspace is emptied, without a second activation', async () => {
+    const calls: string[] = [];
+    const tabState = new Map([[1, { id: 1, workspaceId: 'ws-old' }]]);
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => Array.from(tabState.values())),
+        assignWorkspace: vi.fn(async (id: number, workspaceId: string) => {
+          const tab = tabState.get(id);
+          if (tab) tab.workspaceId = workspaceId;
+        }),
+      },
+      workspaces: {
+        has: vi.fn((id: string) => id === 'ws-new' || id === 'ws-old'),
+        snapshot: vi.fn(() => ({
+          workspaces: [
+            { id: 'ws-old', name: 'Personal', createdAt: 1 },
+            { id: 'ws-new', name: 'Workspace 2', createdAt: 2 },
+          ],
+        })),
+        getActiveIdByWindow: vi.fn(() => ({ 1: 'ws-old' })),
+        getActiveId: vi.fn(() => 'ws-old'),
+        create: vi.fn(() => ({ id: 'ws-new', name: 'Workspace 2', createdAt: 2 })),
+        forgetWindow: vi.fn(() => calls.push('forget')),
+        delete: vi.fn(() => calls.push('delete')),
+        activate: vi.fn(() => {
+          calls.push('activate');
+          return 'activated';
+        }),
+      },
+      settings: {},
+      panels: { getPanels: vi.fn(() => []) },
+      pinnedPanels: { removeForTab: vi.fn() },
+      savedPanels: {},
+      backup: {},
+      send: vi.fn(),
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+      sourceWindowId: 1,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'tabs/moveToNewWorkspace', ids: [1] }, ctx);
+
+    await vi.waitFor(() => {
+      expect(ctx.workspaces.delete).toHaveBeenCalled();
+    });
+    // The caller activates the replacement itself, so the delete must not announce the
+    // global fallback (which could be the same workspace) as a second activation.
+    expect(ctx.workspaces.delete).toHaveBeenCalledWith('ws-old', { announceFallback: false });
+    expect(calls.slice(-3)).toEqual(['forget', 'delete', 'activate']);
   });
 });
 

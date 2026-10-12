@@ -9,7 +9,8 @@
 import type { Workspace, WorkspaceDelta } from '@shared/protocol';
 import { Persistence, load } from './Persistence';
 
-type Listener = (deltas: WorkspaceDelta[]) => void;
+/** A listener may return a promise for work it starts, which `flush()` waits for. */
+type Listener = (deltas: WorkspaceDelta[]) => unknown;
 
 const DEFAULT_WORKSPACE_NAME = 'Personal';
 
@@ -321,7 +322,10 @@ export class WorkspaceStore {
     this.#schedulePersist();
   }
 
-  delete(id: string): void {
+  /** `announceFallback: false` keeps the global fallback activation out of the event
+   * stream, for a caller that activates the window's replacement itself: both would
+   * activate the same workspace, and an empty one then gets a tab from each. */
+  delete(id: string, options: { announceFallback?: boolean } = {}): void {
     if (!this.#workspaces.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
     // Pick a fallback workspace for the global slot and for any per-
@@ -332,7 +336,9 @@ export class WorkspaceStore {
     const fallbackId = fallback ? fallback.id : null;
     if (this.#lastGlobalActiveId === id) {
       this.#lastGlobalActiveId = fallbackId;
-      if (fallbackId) this.#enqueue({ kind: 'activated', id: fallbackId });
+      if (fallbackId && options.announceFallback !== false) {
+        this.#enqueue({ kind: 'activated', id: fallbackId });
+      }
     }
     // A window's replacement must be a workspace no window shows (one
     // workspace per window). When there is none the window is left without
@@ -486,16 +492,26 @@ export class WorkspaceStore {
     this.#flushScheduled = true;
     const flush = () => {
       this.#flushScheduled = false;
-      const batch = this.#pending;
-      this.#pending = [];
-      if (batch.length === 0) return;
-      for (const l of this.#listeners) l(batch);
+      this.#deliver();
     };
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(flush);
     } else {
       setTimeout(flush, 16);
     }
+  }
+
+  #deliver(): unknown[] {
+    const batch = this.#pending;
+    this.#pending = [];
+    if (batch.length === 0) return [];
+    return Array.from(this.#listeners, (l) => l(batch));
+  }
+
+  /** Deliver the pending deltas now instead of at the next frame, and wait for the
+   * work their listeners started (a window's workspace activation, for one). */
+  async flush(): Promise<void> {
+    await Promise.all(this.#deliver());
   }
 
   #schedulePersist(): void {
