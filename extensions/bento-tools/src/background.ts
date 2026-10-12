@@ -8,7 +8,7 @@ import { handle } from './messaging/protocol-handler';
 import { createShellActionIntake, createWindowRegistry } from './messaging/shell-action-intake';
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
-import { adoptableTabs, releaseAdoptedTab } from './tabs/AdoptedTab';
+import { createAdoptionGate, releaseAdoptedTab, tabsToAdopt } from './tabs/AdoptedTab';
 import { livePanelIds, panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
@@ -45,6 +45,12 @@ import { isShellClientMessage } from '@shared/shell-client-protocol';
 
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
+// Windows that exist before startup has settled never adopt unassigned tabs: those may be
+// restored tabs whose session values are not read yet (see tabs/AdoptedTab.ts).
+const adoptionGate = createAdoptionGate();
+browser.windows.onCreated.addListener((win) => {
+  if (typeof win.id === 'number') adoptionGate.noteWindow(win.id);
+});
 const settings = new SettingsStore();
 const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore({
@@ -958,6 +964,7 @@ const bootReady = storesReady.then(async () => {
     const allWindows = await browser.windows.getAll();
     for (const win of allWindows) {
       if (typeof win.id !== 'number') continue;
+      adoptionGate.noteWindow(win.id);
       await workspaces.restoreFromSession(win.id);
     }
   } catch (err) {
@@ -1014,6 +1021,7 @@ const bootReady = storesReady.then(async () => {
   // a Workspace 2 boot, etc).
   await tabs.hydrateWorkspaceIds();
   await tabs.closeMarkedTabs();
+  adoptionGate.settle();
 
   // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
   // matches a panel in bento.panels storage. The panel storage is a
@@ -1846,6 +1854,8 @@ browser.tabs.onDetached.addListener((tabId, { oldWindowId }) => {
 // workspace (and panel slot) of the window it left. Release that so the tab joins
 // the destination window's workspace; see tabs/AdoptedTab.ts.
 browser.tabs.onAttached.addListener((tabId, { newWindowId }) => {
+  // Nothing is written to a tab before startup has hydrated the registry.
+  if (!adoptionGate.isSettled()) return;
   void releaseAdoptedTab(
     {
       tabs,
@@ -2082,11 +2092,14 @@ async function handleWorkspaceActivation(
   // another window) has no workspace tab yet only because they are not assigned.
   const adoptable =
     wsTabs.length === 0 && !restoredParkedTabs && targetWindowId !== null
-      ? adoptableTabs(
-          tabs.snapshot().filter((t) => t.windowId === targetWindowId),
-          (tabId) => tabs.isClosing(tabId),
-          (tabId) => tabs.isPrivate(tabId),
-        )
+      ? await tabsToAdopt({
+          gate: adoptionGate,
+          windowId: targetWindowId,
+          snapshot: () => tabs.snapshot(),
+          isClosing: (tabId) => tabs.isClosing(tabId),
+          isPrivate: (tabId) => tabs.isPrivate(tabId),
+          confirmUnassigned: (ids) => tabs.confirmUnassigned(ids),
+        })
       : [];
   if (adoptable.length > 0) {
     for (const adopted of adoptable) {

@@ -200,6 +200,58 @@ describe('TabRegistry clearWorkspace', () => {
   });
 });
 
+describe('TabRegistry confirmUnassigned', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function registryWith(values: Record<string, string>) {
+    stubTabsBrowser([makeTab({ id: 1 }), makeTab({ id: 2 })]);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    // Values appear after init, like session values SessionStore attaches late.
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(
+      async (id, key) => values[`${id}:${key}`],
+    );
+    return tabs;
+  }
+
+  it('confirms only tabs whose session metadata is empty', async () => {
+    const tabs = await registryWith({ '2:bento.workspaceId': 'ws-a' });
+
+    await expect(tabs.confirmUnassigned([1, 2])).resolves.toEqual([1]);
+  });
+
+  it('applies the value it found to the registry instead of writing anything', async () => {
+    const tabs = await registryWith({ '2:bento.folderId': 'folder-1' });
+
+    await tabs.confirmUnassigned([2]);
+
+    await vi.waitFor(() =>
+      expect(tabs.snapshot().find((t) => t.id === 2)?.folderId).toBe('folder-1'),
+    );
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+
+  it('does not confirm a tab whose metadata cannot be read', async () => {
+    const tabs = await registryWith({});
+    vi.mocked(browser.sessions.getTabValue).mockRejectedValue(new Error('no session'));
+
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([]);
+  });
+
+  it('trusts a detached tab over the stale value SessionStore copies back onto it', async () => {
+    const tabs = await registryWith({ '1:bento.workspaceId': 'ws-old' });
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([]);
+
+    await tabs.clearWorkspace(1);
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([1]);
+
+    await tabs.assignWorkspaceEagerly(1, 'ws-new');
+    await expect(tabs.confirmUnassigned([1])).resolves.toEqual([]);
+  });
+});
+
 describe('TabRegistry URL snapshots', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
