@@ -88,6 +88,12 @@ target-aligned working tree. Classify the state as:
 4. an existing aligned upgrade, when its pending diff is coherent and already
    targets the requested release.
 
+A local `engine/` older than a current `bento.json` (its
+`.bento/source-state.json` records an earlier version, as on any checkout that
+predates a version bump) is a stale engine, not an upgrade: the repository
+needs no change, and `pnpm run firefox:sync` brings the engine up to date (see
+"Obtain and verify the source").
+
 Stop without a branch or PR for an already-current assessment or an
 already-current implementation request that does not ask for a rebuild. For a
 new update or repair, use a dedicated branch such as
@@ -163,6 +169,23 @@ refetching its existing digest:
 ```sh
 pnpm run firefox:sync
 ```
+
+If the local engine is older than the configured version, the same command
+replaces it through the protected path (`bash scripts/bento-env.sh download
+--replace-stale`): the engine must match its recorded import state, the archive
+is verified against `bento.json`, the previous engine moves to
+`.bento/backups/`, and its Bento refs carry over. Files that the previous
+import changed and the current patch series no longer touches pass when they
+match the recorded bytes, and a recorded file must still exist; any other edit
+stops the replacement and is named in the error. Only a strictly older engine
+of the same product and channel is replaced, with versions compared in full
+(release number, then beta number; a final release is newer than its betas). An
+engine newer than `bento.json`, an ESR or other-product engine, and one with no
+`.bento/source-state.json` version are refused or left alone, never replaced
+automatically. `update` likewise refuses a target older than the engine, and
+keeps an engine only when its recorded version is exactly the target with a
+recorded digest equal to the verified one; otherwise it replaces it. Plain
+`pnpm run download` and `pnpm run build` never replace an engine.
 
 The wrapper obtains the latest configured-product version, invokes Bento's
 protected update path, checks the patch stack, builds extensions, imports
