@@ -310,15 +310,46 @@ adds its entry, and its id in the mount probe list, in the same change.
   `closeMarkedTabs` removed it at the next launch. DevTools closes never roll
   back, and a sub-panel closed along with its parent only gets its workspace back
   (it returns as a sidebar tab, not a panel).
-- Tear-out with panels present. `replaceTabWithWindow` passes `aTab.splitview ??
-  aTab` to the new window, and while a workspace has panels Bento gives the
-  rendered tabs a `tab.splitview` marker (see "Required split-view compatibility
-  shims"); that is the likely cause (inferred, not traced) of this: tearing out the
-  selected tab or a panel tab opens an unsynced window with two new tabs and leaves
-  the source tab in place. Tearing out a background tab, or any tab while the workspace has no panels,
-  moves the tab (same BrowsingContext, content, and container) into an unsynced
-  window that also carries one extra new tab; a window's only tab is not torn out
-  (`replaceTabWithWindow` returns null). Identical on 154.0.
+- Tear-out with panels present. `replaceTabWithWindow` hands the new window
+  `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
+  contextTab` (or the multi-selection), and the new window adopts its first tab
+  only when `getTabToAdopt()` receives a XUL element. While the reconciler has
+  tabs marked, `tab.splitview` is Bento's own-property marker (a plain object),
+  so tearing out the selected tab or a panel tab failed silently: the source
+  tab stayed, and the new window opened with blank tabs of its own. Confirmed
+  by deleting the own property first, after which the tab moves. The mount now
+  wraps both methods on the `gBrowser` instance (`hideBentoSplitViewMarkers`):
+  it hides every own `splitview` marker whose `kind` is `bento-split` for the
+  synchronous call, in which Firefox reads the element, and puts the markers
+  back in `finally`. The adoption itself runs later on the tab elements.
+  Identical on 154.0. Four tools-side effects follow a successful tear-out and
+  are handled in `bento-tools`:
+  - The tab keeps its tab id and, through `SessionStore`, the old
+    `bento.workspaceId`, folder, and panel marker, so it was hidden in the new
+    window's sidebar and the window opened an extra blank tab for its own empty
+    workspace. `tabs.onAttached` runs `releaseAdoptedTab` (`tabs/AdoptedTab.ts`):
+    a tab that arrives in a window which does not show its workspace leaves its
+    panel layouts, loses the stale workspace and folder, and joins the
+    destination's workspace (or waits for it). Bento's own cross-window move on
+    workspace activation is not touched because the destination owns that
+    workspace. Dragging a tab into an existing window takes the same path.
+  - The new window opens with the adopted tabs unassigned, so
+    `handleWorkspaceActivation` assigns every unassigned tab of a window where no
+    tab has a workspace (`adoptableTabs`) instead of creating a blank tab. A plain
+    `OpenBrowserWindow()` had the same race and opened two tabs (its initial tab
+    had no workspace yet when the first activation ran).
+  - SessionStore copies the source tab's custom values onto the new tab after the
+    attach event, so a panel marker can reappear on a tab that is no longer a
+    panel; the activation path clears it again (`onActivated` would otherwise
+    treat the tab as a restored panel).
+  - Removing the last sidebar tab of a workspace by tearing it out fires no
+    `tabs.onRemoved`, so `tabs.onDetached` promotes the leftmost live panel
+    (`panelToPromoteAfterDetach`) the way the last-tab handler does. Without it
+    the panel ended up selected as the main tab of a workspace with an empty
+    sidebar.
+  The extension-API entry points `windows.create({ tabId })` and cross-window
+  `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
+  wrapper; Bento calls neither on a marked tab.
 - `prefs/bento.js` sets `browser.nova.enabled` and `sidebar.revamp` to false.
   Firefox 157 defaults both to true; Bento keeps the 154 chrome because its shell
   owns the sidebar and tab strip. No upgrade migration

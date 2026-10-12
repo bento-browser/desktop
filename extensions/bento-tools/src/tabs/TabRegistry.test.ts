@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TabDelta } from '@shared/protocol';
 import { TabRegistry } from './TabRegistry';
 
 interface TabListeners {
@@ -164,6 +165,38 @@ describe('TabRegistry closing markers', () => {
     await tabs.hydrateWorkspaceIds({ attempts: 3, delayMs: 0 });
 
     expect(tabs.snapshot()[0]?.workspaceId).toBe('ws-imported');
+  });
+});
+
+describe('TabRegistry clearWorkspace', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('forgets a live tab workspace and folder without marking the tab closing', async () => {
+    stubTabsBrowser([makeTab({ id: 9 })]);
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(async (_id, key) =>
+      key === 'bento.workspaceId' ? 'ws-a' : key === 'bento.folderId' ? 'folder-1' : undefined,
+    );
+    const tabs = new TabRegistry();
+    const deltas: TabDelta[] = [];
+    tabs.onDeltas((batch) => deltas.push(...batch));
+    await tabs.init();
+    expect(tabs.snapshot()[0]).toMatchObject({ workspaceId: 'ws-a', folderId: 'folder-1' });
+
+    await tabs.clearWorkspace(9);
+
+    expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+    expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+    expect(tabs.isClosing(9)).toBe(false);
+    expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(9, 'bento.workspaceId');
+    expect(browser.sessions.removeTabValue).toHaveBeenCalledWith(9, 'bento.folderId');
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+    expect(deltas).toContainEqual({
+      kind: 'updated',
+      id: 9,
+      changes: { workspaceId: undefined, folderId: undefined },
+    });
   });
 });
 

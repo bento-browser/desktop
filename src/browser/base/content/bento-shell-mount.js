@@ -113,6 +113,7 @@
         'insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
         'on_TabSplitViewDeactivate()', 'warmupTab()', 'tabpanels', 'tabContainer', 'addTrustedTab()',
         'addTab()', 'getTabForBrowser()', 'selectedBrowsers', 'moveTabBefore()', 'moveTabAfter()',
+        'replaceTabWithWindow()', 'replaceTabsWithWindow()',
       ],
       MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
@@ -14586,6 +14587,54 @@
         return original(aTab, aExcludeTabs);
       };
       window.gBrowser.__bentoFindTabOverride = true;
+    }
+
+    // Tear-out hands the new window `aTab.splitview ?? aTab`, and the new
+    // window adopts the tab only when that argument is a XUL element
+    // (getTabToAdopt in browser-init.js). While the reconciler has a tab marked,
+    // `splitview` is Bento's plain-object marker, so the new window silently
+    // adopts nothing: the source tab stays put and the new window opens with
+    // blank tabs of its own. Firefox reads the element synchronously while it
+    // builds the window arguments, so the markers are hidden for that call only
+    // and put back right after.
+    const hideBentoSplitViewMarkers = (gBrowser) => {
+      const hidden = [];
+      for (const tab of gBrowser.tabs) {
+        const descriptor = Object.getOwnPropertyDescriptor(tab, 'splitview');
+        if (descriptor?.value?.kind !== BENTO_SPLIT_KIND) continue;
+        hidden.push([tab, descriptor]);
+        delete tab.splitview;
+      }
+      return () => {
+        for (const [tab, descriptor] of hidden) {
+          if (tab.isConnected && !Object.getOwnPropertyDescriptor(tab, 'splitview')) {
+            Object.defineProperty(tab, 'splitview', descriptor);
+          }
+        }
+      };
+    };
+    const wrapTearOut = (gBrowser, method) => {
+      const original = gBrowser[method];
+      gBrowser[method] = function (...args) {
+        const restoreMarkers = hideBentoSplitViewMarkers(this);
+        try {
+          return original.apply(this, args);
+        } finally {
+          restoreMarkers();
+        }
+      };
+    };
+    if (
+      window.gBrowser &&
+      typeof window.gBrowser.replaceTabWithWindow === 'function' &&
+      typeof window.gBrowser.replaceTabsWithWindow === 'function' &&
+      !window.gBrowser.__bentoTearOutOverride
+    ) {
+      bentoCompatNoteNative('gBrowser.replaceTabWithWindow', window.gBrowser.replaceTabWithWindow);
+      bentoCompatNoteNative('gBrowser.replaceTabsWithWindow', window.gBrowser.replaceTabsWithWindow);
+      wrapTearOut(window.gBrowser, 'replaceTabWithWindow');
+      wrapTearOut(window.gBrowser, 'replaceTabsWithWindow');
+      window.gBrowser.__bentoTearOutOverride = true;
     }
 
     // Closing the selected tab: Firefox's #beginRemoveTab runs #blurTab,

@@ -292,6 +292,31 @@ export class TabRegistry {
     this.#enqueue({ kind: 'updated', id, changes });
   }
 
+  /** Forget a live tab's workspace and folder, in memory and in SessionStore.
+   * For a tab that arrived from another window and still names that window's
+   * workspace. Unlike `markClosing` it leaves the tab open and unmarked. */
+  async clearWorkspace(id: number): Promise<void> {
+    this.#pendingWorkspaceAssignments.delete(id);
+    this.#pendingFolderAssignments.delete(id);
+    const tab = this.#tabs.get(id);
+    if (tab && (tab.workspaceId !== undefined || tab.folderId !== undefined)) {
+      delete tab.workspaceId;
+      delete tab.folderId;
+      this.#enqueue({
+        kind: 'updated',
+        id,
+        changes: { workspaceId: undefined, folderId: undefined },
+      });
+    }
+    await Promise.all(
+      [WORKSPACE_SESSION_KEY, FOLDER_SESSION_KEY].map((key) =>
+        browser.sessions.removeTabValue(id, key).catch(() => {
+          // A missing value is already the desired state.
+        }),
+      ),
+    );
+  }
+
   async setFolder(id: number, folderId: string | null): Promise<void> {
     const tab = this.#tabs.get(id);
     if (!tab || this.#closingTabIds.has(id)) return;

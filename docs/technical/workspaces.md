@@ -381,6 +381,12 @@ opening an unwanted blank tab before the moved tabs arrive.
   beforeunload "Stay"); see "Closing a tab that has a beforeunload prompt" in
   [chrome-panel-rendering.md](chrome-panel-rendering.md). A tab left with the
   closing marker disappears from the sidebar and is closed at the next launch.
+- A tab can arrive in a window with another window's workspace (tear-out, drag
+  between windows). Do not trust its `workspaceId` until `releaseAdoptedTab` has
+  compared it with the workspace the destination window shows, and do not open a
+  blank tab for a new window's empty workspace while the window holds unassigned
+  tabs (`adoptableTabs`). See "Tear-out with panels present" in
+  [chrome-panel-rendering.md](chrome-panel-rendering.md).
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

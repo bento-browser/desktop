@@ -8,6 +8,8 @@ import { handle } from './messaging/protocol-handler';
 import { createShellActionIntake, createWindowRegistry } from './messaging/shell-action-intake';
 import { TabRegistry } from './tabs/TabRegistry';
 import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
+import { adoptableTabs, releaseAdoptedTab } from './tabs/AdoptedTab';
+import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
@@ -1822,6 +1824,42 @@ browser.windows.onRemoved.addListener((windowId) => {
   prunePreferredActivationTabs((windowKey) => windowKey === String(windowId));
 });
 
+// A tab that leaves a window without closing (tear-out, drag to another window) never
+// fires tabs.onRemoved, so the last-tab handler below does not see the workspace lose its
+// last sidebar tab. Promote a panel here, as that handler would, instead of leaving a
+// panel selected as the main tab of a workspace with an empty sidebar.
+browser.tabs.onDetached.addListener((tabId, { oldWindowId }) => {
+  const tab = tabs.snapshot().find((candidate) => candidate.id === tabId);
+  if (!tab?.workspaceId || workspaces.getActiveId(oldWindowId) !== tab.workspaceId) return;
+  const panelId = panelToPromoteAfterDetach({
+    workspaceId: tab.workspaceId,
+    leavingTabId: tabId,
+    windowId: oldWindowId,
+    tabs: tabs.snapshot(),
+    panelTabIds: panels.getPanels(tab.workspaceId),
+    isClosing: (id) => tabs.isClosing(id),
+  });
+  if (panelId !== null) void promoteLeftmostPanelToTab(tab.workspaceId, panelId);
+});
+
+// A tab torn out of, dragged into, or adopted by another window arrives with the
+// workspace (and panel slot) of the window it left. Release that so the tab joins
+// the destination window's workspace; see tabs/AdoptedTab.ts.
+browser.tabs.onAttached.addListener((tabId, { newWindowId }) => {
+  void releaseAdoptedTab(
+    {
+      tabs,
+      workspaces,
+      panels,
+      clearPanelMarker,
+      syncPanelMarkers: syncPanelMarkersForWorkspace,
+      emitPanelsSync: (workspaceId) => void emitPanelsSync(workspaceId),
+    },
+    tabId,
+    newWindowId,
+  ).catch((err) => console.warn('[bento-tools] adopted tab release failed:', tabId, err));
+});
+
 async function promoteLeftmostPanelToTab(workspaceId: string, tabId: number): Promise<void> {
   const originalPosition = panels.getPanels(workspaceId).indexOf(tabId);
   if (!panels.remove(workspaceId, tabId)) return;
@@ -2033,7 +2071,35 @@ async function handleWorkspaceActivation(
   const wsTabs =
     targetWindowId !== null ? allWsTabs.filter((t) => t.windowId === targetWindowId) : allWsTabs;
   const preferred = takePreferredWorkspaceActivationTab(wsId, targetWindowId);
-  if (wsTabs.length === 0 && !restoredParkedTabs) {
+  // A window that opened with tabs of its own (its initial tab, or tabs torn out of
+  // another window) has no workspace tab yet only because they are not assigned.
+  const adoptable =
+    wsTabs.length === 0 && !restoredParkedTabs && targetWindowId !== null
+      ? adoptableTabs(
+          tabs.snapshot().filter((t) => t.windowId === targetWindowId),
+          (tabId) => tabs.isClosing(tabId),
+          (tabId) => tabs.isPrivate(tabId),
+        )
+      : [];
+  if (adoptable.length > 0) {
+    for (const adopted of adoptable) {
+      tabs.assignWorkspaceEagerly(adopted.id, wsId);
+      // A torn-out tab's SessionStore values are copied onto the new window's tab after
+      // Bento's attach handler ran, so a panel marker can come back on a tab that is no
+      // longer a panel (onActivated would treat it as a restored panel).
+      if (!isPanelOrSubPanelTabId(adopted.id)) {
+        void clearPanelMarker(adopted.id);
+        void clearDevtoolsPanelMarker(adopted.id);
+      }
+    }
+    if (!adoptable.some((adopted) => adopted.active)) {
+      void activateNonPanelTab(
+        adoptable[0]!.id,
+        'activate adopted tab',
+        targetWindowId ?? undefined,
+      );
+    }
+  } else if (wsTabs.length === 0 && !restoredParkedTabs) {
     try {
       const created = await browser.tabs.create({
         active: true,

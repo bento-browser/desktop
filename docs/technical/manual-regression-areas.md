@@ -19,6 +19,12 @@ When changing core functionality, manually verify at least the affected subset:
 - closing a sidebar multi-selection with Cmd/Ctrl+W and with the multi-select
   context-menu item;
 - closing side panels with descendant sub-panels;
+- tearing out the selected tab, a panel tab, a background tab, and a
+  multi-selection from a workspace with panels (drag out, tab context menu "Move
+  to New Window"): each moves into a new window with the same page, the new
+  window has exactly one tab per moved tab and no blank extra tab, the moved tabs
+  appear in the new window's sidebar, and the source workspace promotes a panel
+  when its last sidebar tab left;
 - closing a sidebar tab, a panel, and a pinned panel whose page has a
   `beforeunload` handler: "Stay" keeps the tab in its workspace and folder (a panel
   returns visible at its slot, width and header state) with no leftover closing

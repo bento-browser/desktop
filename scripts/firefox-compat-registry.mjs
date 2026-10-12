@@ -415,6 +415,36 @@ export const MEMBERS = [
     at: [FF.tabbrowser, '^\\s+moveTabAfter\\(', 7987],
   },
 
+  {
+    id: 'gBrowser.replaceTabWithWindow',
+    kind: 'method',
+    how: 'wraps',
+    native: 'note',
+    probe: 'R',
+    sites: ['hideBentoSplitViewMarkers'],
+    use: "Hides Bento's split-view markers while Firefox picks the element it hands a torn-out window (aTab.splitview ?? aTab).",
+    at: [FF.tabbrowser, '^\\s+replaceTabWithWindow\\(', 7657],
+  },
+  {
+    id: 'gBrowser.replaceTabsWithWindow',
+    kind: 'method',
+    how: 'wraps',
+    native: 'note',
+    probe: 'R',
+    sites: ['hideBentoSplitViewMarkers'],
+    use: 'Same as replaceTabWithWindow for the context-menu and multi-select tear-out (contextTab.splitview ?? contextTab).',
+    at: [FF.tabbrowser, '^\\s+replaceTabsWithWindow\\(', 7694],
+  },
+  {
+    id: 'getTabToAdopt XULElement',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['hideBentoSplitViewMarkers'],
+    use: 'The new window adopts its first tab only when the window argument is a XUL element, so a Bento marker object makes the adoption silently fail.',
+    at: [FF.browserInit, 'XULElement\\.isInstance\\(', 126],
+  },
+
   // ── <browser> element ──
   {
     id: 'MozBrowser.prototype.docShellIsActive',
