@@ -1139,8 +1139,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `messaging-system.rsexperimentloader.enabled` no longer exist in the source and
   were removed. `browser.search.separatePrivateDefault` became
   `browser.search.separatePrivateDefault.enabled` (read by the `bento-privacy`
-  experiment). `rust-toolchain.toml` stays at 1.94.1; Mozilla's CI for 157 uses
-  1.95.0, a follow-up for `node scripts/check-rust-toolchain.mjs`.
+  experiment). `rust-toolchain.toml` moved from 1.94.1 to 1.95.0 afterwards to
+  match Mozilla's CI for 157 (`taskcluster/kinds/toolchain/rust.yml`; the
+  minimum Firefox 157 accepts is 1.90.0).
 - Files or patches:
   - `prefs/bento.js`
   - `engine/services/settings/dumps/main/search-config-v2.json`
@@ -1163,7 +1164,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   local Safe Browsing on, HTTPS-only mode on, remote Safe Browsing download
   checks off by default but independently user-toggleable, DoH disabled, and
   AI/remote suggestion surfaces disabled. Release builds pin Firefox's official
-  Rust 1.94.1 toolchain and use a Bento-namespaced ThinLTO opt-in on Linux and
+  Rust 1.95.0 toolchain and use a Bento-namespaced ThinLTO opt-in on Linux and
   Windows to keep final Rust linking within standard hosted-runner memory
   limits; macOS retains upstream's default fat LTO.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
