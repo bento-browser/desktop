@@ -104,6 +104,14 @@ UI color mode flow:
   chrome root. If the settings mirror has not hydrated when the first targeted
   panel sync arrives, the shell forwards the pre-React boot value from
   `data-bento-color-mode-pref` / `data-color-mode`.
+- The native Settings page (`about:preferences`) is its own document and links
+  `bento-chrome-tokens.css`. Its root carries `data-bento-theme="default"`
+  statically and `data-color-mode`, which `preferences.js` mirrors from the
+  browser window root and keeps current with a `MutationObserver`
+  (`patches/core-ui/12-center-native-preferences.patch`). `preferences.css` sets
+  `color-scheme` from that attribute so Firefox's own `light-dark()` tokens agree.
+  The page's `prefers-color-scheme` does not follow `uiColorMode` (measured: it
+  stays light with UI mode dark); it follows the content color mode and the OS.
 - `bento-shell-mount.js` seeds chrome `<window data-color-mode="light">` before
   injecting chrome token/theme stylesheets. This matches Bento's fresh-profile
   default and prevents OS-dark chrome from flashing behind the light sidebar
@@ -179,6 +187,18 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
 
 ## Theme pitfalls
 
+- Every native document that links `bento-chrome-tokens.css` needs
+  `data-bento-theme` and `data-color-mode` on its root. The legacy aliases
+  (`--neutral-*`, `--color-*`, `--radius-*`, `--shadow-*`, `--space-2xs`) and the
+  Mux mode blocks are declared only for elements with those attributes, so an
+  attribute-less document computes every alias to nothing. On `about:preferences`
+  that left `--background-color-box`, `--border-radius-circle` and every other
+  token patch 12 maps onto an alias empty, and the unscoped
+  `:root { --space-large: var(--space-2xs) }` (also `--space-medium`, `-small`,
+  `-xsmall`, `-xxsmall`) emptied Firefox's own spacing tokens, so cards had no
+  fill, no radius and zero padding. It came in with the Tale to Mux migration,
+  which moved the aliases from `:root` to the attribute scope; found 2026-10-12.
+  Disabling the sheet does not show the cause: the aliases vanish with it.
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome reads it.

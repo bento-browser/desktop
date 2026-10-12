@@ -864,16 +864,19 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Status: Active
 - Last updated: 2026-10-12
 - Firefox 157.0.1 review (2026-10-12): patch applies with offsets only. Settings
-  layout is centered as on 154. Known and identical on 154: on `about:preferences`
-  the Firefox design tokens `--background-color-box`, `--border-radius-circle`
-  and `--space-large` compute empty and cards render flat. `--space-large` is
-  emptied by the unscoped `:root { --space-large: var(--space-2xs) }` in
-  `bento-chrome-tokens.css`, which references a token defined only under
-  `[data-bento-theme]`; the other two stay empty even with that sheet disabled
-  (cause not identified). Not a 157 regression and not addressed by the
-  upgrade.
+  layout is centered as on 154. Known on 154 and 157: on `about:preferences` the
+  Firefox design tokens `--background-color-box`, `--border-radius-circle` and
+  `--space-large` computed empty and cards rendered flat. Cause: the page links
+  `bento-chrome-tokens.css`, which declares the legacy aliases (`--neutral-*`,
+  `--radius-*`, `--space-2xs`) only for elements with `data-bento-theme` or
+  `data-color-mode`, and the preferences root carried neither, so every token
+  this patch maps onto an alias, and the sheet's own `:root` `--space-large`
+  family, was invalid. Fixed in this patch: the root has
+  `data-bento-theme="default"`, `preferences.js` mirrors the window's
+  `data-color-mode`, and `preferences.css` sets `color-scheme` from it.
 - Files or patches:
   - `engine/browser/components/preferences/preferences.xhtml`
+  - `engine/browser/components/preferences/preferences.js`
   - `engine/browser/themes/shared/preferences/preferences.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
 - Bento functionality: centers Firefox's native `about:preferences` content pane
@@ -882,11 +885,18 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   The native preferences page also loads Bento's generated Mux UI token sheet
   and maps Firefox in-content semantic variables for surfaces, text, borders,
   buttons, fields, panels, and focus rings onto Mux UI/Bento tokens while
-  rendering preferences cards and box groups as borderless neutral-5 tiles.
+  rendering preferences cards and box groups as borderless neutral-5 tiles. The
+  document root carries `data-bento-theme="default"` and a `data-color-mode`
+  that `preferences.js` copies from the browser window root (and keeps current
+  with a `MutationObserver`), because the token sheet's aliases and mode blocks
+  apply only to elements with those attributes; `color-scheme` follows the same
+  attribute so Firefox's `light-dark()` tokens agree.
 - Vanilla Firefox surface touched or depended on: the native preferences XHTML
   layout and in-content theme cascade, including `#categories`,
   `.main-content`, `.pane-container`, `chrome://global/skin/in-content/common.css`,
-  and the generated `chrome://browser/content/bento-chrome-tokens.css`.
+  the generated `chrome://browser/content/bento-chrome-tokens.css`, and
+  `window.browsingContext.topChromeWindow` (read by `preferences.js` to mirror the
+  window's color mode, as `main.js` and `sync.js` already do).
 - Why this cannot stay extension-only: `about:preferences` is a privileged
   built-in Firefox page; extension CSS cannot reliably restyle its chrome-loaded
   layout or define its in-content semantic theme variables.
@@ -894,7 +904,12 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   settings redesign layout changes, in-content variable names, or preferences
   widget token dependencies can reintroduce left alignment, alter the content
   pane width, or disconnect preferences controls from Bento's Mux UI palette.
-- Regression checks for future updates: open `about:preferences` in a wide
+- Regression checks for future updates: on `about:preferences` read the computed
+  `--background-color-box`, `--border-radius-circle`, `--space-large` and
+  `--neutral-5` on the root (all must be non-empty), confirm
+  `data-color-mode` follows the sidebar color mode control in both directions
+  (the page's own `prefers-color-scheme` does not), and that a card has a fill,
+  a radius and padding. Open `about:preferences` in a wide
   Bento window and confirm the search field and settings pane are centered in
   the area beside the category nav; narrow the window and confirm the pane still
   fits without horizontal clipping, category navigation works, and the main
