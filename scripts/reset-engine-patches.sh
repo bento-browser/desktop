@@ -34,6 +34,20 @@ find "$REPO_ROOT/patches" -name '*.patch' -print0 \
   | sort -u \
   > "$patch_files_list"
 
+# Also reset files an earlier import patched that the current series no longer
+# names. The recorded state lists them, and verify has matched them to the record
+# by now, so resetting discards only Bento's own output.
+recorded_state="$REPO_ROOT/.bento/engine-state.json"
+if [ -f "$recorded_state" ]; then
+  node -e '
+    const state = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    for (const entry of state.entries || []) {
+      if (entry.kind === "patch" && entry.type === "file") console.log(entry.path);
+    }
+  ' "$recorded_state" >> "$patch_files_list"
+  sort -u -o "$patch_files_list" "$patch_files_list"
+fi
+
 if [ ! -s "$patch_files_list" ]; then
   echo "reset-engine-patches: no patched files found"
   exit 0

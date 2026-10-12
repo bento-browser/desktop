@@ -1153,6 +1153,36 @@ test('shell scripts act on the one selected object directory, never on every obj
   }
 });
 
+test('the patch reset also reverts files an earlier import patched that the series no longer names', async () => {
+  const root = await scriptFixture();
+  try {
+    const engine = path.join(root, 'engine');
+    fs.writeFileSync(path.join(engine, 'old.js'), 'original\n');
+    git(engine, ['add', '-A']);
+    git(engine, ['commit', '--amend', '--no-edit']);
+    git(engine, ['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
+
+    // The recorded import patched old.js; the current series only names new.js.
+    fs.writeFileSync(path.join(engine, 'old.js'), 'patched by an earlier series\n');
+    fs.writeFileSync(path.join(engine, 'toolkit', 'moz.build'), 'user edit\n');
+    fs.mkdirSync(path.join(root, 'patches'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'patches', 'new.patch'), 'diff --git a/new.js b/new.js\n');
+    fs.mkdirSync(path.join(root, '.bento'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.bento', 'engine-state.json'), JSON.stringify({
+      schemaVersion: 1,
+      entries: [{ path: 'old.js', kind: 'patch', type: 'file', sha256: '0'.repeat(64) }],
+    }));
+
+    const reset = runScript(root, 'reset-engine-patches.sh');
+    assert.equal(reset.status, 0, reset.stderr);
+    assert.equal(fs.readFileSync(path.join(engine, 'old.js'), 'utf8'), 'original\n');
+    // Only Bento's own output is reset; other edits stay for verify to catch.
+    assert.equal(fs.readFileSync(path.join(engine, 'toolkit', 'moz.build'), 'utf8'), 'user edit\n');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('update metadata reads the target architecture from the object directory', async () => {
   const root = await fixture();
   try {

@@ -51,8 +51,10 @@ echo "firefox:sync: current Firefox version is ${current_version}"
 echo "firefox:sync: latest upstream Firefox version is ${latest_version}"
 
 if [ "$latest_version" = "$current_version" ]; then
-  echo "firefox:sync: already current; adopting or downloading configured Firefox source"
-  bash scripts/bento-env.sh download
+  # bento.json is current, but the engine can still be older (a checkout from before a
+  # version bump). --replace-stale replaces it through the protected update path.
+  echo "firefox:sync: already current; adopting, downloading, or replacing a stale configured Firefox source"
+  bash scripts/bento-env.sh download --replace-stale
 else
   echo "firefox:sync: updating engine through Bento build tooling"
   bash scripts/bento-env.sh update

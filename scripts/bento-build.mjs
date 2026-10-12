@@ -474,6 +474,28 @@ function sourceVersionFromState(ctx) {
   return readJson(ctx.sourceStatePath).version;
 }
 
+/** Compares the dotted numeric prefixes of two Firefox versions ("157.0.1" against "154.0"). */
+function compareVersionNumbers(left, right) {
+  const parts = (version) => (/^\d+(?:\.\d+)*/.exec(version)?.[0] ?? '').split('.').map(Number);
+  const [a, b] = [parts(left), parts(right)];
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+/**
+ * The Firefox version recorded for the engine when bento.json has moved past it, as on
+ * a checkout that predates a version bump. Undefined when the engine is current, newer
+ * than the configuration, or has no recorded version.
+ */
+function staleEngineVersion(ctx, config) {
+  const recorded = sourceVersionFromState(ctx);
+  const configured = config.firefox.version;
+  return recorded && recorded !== configured && compareVersionNumbers(recorded, configured) <= 0 ? recorded : undefined;
+}
+
 function baseIdentity(ctx, ref) {
   const commitResult = spawnSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: ctx.engineDir, encoding: 'utf8', stdio: 'pipe' });
   if (commitResult.status !== 0) return undefined;
@@ -491,7 +513,12 @@ function ensureSourceIdentity(ctx, config, version, operation) {
   const state = fs.existsSync(ctx.sourceStatePath) ? readJson(ctx.sourceStatePath) : undefined;
   const ref = `refs/bento/firefox-base/${version}`;
   const identity = baseIdentity(ctx, ref);
-  if (!identity) fail(`cannot ${operation}: missing pristine Firefox base ${ref}; run the protected source adoption path first`);
+  if (!identity) {
+    const stale = version === config.firefox.version ? staleEngineVersion(ctx, config) : undefined;
+    fail(stale
+      ? `cannot ${operation}: the engine is Firefox ${stale} but bento.json configures ${version}; run \`pnpm run firefox:sync\` to replace it`
+      : `cannot ${operation}: missing pristine Firefox base ${ref}; run the protected source adoption path first`);
+  }
   if (!state || state.version !== version || state.baselineCommit !== identity.commit) {
     fail(`cannot ${operation}: source-state.json, configured Firefox version, and ${ref} do not agree`);
   }
@@ -868,17 +895,31 @@ function generatedAddonFiles(ctx, name) {
   return { jar, mozBuild };
 }
 
+/**
+ * Engine paths that neither the recorded import state nor the generated Bento output
+ * accounts for, for an engine Git checkout. Empty means the engine is safe to replace.
+ */
+function unverifiedEnginePaths(ctx, status) {
+  if (fs.existsSync(path.join(ctx.stateDir, 'engine-state.json'))) return engineStateViolations(ctx.root);
+  const files = [...new Set([...status.files, ...managedEnginePaths(ctx)])];
+  if (!files.length || verifyManagedEngine(ctx, files)) return [];
+  return status.files.length ? status.files : files;
+}
+
+function describeEnginePaths(paths) {
+  const shown = paths.slice(0, 8).join(', ');
+  return paths.length > 8 ? `${shown}, and ${paths.length - 8} more` : shown;
+}
+
 function ensureCleanEngine(ctx, operation) {
   const status = engineStatus(ctx.root);
-  if (status.exists && !status.git) {
+  if (!status.exists) return;
+  if (!status.git) {
     fail(`cannot ${operation}: engine is not a Git checkout; preserve it before updating`);
   }
-  const files = [...new Set([...status.files, ...managedEnginePaths(ctx)])];
-  const hasRecordedState = fs.existsSync(path.join(ctx.stateDir, 'engine-state.json'));
-  const valid = hasRecordedState ? verifyRecordedEngineState(ctx.root) : !files.length || verifyManagedEngine(ctx, files);
-  if (status.exists && (files.length || hasRecordedState) && !valid) {
-    const details = status.files.slice(0, 8).join(', ');
-    fail(`cannot ${operation}: engine contains unrecognized user changes${details ? ` (${details})` : ''}. Preserve or export them through the Bento patch workflow before updating it.`);
+  const unverified = unverifiedEnginePaths(ctx, status);
+  if (unverified.length) {
+    fail(`cannot ${operation}: engine contains unrecognized user changes (${describeEnginePaths(unverified)}). Preserve or export them through the Bento patch workflow before updating it.`);
   }
 }
 
@@ -1114,12 +1155,20 @@ function isRegeneratedEngineFile(ctx, config, relative) {
     : content === config.brands[config.brand]?.release?.displayVersion;
 }
 
+/** Whether the engine matches the recorded import state or the generated Bento output. */
 export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
+  return engineIsGit(createContext(repoRoot)) && engineStateViolations(repoRoot).length === 0;
+}
+
+/**
+ * Engine paths that neither the recorded import state nor the current Bento output
+ * accounts for. Empty means verified. Needs an engine Git checkout.
+ */
+function engineStateViolations(repoRoot) {
   const ctx = createContext(repoRoot);
   const status = engineStatus(repoRoot);
-  if (!status.git) return false;
   const statePath = path.join(ctx.stateDir, 'engine-state.json');
-  if (!fs.existsSync(statePath)) return verifyManagedEngine(ctx, status.files);
+  if (!fs.existsSync(statePath)) return verifyManagedEngine(ctx, status.files) ? [] : status.files;
   const state = readJson(statePath);
   const config = loadConfig(ctx.root);
   const snapshot = new Map((state.entries || []).map((entry) => [entry.path, entry]));
@@ -1138,7 +1187,7 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
       paths.add(relative);
     }
   }
-  for (const relative of paths) {
+  const accepts = (relative) => {
     const expected = snapshot.get(relative);
     const target = path.join(ctx.engineDir, relative);
     if (REGENERABLE_ENGINE_FILES.has(relative) && targetExistsSync(target)) {
@@ -1147,12 +1196,10 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
       // freshly generated output, or the exact bytes recorded at import (the file a
       // repository config change has not been rebuilt into yet). Anything else is
       // a hand edit.
-      if (isRegeneratedEngineFile(ctx, config, relative)) continue;
+      if (isRegeneratedEngineFile(ctx, config, relative)) return true;
       const stat = fs.lstatSync(target);
-      const unchanged = expected && !expected.missing && expected.type !== 'symlink'
-        && stat.isFile() && sha256File(target) === expected.sha256;
-      if (!unchanged) return false;
-      continue;
+      return Boolean(expected && !expected.missing && expected.type !== 'symlink'
+        && stat.isFile() && sha256File(target) === expected.sha256);
     }
     if (!expected) {
       // A newly introduced source file is safe only when its current generated
@@ -1162,31 +1209,30 @@ export function verifyRecordedEngineState(repoRoot = DEFAULT_ROOT) {
       if (fs.existsSync(path.join(ctx.srcDir, relative))) {
         const source = path.join(ctx.srcDir, relative);
         const stat = fs.lstatSync(target);
-        if (stat.isSymbolicLink()) {
-          if (fs.readlinkSync(target) !== source) return false;
-        } else if (!stat.isFile() || sha256File(target) !== sha256File(source)) return false;
-      } else {
-        return false;
+        if (stat.isSymbolicLink()) return fs.readlinkSync(target) === source;
+        return stat.isFile() && sha256File(target) === sha256File(source);
       }
-      continue;
+      return false;
     }
-    if (expected.missing) {
-      if (targetExistsSync(target)) return false;
-      continue;
-    }
+    if (expected.missing) return !targetExistsSync(target);
     if (!targetExistsSync(target)) {
       // Removing an overlay from the repository is a supported input change;
       // the importer will remove its old generated output after preflight.
-      if (expected.kind === 'overlay' && !fs.existsSync(path.join(ctx.srcDir, relative))) continue;
-      if (expected.kind === 'patch' && !managedPatchPaths(ctx).has(relative)) continue;
+      if (expected.kind === 'overlay' && !fs.existsSync(path.join(ctx.srcDir, relative))) return true;
+      if (expected.kind === 'patch' && !managedPatchPaths(ctx).has(relative)) return true;
       return false;
     }
     const stat = fs.lstatSync(target);
-    if (expected.type === 'symlink') {
-      if (!stat.isSymbolicLink() || fs.readlinkSync(target) !== expected.linkTarget) return false;
-    } else if (!stat.isFile() || sha256File(target) !== expected.sha256) return false;
-  }
-  return status.unrecognizedFiles.length === 0;
+    if (expected.type === 'symlink') return stat.isSymbolicLink() && fs.readlinkSync(target) === expected.linkTarget;
+    return stat.isFile() && sha256File(target) === expected.sha256;
+  };
+  // engineStatus owns files by the current patch series, overlays and add-ons, so a
+  // file an earlier import changed that the series no longer touches (an engine
+  // from before a version bump) is "unrecognized" there. `accepts` has already
+  // compared every recorded path against its recorded bytes, so only unrecognized
+  // files outside the snapshot are user changes.
+  const unrecorded = status.unrecognizedFiles.filter((relative) => !snapshot.has(relative));
+  return [...new Set([...[...paths].filter((relative) => !accepts(relative)), ...unrecorded])].sort();
 }
 
 function targetExistsSync(target) {
@@ -1295,10 +1341,17 @@ async function installSource(ctx, archiveInfo, { replace = false } = {}) {
   }
 }
 
-async function commandDownload(ctx, version, force) {
+/**
+ * Installs the Firefox source. With `replaceStale`, an engine recorded at an older
+ * version than bento.json configures is replaced through the same protected path as
+ * `force` (clean-engine check, digest from bento.json, backup, Bento ref
+ * preservation). `pnpm run firefox:sync` passes it; `pnpm run build` does not.
+ */
+async function commandDownload(ctx, version, { force = false, replaceStale = false } = {}) {
   const config = loadConfig(ctx.root);
   const existing = engineStatus(ctx.root);
   const requestedVersion = version || config.firefox.version;
+  let replace = force;
   if (existing.exists && !force) {
     if (existing.git && sourceVersionFromState(ctx) === requestedVersion) {
       ensureSourceIdentity(ctx, config, requestedVersion, 'reuse Firefox source');
@@ -1309,14 +1362,22 @@ async function commandDownload(ctx, version, force) {
       process.stdout.write(`bento: adopted existing Firefox ${requestedVersion} baseline\n`);
       return;
     }
-    if (existing.git || existing.files.length > 0) {
+    const stale = replaceStale && existing.git && requestedVersion === config.firefox.version
+      ? staleEngineVersion(ctx, config)
+      : undefined;
+    if (stale) {
+      ensureSourceIdentity(ctx, config, stale, 'replace Firefox source');
+      process.stdout.write(`bento: engine is Firefox ${stale} but bento.json configures ${requestedVersion}; replacing it\n`);
+      replace = true;
+    } else if (existing.git || existing.files.length > 0) {
       fail('engine already exists; use `pnpm run firefox:sync` for a protected source update');
     }
   }
-  if (force) ensureCleanEngine(ctx, 'replace Firefox source');
+  if (replace) ensureCleanEngine(ctx, 'replace Firefox source');
   const archiveInfo = await acquireSourceArchive(ctx.root, requestedVersion);
-  await installSource(ctx, archiveInfo, { replace: force });
+  const result = await installSource(ctx, archiveInfo, { replace });
   process.stdout.write(`bento: installed Firefox ${archiveInfo.version} source\n`);
+  if (result.backup) process.stdout.write(`bento: previous source is recoverable at ${result.backup}\n`);
 }
 
 export function adoptExistingSource(ctx, config, version) {
@@ -1325,11 +1386,9 @@ export function adoptExistingSource(ctx, config, version) {
   if (!identity) return false;
   const commit = identity.commit;
   const status = engineStatus(ctx.root);
-  const files = [...new Set([...status.files, ...managedEnginePaths(ctx)])];
-  const statePath = path.join(ctx.stateDir, 'engine-state.json');
-  const valid = fs.existsSync(statePath) ? verifyRecordedEngineState(ctx.root) : !files.length || verifyManagedEngine(ctx, files);
-  if ((files.length || fs.existsSync(statePath)) && !valid) {
-    fail(`cannot adopt existing Firefox source with unverified changes: ${status.files.slice(0, 8).join(', ')}`);
+  const unverified = unverifiedEnginePaths(ctx, status);
+  if (unverified.length) {
+    fail(`cannot adopt existing Firefox source with unverified changes: ${describeEnginePaths(unverified)}`);
   }
   const engineStatePath = path.join(ctx.stateDir, 'engine-state.json');
   const previousSourceState = fs.existsSync(ctx.sourceStatePath) ? fs.readFileSync(ctx.sourceStatePath) : undefined;
@@ -1385,10 +1444,12 @@ async function commandUpdate(ctx) {
     return;
   }
   if (!sourceVersionFromState(ctx) && engineIsGit(ctx)) adoptExistingSource(ctx, config, config.firefox.version);
-  if (engineIsGit(ctx)) ensureSourceIdentity(ctx, config, config.firefox.version, 'update Firefox source');
+  // The engine may predate bento.json (a checkout from before a version bump), so
+  // check it against its own recorded version, not the configured one.
+  const previous = (engineIsGit(ctx) && sourceVersionFromState(ctx)) || config.firefox.version;
+  if (engineIsGit(ctx)) ensureSourceIdentity(ctx, config, previous, 'update Firefox source');
   ensureCleanEngine(ctx, 'update Firefox source');
   const archiveInfo = await acquireSourceArchive(ctx.root, version);
-  const previous = config.firefox.version;
   const previousConfig = fs.readFileSync(ctx.configPath, 'utf8');
   const previousSourceState = fs.existsSync(ctx.sourceStatePath) ? fs.readFileSync(ctx.sourceStatePath, 'utf8') : undefined;
   const engineStatePath = path.join(ctx.stateDir, 'engine-state.json');
@@ -1834,11 +1895,12 @@ async function commandLicenseCheck(ctx) {
 
 function parseArgs(argv) {
   const command = argv[0] || 'help';
-  const options = { ui: false, force: false, allowMissing: false, allowLegacy: false };
+  const options = { ui: false, force: false, replaceStale: false, allowMissing: false, allowLegacy: false };
   for (let index = 1; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--ui') options.ui = true;
     else if (argument === '--force') options.force = true;
+    else if (argument === '--replace-stale') options.replaceStale = true;
     else if (argument === '--allow-missing') options.allowMissing = true;
     else if (argument === '--allow-legacy') options.allowLegacy = true;
     else if (argument === '--jobs' || argument === '-j') options.jobs = Number(argv[++index]);
@@ -1855,7 +1917,7 @@ export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT
   const ctx = createContext(repoRoot);
   const { command, options } = parseArgs(argv);
   switch (command) {
-    case 'download': return commandDownload(ctx, options.version, options.force);
+    case 'download': return commandDownload(ctx, options.version, options);
     case 'update': return commandUpdate(ctx);
     case 'bootstrap': return commandBootstrap(ctx);
     case 'build': return commandBuild(ctx, options.ui, options.jobs);
