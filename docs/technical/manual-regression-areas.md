@@ -47,6 +47,11 @@ When changing core functionality, manually verify at least the affected subset:
   switch that window to another workspace and open the original workspace in a
   second window, then choose "Stay": the tab joins the workspace its window shows
   as a normal tab and the second window's layout does not gain a panel slot;
+- a Settings tab (`about:preferences#bento`) moved to another window (drag out,
+  "Move to New Window"): change a setting and open the privacy or backup
+  controls there; no `invalid_session` appears in the Browser Console and the
+  change persists, also when the tab moves right after opening, while the first
+  session hello is still pending;
 - Cmd+Shift+T restore of a closed panel;
 - Cmd/Ctrl+Shift+arrow panel traversal while content has focus, and plain
   Left/Right arrow behavior inside page content;
