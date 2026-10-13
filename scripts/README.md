@@ -82,13 +82,15 @@ Build, packaging, and release helper scripts.
   `sync-theme-presets.mjs`, `import-theme.mjs`, `generate-chrome-tokens.mjs`,
   `mux-css.mjs`, `theme-selector.mjs`, `generate-native-preferences-protocol.mjs`;
   `muxui-source.mjs` and `muxui-regenerator.mjs` support `muxui-dev.mjs`.
-- Checks (CLAUDE.md lists which ones CI runs): `check-security-invariants.mjs`, `check-release-security.mjs`,
+- Checks (CLAUDE.md lists which ones CI runs): `check-security-invariants.mjs` (with
+  `ci-build-guard.mjs`, which keeps native builds out of workflows and actions),
+  `check-release-security.mjs`,
   `check-import-output.mjs`, `check-size-budgets.mjs` with `size-ratchet.mjs`,
   the competitor-reference boundary check, `check-firefox-compat.mjs` with
   `firefox-compat-registry.mjs`, `check-chrome-resize-guard.mjs`,
   `check-legacy-aliases.mjs` with `legacy-aliases.mjs`,
   `check-product-identity.mjs`, `check-rust-toolchain.mjs`.
 - Release and rollback: `build-release.sh`, `generate-release-sbom.mjs`,
-  `generate-release-metadata.mjs`, `pr-build-comment.mjs`,
+  `generate-release-metadata.mjs`,
   `build-rollback-variant.mjs` with `rollback-variants.mjs`
   (`pnpm run rollback:check` runs its read-only checks).

@@ -7,23 +7,12 @@ on:
     # Drafts already run this workflow in full, so a ready_for_review
     # trigger would only repeat the run on the same commit.
     types: [opened, synchronize, reopened]
-  workflow_dispatch:
-    inputs:
-      platform:
-        description: Platform for the manual application test build
-        required: true
-        default: linux-x64
-        type: choice
-        options:
-          - linux-x64
-          - macos-arm64
-          - windows-x64
-          - all
+
+# CI never builds the application. Bento targets macOS only for now, and
+# application builds (dev and release) run locally on the maintainer's Mac.
 
 concurrency:
-  # Manual native runs have a separate namespace so a routine PR update never
-  # cancels an explicitly requested application build.
-  group: ci-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'routine' }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -32,38 +21,12 @@ permissions:
 jobs:
   security-gate:
     name: Security gate
-    # Runs first and alone: the build job needs it, so an invariant, release
-    # gate, or advisory failure stops the build before it starts. It reads the
-    # tree and the lockfile only, so it installs no dependencies. It also
-    # selects the build platforms, which keeps that allowlist out of the build.
+    # Runs first and alone: the source-import job needs it, so an invariant,
+    # release gate, or advisory failure stops it before it starts. It reads the
+    # tree and the lockfile only, so it installs no dependencies.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    outputs:
-      matrix: ${{ steps.select-matrix.outputs.matrix }}
     steps:
-      - name: Select allowlisted platform matrix
-        id: select-matrix
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PLATFORM: ${{ inputs.platform }}
-        run: |
-          set -euo pipefail
-          linux='{"platform":"linux-x64","os":"ubuntu-24.04","build-jobs":"4"}'
-          macos='{"platform":"macos-arm64","os":"macos-26","build-jobs":"1"}'
-          windows='{"platform":"windows-x64","os":"windows-2025","build-jobs":"2"}'
-
-          case "$EVENT_NAME:$PLATFORM" in
-            workflow_dispatch:linux-x64) matrix="{\"include\":[$linux]}" ;;
-            workflow_dispatch:macos-arm64) matrix="{\"include\":[$macos]}" ;;
-            workflow_dispatch:windows-x64) matrix="{\"include\":[$windows]}" ;;
-            workflow_dispatch:all) matrix="{\"include\":[$linux,$macos,$windows]}" ;;
-            push:|pull_request:) matrix="{\"include\":[$linux]}" ;;
-            *) echo "Unsupported CI event/platform: $EVENT_NAME:$PLATFORM" >&2; exit 1 ;;
-          esac
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
@@ -165,7 +128,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/rust-thin-lto.test.mjs scripts/pr-build-comment.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs scripts/undefined-tokens.test.mjs scripts/overlay-manager.test.mjs scripts/overlay-surfaces.test.mjs scripts/mount-sheet-gate.test.mjs scripts/check-doc-links.test.mjs scripts/mount-icons.test.mjs scripts/mount-workspace-watchdog.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/ci-build-guard.test.mjs scripts/rust-thin-lto.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs scripts/undefined-tokens.test.mjs scripts/overlay-manager.test.mjs scripts/overlay-surfaces.test.mjs scripts/mount-sheet-gate.test.mjs scripts/check-doc-links.test.mjs scripts/mount-icons.test.mjs scripts/mount-workspace-watchdog.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -254,17 +217,15 @@ jobs:
         # current dependency graph (docs/settings-consolidation-rollback.md).
         run: pnpm run rollback:check
 
-  build:
-    name: ${{ github.event_name == 'workflow_dispatch' && 'Build' || 'Source import' }} (${{ matrix.platform }})
-    # The checks above run in parallel and all pass before any build starts, so
-    # a failing tree never costs a long native build.
+  source-import:
+    # The check name keeps the label it had when this job was a platform matrix
+    # entry, so a required-status-check rule on it keeps matching.
+    name: Source import (linux-x64)
+    # The checks above run in parallel and all pass first, so a failing tree
+    # never costs a source download and import.
     needs: [security-gate, static-checks, extensions]
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.security-gate.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
-    # Keep routine source validation bounded separately from manual native builds.
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 360 || 20 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -278,43 +239,11 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.longpaths true
 
-      # Pristine source keyed by Firefox version and source digest. The caches
-      # below are restored only after it, because Bento's source command checks
-      # the protected engine checkout before using a restored object tree.
+      # Pristine source keyed by Firefox version and source digest. Bento's
+      # source command checks the protected engine checkout before it is used.
       - name: Firefox source (engine/)
         id: engine-source
         uses: ./.github/actions/engine-source
-
-      - name: Native cache keys
-        id: native-keys
-        if: github.event_name == 'workflow_dispatch'
-        uses: ./.github/actions/native-cache-keys
-
-      - name: Restore Mozilla toolchain state (~/.mozbuild)
-        id: mozbuild-cache
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.native-keys.outputs.mozbuild-path }}
-          key: ${{ steps.native-keys.outputs.mozbuild-key }}
-
-      - name: Restore native object tree (engine/obj-bento)
-        id: object-cache
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.native-keys.outputs.object-path }}
-          key: ${{ steps.native-keys.outputs.object-key }}
-          restore-keys: ${{ steps.native-keys.outputs.object-restore-keys }}
-
-      - name: Install MozillaBuild
-        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
-        shell: pwsh
-        run: |
-          choco install mozillabuild --version=4.2.1 --yes --no-progress
-          if (-not (Test-Path 'C:\mozilla-build\start-shell.bat')) {
-            throw 'MozillaBuild did not install at C:\mozilla-build'
-          }
 
       - name: Build extensions and import Bento sources
         env:
@@ -337,102 +266,14 @@ jobs:
         # Covers the manifest the installer copies into the engine as well.
         run: pnpm run release:security-check:shell
 
-      - name: Resolve pinned Rust toolchain
-        if: github.event_name == 'workflow_dispatch'
-        run: node scripts/check-rust-toolchain.mjs
-
-      - name: Bento bootstrap (Mozilla build toolchain)
-        if: github.event_name == 'workflow_dispatch'
-        run: pnpm run bootstrap
-
-      # Saved right after a successful bootstrap so a later failure cannot
-      # store a half-installed toolchain. A hit is never saved again.
-      - name: Save Mozilla toolchain state (~/.mozbuild)
-        if: github.event_name == 'workflow_dispatch' && steps.mozbuild-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.native-keys.outputs.mozbuild-path }}
-          key: ${{ steps.native-keys.outputs.mozbuild-key }}
-
-      - name: Select bootstrapped Windows toolchain
-        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
-        uses: ./.github/actions/select-windows-toolchain
-
-      - name: Build manual release artifact
-        if: github.event_name == 'workflow_dispatch'
-        id: native-build
-        # Stop the build with time left in the job to save the partial object
-        # tree below; the next run resumes from it.
-        timeout-minutes: 320
-        env:
-          BENTO_RELEASE: '1'
-          BENTO_BUILD_JOBS: ${{ matrix.build-jobs }}
-          # Dependencies, extensions, and the import already ran above.
-          BENTO_RELEASE_PREPARED: '1'
-        run: bash scripts/build-release.sh
-
-      - name: Upload manual build artifact
-        id: upload-pr-artifact
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: bento-pr-${{ matrix.platform }}-attempt-${{ github.run_attempt }}
-          path: release-out/*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
-
-      - name: Add manual build link to job summary
-        if: github.event_name == 'workflow_dispatch' && success()
-        shell: bash
-        env:
-          ARTIFACT_NAME: bento-pr-${{ matrix.platform }}-attempt-${{ github.run_attempt }}
-          ARTIFACT_URL: ${{ steps.upload-pr-artifact.outputs.artifact-url }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          {
-            echo '### Bento manual test build'
-            echo
-            echo "[${ARTIFACT_NAME}](${ARTIFACT_URL})"
-            echo
-            echo 'Unsigned PR-scoped test build; GitHub sign-in required. Artifact retention: 14 days.'
-            echo "[View CI run](${RUN_URL})"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Saved even when the build failed or timed out: mach is incremental, so
-      # a partial tree still shortens the next run. Every save is a new entry
-      # (the key holds the run id); GitHub evicts the oldest at the size cap.
-      - name: Save native object tree (engine/obj-bento)
-        if: always() && github.event_name == 'workflow_dispatch' && steps.native-build.outcome != 'skipped'
-        continue-on-error: true
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.native-keys.outputs.object-path }}
-          key: ${{ steps.native-keys.outputs.object-key }}
-
       - name: Cache summary
         if: always()
         shell: bash
         env:
-          IS_NATIVE: ${{ github.event_name == 'workflow_dispatch' }}
           SOURCE_HIT: ${{ steps.engine-source.outputs.cache-hit }}
-          MOZBUILD_HIT: ${{ steps.mozbuild-cache.outputs.cache-hit }}
-          OBJECT_HIT: ${{ steps.object-cache.outputs.cache-hit }}
-          OBJECT_MATCHED: ${{ steps.object-cache.outputs.cache-matched-key }}
         run: |
           {
-            echo '### Build caches'
+            echo '### Source cache'
             echo
             echo "- Firefox source: $([ "$SOURCE_HIT" = true ] && echo hit || echo miss)"
-            if [ "$IS_NATIVE" = true ]; then
-              echo "- Mozilla toolchain (~/.mozbuild): $([ "$MOZBUILD_HIT" = true ] && echo hit || echo miss)"
-              if [ "$OBJECT_HIT" = true ]; then
-                echo "- Native objects: exact hit (\`$OBJECT_MATCHED\`)"
-              elif [ -n "$OBJECT_MATCHED" ]; then
-                echo "- Native objects: restored near-miss (\`$OBJECT_MATCHED\`)"
-              else
-                echo '- Native objects: cold build'
-              fi
-            fi
           } >> "$GITHUB_STEP_SUMMARY"

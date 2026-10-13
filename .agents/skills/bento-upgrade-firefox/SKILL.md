@@ -297,7 +297,7 @@ node .agents/skills/bento-upgrade-firefox/scripts/validation-checkpoint.mjs has 
 The checkpoint schema is fail-closed. It fingerprints `bento.json`,
 `package.json`, `pnpm-lock.yaml`, `config/`, `configs/`, patches, overlays, branding,
 extensions, preferences, build scripts, `rust-toolchain.toml`, `.nvmrc`, and
-the native CI and release workflow inputs. It excludes `plans/` and unrelated
+the CI workflow and composite actions. It excludes `plans/` and unrelated
 documentation. A source change invalidates every recorded gate.
 
 After each successful gate, record one of `patch-stack`, `static`,
@@ -353,10 +353,12 @@ URL. The application BuildID is authoritative; `platform.ini` may contain a
 different build timestamp. Re-run the configure-flag checks listed under "Build
 Configure Flags And Updater" in `docs/firefox-core-touchpoints.md`.
 
-Use GitHub-hosted, non-publishing validation for other operating systems when
-available. It must inspect application packages, MAR contents, build IDs,
-hashes, sizes, and update asset URLs. Keep public release and signing gates
-disabled; `CLAUDE.md` "Versioning policy" owns release rules. Run
+CI never builds the application, and Bento currently targets macOS only, so
+the host build above is the application validation. If Linux or Windows
+return, build and inspect them on that platform with the same local tooling.
+The inspection covers application packages, MAR contents, build IDs, hashes,
+sizes, and update asset URLs. Keep public release and signing gates disabled;
+`CLAUDE.md` "Versioning policy" owns release rules. Run
 `pnpm run release:security-check` for preview artifacts; the public gate remains
 blocked until the required signing identities are provisioned.
 
