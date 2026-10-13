@@ -21,7 +21,6 @@ const relevantPaths = [
   'rust-toolchain.toml',
   '.nvmrc',
   '.github/workflows/ci.yml',
-  '.github/workflows/release.yml',
   '.github/actions',
 ];
 

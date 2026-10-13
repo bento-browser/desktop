@@ -3,6 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { findCiBuildViolations } from './ci-build-guard.mjs';
+
 const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
@@ -98,62 +100,27 @@ for (const entry of runtimeEntries) {
   }
 }
 
-const releaseWorkflow = read('.github/workflows/release.yml');
-requireText(
-  '.github/workflows/release.yml',
-  /node scripts\/generate-release-sbom\.mjs/,
-  'release SBOM generation',
-);
-requireText(
-  '.github/workflows/release.yml',
-  /node scripts\/generate-release-metadata\.mjs/,
-  'release checksums and manifest generation',
-);
-requireText('.github/workflows/release.yml', /actions\/attest@/, 'artifact provenance attestation');
-if (!/^ {4}needs:.*\bsecurity-gate\b/m.test(workflowJob(releaseWorkflow, 'build'))) {
-  throw new Error('Release workflow: native builds must wait for the security gate');
-}
-const releaseSecurity = JSON.parse(read('config/release-security.json'));
-if (!releaseSecurity.publicReleaseReady && !/prerelease:\s*true/.test(releaseWorkflow)) {
-  throw new Error('Unapproved public release configuration must remain a prerelease.');
+// CI never builds the application: Bento targets macOS only for now, and
+// application builds run locally on the maintainer's Mac. No workflow or local
+// composite action may dispatch manually, run a native bootstrap, build, or
+// package command (including the package.json scripts that reach one), upload
+// artifacts, or publish a release. See scripts/ci-build-guard.mjs.
+const buildViolations = findCiBuildViolations(root);
+if (buildViolations.length > 0) {
+  throw new Error(
+    buildViolations
+      .map(({ file, description, match }) => `${file}: contains ${description} (${match})`)
+      .join('\n'),
+  );
 }
 
 const ciWorkflow = read('.github/workflows/ci.yml');
-if (!/workflow_dispatch:\s*\n\s+inputs:\s*\n\s+platform:/.test(ciWorkflow)) {
-  throw new Error('CI workflow: missing manual platform selector');
+const sourceImport = workflowJob(ciWorkflow, 'source-import');
+if (!/^ {4}needs:.*\bsecurity-gate\b/m.test(sourceImport)) {
+  throw new Error('CI workflow: source import must wait for the security gate');
 }
-for (const platform of ['linux-x64', 'macos-arm64', 'windows-x64', 'all']) {
-  if (!ciWorkflow.includes(`- ${platform}`)) {
-    throw new Error(`CI workflow: missing platform option ${platform}`);
-  }
-}
-if (!/matrix:\s*\$\{\{\s*fromJSON\(needs\.security-gate\.outputs\.matrix\)\s*\}\}/.test(ciWorkflow)) {
-  throw new Error('CI workflow: build matrix is not selected by the allowlisted security gate job');
-}
-if (!/^ {4}needs:.*\bsecurity-gate\b/m.test(workflowJob(ciWorkflow, 'build'))) {
-  throw new Error('CI workflow: build must wait for the security gate');
-}
-if (!/timeout-minutes:\s*\$\{\{[^\n]*&& 360 \|\| 20/.test(ciWorkflow)) {
-  throw new Error('CI workflow: native and source-import timeout bounds are missing');
-}
-if (!/name: Build manual release artifact\n\s+if: github\.event_name == 'workflow_dispatch'/.test(ciWorkflow)) {
-  throw new Error('CI workflow: native artifact build is not manual-only');
-}
-
-const prCommentWorkflow = read('.github/workflows/pr-build-comment.yml');
-if (!/workflow_run:/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing trusted workflow_run comment trigger');
-if (!/github\.event\.workflow_run\.event\s*==\s*'workflow_dispatch'/.test(prCommentWorkflow)) {
-  throw new Error('PR comment workflow: notifier must process manual CI runs only');
-}
-if (!/actions:\s*read/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing read-only workflow metadata permission');
-if (!/pull-requests:\s*write/.test(prCommentWorkflow)) throw new Error('PR comment workflow: missing PR comment permission');
-if (!/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(prCommentWorkflow)) {
-  throw new Error('PR comment workflow: missing default-branch-only notifier checkout');
-}
-if (/pull_request_target/.test(prCommentWorkflow)) throw new Error('PR comment workflow: contains pull_request_target notifier trigger');
-if (/download-artifact/.test(prCommentWorkflow)) throw new Error('PR comment workflow: contains artifact download in trusted notifier');
-if (/ref:.*github\.event\.workflow_run\.head_(?:branch|sha)/.test(prCommentWorkflow)) {
-  throw new Error('PR comment workflow: contains PR metadata used as a checkout ref');
+if (!/^ {4}timeout-minutes:\s*20\b/m.test(sourceImport)) {
+  throw new Error('CI workflow: source-import timeout bound is missing');
 }
 
 console.log('Bento security invariants passed.');

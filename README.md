@@ -13,28 +13,9 @@ for the implementation map.
 ## Status
 
 Pre-v0.1.0 development. Pull requests receive automatic source-import and
-static checks. Optional unsigned application test builds can be requested
-manually for review. Stable public distribution is not enabled yet; these
-PR-scoped artifacts are the development policy exception and are not stable
-releases.
-
-Open **Actions → CI → Run workflow**, choose a branch in this repository, and
-choose `linux-x64` (the default), `macos-arm64`, `windows-x64`, or `all`. The
-manual workflow must be present on the default branch before the Actions UI
-offers it. Manual builds use hosted-runner time and upload artifacts retained
-for 14 days. A GitHub sign-in is required. They target Linux x64 (`.tar.xz` or
-`.tar.bz2`), Windows x64 (`.exe` installer and `.zip`), and macOS Apple Silicon
-(`.dmg`). Packages are unsigned and may trigger Gatekeeper or SmartScreen
-warnings or blocks.
-
-The separate **Release** workflow's manual run always builds and packages all
-three release platforms, validates each MAR and update XML, and uploads the
-contents of `release-out/` without creating a GitHub Release. Tag pushes retain
-the existing draft prerelease and security gates.
-
-The trusted comment workflow must first be merged into the default branch.
-Until then, downloads are available from manual CI job summaries and artifacts;
-completed manual runs for an open PR update the bot comment automatically.
+static checks. CI builds no application packages: Bento currently targets macOS
+only, and application builds run locally on the maintainer's Mac. Stable public
+distribution is not enabled yet.
 
 ## Prerequisites
 
@@ -67,7 +48,7 @@ pnpm run build         # compile Bento Browser
 pnpm run build:ui      # incremental Firefox UI build
 pnpm run package       # produce platform packages/installers (MAR and update XML only if the updater is enabled)
 pnpm run artifacts:check # verify package outputs (and MAR and update XML if the updater is enabled)
-pnpm run build:release # produce a release-mode artifact for the host platform
+pnpm run build:release # release gate, then a release-mode artifact, SBOM, and checksums for the host platform
 pnpm run lc             # Bento source license check
 pnpm run build:full    # download → bootstrap → build → package
 pnpm run brand:regen   # reinstall tracked branding/bento into the Firefox tree
@@ -206,7 +187,7 @@ pnpm run dev
 | [docs/](docs/)                                                                   | Product, technical, and contributor documentation                             |
 | [rollback/](rollback/)                                                           | Archived legacy source for the Settings rollback builds                       |
 | [bentobrowser-site/](bentobrowser-site/)                                         | Static landing page                                                           |
-| [.github/workflows/](.github/workflows/)                                         | CI                                                                            |
+| [.github/workflows/](.github/workflows/)                                         | CI checks (no application builds) and CodeQL                                  |
 
 ## License
 
