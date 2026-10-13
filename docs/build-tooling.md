@@ -71,6 +71,13 @@ and in `refs/bento/firefox-base/<version>`. Existing engine changes are
 classified before an update, and an update keeps the previous source under
 `.bento/backups/` until the operation succeeds.
 
+Extraction is checked against the archive listing. Windows builds unpack with
+Git Bash's `tar`, which is Cygwin's and treats `X` and `X.exe` as one name, so
+extracting `X` after `X.exe` drops the `.exe` file (the 157.0.1 archive lists
+`which/baz.exe` before `which/baz`). `scripts/archive-members.mjs` extracts any
+member missing from the tree once more, then fails naming what is still missing.
+`scripts/bento-build.mjs` and `scripts/firefox-patch-stack.mjs` both use it.
+
 Source overlays under `src/` are copied or linked into `engine/` by
 [`scripts/import-sources.mjs`](../scripts/import-sources.mjs). Their exact
 destinations, link targets, or copied-file digests are recorded in
@@ -150,7 +157,7 @@ Hosted caches use three keys. Their definitions live in
 
 | Cache              | Key                                                                                                                               | Restore keys                                                                                                | Saved                                                                           |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Firefox source     | `bento-engine-source-v2-<OS>-<firefox.version>-<firefox.source.sha256>`                                                           | none                                                                                                        | Right after `pnpm run download` on a miss; never overwritten                    |
+| Firefox source     | `bento-engine-source-v3-<OS>-<firefox.version>-<firefox.source.sha256>`                                                           | none                                                                                                        | Right after `pnpm run download` on a miss; never overwritten                    |
 | Mozilla toolchains | `bento-mozbuild-v1-<OS>-<arch>-<firefox.version>`                                                                                 | none                                                                                                        | Right after a successful `bootstrap` on a miss                                  |
 | Native objects     | `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-<hash of configs/** and rust-toolchain.toml>-<run id>-<attempt>` | The same prefix without the run id, then `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-` | After every manual or release native build, including a failed or timed-out one |
 

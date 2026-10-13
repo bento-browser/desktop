@@ -46,7 +46,8 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.identity.outputs.path }}
-        key: bento-engine-source-v2-${{ runner.os }}-${{ steps.identity.outputs.version }}-${{ steps.identity.outputs.sha256 }}
+        # v3: v2 Windows caches of Firefox 157.0.1 lack testing/mozbase/mozfile/tests/files/which/baz.exe.
+        key: bento-engine-source-v3-${{ runner.os }}-${{ steps.identity.outputs.version }}-${{ steps.identity.outputs.sha256 }}
 
     # A restored tree is verified against bento.json and reused; otherwise this
     # downloads and verifies the archive and creates the protected checkout.

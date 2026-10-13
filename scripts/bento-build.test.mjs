@@ -10,6 +10,7 @@ import test from 'node:test';
 import {
   compareFirefoxVersions,
   createContext,
+  extractArchive,
   loadConfig,
   main,
   resolveObjDir,
@@ -19,6 +20,7 @@ import {
   writeMozconfig,
 } from './bento-build.mjs';
 import { isReleaseBuild } from './build-mode.mjs';
+import { extractArchive as extractBaselineArchive } from './firefox-patch-stack.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
 import { activeMozconfigLines, mozconfigUpdaterState } from './update-readiness.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
@@ -1271,5 +1273,106 @@ test('source archives are hashed in-process without a SHA-256 utility', async ()
   } finally {
     process.env.PATH = previousPath;
     await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// Stands in for tar: runs the real one, then deletes $BENTO_TEST_TAR_DROP after an extraction,
+// the way Cygwin tar loses `baz.exe` when `baz` follows it. Repair runs (-T) delete it again
+// only while $BENTO_TEST_TAR_DROP_AGAIN is set.
+const DROPPING_TAR = `#!/bin/sh
+PATH="$BENTO_TEST_TAR_PATH" "$(basename "$0")" "$@" || exit $?
+case "$*" in
+  *-xf*-T*) [ -z "$BENTO_TEST_TAR_DROP_AGAIN" ] || rm -f "$BENTO_TEST_TAR_DROP" ;;
+  *-xf*) rm -f "$BENTO_TEST_TAR_DROP" ;;
+esac
+exit 0
+`;
+
+/** A Firefox-shaped archive (bare ./, one root, baz.exe before baz) and a PATH whose tar drops baz.exe. */
+async function droppingTarFixture(t, { dropAgain, dropped, readOnlyArchiveDir = false }) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-tar-drop-'));
+  const previousPath = process.env.PATH;
+  t.after(async () => {
+    await fsp.chmod(path.join(dir, 'archive'), 0o755);
+    process.env.PATH = previousPath;
+    for (const name of ['BENTO_TEST_TAR_PATH', 'BENTO_TEST_TAR_DROP', 'BENTO_TEST_TAR_DROP_AGAIN']) delete process.env[name];
+    await fsp.rm(dir, { recursive: true, force: true });
+  });
+  const source = path.join(dir, 'source');
+  await fsp.mkdir(path.join(source, 'root', 'which'), { recursive: true });
+  await fsp.writeFile(path.join(source, 'root', 'which', 'baz.exe'), 'exe\n');
+  await fsp.writeFile(path.join(source, 'root', 'which', 'baz'), 'plain\n');
+  const members = path.join(dir, 'members.txt');
+  await fsp.writeFile(members, './\nroot/\nroot/which/\nroot/which/baz.exe\nroot/which/baz\n');
+  const archiveDir = path.join(dir, 'archive');
+  await fsp.mkdir(archiveDir);
+  const archive = path.join(archiveDir, 'source.tar');
+  const created = spawnSync('tar', ['-cf', archive, '-C', source, '--no-recursion', '-T', members], {
+    encoding: 'utf8',
+    env: { ...process.env, COPYFILE_DISABLE: '1' },
+  });
+  assert.equal(created.status, 0, created.stderr);
+  if (readOnlyArchiveDir) await fsp.chmod(archiveDir, 0o555);
+
+  const bin = path.join(dir, 'bin');
+  await fsp.mkdir(bin);
+  for (const name of ['tar', 'gtar']) await fsp.writeFile(path.join(bin, name), DROPPING_TAR, { mode: 0o755 });
+  const destination = path.join(dir, 'extracted');
+  await fsp.mkdir(destination);
+  process.env.BENTO_TEST_TAR_PATH = previousPath;
+  process.env.BENTO_TEST_TAR_DROP = path.join(destination, ...dropped);
+  if (dropAgain) process.env.BENTO_TEST_TAR_DROP_AGAIN = '1';
+  process.env.PATH = `${bin}${path.delimiter}${previousPath}`;
+  return { archive, destination };
+}
+
+function assertNoMemberList(destination) {
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(destination)).filter((name) => name.startsWith('.bento-missing-members-')),
+    [],
+    'the member list is removed',
+  );
+}
+
+// The build driver strips the root directory; the patch stack keeps it.
+const SOURCE_EXTRACTORS = [
+  ['build driver', (archive, destination) => extractArchive(archive, destination), ['which', 'baz.exe']],
+  ['patch stack', async (archive, destination) => extractBaselineArchive(archive, destination), ['root', 'which', 'baz.exe']],
+];
+
+test('a source archive member that tar leaves out is extracted again', { skip: process.platform === 'win32' }, async (t) => {
+  for (const [name, extract, dropped] of SOURCE_EXTRACTORS) {
+    await t.test(name, async (subtest) => {
+      const { archive, destination } = await droppingTarFixture(subtest, { dropAgain: false, dropped });
+      await extract(archive, destination);
+      assert.equal(fs.readFileSync(path.join(destination, ...dropped), 'utf8'), 'exe\n');
+      assert.equal(fs.readFileSync(path.join(destination, ...dropped.slice(0, -1), 'baz'), 'utf8'), 'plain\n');
+      assertNoMemberList(destination);
+    });
+  }
+});
+
+test('a source archive member that stays missing fails the extraction with its name', { skip: process.platform === 'win32' }, async (t) => {
+  for (const [name, extract, dropped] of SOURCE_EXTRACTORS) {
+    await t.test(name, async (subtest) => {
+      const { archive, destination } = await droppingTarFixture(subtest, { dropAgain: true, dropped });
+      await assert.rejects(extract(archive, destination), (error) => {
+        assert.match(error.message, /left 1 member\(s\) missing after a second attempt: root\/which\/baz\.exe\n/);
+        assert.match(error.message, /'\.exe' suffix are a known hazard of Windows tar/);
+        return true;
+      });
+      assertNoMemberList(destination);
+    });
+  }
+});
+
+test('a dropped member is restored when the archive directory is read-only', { skip: process.platform === 'win32' }, async (t) => {
+  for (const [name, extract, dropped] of SOURCE_EXTRACTORS) {
+    await t.test(name, async (subtest) => {
+      const { archive, destination } = await droppingTarFixture(subtest, { dropAgain: false, dropped, readOnlyArchiveDir: true });
+      await extract(archive, destination);
+      assert.equal(fs.readFileSync(path.join(destination, ...dropped), 'utf8'), 'exe\n');
+      assertNoMemberList(destination);
+    });
   }
 });
