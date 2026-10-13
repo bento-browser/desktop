@@ -12,7 +12,7 @@ Include the affected build or commit, reproduction steps, and the impact you obs
 ## Supported versions
 
 Bento Browser has no supported releases yet. Official releases stay private until v0.1.0.
-Pre-v0.1.0 builds are maintainer builds and unsigned PR test builds. They receive no security
+Pre-v0.1.0 builds are unsigned maintainer builds. They receive no security
 updates, and fixes land on `main` only.
 
 Vulnerabilities in upstream Firefox or uBlock Origin that reproduce without Bento's changes

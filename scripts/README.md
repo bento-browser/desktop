@@ -89,6 +89,6 @@ Build, packaging, and release helper scripts.
   `check-legacy-aliases.mjs` with `legacy-aliases.mjs`,
   `check-product-identity.mjs`, `check-rust-toolchain.mjs`.
 - Release and rollback: `build-release.sh`, `generate-release-sbom.mjs`,
-  `generate-release-metadata.mjs`, `pr-build-comment.mjs`,
+  `generate-release-metadata.mjs`,
   `build-rollback-variant.mjs` with `rollback-variants.mjs`
   (`pnpm run rollback:check` runs its read-only checks).

@@ -1172,7 +1172,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-10-12
+- Last updated: 2026-10-14
 - Firefox 157.0.1 review (2026-10-12): `browser.nova.enabled` and
   `sidebar.revamp` default to true in 157; `prefs/bento.js` sets both false to
   keep the 154 chrome (Bento's shell owns the sidebar and tab strip). Firefox's
@@ -1193,8 +1193,6 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - `branding/bento/**`
   - `configs/**`
   - `rust-toolchain.toml`
-  - `.github/workflows/release.yml`
-  - `.github/actions/**`
   - `scripts/check-rust-toolchain.mjs`
   - `scripts/install-branding.mjs`
   - `scripts/firefox-patch-stack.mjs`
@@ -1208,8 +1206,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   checks off by default but independently user-toggleable, DoH disabled, and
   AI/remote suggestion surfaces disabled. Release builds pin Firefox's official
   Rust 1.95.0 toolchain and use a Bento-namespaced ThinLTO opt-in on Linux and
-  Windows to keep final Rust linking within standard hosted-runner memory
-  limits; macOS retains upstream's default fat LTO.
+  Windows (which CI no longer builds) to keep final Rust linking within
+  standard hosted-runner memory limits; macOS retains upstream's default fat
+  LTO.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
   search service Remote Settings dumps, branding import paths, Firefox
   configure's `browser/moz.configure` environment-to-config export,
@@ -1233,25 +1232,20 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
   `node --test scripts/rust-thin-lto.test.mjs`, and
-  `node scripts/check-rust-toolchain.mjs`; inspect Linux and Windows release
-  logs for configure exporting `BENTO_RUST_LTO=thin`, generated make flags
-  containing `-Clto=thin`, successful final linking, and artifact upload.
-  Confirm macOS still uses the upstream default LTO path. Native object caches
-  never cross Firefox versions (`.github/actions/native-cache-keys`), so the
-  first manual CI build after a version bump runs cold: run it on `main`, check
-  the cache summary reports a cold build, and confirm the next run restores a
-  near-miss tree.
+  `node scripts/check-rust-toolchain.mjs`. Confirm a local macOS release build
+  still uses the upstream default LTO path. If Linux or Windows builds return,
+  build them locally and inspect the release logs for configure exporting
+  `BENTO_RUST_LTO=thin`, generated make flags containing `-Clto=thin`, and
+  successful final linking.
 - Rollback or migration notes: remove the ThinLTO export from the Linux and
   Windows mozconfigs and the associated experiment patch together, then export,
-  check, import, and invalidate the native object cache (delete the
-  `bento-obj-*` entries or change the `v1` key prefix in
-  `.github/actions/native-cache-keys`). Keep the Rust pin and release
-  verification aligned with the Firefox release's official toolchain.
+  check, and import. Keep the Rust pin and release verification aligned with the
+  Firefox release's official toolchain.
 
 ### Build Configure Flags And Updater
 
 - Status: Active
-- Last updated: 2026-10-12
+- Last updated: 2026-10-14
 - Files or patches:
   - `configs/common/mozconfig` and `configs/{linux,macos,windows}/mozconfig`
   - `scripts/bento-build.mjs` (the options appended to the generated
@@ -1259,8 +1253,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - `bento.json` (`updates.enabled`, `updates.channel`, `updates.hostname`)
   - `config/release-security.json` (`updateService` readiness inputs)
   - `scripts/update-readiness.mjs`, `scripts/check-release-security.mjs`
-  - `scripts/validate-bento-artifacts.mjs`, `scripts/build-release.sh`,
-    `.github/workflows/release.yml`
+  - `scripts/validate-bento-artifacts.mjs`, `scripts/build-release.sh`
 - Bento functionality: `dev` and `debug` builds compile with
   `--disable-release` (plus `--enable-macos-target=11.0` on macOS) so they skip
   the final-crate Rust LTO link and can build Rust incrementally; `release`
@@ -1341,7 +1334,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
      moved, find its new home in the new tree.
   4. Compare `toolchain.configure` `--enable-macos-target`: its default and minimum
      must still allow 11.0.
-  5. Run `BENTO_BUILD_MODE=release pnpm run build` (or a manual CI build) and
+  5. Run `BENTO_BUILD_MODE=release pnpm run build` and
      `pnpm run package`; confirm the package has no updater, that `precomplete` is
      still present in the application (root, or `Contents/Resources` on macOS), and
      that `pnpm run artifacts:check` passes with no MAR or update XML.

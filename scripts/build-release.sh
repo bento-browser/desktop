@@ -2,13 +2,15 @@
 # Bento Browser — release build pipeline.
 #
 # Produces distributable packages (.dmg on macOS, .tar.xz/.tar.bz2 on
-# Linux, .exe and .zip on Windows) into release-out/ at the repo root. Used
-# locally (sanity-check before tagging) and by the release and PR workflows.
+# Linux, .exe and .zip on Windows) into release-out/ at the repo root. Run it
+# locally on the maintainer's Mac (sanity-check before tagging); CI never builds
+# the application. Bento targets macOS only for now, and the Linux and Windows
+# branches stay for when those platforms return.
 #
 # What's different from `npm run build`:
 #   1. Installs from pnpm-lock.yaml with --frozen-lockfile (the one lock, shared
 #      with developer builds, so the pinned npm Mux release cannot drift during
-#      CI or a later rebuild). It is a no-op when node_modules is current.
+#      a later rebuild). It is a no-op when node_modules is current.
 #   2. Runs Bento's package step to produce platform artifacts and locales,
 #      not just the app bundle. MAR and update metadata are produced and
 #      collected only when bento.json updates.enabled is true; the updater is
@@ -16,16 +18,15 @@
 #
 # Locally: run from the repo root. Requires the Firefox download +
 # bootstrap to have been done at least once before (the same prerequisite
-# `npm run build` has). CI invokes this script for tag releases and manual
-# application test builds.
+# `npm run build` has).
 #
 # Set BENTO_BUILD_JOBS to a positive integer to cap native build
 # parallelism on memory-constrained builders.
 #
 # Set BENTO_RELEASE_PREPARED=1 when the caller already ran
 # `pnpm install --frozen-lockfile`, `pnpm run ext:build`, and
-# `pnpm run import` with BENTO_RELEASE=1 in this checkout (the CI workflow does,
-# to verify the import before the long build). Steps 1 and 2 are then skipped.
+# `pnpm run import` with BENTO_RELEASE=1 in this checkout. Steps 1 and 2 are
+# then skipped.
 
 set -euo pipefail
 
@@ -43,8 +44,8 @@ step() {
 }
 
 # Detect platform for output naming. The mach build produces different
-# package shapes per OS; we name our release artifacts by platform so the
-# CI workflow can attach them to the GitHub Release without renaming.
+# package shapes per OS; we name our release artifacts by platform so they can
+# be attached to a GitHub Release without renaming.
 case "$(uname -s)" in
   Darwin) PLATFORM="macos" ;;
   Linux)  PLATFORM="linux" ;;
