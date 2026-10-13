@@ -3,6 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { findCiBuildViolations } from './ci-build-guard.mjs';
+
 const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
@@ -99,18 +101,16 @@ for (const entry of runtimeEntries) {
 }
 
 // CI never builds the application: Bento targets macOS only for now, and
-// application builds run locally on the maintainer's Mac. A workflow that
-// dispatches manually, builds or packages the app, uploads artifacts, or
-// publishes a release would reintroduce hosted native builds.
-const workflowDir = '.github/workflows';
-const workflowFiles = fs
-  .readdirSync(path.join(root, workflowDir))
-  .filter((file) => /\.ya?ml$/.test(file));
-for (const file of workflowFiles) {
-  forbidText(
-    `${workflowDir}/${file}`,
-    /workflow_dispatch|workflow_run|pull_request_target|build-release\.sh|pnpm run (?:bootstrap|build|package)\b|upload-artifact|action-gh-release|actions\/attest@/,
-    'a native build, artifact, release, or privileged-trigger step',
+// application builds run locally on the maintainer's Mac. No workflow or local
+// composite action may dispatch manually, run a native bootstrap, build, or
+// package command (including the package.json scripts that reach one), upload
+// artifacts, or publish a release. See scripts/ci-build-guard.mjs.
+const buildViolations = findCiBuildViolations(root);
+if (buildViolations.length > 0) {
+  throw new Error(
+    buildViolations
+      .map(({ file, description, match }) => `${file}: contains ${description} (${match})`)
+      .join('\n'),
   );
 }
 
