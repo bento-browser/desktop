@@ -64,6 +64,19 @@ test('growth under the ceiling still fails', () => {
   assert.equal(result.failed, true);
 });
 
+test('an entry without a ceiling is only ratcheted', () => {
+  const steady = evaluateEntry({ size: 500_000, baseline: 500_000 });
+  assert.equal(steady.overCeiling, false);
+  assert.equal(steady.failed, false);
+
+  const grown = evaluateEntry({ size: 506_000, baseline: 500_000 });
+  assert.equal(grown.overCeiling, false);
+  assert.equal(grown.verdict, 'grew');
+  assert.equal(grown.failed, true);
+
+  assert.equal(evaluateEntry({ size: 1_000, baseline: undefined }).failed, true);
+});
+
 test('baseline format round-trips and rejects malformed sizes', () => {
   const sizes = { 'a.js': 1234, 'b.css': 5678 };
   assert.deepEqual(parseBaseline(formatBaseline(sizes)), sizes);
