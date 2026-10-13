@@ -11,10 +11,17 @@
 #   1. Installs from pnpm-lock.yaml with --frozen-lockfile (the one lock, shared
 #      with developer builds, so the pinned npm Mux release cannot drift during
 #      a later rebuild). It is a no-op when node_modules is current.
-#   2. Runs Bento's package step to produce platform artifacts and locales,
+#   2. Runs the release gate before compiling: the security invariants, the
+#      preview release gate and its tests, the dependency audit, and the pinned
+#      Rust toolchain check.
+#   3. Runs Bento's package step to produce platform artifacts and locales,
 #      not just the app bundle. MAR and update metadata are produced and
 #      collected only when bento.json updates.enabled is true; the updater is
 #      compiled out until Bento owns a signed update path.
+#   4. Writes the SBOM, release manifest, and SHA256SUMS next to the artifacts.
+#
+# CI no longer builds or publishes releases, so nothing GitHub-only runs here:
+# no provenance attestation, no artifact upload, no draft GitHub Release.
 #
 # Locally: run from the repo root. Requires the Firefox download +
 # bootstrap to have been done at least once before (the same prerequisite
@@ -25,8 +32,8 @@
 #
 # Set BENTO_RELEASE_PREPARED=1 when the caller already ran
 # `pnpm install --frozen-lockfile`, `pnpm run ext:build`, and
-# `pnpm run import` with BENTO_RELEASE=1 in this checkout. Steps 1 and 2 are
-# then skipped.
+# `pnpm run import` with BENTO_RELEASE=1 in this checkout. The install and the
+# extension build and import are then skipped; the release gate still runs.
 
 set -euo pipefail
 
@@ -69,12 +76,26 @@ OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
 
 if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
-  step "1/4 Skipping install, extension build, and import (BENTO_RELEASE_PREPARED is set)"
+  step "1/5 Skipping install (BENTO_RELEASE_PREPARED is set)"
 else
-  step "1/4 Installing dependencies (frozen lockfile)"
+  step "1/5 Installing dependencies (frozen lockfile)"
   pnpm install --frozen-lockfile
+fi
 
-  step "2/4 Building Bento extensions and chrome (BENTO_RELEASE=1)"
+# The checks the release workflow ran before any native build. The release
+# security test parses the lockfile and imports from node_modules, so this
+# follows the install.
+step "2/5 Release gate (security invariants, release gate, audit, Rust toolchain)"
+pnpm run security:check
+pnpm run release:security-check
+node --test scripts/release-security.test.mjs
+pnpm audit --audit-level high
+node scripts/check-rust-toolchain.mjs
+
+if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
+  step "3/5 Skipping extension build and import (BENTO_RELEASE_PREPARED is set)"
+else
+  step "3/5 Building Bento extensions and chrome (BENTO_RELEASE=1)"
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
 fi
@@ -100,7 +121,7 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 OBJ_DIST="$OBJ_DIR/dist"
 
-step "3/4 Packaging artifact"
+step "4/5 Packaging artifact"
 case "$PLATFORM" in
   macos)
     # Remove stale macOS packages before packaging so the collected artifact
@@ -124,7 +145,7 @@ esac
 # add-on still has the dev-only reload command (docs/build-tooling.md).
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh package
 
-step "4/4 Collecting artifacts into $OUT_DIR"
+step "5/5 Collecting artifacts into $OUT_DIR"
 # Mach drops platform-specific artifacts under $OBJ_DIST/.
 # Hunt for them by extension and copy with a versioned name. The exact
 # subpath varies per platform — find handles that without hard-coding.
@@ -259,4 +280,10 @@ fi
 node scripts/validate-bento-artifacts.mjs "$REPO_ROOT"
 
 node scripts/check-product-identity.mjs "$OUT_DIR"
-step "Done. Release artifact: $OUT"
+
+# Last, so the manifest and checksums cover everything collected above.
+step "Release metadata (SBOM, manifest, SHA256SUMS)"
+node scripts/generate-release-sbom.mjs "$OUT_DIR"
+node scripts/generate-release-metadata.mjs "$OUT_DIR"
+
+step "Done. Release artifact: $OUT (metadata in $OUT_DIR)"

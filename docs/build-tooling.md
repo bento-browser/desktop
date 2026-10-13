@@ -50,7 +50,7 @@ present, else the `python3` that `PATH` resolves (mach needs Python 3.9 or newer
 Firefox's Rust toolchain is pinned in the repository root by
 [`rust-toolchain.toml`](../rust-toolchain.toml). `node scripts/check-rust-toolchain.mjs`
 resolves and verifies that pin; run it before Bento bootstrap or the native
-build. Linux and Windows release mozconfigs opt into Bento's narrow
+build (`scripts/build-release.sh` does). Linux and Windows release mozconfigs opt into Bento's narrow
 `BENTO_RUST_LTO=thin` compatibility setting; it changes only the top-level Rust
 release crate's LTO mode from Firefox's default fat LTO to standard Rust
 ThinLTO, keeping embed-bitcode and release codegen-unit settings unchanged.
@@ -107,7 +107,9 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   updater is enabled. With the updater disabled it fails if a MAR or update
   metadata exists.
 - `pnpm run build:full`: download, bootstrap, build, and package.
-- `pnpm run build:release`: create a host-platform release-mode package.
+- `pnpm run build:release`: run the release gate, create a host-platform
+  release-mode package, and write its SBOM, manifest, and checksums (see
+  [Release security and provenance](#release-security-and-provenance)).
 - `pnpm run lc`: run Bento's source-overlay license check.
 - `pnpm run release:security-check:shell`: fail when a release shell still has the
   dev-only reload command (see [Dev-only reload command](#dev-only-reload-command)).
@@ -581,13 +583,35 @@ add-on packaging path; ordinary third-party XPIs remain subject to Firefox's
 normal signing requirements.
 
 Releases are built locally on the maintainer's Mac; CI has no release workflow.
-Every release stays a draft prerelease and must pass
+Every release stays a private prerelease build and must pass
 `pnpm run release:security-check`, which also refuses `updates.enabled: true`
 while the updater readiness inputs are missing (see [Updater](#updater)).
-`pnpm run release:sbom` and `pnpm run release:metadata` generate the CycloneDX
-SBOM, `release-manifest.json`, and `SHA256SUMS` for a `release-out/` directory.
-GitHub artifact provenance attestations came from the removed release workflow
-and are not produced now. Run
+
+`pnpm run build:release` (`scripts/build-release.sh`) is the only release path.
+It runs, in order:
+
+1. `pnpm install --frozen-lockfile`.
+2. The release gate: `pnpm run security:check`, `pnpm run release:security-check`,
+   `node --test scripts/release-security.test.mjs`,
+   `pnpm audit --audit-level high`, and `node scripts/check-rust-toolchain.mjs`.
+   A failure stops the script before anything is built.
+3. `pnpm run ext:build` and `pnpm run import` with `BENTO_RELEASE=1`.
+4. `pnpm run release:security-check:shell`, then the native release build.
+5. The package step, then collection of the package into `release-out/`
+   (and the MAR and update XML only when the updater is enabled, see
+   [Updater](#updater)), followed by `scripts/validate-bento-artifacts.mjs`
+   (`pnpm run artifacts:check`) and `scripts/check-product-identity.mjs`.
+6. `scripts/generate-release-sbom.mjs` and `scripts/generate-release-metadata.mjs`,
+   which write the CycloneDX SBOM, `release-manifest.json`, and `SHA256SUMS` into
+   `release-out/`.
+
+`BENTO_RELEASE_PREPARED=1` skips steps 1 and 3 only; the gate always runs. The
+manifest and checksums cover every file in `release-out/`, so remove artifacts
+from earlier builds first.
+
+The removed release workflow also created GitHub artifact provenance attestations,
+uploaded and downloaded per-platform artifacts, and created the draft GitHub
+Release. None of that runs locally. Run
 `pnpm run release:security-check:public` before changing a release to a public,
 non-prerelease channel. That gate remains blocked until the non-secret
 fingerprints and identities for MAR signing, Linux manifest signing, macOS
