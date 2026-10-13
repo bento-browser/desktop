@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import tinyGlob from 'tiny-glob';
+import { completeArchiveExtraction } from './archive-members.mjs';
 
 export const FIREFOX_PATCH_APPLY_ARGS = [
   '--ignore-space-change',
@@ -393,24 +394,38 @@ async function downloadFirefoxArchive(ctx, version) {
   return archive;
 }
 
-function extractArchive(archive, dest) {
+export function extractArchive(archive, dest) {
   const candidates = process.platform === 'darwin' ? ['gtar', 'tar'] : ['tar'];
-  const args =
-    process.platform === 'win32'
-      ? ['--force-local', '-xf', archive, '-C', dest]
-      : ['-xf', archive, '-C', dest];
-  let last;
-  for (const command of candidates) {
-    const result = spawnSync(command, args, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-    });
-    if (result.status === 0) {
-      return;
+  const base = process.platform === 'win32' ? ['--force-local'] : [];
+  // Runs from the archive's directory, where completeArchiveExtraction puts its member list.
+  const tar = (...args) => {
+    let last;
+    for (const command of candidates) {
+      const result = spawnSync(command, [...base, ...args], {
+        cwd: path.dirname(archive),
+        encoding: 'utf8',
+        stdio: 'pipe',
+        // The listing of a Firefox source archive is tens of megabytes.
+        maxBuffer: 256 * 1024 * 1024,
+      });
+      if (result.status === 0) {
+        return result.stdout;
+      }
+      last = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
     }
-    last = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
-  }
-  throw new UserError(`failed to extract ${archive}${last ? `\n${last}` : ''}`);
+    throw new UserError(`failed to extract ${archive}${last ? `\n${last}` : ''}`);
+  };
+  const entries = tar('-tf', archive).split(/\r?\n/).filter(Boolean);
+  tar('-xf', archive, '-C', dest);
+  completeArchiveExtraction({
+    archive,
+    entries,
+    destination: dest,
+    extractMembers: (listName) => tar('-xf', archive, '-C', dest, '-T', listName),
+    fail: (message) => {
+      throw new UserError(message);
+    },
+  });
 }
 
 function assertExpectedBase(ctx, ref, expectedTree, expectedContentTree) {

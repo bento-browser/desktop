@@ -21,6 +21,10 @@ Build, packaging, and release helper scripts.
   `package` and `updates-browser` do not.
 - `write-if-changed.mjs` — helpers the build driver and the add-on and branding
   installers use to leave unchanged files, and their mtimes, alone.
+- `archive-members.mjs` — checks a tar extraction against the archive listing and
+  extracts members the tar left out once more. The build driver and
+  `firefox-patch-stack.mjs` use it because Git Bash's tar drops `X.exe` when `X`
+  follows it; see `docs/build-tooling.md`.
 - `build-mode.mjs` — the one build-mode resolver: explicit mode, then
   `BENTO_RELEASE=1` (release), then `BENTO_BUILD_MODE`, then `bento.json`
   `build.mode`. The build driver's mozconfig, the shell background build, the
