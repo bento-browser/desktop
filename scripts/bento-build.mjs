@@ -14,6 +14,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { completeArchiveExtraction } from './archive-members.mjs';
 import { BUILD_MODES, isReleaseBuild, resolveBuildMode } from './build-mode.mjs';
 import { assertNoDevReloadInPackage } from './dev-reload.mjs';
 import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
@@ -451,22 +452,33 @@ function archiveEntries(archive) {
   return entries;
 }
 
-async function extractArchive(archive, destination) {
-  archiveEntries(archive);
+export async function extractArchive(archive, destination) {
+  const entries = archiveEntries(archive);
   await fsp.mkdir(destination, { recursive: true });
   const tarPaths = tarArchivePaths(archive, destination);
   const commands = process.platform === 'darwin' ? ['gtar', 'tar'] : ['tar'];
-  let lastError;
-  for (const command of commands) {
-    const result = spawnSync(command, ['--strip-components=1', '-xf', tarPaths.archive, '-C', tarPaths.destination], {
-      cwd: tarPaths.cwd,
-      encoding: 'utf8',
-      stdio: 'pipe',
-    });
-    if (result.status === 0) return;
-    lastError = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
-  }
-  fail(`unable to extract ${archive}${lastError ? `\n${lastError}` : ''}`);
+  const extract = (...extraArgs) => {
+    let lastError;
+    for (const command of commands) {
+      const result = spawnSync(command, ['--strip-components=1', '-xf', tarPaths.archive, '-C', tarPaths.destination, ...extraArgs], {
+        cwd: tarPaths.cwd,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+      if (result.status === 0) return;
+      lastError = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+    }
+    fail(`unable to extract ${archive}${lastError ? `\n${lastError}` : ''}`);
+  };
+  extract();
+  completeArchiveExtraction({
+    archive,
+    entries,
+    destination,
+    strip: 1,
+    extractMembers: (listName) => extract('-T', listName),
+    fail,
+  });
 }
 
 function sourceVersionFromState(ctx) {
