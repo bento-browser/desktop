@@ -52,6 +52,9 @@ When changing core functionality, manually verify at least the affected subset:
   controls there; no `invalid_session` appears in the Browser Console and the
   change persists, also when the tab moves right after opening, while the first
   session hello is still pending;
+- opening several windows in a row (`bv windows-cycle 3`): no
+  `this.window.gBrowser is undefined` in the Browser Console, and every window
+  gets its workspace from its first `shell/hello`;
 - Cmd+Shift+T restore of a closed panel;
 - Cmd/Ctrl+Shift+arrow panel traversal while content has focus, and plain
   Left/Right arrow behavior inside page content;

@@ -50,11 +50,18 @@ message goes through `createShellActionIntake`
   `settings/update` reuses `isValidBentoSettingsPatch`; `backup/import` keeps
   `validateExportSchema` for the payload so the user still gets an import error.
 - A message that claims a source window (`__windowId`, or the payload window of
-  `shell/hello`) is dropped unless `browser.windows.get` confirms the window.
-  Confirmed windows are cached until `windows.onRemoved`, and a removed id is
-  remembered so a lookup still pending at removal cannot mark the closed window
-  live again (a queued `shell/hello` would reassign workspace ownership to it).
-  Messages queue behind a pending check so arrival order is kept.
+  `shell/hello`) is dropped unless the window is known to exist. `createWindowRegistry`
+  learns windows from `windows.onCreated` and a `windows.getAll()` at startup (both
+  only name windows Firefox has finished loading), and asks `browser.windows.get`
+  once, only for a window nothing has announced within 20 s. A message for a
+  window that is still starting waits for its announcement instead (and replays
+  when it arrives, however long the start takes up to that bound): `windows.get`
+  on such a window throws inside Firefox (`this.window.gBrowser is undefined`) and
+  lost the shell's first message. Live windows are cached until `windows.onRemoved`,
+  and a removed id is remembered so a check still pending at removal cannot mark
+  the closed window live again (a queued `shell/hello` would reassign workspace
+  ownership to it). Messages queue behind a pending check so arrival order is
+  kept.
 - Invalid messages are logged by type only (never payloads) and dropped; the
   listener cannot throw. Mount-script dispatches (`dispatchShellAction`) and React
   dispatches (`useToolsPort.ts`) must send exactly the declared fields. Manual
