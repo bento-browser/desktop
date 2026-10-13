@@ -612,7 +612,8 @@ layout. When panel shadows are enabled, panel and main-content frames retain
 their full elevation shadows throughout live sidebar and window resizing.
 Native Settings content holds its current viewport during a live resize and
 performs one final layout when the gesture settles, including when the Settings
-tab is in the background. There is no separate extension-hosted Settings page.
+tab is in the background. A Settings tab dragged or moved to another window keeps
+working there. There is no separate extension-hosted Settings page.
 
 Bento has no automatic updater yet, so the About page shows no Updates section
 (no heading, description, or status message); it keeps the support links.

@@ -1095,7 +1095,11 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   components. Open every Bento dropdown with both mouse and keyboard, select a
   value, and confirm the Firefox panel closes and the Bento setting persists.
   Confirm the native page header shows its localized Bento heading beside the
-  icon. Test both redesign pref values and regular/private windows.
+  icon. Test both redesign pref values and regular/private windows. Move the
+  Settings tab to another window (`gBrowser.replaceTabWithWindow`, or "Move to New
+  Window") and change a setting there: the model re-hellos for the new window
+  (`hostChromeWindowId`) and no `invalid_session` is logged, including when the
+  move happens while the first hello is still pending.
 - Rollback or migration notes: patch 15 is the rollback boundary for the native
   pane. Keep the source overlay routing edit out of patch 15. A rollback build
   must restore a compatible settings surface before removing the category; do
