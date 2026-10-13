@@ -21,8 +21,9 @@ const nativeCommands = [
     pattern: /\b(?:build-bento|build-release|mach-raw|sync-firefox-upstream)\.sh\b/,
   },
   {
+    // The driver defaults to `build`; `check` is its only non-native action.
     description: 'a rollback variant build',
-    pattern: /\bbuild-rollback-variant\.mjs["']?\s+\S+\s+(?:build|package|release|updates)\b/,
+    pattern: /\bbuild-rollback-variant\.mjs(?!["']?\s+\S+\s+check(?![\w-]))/,
   },
   {
     description: 'a mach command',
@@ -52,7 +53,7 @@ function invocationPattern(names) {
   const flags = '(?:\\s+(?!--?(?:filter|F)\\b)-{1,2}[\\w-]+(?:=\\S+)?)*';
   const alternatives = [...names].map(escapeRegExp).join('|');
   return new RegExp(
-    `\\b(?:pnpm|npm|yarn)${flags}\\s+(?:run(?:-script)?${flags}\\s+)?(?:${alternatives})(?![\\w:.-])`,
+    `\\b(?:pnpm|npm|yarn)${flags}\\s+(?:run(?:-script)?${flags}\\s+)?["']?(?:${alternatives})(?![\\w:.-])`,
   );
 }
 
@@ -99,8 +100,21 @@ export function stripYamlComments(text) {
   return text.split('\n').map(stripLineComment).join('\n');
 }
 
-/** Descriptions and matched text for every native-build pattern found in `text`. */
-export function nativeBuildMatches(text, nativeNames) {
+// Removes `--filter`/`-F` selectors that name the root package, so
+// `pnpm --filter bento-browser build` reads like `pnpm build`. Extension filters stay.
+function dropRootFilters(code, rootName) {
+  const values = [rootName, '.', './', '{.}', '{./}'].filter(Boolean).map(escapeRegExp);
+  return code.replace(
+    new RegExp(`\\s+(?:--filter|-F)(?:=|\\s+)["']?(?:${values.join('|')})["']?(?![^\\s])`, 'g'),
+    '',
+  );
+}
+
+/**
+ * Descriptions and matched text for every native-build pattern found in `text`.
+ * `rootName` is the root package.json name, which `--filter` can select.
+ */
+export function nativeBuildMatches(text, nativeNames, rootName = '') {
   const checks = [...nativeCommands, ...forbiddenText];
   if (nativeNames.size > 0) {
     checks.push({
@@ -108,7 +122,8 @@ export function nativeBuildMatches(text, nativeNames) {
       pattern: invocationPattern(nativeNames),
     });
   }
-  const code = stripYamlComments(text);
+  // Join backslash-newline continuations so a split command reads as one line.
+  const code = dropRootFilters(stripYamlComments(text).replace(/\\\r?\n[ \t]*/g, ' '), rootName);
   return checks.flatMap(({ description, pattern }) => {
     const match = code.match(pattern);
     return match ? [{ description, match: match[0].trim() }] : [];
@@ -138,10 +153,12 @@ export function ciConfigFiles(root) {
 
 /** Every native-build pattern found in the repository's workflows and actions. */
 export function findCiBuildViolations(root) {
-  const { scripts = {} } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const { name, scripts = {} } = JSON.parse(
+    fs.readFileSync(path.join(root, 'package.json'), 'utf8'),
+  );
   const nativeNames = nativeScriptNames(scripts);
   return ciConfigFiles(root).flatMap((file) =>
-    nativeBuildMatches(fs.readFileSync(path.join(root, file), 'utf8'), nativeNames).map(
+    nativeBuildMatches(fs.readFileSync(path.join(root, file), 'utf8'), nativeNames, name).map(
       (hit) => ({ file, ...hit }),
     ),
   );

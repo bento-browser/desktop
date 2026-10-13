@@ -13,9 +13,10 @@ import {
 } from './ci-build-guard.mjs';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
-const repoScripts = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).scripts;
-const nativeNames = nativeScriptNames(repoScripts);
-const hits = (text) => nativeBuildMatches(text, nativeNames).map(({ match }) => match);
+const repoPackage = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+const nativeNames = nativeScriptNames(repoPackage.scripts);
+const hits = (text) =>
+  nativeBuildMatches(text, nativeNames, repoPackage.name).map(({ match }) => match);
 
 test('native script names come from package.json, directly and through other scripts', () => {
   for (const name of ['bootstrap', 'build', 'package', 'mach', 'mach:build', 'build:full']) {
@@ -28,6 +29,13 @@ test('native script names come from package.json, directly and through other scr
     assert.ok(!nativeNames.has(name), `${name} must not be a native script`);
   }
   assert.ok(!nativeNames.has('rollback:check'), 'rollback:check only lints and checks');
+
+  // The rollback driver defaults to `build`, so an alias without an action is native.
+  const aliases = nativeScriptNames({
+    bare: 'node scripts/build-rollback-variant.mjs rollback-final-r2',
+    checked: 'node scripts/build-rollback-variant.mjs rollback-final-r2 check',
+  });
+  assert.deepEqual([...aliases], ['bare']);
 });
 
 test('rejects every native build entry point', () => {
@@ -56,10 +64,61 @@ test('rejects every native build entry point', () => {
     'mach package',
     'bash scripts/build-release.sh',
     'node scripts/build-rollback-variant.mjs rollback-final-r2 release',
+    'node scripts/build-rollback-variant.mjs rollback-final-r2',
+    'node scripts/build-rollback-variant.mjs rollback-final-r2 check && node scripts/build-rollback-variant.mjs rollback-final-r2',
     'gh release create v0.0.1',
   ];
   for (const command of commands) {
     assert.ok(hits(`run: ${command}\n`).length > 0, `${command} should be rejected`);
+  }
+});
+
+test('treats a filter that selects the root package as an unfiltered run', () => {
+  assert.equal(repoPackage.name, 'bento-browser');
+  for (const command of [
+    'pnpm --filter bento-browser build',
+    'pnpm --filter=bento-browser run build',
+    'pnpm -F bento-browser run package',
+    'pnpm --filter . build',
+    'pnpm --filter ./ build',
+    'pnpm --filter {.} build',
+    'pnpm --filter {./} build',
+    'pnpm --filter=. run bootstrap',
+    'pnpm --filter "bento-browser" build',
+  ]) {
+    assert.ok(hits(`run: ${command}\n`).length > 0, `${command} should be rejected`);
+  }
+  for (const command of [
+    'pnpm --filter @bento/shell build',
+    'pnpm --filter=@bento/tools run build',
+    'pnpm -F @bento/shell build',
+    'pnpm --filter bento-browser-other build',
+    'pnpm --filter ./extensions/bento-shell build',
+    'pnpm --filter bento-browser run ext:build',
+  ]) {
+    assert.deepEqual(hits(`run: ${command}\n`), [], `${command} should be accepted`);
+  }
+});
+
+test('sees through quoted script names and backslash continuations', () => {
+  for (const text of [
+    'run: pnpm run "build"\n',
+    "run: pnpm run 'build'\n",
+    'run: pnpm "package"\n',
+    'run: |\n  pnpm run \\\n    build\n',
+    'run: |\n  pnpm \\\n    --silent \\\n    run build\n',
+    'run: |\r\n  pnpm run \\\r\n    bootstrap\r\n',
+    'run: |\n  bash scripts/bento-env.sh \\\n    build\n',
+  ]) {
+    assert.ok(hits(text).length > 0, `${JSON.stringify(text)} should be rejected`);
+  }
+  for (const text of [
+    'run: pnpm run "ext:build"\n',
+    "run: pnpm run 'build:ext'\n",
+    'run: |\n  pnpm run \\\n    ext:build\n',
+    'run: |\n  pnpm \\\n    --filter @bento/shell \\\n    build\n',
+  ]) {
+    assert.deepEqual(hits(text), [], `${JSON.stringify(text)} should be accepted`);
   }
 });
 
@@ -89,6 +148,7 @@ test('accepts the extension builds and source commands CI runs', () => {
     'pnpm run import',
     'pnpm run lc',
     'pnpm run rollback:check',
+    'node scripts/build-rollback-variant.mjs rollback-transition-r1 check',
     'pnpm run release:security-check:shell',
     'pnpm install --frozen-lockfile',
     'bash scripts/bento-env.sh download',
