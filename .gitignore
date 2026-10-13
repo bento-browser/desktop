@@ -48,7 +48,7 @@ extensions/bento-shell/tsconfig.muxui-local.json
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 
-# Release artifacts (built by scripts/build-release.sh / .github/workflows/release.yml)
+# Release artifacts (built locally by scripts/build-release.sh)
 release-out/
 
 # Plans

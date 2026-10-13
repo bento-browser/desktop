@@ -6,7 +6,7 @@ description: >-
 # The cache holds the source exactly as `pnpm run download` leaves it, before
 # any Bento import. `import` resets the patched files and re-copies every
 # overlay, so UI, patch, and script edits never invalidate it. It is keyed only
-# by the Firefox version and source digest. Native objects have their own cache.
+# by the Firefox version and source digest.
 
 outputs:
   cache-hit:
@@ -55,10 +55,8 @@ runs:
       shell: bash
       run: pnpm run download
 
-    # Tag runs only read the cache: a cache written under a tag ref is invisible
-    # to every later tag and would only evict useful branch caches.
     - name: Save Firefox source (engine/)
-      if: steps.restore.outputs.cache-hit != 'true' && github.ref_type != 'tag'
+      if: steps.restore.outputs.cache-hit != 'true'
       continue-on-error: true
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:

@@ -48,14 +48,14 @@ directory) in `BENTO_MACH_PYTHON` if set, else `python3.12` from `PATH` if
 present, else the `python3` that `PATH` resolves (mach needs Python 3.9 or newer).
 
 Firefox's Rust toolchain is pinned in the repository root by
-[`rust-toolchain.toml`](../rust-toolchain.toml). Release CI resolves and verifies
-that pin before Bento bootstrap or the native build. Linux and Windows release
-mozconfigs opt into Bento's narrow `BENTO_RUST_LTO=thin` compatibility setting;
-it changes only the top-level Rust release crate's LTO mode from Firefox's
-default fat LTO to standard Rust ThinLTO, keeping embed-bitcode and release
-codegen-unit settings unchanged. macOS keeps Firefox's default fat LTO because
-its hosted release build completes within its existing memory budget. This
-applies to release mode only; dev and debug builds skip the final-crate LTO (see
+[`rust-toolchain.toml`](../rust-toolchain.toml). `node scripts/check-rust-toolchain.mjs`
+resolves and verifies that pin; run it before Bento bootstrap or the native
+build. Linux and Windows release mozconfigs opt into Bento's narrow
+`BENTO_RUST_LTO=thin` compatibility setting; it changes only the top-level Rust
+release crate's LTO mode from Firefox's default fat LTO to standard Rust
+ThinLTO, keeping embed-bitcode and release codegen-unit settings unchanged.
+macOS keeps Firefox's default fat LTO. This applies to release mode only; dev
+and debug builds skip the final-crate LTO (see
 [Build modes and configure flags](#build-modes-and-configure-flags)).
 
 All Bento-specific import behavior belongs in this repository. The authoritative
@@ -128,40 +128,33 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 
 ## CI jobs and caches
 
-Routine pushes and pull requests run on the free `ubuntu-24.04` runner only.
-macOS and Windows builds run through `workflow_dispatch` and `release.yml`.
+CI never builds the application. Bento currently targets macOS only, and
+application builds (dev and release) run locally on the maintainer's Mac. There
+is no manual trigger, tag-driven release workflow, or hosted native build, and
+CI uploads no application artifacts. `ci.yml` runs on pushes to `main` and on
+pull requests, on the free `ubuntu-24.04` runner only.
 
 `ci.yml` jobs and what they wait for:
 
-| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                 |
-| -------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`; selects the build platforms. Installs no dependencies.                                                |
-| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions, the competitor-reference boundary, the build driver config check, and `pnpm run lc`.                                            |
-| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run rollback:check`.                |
-| `build` (Source import or Build, per platform)                 | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Manual runs go on to bootstrap, build, and package. |
+| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                      |
+| -------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                  |
+| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`. |
+| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run rollback:check`.                     |
+| `source-import` (Source import (linux-x64))                    | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.            |
 
-The checks run in parallel and the build starts only after all of them pass,
-so a failing tree never starts a native build. `release.yml` runs its own
-`security-gate` (security invariants, release gate, the release security test,
-and `pnpm audit`) before the three native builds; the `release` job repeats the
-two release checks next to the artifacts it publishes.
+The check name of `source-import` keeps the label it had as a platform matrix
+entry, so a required-status-check rule on it still matches. The first three jobs
+run in parallel and `source-import` starts only after all of them pass, so a
+failing tree never downloads Firefox source. It has a 20-minute bound.
 
 Each job installs its own dependencies, because each job is a separate machine.
-A manual build calls `scripts/build-release.sh` with `BENTO_RELEASE_PREPARED=1`:
-the workflow already installed, built the extensions, and imported them with
-`BENTO_RELEASE=1`, so the script skips those steps (the variable is documented
-in the script header; local runs leave it unset). The script still runs
-`pnpm run release:security-check:shell` before the native build on both paths.
 
-Hosted caches use three keys. Their definitions live in
-`.github/actions/engine-source` and `.github/actions/native-cache-keys`, so
-`ci.yml` and `release.yml` cannot drift:
+One hosted cache remains. Its definition lives in `.github/actions/engine-source`:
 
-| Cache              | Key                                                                                                                               | Restore keys                                                                                                | Saved                                                                           |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Firefox source     | `bento-engine-source-v3-<OS>-<firefox.version>-<firefox.source.sha256>`                                                           | none                                                                                                        | Right after `pnpm run download` on a miss; never overwritten                    |
-| Mozilla toolchains | `bento-mozbuild-v1-<OS>-<arch>-<firefox.version>`                                                                                 | none                                                                                                        | Right after a successful `bootstrap` on a miss                                  |
-| Native objects     | `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-<hash of configs/** and rust-toolchain.toml>-<run id>-<attempt>` | The same prefix without the run id, then `bento-obj-v1-<OS>-<arch>-<firefox.version>-<hash of patches/**>-` | After every manual or release native build, including a failed or timed-out one |
+| Cache          | Key                                                                     | Restore keys | Saved                                                        |
+| -------------- | ----------------------------------------------------------------------- | ------------ | ------------------------------------------------------------ |
+| Firefox source | `bento-engine-source-v3-<OS>-<firefox.version>-<firefox.source.sha256>` | none         | Right after `pnpm run download` on a miss; never overwritten |
 
 - **Source.** The cache holds `engine/` (without `obj-*`) and
   `.bento/source-state.json` exactly as `pnpm run download` leaves them, before
@@ -169,52 +162,17 @@ Hosted caches use three keys. Their definitions live in
   edits to the UI, patches, scripts, prefs, or branding never invalidate it. A
   Firefox bump or a new source digest does. Imported state (`import-manifest.json`,
   `engine-state.json`) is not cached.
-- **Toolchains.** `~/.mozbuild` is cached without `srcdirs`, whose mach virtual
-  environments hold absolute paths and are rebuilt in seconds. There is no
-  restore key: a version bump bootstraps from scratch.
-- **Native objects.** Every run saves a new `engine/obj-bento` entry (the key
-  holds the run id), and restore takes the newest entry that matches the prefix
-  with the same mozconfig inputs, otherwise the newest for the same Firefox
-  version and patch stack. mach rebuilds only what changed. Objects never cross
-  Firefox versions, so the first build after a bump is the cold build that
-  proves the tree compiles from scratch. The hash of `patches/**` (every file
-  there except Markdown, so `series.json` counts) is part of every restore
-  prefix, so objects also never cross patch stacks. Without it, removing a patch
-  restores the pristine source file with an older mtime than the object
-  compiled from the patched file; `import` does not refresh that timestamp and
-  mach keeps unchanged build-file timestamps, so the stale object would be
-  reused and the binary would keep the removed patch's behaviour. A patch
-  change is therefore a cold native build; patches change rarely. The object
-  tree is saved even when the build fails. The build step stops at 320 minutes,
-  inside the 360-minute job bound, so the save still runs and the next run
-  resumes from the partial tree.
 - **Scope.** GitHub lets a run read caches from its own ref and the default
-  branch. Pushes to `main` seed the source cache for every pull request. A
-  manual run on `main` seeds the toolchain and object caches for every branch
-  and for release tags. Tag runs restore but never save, because a cache written
-  under a tag ref is invisible to the next tag and would only evict useful
-  entries. Run CI manually on `main` after a Firefox bump, before tagging.
-- **Size.** Linux entries are about 2 GB (source) and a few GB (objects, which
-  superseded runs leave behind until GitHub evicts the least recently used
-  entry at the 10 GB repository cap). Building all three platforms in one
-  run exceeds the cap, so expect macOS and Windows caches to be evicted between
-  runs. The job summary of every build lists which caches hit.
-- **Forcing a cold build.** Delete the `bento-obj-*` entries with
-  `gh cache delete`, or change the `v1` prefix in
-  `.github/actions/native-cache-keys` to discard every object and toolchain
-  entry at once.
+  branch. Pushes to `main` seed the source cache for every pull request. The
+  job summary of `source-import` lists whether the cache hit.
 
-Manual CI application builds use four workers on the public
-`ubuntu-24.04` runner (4 CPUs / 16 GiB), two workers on the public
-`windows-2025` runner (4 CPUs / 16 GiB), and one worker on the standard
-`macos-26` Apple Silicon runner (3 M1 CPUs / 7 GiB). Each manual native job
-has a 360-minute bound for a cold Firefox build. Staging directories, backups,
-source archives, and patch-stack worktrees are not cached. On Windows, CI
-verifies the bootstrapped MSVC ATL/MFC headers and libraries
-(`.github/actions/select-windows-toolchain`), then prepends that compiler
-directory with `GITHUB_PATH` before configure runs. Release jobs use the same
-worker, cache, and toolchain selection policy, with their existing six-hour
-cold-build bound.
+Local builds are the only application builds. The cross-platform tooling stays
+in the repository for when other platforms return: `scripts/bento-build.mjs`,
+`scripts/build-release.sh`, the release security checks, the SBOM and release
+metadata generators, and the packaging scripts. A hosted build would need a new
+workflow; the removed `release.yml`, `native-cache-keys` and
+`select-windows-toolchain` actions, and their object and toolchain cache design,
+remain in the git history.
 
 ## Build modes and configure flags
 
@@ -244,27 +202,13 @@ developer options, so dev and debug pin `--enable-macos-target=11.0`, the value
 release builds use. The trade-off is accepted: dev and debug binaries do not
 exercise release codegen (no fat or thin LTO, different identical-code folding).
 Release behavior is checked by release mode, which `scripts/build-release.sh`
-always selects (CI manual builds and tag releases), or locally with
-`BENTO_BUILD_MODE=release`.
+always selects and `BENTO_BUILD_MODE=release` selects for a local build.
 
 All modes share `engine/obj-bento`, so switching modes there makes mach re-run
 configure and recompile whatever the changed options affect; expect a rebuild
 close to a full one, and `BENTO_OBJDIR=obj-<name>` to keep a second tree if you
 alternate. The first build after pulling this split also reconfigures, because
 the generated mozconfig changed (`--disable-release`, `--disable-updater`).
-Hosted CI object caches (`.github/actions/native-cache-keys`) key on the
-platform, `bento.json` `firefox.version`, the non-Markdown blobs under
-`patches/`, and the git tree of `configs/` plus the blob of `rust-toolchain.toml`
-(the "mozconfig inputs"). A change under `configs/` or to `rust-toolchain.toml`
-misses the first restore prefix and falls back to the second: the newest entry
-for the same platform, version and patch stack, so mach reconfigures and
-recompiles what the changed options affect. A patch change or a Firefox bump
-misses both restore prefixes and starts cold. `scripts/bento-build.mjs` and the rest
-of `bento.json` (including `updates.enabled`) are not key inputs: a change to the
-generator alone, such as the mode options it appends, leaves every key unchanged,
-restores the cached tree as is, and relies on mach detecting the changed
-`engine/mozconfig`, the same as a local mode switch. This split changes both
-`configs/` and the patch stack, so its first run starts cold.
 
 ## Updater
 
@@ -306,8 +250,7 @@ release tooling treats a build as unable to update:
   updates would bypass MAR signature checks if the updater were re-enabled, and a
   channel such as `release` compiles Mozilla's certificates into the updater.
 - `scripts/build-release.sh` collects no MAR or update XML and fails if
-  `release-out/` or `dist/` holds one; the release workflow checks the same
-  before uploading.
+  `release-out/` or `dist/` holds one.
 
 The update channel (`--enable-update-channel=bento`), the MAR channel exports,
 `MOZ_APPUPDATE_HOST`, and all update tooling (`createMar`, update XML writers,
@@ -326,9 +269,9 @@ configuration rather than artifacts.
 
 `updates.enabled` is a single switch that three places refuse to turn on until
 `config/release-security.json` records every input below: the release gate
-(`pnpm run release:security-check`, run by CI and the release workflow), the
-mozconfig writer (so `pnpm run build` fails before compiling), and `package` and
-the `updates-*` commands. The checks live in
+(`pnpm run release:security-check`, run by CI), the mozconfig writer (so
+`pnpm run build` fails before compiling), and `package` and the `updates-*`
+commands. The checks live in
 [`scripts/update-readiness.mjs`](../scripts/update-readiness.mjs).
 
 | Input in `config/release-security.json` `updateService` | Means                                                                                                                                    |
@@ -571,7 +514,7 @@ Guards keep local Mux out of releases:
   `scripts/build-release.sh` and `scripts/build-bento.sh` exit if it is set.
 - The shell build writes `dist/muxui-source.json`: `{"source":"npm","version":...}`
   or `{"source":"local"}`. Packaging (`bento-build.mjs package`, which backs
-  `pnpm run package`, `build:full`, `build:release`, CI, and release builds) reads
+  `pnpm run package`, `build:full`, and `build:release`) reads
   that stamp where Firefox ships it, not from the imported
   `engine/browser/extensions/bento-shell/dist`: `mach build` copies the shell into
   the objdir (symlinks in dev builds, real copies elsewhere), so rebuilding and
@@ -637,11 +580,14 @@ enabled. Bento Shell and Bento Tools are registered through Firefox's built-in
 add-on packaging path; ordinary third-party XPIs remain subject to Firefox's
 normal signing requirements.
 
-Every tag release stays a draft prerelease and must pass
+Releases are built locally on the maintainer's Mac; CI has no release workflow.
+Every release stays a draft prerelease and must pass
 `pnpm run release:security-check`, which also refuses `updates.enabled: true`
-while the updater readiness inputs are missing (see [Updater](#updater)). The release job generates a CycloneDX SBOM,
-`release-manifest.json`, and `SHA256SUMS`, then records GitHub artifact
-provenance attestations for every checksummed file. Run
+while the updater readiness inputs are missing (see [Updater](#updater)).
+`pnpm run release:sbom` and `pnpm run release:metadata` generate the CycloneDX
+SBOM, `release-manifest.json`, and `SHA256SUMS` for a `release-out/` directory.
+GitHub artifact provenance attestations came from the removed release workflow
+and are not produced now. Run
 `pnpm run release:security-check:public` before changing a release to a public,
 non-prerelease channel. That gate remains blocked until the non-secret
 fingerprints and identities for MAR signing, Linux manifest signing, macOS
@@ -671,35 +617,15 @@ reachable:
   input. Upgrading `lint-staged` would not remove the path, because the latest
   `@ladle/react` still depends on `globby` and `fast-glob`.
 
-## Pull request test builds
+## Pull request checks
 
-Automatic `pull_request` and `push` CI runs perform static checks and one Linux
-source-import check. The Linux job downloads Firefox source, imports Bento,
-repeats the import to verify idempotence, and validates the generated output.
-Opening, updating, reopening, or marking a PR ready for review, and pushing to
-`main`, do not start native application builds for any platform. The routine
-source-import job has a 20-minute bound.
-
-To build an unsigned application for review, open **Actions → CI → Run
-workflow**. Choose a branch in this repository and a platform: `linux-x64`
-(the default), `macos-arm64`, `windows-x64`, or `all`. The `workflow_dispatch`
-definition must first be present on the repository's default branch before the
-Actions UI offers the manual workflow. Manual native jobs use the worker and
-parallelism settings above, have a 360-minute bound, and consume hosted-runner
-time. Each selected platform uploads an attempt-scoped artifact with
-compression disabled and 14-day retention; the job summary links it
-immediately. GitHub sign-in is required to download these public repository
-artifacts. They are unsigned development builds, so macOS Gatekeeper and
-Windows SmartScreen may warn or block installation. Linux receives an archive
-to extract and run.
-
-The comment workflow runs after a manual CI run completes and checks the exact
-open PR, source repository, source commit, and newest manual run attempt before
-writing. It runs trusted default-branch code and never downloads or executes a
-PR artifact. Unselected or unstarted platforms are shown as `not run`. Because
-`workflow_run` definitions come from the default branch, the notifier must be
-merged before it can update the bot comment. Until then, downloads are
-available in the manual run's job summaries and artifacts.
+Automatic `pull_request` and `push` CI runs perform static checks, the
+extension checks, and one Linux source-import check. The Linux job downloads
+Firefox source, imports Bento, repeats the import to verify idempotence, and
+validates the generated output. Opening, updating, reopening, or marking a PR
+ready for review, and pushing to `main`, never start an application build, and
+there are no PR test builds or PR build comments. To try a change in the app,
+build it locally (see the dev loop in `CLAUDE.md`).
 
 ## Updating Firefox
 
@@ -828,11 +754,12 @@ recorded under "Build Configure Flags And Updater" in
 [firefox-core-touchpoints.md](firefox-core-touchpoints.md). Run the source and
 artifact identity scanners as part of that review.
 
-For Linux and Windows hosted-builder changes, also run the patch-stack checks,
-verify `node scripts/check-rust-toolchain.mjs`, and confirm the release workflow
-reaches the final Rust/Firefox link and package steps without linker-memory or
-toolchain-version failures. Keep macOS on its existing default LTO path unless
-its own build evidence requires a separate change.
+CI does not build or validate Linux and Windows. If those platforms return, also
+run the patch-stack checks on each, verify `node scripts/check-rust-toolchain.mjs`,
+and confirm a local release build reaches the final Rust/Firefox link and package
+steps without linker-memory or toolchain-version failures. Keep macOS on its
+existing default LTO path unless its own build evidence requires a separate
+change.
 
 ## Shell stylesheets, themes and fonts
 
@@ -853,7 +780,7 @@ generated theme files, so none of them needs a separate step.
   file. [`scripts/sync-builtin-addon-symlinks.sh`](../scripts/sync-builtin-addon-symlinks.sh)
   links the `bento-chrome-themes/` directory into the app bundle so a dev build
   sees regenerated sheets without a native rebuild; a new theme file in a packaged
-  or CI build comes from the `jar.mn` wildcard in
+  build comes from the `jar.mn` wildcard in
   `patches/chrome-layout/01-bento-shell-mount.patch`.
   [`scripts/theme-sheets.test.mjs`](../scripts/theme-sheets.test.mjs) covers the
   generator and runs in CI.
