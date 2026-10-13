@@ -48,7 +48,7 @@ pnpm run build         # compile Bento Browser
 pnpm run build:ui      # incremental Firefox UI build
 pnpm run package       # produce platform packages/installers (MAR and update XML only if the updater is enabled)
 pnpm run artifacts:check # verify package outputs (and MAR and update XML if the updater is enabled)
-pnpm run build:release # produce a release-mode artifact for the host platform
+pnpm run build:release # release gate, then a release-mode artifact, SBOM, and checksums for the host platform
 pnpm run lc             # Bento source license check
 pnpm run build:full    # download → bootstrap → build → package
 pnpm run brand:regen   # reinstall tracked branding/bento into the Firefox tree
