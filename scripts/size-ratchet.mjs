@@ -16,12 +16,13 @@ export function toleranceFor(baseline) {
 /**
  * Classify one entry. Growth beyond tolerance ('grew') and an absent baseline ('missing')
  * fail the ratchet. Being over the ceiling alone never fails; it is reported as a target.
- * Shrinking beyond tolerance ('shrank') passes with a hint to refresh the baseline.
+ * An entry without a ceiling is only ratcheted. Shrinking beyond tolerance ('shrank')
+ * passes with a hint to refresh the baseline.
  *
- * @param {{ size: number; baseline: number | undefined; ceiling: number }} entry
+ * @param {{ size: number; baseline: number | undefined; ceiling?: number }} entry
  */
 export function evaluateEntry({ size, baseline, ceiling }) {
-  const overCeiling = size > ceiling;
+  const overCeiling = ceiling !== undefined && size > ceiling;
   if (baseline === undefined) {
     return { verdict: 'missing', failed: true, overCeiling, delta: 0, tolerance: 0 };
   }

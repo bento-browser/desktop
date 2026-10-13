@@ -116,7 +116,9 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run size:check`: report graph-aware JavaScript and direct-file size
   ceilings and fail when an entry grows past its baseline in
   `.size-baseline.json` by more than max(1%, 1 KB); missing or malformed
-  built assets also fail the check.
+  built assets also fail the check. A `.size-limit.json` entry without `limit`
+  (the bento-tools background) has no ceiling and is reported as `no target`,
+  but the baseline ratchet still applies to it.
 - `pnpm run size:baseline`: rebuild the extensions with `BENTO_RELEASE=1` (the
   mode CI builds) and refresh `.size-baseline.json`. It lowers entries that
   shrank and adds new ones, but refuses to raise an existing entry, prints
