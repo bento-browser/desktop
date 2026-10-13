@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   createContext,
@@ -48,8 +48,20 @@ function runFixture(root, args) {
   });
 }
 
+const tempRoots = [];
+after(async () => {
+  for (const root of tempRoots) await fsp.rm(root, { recursive: true, force: true });
+});
+
+/** A temp directory that is removed after the last test, also when an assertion fails. */
+async function tempRoot(prefix) {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempRoots.push(root);
+  return root;
+}
+
 async function fixture(version = '1.0') {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-patch-stack-test-'));
+  const root = await tempRoot('bento-patch-stack-test-');
   await fsp.mkdir(path.join(root, 'patches', 'area'), { recursive: true });
   await fsp.mkdir(path.join(root, 'src'), { recursive: true });
   await fsp.mkdir(path.join(root, '.bento'), { recursive: true });
@@ -105,7 +117,7 @@ test('canonical content validation accepts platform-specific executable modes', 
 });
 
 test('source base staging includes files ignored by upstream Firefox', async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-firefox-source-base-test-'));
+  const root = await tempRoot('bento-firefox-source-base-test-');
   git(root, ['init']);
   fs.writeFileSync(path.join(root, '.gitignore'), 'ignored.txt\n');
   fs.writeFileSync(path.join(root, 'ignored.txt'), 'tracked by the source baseline\n');
