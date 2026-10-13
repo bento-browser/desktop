@@ -7,8 +7,9 @@ import { evaluateEntry, formatBaseline, parseBaseline, refreshBaseline } from '.
 
 // Size ratchet. The ceilings below are targets and are always reported, but the
 // check fails only when an entry grows past its committed baseline (see
-// size-ratchet.mjs). Existing overages therefore pass; growth does not. Missing
-// or malformed built assets also fail.
+// size-ratchet.mjs). Existing overages therefore pass; growth does not. An entry
+// with no "limit" has no target and is only ratcheted. Missing or malformed
+// built assets also fail.
 //
 //   node scripts/check-size-budgets.mjs                    check against the baseline
 //   node scripts/check-size-budgets.mjs --write-baseline   refresh the baseline from this build:
@@ -168,10 +169,10 @@ function measureBudgets() {
 }
 
 function reportBudget({ key, name, size, limit }, baselines) {
-  const ceiling = bytesForLimit(limit);
+  const ceiling = limit === undefined ? undefined : bytesForLimit(limit);
   const result = evaluateEntry({ size, baseline: baselines[key], ceiling });
   const marker = result.failed ? 'FAIL' : result.overCeiling ? 'WARN' : 'OK';
-  console.log(`${marker} ${name}: ${formatSize(size)} / ${limit}`);
+  console.log(`${marker} ${name}: ${formatSize(size)} / ${limit ?? 'no target'}`);
 
   if (result.overCeiling) {
     console.log(`  over ceiling by ${formatSize(size - ceiling)}`);
