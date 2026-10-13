@@ -74,6 +74,13 @@ fi
 
 OUT_DIR="$REPO_ROOT/release-out"
 mkdir -p "$OUT_DIR"
+# The manifest and SHA256SUMS cover every file in $OUT_DIR, so an artifact
+# left from an earlier release would be listed as part of this one.
+rm -f "$OUT_DIR/.DS_Store"
+if [ -n "$(find "$OUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+  echo "build-release: $OUT_DIR is not empty; move earlier release files out before building" >&2
+  exit 1
+fi
 
 if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
   step "1/5 Skipping install (BENTO_RELEASE_PREPARED is set)"

@@ -606,8 +606,9 @@ It runs, in order:
    `release-out/`.
 
 `BENTO_RELEASE_PREPARED=1` skips steps 1 and 3 only; the gate always runs. The
-manifest and checksums cover every file in `release-out/`, so remove artifacts
-from earlier builds first.
+manifest and checksums cover every file in `release-out/`, so the script
+stops before the gate if `release-out/` holds anything other than a Finder
+`.DS_Store`; move artifacts from earlier builds out first.
 
 The removed release workflow also created GitHub artifact provenance attestations,
 uploaded and downloaded per-platform artifacts, and created the draft GitHub
