@@ -73,6 +73,27 @@ test('rejects every native build entry point', () => {
   }
 });
 
+test('derives native aliases from normalized script bodies', () => {
+  const scripts = {
+    build: 'bash scripts/bento-env.sh build',
+    filtered: 'pnpm --filter bento-browser run build',
+    continued: 'pnpm run \\\n    build',
+    quoted: 'node scripts/bento-build.mjs "package"',
+    chained: 'pnpm run filtered',
+    extension: 'pnpm --filter @bento/shell build',
+  };
+  const names = nativeScriptNames(scripts, repoPackage.name);
+  assert.deepEqual(
+    [...names].sort(),
+    ['build', 'chained', 'continued', 'filtered', 'quoted'],
+  );
+  for (const alias of ['filtered', 'continued', 'quoted', 'chained']) {
+    const found = nativeBuildMatches(`run: pnpm run ${alias}\n`, names, repoPackage.name);
+    assert.ok(found.length > 0, `pnpm run ${alias} should be rejected`);
+  }
+  assert.deepEqual(nativeBuildMatches('run: pnpm run extension\n', names, repoPackage.name), []);
+});
+
 test('treats a filter that selects the root package as an unfiltered run', () => {
   assert.equal(repoPackage.name, 'bento-browser');
   for (const command of [
@@ -105,6 +126,10 @@ test('sees through quoted script names and backslash continuations', () => {
     'run: pnpm run "build"\n',
     "run: pnpm run 'build'\n",
     'run: pnpm "package"\n',
+    'run: node scripts/bento-build.mjs "build"\n',
+    "run: ./mach 'package'\n",
+    "run: bash scripts/bento-env.sh 'bootstrap'\n",
+    'run: bash "scripts/bento-env.sh" "build"\n',
     'run: |\n  pnpm run \\\n    build\n',
     'run: |\n  pnpm \\\n    --silent \\\n    run build\n',
     'run: |\r\n  pnpm run \\\r\n    bootstrap\r\n',
@@ -117,6 +142,24 @@ test('sees through quoted script names and backslash continuations', () => {
     "run: pnpm run 'build:ext'\n",
     'run: |\n  pnpm run \\\n    ext:build\n',
     'run: |\n  pnpm \\\n    --filter @bento/shell \\\n    build\n',
+  ]) {
+    assert.deepEqual(hits(text), [], `${JSON.stringify(text)} should be accepted`);
+  }
+});
+
+test('reads a rollback action only from the invocation line', () => {
+  const driver = 'node scripts/build-rollback-variant.mjs';
+  for (const text of [
+    `run: |\n  ${driver} rollback-final-r2\n  check the output\n`,
+    `run: |\n  ${driver}\n  rollback-final-r2 check\n`,
+    `run: ${driver} rollback-final-r2 chec\n`,
+  ]) {
+    assert.ok(hits(text).length > 0, `${JSON.stringify(text)} should be rejected`);
+  }
+  for (const text of [
+    `run: ${driver} rollback-final-r2 'check'\n`,
+    `run: ${driver} "rollback-final-r2" "check"\n`,
+    `run: |\n  ${driver} rollback-transition-r1 check\n  ${driver} rollback-final-r2 check\n`,
   ]) {
     assert.deepEqual(hits(text), [], `${JSON.stringify(text)} should be accepted`);
   }

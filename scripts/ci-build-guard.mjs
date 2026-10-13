@@ -14,20 +14,21 @@ const NATIVE_SUBCOMMAND = '(?:bootstrap|build|package|updates-browser|updates-ad
 const nativeCommands = [
   {
     description: 'a Bento native build command',
-    pattern: new RegExp(`\\bbento-(?:env\\.sh|build\\.mjs)["']?\\s+${NATIVE_SUBCOMMAND}\\b`),
+    pattern: new RegExp(`\\bbento-(?:env\\.sh|build\\.mjs)\\s+${NATIVE_SUBCOMMAND}\\b`),
   },
   {
     description: 'a native build script',
     pattern: /\b(?:build-bento|build-release|mach-raw|sync-firefox-upstream)\.sh\b/,
   },
   {
-    // The driver defaults to `build`; `check` is its only non-native action.
+    // The driver defaults to `build`; `check` is its only non-native action. The
+    // variant and action must share the invocation's line.
     description: 'a rollback variant build',
-    pattern: /\bbuild-rollback-variant\.mjs(?!["']?\s+\S+\s+check(?![\w-]))/,
+    pattern: /\bbuild-rollback-variant\.mjs(?![ \t]+\S+[ \t]+check(?![\w-]))/,
   },
   {
     description: 'a mach command',
-    pattern: /(?:^|[\s;&|(/"'])mach\s+(?:bootstrap|build|package|configure|run)\b/m,
+    pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run)\b/m,
   },
   { description: 'a GitHub release command', pattern: /\bgh\s+release\b/ },
 ];
@@ -53,23 +54,25 @@ function invocationPattern(names) {
   const flags = '(?:\\s+(?!--?(?:filter|F)\\b)-{1,2}[\\w-]+(?:=\\S+)?)*';
   const alternatives = [...names].map(escapeRegExp).join('|');
   return new RegExp(
-    `\\b(?:pnpm|npm|yarn)${flags}\\s+(?:run(?:-script)?${flags}\\s+)?["']?(?:${alternatives})(?![\\w:.-])`,
+    `\\b(?:pnpm|npm|yarn)${flags}\\s+(?:run(?:-script)?${flags}\\s+)?(?:${alternatives})(?![\\w:.-])`,
   );
 }
 
 /**
  * Names of root package.json scripts that reach a native bootstrap, build, or
- * package step, directly or through another script.
+ * package step, directly or through another script. `rootName` is the root
+ * package.json name, which `--filter` can select.
  */
-export function nativeScriptNames(scripts) {
+export function nativeScriptNames(scripts, rootName = '') {
+  const bodies = Object.entries(scripts).map(([name, body]) => [name, normalize(body, rootName)]);
   const names = new Set();
-  for (const [name, body] of Object.entries(scripts)) {
+  for (const [name, body] of bodies) {
     if (nativeCommands.some(({ pattern }) => pattern.test(body))) names.add(name);
   }
   for (let grew = names.size > 0; grew; ) {
     grew = false;
     const invokesNative = invocationPattern(names);
-    for (const [name, body] of Object.entries(scripts)) {
+    for (const [name, body] of bodies) {
       if (!names.has(name) && invokesNative.test(body)) {
         names.add(name);
         grew = true;
@@ -100,14 +103,17 @@ export function stripYamlComments(text) {
   return text.split('\n').map(stripLineComment).join('\n');
 }
 
-// Removes `--filter`/`-F` selectors that name the root package, so
-// `pnpm --filter bento-browser build` reads like `pnpm build`. Extension filters stay.
-function dropRootFilters(code, rootName) {
+// The one normalization applied to every scanned text, workflow or package.json
+// script body: drop comments, join backslash-newline continuations, remove quotes
+// so quoted arguments read as bare words, and drop `--filter`/`-F` selectors that
+// name the root package (so `pnpm --filter bento-browser build` reads like
+// `pnpm build`). Extension filters stay.
+function normalize(text, rootName) {
   const values = [rootName, '.', './', '{.}', '{./}'].filter(Boolean).map(escapeRegExp);
-  return code.replace(
-    new RegExp(`\\s+(?:--filter|-F)(?:=|\\s+)["']?(?:${values.join('|')})["']?(?![^\\s])`, 'g'),
-    '',
-  );
+  return stripYamlComments(text)
+    .replace(/\\\r?\n[ \t]*/g, ' ')
+    .replace(/["']/g, '')
+    .replace(new RegExp(`\\s+(?:--filter|-F)(?:=|\\s+)(?:${values.join('|')})(?![^\\s])`, 'g'), '');
 }
 
 /**
@@ -122,8 +128,7 @@ export function nativeBuildMatches(text, nativeNames, rootName = '') {
       pattern: invocationPattern(nativeNames),
     });
   }
-  // Join backslash-newline continuations so a split command reads as one line.
-  const code = dropRootFilters(stripYamlComments(text).replace(/\\\r?\n[ \t]*/g, ' '), rootName);
+  const code = normalize(text, rootName);
   return checks.flatMap(({ description, pattern }) => {
     const match = code.match(pattern);
     return match ? [{ description, match: match[0].trim() }] : [];
@@ -156,7 +161,7 @@ export function findCiBuildViolations(root) {
   const { name, scripts = {} } = JSON.parse(
     fs.readFileSync(path.join(root, 'package.json'), 'utf8'),
   );
-  const nativeNames = nativeScriptNames(scripts);
+  const nativeNames = nativeScriptNames(scripts, name);
   return ciConfigFiles(root).flatMap((file) =>
     nativeBuildMatches(fs.readFileSync(path.join(root, file), 'utf8'), nativeNames, name).map(
       (hit) => ({ file, ...hit }),
