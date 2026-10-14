@@ -97,6 +97,14 @@ pref("browser.safebrowsing.downloads.remote.enabled", false);
 // documents one.
 pref("browser.ml.enable", false);
 pref("browser.ml.chat.enabled", false);
+// Firefox 158 adds the Smart Window AI tab (an AI-generated page). It is off in
+// Firefox 158; pin it so a future Firefox default flip does not change Bento.
+pref("browser.smartwindow.aitab.enabled", false);
+
+// Firefox 158 adds mini windows: a tab (or a cropped region of one) pops into
+// an always-on-top window and returns to its origin window on close. That moves
+// tabs out of the workspace and panel model Bento's shell owns, so keep it off.
+pref("browser.mini-window.enabled", false);
 
 // --- First-run / onboarding noise ----------------------------------------
 pref("browser.aboutwelcome.enabled", false);
