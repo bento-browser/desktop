@@ -11,11 +11,12 @@ import type { WindowClosingTabSnapshot } from './tabs/TabRegistry';
 import {
   bentoTabMoves,
   createAdoptionGate,
-  moveTabsToWindow,
+  moveWorkspaceTabsToWindow,
   releaseAdoptedTab,
   settleWorkspaceTabs,
   tabsToAdopt,
 } from './tabs/AdoptedTab';
+import { wasHandedOver } from './tabs/Handover';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
@@ -25,7 +26,11 @@ import { PanelStore } from './panels/PanelStore';
 import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
 import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
-import { parkableWorkspaceTabs, type ParkedWorkspaceTab } from './panels/ParkedWorkspace';
+import {
+  planParkedRestore,
+  planWorkspaceParking,
+  type ParkedWorkspaceTab,
+} from './panels/ParkedWorkspace';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
@@ -324,12 +329,17 @@ function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTa
     // Private tabs are never parked; panel slots without a URL are omitted
     // from the persisted layout.
     const panelTabIds = new Set(panels.getPanels(workspaceId));
-    const { urlByTabId, sidebarTabs } = parkableWorkspaceTabs(workspaceTabs, panelTabIds, (id) =>
-      tabs.isPrivate(id),
-    );
-    const parkedPanels = panels.parkWorkspaceWithResolvedUrls(workspaceId, (tabId) =>
-      urlByTabId.get(tabId),
-    );
+    const { urlByTabId, sidebarTabs, keepPanelLayout } = planWorkspaceParking({
+      workspaceTabs,
+      panelTabIds,
+      tabsNow: tabs.snapshot(),
+      windowId,
+      isPrivate: (id) => tabs.isPrivate(id),
+    });
+    // Panels that moved to another window with the workspace keep their layout.
+    const parkedPanels = keepPanelLayout
+      ? false
+      : panels.parkWorkspaceWithResolvedUrls(workspaceId, (tabId) => urlByTabId.get(tabId));
 
     const hadParkedSidebarTabs = parkedWorkspaceTabs.has(workspaceId);
     if (sidebarTabs.length > 0) {
@@ -375,23 +385,14 @@ async function restoreParkedTabsForWorkspace(
     }
   }
 
-  const consumedExistingTabIds = new Set<number>();
   let restored = false;
-  for (let index = 0; index < parked.length; index++) {
-    const entry = parked[index]!;
-    let existingTabId: number | null = null;
-    for (const [tabId, url] of existingUrlByTabId) {
-      if (consumedExistingTabIds.has(tabId)) continue;
-      if (url !== entry.url) continue;
-      existingTabId = tabId;
-      consumedExistingTabIds.add(tabId);
-      break;
-    }
+  const steps = planParkedRestore(parked, existingUrlByTabId, existingTabs.length);
+  for (const { entry, existingTabId, active } of steps) {
     if (existingTabId !== null) {
       try {
-        if (index === 0 || entry.pinned) {
+        if (active || entry.pinned) {
           await browser.tabs.update(existingTabId, {
-            ...(index === 0 ? { active: true } : {}),
+            ...(active ? { active: true } : {}),
             ...(entry.pinned ? { pinned: true } : {}),
           });
         }
@@ -408,7 +409,7 @@ async function restoreParkedTabsForWorkspace(
     try {
       const created = await browser.tabs.create({
         url: entry.url,
-        active: index === 0,
+        active,
         ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
       });
       if (typeof created.id !== 'number') continue;
@@ -1845,18 +1846,24 @@ browser.windows.onRemoved.addListener((windowId) => {
 // fires tabs.onRemoved, so the last-tab handler below does not see the workspace lose its
 // last sidebar tab. Promote a panel here, as that handler would, instead of leaving a
 // panel selected as the main tab of a workspace with an empty sidebar.
-browser.tabs.onDetached.addListener((tabId, { oldWindowId }) => {
-  const tab = tabs.snapshot().find((candidate) => candidate.id === tabId);
-  if (!tab?.workspaceId || workspaces.getActiveId(oldWindowId) !== tab.workspaceId) return;
+browser.tabs.onDetached.addListener(async (tabId, { oldWindowId }) => {
+  const snapshot = tabs.snapshot();
+  const workspaceId = snapshot.find((candidate) => candidate.id === tabId)?.workspaceId;
+  const leftShownWorkspace = !!workspaceId && workspaces.getActiveId(oldWindowId) === workspaceId;
+  // A closing window handing its tabs over is not the workspace losing its last tab. Asked for
+  // every detach, so the hop's detach side is spent even when nothing here needs it: left over,
+  // it would pass a later drag out of this window as the handover.
+  const handedOver = await wasHandedOver(tabId, { from: oldWindowId });
+  if (!leftShownWorkspace || handedOver) return;
   const panelId = panelToPromoteAfterDetach({
-    workspaceId: tab.workspaceId,
+    workspaceId,
     leavingTabId: tabId,
     windowId: oldWindowId,
-    tabs: tabs.snapshot(),
-    panelTabIds: panels.getPanels(tab.workspaceId),
+    tabs: snapshot,
+    panelTabIds: panels.getPanels(workspaceId),
     isClosing: (id) => tabs.isClosing(id),
   });
-  if (panelId !== null) void promoteLeftmostPanelToTab(tab.workspaceId, panelId);
+  if (panelId !== null) void promoteLeftmostPanelToTab(workspaceId, panelId);
 });
 
 // A tab torn out of, dragged into, or adopted by another window arrives with the
@@ -1871,6 +1878,7 @@ browser.tabs.onAttached.addListener((tabId, { newWindowId }) => {
       workspaces,
       panels,
       moves: bentoTabMoves,
+      handedOver: (id, windowId) => wasHandedOver(id, { to: windowId }),
       clearPanelMarker,
       syncPanelMarkers: syncPanelMarkersForWorkspace,
       emitPanelsSync: (workspaceId) => void emitPanelsSync(workspaceId),
@@ -2007,10 +2015,10 @@ async function handleWorkspaceActivation(
     const stray = tabs
       .snapshot()
       .filter((t) => t.workspaceId === wsId && t.windowId !== targetWindowId)
-      .map((t) => t.id);
+      .map((t) => ({ id: t.id, pinned: t.pinned }));
     if (stray.length > 0) {
       try {
-        await moveTabsToWindow(stray, targetWindowId, wsId);
+        await moveWorkspaceTabsToWindow(stray, targetWindowId, wsId);
       } catch (err) {
         console.warn('[bento-tools] cross-window tab move failed:', err);
       }

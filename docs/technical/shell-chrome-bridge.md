@@ -362,3 +362,24 @@ Bus bootstrap pitfalls:
   none). It normally sees the title that triggered the event because the
   dispatch is synchronous in the IPC handler; do not move the read behind a timer or
   microtask, or two quick writes collapse into the later one.
+
+## Chrome to tools: SessionStore tab values
+
+Chrome code that must tell bento-tools something about a tab, without a port message
+whose order against WebExtension events is unknown, writes a tab value in the key space
+WebExtensions use: `SessionStore.setCustomTabValue(tab, 'extension:bento-tools@bento.app:<key>',
+JSON.stringify(value))`, which tools reads back with `browser.sessions.getTabValue(tabId,
+'<key>')` (`ext-sessions.js` stores `JSON.stringify(value)` under `extension:<id>:<key>`).
+The mount script already reads `bento.workspaceId`, `bento.closingTab` and the window's
+`bento.activeWorkspaceId` this way. `bento.handover` is the one value chrome writes: when
+a closing window adopts its tabs into another window (see
+[workspaces.md](workspaces.md)), it appends a hop `{ from, to, at }` to the list on each
+returned tab (a tab handed on again carries its earlier hops), so `tabs.onDetached` and
+`tabs.onAttached` can tell it from a drag. The value must be written after `adoptTab`
+returns (SessionStore moves a tab's values to the adopting twin on `TabOpen`, and deletes a
+pending tab's when its state is restored). The mount drops the hops older than 15 s, or
+timed in the future, as it appends one; tools only reads the value and never writes or
+deletes it. It matches each side of a hop once, only while the hop is under 15 s old and
+no older than the tools instance's uptime on the monotonic clock (`tabs/Handover.ts`).
+The events reach tools asynchronously, so a value written in the same task as the
+adoption is there when they are handled.

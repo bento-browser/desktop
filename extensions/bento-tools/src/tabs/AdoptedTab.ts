@@ -15,6 +15,8 @@ export interface AdoptedTabDeps {
   };
   /** Tabs Bento itself moved between windows; see `createProgrammaticMoves`. */
   moves: Pick<ProgrammaticMoves, 'take'>;
+  /** Whether chrome handed the tab to `windowId` as its old window closed; see `tabs/Handover.ts`. */
+  handedOver(tabId: number, windowId: number): Promise<boolean>;
   workspaces: {
     findOwningWindow(workspaceId: string): number | null;
     getActiveId(windowId: number): string | null;
@@ -30,11 +32,11 @@ export interface AdoptedTabDeps {
 
 /**
  * Detach a tab that arrived in `newWindowId` from the workspace it carried.
- * A tab Bento moved itself keeps its workspace, and so does one whose workspace
- * the destination window shows. Otherwise the tab leaves its
- * panel layouts, loses the stale workspace, and joins the destination's
- * workspace now when it has one; a window that has not claimed a workspace yet
- * assigns it on its first activation (`adoptableTabs`).
+ * A tab Bento moved itself keeps its workspace, and so does one a closing window
+ * handed over and one whose workspace the destination window shows. Otherwise the
+ * tab leaves its panel layouts, loses the stale workspace, and joins the
+ * destination's workspace now when it has one; a window that has not claimed a
+ * workspace yet assigns it on its first activation (`adoptableTabs`).
  */
 export async function releaseAdoptedTab(
   deps: AdoptedTabDeps,
@@ -43,9 +45,14 @@ export async function releaseAdoptedTab(
 ): Promise<void> {
   // Checked first: the window that asked for the move may show another workspace by
   // the time the tab arrives, which would make the move look like a user drag.
-  if (deps.moves.take(tabId, newWindowId) !== undefined) return;
+  const moved = deps.moves.take(tabId, newWindowId) !== undefined;
+  // Always asked, so a handover that delivers the same attach is spent too: left over, it
+  // would pass a later drag of the tab back into this window as the handover.
+  const handedOver = await deps.handedOver(tabId, newWindowId);
+  if (moved || handedOver) return;
   const tab = deps.tabs.snapshot().find((candidate) => candidate.id === tabId);
-  if (!tab?.workspaceId) return;
+  // The tab moved on while this event waited: the event for its latest window releases it.
+  if (!tab?.workspaceId || tab.windowId !== newWindowId) return;
   if (deps.workspaces.findOwningWindow(tab.workspaceId) === newWindowId) return;
 
   const panelWorkspaceIds = deps.panels
@@ -124,21 +131,41 @@ export const bentoTabMoves = createProgrammaticMoves();
  * The record is made before the move because the attach events can arrive before its promise
  * resolves, and trimmed to the tabs that did move: `tabs.move` skips some (a pinned tab moved
  * to the end), and a user dragging one of those out later must not read as Bento's move.
+ * `index` is where they land in the destination (-1: the end).
  */
 export async function moveTabsToWindow(
   tabIds: number[],
   windowId: number,
   workspaceId: string,
+  index = -1,
 ): Promise<void> {
   bentoTabMoves.expect(tabIds, workspaceId, windowId);
   try {
     const moved = new Set(
-      [await browser.tabs.move(tabIds, { windowId, index: -1 })].flat().map((t) => t.id),
+      [await browser.tabs.move(tabIds, { windowId, index })].flat().map((t) => t.id),
     );
     bentoTabMoves.forget(tabIds.filter((tabId) => !moved.has(tabId)));
   } catch (err) {
     bentoTabMoves.forget(tabIds);
     throw err;
+  }
+}
+
+/**
+ * A workspace's tabs into `windowId`, pinned ones first and into the pinned region: Firefox
+ * only moves a pinned tab to a position inside or right after the pinned tabs, and leaves one
+ * moved to the end where it is, so the workspace would lose its pinned tabs on the way.
+ */
+export async function moveWorkspaceTabsToWindow(
+  tabs: ReadonlyArray<{ id: number; pinned: boolean }>,
+  windowId: number,
+  workspaceId: string,
+): Promise<void> {
+  for (const pinned of [true, false]) {
+    const tabIds = tabs.filter((tab) => tab.pinned === pinned).map((tab) => tab.id);
+    if (tabIds.length > 0) {
+      await moveTabsToWindow(tabIds, windowId, workspaceId, pinned ? 0 : -1);
+    }
   }
 }
 

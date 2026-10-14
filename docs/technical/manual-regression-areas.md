@@ -47,6 +47,27 @@ When changing core functionality, manually verify at least the affected subset:
   switch that window to another workspace and open the original workspace in a
   second window, then choose "Stay": the tab joins the workspace its window shows
   as a normal tab and the second window's layout does not gain a panel slot;
+- two workspaces, the second with live tabs (a page with typed form text, a playing
+  video, a pinned tab) and a panel: open a second window (it claims the second
+  workspace and takes its tabs), then close it with Cmd+Shift+W, the close button,
+  and `window.close()`: the tabs and panel of that workspace are the same live tabs
+  (same tab ids, form text and playback intact) in the window that stayed, in the
+  order they had, the closed window leaves no blank tab behind, and switching to
+  the workspace shows them without reloading. Open a third window: it claims the
+  workspace again and brings the tabs back, the pinned tab still pinned. With a
+  single window, or on Cmd+Q, nothing is moved and the old behavior holds (tabs
+  parked as addresses, session restore). Also check: a page opened by
+  `window.open()` calling `window.close()` with two windows open closes only its
+  tab; a close answered "Stay" by a tab's beforeunload prompt leaves the window as
+  it was, and a second close request while that prompt is up hands nothing over;
+  a DevTools toolbox open on the window's selected tab moves with it; with three
+  windows, close two of them from one Browser Toolbox snippet (both `close()`
+  calls in the same task): workspace, folder and panels of every moved tab survive
+  both hops; dragging a handed-over tab to a
+  third window and back within 15 s releases it like any drag; a discarded tab keeps
+  its workspace after the move; deleting a workspace with "close its tabs" does not
+  rescue the doomed tabs; a private window, a popup and a DevTools window never
+  receive tabs;
 - a Settings tab (`about:preferences#bento`) moved to another window (drag out,
   "Move to New Window"): change a setting and open the privacy or backup
   controls there; no `invalid_session` appears in the Browser Console and the
