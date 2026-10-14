@@ -987,6 +987,108 @@ test('a flush that settles after the cap gets a second write, once', async () =>
   assert.equal(w.saves(), 2);
 });
 
+/** Three tabs, the first flush settled in time and the cap won over the other two: write 1 is out. */
+async function capWonWithTwoOutstanding() {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }, { label: 'c' }] });
+  const [survivor] = w.survivors;
+  w.close();
+  w.flushes[0].tab.settleFlush.resolve();
+  await w.drain(survivor);
+  w.fireTimers(survivor, 2000);
+  await w.drain(survivor);
+  assert.equal(w.saves(), 1);
+  assert.deepEqual(
+    w.liveTimers(survivor),
+    [],
+    'nothing is armed while the flushes are outstanding',
+  );
+  return { w, survivor };
+}
+/** Copies (by tab label) and writes, in the order they happened. */
+const writeOrder = (w) =>
+  w.calls
+    .filter(([kind]) => kind === 'copied' || kind === 'saveRun')
+    .map(([kind, label]) => (kind === 'copied' ? label : kind));
+
+test('late flushes far apart each get a write when they settle, not when the last one does', async () => {
+  const { w, survivor } = await capWonWithTwoOutstanding();
+
+  // The second tab's copy lands at about 2.4 s; the third flush is still out.
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.drain(survivor);
+  assert.equal(w.saves(), 2);
+  assert.deepEqual(w.liveTimers(survivor), []);
+
+  w.flushes[2].tab.settleFlush.resolve();
+  await w.drain(survivor);
+  assert.equal(w.saves(), 3);
+  assert.deepEqual(writeOrder(w), ['a', 'saveRun', 'b', 'saveRun', 'c', 'saveRun']);
+  await w.drain(survivor);
+  assert.equal(w.saves(), 3);
+  assert.deepEqual(w.liveTimers(survivor), []);
+});
+
+test('late flushes that settle before the follow-up task share one write', async () => {
+  const { w, survivor } = await capWonWithTwoOutstanding();
+
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.settle();
+  assert.deepEqual(w.liveTimers(survivor), [0], 'one task is queued');
+  w.flushes[2].tab.settleFlush.reject(new Error('no frame'));
+  await w.drain(survivor);
+
+  assert.equal(w.saves(), 2);
+  assert.deepEqual(writeOrder(w), ['a', 'saveRun', 'b', 'saveRun']);
+});
+
+test('a late flush is written even when another one never settles', async () => {
+  const { w, survivor } = await capWonWithTwoOutstanding();
+
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.drain(survivor);
+  assert.equal(w.saves(), 2);
+  assert.deepEqual(writeOrder(w), ['a', 'saveRun', 'b', 'saveRun']);
+
+  // The third flush stays pending: no timer, no further write, nothing waits on it.
+  await w.drain(survivor);
+  assert.equal(w.saves(), 2);
+  assert.deepEqual(w.liveTimers(survivor), []);
+});
+
+test('a flush that settles between the cap and the first write is covered by that write', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+  const [survivor] = w.survivors;
+  w.close();
+  w.flushes[0].tab.settleFlush.resolve();
+  await w.drain(survivor);
+
+  w.fireTimers(survivor, 2000);
+  await w.settle();
+  assert.equal(w.saves(), 0, 'the first write is still one task away');
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.drain(survivor);
+
+  assert.equal(w.saves(), 1);
+  assert.deepEqual(writeOrder(w), ['a', 'b', 'saveRun']);
+});
+
+test('flushes that settle in time write once and arm nothing', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }, { label: 'c' }] });
+  const [survivor] = w.survivors;
+
+  w.close();
+  await w.drain(survivor);
+  w.flushes[0].tab.settleFlush.resolve();
+  w.flushes[1].tab.settleFlush.reject(new Error('no frame'));
+  await w.settle();
+  assert.deepEqual(w.liveTimers(survivor), [2000]);
+  w.flushes[2].tab.settleFlush.resolve();
+  await w.drain(survivor);
+
+  assert.equal(w.saves(), 1);
+  assert.deepEqual(w.liveTimers(survivor), []);
+});
+
 test('the second write is skipped when the window closed or a quit started before it', async () => {
   for (const interrupt of [
     (survivor) => (survivor.closed = true),
