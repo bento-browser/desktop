@@ -437,6 +437,21 @@ opening an unwanted blank tab before the moved tabs arrive.
   and a user dragging one of those out later must not read as Bento's move. An
   attach to another window than the recorded one discards the record, and it
   expires after 10 s if the tab never attaches.
+- Do not ask Firefox about a window that no event or listing has announced yet.
+  `windows.get` accepts the id of a window that is still starting and then throws
+  inside Firefox's own code while it builds the result
+  (`ext-browser.js: this.window.gBrowser is undefined`, logged in the Browser
+  Console), and `shell-action-intake` dropped the shell's first message (its
+  `shell/hello`) when the lookup failed. The shell frame of a new window can send
+  that message before the window has a tab browser. `createWindowRegistry` learns
+  windows from `windows.onCreated` (Firefox sends it once the window has loaded) and
+  from a `windows.getAll()` at startup, makes a message for an unannounced window
+  wait for the announcement, and probes with `windows.get` once, only after 20 s
+  without one. Do not shorten that wait to a second or two: a slow first window
+  (a busy machine, the first window of a launch) announces after the old 1.5 s
+  grace, and the dropped `shell/hello` is never sent again, so the window stays
+  without a workspace. The waiter entries are removed as they finish, so windows
+  that never announce do not accumulate.
 - Do not adopt or assign unassigned tabs while startup is unsettled. A restored
   tab looks unassigned until `hydrateWorkspaceIds` has read its session value, and
   a persistent write before that replaces the real workspace. The boot backfill is

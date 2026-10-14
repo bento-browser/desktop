@@ -7,9 +7,9 @@ Subject: [PATCH] Add native Bento preferences
  .../actors/BentoShellDocumentRegistry.sys.mjs |  234 +++
  browser/actors/moz.build                      |    1 +
  .../components/preferences/bento/bento.css    |   39 +
- .../BentoNativePreferencesProtocol.sys.mjs    |  406 ++++++
+ .../BentoNativePreferencesProtocol.sys.mjs    |  406 +++++
  .../native-preferences-protocol-fixtures.json |  114 ++
- .../components/preferences/config/bento.mjs   | 1266 +++++++++++++++++
+ .../components/preferences/config/bento.mjs   | 1301 +++++++++++++++++
  browser/components/preferences/jar.mn         |    4 +
  browser/components/preferences/preferences.js |   28 +
  .../components/preferences/preferences.xhtml  |    9 +
@@ -21,7 +21,7 @@ Subject: [PATCH] Add native Bento preferences
  .../en-US/browser/preferences/bento.ftl       |  202 +++
  .../tests/widgets/test_moz_select_panel.html  |   31 +
  .../content/widgets/moz-select/moz-select.mjs |   10 +-
- 17 files changed, 2631 insertions(+), 1 deletion(-)
+ 17 files changed, 2666 insertions(+), 1 deletion(-)
  create mode 100644 browser/actors/BentoShellDocumentRegistry.sys.mjs
  create mode 100644 browser/components/preferences/bento/bento.css
  create mode 100644 browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
@@ -864,10 +864,10 @@ index 0000000000000000000000000000000000000000..0c699e8244ed939a8f9f0a52aaf5c3d3
 +}
 diff --git a/browser/components/preferences/config/bento.mjs b/browser/components/preferences/config/bento.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc20922d00434
+index 0000000000000000000000000000000000000000..3a71a14c666e503fe8f739b3486fc88e19797367
 --- /dev/null
 +++ b/browser/components/preferences/config/bento.mjs
-@@ -0,0 +1,1266 @@
+@@ -0,0 +1,1301 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -899,6 +899,9 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +const RESPONSE_TOPIC = "bento-native-preferences-response";
 +const PUBLICATION_TOPIC = "bento-native-preferences-publication";
 +const SESSION_KEY = "bento.nativePreferences.session.v1";
++// Hellos tried before a request gives up on matching the session to a Settings
++// tab that keeps changing windows.
++const MAX_HELLO_ATTEMPTS = 3;
 +const BENTO_SELECT_CONTROL_ATTRS = Object.freeze({
 +  "force-panel-list": true,
 +});
@@ -978,6 +981,12 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +  } catch {}
 +}
 +
++// Id of the browser window currently hosting this document. It changes when
++// the tab is torn out or dragged to another window.
++function hostChromeWindowId() {
++  return window.browsingContext.topChromeWindow?.browsingContext.id ?? null;
++}
++
 +function readStoredSession() {
 +  let serialized = null;
 +  try {
@@ -1025,6 +1034,7 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +  #snapshots = Object.create(null);
 +  #revision = 0;
 +  #backendInstanceId = null;
++  #sessionWindowId = null;
 +
 +  constructor() {
 +    Services.obs.addObserver(this, RESPONSE_TOPIC);
@@ -1098,13 +1108,37 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +    }
 +  }
 +
++  // The service binds a session to the window it was issued for, so a Settings
++  // tab that moved to another window needs a new hello before its next request.
++  #hasSessionForHostWindow() {
++    return !!(
++      this.#session.resumeToken &&
++      this.#backendInstanceId &&
++      this.#sessionWindowId === hostChromeWindowId()
++    );
++  }
++
 +  async ensureSession() {
-+    if (this.#session.resumeToken && this.#backendInstanceId) {
-+      return;
++    // A hello answers for the window it was sent from, and the tab can move
++    // while one is in flight (callers share the pending hello), so check again
++    // after each one. Bounded so a tab that keeps moving cannot loop forever.
++    for (let attempt = 0; attempt < MAX_HELLO_ATTEMPTS; attempt++) {
++      if (this.#hasSessionForHostWindow()) {
++        return;
++      }
++      await this.#hello();
 +    }
++    if (!this.#hasSessionForHostWindow()) {
++      throw new Error("invalid_session");
++    }
++  }
++
++  #hello() {
 +    if (this.#helloPromise) {
 +      return this.#helloPromise;
 +    }
++    // Read the window before sending, which is when the service reads it too.
++    let windowId = hostChromeWindowId();
 +    this.#helloPromise = this.#send(
 +      "session/hello",
 +      this.#session.resumeToken
@@ -1113,6 +1147,7 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +      { unauthenticated: true }
 +    )
 +      .then(result => {
++        this.#sessionWindowId = windowId;
 +        this.#session = {
 +          clientInstanceId: this.#session.clientInstanceId,
 +          resumeToken: result.resumeToken,
