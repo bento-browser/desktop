@@ -64,7 +64,7 @@ Use this shape for new or changed touchpoints:
 - Status: Active
 - Last updated: 2026-10-14
 - Firefox 158.0 review (2026-10-14): `pnpm run firefox:compat:engine` finds all
-  199 registry members in the vanilla and in the patched tree; 60 `at` lines moved
+  202 registry members in the vanilla and in the patched tree; 60 `at` lines moved
   and `BASELINE` is 158.0. Upstream changes read against this entry:
   `Tabbrowser.sys.mjs` no longer re-assigns `docShellIsActive` after it inserts
   or adopts a browser (that self-assignment existed only to send the
@@ -1180,23 +1180,47 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   when `MOZ_APP_NAME` is `bento`, restores the `Firefox` and `Nightly` entries of
   `APP_DESC_TO_KEY` and the `startsWith("Firefox")` fallback, and adds back the
   `-firefox` string in `migrationWizard.ftl` next to upstream's `-self` string.
-  Upstream also builds `FIREFOX_REFRESH_MIGRATOR_KEYS` from `MOZ_APP_NAME`, so
-  for Bento it holds `bento` and `bento-selectable-profile`, not `firefox`;
-  `MigrationUtils.startupMigration` only chooses the Firefox-refresh entrypoint
-  when a caller passes a key from that set, and Bento's first-run flow
-  (`BENTO_RESTART_TO_MIGRATION`) passes none. The selectable-profile migrator key
-  changed from `firefox-selectable-profile` to `bento-selectable-profile`.
+  Two more keys changed in 158 and must agree with `nsAppRunner.cpp`, which still
+  requests the literal `firefox-selectable-profile` when a selectable profile is
+  reset (`--reset-profile --migration`, `SelectProfile` migration branch):
+  `FirefoxSelectableProfileMigrator.key` and `FIREFOX_REFRESH_MIGRATOR_KEYS` (the
+  set that picks the `fxrefresh` telemetry entrypoint) are built from
+  `MOZ_APP_NAME` upstream. For Bento that registered `bento-selectable-profile`,
+  so `MigrationUtils.asyncStartupMigration` threw "asked to open auto-migrate from
+  a non-existent source" after the replacement profile existed and no data
+  migrated. core-ui/09 therefore keeps the firefox keys there too: the
+  selectable-profile migrator is `firefox-selectable-profile` and the refresh set
+  is `firefox` plus `firefox-selectable-profile`, the 157 values. The C++ stays
+  untouched. The plain-profile reset branch of `nsAppRunner.cpp` requests
+  `MOZ_APP_NAME` (`bento`), which no migrator registers; that mismatch predates
+  158 (the 157.0.1 source has the same line and the Firefox migrator was already
+  keyed `firefox`), it is left as it is, and its migrator would read Mozilla
+  Firefox profiles rather than the old Bento profile. Bento's first-run flow
+  (`BENTO_RESTART_TO_MIGRATION`) passes no key. After a Firefox update re-read
+  the `aKey = ...` lines in `nsAppRunner.cpp` (the compat registry entry
+  `nsAppRunner selectable-profile reset key` fails if the literal changes) and
+  confirm in a running build that `MigrationUtils.migratorExists` is true for the
+  key the selectable-profile branch requests.
   Regression check: in the welcome flow's import step and in the startup wizard
   the Firefox source reads "Firefox", and the default-browser preselection still
   resolves to Firefox when Firefox is the system default. Runtime on 158.0
   (headless, fresh profile): `FirefoxProfileMigrator.key` is `firefox` and its
   display-name id is `migration-wizard-migrator-display-name-firefox`, which
   localizes to "Firefox" (the `-zen` string to "Zen Browser");
-  `MigrationUtils.availableMigratorKeys` starts `firefox`, `zen`,
-  `bento-selectable-profile`; `getMigrator("firefox")` returned null because
+  `MigrationUtils.availableMigratorKeys` lists `firefox`, `zen` and
+  `firefox-selectable-profile`; `getMigrator("firefox")` returned null because
   `FirefoxProfileMigrator` is startup-only (`isSourceAvailable()` is false outside
-  a startup migration). The welcome overlay is `ready` on a fresh profile. The
-  import wizard itself and the default-browser preselection were not exercised.
+  a startup migration). Driving `MigrationUtils.asyncStartupMigration` with the
+  key `nsAppRunner.cpp` requests (wizard window stubbed, source discovery faked,
+  no profile read) resolves `FirefoxSelectableProfileMigrator` and reaches the
+  wizard with entrypoint `fxrefresh` and `skipSourceSelection` true; `bento` and
+  `bento-selectable-profile` throw the non-existent source error. The reset itself
+  (`--reset-profile --migration` on a selectable profile) was not run: macOS
+  ignores `HOME`, so a named profile with a store ID would live in the real
+  `~/Library/Application Support/Bento`, and the startup wizard needs a click
+  before Marionette is available. The welcome overlay is `ready` on a fresh
+  profile. The import wizard itself and the default-browser preselection were not
+  exercised.
 - Firefox 157.0.1 review (2026-10-12): the SessionStore import uses
   `moz-src:///browser/components/sessionstore/SessionStore.sys.mjs`. The welcome
   flow shows on a fresh profile.
@@ -1977,6 +2001,9 @@ below is generated; edit the registry, then run
 | `MigrationUtils.isStartupMigration` | source (engine only) | Tells the first-run import apart from a later import (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#isStartupMigration` | `browser/components/migration/MigrationUtils.sys.mjs:548` |
 | `MigrationUtils.profileStartup` | source (engine only) | Reads the running profile's directory so the import skips it (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#profileStartup` | `browser/components/migration/MigrationUtils.sys.mjs:559` |
 | `MigrationUtils.resourceTypes` | source (engine only) | Resource type constants the first-run import selects (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#resourceTypes` | `browser/components/migration/MigrationUtils.sys.mjs:198` |
+| `nsAppRunner selectable-profile reset key` | source (engine only) | The migrator key nsAppRunner.cpp requests when a selectable profile is reset; the selectable-profile migrator and the refresh key set keep it (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#firefox-selectable-profile` | `toolkit/xre/nsAppRunner.cpp:6166` |
+| `FirefoxSelectableProfileMigrator.key` | source (engine only) | Registers the selectable-profile migrator under the firefox-keyed name nsAppRunner.cpp requests (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#FirefoxSelectableProfileMigrator` | `browser/components/migration/FirefoxSelectableProfileMigrator.sys.mjs:27` |
+| `MigrationUtils.FIREFOX_REFRESH_MIGRATOR_KEYS` | source (engine only) | Keys that count as a Firefox profile refresh; Bento keeps the firefox-keyed names (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#FIREFOX_REFRESH_MIGRATOR_KEYS` | `browser/components/migration/MigrationUtils.sys.mjs:46` |
 | `MigrationWizard:Close` | source (engine only) | Tells the embedded import host the wizard finished so it can close. | `src/browser/base/content/bento-migration-host.js#MigrationWizard:Close` | `browser/components/migration/content/migration-wizard.mjs:1482` |
 | `migration-wizard.requestState` | source (engine only) | Asks the embedded migration wizard to render its initial state. | `src/browser/base/content/bento-migration-host.js#requestState` | `browser/components/migration/content/migration-wizard.mjs:419` |
 | `migration-wizard element` | source (engine only) | Custom element the import host waits for before bridging styles. | `src/browser/base/content/bento-migration-host.js#whenDefined('migration-wizard')` | `browser/components/migration/content/migration-wizard.mjs:1619` |
