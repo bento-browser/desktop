@@ -73,3 +73,37 @@ export function planWorkspaceParking(args: {
   );
   return { ...parked, keepPanelLayout };
 }
+
+export interface ParkedRestoreStep {
+  entry: ParkedWorkspaceTab;
+  /** The live tab that already shows the entry's address, consumed once. */
+  existingTabId: number | null;
+  /** Whether restoring this entry selects it. */
+  active: boolean;
+}
+
+/**
+ * Pairs each parked entry (in index order) with a live tab that already shows its URL, and says
+ * whether restoring it takes the selection: only the first does, and not when it opens a new tab
+ * while the workspace already has live tabs. Those include pages a closing window handed over,
+ * and a parked empty New Tab must not win over the page the user was on; the workspace
+ * activation picks the remembered tab when nothing is selected.
+ */
+export function planParkedRestore(
+  parked: readonly ParkedWorkspaceTab[],
+  liveUrlByTabId: ReadonlyMap<number, string>,
+  liveTabCount: number,
+): ParkedRestoreStep[] {
+  const consumed = new Set<number>();
+  return parked.map((entry, index) => {
+    let existingTabId: number | null = null;
+    for (const [tabId, url] of liveUrlByTabId) {
+      if (consumed.has(tabId) || url !== entry.url) continue;
+      existingTabId = tabId;
+      consumed.add(tabId);
+      break;
+    }
+    const active = index === 0 && (existingTabId !== null || liveTabCount === 0);
+    return { entry, existingTabId, active };
+  });
+}

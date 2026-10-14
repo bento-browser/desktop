@@ -14442,6 +14442,8 @@
   const HANDOVER_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.handover';
   const CLOSING_TAB_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.closingTab';
   const WINDOW_WORKSPACE_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.activeWorkspaceId';
+  // How long bento-tools matches a hop; keep in step with HANDOVER_TTL_MS in tabs/Handover.ts.
+  const HANDOVER_TTL_MS = 15000;
   let pageClosedTab = null;
 
   // True while one of the window's tabs is answering a beforeunload check. permitUnload throws
@@ -14459,9 +14461,10 @@
     return busy;
   }
 
-  // Another window that can take tabs: a regular window (visible toolbar, not private) with a
-  // mounted shell that is still open, not in the middle of a close prompt of its own, and was
-  // given a workspace, which tools does after its shell/hello.
+  // Another window that can take tabs: a regular window (visible toolbar, not private, the same
+  // Fission mode: swapBrowsersAndCloseOther refuses a swap between different ones) with a mounted
+  // shell that is still open, not in the middle of a close prompt of its own, and was given a
+  // workspace, which tools does after its shell/hello.
   function findHandoverSurvivor(SessionStore) {
     for (const other of Services.wm.getEnumerator('navigator:browser')) {
       try {
@@ -14471,6 +14474,7 @@
           other.__bentoShellMountInitialized &&
           other.toolbar?.visible &&
           !BentoPrivateBrowsingUtils.isWindowPrivate(other) &&
+          other.gFissionBrowser === window.gFissionBrowser &&
           !other.gDialogBox?.isOpen &&
           !isCheckingUnload(other) &&
           SessionStore.getCustomWindowValue(other, WINDOW_WORKSPACE_SESSION_KEY) &&
@@ -14498,56 +14502,43 @@
   function parseHandoverHops(value) {
     try {
       const hops = JSON.parse(value);
-      return Array.isArray(hops) ? hops : [];
+      return Array.isArray(hops) ? hops.filter((hop) => typeof hop?.at === 'number') : [];
     } catch {
       return [];
     }
   }
 
-  // adoptTab for one tab, given its state from before the call. Null when Firefox refuses or
-  // fails: it made an empty twin in `dest` first, TabOpen moved the tab's id and custom values to
-  // it, and a refusal removes the twin with them.
-  function adoptTabInto(dest, tab, SessionStore, state) {
+  // adoptTab for one tab. Null when Firefox refuses or fails, logged with the tab's name: adoptTab
+  // first makes an empty twin in `dest`, TabOpen moves the tab's id and custom values to it, and
+  // a refusal removes the twin with them. The tab stays in this window as it is, but bento-tools
+  // no longer knows it and its values are gone, so it is not parked and not restored by its
+  // workspace. Everything adoptTab refuses on its own terms is ruled out before the call.
+  function adoptTabInto(dest, tab, SessionStore) {
+    let adopted = null;
+    let error = 'refused';
+    let pendingValues = null;
     try {
-      const adopted = dest.adoptTab(tab, {
-        tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
-        selectTab: false,
-      });
-      if (!adopted) return null;
       // A pending (not yet restored) tab comes out of adoptTab without its custom values: its
       // state is copied to the new tab, extData not included. A live tab's values moved with it.
       if (tab.hasAttribute('pending')) {
-        for (const [key, value] of Object.entries(JSON.parse(state).extData ?? {})) {
-          SessionStore.setCustomTabValue(adopted, key, value);
-        }
+        pendingValues = JSON.parse(SessionStore.getTabState(tab)).extData;
       }
-      return adopted;
+      adopted = dest.adoptTab(tab, {
+        tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
+        selectTab: false,
+      });
     } catch (err) {
-      console.warn('[bento-shell-mount] handing a tab over failed:', err);
+      error = err;
+    }
+    if (!adopted) {
+      const url = tab.linkedBrowser.currentURI?.spec;
+      console.error('[bento-shell-mount] adoptTab failed, the tab stays:', tab.label, url, error);
       return null;
     }
-  }
-
-  // A tab adoptTab could not move is still here, but tools lost its id with the twin and the
-  // twin took its custom values, so it would not be parked when this window closes. Rebuild it in
-  // `dest` from the state taken before the attempt (history, form data, the Bento tab values),
-  // and drop the empty twin a failure part way leaves.
-  function recreateTabIn(dest, tab, SessionStore, tabsBefore, state) {
-    try {
-      for (const twin of Array.from(dest.tabs)) {
-        if (!tabsBefore.has(twin) && !twin.closing && twin.isEmpty) {
-          dest.removeTab(twin, { animate: false });
-        }
-      }
-      const copy = dest.addTrustedTab('about:blank', {
-        skipAnimation: true,
-        pinned: tab.pinned,
-        tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
-      });
-      SessionStore.setTabState(copy, state);
-    } catch (err) {
-      console.warn('[bento-shell-mount] keeping a tab that could not be handed over failed:', err);
+    for (const [key, value] of Object.entries(pendingValues ?? {})) {
+      SessionStore.setCustomTabValue(adopted, key, value);
     }
+    return adopted;
   }
 
   function handOverTabsBeforeClose(event) {
@@ -14562,11 +14553,17 @@
     const to = survivor && getChromeWindowId(survivor);
     if (!survivor || from === null || to === null) return;
     // Empty, closing and tools-closing tabs (a workspace delete marks them before it closes
-    // the window) are not worth keeping, nor is the tab whose page is closing the window.
+    // the window) are not worth keeping, nor is the tab whose page is closing the window. A tab
+    // that is not remote stays too: its twin is always remote, and swapBrowsersAndCloseOther
+    // refuses a swap between the two. (It also refuses a closing tab, a private mismatch and a
+    // Fission mismatch, all ruled out here and in findHandoverSurvivor, and a tabbrowser whose
+    // window is already closing, which is not the case for any close that reaches this handler
+    // with live tabs.) A tab left behind is parked with the window, as before the handover.
     const keep = Array.from(window.gBrowser.tabs).filter(
       (tab) =>
         !tab.closing &&
         !tab.isEmpty &&
+        tab.linkedBrowser.isRemoteBrowser &&
         tab !== pageClosedTab &&
         !SessionStore.getCustomTabValue(tab, CLOSING_TAB_SESSION_KEY),
     );
@@ -14577,24 +14574,31 @@
     // Adopting a window's last tab closes the window from inside adoptTab and skips the TabClose
     // a DevTools toolbox moves with. A blank selected tab stays behind, so no adopted tab is the
     // last one or the selected one, and the window closes as it was going to. Blank pages are
-    // not parked.
+    // not parked. addTab returns null when it cannot make the tab.
+    let anchor = null;
     try {
-      window.gBrowser.addTrustedTab('about:blank', { inBackground: false, skipAnimation: true });
+      anchor = window.gBrowser.addTrustedTab('about:blank', {
+        inBackground: false,
+        skipAnimation: true,
+      });
     } catch (err) {
-      console.warn('[bento-shell-mount] no tab to hold the window open, nothing handed over:', err);
+      console.warn('[bento-shell-mount] blank tab for a window handover failed:', err);
+    }
+    if (!anchor?.isConnected) {
+      console.warn('[bento-shell-mount] no tab holds the window open, nothing handed over');
       return;
     }
     const dest = survivor.gBrowser;
     for (const tab of keep) {
-      const tabsBefore = new Set(dest.tabs);
-      const state = SessionStore.getTabState(tab);
-      const adopted = adoptTabInto(dest, tab, SessionStore, state);
-      if (!adopted) {
-        recreateTabIn(dest, tab, SessionStore, tabsBefore, state);
-        continue;
-      }
-      const hops = parseHandoverHops(SessionStore.getCustomTabValue(adopted, HANDOVER_SESSION_KEY));
-      hops.push({ from, to, at: Date.now() });
+      const adopted = adoptTabInto(dest, tab, SessionStore);
+      if (!adopted) continue;
+      // Hops tools can no longer match, or that claim to be from the future, are dropped as the
+      // next one is appended: tools only reads this value.
+      const now = Date.now();
+      const hops = parseHandoverHops(
+        SessionStore.getCustomTabValue(adopted, HANDOVER_SESSION_KEY),
+      ).filter((hop) => hop.at <= now && now - hop.at <= HANDOVER_TTL_MS);
+      hops.push({ from, to, at: now });
       SessionStore.setCustomTabValue(adopted, HANDOVER_SESSION_KEY, JSON.stringify(hops));
     }
   }

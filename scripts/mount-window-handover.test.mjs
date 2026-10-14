@@ -45,6 +45,7 @@ class FakeTab {
     this.pinned = spec.pinned ?? false;
     this.pending = spec.pending ?? false;
     this.inUnload = spec.inUnload ?? false;
+    this.isConnected = true;
     this.values = { ...spec.values };
     // The docShell: what a swap moves from one tab to the other.
     this.page = spec.isEmpty
@@ -53,6 +54,9 @@ class FakeTab {
     // A pending (lazy) browser is not connected.
     this.linkedBrowser = {
       isConnected: !this.pending,
+      // Settings and other parent-process pages are not remote.
+      isRemoteBrowser: spec.remote ?? true,
+      currentURI: { spec: this.page.url },
       getInPermitUnload: (callback) => callback(this.inUnload),
     };
   }
@@ -90,7 +94,10 @@ class FakeTabbrowser {
   }
   addTrustedTab(url, { inBackground = true, pinned = false, tabIndex = this.tabs.length } = {}) {
     if (this.world.hooks.addTabThrows) throw new Error('no tab');
+    // addTab catches a browser-creation error and returns null.
+    if (this.world.hooks.addTabNull) return null;
     const tab = new FakeTab(this.win, { label: `new${(this.opened += 1)}`, isEmpty: true, pinned });
+    if (this.world.hooks.addTabDisconnected) tab.isConnected = false;
     this.#insert(tab, tabIndex);
     this.world.calls.push(['addTab', tab.label, url, inBackground]);
     if (!inBackground) this.select(tab);
@@ -128,6 +135,9 @@ class FakeTabbrowser {
   swapBrowsersAndCloseOther(ourTab, otherTab) {
     const { hooks, sessionStore } = this.world;
     if (hooks.refuse?.(otherTab)) return false;
+    // The twin is always remote; swapping it with a parent-process browser is refused.
+    if (!otherTab.linkedBrowser.isRemoteBrowser) return false;
+    if (this.win.gFissionBrowser !== otherTab.win.gFissionBrowser) return false;
     const other = otherTab.win.gBrowser;
     if (!other.beginRemoveTab(otherTab, { adoptedByTab: ourTab, closeWindowWithLastTab: true })) {
       return false;
@@ -187,12 +197,6 @@ function makeSessionStore(world) {
       world.calls.push(['state', tab.label]);
       return JSON.stringify({ entries: [{ url: tab.page.url }], extData: tab.values });
     },
-    setTabState(tab, state) {
-      const parsed = JSON.parse(state);
-      world.calls.push(['setState', tab.label]);
-      tab.values = { ...parsed.extData };
-      tab.page = { url: parsed.entries.at(-1).url, blank: false, label: `${tab.label}:restored` };
-    },
   };
 }
 
@@ -220,6 +224,7 @@ function setup({
       closeCalls: 0,
       toolbar: { visible: true },
       gDialogBox: { isOpen: false },
+      gFissionBrowser: true,
       setTimeout: (fn) => timers.push(fn),
       close() {
         this.closeCalls += 1;
@@ -246,7 +251,10 @@ function setup({
 
   const sandbox = {
     window: win,
-    console: { warn: (...args) => world.calls.push(['warn', String(args[0])]) },
+    console: {
+      warn: (...args) => world.calls.push(['warn', String(args[0])]),
+      error: (...args) => world.calls.push(['error', args.map(String).join(' ')]),
+    },
     Services: {
       startup: { attemptingQuit: false, ...startup },
       wm: { getEnumerator: () => [win, ...survivors] },
@@ -267,7 +275,6 @@ function setup({
       mountFunction('notePageClose'),
       mountFunction('parseHandoverHops'),
       mountFunction('adoptTabInto'),
-      mountFunction('recreateTabIn'),
       mountFunction('handOverTabsBeforeClose'),
     ].join('\n'),
     sandbox,
@@ -581,27 +588,77 @@ test('a lazy tab is not asked about unloading', () => {
   assert.equal(w.of('adopt').length, 2);
 });
 
-test('a refused adoption recreates the tab in the survivor from its state', () => {
-  // Firefox removes the empty twin, and with it the id tools knew the tab by.
+test('a non-remote tab stays in the closing window: its twin would be refused', () => {
+  // Firefox refuses a swap between a remote twin and a parent-process page such as Settings.
   const w = setup({
-    tabs: [{ label: 'a', values: { [WORKSPACE_KEY]: '"ws-b"' } }, { label: 'b' }],
+    tabs: [
+      { label: 'a' },
+      { label: 's', remote: false, values: { [WORKSPACE_KEY]: '"ws-b"' } },
+      { label: 'b' },
+    ],
+  });
+
+  w.close();
+
+  assert.deepEqual(
+    w.of('adopt').map(([, label]) => label),
+    ['a', 'b'],
+  );
+  // Never adopted: the tab keeps its values (and its id) and tools parks it with the window.
+  assert.equal(w.tabByLabel('s').values[WORKSPACE_KEY], '"ws-b"');
+  assert.equal(w.tabByLabel('s').closing, false);
+  assert.deepEqual(w.of('error'), []);
+});
+
+test('a window holding only a non-remote tab closes as it is', () => {
+  const w = setup({
+    tabs: [
+      { label: 's', remote: false },
+      { label: 'e', isEmpty: true },
+    ],
+  });
+
+  w.close();
+
+  assert.deepEqual(w.calls, []);
+  assert.equal(w.handingOver(), false);
+});
+
+test('a survivor in another Fission mode is not chosen: the swap would be refused', () => {
+  const w = setup({ others: [{ id: 3, gFissionBrowser: false }, { id: 4 }] });
+
+  w.close();
+
+  assert.deepEqual(JSON.parse(marks(w.calls)[0][3]), [{ from: 2, to: 4, at: 1234 }]);
+});
+
+test('a refused adoption is logged with the tab and left alone, and the others still move', () => {
+  const w = setup({
+    tabs: [{ label: 'a', values: { [WORKSPACE_KEY]: '"ws-b"' } }, { label: 'b' }, { label: 'c' }],
     hooks: { refuse: (tab) => tab.label === 'a' },
   });
 
   w.close();
 
-  assert.deepEqual(w.order(w.survivors[0]), ['s0', 's1', 's2', 'new1', "b'"]);
-  const recreated = w.survivors[0].gBrowser.tabs.find((tab) => tab.label === 'new1');
-  assert.equal(recreated.page.url, 'https://a.example.test/');
-  assert.equal(recreated.values[WORKSPACE_KEY], '"ws-b"');
-  // The recreated tab is a new tab, not a handover: it carries no marker.
+  assert.deepEqual(w.names(w.survivors[0]), ['s0', 's1', 's2', 'b', 'c']);
+  // No rebuild: nothing but b and c joined the survivor, and no blank twin is left in it.
+  assert.deepEqual(
+    w.of('addTab').map(([, label]) => label),
+    ['new1'],
+  );
+  assert.ok(w.of('removeTab').some(([, label]) => label === "a'"));
+  const [[, message]] = w.of('error');
+  assert.match(message, /\ba\b.*https:\/\/a\.example\.test\//);
+  // The tab stays where it was; its values moved to the twin Firefox removed.
+  assert.equal(w.tabByLabel('a').closing, false);
+  assert.equal(w.tabByLabel('a').values[WORKSPACE_KEY], undefined);
   assert.deepEqual(
     marks(w.calls).map(([, label]) => label),
-    ["b'"],
+    ["b'", "c'"],
   );
 });
 
-test('a failure inside the docShell swap leaves no blank twin and keeps the page', () => {
+test('a failure inside the docShell swap is logged and the remaining tabs still move', () => {
   const w = setup({
     tabs: [{ label: 'a', pinned: true }, { label: 'b' }, { label: 'c' }],
     hooks: {
@@ -613,61 +670,52 @@ test('a failure inside the docShell swap leaves no blank twin and keeps the page
 
   w.close();
 
-  // The empty twin b' is gone; b came back as a new tab with its own state, after a and c.
-  const survivor = w.order(w.survivors[0]);
-  assert.ok(!survivor.includes("b'"));
-  assert.deepEqual(survivor, ['s0', "a'", 's1', 's2', 'new1', "c'"]);
-  assert.ok(w.of('removeTab').some(([, label]) => label === "b'"));
-  assert.ok(w.of('warn').length > 0);
-  // The other tabs are marked, the recreated one is not.
+  assert.deepEqual(
+    w.of('adopt').map(([, label]) => label),
+    ['a', 'b', 'c'],
+  );
+  assert.equal(w.of('error').length, 1);
+  assert.match(w.of('error')[0][1], /\bb\b.*swapDocShells failed/);
+  // a and c are adopted and marked; nothing is rebuilt for b.
   assert.deepEqual(
     marks(w.calls).map(([, label]) => label),
     ["a'", "c'"],
   );
+  assert.equal(w.of('setState').length, 0);
 });
 
-test('a failed tab that is also the only one in the closing window is still recreated', () => {
+test('an anchor that cannot be made leaves everything where it is', () => {
+  for (const hooks of [
+    { addTabNull: true },
+    { addTabThrows: true },
+    { addTabDisconnected: true },
+  ]) {
+    const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }], hooks });
+
+    w.close();
+
+    assert.equal(w.of('adopt').length, 0, JSON.stringify(hooks));
+    assert.ok(w.of('warn').length > 0, JSON.stringify(hooks));
+    assert.equal(w.tabByLabel('a').closing, false);
+  }
+});
+
+test('hops that tools could no longer match, or from the future, are dropped as one is appended', () => {
+  const old = { from: 8, to: 9, at: 1234 - 15001 };
+  const recent = { from: 5, to: 6, at: 1234 - 15000 };
+  const future = { from: 7, to: 8, at: 1235 };
   const w = setup({
-    tabs: [{ label: 'a' }],
-    hooks: {
-      swapDocShells: () => {
-        throw new Error('swapDocShells failed');
-      },
-    },
+    closeId: 6,
+    tabs: [
+      { label: 'a', values: { [HANDOVER_KEY]: JSON.stringify([old, recent, future, 'junk']) } },
+    ],
+    others: [{ id: 3 }],
   });
 
   w.close();
 
-  assert.equal(w.of('setState').length, 1);
-  assert.ok(w.order(w.survivors[0]).includes('new1'));
-});
-
-test('the tab is not lost when even recreating it fails', () => {
-  const w = setup({
-    tabs: [{ label: 'a' }, { label: 'b' }],
-    hooks: { refuse: (tab) => tab.label === 'a' },
-  });
-  w.survivors[0].gBrowser.addTrustedTab = () => {
-    throw new Error('no room');
-  };
-
-  w.close();
-
-  // b still moves; the failure is reported, not thrown into the close.
-  assert.deepEqual(
-    w.of('adopt').map(([, label]) => label),
-    ['a', 'b'],
-  );
-  assert.ok(w.of('warn').length > 0);
-});
-
-test('with no way to hold the window open nothing is handed over', () => {
-  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }], hooks: { addTabThrows: true } });
-
-  w.close();
-
-  assert.equal(w.of('adopt').length, 0);
-  assert.ok(w.of('warn').length > 0);
+  const [mark] = marks(w.calls);
+  assert.deepEqual(JSON.parse(mark[3]), [recent, { from: 6, to: 3, at: 1234 }]);
 });
 
 test('a pending tab gets its custom values back, a live one keeps the ones SessionStore moves', () => {
@@ -687,13 +735,17 @@ test('a pending tab gets its custom values back, a live one keeps the ones Sessi
     assert.equal(adopted.values[WORKSPACE_KEY], '"ws-b"', label);
     assert.equal(JSON.parse(adopted.values[HANDOVER_KEY]).length, 1, label);
   }
-  // Only the pending tab needed its values written back.
+  // Only the pending tab is asked for its state, and it needed its values written back.
   assert.deepEqual(
     w
       .of('set')
       .filter(([, , key]) => key === WORKSPACE_KEY)
       .map(([, label]) => label),
     ["p'"],
+  );
+  assert.deepEqual(
+    w.of('state').map(([, label]) => label),
+    ['p'],
   );
   // The state is read before the swap, which empties it.
   assert.ok(

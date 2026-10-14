@@ -11,6 +11,7 @@ interface TabListeners {
   ) => void;
   removed?: (id: number, info: browser.tabs._OnRemovedRemoveInfo) => void;
   attached?: (id: number, info: browser.tabs._OnAttachedAttachInfo) => void;
+  activated?: (info: browser.tabs._OnActivatedActiveInfo) => void;
 }
 
 function makeTab(overrides: Partial<browser.tabs.Tab> & { id: number }): browser.tabs.Tab {
@@ -43,7 +44,7 @@ function stubTabsBrowser(initialTabs: browser.tabs.Tab[] = []): TabListeners {
       onCreated: { addListener: vi.fn((listener) => (listeners.created = listener)) },
       onUpdated: { addListener: vi.fn((listener) => (listeners.updated = listener)) },
       onRemoved: { addListener: vi.fn((listener) => (listeners.removed = listener)) },
-      onActivated: { addListener: vi.fn() },
+      onActivated: { addListener: vi.fn((listener) => (listeners.activated = listener)) },
       onMoved: { addListener: vi.fn() },
       onAttached: { addListener: vi.fn((listener) => (listeners.attached = listener)) },
       get: vi.fn(),
@@ -210,6 +211,55 @@ describe('TabRegistry attach to another window', () => {
     expect(browser.tabs.get).toHaveBeenCalledWith(9);
     expect(tabs.snapshot()[0]?.active).toBe(true);
     expect(deltas).not.toContainEqual({ kind: 'updated', id: 9, changes: { active: true } });
+  });
+});
+
+describe('TabRegistry live active read after an attach', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // The attach starts a read of the tab; the test decides when its answer arrives.
+  async function attachWithPendingRead() {
+    const listeners = stubTabsBrowser([makeTab({ id: 9, windowId: 2, active: false })]);
+    let answer!: (tab: browser.tabs.Tab) => void;
+    vi.mocked(browser.tabs.get).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const tabs = new TabRegistry();
+    await tabs.init();
+    listeners.attached?.(9, { newWindowId: 1, newPosition: 0 });
+    const settle = async (tab: browser.tabs.Tab) => {
+      answer(tab);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    return { tabs, listeners, settle };
+  }
+
+  it('does not overwrite an activation that arrived while the read was pending', async () => {
+    const { tabs, listeners, settle } = await attachWithPendingRead();
+
+    // The user selects the tab in its new window before the read of the attach answers.
+    listeners.activated?.({ tabId: 9, windowId: 1, previousTabId: 4 });
+    await settle(makeTab({ id: 9, windowId: 1, active: false }));
+
+    expect(tabs.snapshot()[0]?.active).toBe(true);
+  });
+
+  it('does not apply the read of a tab that has moved to another window since', async () => {
+    const { tabs, listeners, settle } = await attachWithPendingRead();
+
+    // A second move; the registry follows it, the first read still answers for window 1.
+    listeners.attached?.(9, { newWindowId: 3, newPosition: 0 });
+    await settle(makeTab({ id: 9, windowId: 1, active: true }));
+
+    expect(tabs.snapshot()[0]).toMatchObject({ windowId: 3, active: false });
+  });
+
+  it('still applies the read when nothing newer arrived', async () => {
+    const { tabs, settle } = await attachWithPendingRead();
+
+    await settle(makeTab({ id: 9, windowId: 1, active: true }));
+
+    expect(tabs.snapshot()[0]?.active).toBe(true);
   });
 });
 
