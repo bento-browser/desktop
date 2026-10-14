@@ -1,4 +1,4 @@
-From e6ec2b05eb06dde4eb27f8f2036e524d16fdabb0 Mon Sep 17 00:00:00 2001
+From f7bf2c7f17ff9da451e9f62e1abd8a3c233767c7 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:45 +1000
 Subject: [PATCH] Synchronize tabbrowser state with Bento
@@ -8,10 +8,10 @@ Subject: [PATCH] Synchronize tabbrowser state with Bento
  1 file changed, 33 insertions(+), 7 deletions(-)
 
 diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c445852344338 100644
+index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b131ecebfa8 100644
 --- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
 +++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-@@ -4547,6 +4547,14 @@ export class Tabbrowser {
+@@ -4551,6 +4551,14 @@ export class Tabbrowser {
      if (userContextId == null && openerTab) {
        userContextId = openerTab.userContextId;
      }
@@ -26,7 +26,7 @@ index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c4458
  
      if (!noInitialLabel) {
        if (this.documentGlobal.isBlankPageURL(uriString)) {
-@@ -7100,10 +7108,16 @@ export class Tabbrowser {
+@@ -7150,10 +7158,16 @@ export class Tabbrowser {
     *   The tab in this window, which takes over the other tab's browser.
     * @param {MozTabbrowserTab} aOtherTab
     *   The tab to take the browser from, which may be in another window.
@@ -44,7 +44,7 @@ index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c4458
      // Do not allow transfering a private tab to a non-private window
      // and vice versa.
      if (
-@@ -7161,7 +7175,10 @@ export class Tabbrowser {
+@@ -7211,7 +7225,10 @@ export class Tabbrowser {
      // First, start teardown of the other browser.  Make sure to not
      // fire the beforeunload event in the process.  Close the other
      // window if this was its last tab.
@@ -55,7 +55,7 @@ index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c4458
        !remoteBrowser.#beginRemoveTab(aOtherTab, {
          adoptedByTab: aOurTab,
          closeWindowWithLastTab: true,
-@@ -7173,7 +7190,7 @@ export class Tabbrowser {
+@@ -7223,7 +7240,7 @@ export class Tabbrowser {
      // If this is the last tab of the window, hide the window
      // immediately without animation before the docshell swap, to avoid
      // about:blank being painted.
@@ -64,7 +64,7 @@ index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c4458
      if (closeWindow) {
        let win = aOtherTab.documentGlobal;
        win.windowUtils.suppressAnimation(true);
-@@ -7308,11 +7325,14 @@ export class Tabbrowser {
+@@ -7358,11 +7375,14 @@ export class Tabbrowser {
        });
      }
  
@@ -84,7 +84,7 @@ index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c4458
      }
  
      this.setTabTitle(aOurTab);
-@@ -7671,6 +7691,11 @@ export class Tabbrowser {
+@@ -7727,6 +7747,11 @@ export class Tabbrowser {
      // tell a new window to take the "dropped" tab
      let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
      args.appendElement(/** @type {nsISupports} */ (aTab.splitview ?? aTab));
@@ -95,8 +95,8 @@ index 401919a9fc5a2403de2d3ba8e8f23b6bc6fab9d1..7e2a28ba2569fa55d98055db461c4458
 +    // etc.). Not pref-gated; this is foundational behaviour.
      return lazy.BrowserWindowTracker.openWindow({
        private: lazy.PrivateBrowsingUtils.isWindowPrivate(this.documentGlobal),
-       features: Object.entries(options)
-@@ -7678,6 +7703,7 @@ export class Tabbrowser {
+       features: Object.entries(features)
+@@ -7734,6 +7759,7 @@ export class Tabbrowser {
          .join(","),
        openerWindow: this.documentGlobal,
        args,
