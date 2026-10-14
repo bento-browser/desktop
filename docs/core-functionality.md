@@ -106,6 +106,18 @@ the user's active contexts without forcing them to rebuild their browser
 arrangement from memory.
 Closing a window that is showing a workspace should release that workspace for
 another window without clearing its tabs, panels, or panel layout.
+While another regular window stays open, closing a window keeps its tabs alive
+there: the workspace's tabs and panels, and the hidden tabs of other workspaces
+the window was holding, move to that window as hidden tabs of their workspaces, in
+the order they had, so their pages keep their state, history, form text, and
+playing media, and the workspace's pinned tabs stay pinned when a later window
+shows it. Tabs with
+nothing to keep (blank pages), pages that run in the browser's main process (such
+as Settings), a private window, and a popup are not moved, and a popup or private
+window never receives tabs. A page that closes its own tab closes only that tab.
+When no other regular window is open, or the app is quitting, nothing is moved: the
+tabs are kept as addresses and reopen when their workspace is next shown, and the
+next launch restores each window as it was.
 Deleting the workspace a window is showing moves that window to a workspace no
 other window is showing, so one window never takes over another window's
 workspace or its tabs. When every other workspace is open in another window, the

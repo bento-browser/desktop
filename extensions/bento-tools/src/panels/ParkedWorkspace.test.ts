@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WindowClosingTabSnapshot } from '../tabs/TabRegistry';
 import { PanelStore } from './PanelStore';
-import { parkableWorkspaceTabs } from './ParkedWorkspace';
+import type { TabSnapshot } from '@shared/protocol';
+import {
+  hasPanelsInOtherWindow,
+  parkableWorkspaceTabs,
+  planParkedRestore,
+  planWorkspaceParking,
+  type ParkedWorkspaceTab,
+} from './ParkedWorkspace';
 
 function closingTab(
   id: number,
@@ -102,5 +109,138 @@ describe('parkableWorkspaceTabs', () => {
     expect(sidebarTabs).toEqual([]);
     expect(JSON.stringify(storage)).not.toContain('private-');
     expect(store.workspacesWithPersistedUrls()).toEqual([]);
+  });
+});
+
+describe('blank pages', () => {
+  it('about:blank is not parked as a sidebar tab, so the blank tab a handover leaves does not come back', () => {
+    const tabs = [
+      closingTab(1, 'https://kept.example.test/'),
+      closingTab(2, 'about:blank'),
+      closingTab(3, 'about:newtab'),
+    ];
+
+    const { sidebarTabs, urlByTabId } = parkableWorkspaceTabs(tabs, new Set(), () => false);
+
+    // A New Tab page may be a pinned or renamed entry the user chose to keep: it stays.
+    expect(sidebarTabs.map((tab) => tab.url)).toEqual([
+      'https://kept.example.test/',
+      'about:newtab',
+    ]);
+    expect(urlByTabId.get(2)).toBe('about:blank');
+  });
+});
+
+function liveTab(id: number, windowId: number): TabSnapshot {
+  return {
+    id,
+    windowId,
+    index: id,
+    title: '',
+    pinned: false,
+    active: false,
+    audible: false,
+    muted: false,
+  } as TabSnapshot;
+}
+
+describe('hasPanelsInOtherWindow', () => {
+  it('is true when a panel tab lives in another window', () => {
+    expect(hasPanelsInOtherWindow(new Set([10, 11]), [liveTab(10, 2), liveTab(11, 1)], 2)).toBe(
+      true,
+    );
+  });
+
+  it('is false when every panel tab is still in the closing window, or there are none', () => {
+    expect(hasPanelsInOtherWindow(new Set([10]), [liveTab(10, 2), liveTab(12, 1)], 2)).toBe(false);
+    expect(hasPanelsInOtherWindow(new Set(), [liveTab(12, 1)], 2)).toBe(false);
+  });
+});
+
+describe('planWorkspaceParking', () => {
+  const baseArgs = { windowId: 2, isPrivate: () => false };
+
+  it('parks the panel layout from the closing window as before when no panel moved', () => {
+    const plan = planWorkspaceParking({
+      ...baseArgs,
+      workspaceTabs: [closingTab(10, 'https://panel.example.test/'), closingTab(1, 'https://a/')],
+      panelTabIds: new Set([10]),
+      tabsNow: [liveTab(10, 2), liveTab(1, 2)],
+    });
+
+    expect(plan.keepPanelLayout).toBe(false);
+    expect(plan.sidebarTabs.map((tab) => tab.url)).toEqual(['https://a/']);
+  });
+
+  it('keeps the layout of panels that moved with the workspace, and parks a stranded panel as a sidebar tab', () => {
+    // Panels 10 and 11 were handed over; 12 failed to move and is all that is left here.
+    const plan = planWorkspaceParking({
+      ...baseArgs,
+      workspaceTabs: [closingTab(12, 'https://stranded.example.test/')],
+      panelTabIds: new Set([10, 11, 12]),
+      tabsNow: [liveTab(10, 1), liveTab(11, 1), liveTab(12, 2)],
+    });
+
+    expect(plan.keepPanelLayout).toBe(true);
+    expect(plan.sidebarTabs.map((tab) => tab.url)).toEqual(['https://stranded.example.test/']);
+  });
+});
+
+describe('planParkedRestore', () => {
+  const entry = (index: number, url: string, pinned = false): ParkedWorkspaceTab => ({
+    url,
+    title: '',
+    pinned,
+    index,
+  });
+
+  it('selects the first entry of a workspace that has no live tab', () => {
+    const steps = planParkedRestore([entry(0, 'https://a/'), entry(1, 'https://b/')], new Map(), 0);
+
+    expect(steps.map((step) => [step.entry.url, step.existingTabId, step.active])).toEqual([
+      ['https://a/', null, true],
+      ['https://b/', null, false],
+    ]);
+  });
+
+  it('does not let a parked New Tab take the selection from live tabs a handover left', () => {
+    // The live tabs are pages handed over from a closed window; the New Tab was parked with it.
+    const steps = planParkedRestore(
+      [entry(0, 'about:newtab'), entry(1, 'https://kept/')],
+      new Map([[7, 'https://handed-over/']]),
+      2,
+    );
+
+    expect(steps.every((step) => !step.active)).toBe(true);
+    expect(steps.map((step) => step.existingTabId)).toEqual([null, null]);
+  });
+
+  it('still selects the first entry when a live tab already shows its address', () => {
+    const steps = planParkedRestore(
+      [entry(0, 'https://a/'), entry(1, 'https://b/')],
+      new Map([
+        [7, 'https://a/'],
+        [8, 'https://other/'],
+      ]),
+      2,
+    );
+
+    expect(steps.map((step) => [step.existingTabId, step.active])).toEqual([
+      [7, true],
+      [null, false],
+    ]);
+  });
+
+  it('pairs each live tab with one entry, in order', () => {
+    const steps = planParkedRestore(
+      [entry(0, 'https://a/'), entry(1, 'https://a/', true), entry(2, 'https://a/')],
+      new Map([
+        [7, 'https://a/'],
+        [8, 'https://a/'],
+      ]),
+      2,
+    );
+
+    expect(steps.map((step) => step.existingTabId)).toEqual([7, 8, null]);
   });
 });

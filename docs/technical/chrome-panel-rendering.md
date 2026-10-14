@@ -432,7 +432,72 @@ adds its entry, and its id in the mount probe list, in the same change.
     sidebar.
   The extension-API entry points `windows.create({ tabId })` and cross-window
   `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
-  wrapper; Bento calls neither on a marked tab.
+  wrapper; Bento calls neither on a marked tab (workspace activation moves
+  unmarked stray tabs, and a closing window adopts its tabs with `gBrowser.adoptTab`
+  after tearing the split view down; see the next item).
+- Window close with live tabs. Closing a window destroyed every tab it hosted, so
+  the tabs of a workspace that a second window had claimed, and the hidden tabs of
+  other workspaces, lost their page state and were recreated from URLs later (see
+  the pitfall in [workspaces.md](workspaces.md)). `attachWindowCloseHandover` in the
+  mount script adds two listeners once the window has loaded, and
+  `handOverTabsBeforeClose` picks the first other window that can take tabs
+  (`findHandoverSurvivor`) and, in the same task, tears the split view down
+  (`reconcilePanelsSplitView([])`; `handingOverTabs` then makes the reconciler return
+  at once, or a TabSelect or `panels/sync` would mark the tabs again) and calls
+  `survivor.gBrowser.adoptTab(tab, { tabIndex, selectTab: false })` for each tab worth
+  keeping, in the tabs' own order: pinned tabs at `pinnedTabCount` (adoptTab pins only
+  when the index is inside or right after the pinned region), the rest at the end of
+  the destination. Before the first call it adds one selected `about:blank` tab to the
+  closing window (`addTrustedTab` with `inBackground: false`; `addTab` returns null when
+  it cannot make a tab, so a missing or disconnected blank tab hands nothing over), so
+  no adoption is that window's last tab and the selected tab is never one that leaves.
+  Tabs that `swapBrowsersAndCloseOther` would refuse are left out beforehand (empty,
+  closing and non-remote tabs, a survivor in another Fission mode), so they keep their
+  identity and values and are parked with the window. After a successful adoption the
+  mount appends a hop to the `bento.handover` value on the returned tab (pruning old
+  ones), and for a pending tab first puts back the custom tab values the swap dropped.
+  An `adoptTab` that still returns null or throws is logged with `console.error`
+  (title and address) and not rebuilt; see [workspaces.md](workspaces.md) for what that
+  leaves.
+  - `close` is dispatched by `AppWindow::RequestWindowClose` for the OS close button.
+    The `window.onclose` handler `WindowIsClosing` (browser-main.js) is assigned while
+    the window is parsed and a handler property keeps its place in the listener
+    order, so a listener added at `load` runs after it: the closing-tabs warning and
+    the beforeunload prompts have been answered, and a cancelled close arrives with
+    `defaultPrevented`. When the event is not cancelled `Destroy()` follows
+    synchronously.
+  - `DOMWindowClose` is dispatched by `nsGlobalWindowOuter::CloseOuter` after
+    `CanClose` (the same prompts) for `window.close()`, `windows.remove` and
+    Cmd+Shift+W, and by `ForceClose` on a quit. Once it is not prevented, `FinalClose`
+    sets `mIsClosed` and the window goes; nothing else listens to it on the window.
+    It is registered in the capture phase to see a tab's close first (next item).
+  - A tab's own `window.close()` also reaches the window: `BrowserElementParent`
+    re-dispatches it on the browser element as a bubbling, non-cancelable
+    `DOMWindowClose`, the tabbrowser closes the tab and `preventDefault`s, and when
+    that tab is the window's only one it calls `window.close()` from inside the event,
+    which arrives here with `target === window`. The handler acts only on events
+    targeted at the window, and a second capture listener (`notePageClose`) records
+    the tab of any other target (`getTabForBrowser`; `pageClosedTab`, cleared in the
+    next task), so the page that asked to go is not adopted while the window's other
+    tabs still are.
+  - With the blank tab no adoption is the window's last, so `swapBrowsersAndCloseOther`
+    never calls `window.close()` from inside `adoptTab` (which re-entered the handler
+    and skipped `TabClose`, and with it the DevTools toolbox transfer). `handingOverTabs`
+    stays set so a second close request finds nothing to do, also after a refused tab
+    that is still in the window.
+  - Close prompts: a close request repeated while a beforeunload prompt is up reaches
+    the handler with that tab's check still running (`permitUnload` threw, the close
+    went on). `isCheckingUnload` asks each connected browser with `getInPermitUnload`;
+    the closing window hands nothing over, and a survivor in that state or with
+    `gDialogBox.isOpen` (the closing-tabs warning) is not chosen.
+  - A quit: `nsAppStartup::Quit` sets `attemptingQuit` before it force-closes the
+    windows; `Services.startup.shuttingDown` only turns true after `CloseAllWindows`.
+    The handler returns while `attemptingQuit` is true.
+  - There is no hold, timer or message to bento-tools: the move is finished when the
+    listener returns. The first design held the close and waited for tools; see
+    [workspaces.md](workspaces.md) for why it was dropped.
+  - `scripts/mount-window-handover.test.mjs` runs the real handler against stubbed
+    windows and SessionStore.
 - `prefs/bento.js` sets `browser.nova.enabled` and `sidebar.revamp` to false.
   Firefox 157 defaults both to true; Bento keeps the 154 chrome because its shell
   owns the sidebar and tab strip. No upgrade migration

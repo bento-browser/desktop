@@ -290,7 +290,13 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   same filter applies to `cleanupWorkspaceAfterTabMove` and to the `tabs.onDetached`
   promotion that covers tear-out.
 - Window-close teardown (`Cmd+Shift+W`) is not the same as deleting workspace
-  contents. `TabRegistry` keeps a private URL cache and emits one
+  contents. While another regular window stays open, the closing window first
+  hands its live tabs to it (see "A window that closes while another regular window
+  stays open" in [workspaces.md](workspaces.md)): panel entries are keyed by
+  workspace and tab id and survive the move, so `planWorkspaceParking` leaves the
+  layout of a workspace alone when any of its panel tabs lives in another window,
+  and the parking below covers what could not move and the last window.
+  `TabRegistry` keeps a private URL cache and emits one
   `onWindowClosing` snapshot before it drops the closing window's tab ids.
   `background.ts` parks sidebar tabs in `bento.parkedWorkspaceTabs` and asks
   `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into

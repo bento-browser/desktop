@@ -150,6 +150,8 @@ export class TabRegistry {
   // window's workspace value back onto them afterwards, so that value is stale,
   // not a restored assignment.
   #releasedTabIds = new Set<number>();
+  // Per tab, the newest attach or activation that set its `active` flag; see #syncActive.
+  #activeReads = new Map<number, number>();
 
   async init(): Promise<void> {
     // Register listeners FIRST so we don't miss tabs created during the
@@ -743,6 +745,7 @@ export class TabRegistry {
     this.#urlByTabId.delete(id);
     this.#privateTabIds.delete(id);
     this.#releasedTabIds.delete(id);
+    this.#activeReads.delete(id);
     if (!this.#tabs.delete(id)) return;
     this.#enqueue({ kind: 'removed', id });
   };
@@ -750,6 +753,7 @@ export class TabRegistry {
   #onActivated = (info: browser.tabs._OnActivatedActiveInfo) => {
     for (const t of this.#tabs.values()) {
       if (t.windowId !== info.windowId) continue;
+      this.#nextActiveRead(t.id);
       const wasActive = t.active;
       t.active = t.id === info.tabId;
       if (t.active !== wasActive) {
@@ -807,7 +811,35 @@ export class TabRegistry {
       id,
       changes: { windowId: info.newWindowId, index: info.newPosition },
     });
+    void this.#syncActive(id);
   };
+
+  // An adopted tab is not selected in its new window and no activation event follows, so a tab
+  // that was active in its old window would keep `active: true` here. Activating its workspace
+  // skips choosing a tab while one reads as active, and would leave another workspace's tab in
+  // front. The read is asynchronous: it is dropped when a newer attach or activation of the tab
+  // arrived meanwhile, or the tab is no longer in the window it was read for.
+  async #syncActive(id: number): Promise<void> {
+    const read = this.#nextActiveRead(id);
+    try {
+      const live = await browser.tabs.get(id);
+      const tab = this.#tabs.get(id);
+      if (!tab || this.#activeReads.get(id) !== read || live.windowId !== tab.windowId) return;
+      const active = live.active === true;
+      if (tab.active === active) return;
+      tab.active = active;
+      this.#enqueue({ kind: 'updated', id, changes: { active } });
+    } catch {
+      // The tab closed in the meantime.
+    }
+  }
+
+  /** Marks `id`'s `active` flag as changed by a newer event, which makes an older live read stale. */
+  #nextActiveRead(id: number): number {
+    const read = (this.#activeReads.get(id) ?? 0) + 1;
+    this.#activeReads.set(id, read);
+    return read;
+  }
 
   #enqueue(delta: TabDelta): void {
     this.#pending.push(delta);
