@@ -1195,7 +1195,11 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `MOZ_APP_NAME` (`bento`), which no migrator registers; that mismatch predates
   158 (the 157.0.1 source has the same line and the Firefox migrator was already
   keyed `firefox`), it is left as it is, and its migrator would read Mozilla
-  Firefox profiles rather than the old Bento profile. Bento's first-run flow
+  Firefox profiles rather than the old Bento profile. The refresh UI is gated
+  the same way: `ResetProfile.resetSupported` requires
+  `MigrationUtils.migratorExists(MOZ_APP_NAME)`, so Refresh Bento is unavailable,
+  for selectable profiles too, until Bento has a migrator for its own profiles.
+  Aliasing `bento` to the Firefox importer would pick the wrong source. Bento's first-run flow
   (`BENTO_RESTART_TO_MIGRATION`) passes no key. After a Firefox update re-read
   the `aKey = ...` lines in `nsAppRunner.cpp` (the compat registry entry
   `nsAppRunner selectable-profile reset key` fails if the literal changes) and
