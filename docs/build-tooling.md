@@ -108,7 +108,9 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run artifacts:check`: verify the packaged application against
   `dist/bento-artifacts.json`, and the MAR contents and update XML when the
   updater is enabled. With the updater disabled it fails if a MAR or update
-  metadata exists.
+  metadata exists. A `.mac.tar` package is opened: it must be a readable archive
+  holding `Bento.app/Contents/Resources/application.ini` whose `[App] BuildID`
+  equals the staged application's.
 - `pnpm run build:full`: download, bootstrap, build, and package.
 - `pnpm run build:release`: run the release gate, create a host-platform
   release-mode package, and write its SBOM, manifest, and checksums (see
