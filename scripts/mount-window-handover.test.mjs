@@ -3,6 +3,8 @@
 // handler against stubbed chrome windows whose tabbrowser follows Firefox's adoptTab,
 // swapBrowsersAndCloseOther and tab removal closely enough to show what the handover does to
 // the tabs and to the closing window. Failures are injected inside the swap, as Firefox would.
+// The survivor's half of the session save runs in a context of its own, as in Firefox, where
+// nothing that belongs to the closing window runs once it is gone.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -18,9 +20,16 @@ const source = readFileSync(MOUNT, 'utf8');
 
 /** Source of a top-level (2-space indented) function in the mount script. */
 function mountFunction(name) {
-  const start = source.indexOf(`\n  function ${name}(`);
+  const start = source.search(new RegExp(`\\n  (async )?function ${name}\\(`));
   assert.notEqual(start, -1, `${name} is missing`);
   return source.slice(start, source.indexOf('\n  }\n', start) + 5);
+}
+
+/** The survivor's save function with the constant and state it keeps. */
+function sessionSaveBlock() {
+  const start = source.indexOf('\n  const SESSION_SAVE_CAP_MS = ');
+  assert.notEqual(start, -1, 'the session save block is missing');
+  return source.slice(start, source.indexOf('\n  window.__bentoSaveSessionAfterHandover'));
 }
 
 /** The constants the handover block declares, up to the first function. */
@@ -182,7 +191,14 @@ class FakeTabbrowser {
     this.world.calls.push(['TabClose', tab.label, adoptedByTab?.label]);
     // SessionStore's move handler flushes the old browser (TabStateFlusher.flush) on TabClose.
     const flush = adoptedByTab && tab.linkedBrowser.frameLoader?.requestTabStateFlush();
-    if (flush) this.world.flushes.push({ label: tab.label, flush, tab });
+    if (flush) {
+      this.world.flushes.push({ label: tab.label, flush, tab });
+      // ... and copies the cached state to the twin when it settles (nothing to copy on failure).
+      flush.then(
+        () => this.world.calls.push(['copied', tab.label]),
+        () => {},
+      );
+    }
     return true;
   }
 }
@@ -281,6 +297,33 @@ function setup({
     reconcilePanelsSplitView: (panels) => world.calls.push(['teardown', panels.length]),
     Date: { now: () => 1234 },
   };
+  // The closing window must never run the write: it is gone by then.
+  sandbox.getSessionSaver = () => {
+    throw new Error('the closing window used SessionSaver');
+  };
+  // Every survivor runs its own copy of the save function in a context of its own, with its own
+  // Promise and fake timers (kept apart from the closing window's). The closing window reaches it
+  // only through window.__bentoSaveSessionAfterHandover.
+  world.saver = {
+    run() {
+      world.calls.push(['saveRun']);
+      return Promise.resolve();
+    },
+  };
+  for (const survivor of survivors) {
+    const realm = vm.createContext({
+      window: survivor,
+      Services: sandbox.Services,
+      console: sandbox.console,
+      getSessionSaver: () => world.saver,
+    });
+    vm.runInContext(sessionSaveBlock() + '\n' + mountFunction('saveSessionAfterHandover'), realm);
+    survivor.Promise = vm.runInContext('Promise', realm);
+    survivor.timerLog = [];
+    survivor.setTimeout = (fn, ms = 0) => survivor.timerLog.push({ fn, ms, cleared: false });
+    survivor.clearTimeout = (id) => (survivor.timerLog[id - 1].cleared = true);
+    survivor.__bentoSaveSessionAfterHandover = vm.runInContext('saveSessionAfterHandover', realm);
+  }
   vm.createContext(sandbox);
   vm.runInContext(
     [
@@ -317,6 +360,20 @@ function setup({
     },
     handler,
     handingOver: () => vm.runInContext('handingOverTabs', sandbox),
+    /** Session writes requested so far. */
+    saves: () => world.calls.filter(([kind]) => kind === 'saveRun').length,
+    /** Let every pending promise reaction run (the fake timers do not advance). */
+    settle: () => new Promise((resolve) => setImmediate(resolve)),
+    /** Fire the survivor's live timers of this length, as a macrotask boundary would. */
+    fireTimers: (target, ms = 0) => {
+      for (const timer of target.timerLog) {
+        if (timer.ms === ms && !timer.cleared) {
+          timer.cleared = true;
+          timer.fn();
+        }
+      }
+    },
+    liveTimers: (target) => target.timerLog.filter((timer) => !timer.cleared).map((t) => t.ms),
     /** Labels of a window's tabs that are still open, in strip order. */
     order: (target) => target.gBrowser.tabs.filter((tab) => !tab.closing).map((tab) => tab.label),
     /** The same with an adopted tab named for the tab it was (the twin's label has a prime). */
@@ -834,4 +891,177 @@ test('a lazy tab has no frame loader to hand a promise out of', () => {
     ['b'],
   );
   assert.equal(w.of('error').length, 0);
+});
+
+// The session save after a handover: SessionStore would write 2 to 15 s after the close, so a
+// crash in between lost every adopted tab that no earlier write held.
+
+test('the session is written once, after the copies of the adopted tabs and one more task', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+  const [survivor] = w.survivors;
+
+  w.close();
+  await w.settle();
+  assert.equal(w.saves(), 0, 'not before SessionStore has the adopted tabs');
+
+  w.flushes[0].tab.settleFlush.resolve();
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.settle();
+  // The copies are reactions to the flushes; the write waits one task for them.
+  assert.equal(w.saves(), 0);
+  w.fireTimers(survivor);
+  await w.settle();
+
+  assert.equal(w.saves(), 1);
+  const kinds = w.calls.map(([kind]) => kind);
+  assert.deepEqual(
+    kinds.filter((kind) => kind === 'copied' || kind === 'saveRun'),
+    ['copied', 'copied', 'saveRun'],
+  );
+  assert.deepEqual(w.liveTimers(survivor), [], 'the cap timer is cleared once the flushes settle');
+});
+
+test('a failed flush does not stop the write', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+
+  w.close();
+  w.flushes[0].tab.settleFlush.reject(new Error('no frame'));
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.settle();
+  w.fireTimers(w.survivors[0]);
+  await w.settle();
+
+  assert.equal(w.saves(), 1);
+});
+
+test('a flush that never settles holds the write for the cap only', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+  const [survivor] = w.survivors;
+
+  w.close();
+  w.flushes[0].tab.settleFlush.resolve();
+  await w.settle();
+  assert.equal(w.saves(), 0);
+  assert.deepEqual(w.liveTimers(survivor), [2000]);
+
+  w.fireTimers(survivor, 2000);
+  await w.settle();
+  w.fireTimers(survivor);
+  await w.settle();
+  assert.equal(w.saves(), 1);
+
+  // The late settle changes nothing.
+  w.flushes[1].tab.settleFlush.resolve();
+  await w.settle();
+  w.fireTimers(survivor);
+  await w.settle();
+  assert.equal(w.saves(), 1);
+});
+
+test('the wait and the write belong to the survivor, nothing to the closing window', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+  const [survivor] = w.survivors;
+
+  w.close();
+  w.flushes.forEach(({ tab }) => tab.settleFlush.resolve());
+  await w.settle();
+  w.fireTimers(survivor);
+  await w.settle();
+
+  // The closing window's timers are not used (notePageClose is the only one that would be), and
+  // its SessionSaver getter throws, which the save would have logged.
+  assert.equal(w.timers.length, 0);
+  assert.equal(w.of('warn').length, 0);
+  assert.equal(w.saves(), 1);
+  assert.ok(w.flushes.every(({ flush }) => flush instanceof survivor.Promise));
+  assert.match(source, /window\.__bentoSaveSessionAfterHandover = saveSessionAfterHandover;/);
+});
+
+test('handovers in one task share one write, and a later one writes again', async () => {
+  const w = setup({ tabs: [{ label: 'a' }] });
+  const [survivor] = w.survivors;
+
+  w.close();
+  // Another window closing into the same survivor in the same task.
+  const other = new survivor.Promise((resolve) => setTimeout(resolve, 0));
+  survivor.__bentoSaveSessionAfterHandover([other]);
+  w.flushes[0].tab.settleFlush.resolve();
+  await w.settle();
+  assert.equal(w.saves(), 0, 'the second handover is waited for as well');
+  await other;
+  await w.settle();
+  w.fireTimers(survivor);
+  await w.settle();
+  assert.equal(w.saves(), 1);
+
+  survivor.__bentoSaveSessionAfterHandover([]);
+  await w.settle();
+  w.fireTimers(survivor);
+  await w.settle();
+  assert.equal(w.saves(), 2);
+});
+
+test('nothing is written when nothing was adopted', async () => {
+  // Every adoption refused, then nothing worth keeping, then no survivor.
+  for (const options of [
+    { tabs: [{ label: 'a' }, { label: 'b' }], hooks: { refuse: () => true } },
+    {
+      tabs: [
+        { label: 'a', isEmpty: true },
+        { label: 'b', closing: true },
+      ],
+    },
+    { tabs: [{ label: 'a' }], others: [] },
+  ]) {
+    const w = setup(options);
+
+    w.close();
+    await w.settle();
+    for (const survivor of w.survivors) w.fireTimers(survivor);
+    await w.settle();
+
+    assert.equal(w.saves(), 0);
+    assert.equal(w.survivors.flatMap((survivor) => survivor.timerLog).length, 0);
+  }
+});
+
+test('nothing is written for a quit, a private window or a popup', async () => {
+  for (const options of [
+    { startup: { attemptingQuit: true } },
+    { windowOptions: { private: true } },
+    { windowOptions: { toolbar: { visible: false } } },
+  ]) {
+    const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }], ...options });
+
+    w.close();
+    await w.settle();
+    for (const survivor of w.survivors) w.fireTimers(survivor);
+    await w.settle();
+
+    assert.equal(w.of('adopt').length, 0);
+    assert.equal(w.saves(), 0);
+  }
+});
+
+test('a quit that starts before the write leaves the write to the quit', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+
+  w.close();
+  w.flushes.forEach(({ tab }) => tab.settleFlush.resolve());
+  await w.settle();
+  w.sandbox.Services.startup.attemptingQuit = true;
+  w.fireTimers(w.survivors[0]);
+  await w.settle();
+
+  assert.equal(w.saves(), 0);
+});
+
+test('a survivor that cannot save does not disturb the close', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+  delete w.survivors[0].__bentoSaveSessionAfterHandover;
+
+  w.close();
+
+  assert.deepEqual(w.names(w.survivors[0]).slice(-2), ['a', 'b']);
+  assert.match(w.of('warn').at(-1)[1], /session save after a window handover failed/);
 });
