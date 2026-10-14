@@ -122,6 +122,11 @@ Not applied (the archived tools background still lacks it):
   add-panel parity change. Until then, a rollback build is only as hardened as
   the extension-origin boundary described in the audit (S-07).
 
+Not carried (behavior, not security): the window-close handover. The archived mount
+script never adopts a closing window's tabs into another window and writes no
+`bento.handover` value, so a rollback build still parks a closing window's tabs as URLs.
+The handover adds no `Action` type, so the archived protocol handler needs no new case.
+
 When a security fix lands in `bento-shell-mount.js` or `bento-tools/src/background.ts`,
 check whether the same code exists under `rollback/legacy-source/` before
 releasing a rollback build.

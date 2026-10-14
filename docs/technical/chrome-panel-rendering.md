@@ -432,7 +432,56 @@ adds its entry, and its id in the mount probe list, in the same change.
     sidebar.
   The extension-API entry points `windows.create({ tabId })` and cross-window
   `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
-  wrapper; Bento calls neither on a marked tab.
+  wrapper; Bento calls neither on a marked tab (workspace activation moves
+  unmarked stray tabs, and a closing window adopts its tabs with `gBrowser.adoptTab`
+  after tearing the split view down; see the next item).
+- Window close with live tabs. Closing a window destroyed every tab it hosted, so
+  the tabs of a workspace that a second window had claimed, and the hidden tabs of
+  other workspaces, lost their page state and were recreated from URLs later (see
+  the pitfall in [workspaces.md](workspaces.md)). `attachWindowCloseHandover` in the
+  mount script adds two listeners once the window has loaded, and
+  `handOverTabsBeforeClose` picks the first other window that can take tabs
+  (`findHandoverSurvivor`) and, in the same task, tears the split view down
+  (`reconcilePanelsSplitView([])`; `handingOverTabs` then makes the reconciler return
+  at once, or a TabSelect or `panels/sync` would mark the tabs again) and calls
+  `survivor.gBrowser.adoptTab(tab, { tabIndex, selectTab: false })` for each tab worth
+  keeping: pinned tabs first at `pinnedTabCount` (adoptTab pins only when the index is
+  inside or right after the pinned region), the rest at the end, the selected tab last.
+  Each call is in its own try/catch (`adoptTab` returns null when the swap is refused
+  and `swapDocShells` can throw); a tab that is not adopted dies with the window as
+  before. After a successful adoption it writes the `bento.handover` marker on the
+  returned tab, and for a pending tab first puts back the custom tab values the swap
+  dropped (read with `SessionStore.getTabState` before it).
+  - `close` is dispatched by `AppWindow::RequestWindowClose` for the OS close button.
+    The `window.onclose` handler `WindowIsClosing` (browser-main.js) is assigned while
+    the window is parsed and a handler property keeps its place in the listener
+    order, so a listener added at `load` runs after it: the closing-tabs warning and
+    the beforeunload prompts have been answered, and a cancelled close arrives with
+    `defaultPrevented`. When the event is not cancelled `Destroy()` follows
+    synchronously.
+  - `DOMWindowClose` is dispatched by `nsGlobalWindowOuter::CloseOuter` after
+    `CanClose` (the same prompts) for `window.close()`, `windows.remove` and
+    Cmd+Shift+W, and by `ForceClose` on a quit. Once it is not prevented, `FinalClose`
+    sets `mIsClosed` and the window goes; nothing else listens to it on the window.
+    It is registered in the capture phase to see a tab's close first (next item).
+  - A tab's own `window.close()` also reaches the window: `BrowserElementParent`
+    re-dispatches it on the browser element as a bubbling, non-cancelable
+    `DOMWindowClose`, the tabbrowser closes the tab and `preventDefault`s, and when
+    that tab is the window's only one it calls `window.close()` from inside the event,
+    which arrives here with `target === window`. The handler acts only on events
+    targeted at the window, and a second capture listener (`notePageClose`) marks any other target
+    (`pageIsClosing`) until the next task, so a page that asked to go is not adopted.
+  - `adoptTab` of the last tab calls `window.close()` itself
+    (`swapBrowsersAndCloseOther`), so the handler runs again for the same close;
+    `handingOverTabs` ends it.
+  - A quit: `nsAppStartup::Quit` sets `attemptingQuit` before it force-closes the
+    windows; `Services.startup.shuttingDown` only turns true after `CloseAllWindows`.
+    The handler returns while `attemptingQuit` is true.
+  - There is no hold, timer or message to bento-tools: the move is finished when the
+    listener returns. The first design held the close and waited for tools; see
+    [workspaces.md](workspaces.md) for why it was dropped.
+  - `scripts/mount-window-handover.test.mjs` runs the real handler against stubbed
+    windows and SessionStore.
 - `prefs/bento.js` sets `browser.nova.enabled` and `sidebar.revamp` to false.
   Firefox 157 defaults both to true; Bento keeps the 154 chrome because its shell
   owns the sidebar and tab strip. No upgrade migration

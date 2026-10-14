@@ -807,7 +807,24 @@ export class TabRegistry {
       id,
       changes: { windowId: info.newWindowId, index: info.newPosition },
     });
+    void this.#syncActive(id);
   };
+
+  // An adopted tab is not selected in its new window and no activation event follows, so a tab
+  // that was active in its old window would keep `active: true` here. Activating its workspace
+  // skips choosing a tab while one reads as active, and would leave another workspace's tab in
+  // front.
+  async #syncActive(id: number): Promise<void> {
+    try {
+      const active = (await browser.tabs.get(id)).active === true;
+      const tab = this.#tabs.get(id);
+      if (!tab || tab.active === active) return;
+      tab.active = active;
+      this.#enqueue({ kind: 'updated', id, changes: { active } });
+    } catch {
+      // The tab closed in the meantime.
+    }
+  }
 
   #enqueue(delta: TabDelta): void {
     this.#pending.push(delta);

@@ -113,7 +113,7 @@
         'insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
         'on_TabSplitViewDeactivate()', 'warmupTab()', 'tabpanels', 'tabContainer', 'addTrustedTab()',
         'addTab()', 'getTabForBrowser()', 'selectedBrowsers', 'moveTabBefore()', 'moveTabAfter()',
-        'replaceTabWithWindow()', 'replaceTabsWithWindow()',
+        'replaceTabWithWindow()', 'replaceTabsWithWindow()', 'adoptTab()',
       ],
       MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
@@ -1376,7 +1376,7 @@
   // Management.global namespace. Repeated lookups would also be expensive.
   // Sentinel `undefined` = "not yet attempted"; `null` = "attempted, gave up".
   let __bentoWindowTracker /* : object|null|undefined */ = undefined;
-  function getChromeWindowId() {
+  function getChromeWindowId(win = window) {
     if (__bentoWindowTracker === undefined) {
       try {
         const mod = ChromeUtils.importESModule('resource://gre/modules/Extension.sys.mjs');
@@ -1388,7 +1388,7 @@
     }
     if (!__bentoWindowTracker) return null;
     try {
-      const wid = __bentoWindowTracker.getId(window);
+      const wid = __bentoWindowTracker.getId(win);
       return typeof wid === 'number' && wid >= 0 ? wid : null;
     } catch (err) {
       console.warn('[bento-shell-mount] windowTracker.getId failed:', err);
@@ -11195,6 +11195,10 @@
   // context menu. Updated in both the empty-panels early-return path
   // AND the main return path so it stays accurate across teardowns.
   let __reconciledForWorkspace = null;
+  // True once this window has started handing its tabs to another window as it closes (see
+  // handOverTabsBeforeClose). The reconciler stands down: it would mark the leaving tabs with
+  // split-view markers again.
+  let handingOverTabs = false;
 
   function sanitizePanelLayoutPayload(rawLayout, panels) {
     const panelIds = new Set((panels || []).map((panel) => Number(panel?.tabId)));
@@ -12195,6 +12199,7 @@
   // The combined effect: panels stay painted across sidebar tab
   // switches, Cmd+T, window minimise/restore, and DevTools toggling.
   function reconcilePanelsSplitView(panels, options = {}) {
+    if (handingOverTabs) return;
     if (!window.gBrowser) {
       console.warn('[bento-shell-mount] reconcilePanelsSplitView: gBrowser unavailable');
       return;
@@ -14416,6 +14421,130 @@
     };
     requestAnimationFrame(() => requestAnimationFrame(repaint));
     window.setTimeout(repaint, 80);
+  }
+
+  // Closing a window destroys every tab it hosts, and bento-tools could only recreate them from
+  // their URLs later, losing page state, history, form text and media. So a window that closes
+  // while another Bento window stays open adopts its live tabs into that window first
+  // (gBrowser.adoptTab, the docShell swap behind tabs.move; the tab id is kept). Two listeners
+  // cover every close, both synchronous and followed by teardown with no way to cancel it:
+  //   'close'          the OS close button. window.onclose = WindowIsClosing has already shown
+  //                    the closing-tabs warning and the beforeunload prompts (a cancelled close
+  //                    arrives with defaultPrevented).
+  //   'DOMWindowClose' window.close() from chrome script, windows.remove, Cmd+Shift+W after
+  //                    WindowIsClosing. CanClose (the same prompts) ran before it.
+  // Each adopted tab gets a 'bento.handover' tab value so bento-tools can tell this from a user
+  // dragging a tab out: it keeps the tab's workspace (tabs/Handover.ts).
+  const TOOLS_SESSION_PREFIX = 'extension:bento-tools@bento.app:';
+  const HANDOVER_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.handover';
+  const CLOSING_TAB_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.closingTab';
+  const WINDOW_WORKSPACE_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.activeWorkspaceId';
+  let pageIsClosing = false;
+
+  // Another window that can take tabs: a regular window (visible toolbar, not private) with a
+  // mounted shell that is still open and was given a workspace, which tools does after its
+  // shell/hello.
+  function findHandoverSurvivor(SessionStore) {
+    for (const other of Services.wm.getEnumerator('navigator:browser')) {
+      try {
+        if (
+          other !== window &&
+          !other.closed &&
+          other.__bentoShellMountInitialized &&
+          other.toolbar?.visible &&
+          !BentoPrivateBrowsingUtils.isWindowPrivate(other) &&
+          SessionStore.getCustomWindowValue(other, WINDOW_WORKSPACE_SESSION_KEY) &&
+          getChromeWindowId(other) !== null
+        ) {
+          return other;
+        }
+      } catch {
+        // SessionStore throws for a window it does not track yet: not ready for tabs.
+      }
+    }
+    return null;
+  }
+
+  // A tab's window.close() also reaches the window, as a DOMWindowClose from the browser
+  // element that is not cancelable (BrowserElementParent). The tabbrowser then closes the tab,
+  // or the window when it is the only tab, from inside that event: the page asked to go, so it
+  // is not handed over. Registered in the capture phase to run before the tabbrowser does.
+  function notePageClose(event) {
+    if (event.target === window) return;
+    pageIsClosing = true;
+    window.setTimeout(() => (pageIsClosing = false));
+  }
+
+  function handOverTabsBeforeClose(event) {
+    // Adopting the last tab closes the window by itself, which comes back here.
+    if (event.target !== window || event.defaultPrevented || handingOverTabs || pageIsClosing) {
+      return;
+    }
+    // A quit closes every window itself and SessionStore collects them as they are. shuttingDown
+    // is still false then; attemptingQuit is set just before the windows are closed.
+    if (Services.startup.attemptingQuit) return;
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window) || !window.toolbar?.visible) return;
+    const SessionStore = getSessionStore();
+    const survivor = SessionStore && findHandoverSurvivor(SessionStore);
+    const from = getChromeWindowId();
+    const to = survivor && getChromeWindowId(survivor);
+    if (!survivor || from === null || to === null) return;
+    // Empty, closing and tools-closing tabs (a workspace delete marks them before it closes
+    // the window) are not worth keeping. Pinned tabs go first, into the pinned region, and the
+    // selected tab last: adopting the last tab is what closes the window.
+    const selected = window.gBrowser.selectedTab;
+    const rank = (tab) => (tab === selected ? 2 : tab.pinned ? 0 : 1);
+    const keep = Array.from(window.gBrowser.tabs)
+      .filter(
+        (tab) =>
+          !tab.closing &&
+          !tab.isEmpty &&
+          !SessionStore.getCustomTabValue(tab, CLOSING_TAB_SESSION_KEY),
+      )
+      .sort((a, b) => rank(a) - rank(b));
+    if (keep.length === 0) return;
+    // adoptTab does not cope with Bento's split-view markers, and the window is going anyway.
+    reconcilePanelsSplitView([]);
+    handingOverTabs = true;
+    const dest = survivor.gBrowser;
+    for (const tab of keep) {
+      try {
+        // A pending (not yet restored) tab comes out of adoptTab without its custom values: its
+        // state is copied to the new tab, extData not included.
+        const values = tab.hasAttribute('pending')
+          ? JSON.parse(SessionStore.getTabState(tab)).extData
+          : null;
+        const adopted = dest.adoptTab(tab, {
+          tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
+          selectTab: false,
+        });
+        if (!adopted) continue;
+        // Written after adoptTab: SessionStore moves the values of a live tab itself.
+        for (const [key, value] of Object.entries(values ?? {})) {
+          SessionStore.setCustomTabValue(adopted, key, value);
+        }
+        SessionStore.setCustomTabValue(
+          adopted,
+          HANDOVER_SESSION_KEY,
+          JSON.stringify({ from, to, at: Date.now() }),
+        );
+      } catch (err) {
+        console.warn('[bento-shell-mount] handing a tab over failed:', err);
+      }
+    }
+  }
+
+  function attachWindowCloseHandover() {
+    // Added once the window has loaded: window.onclose is assigned while it is parsed, and a
+    // handler property keeps its place in the listener order, so this runs after it and sees
+    // whether it cancelled the close.
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', attachWindowCloseHandover, { once: true });
+      return;
+    }
+    window.addEventListener('close', handOverTabsBeforeClose);
+    window.addEventListener('DOMWindowClose', notePageClose, true);
+    window.addEventListener('DOMWindowClose', handOverTabsBeforeClose, true);
   }
 
   // Re-reconcile the split view when the active main tab changes —
@@ -17033,6 +17162,7 @@
   attachPaletteCloseListener();
   attachWorkspaceTabSwitchKeybinding();
   attachTabSelectListener();
+  attachWindowCloseHandover();
   attachPanelAcceleratorListener();
   attachWindowResizePerfMode();
   registerContentKeyActor();
