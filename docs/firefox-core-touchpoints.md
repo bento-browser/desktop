@@ -142,7 +142,12 @@ Use this shape for new or changed touchpoints:
   inside `adoptTab` when the last tab leaves, and restores a pending tab by state),
   SessionStore (moves a tab's custom values to the twin on `TabOpen` with
   `adoptedTab`, so a refused adoption takes them away; `#restoreTab` deletes a
-  pending tab's values when the state has no `extData`), `browser.getInPermitUnload`
+  pending tab's values when the state has no `extData`; on `TabClose` with
+  `adoptedBy` it copies the old browser's cached state, session history included, to
+  the twin once `TabStateFlusher.flush` settles, and that flush promise comes from
+  `frameLoader.requestTabStateFlush()` and belongs to the closing window, so
+  `adoptTabInto` shadows that method on the old frame loader for the call with one
+  that returns a promise of the surviving window), `browser.getInPermitUnload`
   and `gDialogBox.isOpen` (a window in a close prompt neither hands over nor takes
   tabs), `BrowserElementParent` (a tab's `window.close()` reaches the window as a
   non-cancelable `DOMWindowClose` from the browser element), the `window.onclose`
@@ -151,8 +156,10 @@ Use this shape for new or changed touchpoints:
   false then). Registry entries: `gBrowser.adoptTab`, `gDialogBox.isOpen` and
   `MozBrowser.prototype.getInPermitUnload` (runtime probes), `gFissionBrowser`,
   `swapBrowsersAndCloseOther closeWindow`, `SessionStore adoptedTab custom values`,
+  `TabStateFlusher.flush requestTabStateFlush`, `SessionStore onMoveToNewWindow flush`,
   `DOMWindowClose`, `BrowserElementParent DOMWindowClose` and
-  `window.onclose WindowIsClosing` (engine only). `windowUtils.isInModalState()` was
+  `window.onclose WindowIsClosing` (engine only), plus
+  `FrameLoader.prototype.requestTabStateFlush` (runtime probe). `windowUtils.isInModalState()` was
   checked and not used: it covers content windows opened modal and the debugger
   start, not the tab-modal closing-tabs and beforeunload prompts. Firefox update
   risk: if `DOMWindowClose` stops reaching the window's own listeners, or
@@ -162,7 +169,12 @@ Use this shape for new or changed touchpoints:
   tabs lose their workspace (the `bento.handover` value would be missing or the
   tab released as a drag); if a window with another open tab stops counting as
   "not the last tab" in `#isLastTabInWindow`, the last adoption closes the window
-  itself again (re-entering the handler and skipping `TabClose`). Individual
+  itself again (re-entering the handler and skipping `TabClose`); if SessionStore's
+  move handler stops reading `frameLoader.requestTabStateFlush()` (or copies the
+  state some other way), the shadow is harmless but inert and adopted tabs lose their
+  session history again, with no error: check
+  `JSON.parse(SessionStore.getTabState(tab)).entries.length` of a handed-over tab
+  against its history. Individual
   adoption does not keep native tab-group membership or a multiselection, which
   Bento does not use. Regression checks: with two workspaces, give a tab of the
   second workspace unique state (form text), open a second window so it claims that
@@ -174,7 +186,9 @@ Use this shape for new or changed touchpoints:
   `bento.handover` value remains after 15 s. Close two windows in a row with a
   third open: workspace, folder and panels survive both hops. From a page opened by
   `window.open()` call `window.close()` with two windows open: only that tab closes.
-  Press Cmd+Q right after closing a window: the session restores both windows' tabs.
+  Press Cmd+Q right after closing a window: the session restores both windows' tabs,
+  the handed-over ones with their history (and after a `kill -9` 45 s after a
+  handover, from the last periodic save).
   A tab with a beforeunload prompt answered "Stay" on the close leaves the window
   untouched, and closing it again while the prompt is up hands nothing over.
 - Firefox 157.0.1 review (2026-10-12): `tabbrowser.js` is now the ES module
@@ -1942,6 +1956,9 @@ below is generated; edit the registry, then run
 | `gBrowser.adoptTab` | method (runtime) | Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused, after removing the empty twin it made (the tab's id and custom values went to the twin). | `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8480` |
 | `swapBrowsersAndCloseOther closeWindow` | source (engine only) | Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again) and returns before TabClose, which a DevTools toolbox moves with. The handover keeps a blank selected tab in the closing window so no adoption is its last tab. A pending tab is moved by state, which drops its custom tab values. It returns false for a private or Fission mismatch, a non-remote source tab (the twin is remote), a closing source tab, or a source tabbrowser whose window is closing; the handover rules out all but the last, which is only set once the last tab is already gone. | `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7391` |
 | `SessionStore adoptedTab custom values` | source (engine only) | SessionStore moves a tab's custom values to the adopting twin on TabOpen, so the handover value is written after adoptTab and a refused adoption (which removes the twin) takes them away. Restoring a pending tab's state without extData deletes them, so the mount copies them back. | `handOverTabsBeforeClose` | `browser/components/sessionstore/SessionStore.sys.mjs:1349` |
+| `FrameLoader.prototype.requestTabStateFlush` | method (runtime) | adoptTab makes SessionStore flush the old browser and copy its cached state to the twin, and the flush promise belongs to the closing window, so the copy never ran. For the adoptTab call the old frame loader shadows this method with one that returns a promise of the surviving window settling with the original, and the shadow is deleted afterwards (the prototype's method is not touched). | `adoptTabInto` | `dom/chrome-webidl/FrameLoader.webidl:70` |
+| `TabStateFlusher.flush requestTabStateFlush` | source (engine only) | TabStateFlusher.flush(browser) takes the promise from browser.frameLoader.requestTabStateFlush() and races it, which is why handing out a promise of another window from there reaches SessionStore's move handler. | `adoptTabInto` | `browser/components/sessionstore/TabStateFlusher.sys.mjs:79` |
+| `SessionStore onMoveToNewWindow flush` | source (engine only) | On TabClose with adoptedBy, SessionStore flushes the old browser and, in the promise's then, copies its cached tab state (session history) to the adopting twin. A flush that never settles leaves the adopted tab without history in SessionStore until it navigates. | `adoptTabInto` | `browser/components/sessionstore/SessionStore.sys.mjs:2919` |
 | `DOMWindowClose` | source (engine only) | Chrome-only event the window receives before a script close (window.close(), windows.remove, Cmd+Shift+W after WindowIsClosing) tears it down, and on a quit. Nothing after it can cancel the close once it passes, so the window's live tabs are handed to a window that stays here. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `dom/base/nsGlobalWindowOuter.cpp:6096` |
 | `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab). | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
 | `window.onclose WindowIsClosing` | source (engine only) | The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `browser/base/content/browser-main.js:44` |

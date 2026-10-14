@@ -563,6 +563,33 @@ opening an unwanted blank tab before the moved tabs arrive.
     its tab is not handed over (`notePageClose` records the tab, which is looked up
     with `getTabForBrowser`). Only that tab is left out: a chrome close of the window
     in the same task still hands the others over.
+  - Session history of an adopted tab (`adoptTabInto`). The swap collects the page's
+    session history into the cache under the twin's permanent key
+    (`browsing-context-did-set-embedder`), and `swapBrowsersAndCloseOther` then
+    exchanges the two browsers' keys, so the history sits under the key of the old
+    browser. SessionStore moves it across in `#onMoveToNewWindow`: on `TabClose` with
+    `adoptedBy` it calls `TabStateFlusher.flush(oldBrowser)` (the promise from
+    `browser.frameLoader.requestTabStateFlush()`) and copies the old browser's cached
+    state, formdata and scroll included, to the twin when that settles. The promise
+    belongs to the closing window, and nothing chained on it ran once that window was
+    gone: the copy was skipped and
+    `JSON.parse(SessionStore.getTabState(tab)).entries` of a handed-over tab stayed empty
+    (also after a later `TabStateFlusher.flush` and 25 s) until its next navigation. The
+    twin's own cache is empty until the page's next update (15 s,
+    `browser.sessionstore.interval`), so a tab with a cached older history kept that and
+    a recently opened or navigated one lost it. Effect: a quit right after a handover
+    restored window 1 without the tabs (tools parked them, page state lost) and a
+    `kill -9` lost them. A bare capture `DOMWindowClose` listener that calls `adoptTab`
+    reproduces it. A promise created in the mount script's own window does not help (it
+    is the closing window), one of the survivor does: for the `adoptTab` call the old
+    frame loader shadows `requestTabStateFlush` with a function that returns
+    `new survivor.Promise(...)` settling with the original, and the shadow is deleted
+    in a `finally`. Do not recollect through `SessionStore.updateSessionStoreFromTablistener`
+    instead: it drops updates unless given the browser's private epoch
+    (`#browserEpochs`, not readable from script). Manual check: after a close, every
+    handed-over tab's `JSON.parse(SessionStore.getTabState(tab)).entries.length` equals
+    its history count without a navigation, and a quit right after restores each tab
+    once in window 1 with its history.
   - Close prompts. `permitUnload` throws "already running" for a tab that is already
     being asked, `CanCloseWindow` does not catch it, and a close that threw there goes
     ahead, so a close repeated while a beforeunload prompt is up reaches the handler
