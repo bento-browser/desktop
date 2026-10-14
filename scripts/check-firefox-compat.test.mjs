@@ -466,6 +466,7 @@ function lazyWindow(probes, counts) {
             value: Object.create(null, {
               removeProgressListener: { value() {} },
               preserveLayers: { value() {} },
+              getInPermitUnload: { value() {} },
               docShellIsActive: { get: counting },
               renderLayers: { get: counting },
               messageManager: { get: counting },

@@ -124,21 +124,28 @@ Use this shape for new or changed touchpoints:
   (`nsGlobalWindowOuter::CloseOuter` dispatches it after `CanClose` for
   `window.close()`, `windows.remove` and Cmd+Shift+W, and `FinalClose` follows
   unconditionally; `ForceClose` dispatches it on a quit). When another regular
-  Bento window exists it tears the split view down and adopts each tab worth
-  keeping with `gBrowser.adoptTab` in the same task, then writes the
-  `bento.handover` tab value on the returned tab for bento-tools. No patch and no
-  hold, timer or message: nothing runs between the listeners and the teardown that
-  could cancel the close. Depended-on surfaces: `Tabbrowser.adoptTab` (returns the
-  new tab or null; the tab id is kept by `ext-browser.js` `adopt()`),
-  `swapBrowsersAndCloseOther` (closes the window from inside `adoptTab` when the last
-  tab leaves, and restores a pending tab by state), SessionStore (moves a live tab's
-  custom values on `TabOpen` with `adoptedTab`; `#restoreTab` deletes a pending
-  tab's values when the state has no `extData`),
-  `BrowserElementParent` (a tab's `window.close()` reaches the window as a
-  non-cancelable `DOMWindowClose` from the browser element), the
-  `window.onclose` handler `WindowIsClosing`, and the public
-  `Services.startup.attemptingQuit` (`nsAppStartup::Quit` sets it before
-  `CloseAllWindows`; `shuttingDown` is still false then). Registry entries: `gBrowser.adoptTab` (runtime probe),
+  Bento window exists it tears the split view down, adds a selected `about:blank`
+  tab to the closing window and adopts each tab worth keeping with
+  `gBrowser.adoptTab` in the same task, then appends a hop to the
+  `bento.handover` tab value on the returned tab for bento-tools. The blank tab
+  keeps every adoption off the window's last-tab path, where `adoptTab` closes the
+  window itself and returns before `TabClose` (the DevTools toolbox transfer). No
+  patch and no hold, timer or message: nothing runs between the listeners and the
+  teardown that could cancel the close. Depended-on surfaces: `Tabbrowser.adoptTab`
+  (returns the new tab or null, after removing the empty twin it made; the live
+  browsing context moves into a new `<browser>` element and the tab id is kept by
+  `ext-browser.js` `adopt()`), `swapBrowsersAndCloseOther` (closes the window from
+  inside `adoptTab` when the last tab leaves, and restores a pending tab by state),
+  SessionStore (moves a tab's custom values to the twin on `TabOpen` with
+  `adoptedTab`, so a refused adoption takes them away; `#restoreTab` deletes a
+  pending tab's values when the state has no `extData`), `browser.getInPermitUnload`
+  and `gDialogBox.isOpen` (a window in a close prompt neither hands over nor takes
+  tabs), `BrowserElementParent` (a tab's `window.close()` reaches the window as a
+  non-cancelable `DOMWindowClose` from the browser element), the `window.onclose`
+  handler `WindowIsClosing`, and the public `Services.startup.attemptingQuit`
+  (`nsAppStartup::Quit` sets it before `CloseAllWindows`; `shuttingDown` is still
+  false then). Registry entries: `gBrowser.adoptTab`, `gDialogBox.isOpen` and
+  `MozBrowser.prototype.getInPermitUnload` (runtime probes),
   `swapBrowsersAndCloseOther closeWindow`, `SessionStore adoptedTab custom values`,
   `DOMWindowClose`, `BrowserElementParent DOMWindowClose` and
   `window.onclose WindowIsClosing` (engine only). `windowUtils.isInModalState()` was
@@ -148,19 +155,24 @@ Use this shape for new or changed touchpoints:
   `window.onclose` stops being the single OS close handler, windows close at once
   again (tabs parked as URLs, the previous behavior) and nothing breaks; if
   `adoptTab` stops keeping the tab id or the tab values of a live tab, handed-over
-  tabs lose their workspace (the `bento.handover` marker would be missing or the
-  tab released as a drag); if `swapBrowsersAndCloseOther` stops closing the window
-  with the last tab, the window stays open with a blank tab. Regression checks:
-  with two workspaces, give a tab of the second workspace unique state (form
-  text), open a second window so it claims that workspace, close it with
-  Cmd+Shift+W, the close button and `window.close()`: the tab keeps its tab id, its
-  BrowsingContext id and its text in the remaining window, stays in its workspace
-  (hidden from that window's sidebar), the panel layout is intact when the
-  workspace is shown again, and no blank tab or stray `bento.handover` value
-  remains after 15 s. From a page opened by `window.open()` call `window.close()`
-  with two windows open: only that tab closes. Press Cmd+Q right after closing a
-  window: the session restores both windows' tabs. A tab with a beforeunload
-  prompt answered "Stay" on the close leaves the window untouched.
+  tabs lose their workspace (the `bento.handover` value would be missing or the
+  tab released as a drag); if a window with another open tab stops counting as
+  "not the last tab" in `#isLastTabInWindow`, the last adoption closes the window
+  itself again (re-entering the handler and skipping `TabClose`). Individual
+  adoption does not keep native tab-group membership or a multiselection, which
+  Bento does not use. Regression checks: with two workspaces, give a tab of the
+  second workspace unique state (form text), open a second window so it claims that
+  workspace, close it with Cmd+Shift+W, the close button and `window.close()`: the
+  tab keeps its tab id, its BrowsingContext id and its text in the remaining window,
+  stays in its workspace (hidden from that window's sidebar), the panel layout is
+  intact when the workspace is shown again, the tabs keep their order, a DevTools
+  toolbox open on the window's selected tab follows it, and no blank tab or stray
+  `bento.handover` value remains after 15 s. Close two windows in a row with a
+  third open: workspace, folder and panels survive both hops. From a page opened by
+  `window.open()` call `window.close()` with two windows open: only that tab closes.
+  Press Cmd+Q right after closing a window: the session restores both windows' tabs.
+  A tab with a beforeunload prompt answered "Stay" on the close leaves the window
+  untouched, and closing it again while the prompt is up hands nothing over.
 - Firefox 157.0.1 review (2026-10-12): `tabbrowser.js` is now the ES module
   `Tabbrowser.sys.mjs` and its tab-closing method is the private
   `#beginRemoveTab`, so Bento no longer wraps it. Closing the selected tab runs
@@ -1914,26 +1926,28 @@ below is generated; edit the registry, then run
 | `Element.prototype.moveBefore` | method (runtime) | Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback. | `moveNodeBefore` | `dom/webidl/ParentNode.webidl:34` |
 | `MozBrowser.connectedMoveCallback` | source (engine only) | moveBefore on a browser element ends in this no-op callback instead of destruct() and construct(). | `moveNodeBefore` | `toolkit/content/widgets/browser-custom-element.mjs:428` |
 | `XULFrameElement UnbindFromTree IsMove` | source (engine only) | UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it. | `moveNodeBefore` | `dom/xul/XULFrameElement.cpp:165` |
-| `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects. | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
+| `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open and rebuilds a tab adoptTab could not move. | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose`, `recreateTabIn` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3682` |
-| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
+| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, and a page's window.close() uses it to name the tab that asked. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
 | `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
 | `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8022` |
 | `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8044` |
 | `gBrowser.replaceTabWithWindow` | method (runtime) | Hides Bento's split-view markers while Firefox picks the element it hands a torn-out window (aTab.splitview ?? aTab). | `hideBentoSplitViewMarkers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7709` |
 | `gBrowser.replaceTabsWithWindow` | method (runtime) | Same as replaceTabWithWindow for the context-menu and multi-select tear-out (contextTab.splitview ?? contextTab). | `hideBentoSplitViewMarkers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7750` |
 | `getTabToAdopt XULElement` | source (engine only) | The new window adopts its first tab only when the window argument is a XUL element, so a Bento marker object makes the adoption silently fail. | `hideBentoSplitViewMarkers` | `browser/base/content/browser-init.js:88` |
-| `gBrowser.adoptTab` | method (runtime) | Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused. | `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8480` |
-| `swapBrowsersAndCloseOther closeWindow` | source (engine only) | Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again), and a pending tab is moved by state, which drops its custom tab values. | `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7391` |
-| `SessionStore adoptedTab custom values` | source (engine only) | SessionStore moves a live tab's custom values to the adopting tab on TabOpen, so the handover marker is written after adoptTab; restoring a pending tab's state without extData deletes them, so the mount copies them back. | `handOverTabsBeforeClose` | `browser/components/sessionstore/SessionStore.sys.mjs:1349` |
+| `gBrowser.adoptTab` | method (runtime) | Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused, after removing the empty twin it made. | `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8480` |
+| `swapBrowsersAndCloseOther closeWindow` | source (engine only) | Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again) and returns before TabClose, which a DevTools toolbox moves with. The handover keeps a blank selected tab in the closing window so no adoption is its last tab. A pending tab is moved by state, which drops its custom tab values. | `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7391` |
+| `SessionStore adoptedTab custom values` | source (engine only) | SessionStore moves a tab's custom values to the adopting twin on TabOpen, so the handover value is written after adoptTab and a refused adoption (which removes the twin) takes them away: the mount takes the tab's state first. Restoring a pending tab's state without extData deletes them, so the mount copies them back. | `handOverTabsBeforeClose` | `browser/components/sessionstore/SessionStore.sys.mjs:1349` |
 | `DOMWindowClose` | source (engine only) | Chrome-only event the window receives before a script close (window.close(), windows.remove, Cmd+Shift+W after WindowIsClosing) tears it down, and on a quit. Nothing after it can cancel the close once it passes, so the window's live tabs are handed to a window that stays here. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `dom/base/nsGlobalWindowOuter.cpp:6096` |
-| `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window (notePageClose records the other), and skips the window close the tabbrowser then makes for a window's only tab. | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
+| `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab). | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
 | `window.onclose WindowIsClosing` | source (engine only) | The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `browser/base/content/browser-main.js:44` |
+| `gDialogBox.isOpen` | member (runtime) | A window-modal dialog is up in the candidate window (the closing-tabs warning is one): the window may be about to close, so it takes no tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:4770` |
 | `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:523` |
 | `MozBrowser.prototype.renderLayers` | member (runtime) | Bento re-enables layer rendering for panel browsers after a failed split-view layout. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:540` |
 | `MozBrowser.prototype.preserveLayers` | method (runtime) | Called before deactivating a panel docShell so it repaints without a blank frame. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:951` |
 | `MozBrowser.prototype.messageManager` | member (runtime) | Loads Bento frame scripts into extension and panel browsers. | `installPanelNavigatorTooltipFrameScript`, `ensurePanelScrollFrameScript` | `toolkit/content/widgets/browser-custom-element.mjs:581` |
 | `MozBrowser.prototype.contentTitle` | member (runtime) | The title-IPC handler reads frame.contentTitle after pagetitlechanged. | `attachPaletteCloseListener` | `toolkit/content/widgets/browser-custom-element.mjs:674` |
+| `MozBrowser.prototype.getInPermitUnload` | method (runtime) | Says synchronously whether a tab is answering a beforeunload check. permitUnload throws when asked again, so a close repeated meanwhile hands nothing over and such a window takes no tabs. | `isCheckingUnload` | `toolkit/content/widgets/browser-custom-element.mjs:1718` |
 | `MozBrowser.mIconURL` | member (runtime) | Panel header favicon fallback reads the browser mIconURL field. | `createPanelHeader` | `toolkit/content/widgets/browser-custom-element.mjs:140` |
 | `MessageManager.loadFrameScript` | source (engine only) | Bento injects data: URL frame scripts into its own extension frames and panel browsers. | `ensurePanelScrollFrameScript`, `installPanelNavigatorTooltipFrameScript`, `SHELL_ACTION_FRAME_SCRIPT_URL` | `dom/chrome-webidl/MessageManager.webidl:368` |
 | `pagetitlechanged` | source (engine only) | Chrome-only bubbling event on the embedding <browser>; the title-IPC control plane. | `attachPaletteCloseListener` | `dom/ipc/WindowGlobalParent.cpp:558` |

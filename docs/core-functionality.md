@@ -108,9 +108,10 @@ Closing a window that is showing a workspace should release that workspace for
 another window without clearing its tabs, panels, or panel layout.
 While another regular window stays open, closing a window keeps its tabs alive
 there: the workspace's tabs and panels, and the hidden tabs of other workspaces
-the window was holding, move to that window as hidden tabs of their workspaces,
-so their pages keep their state, history, form text, and playing media, and the
-workspace's pinned tabs stay pinned when a later window shows it. Tabs with
+the window was holding, move to that window as hidden tabs of their workspaces, in
+the order they had, so their pages keep their state, history, form text, and
+playing media, and the workspace's pinned tabs stay pinned when a later window
+shows it. Tabs with
 nothing to keep (blank pages), a private window, and a popup are not moved, and a
 popup or private window never receives tabs. A page that closes its own tab
 closes only that tab. When no other regular window is open, or the app is

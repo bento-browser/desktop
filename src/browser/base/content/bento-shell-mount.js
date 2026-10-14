@@ -118,7 +118,7 @@
       MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
         'removeProgressListener()', 'docShellIsActive', 'renderLayers', 'preserveLayers()',
-        'messageManager', 'contentTitle',
+        'messageManager', 'contentTitle', 'getInPermitUnload()',
       ],
       'gBrowser.tabpanels': ['splitViewPanels', 'removeTabsFromSplitview()', 'handleEvent()'],
       PopupNotifications: ['_isActiveBrowser()'],
@@ -129,6 +129,7 @@
       DownloadsView: ['loading', '_visibleViewItems'],
       PrivateDownloadsSubview: ['openWhenReady()'],
       gIdentityHandler: ['_initializePopup()', '_identityPopup', 'refreshIdentityPopup()'],
+      gDialogBox: ['isOpen'],
       gURLBar: ['view', 'untrimmedValue', 'value'],
       'gURLBar.view': ['close()'],
       '': ['OpenBrowserWindow()'],
@@ -14433,17 +14434,34 @@
   //                    arrives with defaultPrevented).
   //   'DOMWindowClose' window.close() from chrome script, windows.remove, Cmd+Shift+W after
   //                    WindowIsClosing. CanClose (the same prompts) ran before it.
-  // Each adopted tab gets a 'bento.handover' tab value so bento-tools can tell this from a user
-  // dragging a tab out: it keeps the tab's workspace (tabs/Handover.ts).
+  // Each adopted tab gets a 'bento.handover' tab value, a list of the windows it was handed
+  // between (a tab can be handed on again before bento-tools has seen the first hop), so
+  // bento-tools can tell this from a user dragging a tab out: it keeps the tab's workspace
+  // (tabs/Handover.ts).
   const TOOLS_SESSION_PREFIX = 'extension:bento-tools@bento.app:';
   const HANDOVER_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.handover';
   const CLOSING_TAB_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.closingTab';
   const WINDOW_WORKSPACE_SESSION_KEY = TOOLS_SESSION_PREFIX + 'bento.activeWorkspaceId';
-  let pageIsClosing = false;
+  let pageClosedTab = null;
+
+  // True while one of the window's tabs is answering a beforeunload check. permitUnload throws
+  // for a tab that is already being asked, so a close repeated while its prompt is still up goes
+  // on regardless; neither side of a handover should be a window in that state.
+  function isCheckingUnload(win) {
+    let busy = false;
+    for (const browser of win.gBrowser.browsers) {
+      // A lazy (not yet restored) browser is not connected and has nothing to unload.
+      if (!browser.isConnected) continue;
+      browser.getInPermitUnload((checking) => {
+        if (checking) busy = true;
+      });
+    }
+    return busy;
+  }
 
   // Another window that can take tabs: a regular window (visible toolbar, not private) with a
-  // mounted shell that is still open and was given a workspace, which tools does after its
-  // shell/hello.
+  // mounted shell that is still open, not in the middle of a close prompt of its own, and was
+  // given a workspace, which tools does after its shell/hello.
   function findHandoverSurvivor(SessionStore) {
     for (const other of Services.wm.getEnumerator('navigator:browser')) {
       try {
@@ -14453,6 +14471,8 @@
           other.__bentoShellMountInitialized &&
           other.toolbar?.visible &&
           !BentoPrivateBrowsingUtils.isWindowPrivate(other) &&
+          !other.gDialogBox?.isOpen &&
+          !isCheckingUnload(other) &&
           SessionStore.getCustomWindowValue(other, WINDOW_WORKSPACE_SESSION_KEY) &&
           getChromeWindowId(other) !== null
         ) {
@@ -14467,19 +14487,71 @@
 
   // A tab's window.close() also reaches the window, as a DOMWindowClose from the browser
   // element that is not cancelable (BrowserElementParent). The tabbrowser then closes the tab,
-  // or the window when it is the only tab, from inside that event: the page asked to go, so it
-  // is not handed over. Registered in the capture phase to run before the tabbrowser does.
+  // or the window when it is the only tab, from inside that event: the page asked to go, so
+  // that tab is not handed over. Registered in the capture phase to run before the tabbrowser.
   function notePageClose(event) {
     if (event.target === window) return;
-    pageIsClosing = true;
-    window.setTimeout(() => (pageIsClosing = false));
+    pageClosedTab = window.gBrowser.getTabForBrowser(event.target) ?? null;
+    window.setTimeout(() => (pageClosedTab = null));
+  }
+
+  function parseHandoverHops(value) {
+    try {
+      const hops = JSON.parse(value);
+      return Array.isArray(hops) ? hops : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // adoptTab for one tab, given its state from before the call. Null when Firefox refuses or
+  // fails: it made an empty twin in `dest` first, TabOpen moved the tab's id and custom values to
+  // it, and a refusal removes the twin with them.
+  function adoptTabInto(dest, tab, SessionStore, state) {
+    try {
+      const adopted = dest.adoptTab(tab, {
+        tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
+        selectTab: false,
+      });
+      if (!adopted) return null;
+      // A pending (not yet restored) tab comes out of adoptTab without its custom values: its
+      // state is copied to the new tab, extData not included. A live tab's values moved with it.
+      if (tab.hasAttribute('pending')) {
+        for (const [key, value] of Object.entries(JSON.parse(state).extData ?? {})) {
+          SessionStore.setCustomTabValue(adopted, key, value);
+        }
+      }
+      return adopted;
+    } catch (err) {
+      console.warn('[bento-shell-mount] handing a tab over failed:', err);
+      return null;
+    }
+  }
+
+  // A tab adoptTab could not move is still here, but tools lost its id with the twin and the
+  // twin took its custom values, so it would not be parked when this window closes. Rebuild it in
+  // `dest` from the state taken before the attempt (history, form data, the Bento tab values),
+  // and drop the empty twin a failure part way leaves.
+  function recreateTabIn(dest, tab, SessionStore, tabsBefore, state) {
+    try {
+      for (const twin of Array.from(dest.tabs)) {
+        if (!tabsBefore.has(twin) && !twin.closing && twin.isEmpty) {
+          dest.removeTab(twin, { animate: false });
+        }
+      }
+      const copy = dest.addTrustedTab('about:blank', {
+        skipAnimation: true,
+        pinned: tab.pinned,
+        tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
+      });
+      SessionStore.setTabState(copy, state);
+    } catch (err) {
+      console.warn('[bento-shell-mount] keeping a tab that could not be handed over failed:', err);
+    }
   }
 
   function handOverTabsBeforeClose(event) {
-    // Adopting the last tab closes the window by itself, which comes back here.
-    if (event.target !== window || event.defaultPrevented || handingOverTabs || pageIsClosing) {
-      return;
-    }
+    if (event.target !== window || event.defaultPrevented || handingOverTabs) return;
     // A quit closes every window itself and SessionStore collects them as they are. shuttingDown
     // is still false then; attemptingQuit is set just before the windows are closed.
     if (Services.startup.attemptingQuit) return;
@@ -14490,47 +14562,40 @@
     const to = survivor && getChromeWindowId(survivor);
     if (!survivor || from === null || to === null) return;
     // Empty, closing and tools-closing tabs (a workspace delete marks them before it closes
-    // the window) are not worth keeping. Pinned tabs go first, into the pinned region, and the
-    // selected tab last: adopting the last tab is what closes the window.
-    const selected = window.gBrowser.selectedTab;
-    const rank = (tab) => (tab === selected ? 2 : tab.pinned ? 0 : 1);
-    const keep = Array.from(window.gBrowser.tabs)
-      .filter(
-        (tab) =>
-          !tab.closing &&
-          !tab.isEmpty &&
-          !SessionStore.getCustomTabValue(tab, CLOSING_TAB_SESSION_KEY),
-      )
-      .sort((a, b) => rank(a) - rank(b));
-    if (keep.length === 0) return;
+    // the window) are not worth keeping, nor is the tab whose page is closing the window.
+    const keep = Array.from(window.gBrowser.tabs).filter(
+      (tab) =>
+        !tab.closing &&
+        !tab.isEmpty &&
+        tab !== pageClosedTab &&
+        !SessionStore.getCustomTabValue(tab, CLOSING_TAB_SESSION_KEY),
+    );
+    if (keep.length === 0 || isCheckingUnload(window)) return;
     // adoptTab does not cope with Bento's split-view markers, and the window is going anyway.
     reconcilePanelsSplitView([]);
     handingOverTabs = true;
+    // Adopting a window's last tab closes the window from inside adoptTab and skips the TabClose
+    // a DevTools toolbox moves with. A blank selected tab stays behind, so no adopted tab is the
+    // last one or the selected one, and the window closes as it was going to. Blank pages are
+    // not parked.
+    try {
+      window.gBrowser.addTrustedTab('about:blank', { inBackground: false, skipAnimation: true });
+    } catch (err) {
+      console.warn('[bento-shell-mount] no tab to hold the window open, nothing handed over:', err);
+      return;
+    }
     const dest = survivor.gBrowser;
     for (const tab of keep) {
-      try {
-        // A pending (not yet restored) tab comes out of adoptTab without its custom values: its
-        // state is copied to the new tab, extData not included.
-        const values = tab.hasAttribute('pending')
-          ? JSON.parse(SessionStore.getTabState(tab)).extData
-          : null;
-        const adopted = dest.adoptTab(tab, {
-          tabIndex: tab.pinned ? dest.pinnedTabCount : dest.tabs.length,
-          selectTab: false,
-        });
-        if (!adopted) continue;
-        // Written after adoptTab: SessionStore moves the values of a live tab itself.
-        for (const [key, value] of Object.entries(values ?? {})) {
-          SessionStore.setCustomTabValue(adopted, key, value);
-        }
-        SessionStore.setCustomTabValue(
-          adopted,
-          HANDOVER_SESSION_KEY,
-          JSON.stringify({ from, to, at: Date.now() }),
-        );
-      } catch (err) {
-        console.warn('[bento-shell-mount] handing a tab over failed:', err);
+      const tabsBefore = new Set(dest.tabs);
+      const state = SessionStore.getTabState(tab);
+      const adopted = adoptTabInto(dest, tab, SessionStore, state);
+      if (!adopted) {
+        recreateTabIn(dest, tab, SessionStore, tabsBefore, state);
+        continue;
       }
+      const hops = parseHandoverHops(SessionStore.getCustomTabValue(adopted, HANDOVER_SESSION_KEY));
+      hops.push({ from, to, at: Date.now() });
+      SessionStore.setCustomTabValue(adopted, HANDOVER_SESSION_KEY, JSON.stringify(hops));
     }
   }
 
