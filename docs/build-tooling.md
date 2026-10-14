@@ -102,6 +102,9 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   update XML when the updater is enabled (see [Updater](#updater)). A release
   build first refuses an object directory whose shell still has the dev-only
   reload command (see [Dev-only reload command](#dev-only-reload-command)).
+  Since Firefox 158, a macOS dev or debug build (developer options on) packages
+  as a plain `bento-<version>.en-US.mac.tar`; release builds still make the
+  `.dmg`.
 - `pnpm run artifacts:check`: verify the packaged application against
   `dist/bento-artifacts.json`, and the MAR contents and update XML when the
   updater is enabled. With the updater disabled it fails if a MAR or update

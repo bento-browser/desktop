@@ -96,6 +96,19 @@ test('artifact validation ignores auxiliary archives when finding application pa
   }
 });
 
+test('artifact validation accepts the TAR package that Firefox 158 builds for macOS dev builds', async () => {
+  const { root, objDist } = await fixture({ updates: false });
+  try {
+    await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'));
+    await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'));
+    await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.tar'), 'application');
+    await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.update_framework_artifacts.zip'), 'auxiliary');
+    assert.deepEqual(validateArtifacts(root).packages, ['bento-0.0.1.en-US.mac.tar']);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('artifact validation parses a root precomplete entry from MAR table output', async () => {
   const { root } = await fixture({ appBundle: false, marEntry: 'precomplete' });
   try {
