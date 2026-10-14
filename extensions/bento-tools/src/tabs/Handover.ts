@@ -5,12 +5,14 @@
 // tab between windows, which does not keep the workspace binding. A tab can be handed on again
 // before tools has seen its first hop (two windows closing in one task), so the value is a list
 // and each hop is matched once per side: a later drag of the same tab between the same two
-// windows is not mistaken for it.
+// windows is not mistaken for it. Tools only reads the value. Chrome drops the hops that have
+// expired when it appends the next one; an old hop that stays is ignored by its time.
 
 const HANDOVER_SESSION_KEY = 'bento.handover';
 
 /** Longer than the events take to arrive, short enough that a leftover value (it rides the
- * session file) can never match a later drag between the same two windows. */
+ * session file) can never match a later drag between the same two windows. The mount script
+ * prunes with the same number (HANDOVER_TTL_MS there). */
 export const HANDOVER_TTL_MS = 15_000;
 
 /** Values older than this tools instance belong to a previous run, whose window ids repeat. */
@@ -29,7 +31,8 @@ function isHop(value: unknown): value is Hop {
 }
 
 function isFresh(hop: Hop): boolean {
-  return hop.at >= STARTED_AT && Date.now() - hop.at <= HANDOVER_TTL_MS;
+  const age = Date.now() - hop.at;
+  return hop.at >= STARTED_AT && age >= 0 && age <= HANDOVER_TTL_MS;
 }
 
 async function readHops(tabId: number): Promise<Hop[]> {
@@ -60,14 +63,5 @@ export async function wasHandedOver(
   const hop = hops.find((h) => h[side] === windowId && isFresh(h) && !matched.has(keyOf(h)));
   if (!hop) return false;
   matched.set(keyOf(hop), hop.at);
-  setTimeout(() => void removeExpiredHops(tabId), HANDOVER_TTL_MS + 1);
   return true;
-}
-
-/** Drops the value once every hop in it has expired; a newer hop written meanwhile stays. */
-async function removeExpiredHops(tabId: number): Promise<void> {
-  if ((await readHops(tabId)).some(isFresh)) return;
-  await browser.sessions.removeTabValue(tabId, HANDOVER_SESSION_KEY).catch(() => {
-    // The tab closed or the value is already gone.
-  });
 }

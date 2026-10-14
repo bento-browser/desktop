@@ -5,7 +5,9 @@ import type { TabSnapshot } from '@shared/protocol';
 import {
   hasPanelsInOtherWindow,
   parkableWorkspaceTabs,
+  planParkedRestore,
   planWorkspaceParking,
+  type ParkedWorkspaceTab,
 } from './ParkedWorkspace';
 
 function closingTab(
@@ -181,5 +183,64 @@ describe('planWorkspaceParking', () => {
 
     expect(plan.keepPanelLayout).toBe(true);
     expect(plan.sidebarTabs.map((tab) => tab.url)).toEqual(['https://stranded.example.test/']);
+  });
+});
+
+describe('planParkedRestore', () => {
+  const entry = (index: number, url: string, pinned = false): ParkedWorkspaceTab => ({
+    url,
+    title: '',
+    pinned,
+    index,
+  });
+
+  it('selects the first entry of a workspace that has no live tab', () => {
+    const steps = planParkedRestore([entry(0, 'https://a/'), entry(1, 'https://b/')], new Map(), 0);
+
+    expect(steps.map((step) => [step.entry.url, step.existingTabId, step.active])).toEqual([
+      ['https://a/', null, true],
+      ['https://b/', null, false],
+    ]);
+  });
+
+  it('does not let a parked New Tab take the selection from live tabs a handover left', () => {
+    // The live tabs are pages handed over from a closed window; the New Tab was parked with it.
+    const steps = planParkedRestore(
+      [entry(0, 'about:newtab'), entry(1, 'https://kept/')],
+      new Map([[7, 'https://handed-over/']]),
+      2,
+    );
+
+    expect(steps.every((step) => !step.active)).toBe(true);
+    expect(steps.map((step) => step.existingTabId)).toEqual([null, null]);
+  });
+
+  it('still selects the first entry when a live tab already shows its address', () => {
+    const steps = planParkedRestore(
+      [entry(0, 'https://a/'), entry(1, 'https://b/')],
+      new Map([
+        [7, 'https://a/'],
+        [8, 'https://other/'],
+      ]),
+      2,
+    );
+
+    expect(steps.map((step) => [step.existingTabId, step.active])).toEqual([
+      [7, true],
+      [null, false],
+    ]);
+  });
+
+  it('pairs each live tab with one entry, in order', () => {
+    const steps = planParkedRestore(
+      [entry(0, 'https://a/'), entry(1, 'https://a/', true), entry(2, 'https://a/')],
+      new Map([
+        [7, 'https://a/'],
+        [8, 'https://a/'],
+      ]),
+      2,
+    );
+
+    expect(steps.map((step) => step.existingTabId)).toEqual([7, 8, null]);
   });
 });

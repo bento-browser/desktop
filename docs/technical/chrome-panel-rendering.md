@@ -448,14 +448,17 @@ adds its entry, and its id in the mount probe list, in the same change.
   keeping, in the tabs' own order: pinned tabs at `pinnedTabCount` (adoptTab pins only
   when the index is inside or right after the pinned region), the rest at the end of
   the destination. Before the first call it adds one selected `about:blank` tab to the
-  closing window (`addTrustedTab` with `inBackground: false`), so no adoption is that
-  window's last tab and the selected tab is never one that leaves. After a successful
-  adoption it appends a hop to the `bento.handover` value on the returned tab, and for
-  a pending tab first puts back the custom tab values the swap dropped. The state of
-  every tab is read with `SessionStore.getTabState` before its adoption: when
-  `adoptTab` returns null or throws, `recreateTabIn` removes the empty twin it may
-  have left and rebuilds the tab in the survivor from that state (a refusal removes
-  the twin, and the tab's id and values go with it, see [workspaces.md](workspaces.md)).
+  closing window (`addTrustedTab` with `inBackground: false`; `addTab` returns null when
+  it cannot make a tab, so a missing or disconnected blank tab hands nothing over), so
+  no adoption is that window's last tab and the selected tab is never one that leaves.
+  Tabs that `swapBrowsersAndCloseOther` would refuse are left out beforehand (empty,
+  closing and non-remote tabs, a survivor in another Fission mode), so they keep their
+  identity and values and are parked with the window. After a successful adoption the
+  mount appends a hop to the `bento.handover` value on the returned tab (pruning old
+  ones), and for a pending tab first puts back the custom tab values the swap dropped.
+  An `adoptTab` that still returns null or throws is logged with `console.error`
+  (title and address) and not rebuilt; see [workspaces.md](workspaces.md) for what that
+  leaves.
   - `close` is dispatched by `AppWindow::RequestWindowClose` for the OS close button.
     The `window.onclose` handler `WindowIsClosing` (browser-main.js) is assigned while
     the window is parsed and a handler property keeps its place in the listener

@@ -76,7 +76,7 @@ describe('wasHandedOver', () => {
   it('matches every hop of a tab handed on before tools saw the first', async () => {
     const { wasHandedOver } = await load();
     // Window 2 closed into window 1, and window 1 into window 3, in one task.
-    stubSessions([hop(2, 1), hop(1, 3, Date.now() + 1)]);
+    stubSessions([hop(2, 1), hop(1, 3)]);
 
     for (const windows of [{ from: 2 }, { to: 1 }, { from: 1 }, { to: 3 }]) {
       await expect(wasHandedOver(7, windows)).resolves.toBe(true);
@@ -116,28 +116,43 @@ describe('wasHandedOver', () => {
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
   });
 
-  it('removes the value once every hop in it has expired, not before', async () => {
-    const { wasHandedOver, HANDOVER_TTL_MS } = await load();
-    const { removeTabValue } = stubSessions([hop(2, 1)]);
-
-    await wasHandedOver(7, { to: 1 });
-    await vi.advanceTimersByTimeAsync(HANDOVER_TTL_MS);
-    expect(removeTabValue).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(2);
-    expect(removeTabValue).toHaveBeenCalledWith(7, 'bento.handover');
-  });
-
-  it('keeps the value while a newer hop written meanwhile is still fresh', async () => {
+  it('only reads: it never removes or rewrites the value, however long it waits', async () => {
+    // A cleanup that read the value and removed it later could delete a hop that chrome
+    // appended in between (a tab handed on again), so tools leaves expiry to the hop's time
+    // and to chrome, which prunes while it appends.
     const { wasHandedOver, HANDOVER_TTL_MS } = await load();
     const { getTabValue, removeTabValue } = stubSessions([hop(2, 1)]);
+    const setTabValue = vi.fn();
+    vi.stubGlobal('browser', { sessions: { getTabValue, removeTabValue, setTabValue } });
 
+    await wasHandedOver(7, { from: 2 });
     await wasHandedOver(7, { to: 1 });
-    await vi.advanceTimersByTimeAsync(HANDOVER_TTL_MS - 1_000);
-    // Window 1 closed into window 3 shortly before the first hop's cleanup.
-    getTabValue.mockResolvedValue([hop(2, 1, 1_000_000), hop(1, 3)]);
-    await vi.advanceTimersByTimeAsync(1_002);
+    // The next handover is appended while tools would have been cleaning up.
+    getTabValue.mockResolvedValue([hop(2, 1), hop(1, 3, Date.now() + 10_000)]);
+    await vi.advanceTimersByTimeAsync(HANDOVER_TTL_MS * 2);
 
     expect(removeTabValue).not.toHaveBeenCalled();
+    expect(setTabValue).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not match a hop timed in the future', async () => {
+    const { wasHandedOver } = await load();
+    stubSessions([hop(2, 1, Date.now() + 60_000)]);
+
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
+  });
+
+  it('matches a hop appended after an earlier one was spent', async () => {
+    const { wasHandedOver } = await load();
+    const { getTabValue } = stubSessions([hop(2, 1)]);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(true);
+
+    vi.advanceTimersByTime(1_000);
+    getTabValue.mockResolvedValue([hop(2, 1, 1_000_000), hop(1, 3)]);
+
+    await expect(wasHandedOver(7, { from: 1 })).resolves.toBe(true);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
+    await expect(wasHandedOver(7, { to: 3 })).resolves.toBe(true);
   });
 });

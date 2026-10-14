@@ -26,7 +26,11 @@ import { PanelStore } from './panels/PanelStore';
 import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
 import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
-import { planWorkspaceParking, type ParkedWorkspaceTab } from './panels/ParkedWorkspace';
+import {
+  planParkedRestore,
+  planWorkspaceParking,
+  type ParkedWorkspaceTab,
+} from './panels/ParkedWorkspace';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
@@ -381,23 +385,14 @@ async function restoreParkedTabsForWorkspace(
     }
   }
 
-  const consumedExistingTabIds = new Set<number>();
   let restored = false;
-  for (let index = 0; index < parked.length; index++) {
-    const entry = parked[index]!;
-    let existingTabId: number | null = null;
-    for (const [tabId, url] of existingUrlByTabId) {
-      if (consumedExistingTabIds.has(tabId)) continue;
-      if (url !== entry.url) continue;
-      existingTabId = tabId;
-      consumedExistingTabIds.add(tabId);
-      break;
-    }
+  const steps = planParkedRestore(parked, existingUrlByTabId, existingTabs.length);
+  for (const { entry, existingTabId, active } of steps) {
     if (existingTabId !== null) {
       try {
-        if (index === 0 || entry.pinned) {
+        if (active || entry.pinned) {
           await browser.tabs.update(existingTabId, {
-            ...(index === 0 ? { active: true } : {}),
+            ...(active ? { active: true } : {}),
             ...(entry.pinned ? { pinned: true } : {}),
           });
         }
@@ -414,7 +409,7 @@ async function restoreParkedTabsForWorkspace(
     try {
       const created = await browser.tabs.create({
         url: entry.url,
-        active: index === 0,
+        active,
         ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
       });
       if (typeof created.id !== 'number') continue;

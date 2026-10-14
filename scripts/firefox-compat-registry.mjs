@@ -368,13 +368,8 @@ export const MEMBERS = [
     kind: 'method',
     how: 'calls',
     probe: 'R',
-    sites: [
-      'openTrustedAddrbarNewTab',
-      'openDevtoolsPanelFor',
-      'handOverTabsBeforeClose',
-      'recreateTabIn',
-    ],
-    use: 'Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open and rebuilds a tab adoptTab could not move.',
+    sites: ['openTrustedAddrbarNewTab', 'openDevtoolsPanelFor', 'handOverTabsBeforeClose'],
+    use: 'Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made).',
     at: [FF.tabbrowser, '^\\s+addTrustedTab\\(', 3559],
   },
   {
@@ -464,7 +459,7 @@ export const MEMBERS = [
     how: 'calls',
     probe: 'R',
     sites: ['handOverTabsBeforeClose'],
-    use: "Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused, after removing the empty twin it made.",
+    use: "Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused, after removing the empty twin it made (the tab's id and custom values went to the twin).",
     at: [FF.tabbrowser, '^\\s+adoptTab\\(', 8480],
   },
   {
@@ -473,7 +468,7 @@ export const MEMBERS = [
     how: 'calls',
     probe: 'E',
     sites: ['handOverTabsBeforeClose'],
-    use: 'Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again) and returns before TabClose, which a DevTools toolbox moves with. The handover keeps a blank selected tab in the closing window so no adoption is its last tab. A pending tab is moved by state, which drops its custom tab values.',
+    use: 'Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again) and returns before TabClose, which a DevTools toolbox moves with. The handover keeps a blank selected tab in the closing window so no adoption is its last tab. A pending tab is moved by state, which drops its custom tab values. It returns false for a private or Fission mismatch, a non-remote source tab (the twin is remote), a closing source tab, or a source tabbrowser whose window is closing; the handover rules out all but the last, which is only set once the last tab is already gone.',
     at: [FF.tabbrowser, 'aOtherTab\\.documentGlobal\\.close\\(\\)', 7391],
   },
   {
@@ -482,7 +477,7 @@ export const MEMBERS = [
     how: 'reads',
     probe: 'E',
     sites: ['handOverTabsBeforeClose'],
-    use: "SessionStore moves a tab's custom values to the adopting twin on TabOpen, so the handover value is written after adoptTab and a refused adoption (which removes the twin) takes them away: the mount takes the tab's state first. Restoring a pending tab's state without extData deletes them, so the mount copies them back.",
+    use: "SessionStore moves a tab's custom values to the adopting twin on TabOpen, so the handover value is written after adoptTab and a refused adoption (which removes the twin) takes them away. Restoring a pending tab's state without extData deletes them, so the mount copies them back.",
     at: [FF.sessionStore, 'this\\.#moveCustomTabValue\\(aEvent\\.detail\\.adoptedTab', 1349],
   },
   {
@@ -513,6 +508,15 @@ export const MEMBERS = [
     at: [FF.browserMain, '^window\\.onclose = WindowIsClosing;', 44],
   },
 
+  {
+    id: 'gFissionBrowser',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['findHandoverSurvivor'],
+    use: 'A window runs with Fission or without; swapBrowsersAndCloseOther refuses to swap a tab between the two, so a window in another mode is not chosen to take tabs.',
+    at: [FF.browserJs, '^var gFissionBrowser =', 689],
+  },
   {
     id: 'gDialogBox.isOpen',
     kind: 'member',
