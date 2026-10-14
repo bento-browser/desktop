@@ -613,8 +613,12 @@ opening an unwanted blank tab before the moved tabs arrive.
     calls `SessionSaver.run()`, unless the window closed or `Services.startup.attemptingQuit`
     is set (the quit writes the session itself). When the cap won, the write has gone ahead
     without the late tab's copy and `run()` has cancelled SessionStore's pending delayed
-    save and reset its interval, so nothing else would write it for up to 15 s: the survivor
-    writes once more after the late flushes settle plus one task, with the same guards. A
+    save and reset its interval, so nothing else would write it for up to 15 s: each flush
+    that settles after the cap gets a write of its own one timer task after it settles
+    (settles that land before that task share it), with the same guards. The follow-up is
+    per flush, not on all of them: waiting for the last one would keep a tab copied at 2.4 s
+    out of the file until a flush that may never settle. Nothing is armed while flushes are
+    outstanding (the cap timer is cleared, a follow-up timer only exists after a settle). A
     chain of closes ends in the last survivor's write, which holds the earlier windows'
     tabs. Source of
     truth: SessionStore in the parent process; persistence path:

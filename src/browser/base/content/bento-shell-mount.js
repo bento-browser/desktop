@@ -14574,9 +14574,10 @@
   // whose requests arrive before this window's next timer task share one write (the batch is
   // sealed by a timer, so a request from a promise reaction still joins); a chain of closes ends
   // in the last survivor, which holds the tabs of the earlier ones. A flush that has not settled
-  // after SESSION_SAVE_CAP_MS does not hold the write; the write then repeats once the
-  // outstanding flushes settle, because run() also resets SessionStore's own timer and would
-  // otherwise leave that tab's state out until the next interval.
+  // after SESSION_SAVE_CAP_MS does not hold the write. Since run() also resets SessionStore's own
+  // timer, each flush that settles after the cap then gets a write of its own, one timer task
+  // later (those that settle before that task share it), or that tab's state would stay out of
+  // the file until the next interval. A flush that never settles arms nothing.
   const SESSION_SAVE_CAP_MS = 2000;
   let sessionSaveFlushes = null;
   async function saveSessionAfterHandover(flushes) {
@@ -14587,19 +14588,38 @@
     sessionSaveFlushes = [...flushes];
     const nextTask = () => new Promise((resolve) => window.setTimeout(resolve));
     await nextTask();
-    const settled = Promise.allSettled(sessionSaveFlushes).then(() => true);
+    const batch = sessionSaveFlushes;
     sessionSaveFlushes = null;
+    const outstanding = new Set(batch);
+    let allIn;
+    const inTime = new Promise((resolve) => (allIn = resolve));
+    let afterCap = false;
+    let followUp = null;
+    const onSettled = (flush) => {
+      outstanding.delete(flush);
+      if (!afterCap) {
+        if (outstanding.size === 0) allIn(true);
+      } else {
+        followUp ??= nextTask().then(() => {
+          followUp = null;
+          return writeSessionAfterHandover();
+        });
+      }
+    };
+    for (const flush of batch) {
+      const done = () => onSettled(flush);
+      flush.then(done, done);
+    }
+    if (batch.length === 0) allIn(true);
     let capTimer;
     const capped = new Promise((resolve) => {
       capTimer = window.setTimeout(() => resolve(false), SESSION_SAVE_CAP_MS);
     });
-    const inTime = await Promise.race([settled, capped]);
+    const allInTime = await Promise.race([inTime, capped]);
     window.clearTimeout(capTimer);
     await nextTask();
-    await writeSessionAfterHandover();
-    if (inTime) return;
-    await settled;
-    await nextTask();
+    // From here on a settling flush is newer than this write's state: it gets a write too.
+    afterCap = !allInTime;
     await writeSessionAfterHandover();
   }
   async function writeSessionAfterHandover() {

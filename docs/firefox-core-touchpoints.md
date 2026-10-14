@@ -167,10 +167,11 @@ Use this shape for new or changed touchpoints:
   timer task of its own (requests that arrive before it, also from promise reactions,
   share the write), waits for the flushes (at most 2 s), then one task for
   SessionStore's copy, then calls `SessionSaver.run()` unless the window closed or a
-  quit has started. If the cap won, it writes then and once more after the late
-  flushes settle (plus one task, same guards), because `run()` cancels SessionStore's
-  pending delayed save and resets its interval. Fire and forget: the close never
-  waits for it. Nothing that must run may belong to the
+  quit has started. If the cap won, it writes then, and each flush that settles later
+  gets a write of its own one timer task after it settles (flushes that settle before
+  that task share it; same guards), because `run()` cancels SessionStore's pending
+  delayed save and resets its interval; a flush that never settles arms nothing and
+  holds back no other tab. Fire and forget: the close never waits for it. Nothing that must run may belong to the
   closing window: promise reactions and timers of a window that is being destroyed
   never run, which is also why the flush promises are the survivor's. Registry
   entries: `gBrowser.adoptTab`, `gDialogBox.isOpen` and
