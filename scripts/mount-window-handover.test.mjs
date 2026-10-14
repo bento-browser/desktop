@@ -321,7 +321,9 @@ function setup({
     order: (target) => target.gBrowser.tabs.filter((tab) => !tab.closing).map((tab) => tab.label),
     /** The same with an adopted tab named for the tab it was (the twin's label has a prime). */
     names: (target) =>
-      target.gBrowser.tabs.filter((tab) => !tab.closing).map((tab) => tab.label.replace("'", '')),
+      target.gBrowser.tabs
+        .filter((tab) => !tab.closing)
+        .map((tab) => tab.label.replaceAll("'", '')),
     of: (kind) => world.calls.filter(([name]) => name === kind),
   };
 }
