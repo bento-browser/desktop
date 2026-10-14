@@ -1,4 +1,4 @@
-From 50a5753fe5f15490fb0c4bb2f4c4af20fe69cc15 Mon Sep 17 00:00:00 2001
+From e493561dd6f82ed06530181e5340b3a3e570c0cf Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:41 +1000
 Subject: [PATCH] Use Bento accent token for infobars
@@ -8,10 +8,10 @@ Subject: [PATCH] Use Bento accent token for infobars
  1 file changed, 4 insertions(+), 1 deletion(-)
 
 diff --git a/toolkit/content/widgets/infobar.css b/toolkit/content/widgets/infobar.css
-index 1b3da79f89e860857011457a5c63dab3f678c679..983a5f4eded36b7076ab388eed213e165b83772c 100644
+index 7e01bd113c3eb0888aee1ab1d31ba5174c7acc3c..8134a4ec0aaa9a2d6fff6d96465952a6b02580d7 100644
 --- a/toolkit/content/widgets/infobar.css
 +++ b/toolkit/content/widgets/infobar.css
-@@ -61,7 +61,10 @@
+@@ -65,7 +65,10 @@
      color: var(--info-bar-text-color);
  
      &::before {

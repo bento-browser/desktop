@@ -1,4 +1,4 @@
-From bb3a31a345565338af8dd9bda08c2b32025b5156 Mon Sep 17 00:00:00 2001
+From 401a4740360e56e5f0afaaf967c8698bcbaa4cc2 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:42 +1000
 Subject: [PATCH] Add mach build hang guards
@@ -81,7 +81,7 @@ index 7325c8b4b8474571e616c21347163a6d41a367c8..5fb33cc49463763d477acac4a13c9708
          return self._metrics
  
 diff --git a/testing/mozbase/mozprocess/mozprocess/processhandler.py b/testing/mozbase/mozprocess/mozprocess/processhandler.py
-index fc68d4e6694d7e755c58b30c8b4c096ce9c41498..55af6afb80e5d59fabd8e1911930dbfd28bb4bee 100644
+index 60967649ae53a596cdf476959831d83c5fbdf3db..26fe1e611332132e915567c38d02c47851a8a56a 100644
 --- a/testing/mozbase/mozprocess/mozprocess/processhandler.py
 +++ b/testing/mozbase/mozprocess/mozprocess/processhandler.py
 @@ -98,7 +98,7 @@ class ProcessHandlerMixin:

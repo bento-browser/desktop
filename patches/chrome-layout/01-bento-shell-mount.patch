@@ -1,4 +1,4 @@
-From 54858ccd5efbbb95a80ff4fa905b93ef1da40611 Mon Sep 17 00:00:00 2001
+From 43b6dc7de2e8b38424a8d247eab036412a41e678 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome
@@ -74,7 +74,7 @@ index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb4
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
 diff --git a/browser/base/jar.mn b/browser/base/jar.mn
-index 783c67d397a541a0e78374dc93c930fbd8d2e7e7..fadf322c56fafe9895323f4e1a2664b2c0bf1beb 100644
+index b2b5db6040bfa4b0a6923b49669238191fcee1c4..3fe35d8a0dcddcaf469caed0e0c86aa64204ee4b 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
 @@ -47,6 +47,15 @@ browser.jar:
