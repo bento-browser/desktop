@@ -1,4 +1,4 @@
-From 2545320995e80ebf4d1517a9c98e0d08c0f1c7c7 Mon Sep 17 00:00:00 2001
+From 8e21d34691fa2d4af205fc59a3e250440327b357 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
@@ -40,10 +40,10 @@ index e7659a039baf965f02db7462378b16d303ef057a..f51a5be443548a71be1d56cc4e178a5a
    await BrowserTestUtils.removeTab(gBrowser.selectedTab);
  });
 diff --git a/browser/components/tabbrowser/content/tab-bar-visibility.js b/browser/components/tabbrowser/content/tab-bar-visibility.js
-index e21d3b673a593bfed6d8f83d4636e0467dfe63f4..3196a246d8a342c7a70923e3baf2c256ada88c1b 100644
+index c190942f706a539feda2f27ea0110cb9e1d34a80..2f59be3d9382b75f511fe48087e9481035b02d4d 100644
 --- a/browser/components/tabbrowser/content/tab-bar-visibility.js
 +++ b/browser/components/tabbrowser/content/tab-bar-visibility.js
-@@ -13,6 +13,9 @@ var TabBarVisibility = {
+@@ -14,6 +14,9 @@ var TabBarVisibility = {
      let hasVerticalTabs =
        !isSingleTabWindow &&
        Services.prefs.getBoolPref("sidebar.verticalTabs", false);
@@ -53,7 +53,7 @@ index e21d3b673a593bfed6d8f83d4636e0467dfe63f4..3196a246d8a342c7a70923e3baf2c256
  
      // When `gBrowser` has not been initialized, we're opening a new window and
      // assume only a single tab is loading.
-@@ -21,7 +24,9 @@ var TabBarVisibility = {
+@@ -22,7 +25,9 @@ var TabBarVisibility = {
      // To prevent tabs being lost, hiding the tabs toolbar should only work
      // when only a single tab is visible or tabs are displayed elsewhere.
      let hideTabsToolbar =

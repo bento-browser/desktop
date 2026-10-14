@@ -23,9 +23,11 @@ test('hosted ThinLTO option propagates from Firefox configure to rust.mk', () =>
   assert.match(patch, /\+set_config\("BENTO_RUST_LTO", depends_if\("BENTO_RUST_LTO"\)/);
 
   assert.match(patch, /diff --git a\/config\/makefiles\/rust\.mk b\/config\/makefiles\/rust\.mk/);
+  // Firefox 158 enables Rust LTO per library (RUST_LIBRARY_LTO) with a plain -Clto,
+  // which stays the fallback when the opt-in is absent.
   assert.match(
     patch,
-    /\+cargo_rustc_flags \+= \$\(if \$\(filter thin,\$\(BENTO_RUST_LTO\)\),-Clto=thin,/,
+    /\+cargo_rustc_flags \+= \$\(if \$\(filter thin,\$\(BENTO_RUST_LTO\)\),-Clto=thin,-Clto\)/,
   );
-  assert.match(patch, /-Clto\$\(if \$\(filter full,\$\(MOZ_LTO_RUST_CROSS\)\),=fat\)/);
+  assert.match(patch, /^-cargo_rustc_flags \+= -Clto$/m);
 });

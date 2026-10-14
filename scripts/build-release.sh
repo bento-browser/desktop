@@ -132,8 +132,12 @@ step "4/5 Packaging artifact"
 case "$PLATFORM" in
   macos)
     # Remove stale macOS packages before packaging so the collected artifact
-    # always comes from this build's configured Bento release version.
-    find "$OBJ_DIST" -maxdepth 2 -name 'bento-*.dmg' -delete 2>/dev/null || true
+    # always comes from this build's configured Bento release version. A dev
+    # package (.mac.tar) left in the same object dir would also fail
+    # artifacts:check, which binds every TAR to the current BuildID.
+    find "$OBJ_DIST" -maxdepth 2 \
+      \( -name 'bento-*.dmg' -o -name 'bento-*.mac.tar' \) \
+      -delete 2>/dev/null || true
     ;;
   linux)
     # Remove stale Linux packages before packaging so the collected artifact

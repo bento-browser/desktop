@@ -1,37 +1,40 @@
-From 2b246841279700e4f65e7e835f176e6a90a51329 Mon Sep 17 00:00:00 2001
+From 345055f96750ea3d06f91e30c288509d8648ac5e Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:46 +1000
 Subject: [PATCH] Preserve Bento behavior when closing the last tab
 
 ---
- browser/components/tabbrowser/Tabbrowser.sys.mjs | 16 ++++++++++++----
- 1 file changed, 12 insertions(+), 4 deletions(-)
+ .../components/tabbrowser/Tabbrowser.sys.mjs  | 19 ++++++++++++++-----
+ 1 file changed, 14 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-index 7e2a28ba2569fa55d98055db461c445852344338..c239b5c2e891b81842562a159e6ce44e8e18b888 100644
+index 908c6f2533c1a7ca7af89f42cfc69b131ecebfa8..5703e03e19aeae84a3d1457cd423f16112724fd9 100644
 --- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
 +++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-@@ -6106,11 +6106,16 @@ export class Tabbrowser {
+@@ -6132,12 +6132,18 @@ export class Tabbrowser {
        metricsContext,
      } = {}
    ) {
 -    // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
 -    // can be considered equivalent to closing the window.
-+    // Bento: hardcoded false — bento-tools' tabs.onRemoved handler is the
-+    // sole authority on last-tab close behavior. When the last tab in a
-+    // workspace is removed, the handler promotes a panel into the main
-+    // slot, deletes the workspace and switches to the next, or closes
-+    // the window. Letting Firefox short-circuit to closeWindow here
-+    // pre-empts that decision. Replaces:
++    // Bento: the default is hardcoded false (an explicit
++    // closeWindowWithLastTab from the caller is still honored).
++    // bento-tools' tabs.onRemoved handler is the sole authority on
++    // last-tab close behavior. When the last tab in a workspace is
++    // removed, the handler promotes a panel into the main slot, deletes
++    // the workspace and switches to the next, or closes the window.
++    // Letting Firefox short-circuit to closeWindow here pre-empts that
++    // decision. Replaces the default:
 +    //   Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
      if (
        this.tabs.length == tabs.length &&
--      Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
-+      false
+-      (closeWindowWithLastTab ??
+-        Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab"))
++      (closeWindowWithLastTab ?? false)
      ) {
        this.documentGlobal.closeWindow(
          true,
-@@ -6554,7 +6559,10 @@ export class Tabbrowser {
+@@ -6594,7 +6600,10 @@ export class Tabbrowser {
      var newTab = false;
      if (this.#isLastTabInWindow(aTab)) {
        closeWindow =
