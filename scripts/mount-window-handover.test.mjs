@@ -51,8 +51,19 @@ class FakeTab {
     this.page = spec.isEmpty
       ? { url: 'about:blank', blank: true }
       : { url: spec.url ?? `https://${spec.label}.example.test/`, blank: false, label: spec.label };
-    // A pending (lazy) browser is not connected.
+    // A pending (lazy) browser is not connected and has no frame loader. Otherwise
+    // requestTabStateFlush is the prototype's method: a promise of the tab's window, settled by
+    // the test through settleFlush.
+    const loader = this.pending
+      ? null
+      : Object.create({
+          requestTabStateFlush: () =>
+            new win.Promise((resolve, reject) => {
+              this.settleFlush = { resolve, reject };
+            }),
+        });
     this.linkedBrowser = {
+      frameLoader: loader,
       isConnected: !this.pending,
       // Settings and other parent-process pages are not remote.
       isRemoteBrowser: spec.remote ?? true,
@@ -169,6 +180,9 @@ class FakeTabbrowser {
     }
     tab.closing = true;
     this.world.calls.push(['TabClose', tab.label, adoptedByTab?.label]);
+    // SessionStore's move handler flushes the old browser (TabStateFlusher.flush) on TabClose.
+    const flush = adoptedByTab && tab.linkedBrowser.frameLoader?.requestTabStateFlush();
+    if (flush) this.world.flushes.push({ label: tab.label, flush, tab });
     return true;
   }
 }
@@ -213,7 +227,7 @@ function setup({
   hooks = {},
   closeId = 2,
 } = {}) {
-  const world = { calls: [], hooks };
+  const world = { calls: [], flushes: [], hooks };
   world.sessionStore = makeSessionStore(world);
   const timers = [];
 
@@ -225,6 +239,8 @@ function setup({
       toolbar: { visible: true },
       gDialogBox: { isOpen: false },
       gFissionBrowser: true,
+      // Each window's own Promise: what a promise created in that window is an instance of.
+      Promise: class extends Promise {},
       setTimeout: (fn) => timers.push(fn),
       close() {
         this.closeCalls += 1;
@@ -289,6 +305,7 @@ function setup({
     win,
     survivors,
     calls: world.calls,
+    flushes: world.flushes,
     timers,
     sandbox,
     tabByLabel,
@@ -752,4 +769,67 @@ test('a pending tab gets its custom values back, a live one keeps the ones Sessi
     w.calls.findIndex(([kind]) => kind === 'state') <
       w.calls.findIndex(([kind]) => kind === 'adopt'),
   );
+});
+
+test('the flush SessionStore waits on for a moved tab is a promise of the surviving window', async () => {
+  const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }, { label: 'c' }] });
+
+  w.close();
+
+  // SessionStore copies the old browser's history to the twin after this settles; a promise of
+  // the closing window would never run its reactions, so the copy would be lost.
+  assert.deepEqual(
+    w.flushes.map(({ label }) => label),
+    ['a', 'b', 'c'],
+  );
+  for (const { flush } of w.flushes) {
+    assert.ok(flush instanceof w.survivors[0].Promise);
+    assert.ok(!(flush instanceof w.win.Promise));
+  }
+  // It settles with the original, either way, and not before.
+  const [first, second] = w.flushes;
+  const pending = Symbol('pending');
+  assert.equal(await Promise.race([first.flush, Promise.resolve(pending)]), pending);
+  first.tab.settleFlush.resolve('flushed');
+  second.tab.settleFlush.reject(new Error('no frame'));
+  assert.equal(await first.flush, 'flushed');
+  await assert.rejects(second.flush, /no frame/);
+});
+
+test('the old frame loader is left as it was, also when the adoption is refused or fails', () => {
+  for (const hooks of [
+    {},
+    { refuse: (tab) => tab.label === 'b' },
+    {
+      swapDocShells: (source) => {
+        if (source.label === 'b') throw new Error('swapDocShells failed');
+      },
+    },
+  ]) {
+    const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }, { label: 'c' }], hooks });
+    const loaders = ['a', 'b', 'c'].map((label) => w.tabByLabel(label).linkedBrowser.frameLoader);
+
+    w.close();
+
+    for (const loader of loaders) {
+      assert.equal(Object.hasOwn(loader, 'requestTabStateFlush'), false);
+      assert.equal(typeof loader.requestTabStateFlush, 'function');
+    }
+  }
+});
+
+test('a lazy tab has no frame loader to hand a promise out of', () => {
+  const w = setup({ tabs: [{ label: 'p', pending: true }, { label: 'b' }] });
+
+  w.close();
+
+  assert.deepEqual(
+    w.of('adopt').map(([, label]) => label),
+    ['p', 'b'],
+  );
+  assert.deepEqual(
+    w.flushes.map(({ label }) => label),
+    ['b'],
+  );
+  assert.equal(w.of('error').length, 0);
 });
