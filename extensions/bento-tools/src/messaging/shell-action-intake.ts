@@ -9,26 +9,91 @@ import type { Action } from '@shared/protocol';
 
 interface WindowsApi {
   get(windowId: number): Promise<unknown>;
+  getAll(): Promise<Array<{ id?: number }>>;
+  onCreated: { addListener(listener: (window: { id?: number }) => void): void };
   onRemoved: { addListener(listener: (windowId: number) => void): void };
 }
 
 /**
- * Remembers windows confirmed to exist so only the first message per window
- * pays for browser.windows.get. Window ids are not reused within a session, so
- * a removed id is remembered for good: a lookup that was already pending when
- * the window closed must not resolve into "live" again, or a queued
- * shell/hello could reassign workspace ownership to the closed window.
+ * How long a message for a window that no event or listing has announced waits before
+ * `windows.get` is asked about it. A window announces itself only once it has a tab
+ * browser, and a slow start (first window of a launch, a busy machine) can take several
+ * seconds; dropping the window's first message, its `shell/hello`, leaves it without a
+ * workspace for good because the shell sends it once.
  */
-export function createWindowRegistry(api: WindowsApi) {
+const WINDOW_ANNOUNCE_TIMEOUT_MS = 20_000;
+
+/**
+ * Remembers which windows exist. Window ids are not reused within a session, so a removed
+ * id is remembered for good: a lookup that was already pending when the window closed must
+ * not resolve into "live" again, or a queued shell/hello could reassign workspace ownership
+ * to the closed window.
+ *
+ * A window is live once `windows.onCreated` or the listing at startup names it. Both only
+ * name windows Firefox has finished loading. `windows.get` is not used on a window that
+ * has not been announced yet: Firefox accepts an id for a window that is still starting
+ * and then throws inside its own code while it builds the result
+ * (`this.window.gBrowser is undefined`), because the shell frame of a new window can
+ * send its first message before the window has a tab browser. Such a message waits for
+ * the announcement instead (no probing in between: a probe of a window that is still
+ * starting fails, and logs an error in Firefox, for an answer the announcement gives for
+ * free) and is probed once only when none comes within `announceTimeoutMs`.
+ */
+export function createWindowRegistry(
+  api: WindowsApi,
+  announceTimeoutMs = WINDOW_ANNOUNCE_TIMEOUT_MS,
+) {
   const live = new Set<number>();
   const removed = new Set<number>();
+  const waiting = new Map<number, Set<() => void>>();
+  const wake = (windowId: number) => {
+    for (const resume of waiting.get(windowId) ?? []) resume();
+    waiting.delete(windowId);
+  };
+  api.onCreated.addListener((window) => {
+    if (typeof window.id !== 'number' || removed.has(window.id)) return;
+    live.add(window.id);
+    wake(window.id);
+  });
   api.onRemoved.addListener((windowId) => {
     live.delete(windowId);
     removed.add(windowId);
+    wake(windowId);
   });
+  // Windows that finished loading before the listener existed never fire onCreated.
+  const listed = api
+    .getAll()
+    .then((windows) => {
+      for (const window of windows) {
+        if (typeof window.id === 'number' && !removed.has(window.id)) live.add(window.id);
+      }
+    })
+    .catch(() => undefined);
+
+  const announced = (windowId: number) =>
+    new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        const resumes = waiting.get(windowId);
+        resumes?.delete(done);
+        if (resumes?.size === 0) waiting.delete(windowId);
+        resolve();
+      };
+      const timer = setTimeout(done, announceTimeoutMs);
+      const resumes = waiting.get(windowId) ?? new Set();
+      resumes.add(done);
+      waiting.set(windowId, resumes);
+    });
+
   return {
     isLive: (windowId: number) => live.has(windowId),
+    /** Windows with a message still waiting for their announcement. */
+    waitingWindows: () => waiting.size,
     async confirm(windowId: number): Promise<boolean> {
+      if (live.has(windowId)) return true;
+      if (removed.has(windowId)) return false;
+      await listed;
+      if (!live.has(windowId) && !removed.has(windowId)) await announced(windowId);
       if (live.has(windowId)) return true;
       if (removed.has(windowId)) return false;
       try {

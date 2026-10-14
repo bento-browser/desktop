@@ -311,7 +311,24 @@ can reject `sessionStorage` writes; in that case the resumable session tuple is
 stored as serialized data on the owning tab's browser element, which preserves
 per-tab reload identity without sharing it with another Settings tab. A resumed
 hello rotates the token and resets that new document generation's replay
-sequence before authenticated requests begin.
+sequence before authenticated requests begin. The tools service binds each
+session to the browser window it was issued for and answers a request from
+another window with `invalid_session`. A Settings tab torn out or dragged to
+another window keeps its document and the session it holds in memory, but the
+document's top chrome window changes, so every later request was refused and the
+page never recovered. `BentoNativeModel.ensureSession` therefore remembers the
+window its live session was issued in (`hostChromeWindowId`) and says hello
+again, before sending, whenever the document's window differs; the service
+answers a hello that names another window with a fresh session for the same
+client, so operations the client owns stay reachable. A hello answers for the
+window it was sent from, and the tab can move while one is in flight (requests
+share the pending hello), so `ensureSession` checks the window again after each
+hello and repeats it, up to `MAX_HELLO_ATTEMPTS`, before it sends anything. When
+the attempts run out it rejects with `invalid_session` instead of sending a
+token the service would refuse. Do not reuse a session across windows by
+relaxing the service's window check. `scripts/native-preferences-model.test.mjs`
+runs the model extracted from patch 15 against a fake service with that window
+binding.
 
 When `replaceExisting` is enabled, import must create the replacement workspaces
 and tabs before removing old workspace tabs. Removing old tabs first can close
