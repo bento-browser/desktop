@@ -94,15 +94,14 @@
   // @bento-firefox-compat:begin
   //
   // Runtime half of the firefox-compat check; scripts/firefox-compat-registry.mjs
-  // holds the use, call sites, and Firefox locators, and a test keeps this list
-  // equal to its runtime entries. After delayed startup each window probes the
-  // list once and logs '[bento-compat] missing <id>', never throwing or changing
-  // behaviour. The probe is passive: it reads descriptors and never calls an
-  // accessor. A member found anywhere on the prototype chain, data or accessor,
-  // is present; an owner that is still a lazy accessor is deferred, and a module
-  // is imported only once Cu.isESModuleLoaded says it is loaded. It sits above
-  // the patch sites (they call bentoCompatNoteNative);
-  // window.BentoFirefoxCompat.check() re-runs it.
+  // holds the use, sites and locators, and a test keeps this list equal to its
+  // runtime entries. After delayed startup each window probes the list once and
+  // logs '[bento-compat] missing <id>', never throwing or changing behaviour. The
+  // probe is passive: it reads descriptors and never calls an accessor. A member
+  // anywhere on the prototype chain is present; an owner that is still a lazy
+  // accessor is deferred, and a module is imported only once Cu.isESModuleLoaded
+  // says it is loaded. It sits above the patch sites (they call
+  // bentoCompatNoteNative); window.BentoFirefoxCompat.check() re-runs it.
   const BENTO_COMPAT_PROBES = {
     // owner: members. 'name()' is a method (a function when a data property);
     // the rest need only exist, accessors included. '' is the window.
@@ -136,7 +135,7 @@
       'Element.prototype': ['moveBefore()'],
       PlacesUIUtils: ['lastContextMenuTriggerNode'],
     },
-    // ids Bento assigns or shadows on the instance: looked up on the prototype
+    // ids Bento shadows on the instance: looked up on the prototype
     proto: ['MozTabbrowserTab.splitview', 'gBrowser.tabpanels.splitViewPanels'],
     // ids in the browser window (identity-popup waits in a template, so no)
     elements: [
@@ -154,6 +153,7 @@
       'resource:///modules/MigrationUtils.sys.mjs': 'MigrationUtils',
       'resource:///modules/ExtensionsUI.sys.mjs': 'ExtensionsUI',
       'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs': 'SessionStore',
+      'moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs': 'SessionSaver',
       'resource://gre/modules/Extension.sys.mjs': 'Management',
       'resource://gre/modules/ExtensionParent.sys.mjs': 'ExtensionParent',
       'chrome://devtools-startup/content/DevToolsShim.sys.mjs': 'DevToolsShim',
@@ -14518,8 +14518,9 @@
   // state, history included, to the twin. That flush promise belongs to this window, and
   // nothing chained on it runs once the window is gone (the close that follows), so the copy
   // never happened and the adopted tab had no history in SessionStore until it navigated. For
-  // the call the old frame loader hands out a promise of the survivor that settles with it.
-  function adoptTabInto(survivor, tab, SessionStore) {
+  // the call the old frame loader hands out a promise of the survivor that settles with it, and
+  // adds it to `flushes` for the session save that follows (saveSessionAfterHandover).
+  function adoptTabInto(survivor, tab, SessionStore, flushes) {
     const dest = survivor.gBrowser;
     const loader = tab.linkedBrowser.frameLoader;
     const requestFlush = loader?.requestTabStateFlush;
@@ -14535,7 +14536,11 @@
       if (requestFlush) {
         loader.requestTabStateFlush = () => {
           const flushed = requestFlush.call(loader);
-          return new survivor.Promise((resolve, reject) => flushed.then(resolve, reject));
+          const survivorFlush = new survivor.Promise((resolve, reject) =>
+            flushed.then(resolve, reject),
+          );
+          flushes.push(survivorFlush);
+          return survivorFlush;
         };
       }
       adopted = dest.adoptTab(tab, {
@@ -14557,6 +14562,76 @@
     }
     return adopted;
   }
+
+  // The survivor's half of a handover: write the session once SessionStore has copied the
+  // adopted tabs' state to their new browsers. SessionStore only writes 2 to 15 s after a close
+  // (SessionSaver.runDelayed) and a tab's history reaches the parent up to 15 s after it
+  // changes, so a crash just after a handover would lose every adopted tab that an earlier write
+  // did not hold. The copy is a reaction to the flush promises adoptTabInto collected, so the
+  // write waits for them and one more task. Called by the closing window on its survivor
+  // (window.__bentoSaveSessionAfterHandover): nothing of the closing window runs after the
+  // close, so the wait and the write must be this window's promises and timers. Handovers
+  // whose requests arrive before this window's next timer task share one write (the batch is
+  // sealed by a timer, so a request from a promise reaction still joins); a chain of closes ends
+  // in the last survivor, which holds the tabs of the earlier ones. A flush that has not settled
+  // after SESSION_SAVE_CAP_MS does not hold the write. Since run() also resets SessionStore's own
+  // timer, each flush that settles after the cap then gets a write of its own, one timer task
+  // later (those that settle before that task share it), or that tab's state would stay out of
+  // the file until the next interval. A flush that never settles arms nothing.
+  const SESSION_SAVE_CAP_MS = 2000;
+  let sessionSaveFlushes = null;
+  async function saveSessionAfterHandover(flushes) {
+    if (sessionSaveFlushes) {
+      sessionSaveFlushes.push(...flushes);
+      return;
+    }
+    sessionSaveFlushes = [...flushes];
+    const nextTask = () => new Promise((resolve) => window.setTimeout(resolve));
+    await nextTask();
+    const batch = sessionSaveFlushes;
+    sessionSaveFlushes = null;
+    const outstanding = new Set(batch);
+    let allIn;
+    const inTime = new Promise((resolve) => (allIn = resolve));
+    let afterCap = false;
+    let followUp = null;
+    const onSettled = (flush) => {
+      outstanding.delete(flush);
+      if (!afterCap) {
+        if (outstanding.size === 0) allIn(true);
+      } else {
+        followUp ??= nextTask().then(() => {
+          followUp = null;
+          return writeSessionAfterHandover();
+        });
+      }
+    };
+    for (const flush of batch) {
+      const done = () => onSettled(flush);
+      flush.then(done, done);
+    }
+    if (batch.length === 0) allIn(true);
+    let capTimer;
+    const capped = new Promise((resolve) => {
+      capTimer = window.setTimeout(() => resolve(false), SESSION_SAVE_CAP_MS);
+    });
+    const allInTime = await Promise.race([inTime, capped]);
+    window.clearTimeout(capTimer);
+    await nextTask();
+    // From here on a settling flush is newer than this write's state: it gets a write too.
+    afterCap = !allInTime;
+    await writeSessionAfterHandover();
+  }
+  async function writeSessionAfterHandover() {
+    // A quit writes the session itself.
+    if (window.closed || Services.startup.attemptingQuit) return;
+    try {
+      await getSessionSaver()?.run();
+    } catch (err) {
+      console.warn('[bento-shell-mount] session save after a window handover failed:', err);
+    }
+  }
+  window.__bentoSaveSessionAfterHandover = saveSessionAfterHandover;
 
   function handOverTabsBeforeClose(event) {
     if (event.target !== window || event.defaultPrevented || handingOverTabs) return;
@@ -14605,9 +14680,12 @@
       console.warn('[bento-shell-mount] no tab holds the window open, nothing handed over');
       return;
     }
+    const flushes = [];
+    let adoptedCount = 0;
     for (const tab of keep) {
-      const adopted = adoptTabInto(survivor, tab, SessionStore);
+      const adopted = adoptTabInto(survivor, tab, SessionStore, flushes);
       if (!adopted) continue;
+      adoptedCount += 1;
       // Hops tools can no longer match, or that claim to be from the future, are dropped as the
       // next one is appended: tools only reads this value.
       const now = Date.now();
@@ -14616,6 +14694,13 @@
       ).filter((hop) => hop.at <= now && now - hop.at <= HANDOVER_TTL_MS);
       hops.push({ from, to, at: now });
       SessionStore.setCustomTabValue(adopted, HANDOVER_SESSION_KEY, JSON.stringify(hops));
+    }
+    if (adoptedCount === 0) return;
+    // Fire and forget: the survivor runs the save, this window is gone in a moment.
+    try {
+      survivor.__bentoSaveSessionAfterHandover(flushes);
+    } catch (err) {
+      console.warn('[bento-shell-mount] session save after a window handover failed:', err);
     }
   }
 
@@ -16263,6 +16348,16 @@
       console.warn('[bento-shell-mount] SessionStore import failed:', err);
     }
     return __sessionStoreModule;
+  }
+  function getSessionSaver() {
+    try {
+      return ChromeUtils.importESModule(
+        'moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs',
+      ).SessionSaver;
+    } catch (err) {
+      console.warn('[bento-shell-mount] SessionSaver import failed:', err);
+      return null;
+    }
   }
   function getTabTracker() {
     if (__tabTrackerModule) return __tabTrackerModule;

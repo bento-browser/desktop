@@ -147,19 +147,41 @@ Use this shape for new or changed touchpoints:
   the twin once `TabStateFlusher.flush` settles, and that flush promise comes from
   `frameLoader.requestTabStateFlush()` and belongs to the closing window, so
   `adoptTabInto` shadows that method on the old frame loader for the call with one
-  that returns a promise of the surviving window), `browser.getInPermitUnload`
+  that returns a promise of the surviving window; SessionStore's own write comes 2 to
+  15 s after a close (`SessionStore` `#onClose` to `SessionSaver.runDelayed`: not
+  sooner than 2 s nor than the last write plus `browser.sessionstore.interval`), and a
+  tab's history reaches the parent cache up to one interval after it changes, so a
+  crash right after a handover would lose every adopted tab that no earlier write
+  held, which the previous parking of the tabs' URLs used to cover),
+  `SessionSaver.run()` (`moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs`:
+  writes the session at once, also during shutdown), `browser.getInPermitUnload`
   and `gDialogBox.isOpen` (a window in a close prompt neither hands over nor takes
   tabs), `BrowserElementParent` (a tab's `window.close()` reaches the window as a
   non-cancelable `DOMWindowClose` from the browser element), the `window.onclose`
   handler `WindowIsClosing`, and the public `Services.startup.attemptingQuit`
   (`nsAppStartup::Quit` sets it before `CloseAllWindows`; `shuttingDown` is still
-  false then). Registry entries: `gBrowser.adoptTab`, `gDialogBox.isOpen` and
+  false then). After the loop, when at least one tab was adopted, the closing window
+  calls `window.__bentoSaveSessionAfterHandover(flushes)` on the survivor
+  (`saveSessionAfterHandover`, defined by the survivor's own mount instance), with
+  the survivor promises `adoptTabInto` collected. The survivor seals the batch in a
+  timer task of its own (requests that arrive before it, also from promise reactions,
+  share the write), waits for the flushes (at most 2 s), then one task for
+  SessionStore's copy, then calls `SessionSaver.run()` unless the window closed or a
+  quit has started. If the cap won, it writes then, and each flush that settles later
+  gets a write of its own one timer task after it settles (flushes that settle before
+  that task share it; same guards), because `run()` cancels SessionStore's pending
+  delayed save and resets its interval; a flush that never settles arms nothing and
+  holds back no other tab. Fire and forget: the close never waits for it. Nothing that must run may belong to the
+  closing window: promise reactions and timers of a window that is being destroyed
+  never run, which is also why the flush promises are the survivor's. Registry
+  entries: `gBrowser.adoptTab`, `gDialogBox.isOpen` and
   `MozBrowser.prototype.getInPermitUnload` (runtime probes), `gFissionBrowser`,
   `swapBrowsersAndCloseOther closeWindow`, `SessionStore adoptedTab custom values`,
   `TabStateFlusher.flush requestTabStateFlush`, `SessionStore onMoveToNewWindow flush`,
   `DOMWindowClose`, `BrowserElementParent DOMWindowClose` and
-  `window.onclose WindowIsClosing` (engine only), plus
-  `FrameLoader.prototype.requestTabStateFlush` (runtime probe). `windowUtils.isInModalState()` was
+  `window.onclose WindowIsClosing`, `SessionSaver.run` (engine only), plus
+  `FrameLoader.prototype.requestTabStateFlush` and the `SessionSaver.sys.mjs` module
+  (runtime probes). `windowUtils.isInModalState()` was
   checked and not used: it covers content windows opened modal and the debugger
   start, not the window-modal closing-tabs warning (shown through `gDialogBox`) or
   the content-modal beforeunload prompts. Firefox update
@@ -175,7 +197,10 @@ Use this shape for new or changed touchpoints:
   state some other way), the shadow is harmless but inert and adopted tabs lose their
   session history again, with no error: check
   `JSON.parse(SessionStore.getTabState(tab)).entries.length` of a handed-over tab
-  against its history. Individual
+  against its history; if `SessionSaver.run` is renamed or stops writing at once, the
+  save logs `session save after a window handover failed` (or writes nothing) and a
+  crash within 2 to 15 s of a handover loses the tabs again: check
+  `sessionstore-backups/recovery.jsonlz4` right after a close. Individual
   adoption does not keep native tab-group membership or a multiselection, which
   Bento does not use. Regression checks: with two workspaces, give a tab of the
   second workspace unique state (form text), open a second window so it claims that
@@ -191,8 +216,11 @@ Use this shape for new or changed touchpoints:
   third open: workspace, folder and panels survive both hops. From a page opened by
   `window.open()` call `window.close()` with two windows open: only that tab closes.
   Press Cmd+Q right after closing a window: the session restores both windows' tabs,
-  the handed-over ones with their history (and after a `kill -9` 45 s after a
-  handover, from the last periodic save).
+  the handed-over ones with their history. Open or navigate tabs in a second window,
+  close it, and `kill -9` Bento 0.3 s and 3 s later (a test profile only): the next
+  launch restores every handed-over tab once, with its history, workspace, folder and
+  pin; `recovery.jsonlz4` is written about 50 ms after the close for a few tabs
+  (about 300 ms for 48), before any natural write.
   A tab with a beforeunload prompt answered "Stay" on the close leaves the window
   untouched, and closing it again while the prompt is up hands nothing over.
 - Firefox 157.0.1 review (2026-10-12): `tabbrowser.js` is now the ES module
@@ -1963,6 +1991,8 @@ below is generated; edit the registry, then run
 | `FrameLoader.prototype.requestTabStateFlush` | method (runtime) | adoptTab makes SessionStore flush the old browser and copy its cached state to the twin, and the flush promise belongs to the closing window, so the copy never ran. For the adoptTab call the old frame loader shadows this method with one that returns a promise of the surviving window settling with the original, and the shadow is deleted afterwards (the prototype's method is not touched). | `adoptTabInto` | `dom/chrome-webidl/FrameLoader.webidl:70` |
 | `TabStateFlusher.flush requestTabStateFlush` | source (engine only) | TabStateFlusher.flush(browser) takes the promise from browser.frameLoader.requestTabStateFlush() and races it, which is why handing out a promise of another window from there reaches SessionStore's move handler. | `adoptTabInto` | `browser/components/sessionstore/TabStateFlusher.sys.mjs:79` |
 | `SessionStore onMoveToNewWindow flush` | source (engine only) | On TabClose with adoptedBy, SessionStore flushes the old browser and, in the promise's then, copies its cached tab state (session history) to the adopting twin. A flush that never settles leaves the adopted tab without history in SessionStore until it navigates. | `adoptTabInto` | `browser/components/sessionstore/SessionStore.sys.mjs:2919` |
+| `moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs` | module (runtime) | The write behind a handover: SessionSaver.run() saves the session at once (SessionStore itself waits 2 to 15 s after a close). | `getSessionSaver` | `browser/components/sessionstore/SessionSaver.sys.mjs:55` |
+| `SessionSaver.run` | source (engine only) | The only call that writes the session now. After a window handover the surviving window calls it once SessionStore has copied the adopted tabs state, so a crash seconds after the close does not lose tabs that no earlier write held. Called during shutdown it still writes, so Bento skips it once a quit has started. | `saveSessionAfterHandover` | `browser/components/sessionstore/SessionSaver.sys.mjs:59` |
 | `DOMWindowClose` | source (engine only) | Chrome-only event the window receives before a script close (window.close(), windows.remove, Cmd+Shift+W after WindowIsClosing) tears it down, and on a quit. Nothing after it can cancel the close once it passes, so the window's live tabs are handed to a window that stays here. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `dom/base/nsGlobalWindowOuter.cpp:6096` |
 | `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab). | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
 | `window.onclose WindowIsClosing` | source (engine only) | The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `browser/base/content/browser-main.js:44` |

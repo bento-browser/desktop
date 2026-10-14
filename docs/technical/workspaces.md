@@ -595,6 +595,45 @@ opening an unwanted blank tab before the moved tabs arrive.
     handed-over tab's `JSON.parse(SessionStore.getTabState(tab)).entries.length` equals
     its history count without a navigation, and a quit right after restores each tab
     once in window 1 with its history.
+  - Session write after a handover. A close only schedules SessionStore's write
+    (`#onClose` to `SessionSaver.runDelayed`: not sooner than 2 s nor than the last write
+    plus `browser.sessionstore.interval`, 15 s), and a tab's history reaches the parent
+    cache up to one interval after it changes (`SessionStoreListener`). Before the
+    handover, tools parked the closing window's tab URLs, which a crash relaunch
+    restored; the handover skips parking, so a `kill -9` or crash seconds after a close
+    lost every adopted tab that no earlier write held (tabs opened or navigated in the
+    last ~15 s). `saveSessionAfterHandover` (mount script) closes the gap: when at least
+    one tab was adopted, the closing window calls
+    `survivor.__bentoSaveSessionAfterHandover(flushes)` with the survivor-realm flush
+    promises `adoptTabInto` collected (the ones SessionStore's copy waits on). The
+    survivor seals the batch in a timer task of its own, so requests that arrive before it
+    (also ones started from a promise reaction, as `w1.close(); then(() => w2.close())`)
+    share one write, then waits for the flushes (at most 2 s, so a flush that never settles
+    cannot hold the write), then one task for the copy, which is a reaction to them, then
+    calls `SessionSaver.run()`, unless the window closed or `Services.startup.attemptingQuit`
+    is set (the quit writes the session itself). When the cap won, the write has gone ahead
+    without the late tab's copy and `run()` has cancelled SessionStore's pending delayed
+    save and reset its interval, so nothing else would write it for up to 15 s: each flush
+    that settles after the cap gets a write of its own one timer task after it settles
+    (settles that land before that task share it), with the same guards. The follow-up is
+    per flush, not on all of them: waiting for the last one would keep a tab copied at 2.4 s
+    out of the file until a flush that may never settle. Nothing is armed while flushes are
+    outstanding (the cap timer is cleared, a follow-up timer only exists after a settle). A
+    chain of closes ends in the last survivor's write, which holds the earlier windows'
+    tabs. Source of
+    truth: SessionStore in the parent process; persistence path:
+    `sessionstore-backups/recovery.jsonlz4`. The write runs after the close has returned:
+    collecting the state took about 1 ms for 3 and for 48 tabs, and the file was complete
+    about 50 ms after the close for 3 tabs and 260 to 380 ms for 48 (the close itself takes
+    about 240 ms there; the rest is the content-process flushes). Pitfalls: (1) called straight after
+    `close()` it writes before the copy and saves no adopted tab; (2) the wait and the
+    call must be the survivor's: promise reactions and timers of the closing window never
+    run once it is torn down, so the closing window only calls into the survivor and
+    holds nothing (no timer, no `then`); (3) do not hold or delay the close for it; (4)
+    `SessionSaver.run()` also writes during shutdown, hence the quit check. Manual check:
+    in a test profile open and navigate tabs in a second window, close it, `kill -9`
+    0.3 s and 3 s later: the next launch restores each handed-over tab once, with history,
+    workspace, folder and pin.
   - Close prompts. `permitUnload` throws "already running" for a tab that is already
     being asked, `CanCloseWindow` does not catch it, and a close that threw there goes
     ahead, so a close repeated while a beforeunload prompt is up reaches the handler
