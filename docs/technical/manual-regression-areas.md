@@ -65,7 +65,7 @@ When changing core functionality, manually verify at least the affected subset:
   positions restored;
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
-  version, for example `157.0.1`) and no `[bento-compat] missing` lines.
+  version, for example `158.0`) and no `[bento-compat] missing` lines.
 
 If a regression touches these areas, record the cause and fix in this document
 or in the relevant feature section before closing the task.

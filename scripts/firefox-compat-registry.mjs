@@ -52,7 +52,7 @@
 //           engine tree.
 //   reg     optional [file, regex] proving a resource:// module is registered.
 
-export const BASELINE = '157.0.1';
+export const BASELINE = '158.0';
 
 const FF = {
   tabbrowser: 'browser/components/tabbrowser/Tabbrowser.sys.mjs',
@@ -139,7 +139,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['attachTabSelectListener'],
     use: 'No-ops while split view is active so Firefox does not deactivate panel docShells.',
-    at: [FF.tabbrowser, '^\\s+on_visibilitychange\\(', 9257],
+    at: [FF.tabbrowser, '^\\s+on_visibilitychange\\(', 9314],
   },
   {
     id: 'gBrowser._findTabToBlurTo',
@@ -149,7 +149,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['attachTabSelectListener'],
     use: 'Excludes panel and other-workspace tabs when Firefox picks the next selected tab.',
-    at: [FF.tabbrowser, '^\\s+_findTabToBlurTo\\(', 7013],
+    at: [FF.tabbrowser, '^\\s+_findTabToBlurTo\\(', 7053],
   },
   {
     id: 'gBrowser.insertBrowser',
@@ -158,7 +158,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['materializePanelTab'],
     use: 'Materializes restored pending panel tabs without selecting them (public since 157; _insertBrowser before).',
-    at: [FF.tabbrowser, '^\\s+insertBrowser\\(', 3245],
+    at: [FF.tabbrowser, '^\\s+insertBrowser\\(', 3241],
   },
   {
     id: 'MozTabbrowserTab.isEmpty',
@@ -199,7 +199,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['reconcilePanelsSplitView'],
     use: 'Lays the main tab and panel tabs into tabpanels as split-view panels.',
-    at: [FF.tabbrowser, '^\\s+showSplitViewPanels\\(', 4090],
+    at: [FF.tabbrowser, '^\\s+showSplitViewPanels\\(', 4088],
   },
   {
     id: 'gBrowser.activeSplitView',
@@ -208,7 +208,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['patchPopupNotificationsForSplitView'],
     use: 'Getter over the private #activeSplitView field; lists browsers that count as visible.',
-    at: [FF.tabbrowser, '^\\s+get activeSplitView\\(', 484],
+    at: [FF.tabbrowser, '^\\s+get activeSplitView\\(', 487],
   },
   {
     id: 'gBrowser.on_TabSplitViewActivate',
@@ -217,7 +217,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['reconcilePanelsSplitView'],
     use: 'Bento dispatches TabSplitViewActivate so Firefox stores its marker in #activeSplitView.',
-    at: [FF.tabbrowser, '^\\s+on_TabSplitViewActivate\\(', 9320],
+    at: [FF.tabbrowser, '^\\s+on_TabSplitViewActivate\\(', 9377],
   },
   {
     id: 'gBrowser.on_TabSplitViewDeactivate',
@@ -226,7 +226,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['reconcilePanelsSplitView', 'forceMainOnlyChromeState'],
     use: 'Bento dispatches TabSplitViewDeactivate with the same marker object (identity check) to clear it.',
-    at: [FF.tabbrowser, '^\\s+on_TabSplitViewDeactivate\\(', 9325],
+    at: [FF.tabbrowser, '^\\s+on_TabSplitViewDeactivate\\(', 9382],
   },
   {
     id: 'gBrowser.warmupTab',
@@ -235,7 +235,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['reconcilePanelsSplitView'],
     use: 'Recreates the AsyncTabSwitcher that destroys itself after each tab switch.',
-    at: [FF.tabbrowser, '^\\s+warmupTab\\(', 9028],
+    at: [FF.tabbrowser, '^\\s+warmupTab\\(', 9085],
   },
   {
     id: 'gBrowser.tabpanels.splitViewPanels',
@@ -290,7 +290,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['src/browser/base/content/bento-shell-mount.css#split-view-footer'],
     use: 'showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule.',
-    at: [FF.tabbrowser, 'createXULElement\\("split-view-footer"\\)', 4116],
+    at: [FF.tabbrowser, 'createXULElement\\("split-view-footer"\\)', 4114],
   },
   {
     id: '.browserContainer panel structure',
@@ -299,7 +299,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['reconcilePanelsSplitView', 'getLivePanelBrowser'],
     use: 'Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel.',
-    at: [FF.tabbrowser, 'browserContainer\\.className = "browserContainer"', 3120],
+    at: [FF.tabbrowser, 'browserContainer\\.className = "browserContainer"', 3116],
   },
 
   // ── gBrowser calls that are not plain tab API ──
@@ -310,7 +310,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['attachTabSelectListener', 'reconcilePanelsSplitView'],
     use: 'The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it.',
-    at: [FF.tabbrowser, 'this\\.tabpanels = this\\.document\\.getElementById', 238],
+    at: [FF.tabbrowser, 'this\\.tabpanels = this\\.document\\.getElementById', 241],
   },
   {
     id: 'gBrowser.tabContainer',
@@ -319,7 +319,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['attachTabSelectListener'],
     use: 'Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it.',
-    at: [FF.tabbrowser, 'this\\.tabContainer = this\\.document\\.getElementById', 234],
+    at: [FF.tabbrowser, 'this\\.tabContainer = this\\.document\\.getElementById', 237],
   },
   {
     id: 'MozTabbrowserTab.linkedPanel',
@@ -364,7 +364,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['openTrustedAddrbarNewTab', 'openDevtoolsPanelFor'],
     use: 'Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects.',
-    at: [FF.tabbrowser, '^\\s+addTrustedTab\\(', 3561],
+    at: [FF.tabbrowser, '^\\s+addTrustedTab\\(', 3559],
   },
   {
     id: 'gBrowser.addTab',
@@ -373,7 +373,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['addNewPanel'],
     use: 'Creates the tab behind a new panel with the add-as-panel marker URL.',
-    at: [FF.tabbrowser, '^\\s+addTab\\(', 3684],
+    at: [FF.tabbrowser, '^\\s+addTab\\(', 3682],
   },
   {
     id: 'gBrowser.getTabForBrowser',
@@ -386,7 +386,7 @@ export const MEMBERS = [
       'patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser',
     ],
     use: 'Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel.',
-    at: [FF.tabbrowser, '^\\s+getTabForBrowser\\(', 1321],
+    at: [FF.tabbrowser, '^\\s+getTabForBrowser\\(', 1324],
   },
   {
     id: 'gBrowser.selectedBrowsers',
@@ -395,7 +395,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers'],
     use: 'Patch 11 lets DOM fullscreen requests come from any browser active in the split.',
-    at: [FF.tabbrowser, '^\\s+get selectedBrowsers\\(', 638],
+    at: [FF.tabbrowser, '^\\s+get selectedBrowsers\\(', 641],
   },
   {
     id: 'gBrowser.moveTabBefore',
@@ -404,7 +404,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['handleTabMoveTitle'],
     use: 'Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview.',
-    at: [FF.tabbrowser, '^\\s+moveTabBefore\\(', 7965],
+    at: [FF.tabbrowser, '^\\s+moveTabBefore\\(', 8022],
   },
   {
     id: 'gBrowser.moveTabAfter',
@@ -413,7 +413,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['handleTabMoveTitle'],
     use: 'Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview.',
-    at: [FF.tabbrowser, '^\\s+moveTabAfter\\(', 7987],
+    at: [FF.tabbrowser, '^\\s+moveTabAfter\\(', 8044],
   },
 
   {
@@ -424,7 +424,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['hideBentoSplitViewMarkers'],
     use: "Hides Bento's split-view markers while Firefox picks the element it hands a torn-out window (aTab.splitview ?? aTab).",
-    at: [FF.tabbrowser, '^\\s+replaceTabWithWindow\\(', 7657],
+    at: [FF.tabbrowser, '^\\s+replaceTabWithWindow\\(', 7709],
   },
   {
     id: 'gBrowser.replaceTabsWithWindow',
@@ -434,7 +434,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['hideBentoSplitViewMarkers'],
     use: 'Same as replaceTabWithWindow for the context-menu and multi-select tear-out (contextTab.splitview ?? contextTab).',
-    at: [FF.tabbrowser, '^\\s+replaceTabsWithWindow\\(', 7694],
+    at: [FF.tabbrowser, '^\\s+replaceTabsWithWindow\\(', 7750],
   },
   {
     id: 'getTabToAdopt XULElement',
@@ -443,7 +443,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['hideBentoSplitViewMarkers'],
     use: 'The new window adopts its first tab only when the window argument is a XUL element, so a Bento marker object makes the adoption silently fail.',
-    at: [FF.browserInit, 'XULElement\\.isInstance\\(', 126],
+    at: [FF.browserInit, 'XULElement\\.isInstance\\(', 88],
   },
 
   // ── <browser> element ──
@@ -523,7 +523,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['attachPaletteCloseListener'],
     use: 'Chrome-only bubbling event on the embedding <browser>; the title-IPC control plane.',
-    at: [FF.windowGlobalParent, 'u"pagetitlechanged"_ns', 563],
+    at: [FF.windowGlobalParent, 'u"pagetitlechanged"_ns', 558],
   },
 
   // ── Popups and panels ──
@@ -580,7 +580,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['openNativeAppMenuFromSidebar'],
     use: 'Refreshes keyboard-shortcut labels before the app menu opens (optional call).',
-    at: [FF.panelUI, '^\\s+_ensureShortcutsShown\\(', 1400],
+    at: [FF.panelUI, '^\\s+_ensureShortcutsShown\\(', 1403],
   },
   {
     id: 'PanelMultiView.openPopup',
@@ -748,7 +748,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['closeNativeUrlbarPopup'],
     use: 'Bento closes the native urlbar results view when its own address bar opens.',
-    at: [FF.urlbarInput, '^\\s+this\\.view = new UrlbarView', 425],
+    at: [FF.urlbarInput, '^\\s+this\\.view = new UrlbarView', 420],
   },
   {
     id: 'gURLBar.view.close',
@@ -757,7 +757,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['closeNativeUrlbarPopup'],
     use: 'Closes the native urlbar results view (optional call).',
-    at: [FF.urlbarView, '^\\s+close\\(\\{', 667],
+    at: [FF.urlbarView, '^\\s+close\\(\\{', 671],
   },
   {
     id: 'gURLBar.untrimmedValue',
@@ -766,7 +766,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['readSidebarAddressDisplayUrl'],
     use: 'Sidebar address row shows the urlbar display value for the selected tab.',
-    at: [FF.urlbarInput, '^\\s+get untrimmedValue\\(', 3094],
+    at: [FF.urlbarInput, '^\\s+get untrimmedValue\\(', 3064],
   },
   {
     id: 'gURLBar.value',
@@ -775,7 +775,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['readSidebarAddressDisplayUrl'],
     use: 'Fallback display value for the sidebar address row.',
-    at: [FF.urlbarInput, '^\\s+get value\\(', 3086],
+    at: [FF.urlbarInput, '^\\s+get value\\(', 3056],
   },
   {
     id: 'OpenBrowserWindow',
@@ -784,7 +784,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['bentoSyncedWindow'],
     use: 'Opens an unsynced window; the options bag reaches BrowserWindowTracker.openWindow (patch window-sync/01).',
-    at: [FF.browserJs, '^function OpenBrowserWindow\\(options\\)', 1726],
+    at: [FF.browserJs, '^function OpenBrowserWindow\\(options\\)', 1754],
   },
 
   // ── Context menus, Places and the bookmarks sidebar ──
@@ -795,7 +795,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['installOpenInNewPanelMenuItem'],
     use: 'Open in New Panel reads the right-clicked link from the global context menu object.',
-    at: [FF.nsContextMenu, '^\\s+this\\.linkURL = context\\.linkURL', 250],
+    at: [FF.nsContextMenu, '^\\s+this\\.linkURL = context\\.linkURL', 259],
   },
   {
     id: 'gContextMenu.onLink',
@@ -804,7 +804,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['installOpenInNewPanelMenuItem'],
     use: 'Open in New Panel shows only for link targets.',
-    at: [FF.nsContextMenu, '^\\s+this\\.onLink = context\\.onLink', 261],
+    at: [FF.nsContextMenu, '^\\s+this\\.onLink = context\\.onLink', 270],
   },
   {
     id: 'gContextMenu.browser',
@@ -813,7 +813,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['installOpenInNewPanelMenuItem', 'installInspectInPanelMenuItems'],
     use: 'Resolves the panel container the context menu opened in; patch 04 resolves its tab.',
-    at: [FF.nsContextMenu, '^\\s+this\\.browser = this\\.contentData\\.browser', 300],
+    at: [FF.nsContextMenu, '^\\s+this\\.browser = this\\.contentData\\.browser', 309],
   },
   {
     id: 'gContextMenu.targetIdentifier',
@@ -822,7 +822,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['installInspectInPanelMenuItems'],
     use: 'Content DOM reference passed to the devtools inspector for Inspect in Panel.',
-    at: [FF.nsContextMenu, '^\\s+this\\.targetIdentifier = context\\.targetIdentifier', 275],
+    at: [FF.nsContextMenu, '^\\s+this\\.targetIdentifier = context\\.targetIdentifier', 284],
   },
   {
     id: 'PlacesUIUtils.lastContextMenuTriggerNode',
@@ -968,7 +968,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['attachTopUrlbarModalListener'],
     use: 'Native urlbar text input; Bento blurs it and opens its own address overlay instead.',
-    at: [FF.urlbarInput, 'this\\.inputField\\.id = "urlbar-input"', 407],
+    at: [FF.urlbarInput, 'this\\.inputField\\.id = "urlbar-input"', 402],
   },
   {
     id: 'stop-reload-button',
@@ -1044,7 +1044,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['attachBookmarksToolbarAlignment'],
     use: 'Native bookmarks toolbar aligned with the panel strip start edge.',
-    at: [FF.navigatorToolbox, '<toolbar id="PersonalToolbar"', 544],
+    at: [FF.navigatorToolbox, '<toolbar id="PersonalToolbar"', 546],
   },
   {
     id: 'mainPopupSet',
@@ -1062,7 +1062,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['installOpenInNewPanelMenuItem', 'installInspectInPanelMenuItems'],
     use: 'Content context menu that receives the Open in New Panel and Inspect in Panel items.',
-    at: [FF.popupset, '<menupopup id="contentAreaContextMenu"', 657],
+    at: [FF.popupset, '<menupopup id="contentAreaContextMenu"', 679],
   },
   {
     id: 'placesContext',
@@ -1098,7 +1098,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['installInspectInPanelMenuItems'],
     use: 'Native Inspect item that Bento clones as Inspect in Panel.',
-    at: [FF.contextMenuXhtml, '<menuitem id="context-inspect"', 450],
+    at: [FF.contextMenuXhtml, '<menuitem id="context-inspect"', 456],
   },
   {
     id: 'context-inspect-a11y',
@@ -1107,7 +1107,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['installInspectInPanelMenuItems'],
     use: 'Native accessibility Inspect item that Bento clones as Inspect in Panel.',
-    at: [FF.contextMenuXhtml, '<menuitem id="context-inspect-a11y"', 446],
+    at: [FF.contextMenuXhtml, '<menuitem id="context-inspect-a11y"', 452],
   },
   {
     id: 'placesContext_open:newcontainertab',
@@ -1164,7 +1164,7 @@ export const MEMBERS = [
     sites: ['getAddrbarUrlbarUtils'],
     use: 'Supplies URI fixup primitives for sanitizing clipboard text in the new-tab address suggestion.',
     exports: ['UrlbarUtils'],
-    at: [FF.urlbarUtils, '^export var UrlbarUtils\\b', 75],
+    at: [FF.urlbarUtils, '^export var UrlbarUtils\\b', 81],
   },
   {
     id: 'UrlbarUtils.getFixupPrimitives',
@@ -1173,7 +1173,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['sanitizeClipboardUrlText'],
     use: 'Parent-only URI fixup info that the clipboard sanitizer takes as its second argument.',
-    at: [FF.urlbarUtils, '^\\s+getFixupPrimitives\\(', 507],
+    at: [FF.urlbarUtils, '^\\s+getFixupPrimitives\\(', 517],
   },
   {
     id: 'chrome://browser/content/urlbar/UrlbarShared.mjs',
@@ -1183,7 +1183,7 @@ export const MEMBERS = [
     sites: ['getAddrbarUrlbarShared'],
     use: 'Home of the clipboard sanitizer since 157 (UrlbarUtils.sanitizeTextFromClipboard before).',
     exports: ['UrlbarShared'],
-    at: [FF.urlbarShared, '^export const UrlbarShared\\b', 80],
+    at: [FF.urlbarShared, '^export const UrlbarShared\\b', 79],
     reg: ['browser/components/urlbar/jar.mn', 'content/browser/urlbar/UrlbarShared\\.mjs'],
   },
   {
@@ -1193,7 +1193,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['sanitizeClipboardUrlText'],
     use: 'Clipboard sanitizer; Bento falls back to stripping line breaks when it is absent.',
-    at: [FF.urlbarShared, '^\\s+sanitizeTextFromClipboard\\(', 970],
+    at: [FF.urlbarShared, '^\\s+sanitizeTextFromClipboard\\(', 973],
   },
   {
     id: 'moz-src:///toolkit/components/search/SearchService.sys.mjs',
@@ -1357,7 +1357,7 @@ export const MEMBERS = [
     sites: ['getSessionStore'],
     use: 'Workspace assignment is stored as a custom tab value.',
     exports: ['SessionStore'],
-    at: [FF.sessionStore, '^export const SessionStore\\b', 8956],
+    at: [FF.sessionStore, '^export const SessionStore\\b', 9114],
   },
   {
     id: 'resource://gre/modules/Extension.sys.mjs',
@@ -1378,7 +1378,7 @@ export const MEMBERS = [
     sites: ['getTabTracker', 'getBentoTabTracker'],
     use: 'ExtensionParent.apiManager.global.tabTracker maps WebExtension tab ids to tab elements.',
     exports: ['ExtensionParent'],
-    at: [FF.extensionParent, '^export var ExtensionParent\\b', 2552],
+    at: [FF.extensionParent, '^export var ExtensionParent\\b', 2564],
     reg: ['toolkit/components/extensions/moz.build', '"ExtensionParent\\.sys\\.mjs",'],
   },
   {
@@ -1520,7 +1520,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['matchingLivePageToolbox'],
     use: 'Skips half-destroyed toolboxes.',
-    at: [FF.toolbox, '^\\s+isDestroying\\(', 4372],
+    at: [FF.toolbox, '^\\s+isDestroying\\(', 4374],
   },
   {
     id: 'Toolbox.commands',
@@ -1538,7 +1538,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['selectNodeInToolbox'],
     use: 'Switches the toolbox to the inspector or accessibility tool.',
-    at: [FF.toolbox, '^\\s+selectTool\\(id', 3102],
+    at: [FF.toolbox, '^\\s+selectTool\\(id', 3104],
   },
   {
     id: 'Toolbox.getCurrentPanel',
@@ -1589,7 +1589,7 @@ export const MEMBERS = [
       'attachSidebarAddressSnapshotListeners',
     ],
     use: 'Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes.',
-    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabSelect"', 2006],
+    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabSelect"', 2009],
   },
   {
     id: 'TabOpen',
@@ -1598,7 +1598,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['attachTabSelectListener'],
     use: 'Reconciles panels when a tab opens (new-tab flows where TabSelect does not reach the listener).',
-    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabOpen"', 5525],
+    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabOpen"', 5529],
   },
   {
     id: 'TabAttrModified',
@@ -1607,7 +1607,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['setupPanelNavigator', 'attachSidebarAddressSnapshotListeners'],
     use: 'Refreshes the panel navigator and the sidebar address snapshot when a tab attribute (title, busy, image) changes.',
-    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabAttrModified"', 2311],
+    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabAttrModified"', 2314],
   },
   {
     id: 'SSTabRestored',
@@ -1616,7 +1616,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['attachSidebarAddressSnapshotListeners'],
     use: 'Refreshes the sidebar address snapshot after session restore fills a tab.',
-    at: [FF.sessionStore, 'initCustomEvent\\("SSTabRestored"', 7935],
+    at: [FF.sessionStore, 'initCustomEvent\\("SSTabRestored"', 8093],
   },
   {
     id: 'MozDOMFullscreen:Entered',
@@ -1625,7 +1625,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['attachBentoDomFullscreenRequesterTracking', 'markBentoDomFullscreenRequester'],
     use: 'Marks the panel whose page requested DOM fullscreen.',
-    at: [FF.documentCpp, 'u"MozDOMFullscreen:Entered"_ns', 16981],
+    at: [FF.documentCpp, 'u"MozDOMFullscreen:Entered"_ns', 17080],
   },
   {
     id: 'MozDOMFullscreen:Exited',
@@ -1634,7 +1634,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['attachBentoDomFullscreenRequesterTracking', 'clearBentoDomFullscreenRequester'],
     use: 'Clears the DOM fullscreen requester mark.',
-    at: [FF.documentCpp, 'u"MozDOMFullscreen:Exited"_ns', 15984],
+    at: [FF.documentCpp, 'u"MozDOMFullscreen:Exited"_ns', 16083],
   },
   {
     id: 'aftercustomization',
@@ -1647,7 +1647,7 @@ export const MEMBERS = [
       'watchPanelNavigatorToolbarPlacement',
     ],
     use: 'Re-aligns toolbar navigation buttons and the bookmarks toolbar, and re-mounts the panel navigator, after the user customizes the toolbar.',
-    at: [FF.customizeMode, 'dispatchToolboxEvent\\("aftercustomization"', 682],
+    at: [FF.customizeMode, 'dispatchToolboxEvent\\("aftercustomization"', 683],
   },
 
   // ── Members Bento patches call, and the window options pass-through ──
@@ -1658,7 +1658,7 @@ export const MEMBERS = [
     probe: 'R',
     sites: ['patches/window-sync/02-tabbrowser-bento-sync.patch#_endRemoveTab'],
     use: 'Finishes closing the source tab after a window-to-window browser swap (patch window-sync/02).',
-    at: [FF.tabbrowser, '^\\s+_endRemoveTab\\(aTab\\)', 6725],
+    at: [FF.tabbrowser, '^\\s+_endRemoveTab\\(aTab\\)', 6765],
   },
   {
     id: 'tab._endRemoveArgs',
@@ -1667,7 +1667,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['patches/window-sync/02-tabbrowser-bento-sync.patch#_endRemoveArgs'],
     use: 'Reads the [closeWindow, newTab] arguments _beginRemoveTab stored on the tab when a browser swap closes the source tab (patch window-sync/02).',
-    at: [FF.tabbrowser, 'aTab\\._endRemoveArgs = \\[closeWindow, newTab\\]', 6573],
+    at: [FF.tabbrowser, 'aTab\\._endRemoveArgs = \\[closeWindow, newTab\\]', 6613],
   },
   {
     id: 'OpenBrowserWindow options',
@@ -1676,7 +1676,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['bentoSyncedWindow'],
     use: "OpenBrowserWindow forwards its whole options object to BrowserWindowTracker.openWindow, which carries Bento's bentoSyncedWindow flag (patch window-sync/01).",
-    at: [FF.browserJs, 'BrowserWindowTracker\\.openWindow\\(options\\)', 1731],
+    at: [FF.browserJs, 'BrowserWindowTracker\\.openWindow\\(options\\)', 1759],
   },
 
   // ── First-run import and the embedded migration wizard ──
@@ -1687,7 +1687,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['patches/core-ui/09-bento-firefox-profile-first-run-import.patch#_getFileObject'],
     use: 'Locates the external browser session files inside a profile directory (patch core-ui/09).',
-    at: [FF.firefoxProfileMigrator, '^\\s+_getFileObject\\(dir, fileName\\)', 100],
+    at: [FF.firefoxProfileMigrator, '^\\s+_getFileObject\\(dir, fileName\\)', 102],
   },
   {
     id: 'FirefoxProfileMigrator.startupOnlyMigrator',
@@ -1696,7 +1696,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['patches/core-ui/09-bento-firefox-profile-first-run-import.patch#startupOnlyMigrator'],
     use: 'Decides whether the Firefox profile migrator is offered only at startup (patch core-ui/09).',
-    at: [FF.firefoxProfileMigrator, '^\\s+get startupOnlyMigrator\\(\\)', 496],
+    at: [FF.firefoxProfileMigrator, '^\\s+get startupOnlyMigrator\\(\\)', 498],
   },
   {
     id: 'MigrationUtils.isStartupMigration',
@@ -1921,7 +1921,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager'],
     use: 'Bento setting groups register here; registered in browser/components/preferences/jar.mn.',
-    at: [FF.prefsJar, 'content/browser/preferences/config/SettingGroupManager\\.mjs', 51],
+    at: [FF.prefsJar, 'content/browser/preferences/config/SettingGroupManager\\.mjs', 50],
   },
   {
     id: 'SettingGroupManager.registerGroups',
@@ -1939,7 +1939,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES'],
     use: 'Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object.',
-    at: [FF.prefsJs, '^const CONFIG_PANES = Object\\.freeze', 243],
+    at: [FF.prefsJs, '^const CONFIG_PANES = Object\\.freeze', 242],
   },
   {
     id: 'CanonicalBrowsingContext.topChromeWindow',
@@ -1957,7 +1957,7 @@ export const MEMBERS = [
     probe: 'E',
     sites: ['patches/core-ui/15-bento-native-preferences.patch#gotoPref'],
     use: 'Navigates between the Bento settings subpanes.',
-    at: [FF.prefsJs, '^async function gotoPref\\(', 733],
+    at: [FF.prefsJs, '^async function gotoPref\\(', 728],
   },
   {
     id: 'chrome://global/content/elements/moz-box-group.mjs',

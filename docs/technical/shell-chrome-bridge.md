@@ -67,7 +67,7 @@ suffix. The chrome receive path and the
 
 The ordering rests on Firefox engine behavior (also listed in
 `docs/firefox-core-touchpoints.md`; the functions named here are byte-identical in the
-154.0 and 157.0.1 sources): `Document::NotifyPossibleTitleChange`
+154.0, 157.0.1 and 158.0 sources): `Document::NotifyPossibleTitleChange`
 (`dom/base/Document.cpp`) dispatches the report runnable synchronously from the
 title write, and `DoNotifyPossibleTitleChange` reads the title when it runs;
 `MessagePort::Dispatch` (`dom/messagechannel/MessagePort.cpp`) dispatches the

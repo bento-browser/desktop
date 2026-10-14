@@ -182,7 +182,7 @@ adds its entry, and its id in the mount probe list, in the same change.
   property must be a function, and one found as an accessor counts as present
   because checking it would mean calling the getter. The same run printed
   `Firefox 0.0.1`: the summary line uses `Services.appinfo.platformVersion`
-  (`157.0.1`), not Bento's app version. The tests build fixtures whose members are
+  (`158.0`), not Bento's app version. The tests build fixtures whose members are
   prototype accessors that throw if invoked; keep new fixtures in that shape,
   because a data-property fixture hides this bug.
 - The private-member scan follows local aliases such as
@@ -268,7 +268,9 @@ adds its entry, and its id in the mount probe list, in the same change.
   `#beginRemoveTab` returns and reads the final `selectedTab`); signals for one
   change coalesce. The workspace's last-tab policy is unchanged: it lives in
   `bento-tools` (`tabs.onRemoved`), and patch `window-sync/03` keeps Firefox's
-  `closeWindowWithLastTab` false. Manual check: close the selected sidebar tab,
+  `closeWindowWithLastTab` false (Firefox 158 added it as an explicit
+  `removeTabs` option; the patch defaults it to false and still honors an explicit
+  value from the caller, as `removeTab` already did). Manual check: close the selected sidebar tab,
   a multi-selection, and the last tab of a workspace; the render list passed to
   `showSplitViewPanels` after `TabClose` must not contain the closing tab and no
   ghost strip panel may appear. If a future Firefox awaits between `#blurTab`
@@ -283,6 +285,14 @@ adds its entry, and its id in the mount probe list, in the same change.
   moved to `UrlbarShared` (`chrome://browser/content/urlbar/UrlbarShared.mjs`),
   and SessionStore is imported from
   `moz-src:///browser/components/sessionstore/SessionStore.sys.mjs`.
+- Firefox 158 removed the `aBrowser.docShellIsActive = aBrowser.docShellIsActive`
+  self-assignment from `insertBrowser`; it existed only for the
+  `MozLayerTreeReady` and `MozLayerTreeCleared` events the tab switcher listens
+  for. Bento sets `docShellIsActive` on every split-view panel itself (step 7
+  above), so panels still paint: on 158.0 every split-view panel reports
+  `docShellIsActive` and `renderLayers` true, and `drawSnapshot` returns the page
+  background of each. If a future Firefox deactivates panel docShells again,
+  repeat that check first.
 - `Services.scriptloader.loadSubScript` rejects `moz-extension:`, `file:` and
   `jar:` URLs in Firefox 157 unless the caller passes `allowUnsafeURL: true`.
   The `bento-native-preferences` experiment loads two extension scripts, so it
