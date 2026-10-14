@@ -10,6 +10,7 @@ interface TabListeners {
     tab: browser.tabs.Tab,
   ) => void;
   removed?: (id: number, info: browser.tabs._OnRemovedRemoveInfo) => void;
+  attached?: (id: number, info: browser.tabs._OnAttachedAttachInfo) => void;
 }
 
 function makeTab(overrides: Partial<browser.tabs.Tab> & { id: number }): browser.tabs.Tab {
@@ -44,7 +45,8 @@ function stubTabsBrowser(initialTabs: browser.tabs.Tab[] = []): TabListeners {
       onRemoved: { addListener: vi.fn((listener) => (listeners.removed = listener)) },
       onActivated: { addListener: vi.fn() },
       onMoved: { addListener: vi.fn() },
-      onAttached: { addListener: vi.fn() },
+      onAttached: { addListener: vi.fn((listener) => (listeners.attached = listener)) },
+      get: vi.fn(),
     },
   });
   return listeners;
@@ -165,6 +167,49 @@ describe('TabRegistry closing markers', () => {
     await tabs.hydrateWorkspaceIds({ attempts: 3, delayMs: 0 });
 
     expect(tabs.snapshot()[0]?.workspaceId).toBe('ws-imported');
+  });
+});
+
+describe('TabRegistry attach to another window', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function attach(live: Partial<browser.tabs.Tab>) {
+    const listeners = stubTabsBrowser([makeTab({ id: 9, windowId: 2, active: true })]);
+    vi.mocked(browser.tabs.get).mockResolvedValue(makeTab({ id: 9, windowId: 1, ...live }));
+    const tabs = new TabRegistry();
+    const deltas: TabDelta[] = [];
+    tabs.onDeltas((batch) => deltas.push(...batch));
+    await tabs.init();
+    listeners.attached?.(9, { newWindowId: 1, newPosition: 3 });
+    // The live read is asynchronous.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return { tabs, deltas };
+  }
+
+  it('moves the tab to the window it was adopted by', async () => {
+    const { tabs } = await attach({ active: false });
+
+    expect(tabs.snapshot()[0]).toMatchObject({ windowId: 1, index: 3 });
+  });
+
+  it('drops the active flag of a tab that was selected in its old window and is not in the new one', async () => {
+    // An adopted tab is not selected and no activation event follows; a stale active flag makes
+    // the workspace activation choose no tab and leave another workspace's tab in front.
+    const { tabs, deltas } = await attach({ active: false });
+
+    expect(browser.tabs.get).toHaveBeenCalledWith(9);
+    expect(tabs.snapshot()[0]?.active).toBe(false);
+    expect(deltas).toContainEqual({ kind: 'updated', id: 9, changes: { active: false } });
+  });
+
+  it('keeps the flag when the tab is the active one of the new window', async () => {
+    const { tabs, deltas } = await attach({ active: true });
+
+    expect(browser.tabs.get).toHaveBeenCalledWith(9);
+    expect(tabs.snapshot()[0]?.active).toBe(true);
+    expect(deltas).not.toContainEqual({ kind: 'updated', id: 9, changes: { active: true } });
   });
 });
 

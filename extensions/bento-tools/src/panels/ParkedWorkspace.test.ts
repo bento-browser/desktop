@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WindowClosingTabSnapshot } from '../tabs/TabRegistry';
 import { PanelStore } from './PanelStore';
-import { parkableWorkspaceTabs } from './ParkedWorkspace';
+import type { TabSnapshot } from '@shared/protocol';
+import {
+  hasPanelsInOtherWindow,
+  parkableWorkspaceTabs,
+  planWorkspaceParking,
+} from './ParkedWorkspace';
 
 function closingTab(
   id: number,
@@ -102,5 +107,77 @@ describe('parkableWorkspaceTabs', () => {
     expect(sidebarTabs).toEqual([]);
     expect(JSON.stringify(storage)).not.toContain('private-');
     expect(store.workspacesWithPersistedUrls()).toEqual([]);
+  });
+});
+
+describe('blank pages', () => {
+  it('are not parked as sidebar tabs, so the empty tab a handover left behind does not come back', () => {
+    const tabs = [
+      closingTab(1, 'https://kept.example.test/'),
+      closingTab(2, 'about:blank'),
+      closingTab(3, 'about:newtab'),
+      closingTab(4, 'about:home'),
+    ];
+
+    const { sidebarTabs, urlByTabId } = parkableWorkspaceTabs(tabs, new Set(), () => false);
+
+    expect(sidebarTabs.map((tab) => tab.url)).toEqual(['https://kept.example.test/']);
+    // A panel slot still keeps the address it had.
+    expect(urlByTabId.get(3)).toBe('about:newtab');
+  });
+});
+
+function liveTab(id: number, windowId: number): TabSnapshot {
+  return {
+    id,
+    windowId,
+    index: id,
+    title: '',
+    pinned: false,
+    active: false,
+    audible: false,
+    muted: false,
+  } as TabSnapshot;
+}
+
+describe('hasPanelsInOtherWindow', () => {
+  it('is true when a panel tab lives in another window', () => {
+    expect(hasPanelsInOtherWindow(new Set([10, 11]), [liveTab(10, 2), liveTab(11, 1)], 2)).toBe(
+      true,
+    );
+  });
+
+  it('is false when every panel tab is still in the closing window, or there are none', () => {
+    expect(hasPanelsInOtherWindow(new Set([10]), [liveTab(10, 2), liveTab(12, 1)], 2)).toBe(false);
+    expect(hasPanelsInOtherWindow(new Set(), [liveTab(12, 1)], 2)).toBe(false);
+  });
+});
+
+describe('planWorkspaceParking', () => {
+  const baseArgs = { windowId: 2, isPrivate: () => false };
+
+  it('parks the panel layout from the closing window as before when no panel moved', () => {
+    const plan = planWorkspaceParking({
+      ...baseArgs,
+      workspaceTabs: [closingTab(10, 'https://panel.example.test/'), closingTab(1, 'https://a/')],
+      panelTabIds: new Set([10]),
+      tabsNow: [liveTab(10, 2), liveTab(1, 2)],
+    });
+
+    expect(plan.keepPanelLayout).toBe(false);
+    expect(plan.sidebarTabs.map((tab) => tab.url)).toEqual(['https://a/']);
+  });
+
+  it('keeps the layout of panels that moved with the workspace, and parks a stranded panel as a sidebar tab', () => {
+    // Panels 10 and 11 were handed over; 12 failed to move and is all that is left here.
+    const plan = planWorkspaceParking({
+      ...baseArgs,
+      workspaceTabs: [closingTab(12, 'https://stranded.example.test/')],
+      panelTabIds: new Set([10, 11, 12]),
+      tabsNow: [liveTab(10, 1), liveTab(11, 1), liveTab(12, 2)],
+    });
+
+    expect(plan.keepPanelLayout).toBe(true);
+    expect(plan.sidebarTabs.map((tab) => tab.url)).toEqual(['https://stranded.example.test/']);
   });
 });

@@ -6,6 +6,7 @@ import {
   createAdoptionGate,
   createProgrammaticMoves,
   moveTabsToWindow,
+  moveWorkspaceTabsToWindow,
   releaseAdoptedTab,
   settleWorkspaceTabs,
   tabsToAdopt,
@@ -32,9 +33,11 @@ function makeDeps(options: {
   destinationWorkspaceId?: string | null;
   panelWorkspaceIds?: string[];
   movedFor?: string;
+  handedOver?: boolean;
 }): AdoptedTabDeps {
   return {
     moves: { take: vi.fn().mockReturnValue(options.movedFor) },
+    handedOver: vi.fn().mockResolvedValue(options.handedOver ?? false),
     tabs: {
       snapshot: vi.fn().mockReturnValue(options.tabs),
       clearWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -128,6 +131,38 @@ describe('releaseAdoptedTab', () => {
     expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
     expect(deps.panels.remove).not.toHaveBeenCalled();
     expect(deps.clearPanelMarker).not.toHaveBeenCalled();
+  });
+
+  it('keeps the workspace and panel slot of a tab a closing window handed over', async () => {
+    // Window 1 showed ws-a and took the live tabs of window 2 (ws-b, with a panel) as it closed.
+    const deps = makeDeps({
+      tabs: [tab({ id: 7, windowId: 1, workspaceId: 'ws-b' })],
+      owner: null,
+      destinationWorkspaceId: 'ws-a',
+      panelWorkspaceIds: ['ws-b'],
+      handedOver: true,
+    });
+
+    await releaseAdoptedTab(deps, 7, 1);
+
+    expect(deps.handedOver).toHaveBeenCalledWith(7, 1);
+    expect(deps.tabs.clearWorkspace).not.toHaveBeenCalled();
+    expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
+    expect(deps.panels.remove).not.toHaveBeenCalled();
+    expect(deps.clearPanelMarker).not.toHaveBeenCalled();
+  });
+
+  it('still releases the same tab when it was not handed over (a user drag)', async () => {
+    const deps = makeDeps({
+      tabs: [tab({ id: 7, windowId: 1, workspaceId: 'ws-b' })],
+      owner: null,
+      destinationWorkspaceId: 'ws-a',
+    });
+
+    await releaseAdoptedTab(deps, 7, 1);
+
+    expect(deps.tabs.clearWorkspace).toHaveBeenCalledWith(7);
+    expect(deps.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(7, 'ws-a');
   });
 
   it('ignores a tab that has no workspace', async () => {
@@ -247,6 +282,43 @@ describe('moveTabsToWindow', () => {
 
     expect(bentoTabMoves.take(7, 2)).toBeUndefined();
     expect(bentoTabMoves.take(8, 2)).toBeUndefined();
+  });
+});
+
+describe('moveWorkspaceTabsToWindow', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('moves pinned tabs first, to the start, since Firefox leaves a pinned tab moved to the end', async () => {
+    const move = vi.fn(async (ids: number[]) => ids.map((id) => ({ id })));
+    vi.stubGlobal('browser', { tabs: { move } });
+
+    await moveWorkspaceTabsToWindow(
+      [
+        { id: 7, pinned: false },
+        { id: 8, pinned: true },
+        { id: 9, pinned: false },
+        { id: 10, pinned: true },
+      ],
+      2,
+      'ws-a',
+    );
+
+    expect(move.mock.calls).toEqual([
+      [[8, 10], { windowId: 2, index: 0 }],
+      [[7, 9], { windowId: 2, index: -1 }],
+    ]);
+    expect(bentoTabMoves.take(8, 2)).toBe('ws-a');
+    expect(bentoTabMoves.take(9, 2)).toBe('ws-a');
+  });
+
+  it('makes no call for a group with no tabs', async () => {
+    const move = vi.fn(async (ids: number[]) => ids.map((id) => ({ id })));
+    vi.stubGlobal('browser', { tabs: { move } });
+
+    await moveWorkspaceTabsToWindow([{ id: 7, pinned: false }], 2, 'ws-a');
+
+    expect(move).toHaveBeenCalledTimes(1);
+    expect(move).toHaveBeenCalledWith([7], { windowId: 2, index: -1 });
   });
 });
 

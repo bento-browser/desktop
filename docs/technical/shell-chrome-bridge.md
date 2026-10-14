@@ -362,3 +362,20 @@ Bus bootstrap pitfalls:
   none). It normally sees the title that triggered the event because the
   dispatch is synchronous in the IPC handler; do not move the read behind a timer or
   microtask, or two quick writes collapse into the later one.
+
+## Chrome to tools: SessionStore tab values
+
+Chrome code that must tell bento-tools something about a tab, without a port message
+whose order against WebExtension events is unknown, writes a tab value in the key space
+WebExtensions use: `SessionStore.setCustomTabValue(tab, 'extension:bento-tools@bento.app:<key>',
+JSON.stringify(value))`, which tools reads back with `browser.sessions.getTabValue(tabId,
+'<key>')` (`ext-sessions.js` stores `JSON.stringify(value)` under `extension:<id>:<key>`).
+The mount script already reads `bento.workspaceId`, `bento.closingTab` and the window's
+`bento.activeWorkspaceId` this way. `bento.handover` is the one value chrome writes: when
+a closing window adopts its tabs into another window (see
+[workspaces.md](workspaces.md)), it marks each returned tab with `{ from, to, at }` so
+`tabs.onDetached` and `tabs.onAttached` can tell it from a drag. The value must be written
+after `adoptTab` returns (SessionStore moves a live tab's values on `TabOpen`, and deletes a
+pending tab's when its state is restored), is read by both events without being consumed,
+and expires after 15 s (`tabs/Handover.ts`). The events reach tools asynchronously, so a
+value written in the same task as the adoption is there when they are handled.
