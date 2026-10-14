@@ -163,10 +163,14 @@ Use this shape for new or changed touchpoints:
   false then). After the loop, when at least one tab was adopted, the closing window
   calls `window.__bentoSaveSessionAfterHandover(flushes)` on the survivor
   (`saveSessionAfterHandover`, defined by the survivor's own mount instance), with
-  the survivor promises `adoptTabInto` collected. The survivor waits for them (at
-  most 2 s), then one task for SessionStore's copy, then calls `SessionSaver.run()`
-  once unless a quit has started; handovers in one task share the write. Fire and
-  forget: the close never waits for it. Nothing that must run may belong to the
+  the survivor promises `adoptTabInto` collected. The survivor seals the batch in a
+  timer task of its own (requests that arrive before it, also from promise reactions,
+  share the write), waits for the flushes (at most 2 s), then one task for
+  SessionStore's copy, then calls `SessionSaver.run()` unless the window closed or a
+  quit has started. If the cap won, it writes then and once more after the late
+  flushes settle (plus one task, same guards), because `run()` cancels SessionStore's
+  pending delayed save and resets its interval. Fire and forget: the close never
+  waits for it. Nothing that must run may belong to the
   closing window: promise reactions and timers of a window that is being destroyed
   never run, which is also why the flush promises are the survivor's. Registry
   entries: `gBrowser.adoptTab`, `gDialogBox.isOpen` and

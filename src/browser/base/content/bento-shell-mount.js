@@ -14570,9 +14570,13 @@
   // did not hold. The copy is a reaction to the flush promises adoptTabInto collected, so the
   // write waits for them and one more task. Called by the closing window on its survivor
   // (window.__bentoSaveSessionAfterHandover): nothing of the closing window runs after the
-  // close, so the wait and the write must be this window's promises and timers. Handovers in
-  // the same task share one write; a chain of closes ends in the last survivor, which holds the
-  // tabs of the earlier ones. A flush that never settles holds the write for SESSION_SAVE_CAP_MS.
+  // close, so the wait and the write must be this window's promises and timers. Handovers
+  // whose requests arrive before this window's next timer task share one write (the batch is
+  // sealed by a timer, so a request from a promise reaction still joins); a chain of closes ends
+  // in the last survivor, which holds the tabs of the earlier ones. A flush that has not settled
+  // after SESSION_SAVE_CAP_MS does not hold the write; the write then repeats once the
+  // outstanding flushes settle, because run() also resets SessionStore's own timer and would
+  // otherwise leave that tab's state out until the next interval.
   const SESSION_SAVE_CAP_MS = 2000;
   let sessionSaveFlushes = null;
   async function saveSessionAfterHandover(flushes) {
@@ -14581,17 +14585,24 @@
       return;
     }
     sessionSaveFlushes = [...flushes];
-    // Let the other handovers of this task add theirs.
-    await null;
-    const settled = Promise.allSettled(sessionSaveFlushes);
+    const nextTask = () => new Promise((resolve) => window.setTimeout(resolve));
+    await nextTask();
+    const settled = Promise.allSettled(sessionSaveFlushes).then(() => true);
     sessionSaveFlushes = null;
     let capTimer;
     const capped = new Promise((resolve) => {
-      capTimer = window.setTimeout(resolve, SESSION_SAVE_CAP_MS);
+      capTimer = window.setTimeout(() => resolve(false), SESSION_SAVE_CAP_MS);
     });
-    await Promise.race([settled, capped]);
+    const inTime = await Promise.race([settled, capped]);
     window.clearTimeout(capTimer);
-    await new Promise((resolve) => window.setTimeout(resolve));
+    await nextTask();
+    await writeSessionAfterHandover();
+    if (inTime) return;
+    await settled;
+    await nextTask();
+    await writeSessionAfterHandover();
+  }
+  async function writeSessionAfterHandover() {
     // A quit writes the session itself.
     if (window.closed || Services.startup.attemptingQuit) return;
     try {
