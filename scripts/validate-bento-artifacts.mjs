@@ -53,7 +53,8 @@ function isPrimaryApplicationPackage(file, displayVersion) {
   const prefix = `bento-${displayVersion}.`;
   if (!name.startsWith(prefix)) return false;
   const suffix = name.slice(prefix.length);
-  if (suffix.endsWith('.dmg') || suffix.endsWith('.tar.bz2') || suffix.endsWith('.tar.xz') || suffix.endsWith('.installer.exe')) {
+  // Firefox 158 packages macOS developer-options builds (dev and debug) as a plain TAR, not a DMG.
+  if (suffix.endsWith('.dmg') || suffix.endsWith('.mac.tar') || suffix.endsWith('.tar.bz2') || suffix.endsWith('.tar.xz') || suffix.endsWith('.installer.exe')) {
     return true;
   }
   if (!suffix.endsWith('.zip')) return false;
