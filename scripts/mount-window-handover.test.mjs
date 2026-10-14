@@ -374,6 +374,20 @@ function setup({
       }
     },
     liveTimers: (target) => target.timerLog.filter((timer) => !timer.cleared).map((t) => t.ms),
+    /** Fire the survivor's zero-length timers and let the reactions run, until none is left. */
+    drain: async (target) => {
+      const live = () => target.timerLog.some((timer) => timer.ms === 0 && !timer.cleared);
+      await new Promise((resolve) => setImmediate(resolve));
+      for (let round = 0; round < 10 && live(); round += 1) {
+        for (const timer of target.timerLog) {
+          if (timer.ms === 0 && !timer.cleared) {
+            timer.cleared = true;
+            timer.fn();
+          }
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    },
     /** Labels of a window's tabs that are still open, in strip order. */
     order: (target) => target.gBrowser.tabs.filter((tab) => !tab.closing).map((tab) => tab.label),
     /** The same with an adopted tab named for the tab it was (the twin's label has a prime). */
@@ -903,12 +917,18 @@ test('the session is written once, after the copies of the adopted tabs and one 
   w.close();
   await w.settle();
   assert.equal(w.saves(), 0, 'not before SessionStore has the adopted tabs');
+  // The batch is sealed by a timer of the survivor, so nothing waits on the flushes yet.
+  assert.deepEqual(w.liveTimers(survivor), [0]);
 
+  w.fireTimers(survivor);
+  await w.settle();
+  assert.deepEqual(w.liveTimers(survivor), [2000]);
   w.flushes[0].tab.settleFlush.resolve();
   w.flushes[1].tab.settleFlush.resolve();
   await w.settle();
   // The copies are reactions to the flushes; the write waits one task for them.
   assert.equal(w.saves(), 0);
+  assert.deepEqual(w.liveTimers(survivor), [0], 'the cap timer is cleared once the flushes settle');
   w.fireTimers(survivor);
   await w.settle();
 
@@ -918,7 +938,10 @@ test('the session is written once, after the copies of the adopted tabs and one 
     kinds.filter((kind) => kind === 'copied' || kind === 'saveRun'),
     ['copied', 'copied', 'saveRun'],
   );
-  assert.deepEqual(w.liveTimers(survivor), [], 'the cap timer is cleared once the flushes settle');
+  // Flushes that settled in time are not written for again.
+  await w.drain(survivor);
+  assert.equal(w.saves(), 1);
+  assert.deepEqual(w.liveTimers(survivor), []);
 });
 
 test('a failed flush does not stop the write', async () => {
@@ -927,35 +950,64 @@ test('a failed flush does not stop the write', async () => {
   w.close();
   w.flushes[0].tab.settleFlush.reject(new Error('no frame'));
   w.flushes[1].tab.settleFlush.resolve();
-  await w.settle();
-  w.fireTimers(w.survivors[0]);
-  await w.settle();
+  await w.drain(w.survivors[0]);
 
   assert.equal(w.saves(), 1);
 });
 
-test('a flush that never settles holds the write for the cap only', async () => {
+test('a flush that settles after the cap gets a second write, once', async () => {
   const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
   const [survivor] = w.survivors;
 
   w.close();
   w.flushes[0].tab.settleFlush.resolve();
-  await w.settle();
+  await w.drain(survivor);
   assert.equal(w.saves(), 0);
   assert.deepEqual(w.liveTimers(survivor), [2000]);
 
+  // The cap wins: the write goes ahead without the late tab ...
   w.fireTimers(survivor, 2000);
   await w.settle();
-  w.fireTimers(survivor);
-  await w.settle();
+  assert.equal(w.saves(), 0, 'one task first');
+  await w.drain(survivor);
   assert.equal(w.saves(), 1);
+  assert.deepEqual(w.liveTimers(survivor), []);
 
-  // The late settle changes nothing.
+  // ... and repeats once its copy has run, which happens after the flush settles.
   w.flushes[1].tab.settleFlush.resolve();
   await w.settle();
-  w.fireTimers(survivor);
-  await w.settle();
-  assert.equal(w.saves(), 1);
+  assert.equal(w.saves(), 1, 'one task after the late flush first');
+  await w.drain(survivor);
+  assert.equal(w.saves(), 2);
+  assert.deepEqual(
+    w.calls.map(([kind]) => kind).filter((kind) => kind === 'copied' || kind === 'saveRun'),
+    ['copied', 'saveRun', 'copied', 'saveRun'],
+  );
+  await w.drain(survivor);
+  assert.equal(w.saves(), 2);
+});
+
+test('the second write is skipped when the window closed or a quit started before it', async () => {
+  for (const interrupt of [
+    (survivor) => (survivor.closed = true),
+    (survivor, w) => (w.sandbox.Services.startup.attemptingQuit = true),
+  ]) {
+    const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }] });
+    const [survivor] = w.survivors;
+
+    w.close();
+    w.flushes[0].tab.settleFlush.resolve();
+    await w.drain(survivor);
+    w.fireTimers(survivor, 2000);
+    await w.drain(survivor);
+    assert.equal(w.saves(), 1);
+
+    interrupt(survivor, w);
+    w.flushes[1].tab.settleFlush.resolve();
+    await w.drain(survivor);
+
+    assert.equal(w.saves(), 1);
+  }
 });
 
 test('the wait and the write belong to the survivor, nothing to the closing window', async () => {
@@ -964,9 +1016,7 @@ test('the wait and the write belong to the survivor, nothing to the closing wind
 
   w.close();
   w.flushes.forEach(({ tab }) => tab.settleFlush.resolve());
-  await w.settle();
-  w.fireTimers(survivor);
-  await w.settle();
+  await w.drain(survivor);
 
   // The closing window's timers are not used (notePageClose is the only one that would be), and
   // its SessionSaver getter throws, which the save would have logged.
@@ -977,28 +1027,34 @@ test('the wait and the write belong to the survivor, nothing to the closing wind
   assert.match(source, /window\.__bentoSaveSessionAfterHandover = saveSessionAfterHandover;/);
 });
 
-test('handovers in one task share one write, and a later one writes again', async () => {
+test('handovers before the survivor next timer task share one write, and a later one writes again', async () => {
   const w = setup({ tabs: [{ label: 'a' }] });
   const [survivor] = w.survivors;
 
   w.close();
-  // Another window closing into the same survivor in the same task.
+  // Another window closing into the same survivor in the same task ...
   const other = new survivor.Promise((resolve) => setTimeout(resolve, 0));
   survivor.__bentoSaveSessionAfterHandover([other]);
+  // ... and one that starts from a promise reaction of that task (w1.close(); then(() => w2.close())).
+  let settleThird;
+  const third = new survivor.Promise((resolve) => (settleThird = resolve));
+  await Promise.resolve().then(() => {
+    survivor.__bentoSaveSessionAfterHandover([third]);
+  });
   w.flushes[0].tab.settleFlush.resolve();
-  await w.settle();
-  assert.equal(w.saves(), 0, 'the second handover is waited for as well');
   await other;
-  await w.settle();
-  w.fireTimers(survivor);
-  await w.settle();
+  await w.drain(survivor);
+  assert.equal(w.saves(), 0, 'the later handovers are waited for as well');
+  assert.deepEqual(w.liveTimers(survivor), [2000]);
+
+  settleThird();
+  await w.drain(survivor);
   assert.equal(w.saves(), 1);
 
   survivor.__bentoSaveSessionAfterHandover([]);
-  await w.settle();
-  w.fireTimers(survivor);
-  await w.settle();
+  await w.drain(survivor);
   assert.equal(w.saves(), 2);
+  assert.deepEqual(w.liveTimers(survivor), []);
 });
 
 test('nothing is written when nothing was adopted', async () => {
@@ -1016,9 +1072,7 @@ test('nothing is written when nothing was adopted', async () => {
     const w = setup(options);
 
     w.close();
-    await w.settle();
-    for (const survivor of w.survivors) w.fireTimers(survivor);
-    await w.settle();
+    for (const survivor of w.survivors) await w.drain(survivor);
 
     assert.equal(w.saves(), 0);
     assert.equal(w.survivors.flatMap((survivor) => survivor.timerLog).length, 0);
@@ -1034,9 +1088,7 @@ test('nothing is written for a quit, a private window or a popup', async () => {
     const w = setup({ tabs: [{ label: 'a' }, { label: 'b' }], ...options });
 
     w.close();
-    await w.settle();
-    for (const survivor of w.survivors) w.fireTimers(survivor);
-    await w.settle();
+    for (const survivor of w.survivors) await w.drain(survivor);
 
     assert.equal(w.of('adopt').length, 0);
     assert.equal(w.saves(), 0);
@@ -1050,8 +1102,7 @@ test('a quit that starts before the write leaves the write to the quit', async (
   w.flushes.forEach(({ tab }) => tab.settleFlush.resolve());
   await w.settle();
   w.sandbox.Services.startup.attemptingQuit = true;
-  w.fireTimers(w.survivors[0]);
-  await w.settle();
+  await w.drain(w.survivors[0]);
 
   assert.equal(w.saves(), 0);
 });

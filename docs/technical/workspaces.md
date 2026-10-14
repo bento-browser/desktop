@@ -606,11 +606,17 @@ opening an unwanted blank tab before the moved tabs arrive.
     one tab was adopted, the closing window calls
     `survivor.__bentoSaveSessionAfterHandover(flushes)` with the survivor-realm flush
     promises `adoptTabInto` collected (the ones SessionStore's copy waits on). The
-    survivor waits for them (at most 2 s, so a flush that never settles cannot hold the
-    write), then one task for the copy, which is a reaction to them, then calls
-    `SessionSaver.run()` once, unless `Services.startup.attemptingQuit` is set (the quit
-    writes the session itself). Handovers in one task share one write; a chain of closes
-    ends in the last survivor's write, which holds the earlier windows' tabs. Source of
+    survivor seals the batch in a timer task of its own, so requests that arrive before it
+    (also ones started from a promise reaction, as `w1.close(); then(() => w2.close())`)
+    share one write, then waits for the flushes (at most 2 s, so a flush that never settles
+    cannot hold the write), then one task for the copy, which is a reaction to them, then
+    calls `SessionSaver.run()`, unless the window closed or `Services.startup.attemptingQuit`
+    is set (the quit writes the session itself). When the cap won, the write has gone ahead
+    without the late tab's copy and `run()` has cancelled SessionStore's pending delayed
+    save and reset its interval, so nothing else would write it for up to 15 s: the survivor
+    writes once more after the late flushes settle plus one task, with the same guards. A
+    chain of closes ends in the last survivor's write, which holds the earlier windows'
+    tabs. Source of
     truth: SessionStore in the parent process; persistence path:
     `sessionstore-backups/recovery.jsonlz4`. The write runs after the close has returned:
     collecting the state took about 1 ms for 3 and for 48 tabs, and the file was complete
