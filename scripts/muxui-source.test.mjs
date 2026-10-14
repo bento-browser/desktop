@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import zlib from 'node:zlib';
 
 import { main as bentoBuild } from './bento-build.mjs';
@@ -57,8 +57,16 @@ function zip(entries, { deflate = false } = {}) {
   return Buffer.concat([...parts, directoryBytes, end]);
 }
 
+const tempDirs = [];
+after(() => {
+  for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** A temp directory that is removed after the last test, also when an assertion fails. */
 function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'bento-muxui-source-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-muxui-source-'));
+  tempDirs.push(dir);
+  return dir;
 }
 
 function write(file, content) {
