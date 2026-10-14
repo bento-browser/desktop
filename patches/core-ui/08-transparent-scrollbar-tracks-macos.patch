@@ -1,4 +1,4 @@
-From 8594c298233535c22a36ce331e5d33beedf1ada5 Mon Sep 17 00:00:00 2001
+From 7b59055804cbbd2815fd3b56f78af6238ee2e54d Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:38 +1000
 Subject: [PATCH] Use transparent scrollbar tracks on macOS

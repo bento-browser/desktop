@@ -1,4 +1,4 @@
-From cc14bca73a0825d581435d2deba5b6fe54aff455 Mon Sep 17 00:00:00 2001
+From 4ee3e35c1671d5f2676c896d5ee9502c6de2dd1a Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 18 Jul 2026 18:43:30 +1000
 Subject: [PATCH] Add native Bento preferences
@@ -2135,10 +2135,10 @@ index 0000000000000000000000000000000000000000..6aba99a810e17d309e6f9549846bc209
 +
 +document.dispatchEvent(new CustomEvent("bento-preferences-initialized"));
 diff --git a/browser/components/preferences/jar.mn b/browser/components/preferences/jar.mn
-index a84468121d7efd38d7a877c81f08eeb2157e91bd..37b37ac162f370284138d3479676124e98e83549 100644
+index e6e04daba90ac320f28dc1cac6746d5e5391bfa3..307e98d848de4432459d0567536b239cc8029d78 100644
 --- a/browser/components/preferences/jar.mn
 +++ b/browser/components/preferences/jar.mn
-@@ -33,6 +33,10 @@ browser.jar:
+@@ -32,6 +32,10 @@ browser.jar:
     content/browser/preferences/config/account-sync.mjs                  (config/account-sync.mjs)
     content/browser/preferences/config/accessibility.mjs                 (config/accessibility.mjs)
     content/browser/preferences/config/appearance.mjs                    (config/appearance.mjs)
@@ -2150,10 +2150,10 @@ index a84468121d7efd38d7a877c81f08eeb2157e91bd..37b37ac162f370284138d3479676124e
     content/browser/preferences/config/aiFeatures.mjs                    (config/aiFeatures.mjs)
     content/browser/preferences/config/firefoxLabs.mjs                   (config/firefoxLabs.mjs)
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index a2e977363c4061d00f7cd65d3c6bb40aa26d487f..0fee7042f626e66d8a27885cd03ee69eff2d8a00 100644
+index 0239c4a2ad1607e33b77ac0b541b0ae09a7600df..30492a68c3c67f394ce79666b784e1f4473b9e5d 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -281,6 +281,34 @@ var gCurrentHistoryEntryId = null;
+@@ -280,6 +280,34 @@ var gCurrentHistoryEntryId = null;
   * @type {Record<string, SettingPaneConfig>}
   */
  const CONFIG_PANES = Object.freeze({
@@ -2189,7 +2189,7 @@ index a2e977363c4061d00f7cd65d3c6bb40aa26d487f..0fee7042f626e66d8a27885cd03ee69e
      l10nId: "about-firefox-header",
      iconSrc: "chrome://browser/skin/sidebar/firefox.svg",
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index 727678b71713f0deb726bd9a12803787b8b656ea..5cf1b2266d0174d685e0e204810c102d0c17ec6c 100644
+index 1dff3c38c7f313c64ff82b4eca6dc8efb16400b6..18fee8a54114237703c7ad84bb10e2332517eee0 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
 @@ -41,6 +41,7 @@
@@ -2230,10 +2230,10 @@ index 727678b71713f0deb726bd9a12803787b8b656ea..5cf1b2266d0174d685e0e204810c102d
        <!-- Footer links -->
        <html:moz-page-nav-button id="addonsButton"
 diff --git a/browser/components/preferences/tests/browser.toml b/browser/components/preferences/tests/browser.toml
-index 1056ad80558f2dbc7b359c276542d7ef0e4371a7..314b958ba4b8a40fc20d6013b010ee0722ed8d3c 100644
+index d4ad32f534f3ab1f328e6238bfd7bacef7591f2c..ecbdaa2d73768910cf83ba2c94f9186655b0dd7a 100644
 --- a/browser/components/preferences/tests/browser.toml
 +++ b/browser/components/preferences/tests/browser.toml
-@@ -29,6 +29,14 @@ run-if = ["updater"]
+@@ -27,6 +27,14 @@ run-if = ["updater"]
  
  ["browser_backup_warning_banner.js"]
  
