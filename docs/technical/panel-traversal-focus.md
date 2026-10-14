@@ -167,3 +167,11 @@ or blank add-panel insertion is still settling.
 - The actor files must live under `src/browser/actors/` and be registered into
   Firefox with `patches/chrome-layout/04-bento-key-actors.patch`. The build sync
   script also copies them into built app actor targets.
+- Open, found while upgrading to Firefox 158.0 and present in the 157.0.1 source:
+  `registerContentKeyActor()` does not set `safeForUntrustedWebProcess`, and
+  `dom.jsipc.check_safeForUntrustedWebProcess` is true. Firefox then refuses the
+  actor in `web` and `webIsolated=` content processes, so `getActor('BentoKey')`
+  throws "doesn't match remote type" on `http(s)` pages and `about:blank`, and the
+  actor attaches only to `privilegedabout` pages such as `about:newtab`. Check
+  with `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('BentoKey')`
+  on a web page after any Firefox update. The 154 behavior was not re-measured.
