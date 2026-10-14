@@ -45,8 +45,11 @@ export async function releaseAdoptedTab(
 ): Promise<void> {
   // Checked first: the window that asked for the move may show another workspace by
   // the time the tab arrives, which would make the move look like a user drag.
-  if (deps.moves.take(tabId, newWindowId) !== undefined) return;
-  if (await deps.handedOver(tabId, newWindowId)) return;
+  const moved = deps.moves.take(tabId, newWindowId) !== undefined;
+  // Always asked, so a handover that delivers the same attach is spent too: left over, it
+  // would pass a later drag of the tab back into this window as the handover.
+  const handedOver = await deps.handedOver(tabId, newWindowId);
+  if (moved || handedOver) return;
   const tab = deps.tabs.snapshot().find((candidate) => candidate.id === tabId);
   // The tab moved on while this event waited: the event for its latest window releases it.
   if (!tab?.workspaceId || tab.windowId !== newWindowId) return;

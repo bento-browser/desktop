@@ -152,6 +152,22 @@ describe('releaseAdoptedTab', () => {
     expect(deps.clearPanelMarker).not.toHaveBeenCalled();
   });
 
+  it('asks about the handover even when a Bento move already accounts for the attach', async () => {
+    // Both can deliver one attach; the handover's record must be spent with it.
+    const deps = makeDeps({
+      tabs: [tab({ id: 7, windowId: 1, workspaceId: 'ws-b' })],
+      destinationWorkspaceId: 'ws-a',
+      movedFor: 'ws-b',
+      handedOver: true,
+    });
+
+    await releaseAdoptedTab(deps, 7, 1);
+
+    expect(deps.moves.take).toHaveBeenCalledWith(7, 1);
+    expect(deps.handedOver).toHaveBeenCalledWith(7, 1);
+    expect(deps.tabs.clearWorkspace).not.toHaveBeenCalled();
+  });
+
   it('still releases the same tab when it was not handed over (a user drag)', async () => {
     const deps = makeDeps({
       tabs: [tab({ id: 7, windowId: 1, workspaceId: 'ws-b' })],
@@ -245,6 +261,27 @@ describe('releaseAdoptedTab with the real handover marker', () => {
 
   it('treats a drag out and back within the TTL as a drag, once the handover was seen', async () => {
     const { deps, current, wasHandedOver } = await setupTab([{ from: 2, to: 1, at: Date.now() }]);
+    await wasHandedOver(7, { from: 2 });
+    current.windowId = 1;
+    await releaseAdoptedTab(deps, 7, 1);
+    expect(bindingsReleased(deps)).toBe(false);
+
+    // Two seconds later the user drags the tab to window 3, then back to window 1.
+    vi.advanceTimersByTime(2_000);
+    current.windowId = 3;
+    await releaseAdoptedTab(deps, 7, 3);
+    current.windowId = 1;
+    await releaseAdoptedTab(deps, 7, 1);
+
+    expect(deps.tabs.clearWorkspace).toHaveBeenCalledTimes(2);
+    expect(deps.tabs.assignWorkspaceEagerly).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a drag out and back as a drag when a Bento move and a handover shared the attach', async () => {
+    const { deps, current, wasHandedOver } = await setupTab([{ from: 2, to: 1, at: Date.now() }]);
+    const moves = createProgrammaticMoves();
+    moves.expect([7], 'ws-b', 1);
+    deps.moves = moves;
     await wasHandedOver(7, { from: 2 });
     current.windowId = 1;
     await releaseAdoptedTab(deps, 7, 1);

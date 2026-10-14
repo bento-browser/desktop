@@ -1848,19 +1848,22 @@ browser.windows.onRemoved.addListener((windowId) => {
 // panel selected as the main tab of a workspace with an empty sidebar.
 browser.tabs.onDetached.addListener(async (tabId, { oldWindowId }) => {
   const snapshot = tabs.snapshot();
-  const tab = snapshot.find((candidate) => candidate.id === tabId);
-  if (!tab?.workspaceId || workspaces.getActiveId(oldWindowId) !== tab.workspaceId) return;
-  // A closing window handing its tabs over is not the workspace losing its last tab.
-  if (await wasHandedOver(tabId, { from: oldWindowId })) return;
+  const workspaceId = snapshot.find((candidate) => candidate.id === tabId)?.workspaceId;
+  const leftShownWorkspace = !!workspaceId && workspaces.getActiveId(oldWindowId) === workspaceId;
+  // A closing window handing its tabs over is not the workspace losing its last tab. Asked for
+  // every detach, so the hop's detach side is spent even when nothing here needs it: left over,
+  // it would pass a later drag out of this window as the handover.
+  const handedOver = await wasHandedOver(tabId, { from: oldWindowId });
+  if (!leftShownWorkspace || handedOver) return;
   const panelId = panelToPromoteAfterDetach({
-    workspaceId: tab.workspaceId,
+    workspaceId,
     leavingTabId: tabId,
     windowId: oldWindowId,
     tabs: snapshot,
-    panelTabIds: panels.getPanels(tab.workspaceId),
+    panelTabIds: panels.getPanels(workspaceId),
     isClosing: (id) => tabs.isClosing(id),
   });
-  if (panelId !== null) void promoteLeftmostPanelToTab(tab.workspaceId, panelId);
+  if (panelId !== null) void promoteLeftmostPanelToTab(workspaceId, panelId);
 });
 
 // A tab torn out of, dragged into, or adopted by another window arrives with the
