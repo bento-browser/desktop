@@ -161,7 +161,8 @@ Use this shape for new or changed touchpoints:
   `window.onclose WindowIsClosing` (engine only), plus
   `FrameLoader.prototype.requestTabStateFlush` (runtime probe). `windowUtils.isInModalState()` was
   checked and not used: it covers content windows opened modal and the debugger
-  start, not the tab-modal closing-tabs and beforeunload prompts. Firefox update
+  start, not the window-modal closing-tabs warning (shown through `gDialogBox`) or
+  the content-modal beforeunload prompts. Firefox update
   risk: if `DOMWindowClose` stops reaching the window's own listeners, or
   `window.onclose` stops being the single OS close handler, windows close at once
   again (tabs parked as URLs, the previous behavior) and nothing breaks; if
@@ -182,8 +183,11 @@ Use this shape for new or changed touchpoints:
   tab keeps its tab id, its BrowsingContext id and its text in the remaining window,
   stays in its workspace (hidden from that window's sidebar), the panel layout is
   intact when the workspace is shown again, the tabs keep their order, a DevTools
-  toolbox open on the window's selected tab follows it, and no blank tab or stray
-  `bento.handover` value remains after 15 s. Close two windows in a row with a
+  toolbox open on the window's selected tab follows it, and no blank tab remains.
+  After 15 s, dragging a handed-over tab out of the window that received it and
+  back releases its workspace like any drag (the expired hop no longer matches;
+  tools never deletes the `bento.handover` value and chrome prunes expired hops
+  only when it appends the next). Close two windows in a row with a
   third open: workspace, folder and panels survive both hops. From a page opened by
   `window.open()` call `window.close()` with two windows open: only that tab closes.
   Press Cmd+Q right after closing a window: the session restores both windows' tabs,
