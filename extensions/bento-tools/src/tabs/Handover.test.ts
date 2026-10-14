@@ -100,6 +100,29 @@ describe('wasHandedOver', () => {
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
   });
 
+  it('tells a hop written before the start from one written after it, by uptime', async () => {
+    const { wasHandedOver } = await load();
+    vi.advanceTimersByTime(5_000);
+
+    // Six seconds old in a tools instance five seconds into its run: written a second before it.
+    stubSessions([hop(2, 1, Date.now() - 6_000)]);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
+
+    stubSessions([hop(2, 1, Date.now() - 4_000)]);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(true);
+  });
+
+  it('still matches a new hop after the wall clock moved back past the start', async () => {
+    const { wasHandedOver } = await load();
+    vi.advanceTimersByTime(5_000);
+    // Ten minutes back (a manual change or a time sync); the monotonic uptime is unaffected.
+    vi.setSystemTime(Date.now() - 600_000);
+    stubSessions([hop(2, 1)]);
+
+    await expect(wasHandedOver(7, { from: 2 })).resolves.toBe(true);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(true);
+  });
+
   it('ignores a tab with no value or a malformed one, and an unreadable tab', async () => {
     const { wasHandedOver } = await load();
     stubSessions(undefined);

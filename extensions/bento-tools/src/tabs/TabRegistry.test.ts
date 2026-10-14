@@ -219,16 +219,18 @@ describe('TabRegistry live active read after an attach', () => {
     vi.restoreAllMocks();
   });
 
-  // The attach starts a read of the tab; the test decides when its answer arrives.
+  // Each attach starts a read of the tab; the test decides when each answer arrives.
   async function attachWithPendingRead() {
     const listeners = stubTabsBrowser([makeTab({ id: 9, windowId: 2, active: false })]);
-    let answer!: (tab: browser.tabs.Tab) => void;
-    vi.mocked(browser.tabs.get).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const answers: Array<(tab: browser.tabs.Tab) => void> = [];
+    vi.mocked(browser.tabs.get).mockImplementation(
+      () => new Promise((resolve) => answers.push(resolve)),
+    );
     const tabs = new TabRegistry();
     await tabs.init();
     listeners.attached?.(9, { newWindowId: 1, newPosition: 0 });
-    const settle = async (tab: browser.tabs.Tab) => {
-      answer(tab);
+    const settle = async (tab: browser.tabs.Tab, read = 0) => {
+      answers[read]?.(tab);
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
     return { tabs, listeners, settle };
@@ -247,9 +249,11 @@ describe('TabRegistry live active read after an attach', () => {
   it('does not apply the read of a tab that has moved to another window since', async () => {
     const { tabs, listeners, settle } = await attachWithPendingRead();
 
-    // A second move; the registry follows it, the first read still answers for window 1.
+    // A second move; the registry follows it. Its read answers first, then the first read
+    // answers late for window 1.
     listeners.attached?.(9, { newWindowId: 3, newPosition: 0 });
-    await settle(makeTab({ id: 9, windowId: 1, active: true }));
+    await settle(makeTab({ id: 9, windowId: 3, active: false }), 1);
+    await settle(makeTab({ id: 9, windowId: 1, active: true }), 0);
 
     expect(tabs.snapshot()[0]).toMatchObject({ windowId: 3, active: false });
   });

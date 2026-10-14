@@ -6,7 +6,7 @@
 // before tools has seen its first hop (two windows closing in one task), so the value is a list
 // and each hop is matched once per side: a later drag of the same tab between the same two
 // windows is not mistaken for it. Tools only reads the value. Chrome drops the hops that have
-// expired when it appends the next one; an old hop that stays is ignored by its time.
+// expired when it appends the next one; an old hop that stays is ignored by its age.
 
 const HANDOVER_SESSION_KEY = 'bento.handover';
 
@@ -15,8 +15,14 @@ const HANDOVER_SESSION_KEY = 'bento.handover';
  * prunes with the same number (HANDOVER_TTL_MS there). */
 export const HANDOVER_TTL_MS = 15_000;
 
-/** Values older than this tools instance belong to a previous run, whose window ids repeat. */
-const STARTED_AT = Date.now();
+/**
+ * The monotonic clock at load. A hop older than this tools instance belongs to a previous run,
+ * whose window ids repeat, so a hop counts only when its age fits inside the uptime. Comparing
+ * `hop.at` with the wall time at load instead would reject every new hop once the wall clock
+ * moves back past that time. The age is two wall readings taken moments apart, so only a clock
+ * change landing between them can skew it.
+ */
+const LOADED_AT = performance.now();
 
 interface Hop {
   from: number;
@@ -32,7 +38,7 @@ function isHop(value: unknown): value is Hop {
 
 function isFresh(hop: Hop): boolean {
   const age = Date.now() - hop.at;
-  return hop.at >= STARTED_AT && age >= 0 && age <= HANDOVER_TTL_MS;
+  return age >= 0 && age <= HANDOVER_TTL_MS && age <= performance.now() - LOADED_AT;
 }
 
 async function readHops(tabId: number): Promise<Hop[]> {

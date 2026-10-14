@@ -487,18 +487,23 @@ opening an unwanted blank tab before the moved tabs arrive.
     mount drops the hops older than 15 s and those timed in the future. bento-tools
     only reads the value (`wasHandedOver`, `tabs/Handover.ts`), in `tabs.onDetached`
     (`from`) and `tabs.onAttached` (`to`). A hop matches an event when it names that
-    window, is under 15 s old, was written after this tools instance started (window
-    ids repeat across runs, so a restored value must not match), and that side of it
-    has not matched before. Every hop is needed: two windows closing in one task
+    window, is under 15 s old, is no older than this tools instance's uptime (window
+    ids repeat across runs, so a restored value must not match; the uptime is read
+    from `performance.now()`, because comparing the hop's time with the wall time at
+    load rejected every new hop once the clock moved back past it), and that side of
+    it has not matched before. Every hop is needed: two windows closing in one task
     (window 2 into 1, then 1 into 3) write both hops before tools sees an event, and
     one overwritten value made the first events look like a drag and released the
     workspace, folder and panel slot. Each side matches once so a user dragging the
-    tab out and back into the same window within the TTL is a drag. Neither event is
-    ordered against the other or against anything chrome sends, so a read never
-    clears anything. Tools does not delete the value either: a cleanup that read it
-    and removed it later deleted a hop chrome had appended in between. An expired hop
-    stays on the tab (it rides the session file) until the next handover prunes it,
-    and is ignored by its time.
+    tab out and back into the same window within the TTL is a drag, which holds only
+    if every event spends its side: `releaseAdoptedTab` asks `wasHandedOver` even when
+    a Bento move (`bentoTabMoves`) already accounts for the attach, and `onDetached`
+    asks before its own checks. A side left unspent passed the later drag back into
+    that window as the handover. Neither event is ordered against the other or
+    against anything chrome sends, so a read never clears anything. Tools does not
+    delete the value either: a cleanup that read it and removed it later deleted a
+    hop chrome had appended in between. An expired hop stays on the tab (it rides the
+    session file) until the next handover prunes it, and is ignored by its age.
   - A handed-over tab keeps its workspace, folder and panel slot
     (`releaseAdoptedTab` returns early; a drag releases them), does not promote a
     panel in the window it left (`onDetached`), and is not parked: `onAttached`
