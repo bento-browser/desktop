@@ -53,7 +53,9 @@ function isPrimaryApplicationPackage(file, displayVersion) {
   const prefix = `bento-${displayVersion}.`;
   if (!name.startsWith(prefix)) return false;
   const suffix = name.slice(prefix.length);
-  if (suffix.endsWith('.dmg') || suffix.endsWith('.tar.bz2') || suffix.endsWith('.tar.xz') || suffix.endsWith('.installer.exe')) {
+  // Firefox 158 packages macOS developer-options builds (dev and debug) as a TAR, not a DMG.
+  // assertMacTarContents inspects the archive itself.
+  if (suffix.endsWith('.dmg') || suffix.endsWith('.mac.tar') || suffix.endsWith('.tar.bz2') || suffix.endsWith('.tar.xz') || suffix.endsWith('.installer.exe')) {
     return true;
   }
   if (!suffix.endsWith('.zip')) return false;
@@ -79,6 +81,34 @@ function packagedApplicationBuildId(manifest, root, application) {
   if (!buildId) fail(`packaged application.ini has no [App] BuildID: ${manifest.applicationIni}`);
   if (manifest.buildId !== buildId) fail('manifest build ID does not match the packaged application');
   return buildId;
+}
+
+/**
+ * A macOS TAR package must be a readable archive holding the application bundle
+ * (optionally under one leading directory, as `mach package` writes it), and that
+ * bundle's application.ini must carry the BuildID of the staged application.
+ */
+function assertMacTarContents(file, application, packagedId) {
+  const label = path.basename(file);
+  const bundle = path.basename(application);
+  if (!bundle.endsWith('.app')) fail(`${label} is a macOS package, but the application is not an app bundle: ${bundle}`);
+  const options = { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 };
+  const listing = spawnSync('tar', ['-tf', file], options);
+  if (listing.error || listing.status !== 0) {
+    fail(`${label} is not a readable TAR archive: ${listing.error?.message || listing.stderr.trim() || 'tar failed'}`);
+  }
+  const iniName = `${bundle}/Contents/Resources/application.ini`;
+  const entries = listing.stdout.split(/\r?\n/).filter((entry) => {
+    const parts = entry.split('/');
+    return parts.length <= 5 && parts.slice(-4).join('/') === iniName;
+  });
+  if (entries.length !== 1) fail(`${label} must hold exactly one ${iniName}, found ${entries.length}`);
+  // '--' keeps an archive entry name from being read as a tar option.
+  const ini = spawnSync('tar', ['-xOf', file, '--', entries[0]], options);
+  if (ini.error || ini.status !== 0) fail(`${label} cannot be read: ${ini.error?.message || ini.stderr.trim() || 'tar failed'}`);
+  const buildId = readApplicationBuildId(ini.stdout);
+  if (!buildId) fail(`${label} has no [App] BuildID in ${entries[0]}`);
+  if (buildId !== packagedId) fail(`${label} build ID ${buildId} does not match the packaged application ${packagedId}`);
 }
 
 function parseUpdateXml(file) {
@@ -192,6 +222,9 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   const packages = walkFiles(objDist).filter((file) => isPrimaryApplicationPackage(file, release.displayVersion));
   if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
   const packagedId = packagedApplicationBuildId(manifest, root, application);
+  for (const file of packages.filter((name) => name.endsWith('.mac.tar'))) {
+    assertMacTarContents(path.join(objDist, file), application, packagedId);
+  }
 
   if (!updates) {
     process.stdout.write(`validate-bento-artifacts: verified ${packages.length} package(s); the updater is disabled, so no MAR or update metadata is expected\n`);

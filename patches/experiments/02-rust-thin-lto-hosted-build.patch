@@ -1,15 +1,15 @@
-From 70ec3c6a47fac29895b60f9bcc335a9c331591aa Mon Sep 17 00:00:00 2001
+From 0f8771355ba747ff459004ff3c6524b329f4db09 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 24 Aug 2026 14:13:08 +1000
 Subject: [PATCH] Use ThinLTO for hosted release Rust linking
 
 ---
  browser/moz.configure    | 11 +++++++++++
- config/makefiles/rust.mk |  6 ++++--
- 2 files changed, 15 insertions(+), 2 deletions(-)
+ config/makefiles/rust.mk |  4 +++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
 
 diff --git a/browser/moz.configure b/browser/moz.configure
-index 446e8637d053b1d6972d0a1b712d75322b011a17..45a7200c1d192afd86f599ec1918baf7d053fa35 100644
+index ef7de8397fa9e2dbdf5256e025a947eadbef779d..24c5ae544d5384311dbc52773733beea8d14b389 100644
 --- a/browser/moz.configure
 +++ b/browser/moz.configure
 @@ -17,6 +17,17 @@ imply_option("MOZ_APP_ID", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}")
@@ -31,29 +31,20 @@ index 446e8637d053b1d6972d0a1b712d75322b011a17..45a7200c1d192afd86f599ec1918baf7
  with only_when(target_has_linux_kernel & compile_environment):
      option(env="MOZ_NO_PIE_COMPAT", help="Enable non-PIE wrapper")
 diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
-index 0a7413d3eebfeea58f3ae8c372fc7269969406c2..409fa5df26fc60e0e860445e6e11fc5c6f1a48d0 100644
+index ab3304484180de276f863c15dfdd7d13d27fb135..01350d30f730abbdb1200599531654c32482598f 100644
 --- a/config/makefiles/rust.mk
 +++ b/config/makefiles/rust.mk
-@@ -91,7 +91,9 @@ ifeq (,$(RUST_SANCOV_FLAGS))
- # Never enable when coverage is enabled to work around https://github.com/rust-lang/rust/issues/90045.
- ifndef MOZ_CODE_COVERAGE
- ifeq (,$(findstring gkrust_gtest,$(RUST_LIBRARY_FILE)))
--cargo_rustc_flags += -Clto$(if $(filter full,$(MOZ_LTO_RUST_CROSS)),=fat)
+@@ -56,7 +56,9 @@ cargo_build_flags += $(MOZ_CARGO_BUILD_STD_ARGS)
+ cargo_rustc_flags = $(CARGO_RUSTCFLAGS)
+ # Enable link-time optimization for release builds.
+ ifdef RUST_LIBRARY_LTO
+-cargo_rustc_flags += -Clto
 +# Keep Firefox's default fat LTO unless a Bento hosted builder opts into
 +# standard Rust ThinLTO to reduce peak linker memory.
-+cargo_rustc_flags += $(if $(filter thin,$(BENTO_RUST_LTO)),-Clto=thin,-Clto$(if $(filter full,$(MOZ_LTO_RUST_CROSS)),=fat))
++cargo_rustc_flags += $(if $(filter thin,$(BENTO_RUST_LTO)),-Clto=thin,-Clto)
  endif
- # We need -Cembed-bitcode=yes for all crates when using -Clto.
- RUSTFLAGS += -Cembed-bitcode=yes
-@@ -526,7 +528,7 @@ ifndef MOZ_PROFILE_GENERATE
- ifeq ($(OS_ARCH), Linux)
- ifeq (,$(RUST_SANCOV_FLAGS)$(MOZ_ASAN)$(MOZ_TSAN)$(MOZ_UBSAN))
- ifndef MOZ_LTO_RUST_CROSS
--ifneq (,$(filter -Clto,$(cargo_rustc_flags)))
-+ifneq (,$(filter -Clto -Clto=thin -Clto=fat,$(cargo_rustc_flags)))
- 	$(call py_action,check_binary $(@F),--networking $(RUST_LIBRARY_FILE))
- endif
- endif
+ 
+ ifdef CARGO_INCREMENTAL
 -- 
 2.54.0 (Apple Git-157)
 

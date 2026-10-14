@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import { readApplicationBuildId } from './bento-build.mjs';
@@ -93,6 +94,69 @@ test('artifact validation ignores auxiliary archives when finding application pa
     assert.throws(() => validateArtifacts(root), /no primary application package found/);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Replaces the fixture's DMG and ZIP with a real macOS TAR laid out like `mach package`
+ * output (bento/Bento.app/...). `files` maps archive paths to contents; each call
+ * rebuilds the archive from scratch.
+ */
+async function useMacTar({ root, objDist }, files) {
+  await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), { force: true });
+  await fsp.rm(path.join(objDist, 'bento-0.0.1.en-US.win64.zip'), { force: true });
+  const source = path.join(root, 'tar-source');
+  await fsp.rm(source, { recursive: true, force: true });
+  for (const [name, content] of Object.entries(files)) {
+    await fsp.mkdir(path.dirname(path.join(source, name)), { recursive: true });
+    await fsp.writeFile(path.join(source, name), content);
+  }
+  const archive = path.join(objDist, 'bento-0.0.1.en-US.mac.tar');
+  const packed = spawnSync('tar', ['-cf', archive, '-C', source, ...await fsp.readdir(source)], { encoding: 'utf8' });
+  assert.equal(packed.status, 0, packed.stderr);
+  return archive;
+}
+
+const bundleIni = 'bento/Bento.app/Contents/Resources/application.ini';
+const stagedBuild = '[App]\nBuildID=20260912000000\n';
+
+test('artifact validation accepts the TAR package that Firefox 158 builds for macOS dev builds', async () => {
+  const built = await fixture({ updates: false });
+  try {
+    await useMacTar(built, { [bundleIni]: stagedBuild });
+    await fsp.writeFile(path.join(built.objDist, 'bento-0.0.1.en-US.mac.update_framework_artifacts.zip'), 'auxiliary');
+    assert.deepEqual(validateArtifacts(built.root).packages, ['bento-0.0.1.en-US.mac.tar']);
+  } finally {
+    await fsp.rm(built.root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation rejects a macOS TAR package that is not the staged application', async () => {
+  const built = await fixture({ updates: false });
+  try {
+    const archive = await useMacTar(built, { [bundleIni]: stagedBuild });
+    const whole = await fsp.readFile(archive);
+
+    // A name alone is not a package: plain text and an archive cut inside application.ini are not readable.
+    await fsp.writeFile(archive, 'application');
+    assert.throws(() => validateArtifacts(built.root), /is not a readable TAR archive/);
+    await fsp.writeFile(archive, whole.subarray(0, 2570));
+    assert.throws(() => validateArtifacts(built.root), /is not a readable TAR archive/);
+
+    // A valid archive without the app bundle, with the bundle nested too deep, and with the wrong BuildID.
+    await useMacTar(built, { 'bento/readme.txt': 'no app here' });
+    assert.throws(() => validateArtifacts(built.root), /must hold exactly one Bento\.app\/Contents\/Resources\/application\.ini, found 0/);
+    await useMacTar(built, { [`nested/deeper/${bundleIni}`]: stagedBuild });
+    assert.throws(() => validateArtifacts(built.root), /found 0/);
+    await useMacTar(built, { [bundleIni]: '[App]\nBuildID=20260913000000\n' });
+    assert.throws(() => validateArtifacts(built.root), /build ID 20260913000000 does not match the packaged application 20260912000000/);
+    await useMacTar(built, { [bundleIni]: '[Build]\nBuildID=20260912000000\n' });
+    assert.throws(() => validateArtifacts(built.root), /has no \[App\] BuildID/);
+
+    await useMacTar(built, { [bundleIni]: stagedBuild });
+    validateArtifacts(built.root);
+  } finally {
+    await fsp.rm(built.root, { recursive: true, force: true });
   }
 });
 

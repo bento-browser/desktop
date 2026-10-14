@@ -1,4 +1,4 @@
-From 94c666d2def1e46cac7ca8e6cc8628dd5ded7072 Mon Sep 17 00:00:00 2001
+From 1a7d465427cfaebe7d62b964159af5886e3a1732 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 12 Oct 2026 07:04:08 +1100
 Subject: [PATCH] Hide the About updates group when the updater is not built in
