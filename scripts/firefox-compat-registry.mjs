@@ -116,6 +116,9 @@ const FF = {
   documentCpp: 'dom/base/Document.cpp',
   migrationWizard: 'browser/components/migration/content/migration-wizard.mjs',
   firefoxProfileMigrator: 'browser/components/migration/FirefoxProfileMigrator.sys.mjs',
+  firefoxSelectableProfileMigrator:
+    'browser/components/migration/FirefoxSelectableProfileMigrator.sys.mjs',
+  nsAppRunner: 'toolkit/xre/nsAppRunner.cpp',
 };
 
 export const MEMBERS = [
@@ -1724,6 +1727,33 @@ export const MEMBERS = [
     sites: ['patches/core-ui/09-bento-firefox-profile-first-run-import.patch#resourceTypes'],
     use: 'Resource type constants the first-run import selects (patch core-ui/09).',
     at: [FF.migrationUtils, '^\\s+resourceTypes = Object\\.freeze\\(', 198],
+  },
+  {
+    id: 'nsAppRunner selectable-profile reset key',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['patches/core-ui/09-bento-firefox-profile-first-run-import.patch#firefox-selectable-profile'],
+    use: 'The migrator key nsAppRunner.cpp requests when a selectable profile is reset; the selectable-profile migrator and the refresh key set keep it (patch core-ui/09).',
+    at: [FF.nsAppRunner, '^\\s+aKey = "firefox-selectable-profile";', 6166],
+  },
+  {
+    id: 'FirefoxSelectableProfileMigrator.key',
+    kind: 'source',
+    how: 'writes',
+    probe: 'E',
+    sites: ['patches/core-ui/09-bento-firefox-profile-first-run-import.patch#FirefoxSelectableProfileMigrator'],
+    use: 'Registers the selectable-profile migrator under the firefox-keyed name nsAppRunner.cpp requests (patch core-ui/09).',
+    at: [FF.firefoxSelectableProfileMigrator, '^\\s+static get key\\(\\)', 27],
+  },
+  {
+    id: 'MigrationUtils.FIREFOX_REFRESH_MIGRATOR_KEYS',
+    kind: 'source',
+    how: 'writes',
+    probe: 'E',
+    sites: ['patches/core-ui/09-bento-firefox-profile-first-run-import.patch#FIREFOX_REFRESH_MIGRATOR_KEYS'],
+    use: 'Keys that count as a Firefox profile refresh; Bento keeps the firefox-keyed names (patch core-ui/09).',
+    at: [FF.migrationUtils, '^const FIREFOX_REFRESH_MIGRATOR_KEYS = new Set\\(', 46],
   },
   {
     id: 'MigrationWizard:Close',

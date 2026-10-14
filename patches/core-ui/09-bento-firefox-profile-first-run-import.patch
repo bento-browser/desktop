@@ -5,12 +5,13 @@ Subject: [PATCH] Import Firefox profile data on first Bento run
 
 ---
  .../migration/FirefoxProfileMigrator.sys.mjs  | 512 +++++++++++++++++-
- .../migration/MigrationUtils.sys.mjs          |  16 +-
+ .../FirefoxSelectableProfileMigrator.sys.mjs  |   6 +-
+ .../migration/MigrationUtils.sys.mjs          |  26 +-
  .../migration/MigrationWizardParent.sys.mjs   |  11 +
  .../migration/content/migration-wizard.mjs    |  11 +-
  .../locales/en-US/browser/migrationWizard.ftl |   4 +
  toolkit/xre/nsAppRunner.cpp                   |   8 +
- 6 files changed, 551 insertions(+), 11 deletions(-)
+ 7 files changed, 564 insertions(+), 14 deletions(-)
 
 diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 index 73e19b97fd8ce473e4a2fda87617be82956a77c2..1a895041da51e156060ef063336615a4998641b1 100644
@@ -580,11 +581,46 @@ index 73e19b97fd8ce473e4a2fda87617be82956a77c2..1a895041da51e156060ef063336615a4
 +    };
 +  }
 +}
+diff --git a/browser/components/migration/FirefoxSelectableProfileMigrator.sys.mjs b/browser/components/migration/FirefoxSelectableProfileMigrator.sys.mjs
+index 6f7af20a9631e8c340b179e26dc7d1d01e738487..15e4c880a50292dd300efb693e38ec76c007f5bf 100644
+--- a/browser/components/migration/FirefoxSelectableProfileMigrator.sys.mjs
++++ b/browser/components/migration/FirefoxSelectableProfileMigrator.sys.mjs
+@@ -25,7 +25,11 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+  */
+ export class FirefoxSelectableProfileMigrator extends FirefoxProfileMigrator {
+   static get key() {
+-    return AppConstants.MOZ_APP_NAME + "-selectable-profile";
++    // nsAppRunner.cpp requests firefox-selectable-profile on a profile reset,
++    // and Bento's Firefox migrator keeps the firefox key.
++    return AppConstants.MOZ_APP_NAME == "bento"
++      ? "firefox-selectable-profile"
++      : AppConstants.MOZ_APP_NAME + "-selectable-profile";
+   }
+ 
+   /**
 diff --git a/browser/components/migration/MigrationUtils.sys.mjs b/browser/components/migration/MigrationUtils.sys.mjs
-index e366c09df3e7b54d24e0d84bb63b950cbda95110..ab631faf5496e9bbab7ee91753d8f9196dd3d05e 100644
+index e366c09df3e7b54d24e0d84bb63b950cbda95110..eb0c2af92a44a06bc502ad89511521724265de39 100644
 --- a/browser/components/migration/MigrationUtils.sys.mjs
 +++ b/browser/components/migration/MigrationUtils.sys.mjs
-@@ -57,6 +57,10 @@ const MIGRATOR_MODULES = Object.freeze({
+@@ -43,9 +43,15 @@ function getL10n() {
+   return gL10n;
+ }
+ 
++// Bento imports from Mozilla Firefox, so its migrators keep the firefox keys
++// (see FirefoxProfileMigrator.key). nsAppRunner.cpp requests
++// firefox-selectable-profile when a selectable profile is reset.
++const FIREFOX_MIGRATOR_KEY =
++  AppConstants.MOZ_APP_NAME == "bento" ? "firefox" : AppConstants.MOZ_APP_NAME;
++
+ const FIREFOX_REFRESH_MIGRATOR_KEYS = new Set([
+-  AppConstants.MOZ_APP_NAME,
+-  AppConstants.MOZ_APP_NAME + "-selectable-profile",
++  FIREFOX_MIGRATOR_KEY,
++  FIREFOX_MIGRATOR_KEY + "-selectable-profile",
+ ]);
+ 
+ const MIGRATOR_MODULES = Object.freeze({
+@@ -57,6 +63,10 @@ const MIGRATOR_MODULES = Object.freeze({
      moduleURI: "resource:///modules/FirefoxProfileMigrator.sys.mjs",
      platforms: ["linux", "macosx", "win"],
    },
@@ -595,7 +631,7 @@ index e366c09df3e7b54d24e0d84bb63b950cbda95110..ab631faf5496e9bbab7ee91753d8f919
    FirefoxSelectableProfileMigrator: {
      moduleURI: "resource:///modules/FirefoxSelectableProfileMigrator.sys.mjs",
      platforms: ["linux", "macosx", "win"],
-@@ -173,6 +177,8 @@ class MigrationUtils {
+@@ -173,6 +183,8 @@ class MigrationUtils {
          "about:welcome?*",
          "about:preferences",
          "about:settings",
@@ -604,7 +640,7 @@ index e366c09df3e7b54d24e0d84bb63b950cbda95110..ab631faf5496e9bbab7ee91753d8f919
          "chrome://browser/content/migration/migration-dialog-window.html",
          "chrome://browser/content/spotlight.html",
          "about:firefoxview",
-@@ -509,8 +515,10 @@ class MigrationUtils {
+@@ -509,8 +521,10 @@ class MigrationUtils {
        "Internet Explorer": "ie",
        "Microsoft Edge": "edge",
        Safari: "safari",
@@ -617,7 +653,7 @@ index e366c09df3e7b54d24e0d84bb63b950cbda95110..ab631faf5496e9bbab7ee91753d8f919
        Opera: "opera",
        Vivaldi: "vivaldi",
        "Opera GX": "opera-gx",
-@@ -530,8 +538,8 @@ class MigrationUtils {
+@@ -530,8 +544,8 @@ class MigrationUtils {
          .getApplicationDescription("http");
        key = APP_DESC_TO_KEY[browserDesc] || "";
        // Handle devedition, as well as "FirefoxNightly" on OS X.
