@@ -9,16 +9,12 @@ export interface ParkedWorkspaceTab {
   index: number;
 }
 
-/** Pages Firefox calls blank (`tab.isEmpty`): nothing a later activation should recreate. */
-const BLANK_PAGE_URLS: ReadonlySet<string> = new Set(['about:blank', 'about:newtab', 'about:home']);
-
 /**
  * What a closing window may leave in storage for one workspace: a URL per panel
  * tab (for `PanelStore.parkWorkspaceWithResolvedUrls`) and the sidebar tabs to
  * restore later. Private tabs contribute nothing, so no URL or title from a
- * private window is parked, and blank pages are not restored: the empty tab a
- * window hands its other tabs over and leaves behind would otherwise come back on
- * the next activation and could be selected ahead of the preserved page.
+ * private window is parked. A blank page is not restored: the blank tab a window
+ * hands its other tabs over from stays behind to be closed with it.
  */
 export function parkableWorkspaceTabs(
   workspaceTabs: readonly WindowClosingTabSnapshot[],
@@ -31,7 +27,7 @@ export function parkableWorkspaceTabs(
     if (tab.url) urlByTabId.set(tab.id, tab.url);
   }
   const sidebarTabs = persistable
-    .filter((tab) => !panelTabIds.has(tab.id) && tab.url && !BLANK_PAGE_URLS.has(tab.url))
+    .filter((tab) => !panelTabIds.has(tab.id) && tab.url && tab.url !== 'about:blank')
     .sort((a, b) => a.index - b.index)
     .map((tab) => ({
       url: tab.url!,

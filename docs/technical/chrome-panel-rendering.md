@@ -445,13 +445,17 @@ adds its entry, and its id in the mount probe list, in the same change.
   (`reconcilePanelsSplitView([])`; `handingOverTabs` then makes the reconciler return
   at once, or a TabSelect or `panels/sync` would mark the tabs again) and calls
   `survivor.gBrowser.adoptTab(tab, { tabIndex, selectTab: false })` for each tab worth
-  keeping: pinned tabs first at `pinnedTabCount` (adoptTab pins only when the index is
-  inside or right after the pinned region), the rest at the end, the selected tab last.
-  Each call is in its own try/catch (`adoptTab` returns null when the swap is refused
-  and `swapDocShells` can throw); a tab that is not adopted dies with the window as
-  before. After a successful adoption it writes the `bento.handover` marker on the
-  returned tab, and for a pending tab first puts back the custom tab values the swap
-  dropped (read with `SessionStore.getTabState` before it).
+  keeping, in the tabs' own order: pinned tabs at `pinnedTabCount` (adoptTab pins only
+  when the index is inside or right after the pinned region), the rest at the end of
+  the destination. Before the first call it adds one selected `about:blank` tab to the
+  closing window (`addTrustedTab` with `inBackground: false`), so no adoption is that
+  window's last tab and the selected tab is never one that leaves. After a successful
+  adoption it appends a hop to the `bento.handover` value on the returned tab, and for
+  a pending tab first puts back the custom tab values the swap dropped. The state of
+  every tab is read with `SessionStore.getTabState` before its adoption: when
+  `adoptTab` returns null or throws, `recreateTabIn` removes the empty twin it may
+  have left and rebuilds the tab in the survivor from that state (a refusal removes
+  the twin, and the tab's id and values go with it, see [workspaces.md](workspaces.md)).
   - `close` is dispatched by `AppWindow::RequestWindowClose` for the OS close button.
     The `window.onclose` handler `WindowIsClosing` (browser-main.js) is assigned while
     the window is parsed and a handler property keeps its place in the listener
@@ -469,11 +473,20 @@ adds its entry, and its id in the mount probe list, in the same change.
     `DOMWindowClose`, the tabbrowser closes the tab and `preventDefault`s, and when
     that tab is the window's only one it calls `window.close()` from inside the event,
     which arrives here with `target === window`. The handler acts only on events
-    targeted at the window, and a second capture listener (`notePageClose`) marks any other target
-    (`pageIsClosing`) until the next task, so a page that asked to go is not adopted.
-  - `adoptTab` of the last tab calls `window.close()` itself
-    (`swapBrowsersAndCloseOther`), so the handler runs again for the same close;
-    `handingOverTabs` ends it.
+    targeted at the window, and a second capture listener (`notePageClose`) records
+    the tab of any other target (`getTabForBrowser`; `pageClosedTab`, cleared in the
+    next task), so the page that asked to go is not adopted while the window's other
+    tabs still are.
+  - With the blank tab no adoption is the window's last, so `swapBrowsersAndCloseOther`
+    never calls `window.close()` from inside `adoptTab` (which re-entered the handler
+    and skipped `TabClose`, and with it the DevTools toolbox transfer). `handingOverTabs`
+    stays set so a second close request finds nothing to do, also after a refused tab
+    that is still in the window.
+  - Close prompts: a close request repeated while a beforeunload prompt is up reaches
+    the handler with that tab's check still running (`permitUnload` threw, the close
+    went on). `isCheckingUnload` asks each connected browser with `getInPermitUnload`;
+    the closing window hands nothing over, and a survivor in that state or with
+    `gDialogBox.isOpen` (the closing-tabs warning) is not chosen.
   - A quit: `nsAppStartup::Quit` sets `attemptingQuit` before it force-closes the
     windows; `Services.startup.shuttingDown` only turns true after `CloseAllWindows`.
     The handler returns while `attemptingQuit` is true.

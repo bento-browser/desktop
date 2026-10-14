@@ -368,8 +368,13 @@ export const MEMBERS = [
     kind: 'method',
     how: 'calls',
     probe: 'R',
-    sites: ['openTrustedAddrbarNewTab', 'openDevtoolsPanelFor'],
-    use: 'Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects.',
+    sites: [
+      'openTrustedAddrbarNewTab',
+      'openDevtoolsPanelFor',
+      'handOverTabsBeforeClose',
+      'recreateTabIn',
+    ],
+    use: 'Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open and rebuilds a tab adoptTab could not move.',
     at: [FF.tabbrowser, '^\\s+addTrustedTab\\(', 3559],
   },
   {
@@ -389,9 +394,10 @@ export const MEMBERS = [
     sites: [
       'getTabForPanelHistoryBrowser',
       'installInspectInPanelMenuItems',
+      'notePageClose',
       'patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser',
     ],
-    use: 'Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel.',
+    use: "Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, and a page's window.close() uses it to name the tab that asked.",
     at: [FF.tabbrowser, '^\\s+getTabForBrowser\\(', 1324],
   },
   {
@@ -458,7 +464,7 @@ export const MEMBERS = [
     how: 'calls',
     probe: 'R',
     sites: ['handOverTabsBeforeClose'],
-    use: "Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused.",
+    use: "Moves a closing window's live tabs into a window that stays open (the docShell swap behind tabs.move; the tab id is kept). Returns the new tab, or null when the swap is refused, after removing the empty twin it made.",
     at: [FF.tabbrowser, '^\\s+adoptTab\\(', 8480],
   },
   {
@@ -467,7 +473,7 @@ export const MEMBERS = [
     how: 'calls',
     probe: 'E',
     sites: ['handOverTabsBeforeClose'],
-    use: 'Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again), and a pending tab is moved by state, which drops its custom tab values.',
+    use: 'Adopting the last tab of a window closes that window from inside adoptTab (window.close(), so DOMWindowClose again) and returns before TabClose, which a DevTools toolbox moves with. The handover keeps a blank selected tab in the closing window so no adoption is its last tab. A pending tab is moved by state, which drops its custom tab values.',
     at: [FF.tabbrowser, 'aOtherTab\\.documentGlobal\\.close\\(\\)', 7391],
   },
   {
@@ -476,7 +482,7 @@ export const MEMBERS = [
     how: 'reads',
     probe: 'E',
     sites: ['handOverTabsBeforeClose'],
-    use: "SessionStore moves a live tab's custom values to the adopting tab on TabOpen, so the handover marker is written after adoptTab; restoring a pending tab's state without extData deletes them, so the mount copies them back.",
+    use: "SessionStore moves a tab's custom values to the adopting twin on TabOpen, so the handover value is written after adoptTab and a refused adoption (which removes the twin) takes them away: the mount takes the tab's state first. Restoring a pending tab's state without extData deletes them, so the mount copies them back.",
     at: [FF.sessionStore, 'this\\.#moveCustomTabValue\\(aEvent\\.detail\\.adoptedTab', 1349],
   },
   {
@@ -494,7 +500,7 @@ export const MEMBERS = [
     how: 'listens',
     probe: 'E',
     sites: ['notePageClose', 'handOverTabsBeforeClose'],
-    use: "A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window (notePageClose records the other), and skips the window close the tabbrowser then makes for a window's only tab.",
+    use: "A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab).",
     at: [FF.browserElementParent, 'new win\\.CustomEvent\\("DOMWindowClose"', 25],
   },
   {
@@ -505,6 +511,16 @@ export const MEMBERS = [
     sites: ['attachWindowCloseHandover', 'handOverTabsBeforeClose'],
     use: 'The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled.',
     at: [FF.browserMain, '^window\\.onclose = WindowIsClosing;', 44],
+  },
+
+  {
+    id: 'gDialogBox.isOpen',
+    kind: 'member',
+    how: 'reads',
+    probe: 'R',
+    sites: ['findHandoverSurvivor'],
+    use: 'A window-modal dialog is up in the candidate window (the closing-tabs warning is one): the window may be about to close, so it takes no tabs.',
+    at: [FF.browserJs, '^\\s+get isOpen\\(', 4770],
   },
 
   // ── <browser> element ──
@@ -552,6 +568,15 @@ export const MEMBERS = [
     sites: ['attachPaletteCloseListener'],
     use: 'The title-IPC handler reads frame.contentTitle after pagetitlechanged.',
     at: [FF.browserEl, '^\\s+get contentTitle\\(', 674],
+  },
+  {
+    id: 'MozBrowser.prototype.getInPermitUnload',
+    kind: 'method',
+    how: 'calls',
+    probe: 'R',
+    sites: ['isCheckingUnload'],
+    use: 'Says synchronously whether a tab is answering a beforeunload check. permitUnload throws when asked again, so a close repeated meanwhile hands nothing over and such a window takes no tabs.',
+    at: [FF.browserEl, '^\\s+getInPermitUnload\\(', 1718],
   },
   {
     id: 'MozBrowser.mIconURL',

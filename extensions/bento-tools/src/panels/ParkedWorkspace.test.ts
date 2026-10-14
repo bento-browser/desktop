@@ -111,19 +111,21 @@ describe('parkableWorkspaceTabs', () => {
 });
 
 describe('blank pages', () => {
-  it('are not parked as sidebar tabs, so the empty tab a handover left behind does not come back', () => {
+  it('about:blank is not parked as a sidebar tab, so the blank tab a handover leaves does not come back', () => {
     const tabs = [
       closingTab(1, 'https://kept.example.test/'),
       closingTab(2, 'about:blank'),
       closingTab(3, 'about:newtab'),
-      closingTab(4, 'about:home'),
     ];
 
     const { sidebarTabs, urlByTabId } = parkableWorkspaceTabs(tabs, new Set(), () => false);
 
-    expect(sidebarTabs.map((tab) => tab.url)).toEqual(['https://kept.example.test/']);
-    // A panel slot still keeps the address it had.
-    expect(urlByTabId.get(3)).toBe('about:newtab');
+    // A New Tab page may be a pinned or renamed entry the user chose to keep: it stays.
+    expect(sidebarTabs.map((tab) => tab.url)).toEqual([
+      'https://kept.example.test/',
+      'about:newtab',
+    ]);
+    expect(urlByTabId.get(2)).toBe('about:blank');
   });
 });
 

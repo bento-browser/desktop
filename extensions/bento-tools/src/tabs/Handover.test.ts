@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HANDOVER_TTL_MS, wasHandedOver } from './Handover';
+
+// A tab value rides the session file; the module also remembers which hops it matched.
+// Each test loads a fresh copy, after the clock is set, so "this run" starts at that time.
+async function load() {
+  vi.resetModules();
+  return import('./Handover');
+}
 
 function stubSessions(value: unknown) {
   const getTabValue = vi.fn().mockResolvedValue(value);
@@ -7,6 +13,8 @@ function stubSessions(value: unknown) {
   vi.stubGlobal('browser', { sessions: { getTabValue, removeTabValue } });
   return { getTabValue, removeTabValue };
 }
+
+const hop = (from: number, to: number, at = Date.now()) => ({ from, to, at });
 
 describe('wasHandedOver', () => {
   beforeEach(() => {
@@ -19,7 +27,8 @@ describe('wasHandedOver', () => {
   });
 
   it('recognises the move out of the window the tab left (onDetached)', async () => {
-    const { getTabValue } = stubSessions({ from: 2, to: 1, at: Date.now() });
+    const { wasHandedOver } = await load();
+    const { getTabValue } = stubSessions([hop(2, 1)]);
 
     await expect(wasHandedOver(7, { from: 2 })).resolves.toBe(true);
 
@@ -27,37 +36,79 @@ describe('wasHandedOver', () => {
   });
 
   it('recognises the move into the window the tab arrived in (onAttached)', async () => {
-    stubSessions({ from: 2, to: 1, at: Date.now() });
+    const { wasHandedOver } = await load();
+    stubSessions([hop(2, 1)]);
 
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(true);
   });
 
+  it('matches the detach and the attach of one hop, in either order', async () => {
+    const { wasHandedOver } = await load();
+    stubSessions([hop(2, 1)]);
+
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(true);
+    await expect(wasHandedOver(7, { from: 2 })).resolves.toBe(true);
+  });
+
   it('does not count a tab that went to or came from another window', async () => {
-    stubSessions({ from: 2, to: 1, at: Date.now() });
+    const { wasHandedOver } = await load();
+    stubSessions([hop(2, 1)]);
 
     // The user dragged the handed-over tab on to a third window.
     await expect(wasHandedOver(7, { from: 1 })).resolves.toBe(false);
     await expect(wasHandedOver(7, { to: 3 })).resolves.toBe(false);
   });
 
-  it('reads the marker again for the second event instead of consuming it', async () => {
-    stubSessions({ from: 2, to: 1, at: Date.now() });
-
+  it('matches each side of a hop once, so a drag back into the window is a drag', async () => {
+    const { wasHandedOver } = await load();
+    stubSessions([hop(2, 1)]);
     await expect(wasHandedOver(7, { from: 2 })).resolves.toBe(true);
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(true);
+
+    // Moments later the user drags the tab to window 3 and back to window 1.
+    vi.advanceTimersByTime(2_000);
+    await expect(wasHandedOver(7, { from: 1 })).resolves.toBe(false);
+    await expect(wasHandedOver(7, { to: 3 })).resolves.toBe(false);
+    await expect(wasHandedOver(7, { from: 3 })).resolves.toBe(false);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
   });
 
-  it('lets a marker that outlived its TTL (a restored session) pass as a user move', async () => {
-    stubSessions({ from: 2, to: 1, at: Date.now() - HANDOVER_TTL_MS - 1 });
+  it('matches every hop of a tab handed on before tools saw the first', async () => {
+    const { wasHandedOver } = await load();
+    // Window 2 closed into window 1, and window 1 into window 3, in one task.
+    stubSessions([hop(2, 1), hop(1, 3, Date.now() + 1)]);
+
+    for (const windows of [{ from: 2 }, { to: 1 }, { from: 1 }, { to: 3 }]) {
+      await expect(wasHandedOver(7, windows)).resolves.toBe(true);
+    }
+    // Each hop is spent once matched.
+    await expect(wasHandedOver(7, { to: 3 })).resolves.toBe(false);
+  });
+
+  it('lets a hop that outlived its TTL pass as a user move', async () => {
+    const { wasHandedOver, HANDOVER_TTL_MS } = await load();
+    stubSessions([hop(2, 1, Date.now() - HANDOVER_TTL_MS - 1)]);
 
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
   });
 
-  it('ignores a tab with no marker or a malformed one, and an unreadable tab', async () => {
+  it('ignores a hop written before this tools instance started (a restored session)', async () => {
+    const { wasHandedOver } = await load();
+    // Window ids repeat across runs, so a value from the last run can name today's windows.
+    stubSessions([hop(2, 1, Date.now() - 1_000)]);
+
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
+  });
+
+  it('ignores a tab with no value or a malformed one, and an unreadable tab', async () => {
+    const { wasHandedOver } = await load();
     stubSessions(undefined);
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
 
-    stubSessions({ from: '2', to: 1, at: Date.now() });
+    stubSessions([{ from: '2', to: 1, at: Date.now() }]);
+    await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
+
+    stubSessions(hop(2, 1));
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
 
     const { getTabValue } = stubSessions(undefined);
@@ -65,14 +116,28 @@ describe('wasHandedOver', () => {
     await expect(wasHandedOver(7, { to: 1 })).resolves.toBe(false);
   });
 
-  it('removes the value once it has expired, not before', async () => {
-    const { removeTabValue } = stubSessions({ from: 2, to: 1, at: Date.now() });
+  it('removes the value once every hop in it has expired, not before', async () => {
+    const { wasHandedOver, HANDOVER_TTL_MS } = await load();
+    const { removeTabValue } = stubSessions([hop(2, 1)]);
 
     await wasHandedOver(7, { to: 1 });
-    await vi.advanceTimersByTimeAsync(HANDOVER_TTL_MS - 1);
+    await vi.advanceTimersByTimeAsync(HANDOVER_TTL_MS);
     expect(removeTabValue).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(2);
     expect(removeTabValue).toHaveBeenCalledWith(7, 'bento.handover');
+  });
+
+  it('keeps the value while a newer hop written meanwhile is still fresh', async () => {
+    const { wasHandedOver, HANDOVER_TTL_MS } = await load();
+    const { getTabValue, removeTabValue } = stubSessions([hop(2, 1)]);
+
+    await wasHandedOver(7, { to: 1 });
+    await vi.advanceTimersByTimeAsync(HANDOVER_TTL_MS - 1_000);
+    // Window 1 closed into window 3 shortly before the first hop's cleanup.
+    getTabValue.mockResolvedValue([hop(2, 1, 1_000_000), hop(1, 3)]);
+    await vi.advanceTimersByTimeAsync(1_002);
+
+    expect(removeTabValue).not.toHaveBeenCalled();
   });
 });

@@ -373,9 +373,12 @@ JSON.stringify(value))`, which tools reads back with `browser.sessions.getTabVal
 The mount script already reads `bento.workspaceId`, `bento.closingTab` and the window's
 `bento.activeWorkspaceId` this way. `bento.handover` is the one value chrome writes: when
 a closing window adopts its tabs into another window (see
-[workspaces.md](workspaces.md)), it marks each returned tab with `{ from, to, at }` so
-`tabs.onDetached` and `tabs.onAttached` can tell it from a drag. The value must be written
-after `adoptTab` returns (SessionStore moves a live tab's values on `TabOpen`, and deletes a
-pending tab's when its state is restored), is read by both events without being consumed,
-and expires after 15 s (`tabs/Handover.ts`). The events reach tools asynchronously, so a
-value written in the same task as the adoption is there when they are handled.
+[workspaces.md](workspaces.md)), it appends a hop `{ from, to, at }` to the list on each
+returned tab (a tab handed on again carries its earlier hops), so `tabs.onDetached` and
+`tabs.onAttached` can tell it from a drag. The value must be written after `adoptTab`
+returns (SessionStore moves a tab's values to the adopting twin on `TabOpen`, and deletes a
+pending tab's when its state is restored). Tools matches each side of a hop once, only
+while it is under 15 s old and was written after the tools instance started, and removes
+the value when every hop in it has expired (`tabs/Handover.ts`). The events reach tools
+asynchronously, so a value written in the same task as the adoption is there when they
+are handled.

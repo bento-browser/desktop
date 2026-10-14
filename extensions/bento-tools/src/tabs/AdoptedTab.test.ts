@@ -165,6 +165,19 @@ describe('releaseAdoptedTab', () => {
     expect(deps.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(7, 'ws-a');
   });
 
+  it('leaves a tab alone when it has moved on to another window while the event waited', async () => {
+    // The registry already saw the next attach: window 3 releases the tab, not this event.
+    const deps = makeDeps({
+      tabs: [tab({ id: 7, windowId: 3, workspaceId: 'ws-b' })],
+      destinationWorkspaceId: 'ws-a',
+    });
+
+    await releaseAdoptedTab(deps, 7, 1);
+
+    expect(deps.tabs.clearWorkspace).not.toHaveBeenCalled();
+    expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
+  });
+
   it('ignores a tab that has no workspace', async () => {
     const deps = makeDeps({ tabs: [tab({ id: 7, windowId: 2 })], destinationWorkspaceId: 'ws-b' });
 
@@ -172,6 +185,80 @@ describe('releaseAdoptedTab', () => {
 
     expect(deps.tabs.clearWorkspace).not.toHaveBeenCalled();
     expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
+  });
+});
+
+describe('releaseAdoptedTab with the real handover marker', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  // Tools handles the events of a tab in the order Firefox emits them; the registry has applied
+  // each attach to the tab's window by the time the handler for it runs.
+  async function setupTab(hops: Array<{ from: number; to: number; at: number }> | undefined) {
+    vi.resetModules();
+    const { wasHandedOver } = await import('./Handover');
+    vi.stubGlobal('browser', {
+      sessions: {
+        getTabValue: vi.fn().mockResolvedValue(hops),
+        removeTabValue: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const current = { windowId: 2 };
+    const deps = makeDeps({
+      tabs: [],
+      destinationWorkspaceId: 'ws-a',
+      panelWorkspaceIds: ['ws-b'],
+    });
+    deps.handedOver = (id, windowId) => wasHandedOver(id, { to: windowId });
+    deps.tabs.snapshot = () => [
+      tab({ id: 7, windowId: current.windowId, workspaceId: 'ws-b', folderId: 'f' }),
+    ];
+    return { deps, current, wasHandedOver };
+  }
+  const bindingsReleased = (deps: AdoptedTabDeps) =>
+    vi.mocked(deps.tabs.clearWorkspace).mock.calls.length > 0 ||
+    vi.mocked(deps.panels.remove).mock.calls.length > 0;
+
+  it('keeps workspace, folder and panel slot of a tab handed on from window 2 to 1 to 3', async () => {
+    // Window 2 closed into window 1 and window 1 into window 3 before tools saw either move.
+    const { deps, current, wasHandedOver } = await setupTab([
+      { from: 2, to: 1, at: Date.now() },
+      { from: 1, to: 3, at: Date.now() },
+    ]);
+
+    await expect(wasHandedOver(7, { from: 2 })).resolves.toBe(true);
+    current.windowId = 1;
+    await releaseAdoptedTab(deps, 7, 1);
+    await expect(wasHandedOver(7, { from: 1 })).resolves.toBe(true);
+    current.windowId = 3;
+    await releaseAdoptedTab(deps, 7, 3);
+
+    expect(bindingsReleased(deps)).toBe(false);
+    expect(deps.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
+  });
+
+  it('treats a drag out and back within the TTL as a drag, once the handover was seen', async () => {
+    const { deps, current, wasHandedOver } = await setupTab([{ from: 2, to: 1, at: Date.now() }]);
+    await wasHandedOver(7, { from: 2 });
+    current.windowId = 1;
+    await releaseAdoptedTab(deps, 7, 1);
+    expect(bindingsReleased(deps)).toBe(false);
+
+    // Two seconds later the user drags the tab to window 3, then back to window 1.
+    vi.advanceTimersByTime(2_000);
+    current.windowId = 3;
+    await releaseAdoptedTab(deps, 7, 3);
+    current.windowId = 1;
+    await releaseAdoptedTab(deps, 7, 1);
+
+    expect(deps.tabs.clearWorkspace).toHaveBeenCalledTimes(2);
+    expect(deps.tabs.assignWorkspaceEagerly).toHaveBeenCalledTimes(2);
   });
 });
 

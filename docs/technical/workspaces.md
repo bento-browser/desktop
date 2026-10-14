@@ -458,68 +458,101 @@ opening an unwanted blank tab before the moved tabs arrive.
     [chrome-panel-rendering.md](chrome-panel-rendering.md)) runs in the `close` and
     `DOMWindowClose` listeners, synchronously, with no way to cancel the close
     afterwards, and adopts every tab worth keeping into another regular window with
-    `gBrowser.adoptTab`: same `<browser>`, same tab id, so the page is untouched.
-    Worth keeping excludes `tab.isEmpty`, `tab.closing` and tabs bento-tools marked
-    `bento.closingTab` (a workspace delete marks its doomed tabs and then closes
-    the window, so they must not be rescued).
-  - Each adopted tab gets the tab value `bento.handover` = `{ from, to, at }` (window
-    ids, timestamp), written on the tab `adoptTab` returned. bento-tools reads it with
-    `wasHandedOver` (`tabs/Handover.ts`) in both `tabs.onDetached` and
-    `tabs.onAttached`: it needs a marker younger than 15 s whose `from` or `to`
-    matches the window of that event. It is not cleared on the first read, because
-    neither event is ordered against the other or against anything chrome sends; the
-    value is removed after the TTL so it does not ride the session file.
+    `gBrowser.adoptTab`, in the order the tabs have. The docShell swap moves the live
+    browsing context (page, history, media) into a new `<browser>` element of the
+    destination and the tab id is kept, so the page is untouched. Worth keeping
+    excludes `tab.isEmpty`, `tab.closing`, tabs bento-tools marked `bento.closingTab`
+    (a workspace delete marks its doomed tabs and then closes the window, so they must
+    not be rescued) and the tab whose page called `window.close()`.
+  - A blank tab holds the window open. Adopting a window's last tab closes the window
+    from inside `adoptTab` (`swapBrowsersAndCloseOther` calls `window.close()`, which
+    reaches the handler again) and returns before `TabClose`, so a DevTools toolbox,
+    which follows `TabClose` `adoptedBy`, is not moved with that tab. The mount adds
+    one selected `about:blank` tab before the first adoption: no adopted tab is the
+    window's last or its selected one (no re-selection while tabs leave), each leaves
+    through the ordinary `TabClose`, and the blank tab closes with the window.
+    `about:blank` is not parked, and SessionStore does not keep a window holding only
+    blank tabs as a closed window. Do not close the leftover tabs explicitly instead:
+    `tabs.onRemoved` runs `afterTabRemoved`, which closes windows and switches
+    workspaces.
+  - Each adopted tab gets the tab value `bento.handover`, a list of hops
+    `{ from, to, at }` (window ids, timestamp) appended on the tab `adoptTab`
+    returned; a tab handed on again carries its earlier hops. bento-tools reads it
+    with `wasHandedOver` (`tabs/Handover.ts`) in `tabs.onDetached` (`from`) and
+    `tabs.onAttached` (`to`). A hop matches an event when it names that window, is
+    under 15 s old, was written after this tools instance started (window ids repeat
+    across runs, so a restored value must not match), and that side of it has not
+    matched before. Every hop is needed: two windows closing in one task (window 2 into
+    1, then 1 into 3) write both hops before tools sees an event, and one overwritten
+    value made the first events look like a drag and released the workspace, folder and
+    panel slot. Each side matches once so a user dragging the tab out and back into the
+    same window within the TTL is a drag. Neither event is ordered against the other or
+    against anything chrome sends, so the value is not cleared on a read; it is removed
+    once every hop in it has expired, so it does not ride the session file.
   - A handed-over tab keeps its workspace, folder and panel slot
     (`releaseAdoptedTab` returns early; a drag releases them), does not promote a
     panel in the window it left (`onDetached`), and is not parked: `onAttached`
-    already moved it out of the closing window in the registry. The registry also
-    re-reads the live `active` flag on attach, since an adopted tab is not selected
-    and no activation event follows; a stale `active: true` made the later workspace
-    activation choose no tab. There is no tab-created backfill to suppress:
-    adoption emits no `tabs.onCreated`, and `adoptTab` closes the window instead of
-    leaving a blank tab when the last tab goes.
-  - Parking sees only the leftovers (empty and closing tabs). Blank pages
-    (`about:blank`, `about:newtab`, `about:home`) are not parked as sidebar tabs, or
-    the next activation would recreate them and could select one ahead of the
-    preserved page. `planWorkspaceParking` keeps the panel layout of a workspace
-    when one of its panel tabs lives in another window
-    (`hasPanelsInOtherWindow`) instead of rebuilding it from the leftovers' URLs,
-    and parks a panel stranded in the closing window as a sidebar tab.
+    already moved it out of the closing window in the registry. An attach event whose
+    tab the registry already shows in another window is ignored, because a later
+    event for that window releases it. The registry also re-reads the live `active`
+    flag on attach, since an adopted tab is not selected and no activation event
+    follows; a stale `active: true` made the later workspace activation choose no tab.
+    Adoption emits no `tabs.onCreated`; the blank tab does, in the closing window.
+  - Parking sees only the leftovers: the blank tab, empty tabs and closing tabs.
+    `about:blank` is not parked as a sidebar tab, as before the handover existed; an
+    empty New Tab page left behind is parked and comes back as a New Tab entry like it
+    does when a window closes alone. `planWorkspaceParking` keeps the panel layout of
+    a workspace when one of its panel tabs lives in another window
+    (`hasPanelsInOtherWindow`) instead of rebuilding it from the leftovers' URLs, and
+    parks a panel stranded in the closing window as a sidebar tab.
+  - A refused or failed adoption. `adoptTab` first creates an empty twin tab in the
+    destination; its `TabOpen` moves the tab's id (WebExtension) and custom tab values
+    (SessionStore) to the twin. When the swap is refused Firefox removes the twin, and
+    the source tab stays behind without its id or values, so tools would not park it
+    with the window. The mount takes `SessionStore.getTabState` before each adoption;
+    when `adoptTab` returns null or throws it removes any empty twin it left and
+    recreates the tab in the destination from that state with `setTabState` (history,
+    form data, the Bento values). The recreated tab is a new tab: new id, no handover
+    value, no panel slot, but it keeps workspace, folder and custom title. Tests
+    inject the failure inside the stubbed `swapDocShells` and the refusal inside
+    `swapBrowsersAndCloseOther`, not by replacing `adoptTab`.
   - Pitfalls. A pending (not yet restored) tab comes out of `adoptTab` without its
     custom tab values: SessionStore moves them to the new tab on `TabOpen`, then
     `swapBrowsersAndCloseOther` restores the old tab's state, which no longer has
-    `extData`, and `#restoreTab` deletes them. The mount script reads the state
-    before the swap and writes the values back. The marker is written after
-    `adoptTab` for the same reason. Adopting the last tab calls `window.close()`
-    from inside `adoptTab`, which reaches the handler again (`handingOverTabs`), and
-    the tabs go selected-last and pinned-first, pinned ones to the end of the
-    pinned region. Bento's split-view markers are torn down first
-    (`reconcilePanelsSplitView([])`, and the reconciler stands down), since the
-    swap does not cope with them. A tab's own `window.close()` bubbles a
-    non-cancelable `DOMWindowClose` from its browser element and the tabbrowser
-    closes the window from inside it when the tab is the window's only one; that
-    page asked to go and is not handed over (`notePageClose`, `pageIsClosing`).
+    `extData`, and `#restoreTab` deletes them. The mount writes them back from the
+    state it took first. The handover value is written after `adoptTab` for the same
+    reason. Bento's split-view markers are torn down first
+    (`reconcilePanelsSplitView([])`, and the reconciler stands down), since the swap
+    does not cope with them. A tab's own `window.close()` bubbles a non-cancelable
+    `DOMWindowClose` from its browser element and the tabbrowser closes the window
+    from inside it when the tab is the window's only one; that page asked to go and
+    its tab is not handed over (`notePageClose` records the tab, which is looked up
+    with `getTabForBrowser`). Only that tab is left out: a chrome close of the window
+    in the same task still hands the others over.
+  - Close prompts. `permitUnload` throws "already running" for a tab that is already
+    being asked, `CanCloseWindow` does not catch it, and a close that threw there goes
+    ahead, so a close repeated while a beforeunload prompt is up reaches the handler
+    with the question unanswered. The mount hands nothing over when any connected
+    browser of the closing window reports `getInPermitUnload`, and does not choose a
+    survivor that does, or one with `gDialogBox.isOpen` (the closing-tabs warning is
+    a window-modal prompt that may be answered Leave). `windowUtils.isInModalState()`
+    does not cover these (they put the page, not the chrome window, in a modal state).
   - Quit. A quit force-closes every window, and SessionStore collects them as they
     are, so nothing is handed over once `Services.startup.attemptingQuit` is true. It
     is set before the windows are closed; `Services.startup.shuttingDown` is still
     false then.
   - No hand-over without a survivor: a regular window (visible toolbar, not private)
-    with a mounted shell, still open, and given a workspace by tools
-    (`bento.activeWorkspaceId` window value, set after its `shell/hello`). Private
-    windows, popups, DevTools and shell-less windows never receive tabs and never
-    hand tabs over; with no survivor the tabs are parked as URLs as before.
-    `windowUtils.isInModalState()` does not cover the closing-tabs warning or the
-    beforeunload prompts (they put the page, not the chrome window, in a modal
-    state), so a survivor that is itself in the middle of a close prompt is not
-    detected.
-  - Known limits. "Undo close window" reopens the window with only what stayed
-    behind (blank tabs): the handed-over tabs live in the window that took them, under
-    their workspaces, and come back when a window shows the workspace again. A
-    survivor that is itself waiting on a close prompt looks like any open window, so
-    tabs handed to it are lost if that close then goes ahead (they are parked as
-    URLs). Two windows closed in one task are fine: a window past its close request
-    already reports `closed`, so the second close hands over to a third window or, with
-    none, parks as before.
+    with a mounted shell, still open, not in a close prompt, and given a workspace by
+    tools (`bento.activeWorkspaceId` window value, set after its `shell/hello`).
+    Private windows, popups, DevTools and shell-less windows never receive tabs and
+    never hand tabs over; with no survivor the tabs are parked as URLs as before.
+  - Known limits. "Undo close window" has nothing to reopen: the handed-over tabs live
+    in the window that took them, under their workspaces, and come back when a window
+    shows the workspace again. Individual adoption does not keep native tab-group
+    membership or a multiselection; Bento's sidebar does not use either (folders are
+    the `bento.folderId` value, which moves). Two windows closed in one task are
+    fine: a window past its close request already reports `closed`, so the second
+    close hands over to a third window or, with none, parks as before.
   - The first design held the close in chrome, asked bento-tools to `tabs.move` the
     tabs, then `windows.remove`d the window, with timers on both sides. Two review
     rounds kept finding races that all came from two independently timed owners of

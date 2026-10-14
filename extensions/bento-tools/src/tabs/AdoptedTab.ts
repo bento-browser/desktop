@@ -48,7 +48,8 @@ export async function releaseAdoptedTab(
   if (deps.moves.take(tabId, newWindowId) !== undefined) return;
   if (await deps.handedOver(tabId, newWindowId)) return;
   const tab = deps.tabs.snapshot().find((candidate) => candidate.id === tabId);
-  if (!tab?.workspaceId) return;
+  // The tab moved on while this event waited: the event for its latest window releases it.
+  if (!tab?.workspaceId || tab.windowId !== newWindowId) return;
   if (deps.workspaces.findOwningWindow(tab.workspaceId) === newWindowId) return;
 
   const panelWorkspaceIds = deps.panels
