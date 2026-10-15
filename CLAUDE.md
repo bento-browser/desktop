@@ -345,6 +345,8 @@ Then iterate by what you changed:
 | `patches/`, `src/browser/`, `prefs/bento.js`, `bento.json`  | `pnpm run build` (compile time depends on what mach must rebuild)                                | Quit + relaunch                                                                                 |
 | Firefox source/build tooling                                | Follow the update and validation procedure in `docs/build-tooling.md`                            | Quit + relaunch                                                                                 |
 
+To build against local Mux and launch in one step, run `pnpm run dev:mux` (persistent profile) or `pnpm run dev:fresh:mux` (temporary profile). Plain `pnpm run dev` and `dev:fresh` rebuild the shell from the npm package, which overwrites a local-Mux shell build.
+
 > **How the reload works**: `pnpm run import` runs the Bento import wrapper: theme preset sync, chrome token generation, engine-state verification, patch-stack check/reset, source-overlay import, canonical branding and built-in add-on installation, manifest patch application, prefs append, and built-in add-on symlink sync. Built extension files are live on disk immediately after import. `frame.reload()` does **not** force Firefox to re-read `moz-extension://` resources; `AddonManager.reload()` does. If it errors for built-in addons, quit + relaunch is the fallback.
 
 <!-- -->

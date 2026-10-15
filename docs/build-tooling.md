@@ -473,6 +473,14 @@ and set `MUXUI_LOCAL` only for the processes they start.
 | `pnpm run shell:ladle:mux`  | Mux generate, then Ladle. Re-runs generate when a Mux input changes.                                                                                 |
 | `pnpm run shell:dev:mux`    | The same with the shell Vite dev server.                                                                                                             |
 | `pnpm run shell:import:mux` | One shot for real Bento: Mux generate, type check against local Mux, shell and background build, `pnpm run import`. Then press Alt+Shift+R in Bento. |
+| `pnpm run dev:mux`          | `pnpm run dev` with the shell built against local Mux: theme sync, tools build, `shell:import:mux`, then launch.                                     |
+| `pnpm run dev:fresh:mux`    | `pnpm run dev:fresh` the same way, on a new temporary profile.                                                                                       |
+
+`dev:mux` and `dev:fresh:mux` launch Bento like `dev` and `dev:fresh`, so the
+profile, `BENTO_DEV_PROFILE`, and `BENTO_JSDEBUGGER` behave the same. Plain
+`pnpm run dev` and `dev:fresh` rebuild the shell from the npm package in
+`ext:build`, which overwrites a shell built against local Mux; use the `:mux`
+scripts to launch it.
 
 Mux generate here is `packages/schema/src/generate.mjs` followed by
 `packages/react/src/generate.mjs` (react generate imports the schema package's
