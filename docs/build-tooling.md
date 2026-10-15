@@ -504,9 +504,13 @@ How the checkout is used:
   prefix alias would break subpaths and the `@import`s in `src/theme/muxui.css`.
 - React and React DOM resolve from Bento (`resolve.dedupe`), and the existing
   React Aria aliases stay, so Mux and Bento share one React and one React Aria.
-  Mux's own `lucide-react`, `motion`, Tiptap, and `shiki` resolve from the Mux
-  checkout; they are intentionally not aliased (the npm build shares one lucide
-  copy because Bento pins Mux's version, but a local checkout can depend on another).
+  Mux's generated files import `@internationalized/date` directly, so the whole
+  `@internationalized/` scope is aliased to Bento's root `node_modules`; without
+  it the checkout's own copy would be bundled beside React Aria's and the
+  module-identity guard would fail the shell build. Mux's own `lucide-react`,
+  `motion`, Tiptap, and `shiki` resolve from the Mux checkout; they are
+  intentionally not aliased (the npm build shares one lucide copy because Bento
+  pins Mux's version, but a local checkout can depend on another).
 - `server.fs.allow` lists the workspace root and the local package root, since
   Mux's CSS loads fonts from its `assets/`.
 - `shell:import:mux` writes the gitignored
