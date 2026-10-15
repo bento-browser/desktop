@@ -62,6 +62,8 @@
     "brand:regen": "bash scripts/regen-branding.sh",
     "dev": "pnpm run ext:build && pnpm run import && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
     "dev:fresh": "pnpm run ext:build && pnpm run import && bash scripts/dev-launch.sh $(mktemp -d)",
+    "dev:mux": "pnpm run theme:sync && pnpm run tools:build && pnpm run shell:import:mux && bash scripts/dev-profile-clean.sh && bash scripts/dev-launch.sh",
+    "dev:fresh:mux": "pnpm run theme:sync && pnpm run tools:build && pnpm run shell:import:mux && bash scripts/dev-launch.sh $(mktemp -d)",
     "shell:dev": "pnpm --filter @bento/shell dev",
     "shell:build": "pnpm --filter @bento/shell build",
     "shell:sync": "pnpm run shell:build && bash scripts/sync-shell.sh",
