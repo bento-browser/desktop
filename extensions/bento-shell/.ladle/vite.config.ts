@@ -3,8 +3,9 @@ import { resolve } from 'node:path';
 import { muxLocalViteConfig, resolveMuxLocal } from '../muxui-local.mjs';
 
 // With MUXUI_LOCAL set (local Mux development only) the fragment aliases
-// @muxui/react to the local Mux checkout; otherwise it is empty. The React Aria
-// aliases below stay so Mux and Bento share one React Aria identity.
+// @muxui/react to the local Mux checkout and @internationalized to Bento's
+// install; otherwise it is empty. The React Aria aliases below stay so Mux and
+// Bento share one React Aria identity.
 export default defineConfig(
   mergeConfig(
     {

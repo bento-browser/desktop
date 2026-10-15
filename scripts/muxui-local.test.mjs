@@ -172,13 +172,18 @@ test('aliases are exact-match regexes, one per public export', () => {
   ]);
 });
 
-test('local Vite config dedupes React and keeps the workspace root in fs.allow', () => {
+test('local Vite config dedupes React, allows the workspace root, and pins @internationalized', () => {
   const root = muxFixture();
   const mux = resolveMuxLocal({ MUXUI_LOCAL: root });
   const config = muxLocalViteConfig(mux, '/workspace');
   assert.deepEqual(config.resolve.dedupe, ['react', 'react-dom']);
-  assert.equal(config.resolve.alias, mux.aliases);
   assert.deepEqual(config.server.fs.allow, ['/workspace', root]);
+  // Mux imports @internationalized/date directly, so it must resolve from Bento's root install
+  // (where the npm build finds it) rather than the checkout's own node_modules.
+  assert.deepEqual(config.resolve.alias, [
+    ...mux.aliases,
+    { find: '@internationalized', replacement: '/workspace/node_modules/@internationalized' },
+  ]);
 });
 
 test('local tsconfig maps public declarations and keeps @shared', () => {

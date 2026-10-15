@@ -171,8 +171,9 @@ const shellConfig = defineConfig(({ mode }) => ({
   },
 }));
 
-// Local Mux mode adds its aliases, React dedupe, and fs.allow on top of the
-// base config; with MUXUI_LOCAL unset the fragment is empty.
+// Local Mux mode adds its aliases (including @internationalized from Bento's
+// install), React dedupe, and fs.allow on top of the base config; with
+// MUXUI_LOCAL unset the fragment is empty.
 export default defineConfig((env) =>
   mergeConfig(shellConfig(env), muxLocalViteConfig(muxLocal, searchForWorkspaceRoot(__dirname))),
 );

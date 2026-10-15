@@ -106,13 +106,25 @@ export function resolveMuxLocal(env = process.env, repoRoot = REPO_ROOT) {
  * replaces Vite's default, so the workspace root stays listed beside the Mux
  * package root (generated CSS loads fonts from the package's assets/). React and
  * React DOM resolve from Bento so Mux shares its React instance. React Aria
- * aliases stay in each Vite config so both sides share one React Aria. Mux's own
+ * aliases stay in each Vite config so both sides share one React Aria. Mux's
+ * generated files also import `@internationalized/date` directly; in npm mode that
+ * resolves from the hoisted root install, but from the checkout it would find
+ * Mux's own copy, so the scope is aliased to the workspace root here. Mux's own
  * lucide, motion, tiptap, and shiki resolve from the Mux checkout.
  */
 export function muxLocalViteConfig(mux, workspaceRoot) {
   if (!mux) return {};
   return {
-    resolve: { alias: mux.aliases, dedupe: ['react', 'react-dom'] },
+    resolve: {
+      alias: [
+        ...mux.aliases,
+        {
+          find: '@internationalized',
+          replacement: path.resolve(workspaceRoot, 'node_modules/@internationalized'),
+        },
+      ],
+      dedupe: ['react', 'react-dom'],
+    },
     server: { fs: { allow: [workspaceRoot, mux.root] } },
   };
 }
