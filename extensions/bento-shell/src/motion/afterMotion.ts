@@ -5,7 +5,10 @@
 // afterMotion; keep the two in step.
 
 export interface MotionFilter {
-  /** Transition properties to count. A transition on `all` counts for each of them. */
+  /**
+   * Transition properties to count. Each takes its timing from the last
+   * `transition-property` entry that names it, explicitly or through `all`.
+   */
   properties?: readonly string[];
   /** Animation names to count. */
   animations?: readonly string[];
@@ -14,7 +17,10 @@ export interface MotionFilter {
 export interface MotionMeasure {
   /** Longest remaining run time in ms. 0 means nothing matching runs. */
   ms: number;
-  /** Transition (`t:<property>`) and animation (`a:<name>`) entries that end last. */
+  /**
+   * Transition (`t:<property>`) and animation (`a:<name>`) entries that end last. With a
+   * property filter the transition entries are requested properties only.
+   */
   ending: ReadonlySet<string>;
 }
 
@@ -36,9 +42,13 @@ function timeMs(text: string | undefined): number {
  * Longest time the transitions and animations on `el` that match `filter` take, from
  * its computed style: delay plus duration, times the iteration count for an animation.
  * Repeated duration and delay lists are expanded to the number of properties or names.
- * An infinite animation never ends and is skipped. Call it after the styles that start
- * the motion are applied. Returns null when the element has no computed style, which is
- * the case for a disconnected element; `display: none` still reports its configured times.
+ * A requested property takes its timing from the LAST `transition-property` entry that names
+ * it, explicitly or through `all` (CSS Transitions), so `all, opacity` with `0.2s, 0s`
+ * measures 0 for opacity; without a property filter each entry that no later entry overrides
+ * counts on its own. An infinite animation never ends and is skipped. Call it after the
+ * styles that start the motion are applied. Returns null when the element has no computed
+ * style, which is the case for a disconnected element; `display: none` still reports its
+ * configured times.
  */
 export function measureMotion(el: Element, filter: MotionFilter = {}): MotionMeasure | null {
   const view = el.ownerDocument?.defaultView;
@@ -60,14 +70,29 @@ export function measureMotion(el: Element, filter: MotionFilter = {}): MotionMea
   const properties = list(style.transitionProperty);
   const durations = list(style.transitionDuration);
   const delays = list(style.transitionDelay);
-  properties.forEach((property, i) => {
-    if (property === 'none' || property === '') return;
-    if (filter.properties && property !== 'all' && !filter.properties.includes(property)) return;
+  const noteTransition = (property: string, i: number) =>
     note(
       `t:${property}`,
       timeMs(durations[i % durations.length]) + timeMs(delays[i % delays.length]),
     );
-  });
+  const lastEntryFor = (property: string) => {
+    let last = -1;
+    properties.forEach((entry, i) => {
+      if (entry === 'all' || entry === property) last = i;
+    });
+    return last;
+  };
+  if (filter.properties) {
+    for (const property of filter.properties) {
+      const i = lastEntryFor(property);
+      if (i !== -1) noteTransition(property, i);
+    }
+  } else {
+    properties.forEach((property, i) => {
+      if (property === 'none' || property === '' || lastEntryFor(property) !== i) return;
+      noteTransition(property, i);
+    });
+  }
 
   const names = list(style.animationName);
   const animationDurations = list(style.animationDuration);
@@ -122,11 +147,12 @@ export function afterMotion(el: Element, filter: MotionFilter, done: () => void)
     const { propertyName = '', animationName = '' } = event as Partial<
       TransitionEvent & AnimationEvent
     >;
+    // With a property filter `ending` names requested properties only, so an unrelated
+    // property's transitionend never finishes the wait.
     const ends =
       event.type === 'transitionend'
         ? measured.ending.has(`t:${propertyName}`) ||
-          (measured.ending.has('t:all') &&
-            (!filter.properties || filter.properties.includes(propertyName)))
+          (!filter.properties && measured.ending.has('t:all'))
         : measured.ending.has(`a:${animationName}`);
     if (ends) finish();
   };

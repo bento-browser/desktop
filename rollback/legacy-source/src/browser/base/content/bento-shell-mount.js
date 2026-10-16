@@ -57,10 +57,11 @@
   //   spec.frames      animation frames to wait before measuring, for styles a
   //                    rAF callback applies later
   // Measuring reads computed style, which applies pending style changes, so
-  // call it after the styles that start the motion. A measured 0 runs done on
-  // the next task (nothing animates). A detached element has no computed style
-  // and a window with paused frames never measures, so the ceiling timer
-  // decides in both cases.
+  // call it after the styles that start the motion. A measured 0 runs done
+  // before afterMotion returns (nothing animates), so a caller that keeps the
+  // returned cancel function must not store it once done has run. A detached
+  // element has no computed style and a window with paused frames never
+  // measures, so the ceiling timer decides in both cases.
   const MOTION_CEILING_MS = 1200;
   const MOTION_SLACK_MS = 50;
   const pendingMotion = new WeakMap();
@@ -81,7 +82,10 @@
   }
 
   // { ms, ends } for the longest matching motion, where ends names what
-  // finishes last, or null when el has no computed style.
+  // finishes last, or null when el has no computed style. A requested transition
+  // property takes its timing from the LAST transition-property entry that names
+  // it, explicitly or through 'all' (CSS Transitions), so 'all, opacity' with
+  // '0.2s, 0s' measures 0 for opacity. ends holds requested names only.
   function measureMotion(el, spec) {
     const style = el.isConnected ? el.ownerDocument?.defaultView?.getComputedStyle(el) : null;
     if (!style) return null;
@@ -102,10 +106,14 @@
         .filter(Boolean);
       const durations = motionList(style, 'transition-duration', names.length);
       const delays = motionList(style, 'transition-delay', names.length);
-      names.forEach((name, i) => {
-        if (name !== 'all' && !spec.transition.includes(name)) return;
-        note(name, Math.max(0, cssTimeMs(durations[i]) + cssTimeMs(delays[i])));
-      });
+      for (const property of spec.transition) {
+        let last = -1;
+        names.forEach((name, i) => {
+          if (name === 'all' || name === property) last = i;
+        });
+        if (last === -1) continue;
+        note(property, Math.max(0, cssTimeMs(durations[last]) + cssTimeMs(delays[last])));
+      }
     }
     if (spec.animation) {
       const names = style
@@ -156,14 +164,14 @@
       if (!timing) return;
       clearTimeout(timer);
       if (timing.ms <= 0) {
-        timer = setTimeout(finish, 0);
+        finish();
         return;
       }
       const endType = spec.animation ? 'animationend' : 'transitionend';
       const onEnd = (event) => {
         if (event.target !== el) return;
         const name = spec.animation ? event.animationName : event.propertyName;
-        if (timing.ends.has('all') || timing.ends.has(name)) finish();
+        if (timing.ends.has(name)) finish();
       };
       el.addEventListener(endType, onEnd);
       removeEndListener = () => el.removeEventListener(endType, onEnd);
@@ -182,6 +190,14 @@
     timer = setTimeout(finish, MOTION_CEILING_MS);
     step();
     return cancel;
+  }
+
+  // The value of a motion token as ms, for a window that has to outlast CSS
+  // transitions that are switched off while it runs (so they cannot be measured).
+  function motionTokenMs(name) {
+    return cssTimeMs(
+      window.getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
+    );
   }
 
   function seedChromeColorMode() {
@@ -18441,14 +18457,13 @@
   // these guards a single failed reconcile would strand opacity at
   // 0 — chrome would go blank until process restart.
   //
-  // The fade-out and fade-in waits read the opacity transition of the
-  // faded elements (afterMotion), and the *Cancel variables hold the
-  // pending cancel functions. Stabilizing only has to outlast the fade-in:
-  // the swap sets __mainWidthTransitionForNextReconcile false, so no reveal
-  // layout transition starts under the curtain.
+  // The fade-out waits on the opacity transition of the faded elements
+  // (afterMotion); __workspaceSwitchCancel is the cancel function of that wait.
+  // The stabilize window is a timer sized from the CSS (workspaceStabilizeMs);
+  // only the watchdog is a literal.
   let __workspaceSwitchCancel = null;
   let __workspaceFadeWatchdog = null;
-  let __workspaceFadeCleanupCancel = null;
+  let __workspaceFadeCleanupTimer = null;
   const WORKSPACE_FADE_WATCHDOG_MS = 1500;
   // tabpanels, strip container and panel nav share one fade rule.
   function getWorkspaceFadeElement() {
@@ -18458,6 +18473,17 @@
       document.getElementById('bento-panel-nav')
     );
   }
+  // How long layout-transition suppression ('bento-workspace-stabilizing') must last
+  // once the fade-in starts: through the fade-in itself and through the reveal layout
+  // transitions it hides. Those are switched off while the class is set, so they
+  // cannot be measured; their duration is read from the token.
+  function workspaceStabilizeMs() {
+    const target = getWorkspaceFadeElement();
+    const fade = target ? measureMotion(target, { transition: ['opacity'] }) : null;
+    const fadeMs = fade ? fade.ms : MOTION_CEILING_MS;
+    const layoutMs = motionTokenMs('--muxui-semantic-motion-reveal-transition-duration');
+    return Math.max(fadeMs, layoutMs) + MOTION_SLACK_MS;
+  }
   function clearWorkspaceFadeClasses() {
     const sc = document.getElementById('bento-strip-container');
     const nav = document.getElementById('bento-panel-nav');
@@ -18465,9 +18491,9 @@
     if (sc) sc.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (nav) nav.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (tp) tp.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
-    if (__workspaceFadeCleanupCancel) {
-      __workspaceFadeCleanupCancel();
-      __workspaceFadeCleanupCancel = null;
+    if (__workspaceFadeCleanupTimer) {
+      clearTimeout(__workspaceFadeCleanupTimer);
+      __workspaceFadeCleanupTimer = null;
     }
   }
   function cancelWorkspaceFadeForMainOnly() {
@@ -18484,7 +18510,7 @@
     const hadTimer =
       __workspaceSwitchCancel !== null ||
       __workspaceFadeWatchdog !== null ||
-      __workspaceFadeCleanupCancel !== null;
+      __workspaceFadeCleanupTimer !== null;
     if (!hadFadeClass && !hadTimer) return;
 
     if (__workspaceSwitchCancel) {
@@ -18543,11 +18569,14 @@
     const hasExplicitScrollTarget = Number.isInteger(options.scrollToPanelTabId);
     const stripContainer = document.getElementById('bento-strip-container');
     const tp = window.gBrowser?.tabpanels;
-    if (__workspaceSwitchCancel) __workspaceSwitchCancel();
+    if (__workspaceSwitchCancel) {
+      __workspaceSwitchCancel();
+      __workspaceSwitchCancel = null;
+    }
     if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
-    if (__workspaceFadeCleanupCancel) {
-      __workspaceFadeCleanupCancel();
-      __workspaceFadeCleanupCancel = null;
+    if (__workspaceFadeCleanupTimer) {
+      clearTimeout(__workspaceFadeCleanupTimer);
+      __workspaceFadeCleanupTimer = null;
     }
     // Watchdog armed BEFORE we add the class so any throw between
     // here and the cleanup rAF still gets a chance to clear the
@@ -18568,10 +18597,14 @@
       }
     }, WORKSPACE_FADE_WATCHDOG_MS);
     armWorkspaceSwitchFade();
-    __workspaceSwitchCancel = afterMotion(
+    // A fade of 0 ms runs the swap before afterMotion returns; the cancel function is
+    // stored only while the swap is still pending.
+    let swapped = false;
+    const cancelSwap = afterMotion(
       getWorkspaceFadeElement(),
       { transition: ['opacity'], key: 'workspace-fade' },
       () => {
+        swapped = true;
         __workspaceSwitchCancel = null;
         // Suppress every in-reconcile animation. The fade IS our
         // transition; any layout animation here would tail past the
@@ -18632,19 +18665,15 @@
             // we remove it in the same frame as the opacity class, pending
             // width/flex changes can begin animating under the fade-in and
             // look like the strip is sliding to the destination workspace.
-            __workspaceFadeCleanupCancel = afterMotion(
-              getWorkspaceFadeElement(),
-              { transition: ['opacity'], key: 'workspace-stabilize' },
-              () => {
-                __workspaceFadeCleanupCancel = null;
-                if (stripContainer) {
-                  stripContainer.classList.remove('bento-workspace-stabilizing');
-                }
-                const nav = document.getElementById('bento-panel-nav');
-                if (nav) nav.classList.remove('bento-workspace-stabilizing');
-                if (tp) tp.classList.remove('bento-workspace-stabilizing');
-              },
-            );
+            __workspaceFadeCleanupTimer = setTimeout(() => {
+              __workspaceFadeCleanupTimer = null;
+              if (stripContainer) {
+                stripContainer.classList.remove('bento-workspace-stabilizing');
+              }
+              const nav = document.getElementById('bento-panel-nav');
+              if (nav) nav.classList.remove('bento-workspace-stabilizing');
+              if (tp) tp.classList.remove('bento-workspace-stabilizing');
+            }, workspaceStabilizeMs());
             if (__workspaceFadeWatchdog) {
               clearTimeout(__workspaceFadeWatchdog);
               __workspaceFadeWatchdog = null;
@@ -18653,6 +18682,7 @@
         }
       },
     );
+    if (!swapped) __workspaceSwitchCancel = cancelSwap;
   }
   // True while the deferred reconcile inside performWorkspaceSwitchFade
   // is running. Read by reconcilePanelsSplitView to skip the smooth

@@ -99,6 +99,32 @@ describe('measureMotion', () => {
     expect(measureMotion(asElement(el), { properties: ['opacity'] })?.ms).toBe(200);
   });
 
+  it('takes the last transition-property entry that names a property, all included', () => {
+    const allThenOpacity = fakeElement({
+      transitionProperty: 'all, opacity',
+      transitionDuration: '0.2s, 0s',
+    });
+    expect(measureMotion(asElement(allThenOpacity), { properties: ['opacity'] })?.ms).toBe(0);
+    expect(measureMotion(asElement(allThenOpacity), { properties: ['color'] })?.ms).toBe(200);
+    expect(
+      measureMotion(asElement(allThenOpacity), { properties: ['opacity', 'color'] })?.ending,
+    ).toEqual(new Set(['t:color']));
+
+    const opacityThenAll = fakeElement({
+      transitionProperty: 'opacity, all',
+      transitionDuration: '0s, 0.2s',
+    });
+    expect(measureMotion(asElement(opacityThenAll), { properties: ['opacity'] })?.ms).toBe(200);
+
+    // Without a filter an entry that a later entry overrides does not count.
+    expect(measureMotion(asElement(allThenOpacity))?.ms).toBe(200);
+    const overridden = fakeElement({
+      transitionProperty: 'opacity, all',
+      transitionDuration: '1s, 0.2s',
+    });
+    expect(measureMotion(asElement(overridden))?.ms).toBe(200);
+  });
+
   it('multiplies an animation by its finite iteration count and skips infinite ones', () => {
     const el = fakeElement({
       animationName: 'fade, spin, pulse',
@@ -158,6 +184,32 @@ describe('afterMotion', () => {
     vi.advanceTimersByTime(10_000);
     expect(done).toHaveBeenCalledTimes(1);
     expect(el.listenerCount()).toBe(0);
+  });
+
+  it('runs now when the last entry for the property is 0', () => {
+    const el = fakeElement({ transitionProperty: 'all, opacity', transitionDuration: '0.2s, 0s' });
+    const done = vi.fn();
+    afterMotion(asElement(el), { properties: ['opacity'] }, done);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(el.listenerCount()).toBe(0);
+  });
+
+  it('ignores the end of a property that was not requested, even when all ends last', () => {
+    const el = fakeElement({ transitionProperty: 'all', transitionDuration: '0.2s' });
+    const done = vi.fn();
+    afterMotion(asElement(el), { properties: ['opacity'] }, done);
+    el.dispatch('transitionend', { propertyName: 'background-color' });
+    expect(done).not.toHaveBeenCalled();
+    el.dispatch('transitionend', { propertyName: 'opacity' });
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends an unfiltered wait on any property when all ends last', () => {
+    const el = fakeElement({ transitionProperty: 'all', transitionDuration: '0.2s' });
+    const done = vi.fn();
+    afterMotion(asElement(el), {}, done);
+    el.dispatch('transitionend', { propertyName: 'width' });
+    expect(done).toHaveBeenCalledTimes(1);
   });
 
   it('finishes on an animation end event by name', () => {

@@ -76,11 +76,15 @@
   // ({ properties, animations }) take: delay plus duration, times the iteration
   // count for an animation. Repeated duration and delay lists are expanded to the
   // number of properties or names. An infinite animation never ends and is skipped.
+  // A requested property takes its timing from the LAST transition-property entry
+  // that names it, explicitly or through 'all' (CSS Transitions), so 'all, opacity'
+  // with '0.2s, 0s' measures 0 for opacity; without a property filter each entry
+  // that no later entry overrides counts on its own.
   // Call it after the styles that start the motion are applied. Returns
   // { ms, ending } with ending the 't:<property>' / 'a:<name>' entries that end
-  // last (ms 0 means nothing runs, which is a valid answer), or null when the
-  // element has no computed style (disconnected). display:none still reports its
-  // configured times.
+  // last (requested properties only when filtered; ms 0 means nothing runs, which
+  // is a valid answer), or null when the element has no computed style
+  // (disconnected). display:none still reports its configured times.
   function measureMotion(el, filter = {}) {
     const view = el?.ownerDocument?.defaultView;
     if (!el || el.isConnected === false || !view) return null;
@@ -101,16 +105,29 @@
     const properties = motionList(style.transitionProperty);
     const durations = motionList(style.transitionDuration);
     const delays = motionList(style.transitionDelay);
-    properties.forEach((property, i) => {
-      if (property === 'none' || property === '') return;
-      if (filter.properties && property !== 'all' && !filter.properties.includes(property)) {
-        return;
-      }
+    const noteTransition = (property, i) =>
       note(
         't:' + property,
         motionTimeMs(durations[i % durations.length]) + motionTimeMs(delays[i % delays.length]),
       );
-    });
+    const lastEntryFor = (property) => {
+      let last = -1;
+      properties.forEach((entry, i) => {
+        if (entry === 'all' || entry === property) last = i;
+      });
+      return last;
+    };
+    if (filter.properties) {
+      for (const property of filter.properties) {
+        const i = lastEntryFor(property);
+        if (i !== -1) noteTransition(property, i);
+      }
+    } else {
+      properties.forEach((property, i) => {
+        if (property === 'none' || property === '' || lastEntryFor(property) !== i) return;
+        noteTransition(property, i);
+      });
+    }
     const names = motionList(style.animationName);
     const animationDurations = motionList(style.animationDuration);
     const animationDelays = motionList(style.animationDelay);
@@ -176,11 +193,12 @@
     };
     const onEnd = (event) => {
       if (event.target !== el || !measured) return;
+      // With a property filter 'ending' names requested properties only, so an
+      // unrelated property's transitionend never finishes the wait.
       const ends =
         event.type === 'transitionend'
           ? measured.ending.has('t:' + event.propertyName) ||
-            (measured.ending.has('t:all') &&
-              (!filter.properties || filter.properties.includes(event.propertyName)))
+            (!filter.properties && measured.ending.has('t:all'))
           : measured.ending.has('a:' + event.animationName);
       if (ends) finish();
     };
