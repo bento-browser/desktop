@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button, IconButton, Input } from '@muxui/react';
 import Plus from 'lucide-react/dist/esm/icons/plus';
@@ -33,6 +33,7 @@ import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
+import { afterMotion } from '../../motion/afterMotion';
 
 export interface TabListProps {
   revealTabUrl?: string;
@@ -62,13 +63,12 @@ export interface TabListProps {
 }
 
 const ROW_HEIGHT_FALLBACK = 32;
-// Matches --bento-duration-base (200ms) used by the .bento-tab-row--removing
-// CSS transition. Keep in sync if either side changes.
-const REMOVAL_ANIMATION_MS = 200;
-// Workspace-switch slide. Slightly longer than per-tab removal so the eye
-// has time to track the directional motion. Keep in sync with the
-// .bento-tab-list-pane--{enter,exit}-* CSS animation duration.
-const WORKSPACE_SLIDE_MS = 260;
+// Motion that has to finish before a row or pane unmounts. Their durations live
+// in TabList.css and TabRow.css (Mux motion tokens); afterMotion reads them.
+const REMOVAL_MOTION = { properties: ['opacity', 'transform'] };
+const WORKSPACE_SLIDE_EXIT_MOTION = {
+  animations: ['bento-tab-list-exit-to-left', 'bento-tab-list-exit-to-right'],
+};
 const SELECTED_TABS_TITLE_PREFIX = 'BENTO_SELECTED_TABS:';
 const SCROLLBAR_THUMB_MIN_HEIGHT = 24;
 const SCROLLBAR_SCROLL_VISIBLE_MS = 700;
@@ -96,19 +96,33 @@ function encodeSelectedTabIds(ids: number[]): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(ids))));
 }
 
-// Keeps removed ids in `displayedIds` for REMOVAL_ANIMATION_MS so the row
-// can fade out before truly unmounting. Removed ids stay at their previous
-// position until the timer fires; new ids appear at their orderedIds
-// position immediately. The virtualizer sees `displayedIds.length`, so
-// each fading row keeps its layout slot — siblings only shift up after
-// the timer has actually pulled the id out.
+// Keeps removed ids in `displayedIds` until their row has finished its
+// .bento-tab-row--removing transition, so the row can fade out before truly
+// unmounting. Removed ids stay at their previous position until then; new ids
+// appear at their orderedIds position immediately. The virtualizer sees
+// `displayedIds.length`, so each fading row keeps its layout slot — siblings
+// only shift up after the id has actually been pulled out. `rowsRef` is the
+// element that holds the rendered rows; a removed row that is not rendered
+// (scrolled out of the virtual window) has nothing to animate and goes at once.
 function useDelayedRemovals(
   ids: number[],
-  delayMs: number,
+  rowsRef: RefObject<HTMLElement | null>,
 ): { ids: number[]; removing: Set<number> } {
   const [displayed, setDisplayed] = useState<number[]>(ids);
   const [removing, setRemoving] = useState<Set<number>>(new Set());
-  const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // Removed ids still shown: null until their motion wait starts, then its cancel.
+  const pendingRef = useRef<Map<number, (() => void) | null>>(new Map());
+
+  const settle = useCallback((id: number) => {
+    pendingRef.current.delete(id);
+    setDisplayed((cur) => cur.filter((x) => x !== id));
+    setRemoving((cur) => {
+      if (!cur.has(id)) return cur;
+      const next = new Set(cur);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     setDisplayed((prev) => {
@@ -116,25 +130,13 @@ function useDelayedRemovals(
 
       const newlyRemoved: number[] = [];
       for (const id of prev) {
-        if (!orderedSet.has(id) && !timersRef.current.has(id)) newlyRemoved.push(id);
+        if (!orderedSet.has(id) && !pendingRef.current.has(id)) newlyRemoved.push(id);
       }
 
-      // Schedule a real removal for each newly-removed id. After the
-      // delay the id is filtered out of displayed and the removing set,
-      // siblings shift up via the virtualizer.
-      for (const id of newlyRemoved) {
-        const timer = setTimeout(() => {
-          timersRef.current.delete(id);
-          setDisplayed((cur) => cur.filter((x) => x !== id));
-          setRemoving((cur) => {
-            if (!cur.has(id)) return cur;
-            const next = new Set(cur);
-            next.delete(id);
-            return next;
-          });
-        }, delayMs);
-        timersRef.current.set(id, timer);
-      }
+      // Each newly-removed id waits for its row's removal motion (see the
+      // layout effect below); then it is filtered out of displayed and the
+      // removing set, and siblings shift up via the virtualizer.
+      for (const id of newlyRemoved) pendingRef.current.set(id, null);
 
       if (newlyRemoved.length > 0) {
         setRemoving((cur) => {
@@ -152,7 +154,7 @@ function useDelayedRemovals(
         const id = prev[i];
         if (id === undefined) continue;
         if (orderedSet.has(id)) continue;
-        if (!timersRef.current.has(id)) continue;
+        if (!pendingRef.current.has(id)) continue;
         // Insert at min(i, next.length) so trailing removes don't get
         // bunched at the front of a now-shorter list.
         next.splice(Math.min(i, next.length), 0, id);
@@ -163,15 +165,50 @@ function useDelayedRemovals(
       if (next.length === prev.length && next.every((v, i) => v === prev[i])) return prev;
       return next;
     });
-  }, [ids, delayMs]);
+  }, [ids]);
 
-  useEffect(
-    () => () => {
-      for (const t of timersRef.current.values()) clearTimeout(t);
-      timersRef.current.clear();
-    },
-    [],
-  );
+  // An id that comes back while it is fading out is a live row again: drop
+  // its wait so the finished fade does not remove it.
+  useEffect(() => {
+    const back = [...pendingRef.current.keys()].filter((id) => ids.includes(id));
+    if (back.length === 0) return;
+    for (const id of back) {
+      pendingRef.current.get(id)?.();
+      pendingRef.current.delete(id);
+    }
+    setRemoving((cur) => {
+      const next = new Set(cur);
+      for (const id of back) next.delete(id);
+      return next;
+    });
+  }, [ids]);
+
+  // After the commit that gives rows their --removing class, measure the
+  // removal transition and wait for it.
+  useLayoutEffect(() => {
+    for (const [id, wait] of [...pendingRef.current]) {
+      if (wait || !removing.has(id)) continue;
+      const row = rowsRef.current?.querySelector(`[data-bento-tab-id="${id}"]`);
+      if (!row) {
+        settle(id);
+        continue;
+      }
+      let settled = false;
+      const cancel = afterMotion(row, REMOVAL_MOTION, () => {
+        settled = true;
+        settle(id);
+      });
+      if (!settled) pendingRef.current.set(id, cancel);
+    }
+  }, [removing, rowsRef, settle]);
+
+  useEffect(() => {
+    const pending = pendingRef.current;
+    return () => {
+      for (const cancel of pending.values()) cancel?.();
+      pending.clear();
+    };
+  }, []);
 
   return { ids: displayed, removing };
 }
@@ -246,13 +283,13 @@ function TabListPane({
   onSearchQueryChange,
   onRunSearchResult,
 }: TabListPaneProps) {
-  const { ids: displayedIds, removing } = useDelayedRemovals(ids, REMOVAL_ANIMATION_MS);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const { ids: displayedIds, removing } = useDelayedRemovals(ids, viewportRef);
   const folders = useWorkspaceFolders(workspaceId);
   const sidebarCollapsed = useSettingsStore((s) =>
     Boolean(s.current?.sidebarCollapsed || s.current?.sidebarHidden),
   );
   const parentRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
   const scrollbarDragRef = useRef<{
     pointerId: number;
     startY: number;
@@ -1214,13 +1251,13 @@ function TabListPane({
 //   - Direction comes from comparing positions in the workspace switcher:
 //     if the new workspace is later in the list, motion is rightward (new
 //     enters from right, old exits to left); otherwise leftward.
-//   - After WORKSPACE_SLIDE_MS the outgoing pane is dropped from the DOM,
-//     leaving the steady-state layout (incoming pane fills the stage).
+//   - When the outgoing pane's exit animation ends it is dropped from the
+//     DOM, leaving the steady-state layout (incoming pane fills the stage).
 //
 // Why a directional slide instead of cross-fading the per-tab removal
 // animation: useDelayedRemovals interprets a workspace-induced id-set
 // change as "every previous tab was just closed" and renders the union
-// of both workspaces' tabs while the fade timer runs. With many tabs per
+// of both workspaces' tabs while the fade runs. With many tabs per
 // workspace that flash of all-tabs-at-once was visibly jarring. The
 // stage-level slide replaces it: the OLD pane carries OLD ids only, the
 // NEW pane carries NEW ids only, and the user sees a directional swap.
@@ -1507,13 +1544,20 @@ export function TabList({
     setOutgoing({ wsId: prev, direction });
   }, [activeWorkspaceId, workspaceOrder]);
 
-  // Drop the outgoing pane after the slide completes. Any subsequent
-  // workspace switch will replace the outgoing state with a fresh entry
-  // (and new direction); the timer here only fires for the current one.
+  // Drop the outgoing pane after its exit slide completes. Any subsequent
+  // workspace switch replaces the outgoing state with a fresh entry (and
+  // new direction), which cancels the wait for the previous one.
+  const stageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!outgoing) return;
-    const t = setTimeout(() => setOutgoing(null), WORKSPACE_SLIDE_MS);
-    return () => clearTimeout(t);
+    const pane = stageRef.current?.querySelector(
+      `.bento-tab-list-pane--exit-${outgoing.direction}`,
+    );
+    if (!pane) {
+      setOutgoing(null);
+      return;
+    }
+    return afterMotion(pane, WORKSPACE_SLIDE_EXIT_MOTION, () => setOutgoing(null));
   }, [outgoing]);
 
   const incomingClass =
@@ -1525,7 +1569,7 @@ export function TabList({
 
   return (
     <div className="bento-tab-list">
-      <div className="bento-tab-list-stage">
+      <div ref={stageRef} className="bento-tab-list-stage">
         {outgoing && (
           <TabListPane
             // Re-key by outgoing wsId so consecutive workspace switches each

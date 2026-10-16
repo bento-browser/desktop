@@ -8,7 +8,7 @@ Subject: [PATCH] Add Bento side panel host
  1 file changed, 1 insertion(+)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 840418d0e34171c2cf45f9dd18230bb45cb5540a..7b345356265fcf2c68c9864063dc52a215dc5efb 100644
+index a8668eff75adf0a3c4b9d21aea81ac872cdb4faf..e51db778503f1eceb9b8207e5036be5b0b4f314f 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -80,6 +80,7 @@

@@ -14,7 +14,6 @@
     --bento-pinned-panels-block-start: var(--space-3xs);
     --bento-sidebar-corner-radius: var(--radius-l);
     --bento-sidebar-section-gap: var(--space-4xs);
-    --bento-sidebar-collapse-transition: 200ms var(--bento-easing-standard, ease);
     display: flex;
     flex-direction: row;
     box-sizing: border-box;
@@ -68,8 +67,8 @@
     padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
     transition:
-      padding-inline-start var(--bento-sidebar-collapse-transition),
-      padding-inline-end var(--bento-sidebar-collapse-transition);
+      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
+      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
     /* Keep padding identical in expanded and collapsed modes so the
        header's vertical rhythm does not shift during sidebar toggles. */
   }
@@ -81,8 +80,8 @@
     justify-content: flex-end;
     gap: var(--space-4xs) !important;
     transition:
-      padding-inline-start var(--bento-sidebar-collapse-transition),
-      padding-inline-end var(--bento-sidebar-collapse-transition);
+      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
+      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
   }
 
   .bento-shell-app__workspace-switcher {
@@ -96,8 +95,8 @@
     padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
     transition:
-      padding-inline-start var(--bento-sidebar-collapse-transition),
-      padding-inline-end var(--bento-sidebar-collapse-transition);
+      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
+      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__header,

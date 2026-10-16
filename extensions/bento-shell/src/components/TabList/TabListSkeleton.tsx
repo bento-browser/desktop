@@ -6,7 +6,8 @@
 //
 // Visual silhouette mirrors the static skeleton in index.html so the
 // hand-off (static skeleton → React skeleton) is invisible. The shimmer
-// animation lives in TabList.css alongside the row styles.
+// animation lives in TabListSkeleton.css and runs on the Mux progress-sweep
+// motion tokens.
 import './TabListSkeleton.css';
 
 const ROW_COUNT = 6;

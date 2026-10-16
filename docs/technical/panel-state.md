@@ -311,6 +311,12 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   depend on inline `width`, `min-width`, and `flex`; clearing width lets the
   restored panel auto-size and overlap adjacent panels until a splitter drag
   rewrites sizing.
+- `animatePanelEnter` runs on the Mux `reveal` role and clears its inline styles
+  through `afterMotion` (the `transitionend`, or the measured time as fallback; the
+  wait is keyed `enter` per panel), not a fixed timer. The width one-shots of
+  `applyPanelWidth` and the workspace-switch main-panel width use the same role and
+  clear their inline `transition` the same way; `applyPanelWidth` re-syncs splitters
+  and the strip scrollbar in that completion, after its own width writes.
 - Root-panel enter animation must start after chrome computes flat-layout
   geometry and calls `applyPanelLayoutRects`. Starting the animation while the
   restored panel still has Firefox's stale split-view dimensions lets

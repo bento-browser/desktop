@@ -371,7 +371,13 @@ adds its entry, and its id in the mount probe list, in the same change.
   selects the destination's first tab before tools finishes) outlasts the timer,
   and the held payload is the previous workspace's, so it would draw old panels
   around a new workspace's tab. The real `panels/sync` reconciles normally when it
-  lands (`scripts/mount-workspace-watchdog.test.mjs`). Do not "fix" this by activating the
+  lands (`scripts/mount-workspace-watchdog.test.mjs`). The watchdog is the one literal
+  time in the workspace fade: `performWorkspaceSwitchFade` waits for the fade-out
+  through `afterMotion` on the strip container's opacity (the Mux `state` role,
+  `bento-shell-mount.css`), and holds `bento-workspace-stabilizing` for the fade-in
+  or the Mux `reveal` duration, whichever is longer, read by `workspaceStabilizeMs`
+  (the layout transitions are switched off while the class is set, so the `reveal`
+  time comes from its token). Do not give them literals back. Do not "fix" this by activating the
   selected tab's workspace from the selection signal: selection fires for
   transient states (closing, adoption) and would fight tools.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window

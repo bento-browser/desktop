@@ -36,8 +36,8 @@
     cursor: grab;
     touch-action: none;
     transition:
-      opacity var(--bento-duration-fast) var(--bento-easing-standard),
-      transform var(--bento-duration-fast) var(--bento-easing-standard);
+      opacity var(--muxui-semantic-motion-state-transition),
+      transform var(--muxui-semantic-motion-state-transition);
   }
 
   .bento-pinned-panels__favicon {
@@ -71,8 +71,7 @@
     background-color: var(--color-60);
     pointer-events: none;
     z-index: 1;
-    animation: bento-pinned-panels-drop-fade-in var(--bento-duration-fast)
-      var(--bento-easing-standard);
+    animation: bento-pinned-panels-drop-fade-in var(--muxui-semantic-motion-state-transition);
   }
 
   @keyframes bento-pinned-panels-drop-fade-in {
@@ -106,7 +105,7 @@
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   cursor: grab;
   touch-action: none;
-  transition: all var(--bento-pinned-panels-state-transition-duration) var(--bento-easing-standard);
+  transition: all var(--muxui-semantic-motion-reveal-transition);
 }
 
 .bento-pinned-panels__button.muxui-icon-button[data-variant='neutral']:hover:not(

@@ -63,7 +63,9 @@
   height: var(--bento-icon-size-xs);
   color: var(--color-70);
   opacity: 0;
-  animation: bento-workspace-switcher-audio-particle 1500ms linear forwards;
+  animation: bento-workspace-switcher-audio-particle
+    var(--muxui-semantic-motion-progress-travel-duration)
+    var(--muxui-semantic-motion-constant-easing) forwards;
 }
 .bento-icon.bento-workspace-switcher__audio-particle--1 {
   --bento-workspace-switcher-audio-x: calc(-1 * var(--space-2xs));
@@ -106,7 +108,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .bento-icon.bento-workspace-switcher__audio-particle {
-    animation-duration: 1100ms;
+    animation-duration: var(--muxui-semantic-motion-progress-spin-duration);
   }
 }
 
@@ -120,7 +122,7 @@
  * The chevron snaps via display:none — losing it doesn't shift the
  * avatar's position because the chevron's grid/flex slot collapses
  * cleanly. The trigger-name uses opacity:0 instead so the text
- * smoothly fades during the 200ms collapse transition rather than
+ * smoothly fades during the collapse transition rather than
  * abruptly disappearing. The text already shrinks to 0 width via
  * flex:1 + min-width:0 as the rail narrows, so opacity:0 doesn't
  * disturb the layout — the avatar stays where it is. */
@@ -189,39 +191,15 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   color: var(--color-90);
   transition:
-    width
-      var(
-        --bento-sidebar-collapse-transition,
-        var(--bento-duration-base) var(--bento-easing-standard)
-      ),
-    min-width
-      var(
-        --bento-sidebar-collapse-transition,
-        var(--bento-duration-base) var(--bento-easing-standard)
-      ),
-    max-width
-      var(
-        --bento-sidebar-collapse-transition,
-        var(--bento-duration-base) var(--bento-easing-standard)
-      ),
-    height
-      var(
-        --bento-sidebar-collapse-transition,
-        var(--bento-duration-base) var(--bento-easing-standard)
-      ),
-    min-height
-      var(
-        --bento-sidebar-collapse-transition,
-        var(--bento-duration-base) var(--bento-easing-standard)
-      ),
-    padding
-      var(
-        --bento-sidebar-collapse-transition,
-        var(--bento-duration-base) var(--bento-easing-standard)
-      ),
-    background-color var(--bento-duration-fast) var(--bento-easing-standard),
-    border-color var(--bento-duration-fast) var(--bento-easing-standard),
-    color var(--bento-duration-fast) var(--bento-easing-standard);
+    width var(--muxui-semantic-motion-reveal-transition),
+    min-width var(--muxui-semantic-motion-reveal-transition),
+    max-width var(--muxui-semantic-motion-reveal-transition),
+    height var(--muxui-semantic-motion-reveal-transition),
+    min-height var(--muxui-semantic-motion-reveal-transition),
+    padding var(--muxui-semantic-motion-reveal-transition),
+    background-color var(--muxui-semantic-motion-state-transition),
+    border-color var(--muxui-semantic-motion-state-transition),
+    color var(--muxui-semantic-motion-state-transition);
 }
 
 .muxui-button.bento-workspace-switcher__trigger:hover:not([data-disabled], [data-pending]),
@@ -300,13 +278,13 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
        opacity rule below). flex:1 + min-width:0 already lets the
        text shrink to 0 width as the rail narrows, so the only thing
        missing for a smooth disappearance is the opacity transition. */
-    transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+    transition: opacity var(--muxui-semantic-motion-reveal-transition);
   }
 
   .bento-workspace-switcher__chevron {
     opacity: 0.5;
     flex-shrink: 0;
-    transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
+    transition: opacity var(--muxui-semantic-motion-state-transition);
   }
 
   /* Each Menu.Item is a flex row (Mux UI default). min-width:0 stops the
@@ -366,7 +344,9 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
   height: var(--bento-icon-size-xs);
   color: var(--muxui-semantic-color-color-70);
   opacity: 0;
-  animation: bento-workspace-switcher-audio-particle 1500ms linear forwards;
+  animation: bento-workspace-switcher-audio-particle
+    var(--muxui-semantic-motion-progress-travel-duration)
+    var(--muxui-semantic-motion-constant-easing) forwards;
 }
 .bento-workspace-switcher__audio-particle--1 {
   --bento-workspace-switcher-audio-x: calc(-1 * var(--space-2xs));
@@ -389,7 +369,7 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
 }
 @media (prefers-reduced-motion: reduce) {
   .bento-workspace-switcher__audio-particles .bento-icon.bento-workspace-switcher__audio-particle {
-    animation-duration: 1100ms;
+    animation-duration: var(--muxui-semantic-motion-progress-spin-duration);
   }
 }
 

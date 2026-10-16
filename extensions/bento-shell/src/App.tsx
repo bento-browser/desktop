@@ -31,6 +31,7 @@ import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
 import { sendChromeTitle } from './bridge/chromeTitle';
 import { NEW_MENU_ITEMS, trackNewMenuOpen } from './bridge/newMenu';
+import { afterMotion } from './motion/afterMotion';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -491,10 +492,8 @@ export function App() {
   // never seen at full opacity — the first paint after the toggle is
   // already at opacity 0, then fades in.
   //
-  // Duration is intentionally LONGER than the host-width transition
-  // (200ms) so the buttons keep fading in after the rail has settled
-  // — gives the eye time to register the new layout instead of
-  // snapping into focus the instant the rail stops moving.
+  // The fade runs on the same Mux reveal role as the host-width
+  // transition, so the new layout fades in as the rail settles.
   //
   // Skip the very first run (when prevCollapsed.current is undefined)
   // so the boot doesn't briefly fade — initial render shows the
@@ -508,10 +507,6 @@ export function App() {
     if (isFirstRun || !changed) return;
     const footer = footerRef.current;
     if (!footer) return;
-    // Fade-in duration; matches a hypothetical --bento-duration-xslow.
-    // If the design system grows that token later, swap this for a
-    // getComputedStyle read on documentElement.
-    const FADE_MS = 500;
     // Phase 1 (sync, pre-paint): instant opacity 0 with no transition.
     footer.style.transition = 'none';
     footer.style.opacity = '0';
@@ -524,24 +519,24 @@ export function App() {
     // both opacity assignments into a single paint and skip the fade.
     let rafA = 0;
     let rafB = 0;
-    let cleanupTimer = 0;
+    let cancelFade = () => {};
     rafA = requestAnimationFrame(() => {
       rafB = requestAnimationFrame(() => {
-        footer.style.transition = `opacity ${FADE_MS}ms ease`;
+        footer.style.transition = 'opacity var(--muxui-semantic-motion-reveal-transition)';
         footer.style.opacity = '1';
-        cleanupTimer = window.setTimeout(() => {
-          // Strip inline styles after the transition completes so any
-          // future hover / class-based opacity rules can take over
-          // without competing with stale inline values.
+        // Strip inline styles after the transition completes so any
+        // future hover / class-based opacity rules can take over
+        // without competing with stale inline values.
+        cancelFade = afterMotion(footer, { properties: ['opacity'] }, () => {
           footer.style.transition = '';
           footer.style.opacity = '';
-        }, FADE_MS + 50);
+        });
       });
     });
     return () => {
       cancelAnimationFrame(rafA);
       cancelAnimationFrame(rafB);
-      clearTimeout(cleanupTimer);
+      cancelFade();
     };
   }, [sidebarCollapsed]);
 

@@ -44,8 +44,9 @@ function ShellFrame({
         display: 'flex',
         flexDirection: 'column',
         // Smooth width changes in CollapseToggle so the demo mirrors the
-        // 200ms ease the chrome host uses when the rail expands/collapses.
-        transition: 'width var(--bento-duration-base) var(--bento-easing-standard)',
+        // reveal-role transition the chrome host uses when the rail
+        // expands/collapses.
+        transition: 'width var(--muxui-semantic-motion-reveal-transition)',
       }}
     >
       {children}

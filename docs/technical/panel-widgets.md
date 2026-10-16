@@ -53,8 +53,9 @@ paints a non-reflowing horizontal insertion indicator and dispatches
 `order`, persists the result, and emits its existing complete `reordered` delta
 to every shell mirror. Before dispatch, the rail captures each button rect;
 after the delta reorders React children, a vertical FLIP transform settles the
-buttons with the same opacity, scale, accent-indicator, duration, and easing
-treatment as the top panel navigator. A completed drag suppresses the button's
+buttons with the same opacity, scale and accent-indicator treatment as the top panel
+navigator (both settle on Mux motion roles; see the Motion section of
+`docs/mux-ui-component-customisations.md`). A completed drag suppresses the button's
 normal open press.
 
 Saved panels are bookmarks in a managed "Saved panels" folder under Firefox's
