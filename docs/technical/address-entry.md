@@ -148,7 +148,9 @@ width through XUL store, and gives the native splitter a Bento-sized hover
 target; leaving Firefox's narrow transparent XUL splitter alone makes the
 Bookmarks panel feel fixed next to Bento's larger sidebar handle.
 `#bento-shell-host` keeps a width transition for sidebar
-collapse/expand, but `attachSidebarSplitterFeedback()` must add
+collapse/expand (the Mux `reveal` motion role, the same one the shell's collapse
+transitions use, so the rail and its host move together), but
+`attachSidebarSplitterFeedback()` must add
 `bento-shell-sidebar-resizing` during manual splitter drag so that transition is
 disabled while drag writes live `width` values; otherwise the handle feels
 smoothed or laggy instead of tracking the pointer. The same splitter setup must
@@ -436,6 +438,12 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep the address `CommandPalette` animation opacity-only. Mux UI's default
   command-palette transform transition causes visible movement when switching
   between anchored sidebar opens and centered shortcut/new-tab opens.
+- The address bar host fades on the Mux `modal` role
+  (`ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)'`).
+  `hideAddrbar` sets opacity 0 and `hideOverlayHostAfterFade` commits `display: none`
+  from the host's computed transition; do not put a duration back in script, and a
+  reopen during the fade must keep the host (`prepareAddrbarHostForOpen` cancels the
+  pending hide).
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
   surfaces so the palette reads as a traditional neutral command palette in
   light and dark modes.

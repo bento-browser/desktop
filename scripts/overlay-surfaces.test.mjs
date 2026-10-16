@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 // against the real overlay manager and its real overlay table. The mount is one
 // 20,000-line script that needs Firefox to run, so this extracts the functions
 // by name from its source and evaluates them in a context with a fake DOM, fake
-// timers, and fake frames whose message managers record what chrome sends an
+// timers and computed style, and fake frames whose message managers record what chrome sends an
 // overlay (the toolbar scrim is a recording stub). A function that is renamed or
 // removed fails extraction instead of silently leaving the test behind.
 
@@ -87,6 +87,12 @@ function extractOverlaysTable() {
 }
 
 const FUNCTIONS = [
+  'motionList',
+  'motionTimeMs',
+  'measureMotion',
+  'cancelMotion',
+  'afterMotion',
+  'hideOverlayHostAfterFade',
   'overlayEntry',
   'createOverlayFrame',
   'openOverlay',
@@ -138,12 +144,9 @@ const FUNCTIONS = [
 ];
 
 const CONSTANTS = [
-  'PALETTE_TRANSITION_MS',
-  'WORKSPACE_PALETTE_TRANSITION_MS',
-  'MERGE_PALETTE_TRANSITION_MS',
-  'CONFIRM_TRANSITION_MS',
-  'EDIT_WORKSPACE_TRANSITION_MS',
-  'WELCOME_TRANSITION_MS',
+  'MOTION_SLACK_MS',
+  'MOTION_UNAVAILABLE_CEILING_MS',
+  'motionWaits',
   'ADDRBAR_POPUP_WIDTH_PX',
   'ADDRBAR_POPUP_HEIGHT_PX',
   'ADDRBAR_FRAME_GUTTER_TOP_PX',
@@ -159,8 +162,12 @@ const CONSTANTS = [
 const EXPORTED = [
   'overlays',
   'menuOnSelectByContext',
+  'MOTION_UNAVAILABLE_CEILING_MS',
   'showPalette',
   'hidePalette',
+  'hideWorkspacePalette',
+  'hideEditWorkspace',
+  'hideWelcome',
   'togglePalette',
   'showWorkspacePalette',
   'showMergePalette',
@@ -182,10 +189,17 @@ const EXPORTED = [
 
 // ─── World ───────────────────────────────────────────────────────────────────
 
-/** A <browser> whose message manager records what chrome sends and which frame scripts it loads. */
+/**
+ * A <browser> whose message manager records what chrome sends and which frame scripts it loads.
+ * It also answers what the motion helpers read: a connected flag, an owner document whose view
+ * gives a computed style, and transitionend listeners.
+ */
 class FakeElement {
   constructor(registry, tag, sent) {
     this.registry = registry;
+    this.ownerDocument = registry.ownerDocument;
+    this.isConnected = true;
+    this.listeners = new Map();
     this.tag = tag;
     this.id = '';
     this.style = {};
@@ -223,6 +237,25 @@ class FakeElement {
   focus() {
     this.focusCount += 1;
   }
+
+  addEventListener(type, handler) {
+    this.listeners.set(type, (this.listeners.get(type) ?? new Set()).add(handler));
+  }
+
+  removeEventListener(type, handler) {
+    this.listeners.get(type)?.delete(handler);
+  }
+
+  listenerCount() {
+    return [...this.listeners.values()].reduce((sum, set) => sum + set.size, 0);
+  }
+
+  /** A browser event on this element, as the end of a CSS transition delivers it. */
+  dispatch(type, init = {}) {
+    for (const handler of [...(this.listeners.get(type) ?? [])]) {
+      handler({ type, target: this, ...init });
+    }
+  }
 }
 
 const HOSTS = {
@@ -239,13 +272,34 @@ const HOSTS = {
   'panel-navigator-tooltip': {},
 };
 
-/** `windowId` is what chrome's window tracker answers: a number, or null when the lookup fails. */
-function makeWorld({ windowId = 7 } = {}) {
+/**
+ * `windowId` is what chrome's window tracker answers: a number, or null when the lookup fails.
+ * `fadeMs` is the opacity transition the stylesheet gives every overlay host (the Mux modal
+ * role); 0 stands for reduced motion. An inline `transition: none` wins, as in CSS.
+ */
+function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
   let clock = 1000;
   let nextTimer = 1;
   const timers = new Map();
   const idle = [];
   const registry = new Map();
+  let currentFadeMs = fadeMs;
+  registry.ownerDocument = {
+    defaultView: {
+      getComputedStyle(el) {
+        const none = el.style.transition === 'none' || currentFadeMs === 0;
+        return {
+          transitionProperty: none ? 'none' : 'opacity',
+          transitionDuration: none ? '0s' : `${currentFadeMs / 1000}s`,
+          transitionDelay: '0s',
+          animationName: 'none',
+          animationDuration: '0s',
+          animationDelay: '0s',
+          animationIterationCount: '1',
+        };
+      },
+    },
+  };
   const sent = [];
   const events = {
     navigations: [],
@@ -363,6 +417,10 @@ function makeWorld({ windowId = 7 } = {}) {
     /** The overlay's document announces it (the BENTO_OVERLAY_READY title). */
     ready: (id) => api.overlays.markFrameReady(`bento-${id}-frame`),
     host: (id) => registry.get(`bento-${id}-host`),
+    /** The overlay fade the stylesheet gives the hosts from now on (0 = reduced motion). */
+    setFadeMs: (ms) => {
+      currentFadeMs = ms;
+    },
     frame: (id) => registry.get(`bento-${id}-frame`) ?? null,
     isShown: (id) => {
       const host = registry.get(`bento-${id}-host`);
@@ -887,4 +945,133 @@ test('a failed window lookup leaves the id out, so receivers accept the message'
   world.showChromeMenu({ ...MENU });
   assert.equal(world.addrbarOpens()[0].windowId, null);
   assert.equal('__windowId' in world.menuOpens()[0], false);
+});
+
+// ─── The hide waits for the fade the stylesheet configures ──────────────────
+
+const isHidden = (world, id) => !world.isShown(id);
+
+test('the address bar host fades on the modal role, with no raw duration', () => {
+  assert.match(
+    MOUNT,
+    /^ {2}const ADDRBAR_HOST_TRANSITION = 'opacity var\(--muxui-semantic-motion-modal-transition\)';$/m,
+  );
+  const world = warmWorld();
+  world.showAddrbar('current');
+  assert.equal(
+    world.host('addrbar').style.transition,
+    'opacity var(--muxui-semantic-motion-modal-transition)',
+  );
+});
+
+test('a hide takes its time from the computed fade, not from a constant', () => {
+  for (const fadeMs of [120, 180, 400]) {
+    const world = warmWorld({ fadeMs });
+    world.showPalette();
+    world.hidePalette();
+    assert.equal(world.isShown('palette'), true, 'still fading');
+    world.advance(fadeMs + 49);
+    assert.equal(world.isShown('palette'), true, `${fadeMs} ms: not hidden before the fade ends`);
+    world.advance(1);
+    assert.equal(isHidden(world, 'palette'), true, `${fadeMs} ms: hidden after the fade`);
+    assert.equal(world.host('palette').listenerCount(), 0);
+  }
+});
+
+test('the end of the opacity transition hides at once, ahead of the timer', () => {
+  const world = warmWorld();
+  world.showPalette();
+  world.hidePalette();
+  const host = world.host('palette');
+
+  host.dispatch('transitionend', { propertyName: 'transform' });
+  assert.equal(world.isShown('palette'), true, 'another property ending is ignored');
+  host.dispatch('transitionend', { propertyName: 'opacity', target: {} });
+  assert.equal(world.isShown('palette'), true, 'an event from a descendant is ignored');
+
+  host.dispatch('transitionend', { propertyName: 'opacity' });
+  assert.equal(isHidden(world, 'palette'), true);
+  assert.equal(host.listenerCount(), 0);
+  world.advance(10_000);
+});
+
+test('with no fade (reduced motion) every hide completes at once', () => {
+  const world = warmWorld({ fadeMs: 0 });
+  for (const [id, show, hide] of [
+    ['palette', () => world.showPalette(), () => world.hidePalette()],
+    ['workspace-palette', () => world.showWorkspacePalette(), () => world.hideWorkspacePalette()],
+    ['merge-palette', () => world.showMergePalette(), () => world.hideMergePalette()],
+    ['confirm', () => world.showConfirm(), () => world.hideConfirm()],
+    ['edit-workspace', () => world.showEditWorkspace(), () => world.hideEditWorkspace()],
+    ['welcome', () => world.showWelcome(), () => world.hideWelcome()],
+  ]) {
+    world.ready(id);
+    show();
+    assert.equal(world.isShown(id), true, `${id} shows`);
+    hide();
+    assert.equal(isHidden(world, id), true, `${id} hides without waiting`);
+  }
+  const addrbar = world.host('addrbar');
+  world.showAddrbar('current');
+  world.hideAddrbar();
+  assert.equal(addrbar.style.display, 'none');
+});
+
+test('a host with no computed style falls back to the ceiling instead of hanging', () => {
+  const world = warmWorld();
+  world.showPalette();
+  const host = world.host('palette');
+  host.isConnected = false;
+  world.hidePalette();
+  world.advance(world.MOTION_UNAVAILABLE_CEILING_MS - 1);
+  assert.equal(world.isShown('palette'), true);
+  world.advance(1);
+  assert.equal(isHidden(world, 'palette'), true);
+});
+
+test('showing again during the fade cancels the pending hide, and the next hide times itself', () => {
+  const world = warmWorld();
+  world.showPalette();
+  const host = world.host('palette');
+
+  world.hidePalette();
+  world.advance(100);
+  world.showPalette();
+  assert.equal(host.listenerCount(), 0, 'the re-show dropped the first hide wait');
+
+  world.advance(1000);
+  assert.equal(world.isShown('palette'), true, 'the first hide never fires');
+
+  // The second hide starts its own full fade rather than inheriting the first one's.
+  world.hidePalette();
+  world.advance(100);
+  world.hidePalette();
+  world.advance(179);
+  assert.equal(world.isShown('palette'), true);
+  world.advance(51);
+  assert.equal(isHidden(world, 'palette'), true);
+});
+
+test('hiding twice replaces the pending hide instead of stacking waits', () => {
+  const world = warmWorld();
+  world.showConfirm();
+  const host = world.host('confirm');
+  world.hideConfirm();
+  world.hideConfirm();
+  assert.equal(host.listenerCount(), 2, 'one wait: its transitionend and animationend listeners');
+  world.advance(10_000);
+  assert.equal(isHidden(world, 'confirm'), true);
+  assert.equal(host.listenerCount(), 0);
+});
+
+test('the address bar re-open during its fade keeps it shown', () => {
+  const world = warmWorld();
+  world.showAddrbar('current');
+  const host = world.host('addrbar');
+  world.hideAddrbar();
+  world.advance(100);
+  world.showAddrbar('current');
+  world.advance(10_000);
+  assert.equal(host.style.display, 'flex');
+  assert.equal(host.hasAttribute('hidden'), false);
 });

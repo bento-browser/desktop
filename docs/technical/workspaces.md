@@ -92,7 +92,9 @@ both render the shared `WorkspaceAudioParticles` layer only when a workspace has
 an `audible && !muted` tab. The layer is positioned outside `Avatar.Root` so its
 notes can float beyond the avatar's clipped bounds. It emits finite notes on the
 same varied upward paths as panel navigator particles; an audio-off update stops
-new emissions while existing notes complete their fade-out. Menu particles use
+new emissions while existing notes complete their fade-out (each note removes
+itself through `afterMotion` on its animation end, with a timer fallback sized from
+the computed animation, so a note never outlives a changed duration). Menu particles use
 `--neutral-30` so they contrast with the menu surface.
 
 The workspace editor is a chrome-mounted `Dialog` frame that reads
@@ -279,9 +281,9 @@ and DOM attributes only, so neither `TabListPane` nor the rows re-render.
 `TabList.css` does the rest: the fill is `--bento-surface-hover`, the height and
 radius match a row, `data-indented` applies `--bento-tab-folder-indent`, and
 `html[data-bento-collapsed='true']` makes it the centered square of the
-collapsed rail. The slide (`transform`, `--bento-duration-base` with
-`--bento-easing-snappy`), width and margin transitions apply only under
-`[data-visible]`; opacity fades in and out with `--bento-duration-fast`.
+collapsed rail. The slide (`transform`), width and margin transitions run on
+`--muxui-semantic-motion-reveal-transition` and apply only under `[data-visible]`;
+opacity fades in and out on `--muxui-semantic-motion-state-transition`.
 `prefers-reduced-motion: reduce` keeps only the fade.
 Tab and folder rows no longer have a plain `:hover` background. Active rows are
 opaque and cover the highlight, and selected rows are translucent and composite
@@ -297,15 +299,15 @@ selector and a `place` function. The action highlight is
 `.bento-tab-list__action-highlight` (`aria-hidden`), the first child of the bar,
 painted behind the positioned buttons. Its geometry is CSS's, not a measured
 rect, because the Search trigger widens on hover and the New button shrinks with
-it over a spring (see [palettes-and-address-bar.md](palettes-and-address-bar.md#sidebar-tab-and-panel-search)).
+it with a transition (see [palettes-and-address-bar.md](palettes-and-address-bar.md#sidebar-tab-and-panel-search)).
 `place` sets `data-target` (`new` or `search`) and `TabList.css` gives each
 target its final box from `--bento-tab-list-search-trigger-width`, the bar's
 variable that holds the Search trigger's width right now: New is `left: 0` and
 `100%` minus that width minus the bar gap; Search is at `100%` minus that width
 with that width. The highlight transitions `left` and `width` with
-`--bento-duration-spring` / `--bento-easing-spring`, the same curve and duration
-the trigger, the New button and the closed search field row use, so all of them
-land together (the list highlight keeps `--bento-easing-snappy`). A fresh show is
+`--muxui-semantic-motion-reveal-transition`, the same role the trigger, the
+New button and the closed search field row use, so all of them land together.
+A fresh show is
 the one case that is not a pure CSS target: `place` writes the hovered button's
 current box inline as the starting position (the trigger has only just begun to
 widen), the hook flushes and sets `data-visible`, and `settleAction` removes the
@@ -742,8 +744,8 @@ opening an unwanted blank tab before the moved tabs arrive.
   hovered row. A selected hover is the accent over `transparent`.
 - Do not paint an opaque backstop (a gradient of `--bento-surface-hover-solid`,
   the selected tint or `--color-60`) behind a tab row's hover actions. It appears
-  with `:hover` over `--bento-duration-fast` and disappears on its own, while the
-  highlight needs `--bento-duration-base` to slide in, so moving along the button
+  with `:hover` over the `state` motion role and disappears on its own, while the
+  highlight needs the longer `reveal` role to slide in, so moving along the button
   column showed solid hover-colored blocks ahead of and behind the gliding
   highlight, with the button hover fills sitting on them. Mask the title instead
   (see above). The mask width must match the actions' real width: if the action
@@ -779,7 +781,7 @@ opening an unwanted blank tab before the moved tabs arrive.
   because it is a percentage. But a fresh show over Search that took the final
   (peeked) box straight away appeared 52px wider than the trigger that was still
   widening (measured: highlight 84px against a 40.7px trigger 40 ms in), so it
-  starts on the trigger's current box and the spring carries both. The
+  starts on the trigger's current box and the transition carries both. The
   container's `ResizeObserver` remains only to hide a Search target that has
   lost its box (the collapsed rail).
 - Do not let the highlight outlive its row. Anything that unmounts, fades

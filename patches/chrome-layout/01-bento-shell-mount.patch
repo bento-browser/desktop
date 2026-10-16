@@ -9,7 +9,7 @@ Subject: [PATCH] Add Bento shell mount to browser chrome
  2 files changed, 62 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb45cb5540a 100644
+index 599313b65c654906f3d52c0852d284937e31d09c..a8668eff75adf0a3c4b9d21aea81ac872cdb4faf 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -2,7 +2,59 @@
@@ -38,7 +38,7 @@ index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb4
 +            resizeafter="none"
 +            style="cursor: col-resize; background-color: transparent;"/>
 +  <vbox id="bento-palette-host" hidden="true"
-+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background-color: transparent; pointer-events: auto; display: none; opacity: 0; transition: opacity 0.18s ease;">
++        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background-color: transparent; pointer-events: auto; display: none; opacity: 0;">
 +    <browser id="bento-palette-frame"
 +             type="content" remote="true" remoteType="extension"
 +             primary="false" flex="1"
@@ -46,7 +46,7 @@ index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb4
 +             style="background-color: transparent; -moz-appearance: none;"/>
 +  </vbox>
 +  <vbox id="bento-merge-palette-host" hidden="true"
-+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99997; background-color: transparent; pointer-events: auto; display: none; opacity: 0; transition: opacity 0.18s ease;">
++        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99997; background-color: transparent; pointer-events: auto; display: none; opacity: 0;">
 +    <browser id="bento-merge-palette-frame"
 +             type="content" remote="true" remoteType="extension"
 +             primary="false" flex="1"
@@ -54,7 +54,7 @@ index 599313b65c654906f3d52c0852d284937e31d09c..840418d0e34171c2cf45f9dd18230bb4
 +             style="background-color: transparent; -moz-appearance: none;"/>
 +  </vbox>
 +  <vbox id="bento-confirm-host" hidden="true"
-+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99998; background-color: transparent; pointer-events: auto; display: none; opacity: 0; transition: opacity 0.18s ease;">
++        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99998; background-color: transparent; pointer-events: auto; display: none; opacity: 0;">
 +    <browser id="bento-confirm-frame"
 +             type="content" remote="true" remoteType="extension"
 +             primary="false" flex="1"

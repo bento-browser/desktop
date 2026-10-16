@@ -26,6 +26,7 @@ import { useUiStore } from './state/ui';
 import { useExternalMergeStore } from './state/externalMerge';
 import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
+import { afterTransition } from './rollbackMotion';
 import type { UiColorModePref } from '@shared/protocol';
 
 // Note: the command palette no longer lives in this entry. It runs in its
@@ -472,10 +473,11 @@ export function App() {
   // never seen at full opacity — the first paint after the toggle is
   // already at opacity 0, then fades in.
   //
-  // Duration is intentionally LONGER than the host-width transition
-  // (200ms) so the buttons keep fading in after the rail has settled
-  // — gives the eye time to register the new layout instead of
-  // snapping into focus the instant the rail stops moving.
+  // The fade uses the reveal role, like the host-width transition, and
+  // starts two frames after the toggle, so the buttons finish fading in
+  // just after the rail has settled — gives the eye time to register the
+  // new layout instead of snapping into focus the instant the rail stops
+  // moving.
   //
   // Skip the very first run (when prevCollapsed.current is undefined)
   // so the boot doesn't briefly fade — initial render shows the
@@ -489,10 +491,6 @@ export function App() {
     if (isFirstRun || !changed) return;
     const footer = footerRef.current;
     if (!footer) return;
-    // Fade-in duration; matches a hypothetical --bento-duration-xslow.
-    // If the design system grows that token later, swap this for a
-    // getComputedStyle read on documentElement.
-    const FADE_MS = 500;
     // Phase 1 (sync, pre-paint): instant opacity 0 with no transition.
     footer.style.transition = 'none';
     footer.style.opacity = '0';
@@ -505,24 +503,24 @@ export function App() {
     // both opacity assignments into a single paint and skip the fade.
     let rafA = 0;
     let rafB = 0;
-    let cleanupTimer = 0;
+    let cancelCleanup: (() => void) | undefined;
     rafA = requestAnimationFrame(() => {
       rafB = requestAnimationFrame(() => {
-        footer.style.transition = `opacity ${FADE_MS}ms ease`;
+        footer.style.transition = 'opacity var(--muxui-semantic-motion-reveal-transition)';
         footer.style.opacity = '1';
-        cleanupTimer = window.setTimeout(() => {
+        cancelCleanup = afterTransition(footer, ['opacity'], () => {
           // Strip inline styles after the transition completes so any
           // future hover / class-based opacity rules can take over
           // without competing with stale inline values.
           footer.style.transition = '';
           footer.style.opacity = '';
-        }, FADE_MS + 50);
+        });
       });
     });
     return () => {
       cancelAnimationFrame(rafA);
       cancelAnimationFrame(rafB);
-      clearTimeout(cleanupTimer);
+      cancelCleanup?.();
     };
   }, [sidebarCollapsed]);
 

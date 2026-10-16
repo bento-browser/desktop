@@ -44,6 +44,146 @@
   const BENTO_CONTENT_LOAD_FLAGS =
     Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
 
+  // ─── Motion timing ──────────────────────────────────────────────────────
+  // Cleanup that follows a CSS transition or animation waits on the resolved
+  // timing instead of mirroring a number, so a Mux motion role change needs no
+  // edit here. afterMotion(el, spec, done) runs done at the matching
+  // transitionend/animationend, with a timer at the measured time as the
+  // fallback, and returns its cancel function.
+  //   spec.transition  property names to wait on (a transition on 'all' matches)
+  //   spec.animation   animation names to wait on (finite iteration counts only)
+  //   spec.key         slot on the element; a new call replaces a pending one,
+  //                    and cancelMotion(el, key) drops it on re-show or interrupt
+  //   spec.frames      animation frames to wait before measuring, for styles a
+  //                    rAF callback applies later
+  // Measuring reads computed style, which applies pending style changes, so
+  // call it after the styles that start the motion. A measured 0 runs done on
+  // the next task (nothing animates). A detached element has no computed style
+  // and a window with paused frames never measures, so the ceiling timer
+  // decides in both cases.
+  const MOTION_CEILING_MS = 1200;
+  const MOTION_SLACK_MS = 50;
+  const pendingMotion = new WeakMap();
+
+  function cssTimeMs(value) {
+    const match = /^(-?\d*\.?\d+)(ms|s)$/.exec(value);
+    if (!match) return 0;
+    return parseFloat(match[1]) * (match[2] === 's' ? 1000 : 1);
+  }
+
+  // A computed longhand list repeats to the property count, like CSS does.
+  function motionList(style, name, count) {
+    const items = style
+      .getPropertyValue(name)
+      .split(',')
+      .map((item) => item.trim());
+    return Array.from({ length: count }, (_, i) => items[i % items.length]);
+  }
+
+  // { ms, ends } for the longest matching motion, where ends names what
+  // finishes last, or null when el has no computed style.
+  function measureMotion(el, spec) {
+    const style = el.isConnected ? el.ownerDocument?.defaultView?.getComputedStyle(el) : null;
+    if (!style) return null;
+    let ms = 0;
+    const ends = new Set();
+    const note = (name, total) => {
+      if (total > ms) {
+        ms = total;
+        ends.clear();
+      }
+      if (total === ms) ends.add(name);
+    };
+    if (spec.transition) {
+      const names = style
+        .getPropertyValue('transition-property')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+      const durations = motionList(style, 'transition-duration', names.length);
+      const delays = motionList(style, 'transition-delay', names.length);
+      names.forEach((name, i) => {
+        if (name !== 'all' && !spec.transition.includes(name)) return;
+        note(name, Math.max(0, cssTimeMs(durations[i]) + cssTimeMs(delays[i])));
+      });
+    }
+    if (spec.animation) {
+      const names = style
+        .getPropertyValue('animation-name')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+      const durations = motionList(style, 'animation-duration', names.length);
+      const delays = motionList(style, 'animation-delay', names.length);
+      const counts = motionList(style, 'animation-iteration-count', names.length);
+      names.forEach((name, i) => {
+        if (!spec.animation.includes(name)) return;
+        const count = parseFloat(counts[i]);
+        if (!Number.isFinite(count)) return;
+        note(name, Math.max(0, cssTimeMs(delays[i]) + cssTimeMs(durations[i]) * count));
+      });
+    }
+    return { ms, ends };
+  }
+
+  function cancelMotion(el, key = 'motion') {
+    pendingMotion.get(el)?.get(key)?.();
+  }
+
+  function afterMotion(el, spec, done) {
+    const key = spec.key || 'motion';
+    let settled = false;
+    let timer = 0;
+    let removeEndListener = null;
+    const cancel = () => {
+      settled = true;
+      clearTimeout(timer);
+      removeEndListener?.();
+      if (el && pendingMotion.get(el)?.get(key) === cancel) pendingMotion.get(el).delete(key);
+    };
+    const finish = () => {
+      if (settled) return;
+      cancel();
+      done();
+    };
+    if (el) {
+      cancelMotion(el, key);
+      if (!pendingMotion.has(el)) pendingMotion.set(el, new Map());
+      pendingMotion.get(el).set(key, cancel);
+    }
+    const measureAndArm = () => {
+      const timing = el ? measureMotion(el, spec) : { ms: 0, ends: new Set() };
+      if (!timing) return;
+      clearTimeout(timer);
+      if (timing.ms <= 0) {
+        timer = setTimeout(finish, 0);
+        return;
+      }
+      const endType = spec.animation ? 'animationend' : 'transitionend';
+      const onEnd = (event) => {
+        if (event.target !== el) return;
+        const name = spec.animation ? event.animationName : event.propertyName;
+        if (timing.ends.has('all') || timing.ends.has(name)) finish();
+      };
+      el.addEventListener(endType, onEnd);
+      removeEndListener = () => el.removeEventListener(endType, onEnd);
+      timer = setTimeout(finish, timing.ms + MOTION_SLACK_MS);
+    };
+    let framesLeft = spec.frames || 0;
+    const step = () => {
+      if (settled) return;
+      if (framesLeft > 0) {
+        framesLeft -= 1;
+        requestAnimationFrame(step);
+      } else {
+        measureAndArm();
+      }
+    };
+    timer = setTimeout(finish, MOTION_CEILING_MS);
+    step();
+    return cancel;
+  }
+
   function seedChromeColorMode() {
     const root = document.documentElement;
     if (!root) return;
@@ -693,7 +833,7 @@
         color: var(--neutral-90);
         pointer-events: auto;
         opacity: 1;
-        transition: opacity 140ms var(--bento-easing-standard, ease);
+        transition: opacity var(--muxui-semantic-motion-dismiss-transition);
       }
       #bento-startup-veil[hidden],
       :root:not([bento-startup-loading='true']) #bento-startup-veil {
@@ -795,7 +935,7 @@
         .bento-startup-veil__toolbar,
         .bento-startup-veil__content::before,
         .bento-startup-veil__content::after {
-          animation: bento-startup-veil-pulse 1.2s var(--bento-easing-in-out, ease-in-out) infinite;
+          animation: bento-startup-veil-pulse var(--muxui-semantic-motion-progress-sweep-duration) var(--muxui-semantic-motion-progress-easing) infinite;
         }
       }
       @keyframes bento-startup-veil-pulse {
@@ -841,7 +981,7 @@
           100% 50%,
           100% 100%;
         opacity: 0;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+        transition: opacity var(--muxui-semantic-motion-reveal-transition);
       }
       #bento-shell-splitter-affordance:hover,
       #bento-shell-splitter-affordance.bento-shell-splitter--dragging {
@@ -877,7 +1017,7 @@
           100% 50%,
           100% 100%;
         opacity: 0;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+        transition: opacity var(--muxui-semantic-motion-reveal-transition);
         z-index: 4;
       }
       :root[bento-sidebar-addressbar='true'] #sidebar-splitter:hover,
@@ -912,9 +1052,9 @@
         min-width: var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min)) !important;
         max-width: var(--bento-tab-strip-width-max) !important;
         transition:
-          width 200ms var(--bento-easing-standard, ease),
-          min-width 200ms var(--bento-easing-standard, ease),
-          max-width 200ms var(--bento-easing-standard, ease);
+          width var(--muxui-semantic-motion-reveal-transition),
+          min-width var(--muxui-semantic-motion-reveal-transition),
+          max-width var(--muxui-semantic-motion-reveal-transition);
       }
       :root[bento-window-resizing='true'] #bento-shell-host,
       :root[bento-sidebar-resizing='true'] #bento-shell-host,
@@ -939,7 +1079,7 @@
         overflow: hidden;
         pointer-events: none;
         transform: translateX(-100%);
-        transition: transform 160ms var(--bento-easing-standard, ease);
+        transition: transform var(--muxui-semantic-motion-reveal-transition);
       }
       #bento-shell-host.bento-sidebar-hidden.bento-sidebar-hidden-revealed {
         z-index: 7;
@@ -1037,8 +1177,7 @@
       #tabbrowser-tabpanels,
       #bento-strip-container,
       #bento-panel-nav {
-        transition: opacity var(--bento-duration-fast, 140ms)
-          var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1));
+        transition: opacity var(--muxui-semantic-motion-state-transition);
       }
       #tabbrowser-tabpanels.bento-workspace-switching,
       #bento-strip-container.bento-workspace-switching,
@@ -1184,7 +1323,7 @@
         background-color: var(--neutral-80);
         border-radius: var(--bento-scrollbar-radius);
         cursor: grab;
-        transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
+        transition: background-color var(--muxui-semantic-motion-state-transition);
       }
       .bento-strip-scrollbar__thumb:hover {
         background-color: var(--neutral-80);
@@ -1231,8 +1370,8 @@
         cursor: pointer;
         flex: 0 0 auto;
         transition:
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard);
+          background-color var(--muxui-semantic-motion-state-transition),
+          color var(--muxui-semantic-motion-state-transition);
         /* The navigator sits in Firefox's titlebar-capable nav bar. These
            controls must not participate in the native titlebar drag or
            double-click-to-maximize region. */
@@ -1290,9 +1429,9 @@
            padding, or margin makes the navigator row jump while the
            panel layout itself is changing. */
         transition:
-          opacity var(--bento-duration-base) var(--bento-easing-standard),
-          background-color var(--bento-duration-base) var(--bento-easing-standard),
-          border-color var(--bento-duration-base) var(--bento-easing-standard);
+          opacity var(--muxui-semantic-motion-reveal-transition),
+          background-color var(--muxui-semantic-motion-state-transition),
+          border-color var(--muxui-semantic-motion-state-transition);
       }
       .bento-panel-nav__icon:hover {
         background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
@@ -1360,7 +1499,7 @@
         opacity: 0;
         pointer-events: none;
         transform: translate(-50%, -50%) translate(0, 0) scale(0.54);
-        animation: bento-panel-nav-music-particle 1500ms linear forwards;
+        animation: bento-panel-nav-music-particle var(--muxui-semantic-motion-progress-travel-duration) var(--muxui-semantic-motion-constant-easing) forwards;
         will-change: opacity, transform;
       }
       .bento-panel-nav__audio-particle--1 {
@@ -1406,7 +1545,7 @@
       }
       @media (prefers-reduced-motion: reduce) {
         .bento-panel-nav__audio-particle {
-          animation-duration: 1100ms;
+          animation-duration: var(--muxui-semantic-motion-progress-spin-duration);
         }
       }
       .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
@@ -1462,8 +1601,8 @@
         opacity: 0.45;
         transform: scale(0.92);
         transition:
-          opacity var(--bento-duration-fast) var(--bento-easing-standard),
-          transform var(--bento-duration-fast) var(--bento-easing-standard);
+          opacity var(--muxui-semantic-motion-state-transition),
+          transform var(--muxui-semantic-motion-state-transition);
       }
       .bento-panel-nav__icon--dragging:hover {
         background-color: transparent;
@@ -1488,8 +1627,7 @@
         border-radius: var(--bento-focus-ring-width);
         pointer-events: none;
         z-index: 1;
-        animation: bento-nav-drop-fade-in var(--bento-duration-fast)
-          var(--bento-easing-standard);
+        animation: bento-nav-drop-fade-in var(--muxui-semantic-motion-state-transition);
       }
       @keyframes bento-nav-drop-fade-in {
         from {
@@ -1579,7 +1717,7 @@
       }
       .bento-panel--discarded {
         opacity: 0.68;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+        transition: opacity var(--muxui-semantic-motion-state-transition);
       }
       /* Close-panel animation. Fade only: keep the panel's current
          layout size while it exits, then let the post-close reconcile
@@ -1588,7 +1726,7 @@
       .bento-panel--removing {
         pointer-events: none;
         opacity: 0;
-        transition: opacity 120ms var(--bento-easing-standard);
+        transition: opacity var(--muxui-semantic-motion-dismiss-transition);
       }
 
       /* Legacy host-owned panel containers are positioned for
@@ -1642,7 +1780,7 @@
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+        transition: border-color var(--muxui-semantic-motion-state-transition);
       }
       #bento-side-panel-host > .bento-panel--focused::after,
       #bento-side-panel-host > .bento-panel--cycle-focused::after {
@@ -1692,12 +1830,12 @@
         overflow: hidden;
         box-sizing: border-box;
         transition:
-          background-color var(--bento-duration-base) var(--bento-easing-standard),
-          max-height var(--bento-duration-base) var(--bento-easing-snappy),
-          min-height var(--bento-duration-base) var(--bento-easing-snappy),
-          padding var(--bento-duration-base) var(--bento-easing-snappy),
-          border-bottom-color var(--bento-duration-base) var(--bento-easing-standard),
-          border-bottom-width var(--bento-duration-base) var(--bento-easing-snappy);
+          background-color var(--muxui-semantic-motion-reveal-transition),
+          max-height var(--muxui-semantic-motion-reveal-transition),
+          min-height var(--muxui-semantic-motion-reveal-transition),
+          padding var(--muxui-semantic-motion-reveal-transition),
+          border-bottom-color var(--muxui-semantic-motion-reveal-transition),
+          border-bottom-width var(--muxui-semantic-motion-reveal-transition);
       }
       /* Header hiding uses height collapse, not opacity/visibility:
          forcePanelHeaderInteractiveState stamps inline-important values
@@ -1745,10 +1883,10 @@
         outline: none;
         user-select: none;
         transition:
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          border-color var(--bento-duration-fast) var(--bento-easing-standard),
-          color var(--bento-duration-fast) var(--bento-easing-standard),
-          box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
+          background-color var(--muxui-semantic-motion-state-transition),
+          border-color var(--muxui-semantic-motion-state-transition),
+          color var(--muxui-semantic-motion-state-transition),
+          box-shadow var(--muxui-semantic-motion-state-transition);
       }
       .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
       .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
@@ -1904,10 +2042,10 @@
           0 0 0 1px rgba(255, 255, 255, 0.28),
           0 1px 4px rgba(0, 0, 0, 0.45);
         transition:
-          width var(--bento-duration-fast) var(--bento-easing-standard),
-          height var(--bento-duration-fast) var(--bento-easing-standard),
-          background-color var(--bento-duration-fast) var(--bento-easing-standard),
-          box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
+          width var(--muxui-semantic-motion-state-transition),
+          height var(--muxui-semantic-motion-state-transition),
+          background-color var(--muxui-semantic-motion-state-transition),
+          box-shadow var(--muxui-semantic-motion-state-transition);
       }
       .bento-panel-header-restore:hover > .bento-panel-header-restore__pill {
         width: 56px;
@@ -1932,7 +2070,7 @@
       .bento-panel-loading-overlay .bento-spinner__svg {
         width: var(--_spinner-size);
         height: var(--_spinner-size);
-        animation: bento-spinner-rotate 1s linear infinite;
+        animation: bento-spinner-rotate var(--muxui-semantic-motion-progress-spin-duration) var(--muxui-semantic-motion-constant-easing) infinite;
       }
       .bento-panel-loading-overlay .bento-spinner__track {
         stroke: var(--neutral-20);
@@ -1940,7 +2078,7 @@
       .bento-panel-loading-overlay .bento-spinner__arc {
         stroke: var(--color-60);
         stroke-dasharray: 44, 63;
-        animation: bento-spinner-dash 1.2s ease-in-out infinite;
+        animation: bento-spinner-dash var(--muxui-semantic-motion-progress-sweep-duration) var(--muxui-semantic-motion-progress-easing) infinite;
       }
       @keyframes bento-spinner-rotate {
         100% { transform: rotate(360deg); }
@@ -2270,7 +2408,7 @@
         border-radius: var(--bento-panel-corner-radius);
         color: var(--neutral-70);
         transition:
-          flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard);
+          flex-basis var(--muxui-semantic-motion-reveal-transition);
       }
       #bento-add-panel-trailer:focus,
       #bento-add-panel-trailer:focus-within {
@@ -2285,7 +2423,7 @@
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+        transition: border-color var(--muxui-semantic-motion-state-transition);
       }
       #bento-add-panel-trailer.bento-panel--cycle-focused::after,
       #bento-add-panel-trailer:focus::after,
@@ -2389,7 +2527,7 @@
           100% 50%,
           100% 100%;
         opacity: 0;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+        transition: opacity var(--muxui-semantic-motion-reveal-transition);
       }
       #bento-side-panel-host > .bento-panel-splitter:hover,
       #bento-side-panel-host > .bento-panel-splitter--dragging {
@@ -2446,7 +2584,7 @@
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+        transition: border-color var(--muxui-semantic-motion-state-transition);
       }
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--focused::after,
       #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
@@ -2461,7 +2599,7 @@
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+        transition: border-color var(--muxui-semantic-motion-state-transition);
       }
       [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--focused::after,
       [data-bento-subpanel]:not([data-bento-subdivided]):not([data-bento-subdivision-top-closed]).bento-panel--cycle-focused::after {
@@ -2524,7 +2662,7 @@
         pointer-events: none;
         z-index: 12;
         box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+        transition: border-color var(--muxui-semantic-motion-state-transition);
       }
       [data-bento-subdivided].bento-subdivision-top--focused::before {
         border-color: var(--color-60);
@@ -2600,8 +2738,8 @@
       [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > [data-bento-subpanel],
       [data-bento-subdivision-animating="1"] > .bento-subdivision-bottom > .bento-subdivision-hsplitter {
         transition:
-          flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard),
-          opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard) !important;
+          flex-basis var(--muxui-semantic-motion-reveal-transition),
+          opacity var(--muxui-semantic-motion-reveal-transition) !important;
       }
       .bento-subdivision-vsplitter {
         cursor: row-resize !important;
@@ -2628,7 +2766,7 @@
           50% 100%,
           100% 100% !important;
         opacity: 0 !important;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
+        transition: opacity var(--muxui-semantic-motion-reveal-transition) !important;
         position: relative !important;
       }
       .bento-subdivision-vsplitter::after {
@@ -2789,7 +2927,7 @@
           100% 50%,
           100% 100% !important;
         opacity: 0 !important;
-        transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
+        transition: opacity var(--muxui-semantic-motion-reveal-transition) !important;
         position: relative !important;
       }
       .bento-subdivision-hsplitter::after {
@@ -2946,12 +3084,20 @@
         pointer-events: none;
         z-index: 10;
         box-sizing: border-box;
-        transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+        transition: border-color var(--muxui-semantic-motion-state-transition);
       }
       .bento-subdivision-chooser.bento-panel--focused::after,
       .bento-subdivision-chooser.bento-panel--cycle-focused::after,
       .bento-subdivision-chooser:focus-within::after {
         border-color: var(--color-60);
+      }
+      /* The chrome-layout patch creates these three overlay hosts without an
+         inline transition, and ensureOverlayHost returns early for hosts that
+         already exist, so the modal fade comes from this rule. */
+      #bento-palette-host,
+      #bento-merge-palette-host,
+      #bento-confirm-host {
+        transition: opacity var(--muxui-semantic-motion-modal-transition);
       }
     `;
     document.documentElement.appendChild(style);
@@ -3038,10 +3184,11 @@
     }
     const veil = document.getElementById('bento-startup-veil');
     if (!veil || veil.hasAttribute('hidden')) return;
-    window.setTimeout(() => {
+    // The attribute removal above starts the veil's opacity fade.
+    afterMotion(veil, { transition: ['opacity'], key: 'veil' }, () => {
       veil.setAttribute('hidden', 'true');
       veil.remove();
-    }, 180);
+    });
   }
 
   function armStartupVeilFallback() {
@@ -3395,7 +3542,7 @@
       'position: absolute; top: 0; left: 0; width: 100%; height: 100%;' +
       ` z-index: ${zIndex}; background-color: transparent; pointer-events: auto;` +
       ' display: none; opacity: 0;' +
-      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
     const frame = document.createXULElement('browser');
     frame.id = frameId;
     frame.setAttribute('type', 'content');
@@ -3451,7 +3598,7 @@
       ' height: 0; max-width: none; max-height: none; margin: 0; padding: 0;' +
       ' border: 0; overflow: hidden; pointer-events: auto; opacity: 0;' +
       ' background-color: var(--scrim, rgba(0, 0, 0, 0.48));' +
-      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
     parent.appendChild(scrim);
   }
 
@@ -3586,7 +3733,16 @@
   // subsequent opens have zero React work and only the chrome-side
   // CSS transition runs.
 
-  const PALETTE_TRANSITION_MS = 180; // matches inline transition duration
+  // Commits display:none once the host's fade-out ends. Guarded on opacity so a
+  // re-show that already restored it wins; show paths also cancelMotion(host, 'hide').
+  function finishOverlayHide(host, onHidden) {
+    afterMotion(host, { transition: ['opacity'], key: 'hide' }, () => {
+      if (host.style.opacity !== '0') return;
+      host.style.display = 'none';
+      host.setAttribute('hidden', 'true');
+      onHidden?.();
+    });
+  }
 
   function showPalette() {
     const mergeHost = document.getElementById('bento-merge-palette-host');
@@ -3597,6 +3753,7 @@
       return;
     }
     showOverlayToolbarScrim('palette');
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     // Force a layout pass so the browser registers display:flex BEFORE we
@@ -3616,14 +3773,7 @@
     }
     hideOverlayToolbarScrim('palette');
     host.style.opacity = '0';
-    setTimeout(() => {
-      // Only commit display:none if still hidden — guards against a
-      // re-show during the transition.
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, PALETTE_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
   function togglePalette() {
@@ -3639,7 +3789,6 @@
   }
 
   // ─── Workspace palette overlay ────────────────────────────────────────
-  const WORKSPACE_PALETTE_TRANSITION_MS = 180;
 
   function isWorkspacePaletteVisible(host) {
     return host.style.display !== 'none';
@@ -3654,6 +3803,7 @@
       return;
     }
     showOverlayToolbarScrim('workspace-palette');
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -3670,15 +3820,9 @@
     }
     hideOverlayToolbarScrim('workspace-palette');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, WORKSPACE_PALETTE_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
-  const MERGE_PALETTE_TRANSITION_MS = 180;
   let mergePaletteOpenSeq = 0;
 
   function nextMergePaletteNonce(kind) {
@@ -3699,6 +3843,7 @@
       return;
     }
     showOverlayToolbarScrim('merge-palette');
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -3719,12 +3864,7 @@
     }
     hideOverlayToolbarScrim('merge-palette');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, MERGE_PALETTE_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
   function toggleMergePalette() {
@@ -3754,7 +3894,7 @@
   const ADDRBAR_OPEN_RETRY_MS = 120;
   const ADDRBAR_OPEN_RETRY_LIMIT = 8;
   const ADDRBAR_OPEN_FALLBACK_REVEAL_MS = 1400;
-  const ADDRBAR_HOST_TRANSITION = 'opacity 0.18s var(--bento-easing-standard, ease)';
+  const ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)';
   let addrbarOpenSeq = 0;
   let pendingAddrbarReveal = null;
 
@@ -3837,6 +3977,7 @@
   }
 
   function prepareAddrbarHostForOpen(host, placement = null) {
+    cancelMotion(host, 'hide');
     const previousTransition = host.style.transition;
     host.style.transition = 'none';
     host.style.pointerEvents = 'none';
@@ -4055,12 +4196,7 @@
     if (!host) return;
     host.style.pointerEvents = 'none';
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, PALETTE_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
   // ─── Confirm overlay (workspace delete, etc.) ──────────────────────────
@@ -4070,7 +4206,6 @@
   // title-IPC (BENTO_OPEN_CONFIRM_*) and confirm-content title-IPC
   // (BENTO_CLOSE_CONFIRM_*). The payload travels independently via the
   // 'bento-confirm-bus' BroadcastChannel.
-  const CONFIRM_TRANSITION_MS = 180;
 
   function isConfirmVisible(host) {
     return host.style.display !== 'none';
@@ -4083,6 +4218,7 @@
       return;
     }
     showOverlayToolbarScrim('confirm');
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -4099,19 +4235,13 @@
     }
     hideOverlayToolbarScrim('confirm');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, CONFIRM_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
   // ─── Edit-workspace overlay ────────────────────────────────────────────
   // Same chrome-overlay pattern as confirm/palette: a transparent
   // <browser> sized to fill the window hosts the form Dialog. Sidebar
   // never holds modal UI.
-  const EDIT_WORKSPACE_TRANSITION_MS = 180;
 
   function isEditWorkspaceVisible(host) {
     return host.style.display !== 'none';
@@ -4124,6 +4254,7 @@
       return;
     }
     showOverlayToolbarScrim('edit-workspace');
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -4140,12 +4271,7 @@
     }
     hideOverlayToolbarScrim('edit-workspace');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, EDIT_WORKSPACE_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
   // ─── Workspace-switcher overlay ────────────────────────────────────────
@@ -4201,7 +4327,6 @@
   // and signals BENTO_OPEN_WELCOME_<ts>; welcome content flips the flag only
   // on final dismiss paths so the import step can show the embedded Firefox
   // migration host without marking onboarding complete.
-  const WELCOME_TRANSITION_MS = 180;
 
   // The scrim is a popover strip whose height tracks the toolbar (= the
   // gap above #browser) so it dims exactly the toolbar strip and never
@@ -4231,7 +4356,7 @@
     layer.style.cssText =
       'position: absolute; inset: 0; background-color: var(--scrim, rgba(0, 0, 0, 0.48));' +
       ' opacity: 0; pointer-events: none;' +
-      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
     return layer;
   }
 
@@ -4250,6 +4375,7 @@
 
     layers.forEach((layer, index) => {
       if (index < targetExtraLayerCount) {
+        cancelMotion(layer, 'close');
         layer.removeAttribute('data-bento-closing');
         requestAnimationFrame(() => {
           if (!layer.hasAttribute('data-bento-closing')) layer.style.opacity = '1';
@@ -4260,9 +4386,9 @@
       if (layer.hasAttribute('data-bento-closing')) return;
       layer.setAttribute('data-bento-closing', 'true');
       layer.style.opacity = '0';
-      setTimeout(() => {
+      afterMotion(layer, { transition: ['opacity'], key: 'close' }, () => {
         if (layer.hasAttribute('data-bento-closing')) layer.remove();
-      }, WELCOME_TRANSITION_MS);
+      });
     });
   }
 
@@ -4271,6 +4397,7 @@
     const scrim = document.getElementById('bento-overlay-toolbar-scrim');
     if (!scrim) return;
     if (getOverlayToolbarScrimHeight() <= 0) return;
+    cancelMotion(scrim, 'hide');
     const wasOpen = isOverlayToolbarScrimOpen(scrim);
     if (!wasOpen) scrim.style.opacity = '0';
     sizeOverlayToolbarScrim(scrim);
@@ -4303,7 +4430,7 @@
     }
     syncOverlayToolbarScrimLayers(scrim);
     scrim.style.opacity = '0';
-    setTimeout(() => {
+    afterMotion(scrim, { transition: ['opacity'], key: 'hide' }, () => {
       if (
         activeToolbarScrimOwners.size === 0 &&
         scrim.style.opacity === '0' &&
@@ -4315,7 +4442,7 @@
           console.warn('[bento-shell-mount] overlay toolbar scrim hidePopover failed:', err);
         }
       }
-    }, WELCOME_TRANSITION_MS);
+    });
   }
 
   // Keep the strip aligned to the toolbar while it's visible (window
@@ -4338,6 +4465,7 @@
       return;
     }
     showOverlayToolbarScrim('welcome');
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -4351,12 +4479,7 @@
     if (!host) return;
     hideOverlayToolbarScrim('welcome');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, WELCOME_TRANSITION_MS);
+    finishOverlayHide(host);
   }
 
   function isEmbeddedImportVisible(host) {
@@ -4381,6 +4504,7 @@
     }
 
     setBentoEmbeddedImportSrc();
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -4392,16 +4516,12 @@
     const host = document.getElementById('bento-embedded-import-host');
     if (!host) return;
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-        const frame = document.getElementById('bento-embedded-import-frame');
-        frame?.removeAttribute('src');
-        const welcomeFrame = document.getElementById('bento-welcome-frame');
-        setTimeout(() => welcomeFrame?.focus(), 0);
-      }
-    }, WELCOME_TRANSITION_MS);
+    finishOverlayHide(host, () => {
+      const frame = document.getElementById('bento-embedded-import-frame');
+      frame?.removeAttribute('src');
+      const welcomeFrame = document.getElementById('bento-welcome-frame');
+      setTimeout(() => welcomeFrame?.focus(), 0);
+    });
   }
 
   // scopeFirefoxZen=true is the explicit "Import Firefox or Zen" path: it
@@ -5024,7 +5144,6 @@
     },
   ];
   const PANEL_NAV_AUDIO_EMIT_INTERVAL_MS = 540;
-  const PANEL_NAV_AUDIO_PARTICLE_TTL_MS = 1800;
   let nextPanelNavAudioOwnerId = 1;
 
   function makeIcon(d, size) {
@@ -5144,9 +5263,12 @@
       particle.remove();
       cleanupPanelNavAudioParticles(btn);
     };
-    particle.addEventListener('animationend', cleanup, { once: true });
     particlesRoot.appendChild(particle);
-    window.setTimeout(cleanup, PANEL_NAV_AUDIO_PARTICLE_TTL_MS);
+    afterMotion(
+      particle,
+      { animation: ['bento-panel-nav-music-particle'], key: 'particle' },
+      cleanup,
+    );
   }
 
   function startPanelNavAudioEmitter(btn) {
@@ -8633,10 +8755,18 @@
           }
         }
       });
-      window.setTimeout(() => {
-        if (!isCurrentSubdivisionAnimation(panelEl, animationId)) return;
-        clearSubdivisionFromPanel(panelEl, { force: true });
-      }, 230);
+      afterMotion(
+        contentEl || bottomEls[0] || panelEl,
+        {
+          transition: ['flex-basis', 'opacity'],
+          key: 'subdivision',
+          frames: subdivisionAnimationFrames(panelEl),
+        },
+        () => {
+          if (!isCurrentSubdivisionAnimation(panelEl, animationId)) return;
+          clearSubdivisionFromPanel(panelEl, { force: true });
+        },
+      );
       return;
     }
     delete panelEl._bentoPanelRemoving;
@@ -8678,8 +8808,8 @@
   }
 
   const BENTO_SUBDIVISION_FLEX_OPACITY_TRANSITION =
-    'flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
-    'opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard)';
+    'flex-basis var(--muxui-semantic-motion-reveal-transition), ' +
+    'opacity var(--muxui-semantic-motion-reveal-transition)';
 
   function beginSubdivisionAnimation(panelEl) {
     if (!panelEl) return 0;
@@ -8710,6 +8840,13 @@
       return;
     }
     requestAnimationFrame(callback);
+  }
+
+  // Frames scheduleSubdivisionAnimationFrame waits for. Pass it as spec.frames to
+  // an afterMotion registered right after the schedule call, so the measurement
+  // runs after the style callback has applied the target layout.
+  function subdivisionAnimationFrames(panelEl) {
+    return isFullSlotSurvivorPanel(panelEl) ? 2 : 1;
   }
 
   function getContainingSubdivisionParent(subPanel) {
@@ -8848,12 +8985,8 @@
         parentPanel.style.removeProperty('--bento-subdivision-top-focus-height');
       }
       if (isNewSubdivision && !topClosed) {
-        const animationId = beginSubdivisionAnimation(parentPanel);
+        beginSubdivisionAnimation(parentPanel);
         parentPanel.setAttribute('data-bento-subdivision-animating', '1');
-        window.setTimeout(() => {
-          if (!isCurrentSubdivisionAnimation(parentPanel, animationId)) return;
-          parentPanel.removeAttribute('data-bento-subdivision-animating');
-        }, 260);
       }
       const topFraction = sub.topHeightFraction ?? 0.5;
       const isFullSlotSurvivorSubdivision =
@@ -9224,9 +9357,17 @@
 
         parentPanel.getBoundingClientRect();
         scheduleSubdivisionAnimationFrame(parentPanel, applyTargetSubdivisionLayout);
-        window.setTimeout(
+        afterMotion(
+          startingBottom || startingContent || parentPanel,
+          {
+            transition: ['flex-basis', 'opacity'],
+            key: 'subdivision',
+            frames: subdivisionAnimationFrames(parentPanel),
+          },
           () => {
             if (!isCurrentSubdivisionAnimation(parentPanel, subdivisionAnimationId)) return;
+            // The attribute scopes the layout transition to this window.
+            parentPanel.removeAttribute('data-bento-subdivision-animating');
             if (!parentPanel.isConnected) return;
             const currentContent =
               parentPanel.querySelector(':scope > .browserContainer') ||
@@ -9247,7 +9388,6 @@
               parentPanel.querySelector(':scope > .bento-subdivision-bottom');
             if (bottomEl) bottomEl.style.removeProperty('overflow');
           },
-          isFullSlotSurvivorSubdivision ? 360 : 240,
         );
       }
 
@@ -9388,6 +9528,7 @@
     const finalWidth = animateWidth ? panelEl.getBoundingClientRect().width : 0;
     if (animateWidth && (!Number.isFinite(finalWidth) || finalWidth <= 0)) return;
     const clearSizingAfter = !!options.clearSizingAfter;
+    cancelMotion(panelEl, 'enter');
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
     if (animateTransform) panelEl.style.transform = 'scale(0.98)';
@@ -9398,14 +9539,19 @@
     }
     panelEl.getBoundingClientRect();
     requestAnimationFrame(() => {
-      const transitions = ['opacity 140ms var(--bento-easing-standard)'];
-      if (animateTransform) transitions.push('transform 180ms var(--bento-easing-standard)');
+      const transitions = ['opacity var(--muxui-semantic-motion-reveal-transition)'];
+      const properties = ['opacity'];
+      if (animateTransform) {
+        transitions.push('transform var(--muxui-semantic-motion-reveal-transition)');
+        properties.push('transform');
+      }
       if (animateWidth) {
         transitions.push(
-          'width 180ms var(--bento-easing-standard)',
-          'min-width 180ms var(--bento-easing-standard)',
-          'flex-basis 180ms var(--bento-easing-standard)',
+          'width var(--muxui-semantic-motion-reveal-transition)',
+          'min-width var(--muxui-semantic-motion-reveal-transition)',
+          'flex-basis var(--muxui-semantic-motion-reveal-transition)',
         );
+        properties.push('width', 'min-width', 'flex-basis');
       }
       panelEl.style.transition = transitions.join(', ');
       panelEl.style.opacity = '1';
@@ -9415,8 +9561,7 @@
         panelEl.style.minWidth = finalWidth + 'px';
         panelEl.style.flex = '0 0 ' + finalWidth + 'px';
       }
-      let onTransitionEnd = null;
-      const cleanup = () => {
+      afterMotion(panelEl, { transition: properties, key: 'enter' }, () => {
         panelEl.style.removeProperty('transition');
         panelEl.style.removeProperty('opacity');
         panelEl.style.removeProperty('transform');
@@ -9425,17 +9570,7 @@
           panelEl.style.removeProperty('min-width');
           panelEl.style.removeProperty('flex');
         }
-        if (onTransitionEnd) panelEl.removeEventListener('transitionend', onTransitionEnd);
-      };
-      onTransitionEnd = (event) => {
-        if (event.target !== panelEl) return;
-        if (animateWidth && event.propertyName !== 'width' && event.propertyName !== 'flex-basis')
-          return;
-        if (!animateWidth && event.propertyName !== 'opacity') return;
-        cleanup();
-      };
-      panelEl.addEventListener('transitionend', onTransitionEnd);
-      setTimeout(cleanup, 260);
+      });
     });
   }
 
@@ -9516,6 +9651,7 @@
     // they were before the reorder (or for the dragged panel,
     // where the cursor released).
     for (const { panelEl, dx } of moved) {
+      cancelMotion(panelEl, 'flip');
       panelEl.style.transition = 'none';
       panelEl.style.transform = 'translateX(' + dx + 'px)';
     }
@@ -9526,21 +9662,15 @@
     // transform — panels glide to their settled slots.
     requestAnimationFrame(() => {
       for (const { panelEl, isDragged } of moved) {
-        panelEl.style.transition =
-          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        panelEl.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         panelEl.style.transform = '';
-        const cleanup = (e) => {
-          if (e && e.propertyName !== 'transform') return;
+        // afterMotion also wipes the styles when transitionend misses.
+        afterMotion(panelEl, { transition: ['transform'], key: 'flip' }, () => {
           panelEl.style.transition = '';
           if (isDragged && !panelEl.classList.contains('bento-panel--dragging')) {
             panelEl.style.zIndex = '';
           }
-          panelEl.removeEventListener('transitionend', cleanup);
-        };
-        panelEl.addEventListener('transitionend', cleanup);
-        // Belt-and-suspenders: if transitionend somehow misses,
-        // wipe styles after the transition would have completed.
-        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+        });
       }
     });
   }
@@ -9566,21 +9696,18 @@
     }
     if (moved.length === 0) return;
     for (const { btn, dx } of moved) {
+      cancelMotion(btn, 'flip');
       btn.style.transition = 'none';
       btn.style.transform = 'translateX(' + dx + 'px)';
     }
     void list.offsetWidth;
     requestAnimationFrame(() => {
       for (const { btn } of moved) {
-        btn.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        btn.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         btn.style.transform = '';
-        const cleanup = (e) => {
-          if (e && e.propertyName !== 'transform') return;
+        afterMotion(btn, { transition: ['transform'], key: 'flip' }, () => {
           btn.style.transition = '';
-          btn.removeEventListener('transitionend', cleanup);
-        };
-        btn.addEventListener('transitionend', cleanup);
-        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+        });
       }
     });
   }
@@ -9650,21 +9777,18 @@
     }
     if (moved.length === 0) return;
     for (const { el, dx } of moved) {
+      cancelMotion(el, 'flip');
       el.style.transition = 'none';
       el.style.transform = 'translateX(' + dx + 'px)';
     }
     void window.gBrowser?.tabpanels?.offsetWidth;
     requestAnimationFrame(() => {
       for (const { el } of moved) {
-        el.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        el.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         el.style.transform = '';
-        const cleanup = (e) => {
-          if (e && e.propertyName !== 'transform') return;
+        afterMotion(el, { transition: ['transform'], key: 'flip' }, () => {
           el.style.transition = '';
-          el.removeEventListener('transitionend', cleanup);
-        };
-        el.addEventListener('transitionend', cleanup);
-        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+        });
       }
     });
   }
@@ -10730,7 +10854,6 @@
   let currentFocusedPanelTabId = null;
   let panelFocusTimer = null;
   let panelNavContextMenu = null;
-  const PANEL_REMOVE_ANIMATION_MS = 190;
   const SPLITTER_FOCUS_AUTOSCROLL_SUPPRESS_MS = 900;
   let __suppressPanelFocusAutoScrollUntil = 0;
 
@@ -11051,7 +11174,7 @@
     panel.style.removeProperty('transform');
     panel.classList.add('bento-panel--removing');
 
-    setTimeout(() => {
+    afterMotion(panel, { transition: ['opacity'], key: 'remove' }, () => {
       stageTopLevelPanelCloseGapFlip(panel);
       for (const entry of promotedChildWidths) {
         dispatchShellAction({
@@ -11063,7 +11186,7 @@
       if (!dispatchShellAction({ type: 'tab/close', id: tabId })) {
         __bentoPendingCloseGapFlip = null;
       }
-    }, PANEL_REMOVE_ANIMATION_MS);
+    });
   }
 
   function getSubdivisionSubPanelWidths(subdivision) {
@@ -11128,9 +11251,9 @@
     scheduleSubdivisionAnimationFrame(parentPanel, () => {
       for (const el of collapseEls) {
         el.style.transition =
-          'flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
-          'height var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
-          'opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard)';
+          'flex-basis var(--muxui-semantic-motion-reveal-transition), ' +
+          'height var(--muxui-semantic-motion-reveal-transition), ' +
+          'opacity var(--muxui-semantic-motion-reveal-transition)';
         setSubdivisionFlex(el, '0 1 0');
         el.style.opacity = '0';
         if (el === headerEl) {
@@ -11139,20 +11262,28 @@
       }
       if (bottomEl) {
         bottomEl.style.transition =
-          'flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard), ' +
-          'opacity var(--bento-duration-base, 200ms) var(--bento-easing-standard)';
+          'flex-basis var(--muxui-semantic-motion-reveal-transition), ' +
+          'opacity var(--muxui-semantic-motion-reveal-transition)';
         setSubdivisionFlex(bottomEl, '1 1 0');
         bottomEl.style.opacity = '1';
       }
     });
 
-    window.setTimeout(() => {
-      if (!isCurrentSubdivisionAnimation(parentPanel, animationId)) return;
-      if (options.detachBeforeDone === true) {
-        detachSubPanelsBeforeParentRemoval(subdivision, 'before parent close dispatch');
-      }
-      done();
-    }, 230);
+    afterMotion(
+      collapseEls[0] || bottomEl || parentPanel,
+      {
+        transition: ['flex-basis', 'height', 'opacity'],
+        key: 'subdivision',
+        frames: subdivisionAnimationFrames(parentPanel),
+      },
+      () => {
+        if (!isCurrentSubdivisionAnimation(parentPanel, animationId)) return;
+        if (options.detachBeforeDone === true) {
+          detachSubPanelsBeforeParentRemoval(subdivision, 'before parent close dispatch');
+        }
+        done();
+      },
+    );
   }
 
   function detachSubPanelsBeforeParentRemoval(subdivision, reason) {
@@ -11300,15 +11431,23 @@
         if (vsplitter) vsplitter.style.opacity = '0';
       });
     }
-    window.setTimeout(() => {
-      if (!isCurrentSubdivisionAnimation(parentPanel, animationId)) return;
-      if (survivorAnimation) {
-        for (const el of transitionCleanupEls) {
-          el.style.removeProperty('transition');
+    afterMotion(
+      subPanel,
+      {
+        transition: ['flex-basis', 'opacity'],
+        key: 'subdivision',
+        frames: subdivisionAnimationFrames(parentPanel),
+      },
+      () => {
+        if (!isCurrentSubdivisionAnimation(parentPanel, animationId)) return;
+        if (survivorAnimation) {
+          for (const el of transitionCleanupEls) {
+            el.style.removeProperty('transition');
+          }
         }
-      }
-      done();
-    }, 230);
+        done();
+      },
+    );
   }
 
   // Cmd/Ctrl+W in a side panel closes THAT panel, not the active tab.
@@ -11462,24 +11601,21 @@
     // there lags the cursor. Menu-driven resizes have no follow-along
     // pointer, so snapping reads as jarring; ease the change instead.
     // Same shape as the workspace-switch main-panel transition (see
-    // reconcilePanels). Snappy curve matches the workspace-switch tab-
-    // list slide so simultaneous transitions feel like one motion.
-    // Inline `transition` is cleared after 250ms so subsequent drags
-    // revert to instant.
-    const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
+    // reconcilePanels): both use the reveal role, like the workspace-switch
+    // tab-list slide, so simultaneous transitions feel like one motion.
+    // Inline 'transition' is cleared when the transition ends so subsequent
+    // drags revert to instant.
     targetPanelEl.style.transition =
-      'width var(--bento-duration-base, 200ms) ' +
-      snappy +
-      ', min-width var(--bento-duration-base, 200ms) ' +
-      snappy +
-      ', flex-basis var(--bento-duration-base, 200ms) ' +
-      snappy;
-    window.setTimeout(() => {
-      targetPanelEl.style.removeProperty('transition');
-    }, 250);
+      'width var(--muxui-semantic-motion-reveal-transition), ' +
+      'min-width var(--muxui-semantic-motion-reveal-transition), ' +
+      'flex-basis var(--muxui-semantic-motion-reveal-transition)';
     targetPanelEl.style.width = px + 'px';
     targetPanelEl.style.minWidth = px + 'px';
     targetPanelEl.style.flex = '0 0 ' + px + 'px';
+    const widthMotion = ['width', 'min-width', 'flex-basis'];
+    afterMotion(targetPanelEl, { transition: widthMotion, key: 'width' }, () => {
+      targetPanelEl.style.removeProperty('transition');
+    });
     const widthByTabId = new Map([[tabId, px]]);
     const layoutRefreshed = refreshFlatPanelLayoutFromLiveState({
       mainWidthPx: currentPanelLayoutGeometry?.mainRect?.width,
@@ -11489,10 +11625,11 @@
       syncInterPanelSplitters();
       updateStripScrollbar();
     }
-    window.setTimeout(() => {
+    // Re-sync the splitters and scrollbar once the width has settled.
+    afterMotion(targetPanelEl, { transition: widthMotion, key: 'width-sync' }, () => {
       syncInterPanelSplitters();
       updateStripScrollbar();
-    }, 260);
+    });
     dispatchShellAction({ type: 'panel/setWidth', id: tabId, widthPx: px });
   }
 
@@ -12319,6 +12456,7 @@
         const transition = p?.style?.transition || '';
         const transform = p?.style?.transform || '';
         if (!transform && !transition.includes('transform')) continue;
+        cancelMotion(p, 'flip');
         p.style.transition = 'none';
         p.style.transform = '';
         if (p !== panelEl) p.style.zIndex = '';
@@ -12531,6 +12669,7 @@
       // transform should stick to the cursor 1:1. The release
       // handler re-enables it before resetting transform so the
       // snap-back / settle is animated.
+      cancelMotion(panelEl, 'flip');
       panelEl.style.transition = 'none';
       panelEl.style.zIndex = '10';
       hidePanelNavContextMenu();
@@ -12597,16 +12736,12 @@
       // Snap-back path: no commit OR no actual reorder. Animate
       // the dragged panel back to its original slot.
       if (dragging && !dispatched) {
-        panelEl.style.transition =
-          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        panelEl.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         panelEl.style.transform = '';
-        const cleanup = () => {
+        afterMotion(panelEl, { transition: ['transform'], key: 'flip' }, () => {
           panelEl.style.transition = '';
           panelEl.style.zIndex = '';
-          panelEl.removeEventListener('transitionend', cleanup);
-        };
-        panelEl.addEventListener('transitionend', cleanup);
-        setTimeout(cleanup, 400);
+        });
       }
       handle.classList.remove('bento-panel-header-drag-handle--dragging');
       panelEl.classList.remove('bento-panel--dragging');
@@ -16129,29 +16264,31 @@
           // tab content swap. Drag-driven reconciles bypass this
           // (the flag is only set when handlePanelsTitle observes a
           // workspace-id change in the payload).
-          if (__mainWidthTransitionForNextReconcile) {
-            // Snappy easing matches the workspace-switch tab-list slide
+          const animateMainWidth = __mainWidthTransitionForNextReconcile;
+          if (animateMainWidth) {
+            // The reveal role matches the workspace-switch tab-list slide
             // (TabList.css) so the simultaneous main-panel resize and
             // sidebar tab swap feel like one motion.
-            const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
             panelEl.style.transition =
-              'width var(--bento-duration-base, 200ms) ' +
-              snappy +
-              ', min-width var(--bento-duration-base, 200ms) ' +
-              snappy +
-              ', flex-basis var(--bento-duration-base, 200ms) ' +
-              snappy;
-            // Clear the inline transition after it would have completed
-            // so subsequent inline width writes (e.g. drag pointermove)
-            // are instant.
-            window.setTimeout(() => {
-              panelEl.style.removeProperty('transition');
-            }, 250);
+              'width var(--muxui-semantic-motion-reveal-transition), ' +
+              'min-width var(--muxui-semantic-motion-reveal-transition), ' +
+              'flex-basis var(--muxui-semantic-motion-reveal-transition)';
             __mainWidthTransitionForNextReconcile = false;
           }
           panelEl.style.width = mainPanelWidth + 'px';
           panelEl.style.minWidth = mainPanelWidth + 'px';
           panelEl.style.flex = '0 0 ' + mainPanelWidth + 'px';
+          if (animateMainWidth) {
+            // Clear the inline transition once it ends so subsequent inline
+            // width writes (e.g. drag pointermove) are instant.
+            afterMotion(
+              panelEl,
+              { transition: ['width', 'min-width', 'flex-basis'], key: 'width' },
+              () => {
+                panelEl.style.removeProperty('transition');
+              },
+            );
+          }
         } else {
           // A tab panel can carry stale inline sizing from a previous
           // workspace, split-view activation, or pre-sync reconcile.
@@ -18303,12 +18440,24 @@
   // it's still present after WORKSPACE_FADE_WATCHDOG_MS. Without
   // these guards a single failed reconcile would strand opacity at
   // 0 — chrome would go blank until process restart.
-  let __workspaceSwitchTimer = null;
+  //
+  // The fade-out and fade-in waits read the opacity transition of the
+  // faded elements (afterMotion), and the *Cancel variables hold the
+  // pending cancel functions. Stabilizing only has to outlast the fade-in:
+  // the swap sets __mainWidthTransitionForNextReconcile false, so no reveal
+  // layout transition starts under the curtain.
+  let __workspaceSwitchCancel = null;
   let __workspaceFadeWatchdog = null;
-  let __workspaceFadeCleanupTimer = null;
+  let __workspaceFadeCleanupCancel = null;
   const WORKSPACE_FADE_WATCHDOG_MS = 1500;
-  const WORKSPACE_FADE_MS = 140;
-  const WORKSPACE_STABILIZE_MS = 260;
+  // tabpanels, strip container and panel nav share one fade rule.
+  function getWorkspaceFadeElement() {
+    return (
+      window.gBrowser?.tabpanels ||
+      document.getElementById('bento-strip-container') ||
+      document.getElementById('bento-panel-nav')
+    );
+  }
   function clearWorkspaceFadeClasses() {
     const sc = document.getElementById('bento-strip-container');
     const nav = document.getElementById('bento-panel-nav');
@@ -18316,9 +18465,9 @@
     if (sc) sc.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (nav) nav.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (tp) tp.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
-    if (__workspaceFadeCleanupTimer) {
-      clearTimeout(__workspaceFadeCleanupTimer);
-      __workspaceFadeCleanupTimer = null;
+    if (__workspaceFadeCleanupCancel) {
+      __workspaceFadeCleanupCancel();
+      __workspaceFadeCleanupCancel = null;
     }
   }
   function cancelWorkspaceFadeForMainOnly() {
@@ -18333,14 +18482,14 @@
       tp?.classList.contains('bento-workspace-switching') ||
       tp?.classList.contains('bento-workspace-stabilizing');
     const hadTimer =
-      __workspaceSwitchTimer !== null ||
+      __workspaceSwitchCancel !== null ||
       __workspaceFadeWatchdog !== null ||
-      __workspaceFadeCleanupTimer !== null;
+      __workspaceFadeCleanupCancel !== null;
     if (!hadFadeClass && !hadTimer) return;
 
-    if (__workspaceSwitchTimer) {
-      clearTimeout(__workspaceSwitchTimer);
-      __workspaceSwitchTimer = null;
+    if (__workspaceSwitchCancel) {
+      __workspaceSwitchCancel();
+      __workspaceSwitchCancel = null;
     }
     if (__workspaceFadeWatchdog) {
       clearTimeout(__workspaceFadeWatchdog);
@@ -18394,11 +18543,11 @@
     const hasExplicitScrollTarget = Number.isInteger(options.scrollToPanelTabId);
     const stripContainer = document.getElementById('bento-strip-container');
     const tp = window.gBrowser?.tabpanels;
-    if (__workspaceSwitchTimer) clearTimeout(__workspaceSwitchTimer);
+    if (__workspaceSwitchCancel) __workspaceSwitchCancel();
     if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
-    if (__workspaceFadeCleanupTimer) {
-      clearTimeout(__workspaceFadeCleanupTimer);
-      __workspaceFadeCleanupTimer = null;
+    if (__workspaceFadeCleanupCancel) {
+      __workspaceFadeCleanupCancel();
+      __workspaceFadeCleanupCancel = null;
     }
     // Watchdog armed BEFORE we add the class so any throw between
     // here and the cleanup rAF still gets a chance to clear the
@@ -18419,83 +18568,91 @@
       }
     }, WORKSPACE_FADE_WATCHDOG_MS);
     armWorkspaceSwitchFade();
-    __workspaceSwitchTimer = setTimeout(() => {
-      __workspaceSwitchTimer = null;
-      // Suppress every in-reconcile animation. The fade IS our
-      // transition; any layout animation here would tail past the
-      // fade-in and the user would see panels sliding into place.
-      //  - Clear __mainWidthTransitionForNextReconcile (set above on
-      //    wsChanged) so reconcile snaps the main-panel width
-      //    instead of running a 200ms width transition.
-      //  - Set __workspaceSwitchSwapping so reconcilePanelsSplitView
-      //    skips its smooth scrollPanelToLeftmost auto-scroll-to-main.
-      __mainWidthTransitionForNextReconcile = false;
-      __workspaceSwitchSwapping = true;
-      try {
+    __workspaceSwitchCancel = afterMotion(
+      getWorkspaceFadeElement(),
+      { transition: ['opacity'], key: 'workspace-fade' },
+      () => {
+        __workspaceSwitchCancel = null;
+        // Suppress every in-reconcile animation. The fade IS our
+        // transition; any layout animation here would tail past the
+        // fade-in and the user would see panels sliding into place.
+        //  - Clear __mainWidthTransitionForNextReconcile (set above on
+        //    wsChanged) so reconcile snaps the main-panel width
+        //    instead of running the reveal width transition.
+        //  - Set __workspaceSwitchSwapping so reconcilePanelsSplitView
+        //    skips its smooth scrollPanelToLeftmost auto-scroll-to-main.
+        __mainWidthTransitionForNextReconcile = false;
+        __workspaceSwitchSwapping = true;
         try {
-          reconcilePanels(panels, options);
-          if (!hasExplicitScrollTarget) {
-            cancelStripScrollMotion();
-          }
-        } catch (err) {
-          console.warn('[bento-shell-mount] workspace-switch reconcile threw:', err);
-        }
-        // Apply scroll restore SYNCHRONOUSLY, not via
-        // applyPendingStripScrollRestore's double-rAF (which would
-        // defer past fade-in). Setting scrollLeft directly is
-        // instant — no smooth animation — so the user can't see
-        // the strip moving. Happens under the opacity-0 curtain
-        // because the class-removal rAF hasn't fired yet.
-        if (!hasExplicitScrollTarget && __pendingStripScrollRestore !== null) {
           try {
-            const target = __pendingStripScrollRestore;
-            __pendingStripScrollRestore = null;
-            const host = getStripScrollTarget();
-            if (host) {
-              __suppressStripScrollDispatch = true;
-              try {
-                host.scrollLeft = Math.max(0, target);
-              } finally {
-                requestAnimationFrame(() => {
-                  __suppressStripScrollDispatch = false;
-                });
-              }
+            reconcilePanels(panels, options);
+            if (!hasExplicitScrollTarget) {
+              cancelStripScrollMotion();
             }
           } catch (err) {
-            console.warn('[bento-shell-mount] workspace-switch scroll restore threw:', err);
+            console.warn('[bento-shell-mount] workspace-switch reconcile threw:', err);
           }
-        }
-      } finally {
-        __workspaceSwitchSwapping = false;
-        // Class removal MUST run even if reconcile/scroll-restore
-        // threw — otherwise the chrome stays at opacity 0 forever.
-        // The watchdog above is the belt; this `finally` is the
-        // suspenders.
-        requestAnimationFrame(() => {
-          const nav = document.getElementById('bento-panel-nav');
-          if (stripContainer) stripContainer.classList.remove('bento-workspace-switching');
-          if (nav) nav.classList.remove('bento-workspace-switching');
-          if (tp) tp.classList.remove('bento-workspace-switching');
-          // Keep layout-transition suppression through the fade-in. If
-          // we remove it in the same frame as the opacity class, pending
-          // width/flex changes can begin animating under the fade-in and
-          // look like the strip is sliding to the destination workspace.
-          __workspaceFadeCleanupTimer = setTimeout(() => {
-            __workspaceFadeCleanupTimer = null;
-            if (stripContainer) {
-              stripContainer.classList.remove('bento-workspace-stabilizing');
+          // Apply scroll restore SYNCHRONOUSLY, not via
+          // applyPendingStripScrollRestore's double-rAF (which would
+          // defer past fade-in). Setting scrollLeft directly is
+          // instant — no smooth animation — so the user can't see
+          // the strip moving. Happens under the opacity-0 curtain
+          // because the class-removal rAF hasn't fired yet.
+          if (!hasExplicitScrollTarget && __pendingStripScrollRestore !== null) {
+            try {
+              const target = __pendingStripScrollRestore;
+              __pendingStripScrollRestore = null;
+              const host = getStripScrollTarget();
+              if (host) {
+                __suppressStripScrollDispatch = true;
+                try {
+                  host.scrollLeft = Math.max(0, target);
+                } finally {
+                  requestAnimationFrame(() => {
+                    __suppressStripScrollDispatch = false;
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn('[bento-shell-mount] workspace-switch scroll restore threw:', err);
             }
-            const nav = document.getElementById('bento-panel-nav');
-            if (nav) nav.classList.remove('bento-workspace-stabilizing');
-            if (tp) tp.classList.remove('bento-workspace-stabilizing');
-          }, WORKSPACE_STABILIZE_MS);
-          if (__workspaceFadeWatchdog) {
-            clearTimeout(__workspaceFadeWatchdog);
-            __workspaceFadeWatchdog = null;
           }
-        });
-      }
-    }, WORKSPACE_FADE_MS);
+        } finally {
+          __workspaceSwitchSwapping = false;
+          // Class removal MUST run even if reconcile/scroll-restore
+          // threw — otherwise the chrome stays at opacity 0 forever.
+          // The watchdog above is the belt; this `finally` is the
+          // suspenders.
+          requestAnimationFrame(() => {
+            const nav = document.getElementById('bento-panel-nav');
+            if (stripContainer) stripContainer.classList.remove('bento-workspace-switching');
+            if (nav) nav.classList.remove('bento-workspace-switching');
+            if (tp) tp.classList.remove('bento-workspace-switching');
+            // Keep layout-transition suppression through the fade-in. If
+            // we remove it in the same frame as the opacity class, pending
+            // width/flex changes can begin animating under the fade-in and
+            // look like the strip is sliding to the destination workspace.
+            __workspaceFadeCleanupCancel = afterMotion(
+              getWorkspaceFadeElement(),
+              { transition: ['opacity'], key: 'workspace-stabilize' },
+              () => {
+                __workspaceFadeCleanupCancel = null;
+                if (stripContainer) {
+                  stripContainer.classList.remove('bento-workspace-stabilizing');
+                }
+                const nav = document.getElementById('bento-panel-nav');
+                if (nav) nav.classList.remove('bento-workspace-stabilizing');
+                if (tp) tp.classList.remove('bento-workspace-stabilizing');
+              },
+            );
+            if (__workspaceFadeWatchdog) {
+              clearTimeout(__workspaceFadeWatchdog);
+              __workspaceFadeWatchdog = null;
+            }
+          });
+        }
+      },
+    );
   }
   // True while the deferred reconcile inside performWorkspaceSwitchFade
   // is running. Read by reconcilePanelsSplitView to skip the smooth

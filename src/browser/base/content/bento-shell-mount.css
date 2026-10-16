@@ -267,7 +267,7 @@
   color: var(--neutral-90);
   pointer-events: auto;
   opacity: 1;
-  transition: opacity 140ms var(--bento-easing-standard, ease);
+  transition: opacity var(--muxui-semantic-motion-dismiss-transition);
 }
 #bento-startup-veil[hidden],
 :root:not([bento-startup-loading='true']) #bento-startup-veil {
@@ -369,12 +369,22 @@
   .bento-startup-veil__toolbar,
   .bento-startup-veil__content::before,
   .bento-startup-veil__content::after {
-    animation: bento-startup-veil-pulse 1.2s var(--bento-easing-in-out, ease-in-out) infinite;
+    animation: bento-startup-veil-pulse var(--muxui-semantic-motion-progress-sweep-duration)
+      var(--muxui-semantic-motion-progress-easing) infinite;
   }
 }
 @keyframes bento-startup-veil-pulse {
   0%, 100% { opacity: 0.58; }
   50% { opacity: 1; }
+}
+/* Fade of the overlay hosts declared in browser-box.inc.xhtml (palette, merge
+   palette, confirm). The hosts the mount script creates carry the same
+   transition inline. The show and hide functions read the computed value to
+   time their display:none cleanup, so no duration is repeated in script. */
+#bento-palette-host,
+#bento-merge-palette-host,
+#bento-confirm-host {
+  transition: opacity var(--muxui-semantic-motion-modal-transition);
 }
 #bento-shell-splitter {
   width: var(--bento-splitter-hit-size) !important;
@@ -415,7 +425,7 @@
     100% 50%,
     100% 100%;
   opacity: 0;
-  transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+  transition: opacity var(--muxui-semantic-motion-reveal-transition);
 }
 #bento-shell-splitter-affordance:hover,
 #bento-shell-splitter-affordance.bento-shell-splitter--dragging {
@@ -451,7 +461,7 @@
     100% 50%,
     100% 100%;
   opacity: 0;
-  transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+  transition: opacity var(--muxui-semantic-motion-reveal-transition);
   z-index: 4;
 }
 :root[bento-sidebar-addressbar='true'] #sidebar-splitter:hover,
@@ -486,9 +496,9 @@
   min-width: var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min)) !important;
   max-width: var(--bento-tab-strip-width-max) !important;
   transition:
-    width 200ms var(--bento-easing-standard, ease),
-    min-width 200ms var(--bento-easing-standard, ease),
-    max-width 200ms var(--bento-easing-standard, ease);
+    width var(--muxui-semantic-motion-reveal-transition),
+    min-width var(--muxui-semantic-motion-reveal-transition),
+    max-width var(--muxui-semantic-motion-reveal-transition);
 }
 :root[bento-window-resizing='true'] #bento-shell-host,
 :root[bento-sidebar-resizing='true'] #bento-shell-host,
@@ -513,7 +523,7 @@
   overflow: hidden;
   pointer-events: none;
   transform: translateX(-100%);
-  transition: transform 160ms var(--bento-easing-standard, ease);
+  transition: transform var(--muxui-semantic-motion-reveal-transition);
 }
 #bento-shell-host.bento-sidebar-hidden.bento-sidebar-hidden-revealed {
   z-index: 7;
@@ -611,8 +621,7 @@
 #tabbrowser-tabpanels,
 #bento-strip-container,
 #bento-panel-nav {
-  transition: opacity var(--bento-duration-fast, 140ms)
-    var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1));
+  transition: opacity var(--muxui-semantic-motion-state-transition);
 }
 #tabbrowser-tabpanels.bento-workspace-switching,
 #bento-strip-container.bento-workspace-switching,
@@ -754,7 +763,7 @@
   background-color: var(--neutral-80);
   border-radius: var(--bento-scrollbar-radius);
   cursor: grab;
-  transition: background-color var(--bento-duration-fast) var(--bento-easing-standard);
+  transition: background-color var(--muxui-semantic-motion-state-transition);
 }
 .bento-strip-scrollbar__thumb:hover {
   background-color: var(--neutral-80);
@@ -801,8 +810,8 @@
   cursor: pointer;
   flex: 0 0 auto;
   transition:
-    background-color var(--bento-duration-fast) var(--bento-easing-standard),
-    color var(--bento-duration-fast) var(--bento-easing-standard);
+    background-color var(--muxui-semantic-motion-state-transition),
+    color var(--muxui-semantic-motion-state-transition);
   /* The navigator sits in Firefox's titlebar-capable nav bar. These
      controls must not participate in the native titlebar drag or
      double-click-to-maximize region. */
@@ -860,9 +869,9 @@
      padding, or margin makes the navigator row jump while the
      panel layout itself is changing. */
   transition:
-    opacity var(--bento-duration-base) var(--bento-easing-standard),
-    background-color var(--bento-duration-base) var(--bento-easing-standard),
-    border-color var(--bento-duration-base) var(--bento-easing-standard);
+    opacity var(--muxui-semantic-motion-reveal-transition),
+    background-color var(--muxui-semantic-motion-state-transition),
+    border-color var(--muxui-semantic-motion-state-transition);
 }
 .bento-panel-nav__icon:hover {
   background-color: color-mix(in srgb, var(--neutral-100) 5%, transparent);
@@ -930,7 +939,8 @@
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -50%) translate(0, 0) scale(0.54);
-  animation: bento-panel-nav-music-particle 1500ms linear forwards;
+  animation: bento-panel-nav-music-particle var(--muxui-semantic-motion-progress-travel-duration)
+    var(--muxui-semantic-motion-constant-easing) forwards;
   will-change: opacity, transform;
 }
 .bento-panel-nav__audio-particle--1 {
@@ -976,7 +986,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .bento-panel-nav__audio-particle {
-    animation-duration: 1100ms;
+    animation-duration: var(--muxui-semantic-motion-progress-spin-duration);
   }
 }
 .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
@@ -1032,8 +1042,8 @@
   opacity: 0.45;
   transform: scale(0.92);
   transition:
-    opacity var(--bento-duration-fast) var(--bento-easing-standard),
-    transform var(--bento-duration-fast) var(--bento-easing-standard);
+    opacity var(--muxui-semantic-motion-state-transition),
+    transform var(--muxui-semantic-motion-state-transition);
 }
 .bento-panel-nav__icon--dragging:hover {
   background-color: transparent;
@@ -1058,8 +1068,7 @@
   border-radius: var(--bento-focus-ring-width);
   pointer-events: none;
   z-index: 1;
-  animation: bento-nav-drop-fade-in var(--bento-duration-fast)
-    var(--bento-easing-standard);
+  animation: bento-nav-drop-fade-in var(--muxui-semantic-motion-state-transition);
 }
 @keyframes bento-nav-drop-fade-in {
   from {
@@ -1149,7 +1158,7 @@
 }
 .bento-panel--discarded {
   opacity: 0.68;
-  transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+  transition: opacity var(--muxui-semantic-motion-state-transition);
 }
 /* Close-panel animation. Fade only: keep the panel's current
    layout size while it exits, then let the post-close reconcile
@@ -1158,7 +1167,7 @@
 .bento-panel--removing {
   pointer-events: none;
   opacity: 0;
-  transition: opacity 120ms var(--bento-easing-standard);
+  transition: opacity var(--muxui-semantic-motion-dismiss-transition);
 }
 
 /* Legacy host-owned panel containers are positioned for
@@ -1209,7 +1218,7 @@
   pointer-events: none;
   z-index: 10;
   box-sizing: border-box;
-  transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+  transition: border-color var(--muxui-semantic-motion-state-transition);
 }
 #bento-side-panel-host > .bento-panel--focused::after,
 #bento-side-panel-host > .bento-panel--cycle-focused::after {
@@ -1259,12 +1268,12 @@
   overflow: hidden;
   box-sizing: border-box;
   transition:
-    background-color var(--bento-duration-base) var(--bento-easing-standard),
-    max-height var(--bento-duration-base) var(--bento-easing-snappy),
-    min-height var(--bento-duration-base) var(--bento-easing-snappy),
-    padding var(--bento-duration-base) var(--bento-easing-snappy),
-    border-bottom-color var(--bento-duration-base) var(--bento-easing-standard),
-    border-bottom-width var(--bento-duration-base) var(--bento-easing-snappy);
+    background-color var(--muxui-semantic-motion-reveal-transition),
+    max-height var(--muxui-semantic-motion-reveal-transition),
+    min-height var(--muxui-semantic-motion-reveal-transition),
+    padding var(--muxui-semantic-motion-reveal-transition),
+    border-bottom-color var(--muxui-semantic-motion-reveal-transition),
+    border-bottom-width var(--muxui-semantic-motion-reveal-transition);
 }
 /* Header hiding uses height collapse, not opacity/visibility:
    forcePanelHeaderInteractiveState stamps inline-important values
@@ -1309,10 +1318,10 @@
   outline: none;
   user-select: none;
   transition:
-    background-color var(--bento-duration-fast) var(--bento-easing-standard),
-    border-color var(--bento-duration-fast) var(--bento-easing-standard),
-    color var(--bento-duration-fast) var(--bento-easing-standard),
-    box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
+    background-color var(--muxui-semantic-motion-state-transition),
+    border-color var(--muxui-semantic-motion-state-transition),
+    color var(--muxui-semantic-motion-state-transition),
+    box-shadow var(--muxui-semantic-motion-state-transition);
 }
 .bento-panel-header .bento-icon-button.bento-button:hover:not([disabled], [data-disabled], [data-pending]),
 .bento-panel-header .bento-icon-button.bento-button[data-hovered]:not([disabled], [data-disabled], [data-pending]) {
@@ -1448,10 +1457,10 @@
     0 0 0 1px rgba(255, 255, 255, 0.28),
     0 1px 4px rgba(0, 0, 0, 0.45);
   transition:
-    width var(--bento-duration-fast) var(--bento-easing-standard),
-    height var(--bento-duration-fast) var(--bento-easing-standard),
-    background-color var(--bento-duration-fast) var(--bento-easing-standard),
-    box-shadow var(--bento-duration-fast) var(--bento-easing-standard);
+    width var(--muxui-semantic-motion-state-transition),
+    height var(--muxui-semantic-motion-state-transition),
+    background-color var(--muxui-semantic-motion-state-transition),
+    box-shadow var(--muxui-semantic-motion-state-transition);
 }
 .bento-panel-header-restore:hover > .bento-panel-header-restore__pill {
   width: 56px;
@@ -1476,7 +1485,8 @@
 .bento-panel-loading-overlay .bento-spinner__svg {
   width: var(--_spinner-size);
   height: var(--_spinner-size);
-  animation: bento-spinner-rotate 1s linear infinite;
+  animation: bento-spinner-rotate var(--muxui-semantic-motion-progress-spin-duration)
+    var(--muxui-semantic-motion-constant-easing) infinite;
 }
 .bento-panel-loading-overlay .bento-spinner__track {
   stroke: var(--neutral-20);
@@ -1484,7 +1494,8 @@
 .bento-panel-loading-overlay .bento-spinner__arc {
   stroke: var(--color-60);
   stroke-dasharray: 44, 63;
-  animation: bento-spinner-dash 1.2s ease-in-out infinite;
+  animation: bento-spinner-dash var(--muxui-semantic-motion-progress-sweep-duration)
+    var(--muxui-semantic-motion-progress-easing) infinite;
 }
 @keyframes bento-spinner-rotate {
   100% { transform: rotate(360deg); }
@@ -1811,7 +1822,7 @@
   border-radius: var(--bento-panel-corner-radius);
   color: var(--neutral-70);
   transition:
-    flex-basis var(--bento-duration-base, 200ms) var(--bento-easing-standard);
+    flex-basis var(--muxui-semantic-motion-reveal-transition);
 }
 #bento-add-panel-trailer:focus,
 #bento-add-panel-trailer:focus-within {
@@ -1826,7 +1837,7 @@
   pointer-events: none;
   z-index: 10;
   box-sizing: border-box;
-  transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+  transition: border-color var(--muxui-semantic-motion-state-transition);
 }
 #bento-add-panel-trailer.bento-panel--cycle-focused::after,
 #bento-add-panel-trailer:focus::after,
@@ -1930,7 +1941,7 @@
     100% 50%,
     100% 100%;
   opacity: 0;
-  transition: opacity var(--bento-duration-base) var(--bento-easing-standard);
+  transition: opacity var(--muxui-semantic-motion-reveal-transition);
 }
 #bento-side-panel-host > .bento-panel-splitter:hover,
 #bento-side-panel-host > .bento-panel-splitter--dragging {
@@ -1987,7 +1998,7 @@
   pointer-events: none;
   z-index: 10;
   box-sizing: border-box;
-  transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+  transition: border-color var(--muxui-semantic-motion-state-transition);
 }
 #tabbrowser-tabpanels.bento-split-active > .bento-panel--focused::after,
 #tabbrowser-tabpanels.bento-split-active > .bento-panel--cycle-focused::after {
@@ -2063,7 +2074,7 @@
     50% 100%,
     100% 100% !important;
   opacity: 0 !important;
-  transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
+  transition: opacity var(--muxui-semantic-motion-reveal-transition) !important;
   position: relative !important;
 }
 .bento-subdivision-vsplitter::after {
@@ -2101,7 +2112,7 @@
     100% 50%,
     100% 100% !important;
   opacity: 0 !important;
-  transition: opacity var(--bento-duration-base) var(--bento-easing-standard) !important;
+  transition: opacity var(--muxui-semantic-motion-reveal-transition) !important;
   position: relative !important;
 }
 .bento-subdivision-hsplitter::after {
@@ -2258,7 +2269,7 @@
   pointer-events: none;
   z-index: 10;
   box-sizing: border-box;
-  transition: border-color var(--bento-duration-slow) var(--bento-easing-standard);
+  transition: border-color var(--muxui-semantic-motion-state-transition);
 }
 .bento-subdivision-chooser.bento-panel--focused::after,
 .bento-subdivision-chooser.bento-panel--cycle-focused::after,

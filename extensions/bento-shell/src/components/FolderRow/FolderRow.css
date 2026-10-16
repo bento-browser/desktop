@@ -19,38 +19,14 @@
     user-select: none;
     overflow: hidden;
     transition:
-      background-color var(--bento-duration-fast) var(--bento-easing-standard),
-      width
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      min-width
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      max-width
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      height
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      min-height
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      padding
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      opacity var(--bento-duration-base) var(--bento-easing-standard);
+      background-color var(--muxui-semantic-motion-state-transition),
+      width var(--muxui-semantic-motion-reveal-transition),
+      min-width var(--muxui-semantic-motion-reveal-transition),
+      max-width var(--muxui-semantic-motion-reveal-transition),
+      height var(--muxui-semantic-motion-reveal-transition),
+      min-height var(--muxui-semantic-motion-reveal-transition),
+      padding var(--muxui-semantic-motion-reveal-transition),
+      opacity var(--muxui-semantic-motion-reveal-transition);
   }
 
   /* No plain :hover fill: TabList's sliding hover highlight paints it behind

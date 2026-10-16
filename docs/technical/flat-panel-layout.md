@@ -442,7 +442,8 @@ Top-row splits and 2x2 groups:
   mutate width, min-width, max-width, flex, transform, or margins; otherwise the
   outgoing panel fades while the surrounding layout resizes. Let the delayed
   `tab/close` dispatch and the following reconcile remove the slot after the
-  fade.
+  fade. `removePanel` waits for the end of that CSS fade (Mux `dismiss` role,
+  `afterMotion` on the panel's opacity), not a fixed delay.
 - Plain top-level panel close uses a separate transform-only close-gap FLIP.
   `stageTopLevelPanelCloseGapFlip` snapshots the surviving root slots and the
   add-panel trailer immediately before the delayed `tab/close` dispatch, and

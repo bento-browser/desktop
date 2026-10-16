@@ -681,7 +681,20 @@ document`), then in a built app open the command palette, address bar, a sidebar
 ### Lazy Overlay Documents
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-17
+- Motion tokens change (2026-10-17): the palette, merge palette and confirm hosts
+  declared in `browser-box.inc.xhtml` no longer carry the inline
+  `transition: opacity 0.18s ease` (patch `chrome-layout/01-bento-shell-mount.patch`;
+  the `index` blob ids of that patch and of `chrome-layout/02-bento-side-panel.patch`
+  were recomputed, and both apply to the pristine 158.0 files). Their fade now comes
+  from `bento-shell-mount.css` (`#bento-palette-host`, `#bento-merge-palette-host`,
+  `#bento-confirm-host`: `opacity var(--muxui-semantic-motion-modal-transition)`);
+  the hosts the mount script creates carry the same value inline. The `hide*`
+  functions no longer wait a fixed 180 ms: `hideOverlayHostAfterFade` reads the host's
+  computed opacity transition (`measureMotion`) and commits `display: none` on the
+  `transitionend` or after the measured time, and every reveal calls
+  `cancelMotion(host, 'hide')`. With no transition (reduced motion) the host hides at
+  once. Needs `pnpm run build` (the patch changed).
 - Firefox 158.0 review (2026-10-14): no private Firefox member in this entry
   moved. Runtime on 158.0 (first window, fresh profile): `BentoOverlayStats` lists
   `confirm`, `edit-workspace`, `workspace-switcher` (eager) and `addrbar`,
@@ -710,10 +723,10 @@ document`), then in a built app open the command palette, address bar, a sidebar
   - `src/browser/base/content/bento-shell-mount.js` (`createOverlayManager`, the
     `overlays` table, `createOverlayFrame`, `openOverlay`, `isOverlayOpen`, the
     `BentoAddrbarOpen` and `BentoMergePaletteLifecycle` frame scripts)
-  - `patches/chrome-layout/01-bento-shell-mount.patch` (unchanged: the palette,
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (the palette,
     merge-palette, confirm, and menu `<browser>` elements it declares stay
     in the window; palette, merge palette, and menu are navigated on first use or at
-    idle)
+    idle; the three fading hosts lost their inline `transition`, see above)
   - `extensions/bento-shell/src/bridge/overlayReady.ts` (shell side of the
     handshake) and `windowId.ts` (the window id every overlay bus is scoped by)
   - No new Firefox patch.
@@ -771,7 +784,14 @@ document`), then in a built app open the command palette, address bar, a sidebar
   and a delete confirmation in two windows at the same time (each window keeps its
   own, and confirming deletes only that window's workspace); and open a menu in
   the first second of a new window (it appears once its document is up, with the
-  items of the last request).
+  items of the last request). After the motion tokens change: in the Browser
+  Toolbox Console `getComputedStyle(document.getElementById('bento-palette-host'))`
+  reports `transitionProperty: 'opacity'` and the modal duration (`0.18s` with the
+  default Mux tokens) for the palette, merge palette and confirm hosts before
+  their first show; open and close each overlay, the address bar and the welcome
+  screen (the fade must not clip, and no host may stay at opacity 0 over the page
+  and block input), reopen one during its fade-out (it stays open), and repeat
+  with macOS Reduce motion on (nothing may hang at opacity 0).
 - Rollback or migration notes: restoring the previous behavior is calling every
   `setBento*Src()` at startup again, as the end of `bento-shell-mount.js` did
   before this change.
@@ -952,7 +972,19 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### Chrome Layout Stylesheet
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-17
+- Motion tokens (2026-10-17): the transitions and animations in
+  `bento-shell-mount.css` and `bento-chrome-theme.css` read the Mux
+  `--muxui-semantic-motion-*` tokens that `bento-chrome-tokens.css` carries, instead
+  of the removed `--bento-duration-*` and `--bento-easing-*` tokens and literal
+  times; `--drag-drop-transition-duration` (Firefox's customize-mode property, set
+  in `bento-chrome-theme.css`) is the Mux reveal duration. The sidebar host width
+  transition in this sheet and the shell's collapse transitions use the same role,
+  so the rail and its host move together. `pnpm run lint:motion` checks both
+  sheets for raw times and easings. After a build, in the Browser Toolbox Console
+  `getComputedStyle(document.documentElement).getPropertyValue('--muxui-semantic-motion-reveal-transition-duration')`
+  is `200ms` with the default tokens, and collapsing and expanding the sidebar
+  moves the shell and the chrome host together.
 - Firefox 158.0 review (2026-10-14): `Loader::LoadStyleLink`,
   `LinkStyle::GetSheetForBindings` and `AppWindow::OnChromeLoaded` still exist;
   `Loader.cpp` changed only the stylesheet MIME-type diagnostic (`MimeNotCss`,
