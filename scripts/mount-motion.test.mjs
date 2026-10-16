@@ -148,6 +148,34 @@ test('measureMotion reads s and ms, adds delay, filters, and expands short lists
   assert.equal(measureMotion(all, { properties: ['opacity'] }).ms, 200);
 });
 
+test('measureMotion takes the LAST transition-property entry that names a property, all included', () => {
+  const { measureMotion } = makeWorld();
+  const allThenOpacity = new FakeElement({
+    transitionProperty: 'all, opacity',
+    transitionDuration: '0.2s, 0s',
+  });
+  assert.equal(measureMotion(allThenOpacity, { properties: ['opacity'] }).ms, 0);
+  assert.equal(measureMotion(allThenOpacity, { properties: ['color'] }).ms, 200);
+  const both = measureMotion(allThenOpacity, { properties: ['opacity', 'color'] });
+  assert.equal(both.ms, 200);
+  assert.deepEqual([...both.ending], ['t:color']);
+
+  const opacityThenAll = new FakeElement({
+    transitionProperty: 'opacity, all',
+    transitionDuration: '0s, 0.2s',
+  });
+  assert.equal(measureMotion(opacityThenAll, { properties: ['opacity'] }).ms, 200);
+
+  // Without a filter an entry that a later entry overrides does not count.
+  assert.equal(measureMotion(allThenOpacity).ms, 200);
+  assert.equal(
+    measureMotion(
+      new FakeElement({ transitionProperty: 'opacity, all', transitionDuration: '1s, 0.2s' }),
+    ).ms,
+    200,
+  );
+});
+
 test('measureMotion multiplies animations by a finite iteration count and skips infinite ones', () => {
   const { measureMotion } = makeWorld();
   const el = new FakeElement({
@@ -194,6 +222,45 @@ test('afterMotion runs now at 0 ms, otherwise on the last end event or the timer
   world.advance(1);
   assert.equal(calls.at(-1), 'timer');
   assert.equal(timed.listenerCount(), 0);
+});
+
+test('afterMotion runs now when the last entry for the property is 0, and ignores unrelated ends', () => {
+  const world = makeWorld();
+  const calls = [];
+  const zero = new FakeElement({
+    transitionProperty: 'all, opacity',
+    transitionDuration: '0.2s, 0s',
+  });
+  world.afterMotion(zero, 'k', { properties: ['opacity'] }, () => calls.push('zero'));
+  assert.deepEqual(calls, ['zero'], 'runs before afterMotion returns');
+  assert.equal(zero.listenerCount(), 0);
+
+  // 'all' ends last, so an event for another property must not finish an opacity wait.
+  const el = new FakeElement({ transitionProperty: 'all', transitionDuration: '0.2s' });
+  world.afterMotion(el, 'k', { properties: ['opacity'] }, () => calls.push('opacity'));
+  el.dispatch('transitionend', { propertyName: 'background-color' });
+  assert.deepEqual(calls, ['zero']);
+  el.dispatch('transitionend', { propertyName: 'opacity' });
+  assert.deepEqual(calls, ['zero', 'opacity']);
+  assert.equal(el.listenerCount(), 0);
+
+  // A filtered wait ends on the requested property that ends last, not an unrelated one.
+  const two = new FakeElement({
+    transitionProperty: 'opacity, transform, color',
+    transitionDuration: '0.1s, 0.3s, 0.5s',
+  });
+  world.afterMotion(two, 'k', { properties: ['opacity', 'transform'] }, () => calls.push('two'));
+  two.dispatch('transitionend', { propertyName: 'color' });
+  two.dispatch('transitionend', { propertyName: 'opacity' });
+  assert.deepEqual(calls, ['zero', 'opacity']);
+  two.dispatch('transitionend', { propertyName: 'transform' });
+  assert.deepEqual(calls, ['zero', 'opacity', 'two']);
+
+  // Without a filter a transition on 'all' still ends on any property.
+  const unfiltered = new FakeElement({ transitionProperty: 'all', transitionDuration: '0.2s' });
+  world.afterMotion(unfiltered, 'k', {}, () => calls.push('any'));
+  unfiltered.dispatch('transitionend', { propertyName: 'width' });
+  assert.equal(calls.at(-1), 'any');
 });
 
 test('a later wait with the same key, or cancelMotion, drops the earlier one', () => {

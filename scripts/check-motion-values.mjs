@@ -23,16 +23,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 //     bento-chrome-tokens.css and bento-chrome-themes/);
 //   - rollback/legacy-source CSS;
 //   - inline CSS in scripts: bento-shell-mount.js, the shell's .ts/.tsx and the archived
-//     rollback .js/.ts/.tsx (tests excluded). A string literal fails when it holds a
-//     declaration of the properties above that breaks the rule, a raw time, an easing
-//     function or a retired --bento-duration-*, --bento-easing-* token, and so does the value
-//     assigned to style.transition or style.animation (or their longhands) or set under a
-//     transition/animation key.
+//     rollback .js/.ts/.tsx, archived mount strings included (tests excluded). A string
+//     literal fails when it holds a declaration of the properties above that breaks the
+//     rule (cssText and other CSS-like strings), an easing function, a retired
+//     --bento-duration-*, --bento-easing-* token, or a raw time next to a
+//     --muxui-semantic-motion-* token, and so does the value assigned to style.transition or
+//     style.animation (or their longhands) or set under a transition/animation key.
 //
-// Not covered: public/themes (generated), a bare easing keyword in a script string that is
-// not part of a declaration or a style assignment, and values built from variables (only the
-// literal pieces of a string are read). A script string that merely reads like a time, such
-// as UI copy saying "30s", fails; spell it differently.
+// Not covered: public/themes (generated), a raw time or bare easing keyword in a script
+// string that is not part of a declaration, a style assignment or a string naming a motion
+// token, and values built from variables (only the literal pieces of a string are read).
+// Text that merely reads like a time, such as UI copy saying "Retry in 30s", passes.
 //
 //   node scripts/check-motion-values.mjs          scan the repository
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -286,6 +287,7 @@ export function stringLiterals(source) {
 const RETIRED_TOKEN =
   /--bento-(?:duration|easing)-|--bento-sidebar-collapse-transition|--bento-pinned-panels-state-transition-duration/;
 const RAW_TIME_IN_TEXT = /(?<![\w.:/-])[+-]?(?:\d+\.?\d*|\.\d+)(?:ms|s)(?![\w./-])/;
+const NAMES_MOTION_TOKEN = /--muxui-semantic-motion-/;
 const EASING_FUNCTION = /(?<![\w-])(?:cubic-bezier|steps|linear|spring)\(/;
 // The literal right after style.transition = , style.animation = or a transition:/animation:
 // key (or one of their longhands), as the start of the value being set.
@@ -315,7 +317,8 @@ export function scriptViolations(source) {
     const problem = problems.find(Boolean);
     if (problem) report(line, text, problem);
     else if (EASING_FUNCTION.test(text)) report(line, text, 'raw easing function');
-    else if (RAW_TIME_IN_TEXT.test(text)) {
+    else if (NAMES_MOTION_TOKEN.test(text) && RAW_TIME_IN_TEXT.test(text)) {
+      // A string that names a motion token is a motion value (a piece of a transition list).
       report(line, text, `raw time ${RAW_TIME_IN_TEXT.exec(text)[0]}`);
     }
   }

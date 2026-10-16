@@ -139,6 +139,33 @@ test('scriptViolations accepts token-based styles, resets, URLs, comments and re
   assert.deepEqual(scriptViolations(source), []);
 });
 
+test('scriptViolations ignores time-like text that is not a motion value', () => {
+  const source = `
+    const label = "Retry in 30s";
+    const hint = 'Takes about 200ms, or 1.5s on a slow disk';
+    toast(\`Saved \${count} files, 5s ago\`);
+    const timeout = '30s';
+    const note = { label: 'Cancel in 10s' };
+  `;
+  assert.deepEqual(scriptViolations(source), []);
+});
+
+test('scriptViolations still flags a raw time in a motion declaration or style value', () => {
+  const source = `
+    const label = "Retry in 30s";
+    el.style.cssText = 'transition: opacity 30s';
+    el.style.transition = 'opacity 30s';
+    el.style.animationDuration = '30s';
+    const a = { animation: 'spin 30s linear' };
+    const b = 'opacity 30s var(--muxui-semantic-motion-state-transition)';
+    const c = \`.x { transition: opacity \${ms}s; }\`;
+  `;
+  assert.deepEqual(
+    scriptViolations(source).map(({ line }) => line),
+    [3, 4, 5, 6, 7, 8],
+  );
+});
+
 test('scriptViolations reads strings after a template literal with nested expressions', () => {
   const source = 'const x = `a ${fn("b") + `${c}`} d`; el.style.transition = \'opacity 1s\';';
   assert.deepEqual(
