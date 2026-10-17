@@ -10,6 +10,7 @@ import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
 import { useSettingsStore } from '../../state/settings';
+import { useUiStore } from '../../state/ui';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders';
 import { TabRow } from '../TabRow/TabRow';
@@ -277,6 +278,9 @@ function TabListPane({
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  // The New menu is up in the chrome overlay. Read from the store, not held
+  // here: a workspace switch remounts this pane while the menu stays open.
+  const newMenuOpen = useUiStore((s) => s.newMenuContextId !== null);
   const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
   const folderToggleAnchorRef = useRef<{ folderId: string; offsetTop: number } | null>(null);
   const suppressAutoScrollLayoutRef = useRef<string | null>(null);
@@ -292,7 +296,10 @@ function TabListPane({
   const dragging = dragSourceId !== null || dragFolderId !== null;
   const hoverHighlightRef = useRowHoverHighlight(viewportRef, dragging);
   const actionBarRef = useRef<HTMLDivElement>(null);
-  const actionHighlightRef = useActionHoverHighlight(actionBarRef, dragging || searchOpen);
+  const actionHighlightRef = useActionHoverHighlight(
+    actionBarRef,
+    dragging || searchOpen || newMenuOpen,
+  );
 
   const updateScrollMetrics = useCallback(() => {
     const el = parentRef.current;
@@ -935,6 +942,9 @@ function TabListPane({
       ref={newMenuTriggerRef}
       className="bento-tab-list__new-action-button"
       aria-label="New"
+      aria-haspopup="menu"
+      aria-expanded={newMenuOpen}
+      data-bento-menu-open={newMenuOpen ? 'true' : undefined}
       onActivate={() => {
         const rect = newMenuTriggerRef.current?.getBoundingClientRect();
         if (rect) onOpenNewMenu(rect);

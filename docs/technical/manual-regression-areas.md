@@ -111,6 +111,17 @@ Verify in the `menu.html` overlay that pointer travel from a submenu trigger
 reaches visible child rows, keyboard ArrowRight opens the child, and selection
 preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome title handler.
 
+## New menu open fill
+
+The sidebar New button keeps its open fill while its chrome menu is up (mechanism
+and pitfalls: [overlay-documents.md](overlay-documents.md#menu-open-state-of-the-sidebar-new-button)).
+Verify in a running browser after a shell sync and Alt+Shift+R: open New and see
+the fill; it clears on choosing an item, Esc, a click outside, and a click on New
+itself (the menu closes and stays closed); with it open, switch workspace
+(keyboard shortcut) and see the fill stay on the new list's button until the menu
+closes; open New in two windows and see each button follow only its own menu;
+open New in the collapsed rail.
+
 ## Palette search headers and rollback file selection
 
 Command and merge palettes, including the archived command palette, compose

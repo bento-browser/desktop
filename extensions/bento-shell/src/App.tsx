@@ -30,6 +30,7 @@ import { applyGraphProjection } from './state/graph';
 import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
 import { sendChromeTitle } from './bridge/chromeTitle';
+import { NEW_MENU_ITEMS, trackNewMenuOpen } from './bridge/newMenu';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -195,6 +196,9 @@ export function App() {
     return startWelcomeRequests();
   }, [welcomeShouldShow]);
 
+  // Lets the New button show its open fill while its chrome-rendered menu is up.
+  useEffect(trackNewMenuOpen, []);
+
   useEffect(() => {
     const channel = new BroadcastChannel('bento-shell-bus');
     channel.addEventListener('message', (message) => {
@@ -234,10 +238,7 @@ export function App() {
       },
       placement: 'bottom start',
       tabId: null,
-      items: [
-        { id: 'new-tab', label: 'New tab' },
-        { id: 'new-panel', label: 'New panel' },
-      ] satisfies SidebarMenuItem[],
+      items: NEW_MENU_ITEMS,
     });
   };
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });

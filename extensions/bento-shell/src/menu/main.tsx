@@ -22,6 +22,9 @@
 //   - Dismiss (Esc, outside click, item-click after selection): set
 //     document.title = BENTO_MENU_CLOSE:<ctx>. Chrome hides the
 //     overlay and drops the handler from the contextId map.
+//   - Select and dismiss also post a close notice on the menu bus
+//     (bridge/useMenuOpen.ts) so the sidebar can clear the open state of the
+//     button that opened the menu (bridge/newMenu.ts).
 
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -38,7 +41,7 @@ import { initToolsPort } from '../bridge/useToolsPort';
 import { ChromeMenu, type ChromeMenuOpenPayload } from './ChromeMenu';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
-import { subscribeToMenuOpen } from '../bridge/useMenuOpen';
+import { notifyMenuClosed, subscribeToMenuOpen } from '../bridge/useMenuOpen';
 
 initToolsPort();
 
@@ -91,11 +94,13 @@ function MenuApp() {
           return;
         }
         sendChromeTitle(`BENTO_MENU_CLOSE:${payload.contextId}`);
+        notifyMenuClosed(payload.contextId);
         setPayload(null);
       }}
       onSelect={(itemId) => {
         justSelectedRef.current = true;
         sendChromeTitle(`BENTO_MENU_SELECT:${payload.contextId}:${itemId}`);
+        notifyMenuClosed(payload.contextId);
         setPayload(null);
       }}
     />

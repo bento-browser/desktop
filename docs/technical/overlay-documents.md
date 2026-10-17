@@ -141,6 +141,7 @@ failed chrome-side lookup) accepts the message, as an unscoped bus always did.
 | `bento-addrbar-bus` `open`                      | chrome, `BentoAddrbarOpen` frame script (`dispatchAddrbarOpen`)        | `windowId` from `getChromeWindowId()`                 | `subscribeToAddrbarOpenRequests`                   |
 | `bento-merge-palette` `open`, `close`           | chrome, `BentoMergePaletteLifecycle` (`dispatchMergePaletteLifecycle`) | `windowId` from `getChromeWindowId()`                 | `subscribeToMergePaletteLifecycle`                 |
 | `bento-shell-bus` action `menu/open`            | chrome, `BentoShellAction` (`dispatchShellAction`)                     | `__windowId`, the envelope bento-tools routes by      | `subscribeToMenuOpen`                              |
+| `bento-menu-bus` `closed`                       | `notifyMenuClosed` in the menu document                                | `windowId`                                            | `subscribeToMenuClosed`                            |
 | `bento-sidebar-address-bus`                     | chrome, `BentoSidebarAddress`                                          | `windowId` plus a per-window bridge token (unchanged) | `shouldAcceptSidebarAddressMessage` (unchanged)    |
 
 Scoped by construction, no bus involved: the tooltip payload (`content.postMessage`
@@ -158,6 +159,49 @@ another window's open state, and a merge palette `close` reset another window's
 merge palette. Chrome stamps `windowId` in `dispatchAddrbarOpen` and
 `dispatchMergePaletteLifecycle` and the frame scripts forward it;
 `dispatchShellAction` already stamped `__windowId`.
+
+## Menu-open state of the sidebar New button
+
+The New menu is a chrome menu overlay request (`BENTO_SIDEBAR_CONTEXT_MENU`, see
+[workspaces.md](workspaces.md)), so the sidebar cannot see it open or close. The
+New `Button` in `TabList` shows its open fill (`data-bento-menu-open='true'`,
+painted by `--bento-surface-active` in `TabList.css`, with `aria-expanded`) from
+two shell-only signals, mirrored by `bridge/newMenu.ts` into
+`useUiStore().newMenuContextId`:
+
+- Open: chrome's `menu/open` bus action reaches every document of the extension
+  origin, the sidebar included. Chrome passes the request's `items` through
+  unchanged, so the sidebar recognizes its New menu by the ids in
+  `NEW_MENU_ITEMS` (`new-tab`, `new-panel`) and stores that menu's `contextId`.
+  Any other `menu/open` in the window (tab, folder, panel, splitter menus) clears
+  it, which also covers a newer menu replacing the New menu.
+- Close: the menu document posts `closed` with the `contextId` on
+  `bento-menu-bus` for every way its menu goes away (an item chosen, Esc, a click
+  outside, which Mux reports as `onOpenChange(false)`), next to the
+  `BENTO_MENU_SELECT` and `BENTO_MENU_CLOSE` titles chrome gets.
+
+Source of truth: the menu overlay document. The store is transient and never
+reaches bento-tools. Manual verification: [manual-regression-areas.md](manual-regression-areas.md#new-menu-open-fill).
+
+Pitfalls:
+
+- The state follows the overlay, not the click. Setting it on press stuck the fill
+  when chrome cancelled an open that was still waiting for the menu document (Esc
+  or a click first), because no `menu/open` and no close notice ever follow.
+- The two buses are not ordered against each other. A close notice only clears the
+  menu it names, so an older menu's notice landing after a newer New menu opened
+  leaves the newer one's fill.
+- Keep the state out of `TabListPane`. A workspace switch remounts the pane (and
+  keeps the outgoing one on screen during the slide) while the overlay stays up,
+  so a local flag would drop the fill from a menu that is still open.
+- Clicking New while its menu is open cannot reopen it: the menu host covers the
+  whole `#browser` area, so the click lands on the overlay, dismisses the menu, and
+  never reaches the button.
+- Mux's own pressed fill is suppressed under `aria-expanded='true'`, so the open
+  fill is the only one painted on the button while the menu is up.
+- Closing on window deactivation is not implemented: React Aria ignores a blur
+  with no related target, so the menu (and the fill) stays while Bento is in the
+  background, as the menu always did.
 
 ## Tooltip document
 
