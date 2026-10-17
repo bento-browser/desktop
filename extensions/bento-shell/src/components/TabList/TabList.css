@@ -205,13 +205,18 @@
      show (the hook flushes the new position first) appears in place and only
      fades in; hiding fades out. The fill is translucent --bento-surface-hover,
      and the row's hover actions paint no backstop of their own (TabRow masks
-     the title under them), so the highlight shows through the button area. */
-  .bento-tab-list__hover-highlight {
+     the title under them), so the highlight shows through the button area.
+
+     The action highlight is the same fill for the New and Search buttons, in
+     their own element so it never crosses into the list: the two fade in and
+     out independently at the boundary. useActionHoverHighlight writes an inline
+     translateX and width from the hovered button's offset box, so it needs no
+     collapsed-rail rule: the bar is then one square holding the New button. */
+  .bento-tab-list__hover-highlight,
+  .bento-tab-list__action-highlight {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: var(--bento-tab-row-height);
     border-radius: var(--muxui-semantic-shape-radius-s);
     background-color: var(--bento-surface-hover);
     opacity: 0;
@@ -219,8 +224,21 @@
     transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
   }
 
-  .bento-tab-list__hover-highlight[data-visible] {
+  .bento-tab-list__hover-highlight {
+    width: 100%;
+    height: var(--bento-tab-row-height);
+  }
+
+  .bento-tab-list__action-highlight {
+    height: 100%;
+  }
+
+  .bento-tab-list__hover-highlight[data-visible],
+  .bento-tab-list__action-highlight[data-visible] {
     opacity: 1;
+  }
+
+  .bento-tab-list__hover-highlight[data-visible] {
     transition:
       opacity var(--bento-duration-fast) var(--bento-easing-standard),
       transform var(--bento-duration-base) var(--bento-easing-snappy),
@@ -234,6 +252,13 @@
           --bento-sidebar-collapse-transition,
           var(--bento-duration-base) var(--bento-easing-standard)
         );
+  }
+
+  .bento-tab-list__action-highlight[data-visible] {
+    transition:
+      opacity var(--bento-duration-fast) var(--bento-easing-standard),
+      transform var(--bento-duration-base) var(--bento-easing-snappy),
+      width var(--bento-duration-base) var(--bento-easing-snappy);
   }
 
   .bento-tab-list__hover-highlight[data-indented] {
@@ -255,7 +280,8 @@
       transition: none;
     }
 
-    .bento-tab-list__hover-highlight[data-visible] {
+    .bento-tab-list__hover-highlight[data-visible],
+    .bento-tab-list__action-highlight[data-visible] {
       transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
     }
   }
@@ -433,6 +459,15 @@
         var(--bento-duration-base) var(--bento-easing-standard)
       ),
     background-color var(--bento-duration-fast) var(--bento-easing-standard);
+}
+
+/* The action highlight is the hover fill for the New and Search buttons, so
+   neither paints Mux's own. Mux paints :hover and [data-hovered] from this
+   property and :active from the pressed one, which stays. A menu-open fill
+   below still paints over the highlight. */
+.bento-tab-list__new-action-button,
+.bento-tab-list__search-button {
+  --muxui-button-background-hover: transparent;
 }
 
 .bento-tab-list__new-action-button[data-bento-menu-open='true'] {

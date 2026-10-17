@@ -159,6 +159,20 @@ Tab and folder labels use the row's center alignment with single-line leading.
 Keep them free of relative vertical offsets: the former `top: 2px` adjustment
 put Mux text below the centered favicon and folder count.
 
+The sidebar action bar's New `Button` and Search `IconButton` (ghost, `sm`)
+are hovered by a second sliding highlight behind them, so they paint no hover
+fill of their own. Mux paints `:hover` and `[data-hovered]` from
+`--muxui-button-background-hover` (the ghost variant sets it to a 10%
+`surface-contrast` mix) and `:active`/`[data-pressed]` from
+`--muxui-button-background-pressed`. Bento sets only the hover property to
+`transparent` on `.bento-tab-list__new-action-button` and
+`.bento-tab-list__search-button`, in unlayered CSS after the `muxui` layer, so
+the pressed feedback and the focus ring stay Mux's. Do not restyle the `:hover`
+or `[data-hovered]` selectors for this. After a Mux upgrade, recheck that the
+ghost variant still reads `--muxui-button-background-hover` for both states, or
+the buttons stack a second fill over the highlight (about twice a hovered
+row's darkening).
+
 Tab and folder rows paint no plain `:hover` fill. `TabList` slides one hover
 highlight behind the rows instead (see
 [workspaces.md](technical/workspaces.md)). A tab row's hover actions are Mux

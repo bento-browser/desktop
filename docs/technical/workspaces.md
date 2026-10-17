@@ -269,22 +269,47 @@ Plain row hover in the virtualized list is one sliding highlight, not a
 per-row `:hover` background. `TabListPane` renders a single
 `.bento-tab-list__hover-highlight` (`aria-hidden`) as the first child of
 `.bento-tab-list__viewport`, so every row paints over it, and
-`useRowHoverHighlight.ts` positions it imperatively. Each row wrapper carries
-`data-row-start` (the same offset as its `translateY`), `data-row-indented`
-and `data-row-inert` (from `rowHighlightProps`). A delegated `mouseover` on the
-viewport finds the wrapper under the pointer and sets the highlight's inline
-`transform: translateY()` plus `data-indented` / `data-visible`; `mouseleave`
-removes `data-visible`. Hover changes touch refs and DOM attributes only, so
-neither `TabListPane` nor the rows re-render. `TabList.css` does the rest: the
-fill is `--bento-surface-hover`, the height and radius match a row, `data-indented`
-applies `--bento-tab-folder-indent`, and `html[data-bento-collapsed='true']`
-makes it the centered square of the collapsed rail. The slide (`transform`,
-`--bento-duration-base` with `--bento-easing-snappy`), width and margin
-transitions apply only under `[data-visible]`; opacity fades in and out with
-`--bento-duration-fast`. `prefers-reduced-motion: reduce` keeps only the fade.
+`useHoverHighlight.ts` (`useRowHoverHighlight`) positions it imperatively. Each
+row wrapper carries `data-row-start` (the same offset as its `translateY`),
+`data-row-indented` and `data-row-inert` (from `rowHighlightProps`). A delegated
+`mouseover` on the viewport finds the wrapper under the pointer and sets the
+highlight's inline `transform: translateY()` plus `data-indented` /
+`data-visible`; `mouseleave` removes `data-visible`. Hover changes touch refs
+and DOM attributes only, so neither `TabListPane` nor the rows re-render.
+`TabList.css` does the rest: the fill is `--bento-surface-hover`, the height and
+radius match a row, `data-indented` applies `--bento-tab-folder-indent`, and
+`html[data-bento-collapsed='true']` makes it the centered square of the
+collapsed rail. The slide (`transform`, `--bento-duration-base` with
+`--bento-easing-snappy`), width and margin transitions apply only under
+`[data-visible]`; opacity fades in and out with `--bento-duration-fast`.
+`prefers-reduced-motion: reduce` keeps only the fade.
 Tab and folder rows no longer have a plain `:hover` background. Active rows are
 opaque and cover the highlight, and selected rows are translucent and composite
 over it.
+
+The New and Search buttons of the action bar (`.bento-tab-list__new-actions`)
+get a second, separate highlight with the same fill, so the two never share an
+element and never cross the boundary between the bar and the list: leaving the
+bar fades its highlight out while the list highlight fades in on the row under
+the pointer. `useHoverHighlight.ts` holds one engine for both
+(`useRowHoverHighlight`, `useActionHoverHighlight`); each supplies a target
+selector and a `place` function. The action highlight is
+`.bento-tab-list__action-highlight` (`aria-hidden`), the first child of the bar,
+painted behind the positioned buttons. `place` writes an inline `translateX` and
+`width` from the hovered button's rect relative to the bar, so the highlight
+equals the button box including fractional flex widths and glides between the
+wide New button and the square Search button (`transform` and `width`, the same
+`--bento-duration-base` / `--bento-easing-snappy` slide as the list). Height,
+radius and fill come from CSS (`100%`, `--muxui-semantic-shape-radius-s`,
+`--bento-surface-hover`). It is disabled during a tab or folder drag and while
+the search field covers the buttons (`searchOpen`). In the collapsed rail the
+bar is one square holding the New button and the Search trigger is
+`display: none`, so a hover there sets the New square, and a Search target with
+no box hides the highlight. Both buttons paint no hover fill of their own (the
+Mux button hover override in
+[../mux-ui-component-customisations.md](../mux-ui-component-customisations.md)).
+`.bento-tab-list__new-action-button[data-bento-menu-open='true']` keeps its
+`--bento-surface-active` fill, which paints over the highlight.
 
 A tab row's hover actions (Convert to panel, Close tab) paint no background, so
 the highlight, a selected tint or the active fill shows through the button area
@@ -319,8 +344,12 @@ the workspace and panel readiness gates). Hover pinned, folder, indented and
 regular rows, enter from outside the list, leave it, set
 `data-bento-collapsed` on `<html>`, scroll a long list with the pointer still,
 close the hovered tab, collapse the folder under a hovered child, and drag a
-row. Real Bento (the shell in the sidebar frame) still needs a manual hover,
-scroll and pointer-exit pass.
+row. For the action bar, hover New and Search and move between them (the
+highlight glides and equals each button's box), leave the bar, move from the bar
+into the first row (the two highlights cross-fade), open Search (the highlight
+stays hidden), and toggle `data-bento-collapsed` on `<html>` with the pointer
+still over New. Real Bento (the shell in the sidebar frame) still needs a manual
+hover, scroll and pointer-exit pass.
 
 Sidebar drag handling in `TabListPane` classifies tab drops before falling back
 to anchor-based reordering. A drop in slot `0` or within the current pinned run
@@ -446,9 +475,10 @@ opening an unwanted blank tab before the moved tabs arrive.
   first button and that the active row (one button) does too.
 - Do not set the highlight's `transform` and `data-visible` in the same style
   pass. The slide transitions come from the after-change style, so a fresh show
-  would glide in from the last row. `useRowHoverHighlight` writes the position,
-  flushes style (`offsetHeight`), then sets `data-visible`; the slide, width and
-  margin transitions live under `[data-visible]` for the same reason.
+  would glide in from the last row (or from New to Search). `useHoverHighlight`
+  writes the position, flushes style (`offsetHeight`), then sets `data-visible`;
+  the slide, width and margin transitions live under `[data-visible]` for the
+  same reason.
 - Do not derive the hovered row from scroll math or a cached pointer position.
   The highlight follows `mouseover` on the row wrappers, and relies on Gecko's
   synthesized mouse move to re-target a stationary pointer after a scroll, a
@@ -456,6 +486,18 @@ opening an unwanted blank tab before the moved tabs arrive.
   coordinate to cache. That synthesized move is not guaranteed to land promptly
   (headless Gecko re-targeted after a removal in one run and not within 500 ms in
   another), so the worst case is a hidden highlight until the pointer next moves.
+- Do not let the New and Search buttons paint Mux's ghost hover fill. The action
+  highlight is their hover fill, and Mux's `color-mix(... surface-contrast 10%)`
+  on top of it read about twice as dark as a hovered row (measured: a hovered row
+  pixel 250,247,245 to 235,231,229, the double fill 215,211,209). The buttons set
+  `--muxui-button-background-hover: transparent`; do not fight the `:hover` and
+  `[data-hovered]` selectors instead.
+- Do not size the action highlight from a one-time measurement. The sidebar
+  collapse resizes the bar without a React commit, and with the pointer still
+  over New the highlight kept the expanded width (248.8px on a 32px button)
+  until the pointer left. The engine's `ResizeObserver` on the container
+  re-places it; that is why the container, not a React dependency, drives the
+  resync.
 - Do not let the highlight outlive its row. Anything that unmounts, fades
   (`data-row-inert`) or drags the hovered row must go through the hook's
   post-commit sync, or the highlight sits at a stale offset after a reorder,
