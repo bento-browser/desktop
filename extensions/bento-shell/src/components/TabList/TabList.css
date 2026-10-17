@@ -487,10 +487,13 @@
   color: var(--neutral-70);
 }
 
+/* min-block-size: Mux's md-control minimum (2.25rem) would outgrow the 2rem
+   field and push the icon, text and clear button 2px low. */
 .bento-tab-list-search__input {
   min-width: 0;
   width: 100%;
   height: 100%;
+  min-block-size: 0;
   padding: 0;
   border: 0;
   outline: 0;
