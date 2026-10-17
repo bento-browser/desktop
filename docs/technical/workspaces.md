@@ -791,10 +791,23 @@ the narrow end (the rail, or 0 when the sidebar was hidden).
   (the same transform mode a live drag uses, margin back at the end); the toolbar's
   sidebar-coloured segment, whose boundary is a gradient, by a `#nav-bar::before`
   that covers the difference between the old and new split. The backgrounds behind
-  the host keep the wider split for the slide.
+  the host keep the wider split for the slide. The bookmarks toolbar is positioned
+  by a margin and slides with the page group, whose layout is the final one on a
+  collapse and the initial one on an expand, so a collapse commits its offset at
+  the start while an expand keeps the initial offset and applies the final one in
+  the frame the push settles. The hooks read the host through
+  `sidebarHostLayoutBox`, which removes the host's own translation and measures the
+  strip's inset from the host's margin box, so a push out of the hidden state
+  (host parked at `translateX(-100%)`, margin-right `-rail`) prepares from the
+  layout origin.
 - While `bento-sidebar-push` is on the root, `isBentoChromeLiveResizing()` is true,
   so the divider, toolbar navigation, bookmarks alignment, affordance and strip
-  scrollbar observers hold off. The end runs one refresh: the settled event, the
+  scrollbar observers hold off. Their pending animation frames are cancelled when a
+  push starts (a settle that interrupted the previous slide queued them) and each
+  frame callback checks `isBentoSidebarPushing()` itself, since the scheduling
+  guard only runs when the frame is queued. The bookmarks toolbar's mutation
+  observer, which the push's own class change triggers and which bypasses that
+  guard, skips the offset read while a push runs and still updates the height. The end runs one refresh: the settled event, the
   flat panel layout, splitters, overlays and strip scrollbar against the final
   untransformed geometry.
 - Audit of reads that can run during the slide. Group-internal geometry
@@ -899,7 +912,10 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   Browser Toolbox against `measureRailWidth()` from `railViewport.ts` before
   assuming the rail works on a new platform.
 - Do not read `getBoundingClientRect` of the host or the page group during a push
-  and treat it as layout geometry: it includes the transforms. Mixed reads (a
+  and treat it as layout geometry: it includes the transforms. A callback queued
+  with `requestAnimationFrame` must check the guard when it runs, not only when it
+  is scheduled, and any read of the host that can happen while it is hidden or
+  pushed goes through `sidebarHostLayoutBox`. Mixed reads (a
   group rect compared with the host, toolbar or window) belong in code that is held
   off by `isBentoChromeLiveResizing()` and refreshed in `syncGeometryAfterSidebarPush`,
   or must read untransformed values. Group-internal reads are fine.

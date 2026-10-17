@@ -221,6 +221,7 @@ function makeWorld({ expandedWidth = 300, railWidth = 64 } = {}) {
       let prepareBookmarksToolbarForSidebarResize = null;
       let syncBookmarksToolbarForSidebarWidth = null;
       let finishBookmarksToolbarSidebarResize = null;
+      const sidebarGeometryFrameCancels = [];
       ${CONSTANTS.map(mountConst).join('\n')}
       ${FUNCTIONS.map(mountFunction).join('\n')}
       ({
@@ -565,15 +566,25 @@ test('an expand slides the toolbar band the other way', () => {
   const world = makeWorld({ expandedWidth: 300, railWidth: 64 });
   world.boot(true);
   world.setToolbarFor(64);
-  world.installToolbarHooks();
+  const calls = world.installToolbarHooks();
   world.apply(false);
+  // The bookmarks toolbar rides the page group, whose layout stays the initial one until the
+  // slide ends: its offset is committed when the push settles, not at the start.
+  assert.deepEqual(
+    calls.filter((call) => call.name.startsWith('sync')).map((call) => call.name),
+    ['sync divider', 'sync nav'],
+  );
   assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '-236px');
   assert.equal(world.root.props.get('--bento-sidebar-push-split-from'), '63px');
   assert.equal(world.root.props.get('--bento-sidebar-push-split-shift'), '-236px');
   assert.equal(world.root.props.get('--bento-sidebar-push-nav-from'), '100px');
   assert.equal(world.root.props.get('--bento-toolbar-divider-x'), '299px');
+  calls.length = 0;
   world.endMotion();
   assert.equal(world.root.props.get('--bento-toolbar-divider-x'), '299px');
+  const ending = calls.filter((call) => call.name === 'sync bookmarks');
+  assert.deepEqual(ending.map((call) => call.width), [300]);
+  assert.equal(ending[0].pushAttr, false, 'in the frame the page takes its final layout');
   world.assertNoResidue();
 });
 
