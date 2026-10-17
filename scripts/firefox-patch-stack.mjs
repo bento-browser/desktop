@@ -28,7 +28,7 @@ export const FIREFOX_PATCH_GIT_CONFIG = [
 
 // The scratch replay must write only to its own index and object directory. A
 // split index would put sharedindex.* files in the engine's real git directory.
-const SCRATCH_GIT_CONFIG = ['core.splitIndex=false'];
+export const SCRATCH_GIT_CONFIG = ['core.splitIndex=false'];
 
 function pinnedConfig(settings) {
   return settings.flatMap((setting) => ['-c', setting]);

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scanProductIdentity } from './check-product-identity.mjs';
+import { readEntry } from './read-entry.mjs';
+import { git, replaySeriesChanges } from './series-replay.mjs';
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(process.env.BENTO_REPO_ROOT || scriptRoot);
@@ -55,23 +56,38 @@ for (const marker of ['# BEGIN BENTO BUILTIN ADDONS', '# END BENTO BUILTIN ADDON
   }
 }
 
-const changed = new Set(
-  execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
-    cwd: engine,
-    encoding: 'utf8',
-  })
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => line.slice(3).replace(/^"|"$/g, '')),
-);
+// Every path the patch series changes must match what applying the series to the
+// base commit produces: same blob and file mode, or no file left where the series
+// deletes one (a directory may take its place). The replay in series-replay.mjs is
+// exact, whereas reverse-applying the patches to the live tree would accept
+// whitespace-altered content because the apply flags ignore whitespace. Import
+// steps that edit files outside the series (prefs, moz.build, version files) are
+// never compared.
+function liveEntry(relative) {
+  const entry = readEntry(path.join(engine, relative));
+  if (!entry) return undefined;
+  if (!entry.content) return { mode: 'not a file', oid: '' };
+  return {
+    mode: entry.symlink ? '120000' : entry.mode & 0o100 ? '100755' : '100644',
+    oid: git(engine, ['hash-object', '--no-filters', '--stdin'], { input: entry.content }).trim(),
+  };
+}
+
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'patches', 'series.json'), 'utf8'));
-for (const entry of manifest.series) {
-  const patchText = fs.readFileSync(path.join(root, entry.path), 'utf8');
-  const paths = [...patchText.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)].map((match) => match[2]);
-  if (paths.length === 0 || !paths.some((changedPath) => changed.has(changedPath))) {
-    throw new Error(`no live engine change found for patch ${entry.path}`);
+const patchFailures = [];
+for (const [relative, change] of replaySeriesChanges(root)) {
+  const live = liveEntry(relative);
+  if (change.status === 'D') {
+    if (live && live.mode !== 'not a file') {
+      patchFailures.push(`engine/${relative} exists but the patch series deletes it`);
+    }
+  } else if (!live) {
+    patchFailures.push(`engine/${relative} is missing but the patch series keeps it`);
+  } else if (change.oid !== live.oid || change.mode !== live.mode) {
+    patchFailures.push(`engine/${relative} differs from the patch series result`);
   }
 }
+if (patchFailures.length > 0) throw new Error(patchFailures.join('\n'));
 
 const identityFailures = scanProductIdentity(
   [
