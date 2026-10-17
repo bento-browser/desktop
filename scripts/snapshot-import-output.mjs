@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 
+// Fingerprint of what `pnpm run import` leaves in engine/, compared before and
+// after a repeated import. It covers the tracked diff against HEAD plus the files
+// git cannot see in that diff: untracked Bento branding and add-ons, every overlay
+// recorded in .bento/import-manifest.json, and every file the patch series creates.
+
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { readSeriesPaths } from './patch-series-paths.mjs';
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(process.env.BENTO_REPO_ROOT || scriptRoot);
@@ -31,12 +38,25 @@ const untracked = execFileSync(
 )
   .toString('utf8')
   .split('\0')
-  .filter(Boolean)
-  .sort((a, b) => a.localeCompare(b));
+  .filter(Boolean);
 
-for (const relative of untracked) {
+const manifestPath = path.join(root, '.bento', 'import-manifest.json');
+if (!fs.existsSync(manifestPath)) {
+  throw new Error(
+    'snapshot-import-output: .bento/import-manifest.json is missing; run the import first',
+  );
+}
+const overlays = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).entries.map(
+  (entry) => entry.destination,
+);
+
+// A path can belong to several groups; sorting the union hashes each once, in a stable order.
+const files = [...new Set([...untracked, ...overlays, ...readSeriesPaths(root).created])].sort();
+
+for (const relative of files) {
   const absolute = path.join(engine, relative);
-  const stat = fs.lstatSync(absolute);
+  const stat = fs.lstatSync(absolute, { throwIfNoEntry: false });
+  if (!stat) throw new Error(`snapshot-import-output: engine/${relative} is missing`);
   hash.update(`\0${relative}\0${stat.mode & 0o777}\0`);
   hash.update(stat.isSymbolicLink() ? fs.readlinkSync(absolute) : fs.readFileSync(absolute));
 }
