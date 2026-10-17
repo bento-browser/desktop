@@ -3,7 +3,8 @@
 // Fingerprint of what `pnpm run import` leaves in engine/, compared before and
 // after a repeated import. It covers the tracked diff against HEAD plus the files
 // git cannot see in that diff: untracked Bento branding and add-ons, every overlay
-// recorded in .bento/import-manifest.json, and every file the patch series creates.
+// recorded in .bento/import-manifest.json, and every file the patch series creates
+// (found by replaying the series on the base commit).
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -11,8 +12,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { readSeriesPaths } from './patch-series-paths.mjs';
 import { readEntry } from './read-entry.mjs';
+import { replaySeriesChanges } from './series-replay.mjs';
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(process.env.BENTO_REPO_ROOT || scriptRoot);
@@ -52,8 +53,12 @@ try {
 }
 const overlays = JSON.parse(manifestText).entries.map((entry) => entry.destination);
 
+const created = [...replaySeriesChanges(root)]
+  .filter(([, change]) => change.status === 'A')
+  .map(([relative]) => relative);
+
 // A path can belong to several groups; sorting the union hashes each once, in a stable order.
-const files = [...new Set([...untracked, ...overlays, ...readSeriesPaths(root).created])].sort();
+const files = [...new Set([...untracked, ...overlays, ...created])].sort();
 
 for (const relative of files) {
   const entry = readEntry(path.join(engine, relative));

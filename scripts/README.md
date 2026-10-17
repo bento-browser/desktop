@@ -85,8 +85,8 @@ Build, packaging, and release helper scripts.
 - Checks (CLAUDE.md lists which ones CI runs): `check-security-invariants.mjs` (with
   `ci-build-guard.mjs`, which keeps native builds out of workflows and actions),
   `check-release-security.mjs`,
-  `check-import-output.mjs` (with `snapshot-import-output.mjs`, both reading the
-  patch headers through `patch-series-paths.mjs`),
+  `check-import-output.mjs` (with `snapshot-import-output.mjs`, both learning the
+  series' changes through `series-replay.mjs`),
   `check-size-budgets.mjs` with `size-ratchet.mjs`,
   the competitor-reference boundary check, `check-firefox-compat.mjs` with
   `firefox-compat-registry.mjs`, `check-chrome-resize-guard.mjs`,
