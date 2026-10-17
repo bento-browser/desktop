@@ -119,7 +119,11 @@ browser-specific keyboard behavior without bypassing the component renderer. Set
 preserves pointer travel and keeps the child popup clear of subsequent root
 menu rows under the RC collection renderer.
 
-Generic buttons and picker triggers use Mux `Button` or `IconButton`. Emoji
+Generic buttons and picker triggers use Mux `Button` or `IconButton`. Button
+wraps its children in its `label` part (`.muxui-button-content`). The workspace
+theme picker trigger styles that part, scoped to the trigger, as a filling flex
+row so the theme name grows and the chevron sits at the end; the rule holds for
+the published package's inline wrapper and Mux main's inline-flex one. Emoji
 categories use public `Tabs` with controlled `value`/`onChange`; Mux owns tab
 roles, panel association, selection, and arrow-key navigation. Scoped layout
 keeps the existing emoji panel above its category strip. The RC can update
