@@ -1557,6 +1557,17 @@ export const MEMBERS = [
     at: [FF.extTabsBase, '^\\s+getId\\(window\\)', 1817],
   },
   {
+    id: 'windowManager.getWrapper',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: [
+      'extensions/bento-tools/experiments/bento-native-preferences/api.js#validateDocumentSubject',
+    ],
+    use: 'The native preferences experiment resolves the chrome window that hosts a Settings page through extension.windowManager and reads wrapper.id to authorize the request against a live browser window; a window the extension cannot access has no wrapper.',
+    at: [FF.extTabsBase, '^\\s+getWrapper\\(window\\)', 2443],
+  },
+  {
     id: 'chrome://devtools-startup/content/DevToolsShim.sys.mjs',
     kind: 'module',
     how: 'imports',
