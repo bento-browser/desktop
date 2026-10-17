@@ -7108,7 +7108,7 @@
   // Firefox's split-view flex layout commits) and close-animation
   // flicker (panels reflow but splitters stay at stale positions).
   // The observer has a single callback that re-runs the full sync;
-  // we (re-)observe the current panel set on every reconcile.
+  // each sync reconciles the observed set against the current panels.
   const __bentoSplitterRO =
     typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
@@ -7119,6 +7119,29 @@
           }
         })
       : null;
+  // Elements __bentoSplitterRO currently observes. Membership must stay
+  // stable across syncs: disconnect() followed by observe() starts a new
+  // observation at last-reported size (-1, -1), which always delivers an
+  // initial notification, so the callback's own sync would re-schedule
+  // itself every frame.
+  const __bentoSplitterObserved = new Set();
+
+  // Make __bentoSplitterRO observe exactly `desiredEls`, touching only the
+  // elements that joined or left. Elements that left (including removed
+  // from the DOM) are dropped so the Set does not retain them.
+  function setObservedSplitterPanels(desiredEls) {
+    if (!__bentoSplitterRO) return;
+    for (const el of __bentoSplitterObserved) {
+      if (desiredEls.has(el)) continue;
+      __bentoSplitterRO.unobserve(el);
+      __bentoSplitterObserved.delete(el);
+    }
+    for (const el of desiredEls) {
+      if (__bentoSplitterObserved.has(el)) continue;
+      __bentoSplitterRO.observe(el);
+      __bentoSplitterObserved.add(el);
+    }
+  }
 
   // Sync inter-panel splitter elements in #bento-side-panel-host so
   // there's exactly one between each adjacent pair of panels in
@@ -7374,18 +7397,15 @@
       existing.push(sp);
     }
 
-    // (Re-)observe the current panel set with the shared
-    // ResizeObserver so any width change (drag, close-animation,
-    // workspace switch, layout-commit-after-reconcile) re-runs
-    // this sync without us having to find every code path that
-    // mutates panel widths. Disconnect first so panels removed
-    // from the set don't keep firing the callback.
-    if (__bentoSplitterRO) {
-      __bentoSplitterRO.disconnect();
-    }
+    // The shared ResizeObserver (see __bentoSplitterRO) observes the
+    // current panel set at the end of this sync, so any width change
+    // (drag, close-animation, workspace switch,
+    // layout-commit-after-reconcile) re-runs this sync without us
+    // having to find every code path that mutates panel widths.
 
     if (desired === 0) {
-      // No splitters to position; observer is already disconnected.
+      // No splitters to position; stop observing.
+      setObservedSplitterPanels(new Set());
       return;
     }
     const hostRect = host.getBoundingClientRect();
@@ -7493,25 +7513,22 @@
         bottom: splitterTop + splitterHeight,
       });
     }
-    // Re-observe after positioning so the next layout commit
-    // triggers a re-sync. Observe both the left AND right panel
-    // of every boundary plus the right edge of the last panel,
-    // so any width change in any panel re-fires.
+    // Observe after positioning so the next layout commit triggers a
+    // re-sync. Observe both the left AND right panel of every boundary
+    // plus the right edge of the last panel, so any width change in
+    // any panel re-fires. Only joined/left elements are touched.
     if (__bentoSplitterRO) {
-      const observed = new Set();
+      const desiredEls = new Set();
       for (const id of panelIds) {
         const el = document.getElementById(id);
-        if (!el || observed.has(el)) continue;
-        observed.add(el);
-        __bentoSplitterRO.observe(el);
+        if (el) desiredEls.add(el);
       }
       for (const link of currentDevtoolsLinkByTabId.values()) {
         if (link?.callerTabId === null) continue;
         const el = getPanelElementForTabId(link?.callerTabId);
-        if (!el || observed.has(el)) continue;
-        observed.add(el);
-        __bentoSplitterRO.observe(el);
+        if (el) desiredEls.add(el);
       }
+      setObservedSplitterPanels(desiredEls);
     }
   }
 
