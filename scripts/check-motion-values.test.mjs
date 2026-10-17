@@ -166,6 +166,84 @@ test('scriptViolations still flags a raw time in a motion declaration or style v
   );
 });
 
+test('scriptViolations flags a raw motion value in either branch of a conditional style assignment', () => {
+  const source = `
+    el.style.transition = enabled ? 'opacity 200ms ease-out' : 'none';
+    el.style.transition = reduced ? 'none' : 'opacity 200ms';
+    el.style.animationDuration = (override ?? fallback) || '250ms';
+    el.style.transition = enabled
+      ? \`opacity \${ms}ms\`
+      : 'none';
+    const style = { transition: enabled ? 'opacity 200ms' : 'none' };
+  `;
+  assert.deepEqual(
+    scriptViolations(source).map(({ line }) => line),
+    [2, 3, 4, 6, 8],
+  );
+  assert.deepEqual(
+    scriptViolations(`
+      el.style.transition = enabled ? 'opacity var(--muxui-semantic-motion-state-transition)' : 'none';
+      el.style.transition = reduced ? 'none' : '';
+    `),
+    [],
+  );
+});
+
+test('scriptViolations flags a raw value under a quoted transition or animation key', () => {
+  const source = `
+    const style = { 'transitionDuration': '250ms' };
+    const kebab = { "transition-duration": "250ms", 'animation-timing-function': 'ease-out' };
+    const rest = { opacity: 1, 'animation': 'spin 1s linear infinite' };
+  `;
+  assert.deepEqual(
+    scriptViolations(source).map(({ line }) => line),
+    [2, 3, 3, 4],
+  );
+  assert.deepEqual(
+    scriptViolations(`
+      const style = { 'transitionDuration': 'var(--muxui-semantic-motion-reveal-transition-duration)' };
+    `),
+    [],
+  );
+});
+
+test('scriptViolations flags a raw value passed to style.setProperty for a motion property', () => {
+  const source = `
+    el.style.setProperty('transition-duration', '250ms');
+    el.style.setProperty("animation-timing-function", enabled ? 'ease-out' : 'initial');
+    el.style.setProperty('transition', 'opacity 200ms', 'important');
+  `;
+  assert.deepEqual(
+    scriptViolations(source).map(({ line }) => line),
+    [2, 3, 4],
+  );
+  assert.deepEqual(
+    scriptViolations(`
+      el.style.setProperty('transition-duration', 'var(--muxui-semantic-motion-reveal-transition-duration)');
+      el.style.setProperty('transition-property', 'opacity');
+    `),
+    [],
+  );
+});
+
+test('scriptViolations keeps ignoring time-like copy next to conditionals, keys and setProperty', () => {
+  const source = `
+    const label = enabled ? 'Retry in 30s' : 'Done in 5s';
+    const info = { 'label': 'Retry in 30s', 'transitionName': 'Fade in 2s' };
+    el.style.setProperty('--timeout-label', '30s');
+    el.style.setProperty('width', enabled ? '30s' : '5s');
+    const duration = style.getPropertyValue('transition-duration') || '250ms ago';
+    el.style.transition = 'none';
+    const next = enabled ? 'Retry in 30s' : '';
+    const entry = { transition: 'none', label: 'Retry in 30s' };
+    el.style.transition = pick('Retry in 30s');
+    switch (kind) { case 'animation': return 'Takes 30s'; }
+    // el.style.transition = flag ? 'opacity 200ms' : 'none';
+    const re = /transition = /; const text = 'Takes 30s';
+  `;
+  assert.deepEqual(scriptViolations(source), []);
+});
+
 test('scriptViolations reads strings after a template literal with nested expressions', () => {
   const source = 'const x = `a ${fn("b") + `${c}`} d`; el.style.transition = \'opacity 1s\';';
   assert.deepEqual(

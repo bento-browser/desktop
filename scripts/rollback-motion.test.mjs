@@ -77,6 +77,7 @@ class FakeElement {
       ...computed,
     };
     const style = { getPropertyValue: (name) => values[name] ?? '' };
+    this.values = values;
     this.isConnected = isConnected;
     this.ownerDocument = { defaultView: { getComputedStyle: () => (computed ? style : null) } };
     this.classList = {
@@ -121,11 +122,16 @@ const MOTION_FUNCTIONS = [
 function makeMount(extra = '', globals = {}) {
   const clock = makeClock();
   const tokens = {};
-  const frames = [];
+  const frames = new Map();
+  let nextFrame = 1;
   const sandbox = {
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
-    requestAnimationFrame: (callback) => frames.push(callback),
+    requestAnimationFrame: (callback) => {
+      frames.set(nextFrame, callback);
+      return nextFrame++;
+    },
+    cancelAnimationFrame: (id) => frames.delete(id),
     window: {
       getComputedStyle: () => ({ getPropertyValue: (name) => ` ${tokens[name] ?? ''}` }),
     },
@@ -145,10 +151,12 @@ function makeMount(extra = '', globals = {}) {
     sandbox,
     clock,
     tokens,
-    frames,
+    pendingFrames: () => frames.size,
     get: (expression) => vm.runInContext(expression, sandbox),
     flushFrames() {
-      for (const frame of frames.splice(0)) frame();
+      const queued = [...frames.values()];
+      frames.clear();
+      for (const frame of queued) frame();
     },
   };
 }
@@ -233,6 +241,7 @@ test('archived afterMotion measures after spec.frames and a later key replaces a
 const FADE_FUNCTIONS = [
   'getWorkspaceFadeElement',
   'workspaceStabilizeMs',
+  'cancelWorkspaceFadeCleanup',
   'clearWorkspaceFadeClasses',
   'cancelWorkspaceFadeForMainOnly',
   'setWorkspaceFadeClasses',
@@ -244,6 +253,7 @@ const FADE_DECLARATIONS = [
   '__workspaceSwitchCancel',
   '__workspaceFadeWatchdog',
   '__workspaceFadeCleanupTimer',
+  '__workspaceFadeCleanupFrame',
   'WORKSPACE_FADE_WATCHDOG_MS',
   '__workspaceSwitchSwapping',
   '__mainWidthTransitionForNextReconcile',
@@ -318,6 +328,68 @@ test('cancelling the archived workspace fade clears the stabilize timer and the 
   assert.equal(fade.classes.size, 0);
   assert.equal(get('__workspaceFadeCleanupTimer'), null);
   assert.equal(clock.pending(), 0, 'no timer is left');
+});
+
+test('overlapping zero-fade archived switches leave one stabilize timer, and cancelling leaves none', () => {
+  const { get, clock, fade, flushFrames, pendingFrames } = makeFade({
+    'transition-property': 'opacity',
+  });
+  const perform = get('performWorkspaceSwitchFade');
+  perform([], {});
+  perform([], {});
+  assert.equal(pendingFrames(), 1, 'the replaced switch dropped its frame');
+  flushFrames();
+  get('cancelWorkspaceFadeForMainOnly')();
+  assert.equal(clock.pending(), 0, 'no timer survives the cancel');
+  assert.equal(get('__workspaceFadeCleanupTimer'), null);
+  assert.equal(get('__workspaceFadeCleanupFrame'), null);
+  assert.equal(fade.classes.size, 0);
+
+  // Cancelling before the frame runs leaves nothing behind either.
+  perform([], {});
+  get('cancelWorkspaceFadeForMainOnly')();
+  assert.equal(pendingFrames(), 0);
+  flushFrames();
+  assert.equal(clock.pending(), 0);
+});
+
+test('a stale archived stabilize timer cannot end the stabilize window of a newer switch early', () => {
+  const { get, clock, fade, flushFrames } = makeFade({ 'transition-property': 'opacity' });
+  const perform = get('performWorkspaceSwitchFade');
+  // Two switches queue their frames before either runs; the window is 200 + slack ms.
+  const stabilizeMs = 200 + get('MOTION_SLACK_MS');
+  perform([], {});
+  perform([], {});
+  flushFrames();
+  get('cancelWorkspaceFadeForMainOnly')();
+  clock.advance(100);
+  perform([], {});
+  flushFrames();
+  clock.advance(stabilizeMs - 100 - 1);
+  assert.equal(fade.classes.has('bento-workspace-stabilizing'), true, 'the first timer would fire');
+  clock.advance(100);
+  assert.equal(fade.classes.has('bento-workspace-stabilizing'), true, 'inside the newer window');
+  clock.advance(stabilizeMs - 100);
+  assert.equal(fade.classes.has('bento-workspace-stabilizing'), false);
+  assert.equal(get('__workspaceFadeCleanupTimer'), null);
+});
+
+test('a frame queued by a replaced archived switch does not lift the curtain of the newer one', () => {
+  const { get, clock, fade, flushFrames, pendingFrames } = makeFade({
+    'transition-property': 'opacity',
+  });
+  const perform = get('performWorkspaceSwitchFade');
+  perform([], {});
+  assert.equal(pendingFrames(), 1);
+  fade.values['transition-duration'] = '0.12s';
+  perform([], {});
+  assert.equal(pendingFrames(), 0, 'the replaced switch dropped its frame');
+  flushFrames();
+  assert.equal(fade.classes.has('bento-workspace-switching'), true, 'the curtain stays up');
+  clock.advance(120 + get('MOTION_SLACK_MS'));
+  flushFrames();
+  assert.equal(fade.classes.has('bento-workspace-switching'), false);
+  assert.equal(fade.classes.has('bento-workspace-stabilizing'), true);
 });
 
 test('a zero-length archived fade swaps at once and keeps no stale cancel handle', () => {

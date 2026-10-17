@@ -15636,6 +15636,9 @@
   let __workspaceSwitchTimer = null;
   let __workspaceFadeWatchdog = null;
   let __workspaceFadeCleanupTimer = null;
+  // The frame that starts the stabilize timer. Cancelled with the timer, so a replaced
+  // or cancelled switch cannot start a stale timer later or overwrite a newer one's handle.
+  let __workspaceFadeCleanupFrame = null;
   const WORKSPACE_FADE_WATCHDOG_MS = 1500;
   // The element whose opacity transition times the workspace fade (the three fade
   // targets share one CSS rule).
@@ -15658,6 +15661,16 @@
     const layoutMs = motionTokenMs('--muxui-semantic-motion-reveal-transition-duration');
     return Math.max(fadeMs, layoutMs) + MOTION_SLACK_MS;
   }
+  function cancelWorkspaceFadeCleanup() {
+    if (__workspaceFadeCleanupFrame !== null) {
+      cancelAnimationFrame(__workspaceFadeCleanupFrame);
+      __workspaceFadeCleanupFrame = null;
+    }
+    if (__workspaceFadeCleanupTimer !== null) {
+      clearTimeout(__workspaceFadeCleanupTimer);
+      __workspaceFadeCleanupTimer = null;
+    }
+  }
   function clearWorkspaceFadeClasses() {
     const sc = document.getElementById('bento-strip-container');
     const nav = document.getElementById('bento-panel-nav');
@@ -15665,10 +15678,7 @@
     if (sc) sc.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (nav) nav.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (tp) tp.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
-    if (__workspaceFadeCleanupTimer) {
-      clearTimeout(__workspaceFadeCleanupTimer);
-      __workspaceFadeCleanupTimer = null;
-    }
+    cancelWorkspaceFadeCleanup();
   }
   function cancelWorkspaceFadeForMainOnly() {
     const sc = document.getElementById('bento-strip-container');
@@ -15684,6 +15694,7 @@
     const hadTimer =
       __workspaceSwitchTimer !== null ||
       __workspaceFadeWatchdog !== null ||
+      __workspaceFadeCleanupFrame !== null ||
       __workspaceFadeCleanupTimer !== null;
     if (!hadFadeClass && !hadTimer) return;
 
@@ -15772,10 +15783,7 @@
       __workspaceSwitchTimer = null;
     }
     if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
-    if (__workspaceFadeCleanupTimer) {
-      clearTimeout(__workspaceFadeCleanupTimer);
-      __workspaceFadeCleanupTimer = null;
-    }
+    cancelWorkspaceFadeCleanup();
     // Watchdog armed BEFORE we add the class so any throw between
     // here and the cleanup rAF still gets a chance to clear the
     // class and restore visibility.
@@ -15849,7 +15857,8 @@
         // threw — otherwise the chrome stays at opacity 0 forever.
         // The watchdog above is the belt; this `finally` is the
         // suspenders.
-        requestAnimationFrame(() => {
+        __workspaceFadeCleanupFrame = requestAnimationFrame(() => {
+          __workspaceFadeCleanupFrame = null;
           const nav = document.getElementById('bento-panel-nav');
           if (stripContainer) stripContainer.classList.remove('bento-workspace-switching');
           if (nav) nav.classList.remove('bento-workspace-switching');
@@ -15858,6 +15867,7 @@
           // we remove it in the same frame as the opacity class, pending
           // width/flex changes can begin animating under the fade-in and
           // look like the strip is sliding to the destination workspace.
+          if (__workspaceFadeCleanupTimer !== null) clearTimeout(__workspaceFadeCleanupTimer);
           __workspaceFadeCleanupTimer = setTimeout(() => {
             __workspaceFadeCleanupTimer = null;
             if (stripContainer) {

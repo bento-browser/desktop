@@ -27,8 +27,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 //     literal fails when it holds a declaration of the properties above that breaks the
 //     rule (cssText and other CSS-like strings), an easing function, a retired
 //     --bento-duration-*, --bento-easing-* token, or a raw time next to a
-//     --muxui-semantic-motion-* token, and so does the value assigned to style.transition or
-//     style.animation (or their longhands) or set under a transition/animation key.
+//     --muxui-semantic-motion-* token, and so does the value of a transition or animation
+//     property (shorthand or longhand) that a script assigns (style.transition = ...),
+//     sets under a transition/animation key (quoted or not) or passes to
+//     style.setProperty('transition-duration', ...), also when it is one branch of a
+//     conditional or logical expression.
 //
 // Not covered: public/themes (generated), a raw time or bare easing keyword in a script
 // string that is not part of a declaration, a style assignment or a string naming a motion
@@ -182,22 +185,25 @@ export function cssViolations(css) {
 
 // ─── Scripts ─────────────────────────────────────────────────────────────────
 
+// How much code ahead of a literal `before` holds: enough for a conditional or logical
+// expression in front of the literal.
+const BEFORE_CHARS = 300;
+
 /**
  * String literals of a JavaScript or TypeScript source as `{ text, line, before }`, where
- * `before` is the code just ahead of the literal. Comments are
- * skipped, regular-expression literals are recognised by what precedes them, and a template
- * literal keeps its text with each ${...} replaced by 0, so `${ms}ms` reads as a raw time.
+ * `before` is the code just ahead of the literal with comments, regular expressions and
+ * earlier string contents blanked (a plain word or CSS property name in quotes stays, so
+ * quoted keys can be read). Comments are skipped, regular-expression literals are recognised
+ * by what precedes them, and a template literal keeps its text with each ${...} replaced
+ * by 0, so `${ms}ms` reads as a raw time.
  */
 export function stringLiterals(source) {
   const literals = [];
   const length = source.length;
   const lineAt = lineIndex(source);
-  const add = (text, start) =>
-    literals.push({
-      text,
-      line: lineAt(start),
-      before: source.slice(Math.max(0, start - 80), start),
-    });
+  const add = (text, start) => literals.push({ text, line: lineAt(start), start });
+  // [start, end, keep] of every comment, literal and regular expression, in source order.
+  const spans = [];
   let index = 0;
   let previous = '';
 
@@ -249,18 +255,22 @@ export function stringLiterals(source) {
     const next = source[index + 1];
     if (char === '/' && next === '/') {
       const end = source.indexOf('\n', index);
+      spans.push([index, end === -1 ? length : end, false]);
       index = end === -1 ? length : end;
     } else if (char === '/' && next === '*') {
       const end = source.indexOf('*/', index + 2);
+      spans.push([index, end === -1 ? length : end + 2, false]);
       index = end === -1 ? length : end + 2;
     } else if (char === "'" || char === '"') {
       const [text, end] = skipQuoted(index);
       add(text, index);
+      spans.push([index, end, /^[\w-]+$/.test(text)]);
       index = end;
       previous = 'a';
     } else if (char === '`') {
       const [text, end] = skipTemplate(index);
       add(text, index);
+      spans.push([index, end, false]);
       index = end;
       previous = 'a';
     } else if (char === '/' && (previous === '' || /[(,=:[!&|?{};+\-*%<>~^]/.test(previous))) {
@@ -274,6 +284,7 @@ export function stringLiterals(source) {
         else if (source[cursor] === '/' && !inClass) break;
         cursor += 1;
       }
+      spans.push([index, cursor + 1, false]);
       index = cursor + 1;
       previous = 'a';
     } else {
@@ -281,7 +292,21 @@ export function stringLiterals(source) {
       index += 1;
     }
   }
-  return literals;
+
+  let code = '';
+  let copied = 0;
+  for (const [start, end, keep] of spans) {
+    code += source.slice(copied, start);
+    const span = source.slice(start, end);
+    code += keep ? span : span.replace(/[^\n]/g, ' ');
+    copied = end;
+  }
+  code += source.slice(copied);
+  return literals.map(({ text, line, start }) => ({
+    text,
+    line,
+    before: code.slice(Math.max(0, start - BEFORE_CHARS), start),
+  }));
 }
 
 const RETIRED_TOKEN =
@@ -289,10 +314,55 @@ const RETIRED_TOKEN =
 const RAW_TIME_IN_TEXT = /(?<![\w.:/-])[+-]?(?:\d+\.?\d*|\.\d+)(?:ms|s)(?![\w./-])/;
 const NAMES_MOTION_TOKEN = /--muxui-semantic-motion-/;
 const EASING_FUNCTION = /(?<![\w-])(?:cubic-bezier|steps|linear|spring)\(/;
-// The literal right after style.transition = , style.animation = or a transition:/animation:
-// key (or one of their longhands), as the start of the value being set.
-const STYLE_VALUE_START =
-  /(?:\.style\.|(?<![\w.]))(transition|animation)(Duration|Delay|TimingFunction)?\s*[=:]\s*$/;
+// Where a script sets a transition or animation property (shorthand or longhand, camelCase
+// or kebab-case): `style.transition =` or a bare `transition:` key, a quoted
+// `{ 'transitionDuration': ... }` key, or `style.setProperty('transition-duration', ...)`.
+// Run on `before` (see stringLiterals), so earlier strings and comments cannot match.
+const MOTION_PROPERTY = String.raw`(transition|animation)(Duration|Delay|TimingFunction|-duration|-delay|-timing-function)?`;
+const STYLE_SET = new RegExp(
+  String.raw`(?:\.style\.|(?<![\w.$'"-]))${MOTION_PROPERTY}\s*(?:=(?![=>])|:(?!:))` +
+    String.raw`|[{,]\s*(['"])${MOTION_PROPERTY}\3\s*:` +
+    String.raw`|\.setProperty\(\s*(['"])${MOTION_PROPERTY}\6\s*,`,
+  'g',
+);
+
+/**
+ * Whether `gap`, the code between a style assignment and a literal, leaves the literal inside
+ * the assigned expression: a conditional or logical branch (`cond ? 'a' : 'b'`, `x || 'a'`)
+ * does, a new statement, an enclosing block, the next object entry or argument, or the
+ * argument of a call does not.
+ */
+function continuesExpression(gap) {
+  let depth = 0;
+  for (let index = 0; index < gap.length; index += 1) {
+    const char = gap[index];
+    if (char === ';' || char === '{' || char === '}') return false;
+    if (char === '(') {
+      if (/[\w$)\]]\s*$/.test(gap.slice(0, index))) return false;
+      depth += 1;
+    } else if (char === '[') depth += 1;
+    else if (char === ')' || char === ']') {
+      depth -= 1;
+      if (depth < 0) return false;
+    } else if (char === ',' && depth === 0) return false;
+  }
+  return true;
+}
+
+/** The motion property (such as `transition-duration`) a literal is the value of, or null. */
+function assignedMotionProperty(before) {
+  let last = null;
+  for (const match of before.matchAll(STYLE_SET)) last = match;
+  if (!last || !continuesExpression(before.slice(last.index + last[0].length))) return null;
+  const [base, suffix] = [last[1] ?? last[4] ?? last[7], last[2] ?? last[5] ?? last[8]];
+  const longhand = suffix
+    ? `-${suffix
+        .replace(/^-/, '')
+        .replace(/([a-z])([A-Z])/g, '$1-$2')
+        .toLowerCase()}`
+    : '';
+  return base + longhand;
+}
 
 /** `{ line, text, problem }` for each string literal in `source` that breaks the rule. */
 export function scriptViolations(source) {
@@ -307,13 +377,8 @@ export function scriptViolations(source) {
       .filter(({ property }) => VALUE_PROPERTIES.has(property))
       .map(({ property, value }) => motionValueProblem(property, value))
       .filter(Boolean);
-    const set = STYLE_VALUE_START.exec(before);
-    if (set && text.trim() !== '') {
-      const longhand = set[2]
-        ? `-${set[2].replace('TimingFunction', 'timing-function').toLowerCase()}`
-        : '';
-      problems.push(motionValueProblem(set[1] + longhand, text.trim()));
-    }
+    const assigned = assignedMotionProperty(before);
+    if (assigned && text.trim() !== '') problems.push(motionValueProblem(assigned, text.trim()));
     const problem = problems.find(Boolean);
     if (problem) report(line, text, problem);
     else if (EASING_FUNCTION.test(text)) report(line, text, 'raw easing function');
