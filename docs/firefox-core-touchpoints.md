@@ -62,10 +62,12 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-10-14
-- Firefox 158.0 review (2026-10-14): `pnpm run firefox:compat:engine` finds all
-  202 registry members in the vanilla and in the patched tree; 60 `at` lines moved
-  and `BASELINE` is 158.0. Upstream changes read against this entry:
+- Last updated: 2026-10-17
+- Firefox 158.0 review (2026-10-14): `pnpm run firefox:compat:engine` found all
+  202 registry members of that date in the vanilla and in the patched tree; 60 `at`
+  lines moved and `BASELINE` is 158.0. Re-run 2026-10-17 after the window-handover
+  and native-preferences entries landed: 217 of 217 members found in the
+  patched tree. Upstream changes read against this entry:
   `Tabbrowser.sys.mjs` no longer re-assigns `docShellIsActive` after it inserts
   or adopts a browser (that self-assignment existed only to send the
   `MozLayerTreeReady` and `MozLayerTreeCleared` events the tab switcher uses; the
