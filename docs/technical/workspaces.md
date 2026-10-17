@@ -890,6 +890,14 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   attribute follows the viewport width; keep only semantic things (labels,
   tooltips, the toggle icon) on the setting. A story that shows the rail sets the
   frame width the token names, as chrome sets the host's.
+- The rail threshold is the token resolved in the shell (rem = 16 px) and the host
+  gets it resolved in chrome, where rem is the system UI font size (11 px on macOS,
+  `font: message-box`). On macOS the host is narrower than the shell's reading, which
+  is the safe side. A platform whose chrome rem is above 16 px would make the host
+  wider than the threshold and the rail would not switch on: check
+  `getComputedStyle(document.getElementById('bento-shell-host')).width` in the
+  Browser Toolbox against `measureRailWidth()` from `railViewport.ts` before
+  assuming the rail works on a new platform.
 - Do not read `getBoundingClientRect` of the host or the page group during a push
   and treat it as layout geometry: it includes the transforms. Mixed reads (a
   group rect compared with the host, toolbar or window) belong in code that is held
