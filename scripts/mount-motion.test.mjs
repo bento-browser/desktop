@@ -3,7 +3,8 @@
 // computed style so no script mirrors a duration. These tests run the real functions
 // against fake elements and fake timers; overlay-surfaces.test.mjs covers them through
 // the overlay hides, and extensions/bento-shell/src/motion/afterMotion.test.ts covers the
-// shell copy of the same contract.
+// shell copy of the same contract. The last tests run the workspace-switch fade that waits
+// on them (performWorkspaceSwitchFade) and check its timers and frames stay accounted for.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -100,7 +101,15 @@ class FakeElement {
       ...computed,
     };
     this.isConnected = isConnected;
+    this.style = style;
     this.ownerDocument = { defaultView: { getComputedStyle: () => (computed ? style : null) } };
+    this.classes = new Set();
+    this.classList = {
+      add: (...names) => names.forEach((name) => this.classes.add(name)),
+      remove: (...names) => names.forEach((name) => this.classes.delete(name)),
+      contains: (name) => this.classes.has(name),
+      toggle: (name, force) => (force ? this.classes.add(name) : this.classes.delete(name)),
+    };
   }
 
   addEventListener(type, handler) {
@@ -299,4 +308,166 @@ test('motionTokenMs reads a custom property as a time', () => {
   assert.equal(world.motionTokenMs('--muxui-semantic-motion-reveal-transition-duration'), 200);
   assert.equal(world.motionTokenMs('--seconds'), 500);
   assert.equal(plain(world.motionTokenMs('--missing')), 0);
+});
+
+// ─── Workspace-switch fade ───────────────────────────────────────────────────
+
+function mountDeclaration(name) {
+  const match = new RegExp(`^ {2}(?:const|let) ${name} = [^;]*;`, 'm').exec(source);
+  assert.ok(match, `${name} is missing`);
+  return match[0];
+}
+
+const FADE_DECLARATIONS = [
+  '__workspaceSwitchTimer',
+  '__workspaceFadeWatchdog',
+  '__workspaceFadeCleanupTimer',
+  '__workspaceFadeCleanupFrame',
+  'WORKSPACE_FADE_WATCHDOG_MS',
+  '__workspaceSwitchSwapping',
+  '__mainWidthTransitionForNextReconcile',
+  '__pendingStripScrollRestore',
+];
+const FADE_FUNCTIONS = [
+  'workspaceFadeTarget',
+  'workspaceStabilizeMs',
+  'cancelWorkspaceFadeCleanup',
+  'clearWorkspaceFadeClasses',
+  'cancelWorkspaceFadeForMainOnly',
+  'setWorkspaceFadeClasses',
+  'cancelStripScrollMotion',
+  'armWorkspaceSwitchFade',
+  'performWorkspaceSwitchFade',
+];
+
+/** The real fade helpers over fake timers and animation frames; the fade is `fadeComputed`. */
+function makeFade(fadeComputed) {
+  let clock = 0;
+  let nextId = 1;
+  const timers = new Map();
+  const frames = new Map();
+  const tokens = { '--muxui-semantic-motion-reveal-transition-duration': '200ms' };
+  const fade = new FakeElement(fadeComputed);
+  const sandbox = {
+    setTimeout: (callback, ms = 0) => {
+      timers.set(nextId, { callback, due: clock + ms });
+      return nextId++;
+    },
+    clearTimeout: (id) => timers.delete(id),
+    requestAnimationFrame: (callback) => {
+      frames.set(nextId, callback);
+      return nextId++;
+    },
+    cancelAnimationFrame: (id) => frames.delete(id),
+    console: { warn() {} },
+    window: {
+      gBrowser: { tabpanels: fade },
+      getComputedStyle: () => ({ getPropertyValue: (name) => ` ${tokens[name] ?? ''}` }),
+    },
+    document: { documentElement: {}, getElementById: () => null },
+    reconcilePanels() {},
+    getStripScrollTarget: () => null,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(
+    `"use strict";
+    ${CONSTANTS.map(mountConst).join('\n')}
+    ${FADE_DECLARATIONS.map(mountDeclaration).join('\n')}
+    ${[...FUNCTIONS, ...FADE_FUNCTIONS].map(mountFunction).join('\n')}`,
+    sandbox,
+    { filename: 'bento-shell-mount.js#workspace-fade' },
+  );
+  return {
+    fade,
+    get: (expression) => vm.runInContext(expression, sandbox),
+    pendingTimers: () => timers.size,
+    pendingFrames: () => frames.size,
+    flushFrames() {
+      const queued = [...frames.values()];
+      frames.clear();
+      for (const frame of queued) frame();
+    },
+    advance(ms) {
+      const target = clock + ms;
+      for (;;) {
+        const due = [...timers].filter(([, timer]) => timer.due <= target);
+        if (due.length === 0) break;
+        due.sort((a, b) => a[1].due - b[1].due || a[0] - b[0]);
+        const [id, timer] = due[0];
+        timers.delete(id);
+        clock = Math.max(clock, timer.due);
+        timer.callback();
+      }
+      clock = target;
+    },
+  };
+}
+
+const STABILIZING = 'bento-workspace-stabilizing';
+const SWITCHING = 'bento-workspace-switching';
+
+test('overlapping zero-fade switches leave one stabilize timer, and cancelling leaves none', () => {
+  const { get, fade, pendingTimers, flushFrames } = makeFade({ transitionProperty: 'opacity' });
+  const perform = get('performWorkspaceSwitchFade');
+  perform([], {});
+  perform([], {});
+  flushFrames();
+  assert.equal(pendingTimers(), 1, 'only the newer switch keeps a stabilize timer');
+  get('cancelWorkspaceFadeForMainOnly')();
+  assert.equal(pendingTimers(), 0, 'no timer survives the cancel');
+  assert.equal(get('__workspaceFadeCleanupTimer'), null);
+  assert.equal(get('__workspaceFadeCleanupFrame'), null);
+  assert.equal(fade.classes.size, 0);
+});
+
+test('cancelling before the frame runs drops the frame and its timer', () => {
+  const { get, fade, pendingTimers, pendingFrames, flushFrames } = makeFade({
+    transitionProperty: 'opacity',
+  });
+  get('performWorkspaceSwitchFade')([], {});
+  assert.equal(pendingFrames(), 1);
+  get('cancelWorkspaceFadeForMainOnly')();
+  assert.equal(pendingFrames(), 0);
+  flushFrames();
+  assert.equal(pendingTimers(), 0);
+  assert.equal(fade.classes.size, 0);
+});
+
+test('a stale stabilize timer cannot end the stabilize window of a newer switch early', () => {
+  const { get, fade, advance, flushFrames } = makeFade({ transitionProperty: 'opacity' });
+  const perform = get('performWorkspaceSwitchFade');
+  // Two switches queue their frames before either runs; the window is 200 + slack ms.
+  const stabilizeMs = 200 + get('MOTION_SLACK_MS');
+  perform([], {});
+  perform([], {});
+  flushFrames();
+  get('cancelWorkspaceFadeForMainOnly')();
+  advance(100);
+  perform([], {});
+  flushFrames();
+  advance(stabilizeMs - 100 - 1);
+  assert.equal(fade.classes.has(STABILIZING), true, 'the first switch timer would have fired here');
+  advance(100);
+  assert.equal(fade.classes.has(STABILIZING), true, 'still inside the newer 250 ms window');
+  advance(stabilizeMs - 100);
+  assert.equal(fade.classes.has(STABILIZING), false);
+  assert.equal(get('__workspaceFadeCleanupTimer'), null);
+});
+
+test('a frame queued by a replaced switch does not lift the curtain of the newer switch', () => {
+  const { get, fade, advance, flushFrames, pendingFrames } = makeFade({
+    transitionProperty: 'opacity',
+  });
+  const perform = get('performWorkspaceSwitchFade');
+  perform([], {});
+  assert.equal(pendingFrames(), 1);
+  Object.assign(fade.style, { transitionDuration: '0.12s' });
+  perform([], {});
+  assert.equal(pendingFrames(), 0, 'the replaced switch dropped its frame');
+  flushFrames();
+  assert.equal(fade.classes.has(SWITCHING), true, 'the curtain stays up for the fade-out');
+  advance(120 + get('MOTION_SLACK_MS'));
+  flushFrames();
+  assert.equal(fade.classes.has(SWITCHING), false);
+  assert.equal(fade.classes.has(STABILIZING), true);
 });

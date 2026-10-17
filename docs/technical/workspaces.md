@@ -1112,6 +1112,19 @@ opening an unwanted blank tab before the moved tabs arrive.
   in-memory only for the same reason; adoption additionally requires a window
   created after the settle, a fresh session read, and no stored value on any tab
   of the window (`tabsToAdopt`).
+- Do not start the workspace fade's `bento-workspace-stabilizing` timer from an
+  uncancelled frame. `performWorkspaceSwitchFade` removes the curtain class in a
+  `requestAnimationFrame` and starts the stabilize timer there. With a measured
+  zero-length fade the swap runs at once, so two switches could both queue a frame
+  before either ran; each frame then assigned `__workspaceFadeCleanupTimer` without
+  clearing the earlier handle. The first timer was unreachable:
+  `cancelWorkspaceFadeForMainOnly` left it pending, and after a new switch it ended
+  suppression early (and cleared the newer timer's handle). The frame handle is
+  now `__workspaceFadeCleanupFrame`. A new switch, `clearWorkspaceFadeClasses` and
+  the cancel all go through `cancelWorkspaceFadeCleanup`, which cancels the frame
+  and the timer, and the frame callback clears any timer before it starts one.
+  The archived mount script carries the same code. Covered by
+  `scripts/mount-motion.test.mjs` and `scripts/rollback-motion.test.mjs`.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

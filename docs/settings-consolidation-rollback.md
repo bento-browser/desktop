@@ -115,7 +115,8 @@ inside `var()`.
   measured fade-in and the `reveal` duration token (those layout transitions are
   switched off while the class is set, so they are read from the token) plus the
   slack, as a timer that `clearWorkspaceFadeClasses` and
-  `cancelWorkspaceFadeForMainOnly` cancel. `scripts/rollback-motion.test.mjs` runs
+  `cancelWorkspaceFadeForMainOnly` cancel, together with the frame that starts it
+  (a newer switch cancels both). `scripts/rollback-motion.test.mjs` runs
   these helpers and the fade.
 - **final-r2 overlay hosts.** The chrome-layout patch creates `#bento-palette-host`,
   `#bento-merge-palette-host` and `#bento-confirm-host` without an inline
@@ -131,8 +132,9 @@ inside `var()`.
   chrome). The repository motion check (`pnpm run lint:motion`) does scan the
   archived mount's injected CSS and inline strings, and the archived `.css`, `.ts`
   and `.tsx` files: it fails on a raw time or easing in a `transition` or
-  `animation` declaration, a `style.transition` or `style.animation` write, or a
-  string naming a motion token. It reads text only, so it does not resolve
+  `animation` declaration, a transition or animation style write (`style.transition`,
+  a quoted key, `style.setProperty`, also in a conditional), or a string naming a
+  motion token. It reads text only, so it does not resolve
   variables and ignores copy that merely reads like a time.
 
 ## Security parity
