@@ -90,9 +90,14 @@
     white-space: nowrap;
   }
 
+  /* Mux gives every input a md-control min-block-size (2.25rem) and matching
+     block padding. Left in place, the input outgrows the 2rem row, the grid row
+     overflows downward, and every item centers about 3px below the field. */
   .bento-sidebar-address-bar__input {
     width: 100%;
     height: calc(var(--bento-sidebar-address-row-height) - 2px);
+    min-block-size: 0;
+    padding-block: 0;
     outline: 0;
   }
 
