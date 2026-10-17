@@ -4297,6 +4297,17 @@
     return document.documentElement.getAttribute('bento-sidebar-resizing') === 'true';
   }
 
+  // Root attribute for the length of a sidebar push slide (see "Sidebar push" in
+  // bento-shell-mount.css). While it is set the host and the page group carry
+  // transforms, so geometry reads of them are not layout geometry: the observers
+  // that read it are held off like during a live resize (isBentoChromeLiveResizing)
+  // and settleSidebarPush refreshes them once at the end.
+  const SIDEBAR_PUSH_ATTR = 'bento-sidebar-push';
+
+  function isBentoSidebarPushing() {
+    return document.documentElement.hasAttribute(SIDEBAR_PUSH_ATTR);
+  }
+
   let bentoPanelResizeDepth = 0;
   let bentoSettingsAboutLiveResizeDepth = 0;
   const bentoLiveResizeFrozenSettingsAboutBrowsers = new Map();
@@ -4475,7 +4486,12 @@
   }
 
   function isBentoChromeLiveResizing() {
-    return isBentoWindowResizing() || isBentoSidebarResizing() || isBentoPanelResizing();
+    return (
+      isBentoWindowResizing() ||
+      isBentoSidebarResizing() ||
+      isBentoPanelResizing() ||
+      isBentoSidebarPushing()
+    );
   }
 
   function attachSidebarSplitterFeedback() {
@@ -8838,8 +8854,9 @@
   // Browser:SavePage command — File → Save Page As stays available via
   // the menu for users who still need to save.
   //
-  // Current state is read from #bento-shell-host's classes (set by the
-  // BENTO_PANELS settings payload). Dispatch settings/update with the
+  // Current state is read from #bento-shell-host (set by the BENTO_PANELS
+  // settings payload; during a sidebar push the push's target, since the
+  // collapsed class only lands when the slide ends). Dispatch settings/update with the
   // toggled value; tools persists + broadcasts back through the same
   // channel so the next press sees the updated minimized state.
   window.addEventListener(
@@ -8854,7 +8871,7 @@
       const host = document.getElementById('bento-shell-host');
       const currentlyHidden =
         currentSidebarHidden || !!host?.classList.contains('bento-sidebar-hidden');
-      const currentlyCollapsed = !!host?.classList.contains('bento-sidebar-collapsed');
+      const currentlyCollapsed = isSidebarCollapsedTarget(host);
       if (currentlyHidden) {
         dispatchShellAction({
           type: 'settings/update',
@@ -15437,7 +15454,12 @@
       // CSS narrows the sidebar to a rail showing only favicons and the
       // workspace avatar.
       if (typeof decoded.sidebarCollapsed === 'boolean') {
-        applyChromeSidebarCollapsed(decoded.sidebarCollapsed);
+        applyChromeSidebarCollapsed(decoded.sidebarCollapsed, {
+          hidden:
+            typeof decoded.sidebarHidden === 'boolean'
+              ? decoded.sidebarHidden
+              : currentSidebarHidden,
+        });
       }
       if (
         decoded.sidebarShortcutBehavior === 'collapse' ||
@@ -15926,29 +15948,273 @@
   let __stripScrollDispatchTimer = null;
   const STRIP_SCROLL_DEBOUNCE_MS = 250;
 
-  function applyChromeSidebarCollapsed(collapsed) {
+  // ─── Sidebar push ──────────────────────────────────────────────────────
+  // Cmd+S in 'collapse' mode (and expanding out of the hidden state) slides the
+  // sidebar and the page as one strip. Layout changes once per toggle and only
+  // transform and opacity animate: the host keeps its expanded width for the whole
+  // slide and holds only the narrow end's layout space through a negative right
+  // margin, so the page lays out once at its final geometry; transforms on the host
+  // and on the page group (everything in #browser right of the host) hide the
+  // difference and move as one. The CSS is in bento-shell-mount.css ("Sidebar
+  // push"), the mechanism and its pitfalls in docs/technical/workspaces.md.
+  //
+  //   collapse  commit margin and transforms, slide, then in one style change snap
+  //             the host to the rail, drop the transforms and fade the host back in;
+  //   expand    widen the host and commit margin and transforms, slide, then drop
+  //             both in one frame so the page lays out once to its narrower
+  //             geometry.
+  //
+  // The shell narrows its own layout when its viewport does (railViewport.ts), so
+  // the snap alone switches it.
+  const SIDEBAR_PUSH_DELTA_PROP = '--bento-sidebar-push-delta';
+  // Everything a push sets on the root, for its end.
+  const SIDEBAR_PUSH_PROPS = [
+    SIDEBAR_PUSH_DELTA_PROP,
+    '--bento-sidebar-push-divider-shift',
+    '--bento-sidebar-push-nav-from',
+    '--bento-sidebar-push-split-from',
+    '--bento-sidebar-push-split-shift',
+  ];
+  const SIDEBAR_PUSH_PAGE_CLASS = 'bento-sidebar-push-page';
+  const SIDEBAR_PUSH_FADE_CLASS = 'bento-sidebar-push-fade';
+  const SIDEBAR_PUSH_FADE_ANIMATION = 'bento-sidebar-push-fade-in';
+  const SIDEBAR_PUSH_KEY = 'sidebar-push';
+  const SIDEBAR_PUSH_REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+  const SIDEBAR_PUSH_SLIDE_ANIMATION = {
+    collapse: 'bento-sidebar-push-host-collapse',
+    expand: 'bento-sidebar-push-host-expand',
+  };
+  // The running push, { host, collapsed, pageEls }, or null.
+  let sidebarPush = null;
+  // Width of the collapsed rail in px, measured once from its token.
+  let sidebarRailWidthPx = 0;
+
+  function sidebarRailWidth() {
+    if (sidebarRailWidthPx > 0) return sidebarRailWidthPx;
+    const probe = document.createElementNS(HTML_NS, 'div');
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;pointer-events:none;height:0;' +
+      'width:var(--bento-tab-strip-width-collapsed)';
+    document.documentElement.appendChild(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    if (width > 0) sidebarRailWidthPx = width;
+    return width;
+  }
+
+  // The width the host gets once it is not collapsed: its own width (inline, written
+  // by the splitter drag and the persisted attribute) inside the min/max the sheet
+  // pins. Computed instead of measured because an expand must not flush layout
+  // before the host and page are in their pushed geometry; a flush at the
+  // intermediate one would hand the page's browsers a size they never keep.
+  function sidebarExpandedWidth(host) {
+    const requested =
+      Number.parseFloat(host.style.width) ||
+      Number(host.getAttribute('width')) ||
+      BENTO_EXPANDED_SIDEBAR_DEFAULT_WIDTH;
+    const min = tokenPx(
+      '--bento-tab-strip-width-min-effective',
+      tokenPx('--bento-tab-strip-width-min', 200),
+    );
+    const max = tokenPx('--bento-tab-strip-width-max', 600);
+    return Math.min(max, Math.max(min, requested));
+  }
+
+  // The page group: everything that sits right of the host and moves with the
+  // page. That is the in-flow children of #browser after the host (the splitters,
+  // a native sidebar, the panel strip), plus the splitter affordance, which is
+  // absolutely positioned at the splitter. The overlay hosts and the hidden-sidebar
+  // hover zone are absolute and stay put; hidden children are not rendered.
+  function sidebarPushPageElements(host) {
+    const els = [];
+    for (let el = host.nextElementSibling; el; el = el.nextElementSibling) {
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.position === 'absolute') continue;
+      els.push(el);
+    }
+    // The bookmarks toolbar starts at the strip's left edge (its margin follows it).
+    for (const id of ['bento-shell-splitter-affordance', 'PersonalToolbar']) {
+      const el = document.getElementById(id);
+      if (el) els.push(el);
+    }
+    return els;
+  }
+
+  // The toolbar band follows the sidebar edge as well: Back, Forward, Reload and the
+  // panel navigator sit at it, the toolbar's sidebar-coloured segment and the divider
+  // line end at it. Their final geometry is committed now, through the hooks the
+  // sidebar splitter drag drives (prepare, then sync for the new width), and each
+  // slides from where it was; the CSS reads these custom properties. Must run before
+  // anything else of the push touches layout: the hooks measure the host as it is.
+  // A push out of the hidden state commits the geometry of a shown sidebar. The root
+  // split var, which the window and #browser backgrounds read behind the host, is held
+  // at the wider of the two so the host never fades over the narrower colour.
+  // Returns { props, rootSplit }: the custom properties to set for the slide and the
+  // root split var's final value, or null without the hooks.
+  function commitToolbarForSidebarPush(width) {
+    if (!syncSidebarChromeDividerForSidebarWidth) return null;
+    const root = document.documentElement;
+    const divider = document.getElementById('bento-sidebar-chrome-divider');
+    const length = (el, name) => Number.parseFloat(el?.style.getPropertyValue(name)) || 0;
+    const read = () => ({
+      divider: divider && !divider.hidden ? Number.parseFloat(divider.style.left) || 0 : null,
+      split: length(document.getElementById('nav-bar'), '--bento-toolbar-divider-x'),
+      rootSplit: length(root, '--bento-toolbar-divider-x'),
+      nav: length(
+        document.getElementById('nav-bar-customization-target'),
+        '--bento-toolbar-nav-offset',
+      ),
+    });
+    const from = read();
+    const wasHidden = currentSidebarHidden;
+    currentSidebarHidden = false;
+    try {
+      prepareSidebarChromeDividerForSidebarResize?.();
+      prepareToolbarNavigationForSidebarResize?.();
+      prepareBookmarksToolbarForSidebarResize?.();
+      syncSidebarChromeDividerForSidebarWidth(width);
+      syncToolbarNavigationForSidebarWidth?.(width);
+      syncBookmarksToolbarForSidebarWidth?.(width);
+    } finally {
+      currentSidebarHidden = wasHidden;
+    }
+    const to = read();
+    root.style.setProperty(
+      '--bento-toolbar-divider-x',
+      Math.max(from.rootSplit, to.rootSplit) + 'px',
+    );
+    const dividerShift = from.divider === null || to.divider === null ? 0 : from.divider - to.divider;
+    return {
+      props: {
+        '--bento-sidebar-push-divider-shift': dividerShift + 'px',
+        '--bento-sidebar-push-nav-from': from.nav + 'px',
+        '--bento-sidebar-push-split-from': from.split + 'px',
+        '--bento-sidebar-push-split-shift': from.split - to.split + 'px',
+      },
+      rootSplit: to.rootSplit,
+    };
+  }
+
+  // Starts the slide for a toggle to `collapsed`. `wasHidden` is the expand out of
+  // the hidden state, where the host holds no layout space at all. Returns false
+  // when there is nothing to slide (no measurable rail or distance); the caller
+  // then switches instantly.
+  function startSidebarPush(host, collapsed, wasHidden) {
+    const rail = sidebarRailWidth();
+    if (!(rail > 0)) return false;
+    // Measured before anything below touches layout. delta is the distance the
+    // host's right edge and the page's left edge travel: expanded width minus the
+    // layout space the host holds at the narrow end.
+    const expandedWidth = collapsed
+      ? host.getBoundingClientRect().width
+      : sidebarExpandedWidth(host);
+    const narrowFootprint = collapsed || !wasHidden ? rail : 0;
+    const delta = expandedWidth - narrowFootprint;
+    if (!(delta >= 1)) return false;
+
+    const root = document.documentElement;
+    const direction = collapsed ? 'collapse' : 'expand';
+    const toolbar = commitToolbarForSidebarPush(collapsed ? rail : expandedWidth);
+    const pageEls = sidebarPushPageElements(host);
+    sidebarPush = { host, collapsed, pageEls, rootSplit: toolbar?.rootSplit };
+    root.style.setProperty(SIDEBAR_PUSH_DELTA_PROP, delta + 'px');
+    for (const [name, value] of Object.entries(toolbar?.props ?? {})) {
+      root.style.setProperty(name, value);
+    }
+    // An expand widens the host now; a collapse keeps it wide until the slide ends.
+    if (!collapsed) host.classList.remove('bento-sidebar-collapsed');
+    for (const el of pageEls) el.classList.add(SIDEBAR_PUSH_PAGE_CLASS);
+    root.setAttribute(SIDEBAR_PUSH_ATTR, direction);
+    // Read after the styles above: a missing or disabled animation measures 0 and
+    // settles at once, with the final state and no frames in between.
+    afterMotion(
+      host,
+      SIDEBAR_PUSH_KEY,
+      { animations: [SIDEBAR_PUSH_SLIDE_ANIMATION[direction]] },
+      () => settleSidebarPush({ fade: collapsed }),
+    );
+    return true;
+  }
+
+  // Ends the running push in its final state: the margin, transforms and classes
+  // go and the host takes its target width in the same style change. With `fade`
+  // (a collapse reaching its end) the host then fades back in from the opacity the
+  // slide left it at. Also the way to interrupt a push: a new toggle settles the
+  // running one first, so no transform, margin, opacity or class outlives it.
+  function settleSidebarPush({ fade = false } = {}) {
+    const push = sidebarPush;
+    if (!push) return;
+    sidebarPush = null;
+    const { host, collapsed, pageEls, rootSplit } = push;
+    const root = document.documentElement;
+    cancelMotion(host, SIDEBAR_PUSH_KEY);
+    host.classList.toggle('bento-sidebar-collapsed', collapsed);
+    for (const el of pageEls) el.classList.remove(SIDEBAR_PUSH_PAGE_CLASS);
+    root.removeAttribute(SIDEBAR_PUSH_ATTR);
+    for (const name of SIDEBAR_PUSH_PROPS) root.style.removeProperty(name);
+    // The split the backgrounds behind the host read was held wide for the slide.
+    if (rootSplit !== undefined) {
+      root.style.setProperty('--bento-toolbar-divider-x', rootSplit + 'px');
+    }
+    if (fade) {
+      host.classList.add(SIDEBAR_PUSH_FADE_CLASS);
+      afterMotion(host, SIDEBAR_PUSH_KEY, { animations: [SIDEBAR_PUSH_FADE_ANIMATION] }, () =>
+        host.classList.remove(SIDEBAR_PUSH_FADE_CLASS),
+      );
+    }
+    syncGeometryAfterSidebarPush();
+  }
+
+  // Whether the sidebar is collapsed or sliding toward collapsed: what a toggle flips.
+  function isSidebarCollapsedTarget(host) {
+    if (sidebarPush) return sidebarPush.collapsed;
+    return !!host?.classList.contains('bento-sidebar-collapsed');
+  }
+
+  function clearSidebarPushFade(host) {
+    cancelMotion(host, SIDEBAR_PUSH_KEY);
+    host.classList.remove(SIDEBAR_PUSH_FADE_CLASS);
+  }
+
+  // The one refresh of everything that was held off while the push carried
+  // transforms: the sidebar divider, toolbar split, toolbar navigation and
+  // bookmarks toolbar alignment listen for the settled event, and the flat panel
+  // layout, splitters, overlays and strip scrollbar are redone against the final
+  // untransformed geometry so the panels end exactly aligned.
+  function syncGeometryAfterSidebarPush() {
+    finishSidebarChromeDividerSidebarResize?.();
+    finishToolbarNavigationSidebarResize?.();
+    finishBookmarksToolbarSidebarResize?.();
+    window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
+    try {
+      if (!refreshFlatPanelLayoutFromLiveState()) {
+        syncInterPanelSplitters();
+        updateFlatLayoutOverlayPositions(window.gBrowser?.tabpanels, currentPanelLayoutGeometry);
+        updateStripScrollbar();
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar push layout sync failed:', err);
+    }
+  }
+
+  // `hidden` is where sidebarHidden is heading in the same payload: a toggle that
+  // hides the sidebar, or that stays hidden, belongs to the hidden slide and
+  // switches instantly. The first apply at boot and reduced motion do too.
+  function applyChromeSidebarCollapsed(collapsed, { hidden = currentSidebarHidden } = {}) {
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
-    // First apply at boot: skip the CSS width transition so the
-    // persisted state paints at its target width immediately. Without
-    // this the user sees the sidebar mount at 300px (the patch's inline
-    // width) and animate to 4rem once the title-IPC arrives — reads as
-    // a flash. Subsequent toggles get the transition for the smooth
-    // collapse/expand UX.
-    if (!host.__bentoSidebarApplied) {
-      host.__bentoSidebarApplied = true;
-      const wasCollapsed = host.classList.contains('bento-sidebar-collapsed');
-      if (wasCollapsed !== collapsed) {
-        host.style.transition = 'none';
+    const first = !host.__bentoSidebarApplied;
+    host.__bentoSidebarApplied = true;
+    // BENTO_PANELS carries the setting on every payload; only a change toggles.
+    if (collapsed !== isSidebarCollapsedTarget(host)) {
+      const wasHidden = host.classList.contains('bento-sidebar-hidden');
+      settleSidebarPush();
+      clearSidebarPushFade(host);
+      const slide =
+        !first && !hidden && !window.matchMedia(SIDEBAR_PUSH_REDUCED_MOTION).matches;
+      if (!slide || !startSidebarPush(host, collapsed, wasHidden)) {
         host.classList.toggle('bento-sidebar-collapsed', collapsed);
-        // Force layout commit so the next style change is treated as a
-        // new transition, not a continuation of the suppressed one.
-
-        host.offsetWidth;
-        host.style.removeProperty('transition');
       }
-    } else {
-      host.classList.toggle('bento-sidebar-collapsed', collapsed);
     }
     // Hide the resize splitter when collapsed — there's nothing to drag
     // when the rail is at its minimum width.
@@ -15962,6 +16228,10 @@
     currentSidebarHidden = hidden === true;
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
+    // A push still running when the sidebar is hidden or shown settles first, so
+    // the hidden slide starts from a plain rail or expanded host. An expand out
+    // of the hidden state starts in applyChromeSidebarCollapsed and is left alone.
+    if (currentSidebarHidden) settleSidebarPush();
     document.documentElement.toggleAttribute('bento-sidebar-hidden', currentSidebarHidden);
     if (!currentSidebarHidden) {
       host.classList.remove('bento-sidebar-hidden-revealed');

@@ -6,6 +6,9 @@ When changing core functionality, manually verify at least the affected subset:
 
 - shell menus and submenus (kebab, context, New menu with nested items) in a
   running browser after any Vite chunking or Mux/React Aria change;
+- sidebar collapse and expand with Cmd+S (the push slide; the checklist is under
+  "Sidebar collapse and expand" in [workspaces.md](workspaces.md#sidebar-collapse-and-expand)),
+  including repeated presses, hide mode, reduced motion and a cold start collapsed;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;
