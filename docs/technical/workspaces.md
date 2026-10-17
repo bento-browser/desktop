@@ -301,8 +301,9 @@ equals the button box including fractional flex widths and glides between the
 wide New button and the square Search button (`transform` and `width`, the same
 `--bento-duration-base` / `--bento-easing-snappy` slide as the list). Height,
 radius and fill come from CSS (`100%`, `--muxui-semantic-shape-radius-s`,
-`--bento-surface-hover`). It is disabled during a tab or folder drag and while
-the search field covers the buttons (`searchOpen`). In the collapsed rail the
+`--bento-surface-hover`). It is disabled during a tab or folder drag, while
+the search field covers the buttons (`searchOpen`), and while the New menu is
+open, so the button's open fill is not stacked on the hover fill. In the collapsed rail the
 bar is one square holding the New button and the Search trigger is
 `display: none`, so a hover there sets the New square, and a Search target with
 no box hides the highlight. Both buttons paint no hover fill of their own (the

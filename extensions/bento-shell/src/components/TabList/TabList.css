@@ -470,6 +470,7 @@
   --muxui-button-background-hover: transparent;
 }
 
+/* TabList sets data-bento-menu-open while the New menu is up in the chrome overlay. */
 .bento-tab-list__new-action-button[data-bento-menu-open='true'] {
   background-color: var(--bento-surface-active);
 }

@@ -173,6 +173,14 @@ ghost variant still reads `--muxui-button-background-hover` for both states, or
 the buttons stack a second fill over the highlight (about twice a hovered
 row's darkening).
 
+While the New menu is up in the chrome overlay, `TabList` sets
+`data-bento-menu-open='true'` and `aria-expanded` on the New `Button`, and the
+unlayered `[data-bento-menu-open='true']` rule paints `--bento-surface-active`
+over the highlight (see
+[overlay-documents.md](technical/overlay-documents.md#menu-open-state-of-the-sidebar-new-button)).
+Mux already drops its pressed fill under `aria-expanded='true'`, so the open fill
+is the only one on the button. Do not add a second open-state selector.
+
 Tab and folder rows paint no plain `:hover` fill. `TabList` slides one hover
 highlight behind the rows instead (see
 [workspaces.md](technical/workspaces.md)). A tab row's hover actions are Mux

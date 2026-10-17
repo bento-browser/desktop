@@ -61,7 +61,8 @@ const placeAction: Place = (highlight, button) => {
  * (closed tab, folder collapse, virtualizer recycling) rather than sitting at a
  * stale offset. A ResizeObserver re-syncs layout changes that are not commits,
  * such as the sidebar collapse resizing the action bar. `disabled` (a drag in
- * progress, search open) hides it and drops the tracked target.
+ * progress, search open, the New menu open) hides it and drops the tracked
+ * target.
  */
 function useHoverHighlight(
   containerRef: RefObject<HTMLElement | null>,

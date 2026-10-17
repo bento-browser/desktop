@@ -10,6 +10,7 @@ import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixture
 import { makeFolder, seedTabFolders } from '../../state/__fixtures__/tabFolders';
 import { useWorkspacesStore } from '../../state/workspaces';
 import { useTabsStore } from '../../state/tabs';
+import { useUiStore } from '../../state/ui';
 
 const noop = () => {};
 const defaultTabListProps = {
@@ -120,6 +121,27 @@ export const HugeStress = () => {
 };
 
 HugeStress.storyName = '1000 tabs (extreme stress; should still scroll at 60fps)';
+
+// The chrome overlay's menu is not rendered in Ladle; seeding the store is what
+// bridge/newMenu.ts does when the overlay shows the New menu.
+export const NewMenuOpen = () => {
+  useEffect(() => {
+    // The readiness gate needs tabs, folders and the workspace's panels hydrated.
+    seedDefaultWorkspaces();
+    seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 5 }], 'w-personal');
+    seedTabFolders([]);
+    seedPanelsHydrated(['w-personal']);
+    useUiStore.getState().setNewMenuContextId('story-menu');
+    return () => useUiStore.getState().setNewMenuContextId(null);
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabList {...defaultTabListProps} />
+    </SidebarFrame>
+  );
+};
+
+NewMenuOpen.storyName = 'New menu open';
 
 export const NarrowSidebar = () => {
   useEffect(() => {
