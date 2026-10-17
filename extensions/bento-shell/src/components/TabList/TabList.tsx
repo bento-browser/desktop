@@ -15,6 +15,7 @@ import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders'
 import { TabRow } from '../TabRow/TabRow';
 import { FolderRow } from '../FolderRow/FolderRow';
 import { TabListSkeleton } from './TabListSkeleton';
+import { rowHighlightProps, useRowHoverHighlight } from './useRowHoverHighlight';
 import {
   buildDisplayRows,
   displayRowsLayoutKey,
@@ -281,6 +282,11 @@ function TabListPane({
   // target so the indicator hides.
   const [dropSlot, setDropSlot] = useState<number | null>(null);
   const [folderDropTargetId, setFolderDropTargetId] = useState<string | null>(null);
+  // Sliding hover highlight (see useRowHoverHighlight); hidden for the whole drag.
+  const hoverHighlightRef = useRowHoverHighlight(
+    viewportRef,
+    dragSourceId !== null || dragFolderId !== null,
+  );
 
   const updateScrollMetrics = useCallback(() => {
     const el = parentRef.current;
@@ -1060,6 +1066,15 @@ function TabListPane({
           }
           style={viewportStyle}
         >
+          {/* Painted behind the rows (earlier in DOM order); positioned by
+              useRowHoverHighlight. Absent while search replaces the rows. */}
+          {!searchFiltering && (
+            <div
+              ref={hoverHighlightRef}
+              className="bento-tab-list__hover-highlight"
+              aria-hidden="true"
+            />
+          )}
           {dropSlot !== null && (dragSourceId !== null || dragFolderId !== null) && (
             <div
               className="bento-tab-list__drop-indicator"
@@ -1079,6 +1094,7 @@ function TabListPane({
                     key={rowKey(row)}
                     className="bento-tab-list__row"
                     style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                    {...rowHighlightProps(vi.start)}
                   >
                     <FolderRow
                       folder={folder}
@@ -1096,11 +1112,13 @@ function TabListPane({
 
               const id = row.kind === 'tab' || row.kind === 'peek' ? row.id : undefined;
               if (id === undefined) return null;
+              const indented = row.kind === 'peek' || row.indent;
               return (
                 <div
                   key={rowKey(row)}
                   className="bento-tab-list__row"
                   style={{ transform: `translateY(${vi.start}px)`, height: `${rowHeight}px` }}
+                  {...rowHighlightProps(vi.start, { indented, inert: removing.has(id) })}
                 >
                   <TabRow
                     id={id}
@@ -1108,7 +1126,7 @@ function TabListPane({
                     selected={selectedIds.has(id)}
                     removing={removing.has(id)}
                     dragging={id === dragSourceId}
-                    indent={row.kind === 'peek' || row.indent}
+                    indent={indented}
                     onActivate={onSelectClick}
                     onClose={onClose}
                     onOpenInSidePanel={onOpenInSidePanel}

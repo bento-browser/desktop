@@ -210,6 +210,10 @@ renamed or converted into side panels from the same menu.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
+Hovering a tab or folder row in the sidebar list shows one neutral highlight
+that glides from row to row and fades out when the pointer leaves the list. It
+is hidden while dragging a row and does not slide when the user has asked the
+system to reduce motion.
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.

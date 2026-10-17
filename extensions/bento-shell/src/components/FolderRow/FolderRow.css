@@ -12,6 +12,8 @@
     min-height: 0;
     padding-inline: var(--space-2xs);
     border-radius: var(--radius-s);
+    /* Inset so the outline takes no layout space; the drop-target state replaces it. */
+    box-shadow: inset 0 0 0 var(--bento-border-hairline) var(--muxui-semantic-color-neutral-30);
     color: var(--neutral-90);
     cursor: pointer;
     user-select: none;
@@ -51,10 +53,8 @@
       opacity var(--bento-duration-base) var(--bento-easing-standard);
   }
 
-  .bento-folder-row:hover {
-    background-color: var(--bento-surface-hover);
-  }
-
+  /* No plain :hover fill: TabList's sliding hover highlight paints it behind
+     the row. The drop-target state below paints over that highlight. */
   .bento-folder-row--dragging {
     opacity: 0.4;
   }

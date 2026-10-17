@@ -60,6 +60,14 @@
     --bento-tab-row-height: 2rem;
     --bento-tab-row-font-size: var(--text-xs-font-size);
     --bento-tab-folder-indent: var(--space-s);
+    /* TabRow hover actions: an inset, then one Mux IconButton size="sm" per
+       action (Convert to panel, Close; the active row hides Convert). TabRow
+       masks the title by the same width and fade, so these must track the real
+       button size (the IconButton reads --muxui-control-size-sm) and the inset
+       the actions are padded by. */
+    --bento-tab-row-action-size: var(--muxui-control-size-sm);
+    --bento-tab-row-actions-inset: var(--muxui-semantic-layout-inset-large);
+    --bento-tab-row-actions-fade: var(--muxui-semantic-layout-inset-medium);
     --bento-sidebar-inline-padding: var(--space-3xs);
     --bento-sidebar-collapsed-inline-padding: var(--space-2xs);
     --bento-sidebar-collapsed-control-size: var(--bento-tab-row-height);
@@ -152,32 +160,18 @@
     --bento-surface-hover: color-mix(in srgb, var(--neutral-90) 8%, transparent);
     --bento-surface-active: color-mix(in srgb, var(--neutral-90) 16%, transparent);
 
-    /* Solid composites of the surface overlays painted over --bento-brand-bg.
-       Use these where you need an OPAQUE color that visually matches the
-       hover/active surface on a brand-bg row — e.g. a gradient backstop
-       behind a TabRow's hover actions, where overlapping the translucent
-       --bento-surface-hover would double-stack and read darker. */
+    /* Solid composite of the hover surface painted over --bento-brand-bg.
+       Use it where you need an OPAQUE color that visually matches the
+       hover surface on a brand-bg row — e.g. skeleton bars or the
+       search-result hover backstop, where overlapping the translucent
+       --bento-surface-hover would double-stack and read darker. Tab rows no
+       longer use it: their hover actions mask the title instead of painting
+       a backstop (see TabRow.css), so a gliding hover highlight can sit under
+       the buttons. */
     --bento-surface-hover-solid: color-mix(
       in srgb,
       var(--bento-brand-bg) 92%,
       var(--neutral-90) 8%
-    );
-    --bento-surface-active-solid: color-mix(
-      in srgb,
-      var(--bento-brand-bg) 84%,
-      var(--neutral-90) 16%
-    );
-
-    /* Active + hovered surface — the row gets BOTH active class and :hover
-       pseudo. We want this to read as a slightly stronger version of
-       active (24% = active 16% + hover 8%), giving the user feedback that
-       the active row is interactive without making it noisy. The matching
-       solid composite lets gradient backstops blend perfectly. */
-    --bento-surface-active-hover: color-mix(in srgb, var(--neutral-90) 24%, transparent);
-    --bento-surface-active-hover-solid: color-mix(
-      in srgb,
-      var(--bento-brand-bg) 76%,
-      var(--neutral-90) 24%
     );
 
     /* Borders. Hairline width is a CSS convention; consumers write
