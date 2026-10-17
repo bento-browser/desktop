@@ -491,15 +491,15 @@
    collapsed, which already reserves the collapsed control plus
    symmetric rail padding. Keep the chrome host on this single token
    so live sidebar/window resize does not get an extra calc/max()
-   width path; the transition is disabled below while resizing. */
+   width path. The width never transitions: collapse and expand run
+   as a transform slide (see "Sidebar push" below), and the width
+   changes once, at a frame boundary of that slide. */
 #bento-shell-host {
   min-width: var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min)) !important;
   max-width: var(--bento-tab-strip-width-max) !important;
-  transition:
-    width var(--muxui-semantic-motion-reveal-transition),
-    min-width var(--muxui-semantic-motion-reveal-transition),
-    max-width var(--muxui-semantic-motion-reveal-transition);
 }
+/* The hidden host's slide-over transform transition is the only motion left on
+   the host; live resizing must not inherit it. */
 :root[bento-window-resizing='true'] #bento-shell-host,
 :root[bento-sidebar-resizing='true'] #bento-shell-host,
 #bento-shell-host.bento-shell-sidebar-resizing {
@@ -529,6 +529,194 @@
   z-index: 7;
   pointer-events: auto;
   transform: translateX(0);
+}
+/* Sidebar push (Cmd+S collapse and expand in 'collapse' mode).
+   applyChromeSidebarCollapsed in bento-shell-mount.js runs the slide:
+   - :root[bento-sidebar-push='collapse'|'expand'] for the length of the slide;
+   - --bento-sidebar-push-delta on :root, the expanded host width minus the layout
+     space the host holds at the narrow end (the rail, or 0 when the sidebar was
+     hidden);
+   - .bento-sidebar-push-page on every in-flow child of #browser right of the host
+     (the splitters, a native sidebar, the panel strip) and on the splitter
+     affordance. Together they are the page group.
+   The host keeps its expanded width for the whole slide and holds only the narrow
+   end's layout space through a negative right margin, stacked over the page. The
+   page lays out once, at its final geometry, and the group's transform hides the
+   difference: host and page group move as one strip, so the host's right edge and
+   the page's left edge never separate. Collapse slides the host left by delta and
+   the group from delta back to 0; expand slides the host in from -delta and the
+   group from 0 to delta, and the final layout replaces the transforms in one
+   frame. The host fades out over the last part of a collapse slide and back in
+   after its snap to the rail (.bento-sidebar-push-fade), and fades in over the
+   first part of an expand slide, so the shell's switch between the expanded and
+   rail layouts is never seen. Only transform and opacity animate; the fade is a
+   fraction of the reveal duration on the constant easing. */
+:root {
+  --bento-sidebar-push-delta: 0px;
+  --bento-sidebar-push-divider-shift: 0px;
+  --bento-sidebar-push-nav-from: 0px;
+  --bento-sidebar-push-split-from: 0px;
+  --bento-sidebar-push-split-shift: 0px;
+}
+:root[bento-sidebar-push] #bento-shell-host {
+  z-index: 5;
+  margin-right: calc(-1 * var(--bento-sidebar-push-delta)) !important;
+}
+:root[bento-sidebar-push] #bento-shell-splitter,
+:root[bento-sidebar-push] #bento-shell-splitter-affordance {
+  pointer-events: none;
+}
+:root[bento-sidebar-push='collapse'] #bento-shell-host {
+  animation:
+    bento-sidebar-push-host-collapse var(--muxui-semantic-motion-reveal-transition) both,
+    bento-sidebar-push-fade-out
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4)
+      var(--muxui-semantic-motion-constant-easing)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.6) both;
+}
+:root[bento-sidebar-push='expand'] #bento-shell-host {
+  animation:
+    bento-sidebar-push-host-expand var(--muxui-semantic-motion-reveal-transition) both,
+    bento-sidebar-push-fade-in
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4)
+      var(--muxui-semantic-motion-constant-easing) both;
+}
+#bento-shell-host.bento-sidebar-push-fade {
+  animation: bento-sidebar-push-fade-in
+    calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4)
+    var(--muxui-semantic-motion-constant-easing) both;
+}
+:root[bento-sidebar-push='collapse'] .bento-sidebar-push-page {
+  animation: bento-sidebar-push-page-collapse var(--muxui-semantic-motion-reveal-transition) both;
+}
+:root[bento-sidebar-push='expand'] .bento-sidebar-push-page {
+  animation: bento-sidebar-push-page-expand var(--muxui-semantic-motion-reveal-transition) both;
+}
+/* The toolbar band's share of the slide. commitToolbarForSidebarPush commits the
+   final geometry (divider position, toolbar split, Back/Forward/Reload offset) at
+   the start and sets the custom properties these start from, so each slides from
+   where it was:
+   - the divider line, by the distance it moved;
+   - Back, Forward, Reload and the panel navigator, which swap their margin offset
+     for a transform from the old offset to the new one, like during a sidebar drag
+     (their margin returns at the end, at the same place);
+   - the toolbar's sidebar-coloured segment, whose boundary is a gradient and cannot
+     move on the compositor. #nav-bar paints the final split, and a ::before between
+     its background and its controls covers the difference and slides: sidebar-
+     coloured up to the old split on a collapse, main-coloured from the old split
+     on an expand;
+   - the bookmarks toolbar, which starts at the strip's left edge, is part of the
+     page group (below). */
+:root[bento-sidebar-push] #bento-sidebar-chrome-divider {
+  animation: bento-sidebar-push-divider var(--muxui-semantic-motion-reveal-transition) both;
+}
+:root[bento-sidebar-push][bento-sidebar-addressbar='true']
+  #nav-bar-customization-target
+  > :is(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav) {
+  animation: bento-sidebar-push-nav var(--muxui-semantic-motion-reveal-transition) both;
+}
+:root[bento-sidebar-push][bento-sidebar-addressbar='true']
+  #nav-bar-customization-target
+  > #back-button {
+  margin-inline-start: 0 !important;
+}
+:root[bento-sidebar-push] #nav-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  animation: bento-sidebar-push-band var(--muxui-semantic-motion-reveal-transition) both;
+}
+:root[bento-sidebar-push='collapse'] #nav-bar::before {
+  left: 0;
+  width: var(--bento-sidebar-push-split-from);
+  background-color: var(--bento-toolbar-sidebar-bg);
+}
+:root[bento-sidebar-push='expand'] #nav-bar::before {
+  left: var(--bento-sidebar-push-split-from);
+  right: 0;
+  background-color: var(--bento-toolbar-main-bg);
+}
+/* Bento mode pins the bookmarks toolbar's own animation off; the push moves it. */
+:root[bento-sidebar-push='collapse'][bento-sidebar-addressbar='true'] #PersonalToolbar.bento-sidebar-push-page {
+  animation: bento-sidebar-push-page-collapse var(--muxui-semantic-motion-reveal-transition) both !important;
+}
+:root[bento-sidebar-push='expand'][bento-sidebar-addressbar='true'] #PersonalToolbar.bento-sidebar-push-page {
+  animation: bento-sidebar-push-page-expand var(--muxui-semantic-motion-reveal-transition) both !important;
+}
+@keyframes bento-sidebar-push-divider {
+  from {
+    transform: translateX(var(--bento-sidebar-push-divider-shift));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes bento-sidebar-push-nav {
+  from {
+    transform: translateX(var(--bento-sidebar-push-nav-from));
+  }
+  to {
+    transform: translateX(var(--bento-toolbar-nav-offset, 0px));
+  }
+}
+@keyframes bento-sidebar-push-band {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-1 * var(--bento-sidebar-push-split-shift)));
+  }
+}
+@keyframes bento-sidebar-push-host-collapse {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-1 * var(--bento-sidebar-push-delta)));
+  }
+}
+@keyframes bento-sidebar-push-host-expand {
+  from {
+    transform: translateX(calc(-1 * var(--bento-sidebar-push-delta)));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes bento-sidebar-push-page-collapse {
+  from {
+    transform: translateX(var(--bento-sidebar-push-delta));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes bento-sidebar-push-page-expand {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--bento-sidebar-push-delta));
+  }
+}
+@keyframes bento-sidebar-push-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes bento-sidebar-push-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 #bento-shell-splitter.bento-sidebar-collapsed {
   /* visibility:hidden (NOT display:none) so the splitter still

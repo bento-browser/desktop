@@ -289,8 +289,8 @@ Use this shape for new or changed touchpoints:
   below the centered overlay size,
   keeps the collapsed sidebar host width at one collapsed control plus
   symmetric collapsed-sidebar inline padding through the generated chrome token
-  and suppresses host width transitions during live
-  sidebar/window resize,
+  and has no host width transition (collapse and expand slide the host and the
+  page as one strip, see Chrome Layout Stylesheet),
   leaves the collapsed workspace-switcher section unpadded so its centered
   avatar trigger remains the same square size as the other collapsed rail
   controls,
@@ -978,13 +978,30 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `--muxui-semantic-motion-*` tokens that `bento-chrome-tokens.css` carries, instead
   of the removed `--bento-duration-*` and `--bento-easing-*` tokens and literal
   times; `--drag-drop-transition-duration` (Firefox's customize-mode property, set
-  in `bento-chrome-theme.css`) is the Mux reveal duration. The sidebar host width
-  transition in this sheet and the shell's collapse transitions use the same role,
-  so the rail and its host move together. `pnpm run lint:motion` checks both
-  sheets for raw times and easings. After a build, in the Browser Toolbox Console
+  in `bento-chrome-theme.css`) is the Mux reveal duration. `pnpm run lint:motion`
+  checks both sheets for raw times and easings. After a build, in the Browser
+  Toolbox Console
   `getComputedStyle(document.documentElement).getPropertyValue('--muxui-semantic-motion-reveal-transition-duration')`
-  is `200ms` with the default tokens, and collapsing and expanding the sidebar
-  moves the shell and the chrome host together.
+  is `200ms` with the default tokens.
+- Sidebar push (2026-10-17): Cmd+S collapse and expand no longer transition the
+  host width. `applyChromeSidebarCollapsed` in the mount script slides the host and
+  the in-flow children of `#browser` right of it as one strip with `transform` and
+  `opacity` (`:root[bento-sidebar-push]`, `.bento-sidebar-push-page`, the
+  `bento-sidebar-push-*` keyframes in this sheet), on the Mux reveal role, and
+  `#nav-bar::before` is used while it runs. Firefox surface depended on: the
+  children of `#browser` are laid out as flex items in document order with
+  `#bento-shell-host` first (`browser-box.inc.xhtml`), the page group is found by
+  computed style (`display`, `position`), not by id, and `#nav-bar`,
+  `#nav-bar-customization-target`, `#PersonalToolbar` and the native
+  Back/Forward/Reload ids keep their roles (all already used by the toolbar
+  alignment code). No private Firefox member is added, so the firefox-compat
+  registry has no new entry. Regression checks for future updates: in a build,
+  collapse and expand with Cmd+S and check that the sidebar, page, toolbar
+  controls and the toolbar's sidebar-coloured segment move together with no jump at
+  either end, that the panels are aligned after each toggle, and that
+  `document.documentElement.hasAttribute('bento-sidebar-push')` is false afterwards;
+  after a Firefox bump, re-read `browser-box.inc.xhtml` for added in-flow children
+  of `#browser` and for any `::before` or `::after` rule on `#nav-bar`.
 - Firefox 158.0 review (2026-10-14): `Loader::LoadStyleLink`,
   `LinkStyle::GetSheetForBindings` and `AppWindow::OnChromeLoaded` still exist;
   `Loader.cpp` changed only the stylesheet MIME-type diagnostic (`MimeNotCss`,
