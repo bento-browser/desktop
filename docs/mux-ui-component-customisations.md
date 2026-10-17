@@ -151,6 +151,20 @@ Tab and folder labels use the row's center alignment with single-line leading.
 Keep them free of relative vertical offsets: the former `top: 2px` adjustment
 put Mux text below the centered favicon and folder count.
 
+Tab and folder rows paint no plain `:hover` fill. `TabList` slides one hover
+highlight behind the rows instead (see
+[workspaces.md](technical/workspaces.md)). A tab row's hover actions are Mux
+`sm` ghost `IconButton`s over the title and paint no backstop: the title is
+masked out under them. The mask width is `--bento-tab-row-actions-inset` plus
+the visible button count (two, or one on the active row) times
+`--bento-tab-row-action-size`, which is `--muxui-control-size-sm`, with
+`--bento-tab-row-actions-fade` as the fade. After a Mux upgrade that changes the
+`sm` control size or IconButton padding, recheck the mask against the real
+actions width. The label foreground rules (default, selected, sleeping, active)
+stay unlayered because Mux text utilities are unlayered. A sleeping (discarded)
+label uses `--muxui-semantic-color-neutral-60`; keep any dark-mode value at or
+above 4.5:1 against the sidebar.
+
 Rollback Backup import uses public `FileTrigger` around its Mux button. Mux
 owns the hidden input and resets selection before reopening the picker; Bento
 retains the 10 MB limit, JSON parsing, preview, and dispatch behavior. Shortcuts

@@ -382,15 +382,12 @@
   color: var(--neutral-100);
 }
 
-/* Sleeping label: one step darker than the old 50% opacity read (about
- * neutral 55). The semantic scale inverts in dark mode, so darker is 60 in
- * light and 50 in dark. :where() keeps both below the active rule. */
+/* Sleeping label. Semantic neutral 60 is one step darker than the old 50%
+ * opacity read in light mode (#79716b, about 4.5:1). The scale inverts in dark
+ * mode, where 60 (#918b86, about 4.7:1) stays close to the old read: a darker
+ * dark step falls below 4.5:1 text contrast. Ordered before the active rule. */
 .bento-tab-row--discarded > .muxui-text {
   color: var(--muxui-semantic-color-neutral-60);
-}
-
-:where([data-muxui-color-scheme='dark']) .bento-tab-row--discarded > .muxui-text {
-  color: var(--muxui-semantic-color-neutral-50);
 }
 
 .bento-tab-row--active > .muxui-text {
