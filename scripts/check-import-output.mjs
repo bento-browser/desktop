@@ -13,6 +13,7 @@ import {
   SCRATCH_GIT_CONFIG,
 } from './firefox-patch-stack.mjs';
 import { readSeriesPaths } from './patch-series-paths.mjs';
+import { readEntry } from './read-entry.mjs';
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(process.env.BENTO_REPO_ROOT || scriptRoot);
@@ -137,16 +138,12 @@ function expectedSeriesEntries(paths) {
 }
 
 function liveEntry(relative) {
-  const absolute = path.join(engine, relative);
-  const stat = fs.lstatSync(absolute, { throwIfNoEntry: false });
-  if (!stat) return undefined;
-  if (!stat.isSymbolicLink() && !stat.isFile()) return { mode: 'not a file', oid: '' };
-  const content = stat.isSymbolicLink()
-    ? Buffer.from(fs.readlinkSync(absolute))
-    : fs.readFileSync(absolute);
+  const entry = readEntry(path.join(engine, relative));
+  if (!entry) return undefined;
+  if (!entry.content) return { mode: 'not a file', oid: '' };
   return {
-    mode: stat.isSymbolicLink() ? '120000' : stat.mode & 0o111 ? '100755' : '100644',
-    oid: git(['hash-object', '--no-filters', '--stdin'], { input: content }).trim(),
+    mode: entry.symlink ? '120000' : entry.mode & 0o111 ? '100755' : '100644',
+    oid: git(['hash-object', '--no-filters', '--stdin'], { input: entry.content }).trim(),
   };
 }
 
