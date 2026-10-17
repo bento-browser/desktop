@@ -27,8 +27,18 @@ export const usePanelsStore = create<PanelsState>((set) => ({
   hydratedWorkspaces: new Set(),
   apply: (workspaceId, tabIds) =>
     set((state) => {
+      const nextIds = new Set(tabIds);
+      // bento-tools re-emits panels/sync on every settings toggle. Keep the
+      // existing state object when the ids did not change so subscribers
+      // (TabList) do not re-render. Order counts: consumers iterate the Set
+      // (CommandPalette) and a panel reorder must reach them.
+      const current = state.byWorkspace.get(workspaceId);
+      if (current && state.hydratedWorkspaces.has(workspaceId) && current.size === nextIds.size) {
+        const currentIds = [...current];
+        if ([...nextIds].every((id, i) => id === currentIds[i])) return state;
+      }
       const nextByWorkspace = new Map(state.byWorkspace);
-      nextByWorkspace.set(workspaceId, new Set(tabIds));
+      nextByWorkspace.set(workspaceId, nextIds);
       let nextHydrated = state.hydratedWorkspaces;
       if (!nextHydrated.has(workspaceId)) {
         nextHydrated = new Set(nextHydrated);
