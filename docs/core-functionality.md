@@ -213,7 +213,10 @@ states.
 Hovering a tab or folder row in the sidebar list shows one neutral highlight
 that glides from row to row and fades out when the pointer leaves the list. It
 is hidden while dragging a row and does not slide when the user has asked the
-system to reduce motion.
+system to reduce motion. The New and Search buttons above the list share that
+look with their own highlight, which glides between the two buttons and stays
+inside the action bar; moving into the list fades it out as the row highlight
+fades in. It is hidden while Search is open.
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.

@@ -15,7 +15,11 @@ import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders'
 import { TabRow } from '../TabRow/TabRow';
 import { FolderRow } from '../FolderRow/FolderRow';
 import { TabListSkeleton } from './TabListSkeleton';
-import { rowHighlightProps, useRowHoverHighlight } from './useRowHoverHighlight';
+import {
+  rowHighlightProps,
+  useActionHoverHighlight,
+  useRowHoverHighlight,
+} from './useHoverHighlight';
 import {
   buildDisplayRows,
   displayRowsLayoutKey,
@@ -282,11 +286,13 @@ function TabListPane({
   // target so the indicator hides.
   const [dropSlot, setDropSlot] = useState<number | null>(null);
   const [folderDropTargetId, setFolderDropTargetId] = useState<string | null>(null);
-  // Sliding hover highlight (see useRowHoverHighlight); hidden for the whole drag.
-  const hoverHighlightRef = useRowHoverHighlight(
-    viewportRef,
-    dragSourceId !== null || dragFolderId !== null,
-  );
+  // Sliding hover highlights (see useHoverHighlight): one for the rows, one for
+  // the New and Search buttons. Both are hidden for the whole drag; the action
+  // one also while the search field covers the buttons.
+  const dragging = dragSourceId !== null || dragFolderId !== null;
+  const hoverHighlightRef = useRowHoverHighlight(viewportRef, dragging);
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const actionHighlightRef = useActionHoverHighlight(actionBarRef, dragging || searchOpen);
 
   const updateScrollMetrics = useCallback(() => {
     const el = parentRef.current;
@@ -1044,7 +1050,14 @@ function TabListPane({
   return (
     <div className={className}>
       <div className="bento-tab-list-pane__sticky-actions">
-        <div className="bento-tab-list__new-actions">
+        <div ref={actionBarRef} className="bento-tab-list__new-actions">
+          {/* Painted behind the buttons (they are positioned and later in DOM
+              order); positioned by useActionHoverHighlight. */}
+          <div
+            ref={actionHighlightRef}
+            className="bento-tab-list__action-highlight"
+            aria-hidden="true"
+          />
           {renderNewButton()}
           {renderSearchButton()}
           {searchOpen && renderSearchOverlay(searchFiltering)}
