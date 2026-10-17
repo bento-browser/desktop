@@ -22,6 +22,7 @@ import {
 import { isReleaseBuild } from './build-mode.mjs';
 import { extractArchive as extractBaselineArchive } from './firefox-patch-stack.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
+import { installBuiltinAddons } from './install-builtin-addons.mjs';
 import { activeMozconfigLines, mozconfigUpdaterState } from './update-readiness.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
@@ -773,6 +774,121 @@ test('hand edits to the git-ignored mozconfig are caught when the import precede
     // A mozconfig written by hand before any build is not Bento's either.
     fs.writeFileSync(mozconfig, 'ac_add_options --enable-something\n');
     assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+/** Replaces a repository add-on's build output (`files`: path inside dist/ -> content). */
+function writeAddonBuild(root, name, files) {
+  const dist = path.join(root, 'extensions', name, 'dist');
+  fs.rmSync(dist, { recursive: true, force: true });
+  for (const [file, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dist, file)), { recursive: true });
+    fs.writeFileSync(path.join(dist, file), content);
+  }
+}
+
+/** Sorted POSIX paths of the regular files under `directory`. */
+function filesUnder(directory) {
+  return fs.readdirSync(directory, { recursive: true })
+    .map((entry) => entry.split(path.sep).join('/'))
+    .filter((entry) => fs.statSync(path.join(directory, entry)).isFile())
+    .sort();
+}
+
+/** Repository add-ons bento-shell and bento-tools with a build, over an engine that has Firefox's extensions/moz.build. */
+async function addonFixture() {
+  const root = await fixture();
+  const engine = path.join(root, 'engine');
+  await fsp.mkdir(path.join(engine, 'browser', 'extensions'), { recursive: true });
+  await fsp.writeFile(path.join(engine, 'browser', 'extensions', 'moz.build'), '# upstream\nDIRS += ["webcompat"]\n');
+  git(engine, ['add', '-A']);
+  git(engine, ['commit', '-m', 'extensions']);
+  git(engine, ['update-ref', 'refs/bento/firefox-base/154.0', 'HEAD']);
+  for (const name of ['bento-shell', 'bento-tools']) {
+    await fsp.mkdir(path.join(root, 'extensions', name), { recursive: true });
+    await fsp.writeFile(
+      path.join(root, 'extensions', name, 'manifest.json'),
+      JSON.stringify({ applications: { gecko: { id: `${name}@test` } } }),
+    );
+  }
+  writeAddonBuild(root, 'bento-shell', { 'assets/index.js': 'build A', 'assets/chevron-right.js': 'chunk A' });
+  writeAddonBuild(root, 'bento-tools', { 'background.js': 'tools A' });
+  return root;
+}
+
+const addonFile = (root, name, ...segments) => engineFile(root, 'browser', 'extensions', name, ...segments);
+
+test('recorded state accepts changed, extra and missing add-on dist/ files, and still rejects every other edit', async () => {
+  const root = await addonFixture();
+  try {
+    installBuiltinAddons({ repoRoot: root });
+    await main(['record'], root);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // pnpm run shell:sync: a newer build overwrites recorded files in place, adds
+    // chunks the record never saw, and leaves a chunk the new build no longer has.
+    fs.writeFileSync(addonFile(root, 'bento-shell', 'dist', 'assets', 'index.js'), 'build B');
+    fs.writeFileSync(addonFile(root, 'bento-shell', 'dist', 'assets', 'dialog-motion.js'), 'chunk B');
+    fs.writeFileSync(addonFile(root, 'bento-tools', 'dist', 'background.js'), 'tools B');
+    fs.rmSync(addonFile(root, 'bento-shell', 'dist', 'assets', 'chevron-right.js'));
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // Edits outside add-on build output stay refused, then pass again once undone.
+    const refuses = (file, content) => {
+      // One read, no existence check first: ENOENT means there was no file to restore.
+      let before;
+      try {
+        before = fs.readFileSync(file);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, content);
+      assert.equal(verifyRecordedEngineState(root), false, path.relative(engineFile(root), file));
+      if (before === undefined) fs.rmSync(file);
+      else fs.writeFileSync(file, before);
+      assert.equal(verifyRecordedEngineState(root), true, `${path.relative(engineFile(root), file)} undone`);
+    };
+    refuses(engineFile(root, 'toolkit', 'moz.build'), 'hand edit\n');
+    refuses(addonFile(root, 'bento-shell', 'manifest.json'), 'hand edit');
+    refuses(addonFile(root, 'bento-shell', 'jar.mn'), 'hand edit');
+    // Only the dist/ directory is exempt, not a sibling that shares its prefix, and
+    // not the dist/ of an add-on Bento does not own.
+    refuses(addonFile(root, 'bento-shell', 'dist-extra', 'x.js'), 'x');
+    refuses(addonFile(root, 'webcompat', 'dist', 'x.js'), 'x');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an import after shell:sync leaves exactly the repository build in each add-on dist/', async () => {
+  const root = await addonFixture();
+  try {
+    installBuiltinAddons({ repoRoot: root });
+    await main(['record'], root);
+
+    // shell:sync copies each build over whatever the engine already holds, so chunks
+    // from earlier builds stay next to the newest ones.
+    writeAddonBuild(root, 'bento-shell', { 'assets/index.js': 'build C', 'assets/overlay-positioning.js': 'chunk C' });
+    const engineDist = addonFile(root, 'bento-shell', 'dist');
+    fs.cpSync(path.join(root, 'extensions', 'bento-shell', 'dist'), engineDist, { recursive: true });
+    fs.writeFileSync(path.join(engineDist, 'assets', 'dialog-motion.js'), 'chunk B');
+    assert.deepEqual(filesUnder(engineDist), [
+      'assets/chevron-right.js',
+      'assets/dialog-motion.js',
+      'assets/index.js',
+      'assets/overlay-positioning.js',
+    ]);
+
+    // The import pipeline verifies, installs the add-ons, then records.
+    assert.equal(verifyRecordedEngineState(root), true);
+    installBuiltinAddons({ repoRoot: root });
+    await main(['record'], root);
+    assert.deepEqual(filesUnder(engineDist), ['assets/index.js', 'assets/overlay-positioning.js']);
+    assert.equal(fs.readFileSync(path.join(engineDist, 'assets', 'index.js'), 'utf8'), 'build C');
+    assert.equal(verifyRecordedEngineState(root), true);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

@@ -9,6 +9,16 @@
   color-scheme: light dark;
 }
 
+/* Native parts (scrollbars, form controls) follow Bento's resolved UI mode.
+ * The page's preferred scheme can track the content color mode instead. */
+:root[data-color-mode='light'] {
+  color-scheme: light;
+}
+
+:root[data-color-mode='dark'] {
+  color-scheme: dark;
+}
+
 html,
 body {
   margin: 0;

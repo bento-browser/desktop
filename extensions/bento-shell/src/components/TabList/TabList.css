@@ -193,12 +193,70 @@
     justify-content: center;
   }
 
+  /* Hover highlight: the single plain hover fill for tab and folder rows.
+     useRowHoverHighlight moves it with an inline translateY and toggles
+     data-visible (shown) / data-indented (folder child). It sits first in the
+     viewport so every row paints over it: active, selected and drop-target rows
+     keep their own backgrounds, and plain rows are transparent. Geometry mirrors
+     the row: full row height, row radius, the folder indent, and the centered
+     square in the collapsed rail.
+
+     The slide, width and margin transitions exist only while visible, so a fresh
+     show (the hook flushes the new position first) appears in place and only
+     fades in; hiding fades out. The fill is translucent --bento-surface-hover,
+     and the row's hover actions paint no backstop of their own (TabRow masks
+     the title under them), so the highlight shows through the button area. */
+  .bento-tab-list__hover-highlight {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--bento-tab-row-height);
+    border-radius: var(--muxui-semantic-shape-radius-s);
+    background-color: var(--bento-surface-hover);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
+  }
+
+  .bento-tab-list__hover-highlight[data-visible] {
+    opacity: 1;
+    transition:
+      opacity var(--bento-duration-fast) var(--bento-easing-standard),
+      transform var(--bento-duration-base) var(--bento-easing-snappy),
+      width
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        ),
+      margin-inline-start
+        var(
+          --bento-sidebar-collapse-transition,
+          var(--bento-duration-base) var(--bento-easing-standard)
+        );
+  }
+
+  .bento-tab-list__hover-highlight[data-indented] {
+    margin-inline-start: var(--bento-tab-folder-indent);
+    width: calc(100% - var(--bento-tab-folder-indent));
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list__hover-highlight {
+    width: var(--bento-tab-row-height);
+    margin-inline-start: calc((100% - var(--bento-tab-row-height)) / 2);
+  }
+
   /* Reduced motion: skip the slide. The drop indicator's instant
-     reorder still reads clearly — it just snaps instead of gliding. */
+     reorder still reads clearly — it just snaps instead of gliding. The
+     hover highlight keeps its short fade but jumps between rows. */
   @media (prefers-reduced-motion: reduce) {
     .bento-tab-list__viewport--top-surface::before,
     .bento-tab-list__row {
       transition: none;
+    }
+
+    .bento-tab-list__hover-highlight[data-visible] {
+      transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
     }
   }
 

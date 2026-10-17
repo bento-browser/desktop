@@ -2,9 +2,21 @@
  * rows insert a compact speaker control before the favicon. Hover actions are
  * absolutely positioned over the title's right edge — they appear on
  * hover/active but never reserve grid space (which would force the title to
- * truncate earlier even when buttons are invisible). */
+ * truncate earlier even when buttons are invisible). The actions paint no
+ * background: the title is masked out under them instead, so whatever the row
+ * composites over (TabList's sliding hover highlight, a selected tint, the
+ * active fill) shows through the button area. */
 @layer bento.components {
   .bento-tab-row {
+    /* Width of the hover actions (inset + one sm button per action), which is
+       also how far the title is masked in from the row's right edge. The active
+       row has no Convert button. */
+    --bento-tab-row-action-count: 2;
+    --bento-tab-row-actions-width: calc(
+      var(--bento-tab-row-actions-inset) +
+        (var(--bento-tab-row-action-count) * var(--bento-tab-row-action-size))
+    );
+
     display: grid;
     grid-template-columns: 0.625rem minmax(0, 1fr);
     position: relative;
@@ -89,11 +101,12 @@
     width: calc(100% - var(--bento-tab-folder-indent));
   }
 
-  .bento-tab-row:hover {
-    background-color: var(--bento-surface-hover);
-  }
-
+  /* No plain :hover fill: TabList's sliding hover highlight paints it behind
+     the row. Active rows are opaque and cover it; selected rows are translucent
+     and composite over it. */
   .bento-tab-row--active {
+    --bento-tab-row-action-count: 1;
+
     background-color: var(--color-60);
     color: var(--color-60-fg);
   }
@@ -109,12 +122,11 @@
       inset 0 0 0 1px color-mix(in srgb, var(--bento-workspace-accent) 36%, transparent);
   }
 
+  /* Hovered selected row: a stronger accent tint over the highlight. The
+     highlight already supplies the hover tint, so mixing --bento-surface-hover
+     in here would stack it twice and read darker than a plain hovered row. */
   .bento-tab-row--selected:hover {
-    background-color: color-mix(
-      in srgb,
-      var(--bento-workspace-accent) 20%,
-      var(--bento-surface-hover)
-    );
+    background-color: color-mix(in srgb, var(--bento-workspace-accent) 20%, transparent);
   }
 
   .bento-tab-row--active.bento-tab-row--selected {
@@ -154,17 +166,14 @@
     height: var(--bento-favicon-size);
   }
 
-  /* Discarded (sleeping) — dim the favicon and the title so the row reads
-     as out-of-memory at a glance. Active discarded shouldn't happen in
-     practice (Firefox wakes a tab on activation) but we don't bother
-     guarding the modifier — the active style would override the dim
-     anyway via specificity. */
+  /* Discarded (sleeping) — dim the favicon so the row reads as
+     out-of-memory at a glance. The title's solid dim color is unlayered
+     below. Active discarded shouldn't happen in practice (Firefox wakes a
+     tab on activation) but we don't bother guarding the modifier — the
+     active style would override the dim anyway via specificity. */
   .bento-tab-row--discarded .bento-tab-row__favicon {
     opacity: 0.3;
     filter: grayscale(1);
-  }
-  .bento-tab-row--discarded > .muxui-text {
-    opacity: 0.5;
   }
 
   .bento-tab-row--has-audio-control {
@@ -200,9 +209,14 @@
     line-height: 1;
     margin: 0;
     align-self: center;
+    /* mask-image is discrete: the mask applies at once on hover and, through
+       the delay below, outlasts the actions' fade-out so the title does not
+       reappear under the fading buttons. Hover and active set the delay to 0. */
+    --bento-tab-row-mask-linger: var(--bento-duration-fast);
     transition:
       color var(--bento-duration-fast) var(--bento-easing-standard),
-      opacity var(--bento-duration-base) var(--bento-easing-standard);
+      opacity var(--bento-duration-base) var(--bento-easing-standard),
+      mask-image 0s linear var(--bento-tab-row-mask-linger) allow-discrete;
   }
 
   .bento-tab-row__rename-input {
@@ -239,17 +253,12 @@
     gap: 0;
     opacity: 0;
     transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
-    /* Gradient backstop matching the row's effective hover bg color
-       (composited brand-bg + surface-hover) so the title text fades
-       smoothly into the same color the row is painted with — looks
-       like the title dissolves rather than being covered by a tinted
-       gradient swatch. */
-    padding-left: var(--space-s);
-    background: linear-gradient(
-      to right,
-      transparent,
-      var(--bento-surface-hover-solid) var(--space-xs)
-    );
+    /* No background. A painted (opaque) backstop would show as a solid block
+       around the buttons that arrives and leaves on its own timing, apart from
+       the gliding hover highlight; the title is masked out instead (rule below
+       the actions section), so the button hover fills composite over whatever
+       the row shows. */
+    padding-left: var(--bento-tab-row-actions-inset);
   }
 
   .bento-tab-row__action-tooltip {
@@ -302,39 +311,25 @@
     color: var(--color-60-fg);
   }
 
-  .bento-tab-row--active .bento-tab-row__actions {
-    background: linear-gradient(to right, transparent, var(--color-60) var(--space-xs));
-  }
-
-  .bento-tab-row--active:hover .bento-tab-row__actions {
-    background: linear-gradient(to right, transparent, var(--color-60) var(--space-xs));
-  }
-
-  .bento-tab-row--selected .bento-tab-row__actions {
-    background: linear-gradient(
-      to right,
-      transparent,
-      color-mix(in srgb, var(--bento-brand-bg) 84%, var(--bento-workspace-accent) 16%)
-        var(--space-xs)
-    );
-  }
-
-  .bento-tab-row--selected:hover .bento-tab-row__actions {
-    background: linear-gradient(
-      to right,
-      transparent,
-      color-mix(in srgb, var(--bento-workspace-accent) 20%, var(--bento-surface-hover-solid))
-        var(--space-xs)
-    );
-  }
-
-  .bento-tab-row--active.bento-tab-row--selected .bento-tab-row__actions {
-    background: linear-gradient(to right, transparent, var(--color-60) var(--space-xs));
-  }
-
   .bento-tab-row:hover .bento-tab-row__actions,
   .bento-tab-row--active .bento-tab-row__actions {
     opacity: 1;
+  }
+
+  /* Title under the actions: transparent for the actions' own width, ramping
+     back to opaque over --bento-tab-row-actions-fade starting at the actions'
+     left edge (measured from the right, since the title ends at the row's right
+     edge). Applied exactly while the actions are shown. Only the mask's alpha
+     matters; 'canvas' is just an opaque system color keyword. */
+  .bento-tab-row:hover > .muxui-text,
+  .bento-tab-row--active > .muxui-text {
+    --bento-tab-row-mask-linger: 0s;
+
+    mask-image: linear-gradient(
+      to left,
+      transparent calc(var(--bento-tab-row-actions-width) - var(--bento-tab-row-actions-fade)),
+      canvas var(--bento-tab-row-actions-width)
+    );
   }
 
   /* ─── Collapsed sidebar — favicon-only ──────────────────────────
@@ -385,6 +380,14 @@
 
 .bento-tab-row--selected > .muxui-text {
   color: var(--neutral-100);
+}
+
+/* Sleeping label. Semantic neutral 60 is one step darker than the old 50%
+ * opacity read in light mode (#79716b, about 4.5:1). The scale inverts in dark
+ * mode, where 60 (#918b86, about 4.7:1) stays close to the old read: a darker
+ * dark step falls below 4.5:1 text contrast. Ordered before the active rule. */
+.bento-tab-row--discarded > .muxui-text {
+  color: var(--muxui-semantic-color-neutral-60);
 }
 
 .bento-tab-row--active > .muxui-text {
