@@ -281,9 +281,9 @@ and DOM attributes only, so neither `TabListPane` nor the rows re-render.
 `TabList.css` does the rest: the fill is `--bento-surface-hover`, the height and
 radius match a row, `data-indented` applies `--bento-tab-folder-indent`, and
 `html[data-bento-collapsed='true']` makes it the centered square of the
-collapsed rail. The slide (`transform`), width and margin transitions run on
-`--muxui-semantic-motion-reveal-transition` and apply only under `[data-visible]`;
-opacity fades in and out on `--muxui-semantic-motion-state-transition`.
+collapsed rail. The slide (`transform`, the Mux `reveal` motion role), width and
+margin transitions apply only under `[data-visible]`; opacity fades in and out
+on the `state` role.
 `prefers-reduced-motion: reduce` keeps only the fade.
 Tab and folder rows no longer have a plain `:hover` background. Active rows are
 opaque and cover the highlight, and selected rows are translucent and composite
@@ -340,8 +340,9 @@ size of an `IconButton size="sm"`, and the large and medium layout insets). The
 actions' `padding-left` uses the same inset token. Short titles that end before
 the buttons are unaffected. The mask is applied with the same selectors that set
 the actions' `opacity: 1`, and its `mask-image` transition is discrete with a
-delay (`--bento-tab-row-mask-linger`, 0 while the mask applies) so the title
-stays masked for the 100 ms the buttons fade out.
+delay (one `state` duration, written as `calc()` over the Mux token so the motion
+check sees no raw time; zero while the mask applies) so the title stays masked
+while the buttons fade out.
 
 The hook re-syncs in a layout effect after every `TabListPane` commit, using
 the tracked wrapper's current data attributes, so the highlight follows its row
@@ -744,8 +745,8 @@ opening an unwanted blank tab before the moved tabs arrive.
   hovered row. A selected hover is the accent over `transparent`.
 - Do not paint an opaque backstop (a gradient of `--bento-surface-hover-solid`,
   the selected tint or `--color-60`) behind a tab row's hover actions. It appears
-  with `:hover` over the `state` motion role and disappears on its own, while the
-  highlight needs the longer `reveal` role to slide in, so moving along the button
+  with `:hover` over the `state` duration and disappears on its own, while the
+  highlight needs the longer `reveal` duration to slide in, so moving along the button
   column showed solid hover-colored blocks ahead of and behind the gliding
   highlight, with the button hover fills sitting on them. Mask the title instead
   (see above). The mask width must match the actions' real width: if the action
