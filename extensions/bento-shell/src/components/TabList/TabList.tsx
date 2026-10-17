@@ -9,7 +9,6 @@ import X from 'lucide-react/dist/esm/icons/x';
 import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
-import { useSettingsStore } from '../../state/settings';
 import { useUiStore } from '../../state/ui';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders';
@@ -34,6 +33,7 @@ import { BentoIcon } from '../primitives';
 import './TabList.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 import { afterMotion } from '../../motion/afterMotion';
+import { useRailViewport } from '../../sidebar/railViewport';
 
 export interface TabListProps {
   revealTabUrl?: string;
@@ -286,9 +286,8 @@ function TabListPane({
   const viewportRef = useRef<HTMLDivElement>(null);
   const { ids: displayedIds, removing } = useDelayedRemovals(ids, viewportRef);
   const folders = useWorkspaceFolders(workspaceId);
-  const sidebarCollapsed = useSettingsStore((s) =>
-    Boolean(s.current?.sidebarCollapsed || s.current?.sidebarHidden),
-  );
+  // Layout state, not the setting: true while the shell is rendered as the rail.
+  const sidebarCollapsed = useRailViewport();
   const parentRef = useRef<HTMLDivElement>(null);
   const scrollbarDragRef = useRef<{
     pointerId: number;
