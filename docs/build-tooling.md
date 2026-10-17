@@ -669,23 +669,25 @@ ready for review, and pushing to `main`, never start an application build, and
 there are no PR test builds or PR build comments. To try a change in the app,
 build it locally (see the dev loop in `CLAUDE.md`).
 
-The two import checks cover more than the tracked diff:
+The two import checks cover more than the tracked diff. Both learn what the
+series changes from `scripts/series-replay.mjs`, which replays
+`patches/series.json` on `refs/bento/firefox-base/<version>` in a scratch index
+and lets Git report the net change per path, so unusual file names need no
+patch-header parsing:
 
 - `scripts/snapshot-import-output.mjs` fingerprints the tracked diff against
   `HEAD`, the untracked files under `browser/branding/bento` and
   `browser/extensions`, every overlay in `.bento/import-manifest.json` (the
   symlink target, or the file content when the import copied), and every file
-  the patch series creates (read from the patch headers through
-  `patches/series.json`, see `scripts/patch-series-paths.mjs`). A missing
-  overlay or created file fails the snapshot. CI compares the fingerprint
-  before and after a repeated import.
-- `scripts/check-import-output.mjs` replays the series on
-  `refs/bento/firefox-base/<version>` in a scratch index and compares every
-  path the series touches with the live engine by blob and file mode, so an
-  edited, retyped or stale patched file fails, as does a path a patch deletes
-  that still exists. Edits made outside the series (prefs, the `moz.build`
-  marker block, the version files) are not compared. It also checks the
-  overlay registration in `jar.mn`, the built-in add-ons, and product identity.
+  the series creates. A missing overlay or created file fails the snapshot. CI
+  compares the fingerprint before and after a repeated import.
+- `scripts/check-import-output.mjs` compares every path the series changes with
+  the live engine by blob and file mode (Git's rule: owner execute bit only), so
+  an edited, retyped or stale patched file fails. Where the series deletes a
+  file, no file or symlink may remain; a directory may take its place. Edits made
+  outside the series (prefs, the `moz.build` marker block, the version files)
+  are not compared. It also checks the overlay registration in `jar.mn`, the
+  built-in add-ons, and product identity.
 
 `node --test scripts/import-output-checks.test.mjs` covers both on a temporary
 repository.

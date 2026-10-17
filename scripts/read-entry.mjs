@@ -7,19 +7,23 @@ import fs from 'node:fs';
  * then read through one descriptor, so its mode and content come from the same
  * file even if the path is replaced meanwhile.
  *
- * Returns undefined when the path does not exist, otherwise `{ symlink, mode,
- * content }` where content is the link target or the file bytes (undefined for
- * a directory or other special file).
+ * Returns undefined when nothing exists at the path (ENOTDIR counts: a parent is
+ * a file), otherwise `{ symlink, mode, content }` where content is the link
+ * target or the file bytes (undefined for a directory or other special file).
  */
 export function readEntry(absolute) {
   let target;
   try {
     target = fs.readlinkSync(absolute);
   } catch (error) {
-    if (error.code === 'ENOENT') return undefined;
+    if (isMissing(error)) return undefined;
     if (error.code !== 'EINVAL') throw error;
   }
   return target === undefined ? readFile(absolute) : readSymlink(absolute, target);
+}
+
+function isMissing(error) {
+  return error.code === 'ENOENT' || error.code === 'ENOTDIR';
 }
 
 function readSymlink(absolute, target) {
@@ -32,7 +36,7 @@ function readFile(absolute) {
   try {
     fd = fs.openSync(absolute, 'r');
   } catch (error) {
-    if (error.code === 'ENOENT') return undefined;
+    if (isMissing(error)) return undefined;
     throw error;
   }
   try {
