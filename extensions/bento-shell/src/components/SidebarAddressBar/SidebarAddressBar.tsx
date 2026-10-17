@@ -3,6 +3,7 @@ import { Form, IconButton, Input, ProgressCircle, Tooltip } from '@muxui/react';
 
 import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import CopyIcon from 'lucide-react/dist/esm/icons/copy';
+import LockIcon from 'lucide-react/dist/esm/icons/lock';
 
 import { signalAddrbarOpen, type AddrbarMode } from '../../bridge/useAddrbar';
 import {
@@ -209,7 +210,7 @@ export function SidebarAddressBar() {
               data-security={securityKind}
               onActivate={handleSecurityPress}
             >
-              <span className="bento-sidebar-address-bar__security-glyph" aria-hidden="true" />
+              <BentoIcon icon={LockIcon} size="sm" />
             </IconButton>
           }
         />

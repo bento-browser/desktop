@@ -265,6 +265,63 @@ rectangle is unchanged while the first visible tab changes. Repeat after
 opening Search, and confirm the fixed row is replaced by the focused search
 field and matching results without normal virtual rows remaining visible.
 
+Plain row hover in the virtualized list is one sliding highlight, not a
+per-row `:hover` background. `TabListPane` renders a single
+`.bento-tab-list__hover-highlight` (`aria-hidden`) as the first child of
+`.bento-tab-list__viewport`, so every row paints over it, and
+`useRowHoverHighlight.ts` positions it imperatively. Each row wrapper carries
+`data-row-start` (the same offset as its `translateY`), `data-row-indented`
+and `data-row-inert` (from `rowHighlightProps`). A delegated `mouseover` on the
+viewport finds the wrapper under the pointer and sets the highlight's inline
+`transform: translateY()` plus `data-indented` / `data-visible`; `mouseleave`
+removes `data-visible`. Hover changes touch refs and DOM attributes only, so
+neither `TabListPane` nor the rows re-render. `TabList.css` does the rest: the
+fill is `--bento-surface-hover`, the height and radius match a row, `data-indented`
+applies `--bento-tab-folder-indent`, and `html[data-bento-collapsed='true']`
+makes it the centered square of the collapsed rail. The slide (`transform`,
+`--bento-duration-base` with `--bento-easing-snappy`), width and margin
+transitions apply only under `[data-visible]`; opacity fades in and out with
+`--bento-duration-fast`. `prefers-reduced-motion: reduce` keeps only the fade.
+Tab and folder rows no longer have a plain `:hover` background. Active rows are
+opaque and cover the highlight, and selected rows are translucent and composite
+over it.
+
+A tab row's hover actions (Convert to panel, Close tab) paint no background, so
+the highlight, a selected tint or the active fill shows through the button area
+and the button hover fills composite over it. `TabRow.css` hides the title under
+the buttons with a mask instead of a backstop: while the actions are visible
+(`.bento-tab-row:hover`, and the active row, where they are always shown) the
+title's `mask-image` is transparent across the actions' width, ramping to opaque
+over `--bento-tab-row-actions-fade` from the actions' left edge, which is the
+fade the old gradient drew. The width is `--bento-tab-row-actions-inset` plus
+`--bento-tab-row-action-count` (2, or 1 on the active row, which hides Convert)
+times `--bento-tab-row-action-size`; the three `--bento-tab-row-*` tokens are in
+`bento-tokens.css` and resolve to Mux tokens (`--muxui-control-size-sm`, the
+size of an `IconButton size="sm"`, and the large and medium layout insets). The
+actions' `padding-left` uses the same inset token. Short titles that end before
+the buttons are unaffected. The mask is applied with the same selectors that set
+the actions' `opacity: 1`, and its `mask-image` transition is discrete with a
+delay (`--bento-tab-row-mask-linger`, 0 while the mask applies) so the title
+stays masked for the 100 ms the buttons fade out.
+
+The hook re-syncs in a layout effect after every `TabListPane` commit, using
+the tracked wrapper's current data attributes, so the highlight follows its row
+through reorders and sibling shifts and hides when that wrapper is gone (closed
+tab, folder collapse, virtualizer recycling) instead of sitting at a stale
+offset. Rows fading out (`removing`) set `data-row-inert`, which hides it early.
+A drag (`dragSourceId` or `dragFolderId`) hides it and drops the tracked row;
+search filtering unmounts it with the rows. The gap between rows keeps the
+previous row highlighted, because the `mouseover` target there is the viewport
+and is ignored.
+
+Manual verification: use the TabList Ladle drag story (the only one that seeds
+the workspace and panel readiness gates). Hover pinned, folder, indented and
+regular rows, enter from outside the list, leave it, set
+`data-bento-collapsed` on `<html>`, scroll a long list with the pointer still,
+close the hovered tab, collapse the folder under a hovered child, and drag a
+row. Real Bento (the shell in the sidebar frame) still needs a manual hover,
+scroll and pointer-exit pass.
+
 Sidebar drag handling in `TabListPane` classifies tab drops before falling back
 to anchor-based reordering. A drop in slot `0` or within the current pinned run
 dispatches `tab/setPinned` with `pinned: true`; dropping a pinned tab outside
@@ -372,6 +429,37 @@ opening an unwanted blank tab before the moved tabs arrive.
 
 ## Workspace pitfalls
 
+- Do not give tab or folder rows their own plain `:hover` background, and do not
+  mix `--bento-surface-hover` into a row state that composites over the hover
+  highlight. The highlight already supplies that tint: a selected row's `:hover`
+  background mixing it in again stacked it twice and read darker than a plain
+  hovered row. A selected hover is the accent over `transparent`.
+- Do not paint an opaque backstop (a gradient of `--bento-surface-hover-solid`,
+  the selected tint or `--color-60`) behind a tab row's hover actions. It appears
+  with `:hover` over `--bento-duration-fast` and disappears on its own, while the
+  highlight needs `--bento-duration-base` to slide in, so moving along the button
+  column showed solid hover-colored blocks ahead of and behind the gliding
+  highlight, with the button hover fills sitting on them. Mask the title instead
+  (see above). The mask width must match the actions' real width: if the action
+  count or the button size changes, change `--bento-tab-row-action-count` or the
+  `--bento-tab-row-action-*` tokens, and check a long title still fades before the
+  first button and that the active row (one button) does too.
+- Do not set the highlight's `transform` and `data-visible` in the same style
+  pass. The slide transitions come from the after-change style, so a fresh show
+  would glide in from the last row. `useRowHoverHighlight` writes the position,
+  flushes style (`offsetHeight`), then sets `data-visible`; the slide, width and
+  margin transitions live under `[data-visible]` for the same reason.
+- Do not derive the hovered row from scroll math or a cached pointer position.
+  The highlight follows `mouseover` on the row wrappers, and relies on Gecko's
+  synthesized mouse move to re-target a stationary pointer after a scroll, a
+  folder collapse or a row removal. Without `mousemove` there is no fresh
+  coordinate to cache. That synthesized move is not guaranteed to land promptly
+  (headless Gecko re-targeted after a removal in one run and not within 500 ms in
+  another), so the worst case is a hidden highlight until the pointer next moves.
+- Do not let the highlight outlive its row. Anything that unmounts, fades
+  (`data-row-inert`) or drags the hovered row must go through the hook's
+  post-commit sync, or the highlight sits at a stale offset after a reorder,
+  removal or folder collapse.
 - Do not render the same workspace in two windows unless the panel architecture
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.

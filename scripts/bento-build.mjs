@@ -55,6 +55,14 @@ const REGENERABLE_ENGINE_FILES = new Set([
   'browser/config/version_display.txt',
 ]);
 
+// The build output directory inside each Bento built-in add-on. The repository
+// ignores `dist/`, and every import replaces the engine copy with the repository
+// build (install-builtin-addons prunes whatever it does not install), so engine
+// verification does not track its files. `pnpm run shell:sync` writes a newer
+// build here through the app bundle's dist symlink, and chunk names differ between
+// builds.
+const GENERATED_ADDON_OUTPUT_DIR = 'dist';
+
 function fail(message) {
   const error = new Error(message);
   error.code = 'BENTO_USER_ERROR';
@@ -1037,8 +1045,10 @@ export function verifyManagedEngine(ctx, files) {
       return false;
     }
   }
+  const outputRoots = generatedAddonOutputRoots(ctx);
   try {
     return files.every((relative) => {
+      if (isGeneratedAddonOutput(outputRoots, relative)) return true;
       if (expectedFiles?.has(relative)) {
         const expected = expectedFiles.get(relative);
         const target = path.join(ctx.engineDir, relative);
@@ -1228,7 +1238,11 @@ function engineStateViolations(repoRoot) {
       paths.add(relative);
     }
   }
+  const outputRoots = generatedAddonOutputRoots(ctx);
   const accepts = (relative) => {
+    // Changed, extra and missing build output all pass: the next import replaces
+    // the directory. Every other add-on file keeps the strict checks below.
+    if (isGeneratedAddonOutput(outputRoots, relative)) return true;
     const expected = snapshot.get(relative);
     const target = path.join(ctx.engineDir, relative);
     if (REGENERABLE_ENGINE_FILES.has(relative) && targetExistsSync(target)) {
@@ -1275,6 +1289,16 @@ function engineStateViolations(repoRoot) {
   // files outside the snapshot are user changes.
   const unrecorded = status.unrecognizedFiles.filter((relative) => !snapshot.has(relative));
   return [...new Set([...[...paths].filter((relative) => !accepts(relative)), ...unrecorded])].sort();
+}
+
+/** Engine-relative `dist` directories of the Bento built-in add-ons (see GENERATED_ADDON_OUTPUT_DIR). */
+function generatedAddonOutputRoots(ctx) {
+  return extensionNames(ctx).map((name) => `browser/extensions/${name}/${GENERATED_ADDON_OUTPUT_DIR}`);
+}
+
+/** Whether `relative` is a Bento add-on's output directory or a path inside it. */
+function isGeneratedAddonOutput(outputRoots, relative) {
+  return outputRoots.some((root) => relative === root || relative.startsWith(`${root}/`));
 }
 
 function targetExistsSync(target) {

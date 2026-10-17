@@ -96,6 +96,9 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run bootstrap`: install Mozilla build dependencies through `mach`.
 - `pnpm run import`: run the complete Bento import wrapper.
 - `pnpm run build`: build extensions, import Bento sources, and compile Firefox.
+- `pnpm run shell:sync`: build the shell and copy its `dist/` into the built app,
+  with no import. The copy lands in the engine tree (see
+  [Build output and `shell:sync`](#build-output-and-shellsync)).
 - `pnpm run build:ui`: write the mozconfig and run `mach build faster`, the
   incremental Firefox UI build. It does not run `pnpm run import`.
 - `pnpm run package`: produce platform packages and locales, plus the MAR and
@@ -887,6 +890,38 @@ array in `.bento-runtime-entries.json`; `manifest.json` is always included. In a
 release build (see [Dev-only reload command](#dev-only-reload-command)) the installer
 drops the `dev-reload` command from the manifest it copies, so an imported release
 manifest differs from its source.
+
+### Build output and `shell:sync`
+
+`dist/` inside an add-on is build output. The repository ignores it, and every
+import replaces `engine/browser/extensions/<name>/dist/` with the repository's
+`dist/`: `install-builtin-addons.mjs` copies the changed files and removes the
+rest, so a chunk the new build no longer emits (Vite chunk names change between
+an npm Mux build and a local-Mux build) is gone after the import.
+
+`pnpm run shell:sync` ([`scripts/sync-shell.sh`](../scripts/sync-shell.sh)) copies
+`extensions/bento-shell/dist/` into the app bundle's
+`builtin-addons/bento-shell/dist/`. After an import, that path is a symlink to
+`engine/browser/extensions/bento-shell/dist`
+([`scripts/sync-builtin-addon-symlinks.sh`](../scripts/sync-builtin-addon-symlinks.sh)),
+so the copy writes straight into the engine source tree. It overwrites files in
+place and never deletes, so chunks from earlier builds stay beside the new ones.
+
+Engine-state verification therefore does not track `browser/extensions/<name>/dist`
+for any Bento add-on (a top-level `extensions/` directory with a manifest). Changed,
+extra and missing files there pass in `pnpm run import`, in `verify`, and in the
+clean-engine check that `firefox:sync` and `update` run, and nothing needs
+re-recording. Everything else under the add-on directory (`manifest.json`, `jar.mn`,
+`moz.build`, `experiments/`, a sibling such as `dist-extra/`) and the rest of the
+engine stays under the recorded-state rules, as does the `dist/` of an add-on Bento
+does not own. `scripts/bento-build.test.mjs` covers both sides.
+
+Pitfall: before this exemption, an import after `shell:sync` failed with `engine
+contains changes outside the recorded/generated Bento state` (recorded `dist/` files
+with new hashes, plus untracked chunk files from a build with other chunk names).
+`node scripts/bento-build.mjs record` got past it, but it also records genuine
+hand edits as expected state; do not use it for this. If verification still fails,
+the offending paths are outside `dist/`.
 
 ### Dev-only reload command
 
