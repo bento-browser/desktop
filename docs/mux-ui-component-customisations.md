@@ -140,7 +140,11 @@ upgrade. Inline
 tab/folder rename fields, tab search, and the read-only sidebar address display
 use the public `Input.Input` leaf with native input props and refs. The leaf's
 optional field context allows it to occupy the existing product grid without
-an extra wrapper. Sidebar address submission uses Mux `Form`, and the panel
+an extra wrapper. The leaf carries Mux's md-control `min-block-size` (2.25rem)
+and matching block padding. Every Bento use sits in a 2rem row, so each one
+(sidebar address, tab search, tab and folder rename) resets `min-block-size` to
+0 and sets its own block padding; otherwise the input stretches the row and
+pushes its neighbours 2 to 3px low. Sidebar address submission uses Mux `Form`, and the panel
 trailer uses public `Toolbar`; scoped Bento layout rules preserve their chrome
 geometry.
 
