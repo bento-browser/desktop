@@ -110,6 +110,12 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
 
 - Do not write shell stores as the source of truth. `PanelStore` owns layout and
   persistence.
+- The shell mirror (`extensions/bento-shell/src/state/panels.ts`) returns its
+  existing state when `apply` receives the same ids, in the same order after
+  deduping, as the hydrated workspace's set. Every settings toggle re-emits
+  `panels/sync`, and a fresh Map would re-render `TabList` and refilter every
+  tab for no change. Order counts because `CommandPalette` iterates the Set, so
+  a panel reorder must replace it.
 - Do not emit `panels/sync` after every width write. Chrome already applied the
   live width inline; a sync round-trip can clobber an in-flight drag with stale
   persisted values.
