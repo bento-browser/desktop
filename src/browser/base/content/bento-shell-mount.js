@@ -4288,6 +4288,29 @@
   let prepareBookmarksToolbarForSidebarResize = null;
   let syncBookmarksToolbarForSidebarWidth = null;
   let finishBookmarksToolbarSidebarResize = null;
+  // Cancels of the pending animation frames of the updaters that read the host, the
+  // strip or the toolbar (divider, toolbar navigation, bookmarks toolbar, splitter
+  // affordance). A sidebar push cancels them when it starts; the refresh at its end
+  // schedules them again.
+  const sidebarGeometryFrameCancels = [];
+
+  // The sidebar host as it is laid out, without the transforms on it. Hidden mode
+  // parks it at translateX(-100%) and a push translates it, so a rect read through
+  // either is not where the toolbar aligns to. footprintRight is where the next
+  // sibling starts: the right edge plus the negative right margin that hidden mode
+  // and a push give the host, which is the edge the strip's inset is measured from.
+  function sidebarHostLayoutBox(host) {
+    const rect = host.getBoundingClientRect();
+    const style = getComputedStyle(host);
+    const shift = new DOMMatrix(style.transform).m41;
+    const right = rect.right - shift;
+    return {
+      left: rect.left - shift,
+      right,
+      width: rect.width,
+      footprintRight: right + (Number.parseFloat(style.marginRight) || 0),
+    };
+  }
 
   function isBentoWindowResizing() {
     return document.documentElement.getAttribute('bento-window-resizing') === 'true';
@@ -4630,11 +4653,17 @@
     splitter.addEventListener('mousedown', suppressNativeSplitterDrag, true);
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const scheduleAffordancePosition = () => {
       if (isBentoChromeLiveResizing()) return;
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        // A frame queued before a push began would read the translated splitter.
+        if (isBentoSidebarPushing()) return;
         updateAffordancePosition();
       });
     };
@@ -4925,7 +4954,7 @@
 
     let sidebarLeftForDrag = 0;
     prepareSidebarChromeDividerForSidebarResize = () => {
-      sidebarLeftForDrag = host.getBoundingClientRect().left;
+      sidebarLeftForDrag = sidebarHostLayoutBox(host).left;
     };
     syncSidebarChromeDividerForSidebarWidth = (width) => {
       if (currentSidebarHidden || width <= 0) {
@@ -4943,8 +4972,14 @@
     };
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const updateDivider = () => {
       raf = 0;
+      // A frame queued before a push began would read the translated host.
+      if (isBentoSidebarPushing()) return;
       if (currentSidebarHidden) {
         divider.hidden = true;
         updateToolbarBackgroundSplit(0);
@@ -5001,16 +5036,16 @@
     target.dataset.bentoToolbarNavAlignmentAttached = '1';
 
     const readMetrics = () => {
-      const hostRect = host.getBoundingClientRect();
+      const hostBox = sidebarHostLayoutBox(host);
       const targetRect = target.getBoundingClientRect();
       const groupWidth = [backButton, forwardButton, stopReloadButton].reduce((sum, el) => {
         const rect = el.getBoundingClientRect();
         return sum + Math.max(0, rect.width || 0);
       }, 0);
       return {
-        hostLeft: hostRect.left,
-        hostRight: hostRect.right,
-        hostWidth: hostRect.width,
+        hostLeft: hostBox.left,
+        hostRight: hostBox.right,
+        hostWidth: hostBox.width,
         targetLeft: targetRect.left,
         targetWidth: targetRect.width,
         groupWidth,
@@ -5078,8 +5113,14 @@
     };
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const updateOffset = () => {
       raf = 0;
+      // A frame queued before a push began would read the translated host.
+      if (isBentoSidebarPushing()) return;
       applyOffset(readMetrics());
     };
     const scheduleUpdate = () => {
@@ -5172,11 +5213,11 @@
     let dragHostLeft = 0;
     let dragStripInset = 0;
     prepareBookmarksToolbarForSidebarResize = () => {
-      const hostRect = host.getBoundingClientRect();
+      const hostBox = sidebarHostLayoutBox(host);
       const stripRect = getStrip()?.getBoundingClientRect?.();
-      dragHostLeft = hostRect.left;
+      dragHostLeft = hostBox.left;
       dragStripInset =
-        stripRect && Number.isFinite(stripRect.left) ? stripRect.left - hostRect.right : 0;
+        stripRect && Number.isFinite(stripRect.left) ? stripRect.left - hostBox.footprintRight : 0;
     };
     syncBookmarksToolbarForSidebarWidth = (width) => {
       applyOffset(dragHostLeft + Math.max(0, width) + dragStripInset);
@@ -5186,9 +5227,18 @@
     };
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const updateLayout = () => {
       raf = 0;
-      applyOffset(readOffset());
+      // While a sidebar push runs the strip is translated, and the offset is the one
+      // the push committed for its direction (the final one on a collapse, the
+      // initial one on an expand until it ends), so it is not read back. This also
+      // covers the mutation observer below, which bypasses the scheduling guard when
+      // the push adds its class to the toolbar. The height is not affected by it.
+      if (!isBentoSidebarPushing()) applyOffset(readOffset());
       applyHeight(readHeight());
     };
     const scheduleUpdate = () => {
@@ -16051,7 +16101,7 @@
   // at the wider of the two so the host never fades over the narrower colour.
   // Returns { props, rootSplit }: the custom properties to set for the slide and the
   // root split var's final value, or null without the hooks.
-  function commitToolbarForSidebarPush(width) {
+  function commitToolbarForSidebarPush(width, collapsed) {
     if (!syncSidebarChromeDividerForSidebarWidth) return null;
     const root = document.documentElement;
     const divider = document.getElementById('bento-sidebar-chrome-divider');
@@ -16074,7 +16124,12 @@
       prepareBookmarksToolbarForSidebarResize?.();
       syncSidebarChromeDividerForSidebarWidth(width);
       syncToolbarNavigationForSidebarWidth?.(width);
-      syncBookmarksToolbarForSidebarWidth?.(width);
+      // The bookmarks toolbar is positioned by its margin and slides with the page
+      // group, whose layout is the final one on a collapse and the initial one on an
+      // expand (the slide ends at the final layout). So a collapse commits its offset
+      // now, and an expand keeps the initial offset and applies the final one when
+      // the push settles.
+      if (collapsed) syncBookmarksToolbarForSidebarWidth?.(width);
     } finally {
       currentSidebarHidden = wasHidden;
     }
@@ -16114,9 +16169,13 @@
 
     const root = document.documentElement;
     const direction = collapsed ? 'collapse' : 'expand';
-    const toolbar = commitToolbarForSidebarPush(collapsed ? rail : expandedWidth);
+    const finalWidth = collapsed ? rail : expandedWidth;
+    // Frames queued by an earlier settle (an interrupted slide) would read the
+    // translated geometry of this one.
+    for (const cancel of sidebarGeometryFrameCancels) cancel();
+    const toolbar = commitToolbarForSidebarPush(finalWidth, collapsed);
     const pageEls = sidebarPushPageElements(host);
-    sidebarPush = { host, collapsed, pageEls, rootSplit: toolbar?.rootSplit };
+    sidebarPush = { host, collapsed, pageEls, finalWidth, rootSplit: toolbar?.rootSplit };
     root.style.setProperty(SIDEBAR_PUSH_DELTA_PROP, delta + 'px');
     for (const [name, value] of Object.entries(toolbar?.props ?? {})) {
       root.style.setProperty(name, value);
@@ -16145,7 +16204,7 @@
     const push = sidebarPush;
     if (!push) return;
     sidebarPush = null;
-    const { host, collapsed, pageEls, rootSplit } = push;
+    const { host, collapsed, pageEls, finalWidth, rootSplit } = push;
     const root = document.documentElement;
     cancelMotion(host, SIDEBAR_PUSH_KEY);
     host.classList.toggle('bento-sidebar-collapsed', collapsed);
@@ -16156,6 +16215,9 @@
     if (rootSplit !== undefined) {
       root.style.setProperty('--bento-toolbar-divider-x', rootSplit + 'px');
     }
+    // An expand's bookmarks offset, held at the initial one for the slide, in the
+    // same frame as the page's final layout.
+    if (!collapsed) syncBookmarksToolbarForSidebarWidth?.(finalWidth);
     if (fade) {
       host.classList.add(SIDEBAR_PUSH_FADE_CLASS);
       afterMotion(host, SIDEBAR_PUSH_KEY, { animations: [SIDEBAR_PUSH_FADE_ANIMATION] }, () =>
