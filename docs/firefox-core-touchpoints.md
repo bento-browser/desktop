@@ -1181,7 +1181,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `moz-slider`, `moz-input-number`, `moz-button`, `moz-input-search`,
   `moz-box-group`, and `moz-box-item`; preferences
   XHTML/jar/locales; browser actors; system-principal observer subjects; and
-  built-in WebExtension experiment loading.
+  built-in WebExtension experiment loading. The experiment also calls
+  `extension.windowManager.getWrapper(chromeWindow)` (WebExtension parent
+  framework, `ext-tabs-base.js`) and reads `wrapper.id` to bind a Settings
+  request to a live browser window.
 - Why this cannot stay extension-only: the category and its controls must be a
   native Settings surface, and only parent chrome can authenticate the document,
   derive its browser window/private audience, and retain shell mount identity.
@@ -2101,6 +2104,7 @@ below is generated; edit the registry, then run
 | `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
 | `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
+| `windowManager.getWrapper` | source (engine only) | The native preferences experiment resolves the chrome window that hosts a Settings page through extension.windowManager and reads wrapper.id to authorize the request against a live browser window; a window the extension cannot access has no wrapper. | `extensions/bento-tools/experiments/bento-native-preferences/api.js#validateDocumentSubject` | `toolkit/components/extensions/parent/ext-tabs-base.js:2443` |
 | `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
 | `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
 | `DevToolsShim.on` | source (engine only) | Waits for the toolbox-ready event of the toolbox opened in a panel. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:137` |
