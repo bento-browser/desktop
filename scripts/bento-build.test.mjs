@@ -837,7 +837,13 @@ test('recorded state accepts changed, extra and missing add-on dist/ files, and 
 
     // Edits outside add-on build output stay refused, then pass again once undone.
     const refuses = (file, content) => {
-      const before = fs.existsSync(file) ? fs.readFileSync(file) : undefined;
+      // One read, no existence check first: ENOENT means there was no file to restore.
+      let before;
+      try {
+        before = fs.readFileSync(file);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, content);
       assert.equal(verifyRecordedEngineState(root), false, path.relative(engineFile(root), file));
