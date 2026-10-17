@@ -223,6 +223,8 @@
     min-width: 0;
     width: 100%;
     height: calc(var(--bento-tab-row-height) - var(--space-3xs));
+    /* Mux's md-control minimum (2.25rem) would outgrow the 2rem row. */
+    min-block-size: 0;
     padding: 0 var(--space-3xs);
     background-color: var(--neutral-5);
     border: var(--bento-border-hairline) solid var(--color-60);
