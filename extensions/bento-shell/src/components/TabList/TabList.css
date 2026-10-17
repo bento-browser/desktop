@@ -45,9 +45,6 @@
     padding-block-start: var(--space-3xs);
     padding-inline: var(--space-3xs);
     background-color: var(--neutral-5);
-    transition:
-      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
-      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
   }
 
   .bento-tab-list-pane__scroller {
@@ -61,9 +58,6 @@
     scrollbar-width: thin;
     padding-block-start: var(--bento-tab-list-row-gap);
     padding-inline: var(--space-3xs);
-    transition:
-      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
-      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
   }
 
   html[data-bento-collapsed='true'] .bento-tab-list-pane__sticky-actions {
@@ -185,9 +179,10 @@
      the row: full row height, row radius, the folder indent, and the centered
      square in the collapsed rail.
 
-     The slide, width and margin transitions exist only while visible, so a fresh
-     show (the hook flushes the new position first) appears in place and only
-     fades in; hiding fades out. The fill is translucent --bento-surface-hover,
+     The slide transition exists only while visible, so a fresh show (the hook
+     flushes the new position first) appears in place and only fades in; hiding
+     fades out. Its width and margin follow the rail at once: the sidebar slide
+     never animates a row between the expanded and rail layouts. The fill is translucent --bento-surface-hover,
      and the row's hover actions paint no backstop of their own (TabRow masks
      the title under them), so the highlight shows through the button area.
 
@@ -244,9 +239,7 @@
   .bento-tab-list__hover-highlight[data-visible] {
     transition:
       opacity var(--muxui-semantic-motion-state-transition),
-      transform var(--muxui-semantic-motion-reveal-transition),
-      width var(--muxui-semantic-motion-reveal-transition),
-      margin-inline-start var(--muxui-semantic-motion-reveal-transition);
+      transform var(--muxui-semantic-motion-reveal-transition);
   }
 
   /* Same reveal spring pair as the trigger's width and the closed field row, so
@@ -416,10 +409,6 @@
   max-width: 100%;
   height: 100%;
   gap: var(--bento-tab-list-row-gap);
-  transition:
-    width var(--muxui-semantic-motion-reveal-transition),
-    min-width var(--muxui-semantic-motion-reveal-transition),
-    max-width var(--muxui-semantic-motion-reveal-transition);
 }
 
 .bento-tab-list__new-actions:has(
@@ -438,14 +427,7 @@
   height: 100%;
   min-height: 0;
   justify-content: flex-start;
-  transition:
-    width var(--muxui-semantic-motion-reveal-transition),
-    min-width var(--muxui-semantic-motion-reveal-transition),
-    max-width var(--muxui-semantic-motion-reveal-transition),
-    height var(--muxui-semantic-motion-reveal-transition),
-    min-height var(--muxui-semantic-motion-reveal-transition),
-    padding var(--muxui-semantic-motion-reveal-transition),
-    background-color var(--muxui-semantic-motion-state-transition);
+  transition: background-color var(--muxui-semantic-motion-state-transition);
 }
 
 /* The action highlight is the hover fill for the New and Search buttons, so
