@@ -66,9 +66,6 @@
     padding-block-end: var(--bento-sidebar-section-gap);
     padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
-    transition:
-      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
-      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
     /* Keep padding identical in expanded and collapsed modes so the
        header's vertical rhythm does not shift during sidebar toggles. */
   }
@@ -79,9 +76,6 @@
     border-top: 1px solid var(--bento-sidebar-divider-color);
     justify-content: flex-end;
     gap: var(--space-4xs) !important;
-    transition:
-      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
-      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
   }
 
   .bento-shell-app__workspace-switcher {
@@ -94,9 +88,6 @@
     padding-block: var(--space-3xs) 0;
     padding-inline: var(--bento-sidebar-inline-padding);
     background-color: var(--neutral-5);
-    transition:
-      padding-inline-start var(--muxui-semantic-motion-reveal-transition),
-      padding-inline-end var(--muxui-semantic-motion-reveal-transition);
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__header,
@@ -111,9 +102,10 @@
 }
 
 /* ─── Collapsed sidebar footer — narrow rail ───────────────────────
- * Triggered by useEffect in App.tsx when SettingsStore reports
- * sidebarCollapsed=true. Chrome shrinks #bento-shell-host to a thin
- * column via its own CSS (bento-shell-mount.css); here we re-stack the
+ * Triggered by data-bento-collapsed on <html>, which App.tsx sets while the
+ * shell's own width is the rail's (the host chrome narrows in
+ * bento-shell-mount.css). Nothing here transitions: chrome fades the host
+ * through the switch, so the layout change is never seen. Here we re-stack the
  * footer to fit.
  *
  * column-reverse so the FIRST DOM child (the collapse/expand toggle)

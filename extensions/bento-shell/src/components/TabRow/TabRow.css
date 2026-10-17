@@ -37,15 +37,8 @@
     overflow: hidden;
     transition:
       background-color var(--muxui-semantic-motion-state-transition),
-      width var(--muxui-semantic-motion-reveal-transition),
-      min-width var(--muxui-semantic-motion-reveal-transition),
-      max-width var(--muxui-semantic-motion-reveal-transition),
-      height var(--muxui-semantic-motion-reveal-transition),
-      min-height var(--muxui-semantic-motion-reveal-transition),
       opacity var(--muxui-semantic-motion-reveal-transition),
-      transform var(--muxui-semantic-motion-reveal-transition),
-      margin-inline-start var(--muxui-semantic-motion-reveal-transition),
-      padding var(--muxui-semantic-motion-reveal-transition);
+      transform var(--muxui-semantic-motion-reveal-transition);
   }
 
   /* Removal animation. TabList keeps the row mounted after the tab is
@@ -195,7 +188,6 @@
        takes no raw times. Hover and active (rule below) set the delay to 0. */
     transition:
       color var(--muxui-semantic-motion-state-transition),
-      opacity var(--muxui-semantic-motion-reveal-transition),
       mask-image calc(var(--muxui-semantic-motion-state-transition-duration) * 0)
         var(--muxui-semantic-motion-state-transition-easing)
         var(--muxui-semantic-motion-state-transition-duration) allow-discrete;
@@ -309,7 +301,6 @@
   .bento-tab-row--active > .muxui-text {
     transition:
       color var(--muxui-semantic-motion-state-transition),
-      opacity var(--muxui-semantic-motion-reveal-transition),
       mask-image calc(var(--muxui-semantic-motion-state-transition-duration) * 0)
         var(--muxui-semantic-motion-state-transition-easing)
         calc(var(--muxui-semantic-motion-state-transition-duration) * 0) allow-discrete;

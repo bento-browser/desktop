@@ -119,13 +119,8 @@
  * compound .bento-icon.bento-* / .muxui-text.bento-* selectors also win
  * on specificity over Mux UI's single-class rules.
  *
- * The chevron snaps via display:none — losing it doesn't shift the
- * avatar's position because the chevron's grid/flex slot collapses
- * cleanly. The trigger-name uses opacity:0 instead so the text
- * smoothly fades during the collapse transition rather than
- * abruptly disappearing. The text already shrinks to 0 width via
- * flex:1 + min-width:0 as the rail narrows, so opacity:0 doesn't
- * disturb the layout — the avatar stays where it is. */
+ * The chevron and the trigger name both snap via display:none; the host
+ * is faded through the switch, so nothing needs a transition of its own. */
 html[data-bento-collapsed='true'] .bento-icon.bento-workspace-switcher__chevron {
   display: none;
 }
@@ -191,12 +186,6 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   color: var(--color-90);
   transition:
-    width var(--muxui-semantic-motion-reveal-transition),
-    min-width var(--muxui-semantic-motion-reveal-transition),
-    max-width var(--muxui-semantic-motion-reveal-transition),
-    height var(--muxui-semantic-motion-reveal-transition),
-    min-height var(--muxui-semantic-motion-reveal-transition),
-    padding var(--muxui-semantic-motion-reveal-transition),
     background-color var(--muxui-semantic-motion-state-transition),
     border-color var(--muxui-semantic-motion-state-transition),
     color var(--muxui-semantic-motion-state-transition);
@@ -274,11 +263,6 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: start;
-    /* Fade out smoothly when collapsed (paired with the unlayered
-       opacity rule below). flex:1 + min-width:0 already lets the
-       text shrink to 0 width as the rail narrows, so the only thing
-       missing for a smooth disappearance is the opacity transition. */
-    transition: opacity var(--muxui-semantic-motion-reveal-transition);
   }
 
   .bento-workspace-switcher__chevron {

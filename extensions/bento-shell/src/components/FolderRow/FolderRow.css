@@ -20,12 +20,6 @@
     overflow: hidden;
     transition:
       background-color var(--muxui-semantic-motion-state-transition),
-      width var(--muxui-semantic-motion-reveal-transition),
-      min-width var(--muxui-semantic-motion-reveal-transition),
-      max-width var(--muxui-semantic-motion-reveal-transition),
-      height var(--muxui-semantic-motion-reveal-transition),
-      min-height var(--muxui-semantic-motion-reveal-transition),
-      padding var(--muxui-semantic-motion-reveal-transition),
       opacity var(--muxui-semantic-motion-reveal-transition);
   }
 
