@@ -6,6 +6,12 @@
 # After running this, reload the extension in the Browser Toolbox console:
 #   AddonManager.getAddonByID('bento-shell@bento.app').then(a => a.reload())
 # If that errors on a built-in addon, quit and relaunch Bento.
+#
+# After an import, the destination dist/ is a symlink to
+# engine/browser/extensions/bento-shell/dist, so this writes into the engine tree.
+# It only adds and overwrites; the next `pnpm run import` replaces that directory
+# with the repository build. Engine-state verification ignores add-on dist/ for
+# that reason (docs/build-tooling.md, "Build output and shell:sync").
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
