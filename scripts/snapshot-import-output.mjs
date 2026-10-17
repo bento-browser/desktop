@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readSeriesPaths } from './patch-series-paths.mjs';
+import { readEntry } from './read-entry.mjs';
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(process.env.BENTO_REPO_ROOT || scriptRoot);
@@ -40,25 +41,26 @@ const untracked = execFileSync(
   .split('\0')
   .filter(Boolean);
 
-const manifestPath = path.join(root, '.bento', 'import-manifest.json');
-if (!fs.existsSync(manifestPath)) {
+let manifestText;
+try {
+  manifestText = fs.readFileSync(path.join(root, '.bento', 'import-manifest.json'), 'utf8');
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
   throw new Error(
     'snapshot-import-output: .bento/import-manifest.json is missing; run the import first',
   );
 }
-const overlays = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).entries.map(
-  (entry) => entry.destination,
-);
+const overlays = JSON.parse(manifestText).entries.map((entry) => entry.destination);
 
 // A path can belong to several groups; sorting the union hashes each once, in a stable order.
 const files = [...new Set([...untracked, ...overlays, ...readSeriesPaths(root).created])].sort();
 
 for (const relative of files) {
-  const absolute = path.join(engine, relative);
-  const stat = fs.lstatSync(absolute, { throwIfNoEntry: false });
-  if (!stat) throw new Error(`snapshot-import-output: engine/${relative} is missing`);
-  hash.update(`\0${relative}\0${stat.mode & 0o777}\0`);
-  hash.update(stat.isSymbolicLink() ? fs.readlinkSync(absolute) : fs.readFileSync(absolute));
+  const entry = readEntry(path.join(engine, relative));
+  if (!entry) throw new Error(`snapshot-import-output: engine/${relative} is missing`);
+  if (!entry.content) throw new Error(`snapshot-import-output: engine/${relative} is not a file`);
+  hash.update(`\0${relative}\0${entry.mode & 0o777}\0`);
+  hash.update(entry.content);
 }
 
 process.stdout.write(`${hash.digest('hex')}\n`);

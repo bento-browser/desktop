@@ -186,9 +186,12 @@ test('import output check compares patched content, not just changed paths', asy
     ],
   ];
   for (const [relative, drift] of drifts) {
-    const original = fs.existsSync(path.join(engine, relative))
-      ? fs.readFileSync(path.join(engine, relative))
-      : undefined;
+    let original;
+    try {
+      original = fs.readFileSync(path.join(engine, relative));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
     drift();
     const failed = check();
     assert.notEqual(failed.status, 0, `${relative} drift is detected`);
