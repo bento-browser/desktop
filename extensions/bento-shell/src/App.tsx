@@ -32,6 +32,7 @@ import { Row } from './components/primitives/BentoRow';
 import { sendChromeTitle } from './bridge/chromeTitle';
 import { NEW_MENU_ITEMS, trackNewMenuOpen } from './bridge/newMenu';
 import { afterMotion } from './motion/afterMotion';
+import { observeRailViewport, setRailAttribute } from './sidebar/railViewport';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -474,15 +475,23 @@ export function App() {
     });
   };
 
-  // Mirror sidebarCollapsed onto the shell document's <html> via a data
-  // attribute so CSS rules (TabRow, WorkspaceSwitcher, footer layout)
-  // can react. The chrome side gets the same flag via title-IPC and
-  // applies it to #bento-shell-host to actually shrink the rail.
-  useEffect(() => {
-    const html = document.documentElement;
-    if (sidebarCollapsed) html.setAttribute('data-bento-collapsed', 'true');
-    else html.removeAttribute('data-bento-collapsed');
-  }, [sidebarCollapsed]);
+  // The rail visuals (TabRow, WorkspaceSwitcher, footer layout, ...) key off
+  // data-bento-collapsed on <html>, and that follows the width the shell is
+  // rendered at, not the setting above. Chrome narrows #bento-shell-host to the
+  // rail at its own point in the sidebar slide (see "Sidebar collapse" in
+  // docs/technical/workspaces.md), and the shell switches layout in the same
+  // frame its viewport does. The setting only drives the semantic parts
+  // (labels, icon, tooltips).
+  const appRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = appRef.current;
+    if (!root) return;
+    const stop = observeRailViewport(root, setRailAttribute);
+    return () => {
+      stop();
+      setRailAttribute(false);
+    };
+  }, []);
 
   // Footer cross-fade. The footer's flex-direction snaps from row to
   // column-reverse when collapse toggles — discrete CSS property,
@@ -542,6 +551,7 @@ export function App() {
 
   return (
     <div
+      ref={appRef}
       className={
         hasNoSidePanels ? 'bento-shell-app bento-shell-app--no-side-panels' : 'bento-shell-app'
       }
