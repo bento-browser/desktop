@@ -94,7 +94,11 @@ UI color mode flow:
 - `useFirefoxTheme.ts` resolves `system` against
   `(prefers-color-scheme: dark)`, updates shell `<html data-color-mode>` with
   the resolved `light`/`dark` value, and mirrors the stored preference to
-  localStorage for pre-React boot.
+  localStorage for pre-React boot. `theme/document-base.css` sets every shell
+  page's `color-scheme` from that attribute, so native scrollbars and form
+  controls match the UI mode instead of the page's `prefers-color-scheme`,
+  which can follow the content color mode (a dark content mode drew the light
+  sidebar's scrollbar with the faint dark-scheme thumb).
 - `public/boot.js` reads that localStorage value before CSS loads. Explicit
   `light`/`dark` values paint directly; `system` paints from the current OS
   preference; missing values paint the fresh-profile Light default. It reads

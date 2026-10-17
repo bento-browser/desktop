@@ -71,30 +71,6 @@
     color: var(--red-60);
   }
 
-  .bento-sidebar-address-bar__security-glyph {
-    position: relative;
-    box-sizing: border-box;
-    display: block;
-    width: 0.8rem;
-    height: 0.58rem;
-    margin-block-start: 0.18rem;
-    border: 1.5px solid currentColor;
-    border-radius: 0.16rem;
-  }
-
-  .bento-sidebar-address-bar__security-glyph::before {
-    content: '';
-    position: absolute;
-    inset-block-end: calc(100% - 0.06rem);
-    inset-inline-start: 50%;
-    width: 0.46rem;
-    height: 0.42rem;
-    border: 1.5px solid currentColor;
-    border-block-end: 0;
-    border-radius: 0.46rem 0.46rem 0 0;
-    transform: translateX(-50%);
-  }
-
   .bento-sidebar-address-bar__bookmark-button[data-bookmarked='true'] {
     color: var(--color-60);
   }
