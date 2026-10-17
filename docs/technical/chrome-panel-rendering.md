@@ -509,6 +509,17 @@ adds its entry, and its id in the mount probe list, in the same change.
 - Do not put inter-panel splitter elements directly in `tabpanels`. XUL deck
   hit-testing ignores non-panel siblings. Splitters live in
   `#bento-side-panel-host` and are positioned over the panel boundaries.
+- Keep the splitter ResizeObserver's membership stable. `syncInterPanelSplitters`
+  is also the `__bentoSplitterRO` callback, so a sync that calls
+  `disconnect()` and re-`observe()`s the panels starts new observations at
+  last-reported size (-1, -1), so each one always delivers an initial
+  notification and the callback re-runs the sync every frame, even at idle,
+  whenever a splitter exists (found by reading the code and Gecko's
+  `ResizeObserver.cpp`, not from a runtime trace). `setObservedSplitterPanels` diffs the desired panel elements (panel
+  ids plus DevTools caller panels) against `__bentoSplitterObserved`,
+  `unobserve`s the ones that left (including detached ones, so the Set does not
+  leak) and `observe`s only the new ones. Never `disconnect()` or re-observe the
+  full set from inside the sync.
 - The add-panel trailer must be a XUL `vbox` with
   `.split-view-panel-active`, with the React trailer inside a chrome
   `<browser>`. HTML children in `tabpanels` do not reliably paint or receive
