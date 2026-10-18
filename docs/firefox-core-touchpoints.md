@@ -983,12 +983,14 @@ rel="stylesheet">` load and error events on chrome documents, and the
   Toolbox Console
   `getComputedStyle(document.documentElement).getPropertyValue('--muxui-semantic-motion-reveal-transition-duration')`
   is `200ms` with the default tokens.
-- Sidebar push (2026-10-17): Cmd+S collapse and expand no longer transition the
-  host width. `applyChromeSidebarCollapsed` in the mount script slides the host and
-  the in-flow children of `#browser` right of it as one strip with `transform` and
-  `opacity` (`:root[bento-sidebar-push]`, `.bento-sidebar-push-page`, the
-  `bento-sidebar-push-*` keyframes in this sheet), on the Mux reveal role, and
-  `#nav-bar::before` is used while it runs. Firefox surface depended on: the
+- Sidebar push (2026-10-17, hide added 2026-10-19): Cmd+S collapse and expand no
+  longer transition the host width, and hide mode's hide slides the same way
+  (`:root[bento-sidebar-push='hide']`, `.bento-sidebar-hidden` lands when the slide
+  ends; no new Firefox surface). `applyChromeSidebarCollapsed` in the mount script
+  slides the host and the in-flow children of `#browser` right of it as one strip
+  with `transform` and `opacity` (`:root[bento-sidebar-push]`,
+  `.bento-sidebar-push-page`, the `bento-sidebar-push-*` keyframes in this sheet),
+  on the Mux reveal role, and `#nav-bar::before` is used while it runs. Firefox surface depended on: the
   children of `#browser` are laid out as flex items in document order with
   `#bento-shell-host` first (`browser-box.inc.xhtml`), the page group is found by
   computed style (`display`, `position`), not by id, and `#nav-bar`,
@@ -1000,8 +1002,10 @@ rel="stylesheet">` load and error events on chrome documents, and the
   controls and the toolbar's sidebar-coloured segment move together with no jump at
   either end, that the panels are aligned after each toggle, and that
   `document.documentElement.hasAttribute('bento-sidebar-push')` is false afterwards;
-  after a Firefox bump, re-read `browser-box.inc.xhtml` for added in-flow children
-  of `#browser` and for any `::before` or `::after` rule on `#nav-bar`.
+  in hide mode, check the same for hide and show (no jump of the page at the start of
+  a hide, the divider entering with the strip on a show); after a Firefox bump,
+  re-read `browser-box.inc.xhtml` for added in-flow children of `#browser` and for
+  any `::before` or `::after` rule on `#nav-bar`.
 - Firefox 158.0 review (2026-10-14): `Loader::LoadStyleLink`,
   `LinkStyle::GetSheetForBindings` and `AppWindow::OnChromeLoaded` still exist;
   `Loader.cpp` changed only the stylesheet MIME-type diagnostic (`MimeNotCss`,

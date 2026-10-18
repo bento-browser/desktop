@@ -4702,7 +4702,8 @@
       document.documentElement.toggleAttribute('bento-sidebar-hidden-revealed', active);
     };
     const reveal = () => {
-      if (!currentSidebarHidden) return;
+      // Not while a hide slide runs: the class would show the host the moment it ends.
+      if (!currentSidebarHidden || isBentoSidebarPushing()) return;
       if (hideTimer) {
         clearTimeout(hideTimer);
         hideTimer = 0;
@@ -5220,7 +5221,7 @@
         stripRect && Number.isFinite(stripRect.left) ? stripRect.left - hostBox.footprintRight : 0;
     };
     syncBookmarksToolbarForSidebarWidth = (width) => {
-      applyOffset(dragHostLeft + Math.max(0, width) + dragStripInset);
+      applyOffset(currentSidebarHidden ? 0 : dragHostLeft + Math.max(0, width) + dragStripInset);
     };
     finishBookmarksToolbarSidebarResize = () => {
       scheduleUpdate();
@@ -15999,17 +16000,22 @@
   const STRIP_SCROLL_DEBOUNCE_MS = 250;
 
   // ─── Sidebar push ──────────────────────────────────────────────────────
-  // Cmd+S in 'collapse' mode (and expanding out of the hidden state) slides the
-  // sidebar and the page as one strip. Layout changes once per toggle and only
-  // transform and opacity animate: the host keeps its expanded width for the whole
-  // slide and holds only the narrow end's layout space through a negative right
-  // margin, so the page lays out once at its final geometry; transforms on the host
-  // and on the page group (everything in #browser right of the host) hide the
-  // difference and move as one. The CSS is in bento-shell-mount.css ("Sidebar
-  // push"), the mechanism and its pitfalls in docs/technical/workspaces.md.
+  // Cmd+S in 'collapse' mode, expanding out of the hidden state and hiding the
+  // sidebar in 'hide' mode slide the sidebar and the page as one strip. Layout
+  // changes once per toggle and only transform and opacity animate: the host keeps
+  // its width for the whole slide and holds only the narrow end's layout space
+  // through a negative right margin, so the page lays out once at its final
+  // geometry; transforms on the host and on the page group (everything in #browser
+  // right of the host) hide the difference and move as one. The CSS is in
+  // bento-shell-mount.css ("Sidebar push"), the mechanism and its pitfalls in
+  // docs/technical/workspaces.md.
   //
   //   collapse  commit margin and transforms, slide, then in one style change snap
   //             the host to the rail, drop the transforms and fade the host back in;
+  //   hide      the same slide to a narrow end of 0, so the host leaves the window;
+  //             the end puts the hidden class on (and the collapsed one, as hide mode
+  //             sets both) in the one style change that drops the transforms, with
+  //             no fade, as the host is already out of sight;
   //   expand    widen the host and commit margin and transforms, slide, then drop
   //             both in one frame so the page lays out once to its narrower
   //             geometry.
@@ -16032,9 +16038,11 @@
   const SIDEBAR_PUSH_REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
   const SIDEBAR_PUSH_SLIDE_ANIMATION = {
     collapse: 'bento-sidebar-push-host-collapse',
+    hide: 'bento-sidebar-push-host-collapse',
     expand: 'bento-sidebar-push-host-expand',
   };
-  // The running push, { host, collapsed, pageEls }, or null.
+  // The running push, { host, collapsed, hidden, direction, ... }, or null. hidden is
+  // whether the push ends in the hidden state.
   let sidebarPush = null;
   // Width of the collapsed rail in px, measured once from its token.
   let sidebarRailWidthPx = 0;
@@ -16096,12 +16104,13 @@
   // sidebar splitter drag drives (prepare, then sync for the new width), and each
   // slides from where it was; the CSS reads these custom properties. Must run before
   // anything else of the push touches layout: the hooks measure the host as it is.
-  // A push out of the hidden state commits the geometry of a shown sidebar. The root
-  // split var, which the window and #browser backgrounds read behind the host, is held
-  // at the wider of the two so the host never fades over the narrower colour.
+  // A push out of the hidden state commits the geometry of a shown sidebar, and a hide
+  // commits the hidden one (no divider, no offsets). The root split var, which the
+  // window and #browser backgrounds read behind the host, is held at the wider of the
+  // two so the host never fades over the narrower colour.
   // Returns { props, rootSplit }: the custom properties to set for the slide and the
   // root split var's final value, or null without the hooks.
-  function commitToolbarForSidebarPush(width, collapsed) {
+  function commitToolbarForSidebarPush(width, finalLayoutNow, hidden = false) {
     if (!syncSidebarChromeDividerForSidebarWidth) return null;
     const root = document.documentElement;
     const divider = document.getElementById('bento-sidebar-chrome-divider');
@@ -16117,7 +16126,7 @@
     });
     const from = read();
     const wasHidden = currentSidebarHidden;
-    currentSidebarHidden = false;
+    currentSidebarHidden = hidden;
     try {
       prepareSidebarChromeDividerForSidebarResize?.();
       prepareToolbarNavigationForSidebarResize?.();
@@ -16125,11 +16134,11 @@
       syncSidebarChromeDividerForSidebarWidth(width);
       syncToolbarNavigationForSidebarWidth?.(width);
       // The bookmarks toolbar is positioned by its margin and slides with the page
-      // group, whose layout is the final one on a collapse and the initial one on an
-      // expand (the slide ends at the final layout). So a collapse commits its offset
+      // group, whose layout is the final one on a collapse or hide and the initial one
+      // on an expand (the slide ends at the final layout). So those commit its offset
       // now, and an expand keeps the initial offset and applies the final one when
       // the push settles.
-      if (collapsed) syncBookmarksToolbarForSidebarWidth?.(width);
+      if (finalLayoutNow) syncBookmarksToolbarForSidebarWidth?.(width);
     } finally {
       currentSidebarHidden = wasHidden;
     }
@@ -16151,37 +16160,47 @@
   }
 
   // Starts the slide for a toggle to `collapsed`. `wasHidden` is the expand out of
-  // the hidden state, where the host holds no layout space at all. Returns false
-  // when there is nothing to slide (no measurable rail or distance); the caller
-  // then switches instantly.
-  function startSidebarPush(host, collapsed, wasHidden) {
+  // the hidden state, where the host holds no layout space at all; `hiding` is a hide,
+  // which slides the host out to the same 0. Returns false when there is nothing to
+  // slide (no measurable rail or distance); the caller then switches instantly.
+  function startSidebarPush(host, collapsed, wasHidden, hiding = false) {
     const rail = sidebarRailWidth();
     if (!(rail > 0)) return false;
     // Measured before anything below touches layout. delta is the distance the
-    // host's right edge and the page's left edge travel: expanded width minus the
-    // layout space the host holds at the narrow end.
-    const expandedWidth = collapsed
-      ? host.getBoundingClientRect().width
-      : sidebarExpandedWidth(host);
-    const narrowFootprint = collapsed || !wasHidden ? rail : 0;
-    const delta = expandedWidth - narrowFootprint;
+    // host's right edge and the page's left edge travel: the host's width (expanded,
+    // or the rail's when it is one already) minus the layout space the host holds at
+    // the narrow end.
+    const hostWidth =
+      collapsed || hiding ? host.getBoundingClientRect().width : sidebarExpandedWidth(host);
+    const narrowFootprint = hiding || (!collapsed && wasHidden) ? 0 : rail;
+    const delta = hostWidth - narrowFootprint;
     if (!(delta >= 1)) return false;
 
     const root = document.documentElement;
-    const direction = collapsed ? 'collapse' : 'expand';
-    const finalWidth = collapsed ? rail : expandedWidth;
+    const direction = hiding ? 'hide' : collapsed ? 'collapse' : 'expand';
+    const expands = direction === 'expand';
+    const finalWidth = hiding ? 0 : collapsed ? rail : hostWidth;
     // Frames queued by an earlier settle (an interrupted slide) would read the
     // translated geometry of this one.
     for (const cancel of sidebarGeometryFrameCancels) cancel();
-    const toolbar = commitToolbarForSidebarPush(finalWidth, collapsed);
+    const toolbar = commitToolbarForSidebarPush(finalWidth, !expands, hiding);
     const pageEls = sidebarPushPageElements(host);
-    sidebarPush = { host, collapsed, pageEls, finalWidth, rootSplit: toolbar?.rootSplit };
+    sidebarPush = {
+      host,
+      collapsed,
+      hidden: hiding,
+      direction,
+      pageEls,
+      finalWidth,
+      rootSplit: toolbar?.rootSplit,
+    };
     root.style.setProperty(SIDEBAR_PUSH_DELTA_PROP, delta + 'px');
     for (const [name, value] of Object.entries(toolbar?.props ?? {})) {
       root.style.setProperty(name, value);
     }
-    // An expand widens the host now; a collapse keeps it wide until the slide ends.
-    if (!collapsed) host.classList.remove('bento-sidebar-collapsed');
+    // An expand widens the host now; a collapse or hide keeps it as wide as it is
+    // until the slide ends.
+    if (expands) host.classList.remove('bento-sidebar-collapsed');
     for (const el of pageEls) el.classList.add(SIDEBAR_PUSH_PAGE_CLASS);
     root.setAttribute(SIDEBAR_PUSH_ATTR, direction);
     // Read after the styles above: a missing or disabled animation measures 0 and
@@ -16190,7 +16209,7 @@
       host,
       SIDEBAR_PUSH_KEY,
       { animations: [SIDEBAR_PUSH_SLIDE_ANIMATION[direction]] },
-      () => settleSidebarPush({ fade: collapsed }),
+      () => settleSidebarPush({ fade: direction === 'collapse' }),
     );
     return true;
   }
@@ -16198,15 +16217,22 @@
   // Ends the running push in its final state: the margin, transforms and classes
   // go and the host takes its target width in the same style change. With `fade`
   // (a collapse reaching its end) the host then fades back in from the opacity the
-  // slide left it at. Also the way to interrupt a push: a new toggle settles the
-  // running one first, so no transform, margin, opacity or class outlives it.
+  // slide left it at. A hide puts the hidden class on in that same change, with its
+  // transform transition held off: the host is out of the window at both ends of the
+  // switch, and the end state is the one a hide has always had. Also the way to
+  // interrupt a push: a new toggle settles the running one first, so no transform,
+  // margin, opacity or class outlives it.
   function settleSidebarPush({ fade = false } = {}) {
     const push = sidebarPush;
     if (!push) return;
     sidebarPush = null;
-    const { host, collapsed, pageEls, finalWidth, rootSplit } = push;
+    const { host, collapsed, hidden, direction, pageEls, finalWidth, rootSplit } = push;
     const root = document.documentElement;
     cancelMotion(host, SIDEBAR_PUSH_KEY);
+    if (hidden) {
+      host.style.setProperty('transition', 'none');
+      host.classList.add('bento-sidebar-hidden');
+    }
     host.classList.toggle('bento-sidebar-collapsed', collapsed);
     for (const el of pageEls) el.classList.remove(SIDEBAR_PUSH_PAGE_CLASS);
     root.removeAttribute(SIDEBAR_PUSH_ATTR);
@@ -16217,7 +16243,11 @@
     }
     // An expand's bookmarks offset, held at the initial one for the slide, in the
     // same frame as the page's final layout.
-    if (!collapsed) syncBookmarksToolbarForSidebarWidth?.(finalWidth);
+    if (direction === 'expand') syncBookmarksToolbarForSidebarWidth?.(finalWidth);
+    if (hidden) {
+      void host.offsetWidth;
+      host.style.removeProperty('transition');
+    }
     if (fade) {
       host.classList.add(SIDEBAR_PUSH_FADE_CLASS);
       afterMotion(host, SIDEBAR_PUSH_KEY, { animations: [SIDEBAR_PUSH_FADE_ANIMATION] }, () =>
@@ -16231,6 +16261,13 @@
   function isSidebarCollapsedTarget(host) {
     if (sidebarPush) return sidebarPush.collapsed;
     return !!host?.classList.contains('bento-sidebar-collapsed');
+  }
+
+  // Whether the sidebar is hidden or sliding toward hidden. The hidden class only
+  // lands when a hide slide ends.
+  function isSidebarHiddenTarget(host) {
+    if (sidebarPush) return sidebarPush.hidden;
+    return !!host?.classList.contains('bento-sidebar-hidden');
   }
 
   function clearSidebarPushFade(host) {
@@ -16259,22 +16296,28 @@
     }
   }
 
-  // `hidden` is where sidebarHidden is heading in the same payload: a toggle that
-  // hides the sidebar, or that stays hidden, belongs to the hidden slide and
-  // switches instantly. The first apply at boot and reduced motion do too.
+  // `hidden` is where sidebarHidden is heading in the same payload. A toggle into
+  // the hidden state is a change of its own, because hide mode keeps the setting
+  // collapsed: a sidebar that is a rail already hides with no collapsed change. It
+  // slides like a collapse (hidden class at the end, see settleSidebarPush), and
+  // applyChromeSidebarHidden, which runs next, leaves the host's class to it. A
+  // toggle that stays hidden, the first apply at boot and reduced motion switch
+  // instantly.
   function applyChromeSidebarCollapsed(collapsed, { hidden = currentSidebarHidden } = {}) {
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
     const first = !host.__bentoSidebarApplied;
     host.__bentoSidebarApplied = true;
+    const hiding = hidden && !isSidebarHiddenTarget(host);
     // BENTO_PANELS carries the setting on every payload; only a change toggles.
-    if (collapsed !== isSidebarCollapsedTarget(host)) {
-      const wasHidden = host.classList.contains('bento-sidebar-hidden');
+    if (collapsed !== isSidebarCollapsedTarget(host) || hiding) {
       settleSidebarPush();
       clearSidebarPushFade(host);
+      // After the settle: an interrupted hide has put the class on by now.
+      const wasHidden = host.classList.contains('bento-sidebar-hidden');
       const slide =
-        !first && !hidden && !window.matchMedia(SIDEBAR_PUSH_REDUCED_MOTION).matches;
-      if (!slide || !startSidebarPush(host, collapsed, wasHidden)) {
+        !first && (hiding || !hidden) && !window.matchMedia(SIDEBAR_PUSH_REDUCED_MOTION).matches;
+      if (!slide || !startSidebarPush(host, collapsed, wasHidden, hiding)) {
         host.classList.toggle('bento-sidebar-collapsed', collapsed);
       }
     }
@@ -16290,16 +16333,23 @@
     currentSidebarHidden = hidden === true;
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
-    // A push still running when the sidebar is hidden or shown settles first, so
-    // the hidden slide starts from a plain rail or expanded host. An expand out
-    // of the hidden state starts in applyChromeSidebarCollapsed and is left alone.
-    if (currentSidebarHidden) settleSidebarPush();
+    // A push settles first unless it is the one this call belongs to: the hide slide
+    // (the host's class lands when it ends) or an expand out of the hidden state
+    // (both start in applyChromeSidebarCollapsed). A push running the other way, or a
+    // hide slide when the sidebar is being shown, ends in place so the change below
+    // starts from a plain rail or expanded host.
+    if (sidebarPush && sidebarPush.hidden !== currentSidebarHidden) settleSidebarPush();
     document.documentElement.toggleAttribute('bento-sidebar-hidden', currentSidebarHidden);
     if (!currentSidebarHidden) {
       host.classList.remove('bento-sidebar-hidden-revealed');
       document.documentElement.removeAttribute('bento-sidebar-hidden-revealed');
     }
-    if (!host.__bentoSidebarHiddenApplied) {
+    if (sidebarPush?.hidden) {
+      // The hide slide puts the host's class on when it settles. The splitter and its
+      // affordance below take their hidden state now: the page lays out at its final
+      // geometry for the slide.
+      host.__bentoSidebarHiddenApplied = true;
+    } else if (!host.__bentoSidebarHiddenApplied) {
       host.__bentoSidebarHiddenApplied = true;
       const wasHidden = host.classList.contains('bento-sidebar-hidden');
       if (wasHidden !== currentSidebarHidden) {
