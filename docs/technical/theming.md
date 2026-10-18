@@ -317,10 +317,12 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   while the archive exists.
 - A rem token is a different length in chrome (system UI font, 11 px on macOS) and
   the shell (`--font-size-root`, 16 px). The generator pins the rem tokens chrome
-  sizes shell-laid-out geometry from (`SHELL_SIZED_TOKENS`, today the collapsed rail
-  width) in px in the chrome sheet, except in the monolithic rollback sheet; see
-  [Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry) and the rail
-  pitfall in [workspaces.md](workspaces.md#workspace-pitfalls).
+  sizes shell-laid-out geometry from (`SHELL_SIZED_TOKENS`: the collapsed rail width
+  and the add-panel trailer's button, gap, padding and select widths) in px in the
+  chrome sheet, except in the monolithic rollback sheet; see
+  [Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry), the rail
+  pitfall in [workspaces.md](workspaces.md#workspace-pitfalls), and the trailer
+  pitfall in [panel-widgets.md](panel-widgets.md#widget-pitfalls).
 - Firefox notification bars (`notification-message`, including the popup-blocked
   banner) are `moz-message-bar`/infobar custom elements with shadow-root CSS.
   `bento-chrome-theme.css` can theme their host and inherited custom properties,

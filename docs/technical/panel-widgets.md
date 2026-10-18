@@ -72,6 +72,24 @@ The visible panel trailer is rendered by `extensions/bento-shell/src/panel-trail
 and `components/PanelTrailer`. It runs inside the chrome-mounted
 `bento-panel-trailer-frame`.
 
+The trailer's size is one set of `--bento-panel-trailer-*` tokens in
+`extensions/bento-shell/src/theme/bento-tokens.css`: button size, grid gap, inline
+padding, grid width (a 3x3 grid), the select's wide width, and the base width (the
+larger of the wide width and the padded grid). `PanelTrailer.css` lays the buttons
+and the "More saved panels" select out from them inside the iframe, and the chrome
+host `#bento-add-panel-trailer` (`bento-shell-mount.css`) derives its `width`,
+`flex-basis` and `min-width` from the same tokens. `applyTrailerWidth()` sets
+`--bento-saved-panel-overflow` to 1 once more than eight panels are saved, which
+widens the host from the base width to the wide width plus the padding so the select
+fits. Chrome's root font size is not the shell's, so the chrome token sheet pins the
+button, gap, padding and wide-width tokens in px at the shell's root size (see
+[Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry)): the host is 256 px
+wide (284 px with the select) in the shell's 16 px reading, where chrome's own rem
+gave 176 px (195 px). The flat layout measures the host's rendered width
+(`getTrailerLayoutWidth`), so the wider trailer takes 80 px (89 px with the select)
+more of the strip's scroll extent and leaves the main panel that much less room when
+side panels are open.
+
 ## Widget pitfalls
 
 - Do not call Places APIs from shell or chrome UI for saved panels. The
@@ -109,6 +127,17 @@ and `components/PanelTrailer`. It runs inside the chrome-mounted
 - Keep backing Firefox tab pinning coupled to `PinnedPanelsStore` deltas, not
   only the direct add/remove handlers, so restore, import, and URL-backed
   reopen paths receive the same sleep protection.
+- Do not size the trailer host in chrome with its own rem formulas or copy the
+  trailer's px into the mount script. `#bento-add-panel-trailer` holds a shell
+  document, and chrome's root font size (the system UI font, 11 px on macOS) is
+  smaller than the shell's 16 px, so the host's `16rem` base and wide widths were
+  176 px against the 256 px the shell lays the select out at: with more than eight
+  saved panels the select (and the grid's 31.15 px buttons against the shell's
+  39.6 px, a 103 px grid against 133 px) did not fit the host. The host reads the
+  shared tokens, the generator pins the rem leaves in `SHELL_SIZED_TOKENS`, and
+  `getTrailerLayoutWidth` has no px fallback to keep in step. When the trailer's
+  geometry changes, change the token and read the host's computed `width` in the
+  Browser Toolbox against the iframe's `.bento-panel-trailer__more` width.
 - The saved-panel favicon row cannot rely on `page-icon:` URLs from the
   trailer iframe. `SavedPanelsStore` filters privileged favicon URLs and uses
   placeholders when needed.

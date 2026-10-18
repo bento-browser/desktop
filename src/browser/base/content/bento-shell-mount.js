@@ -11620,9 +11620,9 @@
       const styles = getComputedStyle(trailer);
       const styleWidth = cssLengthToPx(styles.width, 0);
       if (styleWidth > 0) return styleWidth;
-      const minWidth = cssLengthToPx(styles.minWidth, 0);
-      if (minWidth > 0) return minWidth;
-      return currentSavedPanelCount > 8 ? 192 : 162;
+      // The host's widths come from the pinned --bento-panel-trailer-* tokens, so there
+      // is no px guess to fall back on here.
+      return cssLengthToPx(styles.minWidth, 0);
     } finally {
       if (saved.width) trailer.style.width = saved.width;
       else trailer.style.removeProperty('width');

@@ -131,11 +131,19 @@ function readOptional(path, label) {
 
 // Chrome's root font size is Firefox's UI font (11px on macOS) while the shell's is
 // --font-size-root (16px), so a rem token is a different length in the two documents.
-// Chrome sizes #bento-shell-host from the collapsed rail width and the shell lays its
-// rail out inside that host, so this token is resolved here at the shell's root size
-// and pinned in px. Add a token when chrome sizes shell-laid-out geometry from a rem
+// Chrome sizes #bento-shell-host from the collapsed rail width and #bento-add-panel-trailer
+// from the trailer's button, gap, padding and select widths, and the shell lays its rail and
+// its trailer out inside those hosts, so these tokens are resolved here at the shell's root
+// size and pinned in px. The trailer's grid and base widths are not listed: they are px sums
+// of the pinned tokens. Add a token when chrome sizes shell-laid-out geometry from a rem
 // one; px tokens (the sidebar min and max) need nothing.
-const SHELL_SIZED_TOKENS = ['--bento-tab-strip-width-collapsed'];
+const SHELL_SIZED_TOKENS = [
+  '--bento-tab-strip-width-collapsed',
+  '--bento-panel-trailer-button-size',
+  '--bento-panel-trailer-grid-gap',
+  '--bento-panel-trailer-inline-padding',
+  '--bento-panel-trailer-wide-width',
+];
 
 // A resolver for the custom properties declared in `css`: each token's value with its
 // var() references followed and its rem lengths converted to px at --font-size-root.

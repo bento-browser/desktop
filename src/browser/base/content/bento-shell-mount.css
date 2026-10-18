@@ -1969,25 +1969,19 @@
 /* Trailer width reserves a 3x3 button grid. If more than eight
    saved panels exist, React adds a native select underneath the
    grid and applyTrailerWidth() flips --bento-saved-panel-overflow
-   to 1 so the host widens just enough for the select. */
+   to 1 so the host widens just enough for the select. The host
+   holds a shell document, so its geometry comes from the shared
+   --bento-panel-trailer-* tokens in bento-tokens.css, which
+   bento-chrome-tokens.css pins in px at the shell's root font size
+   (docs/chrome-tokens.md, Shell-sized geometry). Do not restate
+   them here in rem: chrome's rem is smaller than the shell's, and
+   the shell's trailer would be clipped by the narrower host. */
 #bento-add-panel-trailer {
-  --bento-panel-trailer-button-size: max(
-    var(--space-l),
-    calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
-  );
-  --bento-panel-trailer-grid-width: calc(
-    (var(--bento-panel-trailer-button-size) * 3) + (var(--space-3xs) * 2)
-  );
-  --bento-panel-trailer-base-width: max(
-    16rem,
-    calc(var(--bento-panel-trailer-grid-width) + (var(--space-xs) * 2))
-  );
-  --bento-panel-trailer-wide-width: 16rem;
   --bento-panel-trailer-width: max(
     var(--bento-panel-trailer-base-width),
     calc(
       var(--bento-panel-trailer-grid-width) +
-        (var(--space-xs) * 2) +
+        (var(--bento-panel-trailer-inline-padding) * 2) +
         (
           var(--bento-saved-panel-overflow, 0) *
             (var(--bento-panel-trailer-wide-width) - var(--bento-panel-trailer-grid-width))

@@ -239,6 +239,29 @@
     --bento-scrollbar-radius: 4px;
     --bento-scrollbar-thumb-min-width: 30px;
 
+    /* Add-panel trailer. The shell's PanelTrailer lays out inside the chrome host
+       #bento-add-panel-trailer, which is sized from the same tokens, so both read them
+       from here. Chrome's rem is not the shell's, so the chrome sheet pins the host's
+       inputs in px (SHELL_SIZED_TOKENS in scripts/generate-chrome-tokens.mjs).
+       Button: the larger of the space-l step and an IconButton size="sm" plus its
+       inset. Grid: three buttons and two gaps. Wide: the saved-panels select. Base:
+       the host's least width, the larger of the wide width and the grid with its
+       padding. With the select the host grows to the wide width plus the padding. */
+    --bento-panel-trailer-button-size: max(
+      var(--muxui-reference-dimension-space-l),
+      calc(var(--bento-control-size-sm) + (var(--muxui-semantic-layout-inset-tight) * 2))
+    );
+    --bento-panel-trailer-grid-gap: var(--muxui-semantic-layout-inset-tiny);
+    --bento-panel-trailer-inline-padding: var(--muxui-semantic-layout-inset-medium);
+    --bento-panel-trailer-grid-width: calc(
+      (var(--bento-panel-trailer-button-size) * 3) + (var(--bento-panel-trailer-grid-gap) * 2)
+    );
+    --bento-panel-trailer-wide-width: 16rem;
+    --bento-panel-trailer-base-width: max(
+      var(--bento-panel-trailer-wide-width),
+      calc(var(--bento-panel-trailer-grid-width) + (var(--bento-panel-trailer-inline-padding) * 2))
+    );
+
     /* Focus / cycle indicator ring width (inset box-shadow on the
        active panel). */
     --bento-focus-ring-width: 2px;
