@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceStore } from './WorkspaceStore';
-import { hasSelectedWorkspaceTab, isActivationCurrent } from './ActivationGuard';
+import {
+  createActivationGenerations,
+  hasSelectedWorkspaceTab,
+  isActivationCurrent,
+} from './ActivationGuard';
 
 describe('isActivationCurrent', () => {
   beforeEach(() => {
@@ -58,6 +62,99 @@ describe('isActivationCurrent', () => {
 
     expect(isActivationCurrent(a.id, null, activeId)).toBe(false);
     expect(isActivationCurrent(b.id, null, activeId)).toBe(true);
+  });
+});
+
+describe('createActivationGenerations', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('browser', {
+      storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) } },
+      windows: { getAll: vi.fn(async () => []) },
+      sessions: {
+        getWindowValue: vi.fn(async () => undefined),
+        setWindowValue: vi.fn(async () => undefined),
+        removeWindowValue: vi.fn(async () => undefined),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('lets only the last of A, B, A act, so an empty A gets one tab', async () => {
+    // Three activations are held at startup. The workspace alone passes both A's, since the
+    // window shows A again; each would then open a tab for the empty workspace.
+    const store = new WorkspaceStore();
+    await store.init();
+    const a = store.snapshot().workspaces[0]!;
+    const b = store.create({ name: 'B' }, null, { activate: false });
+    const generations = createActivationGenerations();
+    let release!: () => void;
+    const startupRestored = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ran: string[] = [];
+    const activations: Promise<void>[] = [];
+    store.onDeltas((deltas) => {
+      for (const delta of deltas) {
+        if (delta.kind !== 'activated') continue;
+        const windowId = typeof delta.windowId === 'number' ? delta.windowId : null;
+        const isLatest = generations.begin(windowId);
+        activations.push(
+          startupRestored.then(() => {
+            const current =
+              isLatest() && isActivationCurrent(delta.id, windowId, (id) => store.getActiveId(id));
+            if (current) ran.push(delta.id);
+          }),
+        );
+      }
+    });
+
+    store.activate(a.id, 1);
+    store.activate(b.id, 1);
+    store.activate(a.id, 1);
+    await store.flush();
+    release();
+    await Promise.all(activations);
+
+    expect(activations).toHaveLength(3);
+    expect(ran).toEqual([a.id]);
+  });
+
+  it('keeps an activation current until a later one begins for the same window', () => {
+    const generations = createActivationGenerations();
+
+    const first = generations.begin(1);
+    expect(first()).toBe(true);
+    const second = generations.begin(1);
+
+    expect(first()).toBe(false);
+    expect(second()).toBe(true);
+  });
+
+  it('counts each window, and the global fallback, on its own', () => {
+    const generations = createActivationGenerations();
+
+    const inWindowOne = generations.begin(1);
+    const inWindowTwo = generations.begin(2);
+    const global = generations.begin(null);
+    generations.begin(2);
+
+    expect(inWindowOne()).toBe(true);
+    expect(inWindowTwo()).toBe(false);
+    expect(global()).toBe(true);
+  });
+
+  it('stops what was running for a window that was forgotten', () => {
+    const generations = createActivationGenerations();
+
+    const activation = generations.begin(1);
+    generations.forget(1);
+
+    expect(activation()).toBe(false);
   });
 });
 

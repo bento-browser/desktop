@@ -408,17 +408,38 @@ workspace is shown in no window and none of its tabs is selected.
 
 A held activation can be superseded. Activations that arrive during boot all
 resume together when `bootReady` releases `startupRestored`, so one for workspace
-A can wait while its window switches to B, and then both run. The handler
-revalidates after the hold and after each await that precedes moving, creating or
-selecting a tab (the cross-window move, the parked-list restore, the adoption
-read, and the tab read inside `activateNonPanelTab`): if the window's workspace is
-no longer the activation's (`isActivationCurrent`, which asks `getActiveId` for
-the window, or the global fallback when there is no window), it returns without
-touching tabs or panels, and the activation that replaced it does the work. The
-parked-list restore, which takes the list before it awaits, still opens the tabs
-but selects none of them once superseded. A skipped activation leaves its
+A can wait while its window switches to B, and then both run. Each activation
+takes the next generation of its window when it is requested, before it waits
+(`createActivationGenerations`, `workspaces/ActivationGuard.ts`; the global
+fallback counts as a window of its own, and a closed window forgets its number).
+The handler revalidates after the hold and after each await that precedes moving,
+creating or selecting a tab (the cross-window move, the parked-list restore, the
+adoption read, and the tab read inside `activateNonPanelTab`), and goes on only
+while it still holds its window's latest generation and the window's workspace is
+still the activation's (`isActivationCurrent`, which asks `getActiveId` for the
+window, or the global fallback when there is no window). The generation is what
+tells A, B, A apart: the workspace matches for both A's, and an empty A would get
+one new tab from each. Otherwise it returns without touching tabs or panels, and
+the activation that replaced it does the work. A skipped activation leaves its
 workspace's persisted panels unrestored until its next activation, which is what
 a lazy workspace does anyway.
+
+The parked-list restore takes the list before it awaits, so a superseded restore
+must not keep opening tabs from it (`restoreParkedEntries`,
+`panels/ParkedRestore.ts`). It asks `stillCurrent` before each entry; once
+superseded it opens and selects nothing more, and the entries it has not started
+go back into the parked list (`returnParkedWorkspaceTabs`, ahead of anything
+parked since) for the next activation of the workspace to restore in the window
+that owns it by then. Tabs it opened earlier are already assigned to the
+workspace. The one whose create was still in flight when the restore was
+superseded is handed to the window that owns the workspace now
+(`findOwningWindow`, then `moveWorkspaceTabsToWindow`): a window that claimed the
+workspace in the meantime has already run its own stray-tab move, so nothing
+else would collect that tab. With no owner it stays, like any tab of a workspace
+its window switched away from, and the next activation of the workspace moves it.
+That claiming window found the parked list empty (the superseded restore had
+taken it) and may show a new tab for the workspace until the next activation
+restores the rest.
 
 Panels follow the same rule at startup: a panel tab Firefox restored with its
 session marker keeps its slot and is never opened a second time by the persisted
@@ -1072,7 +1093,20 @@ opening an unwanted blank tab before the moved tabs arrive.
   tab reads before it creates or selects tabs; an old one (A) used to select an A
   tab after the window had switched to B. Keep `isCurrent()` after the hold and
   after each such await, and keep the `stillCurrent` guard before the selections
-  in `restoreParkedTabsForWorkspace` and `activateNonPanelTab`.
+  in `restoreParkedEntries` and `activateNonPanelTab`. Take the window's generation
+  (`activationGenerations.begin`) as the handler's first statement, before the
+  `await startupRestored`, and keep it in `isCurrent()` next to the workspace
+  check: with the workspace alone a window that went A, B, A resumed both A
+  handlers, and an empty A got two blank tabs.
+- Do not let a superseded parked-tab restore open the rest of its list. It took
+  the whole list before awaiting, so after restoring A in window 1, switching
+  window 1 to B and claiming A in window 2, it went on creating A's remaining
+  tabs in window 1, where the new owner's stray-tab move had already run. It now
+  stops at the next entry, returns the entries it did not start to the parked
+  list, and hands the tab whose create was in flight to the owning window. Do not
+  drop the hand-over or return the entries elsewhere than the parked list: the
+  tab is the only one the owner's move cannot see, and the entries are the only
+  copy of those tabs.
 - Do not run the workspace activation handler during boot before the restore has
   finished. `restoreFromSession` activates a restored window's workspace before
   `hydrateWorkspaceIds`, so an activation that runs at once sees restored tabs
