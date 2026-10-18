@@ -56,17 +56,13 @@ export interface PanelRestoreLocation {
 }
 
 export type PanelPersistenceRootNode =
-  | PanelPersistencePanelNode
-  | PanelPersistenceVerticalGroupNode;
+  PanelPersistencePanelNode | PanelPersistenceVerticalGroupNode;
 
 export type PanelPersistenceVerticalTopNode =
-  | PanelPersistencePanelNode
-  | PanelPersistenceHorizontalGroupNode;
+  PanelPersistencePanelNode | PanelPersistenceHorizontalGroupNode;
 
 export type PanelPersistenceVerticalBottomNode =
-  | PanelPersistencePanelNode
-  | PanelPersistenceChooserNode
-  | PanelPersistenceHorizontalGroupNode;
+  PanelPersistencePanelNode | PanelPersistenceChooserNode | PanelPersistenceHorizontalGroupNode;
 
 export interface PanelPersistencePanelNode {
   kind: 'panel';
@@ -646,6 +642,38 @@ export function fromPersistenceLayout(
     root.push(...converted.flatMap((rootNode) => normalizeRootNode(rootNode)));
   }
   return { root };
+}
+
+/**
+ * Removes one panel from a persisted layout and leaves the other root nodes and every other key
+ * as they are. The root node holding the panel goes through the live layout shape, so the removal
+ * is `removePanel`'s: a subdivision left with one panel collapses into it.
+ */
+export function removePersistedPanel(
+  layout: PanelPersistenceWorkspaceLayout,
+  panelKey: string,
+): PanelPersistenceWorkspaceLayout {
+  return {
+    ...layout,
+    root: layout.root.flatMap((node) => {
+      const keys = persistedPanelKeys(node);
+      const tabId = keys.indexOf(panelKey);
+      if (tabId < 0) return [node];
+      const live = fromPersistenceLayout({ root: [node] }, new Map(keys.map((key, i) => [key, i])));
+      removePanel(live, tabId);
+      return toPersistenceLayout(live, new Map(keys.map((key, i) => [i, key]))).root;
+    }),
+  };
+}
+
+function persistedPanelKeys(node: PanelPersistenceRootNode): string[] {
+  if (node.kind === 'panel') return [node.panelKey];
+  const keys: string[] = [];
+  for (const child of node.children) {
+    if (child.kind === 'panel') keys.push(child.panelKey);
+    else if (child.kind === 'group') keys.push(...child.children.map((leaf) => leaf.panelKey));
+  }
+  return keys;
 }
 
 export function migrateLegacyEntriesToPersistence(

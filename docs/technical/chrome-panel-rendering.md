@@ -376,7 +376,7 @@ adds its entry, and its id in the mount probe list, in the same change.
   transient states (closing, adoption) and would fight tools.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
   `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
-  contextTab` (or the multi-selection), and the new window adopts its first tab
+contextTab` (or the multi-selection), and the new window adopts its first tab
   only when `getTabToAdopt()` receives a XUL element. While the reconciler has
   tabs marked, `tab.splitview` is Bento's own-property marker (a plain object),
   so tearing out the selected tab or a panel tab failed silently: the source
@@ -414,10 +414,15 @@ adds its entry, and its id in the mount probe list, in the same change.
     without a read, because SessionStore copies the old value back onto it). At
     boot `restoreFromSession` activates workspaces before SessionStore has
     restored the tabs and before `hydrateWorkspaceIds` ran, so every restored tab
-    still looks unassigned; assigning the window's workspace to it there persisted
-    over the real assignment. Windows that exist before the gate settles, and any
-    window with one tab that has a stored value (an undone window close), adopt
-    nothing and fall back to a new tab as before. The workspace's own tabs are read
+    still looks unassigned at that moment; assigning the window's workspace to it
+    there persisted over the real assignment. The activation handler no longer
+    runs that early: it waits on `startupRestored`, which `bootReady` releases
+    after the hydrate, the parked-list drop and the panel restore, and it stops if
+    its window has switched workspaces by then (see "Selection at startup" in
+    [workspaces.md](workspaces.md)). The gate stays as the second guard: windows
+    that exist before it settles, and any window with one tab that has a stored
+    value (an undone window close), adopt nothing and fall back to a new tab as
+    before. The workspace's own tabs are read
     again after the session values (`settleWorkspaceTabs`) before a tab is
     created: another handler can assign the window's initial tab during that read,
     and creating from the earlier read left an extra blank tab beside it.
@@ -430,11 +435,11 @@ adds its entry, and its id in the mount probe list, in the same change.
     (`panelToPromoteAfterDetach`) the way the last-tab handler does. Without it
     the panel ended up selected as the main tab of a workspace with an empty
     sidebar.
-  The extension-API entry points `windows.create({ tabId })` and cross-window
-  `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
-  wrapper; Bento calls neither on a marked tab (workspace activation moves
-  unmarked stray tabs, and a closing window adopts its tabs with `gBrowser.adoptTab`
-  after tearing the split view down; see the next item).
+    The extension-API entry points `windows.create({ tabId })` and cross-window
+    `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
+    wrapper; Bento calls neither on a marked tab (workspace activation moves
+    unmarked stray tabs, and a closing window adopts its tabs with `gBrowser.adoptTab`
+    after tearing the split view down; see the next item).
 - Window close with live tabs. Closing a window destroyed every tab it hosted, so
   the tabs of a workspace that a second window had claimed, and the hidden tabs of
   other workspaces, lost their page state and were recreated from URLs later (see
@@ -526,6 +531,17 @@ adds its entry, and its id in the mount probe list, in the same change.
   hit testing.
 - Keep materialization retries. Session restore can briefly expose pending tabs
   with no `linkedPanel` or no loaded browser.
+- Keep the `reload()` in `materializePanelTab` for a tab it had to materialize. A
+  pinned panel tab is unloaded with the other pending pinned tabs once its
+  history restore is done (`attachRestoredPinnedTabUnload`), unless the window
+  already renders it as a panel, so the reconciler can find it with no
+  `linkedPanel`, `insertBrowser` creates its browser, and the reload loads it. A pending tab that
+  still has its real browser already reports its saved address, so the
+  `about:blank` test beside that reload does not fire for it: the `SSTabRestoring`
+  handler loads such a rendered panel (`shouldLoadRestoredPinnedPanel`), so keep
+  `materializePanelTab` unchanged and that handler in place (derived from the
+  source, not run). See "Pinned tabs restore on demand after a restart" in
+  [workspaces.md](workspaces.md).
 - Keep cleanup broad when tearing down to main-only mode. Stale split-view
   classes, inline sizing, and data attributes can make the next main tab render
   at fractional width.

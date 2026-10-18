@@ -92,6 +92,106 @@ When changing core functionality, manually verify at least the affected subset:
   the first window of a launch waits for `bento-tools` and is slower);
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored;
+- profile restart with pinned tabs: pin one tab in each of two workspaces and
+  leave a regular tab selected, quit, relaunch. Only the selected tab loads (and
+  the shown workspace's panels); both pinned tabs are pending and dimmed (sleeping
+  rows in the sidebar) shortly after launch, and still dimmed 20 seconds after
+  launch. The unload runs a few hundred milliseconds after the restore, so a pinned
+  row can show undimmed for that moment; a row that dims and then loads again means
+  SessionStore re-inserted the browser (see the pitfall in
+  [workspaces.md](workspaces.md)). In the Browser Toolbox Console, right after
+  launch and again after 20 seconds,
+  `gBrowser.tabs.filter(t => t.pinned).map(t => [t.hasAttribute('pending'), !!t.linkedPanel])`
+  shows `[true, false]` for each of them (pending and unloaded), and from the
+  bento-tools background page
+  `(await browser.tabs.query({ pinned: true })).map(t => t.discarded)` is `true` for
+  them. Clicking one loads the right page, the second after switching to its
+  workspace, and Back works. A pinned tab shown as a panel in the active workspace
+  may be unloaded when its restore finishes and is loaded again by the panel strip,
+  or is loaded by the restore handler itself when the strip already renders it: it
+  ends up loaded and renders its page normally, with no blank panel. Repeat with a
+  pinned panel in the shown workspace after reopening a closed window (Cmd+Shift+N)
+  and in a second window: the panel shows its page without a click, and
+  `tab.hasAttribute('pending')` is false for it. A pinned tab that loaded (the
+  selected one) is not dimmed. The audio and sharing skips cannot be reached from a
+  real restore, because a restored tab has not played anything;
+  `scripts/mount-restored-pinned-unload.test.mjs` covers them. Then press
+  Alt+Shift+R with a loaded pinned tab open: it stays loaded, because the unload
+  runs only when SessionStore restores a tab. On macOS, close the last window with
+  Cmd+W (the app keeps running) and click the Dock icon: the pinned tabs of the
+  window that comes back are unloaded too (derived from the source, not run). Then
+  set `browser.sessionstore.restore_pinned_tabs_on_demand` to false in `about:config`
+  and relaunch: Firefox loads the pinned tabs and none is unloaded or dimmed, the
+  same with `browser.sessionstore.restore_on_demand` false. If a pinned tab that
+  was not selected loads at launch, or one loads again after dimming, see the
+  startup pitfalls in [workspaces.md](workspaces.md);
+- restart keeps what Firefox restored. In a workspace with many tabs, drag one tab
+  to the end of the list and select it, then quit with Cmd+Q and relaunch. Before
+  quitting, note the window's tab count (Browser Toolbox Console:
+  `gBrowser.tabs.length`). After the relaunch the count is the same (no duplicate
+  of the moved tab or of any pinned tab), the moved tab is still last, and it is
+  the selected tab, not the workspace's first tab. Repeat with a pinned tab
+  selected at quit, with the selection in a second workspace of the window (switch
+  to it before quitting), and with two windows on different workspaces: each
+  window keeps its tabs, order and selection. A dev relaunch on the same
+  profile behaves the same. The Browser Console has no
+  `parked tab restore failed` lines;
+- restart with panels: a workspace with three panels (one pinned, one in a
+  subdivision), then Cmd+Q and relaunch. The sidebar shows no extra tab, no panel
+  appears twice (compare the tab count before and after:
+  `gBrowser.tabs.length` in the Browser Toolbox Console), the panels keep their
+  order, widths and subdivision, and the pinned panel is still pinned (pin rail,
+  kebab menu says Unpin) and is the same tab as the panel in the strip. A panel
+  closed with Cmd+Shift+W of the only window before quitting is opened again once
+  on relaunch;
+- selection and switching at launch: quit with a panel of the workspace as the
+  window's selected tab (Browser Toolbox Console: `gBrowser.selectedTab` is a
+  panel's tab, not a sidebar tab) and relaunch: it is still the selected tab and
+  the first sidebar tab is not selected over it. Relaunch with a window on one
+  workspace and switch to another as soon as the window appears; the window ends
+  on the second workspace with one of its tabs selected
+  (`gBrowser.selectedTab` belongs to it), and no tab of the first workspace is
+  selected a moment later. Do it again with an empty workspace as the first one
+  and switch to the second and straight back: the window shows one tab for the
+  first workspace, not two blank ones. Close a window with Cmd+Shift+W so its
+  workspace's tabs are parked, show that workspace in another window and switch
+  that window away and back at once: no tab of the workspace is left behind in a
+  window that does not show it. The superseded-activation and superseded-restore
+  decisions are covered by unit tests; this is the timing check, and it can pass
+  without ever hitting the race;
+- panel identity across a restart: in one workspace make three panels with
+  different widths, subdivide the first one (a top panel and a bottom panel, the
+  bottom one a different site and width), pin one of the others as a pinned panel,
+  then Cmd+Q and relaunch. Each panel keeps its own width and header state, the
+  top and bottom of the subdivision are not swapped, the pinned panel is still the
+  same tab as the panel in the strip, and `gBrowser.tabs.length` is unchanged. Then
+  navigate one panel to another site, quit and relaunch: it comes back on that
+  site, in its slot, with no extra tab. Also open a sidebar tab on the same address
+  as a panel that will be restoring at launch (a pinned panel), quit, relaunch: the
+  panel is still the panel and the sidebar tab is still a sidebar tab. Do the
+  subdivision in a second workspace and leave that workspace unopened across two
+  quits and relaunches (it stays inactive, so its entries are not applied), then
+  open it: the top and the bottom panel are still on their own sites and widths.
+  The first launch after upgrading from a build whose markers have no panel key
+  can show a pinned panel twice. The extra copy is not cleaned up: it stays, and
+  later launches keep both, until you close it;
+- a workspace whose window closed comes back: with two windows on different
+  workspaces, close one with Cmd+Shift+W, then open its workspace in a new window
+  (or the workspace switcher of the other window): its tabs are restored once, in
+  order. Also close the only window with Cmd+Shift+W, quit, relaunch: the new
+  window shows the workspace's tabs from the parked list, once each, and a window
+  Firefox did restore does not get its tabs a second time;
+- parked tabs survive a tools reload but not a restart: with two windows on
+  different workspaces, give window A's workspace a loaded page and an empty New
+  Tab (Cmd+T, leave it blank), then close window A with Cmd+Shift+W. The page moves
+  to window B and the empty New Tab stays behind and is parked. With window B
+  open, press Alt+Shift+R. The parked list stays
+  (`await browser.storage.local.get('bento.parkedWorkspaceTabs')`, run from the
+  bento-tools background page in the Browser Toolbox, still returns the
+  workspace), and showing A's workspace in a window restores the New Tab once.
+  Then Cmd+Q and relaunch:
+  Firefox's restored tabs are not doubled, and a workspace with no restored tab
+  still restores its list;
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
   version, for example `158.0`) and no `[bento-compat] missing` lines.

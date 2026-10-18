@@ -244,3 +244,58 @@ describe('PanelStore persistence triggers', () => {
     );
   });
 });
+
+describe('PanelStore restorePersistedLayout', () => {
+  beforeEach(() => {
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({})),
+          set: vi.fn(async () => undefined),
+          remove: vi.fn(async () => undefined),
+        },
+      },
+      tabs: { get: vi.fn(async (tabId: number) => ({ id: tabId, url: `https://${tabId}/` })) },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('places each bound key in the persisted order', () => {
+    const store = new PanelStore();
+    store.add('ws', 7);
+    store.add('ws', 4);
+
+    store.restorePersistedLayout(
+      'ws',
+      {
+        root: [
+          { kind: 'panel', panelKey: 'panel-0' },
+          { kind: 'panel', panelKey: 'panel-1' },
+        ],
+      },
+      new Map([
+        ['panel-0', 4],
+        ['panel-1', 7],
+      ]),
+    );
+
+    expect(store.getPanels('ws')).toEqual([4, 7]);
+  });
+
+  it('keeps a live panel no key claims at the end of the strip, not in the sidebar', () => {
+    const store = new PanelStore();
+    store.add('ws', 1);
+    store.add('ws', 2);
+
+    store.restorePersistedLayout(
+      'ws',
+      { root: [{ kind: 'panel', panelKey: 'panel-0' }] },
+      new Map([['panel-0', 2]]),
+    );
+
+    expect(store.getPanels('ws')).toEqual([2, 1]);
+  });
+});

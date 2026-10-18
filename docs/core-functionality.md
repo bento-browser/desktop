@@ -135,7 +135,17 @@ panel. When the prompt blocks closing the tabs of a workspace that is being
 deleted, the tab stays open without a workspace and is closed at the next launch;
 deleting a workspace has nothing to roll back to.
 In a single-window session, relaunch should reopen on the workspace that was
-visible when Bento was quit.
+visible when Bento was quit. Tabs come back once, in the order they had, and a
+window keeps the tab that was selected at quit when that tab belongs to the
+workspace the window opens on (a sidebar tab or one of its panels); if it belongs
+to another workspace, the window selects that workspace's first tab instead.
+Relaunching does not open a second copy of a tab Firefox restored. Panels and
+pinned panels come back in their slots, each with its own width and page, without
+an extra tab or a second copy of the panel. The one exception is the first launch
+after upgrading from a build that saved panel markers without a panel key: a
+pinned panel can come back twice, and the extra copy stays on every later launch
+until it is closed. A workspace whose window was closed before quitting reopens
+its tabs and panels the next time it is shown.
 Panels, pinned panels, and tabs from private windows are never written to the
 saved panel layout, the pinned panel rail, or the tabs kept when a window closes.
 Their URLs, titles, favicons, and panel slots do not come back after relaunch,
@@ -235,6 +245,13 @@ quiet, the normal idle rules apply to it again.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the New menu and regular tabs with a divider instead of a text
 subheading.
+After a restart, pinned tabs show as unloaded (sleeping) in the sidebar within a
+moment of the restore and stay unloaded until first opened, like other restored
+tabs. The same holds for a window restored later, such as a reopened closed window
+or a restored session. The pinned tab that was selected at quit and pinned tabs shown
+as panels in the workspace load at launch. If Firefox's restore-on-demand
+settings for pinned tabs are turned off, pinned tabs load at launch and none is
+shown as unloaded.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
 Bento replaces Firefox's native horizontal tab strip with its workspace/sidebar
