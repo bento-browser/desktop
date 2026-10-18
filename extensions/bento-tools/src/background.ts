@@ -18,6 +18,7 @@ import {
 } from './tabs/AdoptedTab';
 import { wasHandedOver } from './tabs/Handover';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
+import { hasSelectedWorkspaceTab, isActivationCurrent } from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { createStartupPinnedTabDiscard } from './tabs/PinnedTabRestore';
@@ -377,9 +378,13 @@ function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTa
   workspaces.forgetWindow(windowId);
 }
 
+// `stillCurrent` is asked before each tab is selected: restoring awaits tab reads and creates, and
+// the window may have moved to another workspace meanwhile. The tabs are still restored, but a
+// superseded restore selects none of them.
 async function restoreParkedTabsForWorkspace(
   workspaceId: string,
   targetWindowId: number | null,
+  stillCurrent: () => boolean = () => true,
 ): Promise<boolean> {
   const parked = takeParkedWorkspaceTabs(workspaceId).sort((a, b) => a.index - b.index);
   if (parked.length === 0) return false;
@@ -410,7 +415,9 @@ async function restoreParkedTabsForWorkspace(
 
   let restored = false;
   const steps = planParkedRestore(parked, existingUrlByTabId, existingTabs.length);
-  for (const { entry, existingTabId, active } of steps) {
+  for (const step of steps) {
+    const { entry, existingTabId } = step;
+    const active = step.active && stillCurrent();
     if (existingTabId !== null) {
       try {
         if (active || entry.pinned) {
@@ -1192,13 +1199,15 @@ const bootReady = storesReady.then(async () => {
   // overwrites the empty initial reconcile correctly.
   //
   // wsTabs filter excludes panel tabs (panels live in their own slots;
-  // mainTab should be a sidebar tab). At this point in boot, panels.add
-  // hasn't fired yet so getPanels returns []; the filter falls back to
-  // any non-panel tab in the workspace.
+  // mainTab should be a sidebar tab). The panels that came back through
+  // their session marker are in getPanels by now; the rest of the
+  // workspace's panels are restored below.
   if (wsId) {
     const panelTabIds = new Set(panels.getPanels(wsId));
     const wsTabs = tabs.snapshot().filter((t) => t.workspaceId === wsId && !panelTabIds.has(t.id));
-    if (wsTabs.length > 0 && !wsTabs.some((t) => t.active)) {
+    // A selected panel of the workspace is a selection too: Firefox restored the tab the user was
+    // on, and the first sidebar tab would take it away.
+    if (wsTabs.length > 0 && !hasSelectedWorkspaceTab(tabs.snapshot(), wsId, null)) {
       const target = wsTabs[0]!;
       await activateNonPanelTab(target.id, 'activate workspace tab at boot', target.windowId);
     }
@@ -1629,10 +1638,12 @@ function isPanelOrSubPanelTabId(tabId: number): boolean {
   return panels.findWorkspacesContainingPanelOrSubPanel(tabId).length > 0;
 }
 
+// `stillCurrent` is asked once the tab has been read, the last await before the selection.
 async function activateNonPanelTab(
   tabId: number,
   label: string,
   windowId?: number,
+  stillCurrent: () => boolean = () => true,
 ): Promise<boolean> {
   if (!Number.isFinite(tabId)) return false;
   if (tabs.isClosing(tabId)) return false;
@@ -1642,6 +1653,7 @@ async function activateNonPanelTab(
   if (typeof windowId === 'number' && snap.windowId !== windowId) return false;
   try {
     await browser.tabs.get(tabId);
+    if (!stillCurrent()) return false;
     await browser.tabs.update(tabId, { active: true });
     return true;
   } catch (err) {
@@ -2097,6 +2109,14 @@ async function handleWorkspaceActivation(
   // At startup this waits for the restore to finish; afterwards it resolves at once.
   await startupRestored;
 
+  // Every await below can let the window switch to another workspace, and activations held
+  // during boot all resume together: this one may be old news by the time it would act. Each
+  // check sits after the await that precedes tabs being moved, created or selected, and a
+  // superseded activation stops; the later one that replaced it does the work for its window.
+  const isCurrent = () =>
+    isActivationCurrent(wsId, targetWindowId, (windowId) => workspaces.getActiveId(windowId));
+  if (!isCurrent()) return;
+
   // (0) Cross-window tab move: with the "one workspace per window"
   // invariant, a workspace's tabs (sidebar tabs AND panel tabs) follow
   // workspace ownership. When window B claims a workspace whose tabs
@@ -2122,7 +2142,10 @@ async function handleWorkspaceActivation(
     }
   }
 
-  const restoredParkedTabs = await restoreParkedTabsForWorkspace(wsId, targetWindowId);
+  if (!isCurrent()) return;
+
+  const restoredParkedTabs = await restoreParkedTabsForWorkspace(wsId, targetWindowId, isCurrent);
+  if (!isCurrent()) return;
 
   // (1) Ensure the workspace has a tab and that tab is focused. Panel
   // tabs are excluded from candidates here — they live in their own
@@ -2167,6 +2190,7 @@ async function handleWorkspaceActivation(
             confirmUnassigned: (ids) => tabs.confirmUnassigned(ids),
           }),
   });
+  if (!isCurrent()) return;
   if (adoptable.length > 0) {
     for (const adopted of adoptable) {
       tabs.assignWorkspaceEagerly(adopted.id, wsId);
@@ -2183,6 +2207,7 @@ async function handleWorkspaceActivation(
         adoptable[0]!.id,
         'activate adopted tab',
         targetWindowId ?? undefined,
+        isCurrent,
       );
     }
   } else if (create) {
@@ -2197,7 +2222,8 @@ async function handleWorkspaceActivation(
     } catch (err) {
       console.warn('[bento-tools] newtab for empty workspace failed:', err);
     }
-  } else if (wsTabs.length > 0 && !wsTabs.some((t) => t.active)) {
+  } else if (wsTabs.length > 0 && !hasSelectedWorkspaceTab(tabs.snapshot(), wsId, targetWindowId)) {
+    // No tab of the workspace is selected in the window (a selected panel counts as one).
     // Restore the tab the user was last viewing in this workspace.
     // Falls back to the first tab when memory is empty (first
     // activation this session) or the remembered tab is gone /
@@ -2208,8 +2234,9 @@ async function handleWorkspaceActivation(
       (preferred !== undefined && wsTabs.find((t) => t.id === preferred)) ||
       (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) ||
       wsTabs[0]!;
-    void activateNonPanelTab(target.id, 'activate workspace tab', target.windowId);
+    void activateNonPanelTab(target.id, 'activate workspace tab', target.windowId, isCurrent);
   }
+  if (!isCurrent()) return;
 
   // (2) Lazy panel restore for inactive workspaces — runs once per
   // workspace per session. takePersistedUrls clears the entry so a

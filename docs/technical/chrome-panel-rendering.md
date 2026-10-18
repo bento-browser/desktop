@@ -414,10 +414,15 @@ contextTab` (or the multi-selection), and the new window adopts its first tab
     without a read, because SessionStore copies the old value back onto it). At
     boot `restoreFromSession` activates workspaces before SessionStore has
     restored the tabs and before `hydrateWorkspaceIds` ran, so every restored tab
-    still looks unassigned; assigning the window's workspace to it there persisted
-    over the real assignment. Windows that exist before the gate settles, and any
-    window with one tab that has a stored value (an undone window close), adopt
-    nothing and fall back to a new tab as before. The workspace's own tabs are read
+    still looks unassigned at that moment; assigning the window's workspace to it
+    there persisted over the real assignment. The activation handler no longer
+    runs that early: it waits on `startupRestored`, which `bootReady` releases
+    after the hydrate, the parked-list drop and the panel restore, and it stops if
+    its window has switched workspaces by then (see "Selection at startup" in
+    [workspaces.md](workspaces.md)). The gate stays as the second guard: windows
+    that exist before it settles, and any window with one tab that has a stored
+    value (an undone window close), adopt nothing and fall back to a new tab as
+    before. The workspace's own tabs are read
     again after the session values (`settleWorkspaceTabs`) before a tab is
     created: another handler can assign the window's initial tab during that read,
     and creating from the earlier read left an extra blank tab beside it.

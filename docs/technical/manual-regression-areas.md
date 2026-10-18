@@ -127,6 +127,16 @@ When changing core functionality, manually verify at least the affected subset:
   kebab menu says Unpin) and is the same tab as the panel in the strip. A panel
   closed with Cmd+Shift+W of the only window before quitting is opened again once
   on relaunch;
+- selection and switching at launch: quit with a panel of the workspace as the
+  window's selected tab (Browser Toolbox Console: `gBrowser.selectedTab` is a
+  panel's tab, not a sidebar tab) and relaunch: it is still the selected tab and
+  the first sidebar tab is not selected over it. Relaunch with a window on one
+  workspace and switch to another as soon as the window appears; the window ends
+  on the second workspace with one of its tabs selected
+  (`gBrowser.selectedTab` belongs to it), and no tab of the first workspace is
+  selected a moment later. The superseded-activation decision is covered by a
+  unit test; this is the timing check, and it can pass without ever hitting the
+  race;
 - panel identity across a restart: in one workspace make three panels with
   different widths, subdivide the first one (a top panel and a bottom panel, the
   bottom one a different site and width), pin one of the others as a pinned panel,
