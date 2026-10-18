@@ -8,12 +8,33 @@ const entries = [
   { panelKey: 'panel-0', url: 'https://top.example/' },
   { panelKey: 'panel-1', url: 'https://bottom.example/' },
 ];
+// A top and a bottom panel in one vertical subdivision.
+const initialLayout = {
+  root: [
+    {
+      kind: 'group',
+      id: 'split',
+      axis: 'vertical',
+      ratio: 0.5,
+      children: [
+        { kind: 'panel', panelKey: 'panel-0' },
+        { kind: 'panel', panelKey: 'panel-1' },
+      ],
+    },
+  ],
+};
 const TOP = 10;
 const BOTTOM = 20;
+
+type StoredPanels = { byWorkspace: Record<string, { entries: unknown; panelLayout: unknown }> };
 
 describe('panel marker keys', () => {
   let storage: Record<string, unknown>;
   let tabValues: Map<string, unknown>;
+  /** The address a panel reports: a blank page while it restores, or its real page. */
+  let tabUrl: (tabId: number) => string;
+  const blank = () => 'about:blank';
+  const readable = (tabId: number) => (tabId === TOP ? entries[0]!.url : entries[1]!.url);
 
   beforeEach(() => {
     storage = {
@@ -23,26 +44,14 @@ describe('panel marker keys', () => {
         byWorkspace: {
           ws: {
             entries,
-            panelLayout: {
-              root: [
-                {
-                  kind: 'group',
-                  id: 'split',
-                  axis: 'vertical',
-                  ratio: 0.5,
-                  children: [
-                    { kind: 'panel', panelKey: 'panel-0' },
-                    { kind: 'panel', panelKey: 'panel-1' },
-                  ],
-                },
-              ],
-            },
+            panelLayout: initialLayout,
           },
         },
         mainWidthByWorkspace: {},
       },
     };
     tabValues = new Map();
+    tabUrl = blank;
     vi.stubGlobal('browser', {
       storage: {
         local: {
@@ -66,8 +75,7 @@ describe('panel marker keys', () => {
           tabValues.delete(`${id}:${key}`);
         }),
       },
-      // The pages are still restoring: every panel reports a blank address.
-      tabs: { get: vi.fn(async (id: number) => ({ id, url: 'about:blank' })) },
+      tabs: { get: vi.fn(async (id: number) => ({ id, url: tabUrl(id) })) },
     });
   });
 
@@ -113,22 +121,54 @@ describe('panel marker keys', () => {
     return plan.map((step) => step.tabId!);
   }
 
-  it('keeps an inactive subdivided workspace bound to the right tabs through two restarts', async () => {
+  // The addresses matter: a flush writes a panel only when its address is readable, and a pinned
+  // panel reports a blank page until SessionStore sets its saved address.
+  it.each([
+    ['blank', blank],
+    ['readable', readable],
+  ])(
+    'keeps an inactive subdivided workspace bound to the right tabs through two restarts (%s addresses)',
+    async (_name, urlOf) => {
+      tabUrl = urlOf;
+      await markPanels();
+
+      const first = await startWithInactiveWorkspace();
+      // Until the entries are applied the layout holds only the panels that came back, in marker
+      // order: numbered from it, the bottom panel would be panel-0.
+      expect(first.panels.getPanelKey('ws', BOTTOM)).toBe('panel-0');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect((await readPanelMarker(TOP))?.panelKey).toBe('panel-0');
+      expect((await readPanelMarker(BOTTOM))?.panelKey).toBe('panel-1');
+
+      const second = await startWithInactiveWorkspace();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // The stored entries and layout are the ones the workspace had, not the temporary ones.
+      expect(second.panels.peekAllPersistedEntries().get('ws')).toEqual(entries);
+      expect((storage['bento.panels'] as StoredPanels).byWorkspace.ws).toEqual({
+        entries,
+        panelLayout: initialLayout,
+      });
+      // Top entry on the top tab, bottom entry on the bottom tab, after both restarts.
+      expect(await boundTabs(second.panels)).toEqual([TOP, BOTTOM]);
+    },
+  );
+
+  it('keeps the stored entries when the window of an inactive workspace closes', async () => {
+    tabUrl = readable;
     await markPanels();
+    const { panels } = await startWithInactiveWorkspace();
 
-    const first = await startWithInactiveWorkspace();
-    // Until the entries are applied the layout holds only the panels that came back, in marker
-    // order: numbered from it, the bottom panel would be panel-0.
-    expect(first.panels.getPanelKey('ws', BOTTOM)).toBe('panel-0');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect((await readPanelMarker(TOP))?.panelKey).toBe('panel-0');
-    expect((await readPanelMarker(BOTTOM))?.panelKey).toBe('panel-1');
-
-    const second = await startWithInactiveWorkspace();
+    // Both panels report their address, but the layout they sit in is the temporary one.
+    expect(panels.parkWorkspaceWithResolvedUrls('ws', readable)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Top entry on the top tab, bottom entry on the bottom tab, after both restarts.
-    expect(await boundTabs(second.panels)).toEqual([TOP, BOTTOM]);
+    expect(panels.getPanels('ws')).toEqual([]);
+    expect(panels.peekAllPersistedEntries().get('ws')).toEqual(entries);
+    expect((storage['bento.panels'] as StoredPanels).byWorkspace.ws).toEqual({
+      entries,
+      panelLayout: initialLayout,
+    });
   });
 
   it('writes the keys of the applied layout once the entries are bound', async () => {
