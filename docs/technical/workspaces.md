@@ -494,8 +494,8 @@ step of its history restore: `#restoreHistory` waits for
 `SessionStoreUtils.restoreDocShellState`, `onResolve` then runs
 `#listenForNavigations`, and `#restoreHistoryComplete` dispatches the event. It
 bubbles, so the mount script listens on its window. For a pinned target it waits
-one task (`setTimeout(..., 0)`), checks the pref gate and the tab again, and only
-then discards. Two facts fix that timing. `SSWindowRestored` fires before each
+one task (`setTimeout(..., 0)`), checks the tab again, and only then discards it
+(under the pref gate below) or, for a panel the window renders, loads it. Two facts fix that timing. `SSWindowRestored` fires before each
 pinned tab's `restoreDocShellState` promise resolves, and a browser discarded by
 then comes back: `onResolve` calls `#listenForNavigations` on the now lazy browser,
 whose default getter re-inserts it (`#insertBrowser`, the "[bug 1345098] Lazy
@@ -533,7 +533,7 @@ included, so the pinned tabs of workspaces the window is not showing are unloade
 too). `Tabbrowser.#mayDiscardBrowser` (without force) also refuses a
 selected or closing tab, a tab with an open dialog or a `beforeunload` handler
 that vetoes, and a tab that is already lazy (its browser is not connected), but not
-an audible or sharing one, so those two checks are Bento's. The listener acts only
+an audible or sharing one, so those two checks are Bento's. The unload acts only
 while `browser.sessionstore.restore_on_demand` and
 `browser.sessionstore.restore_pinned_tabs_on_demand` are both true
 (`pinnedRestoreOnDemand`), the condition under which `TabRestoreQueue.shift` and
@@ -545,19 +545,45 @@ never load at startup. With the gate,
 turning the pref off unloads nothing. A failure logs
 `[bento-shell-mount] restored pinned tab unload failed` and never throws.
 
-Panels are skipped only when the window already renders them
+Panels the window already renders are not unloaded; they are loaded
 (`currentPanelTabIds`, the tab ids of the active workspace's panels from
 `panels/sync`). At a startup bento-tools sends the panels after its boot, a few
 hundred milliseconds after the restore, which is about when the pinned tabs' own
-restores resolve, so the check skips a panel tab only when `panels/sync` has
-arrived by then: in the dev launch above, one pinned panel tab was skipped because
-`materializePanelTab` had already inserted and loaded it (it was no longer
-`pending`). A pinned tab that backs a panel and was unloaded first is found by the
-reconciler with no `linkedPanel`: `materializePanelTab` calls `insertBrowser` and,
-because it had to materialize the tab, `reload()`, so the panel loads and renders
-as before. Either way the panel ends loaded; unloading first costs one extra reset
-of a tab that had not loaded, so keep the reload on materialization (see
-[chrome-panel-rendering.md](chrome-panel-rendering.md)). An unloaded tab reports
+restores resolve, so a panel tab is found rendered only when `panels/sync` has
+arrived by then. A pinned tab that backs a panel and was unloaded first is found by
+the reconciler with no `linkedPanel`: `materializePanelTab` calls `insertBrowser`
+and, because it had to materialize the tab, `reload()`, so the panel loads and
+renders as before. Unloading first costs one extra reset of a tab that had not
+loaded, so keep the reload on materialization (see
+[chrome-panel-rendering.md](chrome-panel-rendering.md)).
+
+A rendered panel that is still `pending` when its `SSTabRestoring` task runs is
+loaded by the same handler, with `tab.linkedBrowser.reload()`
+(`shouldLoadRestoredPinnedPanel`: pinned, `pending`, with a `linkedPanel`, and a
+rendered panel). Nothing else would load it. `materializePanelTab` reloads a pending
+tab only when it had to insert the browser or its address is still blank; a pinned
+tab has a real browser and, once `restoreDocShellState` has set its saved address,
+a real address, so a panel rendered between that and the discard task has both
+conditions false, and the unload skips it because it is rendered. The panel would
+stay blank. That is most likely in a window opened while the shell is already
+running (a reopened closed window, a second window, the macOS last-window reopen),
+where the panels are already known when the tabs restore. The reload works because
+`onResolve` in `#restoreHistory` registers `#listenForNavigations` immediately
+before `#restoreHistoryComplete` dispatches the event, and the listener's
+`OnHistoryReload` calls `#restoreTabContentForBrowser`, which treats a load that
+SessionStore did not start in a pending tab as the start of the restore, removes
+`pending` and loads the saved history entry (derived from the source, not run in
+Bento). A reload issued before `onResolve` (the `about:blank` branch of
+`materializePanelTab`) finds no listener, so `NotifyOnHistoryReload` does not veto
+it and the docshell reloads on its own; whether that loads the restored history
+entry was not run. It can leave `pending` set (the listener only sees a load that
+starts after `onResolve`), which is why the handler reloads a rendered panel that is
+still `pending` instead of trusting an earlier reload. This
+branch does not check the restore-on-demand prefs: a rendered panel must be loaded
+whichever they are, and a tab the `TabRestoreQueue` has already started is no longer
+`pending`. Only the discard waits for `pinnedRestoreOnDemand`.
+
+An unloaded tab reports
 `discarded: true` (`TabSnapshot.discarded`), the row shows in the sleeping style,
 and `SleepPolicy` skips pinned and discarded tabs, so the idle sweep never puts a
 woken pinned tab back to sleep.
@@ -1070,6 +1096,19 @@ opening an unwanted blank tab before the moved tabs arrive.
   pinned tabs never loading at launch. Keep the selected, `soundplaying` and
   `sharing` checks: `discardBrowser` without force refuses a selected tab but not
   an audible or sharing one.
+- Do not leave a pending pinned tab that the window renders as a panel to
+  `materializePanelTab` and the unload alone. A pinned tab has a real browser, so
+  once SessionStore has set its saved address the reconciler sees a real address and
+  no need to insert the browser, `materializePanelTab` does not reload it, and the
+  unload skips it because it is rendered: the panel stays blank until something else
+  loads it. Most likely in a window opened while the shell is running. The
+  `SSTabRestoring` handler loads such a panel with `linkedBrowser.reload()`
+  (`shouldLoadRestoredPinnedPanel`), after `onResolve` has registered the listener
+  that turns the reload into the content restore, regardless of the restore-on-demand
+  prefs. Keep it in that handler: a reload before `onResolve` is not intercepted
+  (`#listenForNavigations` does not exist yet). Test it with a panel pinned in a
+  workspace, then a reopened closed window or a second window: the panel must show
+  its page without a click.
 - Do not wake a pending pinned tab to read its metadata. `tabs.get`, `tabs.query`
   and `sessions.getTabValue` leave it pending; `tabs.reload`, `tabs.update` with
   `active: true` or `url`, `tabs.create` with its address, and

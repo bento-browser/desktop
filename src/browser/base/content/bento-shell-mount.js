@@ -17278,22 +17278,40 @@
     );
   }
 
+  // A pinned panel the window renders must load whichever prefs are set. materializePanelTab
+  // reloads a pending tab only when it had to insert the browser or its address is blank. A
+  // pinned tab has a real browser and, once SessionStore has set its saved address, a real
+  // address, so a panel rendered after that and before the handler below runs would stay blank.
+  // A tab without a linkedPanel is a lazy one: materializePanelTab inserts and reloads it.
+  function shouldLoadRestoredPinnedPanel(tab, isRenderedPanel) {
+    return tab.pinned && tab.hasAttribute('pending') && !!tab.linkedPanel && isRenderedPanel(tab);
+  }
+
   // SessionStore dispatches SSTabRestoring on a tab as the last step of its history restore,
   // which resolves after SSWindowRestored. A browser discarded before that is re-inserted when
   // the restore resolves (#listenForNavigations touches the now lazy browser), so each pinned
-  // tab is unloaded after its own event plus one task. The task lets loads that start inside
+  // tab is handled after its own event plus one task. The task lets loads that start inside
   // the dispatch (a lazy browser's reload waits for this same event) clear 'pending' first. The
   // event also fires in a window restored without SSWindowRestored (the macOS last-window
   // reopen). discardBrowser without force refuses a selected, closing or dialog tab itself.
+  //
+  // A pending tab the window renders as a panel is loaded with reload(): #listenForNavigations
+  // is registered in the same step that dispatches the event (earlier a reload is not
+  // intercepted), and its OnHistoryReload starts the content restore and clears 'pending'.
+  // Every other pending pinned tab is unloaded while restore-on-demand is on.
   function attachRestoredPinnedTabUnload() {
     window.addEventListener('SSTabRestoring', (event) => {
       const tab = event.target;
       if (!tab.pinned) return;
       window.setTimeout(() => {
         try {
-          if (!pinnedRestoreOnDemand()) return;
           const isRenderedPanel = (t) => currentPanelTabIds.has(getBentoTabId(t));
-          if (shouldUnloadRestoredPinnedTab(tab, isRenderedPanel)) {
+          if (shouldLoadRestoredPinnedPanel(tab, isRenderedPanel)) {
+            tab.linkedBrowser.reload();
+          } else if (
+            pinnedRestoreOnDemand() &&
+            shouldUnloadRestoredPinnedTab(tab, isRenderedPanel)
+          ) {
             window.gBrowser.discardBrowser(tab);
           }
         } catch (err) {

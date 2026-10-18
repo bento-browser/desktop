@@ -537,9 +537,11 @@ contextTab` (or the multi-selection), and the new window adopts its first tab
   already renders it as a panel, so the reconciler can find it with no
   `linkedPanel`, `insertBrowser` creates its browser, and the reload loads it. A pending tab that
   still has its real browser already reports its saved address, so the
-  `about:blank` test beside that reload does not fire for it and nothing would load
-  it (derived from the source, not run). See "Pinned tabs restore on demand after a
-  restart" in [workspaces.md](workspaces.md).
+  `about:blank` test beside that reload does not fire for it: the `SSTabRestoring`
+  handler loads such a rendered panel (`shouldLoadRestoredPinnedPanel`), so keep
+  `materializePanelTab` unchanged and that handler in place (derived from the
+  source, not run). See "Pinned tabs restore on demand after a restart" in
+  [workspaces.md](workspaces.md).
 - Keep cleanup broad when tearing down to main-only mode. Stale split-view
   classes, inline sizing, and data attributes can make the next main tab render
   at fractional width.
