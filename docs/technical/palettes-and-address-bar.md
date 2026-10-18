@@ -52,7 +52,9 @@ domain in a smaller muted style. `searchResultDomain(url)` in the same file
 returns it: the exact hostname for `http:` and `https:` URLs (`www.` kept, no
 port or credentials), the URL as-is for `about:` URLs, and `undefined` for
 everything else (`moz-extension:`, `data:`, `blob:`, `file:`, empty or
-unparsable), so those rows stay single-line at `--bento-tab-row-height`.
+unparsable), so those rows stay single-line at `--bento-tab-row-height`. It
+tests the scheme before calling `new URL`, so a megabyte `data:` URL is never
+parsed (a 50 MiB one took 20 to 50 ms per matching keystroke when it was).
 `TabList` stores it as `TabListSearchResult.domain`, renders it in
 `.bento-tab-list-search__domain` inside `.bento-tab-list-search__text` (under the
 title), and adds the `bento-tab-list-search__result--with-domain` modifier, which

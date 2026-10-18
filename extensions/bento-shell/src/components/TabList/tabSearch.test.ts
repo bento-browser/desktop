@@ -80,6 +80,11 @@ describe('searchResultDomain', () => {
     expect(searchResultDomain('about:preferences#privacy')).toBe('about:preferences#privacy');
   });
 
+  it('treats the scheme case-insensitively', () => {
+    expect(searchResultDomain('HTTPS://Mail.Google.com/')).toBe('mail.google.com');
+    expect(searchResultDomain('DATA:text/html,hi')).toBeUndefined();
+  });
+
   it('returns nothing for other schemes, empty, missing or unparsable URLs', () => {
     expect(searchResultDomain('moz-extension://abc/page.html')).toBeUndefined();
     expect(searchResultDomain('data:text/html,hi')).toBeUndefined();
