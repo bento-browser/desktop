@@ -8,7 +8,9 @@ import { makeTab, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
 import { makeFolder, seedTabFolders } from '../../state/__fixtures__/tabFolders';
+import { DEFAULT_FIXTURE } from '../../state/__fixtures__/settings';
 import { useWorkspacesStore } from '../../state/workspaces';
+import { useSettingsStore } from '../../state/settings';
 import { useTabsStore } from '../../state/tabs';
 import { useUiStore } from '../../state/ui';
 
@@ -59,11 +61,20 @@ function useCollapsedAttribute(collapsed: boolean) {
   }, [collapsed]);
 }
 
+// TabList draws the collapsed rail's custom scrollbar only when the settings
+// store says the sidebar is collapsed. Seed it so a story does not inherit
+// whatever an earlier story, such as an App one, left there.
+function seedSidebarSettings(collapsed = false): void {
+  useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed: collapsed });
+}
+
 // TabList renders the skeleton until tabs, folders and the active workspace's
 // panels have all hydrated, and it lists only the active workspace's tabs. Seed
 // all of that together so a story renders on a fresh page load, not just after
-// another story has hydrated the stores.
-function seedSidebarTabs(count: number, activeIndex = 0): void {
+// another story has hydrated the stores. The fixtures replace each store, so a
+// story never sees the previous story's workspaces, tabs, folders or panels.
+function seedSidebarTabs(count: number, activeIndex = 0, collapsed = false): void {
+  seedSidebarSettings(collapsed);
   seedDefaultWorkspaces();
   const tabs = Array.from({ length: count }, (_, i) =>
     makeTab({ id: i + 1, workspaceId: 'w-personal', active: i === activeIndex }),
@@ -181,7 +192,7 @@ WideSidebar.storyName = 'Wide (500px)';
 
 export const Collapsed = () => {
   useEffect(() => {
-    seedSidebarTabs(8, 2);
+    seedSidebarTabs(8, 2, true);
   }, []);
   useCollapsedAttribute(true);
   return (
@@ -198,7 +209,7 @@ export const CollapsedMany = () => {
   // tabs exist than fit on screen — the rail should scroll vertically
   // without any title text overflowing horizontally.
   useEffect(() => {
-    seedSidebarTabs(40, 5);
+    seedSidebarTabs(40, 5, true);
   }, []);
   useCollapsedAttribute(true);
   return (
@@ -218,6 +229,7 @@ CollapsedMany.storyName = 'Collapsed — 40 tabs (scroll check)';
 export const DragReorder = () => {
   const [log, setLog] = useState<string[]>([]);
   useEffect(() => {
+    seedSidebarSettings();
     seedDefaultWorkspaces();
     const tabs = seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 8 }], 'w-personal');
     useTabsStore.getState().applySnapshot(
@@ -319,6 +331,7 @@ DragReorder.storyName = 'Drag reorder, pin, and folder drops (interactive)';
 
 export const CrossWorkspaceSearch = () => {
   useEffect(() => {
+    seedSidebarSettings();
     seedDefaultWorkspaces();
     useWorkspacesStore.getState().applySnapshot(
       [
@@ -385,6 +398,7 @@ function useOpenSearch(query: string) {
 export const SearchResultDomains = () => {
   useOpenSearch('bento');
   useEffect(() => {
+    seedSidebarSettings();
     seedDefaultWorkspaces();
     useWorkspacesStore.getState().applySnapshot(
       [
