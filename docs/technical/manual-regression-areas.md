@@ -160,6 +160,13 @@ expanded:
    step; only fades remain.
 9. Check light and dark, a 200px-wide sidebar (New keeps its label), and the New
    menu: opening it keeps the New fill and no highlight.
+10. Type a domain (for example `github.com`) in the open field: tabs and panels
+    on that domain are listed across workspaces, including subdomains. Type
+    `https`: tabs are not all listed. Type `https://`: tabs are not all listed
+    either (a scheme-only query skips the web address match).
+11. Paste a full address of an open tab (for example
+    `https://github.com/andrew/repo`): that tab is listed, and so is any tab
+    whose address contains the part after the scheme.
 
 ## Palette search headers and rollback file selection
 
