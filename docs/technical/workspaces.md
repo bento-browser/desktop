@@ -352,9 +352,8 @@ even when it already has a workspace. The decision uses workspace membership and
 never `Tab.url`.
 
 The drop happens only on a real browser start. `discardParkedTabsOfRestoredWorkspaces`
-takes the `runtime.onStartup` signal the pinned-tab pass uses
-(`createStartupPinnedTabDiscard(...).browserStarted()`, `tabs/PinnedTabRestore.ts`;
-there is no second signal). Firefox fires that event right after the background
+takes the `runtime.onStartup` signal (`createBrowserStartup().browserStarted()`,
+`tabs/BrowserStartup.ts`; there is no second signal). Firefox fires that event right after the background
 script's first run (`background-first-run`, `ext-backgroundPage.js`), so on a
 real start it has long arrived when the decision runs after the settle wait. When
 bento-tools reloads under a running browser (Alt+Shift+R, or an install or update
@@ -389,13 +388,11 @@ workspace with restored tabs from an empty one, and it could find no selected ta
 among the workspace's tabs and select the first. The handler now waits on
 `startupRestored`, which `bootReady` releases (`releaseStartupActivations`) after
 it has hydrated the tabs, dropped the parked lists, restored panels from their
-session markers and restored the global workspace's panels, right before the
-pinned-tab pass (which picks its tabs before the held activations resume, and
-runs unchanged after the panel restore). An activation that arrives during boot,
-including a fresh window's `assignAvailable`, waits at most the boot time; one
-that arrives after the release is a later activation and behaves as before
-(parked list replay, selection, empty-workspace tab). A failed boot releases the
-wait too.
+session markers and restored the global workspace's panels. An activation that
+arrives during boot, including a fresh window's `assignAvailable`, waits at most
+the boot time; one that arrives after the release is a later activation and
+behaves as before (parked list replay, selection, empty-workspace tab). A failed
+boot releases the wait too.
 
 Selection at startup. With the parked replay gone for restored workspaces,
 nothing selects a tab unless Firefox's selected tab is outside the workspace.
@@ -528,7 +525,8 @@ while `browser.sessionstore.restore_on_demand` and
 `willRestoreSoon` leave pinned tabs pending. With either pref false the queue
 loads pinned tabs in turn, and the ones it has not reached yet are `pending` at
 `SSWindowRestored` too; discarding one removes it from the queue
-(`#cleanUpRemovedBrowser`), so it would never load at startup. With the gate,
+(`#cleanUpRemovedBrowser` ends in `#resetLocalTabRestoringState`), so it would
+never load at startup. With the gate,
 turning the pref off unloads nothing. A failure logs
 `[bento-shell-mount] restored pinned tab unload failed` and never throws.
 
@@ -1107,8 +1105,7 @@ opening an unwanted blank tab before the moved tabs arrive.
   it, and its panel restore runs before the session markers are read. Activations
   wait on `startupRestored` until `bootReady` has hydrated the tabs, dropped the
   parked lists and restored the panels; keep the release after the global
-  workspace's panel restore and before the pinned-tab pass, which picks its tabs
-  before the held activations resume.
+  workspace's panel restore.
 - Do not treat a stale `bento.folderId` as authoritative in the renderer. If
   the folder metadata is absent from the current workspace, render the tab as a
   regular tab.

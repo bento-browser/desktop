@@ -25,7 +25,7 @@ import {
 } from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
-import { createStartupPinnedTabDiscard } from './tabs/PinnedTabRestore';
+import { createBrowserStartup } from './tabs/BrowserStartup';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
@@ -822,15 +822,11 @@ function getActiveWorkspacePanelTabIds(): number[] {
   return Array.from(tabIds);
 }
 
-// Pinned tabs Firefox restored without loading (prefs/bento.js sets
-// restore_pinned_tabs_on_demand) are pending real browsers, so they report
-// discarded: false and the sidebar would draw them as loaded. Boot discards them
-// before the shell's first tab snapshot (see tabs/PinnedTabRestore.ts), but only
-// when the browser itself started: runtime.onStartup fires for that alone, not on
-// a dev reload, install or update, when pinned tabs may be loaded and in use. It
-// must be registered during this first script run.
-const startupPinnedDiscard = createStartupPinnedTabDiscard(tabs, getActiveWorkspacePanelTabIds);
-browser.runtime.onStartup.addListener(startupPinnedDiscard.noteStartup);
+// Whether the browser itself started (see tabs/BrowserStartup.ts): runtime.onStartup fires for
+// that alone, not on a dev reload, install or update. It must be registered during this first
+// script run.
+const browserStartup = createBrowserStartup();
+browser.runtime.onStartup.addListener(browserStartup.noteStartup);
 
 const sleep = new SleepPolicy(tabs, settings, {
   getProtectedTabIds: getActiveWorkspacePanelTabIds,
@@ -1057,7 +1053,7 @@ const bootReady = storesReady.then(async () => {
   // with theirs count. A real browser start only: `runtime.onStartup` fires right after the
   // background script's first run, long before the settle wait above ends. If it has not
   // arrived, the lists stay, as they do on a reload (see the function).
-  discardParkedTabsOfRestoredWorkspaces(restoredWindowIds, startupPinnedDiscard.browserStarted());
+  discardParkedTabsOfRestoredWorkspaces(restoredWindowIds, browserStartup.browserStarted());
 
   // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
   // matches a panel in bento.panels storage. The panel storage is a
@@ -1166,16 +1162,8 @@ const bootReady = storesReady.then(async () => {
   if (wsId) await restorePanelsForWorkspace(wsId);
 
   // The restored tabs are known now. bootReady does not wait for what the held activations do
-  // (they may open tabs); the pinned-tab pass below picks its tabs before they resume.
+  // (they may open tabs).
   releaseStartupActivations();
-
-  // Unload the pinned tabs Firefox restored pending, now that the restored tabs
-  // have settled and the shown panels are known (those stay loaded). Awaited at
-  // the end of boot, not here: the sweep below does not depend on it. Nothing
-  // sends the shell its first tab snapshot, which opens the sidebar's readiness
-  // gate, before bootReady resolves, so the first rows it draws already have
-  // `discarded` set. A no-op unless the browser itself just started.
-  const pinnedTabsDiscarded = startupPinnedDiscard.run();
 
   // Sweep stale `bento.isPanel` markers on session-restored tabs. The
   // marker is supposed to track tabs that ARE panels (so Cmd+Shift+T
@@ -1206,7 +1194,6 @@ const bootReady = storesReady.then(async () => {
   } catch (err) {
     console.warn('[bento-tools] stale-marker sweep failed:', err);
   }
-  await pinnedTabsDiscarded;
 });
 // A boot that fails must not leave activations waiting for good.
 void bootReady.then(releaseStartupActivations, releaseStartupActivations);
