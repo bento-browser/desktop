@@ -921,7 +921,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   registration through `browser/base/jar.mn` (wildcard entries are expanded by
   `python/mozbuild/mozbuild/jar.py` at build time, so only files present at build
   time are listed), the `chrome://browser/content/` package, `<link
-  rel="stylesheet">` load and error events on chrome documents, and the
+rel="stylesheet">` load and error events on chrome documents, and the
   `chrome://browser/content/sidebar/` and `places/` documents the mount script
   already themes.
 - Why this cannot stay extension-only: chrome and the native sidebar and Places
@@ -1466,24 +1466,24 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     a screenshots selection mode, the `mini-window-button` toolbar widget, and the
     `mini-window` root attribute handled in `TabBarVisibility` and
     `BrowserWindowTracker`.
-  The Smart Window master pref `browser.smartwindow.enabled` also defaults to
-  false and is not pinned: `smartformfill.enabled` and `agent.toolbar.enabled`
-  flipped to true in 158, but the smart-form-fill actor registers only while
-  `browser.smartwindow.enabled` is true. Rust stays at 1.95.0: Mozilla's 158 CI
-  still builds with 1.95.0 (`taskcluster/kinds/toolchain/rust.yml`) and the
-  minimum Firefox 158 accepts is 1.90.0 (`mozboot/util.py`). Firefox 158 moved Rust
-  LTO selection into configure (`RUST_LTO_ELIGIBLE`) and the per-library
-  `RUST_LIBRARY_LTO` flag in `config/makefiles/rust.mk`; experiments/02 now wraps
-  that file's single `-Clto` line (Firefox's `-Clto` stays the default and
-  `-Clto=thin` applies only with `BENTO_RUST_LTO=thin`) and drops its former
-  `check_binary` hunk, because the binary check now keys on `RUST_LIBRARY_LTO`
-  too. `scripts/rust-thin-lto.test.mjs` asserts that line. `branding/bento` was
-  compared with `browser/branding/unofficial`: only the four `firefox-wordmark.svg`
-  files changed upstream (a dark-mode fill for the wordmark); Bento keeps its own
-  white wordmark and `branding.nsi` is unchanged. The Windows installer defines
-  moved; see the Build Configure Flags entry. Runtime on 158.0: the four
-  pinned or defaulted prefs above, `browser.ml.enable`, `browser.ml.chat.enabled`,
-  `browser.nova.enabled` and `sidebar.revamp` all read false with no user value.
+    The Smart Window master pref `browser.smartwindow.enabled` also defaults to
+    false and is not pinned: `smartformfill.enabled` and `agent.toolbar.enabled`
+    flipped to true in 158, but the smart-form-fill actor registers only while
+    `browser.smartwindow.enabled` is true. Rust stays at 1.95.0: Mozilla's 158 CI
+    still builds with 1.95.0 (`taskcluster/kinds/toolchain/rust.yml`) and the
+    minimum Firefox 158 accepts is 1.90.0 (`mozboot/util.py`). Firefox 158 moved Rust
+    LTO selection into configure (`RUST_LTO_ELIGIBLE`) and the per-library
+    `RUST_LIBRARY_LTO` flag in `config/makefiles/rust.mk`; experiments/02 now wraps
+    that file's single `-Clto` line (Firefox's `-Clto` stays the default and
+    `-Clto=thin` applies only with `BENTO_RUST_LTO=thin`) and drops its former
+    `check_binary` hunk, because the binary check now keys on `RUST_LIBRARY_LTO`
+    too. `scripts/rust-thin-lto.test.mjs` asserts that line. `branding/bento` was
+    compared with `browser/branding/unofficial`: only the four `firefox-wordmark.svg`
+    files changed upstream (a dark-mode fill for the wordmark); Bento keeps its own
+    white wordmark and `branding.nsi` is unchanged. The Windows installer defines
+    moved; see the Build Configure Flags entry. Runtime on 158.0: the four
+    pinned or defaulted prefs above, `browser.ml.enable`, `browser.ml.chat.enabled`,
+    `browser.nova.enabled` and `sidebar.revamp` all read false with no user value.
 - Firefox 157.0.1 review (2026-10-12): `browser.nova.enabled` and
   `sidebar.revamp` default to true in 157; `prefs/bento.js` sets both false to
   keep the 154 chrome (Bento's shell owns the sidebar and tab strip). Firefox's
@@ -1594,8 +1594,8 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `bento.json` `displayVersion`, `0.0.1`). `NSIS_INSTALLER_DEFINES` on Windows
   should therefore
   read `-DAPP_VERSION=0.0.1 -DMOZ_APP_NAME=bento -DMOZ_TOAST_APP_NAME=Bento
-  -DMOZ_APP_DISPLAYNAME=Bento -DMOZ_DEFAULT_BROWSER_AGENT=1
-  -DMOZ_PUSH_NOTIFICATION_HELPER=1`, and `NSIS_BRANDING_FILES` are all present in
+-DMOZ_APP_DISPLAYNAME=Bento -DMOZ_DEFAULT_BROWSER_AGENT=1
+-DMOZ_PUSH_NOTIFICATION_HELPER=1`, and `NSIS_BRANDING_FILES` are all present in
   `branding/bento` (`branding.nsi`, `firefox64.ico`, the three `stubinstaller/`
   files, three `.bmp` files). `branding.nsi` is unchanged upstream, so Bento's copy
   needs no edit. New in 158 on Windows: the push notification helper
@@ -1850,7 +1850,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   imported shell manifest or bundle). A release `pnpm run package` also scans the
   shell add-on in the object directory (`dist/bin/browser` and, on macOS, the app
   bundle, following symlinks); after a Firefox update that changes where `mach
-  build` installs built-in add-ons, confirm that scan still finds the add-on
+build` installs built-in add-ons, confirm that scan still finds the add-on
   (it fails when it finds none). Running only the source
   overlay helper does not prove this surface is valid because it bypasses
   Bento's branding, built-in add-on installer, patch, and symlink steps.
