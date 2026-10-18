@@ -374,11 +374,16 @@ restart is a real start, so when it restores only some windows, a workspace with
 a tab in a restored window still loses its list, even when the list holds a tab
 of a window that closed earlier in the session and was not restored. That tab is
 not replayed. The WebExtension `Tab.url` is `browser.currentURI.spec`
-(`ext-tabs-base.js`) and Firefox has no `pendingUrl`, so a restored tab that has a
-real browser but is still restoring reports `about:blank`. That is the selected
-tab and every pinned tab (`Tabbrowser` skips `createLazyBrowser` for them), the
-tabs a user notices first, while lazily restored tabs report their session
-address. Matching parked entries by address therefore misses exactly those tabs.
+(`ext-tabs-base.js`). A lazily restored tab reports its session address from the
+start, because the lazy browser's `currentURI` reads it from the session state. A
+restored tab with a real browser, which is the selected tab and every pinned tab
+(`Tabbrowser` skips `createLazyBrowser` for them), reads `about:blank` only until
+SessionStore has set its saved address (`#restoreHistory` calls
+`SessionStoreUtils.restoreDocShellState`, which sets it on the docshell before any
+load); after that it reports the real address even while it is pending. The old
+failures came from ordering: the replay and the activation ran before the restored
+tabs were hydrated, so matching parked entries by address found none of the tabs a
+user notices first.
 
 Ordering matters as much as the rule. `restoreFromSession` activates each
 restored window's workspace before the settle wait and `hydrateWorkspaceIds`, and
@@ -1085,11 +1090,12 @@ opening an unwanted blank tab before the moved tabs arrive.
   selected.
 - Do not replay parked tabs, or create, move or select any tab, at startup for a
   workspace Firefox restored tabs for, and do not decide it from `Tab.url`.
-  `Tab.url` is `about:blank` for a restored tab that is still restoring (the
-  selected tab, every pinned tab; no `pendingUrl` exists), so an address match
-  misses it and `tabs.create` opens a second copy: the symptom was a duplicate
-  tab where a moved tab used to be, a restored order that looked reverted, and the
-  workspace's first tab selected instead of the one selected at quit. Every Cmd+Q
+  A restored tab with a real browser (the selected tab, every pinned tab) reads
+  `about:blank` until SessionStore has set its saved address, and the replay ran
+  before the restored tabs were hydrated, so an address match found none of them
+  and `tabs.create` opened a second copy: the symptom was a duplicate tab where a
+  moved tab used to be, a restored order that looked reverted, and the workspace's
+  first tab selected instead of the one selected at quit. Every Cmd+Q
   parks every workspace of every closing window, so the lists always exist after a
   restart and must be dropped (`discardParkedTabsOfRestoredWorkspaces`), keyed by
   windows that came back from the session, before the boot backfill gives unassigned

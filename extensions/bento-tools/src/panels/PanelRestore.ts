@@ -1,6 +1,6 @@
 export interface PanelRestoreTab {
   id: number;
-  /** Missing while a restored tab is still restoring: it reports `about:blank`, which is dropped. */
+  /** Missing until SessionStore sets a restored tab's saved address: it reports `about:blank`, which is dropped. */
   url?: string;
 }
 
@@ -25,12 +25,12 @@ export interface PanelRestoreStep<Entry> {
  * no tab is opened again from its address.
  *
  * Identity comes first: an entry binds to the panel whose session marker carries its `panelKey`,
- * whatever that panel shows now. A page that is still restoring reports no address (a pinned panel,
- * which Firefox restores with a real browser that reports `about:blank` until it loads) and a panel
- * may have navigated away, so neither address nor position can say which entry a panel is. The
- * entries left then bind by exact address, to panels already in the layout (those without a key, or
- * whose key matches no entry) before sidebar tabs, so a sidebar tab at a panel's address never takes
- * the entry of a panel that came back with its marker. An entry still unbound has no tab, and the
+ * whatever that panel shows now. A restored page can report no address yet (a pinned panel, which
+ * Firefox restores with a real browser that reports `about:blank` until SessionStore sets its saved
+ * address) and a panel may have navigated away, so neither address nor position can say which
+ * entry a panel is. The entries left then bind by exact address, to panels already in the layout
+ * (those without a key, or whose key matches no entry) before sidebar tabs, so a sidebar tab at a
+ * panel's address never takes the entry of a panel that came back with its marker. An entry still unbound has no tab, and the
  * caller opens one. The panels left unbound stay in the layout (see `restorePersistedLayout`).
  */
 export function planPanelRestore<Entry extends { panelKey: string; url: string }>(
