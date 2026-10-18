@@ -1,0 +1,12 @@
+/* The shell page's document sizing: html, body and #root fill the host frame.
+ * Kept out of app.css so Ladle can load the shell layout without it. */
+@layer bento.app {
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}

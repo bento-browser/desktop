@@ -27,5 +27,7 @@ export function makeSidebarAddressSnapshot(
 }
 
 export function seedSidebarAddressSnapshot(overrides: Partial<SidebarAddressSnapshot> = {}): void {
+  // applySnapshot ignores a lower snapshotToken, so reset first or a prior story's snapshot wins.
+  useSidebarAddressStore.getState().reset();
   useSidebarAddressStore.getState().applySnapshot(makeSidebarAddressSnapshot(overrides));
 }

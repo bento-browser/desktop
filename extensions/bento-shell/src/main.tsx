@@ -17,6 +17,7 @@ import './theme/bento-tokens.css';
 import './theme/presets/index.css';
 import './theme/bento-fonts.css';
 import './theme/document-base.css';
+import './shell-document.css';
 import './app.css';
 import { App } from './App';
 import { useFirefoxTheme } from './theme/useFirefoxTheme';

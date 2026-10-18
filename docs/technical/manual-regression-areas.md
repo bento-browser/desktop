@@ -111,6 +111,73 @@ Verify in the `menu.html` overlay that pointer travel from a submenu trigger
 reaches visible child rows, keyboard ArrowRight opens the child, and selection
 preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome title handler.
 
+## New menu open fill
+
+The sidebar New button keeps its open fill while its chrome menu is up (mechanism
+and pitfalls: [overlay-documents.md](overlay-documents.md#menu-open-state-of-the-sidebar-new-button)).
+Verify in a running browser after a shell sync and Alt+Shift+R: open New and see
+the fill; it clears on choosing an item, Esc, a click outside, and a click on New
+itself (the menu closes and stays closed); with it open, switch workspace
+(keyboard shortcut) and see the fill stay on the new list's button until the menu
+closes; open New in two windows and see each button follow only its own menu;
+open New in the collapsed rail.
+
+## Sidebar search peek and grow
+
+The sidebar Search trigger peeks on hover and its field grows out of it (mechanism
+and pitfalls:
+[palettes-and-address-bar.md](palettes-and-address-bar.md#search-trigger-and-field-motion)).
+Gecko is unverified for this feature: the checks so far ran in Chromium through
+Ladle. In a running browser after a shell sync and Alt+Shift+R, with the sidebar
+expanded:
+
+1. Hover the Search icon: it widens leftward to "Search" in about 0.3s, the New
+   button shrinks by the same amount, the bar keeps its width, and the hover
+   highlight is exactly the widened trigger at every frame, including when you
+   enter the bar directly over Search (it starts on the square).
+2. Move the pointer between New and Search: the highlight glides and settles on
+   each button's box; leaving the bar fades it and the trigger returns to the
+   square.
+3. Tab to the Search trigger: it peeks with the focus ring; Enter opens search.
+4. Click Search, both from the square and while peeked: the field grows leftward
+   over New from the trigger's current box, the placeholder and the clear button
+   fade in just after it starts, the input is focused with its text selected, and
+   the trigger and highlight are gone.
+5. Close it every way, each time starting from an empty and a non-empty query where
+   they differ: Esc (clears the query), Enter on a result, click outside (closes
+   only when empty), another window or app (closes only when empty), Tab out of
+   the field (closes only when empty), and the clear button (with text it clears
+   and refocuses without closing; on an empty field it closes). The field
+   shrinks back onto the trigger and the trigger is clickable straight away;
+   during the shrink New and the trigger still take clicks. Click the clear
+   button on an empty field: search closes, as with Esc, and the button's
+   accessible name reads "Close search"; type a character and the name reads
+   "Clear search" again.
+6. Open, close and reopen quickly: no jump, and the field always starts from
+   where the trigger is.
+7. Collapse the sidebar (rail): no Search trigger, New is a square, its
+   highlight is the full square, and a collapse with the pointer over Search
+   hides the highlight. Open search, then collapse: the open field is a 2rem square
+   with its icon over New (as seen in Ladle), and Esc closes it.
+8. With macOS Reduce motion on: widths, the field and the highlight change in one
+   step; only fades remain.
+9. Check light and dark, a 200px-wide sidebar (New keeps its label), and the New
+   menu: opening it keeps the New fill and no highlight.
+10. Type a domain (for example `github.com`) in the open field: tabs and panels
+    on that domain are listed across workspaces, including subdomains. Type
+    `https`: tabs are not all listed. Type `https://`: tabs are not all listed
+    either (a scheme-only query skips the web address match).
+11. Paste a full address of an open tab (for example
+    `https://github.com/andrew/repo`): that tab is listed, and so is any tab
+    whose address contains the part after the scheme.
+12. Result rows show the page title with the site's domain on a second, smaller
+    line (about 2.75rem tall; `www.` is kept, `about:` pages show their
+    address). Long titles and long domains each end in an ellipsis without
+    moving the "Tab" or "Panel" label. Hover a row: the close button sits
+    centered over the taller row with the hover fill behind it.
+13. A non-web page (for example a Bento settings or other extension page) shows a
+    single line at the standard row height with no domain.
+
 ## Palette search headers and rollback file selection
 
 Command and merge palettes, including the archived command palette, compose

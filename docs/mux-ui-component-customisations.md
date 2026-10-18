@@ -119,7 +119,22 @@ browser-specific keyboard behavior without bypassing the component renderer. Set
 preserves pointer travel and keeps the child popup clear of subsequent root
 menu rows under the RC collection renderer.
 
-Generic buttons and picker triggers use Mux `Button` or `IconButton`. Emoji
+Generic buttons and picker triggers use Mux `Button` or `IconButton`. Button
+wraps its children in its `label` part (`.muxui-button-content`). The workspace
+theme picker trigger styles that part, scoped to the trigger, as a filling flex
+row so the theme name grows and the chevron sits at the end; the rule holds for
+the published package's inline wrapper and Mux main's inline-flex one. Sidebar
+search results do the same with a grid: the four-column avatar, favicon, text
+and kind layout is on that part, not on the Button, where the part was the only
+grid item and the text collapsed to nothing. The text column is a
+`.bento-tab-list-search__text` flex column holding the title and, for http(s)
+and `about:` pages, the domain line (smaller, `--muxui-semantic-content-muted`);
+the grid centers it against the avatar, favicon and kind label. Rows with a
+domain take the taller `--bento-tab-list-search-result-height-with-domain`
+through a `--with-domain` modifier on the result container, which owns the
+height, hover fill and the absolutely positioned close overlay, so all three
+cover the taller row. The rule works for the published package's inline wrapper
+and Mux main's inline-flex one. Emoji
 categories use public `Tabs` with controlled `value`/`onChange`; Mux owns tab
 roles, panel association, selection, and arrow-key navigation. Scoped layout
 keeps the existing emoji panel above its category strip. The RC can update
@@ -136,7 +151,11 @@ upgrade. Inline
 tab/folder rename fields, tab search, and the read-only sidebar address display
 use the public `Input.Input` leaf with native input props and refs. The leaf's
 optional field context allows it to occupy the existing product grid without
-an extra wrapper. Sidebar address submission uses Mux `Form`, and the panel
+an extra wrapper. The leaf carries Mux's md-control `min-block-size` (2.25rem)
+and matching block padding. Every Bento use sits in a 2rem row, so each one
+(sidebar address, tab search, tab and folder rename) resets `min-block-size` to
+0 and sets its own block padding; otherwise the input stretches the row and
+pushes its neighbours 2 to 3px low. Sidebar address submission uses Mux `Form`, and the panel
 trailer uses public `Toolbar`; scoped Bento layout rules preserve their chrome
 geometry.
 
@@ -150,6 +169,50 @@ UI (CI lints the rollback sources through `pnpm run rollback:check`). It does no
 Tab and folder labels use the row's center alignment with single-line leading.
 Keep them free of relative vertical offsets: the former `top: 2px` adjustment
 put Mux text below the centered favicon and folder count.
+
+The sidebar action bar's New and Search `Button`s (ghost, `sm`; Search was an
+`IconButton` before it gained a peek label) are hovered by a second sliding
+highlight behind them, so they paint no hover fill of their own. Mux paints `:hover` and `[data-hovered]` from
+`--muxui-button-background-hover` (the ghost variant sets it to a 10%
+`surface-contrast` mix) and `:active`/`[data-pressed]` from
+`--muxui-button-background-pressed`. Bento sets only the hover property to
+`transparent` on `.bento-tab-list__new-action-button` and
+`.bento-tab-list__search-button`, in unlayered CSS after the `muxui` layer, so
+the pressed feedback and the focus ring stay Mux's. Do not restyle the `:hover`
+or `[data-hovered]` selectors for this. After a Mux upgrade, recheck that the
+ghost variant still reads `--muxui-button-background-hover` for both states, or
+the buttons stack a second fill over the highlight (about twice a hovered
+row's darkening).
+
+The Search `Button` is a 2rem square at rest and widens leftward on hover or
+keyboard focus to reveal its label (motion and field:
+[technical/palettes-and-address-bar.md](technical/palettes-and-address-bar.md#search-trigger-and-field-motion)).
+Its `.bento-tab-list__search-button` rule is unlayered, like New's, and sets
+`width: 100%` of its `span.bento-tab-list__search-trigger` (the span owns the
+animated width), `min-height: 0`, `overflow: hidden` (the label is clipped by the
+square at rest, and a focus ring is a `box-shadow`, so it is not clipped) and an
+inline padding of `--bento-tab-list-search-trigger-inset`, which keeps the icon
+where it was centered in the square. The published package lays the icon and
+label out inline in `.muxui-button-content`, which is not a flex container, so
+the gap between them is a `margin-inline-start` on the label, not a `gap`. Mux
+main's wrapper is an inline-flex with `gap: inherit`, so the trigger sets that
+part's `gap` to 0 and the margin stays the only spacing in both. The
+peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
+React Aria also sets `data-focus-visible` on the button.
+
+In the search field, Bento sets `opacity` and its transition on the public
+`Input.Input` leaf (replacing Mux's 0.15s outline, shadow and background
+transitions, which the borderless transparent input never shows) and wraps the
+clear `IconButton` in `.bento-tab-list-search__clear`, which fades and scales
+instead of the button, so Mux's own button transitions stay intact.
+
+While the New menu is up in the chrome overlay, `TabList` sets
+`data-bento-menu-open='true'` and `aria-expanded` on the New `Button`, and the
+unlayered `[data-bento-menu-open='true']` rule paints `--bento-surface-active`
+over the highlight (see
+[overlay-documents.md](technical/overlay-documents.md#menu-open-state-of-the-sidebar-new-button)).
+Mux already drops its pressed fill under `aria-expanded='true'`, so the open fill
+is the only one on the button. Do not add a second open-state selector.
 
 Tab and folder rows paint no plain `:hover` fill. `TabList` slides one hover
 highlight behind the rows instead (see
@@ -178,8 +241,10 @@ consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
-places the public Mux component styles in the low-precedence `muxui` layer, then
-the entry point loads Bento tokens, generated preset layers, and
+places the public Mux component styles in the low-precedence `muxui` layer and
+declares the `bento` sublayer order (`bento.tokens`, `bento.fonts`,
+`bento.components`, `bento.app`; later wins) before any other Bento stylesheet.
+Then the entry point loads Bento tokens, generated preset layers, and
 `theme/document-base.css`, the shared `html`/`body` defaults. Theme and mode
 attributes belong on the same scope element. `themeScope.ts` resolves aliases
 and unknown ids for presentation while `bento-tools` keeps persisted ids
@@ -275,7 +340,8 @@ matches the public stylesheet, so a Mux rename shows up as a failure.
 ## CSS and tokens
 
 Component rules belong inside the owning CSS layer and use scoped component
-selectors. Keep global selectors away from semantic elements and overlay
+selectors. The layer order is the `@layer` statement in `theme/muxui.css`; add a
+new `bento.*` layer there. Keep global selectors away from semantic elements and overlay
 internals. Use public Mux semantic roles for new theme decisions and Bento
 tokens for product-specific behavior. Existing CSS may use the generated
 legacy aliases such as `--neutral-*`, `--color-*`, `--space-*`, `--radius-*`,
@@ -341,7 +407,9 @@ shell CSS reads such a name. Declared means any `--x:` in the shell CSS (generat
 presets and `bento-tokens.css` included) or in the public `@muxui/react`
 `styles.css` and `themes.css`; a `var(--x, fallback)` read is allowed, which covers
 properties components set from JS. Native chrome CSS under `src/browser` is not
-scanned.
+scanned. The same command fails a `bento.*` cascade layer that the root-level
+`@layer` statement in `theme/muxui.css` does not list, and layer CSS it cannot
+read (see `docs/technical/theming.md`).
 
 When a read names a step that does not exist (the neutral ladder is 5, 10, 12, ...,
 100; the radius ladder is none, xs, s, m, l, xl, 2xl, full), take the nearest real

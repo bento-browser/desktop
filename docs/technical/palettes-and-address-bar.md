@@ -38,16 +38,42 @@ sidebar search field shown from the fixed action row beside the New menu.
 The result set is derived locally from the shell mirrors: `useTabsStore` provides
 all tab snapshots, `usePanelsStore((s) => s.byWorkspace)` classifies panel tab
 ids by workspace, and `useWorkspacesStore` supplies workspace order, icons, and
-theme ids. The search is title-only by sidebar UX choice; do not add URL
-matching here unless that surface is intentionally widened.
+theme ids. A tab matches when the trimmed, lowercased query is a substring of
+its display title (`customTitle`, then `title`) as typed, or when the query with
+its own leading scheme removed is a substring of the URL with its scheme
+removed. The test is `matchesTabSearch()` in
+`extensions/bento-shell/src/components/TabList/tabSearch.ts`, covered by
+`tabSearch.test.ts`. A missing or empty URL falls back to title-only, and a
+query that is only a scheme (`https://`, `about:`) skips the URL test. Result
+order and the 50-result cap are unchanged.
 
-When `searchOpen` is true, the search field overlays the fixed action row. When
+Each result row has two text lines when the tab has a domain: the title, then the
+domain in a smaller muted style. `searchResultDomain(url)` in the same file
+returns it: the exact hostname for `http:` and `https:` URLs (`www.` kept, no
+port or credentials), the URL as-is for `about:` URLs, and `undefined` for
+everything else (`moz-extension:`, `data:`, `blob:`, `file:`, empty or
+unparsable), so those rows stay single-line at `--bento-tab-row-height`. It
+tests the scheme before calling `new URL`, so a megabyte `data:` URL is never
+parsed (a 50 MiB one took 20 to 50 ms per matching keystroke when it was).
+`TabList` stores it as `TabListSearchResult.domain`, renders it in
+`.bento-tab-list-search__domain` inside `.bento-tab-list-search__text` (under the
+title), and adds the `bento-tab-list-search__result--with-domain` modifier, which
+sets `--bento-search-result-height` to
+`--bento-tab-list-search-result-height-with-domain` (2.75rem). The domain size,
+line gap and row height are `--bento-tab-list-search-*` tokens. The row's
+accessible name is the Button's `aria-label`, title first, with the domain
+appended when there is one (`Tab: Dashboard in Work, mail.google.com`), so
+same-titled tabs on different sites are distinguishable.
+
+When `searchOpen` is true, the search field covers the fixed action row. When
 the trimmed query is non-empty, `TabListPane` skips rendering normal virtualized
 display rows and the action overlay renders matching results into the pane below
 the field. This avoids leaving tabs, folders, pinned sections, or creation
-controls visible behind the filtering surface. The clear affordance clears the
-local query, refocuses the search input, and returns the pane to the normal
-virtualized row path.
+controls visible behind the filtering surface. The clear affordance clears a
+non-empty local query, refocuses the search input, and returns the pane to the
+normal virtualized row path. When the trimmed query is empty it calls
+`onCloseSearch()` instead, exactly like Esc, and its `aria-label` reads "Close
+search" rather than "Clear search".
 
 Selecting a regular-tab result calls `TabList`'s normal `onActivate` prop so it
 uses the same tools dispatch and chrome scroll-to-main sentinel as a visible
@@ -74,6 +100,98 @@ workspace, leaving the requested folder tab selected in state but not visible in
 the main content slot. Regression check: put a tab inside a folder in workspace
 B, search for it from workspace A, click the result, and confirm workspace B
 opens with that exact folder member in the main content slot.
+
+Pitfall: `matchesTabSearch()` strips a leading `scheme:` and optional `//` from
+the URL before matching. Matching the raw URL makes "http" or "https" list every
+tab, and "about" or "moz-extension" list every internal page. Do not match the
+raw `tab.url`. It strips the query's own prefix for the URL test only, so a
+pasted full URL such as `https://github.com/andrew` finds
+`https://github.com/andrew/repo`; the title test keeps the query as typed. If the
+stripped query is empty (`https://`, `about:`) the URL test is skipped, or every
+tab would match. The query strip is narrower than the URL strip: only `scheme://`
+or a leading `about:`. Real tab URLs always start with a scheme, but a typed
+`host:port` such as `localhost:3000` also looks like `scheme:`; stripping it
+would test `3000` and list unrelated tabs (`https://example.com/items/3000`).
+Do not reuse the URL regex on the query. `data:` URLs skip the URL test, since
+they carry the page itself (a 50 MiB one took about 25 ms per scan, on every
+keystroke) and only their title is matched.
+
+Pitfall: the grid for the result row is on Mux's `.muxui-button-content`, not the
+Button (see
+[../mux-ui-component-customisations.md](../mux-ui-component-customisations.md)).
+The title and domain share one `.bento-tab-list-search__text` flex column in the
+third (`minmax(0, 1fr)`) column and each ellipsizes on its own; do not make the
+domain a fifth grid item or the kind label is pushed by long domains.
+
+### Search trigger and field motion
+
+The trigger is a Mux `Button` (ghost, `sm`) with the search icon and a `Search`
+label, inside `span.bento-tab-list__search-trigger` (which carries the `title`).
+Its accessible name stays the `aria-label` "Search tabs and panels". At rest it is
+the 2rem square; hovering it, or keyboard focus-visible on it, widens it leftward
+to `--bento-tab-list-search-peek-width` (5.25rem, icon, gap, the label and the
+New button's inline padding) and fades the label in, while the New button
+(`flex: 1`) shrinks by the same amount so the bar keeps its width. Mux's button
+ring uses native `:focus-visible` (React Aria also sets `data-focus-visible`);
+Bento uses `:focus-visible`. The trigger is hidden in the collapsed rail.
+
+One variable drives all the geometry. `.bento-tab-list__new-actions` sets
+`--bento-tab-list-search-trigger-width` to the row height and, through
+`:has(.bento-tab-list__search-trigger:hover, .bento-tab-list__search-button:focus-visible)`,
+to the peek width. The trigger's `width`, the action highlight's `left` and
+`width` (by its `data-target`, see [workspaces.md](workspaces.md)), and the closed
+search field row's `margin-inline-start` all read it and each transition their
+own property with `--bento-duration-spring` and `--bento-easing-spring`, the
+Motion spring (perceptual 0.3s, bounce 0.15) sampled as `linear()`. They start in
+the same style recalc with the same curve, so they stay in lockstep with no JS
+measuring. Opacity fades are timed from the 0.3s perceptual duration, not the
+550ms: the label, input and clear button fade in after `--bento-duration-fast`
+over `--bento-duration-base` and out in `--bento-duration-fast`.
+
+The overlay (`.bento-tab-list-search`) is always mounted so closing can animate.
+`TabListPane` sets `data-open` while `searchOpen` is true and `inert` otherwise.
+Closed, it is `pointer-events: none` and `visibility: hidden`, and the
+`visibility` transition is delayed by `--bento-duration-spring` so it stays
+visible while it closes; open, `visibility: visible` applies at once, so the
+open effect's `focus()` and `select()` work. The box that grows is the field row
+itself, by `margin-inline-start`: `0` open, and closed
+`calc(100% - var(--bento-tab-list-search-trigger-width))` with its
+`padding-inline-start` at the trigger's icon inset, so a closed (hidden) field
+row has exactly the trigger's rect, peeked or not, and an open starts from, and
+a close returns to, wherever the trigger is. The row's own background, radius and
+ring therefore draw correctly on every frame and the icon in its leading column
+rides the left edge (its inset moves from the trigger's 8px to the field's
+`--space-2xs` as it grows). Its `overflow: hidden` clips the grid while the row
+is narrower than its columns, and its `opacity` fades in over
+`--bento-duration-fast` on open and out after the spring has covered the trigger
+on close. While open, the trigger stays visible for `--bento-duration-fast` under
+the fading row (no icon blink) and then hides. The clear button sits in a
+`.bento-tab-list-search__clear` wrapper that fades and scales in at the right end,
+where the trigger sat, so Mux's own button transitions stay untouched. Under
+`prefers-reduced-motion: reduce` no width, margin or slide transitions run; only
+the short fades do.
+
+Pitfalls:
+
+- Do not unmount the overlay when closed, and do not drop `inert`. Unmounting
+  cuts the close animation; without `inert` the input and clear button stay
+  focusable and clickable while the overlay is visible for the close.
+- Do not animate the field with `clip-path` or measure the trigger in JS. A clip
+  cuts the ring, radius and background off the grown box, and a measured rect is
+  the mid-transition box. Keep the closed margin on the same variable the trigger
+  reads, or the field starts from the wrong place when the trigger is peeked.
+- Keep the closed `visibility` delay at least `--bento-duration-spring`. A shorter
+  delay hides the field mid-close.
+- The trigger's icon is inline in Mux's content span, like the New button's, so
+  its label shares New's baseline. That puts the trigger icon 1.14px above the
+  field row's centered icon; the swap happens under a 100ms cross-fade. Do not
+  turn the span into a flex container to center it: the label then sits about
+  2px above "New".
+- Esc and the other close paths leave focus on the page, as before; the input is
+  inert, so the browser drops focus rather than returning it to the trigger.
+- Verified in Chromium (Ladle) only. Gecko behaviour of `:has()`, `inert`, the
+  `visibility` delay and the highlight start is unverified; see the manual
+  checks in [manual-regression-areas.md](manual-regression-areas.md#sidebar-search-peek-and-grow).
 
 ## Floating Address Bar
 

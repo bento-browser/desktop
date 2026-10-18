@@ -4,12 +4,15 @@
 import { useEffect, useState } from 'react';
 import type { Action, TabSnapshot } from '@shared/protocol';
 import { TabList } from './TabList';
-import { seedEmpty, seedTabs, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
+import { makeTab, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
 import { makeFolder, seedTabFolders } from '../../state/__fixtures__/tabFolders';
+import { DEFAULT_FIXTURE } from '../../state/__fixtures__/settings';
 import { useWorkspacesStore } from '../../state/workspaces';
+import { useSettingsStore } from '../../state/settings';
 import { useTabsStore } from '../../state/tabs';
+import { useUiStore } from '../../state/ui';
 
 const noop = () => {};
 const defaultTabListProps = {
@@ -58,9 +61,32 @@ function useCollapsedAttribute(collapsed: boolean) {
   }, [collapsed]);
 }
 
+// TabList draws the collapsed rail's custom scrollbar only when the settings
+// store says the sidebar is collapsed. Seed it so a story does not inherit
+// whatever an earlier story, such as an App one, left there.
+function seedSidebarSettings(collapsed = false): void {
+  useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed: collapsed });
+}
+
+// TabList renders the skeleton until tabs, folders and the active workspace's
+// panels have all hydrated, and it lists only the active workspace's tabs. Seed
+// all of that together so a story renders on a fresh page load, not just after
+// another story has hydrated the stores. The fixtures replace each store, so a
+// story never sees the previous story's workspaces, tabs, folders or panels.
+function seedSidebarTabs(count: number, activeIndex = 0, collapsed = false): void {
+  seedSidebarSettings(collapsed);
+  seedDefaultWorkspaces();
+  const tabs = Array.from({ length: count }, (_, i) =>
+    makeTab({ id: i + 1, workspaceId: 'w-personal', active: i === activeIndex }),
+  );
+  useTabsStore.getState().applySnapshot(tabs);
+  seedTabFolders([]);
+  seedPanelsHydrated(['w-personal']);
+}
+
 export const Empty = () => {
   useEffect(() => {
-    seedEmpty();
+    seedSidebarTabs(0);
   }, []);
   return (
     <SidebarFrame>
@@ -71,7 +97,7 @@ export const Empty = () => {
 
 export const FewTabs = () => {
   useEffect(() => {
-    seedTabs(5, 1);
+    seedSidebarTabs(5, 1);
   }, []);
   return (
     <SidebarFrame>
@@ -84,7 +110,7 @@ FewTabs.storyName = '5 tabs';
 
 export const TwentyTabs = () => {
   useEffect(() => {
-    seedTabs(20, 3);
+    seedSidebarTabs(20, 3);
   }, []);
   return (
     <SidebarFrame>
@@ -97,7 +123,7 @@ TwentyTabs.storyName = '20 tabs (no scroll needed at default height)';
 
 export const VirtualizationStress = () => {
   useEffect(() => {
-    seedTabs(200, 50);
+    seedSidebarTabs(200, 50);
   }, []);
   return (
     <SidebarFrame>
@@ -110,7 +136,7 @@ VirtualizationStress.storyName = '200 tabs (virtualization perf check)';
 
 export const HugeStress = () => {
   useEffect(() => {
-    seedTabs(1000, 500);
+    seedSidebarTabs(1000, 500);
   }, []);
   return (
     <SidebarFrame>
@@ -121,9 +147,26 @@ export const HugeStress = () => {
 
 HugeStress.storyName = '1000 tabs (extreme stress; should still scroll at 60fps)';
 
+// The chrome overlay's menu is not rendered in Ladle; seeding the store is what
+// bridge/newMenu.ts does when the overlay shows the New menu.
+export const NewMenuOpen = () => {
+  useEffect(() => {
+    seedSidebarTabs(5);
+    useUiStore.getState().setNewMenuContextId('story-menu');
+    return () => useUiStore.getState().setNewMenuContextId(null);
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabList {...defaultTabListProps} />
+    </SidebarFrame>
+  );
+};
+
+NewMenuOpen.storyName = 'New menu open';
+
 export const NarrowSidebar = () => {
   useEffect(() => {
-    seedTabs(10, 0);
+    seedSidebarTabs(10, 0);
   }, []);
   return (
     <SidebarFrame width={200}>
@@ -136,7 +179,7 @@ NarrowSidebar.storyName = 'Narrow (200px min)';
 
 export const WideSidebar = () => {
   useEffect(() => {
-    seedTabs(10, 0);
+    seedSidebarTabs(10, 0);
   }, []);
   return (
     <SidebarFrame width={500}>
@@ -149,7 +192,7 @@ WideSidebar.storyName = 'Wide (500px)';
 
 export const Collapsed = () => {
   useEffect(() => {
-    seedTabs(8, 2);
+    seedSidebarTabs(8, 2, true);
   }, []);
   useCollapsedAttribute(true);
   return (
@@ -166,7 +209,7 @@ export const CollapsedMany = () => {
   // tabs exist than fit on screen — the rail should scroll vertically
   // without any title text overflowing horizontally.
   useEffect(() => {
-    seedTabs(40, 5);
+    seedSidebarTabs(40, 5, true);
   }, []);
   useCollapsedAttribute(true);
   return (
@@ -178,17 +221,15 @@ export const CollapsedMany = () => {
 
 CollapsedMany.storyName = 'Collapsed — 40 tabs (scroll check)';
 
-// Interactive drag-and-drop reorder demo. Seeds a workspace + panels so
-// TabList's readiness gate releases (the unfiltered stories above show
-// rows because the gate's `activeWorkspaceId` falls back to null —
-// rendering the unfiltered list — but the drag flow needs a real
-// active workspace so useWorkspaceTabIds returns the seeded set and
-// drop targets resolve correctly). The onReorder callback applies the
-// browser.tabs.move semantics locally to the store so the resulting
-// order is visible without a real bento-tools port.
+// Interactive drag-and-drop reorder demo. Seeds a pinned tab and a folder
+// in the active workspace so the drag flow has real drop targets. The
+// onReorder callback applies the browser.tabs.move semantics locally to
+// the store so the resulting order is visible without a real bento-tools
+// port.
 export const DragReorder = () => {
   const [log, setLog] = useState<string[]>([]);
   useEffect(() => {
+    seedSidebarSettings();
     seedDefaultWorkspaces();
     const tabs = seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 8 }], 'w-personal');
     useTabsStore.getState().applySnapshot(
@@ -290,6 +331,7 @@ DragReorder.storyName = 'Drag reorder, pin, and folder drops (interactive)';
 
 export const CrossWorkspaceSearch = () => {
   useEffect(() => {
+    seedSidebarSettings();
     seedDefaultWorkspaces();
     useWorkspacesStore.getState().applySnapshot(
       [
@@ -308,6 +350,7 @@ export const CrossWorkspaceSearch = () => {
       ],
       'w-personal',
     );
+    seedTabFolders([]);
     seedPanelsByWorkspace({
       'w-personal': [tabs[2]?.id].filter((id): id is number => typeof id === 'number'),
       'w-work': [tabs[6]?.id].filter((id): id is number => typeof id === 'number'),
@@ -322,3 +365,100 @@ export const CrossWorkspaceSearch = () => {
 };
 
 CrossWorkspaceSearch.storyName = 'Cross-workspace search';
+
+// TabList owns the search state, so open the field and type the way a user
+// does: click the trigger, then set the input through the native setter so
+// React sees an input event. Both are looked up in the incoming pane: during a
+// workspace slide the outgoing pane is rendered first and its search is a no-op.
+function useOpenSearch(query: string) {
+  useEffect(() => {
+    let frame = 0;
+    const open = () => {
+      const pane = document.querySelector<HTMLElement>(
+        '.bento-tab-list-pane:not([class*="bento-tab-list-pane--exit-"])',
+      );
+      const trigger = pane?.querySelector<HTMLElement>('.bento-tab-list__search-button');
+      const input = pane?.querySelector<HTMLInputElement>('.bento-tab-list-search__input');
+      if (!trigger || !input) {
+        frame = requestAnimationFrame(open);
+        return;
+      }
+      trigger.click();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, query);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    frame = requestAnimationFrame(open);
+    return () => cancelAnimationFrame(frame);
+  }, [query]);
+}
+
+// Search results with the domain under the title: normal, long title, long
+// domain, www kept, an about: page, a panel, and a moz-extension page with no
+// domain (single-line row).
+export const SearchResultDomains = () => {
+  useOpenSearch('bento');
+  useEffect(() => {
+    seedSidebarSettings();
+    seedDefaultWorkspaces();
+    useWorkspacesStore.getState().applySnapshot(
+      [
+        { id: 'w-personal', name: 'Personal', icon: 'P', createdAt: 1 },
+        { id: 'w-work', name: 'Work', icon: 'W', themeId: 'teal', createdAt: 2 },
+        { id: 'w-side', name: 'Side project', icon: 'S', themeId: 'terracotta', createdAt: 3 },
+      ],
+      'w-personal',
+      {},
+    );
+    const tabs = [
+      makeTab({
+        id: 1,
+        workspaceId: 'w-personal',
+        active: true,
+        title: 'Bento Browser on GitHub',
+        url: 'https://github.com/andrewtran/bento-browser',
+      }),
+      makeTab({
+        id: 2,
+        workspaceId: 'w-personal',
+        title: 'Bento roadmap',
+        url: 'https://www.notion.so/bento/roadmap',
+      }),
+      makeTab({
+        id: 3,
+        workspaceId: 'w-work',
+        title:
+          'Bento: a very long tab title that should definitely get truncated with an ellipsis when it runs out of space',
+        url: 'https://mail.google.com/mail/u/0/#inbox',
+      }),
+      makeTab({
+        id: 4,
+        workspaceId: 'w-work',
+        title: 'Bento staging dashboard',
+        url: 'https://bento-staging-environment.internal.some-very-long-company-name.example.com/dashboard',
+      }),
+      makeTab({ id: 5, workspaceId: 'w-side', title: 'Bento new tab', url: 'about:blank' }),
+      makeTab({
+        id: 6,
+        workspaceId: 'w-side',
+        title: 'Bento extension settings',
+        url: 'moz-extension://bento-shell/settings.html',
+      }),
+      makeTab({
+        id: 7,
+        workspaceId: 'w-work',
+        title: 'Bento docs (panel)',
+        url: 'https://docs.bento.example/guide',
+      }),
+    ];
+    useTabsStore.getState().applySnapshot(tabs);
+    seedTabFolders([]);
+    seedPanelsByWorkspace({ 'w-personal': [], 'w-work': [7], 'w-side': [] });
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabList {...defaultTabListProps} />
+    </SidebarFrame>
+  );
+};
+
+SearchResultDomains.storyName = 'Search result domains';

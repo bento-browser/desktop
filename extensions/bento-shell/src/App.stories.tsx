@@ -6,12 +6,21 @@
 // uses, so the layout transitions exactly as it does in chrome.
 import { useEffect } from 'react';
 import { App } from './App';
+// The shell layout (sidebar column, footer stacking in the collapsed rail). Every
+// selector in it is scoped to the shell's own classes, so loading it here does not
+// touch other stories. Its bento.app layer ranks above bento.components through the
+// order statement in theme/muxui.css, whatever order the imports run in.
+import './app.css';
 import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
 import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';
 import { seedPanelsHydrated } from './state/__fixtures__/panels';
+import { seedTabFolders } from './state/__fixtures__/tabFolders';
+import { seedEmptyPinnedPanels } from './state/__fixtures__/pinnedPanels';
 import { DEFAULT_FIXTURE } from './state/__fixtures__/settings';
 import { markToolsBootedForStory } from './state/__fixtures__/bus';
+import { useExternalMergeStore } from './state/externalMerge';
 import { useSettingsStore } from './state/settings';
+import { useSidebarAddressStore } from './state/sidebarAddress';
 import type { Action } from '@shared/protocol';
 
 const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
@@ -46,9 +55,14 @@ function ShellFrame({
 
 // Seed the full shell: 3 workspaces (Personal blue / Work emerald / Side
 // project amber, Work active), tabs spread across all three so switching
-// workspaces in the demo shows distinct lists, panels marked hydrated for
-// every workspace so TabList's readiness gate releases. Settings carry
-// the requested sidebarCollapsed value.
+// workspaces in the demo shows distinct lists, an empty folder list, and
+// panels marked hydrated for every workspace. TabList shows its skeleton
+// until tabs, folders and the active workspace's panels have all hydrated,
+// so every one of those is seeded. Settings carry the requested
+// sidebarCollapsed value. The sidebar address, pinned-panel and external-merge
+// stores are reset: a fresh shell has no address snapshot, no pinned panels and
+// no import running until the chrome bridge sends them, and these stores
+// outlive a story switch, so another story's data would otherwise stay.
 function seedShell(sidebarCollapsed: boolean) {
   const workspaces = seedManyWorkspaces();
   seedTabsAcrossWorkspaces(
@@ -59,8 +73,12 @@ function seedShell(sidebarCollapsed: boolean) {
     ],
     'w-work',
   );
+  seedTabFolders([]);
   seedPanelsHydrated(workspaces.map((w) => w.id));
   useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed });
+  useSidebarAddressStore.getState().reset();
+  seedEmptyPinnedPanels();
+  useExternalMergeStore.setState(useExternalMergeStore.getInitialState());
   // Fake a tools/booted event AFTER seeding so the App's "connecting…"
   // indicator clears. Order matters: useToolsPort responds to booted by
   // re-requesting snapshots; nothing answers those in Ladle, but if we

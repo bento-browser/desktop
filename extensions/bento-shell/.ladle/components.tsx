@@ -11,8 +11,11 @@ import '../src/theme/bento-tokens.css';
 import '../src/theme/presets/index.css';
 import '../src/theme/bento-fonts.css';
 import { ALL_THEME_IDS, useThemeSheets } from '../src/theme/themeSheets';
-// Intentionally not importing src/app.css — its html/body/#root rules
-// override Ladle's layout. Stories use their own frame to constrain.
+// src/app.css (the shell layout) is deliberately not imported here: only the App
+// stories render the shell layout, and App.stories.tsx loads it. The layer order is
+// declared in muxui.css above, so where app.css loads does not change it. The page's
+// html/body/#root sizing is in src/shell-document.css, which Ladle never loads.
+// Stories use their own frame.
 
 function resolveMode(theme: ThemeState): 'light' | 'dark' {
   if (theme === ThemeState.Dark) return 'dark';
