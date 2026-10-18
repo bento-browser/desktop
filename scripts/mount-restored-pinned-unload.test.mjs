@@ -1,8 +1,9 @@
 // Firefox restores pinned tabs without loading them (restore_pinned_tabs_on_demand) but as
 // pending tabs with a real browser, which the WebExtension API reports as loaded. The mount
 // script unloads each one once its own history restore is done (SSTabRestoring plus one task):
-// a browser discarded earlier is re-inserted by SessionStore. These tests run the real selection
-// rule and the real SSTabRestoring handler from bento-shell-mount.js against stubs.
+// a browser discarded earlier is re-inserted by SessionStore. One the window already renders as
+// a panel is loaded instead, as nothing else would load it. These tests run the real selection
+// rules and the real SSTabRestoring handler from bento-shell-mount.js against stubs.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -25,16 +26,31 @@ function mountFunction(name) {
 
 const FUNCTIONS = [
   'shouldUnloadRestoredPinnedTab',
+  'shouldLoadRestoredPinnedPanel',
   'pinnedRestoreOnDemand',
   'attachRestoredPinnedTabUnload',
 ]
   .map(mountFunction)
   .join('\n');
 
-/** A tab stub: attrs are the attribute names Firefox puts on the tab element. */
-function tab(name, { pinned = true, selected = false, attrs = ['pending'], webExtId } = {}) {
-  const stub = { name, pinned, selected, webExtId, attrs };
+/**
+ * A tab stub: attrs are the attribute names Firefox puts on the tab element, linkedPanel is
+ * empty on a lazy tab, and linkedBrowser.reload is recorded in `reloads`.
+ */
+const reloads = [];
+function tab(
+  name,
+  {
+    pinned = true,
+    selected = false,
+    attrs = ['pending'],
+    webExtId,
+    linkedPanel = `panel-${name}`,
+  } = {},
+) {
+  const stub = { name, pinned, selected, webExtId, attrs, linkedPanel };
   stub.hasAttribute = (attr) => stub.attrs.includes(attr);
+  stub.linkedBrowser = { reload: () => reloads.push(name) };
   return stub;
 }
 
@@ -43,6 +59,7 @@ function setup({
   panelTabIds = [],
   discardBrowser,
 } = {}) {
+  reloads.length = 0;
   const discarded = [];
   const discardArgCounts = [];
   const warnings = [];
@@ -79,7 +96,17 @@ function setup({
     listeners.get('SSTabRestoring')({ target: t });
     if (run) flush();
   };
-  return { sandbox, discarded, discardArgCounts, warnings, listeners, tasks, flush, restoring };
+  return {
+    sandbox,
+    discarded,
+    discardArgCounts,
+    reloads,
+    warnings,
+    listeners,
+    tasks,
+    flush,
+    restoring,
+  };
 }
 
 test('only pinned, pending, unselected tabs that are quiet and not rendered panels qualify', () => {
@@ -130,11 +157,55 @@ test('the conditions are checked again when the task runs', () => {
   assert.deepEqual(discarded, []);
 });
 
-test('a pinned panel tab the window renders stays loaded', () => {
-  const { discarded, restoring } = setup({ panelTabIds: [7] });
+test('only pinned, pending panels with a browser of their own are loaded', () => {
+  const { sandbox } = setup();
+  const rendered = () => true;
+  const picked = [
+    tab('pending-panel'),
+    tab('unpinned', { pinned: false }),
+    tab('loaded', { attrs: [] }),
+    tab('lazy', { linkedPanel: '' }),
+  ].filter((t) => sandbox.shouldLoadRestoredPinnedPanel(t, rendered));
+  assert.deepEqual(
+    picked.map((t) => t.name),
+    ['pending-panel'],
+  );
+  assert.equal(
+    sandbox.shouldLoadRestoredPinnedPanel(tab('other'), () => false),
+    false,
+  );
+});
+
+test('a pinned panel tab the window renders is reloaded, not discarded', () => {
+  const { discarded, reloads, restoring } = setup({ panelTabIds: [7] });
   restoring(tab('panel', { webExtId: 7 }));
   restoring(tab('other', { webExtId: 8 }));
+  // The reload reaches SessionStore's OnHistoryReload listener, which starts the content restore.
+  assert.deepEqual(reloads, ['panel']);
   assert.deepEqual(discarded, ['other']);
+});
+
+test('a rendered panel is loaded whichever restore-on-demand prefs are set', () => {
+  const PINNED = 'browser.sessionstore.restore_pinned_tabs_on_demand';
+  for (const prefs of [
+    {},
+    { [PINNED]: false },
+    { [PINNED]: true, ['browser.sessionstore.restore_on_demand']: false },
+  ]) {
+    const { discarded, reloads, restoring } = setup({ prefs, panelTabIds: [7] });
+    restoring(tab('panel', { webExtId: 7 }));
+    assert.deepEqual(reloads, ['panel'], JSON.stringify(prefs));
+    assert.deepEqual(discarded, []);
+  }
+});
+
+test('a rendered panel whose content restore already started, or that is lazy, is left alone', () => {
+  const { discarded, reloads, restoring } = setup({ panelTabIds: [7, 8] });
+  restoring(tab('started', { webExtId: 7, attrs: [] }));
+  restoring(tab('lazy', { webExtId: 8, linkedPanel: '' }));
+  assert.deepEqual(reloads, []);
+  // A lazy panel is left to materializePanelTab, which inserts and reloads it; none is discarded.
+  assert.deepEqual(discarded, []);
 });
 
 test('tabs are unloaded only while both restore-on-demand prefs are true', () => {
@@ -153,6 +224,16 @@ test('tabs are unloaded only while both restore-on-demand prefs are true', () =>
     restoring(tab('a'));
     assert.deepEqual(discarded, expected, JSON.stringify(prefs));
   }
+});
+
+test('a failing reload of a rendered panel is logged and never thrown', () => {
+  const { warnings, restoring } = setup({ panelTabIds: [7] });
+  const panel = tab('panel', { webExtId: 7 });
+  panel.linkedBrowser.reload = () => {
+    throw new Error('gone');
+  };
+  assert.doesNotThrow(() => restoring(panel));
+  assert.equal(warnings.length, 1);
 });
 
 test('a failing discard is logged and never thrown', () => {

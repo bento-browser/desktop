@@ -107,11 +107,15 @@ When changing core functionality, manually verify at least the affected subset:
   `(await browser.tabs.query({ pinned: true })).map(t => t.discarded)` is `true` for
   them. Clicking one loads the right page, the second after switching to its
   workspace, and Back works. A pinned tab shown as a panel in the active workspace
-  may be unloaded when its restore finishes and is loaded again by the panel strip:
-  it ends up loaded and renders its page normally, with no blank panel. A pinned
-  tab that loaded (the selected one) is not dimmed. The audio and sharing skips
-  cannot be reached from a real restore, because a restored tab has not played
-  anything; `scripts/mount-restored-pinned-unload.test.mjs` covers them. Then press
+  may be unloaded when its restore finishes and is loaded again by the panel strip,
+  or is loaded by the restore handler itself when the strip already renders it: it
+  ends up loaded and renders its page normally, with no blank panel. Repeat with a
+  pinned panel in the shown workspace after reopening a closed window (Cmd+Shift+N)
+  and in a second window: the panel shows its page without a click, and
+  `tab.hasAttribute('pending')` is false for it. A pinned tab that loaded (the
+  selected one) is not dimmed. The audio and sharing skips cannot be reached from a
+  real restore, because a restored tab has not played anything;
+  `scripts/mount-restored-pinned-unload.test.mjs` covers them. Then press
   Alt+Shift+R with a loaded pinned tab open: it stays loaded, because the unload
   runs only when SessionStore restores a tab. On macOS, close the last window with
   Cmd+W (the app keeps running) and click the Dock icon: the pinned tabs of the
