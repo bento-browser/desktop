@@ -92,10 +92,10 @@
       "reason": "Preserves the legacy rollback source's stable Zen import-source protocol value."
     },
     {
-      "path": "extensions/bento-shell/src/welcome/main.tsx",
-      "pattern": "Firefox and Zen",
+      "path": "extensions/bento-shell/src/welcome/WelcomeSurfaces.tsx",
+      "pattern": "Firefox and Zen|'Zen'",
       "category": "import-compatibility",
-      "reason": "Labels the explicit onboarding import action."
+      "reason": "Labels the explicit onboarding import action and lists Zen among the import sources."
     },
     {
       "path": "rollback/legacy-source/extensions/bento-shell/src/welcome/main.tsx",
