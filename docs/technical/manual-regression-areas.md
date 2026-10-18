@@ -231,10 +231,11 @@ Gecko is unverified for this feature: the checks so far ran in Chromium through
 Ladle. In a running browser after a shell sync and Alt+Shift+R, with the sidebar
 expanded:
 
-1. Hover the Search icon: it widens leftward to "Search" in about 0.3s, the New
-   button shrinks by the same amount, the bar keeps its width, and the hover
-   highlight is exactly the widened trigger at every frame, including when you
-   enter the bar directly over Search (it starts on the square).
+1. Hover the Search icon: it widens leftward on a spring (looks settled in about
+   0.2s, fully at rest by 0.4s, no bounce) and "Search" fades in, the New button
+   shrinks by the same amount, the bar keeps its width, and the hover highlight
+   is exactly the widened trigger at every frame, including when you enter the
+   bar directly over Search (it starts on the square).
 2. Move the pointer between New and Search: the highlight glides and settles on
    each button's box; leaving the bar fades it and the trigger returns to the
    square.

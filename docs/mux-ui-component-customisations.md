@@ -547,6 +547,15 @@ Rules:
    (a duration and its easing) as a `transition` or `animation` value, or the
    matching `<role>-transition-duration` and `<role>-transition-easing` for
    longhands. Never combine one role's duration with another role's easing.
+   A role that ships a spring (`reveal` does) also has
+   `<role>-transition-spring-duration` with `<role>-transition-spring-easing`, a
+   sampled `linear()` spring (reveal: 400 ms, bounce 0). That same-role pair is
+   allowed in place of the plain pair, for geometry that should settle like a
+   physical object. Time the `state` fades that accompany it from
+   `<role>-transition-spring-visual-duration` (reveal: 200 ms, when the spring has
+   covered about 97% of the move), not from the 400 ms tail. A hide or hand-off
+   that must wait for the geometry to finish (a `visibility` step) runs the spring
+   duration, tail included.
 3. Pick from the roles below. Delays and staggers are `calc()` fractions of the
    token's duration (`calc(var(--muxui-semantic-motion-progress-sweep-duration) / 12)`).
 4. Script never copies a duration as a number. Code that has to act when motion ends
@@ -558,16 +567,16 @@ Rules:
 
 Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in Bento):
 
-| Role | Use in Bento | Default |
-| --- | --- | --- |
-| `state` | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade) | 120 ms, `ease` |
-| `interaction` | Mux's pointer-interaction role; Bento CSS does not use it today | 150 ms, `ease` |
-| `reveal` | Geometry and appearance that follows a layout change: sidebar collapse and hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, footer fade | 200 ms, `ease-out` |
-| `dismiss` | Something leaving: tab row removal, panel close fade, startup veil | 120 ms, `ease-in` |
-| `modal` | Overlay hosts and scrims fading in and out, the address bar popup | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)` |
-| `modal-dismiss` | Modal exit; Bento fades hosts in and out on `modal` and does not use it today | 120 ms, modal easing |
-| `content-resize` | Content that changes size; Bento does not use it today | 600 ms, `ease` |
-| `progress` | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`) | per token |
+| Role             | Use in Bento                                                                                                                                                                                                                                                | Default                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade)                                                                                                                                               | 120 ms, `ease`                                                   |
+| `interaction`    | Mux's pointer-interaction role; Bento CSS does not use it today                                                                                                                                                                                             | 150 ms, `ease`                                                   |
+| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, footer fade; its spring pair drives the sidebar Search peek and field | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
+| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil                                                                                                                                                                                          | 120 ms, `ease-in`                                                |
+| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                           | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
+| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                               | 120 ms, modal easing                                             |
+| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                      | 600 ms, `ease`                                                   |
+| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                         | per token                                                        |
 
 Loops: the panel loading spinner (`spin` with `constant-easing`, dash arc with
 `sweep` and `progress-easing`), the startup veil pulse and the tab list shimmer
@@ -579,6 +588,12 @@ Pairs that must stay in lockstep use the same role: the shell's sidebar collapse
 (`app.css`, `TabRow.css`, `TabList.css`, `WorkspaceSwitcher.css`) and the chrome host
 width (`bento-shell-mount.css`) are all `reveal`; the workspace slide
 (`TabList.css`), the main panel width one-shot and the panel enter are `reveal` too.
+The sidebar Search peek group is one `reveal` spring pair: the trigger's width, the
+action highlight's `left` and `width`, the closed field row's `margin-inline-start`
+and `padding-inline-start` (which is also the field's open and close growth) and the
+clear button's open `scale`; the New button follows through flex, and the closed
+overlay's `visibility` hide runs the same spring duration. The closed field row's
+fade waits the spring's visual duration; the other fades stay on `state`.
 
 Timing consequences of the default values worth knowing when comparing with an
 older build: the workspace slide runs 200 ms (was 260 ms), the focus ring settles in
