@@ -28,6 +28,7 @@ import {
   pruneSelection,
   rowKey,
 } from './displayRows';
+import { matchesTabSearch } from './tabSearch';
 import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
@@ -1270,7 +1271,7 @@ export function TabList({
     return Object.values(tabsById)
       .flatMap((tab): TabListSearchResult[] => {
         const title = tab.customTitle || tab.title || 'Untitled';
-        if (!title.toLocaleLowerCase().includes(query)) return [];
+        if (!matchesTabSearch(query, title, tab.url)) return [];
         const panelWorkspaceId = panelWorkspaceById.get(tab.id);
         const workspaceId = panelWorkspaceId ?? tab.workspaceId;
         if (!workspaceId) return [];

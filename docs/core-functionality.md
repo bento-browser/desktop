@@ -168,8 +168,9 @@ search icon beside those controls widens on hover or keyboard focus to show its
 "Search" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
 sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
 so the actions remain available anywhere in a long tab list. Typing filters
-open tabs and side panels by title across all
-workspaces. The field has a clear
+open tabs and side panels across all
+workspaces by title or web address, and a pasted full address such as
+`https://github.com/andrew` finds its tab. The field has a clear
 button labeled "Clear". While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.

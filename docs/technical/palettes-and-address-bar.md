@@ -38,8 +38,14 @@ sidebar search field shown from the fixed action row beside the New menu.
 The result set is derived locally from the shell mirrors: `useTabsStore` provides
 all tab snapshots, `usePanelsStore((s) => s.byWorkspace)` classifies panel tab
 ids by workspace, and `useWorkspacesStore` supplies workspace order, icons, and
-theme ids. The search is title-only by sidebar UX choice; do not add URL
-matching here unless that surface is intentionally widened.
+theme ids. A tab matches when the trimmed, lowercased query is a substring of
+its display title (`customTitle`, then `title`) as typed, or when the query with
+its own leading scheme removed is a substring of the URL with its scheme
+removed. The test is `matchesTabSearch()` in
+`extensions/bento-shell/src/components/TabList/tabSearch.ts`, covered by
+`tabSearch.test.ts`. A missing or empty URL falls back to title-only, and a
+query that is only a scheme (`https://`, `about:`) skips the URL test. Result
+order and the 50-result cap are unchanged.
 
 When `searchOpen` is true, the search field covers the fixed action row. When
 the trimmed query is non-empty, `TabListPane` skips rendering normal virtualized
@@ -74,6 +80,21 @@ workspace, leaving the requested folder tab selected in state but not visible in
 the main content slot. Regression check: put a tab inside a folder in workspace
 B, search for it from workspace A, click the result, and confirm workspace B
 opens with that exact folder member in the main content slot.
+
+Pitfall: `matchesTabSearch()` strips a leading `scheme:` and optional `//` from
+the URL before matching. Matching the raw URL makes "http" or "https" list every
+tab, and "about" or "moz-extension" list every internal page. Do not match the
+raw `tab.url`. It strips the query's own prefix for the URL test only, so a
+pasted full URL such as `https://github.com/andrew` finds
+`https://github.com/andrew/repo`; the title test keeps the query as typed. If the
+stripped query is empty (`https://`, `about:`) the URL test is skipped, or every
+tab would match. The query strip is narrower than the URL strip: only `scheme://`
+or a leading `about:`. Real tab URLs always start with a scheme, but a typed
+`host:port` such as `localhost:3000` also looks like `scheme:`; stripping it
+would test `3000` and list unrelated tabs (`https://example.com/items/3000`).
+Do not reuse the URL regex on the query. `data:` URLs skip the URL test, since
+they carry the page itself (a 50 MiB one took about 25 ms per scan, on every
+keystroke) and only their title is matched.
 
 Pitfall: the grid for the result row is on Mux's `.muxui-button-content`, not the
 Button (see
