@@ -94,17 +94,22 @@ export async function discardRestoredPinnedTabs(
  * after the first script run), so the event has long arrived on a real startup;
  * if it has not, `run` does nothing and the tabs stay as Firefox restored them.
  * It never rejects.
+ *
+ * `browserStarted` exposes the same signal to the other startup-only decisions in
+ * boot (dropping the parked tab lists), which make the same call: nothing before
+ * the event arrives, and nothing when it never does.
  */
 export function createStartupPinnedTabDiscard(
   tabs: RestoredTabs,
   getShownPanelTabIds: () => Iterable<number>,
   waitMs?: number,
-): { noteStartup: () => void; run: () => Promise<void> } {
+): { noteStartup: () => void; browserStarted: () => boolean; run: () => Promise<void> } {
   let browserStarted = false;
   return {
     noteStartup: () => {
       browserStarted = true;
     },
+    browserStarted: () => browserStarted,
     run: async () => {
       if (!browserStarted) return;
       try {

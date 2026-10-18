@@ -332,7 +332,8 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   persisted URL/layout entries. Workspace activation restores parked sidebar tabs
   before the empty-workspace newtab fallback and restores parked panels through
   the normal `restorePanelsForWorkspace` path (`planPanelRestore` keeps it from
-  opening a tab for a slot a marker-restored panel already fills). At a browser start the parked
+  opening a tab for a slot a marker-restored panel already fills). At a browser start (not
+  a tools reload) the parked
   sidebar-tab lists of workspaces Firefox restored tabs for are dropped, not
   replayed (see "Restart keeps what Firefox restored" in
   [workspaces.md](workspaces.md)), so only a workspace with no restored tab

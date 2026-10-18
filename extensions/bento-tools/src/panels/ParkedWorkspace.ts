@@ -82,12 +82,19 @@ export function planWorkspaceParking(args: {
  * looks at membership only: a workspace with a tab in a window that came back from the session had
  * its tabs restored. A tab in any other window (the one a fresh start opens) does not count. Lists
  * of other workspaces, whose window was closed and not restored, stay for their next activation.
+ *
+ * Only a real browser start (`browserStarted`, the `runtime.onStartup` signal) may drop a list.
+ * When bento-tools reloads under a running browser, a workspace can have a tab in a window that
+ * survived because a closing window handed it over, and its list still holds the tab that window
+ * could not move: dropping it would lose that tab. So with `browserStarted` false nothing is dropped.
  */
 export function parkedWorkspacesToDiscard(
   parkedWorkspaceIds: Iterable<string>,
   liveTabs: ReadonlyArray<Pick<TabSnapshot, 'windowId' | 'workspaceId'>>,
   restoredWindowIds: ReadonlySet<number>,
+  browserStarted: boolean,
 ): string[] {
+  if (!browserStarted) return [];
   const restored = new Set<string>();
   for (const tab of liveTabs) {
     if (tab.workspaceId && restoredWindowIds.has(tab.windowId)) restored.add(tab.workspaceId);

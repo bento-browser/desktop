@@ -320,12 +320,19 @@ function takeParkedWorkspaceTabs(workspaceId: string): ParkedWorkspaceTab[] {
 }
 
 // At a browser start Firefox has already restored the tabs of every window that came back, so
-// the lists parked for their workspaces at quit would only open each tab a second time.
-function discardParkedTabsOfRestoredWorkspaces(restoredWindowIds: ReadonlySet<number>): void {
+// the lists parked for their workspaces at quit would only open each tab a second time. Only a
+// real start may drop them (`browserStarted`): when bento-tools reloads under a running browser,
+// a surviving window can hold tabs a closed window handed over while the list still holds the tab
+// that window could not move, so the lists stay and replay on activation as before.
+function discardParkedTabsOfRestoredWorkspaces(
+  restoredWindowIds: ReadonlySet<number>,
+  browserStarted: boolean,
+): void {
   const discard = parkedWorkspacesToDiscard(
     parkedWorkspaceTabs.keys(),
     tabs.snapshot().filter((tab) => !tabs.isClosing(tab.id) && !tabs.isPrivate(tab.id)),
     restoredWindowIds,
+    browserStarted,
   );
   for (const workspaceId of discard) parkedWorkspaceTabs.delete(workspaceId);
   if (discard.length > 0) persistParkedWorkspaceTabs();
@@ -1068,8 +1075,10 @@ const bootReady = storesReady.then(async () => {
   await tabs.closeMarkedTabs();
   adoptionGate.settle();
   // Before the backfill below gives unassigned tabs a workspace, so only tabs Firefox restored
-  // with theirs count.
-  discardParkedTabsOfRestoredWorkspaces(restoredWindowIds);
+  // with theirs count. A real browser start only: `runtime.onStartup` fires right after the
+  // background script's first run, long before the settle wait above ends. If it has not
+  // arrived, the lists stay, as they do on a reload (see the function).
+  discardParkedTabsOfRestoredWorkspaces(restoredWindowIds, startupPinnedDiscard.browserStarted());
 
   // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
   // matches a panel in bento.panels storage. The panel storage is a

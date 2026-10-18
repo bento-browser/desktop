@@ -264,7 +264,7 @@ describe('parkedWorkspacesToDiscard', () => {
   /** What startup replays: the lists left after the discard, planned against the live tabs. */
   function replayedAtStartup(liveTabs: TabSnapshot[], restoredWindowIds: Set<number>) {
     const discarded = new Set(
-      parkedWorkspacesToDiscard(parked.keys(), liveTabs, restoredWindowIds),
+      parkedWorkspacesToDiscard(parked.keys(), liveTabs, restoredWindowIds, true),
     );
     return [...parked]
       .filter(([workspaceId]) => !discarded.has(workspaceId))
@@ -281,7 +281,7 @@ describe('parkedWorkspacesToDiscard', () => {
   it('drops the list of every workspace that has tabs in a restored window, shown or not', () => {
     const liveTabs = [tabOf(1, 1, 'shown'), tabOf(2, 1, 'hidden')];
 
-    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([1]))).toEqual([
+    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([1]), true)).toEqual([
       'shown',
       'hidden',
     ]);
@@ -307,10 +307,33 @@ describe('parkedWorkspacesToDiscard', () => {
     ]);
   });
 
+  it('keeps a list when bento-tools reloads under a running browser, even with a surviving window', () => {
+    // Window A closed, handed the tabs it could move to window B and parked the one that could not
+    // (a New Tab it held). bento-tools then reloads while B is open: B counts as restored, but
+    // the list is the only record of the tab that stayed behind.
+    const liveTabs = [tabOf(1, 2, 'shown')];
+    const stranded = parked.get('shown')!;
+
+    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([2]), false)).toEqual([]);
+    expect(
+      planParkedRestore(stranded, new Map(), liveTabs.length).map((step) => step.entry.url),
+    ).toEqual(['https://shown/']);
+  });
+
+  it('still drops the same list on a real browser start', () => {
+    const liveTabs = [tabOf(1, 2, 'shown')];
+
+    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([2]), true)).toEqual([
+      'shown',
+    ]);
+  });
+
   it('ignores a tab in a window that did not come back from the session', () => {
     // A fresh start opens its own window; its blank tab may already belong to a workspace.
     const liveTabs = [tabOf(1, 1, 'shown'), tabOf(2, 2, 'closed')];
 
-    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([1]))).toEqual(['shown']);
+    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([1]), true)).toEqual([
+      'shown',
+    ]);
   });
 });

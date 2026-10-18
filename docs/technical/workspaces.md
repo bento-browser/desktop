@@ -349,7 +349,27 @@ boot backfill gives unassigned tabs a workspace. A workspace with no restored ta
 of it restores the tabs as before, at startup or later. A tab in a window that did
 not come back from the session (the window a fresh start opens) does not count,
 even when it already has a workspace. The decision uses workspace membership and
-never `Tab.url`. The WebExtension `Tab.url` is `browser.currentURI.spec`
+never `Tab.url`.
+
+The drop happens only on a real browser start. `discardParkedTabsOfRestoredWorkspaces`
+takes the `runtime.onStartup` signal the pinned-tab pass uses
+(`createStartupPinnedTabDiscard(...).browserStarted()`, `tabs/PinnedTabRestore.ts`;
+there is no second signal). Firefox fires that event right after the background
+script's first run (`background-first-run`, `ext-backgroundPage.js`), so on a
+real start it has long arrived when the decision runs after the settle wait. When
+bento-tools reloads under a running browser (Alt+Shift+R, an install, an update)
+it never fires, and then nothing is dropped, as before this change: the lists stay
+and replay on the next activation, which waits for the hydrate and so sees loaded
+tabs. That case is the reason for the gate. A window that closed earlier in the
+session hands the tabs it can move to a surviving window and parks the one it
+cannot; after a tools reload the surviving window counts as restored, and
+dropping the list would lose that parked tab. If `onStartup` has not arrived by
+the decision point, nothing is dropped either, which falls back to that same
+behaviour (a possible duplicate instead of a lost tab). One case remains: a crash
+restart is a real start, so when it restores only some windows, a workspace with
+a tab in a restored window still loses its list, even when the list holds a tab
+of a window that closed earlier in the session and was not restored. That tab is
+not replayed. The WebExtension `Tab.url` is `browser.currentURI.spec`
 (`ext-tabs-base.js`) and Firefox has no `pendingUrl`, so a restored tab that has a
 real browser but is still restoring reports `about:blank`. That is the selected
 tab and every pinned tab (`Tabbrowser` skips `createLazyBrowser` for them), the
@@ -975,7 +995,11 @@ opening an unwanted blank tab before the moved tabs arrive.
   tabs a workspace. Do not count a tab of a window that did not come back from the
   session: a fresh start's window already holds a blank tab that can carry the
   active workspace, and counting it would drop the list of a workspace whose
-  window was closed and not restored.
+  window was closed and not restored. Drop only on a real browser start
+  (`browserStarted()`, the `runtime.onStartup` signal). After a tools reload a
+  surviving window that received handed-over tabs counts as restored, and the drop
+  deleted the list holding the tab the closed window could not move. A crash that
+  restores only some windows is the one case this still gets wrong.
 - Do not run the workspace activation handler during boot before the restore has
   finished. `restoreFromSession` activates a restored window's workspace before
   `hydrateWorkspaceIds`, so an activation that runs at once sees restored tabs
