@@ -105,24 +105,69 @@ test('chrome base sheet carries the shared tokens and the Default theme only', (
   }
 });
 
-// Chrome's rem is the system UI font (11px on macOS) but the shell's is --font-size-root,
-// and chrome sizes the shell's host from the collapsed rail token. The base sheet must pin
-// that token in px, equal to the rem sum the shell computes.
-test('chrome pins the collapsed rail width at the shell root font size', () => {
+// Chrome's rem is the system UI font (11px on macOS) but the shell's is --font-size-root.
+// Chrome sizes #bento-shell-host (collapsed rail) and #bento-add-panel-trailer from these
+// tokens while the shell lays itself out inside them, so each must be the same length in
+// both documents: the shell reads the rem form at its root size, chrome reads the pinned px.
+const CHROME_ROOT_PX = 11;
+const SHELL_LAID_OUT_TOKENS = [
+  '--bento-tab-strip-width-collapsed',
+  '--bento-panel-trailer-button-size',
+  '--bento-panel-trailer-grid-gap',
+  '--bento-panel-trailer-inline-padding',
+  '--bento-panel-trailer-grid-width',
+  '--bento-panel-trailer-wide-width',
+  '--bento-panel-trailer-base-width',
+];
+
+// Evaluates a token the way a document with this root font size would: var() followed,
+// rem at `rootPx`, calc() and max() reduced to a number. `pinned` overrides declarations.
+function createLengthEvaluator(css, rootPx, pinned = new Map()) {
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const evaluate = (name) => {
+    const declared =
+      pinned.get(name) ?? bare.match(new RegExp(`(?<![\\w-])${name}:\\s*([^;{}]+);`))?.[1];
+    assert.ok(declared, `${name} is declared`);
+    const expression = declared
+      .replace(/var\(\s*(--[\w-]+)\s*\)/g, (_match, ref) => `(${evaluate(ref)})`)
+      .replace(/(\d*\.?\d+)rem\b/g, (_match, rem) => rem * rootPx)
+      .replace(/(\d*\.?\d+)px\b/g, '$1')
+      .replace(/calc\(/g, '(')
+      .replace(/max\(/g, 'Math.max(');
+    assert.match(
+      expression,
+      /^[\d.\s()+*/,-]*(Math\.max[\d.\s()+*/,-]*)*$/,
+      `${name}: ${declared}`,
+    );
+    return Function(`return (${expression});`)();
+  };
+  return evaluate;
+}
+
+test('chrome reads shell-laid-out geometry at the shell root font size', () => {
   const { directory, base } = generate();
   try {
-    const rootPx = Number.parseFloat(base.match(/--font-size-root:\s*([\d.]+)px/)[1]);
-    const rem = (name) => Number.parseFloat(base.match(new RegExp(`${name}:\\s*([\\d.]+)rem`))[1]);
-    const pinned = base.match(/\n:root \{\s*--bento-tab-strip-width-collapsed: ([^;]+);\s*\}/)[1];
-    assert.doesNotMatch(pinned, /rem|var\(/);
-    const pinnedPx = [...pinned.matchAll(/([\d.]+)px/g)].reduce(
-      (sum, [, px]) => sum + Number(px),
-      0,
+    const marker = base.indexOf('Shell-sized geometry');
+    assert.ok(marker > 0, 'the base sheet carries the pinned block');
+    const pinned = new Map(
+      Array.from(base.slice(marker).matchAll(/^\s+(--[\w-]+): ([^;]+);/gm), (m) => [m[1], m[2]]),
     );
-    // The control is one tab row tall and the rail pads both sides by --space-2xs.
-    const shellRems =
-      rem('--bento-tab-row-height') + 2 * rem('--muxui-reference-dimension-space-2xs');
-    assert.ok(Math.abs(pinnedPx - shellRems * rootPx) < 1e-6, `${pinned} vs ${shellRems}rem`);
+    for (const [name, value] of pinned) assert.doesNotMatch(value, /rem|var\(/, name);
+    const rootPx = Number.parseFloat(base.match(/--font-size-root:\s*([\d.]+)px/)[1]);
+    const shell = createLengthEvaluator(base, rootPx);
+    const chrome = createLengthEvaluator(base, CHROME_ROOT_PX, pinned);
+    for (const name of SHELL_LAID_OUT_TOKENS) {
+      assert.ok(
+        Math.abs(chrome(name) - shell(name)) < 1e-6,
+        `${name}: chrome ${chrome(name)}px, shell ${shell(name)}px`,
+      );
+    }
+    // Unpinned, chrome's rem makes the trailer's select width shorter, so this fails if the
+    // comparison above goes vacuous.
+    const unpinned = createLengthEvaluator(base, CHROME_ROOT_PX);
+    assert.ok(
+      unpinned('--bento-panel-trailer-wide-width') < shell('--bento-panel-trailer-wide-width'),
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

@@ -134,6 +134,11 @@ Add-panel trailer visibility:
   `getTrailerLayoutWidth` fallback. If either is removed, the final root
   splitter and scroll extent can miss the trailer and hide the Add panels button
   cluster.
+- The trailer's width comes from the pinned `--bento-panel-trailer-*` tokens
+  (256 px, 284 px with the saved-panels select; see
+  [panel-widgets.md](panel-widgets.md)). `getTrailerLayoutWidth` measures the
+  rendered host, so the reserved space follows the tokens: 80 px more than the old
+  176 px host, taken from the main panel's width and from the strip's scroll extent.
 - Working solution: keep the existing trailer node mounted once it has been
   appended to `tabpanels`. Flat-layout geometry and the CSS `order: 999` rule
   keep it visually trailing without moving it in the DOM. Re-appending an

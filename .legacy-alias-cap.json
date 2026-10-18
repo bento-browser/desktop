@@ -1,11 +1,11 @@
 {
-  "total": 366,
+  "total": 359,
   "files": {
     "extensions/bento-shell/src/app.css": 14,
     "extensions/bento-shell/src/components/AddressBar/AddressBar.css": 8,
     "extensions/bento-shell/src/components/FolderRow/FolderRow.css": 12,
     "extensions/bento-shell/src/components/MergePalette/MergePalette.css": 27,
-    "extensions/bento-shell/src/components/PanelTrailer/PanelTrailer.css": 17,
+    "extensions/bento-shell/src/components/PanelTrailer/PanelTrailer.css": 10,
     "extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.css": 19,
     "extensions/bento-shell/src/components/primitives/BentoStack.css": 7,
     "extensions/bento-shell/src/components/SidebarAddressBar/SidebarAddressBar.css": 16,
