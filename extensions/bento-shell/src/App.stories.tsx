@@ -6,9 +6,14 @@
 // uses, so the layout transitions exactly as it does in chrome.
 import { useEffect } from 'react';
 import { App } from './App';
+// The shell layout (sidebar column, footer stacking in the collapsed rail) lives
+// in app.css, which the Ladle provider leaves out because its html/body/#root
+// rules reach every story. Only the App stories need it, so load it here.
+import './app.css';
 import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
 import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';
 import { seedPanelsHydrated } from './state/__fixtures__/panels';
+import { seedTabFolders } from './state/__fixtures__/tabFolders';
 import { DEFAULT_FIXTURE } from './state/__fixtures__/settings';
 import { markToolsBootedForStory } from './state/__fixtures__/bus';
 import { useSettingsStore } from './state/settings';
@@ -46,9 +51,11 @@ function ShellFrame({
 
 // Seed the full shell: 3 workspaces (Personal blue / Work emerald / Side
 // project amber, Work active), tabs spread across all three so switching
-// workspaces in the demo shows distinct lists, panels marked hydrated for
-// every workspace so TabList's readiness gate releases. Settings carry
-// the requested sidebarCollapsed value.
+// workspaces in the demo shows distinct lists, an empty folder list, and
+// panels marked hydrated for every workspace. TabList shows its skeleton
+// until tabs, folders and the active workspace's panels have all hydrated,
+// so every one of those is seeded. Settings carry the requested
+// sidebarCollapsed value.
 function seedShell(sidebarCollapsed: boolean) {
   const workspaces = seedManyWorkspaces();
   seedTabsAcrossWorkspaces(
@@ -59,6 +66,7 @@ function seedShell(sidebarCollapsed: boolean) {
     ],
     'w-work',
   );
+  seedTabFolders([]);
   seedPanelsHydrated(workspaces.map((w) => w.id));
   useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed });
   // Fake a tools/booted event AFTER seeding so the App's "connecting…"
