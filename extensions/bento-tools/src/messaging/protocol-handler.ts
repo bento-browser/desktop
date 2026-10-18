@@ -1573,6 +1573,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           label: 'panelLayout/removeVerticalGroup child',
         });
       }
+      // The panels after the removed group shift up, and so do their layout keys.
+      ctx.syncPanelMarkers(wsId);
       ctx.emitPanelsSync(wsId);
       return;
     }

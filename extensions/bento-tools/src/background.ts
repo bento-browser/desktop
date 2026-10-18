@@ -46,6 +46,7 @@ import {
   readPanelMarkerWithRetries,
   setPanelMarker,
   setDevtoolsPanelMarker,
+  type PanelMarker,
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
@@ -452,18 +453,35 @@ async function restoreParkedTabsForWorkspace(
   return restored;
 }
 
+// The layout key each marker-restored panel's session marker carried, for the workspaces that
+// still have persisted entries to apply. The marker sync renumbers markers from the layout as it
+// is, which until the entries are applied holds only the panels that came back, so the key is
+// remembered here when the marker is read (before any sync) and dropped once the entries are
+// bound (`restorePanelsForWorkspace`).
+const markerPanelKeys = new Map<number, string>();
+
+function rememberMarkerPanelKey(tabId: number, marker: PanelMarker): void {
+  if (!marker.panelKey) return;
+  if (!panels.workspacesWithPersistedUrls().includes(marker.workspaceId)) return;
+  markerPanelKeys.set(tabId, marker.panelKey);
+}
+
 // Restore a workspace's panels from URLs persisted across the last
 // shutdown. Idempotent: takePersistedUrls clears the entry on first call,
 // so subsequent activations of the same workspace are no-ops.
 //
-// Entry → tabId matching (`planPanelRestore`): a tab that shows the
-// persisted URL is consumed first. A panel Firefox already restored
-// through its session marker keeps its slot even when its URL cannot be
-// read yet (a pinned panel reports about:blank while it restores), so
-// the slot is never opened a second time. Only an entry with no tab at
-// all (Firefox sessionstore lost it, or the panel was closed at
-// shutdown) opens a new tab with the URL, assigned to the workspace.
-// Either way, each entry becomes a tabId in the panels list.
+// Entry → tabId matching (`planPanelRestore`): an entry binds to the
+// panel Firefox already restored through its session marker when the
+// marker carries the entry's panelKey, even when that panel's URL cannot
+// be read yet (a pinned panel reports about:blank while it restores) or
+// has changed, so the slot is never opened a second time and no sidebar
+// tab can take it. Entries left over bind by exact URL, panels before
+// sidebar tabs; a marker written before keys existed has no key and
+// matches only this way. Only an entry with no tab at all (Firefox
+// sessionstore lost it, or the panel was closed at shutdown) opens a new
+// tab with the URL, assigned to the workspace. Either way, each entry
+// becomes a tabId in the panels list. A marker panel no entry binds to
+// keeps a slot at the end of the strip (`PanelStore.restorePersistedLayout`).
 //
 // Multi-workspace restore is lazy: only the active workspace restores at
 // boot. Inactive workspaces restore on first activation (see
@@ -525,10 +543,13 @@ async function restorePanelsForWorkspace(
     return null;
   };
 
+  const layoutPanels = panels
+    .getPanels(workspaceId)
+    .map((tabId) => ({ tabId, panelKey: markerPanelKeys.get(tabId) }));
   const plan = planPanelRestore(
     entries,
     wsTabs.map((t) => ({ id: t.id, url: tabUrls.get(t.id) })),
-    panels.getPanels(workspaceId),
+    layoutPanels,
   );
   for (const { entry, tabId } of plan) {
     const url = entry.url;
@@ -547,6 +568,9 @@ async function restorePanelsForWorkspace(
     }
   }
   panels.restorePersistedLayout(workspaceId, persisted.layout, panelKeyToTabId);
+  for (const { tabId } of layoutPanels) markerPanelKeys.delete(tabId);
+  // The layout is final now: give every panel's marker the key and slot it has in it.
+  syncPanelMarkersForWorkspace(workspaceId);
   // Restore pinned-panel bindings for this workspace now that we know
   // which URLs map to which live tabIds. Pins whose URL doesn't match
   // any restored panel are dropped — the panel they referred to is
@@ -597,6 +621,7 @@ async function restorePanelsFromSessionMarkersAtBoot(): Promise<Set<string>> {
       continue;
     }
 
+    rememberMarkerPanelKey(tab.id, marker);
     tabs.assignWorkspaceEagerly(tab.id, marker.workspaceId);
     const alreadyPanel = panels.findWorkspacesContainingTab(tab.id).includes(marker.workspaceId);
     const inserted =
@@ -746,6 +771,7 @@ async function emitPanelsSyncNow(
     for (const id of missingPanelIds) {
       panels.remove(workspaceId, id);
     }
+    syncPanelMarkersForWorkspace(workspaceId);
     await emitPanelsSyncNow(workspaceId, options);
     return;
   }
@@ -1645,9 +1671,11 @@ void (async () => {
 })();
 
 // Rewrite session markers for every panel in `workspaceId` with their
-// current indexes. Call after any mutation that changes panel order
-// (add, remove, reorder) so Cmd+Shift+T restores land in the same slot
-// the panel was in WHEN IT WAS CLOSED, not the end of the list.
+// current indexes and persisted layout keys. Call after any mutation that
+// changes panel order (add, remove, reorder) so Cmd+Shift+T restores land
+// in the same slot the panel was in WHEN IT WAS CLOSED, not the end of the
+// list, and so a restart binds each persisted entry to the tab carrying its
+// key (the key is the panel's position in the layout, so it moves with it).
 // Fire-and-forget per tab — the marker writes are independent and only
 // matter at the next close→restore round-trip.
 function syncPanelMarkersForWorkspace(workspaceId: string): void {
@@ -1660,7 +1688,10 @@ function syncPanelMarkersForWorkspace(workspaceId: string): void {
     }
     void clearDevtoolsPanelMarker(tabId);
     const location = panels.getPanelRestoreLocation(workspaceId, tabId);
-    void setPanelMarker(tabId, workspaceId, location);
+    void setPanelMarker(tabId, workspaceId, {
+      ...location,
+      panelKey: panels.getPanelKey(workspaceId, tabId),
+    });
   }
 }
 
@@ -1727,6 +1758,7 @@ async function maybeRestorePanelFromMarker(
     void clearPanelMarker(tabId);
     return;
   }
+  rememberMarkerPanelKey(tabId, marker);
   tabs.assignWorkspaceEagerly(tabId, marker.workspaceId);
   const inserted = panels.insertAtRestoreLocation(marker.workspaceId, tabId, marker);
   const defaultWidth = settings.snapshot().defaultPanelWidthPx;

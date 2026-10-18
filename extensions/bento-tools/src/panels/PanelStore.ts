@@ -367,12 +367,22 @@ export class PanelStore {
     return true;
   }
 
+  /**
+   * Replaces the workspace's layout with the persisted one, placing each panel key's tab. A panel
+   * already in the live layout that no key claims (it came back through its session marker, but no
+   * entry binds to it) is kept at the end of the strip, not dropped out of the layout, where it
+   * would turn into a sidebar tab. DevTools panels are not kept: boot closes them.
+   */
   restorePersistedLayout(
     workspaceId: string,
     layout: PanelPersistenceWorkspaceLayout,
     tabIdByPanelKey: Map<string, number>,
   ): void {
+    const live = getVisiblePanelIds(this.#layoutByWorkspace.get(workspaceId));
     const runtime = fromPersistenceLayout(layout, tabIdByPanelKey);
+    for (const tabId of live) {
+      if (!this.isDevtoolsPanel(workspaceId, tabId)) addPanel(runtime, tabId);
+    }
     if (runtime.root.length === 0) {
       this.#layoutByWorkspace.delete(workspaceId);
     } else {

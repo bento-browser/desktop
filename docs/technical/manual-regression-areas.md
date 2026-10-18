@@ -127,6 +127,18 @@ When changing core functionality, manually verify at least the affected subset:
   kebab menu says Unpin) and is the same tab as the panel in the strip. A panel
   closed with Cmd+Shift+W of the only window before quitting is opened again once
   on relaunch;
+- panel identity across a restart: in one workspace make three panels with
+  different widths, subdivide the first one (a top panel and a bottom panel, the
+  bottom one a different site and width), pin one of the others as a pinned panel,
+  then Cmd+Q and relaunch. Each panel keeps its own width and header state, the
+  top and bottom of the subdivision are not swapped, the pinned panel is still the
+  same tab as the panel in the strip, and `gBrowser.tabs.length` is unchanged. Then
+  navigate one panel to another site, quit and relaunch: it comes back on that
+  site, in its slot, with no extra tab. Also open a sidebar tab on the same address
+  as a panel that will be restoring at launch (a pinned panel), quit, relaunch: the
+  panel is still the panel and the sidebar tab is still a sidebar tab. The first
+  launch after upgrading from a build whose markers have no panel key can show a
+  pinned panel twice, once; the second launch must not;
 - a workspace whose window closed comes back: with two windows on different
   workspaces, close one with Cmd+Shift+W, then open its workspace in a new window
   (or the workspace switcher of the other window): its tabs are restored once, in
