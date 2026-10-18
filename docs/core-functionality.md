@@ -10,29 +10,60 @@ windows and manually arranging them with the operating system, a user can keep a
 task-specific "bento box" inside one browser window and switch to another box
 when their context changes.
 
-On first run with a fresh Bento profile, Bento shows a multi-step onboarding
-experience that uses the "Bento box" motif: workspaces, panels, browser data,
-and setup actions are presented as compartments in the same tray. Browser-data
-import is one state in that onboarding flow. Choosing import opens an embedded
-browser-data import host inside the onboarding experience.
+On first run with a fresh Bento profile, Bento shows a seven-step onboarding
+dialog centered over the browser window, one topic per step. Every step shows a
+row of progress dots, and every step after Welcome shows a "Step N of 6" count at
+the top left of the dialog. Every step after Welcome has a Back action, so
+earlier choices can be revisited. The steps are:
+
+1. Welcome: a short introduction to Bento as a workspace-first browser built on
+   Firefox, with a Get started action.
+2. Appearance: Light, Dark, and Auto tiles, each with a small window preview
+   (Auto shows a light and a dark half). The choice is applied to the dialog and
+   the browser immediately, not when the user continues. Fresh profiles start on
+   Light; Auto follows the operating system's appearance.
+3. Import: lists the browsers Bento can import from (Chrome, Safari, Edge,
+   Brave, Vivaldi, Opera, Firefox, and Zen), with a Skip action and an Import
+   browser data action. The list itself is informational. Choosing import opens
+   the embedded browser-data import host inside the onboarding experience, and
+   onboarding continues at the Privacy step when the import closes. Skipping goes
+   straight to Privacy.
+4. Privacy: Standard, Enhanced, and Hardened protection levels, each with a
+   one-line summary. Standard is marked Recommended and is the default for fresh
+   profiles. The choice is applied immediately and every level can be fine-tuned
+   later in Settings.
+5. Search: Firefox's currently visible search engines, listed in two columns and
+   scrolling inside the list when there are many. DuckDuckGo is the default for
+   fresh profiles, and engines Bento recognises as privacy-oriented carry a
+   Private tag. The choice is applied immediately; more engines can be added in
+   Settings.
+6. Tour: a short introduction to workspaces, panels, and the command palette,
+   each with a small diagram, one line of explanation, and its keyboard
+   shortcut: switching workspaces, cycling between panels, and opening the
+   command palette.
+7. Ready: a summary of the chosen Appearance, Privacy, and Search values. Each
+   row has a Change action that jumps back to that step. Start browsing closes
+   the dialog.
+
+The onboarding dialog is not dismissed by clicking the scrim or pressing Esc.
+Only Start browsing ends onboarding; until then it reopens on the next launch.
+On narrow windows the tile grids collapse to fewer columns and the dialog is
+sized to the window minus a small margin.
+
 Regular browser imports stay in-window. Full Mozilla Firefox or Zen Browser
 profile imports use an explicit startup handoff because Firefox's profile-copy
-migrator runs before the new profile is initialized. Choosing the Firefox/Zen
-action restarts into the startup migration wizard scoped to the detected
-Firefox and Zen profiles and preselected on them, rather than a generic picker
-defaulted to another browser. Empty Firefox/Zen profile entries with no
-migratable resources are not offered. Zen imports also translate Zen spaces into
-Bento workspaces and restore Zen tabs through Bento's workspace-aware session
-restore as the import completes. Zen pinned tabs become pinned Bento tabs. Zen
-essential tabs become pinned Bento panels. Chrome and other regular browser
-imports in this flow use Firefox's native migration wizard and are separate from
-the additive Bento backup import flow. The first
-onboarding step also lets the user choose Bento's UI theme mode: Light, Dark, or
-Auto; fresh profiles default to Light. After import, onboarding asks for a
-privacy protection level and default search engine. Fresh profiles default to
-Standard privacy and DuckDuckGo search. The onboarding overlay is not dismissed
-by clicking the scrim or pressing Esc, and the user exits it only from the final
-step.
+migrator runs before the new profile is initialized. The Import step notes that
+Firefox and Zen copy the whole profile, and that Bento restarts once and returns
+to onboarding. Choosing the Firefox/Zen action restarts into the startup
+migration wizard scoped to the detected Firefox and Zen profiles and preselected
+on them, rather than a generic picker defaulted to another browser, and
+onboarding resumes at the Privacy step after the restart. Empty Firefox/Zen
+profile entries with no migratable resources are not offered. Zen imports also
+translate Zen spaces into Bento workspaces and restore Zen tabs through Bento's
+workspace-aware session restore as the import completes. Zen pinned tabs become
+pinned Bento tabs. Zen essential tabs become pinned Bento panels. Chrome and
+other regular browser imports in this flow use Firefox's native migration wizard
+and are separate from the additive Bento backup import flow.
 
 The sidebar footer exposes Firefox's native app menu, Firefox's native downloads
 panel, and a manual "Merge browser session" action. Native footer panels are
@@ -628,11 +659,11 @@ advanced privacy controls for the main browser-level levers. Settings displays
 the current protection level in the Privacy card header and shows the benefits
 and caveats for Standard, Enhanced, and Hardened so users can compare
 compatibility impact before switching. The first-run onboarding privacy step
-shows a compact benefit/caveat explanation for the selected level. The search
-choices shown in onboarding and Settings are Firefox's currently visible search
-engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding search
-step adds supporting text that calls out visible privacy-oriented search engines
-when Firefox exposes them. Settings also includes a searchable keyboard
+lists each level with a one-line summary and marks Standard as recommended. The
+search choices shown in onboarding and Settings are Firefox's currently visible
+search engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding
+search step tags visible privacy-oriented search engines as Private when
+Firefox exposes them. Settings also includes a searchable keyboard
 shortcuts command palette whose results are grouped by category and show command
 titles, supporting descriptions, and key tokens. The Keyboard shortcuts card
 also lets users choose whether `Cmd/Ctrl+S` collapses the sidebar to the rail or

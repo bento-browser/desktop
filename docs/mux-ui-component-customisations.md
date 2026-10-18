@@ -307,6 +307,82 @@ build if a `.ttf` reference survives. The six files go from 2.74 MB to 1.22 MB a
 stay local files in `assets/`. Fonts were checked by decoding each file with
 fontTools and Google's reference decoder, and by rendering in Firefox.
 
+### Welcome dialog and selectable tiles
+
+The onboarding overlay (`extensions/bento-shell/src/welcome/`) is one controlled,
+non-dismissable Mux `Dialog` that keeps its frame and footer across all seven
+steps; only the step body changes. Its Bento rules sit in the `bento.components`
+layer of `welcome.css`, with one exception: the `.muxui-dialog.bento-welcome`
+override (`--bento-welcome-dialog-width` by `--bento-welcome-dialog-height`, 45rem
+by 33rem, clamped to the viewport minus `--bento-welcome-viewport-gap`, with its
+padding) stays unlayered. Every size local to the overlay is a `--bento-welcome-*`
+token declared in `bento-tokens.css` (dialog, text measure, illustration, preview,
+diagram, option list, dots); `welcome.css` only references them, and the narrow
+window re-points `--bento-welcome-viewport-gap` at
+`--bento-welcome-viewport-gap-compact`. Mux's dialog surface sizing is unlayered, so a
+layered override would lose to it and the dialog would fall back to the default
+30rem modal width. Keep that rule, and any new rule that must beat a Mux dialog
+surface property, outside the layer next to the existing comment.
+
+The override also keeps the plain `transform: translate(-50%, -50%)` positioning
+instead of letting Mux's entry scale animation run. Mux measures a
+`ToggleButtonGroup`'s selected fill once on mount, and measuring inside the
+scaled dialog left the fill about 3% too small for its tile. Recheck this after a
+Mux upgrade before restoring the entry scale.
+
+Appearance, Privacy, and Search share one selectable surface, `WelcomeOptions`: a
+Mux `ToggleButtonGroup` with `selectionMode='single'` and `disallowEmptySelection`
+whose `ToggleButton` items Bento lays out as three tiles (Appearance), one column
+of rows (Privacy), or a two-column grid in a capped-height list that scrolls when it is long (Search).
+`RadioGroup` is not used because its rc.1 options carry no description. Mux owns
+selection state, roles, and arrow-key navigation, and a selection is applied at
+once. Bento sets the grid, the item content layout (preview, label, tag,
+description), and two things on Mux's sliding selected fill: the group's
+`--muxui-toggle-button-group-motion-fill` is a subtle surface
+(`--muxui-semantic-surface-hover`) so each item's own `Text` colours stay
+readable over it, and the fill's corner radius matches the tile's. The selected
+tile also gets a strong outline (`--muxui-semantic-border-emphasis`) on
+`[data-selected]`. Mux clones the selected item into its motion layer, so the
+item rules use descendant selectors rather than child selectors. Do not rebuild
+the tiles from clickable `div`s.
+
+Appearance thumbnails are small windows built from Bento markup. Each pane sets
+`data-muxui-color-scheme` to `light` or `dark`, so the Light and Dark thumbnails
+keep their colours whatever mode the dialog is in; the Auto thumbnail shows a
+light and a dark pane side by side. The illustrations on Welcome and Ready are
+Mux `Image` with empty `alt`, loading `./welcome/welcome.webp` and
+`./welcome/ready.webp` relative to the entry document, since the welcome document
+loads from `/dist/welcome.html`.
+
+`WelcomeSurfaces.stories.tsx` lays its fixed-width story frames out in the story-only
+`WelcomeSurfaces.stories.css`; nothing in that file ships.
+
+At 48rem and below the dialog goes compact: the option and tile grids lose
+columns, and the footer reflows from three columns (Back, dots, actions) to a
+wrapping flex row. The three columns need about 42rem of dialog on the Import step,
+where Back, seven dots and the Skip and Import actions sit in two equal side
+columns around the dots, so the footer uses the dialog's one existing compact
+breakpoint rather than a second one. Compact puts the dots on their own row, then
+Back and the actions on the next row, with the actions pushed to the end; when they
+do not fit together (about 360px wide) Back takes the row above the actions.
+
+The step dots are a presentational Bento element marked `aria-hidden`. The
+visible "Step N of 6" text (steps 1 to 6) is the accessible progress; do not add
+roles or labels to the dots.
+
+Motion uses the Mux roles only. The step body enters on `reveal`
+(`--muxui-semantic-motion-reveal-transition`) and replays on every step because it
+remounts per step. The import source tiles, tour tiles, and summary rows also
+stagger: each sets an inline `animationDelay` computed in JS as a
+`calc()` of `--muxui-semantic-motion-reveal-transition-duration`, the index, and
+a fixed fraction, so no script holds a duration. The delay is inline because a
+CSS `calc()` over a per-item custom property failed the motion lint. The
+option tiles do not stagger: Mux measures the toggle group's selected fill once on
+mount, and animating each tile separately misplaced it, so they move with the
+step body. The dots' width and colour use `state`. Under
+`prefers-reduced-motion: reduce` the entry animation is opacity only, with no
+transform.
+
 ### Pruning Mux component CSS
 
 The package has one stylesheet for all components. `mux-css-prune.ts` removes the
@@ -413,9 +489,10 @@ read (see `docs/technical/theming.md`).
 
 When a read names a step that does not exist (the neutral ladder is 5, 10, 12, ...,
 100; the radius ladder is none, xs, s, m, l, xl, 2xl, full), take the nearest real
-step and prefer its public semantic role over the legacy alias. The welcome tray
-and privacy summary used `--neutral-0`, `--neutral-6` and `--neutral-8`; they now
-use `--muxui-semantic-surface-background` (neutral-5) and
+step and prefer its public semantic role over the legacy alias. The former welcome
+tray and privacy summary (replaced by the selectable tiles above) used
+`--neutral-0`, `--neutral-6` and `--neutral-8`; they were moved to
+`--muxui-semantic-surface-background` (neutral-5) and
 `--muxui-semantic-surface-raised` (neutral-10), the same surfaces the Mux dialog
 and its page use. PanelTrailer favicons used `--radius-2xs`; they now use
 `--muxui-semantic-shape-radius-xs`, the smallest radius, as an earlier fix of the
