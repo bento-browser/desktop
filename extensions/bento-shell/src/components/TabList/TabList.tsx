@@ -921,9 +921,11 @@ function TabListPane({
     };
   }, [onCloseSearch, searchOpen, searchQuery]);
 
+  // A square icon at rest. Hover or keyboard focus widens it leftward to reveal the
+  // label (TabList.css); the accessible name stays the aria-label.
   const renderSearchButton = () => (
     <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
-      <IconButton
+      <Button
         variant="ghost"
         size="sm"
         className="bento-tab-list__search-button"
@@ -931,7 +933,8 @@ function TabListPane({
         onActivate={onOpenSearch}
       >
         <BentoIcon icon={Search} size="sm" />
-      </IconButton>
+        <span className="bento-tab-list__search-label">Search</span>
+      </Button>
     </span>
   );
 
@@ -955,9 +958,14 @@ function TabListPane({
     </Button>
   );
 
+  // Always mounted so closing can animate back into the trigger. Closed, it is
+  // inert and hidden (after the close transition, see TabList.css) and its field
+  // row sits exactly on the trigger.
   const renderSearchOverlay = (filtering = false) => (
     <div
       className={'bento-tab-list-search' + (filtering ? ' bento-tab-list-search--filtering' : '')}
+      data-open={searchOpen ? '' : undefined}
+      inert={!searchOpen}
       onBlur={(e) => {
         const nextFocus = e.relatedTarget as Node | null;
         if (nextFocus && e.currentTarget.contains(nextFocus)) return;
@@ -984,18 +992,20 @@ function TabListPane({
             }
           }}
         />
-        <IconButton
-          variant="ghost"
-          size="sm"
-          className="bento-tab-list-search__clear-button"
-          aria-label="Clear search"
-          onActivate={() => {
-            onSearchQueryChange('');
-            searchInputRef.current?.focus();
-          }}
-        >
-          <BentoIcon icon={X} size="sm" />
-        </IconButton>
+        <span className="bento-tab-list-search__clear">
+          <IconButton
+            variant="ghost"
+            size="sm"
+            className="bento-tab-list-search__clear-button"
+            aria-label="Clear search"
+            onActivate={() => {
+              onSearchQueryChange('');
+              searchInputRef.current?.focus();
+            }}
+          >
+            <BentoIcon icon={X} size="sm" />
+          </IconButton>
+        </span>
       </div>
       {searchQuery.trim().length > 0 && (
         <div className="bento-tab-list-search__results">
@@ -1070,7 +1080,7 @@ function TabListPane({
           />
           {renderNewButton()}
           {renderSearchButton()}
-          {searchOpen && renderSearchOverlay(searchFiltering)}
+          {renderSearchOverlay(searchFiltering)}
         </div>
       </div>
       <div

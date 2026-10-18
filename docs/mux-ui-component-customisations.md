@@ -159,9 +159,9 @@ Tab and folder labels use the row's center alignment with single-line leading.
 Keep them free of relative vertical offsets: the former `top: 2px` adjustment
 put Mux text below the centered favicon and folder count.
 
-The sidebar action bar's New `Button` and Search `IconButton` (ghost, `sm`)
-are hovered by a second sliding highlight behind them, so they paint no hover
-fill of their own. Mux paints `:hover` and `[data-hovered]` from
+The sidebar action bar's New and Search `Button`s (ghost, `sm`; Search was an
+`IconButton` before it gained a peek label) are hovered by a second sliding
+highlight behind them, so they paint no hover fill of their own. Mux paints `:hover` and `[data-hovered]` from
 `--muxui-button-background-hover` (the ghost variant sets it to a 10%
 `surface-contrast` mix) and `:active`/`[data-pressed]` from
 `--muxui-button-background-pressed`. Bento sets only the hover property to
@@ -172,6 +172,28 @@ or `[data-hovered]` selectors for this. After a Mux upgrade, recheck that the
 ghost variant still reads `--muxui-button-background-hover` for both states, or
 the buttons stack a second fill over the highlight (about twice a hovered
 row's darkening).
+
+The Search `Button` is a 2rem square at rest and widens leftward on hover or
+keyboard focus to reveal its label (motion and field:
+[technical/palettes-and-address-bar.md](technical/palettes-and-address-bar.md#search-trigger-and-field-motion)).
+Its `.bento-tab-list__search-button` rule is unlayered, like New's, and sets
+`width: 100%` of its `span.bento-tab-list__search-trigger` (the span owns the
+animated width), `min-height: 0`, `overflow: hidden` (the label is clipped by the
+square at rest, and a focus ring is a `box-shadow`, so it is not clipped) and an
+inline padding of `--bento-tab-list-search-trigger-inset`, which keeps the icon
+where it was centered in the square. The published package lays the icon and
+label out inline in `.muxui-button-content`, which is not a flex container, so
+the gap between them is a `margin-inline-start` on the label, not a `gap`. Mux
+main's wrapper is an inline-flex with `gap: inherit`, so the trigger sets that
+part's `gap` to 0 and the margin stays the only spacing in both. The
+peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
+React Aria also sets `data-focus-visible` on the button.
+
+In the search field, Bento sets `opacity` and its transition on the public
+`Input.Input` leaf (replacing Mux's 0.15s outline, shadow and background
+transitions, which the borderless transparent input never shows) and wraps the
+clear `IconButton` in `.bento-tab-list-search__clear`, which fades and scales
+instead of the button, so Mux's own button transitions stay intact.
 
 While the New menu is up in the chrome overlay, `TabList` sets
 `data-bento-menu-open='true'` and `aria-expanded` on the New `Button`, and the

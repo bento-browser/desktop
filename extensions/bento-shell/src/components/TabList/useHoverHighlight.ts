@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
 const ROW_SELECTOR = '.bento-tab-list__row';
-const ACTION_SELECTOR = '.bento-tab-list__new-action-button, .bento-tab-list__search-button';
+const SEARCH_ACTION_SELECTOR = '.bento-tab-list__search-button';
+const ACTION_SELECTOR = `.bento-tab-list__new-action-button, ${SEARCH_ACTION_SELECTOR}`;
 
 interface RowHighlightOptions {
   /** Row is indented under a folder (narrower highlight). */
@@ -33,16 +34,31 @@ const placeRow: Place = (highlight, row) => {
   return true;
 };
 
-// The bar does not scroll, so a button's rect relative to the bar is its box.
-// Rects keep fractional flex widths exact (offsetWidth rounds); a button that
-// is not rendered (the Search trigger in the collapsed rail) has no width.
+// The action highlight does not track the button's rect. The Search trigger widens
+// on hover (and the New button shrinks with it) over a spring, so a rect read now
+// would be a mid-transition box. `data-target` names the button instead and
+// TabList.css gives each target its final geometry from the same width variable,
+// curve and duration the buttons use, so a highlight that is already visible
+// lands with them. A fresh show starts on the button's current box (the trigger
+// may only just have begun to widen) and `settleAction` hands it to CSS, which
+// carries it to the final box in step with the button. A button that is not
+// rendered (the Search trigger in the collapsed rail) has no box, which hides the
+// highlight.
 const placeAction: Place = (highlight, button) => {
   const bar = highlight.parentElement;
   const box = button.getBoundingClientRect();
   if (!bar || box.width === 0) return false;
-  highlight.style.transform = `translateX(${box.left - bar.getBoundingClientRect().left}px)`;
-  highlight.style.width = `${box.width}px`;
+  highlight.dataset.target = button.matches(SEARCH_ACTION_SELECTOR) ? 'search' : 'new';
+  if (!highlight.hasAttribute('data-visible')) {
+    highlight.style.left = `${box.left - bar.getBoundingClientRect().left}px`;
+    highlight.style.width = `${box.width}px`;
+  }
   return true;
+};
+
+const settleAction = (highlight: HTMLElement) => {
+  highlight.style.removeProperty('left');
+  highlight.style.removeProperty('width');
 };
 
 /**
@@ -50,25 +66,28 @@ const placeAction: Place = (highlight, button) => {
  * instead of each target painting its own `:hover` background.
  *
  * A delegated `mouseover` on the container finds the target (`targetSelector`)
- * under the pointer and `place` positions the returned element imperatively
- * (CSS drives the slide, fade and geometry from `data-visible` and whatever
- * `place` sets). Mouse events are used rather than scroll math because Gecko
- * synthesizes a mouse move after a scroll or reflow, which re-targets the
- * element under a stationary pointer.
+ * under the pointer and `place` positions the returned element imperatively: an
+ * inline offset, or a data attribute that CSS turns into geometry. CSS drives
+ * the slide, fade and geometry from `data-visible` and whatever `place` sets.
+ * `settle` runs right after a fresh show sets `data-visible`, to drop anything
+ * `place` wrote only as a starting position. Mouse events are used rather than
+ * scroll math because Gecko synthesizes a mouse move after a scroll or reflow,
+ * which re-targets the element under a stationary pointer.
  *
  * The layout effect re-syncs after every commit, so the highlight follows its
  * target through reorders and shifts, and hides if that target unmounted
  * (closed tab, folder collapse, virtualizer recycling) rather than sitting at a
  * stale offset. A ResizeObserver re-syncs layout changes that are not commits,
- * such as the sidebar collapse resizing the action bar. `disabled` (a drag in
- * progress, search open, the New menu open) hides it and drops the tracked
- * target.
+ * such as the sidebar collapse resizing the action bar and removing the Search
+ * trigger's box. `disabled` (a drag in progress, search open, the New menu open)
+ * hides it and drops the tracked target.
  */
 function useHoverHighlight(
   containerRef: RefObject<HTMLElement | null>,
   disabled: boolean,
   targetSelector: string,
   place: Place,
+  settle?: (highlight: HTMLElement) => void,
 ): RefObject<HTMLDivElement | null> {
   const highlightRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef<HTMLElement | null>(null);
@@ -89,8 +108,9 @@ function useHoverHighlight(
       // the highlight last was, then fade in.
       void highlight.offsetHeight;
       highlight.setAttribute('data-visible', '');
+      settle?.(highlight);
     }
-  }, [place]);
+  }, [place, settle]);
 
   // After every commit: targets may have moved, been removed or unmounted.
   useLayoutEffect(() => {
@@ -136,10 +156,11 @@ export function useRowHoverHighlight(
 }
 
 /** Highlight for the New and Search buttons of the tab-list action bar. It
- * stays inside the bar: the list highlight handles the rows. */
+ * stays inside the bar: the list highlight handles the rows. Its geometry is
+ * CSS's, selected by `data-target` (`new` or `search`). */
 export function useActionHoverHighlight(
   barRef: RefObject<HTMLDivElement | null>,
   disabled: boolean,
 ): RefObject<HTMLDivElement | null> {
-  return useHoverHighlight(barRef, disabled, ACTION_SELECTOR, placeAction);
+  return useHoverHighlight(barRef, disabled, ACTION_SELECTOR, placeAction, settleAction);
 }
